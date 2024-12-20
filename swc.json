@@ -1,0 +1,17 @@
+{
+  "jsc": {
+    "parser": {
+      "syntax": "typescript"
+    },
+    "target": "es2022",
+    "transform": {
+      "optimizer": {
+        "globals": {
+          "vars": {
+            "process.env.NODE_ENV": "production"
+          }
+        }
+      }
+    }
+  }
+}

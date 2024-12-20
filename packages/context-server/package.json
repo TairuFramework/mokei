@@ -1,0 +1,39 @@
+{
+  "name": "@mokei/context-server",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Mokei MCP server",
+  "keywords": ["model", "context", "protocol", "mcp", "server", "llm", "ai"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TairuFramework/mokei",
+    "directory": "packages/context-server"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": "./lib/index.js"
+  },
+  "files": ["lib/*"],
+  "sideEffects": false,
+  "scripts": {
+    "build:clean": "del lib",
+    "build:js": "swc src -d ./lib --config-file ../../swc.json --strip-leading-paths",
+    "build:types": "tsc --emitDeclarationOnly --skipLibCheck",
+    "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
+    "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
+    "test:types": "tsc --noEmit",
+    "test:unit": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
+    "test": "pnpm run test:types && pnpm run test:unit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@enkaku/node-streams-transport": "^0.8.0",
+    "@enkaku/schema": "^0.8.0",
+    "@mokei/context-protocol": "workspace:^"
+  },
+  "devDependencies": {
+    "@enkaku/transport": "^0.8.0"
+  }
+}
