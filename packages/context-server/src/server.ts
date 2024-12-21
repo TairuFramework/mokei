@@ -179,3 +179,9 @@ export class ContextServer<Spec extends SpecificationDefinition> {
     return Promise.resolve().then(() => handler(context))
   }
 }
+
+export function serve<Spec extends SpecificationDefinition>(
+  params: ServerParams<Spec>,
+): ContextServer<Spec> {
+  return new ContextServer<Spec>(params)
+}

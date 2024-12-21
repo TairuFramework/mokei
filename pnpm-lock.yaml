@@ -51,6 +51,16 @@ importers:
         specifier: ^5.7.2
         version: 5.7.2
 
+  mcp-servers/sqlite:
+    dependencies:
+      '@mokei/context-server':
+        specifier: workspace:^
+        version: link:../../packages/context-server
+    devDependencies:
+      '@enkaku/schema':
+        specifier: ^0.8.0
+        version: 0.8.0
+
   packages/context-protocol:
     devDependencies:
       '@enkaku/schema':

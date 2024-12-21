@@ -1,4 +1,5 @@
 packages:
+  - 'mcp-servers/*'
   - 'packages/*'
   - 'tests/*'
   - website

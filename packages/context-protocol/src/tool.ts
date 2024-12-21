@@ -14,12 +14,6 @@ export const inputSchema = {
       },
       type: 'object',
     },
-    required: {
-      items: {
-        type: 'string',
-      },
-      type: 'array',
-    },
     type: {
       const: 'object',
       type: 'string',
