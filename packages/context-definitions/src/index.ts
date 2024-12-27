@@ -1,3 +1,15 @@
+/**
+ * Mokei MCP definitions.
+ *
+ * ## Installation
+ *
+ * ```sh
+ * npm install @mokei/context-definitions
+ * ```
+ *
+ * @module context-definitions
+ */
+
 import type { FromSchema, Schema } from '@enkaku/schema'
 import { inputSchema } from '@mokei/context-protocol'
 

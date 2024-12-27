@@ -62,6 +62,7 @@ export const cancelledNotification = {
     },
   ],
 } as const satisfies Schema
+export type CancelledNotification = FromSchema<typeof cancelledNotification>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1265
 export const progressToken = {
@@ -99,6 +100,7 @@ export const progressNotification = {
   required: ['method', 'params'],
   type: 'object',
 } as const satisfies Schema
+export type ProgressNotification = FromSchema<typeof progressNotification>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1439
 export const request = {
@@ -216,3 +218,4 @@ export const pingRequest = {
     },
   ],
 } as const satisfies Schema
+export type PingRequest = FromSchema<typeof pingRequest>

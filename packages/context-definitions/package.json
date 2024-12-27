@@ -1,13 +1,13 @@
 {
-  "name": "@mokei/context-server",
+  "name": "@mokei/context-definitions",
   "version": "0.1.0",
   "license": "MIT",
-  "description": "Mokei MCP server",
-  "keywords": ["model", "context", "protocol", "mcp", "server", "llm", "ai"],
+  "description": "Mokei MCP definitions",
+  "keywords": ["model", "context", "protocol", "mcp", "llm", "ai"],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "packages/context-server"
+    "directory": "packages/context-definitions"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -29,12 +29,9 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/node-streams-transport": "^0.8.0",
-    "@enkaku/schema": "^0.8.0",
-    "@mokei/context-definitions": "workspace:^",
     "@mokei/context-protocol": "workspace:^"
   },
   "devDependencies": {
-    "@enkaku/transport": "^0.8.0"
+    "@enkaku/schema": "^0.8.0"
   }
 }

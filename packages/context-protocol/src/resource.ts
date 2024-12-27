@@ -160,6 +160,7 @@ export const resourceListChangedNotification = {
     },
   ],
 } as const satisfies Schema
+export type ResourceListChangedNotification = FromSchema<typeof resourceListChangedNotification>
 
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L1385
 export const readResourceRequest = {
@@ -241,6 +242,7 @@ export const subscribeRequest = {
     },
   ],
 } as const satisfies Schema
+export type SubscribeRequest = FromSchema<typeof subscribeRequest>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L2038
 export const unsubscribeRequest = {
@@ -271,6 +273,7 @@ export const unsubscribeRequest = {
     },
   ],
 } as const satisfies Schema
+export type UnsubscribeRequest = FromSchema<typeof subscribeRequest>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1623
 export const resourceUpdatedNotification = {
@@ -302,3 +305,4 @@ export const resourceUpdatedNotification = {
     },
   ],
 } as const satisfies Schema
+export type ResourceUpdatedNotification = FromSchema<typeof resourceUpdatedNotification>

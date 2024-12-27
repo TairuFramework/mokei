@@ -136,6 +136,7 @@ export const initializeRequest = {
     },
   ],
 } as const satisfies Schema
+export type InitializeRequest = FromSchema<typeof initializeRequest>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L632
 export const initializeResult = {
@@ -184,3 +185,4 @@ export const initializedNotification = {
     },
   ],
 } as const satisfies Schema
+export type InitializedNotification = FromSchema<typeof initializedNotification>

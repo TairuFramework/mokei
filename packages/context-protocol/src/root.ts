@@ -1,4 +1,4 @@
-import type { Schema } from '@enkaku/schema'
+import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { notification, request, result } from './rpc.js'
 
@@ -40,6 +40,7 @@ export const listRootsRequest = {
     },
   ],
 } as const satisfies Schema
+export type ListRootsRequest = FromSchema<typeof listRootsRequest>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L991
 export const listRootsResult = {
@@ -59,6 +60,7 @@ export const listRootsResult = {
     },
   ],
 } as const satisfies Schema
+export type ListRootsResult = FromSchema<typeof listRootsResult>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1687
 export const rootsListChangedNotification = {
@@ -79,3 +81,4 @@ export const rootsListChangedNotification = {
     },
   ],
 } as const satisfies Schema
+export type RootsListChangedNotification = FromSchema<typeof rootsListChangedNotification>

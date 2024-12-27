@@ -1,5 +1,6 @@
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 import { type Schema, type Validator, createValidator } from '@enkaku/schema'
+import type { SpecificationDefinition } from '@mokei/context-definitions'
 import {
   type CallToolRequest,
   type CallToolResult,
@@ -20,7 +21,6 @@ import {
 } from '@mokei/context-protocol'
 
 import { RPCError, errorResponse } from './error.js'
-import type { SpecificationDefinition } from './specification.js'
 import type {
   ResourceHandlers,
   ServerTransport,

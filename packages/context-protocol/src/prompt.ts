@@ -92,6 +92,7 @@ export const getPromptRequest = {
     },
   ],
 } as const satisfies Schema
+export type GetPromptRequest = FromSchema<typeof getPromptRequest>
 
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L516
 export const getPromptResult = {
@@ -134,6 +135,7 @@ export const listPromptsRequest = {
     },
   ],
 } as const satisfies Schema
+export type ListPromptsRequest = FromSchema<typeof listPromptsRequest>
 
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L847
 export const listPromptsResult = {
@@ -152,6 +154,7 @@ export const listPromptsResult = {
     },
   ],
 } as const satisfies Schema
+export type ListPromptsResult = FromSchema<typeof listPromptsResult>
 
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L1317
 export const promptListChangedNotification = {
@@ -171,3 +174,4 @@ export const promptListChangedNotification = {
     },
   ],
 } as const satisfies Schema
+export type PromptListChangedNotification = FromSchema<typeof promptListChangedNotification>

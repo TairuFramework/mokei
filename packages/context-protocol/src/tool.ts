@@ -120,6 +120,7 @@ export const listToolsRequest = {
     },
   ],
 } as const satisfies Schema
+export type ListToolsRequest = FromSchema<typeof listToolsRequest>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1033
 export const listToolsResult = {
@@ -138,6 +139,7 @@ export const listToolsResult = {
     },
   ],
 } as const satisfies Schema
+export type ListToolsResult = FromSchema<typeof listToolsResult>
 
 export const toolListChangedNotification = {
   description:
@@ -156,3 +158,4 @@ export const toolListChangedNotification = {
     },
   ],
 } as const satisfies Schema
+export type ToolListChangedNotification = FromSchema<typeof toolListChangedNotification>

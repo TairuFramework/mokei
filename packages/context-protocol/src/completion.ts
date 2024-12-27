@@ -1,4 +1,4 @@
-import type { Schema } from '@enkaku/schema'
+import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { request, result } from './rpc.js'
 
@@ -78,6 +78,7 @@ export const completeRequest = {
     },
   ],
 } as const satisfies Schema
+export type CompleteRequest = FromSchema<typeof completeRequest>
 
 export const completeResult = {
   description: "The server's response to a completion/complete request",
@@ -115,3 +116,4 @@ export const completeResult = {
     },
   ],
 } as const satisfies Schema
+export type CompleteResult = FromSchema<typeof completeResult>

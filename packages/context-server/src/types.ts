@@ -1,5 +1,6 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 import type { TransportType } from '@enkaku/transport'
+import type { PromptsDefinition, ToolsDefinition } from '@mokei/context-definitions'
 import type {
   CallToolResult,
   ClientMessage,
@@ -12,8 +13,6 @@ import type {
   ReadResourceResult,
   ServerMessage,
 } from '@mokei/context-protocol'
-
-import type { PromptsDefinition, ToolsDefinition } from './specification.js'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 

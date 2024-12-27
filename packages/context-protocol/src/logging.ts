@@ -1,4 +1,4 @@
-import type { Schema } from '@enkaku/schema'
+import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { notification, request } from './rpc.js'
 
@@ -36,6 +36,7 @@ export const setLevelRequest = {
     },
   ],
 } as const satisfies Schema
+export type SetLevelRequest = FromSchema<typeof setLevelRequest>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1071
 export const loggingMessageNotification = {
@@ -70,3 +71,4 @@ export const loggingMessageNotification = {
     },
   ],
 } as const satisfies Schema
+export type LoggingMessageNotification = FromSchema<typeof loggingMessageNotification>
