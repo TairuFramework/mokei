@@ -1,0 +1,66 @@
+{
+  "name": "mokei",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Mokei CLI",
+  "keywords": [
+    "model",
+    "context",
+    "protocol",
+    "mcp",
+    "llm",
+    "ai",
+    "cli"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "/bin",
+    "/dist",
+    "/oclif.manifest.json"
+  ],
+  "bin": {
+    "mokei": "./bin/run.js"
+  },
+  "scripts": {
+    "mokei": "./bin/dev.js",
+    "build": "shx rm -rf dist && tsc -b",
+    "postpack": "shx rm -f oclif.manifest.json",
+    "posttest": "pnpm run lint",
+    "prepack": "oclif manifest && oclif readme",
+    "test:types": "tsc --noEmit --skipLibCheck",
+    "test:unit": "OCLIF_TEST_ROOT=. node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
+    "test": "pnpm run test:types && pnpm run test:unit",
+    "version": "oclif readme && git add README.md"
+  },
+  "oclif": {
+    "bin": "mokei",
+    "dirname": "mokei",
+    "commands": "./dist/commands",
+    "plugins": [
+      "@oclif/plugin-help",
+      "@oclif/plugin-plugins"
+    ],
+    "topicSeparator": " ",
+    "topics": {}
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.2.1",
+    "@oclif/core": "^4.0.33",
+    "@oclif/plugin-help": "^6",
+    "@oclif/plugin-plugins": "^5.4.24",
+    "ollama": "^0.5.11",
+    "ora": "^8.1.1"
+  },
+  "devDependencies": {
+    "@oclif/test": "^4.1.5",
+    "oclif": "^4.17.7",
+    "shx": "^0.3.3",
+    "ts-node": "^10",
+    "typescript": "^5.7.2"
+  }
+}
