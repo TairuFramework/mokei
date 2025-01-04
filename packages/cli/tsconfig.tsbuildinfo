@@ -1,1 +1,1 @@
-{"root":["./src/fs.ts","./src/index.ts","./src/local.ts","./src/commands/local/generate.ts"],"version":"5.7.2"}
+{"root":["./src/fs.ts","./src/index.ts","./src/local.ts","./src/commands/local/chat.ts","./src/commands/local/generate.ts","./src/commands/local/stdin.ts"],"version":"5.7.2"}
