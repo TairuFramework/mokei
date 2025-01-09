@@ -3,7 +3,7 @@ import { Command } from '@oclif/core'
 import ollama from 'ollama'
 import ora from 'ora'
 
-import { getModel, getPrompt, modelFlag, promptFlag } from '../../local.js'
+import { getModel, getPrompt, modelFlag, promptFlag } from '../../ollama.js'
 
 export default class LocalGenerate extends Command {
   static description = 'Generate a message from a prompt'
@@ -19,7 +19,7 @@ export default class LocalGenerate extends Command {
     const prompt = await getPrompt(flags)
 
     const writer = Writable.toWeb(process.stdout).getWriter()
-    const loader = ora('Generating...').start()
+    const loader = ora().start('Generating...')
 
     const response = await ollama.generate({ model, prompt, stream: true })
     for await (const part of response) {

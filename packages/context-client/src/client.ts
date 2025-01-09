@@ -1,4 +1,4 @@
-import { type Schema, type Validator, createValidator } from '@enkaku/schema'
+import { createValidator } from '@enkaku/schema'
 import { createReadable } from '@enkaku/stream'
 import { type Deferred, defer, lazy } from '@enkaku/util'
 import {
@@ -13,6 +13,7 @@ import {
   type RequestID,
   type ServerNotification,
   type ServerRequest,
+  type Tool,
   serverMessage,
 } from '@mokei/context-protocol'
 
@@ -180,6 +181,11 @@ export class ContextClient<
         controller.abort()
       },
     }) as ClientRequest<ClientRequests[Method]['Result']>
+  }
+
+  async listTools(): Promise<Array<Tool>> {
+    const list = await this.request('tools/list', {})
+    return list.tools
   }
 
   async callTool<Name extends keyof Tools & string>(

@@ -3,33 +3,23 @@
   "version": "0.1.0",
   "license": "MIT",
   "description": "Mokei CLI",
-  "keywords": [
-    "model",
-    "context",
-    "protocol",
-    "mcp",
-    "llm",
-    "ai",
-    "cli"
-  ],
+  "keywords": ["model", "context", "protocol", "mcp", "llm", "ai", "cli"],
   "type": "module",
   "engines": {
     "node": ">=22.0.0"
   },
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "/bin",
-    "/dist",
-    "/oclif.manifest.json"
-  ],
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": ["/bin", "/lib", "/oclif.manifest.json"],
   "bin": {
     "mokei": "./bin/run.js"
   },
   "scripts": {
     "mokei": "./bin/dev.js",
-    "build": "shx rm -rf dist && tsc -b",
-    "postpack": "shx rm -f oclif.manifest.json",
+    "build:clean": "del lib",
+    "build:js": "swc src -d ./lib --config-file ../../swc.json --strip-leading-paths",
+    "build": "pnpm run build:clean && pnpm run build:js",
+    "postpack": "del oclif.manifest.json",
     "posttest": "pnpm run lint",
     "prepack": "oclif manifest && oclif readme",
     "test:types": "tsc --noEmit --skipLibCheck",
@@ -40,27 +30,29 @@
   "oclif": {
     "bin": "mokei",
     "dirname": "mokei",
-    "commands": "./dist/commands",
-    "plugins": [
-      "@oclif/plugin-help",
-      "@oclif/plugin-plugins"
-    ],
+    "commands": "./lib/commands",
+    "plugins": ["@oclif/plugin-help", "@oclif/plugin-plugins"],
     "topicSeparator": " ",
     "topics": {}
   },
   "dependencies": {
-    "@inquirer/prompts": "^7.2.1",
-    "@oclif/core": "^4.0.33",
+    "@enkaku/node-streams-transport": "^0.8.1",
+    "@enkaku/stream": "^0.8.0",
+    "@enkaku/util": "^0.8.0",
+    "@mokei/context-client": "workspace:^",
+    "@oclif/core": "^4.2.2",
     "@oclif/plugin-help": "^6",
     "@oclif/plugin-plugins": "^5.4.24",
+    "ansi-colors": "^4.1.3",
+    "enquirer": "^2.4.1",
+    "nano-spawn": "^0.2.0",
     "ollama": "^0.5.11",
     "ora": "^8.1.1"
   },
   "devDependencies": {
-    "@oclif/test": "^4.1.5",
-    "oclif": "^4.17.7",
-    "shx": "^0.3.3",
-    "ts-node": "^10",
-    "typescript": "^5.7.2"
+    "@mokei/context-protocol": "workspace:^",
+    "@oclif/test": "^4.1.6",
+    "oclif": "^4.17.10",
+    "typescript": "^5.7.3"
   }
 }

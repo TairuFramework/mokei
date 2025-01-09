@@ -1,5 +1,5 @@
-import { input, select } from '@inquirer/prompts'
 import { Flags } from '@oclif/core'
+import enquirer from 'enquirer'
 import ollama from 'ollama'
 
 export const modelFlag = Flags.string({
@@ -24,10 +24,13 @@ export async function getModel(flags: { model?: string } = {}): Promise<string> 
     throw new Error('No models installed. Please install a model with `ollama pull <model>`')
   }
 
-  return await select({
+  const { model } = await enquirer.prompt<{ model: string }>({
+    type: 'select',
+    name: 'model',
     message: 'Select a model',
-    choices: list.models.map((m) => ({ name: m.name, value: m.name })),
+    choices: list.models.map((m) => m.name),
   })
+  return model
 }
 
 export async function getPrompt(flags: { prompt?: string } = {}): Promise<string> {
@@ -35,5 +38,10 @@ export async function getPrompt(flags: { prompt?: string } = {}): Promise<string
     return flags.prompt
   }
 
-  return await input({ message: 'Prompt' })
+  const { text } = await enquirer.prompt<{ text: string }>({
+    type: 'input',
+    message: 'Prompt',
+    name: 'text',
+  })
+  return text
 }
