@@ -1,8 +1,8 @@
 import { Writable } from 'node:stream'
 import { Command } from '@oclif/core'
-import ollama from 'ollama'
 import ora from 'ora'
 
+import { ollama } from '../../clients/ollama.js'
 import { getModel, getPrompt, modelFlag, promptFlag } from '../../ollama.js'
 
 export default class LocalGenerate extends Command {

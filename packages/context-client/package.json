@@ -29,8 +29,8 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/node-streams-transport": "^0.8.1",
-    "@enkaku/stream": "^0.8.0",
+    "@enkaku/node-streams-transport": "^0.8.2",
+    "@enkaku/stream": "^0.8.1",
     "@enkaku/util": "^0.8.0",
     "@mokei/context-definitions": "workspace:^",
     "@mokei/context-protocol": "workspace:^"

@@ -1,10 +1,9 @@
 import { Writable } from 'node:stream'
 import { createReadable } from '@enkaku/stream'
 import { type Disposer, createDisposer } from '@enkaku/util'
-import ollama from 'ollama'
-import type { Message, Tool as OllamaTool } from 'ollama'
 import ora, { type Ora } from 'ora'
 
+import { type Message, type Tool as OllamaTool, ollama } from './clients/ollama.js'
 import { ContextHost, type ContextTool, getContextToolInfo } from './mcp.js'
 import { getModel } from './ollama.js'
 import { type Choice, confirm, input, prompt } from './prompt.js'
@@ -45,11 +44,7 @@ const SESSION_ACTION_KEY = Object.entries(SESSION_ACTIONS).reduce(
   {} as Record<string, SessionAction>,
 )
 
-type RequestState =
-  | { type: 'idle' }
-  | { type: 'loading' }
-  | { type: 'cancel' }
-  | { type: 'streaming'; abort: () => void }
+type RequestState = { type: 'idle' } | { type: 'streaming'; abort: () => void }
 
 export type ChatSessionParams = {
   model?: string
@@ -80,10 +75,7 @@ export class ChatSession {
     this.#writer = Writable.toWeb(process.stdout).getWriter()
 
     process.on('SIGINT', () => {
-      if (this.#requestState.type === 'loading') {
-        this.#requestState = { type: 'cancel' }
-        this.#loader.text = 'Cancelling generation...'
-      } else if (this.#requestState.type === 'streaming') {
+      if (this.#requestState.type === 'streaming') {
         this.#requestState.abort()
       }
     })
@@ -191,25 +183,18 @@ export class ChatSession {
   }
 
   async #runChat(model: string): Promise<SessionAction | null> {
+    const tools = this.#host.getEnabledTools().map(toOllamaTool)
+
     while (true) {
       try {
-        this.#requestState = { type: 'loading' }
-        this.#loader.start('Generating...')
-        const tools = this.#host.getEnabledTools().map(toOllamaTool)
-        const response = await ollama.chat({ messages: this.#messages, model, stream: true, tools })
-        // @ts-ignore mutable state
-        if (this.#requestState.type === 'cancel') {
-          response.abort()
-          this.#loader.warn('Generation cancelled')
-          this.#requestState = { type: 'idle' }
-          return null
-        }
-
-        this.#requestState = { type: 'streaming', abort: () => response.abort() }
+        const messageStream = ollama.chat({ messages: this.#messages, model, stream: true, tools })
         const toolCalls: Array<ChatToolCallRequest> = []
         let content = ''
 
-        for await (const part of response) {
+        this.#loader.start('Generating...')
+        this.#requestState = { type: 'streaming', abort: () => messageStream.abort() }
+
+        for await (const part of await messageStream) {
           if (part.message.tool_calls) {
             if (this.#loader.isSpinning) {
               this.#loader.stop()
@@ -241,9 +226,13 @@ export class ChatSession {
       } catch (reason) {
         if (reason instanceof Error && reason.name === 'AbortError') {
           await this.#writer.write('\n')
+
           this.#loader.warn('Generation cancelled')
+          this.#requestState = { type: 'idle' }
+
           return 'user.prompt.text'
         }
+
         throw reason
       }
     }
