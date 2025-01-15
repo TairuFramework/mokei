@@ -1,16 +1,9 @@
-import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 import { type Disposer, createDisposer } from '@enkaku/util'
 import { type ClientTransport, ContextClient } from '@mokei/context-client'
 import type { CallToolResult, Tool } from '@mokei/context-protocol'
-import spawn, { type Subprocess, SubprocessError } from 'nano-spawn'
+import type { Subprocess } from 'nano-spawn'
 
-function isSubprocessExit(reason: unknown): boolean {
-  return (
-    reason instanceof SubprocessError &&
-    reason.signalName != null &&
-    ['SIGINT', 'SIGTERM'].includes(reason.signalName)
-  )
-}
+import { createTransport, spawnServer } from './host/mcp.js'
 
 type AllowToolCalls = 'always' | 'ask' | 'never'
 
@@ -89,24 +82,10 @@ export class ContextHost implements Disposer {
       throw new Error(`Context ${key} already exists`)
     }
 
-    const subprocess = spawn(command, args, { stdio: ['pipe', 'pipe', 'inherit'] })
-    subprocess.catch((err) => {
-      if (!isSubprocessExit(err)) {
-        throw err
-      }
-    })
-
-    const [stdin, stdout] = (await subprocess.nodeChildProcess).stdio
-    if (stdin == null || stdout == null) {
-      throw new Error('Failed to spawn subprocess')
-    }
-
-    const transport = new NodeStreamsTransport({
-      streams: { readable: stdout, writable: stdin },
-    }) as ClientTransport
+    const spawned = await spawnServer(command, args)
+    const transport = createTransport(spawned)
     const client = new ContextClient({ transport })
-
-    this.#contexts[key] = { client, subprocess, transport, tools: [] }
+    this.#contexts[key] = { client, subprocess: spawned.subprocess, transport, tools: [] }
     return client
   }
 

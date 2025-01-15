@@ -43,3 +43,12 @@ export async function input(message: string, initial?: string): Promise<string |
   })
   return result?.value ?? null
 }
+
+export async function list(message: string): Promise<Array<string> | null> {
+  const result = await prompt<{ value: Array<string> }>({
+    type: 'list',
+    name: 'value',
+    message,
+  })
+  return result?.value ?? null
+}

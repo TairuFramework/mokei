@@ -6,7 +6,7 @@ import ora, { type Ora } from 'ora'
 import { type Message, type Tool as OllamaTool, ollama } from './clients/ollama.js'
 import { ContextHost, type ContextTool, getContextToolInfo } from './mcp.js'
 import { getModel } from './ollama.js'
-import { type Choice, confirm, input, prompt } from './prompt.js'
+import { type Choice, confirm, input, list, prompt } from './prompt.js'
 
 function toOllamaTool({ id, tool }: ContextTool): OllamaTool {
   return {
@@ -105,42 +105,39 @@ export class ChatSession {
       return null
     }
 
-    const args: Array<string> = []
-    while (true) {
-      const arg = await input(`MCP server argument ${args.length + 1} (empty to finish)`)
-      if (arg == null || arg === '') {
-        this.#loader.start('Adding context...')
-        try {
-          await this.#host.spawn(config.key, config.file, args)
-          const tools = await this.#host.setup(config.key)
-          this.#loader.succeed(`Context ${config.key} successfully added`)
-          if (tools.length !== 0) {
-            const selected = await prompt<{ enabledTools: Array<string> }>({
-              type: 'select',
-              // @ts-ignore
-              multiple: true,
-              name: 'enabledTools',
-              message: `Select tools to enable for context ${config.key}`,
-              choices: tools.map((ct) => ({
-                name: ct.id,
-                message: `${ct.tool.name}: ${ct.tool.description}`,
-              })),
-              initial: tools.map((ct) => ct.id),
-            })
-            if (selected != null && selected.enabledTools.length !== tools.length) {
-              const contextTools = tools.map((t) => ({
-                ...t,
-                enabled: selected.enabledTools.includes(t.id),
-              }))
-              this.#host.setContextTools(config.key, contextTools)
-            }
-          }
-        } catch (error) {
-          this.#loader.fail((error as Error).message)
+    const args = await list('MCP server arguments (comma separated)')
+    if (args == null) {
+      return null
+    }
+
+    this.#loader.start('Adding context...')
+    try {
+      await this.#host.spawn(config.key, config.file, args)
+      const tools = await this.#host.setup(config.key)
+      this.#loader.succeed(`Context ${config.key} successfully added`)
+      if (tools.length !== 0) {
+        const selected = await prompt<{ enabledTools: Array<string> }>({
+          type: 'select',
+          // @ts-ignore
+          multiple: true,
+          name: 'enabledTools',
+          message: `Select tools to enable for context ${config.key}`,
+          choices: tools.map((ct) => ({
+            name: ct.id,
+            message: `${ct.tool.name}: ${ct.tool.description}`,
+          })),
+          initial: tools.map((ct) => ct.id),
+        })
+        if (selected != null && selected.enabledTools.length !== tools.length) {
+          const contextTools = tools.map((t) => ({
+            ...t,
+            enabled: selected.enabledTools.includes(t.id),
+          }))
+          this.#host.setContextTools(config.key, contextTools)
         }
-        break
       }
-      args.push(arg)
+    } catch (error) {
+      this.#loader.fail((error as Error).message)
     }
 
     return null
