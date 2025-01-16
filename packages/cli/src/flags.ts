@@ -1,9 +1,8 @@
+import { DEFAULT_SOCKET_PATH } from '@mokei/host-protocol'
 import { Flags } from '@oclif/core'
 
-import { DEFAULT_SOCKET_PATH } from './constants.js'
-
 export const socketPathFlag = Flags.string({
-  char: 'p',
-  description: 'Custom socket path',
+  char: 's',
+  description: 'Socket path (optional)',
   default: DEFAULT_SOCKET_PATH,
 })

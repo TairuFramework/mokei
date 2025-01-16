@@ -1,12 +1,7 @@
-import { NodeStreamsTransport, type Streams } from '@enkaku/node-streams-transport'
-import type { ClientTransport } from '@mokei/context-client'
+import type { Streams } from '@enkaku/node-streams-transport'
 import spawn, { type Subprocess, SubprocessError } from 'nano-spawn'
 
-export function createTransport(streams: Streams): ClientTransport {
-  return new NodeStreamsTransport({ streams }) as ClientTransport
-}
-
-export function isSubprocessExit(reason: unknown): boolean {
+function isSubprocessExit(reason: unknown): boolean {
   return (
     reason instanceof SubprocessError &&
     reason.signalName != null &&
@@ -14,12 +9,15 @@ export function isSubprocessExit(reason: unknown): boolean {
   )
 }
 
-export type SpawnedServer = Streams & { subprocess: Subprocess }
+export type SpawnedContext = {
+  streams: Streams
+  subprocess: Subprocess
+}
 
-export async function spawnServer(
+export async function spawnContextServer(
   command: string,
   args: Array<string> = [],
-): Promise<SpawnedServer> {
+): Promise<SpawnedContext> {
   const subprocess = spawn(command, args, { stdio: ['pipe', 'pipe', 'inherit'] })
   subprocess.catch((err) => {
     if (!isSubprocessExit(err)) {
@@ -32,5 +30,5 @@ export async function spawnServer(
     throw new Error('Failed to spawn subprocess')
   }
 
-  return { subprocess, readable: stdout, writable: stdin }
+  return { subprocess, streams: { readable: stdout, writable: stdin } }
 }

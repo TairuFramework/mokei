@@ -1,13 +1,13 @@
 {
-  "name": "@mokei/context-client",
+  "name": "@mokei/host-protocol",
   "version": "0.1.0",
   "license": "MIT",
-  "description": "Mokei MCP client",
-  "keywords": ["model", "context", "protocol", "mcp", "client", "llm", "ai"],
+  "description": "Mokei Host protocol",
+  "keywords": ["model", "context", "protocol", "mcp", "llm", "ai"],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "packages/context-client"
+    "directory": "packages/host-protocol"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -29,13 +29,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/node-streams-transport": "^0.8.2",
-    "@enkaku/stream": "^0.8.3",
-    "@enkaku/util": "^0.8.0",
-    "@mokei/context-definitions": "workspace:^",
-    "@mokei/context-protocol": "workspace:^"
-  },
-  "devDependencies": {
-    "@enkaku/transport": "^0.8.0"
+    "@enkaku/protocol": "^0.8.2",
+    "@enkaku/schema": "^0.8.0"
   }
 }

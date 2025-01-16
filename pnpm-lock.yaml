@@ -75,6 +75,9 @@ importers:
       '@mantine/hooks':
         specifier: ^7.16.0
         version: 7.16.0(react@19.0.0)
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../packages/host-protocol
       '@tanstack/react-router':
         specifier: ^1.97.1
         version: 1.97.1(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -86,8 +89,8 @@ importers:
         version: 19.0.0(react@19.0.0)
     devDependencies:
       '@enkaku/protocol':
-        specifier: ^0.8.1
-        version: 0.8.1
+        specifier: ^0.8.2
+        version: 0.8.2
       '@enkaku/schema':
         specifier: ^0.8.0
         version: 0.8.0
@@ -137,17 +140,20 @@ importers:
         specifier: ^0.8.2
         version: 0.8.2
       '@enkaku/protocol':
-        specifier: ^0.8.1
-        version: 0.8.1
+        specifier: ^0.8.2
+        version: 0.8.2
       '@enkaku/schema':
         specifier: ^0.8.0
         version: 0.8.0
       '@enkaku/server':
         specifier: ^0.8.1
         version: 0.8.1
+      '@enkaku/socket-transport':
+        specifier: ^0.8.0
+        version: 0.8.0
       '@enkaku/stream':
-        specifier: ^0.8.2
-        version: 0.8.2
+        specifier: ^0.8.3
+        version: 0.8.3
       '@enkaku/transport':
         specifier: ^0.8.0
         version: 0.8.0
@@ -163,6 +169,12 @@ importers:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
+      '@mokei/host':
+        specifier: workspace:^
+        version: link:../host
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../host-protocol
       '@oclif/core':
         specifier: ^4.2.3
         version: 4.2.3
@@ -207,8 +219,8 @@ importers:
         specifier: ^0.8.2
         version: 0.8.2
       '@enkaku/stream':
-        specifier: ^0.8.2
-        version: 0.8.2
+        specifier: ^0.8.3
+        version: 0.8.3
       '@enkaku/util':
         specifier: ^0.8.0
         version: 0.8.0
@@ -255,6 +267,46 @@ importers:
         version: link:../context-protocol
     devDependencies:
       '@enkaku/transport':
+        specifier: ^0.8.0
+        version: 0.8.0
+
+  packages/host:
+    dependencies:
+      '@enkaku/node-streams-transport':
+        specifier: ^0.8.2
+        version: 0.8.2
+      '@enkaku/server':
+        specifier: ^0.8.1
+        version: 0.8.1
+      '@enkaku/socket-transport':
+        specifier: ^0.8.0
+        version: 0.8.0
+      '@enkaku/stream':
+        specifier: ^0.8.3
+        version: 0.8.3
+      '@enkaku/util':
+        specifier: ^0.8.0
+        version: 0.8.0
+      '@mokei/context-client':
+        specifier: workspace:^
+        version: link:../context-client
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../host-protocol
+      nano-spawn:
+        specifier: ^0.2.0
+        version: 0.2.0
+    devDependencies:
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+
+  packages/host-protocol:
+    dependencies:
+      '@enkaku/protocol':
+        specifier: ^0.8.2
+        version: 0.8.2
+      '@enkaku/schema':
         specifier: ^0.8.0
         version: 0.8.0
 
@@ -688,8 +740,8 @@ packages:
   '@enkaku/node-streams-transport@0.8.2':
     resolution: {integrity: sha512-PdJH3Mwi5E4U8JUKwl/eK4m0v7tuDxyHgne87K9RjwRfBNqMYh50nWqazItFGXDClhaIRJzDGSJ102YxtFNlgA==}
 
-  '@enkaku/protocol@0.8.1':
-    resolution: {integrity: sha512-qSt02wZYNeC5Tphd1fRzgbbhwGEwtBpOnR2WdBusLbO1D1E47u3HjaLB+ohXIUNqR5dsfINZKw4DWVWCWZ8TGQ==}
+  '@enkaku/protocol@0.8.2':
+    resolution: {integrity: sha512-ji9ItAkmNQWB8kwnF4iLNT7nLtaURtboHcEG7QWZ0kIpfzPEbLml8Qn1G7eyDvIK/0l89/sBONew1JtEFvTwUg==}
 
   '@enkaku/schema@0.8.0':
     resolution: {integrity: sha512-vRm2aZnZ2cB+w2mApJckE0QCcUc4y9MElW+aNh+5FHbD+EJvCP55ziUFkv3+J9rslmt9SGNe3w4nF7WSKAzBog==}
@@ -697,11 +749,14 @@ packages:
   '@enkaku/server@0.8.1':
     resolution: {integrity: sha512-YVFyD0URc/5HLKXlTplskL0KJhkhZ7gvd1cMEgcQjQlrZ16vDtVNwqnQ6XxQ9DqypCSXBuJ4wi5AzyIDMVeaNw==}
 
-  '@enkaku/stream@0.8.0':
-    resolution: {integrity: sha512-jmnmZj96giE6HHUCRbpGHV4Ni6PlvTZn7Zl+3SpqgoKd31TVIpk0GZgR7UwEY+5Blqil97zyfFJeNxs6Cv2sMw==}
+  '@enkaku/socket-transport@0.8.0':
+    resolution: {integrity: sha512-MtrOW1Qol0jqF1r5S330uebQPHZ9lKn1exHFmrXPzzw3uOu1CzOM3HdtqcpfiaagDDnJm6+kwtPA9nlzeWdCsw==}
 
   '@enkaku/stream@0.8.2':
     resolution: {integrity: sha512-Q3o5IodHOkz2J5LaeTZZD/I+Hcyhfc15ZVhzbdrUyvsC+RowIGdUlHXwIVHV6qhv/a+yn8DZchkjk6TqSyV2/A==}
+
+  '@enkaku/stream@0.8.3':
+    resolution: {integrity: sha512-cprnNgvS04R9rI2Rs9GEIisLL43tz0QSASsrfLKIF8mdwTC3cHoL5alLTfvLCbIfPR4bSLUISZfcTT6xvYJMzA==}
 
   '@enkaku/token@0.8.0':
     resolution: {integrity: sha512-BKGg1wlb1Sw7IDvH81DSlKOgECZZthabFyKBZGyuvGJT6i4gYxNhy5P8Aktx+2fruSaYoxKaktcHvMLhzshmNg==}
@@ -4977,30 +5032,30 @@ snapshots:
 
   '@enkaku/http-client-transport@0.8.0':
     dependencies:
-      '@enkaku/protocol': 0.8.1
+      '@enkaku/protocol': 0.8.2
       '@enkaku/stream': 0.8.2
       '@enkaku/transport': 0.8.0
 
   '@enkaku/http-server-transport@0.8.0':
     dependencies:
-      '@enkaku/protocol': 0.8.1
-      '@enkaku/stream': 0.8.2
+      '@enkaku/protocol': 0.8.2
+      '@enkaku/stream': 0.8.3
       '@enkaku/transport': 0.8.0
       '@enkaku/util': 0.8.0
 
   '@enkaku/node-streams-transport@0.8.2':
     dependencies:
-      '@enkaku/stream': 0.8.2
+      '@enkaku/stream': 0.8.3
       '@enkaku/transport': 0.8.0
 
-  '@enkaku/protocol@0.8.1':
+  '@enkaku/protocol@0.8.2':
     dependencies:
       '@enkaku/schema': 0.8.0
       typescript-result: 3.1.1
 
   '@enkaku/schema@0.8.0':
     dependencies:
-      '@enkaku/stream': 0.8.0
+      '@enkaku/stream': 0.8.2
       ajv: 8.17.1
       ajv-formats: 3.0.1(ajv@8.17.1)
       json-schema-to-ts: 3.1.1
@@ -5009,17 +5064,22 @@ snapshots:
   '@enkaku/server@0.8.1':
     dependencies:
       '@enkaku/capability': 0.8.0
-      '@enkaku/protocol': 0.8.1
+      '@enkaku/protocol': 0.8.2
       '@enkaku/schema': 0.8.0
-      '@enkaku/stream': 0.8.2
+      '@enkaku/stream': 0.8.3
       '@enkaku/token': 0.8.0
       '@enkaku/util': 0.8.0
 
-  '@enkaku/stream@0.8.0':
+  '@enkaku/socket-transport@0.8.0':
     dependencies:
-      typescript-result: 3.1.0
+      '@enkaku/transport': 0.8.0
 
   '@enkaku/stream@0.8.2':
+    dependencies:
+      '@enkaku/util': 0.8.0
+      typescript-result: 3.1.1
+
+  '@enkaku/stream@0.8.3':
     dependencies:
       '@enkaku/util': 0.8.0
       typescript-result: 3.1.1
@@ -5034,7 +5094,7 @@ snapshots:
 
   '@enkaku/transport@0.8.0':
     dependencies:
-      '@enkaku/stream': 0.8.2
+      '@enkaku/stream': 0.8.3
       '@enkaku/util': 0.8.0
 
   '@enkaku/util@0.8.0': {}

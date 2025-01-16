@@ -1,9 +1,11 @@
 import { fileURLToPath } from 'node:url'
+import { Client } from '@enkaku/client'
 import { createTransportStream } from '@enkaku/node-streams-transport'
-import { Command, Flags } from '@oclif/core'
+import { SocketTransport } from '@enkaku/socket-transport'
+import type { ClientMessage, Protocol, ServerMessage } from '@mokei/host-protocol'
+import { Command } from '@oclif/core'
 
-import { createClient } from '../../host/daemon/controller.js'
-import { socketPathFlag } from '../../host/flags.js'
+import { socketPathFlag } from '../../flags.js'
 
 const SQLITE_SERVER_PATH = fileURLToPath(
   import.meta.resolve('../../../../../mcp-servers/sqlite/lib/index.js'),
@@ -18,7 +20,8 @@ export default class HostProxy extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(HostProxy)
-    const client = createClient(flags.path)
+    const transport = new SocketTransport<ServerMessage, ClientMessage>({ socket: flags.path })
+    const client = new Client<Protocol>({ transport })
     const [channel, stdio] = await Promise.all([
       client.createChannel('spawn', {
         command: 'node',

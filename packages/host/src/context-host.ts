@@ -1,11 +1,10 @@
+import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 import { type Disposer, createDisposer } from '@enkaku/util'
 import { type ClientTransport, ContextClient } from '@mokei/context-client'
 import type { CallToolResult, Tool } from '@mokei/context-protocol'
 import type { Subprocess } from 'nano-spawn'
 
-import { createTransport, spawnServer } from './host/mcp.js'
-
-type AllowToolCalls = 'always' | 'ask' | 'never'
+import { spawnContextServer } from './context-spawn.js'
 
 export function getContextToolID(contextKey: string, toolName: string): string {
   return `${contextKey}:${toolName}`
@@ -19,6 +18,8 @@ export function getContextToolInfo(id: string): [string, string] {
   return [id.slice(0, index), id.slice(index + 1)]
 }
 
+export type AllowToolCalls = 'always' | 'ask' | 'never'
+
 export type ContextTool = {
   id: string
   tool: Tool
@@ -26,15 +27,25 @@ export type ContextTool = {
   allow?: AllowToolCalls
 }
 
-type ActiveContext = {
+export type HostedContext = {
   client: ContextClient
   subprocess: Subprocess
   transport: ClientTransport
   tools: Array<ContextTool>
 }
 
+export async function createHostedContext(
+  command: string,
+  args: Array<string> = [],
+): Promise<HostedContext> {
+  const { streams, subprocess } = await spawnContextServer(command, args)
+  const transport = new NodeStreamsTransport({ streams }) as ClientTransport
+  const client = new ContextClient({ transport })
+  return { client, subprocess, transport, tools: [] }
+}
+
 export class ContextHost implements Disposer {
-  #contexts: Record<string, ActiveContext> = {}
+  #contexts: Record<string, HostedContext> = {}
   #disposer: Disposer
 
   constructor() {
@@ -43,7 +54,7 @@ export class ContextHost implements Disposer {
     })
   }
 
-  get contexts(): Record<string, ActiveContext> {
+  get contexts(): Record<string, HostedContext> {
     return this.#contexts
   }
 
@@ -59,7 +70,7 @@ export class ContextHost implements Disposer {
     return Object.keys(this.#contexts)
   }
 
-  getContext(key: string): ActiveContext {
+  getContext(key: string): HostedContext {
     const ctx = this.#contexts[key]
     if (ctx == null) {
       throw new Error(`Context ${key} does not exist`)
@@ -82,11 +93,9 @@ export class ContextHost implements Disposer {
       throw new Error(`Context ${key} already exists`)
     }
 
-    const spawned = await spawnServer(command, args)
-    const transport = createTransport(spawned)
-    const client = new ContextClient({ transport })
-    this.#contexts[key] = { client, subprocess: spawned.subprocess, transport, tools: [] }
-    return client
+    const context = await createHostedContext(command, args)
+    this.#contexts[key] = context
+    return context.client
   }
 
   async setup(key: string): Promise<Array<ContextTool>> {

@@ -1,10 +1,10 @@
 import { existsSync, rmSync } from 'node:fs'
-import { Command, Flags } from '@oclif/core'
+import { startServer } from '@mokei/host-server'
+import { Command } from '@oclif/core'
 import { default as c } from 'ansi-colors'
 import ora from 'ora'
 
-import { startServer } from '../../host/daemon/server.js'
-import { socketPathFlag } from '../../host/flags.js'
+import { socketPathFlag } from '../../flags.js'
 
 // import {
 //   type HostClient,
@@ -46,7 +46,7 @@ export default class HostStart extends Command {
     if (existsSync(flags.path)) {
       rmSync(flags.path)
     }
-    const server = await startServer()
+    const server = await startServer({ socketPath: flags.path })
 
     process.on('SIGINT', () => {
       server.close()

@@ -1,10 +1,11 @@
 import { Writable } from 'node:stream'
 import { createReadable } from '@enkaku/stream'
 import { type Disposer, createDisposer } from '@enkaku/util'
+import { ContextHost, type ContextTool, getContextToolInfo } from '@mokei/host-server'
 import ora, { type Ora } from 'ora'
 
 import { type Message, type Tool as OllamaTool, ollama } from './clients/ollama.js'
-import { ContextHost, type ContextTool, getContextToolInfo } from './mcp.js'
+
 import { getModel } from './ollama.js'
 import { type Choice, confirm, input, list, prompt } from './prompt.js'
 

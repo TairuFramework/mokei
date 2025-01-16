@@ -2,12 +2,16 @@ import { randomUUID } from 'node:crypto'
 import { type Server, type Socket, createServer } from 'node:net'
 import { createTransportStream } from '@enkaku/node-streams-transport'
 import { type ProcedureHandlers, serve } from '@enkaku/server'
+import { SocketTransport } from '@enkaku/socket-transport'
 import { tap } from '@enkaku/stream'
+import {
+  type ClientMessage,
+  DEFAULT_SOCKET_PATH,
+  type Protocol,
+  type ServerMessage,
+} from '@mokei/host-protocol'
 
-import { DEFAULT_SOCKET_PATH } from '../constants.js'
-import { spawnServer } from '../mcp.js'
-import type { ClientMessage, Protocol, ServerMessage } from '../protocol.js'
-import { SocketTransport } from '../transport.js'
+import { spawnContextServer } from './context-spawn.js'
 
 type HandlersContext = {
   events: EventTarget
@@ -39,7 +43,7 @@ function createHandlers({ events, startedTime }: HandlersContext): ProcedureHand
     },
     spawn: async (ctx) => {
       const clientID = randomUUID()
-      const spawned = await spawnServer(ctx.params.command, ctx.params.args)
+      const spawned = await spawnContextServer(ctx.params.command, ctx.params.args)
       events.dispatchEvent(
         new CustomEvent('spawn', {
           detail: {
@@ -52,7 +56,7 @@ function createHandlers({ events, startedTime }: HandlersContext): ProcedureHand
       )
 
       // Connect channel streams to spawned process
-      const stream = await createTransportStream(spawned)
+      const stream = await createTransportStream(spawned.streams)
       await Promise.all([
         ctx.readable
           .pipeThrough(
