@@ -1,0 +1,35 @@
+{
+  "name": "monitor",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@enkaku/client": "^0.8.1",
+    "@enkaku/http-client-transport": "^0.8.0",
+    "@mantine/core": "^7.16.0",
+    "@mantine/hooks": "^7.16.0",
+    "@tanstack/react-router": "^1.97.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@enkaku/protocol": "^0.8.1",
+    "@enkaku/schema": "^0.8.0",
+    "@tanstack/router-devtools": "^1.97.1",
+    "@tanstack/router-plugin": "^1.97.1",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react-swc": "^3.5.0",
+    "globals": "^15.14.0",
+    "postcss": "^8.5.1",
+    "postcss-preset-mantine": "^1.17.0",
+    "postcss-simple-vars": "^7.0.1",
+    "typescript": "~5.7.3",
+    "vite": "^6.0.5"
+  }
+}

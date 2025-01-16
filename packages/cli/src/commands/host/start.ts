@@ -3,8 +3,8 @@ import { Command, Flags } from '@oclif/core'
 import { default as c } from 'ansi-colors'
 import ora from 'ora'
 
-import { DEFAULT_SOCKET_PATH } from '../../host/constants.js'
 import { startServer } from '../../host/daemon/server.js'
+import { socketPathFlag } from '../../host/flags.js'
 
 // import {
 //   type HostClient,
@@ -36,11 +36,7 @@ export default class HostStart extends Command {
 
   static flags = {
     // force: Flags.boolean({ char: 'f', description: 'Force the host to start' }),
-    path: Flags.string({
-      char: 'p',
-      description: 'Custom socket path',
-      default: DEFAULT_SOCKET_PATH,
-    }),
+    path: socketPathFlag,
   }
 
   async run(): Promise<void> {

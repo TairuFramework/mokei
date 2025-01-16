@@ -3,6 +3,7 @@ import { createTransportStream } from '@enkaku/node-streams-transport'
 import { Command, Flags } from '@oclif/core'
 
 import { createClient } from '../../host/daemon/controller.js'
+import { socketPathFlag } from '../../host/flags.js'
 
 const SQLITE_SERVER_PATH = fileURLToPath(
   import.meta.resolve('../../../../../mcp-servers/sqlite/lib/index.js'),
@@ -12,7 +13,7 @@ export default class HostProxy extends Command {
   static description = 'Proxy a MCP server on a host'
 
   static flags = {
-    path: Flags.string({ char: 'p', description: 'Custom socket path' }),
+    path: socketPathFlag,
   }
 
   async run(): Promise<void> {

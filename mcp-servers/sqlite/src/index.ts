@@ -1,5 +1,5 @@
-import { type Schema, serve } from '@mokei/context-server'
 import { DatabaseSync } from 'node:sqlite'
+import { type Schema, serve } from '@mokei/context-server'
 
 const db = new DatabaseSync(':memory:')
 

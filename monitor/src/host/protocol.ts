@@ -1,6 +1,8 @@
 import type { AnyClientMessageOf, AnyServerMessageOf, ProtocolDefinition } from '@enkaku/protocol'
 import type { FromSchema, Schema } from '@enkaku/schema'
 
+// TODO: extract to dedicated package shared by monitor app and CLI
+
 export const channelEventSchema = {
   type: 'object',
   properties: {
