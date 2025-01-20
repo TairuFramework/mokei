@@ -116,6 +116,7 @@ export class ContextHost implements Disposer {
     await ctx.transport.dispose()
     const childProcess = await ctx.subprocess.nodeChildProcess
     childProcess.kill()
+    delete this.#contexts[key]
   }
 
   async callTool(

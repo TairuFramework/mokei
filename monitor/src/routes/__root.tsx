@@ -3,15 +3,15 @@ import { MantineProvider } from '@mantine/core'
 import { Outlet, createRootRoute } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/router-devtools'
 
-import { HostProvider } from '../host/context.js'
+import { EnkakuProvider } from '../host/context.js'
 
 export const Route = createRootRoute({
   component: () => (
     <>
       <MantineProvider>
-        <HostProvider>
+        <EnkakuProvider>
           <Outlet />
-        </HostProvider>
+        </EnkakuProvider>
       </MantineProvider>
       <TanStackRouterDevtools />
     </>

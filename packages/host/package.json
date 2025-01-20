@@ -29,11 +29,11 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/node-streams-transport": "^0.8.2",
-    "@enkaku/server": "^0.8.1",
-    "@enkaku/socket-transport": "^0.8.0",
-    "@enkaku/stream": "^0.8.3",
-    "@enkaku/util": "^0.8.0",
+    "@enkaku/node-streams-transport": "^0.9.0",
+    "@enkaku/server": "^0.9.0",
+    "@enkaku/socket-transport": "^0.9.1",
+    "@enkaku/stream": "^0.9.0",
+    "@enkaku/util": "^0.9.0",
     "@mokei/context-client": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "nano-spawn": "^0.2.0"

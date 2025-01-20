@@ -18,7 +18,7 @@ export async function spawnContextServer(
   command: string,
   args: Array<string> = [],
 ): Promise<SpawnedContext> {
-  const subprocess = spawn(command, args, { stdio: ['pipe', 'pipe', 'inherit'] })
+  const subprocess = spawn(command, args, { stdio: ['pipe', 'pipe', 'ignore'] })
   subprocess.catch((err) => {
     if (!isSubprocessExit(err)) {
       throw err

@@ -43,14 +43,14 @@ function createHandlers({ events, startedTime }: HandlersContext): ProcedureHand
     },
     spawn: async (ctx) => {
       const clientID = randomUUID()
-      const spawned = await spawnContextServer(ctx.params.command, ctx.params.args)
+      const spawned = await spawnContextServer(ctx.param.command, ctx.param.args)
       events.dispatchEvent(
         new CustomEvent('spawn', {
           detail: {
             clientID,
             time: Date.now(),
-            command: ctx.params.command,
-            args: ctx.params.args,
+            command: ctx.param.command,
+            args: ctx.param.args,
           },
         }),
       )

@@ -1,35 +1,11 @@
 import { existsSync, rmSync } from 'node:fs'
-import { startServer } from '@mokei/host-server'
-import { Command } from '@oclif/core'
+import { startServer } from '@mokei/host'
+import { Command, Flags } from '@oclif/core'
 import { default as c } from 'ansi-colors'
 import ora from 'ora'
 
 import { socketPathFlag } from '../../flags.js'
-
-// import {
-//   type HostClient,
-//   type StartDaemonParams,
-//   createClient,
-//   startDaemon,
-// } from '../../host/daemon/controller.js'
-// import type { HostInfoResult } from '../../host/protocol.js'
-
-// type Connected = {
-//   client: HostClient
-//   info: HostInfoResult
-//   socketPath: string
-// }
-
-// async function tryConnect(params: StartDaemonParams): Promise<Connected> {
-//   const [status, socketPath] = await startDaemon(params)
-//   if (status !== 'OK') {
-//     throw new Error(`Unexpected daemon status: ${status}`)
-//   }
-
-//   const client = createClient(socketPath)
-//   const info = await client.request('info').toValue()
-//   return { client, info, socketPath }
-// }
+import { startMonitor } from '../../host/monitor.js'
 
 export default class HostStart extends Command {
   static description = 'Start a MCP host'
@@ -37,6 +13,11 @@ export default class HostStart extends Command {
   static flags = {
     // force: Flags.boolean({ char: 'f', description: 'Force the host to start' }),
     path: socketPathFlag,
+    port: Flags.integer({
+      char: 'p',
+      description: 'Port to listen on',
+      default: 3001,
+    }),
   }
 
   async run(): Promise<void> {
@@ -47,23 +28,15 @@ export default class HostStart extends Command {
       rmSync(flags.path)
     }
     const server = await startServer({ socketPath: flags.path })
+    loader.info(`Host started on ${c.cyan(flags.path)}`).start('Starting monitor...')
+    const monitor = await startMonitor({ port: flags.port, socketPath: flags.path })
+    const url = `http://localhost:${flags.port}/`
+    loader.succeed(`Monitor running on ${c.cyan(url)}`)
 
     process.on('SIGINT', () => {
+      monitor.dispose()
       server.close()
       process.exit()
     })
-    loader.succeed(`Host started on ${c.cyan(flags.path)}`)
-
-    // let connected: Connected
-    // try {
-    //   connected = await tryConnect({ path: flags.path })
-    // } catch (err) {
-    //   if (flags.force) {
-    //     connected = await tryConnect({ path: flags.path, force: true })
-    //   } else {
-    //     throw err
-    //   }
-    // }
-    // loader.succeed(`Host started on ${c.cyan(connected.socketPath)}`)
   }
 }

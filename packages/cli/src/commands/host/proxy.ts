@@ -22,21 +22,17 @@ export default class HostProxy extends Command {
     const { flags } = await this.parse(HostProxy)
     const transport = new SocketTransport<ServerMessage, ClientMessage>({ socket: flags.path })
     const client = new Client<Protocol>({ transport })
-    const [channel, stdio] = await Promise.all([
-      client.createChannel('spawn', {
+
+    const channel = client.createChannel('spawn', {
+      param: {
         command: 'node',
         args: [SQLITE_SERVER_PATH],
-      }),
-      createTransportStream({ readable: process.stdin, writable: process.stdout }),
-    ])
-    const channelWritable = new WritableStream({
-      async write(msg) {
-        await channel.send(msg)
       },
     })
+    const stdio = await createTransportStream({ readable: process.stdin, writable: process.stdout })
     await Promise.all([
-      channel.receive.pipeTo(stdio.writable),
-      stdio.readable.pipeTo(channelWritable),
+      channel.readable.pipeTo(stdio.writable),
+      stdio.readable.pipeTo(channel.writable),
     ])
   }
 }

@@ -50,7 +50,7 @@ export const protocol = {
   },
   spawn: {
     type: 'channel',
-    params: {
+    param: {
       type: 'object',
       properties: {
         command: { type: 'string' },

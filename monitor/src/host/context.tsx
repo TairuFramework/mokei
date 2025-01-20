@@ -1,22 +1,41 @@
+import type { Client } from '@enkaku/client'
+import type { ProtocolDefinition } from '@enkaku/protocol'
+import type { Protocol as HostProtocol } from '@mokei/host-protocol'
 import { type ReactNode, createContext, useContext } from 'react'
 
-import { type HostClient, createClient } from './client.js'
+import { createClient } from './client.js'
 
-export const HostContext = createContext<HostClient>(createClient('http://localhost:3001/api'))
-
-export type HostProviderProps = {
-  children: ReactNode
-  client?: HostClient
+type EnkakuContextType<Protocol extends ProtocolDefinition> = {
+  client: Client<Protocol>
 }
 
-export function HostProvider(props: HostProviderProps) {
+function createEnkakuContext<Protocol extends ProtocolDefinition>(
+  context: EnkakuContextType<Protocol>,
+): React.Context<EnkakuContextType<Protocol>> {
+  return createContext<EnkakuContextType<Protocol>>(context)
+}
+
+export const EnkakuContext = createEnkakuContext<HostProtocol>({
+  client: createClient('http://localhost:3001/api'),
+})
+
+export type EnkakuProviderProps<Protocol extends ProtocolDefinition> = {
+  children: ReactNode
+  client?: Client<Protocol>
+}
+
+export function EnkakuProvider<Protocol extends ProtocolDefinition>(
+  props: EnkakuProviderProps<Protocol>,
+) {
   return props.client ? (
-    <HostContext.Provider value={props.client}>{props.children}</HostContext.Provider>
+    <EnkakuContext.Provider value={{ client: props.client }}>
+      {props.children}
+    </EnkakuContext.Provider>
   ) : (
     <>{props.children}</>
   )
 }
 
-export function useHost(): HostClient {
-  return useContext(HostContext)
+export function useClient<Protocol extends ProtocolDefinition>(): Client<Protocol> {
+  return useContext(EnkakuContext).client
 }
