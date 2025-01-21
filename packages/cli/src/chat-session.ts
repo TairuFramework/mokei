@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream'
+import { type Disposer, createDisposer } from '@enkaku/async'
 import { createReadable } from '@enkaku/stream'
-import { type Disposer, createDisposer } from '@enkaku/util'
 import { ContextHost, type ContextTool, getContextToolInfo } from '@mokei/host'
 import ora, { type Ora } from 'ora'
 

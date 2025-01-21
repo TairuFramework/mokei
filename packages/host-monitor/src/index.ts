@@ -1,13 +1,25 @@
+/**
+ * Mokei Host monitor.
+ *
+ * ## Installation
+ *
+ * ```sh
+ * npm install @mokei/host-monitor
+ * ```
+ *
+ * @module host-monitor
+ */
+
+import { type Disposer, createDisposer, defer } from '@enkaku/async'
 import { createServerBridge } from '@enkaku/http-server-transport'
 import { connectSocket, createTransportStream } from '@enkaku/socket-transport'
-import { type Disposer, createDisposer, defer } from '@enkaku/util'
 import { type ServerType, serve } from '@hono/node-server'
-import type { Protocol } from '@mokei/host-protocol'
+import { DEFAULT_SOCKET_PATH, type Protocol } from '@mokei/host-protocol'
 import getPort from 'get-port'
 import { Hono } from 'hono'
 
 export type MonitorParams = {
-  socketPath: string
+  socketPath?: string
   port?: number
 }
 
@@ -16,8 +28,9 @@ export type Monitor = Disposer & {
   server: ServerType
 }
 
-export async function startMonitor(params: MonitorParams): Promise<Monitor> {
-  const socketStream = await createTransportStream(connectSocket(params.socketPath))
+export async function startMonitor(params: MonitorParams = {}): Promise<Monitor> {
+  const socketPath = params.socketPath ?? DEFAULT_SOCKET_PATH
+  const socketStream = await createTransportStream(connectSocket(socketPath))
   const serverBridge = createServerBridge<Protocol>()
 
   const app = new Hono()

@@ -1,11 +1,11 @@
 import { existsSync, rmSync } from 'node:fs'
 import { startServer } from '@mokei/host'
+import { startMonitor } from '@mokei/host-monitor'
 import { Command, Flags } from '@oclif/core'
 import { default as c } from 'ansi-colors'
 import ora from 'ora'
 
 import { socketPathFlag } from '../../flags.js'
-import { startMonitor } from '../../host/monitor.js'
 
 export default class HostStart extends Command {
   static description = 'Start a MCP host'

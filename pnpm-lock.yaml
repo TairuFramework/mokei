@@ -64,8 +64,8 @@ importers:
   monitor:
     dependencies:
       '@enkaku/client':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.9.1
+        version: 0.9.1
       '@enkaku/http-client-transport':
         specifier: ^0.9.0
         version: 0.9.0
@@ -99,7 +99,7 @@ importers:
         version: 1.97.3(@tanstack/react-router@1.97.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(csstype@3.1.3)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@tanstack/router-plugin':
         specifier: ^1.97.3
-        version: 1.97.3(@tanstack/react-router@1.97.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(vite@6.0.9(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1))
+        version: 1.97.3(@tanstack/react-router@1.97.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(vite@6.0.11(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1))
       '@types/react':
         specifier: ^19.0.7
         version: 19.0.7
@@ -108,7 +108,7 @@ importers:
         version: 19.0.3(@types/react@19.0.7)
       '@vitejs/plugin-react-swc':
         specifier: ^3.5.0
-        version: 3.7.2(vite@6.0.9(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1))
+        version: 3.7.2(vite@6.0.11(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1))
       globals:
         specifier: ^15.14.0
         version: 15.14.0
@@ -125,17 +125,17 @@ importers:
         specifier: ~5.7.3
         version: 5.7.3
       vite:
-        specifier: ^6.0.9
-        version: 6.0.9(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1)
+        specifier: ^6.0.11
+        version: 6.0.11(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1)
 
   packages/cli:
     dependencies:
+      '@enkaku/async':
+        specifier: ^0.9.0
+        version: 0.9.0
       '@enkaku/client':
-        specifier: ^0.9.0
-        version: 0.9.0
-      '@enkaku/http-server-transport':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.9.1
+        version: 0.9.1
       '@enkaku/node-streams-transport':
         specifier: ^0.9.0
         version: 0.9.0
@@ -146,23 +146,17 @@ importers:
         specifier: ^0.9.0
         version: 0.9.0
       '@enkaku/server':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.9.1
+        version: 0.9.1
       '@enkaku/socket-transport':
         specifier: ^0.9.1
         version: 0.9.1
       '@enkaku/stream':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.9.1
+        version: 0.9.1
       '@enkaku/transport':
-        specifier: ^0.9.0
-        version: 0.9.0
-      '@enkaku/util':
-        specifier: ^0.9.0
-        version: 0.9.0
-      '@hono/node-server':
-        specifier: ^1.13.7
-        version: 1.13.7(hono@4.6.17)
+        specifier: ^0.9.1
+        version: 0.9.1
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -172,6 +166,9 @@ importers:
       '@mokei/host':
         specifier: workspace:^
         version: link:../host
+      '@mokei/host-monitor':
+        specifier: workspace:^
+        version: link:../host-monitor
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
@@ -190,12 +187,6 @@ importers:
       enquirer:
         specifier: ^2.4.1
         version: 2.4.1
-      get-port:
-        specifier: ^7.1.0
-        version: 7.1.0
-      hono:
-        specifier: ^4.6.17
-        version: 4.6.17
       ky:
         specifier: ^1.7.4
         version: 1.7.4
@@ -218,6 +209,9 @@ importers:
 
   packages/context-client:
     dependencies:
+      '@enkaku/async':
+        specifier: ^0.9.0
+        version: 0.9.0
       '@enkaku/node-streams-transport':
         specifier: ^0.9.0
         version: 0.9.0
@@ -225,11 +219,8 @@ importers:
         specifier: ^0.9.0
         version: 0.9.0
       '@enkaku/stream':
-        specifier: ^0.9.0
-        version: 0.9.0
-      '@enkaku/util':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.9.1
+        version: 0.9.1
       '@mokei/context-definitions':
         specifier: workspace:^
         version: link:../context-definitions
@@ -238,8 +229,8 @@ importers:
         version: link:../context-protocol
     devDependencies:
       '@enkaku/transport':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.9.1
+        version: 0.9.1
 
   packages/context-definitions:
     dependencies:
@@ -273,26 +264,26 @@ importers:
         version: link:../context-protocol
     devDependencies:
       '@enkaku/transport':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.9.1
+        version: 0.9.1
 
   packages/host:
     dependencies:
+      '@enkaku/async':
+        specifier: ^0.9.0
+        version: 0.9.0
       '@enkaku/node-streams-transport':
         specifier: ^0.9.0
         version: 0.9.0
       '@enkaku/server':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.9.1
+        version: 0.9.1
       '@enkaku/socket-transport':
         specifier: ^0.9.1
         version: 0.9.1
       '@enkaku/stream':
-        specifier: ^0.9.0
-        version: 0.9.0
-      '@enkaku/util':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.9.1
+        version: 0.9.1
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -306,6 +297,30 @@ importers:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
+
+  packages/host-monitor:
+    dependencies:
+      '@enkaku/async':
+        specifier: ^0.9.0
+        version: 0.9.0
+      '@enkaku/http-server-transport':
+        specifier: ^0.9.1
+        version: 0.9.1
+      '@enkaku/socket-transport':
+        specifier: ^0.9.1
+        version: 0.9.1
+      '@hono/node-server':
+        specifier: ^1.13.7
+        version: 1.13.7(hono@4.6.17)
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../host-protocol
+      get-port:
+        specifier: ^7.1.0
+        version: 7.1.0
+      hono:
+        specifier: ^4.6.17
+        version: 4.6.17
 
   packages/host-protocol:
     dependencies:
@@ -716,11 +731,14 @@ packages:
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
 
+  '@enkaku/async@0.9.0':
+    resolution: {integrity: sha512-Njf/XkDY0SPR8uVsmxXGgKNvEidAeg1uGpT93sa7c1E4HMxJ3/HqqmSJ4P3Re4zoUSuJWesWL92WF2qeNJ4d1w==}
+
   '@enkaku/capability@0.9.0':
     resolution: {integrity: sha512-N7gLzht00K05s6ZmSOBX859ZoVyX2W6Lihd1F9y3v1mlBft+7eFOPGeqc05DIuIn5GieII0SsKwvdI4+rd/9wA==}
 
-  '@enkaku/client@0.9.0':
-    resolution: {integrity: sha512-2T/ivRrPUp1scqe8XnObN1R4KbvRwbLGBdZtE/9HZCFFyWzv+Mi6oGHxy2hgphxk7g2mHie2msGoJEsb4jDh7w==}
+  '@enkaku/client@0.9.1':
+    resolution: {integrity: sha512-xpryobkcud4Gm9bBlKZ5hnVcO/Zt90Xo14xm8C9MDat8j+O296So9DFlyqO7+aRW9JDy4aSrR9bRdXK91It9WQ==}
 
   '@enkaku/codec@0.9.0':
     resolution: {integrity: sha512-usGIeV5xoqZ9lD8Ej0vp8SpFZvEj6bJ3EKdooh++1MnLny0nMjrPchjypo7SFtje0eupZRPG88otOpSLu1E7sQ==}
@@ -728,8 +746,8 @@ packages:
   '@enkaku/http-client-transport@0.9.0':
     resolution: {integrity: sha512-mMDuW+V2IB3lFGUmyJxlZLBAqxT9uNTWxHuxBYVs9QXF4uw3d+eeUyRde6ziiGrB3tIadYHreTCSDaB46NYsmw==}
 
-  '@enkaku/http-server-transport@0.9.0':
-    resolution: {integrity: sha512-aPqVOv2SjDpBNniKC2Mu5P2rco1Dw8RC+aHzZEwc9MTAJYSnN7BICqfbGzyAQl0K20QGAVjSUY/jhZQ0JlbZ3Q==}
+  '@enkaku/http-server-transport@0.9.1':
+    resolution: {integrity: sha512-OpKbDNE7aAbLK/Ks6BwNXh9WcDCBLlMPE213766xJgTl7TzlldI1B+k4Xp012GWNAvhuqas8Ba8Ps11eePT9Jw==}
 
   '@enkaku/node-streams-transport@0.9.0':
     resolution: {integrity: sha512-AzmWhOBPl5p/LArVD3XH0fSYywSYwKbuiL2PoB7zt8Z6D/Skd1yTc0RD69gq53UwZvD1AKCxZzQy0wY5o+u53g==}
@@ -740,8 +758,8 @@ packages:
   '@enkaku/schema@0.9.0':
     resolution: {integrity: sha512-r1AysVvtC4vuva7oYkIe6yez9MxPp92sAF7QaXEZwAM5nCvUx9YbAYVZTq6X+awGswYGTQRt9aeQ1QhO/caDyA==}
 
-  '@enkaku/server@0.9.0':
-    resolution: {integrity: sha512-eXhNKxNG1PV6mAxK3pUpLhU/xjlKjGRvzJ0NtDkQ3W6vsa1pMVv+W+yfdLi7wkP6U7uP22MIyevv8N8ETYubrA==}
+  '@enkaku/server@0.9.1':
+    resolution: {integrity: sha512-7aJ5/s1wRalolfJvsPz+ICBiFZw/X/KKMMIN4VhZ2Zs4jum1OY28O+IM92ok8dQu6ftyKzdKKn4Ucxv8lm0LqA==}
 
   '@enkaku/socket-transport@0.9.1':
     resolution: {integrity: sha512-AbEHiFPKW8wIHZR/sI7kVpw/J71Cq6zi6QRJ1KrL23n63gJuDbpcJq84jXeMPvNdQHehzFfvy8fX+oDklk3I/w==}
@@ -749,11 +767,17 @@ packages:
   '@enkaku/stream@0.9.0':
     resolution: {integrity: sha512-SmWvVG1aA92c2Lns9REgt73E8ZvW8L870Gv5nCKimb5/nmRpAi2bpcZVwJOC1te3a7aShAP2+xgzwZGc/NEYfg==}
 
+  '@enkaku/stream@0.9.1':
+    resolution: {integrity: sha512-6yt0ODJesHe3okv7zTlqydKbIENV94GQo1Qp/tOyYocTpCettwzVZXzS6iYUxfD6dvCRMD4/GK3X65hj/5eddA==}
+
   '@enkaku/token@0.9.0':
     resolution: {integrity: sha512-a+mSMbhAe+vlp3KgAsPpODjF5bW5xZaUD9C9H7ow5ZP+nx9E12LmBjhLUnm8EhcyOVwZa027XVycEV/8sgCvMg==}
 
   '@enkaku/transport@0.9.0':
     resolution: {integrity: sha512-7P/5zMWGsemtV21gF7gzadFTmX4fnzSRpH2P1hlp6QO+uab80jvw7l3iAIVBPhXAfUce4gX/pXy6mecJ25EACA==}
+
+  '@enkaku/transport@0.9.1':
+    resolution: {integrity: sha512-JIPnYp/mAVXKAgnBtUIunQ3Hqk0AG4P8CP2eIuwEHAhy7pSsPoTe/26E4H/ZvdCbzd1UCADusIHftl0agEFkEA==}
 
   '@enkaku/util@0.9.0':
     resolution: {integrity: sha512-H/uNUVbAQDq3dLgrjpjhq4AaVhM1DvjyXwpi+VF46+8TtYJwhd5p4KlD5W7Hd+rKn3ynzL08ZzOSH7yZX/mDzw==}
@@ -4068,8 +4092,8 @@ packages:
     resolution: {integrity: sha512-OljLrQ9SQdOUqTaQxqL5dEfZWrXExyyWsozYlAWFawPVNuD83igl7uJD2RTkNMbniIYgt8l81eCJGIdQF7avLQ==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
 
-  vite@6.0.9:
-    resolution: {integrity: sha512-MSgUxHcaXLtnBPktkbUSoQUANApKYuxZ6DrbVENlIorbhL2dZydTLaZ01tjUoE3szeFzlFk9ANOKk0xurh4MKA==}
+  vite@6.0.11:
+    resolution: {integrity: sha512-4VL9mQPKoHy4+FE0NnRE/kbY51TOfaknxAjt3fJbGJxhIpBZiqVzlZDEesWWsuREXHwNdAoOFZ9MkPEVXczHwg==}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
     hasBin: true
     peerDependencies:
@@ -4723,7 +4747,7 @@ snapshots:
       '@babel/traverse': 7.26.5
       '@babel/types': 7.26.5
       convert-source-map: 2.0.0
-      debug: 4.4.0(supports-color@8.1.1)
+      debug: 4.4.0
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       semver: 6.3.1
@@ -4895,7 +4919,7 @@ snapshots:
       '@babel/parser': 7.26.5
       '@babel/template': 7.25.9
       '@babel/types': 7.26.5
-      debug: 4.4.0(supports-color@8.1.1)
+      debug: 4.4.0
       globals: 11.12.0
     transitivePeerDependencies:
       - supports-color
@@ -4952,15 +4976,17 @@ snapshots:
       '@jridgewell/trace-mapping': 0.3.9
     optional: true
 
+  '@enkaku/async@0.9.0': {}
+
   '@enkaku/capability@0.9.0':
     dependencies:
       '@enkaku/token': 0.9.0
 
-  '@enkaku/client@0.9.0':
+  '@enkaku/client@0.9.1':
     dependencies:
-      '@enkaku/stream': 0.9.0
+      '@enkaku/async': 0.9.0
+      '@enkaku/stream': 0.9.1
       '@enkaku/token': 0.9.0
-      '@enkaku/util': 0.9.0
 
   '@enkaku/codec@0.9.0':
     dependencies:
@@ -4972,17 +4998,17 @@ snapshots:
       '@enkaku/stream': 0.9.0
       '@enkaku/transport': 0.9.0
 
-  '@enkaku/http-server-transport@0.9.0':
+  '@enkaku/http-server-transport@0.9.1':
     dependencies:
+      '@enkaku/async': 0.9.0
       '@enkaku/protocol': 0.9.0
-      '@enkaku/stream': 0.9.0
-      '@enkaku/transport': 0.9.0
-      '@enkaku/util': 0.9.0
+      '@enkaku/stream': 0.9.1
+      '@enkaku/transport': 0.9.1
 
   '@enkaku/node-streams-transport@0.9.0':
     dependencies:
-      '@enkaku/stream': 0.9.0
-      '@enkaku/transport': 0.9.0
+      '@enkaku/stream': 0.9.1
+      '@enkaku/transport': 0.9.1
 
   '@enkaku/protocol@0.9.0':
     dependencies:
@@ -4995,23 +5021,27 @@ snapshots:
       json-schema-to-ts: 3.1.1
       typescript-result: 3.1.1
 
-  '@enkaku/server@0.9.0':
+  '@enkaku/server@0.9.1':
     dependencies:
+      '@enkaku/async': 0.9.0
       '@enkaku/capability': 0.9.0
       '@enkaku/protocol': 0.9.0
       '@enkaku/schema': 0.9.0
-      '@enkaku/stream': 0.9.0
+      '@enkaku/stream': 0.9.1
       '@enkaku/token': 0.9.0
-      '@enkaku/util': 0.9.0
 
   '@enkaku/socket-transport@0.9.1':
     dependencies:
-      '@enkaku/stream': 0.9.0
-      '@enkaku/transport': 0.9.0
+      '@enkaku/stream': 0.9.1
+      '@enkaku/transport': 0.9.1
 
   '@enkaku/stream@0.9.0':
     dependencies:
       '@enkaku/util': 0.9.0
+
+  '@enkaku/stream@0.9.1':
+    dependencies:
+      '@enkaku/async': 0.9.0
 
   '@enkaku/token@0.9.0':
     dependencies:
@@ -5025,6 +5055,11 @@ snapshots:
     dependencies:
       '@enkaku/stream': 0.9.0
       '@enkaku/util': 0.9.0
+
+  '@enkaku/transport@0.9.1':
+    dependencies:
+      '@enkaku/async': 0.9.0
+      '@enkaku/stream': 0.9.1
 
   '@enkaku/util@0.9.0': {}
 
@@ -6273,7 +6308,7 @@ snapshots:
     optionalDependencies:
       '@tanstack/react-router': 1.97.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
 
-  '@tanstack/router-plugin@1.97.3(@tanstack/react-router@1.97.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(vite@6.0.9(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1))':
+  '@tanstack/router-plugin@1.97.3(@tanstack/react-router@1.97.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(vite@6.0.11(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1))':
     dependencies:
       '@babel/core': 7.26.0
       '@babel/generator': 7.26.5
@@ -6297,7 +6332,7 @@ snapshots:
       unplugin: 1.16.1
       zod: 3.24.1
     optionalDependencies:
-      vite: 6.0.9(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1)
+      vite: 6.0.11(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1)
     transitivePeerDependencies:
       - '@tanstack/react-router'
       - supports-color
@@ -6398,10 +6433,10 @@ snapshots:
     dependencies:
       '@types/yargs-parser': 21.0.3
 
-  '@vitejs/plugin-react-swc@3.7.2(vite@6.0.9(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1))':
+  '@vitejs/plugin-react-swc@3.7.2(vite@6.0.11(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1))':
     dependencies:
       '@swc/core': 1.10.8
-      vite: 6.0.9(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1)
+      vite: 6.0.11(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1)
     transitivePeerDependencies:
       - '@swc/helpers'
 
@@ -6813,6 +6848,10 @@ snapshots:
   cssesc@3.0.0: {}
 
   csstype@3.1.3: {}
+
+  debug@4.4.0:
+    dependencies:
+      ms: 2.1.3
 
   debug@4.4.0(supports-color@8.1.1):
     dependencies:
@@ -8548,7 +8587,7 @@ snapshots:
 
   validate-npm-package-name@5.0.1: {}
 
-  vite@6.0.9(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1):
+  vite@6.0.11(@types/node@22.10.7)(sugarss@4.0.1(postcss@8.5.1))(tsx@4.19.2)(yaml@2.6.1):
     dependencies:
       esbuild: 0.24.2
       postcss: 8.5.1

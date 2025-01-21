@@ -1,23 +1,21 @@
-import type { Protocol } from '@mokei/host-protocol'
 import { createLazyFileRoute } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
-import { useClient } from '../host/context.js'
-import { useStreamState } from '../host/hooks.js'
+import { useEventsStreamReadable, useHostInfo } from '../host/hooks.js'
 
 function HomePage() {
-  const client = useClient<Protocol>()
+  const hostInfo = useHostInfo()
   useEffect(() => {
-    client.request('info').then((info) => {
-      console.log('info from host', info)
-    })
-  }, [client])
+    if (hostInfo != null) {
+      console.log('host info', hostInfo)
+    }
+  }, [hostInfo])
 
-  const streamState = useStreamState<Protocol>({ procedure: 'events' })
+  const eventsStream = useEventsStreamReadable()
   useEffect(() => {
-    console.log('events stream status', streamState.status)
-    if (streamState.status === 'active') {
-      streamState.call.readable.pipeTo(
+    console.log('got events stream')
+    if (eventsStream != null) {
+      eventsStream.pipeTo(
         new WritableStream({
           write(event) {
             console.log('event from stream', event)
@@ -25,7 +23,7 @@ function HomePage() {
         }),
       )
     }
-  }, [streamState])
+  }, [eventsStream])
 
   return (
     <div className="p-2">

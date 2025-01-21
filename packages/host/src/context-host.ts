@@ -1,5 +1,5 @@
+import { type Disposer, createDisposer } from '@enkaku/async'
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
-import { type Disposer, createDisposer } from '@enkaku/util'
 import { type ClientTransport, ContextClient } from '@mokei/context-client'
 import type { CallToolResult, Tool } from '@mokei/context-protocol'
 import type { Subprocess } from 'nano-spawn'

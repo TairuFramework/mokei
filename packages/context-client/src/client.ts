@@ -1,6 +1,6 @@
+import { type Deferred, defer, lazy } from '@enkaku/async'
 import { createValidator } from '@enkaku/schema'
 import { createReadable } from '@enkaku/stream'
-import { type Deferred, defer, lazy } from '@enkaku/util'
 import {
   type CallToolResult,
   type ClientMessage,

@@ -28,8 +28,8 @@ function createHandlers({ events, startedTime }: HandlersContext): ProcedureHand
         const msg = { type: e.type, data: e.detail }
         writer.write(msg)
       }
-      events.addEventListener('message', handleEvent, { signal: ctx.signal })
-      events.addEventListener('spawn', handleEvent, { signal: ctx.signal })
+      events.addEventListener('context:message', handleEvent, { signal: ctx.signal })
+      events.addEventListener('context:spawn', handleEvent, { signal: ctx.signal })
 
       return new Promise((resolve) => {
         ctx.signal.addEventListener('abort', () => {
@@ -42,12 +42,12 @@ function createHandlers({ events, startedTime }: HandlersContext): ProcedureHand
       // TODO: shutdown all spawned processes
     },
     spawn: async (ctx) => {
-      const clientID = randomUUID()
+      const contextID = randomUUID()
       const spawned = await spawnContextServer(ctx.param.command, ctx.param.args)
       events.dispatchEvent(
-        new CustomEvent('spawn', {
+        new CustomEvent('context:spawn', {
           detail: {
-            clientID,
+            contextID,
             time: Date.now(),
             command: ctx.param.command,
             args: ctx.param.args,
@@ -62,8 +62,8 @@ function createHandlers({ events, startedTime }: HandlersContext): ProcedureHand
           .pipeThrough(
             tap((message) => {
               events.dispatchEvent(
-                new CustomEvent('message', {
-                  detail: { clientID, from: 'client', message, time: Date.now() },
+                new CustomEvent('context:message', {
+                  detail: { contextID, from: 'client', message, time: Date.now() },
                 }),
               )
             }),
@@ -73,8 +73,8 @@ function createHandlers({ events, startedTime }: HandlersContext): ProcedureHand
           .pipeThrough(
             tap((message) => {
               events.dispatchEvent(
-                new CustomEvent('message', {
-                  detail: { clientID, from: 'server', message, time: Date.now() },
+                new CustomEvent('context:message', {
+                  detail: { contextID, from: 'server', message, time: Date.now() },
                 }),
               )
             }),
