@@ -4,7 +4,7 @@ import { type ClientTransport, ContextClient } from '@mokei/context-client'
 import type { CallToolResult, Tool } from '@mokei/context-protocol'
 import type { Subprocess } from 'nano-spawn'
 
-import { spawnContextServer } from './context-spawn.js'
+import { spawnContextServer } from './spawn.js'
 
 export function getContextToolID(contextKey: string, toolName: string): string {
   return `${contextKey}:${toolName}`

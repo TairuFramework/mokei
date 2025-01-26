@@ -1,7 +1,14 @@
 import { DatabaseSync } from 'node:sqlite'
+import { parseArgs } from 'node:util'
 import { type Schema, serve } from '@mokei/context-server'
 
-const db = new DatabaseSync(':memory:')
+const args = parseArgs({
+  options: {
+    db: { type: 'string' },
+  },
+})
+
+const db = new DatabaseSync(args.values.db ?? ':memory:')
 
 const toolInputSchema = {
   type: 'object',

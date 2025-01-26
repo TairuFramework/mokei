@@ -11,7 +11,7 @@ import {
   type ServerMessage,
 } from '@mokei/host-protocol'
 
-import { spawnContextServer } from './context-spawn.js'
+import { spawnContextServer } from './spawn.js'
 
 type HandlersContext = {
   events: EventTarget

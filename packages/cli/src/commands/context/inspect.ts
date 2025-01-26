@@ -1,9 +1,10 @@
 import { type HostedContext, createHostedContext } from '@mokei/host'
-import { Args, Command, Flags } from '@oclif/core'
+import { Args, Command } from '@oclif/core'
 import ora from 'ora'
 
-export default class MCPInspect extends Command {
-  static description = 'Inspect a MCP server'
+export default class ContextInspect extends Command {
+  static strict = false
+  static description = 'Inspect a context server'
 
   static args = {
     command: Args.string({
@@ -12,21 +13,13 @@ export default class MCPInspect extends Command {
     }),
   }
 
-  static flags = {
-    arg: Flags.string({
-      char: 'a',
-      description: 'Arguments to pass to the command',
-      multiple: true,
-    }),
-  }
-
   async run(): Promise<void> {
     const loader = ora().start('Initializing...')
-    const { args, flags } = await this.parse(MCPInspect)
+    const { args, argv } = await this.parse(ContextInspect)
 
     let hosted: HostedContext | undefined
     try {
-      hosted = await createHostedContext(args.command, flags.arg)
+      hosted = await createHostedContext(args.command, argv.slice(1) as Array<string>)
       const initialized = await hosted.client.initialize()
       loader.succeed('Initialized')
       this.logJson(initialized)

@@ -7,8 +7,8 @@ import ora from 'ora'
 
 import { socketPathFlag } from '../../flags.js'
 
-export default class HostStart extends Command {
-  static description = 'Start a MCP host'
+export default class ContextHost extends Command {
+  static description = 'Start a context host'
 
   static flags = {
     // force: Flags.boolean({ char: 'f', description: 'Force the host to start' }),
@@ -22,7 +22,7 @@ export default class HostStart extends Command {
 
   async run(): Promise<void> {
     const loader = ora().start('Starting host...')
-    const { flags } = await this.parse(HostStart)
+    const { flags } = await this.parse(ContextHost)
 
     if (existsSync(flags.path)) {
       rmSync(flags.path)

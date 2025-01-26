@@ -18,5 +18,5 @@ export {
   createHostedContext,
   getContextToolID,
   getContextToolInfo,
-} from './context-host.js'
+} from './host.js'
 export { type ServerParams, startServer } from './server.js'
