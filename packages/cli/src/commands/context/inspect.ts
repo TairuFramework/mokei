@@ -26,7 +26,7 @@ export default class ContextInspect extends Command {
     } catch (err) {
       loader.fail((err as Error).message)
     } finally {
-      await hosted?.transport.dispose()
+      await hosted?.dispose()
     }
   }
 }

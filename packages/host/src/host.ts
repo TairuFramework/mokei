@@ -2,7 +2,6 @@ import { type Disposer, createDisposer } from '@enkaku/async'
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 import { type ClientTransport, ContextClient } from '@mokei/context-client'
 import type { CallToolResult, Tool } from '@mokei/context-protocol'
-import type { Subprocess } from 'nano-spawn'
 
 import { spawnContextServer } from './spawn.js'
 
@@ -27,10 +26,8 @@ export type ContextTool = {
   allow?: AllowToolCalls
 }
 
-export type HostedContext = {
+export type HostedContext = Disposer & {
   client: ContextClient
-  subprocess: Subprocess
-  transport: ClientTransport
   tools: Array<ContextTool>
 }
 
@@ -38,24 +35,28 @@ export async function createHostedContext(
   command: string,
   args: Array<string> = [],
 ): Promise<HostedContext> {
-  const { streams, subprocess } = await spawnContextServer(command, args)
+  const { childProcess, streams } = await spawnContextServer(command, args)
   const transport = new NodeStreamsTransport({ streams }) as ClientTransport
   const client = new ContextClient({ transport })
-  return { client, subprocess, transport, tools: [] }
+  const disposer = createDisposer(async () => {
+    await transport.dispose()
+    childProcess.kill()
+  })
+  return { ...disposer, client, tools: [] }
 }
 
 export class ContextHost implements Disposer {
-  #contexts: Record<string, HostedContext> = {}
+  _contexts: Record<string, HostedContext> = {}
   #disposer: Disposer
 
   constructor() {
     this.#disposer = createDisposer(async () => {
-      await Promise.all(Object.keys(this.#contexts).map((key) => this.remove(key)))
+      await Promise.all(Object.keys(this._contexts).map((key) => this.remove(key)))
     })
   }
 
   get contexts(): Record<string, HostedContext> {
-    return this.#contexts
+    return this._contexts
   }
 
   get disposed(): Promise<void> {
@@ -67,11 +68,11 @@ export class ContextHost implements Disposer {
   }
 
   getContextKeys(): Array<string> {
-    return Object.keys(this.#contexts)
+    return Object.keys(this._contexts)
   }
 
   getContext(key: string): HostedContext {
-    const ctx = this.#contexts[key]
+    const ctx = this._contexts[key]
     if (ctx == null) {
       throw new Error(`Context ${key} does not exist`)
     }
@@ -83,18 +84,18 @@ export class ContextHost implements Disposer {
   }
 
   getEnabledTools(): Array<ContextTool> {
-    return Object.values(this.#contexts)
+    return Object.values(this._contexts)
       .flatMap((ctx) => ctx.tools)
       .filter((tool) => tool.enabled)
   }
 
   async spawn(key: string, command: string, args: Array<string> = []): Promise<ContextClient> {
-    if (this.#contexts[key] != null) {
+    if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
 
     const context = await createHostedContext(command, args)
-    this.#contexts[key] = context
+    this._contexts[key] = context
     return context.client
   }
 
@@ -103,20 +104,18 @@ export class ContextHost implements Disposer {
     const contextTools = tools.map((tool) => {
       return { id: getContextToolID(key, tool.name), tool, enabled: true }
     })
-    this.#contexts[key].tools = contextTools
+    this._contexts[key].tools = contextTools
     return contextTools
   }
 
   async remove(key: string): Promise<void> {
-    const ctx = this.#contexts[key]
+    const ctx = this._contexts[key]
     if (ctx == null) {
       return
     }
 
-    await ctx.transport.dispose()
-    const childProcess = await ctx.subprocess.nodeChildProcess
-    childProcess.kill()
-    delete this.#contexts[key]
+    await ctx.dispose()
+    delete this._contexts[key]
   }
 
   async callTool(

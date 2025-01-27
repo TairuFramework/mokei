@@ -30,10 +30,12 @@
   },
   "dependencies": {
     "@enkaku/async": "^0.9.0",
+    "@enkaku/client": "^0.9.1",
     "@enkaku/node-streams-transport": "^0.9.0",
     "@enkaku/server": "^0.9.1",
     "@enkaku/socket-transport": "^0.9.1",
     "@enkaku/stream": "^0.9.1",
+    "@enkaku/transport": "^0.9.1",
     "@mokei/context-client": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "nano-spawn": "^0.2.0"

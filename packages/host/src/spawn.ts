@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process'
 import type { Streams } from '@enkaku/node-streams-transport'
 import spawn, { type Subprocess, SubprocessError } from 'nano-spawn'
 
@@ -10,6 +11,7 @@ function isSubprocessExit(reason: unknown): boolean {
 }
 
 export type SpawnedContext = {
+  childProcess: ChildProcess
   streams: Streams
   subprocess: Subprocess
 }
@@ -25,10 +27,11 @@ export async function spawnContextServer(
     }
   })
 
-  const [stdin, stdout] = (await subprocess.nodeChildProcess).stdio
+  const childProcess = await subprocess.nodeChildProcess
+  const [stdin, stdout] = childProcess.stdio
   if (stdin == null || stdout == null) {
     throw new Error('Failed to spawn subprocess')
   }
 
-  return { subprocess, streams: { readable: stdout, writable: stdin } }
+  return { childProcess, subprocess, streams: { readable: stdout, writable: stdin } }
 }

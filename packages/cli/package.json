@@ -61,7 +61,7 @@
   },
   "devDependencies": {
     "@oclif/test": "^4.1.8",
-    "oclif": "^4.17.18",
+    "oclif": "^4.17.19",
     "typescript": "^5.7.3"
   }
 }

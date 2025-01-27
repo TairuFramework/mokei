@@ -10,6 +10,7 @@
  * @module host
  */
 
+export { runDaemon } from './daemon/controller.js'
 export {
   type AllowToolCalls,
   ContextHost,
@@ -19,4 +20,5 @@ export {
   getContextToolID,
   getContextToolInfo,
 } from './host.js'
+export { ProxyHost } from './proxy.js'
 export { type ServerParams, startServer } from './server.js'
