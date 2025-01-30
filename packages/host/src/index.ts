@@ -10,7 +10,7 @@
  * @module host
  */
 
-export { runDaemon } from './daemon/controller.js'
+export { type HostClient, createClient, runDaemon } from './daemon/controller.js'
 export {
   type AllowToolCalls,
   ContextHost,

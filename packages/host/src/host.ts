@@ -51,7 +51,7 @@ export class ContextHost implements Disposer {
 
   constructor() {
     this.#disposer = createDisposer(async () => {
-      await Promise.all(Object.keys(this._contexts).map((key) => this.remove(key)))
+      this._runDispose()
     })
   }
 
@@ -61,6 +61,10 @@ export class ContextHost implements Disposer {
 
   get disposed(): Promise<void> {
     return this.#disposer.disposed
+  }
+
+  async _runDispose(): Promise<void> {
+    await Promise.all(Object.keys(this._contexts).map((key) => this.remove(key)))
   }
 
   async dispose(): Promise<void> {

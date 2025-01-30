@@ -1,4 +1,5 @@
 import { openSync } from 'node:fs'
+import { setTimeout } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { Client } from '@enkaku/client'
 import { SocketTransport, connectSocket } from '@enkaku/socket-transport'
@@ -34,8 +35,11 @@ export async function spawnDaemon(options: DaemonOptions = {}): Promise<void> {
     detached: true,
     stdio: ['ignore', out, err],
   })
+  // Dereference child process so it can be garbage collected
   const childProcess = await subprocess.nodeChildProcess
   childProcess.unref()
+  // Wait for the socket to be created
+  await setTimeout(300)
 }
 
 export async function runDaemon(options: DaemonOptions = {}): Promise<HostClient> {

@@ -6,7 +6,7 @@ import {
   IconPlayerStop,
   IconQuestionMark,
 } from '@tabler/icons-react'
-import { createLazyFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { DateTime } from 'luxon'
 import { useEffect, useMemo } from 'react'
 
@@ -53,7 +53,7 @@ function HomePage() {
           break
         case 'context:stop':
           type = (
-            <Badge color="green" leftSection={<IconPlayerStop />} size="lg">
+            <Badge color="orange" leftSection={<IconPlayerStop />} size="lg">
               Context stopped
             </Badge>
           )
@@ -87,6 +87,6 @@ function HomePage() {
   )
 }
 
-export const Route = createLazyFileRoute('/')({
+export const Route = createFileRoute('/')({
   component: HomePage,
 })

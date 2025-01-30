@@ -1,7 +1,5 @@
-import { Client } from '@enkaku/client'
 import { createTransportStream } from '@enkaku/node-streams-transport'
-import { SocketTransport } from '@enkaku/socket-transport'
-import type { ClientMessage, Protocol, ServerMessage } from '@mokei/host-protocol'
+import { runDaemon } from '@mokei/host'
 import { Args, Command } from '@oclif/core'
 
 import { socketPathFlag } from '../../flags.js'
@@ -23,9 +21,7 @@ export default class ContextProxy extends Command {
 
   async run(): Promise<void> {
     const { args, argv, flags } = await this.parse(ContextProxy)
-    const transport = new SocketTransport<ServerMessage, ClientMessage>({ socket: flags.path })
-    const client = new Client<Protocol>({ transport })
-
+    const client = await runDaemon({ socketPath: flags.path })
     const channel = client.createChannel('spawn', {
       param: {
         command: args.command,

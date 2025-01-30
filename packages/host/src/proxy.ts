@@ -18,6 +18,15 @@ export class ProxyHost extends ContextHost {
     this.#client = client
   }
 
+  get client(): HostClient {
+    return this.#client
+  }
+
+  async _runDispose(): Promise<void> {
+    await super._runDispose()
+    await this.#client.dispose()
+  }
+
   async spawn(key: string, command: string, args: Array<string> = []): Promise<ContextClient> {
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)

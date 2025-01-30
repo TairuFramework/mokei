@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream'
 import { type Disposer, createDisposer } from '@enkaku/async'
 import { createReadable } from '@enkaku/stream'
-import { ContextHost, getContextToolInfo } from '@mokei/host'
+import { type ContextHost, getContextToolInfo } from '@mokei/host'
 import ora, { type Ora } from 'ora'
 
 import { type Choice, confirm, input, list, prompt } from './prompt.js'
@@ -35,6 +35,7 @@ const SESSION_ACTION_KEY = Object.entries(SESSION_ACTIONS).reduce(
 type RequestState = { type: 'idle' } | { type: 'streaming'; abort: () => void }
 
 export type ChatSessionParams<T extends ProviderTypes> = {
+  host: ContextHost
   model?: string
   provider: ModelProvider<T>
 }
@@ -58,7 +59,7 @@ export class ChatSession<T extends ProviderTypes> {
       controller.close()
       await this.#host.dispose()
     })
-    this.#host = new ContextHost()
+    this.#host = params.host
     this.#loader = ora()
     this.#model = params.model
     this.#provider = params.provider
