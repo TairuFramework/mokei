@@ -50,18 +50,19 @@
     "@mokei/host": "workspace:^",
     "@mokei/host-monitor": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
-    "@oclif/core": "^4.2.4",
+    "@oclif/core": "^4.2.5",
     "@oclif/plugin-help": "^6.2.23",
-    "@oclif/plugin-plugins": "^5.4.27",
+    "@oclif/plugin-plugins": "^5.4.28",
     "ansi-colors": "^4.1.3",
     "enquirer": "^2.4.1",
+    "eventsource-parser": "^3.0.0",
     "ky": "^1.7.4",
     "nano-spawn": "^0.2.0",
     "ora": "^8.1.1"
   },
   "devDependencies": {
     "@oclif/test": "^4.1.8",
-    "oclif": "^4.17.19",
+    "oclif": "^4.17.20",
     "typescript": "^5.7.3"
   }
 }

@@ -42,7 +42,7 @@ export async function runDaemon(options: DaemonOptions = {}): Promise<HostClient
   try {
     return await createClient(options.socketPath)
   } catch (err) {
-    if ((err as { code: string }).code === 'ENOENT') {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       await spawnDaemon(options)
       return await createClient(options.socketPath)
     }

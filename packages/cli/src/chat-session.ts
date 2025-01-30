@@ -1,31 +1,18 @@
 import { Writable } from 'node:stream'
 import { type Disposer, createDisposer } from '@enkaku/async'
 import { createReadable } from '@enkaku/stream'
-import { ContextHost, type ContextTool, getContextToolInfo } from '@mokei/host'
+import { ContextHost, getContextToolInfo } from '@mokei/host'
 import ora, { type Ora } from 'ora'
 
-import { type Message, type Tool as OllamaTool, ollama } from './clients/ollama.js'
-
-import { getModel } from './ollama.js'
 import { type Choice, confirm, input, list, prompt } from './prompt.js'
-
-function toOllamaTool({ id, tool }: ContextTool): OllamaTool {
-  return {
-    type: 'function',
-    function: {
-      name: id,
-      description: tool.description ?? '',
-      parameters: tool.inputSchema,
-    },
-  } as OllamaTool
-}
-
-type ChatToolCallRequest = {
-  function: {
-    name: string
-    arguments: Record<string, unknown>
-  }
-}
+import type {
+  AggregatedMessage,
+  ClientToolMessage,
+  FunctionToolCall,
+  Message,
+  ModelProvider,
+  ProviderTypes,
+} from './providers/model.js'
 
 const SESSION_ACTIONS = {
   'session.dispose': 'End the session',
@@ -47,22 +34,24 @@ const SESSION_ACTION_KEY = Object.entries(SESSION_ACTIONS).reduce(
 
 type RequestState = { type: 'idle' } | { type: 'streaming'; abort: () => void }
 
-export type ChatSessionParams = {
+export type ChatSessionParams<T extends ProviderTypes> = {
   model?: string
+  provider: ModelProvider<T>
 }
 
-export class ChatSession {
+export class ChatSession<T extends ProviderTypes> {
   #controller: ReadableStreamDefaultController<SessionAction>
   #disposer: Disposer
   #host: ContextHost
   #loader: Ora
-  #messages: Array<Message> = []
+  #messages: Array<Message<T['Message'], T['ToolCall']>> = []
   #model?: string
+  #provider: ModelProvider<T>
   #requestState: RequestState = { type: 'idle' }
   #stream: ReadableStream<SessionAction>
   #writer: WritableStreamDefaultWriter<string>
 
-  constructor(params: ChatSessionParams = {}) {
+  constructor(params: ChatSessionParams<T>) {
     const [stream, controller] = createReadable<SessionAction>()
     this.#controller = controller
     this.#disposer = createDisposer(async () => {
@@ -72,6 +61,7 @@ export class ChatSession {
     this.#host = new ContextHost()
     this.#loader = ora()
     this.#model = params.model
+    this.#provider = params.provider
     this.#stream = stream
     this.#writer = Writable.toWeb(process.stdout).getWriter()
 
@@ -95,6 +85,21 @@ export class ChatSession {
 
   #next(action?: SessionAction | null): void {
     this.#controller.enqueue(action ?? 'user.action.select')
+  }
+
+  async #promptModel(): Promise<string> {
+    const models = await this.#provider.listModels()
+    while (true) {
+      const result = await prompt<{ model: string }>({
+        type: 'select',
+        name: 'model',
+        message: 'Select a model',
+        choices: models.map((m) => m.id),
+      })
+      if (result != null) {
+        return result.model
+      }
+    }
   }
 
   async #addContext(): Promise<null> {
@@ -181,93 +186,116 @@ export class ChatSession {
   }
 
   async #runChat(model: string): Promise<SessionAction | null> {
-    const tools = this.#host.getEnabledTools().map(toOllamaTool)
+    const tools = this.#host.getEnabledTools().map((ct) => {
+      return this.#provider.toolFromMCP({ ...ct.tool, name: ct.id })
+    })
 
     while (true) {
       try {
-        const messageStream = ollama.chat({ messages: this.#messages, model, stream: true, tools })
-        const toolCalls: Array<ChatToolCallRequest> = []
-        let content = ''
+        const messageStream = this.#provider.streamChat({ messages: this.#messages, model, tools })
+        const toolCalls: Array<FunctionToolCall<T['ToolCall']>> = []
+        let text = ''
 
         this.#loader.start('Generating...')
         this.#requestState = { type: 'streaming', abort: () => messageStream.abort() }
 
         for await (const part of await messageStream) {
-          if (part.message.tool_calls) {
-            if (this.#loader.isSpinning) {
-              this.#loader.stop()
+          if (part.type === 'done') {
+            break
+          }
+          switch (part.type) {
+            case 'error': {
+              await this.#writer.write('\n')
+              this.#loader.warn(String(part.error))
+              this.#requestState = { type: 'idle' }
+              return 'user.prompt.text'
             }
-            toolCalls.push(...part.message.tool_calls)
-          } else {
-            if (this.#loader.isSpinning) {
-              this.#loader.stop()
-              await this.#writer.write('🤖')
-            }
-            content += part.message.content
-            await this.#writer.write(part.message.content)
+            case 'tool-call':
+              if (this.#loader.isSpinning) {
+                this.#loader.stop()
+              }
+              toolCalls.push(...part.toolCalls)
+              break
+            case 'text-delta':
+              if (this.#loader.isSpinning) {
+                this.#loader.stop()
+                await this.#writer.write('🤖')
+              }
+              text += part.text
+              await this.#writer.write(part.text)
+              break
           }
         }
+
         this.#requestState = { type: 'idle' }
+        const aggregatedMessage: AggregatedMessage<T['ToolCall']> = {
+          source: 'aggregated',
+          role: 'assistant',
+          text,
+          toolCalls,
+        }
 
         if (toolCalls.length === 0) {
           await this.#writer.write('\n')
           this.#loader.succeed('Generation completed')
-          this.#messages.push({ role: 'assistant', content })
+          this.#messages.push(aggregatedMessage)
           return 'user.prompt.text'
         }
 
         const toolMessages = await this.#runTools(toolCalls)
-        this.#messages.push(
-          { role: 'assistant', content: '', tool_calls: toolCalls },
-          ...toolMessages,
-        )
+        this.#messages.push(aggregatedMessage, ...toolMessages)
       } catch (reason) {
         if (reason instanceof Error && reason.name === 'AbortError') {
           await this.#writer.write('\n')
-
           this.#loader.warn('Generation cancelled')
           this.#requestState = { type: 'idle' }
-
           return 'user.prompt.text'
         }
-
         throw reason
       }
     }
   }
 
-  async #runTools(toolCalls: Array<ChatToolCallRequest>): Promise<Array<Message>> {
-    const messages: Array<Message> = []
+  async #runTools(
+    toolCalls: Array<FunctionToolCall<T['ToolCall']>>,
+  ): Promise<Array<ClientToolMessage>> {
+    const messages: Array<ClientToolMessage> = []
 
     for (const toolCall of toolCalls) {
-      const [context, name] = getContextToolInfo(toolCall.function.name)
-      let content: string
+      const [context, name] = getContextToolInfo(toolCall.name)
+      let text: string
       const ok = await confirm(
-        `Allow call of tool ${name} in context ${context} with arguments ${JSON.stringify(toolCall.function.arguments)}?`,
+        `Allow call of tool ${name} in context ${context} with arguments ${JSON.stringify(toolCall.input)}?`,
       )
       if (ok) {
         this.#loader.info('Tool call accepted').start('Calling tool...')
         try {
-          const result = await this.#host.callTool(context, name, toolCall.function.arguments)
+          const result = await this.#host.callTool(context, name, toolCall.input)
           const resultContent =
             result.content.find((c) => c.type === 'text')?.text ?? 'No text content'
           if (result.isError) {
             this.#loader.warn(`Tool call failed: ${resultContent}`)
-            content = JSON.stringify({ error: resultContent })
+            text = JSON.stringify({ error: resultContent })
           } else {
             this.#loader.succeed(`Tool call successful, result: ${resultContent}`)
-            content = resultContent
+            text = resultContent
           }
         } catch (reason) {
           const error = (reason as Error).message ?? reason
           this.#loader.warn(`Tool call failed: ${error}`)
-          content = JSON.stringify({ error })
+          text = JSON.stringify({ error })
         }
       } else {
         this.#loader.warn('Tool call denied')
-        content = JSON.stringify({ error: 'Call denied by user' })
+        text = JSON.stringify({ error: 'Call denied by user' })
       }
-      messages.push({ role: 'tool', content })
+      messages.push({
+        source: 'client',
+        role: 'tool',
+        toolCallID: toolCall.id,
+        toolCallName: toolCall.name,
+        text,
+      })
     }
 
     return messages
@@ -321,12 +349,12 @@ export class ChatSession {
           break
         }
         case 'user.prompt.text': {
-          this.#model ??= await getModel()
-          const content = await input('Your message')
-          if (content == null || content.trim() === '') {
+          this.#model ??= await this.#promptModel()
+          const text = await input('Your message')
+          if (text == null || text.trim() === '') {
             break
           }
-          this.#messages.push({ role: 'user', content })
+          this.#messages.push({ source: 'client', role: 'user', text })
           nextAction = await this.#runChat(this.#model)
           break
         }
