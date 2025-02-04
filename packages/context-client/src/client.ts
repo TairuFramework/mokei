@@ -92,7 +92,7 @@ export class ContextClient<
       }
 
       const validated = validator(next.value)
-      if (validated.isOk()) {
+      if (validated.issues == null) {
         const msg = validated.value
         if (msg.id == null) {
           this.#notificationController.enqueue(msg as ServerNotification)

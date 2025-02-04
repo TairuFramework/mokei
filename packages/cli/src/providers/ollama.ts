@@ -129,6 +129,7 @@ export class OllamaClient {
   constructor(params: OllamaClientParams = {}) {
     this.#api = ky.create({
       prefixUrl: params.baseURL ?? 'http://localhost:11434/api',
+      timeout: 30_000,
     })
   }
 

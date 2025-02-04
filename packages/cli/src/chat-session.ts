@@ -1,5 +1,5 @@
 import { Writable } from 'node:stream'
-import { type Disposer, createDisposer } from '@enkaku/async'
+import { Disposer } from '@enkaku/async'
 import { createReadable } from '@enkaku/stream'
 import { type ContextHost, getContextToolInfo } from '@mokei/host'
 import ora, { type Ora } from 'ora'
@@ -40,9 +40,8 @@ export type ChatSessionParams<T extends ProviderTypes> = {
   provider: ModelProvider<T>
 }
 
-export class ChatSession<T extends ProviderTypes> {
+export class ChatSession<T extends ProviderTypes> extends Disposer {
   #controller: ReadableStreamDefaultController<SessionAction>
-  #disposer: Disposer
   #host: ContextHost
   #loader: Ora
   #messages: Array<Message<T['Message'], T['ToolCall']>> = []
@@ -54,11 +53,13 @@ export class ChatSession<T extends ProviderTypes> {
 
   constructor(params: ChatSessionParams<T>) {
     const [stream, controller] = createReadable<SessionAction>()
-    this.#controller = controller
-    this.#disposer = createDisposer(async () => {
-      controller.close()
-      await this.#host.dispose()
+    super({
+      dispose: async () => {
+        controller.close()
+        await this.#host.dispose()
+      },
     })
+    this.#controller = controller
     this.#host = params.host
     this.#loader = ora()
     this.#model = params.model
@@ -75,13 +76,9 @@ export class ChatSession<T extends ProviderTypes> {
     this.#next()
   }
 
-  get disposed(): Promise<void> {
-    return this.#disposer.disposed
-  }
-
   dispose(): Promise<void> {
     this.#next('session.dispose')
-    return this.#disposer.disposed
+    return this.disposed
   }
 
   #next(action?: SessionAction | null): void {
@@ -363,12 +360,13 @@ export class ChatSession<T extends ProviderTypes> {
           nextAction = await this.#selectTools()
           break
         case 'session.dispose':
-          return await this.#disposer.dispose()
+          this.abort('Dipose')
+          return this.disposed
       }
 
       this.#next(nextAction)
     }
 
-    return await this.#disposer.disposed
+    return await this.disposed
   }
 }

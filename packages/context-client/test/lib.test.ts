@@ -1,4 +1,4 @@
-import { type TransportType, createDirectTransports } from '@enkaku/transport'
+import { DirectTransports, type TransportType } from '@enkaku/transport'
 import {
   type CallToolResult,
   type ClientMessage,
@@ -34,7 +34,7 @@ async function handleServerInitialize(
 
 describe('ContextClient', () => {
   test('initializes', async () => {
-    const transports = createDirectTransports<ServerMessage, ClientMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
 
     const client = new ContextClient({ transport: transports.client })
     const initializedPromise = client.initialize()
@@ -56,7 +56,7 @@ describe('ContextClient', () => {
   })
 
   test('calls tool', async () => {
-    const transports = createDirectTransports<ServerMessage, ClientMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
 
     const client = new ContextClient<{
       hello: { name: string }

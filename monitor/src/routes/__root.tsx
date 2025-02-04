@@ -1,5 +1,14 @@
 import '@mantine/core/styles.css'
-import { type MantineColorsTuple, MantineProvider, createTheme } from '@mantine/core'
+import {
+  AppShell,
+  Box,
+  Group,
+  Image,
+  type MantineColorsTuple,
+  MantineProvider,
+  Title,
+  createTheme,
+} from '@mantine/core'
 import type { Protocol } from '@mokei/host-protocol'
 import { Outlet, createRootRoute } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/router-devtools'
@@ -35,7 +44,25 @@ export const Route = createRootRoute({
       <JotaiProvider>
         <MantineProvider theme={theme}>
           <EnkakuProvider<Protocol> client={client}>
-            <Outlet />
+            <AppShell header={{ height: 60 }} padding="md">
+              <AppShell.Header style={{ backgroundColor: '#04809d' }}>
+                <Group p="10px" align="center">
+                  <Image
+                    src="/logo.svg"
+                    alt="Mokei logo"
+                    h={40}
+                    w={40}
+                    style={{ border: '2px solid white', borderRadius: 20 }}
+                  />
+                  <Title c="white" order={3}>
+                    Mokei Monitor
+                  </Title>
+                </Group>
+              </AppShell.Header>
+              <AppShell.Main>
+                <Outlet />
+              </AppShell.Main>
+            </AppShell>
           </EnkakuProvider>
         </MantineProvider>
         <TanStackRouterDevtools />

@@ -10,7 +10,7 @@
  * @module host-monitor
  */
 
-import { type Disposer, createDisposer, defer } from '@enkaku/async'
+import { Disposer, defer } from '@enkaku/async'
 import { createServerBridge } from '@enkaku/http-server-transport'
 import { connectSocket, createTransportStream } from '@enkaku/socket-transport'
 import { type ServerType, serve } from '@hono/node-server'
@@ -23,7 +23,8 @@ export type MonitorParams = {
   port?: number
 }
 
-export type Monitor = Disposer & {
+export type Monitor = {
+  disposer: Disposer
   port: number
   server: ServerType
 }
@@ -47,12 +48,14 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
     socketStream.readable.pipeTo(serverBridge.stream.writable),
     serverBridge.stream.readable.pipeTo(socketStream.writable),
   ])
-  const disposer = createDisposer(async () => {
-    server.close()
-    serverBridge.stream.writable.close()
-    socketStream.writable.close()
-    await Promise.all([serverClosed, decoupled])
+  const disposer = new Disposer({
+    dispose: async () => {
+      server.close()
+      serverBridge.stream.writable.close()
+      socketStream.writable.close()
+      await Promise.all([serverClosed, decoupled])
+    },
   })
 
-  return { ...disposer, port, server }
+  return { disposer, port, server }
 }

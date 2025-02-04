@@ -1,11 +1,11 @@
-import { createDirectTransports } from '@enkaku/transport'
+import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 
 import { ContextServer } from '../src/index.js'
 
 describe('ContextServer', () => {
   test('handles tool calls', async () => {
-    const transports = createDirectTransports<ServerMessage, ClientMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
 
     new ContextServer({
       name: 'test',
@@ -49,5 +49,7 @@ describe('ContextServer', () => {
         },
       },
     })
+
+    await transports.dispose()
   })
 })

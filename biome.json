@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "ignore": ["**/routeTree.gen.ts"]
+    "ignore": ["**/dist", "**/routeTree.gen.ts"]
   },
   "organizeImports": {
     "enabled": true,

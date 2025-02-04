@@ -1,4 +1,4 @@
-import { createDisposer } from '@enkaku/async'
+import { Disposer } from '@enkaku/async'
 import { Transport } from '@enkaku/transport'
 import { type ClientTransport, ContextClient } from '@mokei/context-client'
 
@@ -22,8 +22,9 @@ export class ProxyHost extends ContextHost {
     return this.#client
   }
 
-  async _runDispose(): Promise<void> {
-    await super._runDispose()
+  /** @internal */
+  async _dispose(): Promise<void> {
+    await super._dispose()
     await this.#client.dispose()
   }
 
@@ -37,13 +38,14 @@ export class ProxyHost extends ContextHost {
       stream: { readable: channel.readable, writable: channel.writable },
     }) as ClientTransport
     const client = new ContextClient({ transport })
-    const disposer = createDisposer(async () => {
-      channel.close()
-      await transport.dispose()
+    const disposer = new Disposer({
+      dispose: async () => {
+        channel.close()
+        await transport.dispose()
+      },
     })
 
-    const context = { ...disposer, client, tools: [] }
-    this._contexts[key] = context
-    return context.client
+    this._contexts[key] = { client, disposer, tools: [] }
+    return client
   }
 }

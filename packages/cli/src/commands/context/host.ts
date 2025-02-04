@@ -1,5 +1,5 @@
 import { existsSync, rmSync } from 'node:fs'
-import { startServer } from '@mokei/host'
+import { runDaemon } from '@mokei/host'
 import { type Monitor, startMonitor } from '@mokei/host-monitor'
 import { Command, Flags } from '@oclif/core'
 import { default as c } from 'ansi-colors'
@@ -27,7 +27,7 @@ export default class ContextHost extends Command {
     if (existsSync(flags.path)) {
       rmSync(flags.path)
     }
-    const server = await startServer({ socketPath: flags.path })
+    await runDaemon({ socketPath: flags.path })
     loader.succeed(`Host started on ${c.cyan(flags.path)}`)
 
     let monitor: Monitor | undefined
@@ -39,8 +39,7 @@ export default class ContextHost extends Command {
     }
 
     process.on('SIGINT', () => {
-      monitor?.dispose()
-      server.close()
+      monitor?.disposer.dispose()
       process.exit()
     })
   }

@@ -1,3 +1,4 @@
+import { runDaemon } from '@mokei/host'
 import { startMonitor } from '@mokei/host-monitor'
 import { Command, Flags } from '@oclif/core'
 import { default as c } from 'ansi-colors'
@@ -20,12 +21,13 @@ export default class ContextMonitor extends Command {
     const loader = ora().start('Starting monitor...')
     const { flags } = await this.parse(ContextMonitor)
 
+    await runDaemon({ socketPath: flags.path })
     const monitor = await startMonitor({ port: flags.port ?? 3001, socketPath: flags.path })
     const url = `http://localhost:${monitor.port}/`
     loader.succeed(`Monitor running on ${c.cyan(url)}`)
 
     process.on('SIGINT', () => {
-      monitor.dispose()
+      monitor.disposer.dispose()
       process.exit()
     })
   }

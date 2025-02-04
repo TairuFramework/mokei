@@ -88,7 +88,7 @@ export class ContextServer<Spec extends SpecificationDefinition> {
 
       const id = next.value.id
       const validated = this.#validator(next.value)
-      if (validated.isOk()) {
+      if (validated.issues == null) {
         this.handleMessage(validated.value, inflight).then(
           (result) => {
             if (result != null && isRequestID(id)) {

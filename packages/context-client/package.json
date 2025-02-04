@@ -29,14 +29,14 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "^0.9.0",
-    "@enkaku/node-streams-transport": "^0.9.0",
-    "@enkaku/schema": "^0.9.0",
-    "@enkaku/stream": "^0.9.1",
+    "@enkaku/async": "^0.10.0",
+    "@enkaku/node-streams-transport": "^0.10.0",
+    "@enkaku/schema": "^0.10.0",
+    "@enkaku/stream": "^0.10.0",
     "@mokei/context-definitions": "workspace:^",
     "@mokei/context-protocol": "workspace:^"
   },
   "devDependencies": {
-    "@enkaku/transport": "^0.9.1"
+    "@enkaku/transport": "^0.10.0"
   }
 }

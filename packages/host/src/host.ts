@@ -1,4 +1,4 @@
-import { type Disposer, createDisposer } from '@enkaku/async'
+import { Disposer } from '@enkaku/async'
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 import { type ClientTransport, ContextClient } from '@mokei/context-client'
 import type { CallToolResult, Tool } from '@mokei/context-protocol'
@@ -26,8 +26,9 @@ export type ContextTool = {
   allow?: AllowToolCalls
 }
 
-export type HostedContext = Disposer & {
+export type HostedContext = {
   client: ContextClient
+  disposer: Disposer
   tools: Array<ContextTool>
 }
 
@@ -38,37 +39,26 @@ export async function createHostedContext(
   const { childProcess, streams } = await spawnContextServer(command, args)
   const transport = new NodeStreamsTransport({ streams }) as ClientTransport
   const client = new ContextClient({ transport })
-  const disposer = createDisposer(async () => {
-    await transport.dispose()
-    childProcess.kill()
+  const disposer = new Disposer({
+    dispose: async () => {
+      await transport.dispose()
+      childProcess.kill()
+    },
   })
-  return { ...disposer, client, tools: [] }
+  return { client, disposer, tools: [] }
 }
 
-export class ContextHost implements Disposer {
+export class ContextHost extends Disposer {
+  /** @internal */
   _contexts: Record<string, HostedContext> = {}
-  #disposer: Disposer
-
-  constructor() {
-    this.#disposer = createDisposer(async () => {
-      this._runDispose()
-    })
-  }
 
   get contexts(): Record<string, HostedContext> {
     return this._contexts
   }
 
-  get disposed(): Promise<void> {
-    return this.#disposer.disposed
-  }
-
-  async _runDispose(): Promise<void> {
+  /** @internal */
+  async _dispose(): Promise<void> {
     await Promise.all(Object.keys(this._contexts).map((key) => this.remove(key)))
-  }
-
-  async dispose(): Promise<void> {
-    await this.#disposer.dispose()
   }
 
   getContextKeys(): Array<string> {
@@ -118,7 +108,7 @@ export class ContextHost implements Disposer {
       return
     }
 
-    await ctx.dispose()
+    await ctx.disposer.dispose()
     delete this._contexts[key]
   }
 
