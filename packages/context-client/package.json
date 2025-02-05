@@ -29,7 +29,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "^0.10.0",
+    "@enkaku/async": "^0.10.1",
     "@enkaku/node-streams-transport": "^0.10.0",
     "@enkaku/schema": "^0.10.0",
     "@enkaku/stream": "^0.10.0",

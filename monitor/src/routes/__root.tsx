@@ -1,7 +1,6 @@
 import '@mantine/core/styles.css'
 import {
   AppShell,
-  Box,
   Group,
   Image,
   type MantineColorsTuple,
@@ -15,7 +14,7 @@ import { TanStackRouterDevtools } from '@tanstack/router-devtools'
 import { Provider as JotaiProvider } from 'jotai'
 
 import { EnkakuProvider } from '../enkaku/Provider.js'
-import { createClient } from '../host/client.js'
+import { type HostClient, createHostClient } from '../host/client.js'
 
 const blueColor: MantineColorsTuple = [
   '#ebfbfe',
@@ -36,14 +35,16 @@ const theme = createTheme({
   },
 })
 
+function createClient(): HostClient {
+  return createHostClient(import.meta.env.VITE_API_URL || `${window.location.origin}/api`)
+}
+
 export const Route = createRootRoute({
   component: () => {
-    const client = createClient(import.meta.env.VITE_API_URL || `${window.location.origin}/api`)
-
     return (
       <JotaiProvider>
         <MantineProvider theme={theme}>
-          <EnkakuProvider<Protocol> client={client}>
+          <EnkakuProvider<Protocol> createClient={createClient}>
             <AppShell header={{ height: 60 }} padding="md">
               <AppShell.Header style={{ backgroundColor: '#04809d' }}>
                 <Group p="10px" align="center">

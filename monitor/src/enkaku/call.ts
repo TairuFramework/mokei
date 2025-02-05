@@ -1,5 +1,9 @@
-import type { RequestCall } from '@enkaku/client'
+import type { Client, RequestCall } from '@enkaku/client'
+import type { ProtocolDefinition } from '@enkaku/protocol'
+
 import { useEffect, useMemo, useRef, useState } from 'react'
+
+import { useEnvironment } from './context.js'
 
 export function useCallKey(procedure: string, param?: unknown): string {
   return useMemo(() => `${procedure}:${param ? JSON.stringify(param) : ''}`, [param, procedure])
@@ -11,36 +15,64 @@ export type CallState<Result, Call extends RequestCall<Result>> =
   | { status: 'error'; key: string; error: unknown }
   | { status: 'result'; key: string; result: Result }
 
-export function useCallState<Result, Call extends RequestCall<Result>>(
-  key: string,
-  executeCall: () => Call,
-): CallState<Result, Call> {
+export function useCallState<
+  Protocol extends ProtocolDefinition,
+  Result,
+  Call extends RequestCall<Result>,
+>(key: string, executeCall: (client: Client<Protocol>) => Call): CallState<Result, Call> {
+  const env = useEnvironment<Protocol>()
+  const clientRef = useRef<Client<Protocol> | null>(null)
   const [state, setState] = useState<CallState<Result, Call>>({ status: 'idle', key })
 
   useEffect(() => {
-    if (key === state.key) {
-      if (state.status === 'idle') {
-        const call = executeCall()
-        setState({ status: 'active', key, call })
-        call
-          .then((result) => {
-            if (key === state.key) {
-              setState({ status: 'result', key, result })
-            }
-          })
-          .catch((error) => {
-            if (key === state.key) {
-              setState({ status: 'error', key, error })
-            }
-          })
+    if (key !== state.key) {
+      // Key changed: abort active call and reset to idle
+      if (state.status === 'active') {
+        state.call.abort()
       }
-    } else {
+      setState({ status: 'idle', key })
+      return
+    }
+
+    if (env.status === 'disconnected') {
+      // Client disconnected: error if idle
+      if (state.status === 'idle') {
+        setState({
+          status: 'error',
+          key,
+          error: new Error('Client disconnected'),
+        })
+      }
+      return
+    }
+
+    const { client } = env
+    if (clientRef.current !== client) {
+      // Client changed: abort active call and reset to idle
       if (state.status === 'active') {
         state.call.abort()
       }
       setState({ status: 'idle', key })
     }
-  }, [executeCall, key, state])
+
+    if (state.status === 'idle') {
+      // Client available and idle: start call
+      clientRef.current = client
+      const call = executeCall(client)
+      setState({ status: 'active', key, call })
+      call
+        .then((result) => {
+          if (key === state.key) {
+            setState({ status: 'result', key, result })
+          }
+        })
+        .catch((error) => {
+          if (key === state.key) {
+            setState({ status: 'error', key, error })
+          }
+        })
+    }
+  }, [env, executeCall, key, state])
 
   return state
 }

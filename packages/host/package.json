@@ -29,8 +29,8 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "^0.10.0",
-    "@enkaku/client": "^0.10.0",
+    "@enkaku/async": "^0.10.1",
+    "@enkaku/client": "^0.10.2",
     "@enkaku/node-streams-transport": "^0.10.0",
     "@enkaku/server": "^0.10.0",
     "@enkaku/socket-transport": "^0.10.0",

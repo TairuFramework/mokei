@@ -3,24 +3,22 @@ import type { HostEvent } from '@mokei/host-protocol'
 import { useAtom } from 'jotai'
 import { useEffect, useRef } from 'react'
 
-import { useClient } from './host/hooks.js'
+import { useEventsStream } from './host/hooks.js'
 import { hostEventsAtom, hostEventsCallAtom } from './state.js'
 
 export function useHostEvents(): Array<HostEvent> {
-  const client = useClient()
+  const call = useEventsStream()
+
   const [events, setEvents] = useAtom(hostEventsAtom)
   const [stored, setStored] = useAtom(hostEventsCallAtom)
   const callRef = useRef<StreamCall<HostEvent, void> | null>(null)
 
   useEffect(() => {
-    if (stored.call === null && callRef.current === null) {
-      console.log('creating new host events stream')
-      const call = client.createStream('events') as StreamCall<HostEvent, void>
-      call.catch((err) => {
-        console.log('error from host events stream', err)
-      })
-      callRef.current = call
+    if (stored.call === null && call != null) {
       setStored({ call })
+    }
+    if (call != null && callRef.current !== call) {
+      callRef.current = call
       call.readable.pipeTo(
         new WritableStream({
           write(event) {
@@ -30,7 +28,7 @@ export function useHostEvents(): Array<HostEvent> {
         }),
       )
     }
-  }, [client, setEvents, setStored, stored])
+  }, [call, setEvents, setStored, stored])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: only on unmount
   useEffect(() => {

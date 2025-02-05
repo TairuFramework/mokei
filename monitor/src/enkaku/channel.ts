@@ -2,7 +2,6 @@ import type { ChannelCall, ClientDefinitionsType } from '@enkaku/client'
 import type { ProtocolDefinition } from '@enkaku/protocol'
 
 import { type CallState, useCallKey, useCallState } from './call.js'
-import { useContext } from './context.js'
 
 export type ChannelConfig<
   Protocol extends ProtocolDefinition,
@@ -21,10 +20,12 @@ export function useChannelState<
 >(
   config: ChannelConfig<Protocol, Definitions, Procedure, T>,
 ): CallState<T['Result'], ChannelCall<T['Receive'], T['Send'], T['Result']>> {
-  const client = useContext<Protocol>().client
   const key = useCallKey(config.procedure, config.param)
-  return useCallState<T['Result'], ChannelCall<T['Receive'], T['Send'], T['Result']>>(key, () => {
-    // @ts-ignore param type check
-    return client.createChannel<Procedure, T>(config.procedure, { param: config.param })
-  })
+  return useCallState<Protocol, T['Result'], ChannelCall<T['Receive'], T['Send'], T['Result']>>(
+    key,
+    (client) => {
+      // @ts-ignore param type check
+      return client.createChannel<Procedure, T>(config.procedure, { param: config.param })
+    },
+  )
 }
