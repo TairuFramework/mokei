@@ -10,11 +10,20 @@ import {
 } from '@mantine/core'
 import type { Protocol } from '@mokei/host-protocol'
 import { Outlet, createRootRoute } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/router-devtools'
 import { Provider as JotaiProvider } from 'jotai'
+import { Suspense, lazy } from 'react'
 
 import { EnkakuProvider } from '../enkaku/Provider.js'
 import { type HostClient, createHostClient } from '../host/client.js'
+
+const TanStackRouterDevtools =
+  process.env.NODE_ENV === 'production'
+    ? () => null // Render nothing in production
+    : lazy(() => {
+        return import('@tanstack/router-devtools').then((res) => ({
+          default: res.TanStackRouterDevtools,
+        }))
+      })
 
 const blueColor: MantineColorsTuple = [
   '#ebfbfe',
@@ -66,7 +75,9 @@ export const Route = createRootRoute({
             </AppShell>
           </EnkakuProvider>
         </MantineProvider>
-        <TanStackRouterDevtools />
+        <Suspense>
+          <TanStackRouterDevtools />
+        </Suspense>
       </JotaiProvider>
     )
   },

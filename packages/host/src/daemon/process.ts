@@ -19,4 +19,12 @@ const socketPath = args.values.path as string
 if (existsSync(socketPath)) {
   rmSync(socketPath)
 }
-await startServer({ socketPath })
+const server = await startServer({
+  socketPath,
+  shutdown: () => {
+    server.close()
+    if (existsSync(socketPath)) {
+      rmSync(socketPath)
+    }
+  },
+})

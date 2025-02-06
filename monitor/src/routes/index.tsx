@@ -13,12 +13,11 @@ import {
 import type { HostEvent } from '@mokei/host-protocol'
 import { createFileRoute } from '@tanstack/react-router'
 import { DateTime } from 'luxon'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import EventBadge from '../components/EventBadge.js'
 import { useEnvironment } from '../enkaku/context.js'
 import { useHostEvents } from '../hooks.js'
-import { useHostInfo } from '../host/hooks.js'
 
 function getEventTime(event: HostEvent): string {
   return DateTime.fromMillis(event.meta.time).toLocaleString(DateTime.TIME_24_WITH_SECONDS)
@@ -118,17 +117,7 @@ function EventDetails({ event }: { event: HostEvent }) {
 
 function HomePage() {
   const env = useEnvironment()
-
-  const hostInfo = useHostInfo()
-  useEffect(() => {
-    if (hostInfo != null) {
-      console.log('host info', hostInfo)
-    }
-  }, [hostInfo])
-
   const events = useHostEvents()
-  console.log('host events from hook', events)
-
   const [displayEventDetails, setDisplayEventDetails] = useState<HostEvent | null>(null)
 
   const eventRows = useMemo(() => {

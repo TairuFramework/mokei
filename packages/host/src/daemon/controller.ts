@@ -1,4 +1,4 @@
-import { openSync } from 'node:fs'
+import { openSync, rmSync } from 'node:fs'
 import { setTimeout } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { Client } from '@enkaku/client'
@@ -43,12 +43,17 @@ export async function spawnDaemon(options: DaemonOptions = {}): Promise<void> {
 }
 
 export async function runDaemon(options: DaemonOptions = {}): Promise<HostClient> {
+  const socketPath = options.socketPath ?? DEFAULT_SOCKET_PATH
   try {
-    return await createClient(options.socketPath)
+    return await createClient(socketPath)
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ECONNREFUSED' || code === 'ENOENT') {
+      if (code === 'ECONNREFUSED') {
+        rmSync(socketPath)
+      }
       await spawnDaemon(options)
-      return await createClient(options.socketPath)
+      return await createClient(socketPath)
     }
     throw err
   }

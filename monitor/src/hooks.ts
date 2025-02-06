@@ -22,24 +22,12 @@ export function useHostEvents(): Array<HostEvent> {
       call.readable.pipeTo(
         new WritableStream({
           write(event) {
-            console.log('event from host', event)
             setEvents((events) => [...events, event])
           },
         }),
       )
     }
   }, [call, setEvents, setStored, stored])
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only on unmount
-  useEffect(() => {
-    console.log('unmounting host events')
-
-    // if (callRef.current != null) {
-    //   callRef.current.abort()
-    //   setStored({ call: null })
-    //   callRef.current = null
-    // }
-  }, [])
 
   return events
 }

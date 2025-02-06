@@ -1,7 +1,7 @@
-# Mokei MCP server
+# Mokei SQlite MCP server
 
 ## Installation
 
 ```sh
-npm install @mokei/context-server
+npm install @mokei/mcp-sqlite
 ```

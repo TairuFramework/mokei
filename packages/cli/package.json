@@ -8,19 +8,16 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
-  "files": ["/bin", "/lib", "/oclif.manifest.json"],
+  "main": "dist/index.js",
+  "files": ["/bin", "/dist", "/oclif.manifest.json"],
   "bin": {
     "mokei": "./bin/run.js"
   },
   "scripts": {
     "mokei": "./bin/dev.js",
-    "build:clean": "del lib",
-    "build:js": "swc src -d ./lib --config-file ../../swc.json --strip-leading-paths",
+    "build:clean": "del dist",
+    "build:js": "swc src -d ./dist --config-file ../../swc.json --strip-leading-paths",
     "build": "pnpm run build:clean && pnpm run test:types && pnpm run build:js",
-    "postpack": "del oclif.manifest.json",
-    "posttest": "pnpm run lint",
     "prepack": "oclif manifest && oclif readme",
     "test:types": "tsc --noEmit --skipLibCheck",
     "test:unit": "OCLIF_TEST_ROOT=. node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
@@ -30,8 +27,8 @@
   "oclif": {
     "bin": "mokei",
     "dirname": "mokei",
-    "commands": "./lib/commands",
-    "plugins": ["@oclif/plugin-help", "@oclif/plugin-plugins"],
+    "commands": "./dist/commands",
+    "plugins": ["@oclif/plugin-help"],
     "topicSeparator": " ",
     "topics": {}
   },

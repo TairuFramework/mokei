@@ -15,9 +15,10 @@
   "exports": {
     ".": "./lib/index.js"
   },
-  "files": ["lib/*"],
+  "files": ["dist/*", "lib/*"],
   "sideEffects": false,
   "scripts": {
+    "app:copy": "del dist && cp -r ../../monitor/dist ./dist",
     "build:clean": "del lib",
     "build:js": "swc src -d ./lib --config-file ../../swc.json --strip-leading-paths",
     "build:types": "tsc --emitDeclarationOnly --skipLibCheck",
@@ -26,7 +27,7 @@
     "test:types": "tsc --noEmit",
     "test:unit": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
     "test": "pnpm run test:types && pnpm run test:unit",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm run app:copy && pnpm run build"
   },
   "dependencies": {
     "@enkaku/async": "^0.10.1",

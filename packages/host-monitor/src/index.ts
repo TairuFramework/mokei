@@ -10,10 +10,12 @@
  * @module host-monitor
  */
 
+import { relative } from 'node:path'
 import { Disposer, defer } from '@enkaku/async'
 import { createServerBridge } from '@enkaku/http-server-transport'
 import { connectSocket, createTransportStream } from '@enkaku/socket-transport'
 import { type ServerType, serve } from '@hono/node-server'
+import { serveStatic } from '@hono/node-server/serve-static'
 import { DEFAULT_SOCKET_PATH, type Protocol } from '@mokei/host-protocol'
 import getPort from 'get-port'
 import { Hono } from 'hono'
@@ -36,8 +38,9 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
 
   const app = new Hono()
   app.all('/api', (ctx) => serverBridge.handleRequest(ctx.req.raw))
+  app.use('/*', serveStatic({ root: `${relative(process.cwd(), import.meta.dirname)}/../dist` }))
 
-  const port = await getPort({ port: params.port ?? 3001 })
+  const port = await getPort({ port: params.port })
   const server = serve({ fetch: app.fetch, port })
   const serverClosed = defer<void>()
   server.on('close', () => {

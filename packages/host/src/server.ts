@@ -19,6 +19,7 @@ type HandlersContext = {
   activeContexts: Record<string, ActiveContextInfo>
   events: EventTarget
   startedTime: number
+  shutdown?: () => void | Promise<void>
 }
 
 function createEventMeta(contextID: string): HostEventMeta {
@@ -29,6 +30,7 @@ function createHandlers({
   activeContexts,
   events,
   startedTime,
+  shutdown,
 }: HandlersContext): ProcedureHandlers<Protocol> {
   return {
     events: (ctx) => {
@@ -51,7 +53,7 @@ function createHandlers({
     },
     info: () => ({ activeContexts, startedTime }),
     shutdown: async () => {
-      // TODO: shutdown all spawned processes
+      await shutdown?.()
     },
     spawn: async (ctx) => {
       const contextID = randomUUID()
@@ -119,9 +121,9 @@ function serveSocket(socket: Socket, context: HandlersContext): void {
   })
 }
 
-// TODO: add shutdown handler to kill the process when running as daemon
 export type ServerParams = {
   socketPath?: string
+  shutdown?: () => void | Promise<void>
 }
 
 export function startServer(params: ServerParams = {}): Promise<Server> {
@@ -131,6 +133,7 @@ export function startServer(params: ServerParams = {}): Promise<Server> {
     activeContexts: {},
     events: new EventTarget(),
     startedTime: Date.now(),
+    shutdown: params.shutdown,
   }
   const server = createServer((socket) => {
     serveSocket(socket, context)

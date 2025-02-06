@@ -22,7 +22,7 @@ export default class ContextMonitor extends Command {
     const { flags } = await this.parse(ContextMonitor)
 
     await runDaemon({ socketPath: flags.path })
-    const monitor = await startMonitor({ port: flags.port ?? 3001, socketPath: flags.path })
+    const monitor = await startMonitor({ port: flags.port, socketPath: flags.path })
     const url = `http://localhost:${monitor.port}/`
     loader.succeed(`Monitor running on ${c.cyan(url)}`)
 
