@@ -1,1 +1,0 @@
-{"root":["./src/fs.ts","./src/index.ts","./src/local.ts","./src/mcp.ts","./src/commands/local/chat.ts","./src/commands/local/generate.ts","./src/commands/mcp/run.ts"],"version":"5.7.2"}
