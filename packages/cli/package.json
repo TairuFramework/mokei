@@ -1,7 +1,8 @@
 {
   "name": "mokei",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
+  "homepage": "https://mokei.dev",
   "description": "Mokei CLI",
   "keywords": ["model", "context", "protocol", "mcp", "llm", "ai", "cli"],
   "type": "module",
@@ -16,8 +17,8 @@
   "scripts": {
     "mokei": "./bin/dev.js",
     "build:clean": "del dist",
-    "build:js": "swc src -d ./dist --config-file ../../swc.json --strip-leading-paths",
-    "build": "pnpm run build:clean && pnpm run test:types && pnpm run build:js",
+    "build:dist": "swc src -d ./dist --config-file ../../swc.json --strip-leading-paths",
+    "build": "pnpm run build:clean && pnpm run test:types && pnpm run build:dist",
     "prepack": "oclif manifest && oclif readme",
     "test:types": "tsc --noEmit --skipLibCheck",
     "test:unit": "OCLIF_TEST_ROOT=. node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",

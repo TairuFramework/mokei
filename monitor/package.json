@@ -15,8 +15,8 @@
     "@mantine/hooks": "^7.16.2",
     "@mokei/host-protocol": "workspace:^",
     "@tabler/icons-react": "^3.29.0",
-    "@tanstack/react-router": "^1.99.8",
-    "@tanstack/react-virtual": "^3.12.0",
+    "@tanstack/react-router": "^1.99.9",
+    "@tanstack/react-virtual": "^3.13.0",
     "jotai": "^2.11.3",
     "luxon": "^3.5.0",
     "react": "^19.0.0",
@@ -26,8 +26,8 @@
     "@enkaku/protocol": "^0.10.0",
     "@enkaku/schema": "^0.10.0",
     "@mokei/context-protocol": "workspace:^",
-    "@tanstack/router-devtools": "^1.99.8",
-    "@tanstack/router-plugin": "^1.99.8",
+    "@tanstack/router-devtools": "^1.99.9",
+    "@tanstack/router-plugin": "^1.99.11",
     "@types/luxon": "^3.4.2",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
@@ -38,6 +38,6 @@
     "postcss-simple-vars": "^7.0.1",
     "typescript": "~5.7.3",
     "vite": "^6.1.0",
-    "vite-bundle-analyzer": "^0.16.3"
+    "vite-bundle-analyzer": "^0.17.0"
   }
 }

@@ -1,7 +1,8 @@
 {
   "name": "@mokei/host-monitor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
+  "homepage": "https://mokei.dev",
   "description": "Mokei Host monitor",
   "keywords": ["model", "context", "protocol", "mcp", "llm", "ai"],
   "repository": {
@@ -36,6 +37,6 @@
     "@hono/node-server": "^1.13.8",
     "@mokei/host-protocol": "workspace:^",
     "get-port": "^7.1.0",
-    "hono": "^4.6.20"
+    "hono": "^4.7.0"
   }
 }

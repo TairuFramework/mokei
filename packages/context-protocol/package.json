@@ -1,7 +1,8 @@
 {
   "name": "@mokei/context-protocol",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
+  "homepage": "https://mokei.dev",
   "description": "Mokei MCP constants, schemas and types",
   "keywords": ["model", "context", "protocol", "mcp", "llm", "ai"],
   "repository": {

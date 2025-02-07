@@ -1,0 +1,39 @@
+{
+  "$schema": "https://typedoc-plugin-markdown.org/schema.json",
+  "extends": ["../tsconfig.build.json"],
+  "include": ["../packages/*/src"],
+  "compilerOptions": {
+    "jsx": "preserve",
+    "lib": ["DOM", "ES2020"],
+    "skipLibCheck": true
+  },
+  "typedocOptions": {
+    "name": "Mokei APIs",
+    "entryPoints": [
+      "../packages/context-client",
+      "../packages/context-protocol",
+      "../packages/context-server",
+      "../packages/host",
+      "../packages/host-monitor",
+      "../packages/host-protocol"
+    ],
+    "entryPointStrategy": "packages",
+    "packageOptions": {
+      "disableSources": true,
+      "skipErrorChecking": true,
+      "entryFileName": "index",
+      "entryPoints": ["src/index.ts"],
+      "excludeExternals": true,
+      "excludeInternal": true,
+      "readme": "none"
+    },
+    "plugin": ["typedoc-plugin-markdown"],
+    "out": "docs/api",
+    "readme": "none",
+    "entryFileName": "index",
+    "excludeScopesInPaths": true,
+    "membersWithOwnFile": [],
+    "hideBreadcrumbs": true,
+    "hidePageHeader": true
+  }
+}

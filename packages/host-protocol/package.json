@@ -1,7 +1,8 @@
 {
   "name": "@mokei/host-protocol",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
+  "homepage": "https://mokei.dev",
   "description": "Mokei Host protocol",
   "keywords": ["model", "context", "protocol", "mcp", "llm", "ai"],
   "repository": {

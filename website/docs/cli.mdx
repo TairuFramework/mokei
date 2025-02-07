@@ -1,0 +1,73 @@
+import Tabs from '@theme/Tabs'
+import TabItem from '@theme/TabItem'
+
+# Mokei CLI
+
+## Installation
+
+<Tabs groupId="package-manager">
+  <TabItem value="npm" label="npm" default>
+    
+    ```sh
+    npm install -g mokei
+    ```
+
+  </TabItem>
+  <TabItem value="pnpm">
+  
+    ```sh
+    pnpm add -g mokei
+    ```
+  
+  </TabItem>
+</Tabs>
+
+## Commands
+
+### `mokei chat ollama`
+
+Interactive chat with a local model using [Ollama](https://ollama.com/).
+
+Usage: `mokei chat ollama --model "llama3.1:8b"`
+
+#### Flags
+
+- `--api-url`: URL of the Ollama API, if not provided the default URL will be used
+- `--model`: model identifier, if not provided it will be prompted when needed
+
+### `mokei context inspect <COMMAND> -- <ARGS...>`
+
+Spawns a local MCP server and run an [`inspect` request](https://spec.modelcontextprotocol.io/specification/2024-11-05/basic/lifecycle/#initialization) on it.
+
+Usage: `mokei context inspect npx -- -y @modelcontextprotocol/server-filesystem ./`
+
+#### Arguments
+
+- `COMMAND`: the command to execute to start the MCP server (required)
+- `ARGS...`: arguments to pass to the command, following a `--` separator
+
+### `mokei context monitor`
+
+Start a local HTTP server to serve the monitor UI, allowing to track MCP client-server interactions using the proxy.
+
+Usage: `mokei context monitor --port 4000`
+
+#### Flags
+
+- `--path`: path to the socket used by the host daemon (optional)
+- `--port`: port the HTTP server should listen to (optional)
+
+### `mokei context proxy <COMMAND> -- <ARGS...>`
+
+Proxy a MCP server so it can be inspected using the monitor.
+
+Usage: `mokei context proxy npx -- -y @modelcontextprotocol/server-filesystem ./`
+
+#### Arguments
+
+- `COMMAND`: the command to execute to start the MCP server (required)
+- `ARGS...`: arguments to pass to the command, following a `--` separator
+
+#### Flags
+
+- `--path`: path to the socket used by the host daemon (optional)

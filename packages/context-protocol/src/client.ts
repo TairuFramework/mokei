@@ -72,6 +72,10 @@ export const clientResponse = {
 export type ClientResponse = FromSchema<typeof clientResponse>
 
 // Generic messages
+
+/**
+ * Any MCP client message.
+ */
 export const clientMessage = {
   anyOf: [
     pingRequest,

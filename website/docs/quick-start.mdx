@@ -1,0 +1,459 @@
+import Tabs from '@theme/Tabs'
+import TabItem from '@theme/TabItem'
+
+# Quick start
+
+This quick start guide presents how to:
+
+1. Create a simple MCP server allowing a LLM to interact with a local SQLite database, using [Node.js' SQLite module](https://nodejs.org/docs/latest/api/sqlite.html).
+1. Use the Mokei CLI to check the MCP server initialization.
+1. Use the Mokei Monitor to track MCP client-server interactions.
+1. Interact with the MCP server using the Mokei CLI or Claude Desktop.
+
+## Prerequisites
+
+### Environment
+
+This quick start guide requires using [Node.js](https://nodejs.org/en) v22.5.0+ and npm (included with Node.js) or an alternative package manager.
+
+### CLI
+
+<Tabs groupId="package-manager">
+  <TabItem value="npm" label="npm" default>
+    
+    ```sh
+    npm install -g mokei
+    ```
+
+  </TabItem>
+  <TabItem value="pnpm">
+  
+    ```sh
+    pnpm add -g mokei
+    ```
+  
+  </TabItem>
+</Tabs>
+
+### Packages
+
+All Mokei packages are available on the npm registry. See the [API documentation](./api.mdx) for an overview of the packages and installation instructions for each package.
+
+## Creating the server
+
+### Package setup
+
+First, let's create a new directory for the project, for example `mokei-quick-start`: 
+
+```sh
+mkdir mokei-quick-start && cd mokei-quick-start
+```
+
+Then, let's setup the Node project with a `package.json` and the `@mokei/context-server` library we are going to use:
+
+<Tabs groupId="package-manager">
+  <TabItem value="npm" label="npm" default>
+    
+    ```sh
+    npm init -y && npm install @mokei/context-server
+    ```
+
+  </TabItem>
+  <TabItem value="pnpm">
+  
+    ```sh
+    pnpm init && pnpm add @mokei/context-server
+    ```
+  
+  </TabItem>
+</Tabs>
+
+Finally, let's edit the `package.json` and add `"type": "module"` to support ESM:
+
+```json title="package.json" {5}
+{
+  "name": "mokei-quick-start",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@mokei/context-server": "^0.1.0"
+  }
+}
+```
+
+### Server implementation
+
+Now let's create the `index.js` file with the following imports:
+
+```js title="index.js"
+import { DatabaseSync } from 'node:sqlite'
+import { parseArgs } from 'node:util'
+import { serve } from '@mokei/context-server'
+```
+
+#### Creating the database
+
+In this step, we'll use the [`DatabaseSync` class](https://nodejs.org/docs/latest/api/sqlite.html#class-databasesync) and the [`parseArgs` function](https://nodejs.org/docs/latest/api/util.html#utilparseargsconfig) from Node.js to create a database using the path provided as an argument when starting the MCP server process using the `--db` flag, or only use an in-memory database by default:
+
+```js title="index.js (continued)"
+const args = parseArgs({
+  options: {
+    db: { type: 'string' },
+  },
+})
+const db = new DatabaseSync(args.values.db ?? ':memory:')
+```
+
+#### Tool schema
+
+In this step, we'll use a [JSON Schema](https://json-schema.org/) to define the API the LLM will be able to use to interact with the database:
+
+```js title="index.js (continued)"
+const toolInputSchema = {
+  type: 'object',
+  properties: {
+    sql: { type: 'string', description: 'A SQL string to compile to a prepared statement' },
+    parameters: {
+      type: 'object',
+      additionalProperties: {
+        anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'null' }],
+      },
+      description: 'An object of parameter values',
+    },
+  },
+  required: ['sql'],
+  additionalProperties: false,
+}
+```
+
+Our defined tool input is a JSON object containing two properties:
+
+- `sql`: the SQL statement string (required)
+- `parameters`: a JSON object containing the values of named parameters used in the statement, supported value types being `string`, `number` and `null`
+
+Providing a `description` to each property allows to provide information about how to use these properties to the LLM.
+
+#### Server specification
+
+Using our `toolInputSchema` defined above, we'll now define the full server specification, describing the API that our server will expose:
+
+```js title="index.js (continued)"
+const specification = {
+  tools: {
+    sqlite_all: {
+      description:
+        'This method executes a prepared statement and returns all results as an array of objects',
+      input: toolInputSchema,
+    },
+    sqlite_get: {
+      description:
+        'This method executes a prepared statement and returns the first result as an object',
+      input: toolInputSchema,
+    },
+    sqlite_run: {
+      description:
+        'This method executes a prepared statement and returns an object summarizing the resulting changes',
+      input: toolInputSchema,
+    },
+  },
+}
+```
+
+Here we define 3 tools, approximately matching some of the APIs provided by [Node.js' SQLite module](https://nodejs.org/docs/latest/api/sqlite.html).
+
+Each of these tools provides a `description` to inform the LLM about usage, as well as the `input` supported by the tool.
+
+#### MCP implementation
+
+Finally, we'll provide the implementation for the specification previously defined, and start the server to handle connections from MCP clients.
+
+The Mokei server and client libraries currently only support the Standard I/O transport.
+
+```js title="index.js (continued)"
+serve({
+  name: 'sqlite',
+  version: '0.1.0',
+  specification,
+  tools: {
+    sqlite_all: (ctx) => {
+      const results = db.prepare(ctx.input.sql).all(ctx.input.parameters ?? {})
+      return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
+    },
+    sqlite_get: (ctx) => {
+      const result = db.prepare(ctx.input.sql).get(ctx.input.parameters ?? {})
+      return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
+    },
+    sqlite_run: (ctx) => {
+      const changes = db.prepare(ctx.input.sql).run(ctx.input.parameters ?? {})
+      return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
+    },
+  },
+})
+```
+
+#### Full implementation
+
+This example server is available on npm as the `@mokei/mcp-sqlite` package, with its source code [available on GitHub](https://github.com/TairuFramework/mokei/tree/main/mcp-servers/sqlite).
+
+<details>
+  <summary>The full contents of the `index.js` file described in the above steps is also available here.</summary>
+
+```js title="index.js"
+import { DatabaseSync } from 'node:sqlite'
+import { parseArgs } from 'node:util'
+import { serve } from '@mokei/context-server'
+
+const args = parseArgs({
+  options: {
+    db: { type: 'string' },
+  },
+})
+const db = new DatabaseSync(args.values.db ?? ':memory:')
+
+const toolInputSchema = {
+  type: 'object',
+  properties: {
+    sql: { type: 'string', description: 'A SQL string to compile to a prepared statement' },
+    parameters: {
+      type: 'object',
+      additionalProperties: {
+        anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'null' }],
+      },
+      description: 'An object of parameter values',
+    },
+  },
+  required: ['sql'],
+  additionalProperties: false,
+}
+
+const specification = {
+  tools: {
+    sqlite_all: {
+      description:
+        'This method executes a prepared statement and returns all results as an array of objects',
+      input: toolInputSchema,
+    },
+    sqlite_get: {
+      description:
+        'This method executes a prepared statement and returns the first result as an object',
+      input: toolInputSchema,
+    },
+    sqlite_run: {
+      description:
+        'This method executes a prepared statement and returns an object summarizing the resulting changes',
+      input: toolInputSchema,
+    },
+  },
+}
+
+serve({
+  name: 'sqlite',
+  version: '0.1.0',
+  specification,
+  tools: {
+    sqlite_all: (ctx) => {
+      const results = db.prepare(ctx.input.sql).all(ctx.input.parameters ?? {})
+      return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
+    },
+    sqlite_get: (ctx) => {
+      const result = db.prepare(ctx.input.sql).get(ctx.input.parameters ?? {})
+      return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
+    },
+    sqlite_run: (ctx) => {
+      const changes = db.prepare(ctx.input.sql).run(ctx.input.parameters ?? {})
+      return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
+    },
+  },
+})
+```
+
+</details>
+
+## Inspecting the server
+
+Now that we have implemented a MCP server, let's see if we can interact with it!
+
+As a sanity check, we will use the Mokei CLI to simply run the [`initialize` request](https://spec.modelcontextprotocol.io/specification/2024-11-05/basic/lifecycle/#initialization) on the server to ensure the server can initialize as expected:
+
+```sh
+mokei context inspect node -- index.js
+```
+
+The terminal should display the following output:
+
+```sh
+✔ Initialized
+{
+  "capabilities": {},
+  "protocolVersion": "2024-11-05",
+  "serverInfo": {
+    "name": "sqlite",
+    "version": "0.1.0"
+  }
+}
+```
+
+## Starting the monitor
+
+To start a monitor, simply use the Mokei CLI to run a local HTTP server, optionally providing the `port` you want the server to listen on:
+
+```sh
+mokei context monitor --port 8000
+```
+
+Then open the URL in your Web browser, assuming the server is listening on port `8000`:
+
+```sh
+open http://localhost:8000
+```
+
+This should open your Web browser and display the monitor UI with a `Waiting for events...` message.
+
+## Interacting with the server
+
+In order to interact with our MCP server and view these interactions in the monitor, we need to proxy the server through the Mokei daemon.
+
+If your device supports running LLMs locally using [Ollama](https://ollama.com/), you can use the Mokei CLI to chat with the local model and provide it access to MCP servers. Otherwise, a client supporting MCP such as [Claude for Desktop](https://claude.ai/download) can be used.
+
+### Using Ollama via the Mokei CLI
+
+#### Prerequisites
+
+The following instructions assume you have [Ollama](https://ollama.com/) running locally and have pulled [a model supporting tools](https://ollama.com/search?c=tools).
+
+#### Start the interactive session
+
+Simply use the Mokei CLI to start a chat using Ollama:
+
+```sh
+mokei chat ollama
+```
+
+This should produce the following prompt:
+
+```sh
+? Select an action … 
+❯ End the session
+  Send a message
+  Add a context
+  Remove a context
+  Select tools to enable
+```
+
+#### Add the MCP server
+
+Select the `Add a context` option in the prompt:
+
+```sh
+❯ Add a context
+```
+
+Fill-in the prompts to add the context, here assuming you are running the Mokei CLI from the `mokei-quick-start` directory used in this guide:
+
+```sh
+✔ Context key (unique per session) · sqlite
+✔ MCP server command · node
+✔ MCP server arguments (comma separated) · index.js
+```
+
+If the client successfully connects to the server, it will display the list of tools available:
+
+```sh
+? Select tools to enable for context sqlite … 
+✔ sqlite_all: This method executes a prepared statement and returns all results as an array of objects
+✔ sqlite_get: This method executes a prepared statement and returns the first result as an object
+✔ sqlite_run: This method executes a prepared statement and returns an object summarizing the resulting changes
+```
+
+This prompt allows to select what tools should be enabled for the session, simply press enter here to continue with all tools enabled:
+
+```sh
+✔ Select tools to enable for context sqlite · sqlite:sqlite_all, sqlite:sqlite_get, sqlite:sqlite_run
+```
+
+Once the context has been added, the monitor UI in your Web browser should display a list of events describing the interactions between the client and server that happened during this setup.
+
+Back in the main prompt of the CLI, select the `Send a message` option in the prompt:
+
+```sh
+❯ Send a message
+```
+
+If you have not provided a model using the `--model` flag when running the `chat ollama` command, the next prompt should ask you to select a model, for example:
+
+```sh
+? Select a model … 
+❯ mistral-small:24b
+  deepseek-r1:8b
+  llama3.1:8b
+```
+
+Your should then be able to send a message:
+
+```sh
+? Your message ›  
+```
+
+You can try the following prompt for example:
+
+```txt
+Using the SQLite tool, create a simple key/value table
+```
+
+If your LLM handles the context as expected, the Mokei CLI should then ask for confirmation to execute a tool call requested by the LLM.
+
+Pressing `y` will allow the call to be executed on the MCP server, and the response from the server will be sent to the LLM, for example:
+
+```sh
+✔ Allow call of tool sqlite_run in context sqlite with arguments {"parameters":{},"sql":"CREATE TABLE IF NOT EXISTS keyValue (key TEXT PRIMARY KEY, value TEXT)"}? (y/N) · true
+
+ℹ Tool call accepted
+✔ Tool call successful, result: {"lastInsertRowid":0,"changes":0}
+```
+
+### Using Claude for Desktop with a Mokei proxy
+
+To use Claude for Desktop, start by following all the steps on the [MCP documentation website](https://modelcontextprotocol.io/quickstart/user) to ensure you have a working setup.
+
+Once your setup is working, edit the `claude_desktop_config.json` file to add your MCP server:
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "mokei",
+      "args": [
+        "context",
+        "proxy",
+        "node",
+        "--",
+        "/path/to/your/mokei-quick-start/index.js"
+      ]
+    }
+  }
+}
+```
+
+The (re)start Claude for Desktop and try interacting with your MCP server using a prompt such as:
+
+```txt
+Using the SQLite tool, create a simple key/value table
+```
+
+Claude for Desktop should ask for confirmation to call tools on your MCP server, and the Mokei monitor UI should display events for these interactions.
+
+## Next steps
+
+Congratulations! 🎉
+
+You have succesfully created and interacted with your first MCP server!
+
+Learn more about the [Mokei CLI](./cli.mdx) and [available libraries](./api.mdx).
