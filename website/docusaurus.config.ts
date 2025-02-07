@@ -89,6 +89,7 @@ const config: Config = {
           position: 'left',
           label: 'APIs',
         },
+        { label: 'Roadmap', to: '/roadmap' },
         {
           href: 'https://github.com/TairuFramework/mokei',
           label: 'GitHub',
@@ -127,10 +128,10 @@ const config: Config = {
         {
           title: 'More',
           items: [
-            // {
-            //   label: 'Blog',
-            //   to: '/blog',
-            // },
+            {
+              label: 'Roadmap',
+              to: '/roadmap',
+            },
             {
               label: 'GitHub',
               href: 'https://github.com/TairuFramework/mokei',
