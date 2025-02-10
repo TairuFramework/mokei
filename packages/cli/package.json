@@ -34,23 +34,23 @@
     "topics": {}
   },
   "dependencies": {
-    "@enkaku/async": "^0.10.1",
-    "@enkaku/client": "^0.10.2",
-    "@enkaku/node-streams-transport": "^0.10.0",
-    "@enkaku/protocol": "^0.10.0",
-    "@enkaku/schema": "^0.10.0",
-    "@enkaku/server": "^0.10.0",
-    "@enkaku/socket-transport": "^0.10.0",
-    "@enkaku/stream": "^0.10.0",
-    "@enkaku/transport": "^0.10.0",
+    "@enkaku/async": "^0.11.0",
+    "@enkaku/client": "^0.11.0",
+    "@enkaku/node-streams-transport": "^0.11.0",
+    "@enkaku/protocol": "^0.11.0",
+    "@enkaku/schema": "^0.11.0",
+    "@enkaku/server": "^0.11.0",
+    "@enkaku/socket-transport": "^0.11.0",
+    "@enkaku/stream": "^0.11.0",
+    "@enkaku/transport": "^0.11.0",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/host": "workspace:^",
     "@mokei/host-monitor": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "@oclif/core": "^4.2.6",
-    "@oclif/plugin-help": "^6.2.24",
-    "@oclif/plugin-plugins": "^5.4.30",
+    "@oclif/plugin-help": "^6.2.25",
+    "@oclif/plugin-plugins": "^5.4.31",
     "ansi-colors": "^4.1.3",
     "enquirer": "^2.4.1",
     "eventsource-parser": "^3.0.0",
@@ -60,7 +60,7 @@
   },
   "devDependencies": {
     "@oclif/test": "^4.1.9",
-    "oclif": "^4.17.25",
+    "oclif": "^4.17.27",
     "typescript": "^5.7.3"
   }
 }

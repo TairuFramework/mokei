@@ -33,6 +33,6 @@
     "@mokei/context-server": "workspace:^"
   },
   "devDependencies": {
-    "@enkaku/schema": "^0.10.0"
+    "@enkaku/schema": "^0.11.0"
   }
 }
