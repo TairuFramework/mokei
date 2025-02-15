@@ -1,10 +1,11 @@
 import { DirectTransports, type TransportType } from '@enkaku/transport'
-import {
-  type CallToolResult,
-  type ClientMessage,
-  type InitializeResult,
-  LATEST_PROTOCOL_VERSION,
-  type ServerMessage,
+import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
+import type {
+  CallToolResult,
+  ClientMessage,
+  GetPromptResult,
+  InitializeResult,
+  ServerMessage,
 } from '@mokei/context-protocol'
 
 import { ContextClient } from '../src/index.js'
@@ -55,36 +56,129 @@ describe('ContextClient', () => {
     await expect(initializedPromise).resolves.toEqual(DEFAULT_INITIALIZE_RESULT)
   })
 
-  test('calls tool', async () => {
-    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+  describe('supports prompt calls', () => {
+    test('lists available prompts', async () => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+      const client = new ContextClient({ transport: transports.client })
 
-    const client = new ContextClient<{
-      hello: { name: string }
-    }>({ transport: transports.client })
+      // Initialize the client
+      client.initialize()
+      await handleServerInitialize(transports.server)
 
-    // Initialize the client
-    client.initialize()
-    await handleServerInitialize(transports.server)
-
-    const callRequest = client.callTool('hello', { name: 'World' })
-    const incomingRequest = await transports.server.read()
-    expect(incomingRequest).toEqual({
-      done: false,
-      value: {
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'tools/call',
-        params: {
-          name: 'hello',
-          arguments: { name: 'World' },
+      const callRequest = client.listPrompts()
+      const incomingRequest = await transports.server.read()
+      expect(incomingRequest).toEqual({
+        done: false,
+        value: {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'prompts/list',
+          params: {},
         },
-      },
+      })
+
+      const prompts = [
+        { name: 'first', description: 'test', arguments: { type: 'object' } },
+        { name: 'second', description: 'test' },
+      ]
+      transports.server.write({ jsonrpc: '2.0', id: 1, result: { prompts } })
+      await expect(callRequest).resolves.toEqual(prompts)
     })
 
-    const result: CallToolResult = {
-      content: [{ type: 'text', text: 'hello World' }],
-    }
-    transports.server.write({ jsonrpc: '2.0', id: 1, result })
-    await expect(callRequest).resolves.toEqual(result)
+    test('gets a prompt', async () => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+
+      const client = new ContextClient<{
+        Prompts: { hello: { name: string } }
+      }>({ transport: transports.client })
+
+      // Initialize the client
+      client.initialize()
+      await handleServerInitialize(transports.server)
+
+      const callRequest = client.getPrompt('hello', { name: 'World' })
+      const incomingRequest = await transports.server.read()
+      expect(incomingRequest).toEqual({
+        done: false,
+        value: {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'prompts/get',
+          params: {
+            name: 'hello',
+            arguments: { name: 'World' },
+          },
+        },
+      })
+
+      const result: GetPromptResult = {
+        messages: [{ role: 'assistant', content: { type: 'text', text: 'Hello World!' } }],
+      }
+      transports.server.write({ jsonrpc: '2.0', id: 1, result })
+      await expect(callRequest).resolves.toEqual(result)
+    })
+  })
+
+  describe('supports tool calls', () => {
+    test('lists available tools', async () => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+      const client = new ContextClient({ transport: transports.client })
+
+      // Initialize the client
+      client.initialize()
+      await handleServerInitialize(transports.server)
+
+      const callRequest = client.listTools()
+      const incomingRequest = await transports.server.read()
+      expect(incomingRequest).toEqual({
+        done: false,
+        value: {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/list',
+          params: {},
+        },
+      })
+
+      const tools = [
+        { name: 'first', description: 'test', inputSchema: { type: 'object' } },
+        { name: 'second', description: 'test', inputSchema: { type: 'object' } },
+      ]
+      transports.server.write({ jsonrpc: '2.0', id: 1, result: { tools } })
+      await expect(callRequest).resolves.toEqual(tools)
+    })
+
+    test('calls a tool', async () => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+
+      const client = new ContextClient<{
+        Tools: { hello: { name: string } }
+      }>({ transport: transports.client })
+
+      // Initialize the client
+      client.initialize()
+      await handleServerInitialize(transports.server)
+
+      const callRequest = client.callTool('hello', { name: 'World' })
+      const incomingRequest = await transports.server.read()
+      expect(incomingRequest).toEqual({
+        done: false,
+        value: {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'hello',
+            arguments: { name: 'World' },
+          },
+        },
+      })
+
+      const result: CallToolResult = {
+        content: [{ type: 'text', text: 'hello World' }],
+      }
+      transports.server.write({ jsonrpc: '2.0', id: 1, result })
+      await expect(callRequest).resolves.toEqual(result)
+    })
   })
 })

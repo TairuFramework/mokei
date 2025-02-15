@@ -18,9 +18,14 @@ export {
   clientMessage,
   createClientMessage,
 } from './client.js'
-export type { Implementation, InitializeResult } from './initialize.js'
+export type {
+  ClientCapabilities,
+  Implementation,
+  InitializeResult,
+  ServerCapabilities,
+} from './initialize.js'
 export type { ClientNotifications, ClientRequests, ServerNotifications } from './procedure.js'
-export type { GetPromptResult } from './prompt.js'
+export type { GetPromptRequest, GetPromptResult, Prompt, PromptArgument } from './prompt.js'
 export type {
   ListResourceTemplatesRequest,
   ListResourceTemplatesResult,

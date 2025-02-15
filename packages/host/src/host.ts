@@ -1,7 +1,13 @@
 import { Disposer } from '@enkaku/async'
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
-import { type ClientTransport, ContextClient } from '@mokei/context-client'
-import type { CallToolResult, Tool } from '@mokei/context-protocol'
+import {
+  type ClientRequest,
+  type ClientTransport,
+  ContextClient,
+  type ContextTypes,
+  type UnknownContextTypes,
+} from '@mokei/context-client'
+import type { CallToolResult, GetPromptResult, Tool } from '@mokei/context-protocol'
 
 import { spawnContextServer } from './spawn.js'
 
@@ -26,19 +32,19 @@ export type ContextTool = {
   allow?: AllowToolCalls
 }
 
-export type HostedContext = {
-  client: ContextClient
+export type HostedContext<T extends ContextTypes = UnknownContextTypes> = {
+  client: ContextClient<T>
   disposer: Disposer
   tools: Array<ContextTool>
 }
 
-export async function createHostedContext(
+export async function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
   command: string,
   args: Array<string> = [],
-): Promise<HostedContext> {
+): Promise<HostedContext<T>> {
   const { childProcess, streams } = await spawnContextServer(command, args)
   const transport = new NodeStreamsTransport({ streams }) as ClientTransport
-  const client = new ContextClient({ transport })
+  const client = new ContextClient<T>({ transport })
   const disposer = new Disposer({
     dispose: async () => {
       await transport.dispose()
@@ -65,12 +71,12 @@ export class ContextHost extends Disposer {
     return Object.keys(this._contexts)
   }
 
-  getContext(key: string): HostedContext {
+  getContext<T extends ContextTypes = UnknownContextTypes>(key: string): HostedContext<T> {
     const ctx = this._contexts[key]
     if (ctx == null) {
       throw new Error(`Context ${key} does not exist`)
     }
-    return ctx
+    return ctx as HostedContext<T>
   }
 
   setContextTools(key: string, tools: Array<ContextTool>): void {
@@ -112,11 +118,19 @@ export class ContextHost extends Disposer {
     delete this._contexts[key]
   }
 
-  async callTool(
+  getPrompt(
+    key: string,
+    name: string,
+    args: Record<string, unknown> = {},
+  ): ClientRequest<GetPromptResult> {
+    return this.getContext(key).client.getPrompt(name, args)
+  }
+
+  callTool(
     key: string,
     name: string,
     args: Record<string, unknown>,
-  ): Promise<CallToolResult> {
-    return await this.getContext(key).client.callTool(name, args)
+  ): ClientRequest<CallToolResult> {
+    return this.getContext(key).client.callTool(name, args)
   }
 }

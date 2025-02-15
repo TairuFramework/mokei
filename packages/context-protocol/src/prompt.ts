@@ -23,6 +23,7 @@ export const promptArgument = {
   required: ['name'],
   type: 'object',
 } as const satisfies Schema
+export type PromptArgument = FromSchema<typeof promptArgument>
 
 export const prompt = {
   description: 'A prompt or prompt template that the server offers.',
@@ -44,6 +45,7 @@ export const prompt = {
   required: ['name'],
   type: 'object',
 } as const satisfies Schema
+export type Prompt = FromSchema<typeof prompt>
 
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L1341
 export const promptMessage = {

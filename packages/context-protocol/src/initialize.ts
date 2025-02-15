@@ -37,6 +37,7 @@ export const clientCapabilities = {
   },
   type: 'object',
 } as const satisfies Schema
+export type ClientCapabilities = FromSchema<typeof clientCapabilities>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1734
 export const serverCapabilities = {
@@ -88,6 +89,7 @@ export const serverCapabilities = {
   },
   type: 'object',
 } as const satisfies Schema
+export type ServerCapabilities = FromSchema<typeof serverCapabilities>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L582
 export const implementation = {

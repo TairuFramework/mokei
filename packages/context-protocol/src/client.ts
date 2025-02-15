@@ -97,29 +97,73 @@ export const clientMessage = {
 } as const satisfies Schema
 export type ClientMessage = FromSchema<typeof clientMessage>
 
-export function createClientMessage(callTools?: Record<string, Schema>): Schema {
-  if (callTools == null) {
+export function toRequestParamsSchema(record: Record<string, Schema | undefined>): Array<Schema> {
+  return Object.entries(record).map(([name, argumentsSchema]) => {
+    return argumentsSchema
+      ? ({
+          type: 'object',
+          required: ['name', 'arguments'],
+          properties: {
+            name: { type: 'string', const: name },
+            arguments: argumentsSchema,
+          },
+        } as const satisfies Schema)
+      : ({
+          type: 'object',
+          required: ['name'],
+          properties: {
+            name: { type: 'string', const: name },
+          },
+        } as const satisfies Schema)
+  }) as Array<Schema>
+}
+
+export type CreateClientMessageOptions = {
+  callTools?: Record<string, Schema>
+  promptArguments?: Record<string, Schema | undefined>
+}
+
+export function createClientMessage(options: CreateClientMessageOptions = {}): Schema {
+  if (options.callTools == null && options.promptArguments == null) {
     return clientMessage
   }
 
-  // Validate params for supported tool calls
-  const callToolParams = Object.entries(callTools).map(([name, inputSchema]) => {
-    return {
-      type: 'object',
-      required: ['name'],
-      properties: {
-        name: { type: 'string', const: name },
-        arguments: inputSchema,
-      },
-    } as const satisfies Schema
-  })
+  const callToolParams = toRequestParamsSchema(options.callTools ?? {})
+  const customCallToolRequest =
+    callToolParams.length === 0
+      ? callToolRequest
+      : ({
+          type: 'object',
+          properties: {
+            method: { type: 'string', const: 'tools/call' },
+            params: callToolParams.length === 1 ? callToolParams[0] : { anyOf: callToolParams },
+          },
+          required: ['method', 'params'],
+        } as const satisfies Schema)
+
+  const promptArgumentsParams = toRequestParamsSchema(options.promptArguments ?? {})
+  const customGetPromptRequest =
+    promptArgumentsParams.length === 0
+      ? getPromptRequest
+      : ({
+          type: 'object',
+          properties: {
+            method: { type: 'string', const: 'prompts/get' },
+            params:
+              promptArgumentsParams.length === 1
+                ? promptArgumentsParams[0]
+                : { anyOf: promptArgumentsParams },
+          },
+          required: ['method', 'params'],
+        } as const satisfies Schema)
+
   return {
     anyOf: [
       pingRequest,
       initializeRequest,
       completeRequest,
       setLevelRequest,
-      getPromptRequest,
+      customGetPromptRequest,
       listPromptsRequest,
       listResourcesRequest,
       listResourceTemplatesRequest,
@@ -127,14 +171,7 @@ export function createClientMessage(callTools?: Record<string, Schema>): Schema 
       subscribeRequest,
       unsubscribeRequest,
       listToolsRequest,
-      {
-        type: 'object',
-        properties: {
-          method: { type: 'string', const: 'tools/call' },
-          params: { anyOf: callToolParams },
-        },
-        required: ['method', 'params'],
-      },
+      customCallToolRequest,
       clientNotification,
       clientResponse,
     ],

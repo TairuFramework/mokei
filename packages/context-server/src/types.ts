@@ -17,18 +17,18 @@ import type { PromptsDefinition, ToolsDefinition } from './definitions.js'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
-export type HandlerContext<C extends Record<string, unknown> = Record<string, never>> = C & {
+export type HandlerRequest<C extends Record<string, unknown> = Record<string, never>> = C & {
   signal: AbortSignal
 }
 
-export type PromptHandlerContext<ArgsSchema> = ArgsSchema extends Schema
-  ? HandlerContext<{ args: FromSchema<ArgsSchema> }>
-  : HandlerContext
+export type PromptHandlerRequest<ArgumentsSchema> = ArgumentsSchema extends Schema
+  ? HandlerRequest<{ arguments: FromSchema<ArgumentsSchema> }>
+  : HandlerRequest
 
 export type PromptHandlerReturn = GetPromptResult | Promise<GetPromptResult>
 
-export type PromptHandler<ArgsSchema> = (
-  context: PromptHandlerContext<ArgsSchema>,
+export type PromptHandler<ArgumentsSchema> = (
+  request: PromptHandlerRequest<ArgumentsSchema>,
 ) => PromptHandlerReturn
 
 export type ToPromptHandlers<Definition> = Definition extends PromptsDefinition
@@ -38,25 +38,25 @@ export type ToPromptHandlers<Definition> = Definition extends PromptsDefinition
 export type ResourceHandlers = {
   // TODO: accept harcoded list of Resource objects
   list: (
-    context: HandlerContext<{ params: ListResourcesRequest['params'] }>,
+    request: HandlerRequest<{ params: ListResourcesRequest['params'] }>,
   ) => ListResourcesResult | Promise<ListResourcesResult>
   // TODO: accept harcoded list of Resource objects
   listTemplates: (
-    context: HandlerContext<{ params: ListResourceTemplatesRequest['params'] }>,
+    request: HandlerRequest<{ params: ListResourceTemplatesRequest['params'] }>,
   ) => ListResourceTemplatesResult | Promise<ListResourcesResult>
   read: (
-    context: HandlerContext<{ params: ReadResourceRequest['params'] }>,
+    request: HandlerRequest<{ params: ReadResourceRequest['params'] }>,
   ) => ReadResourceResult | Promise<ReadResourceResult>
 }
 
-export type ToolHandlerContext<InputSchema> = InputSchema extends Schema
-  ? HandlerContext<{ input: FromSchema<InputSchema> }>
-  : HandlerContext
+export type ToolHandlerRequest<InputSchema> = InputSchema extends Schema
+  ? HandlerRequest<{ input: FromSchema<InputSchema> }>
+  : HandlerRequest
 
 export type ToolHandlerReturn = CallToolResult | Promise<CallToolResult>
 
 export type ToolHandler<InputSchema> = (
-  context: ToolHandlerContext<InputSchema>,
+  request: ToolHandlerRequest<InputSchema>,
 ) => ToolHandlerReturn
 
 export type ToToolHandlers<Definition> = Definition extends ToolsDefinition

@@ -1,20 +1,23 @@
 import { type Deferred, defer, lazy } from '@enkaku/async'
 import { createValidator } from '@enkaku/schema'
 import { createReadable } from '@enkaku/stream'
-import {
-  type CallToolResult,
-  type ClientMessage,
-  type ClientNotification,
-  type ClientNotifications,
-  type ClientRequests,
-  type ErrorResponse,
-  type InitializeResult,
-  LATEST_PROTOCOL_VERSION,
-  type RequestID,
-  type ServerNotification,
-  type ServerRequest,
-  type Tool,
-  serverMessage,
+import { LATEST_PROTOCOL_VERSION, serverMessage } from '@mokei/context-protocol'
+import type {
+  CallToolRequest,
+  CallToolResult,
+  ClientMessage,
+  ClientNotification,
+  ClientNotifications,
+  ClientRequests,
+  ErrorResponse,
+  GetPromptRequest,
+  GetPromptResult,
+  InitializeResult,
+  Prompt,
+  RequestID,
+  ServerNotification,
+  ServerRequest,
+  Tool,
 } from '@mokei/context-protocol'
 
 import { RPCError } from './error.js'
@@ -29,13 +32,21 @@ export type ClientRequest<Result> = Promise<Result> & {
   cancel: () => void
 }
 
+export type ContextTypes = {
+  Prompts?: Record<string, Record<string, unknown> | never>
+  Tools?: Record<string, Record<string, unknown>>
+}
+
+export type UnknownContextTypes = {
+  Prompts: Record<string, Record<string, unknown>>
+  Tools: Record<string, Record<string, unknown>>
+}
+
 export type ClientParams = {
   transport: ClientTransport
 }
 
-export class ContextClient<
-  Tools extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
-> {
+export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
   #controllers: Record<RequestID, RequestController<unknown>> = {}
   #initialized: PromiseLike<InitializeResult>
   #notificationController: ReadableStreamDefaultController<ServerNotification>
@@ -183,15 +194,27 @@ export class ContextClient<
     }) as ClientRequest<ClientRequests[Method]['Result']>
   }
 
+  async listPrompts(): Promise<Array<Prompt>> {
+    const list = await this.request('prompts/list', {})
+    return list.prompts
+  }
+
+  getPrompt<Name extends keyof T['Prompts'] & string>(
+    name: Name,
+    args: T['Prompts'][Name] extends undefined ? never : T['Prompts'][Name],
+  ): ClientRequest<GetPromptResult> {
+    return this.request('prompts/get', { name, arguments: args } as GetPromptRequest['params'])
+  }
+
   async listTools(): Promise<Array<Tool>> {
     const list = await this.request('tools/list', {})
     return list.tools
   }
 
-  async callTool<Name extends keyof Tools & string>(
+  callTool<Name extends keyof T['Tools'] & string>(
     name: Name,
-    args: Tools[Name],
-  ): Promise<CallToolResult> {
-    return await this.request('tools/call', { name, arguments: args })
+    args: T['Tools'][Name],
+  ): ClientRequest<CallToolResult> {
+    return this.request('tools/call', { name, arguments: args } as CallToolRequest['params'])
   }
 }

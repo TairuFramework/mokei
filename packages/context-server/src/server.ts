@@ -1,33 +1,39 @@
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 import { type Schema, type Validator, createValidator } from '@enkaku/schema'
 import {
-  type CallToolRequest,
-  type CallToolResult,
-  type ClientMessage,
-  type ClientNotification,
-  type ClientRequest,
   INVALID_REQUEST,
-  type Implementation,
-  type InitializeResult,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
-  type RequestID,
-  type ServerMessage,
-  type ServerResult,
-  type Tool,
   clientMessage,
   createClientMessage,
+} from '@mokei/context-protocol'
+import type {
+  CallToolRequest,
+  CallToolResult,
+  ClientMessage,
+  ClientNotification,
+  ClientRequest,
+  GetPromptRequest,
+  GetPromptResult,
+  Implementation,
+  InitializeResult,
+  Prompt,
+  RequestID,
+  ServerCapabilities,
+  ServerMessage,
+  ServerResult,
+  Tool,
 } from '@mokei/context-protocol'
 
 import type { SpecificationDefinition } from './definitions.js'
 import { RPCError, errorResponse } from './error.js'
 import type {
+  PromptHandler,
   ResourceHandlers,
   ServerTransport,
   ToPromptHandlers,
   ToToolHandlers,
   ToolHandler,
-  ToolHandlerContext,
 } from './types.js'
 
 export type ServerParams<Spec extends SpecificationDefinition> = {
@@ -48,7 +54,12 @@ function isRequestID(id: unknown): id is RequestID {
 }
 
 export class ContextServer<Spec extends SpecificationDefinition> {
+  #capabilities: ServerCapabilities = {}
   #serverInfo: Implementation
+  #promptHandlers: Spec['prompts'] extends Record<string, unknown>
+    ? ToPromptHandlers<Spec['prompts']>
+    : Record<string, never>
+  #promptsList: Array<Prompt> = []
   #toolHandlers: Spec['tools'] extends Record<string, unknown>
     ? ToToolHandlers<Spec['tools']>
     : Record<string, never>
@@ -58,15 +69,36 @@ export class ContextServer<Spec extends SpecificationDefinition> {
   constructor(params: ServerParams<Spec>) {
     this.#serverInfo = { name: params.name, version: params.version }
     // @ts-ignore type instantiation too deep
+    this.#promptHandlers = params.prompts ?? {}
+    // @ts-ignore type instantiation too deep
     this.#toolHandlers = params.tools ?? {}
+
+    const promptArguments: Record<string, Schema | undefined> = {}
+    for (const [name, prompt] of Object.entries(params.specification.prompts ?? {})) {
+      promptArguments[name] = prompt.arguments
+      this.#promptsList.push({
+        name,
+        description: prompt.description,
+        argumentsSchema: prompt.arguments,
+      })
+    }
+    if (this.#promptsList.length !== 0) {
+      this.#capabilities.prompts = {}
+    }
 
     const toolInputs: Record<string, Schema> = {}
     for (const [name, tool] of Object.entries(params.specification.tools ?? {})) {
       toolInputs[name] = tool.input
       this.#toolsList.push({ name, description: tool.description, inputSchema: tool.input })
     }
+    if (this.#toolsList.length !== 0) {
+      this.#capabilities.tools = {}
+    }
+
     this.#validator = createValidator(
-      this.#toolsList.length === 0 ? clientMessage : createClientMessage(toolInputs),
+      this.#promptsList.length === 0 && this.#toolsList.length === 0
+        ? clientMessage
+        : createClientMessage({ promptArguments, callTools: toolInputs }),
     )
 
     const transport =
@@ -149,17 +181,25 @@ export class ContextServer<Spec extends SpecificationDefinition> {
     const request = message as ClientRequest
     const controller = new AbortController()
     inflight[request.id] = controller
-    return await this.handleRequest(request, controller.signal)
+    const handledRequest = this.handleRequest(request, controller.signal)
+    handledRequest.finally(() => {
+      delete inflight[request.id]
+    })
+    return await handledRequest
   }
 
   async handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
     switch (request.method) {
       case 'initialize':
         return {
-          capabilities: {}, // TODO
+          capabilities: this.#capabilities,
           protocolVersion: LATEST_PROTOCOL_VERSION,
           serverInfo: this.#serverInfo,
         } satisfies InitializeResult
+      case 'prompts/get':
+        return await this.getPrompt(request, signal)
+      case 'prompts/list':
+        return { prompts: this.#promptsList }
       case 'tools/call':
         return await this.callTool(request, signal)
       case 'tools/list':
@@ -169,14 +209,20 @@ export class ContextServer<Spec extends SpecificationDefinition> {
     }
   }
 
-  callTool(request: CallToolRequest, signal: AbortSignal): Promise<CallToolResult> {
+  async callTool(request: CallToolRequest, signal: AbortSignal): Promise<CallToolResult> {
     const handler = this.#toolHandlers[request.params.name] as ToolHandler<Schema>
     if (handler == null) {
-      return Promise.reject(new Error(`Tool ${request.params.name} not found`))
+      throw new Error(`Tool ${request.params.name} not found`)
     }
+    return await handler({ input: request.params.arguments, signal })
+  }
 
-    const context = { input: request.params.arguments, signal } as ToolHandlerContext<Schema>
-    return Promise.resolve().then(() => handler(context))
+  async getPrompt(request: GetPromptRequest, signal: AbortSignal): Promise<GetPromptResult> {
+    const handler = this.#promptHandlers[request.params.name] as PromptHandler<Schema>
+    if (handler == null) {
+      throw new Error(`Prompt ${request.params.name} not found`)
+    }
+    return await handler({ arguments: request.params.arguments, signal })
   }
 }
 
