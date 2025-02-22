@@ -121,6 +121,131 @@ describe('ContextServer', () => {
     })
   })
 
+  describe('supports resource calls', () => {
+    test('lists available resources', async () => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+
+      serve({
+        name: 'test',
+        version: '0',
+        transport: transports.server,
+        resources: {
+          list: () => {
+            return {
+              resources: [
+                { name: 'foo', uri: 'test://foo' },
+                { name: 'bar', uri: 'test://bar' },
+              ],
+            }
+          },
+          listTemplates: () => ({ resourceTemplates: [] }),
+          read: () => ({ contents: [] }),
+        },
+      })
+
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'resources/list',
+      })
+
+      await expect(transports.client.read()).resolves.toEqual({
+        done: false,
+        value: {
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            resources: [
+              { name: 'foo', uri: 'test://foo' },
+              { name: 'bar', uri: 'test://bar' },
+            ],
+          },
+        },
+      })
+
+      await transports.dispose()
+    })
+
+    test('lists available resources templates', async () => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+
+      serve({
+        name: 'test',
+        version: '0',
+        transport: transports.server,
+        resources: {
+          list: () => ({ resources: [] }),
+          listTemplates: () => {
+            return {
+              resourceTemplates: [
+                { name: 'foo', uriTemplate: 'test://foo/{name}' },
+                { name: 'bar', uriTemplate: 'test://bar/{name}' },
+              ],
+            }
+          },
+          read: () => ({ contents: [] }),
+        },
+      })
+
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'resources/templates/list',
+      })
+
+      await expect(transports.client.read()).resolves.toEqual({
+        done: false,
+        value: {
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            resourceTemplates: [
+              { name: 'foo', uriTemplate: 'test://foo/{name}' },
+              { name: 'bar', uriTemplate: 'test://bar/{name}' },
+            ],
+          },
+        },
+      })
+
+      await transports.dispose()
+    })
+
+    test('reads a resources', async () => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+
+      serve({
+        name: 'test',
+        version: '0',
+        transport: transports.server,
+        resources: {
+          list: () => ({ resources: [] }),
+          listTemplates: () => ({ resourceTemplates: [] }),
+          read: ({ params }) => {
+            return { contents: [{ uri: params.uri, text: 'test resource' }] }
+          },
+        },
+      })
+
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'resources/read',
+        params: { uri: 'test://foo' },
+      })
+
+      await expect(transports.client.read()).resolves.toEqual({
+        done: false,
+        value: {
+          jsonrpc: '2.0',
+          id: 1,
+          result: { contents: [{ uri: 'test://foo', text: 'test resource' }] },
+        },
+      })
+
+      await transports.dispose()
+    })
+  })
+
   describe('supports tool calls', () => {
     test('lists available tools', async () => {
       const transports = new DirectTransports<ServerMessage, ClientMessage>()
@@ -149,8 +274,8 @@ describe('ContextServer', () => {
         } as const,
         transport: transports.server,
         tools: {
-          test: (ctx) => {
-            return { content: [{ type: 'text', text: `bar is ${ctx.input.bar}` }] }
+          test: (req) => {
+            return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
           },
           other: () => {
             return { content: [{ type: 'text', text: 'test' }] }
@@ -216,8 +341,8 @@ describe('ContextServer', () => {
         } as const,
         transport: transports.server,
         tools: {
-          test: (ctx) => {
-            return { content: [{ type: 'text', text: `bar is ${ctx.input.bar}` }] }
+          test: (req) => {
+            return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
           },
         },
       })

@@ -33,6 +33,7 @@ export const resource = {
   required: ['name', 'uri'],
   type: 'object',
 } as const satisfies Schema
+export type Resource = FromSchema<typeof resource>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1578
 export const resourceTemplate = {
@@ -66,6 +67,7 @@ export const resourceTemplate = {
   required: ['name', 'uriTemplate'],
   type: 'object',
 } as const satisfies Schema
+export type ResourceTemplate = FromSchema<typeof resourceTemplate>
 
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L917
 export const listResourcesRequest = {

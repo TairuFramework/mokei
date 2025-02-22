@@ -13,6 +13,8 @@ import type {
   ListResourceTemplatesResult,
   ListResourcesRequest,
   ListResourcesResult,
+  ReadResourceRequest,
+  ReadResourceResult,
   ResourceListChangedNotification,
 } from './resource.js'
 import type { CancelledNotification, PingRequest, ProgressNotification } from './rpc.js'
@@ -65,6 +67,11 @@ export type ClientRequests = {
     Method: ListResourcesRequest['method']
     Params: ListResourcesRequest['params']
     Result: ListResourcesResult
+  }
+  'resources/read': {
+    Method: ReadResourceRequest['method']
+    Params: ReadResourceRequest['params']
+    Result: ReadResourceResult
   }
   'resources/templates/list': {
     Method: ListResourceTemplatesRequest['method']

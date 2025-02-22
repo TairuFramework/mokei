@@ -33,6 +33,8 @@ export type {
   ListResourcesResult,
   ReadResourceRequest,
   ReadResourceResult,
+  Resource,
+  ResourceTemplate,
 } from './resource.js'
 export {
   type ErrorResponse,

@@ -119,6 +119,89 @@ describe('ContextClient', () => {
     })
   })
 
+  describe('supports resource calls', () => {
+    test('lists available resources', async () => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+      const client = new ContextClient({ transport: transports.client })
+
+      // Initialize the client
+      client.initialize()
+      await handleServerInitialize(transports.server)
+
+      const callRequest = client.listResources()
+      const incomingRequest = await transports.server.read()
+      expect(incomingRequest).toEqual({
+        done: false,
+        value: {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'resources/list',
+          params: {},
+        },
+      })
+
+      const resources = [
+        { name: 'foo', uri: 'test://foo' },
+        { name: 'bar', uri: 'test://bar' },
+      ]
+      transports.server.write({ jsonrpc: '2.0', id: 1, result: { resources } })
+      await expect(callRequest).resolves.toEqual(resources)
+    })
+
+    test('lists available resource templates', async () => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+      const client = new ContextClient({ transport: transports.client })
+
+      // Initialize the client
+      client.initialize()
+      await handleServerInitialize(transports.server)
+
+      const callRequest = client.listResourceTemplates()
+      const incomingRequest = await transports.server.read()
+      expect(incomingRequest).toEqual({
+        done: false,
+        value: {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'resources/templates/list',
+          params: {},
+        },
+      })
+
+      const resourceTemplates = [
+        { name: 'foo', uriTemplate: 'test://foo/{name}' },
+        { name: 'bar', uriTemplate: 'test://bar/{name}' },
+      ]
+      transports.server.write({ jsonrpc: '2.0', id: 1, result: { resourceTemplates } })
+      await expect(callRequest).resolves.toEqual(resourceTemplates)
+    })
+
+    test('reads a resource', async () => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+      const client = new ContextClient({ transport: transports.client })
+
+      // Initialize the client
+      client.initialize()
+      await handleServerInitialize(transports.server)
+
+      const callRequest = client.readResource({ uri: 'test://foo' })
+      const incomingRequest = await transports.server.read()
+      expect(incomingRequest).toEqual({
+        done: false,
+        value: {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'resources/read',
+          params: { uri: 'test://foo' },
+        },
+      })
+
+      const result = { contents: [{ uri: 'test://foo', text: 'test resource' }] }
+      transports.server.write({ jsonrpc: '2.0', id: 1, result })
+      await expect(callRequest).resolves.toEqual(result)
+    })
+  })
+
   describe('supports tool calls', () => {
     test('lists available tools', async () => {
       const transports = new DirectTransports<ServerMessage, ClientMessage>()

@@ -18,6 +18,7 @@ import type {
   Implementation,
   InitializeResult,
   Prompt,
+  ReadResourceRequest,
   RequestID,
   ServerCapabilities,
   ServerMessage,
@@ -39,7 +40,7 @@ import type {
 export type ServerParams<Spec extends SpecificationDefinition> = {
   name: string
   version: string
-  specification: Spec
+  specification?: Spec
   transport?: ServerTransport
   resources?: ResourceHandlers
 } & (Spec['prompts'] extends Record<string, unknown>
@@ -53,13 +54,14 @@ function isRequestID(id: unknown): id is RequestID {
   return typeof id === 'string' || typeof id === 'number'
 }
 
-export class ContextServer<Spec extends SpecificationDefinition> {
+export class ContextServer<Spec extends SpecificationDefinition = SpecificationDefinition> {
   #capabilities: ServerCapabilities = {}
   #serverInfo: Implementation
   #promptHandlers: Spec['prompts'] extends Record<string, unknown>
     ? ToPromptHandlers<Spec['prompts']>
     : Record<string, never>
   #promptsList: Array<Prompt> = []
+  #resources?: ResourceHandlers
   #toolHandlers: Spec['tools'] extends Record<string, unknown>
     ? ToToolHandlers<Spec['tools']>
     : Record<string, never>
@@ -70,11 +72,12 @@ export class ContextServer<Spec extends SpecificationDefinition> {
     this.#serverInfo = { name: params.name, version: params.version }
     // @ts-ignore type instantiation too deep
     this.#promptHandlers = params.prompts ?? {}
+    this.#resources = params.resources
     // @ts-ignore type instantiation too deep
     this.#toolHandlers = params.tools ?? {}
 
     const promptArguments: Record<string, Schema | undefined> = {}
-    for (const [name, prompt] of Object.entries(params.specification.prompts ?? {})) {
+    for (const [name, prompt] of Object.entries(params.specification?.prompts ?? {})) {
       promptArguments[name] = prompt.arguments
       this.#promptsList.push({
         name,
@@ -86,8 +89,12 @@ export class ContextServer<Spec extends SpecificationDefinition> {
       this.#capabilities.prompts = {}
     }
 
+    if (this.#resources != null) {
+      this.#capabilities.resources = {}
+    }
+
     const toolInputs: Record<string, Schema> = {}
-    for (const [name, tool] of Object.entries(params.specification.tools ?? {})) {
+    for (const [name, tool] of Object.entries(params.specification?.tools ?? {})) {
       toolInputs[name] = tool.input
       this.#toolsList.push({ name, description: tool.description, inputSchema: tool.input })
     }
@@ -200,13 +207,27 @@ export class ContextServer<Spec extends SpecificationDefinition> {
         return await this.getPrompt(request, signal)
       case 'prompts/list':
         return { prompts: this.#promptsList }
+      case 'resources/list':
+        if (this.#resources == null) {
+          break
+        }
+        return this.#resources.list({ params: request.params, signal })
+      case 'resources/read':
+        if (this.#resources == null) {
+          break
+        }
+        return this.#resources.read({ params: request.params, signal })
+      case 'resources/templates/list':
+        if (this.#resources == null) {
+          break
+        }
+        return this.#resources.listTemplates({ params: request.params, signal })
       case 'tools/call':
         return await this.callTool(request, signal)
       case 'tools/list':
         return { tools: this.#toolsList }
-      default:
-        throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
     }
+    throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
   }
 
   async callTool(request: CallToolRequest, signal: AbortSignal): Promise<CallToolResult> {

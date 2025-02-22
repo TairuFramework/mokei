@@ -14,7 +14,11 @@ import type {
   GetPromptResult,
   InitializeResult,
   Prompt,
+  ReadResourceRequest,
+  ReadResourceResult,
   RequestID,
+  Resource,
+  ResourceTemplate,
   ServerNotification,
   ServerRequest,
   Tool,
@@ -194,9 +198,17 @@ export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
     }) as ClientRequest<ClientRequests[Method]['Result']>
   }
 
-  async listPrompts(): Promise<Array<Prompt>> {
-    const list = await this.request('prompts/list', {})
-    return list.prompts
+  _requestValue<Method extends keyof ClientRequests, Value>(
+    method: Method,
+    params: ClientRequests[Method]['Params'],
+    getValue: (result: ClientRequests[Method]['Result']) => Value,
+  ): ClientRequest<Value> {
+    const request = this.request(method, params)
+    return Object.assign(request.then(getValue), { id: request.id, cancel: request.cancel })
+  }
+
+  listPrompts(): ClientRequest<Array<Prompt>> {
+    return this._requestValue('prompts/list', {}, (result) => result.prompts)
   }
 
   getPrompt<Name extends keyof T['Prompts'] & string>(
@@ -206,9 +218,20 @@ export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
     return this.request('prompts/get', { name, arguments: args } as GetPromptRequest['params'])
   }
 
-  async listTools(): Promise<Array<Tool>> {
-    const list = await this.request('tools/list', {})
-    return list.tools
+  listResources(): ClientRequest<Array<Resource>> {
+    return this._requestValue('resources/list', {}, (result) => result.resources)
+  }
+
+  listResourceTemplates(): ClientRequest<Array<ResourceTemplate>> {
+    return this._requestValue('resources/templates/list', {}, (result) => result.resourceTemplates)
+  }
+
+  readResource(params: ReadResourceRequest['params']): ClientRequest<ReadResourceResult> {
+    return this.request('resources/read', params)
+  }
+
+  listTools(): ClientRequest<Array<Tool>> {
+    return this._requestValue('tools/list', {}, (result) => result.tools)
   }
 
   callTool<Name extends keyof T['Tools'] & string>(
