@@ -1,374 +1,297 @@
 import { DirectTransports } from '@enkaku/transport'
-import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
+import type { ClientMessage, ClientRequest, ServerMessage } from '@mokei/context-protocol'
 
-import { serve } from '../src/index.js'
+import type { SpecificationDefinition } from '../src/definitions.js'
+import { type ServerParams, serve } from '../src/index.js'
+import type { NoSpecification } from '../src/server.js'
+
+type TestContext = DirectTransports<ServerMessage, ClientMessage>
+
+type TestContextParams<Spec extends SpecificationDefinition = NoSpecification> = Omit<
+  ServerParams<Spec>,
+  'name' | 'transport' | 'version'
+>
+
+function createTestContext<Spec extends SpecificationDefinition = NoSpecification>(
+  params: TestContextParams<Spec>,
+): TestContext {
+  const transports = new DirectTransports<ServerMessage, ClientMessage>()
+
+  serve<Spec>({
+    name: 'test',
+    version: '0',
+    transport: transports.server,
+    ...params,
+  } as ServerParams<Spec>)
+
+  return transports
+}
+
+async function expectResult<Spec extends SpecificationDefinition = NoSpecification>(
+  params: TestContextParams<Spec>,
+  request: Omit<ClientRequest, 'jsonrpc' | 'id'>,
+  result: unknown,
+): Promise<void> {
+  const context = createTestContext<Spec>(params)
+  context.client.write({ jsonrpc: '2.0' as const, id: 1, ...request } as ClientRequest)
+  await expect(context.client.read()).resolves.toEqual({
+    done: false,
+    value: { jsonrpc: '2.0', id: 1, result },
+  })
+  await context.dispose()
+}
 
 describe('ContextServer', () => {
   describe('supports prompt calls', () => {
     test('lists available prompts', async () => {
-      const transports = new DirectTransports<ServerMessage, ClientMessage>()
-
-      serve({
-        name: 'test',
-        version: '0',
-        specification: {
+      await expectResult(
+        {
+          specification: {
+            prompts: {
+              foo: { description: 'prompt foo', arguments: { type: 'object' } },
+              bar: { description: 'prompt bar' },
+            },
+          } as const,
           prompts: {
-            foo: { description: 'prompt foo', arguments: { type: 'object' } },
-            bar: { description: 'prompt bar' },
-          },
-        } as const,
-        transport: transports.server,
-        prompts: {
-          foo: () => {
-            return { messages: [{ role: 'assistant', content: { type: 'text', text: 'foo' } }] }
-          },
-          bar: () => {
-            return { messages: [{ role: 'assistant', content: { type: 'text', text: 'bar' } }] }
-          },
-        },
-      })
-
-      transports.client.write({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'prompts/list',
-      })
-
-      await expect(transports.client.read()).resolves.toEqual({
-        done: false,
-        value: {
-          jsonrpc: '2.0',
-          id: 1,
-          result: {
-            prompts: [
-              {
-                name: 'foo',
-                description: 'prompt foo',
-                argumentsSchema: { type: 'object' },
-              },
-              {
-                name: 'bar',
-                description: 'prompt bar',
-                argumentsSchema: undefined,
-              },
-            ],
+            foo: () => {
+              return {
+                messages: [
+                  { role: 'assistant' as const, content: { type: 'text' as const, text: 'foo' } },
+                ],
+              }
+            },
+            bar: () => {
+              return {
+                messages: [
+                  { role: 'assistant' as const, content: { type: 'text' as const, text: 'bar' } },
+                ],
+              }
+            },
           },
         },
-      })
-
-      await transports.dispose()
+        { method: 'prompts/list' },
+        {
+          prompts: [
+            {
+              name: 'foo',
+              description: 'prompt foo',
+              argumentsSchema: { type: 'object' },
+            },
+            {
+              name: 'bar',
+              description: 'prompt bar',
+              argumentsSchema: undefined,
+            },
+          ],
+        },
+      )
     })
 
     test('gets a prompt', async () => {
-      const transports = new DirectTransports<ServerMessage, ClientMessage>()
-
-      serve({
-        name: 'test',
-        version: '0',
-        specification: {
+      await expectResult(
+        {
+          specification: {
+            prompts: {
+              hello: {
+                description: 'Hello prompt',
+                arguments: { type: 'object', properties: { name: { type: 'string' } } },
+              },
+            },
+          } as const,
           prompts: {
-            hello: {
-              description: 'Hello prompt',
-              arguments: { type: 'object', properties: { name: { type: 'string' } } },
+            hello: (req) => {
+              return {
+                messages: [
+                  {
+                    role: 'assistant',
+                    content: {
+                      type: 'text',
+                      text: req.arguments.name
+                        ? `Hello, my name is ${req.arguments.name}`
+                        : 'Hello',
+                    },
+                  },
+                ],
+              }
             },
           },
-        } as const,
-        transport: transports.server,
-        prompts: {
-          hello: (req) => {
-            return {
-              messages: [
-                {
-                  role: 'assistant',
-                  content: {
-                    type: 'text',
-                    text: req.arguments.name ? `Hello, my name is ${req.arguments.name}` : 'Hello',
-                  },
-                },
-              ],
-            }
+        },
+        {
+          method: 'prompts/get',
+          params: {
+            name: 'hello',
+            arguments: { name: 'Bob' },
           },
         },
-      })
-
-      transports.client.write({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'prompts/get',
-        params: {
-          name: 'hello',
-          arguments: { name: 'Bob' },
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: { type: 'text', text: 'Hello, my name is Bob' },
+            },
+          ],
         },
-      })
-
-      await expect(transports.client.read()).resolves.toEqual({
-        done: false,
-        value: {
-          jsonrpc: '2.0',
-          id: 1,
-          result: {
-            messages: [
-              {
-                role: 'assistant',
-                content: { type: 'text', text: 'Hello, my name is Bob' },
-              },
-            ],
-          },
-        },
-      })
-
-      await transports.dispose()
+      )
     })
   })
 
   describe('supports resource calls', () => {
     test('lists available resources', async () => {
-      const transports = new DirectTransports<ServerMessage, ClientMessage>()
-
-      serve({
-        name: 'test',
-        version: '0',
-        transport: transports.server,
-        resources: {
-          list: () => {
-            return {
-              resources: [
-                { name: 'foo', uri: 'test://foo' },
-                { name: 'bar', uri: 'test://bar' },
-              ],
-            }
-          },
-          listTemplates: () => ({ resourceTemplates: [] }),
-          read: () => ({ contents: [] }),
-        },
-      })
-
-      transports.client.write({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'resources/list',
-      })
-
-      await expect(transports.client.read()).resolves.toEqual({
-        done: false,
-        value: {
-          jsonrpc: '2.0',
-          id: 1,
-          result: {
-            resources: [
-              { name: 'foo', uri: 'test://foo' },
-              { name: 'bar', uri: 'test://bar' },
-            ],
+      await expectResult(
+        {
+          resources: {
+            list: () => {
+              return {
+                resources: [
+                  { name: 'foo', uri: 'test://foo' },
+                  { name: 'bar', uri: 'test://bar' },
+                ],
+              }
+            },
+            listTemplates: () => ({ resourceTemplates: [] }),
+            read: () => ({ contents: [] }),
           },
         },
-      })
-
-      await transports.dispose()
+        { method: 'resources/list' },
+        {
+          resources: [
+            { name: 'foo', uri: 'test://foo' },
+            { name: 'bar', uri: 'test://bar' },
+          ],
+        },
+      )
     })
 
     test('lists available resources templates', async () => {
-      const transports = new DirectTransports<ServerMessage, ClientMessage>()
-
-      serve({
-        name: 'test',
-        version: '0',
-        transport: transports.server,
-        resources: {
-          list: () => ({ resources: [] }),
-          listTemplates: () => {
-            return {
-              resourceTemplates: [
-                { name: 'foo', uriTemplate: 'test://foo/{name}' },
-                { name: 'bar', uriTemplate: 'test://bar/{name}' },
-              ],
-            }
-          },
-          read: () => ({ contents: [] }),
-        },
-      })
-
-      transports.client.write({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'resources/templates/list',
-      })
-
-      await expect(transports.client.read()).resolves.toEqual({
-        done: false,
-        value: {
-          jsonrpc: '2.0',
-          id: 1,
-          result: {
-            resourceTemplates: [
-              { name: 'foo', uriTemplate: 'test://foo/{name}' },
-              { name: 'bar', uriTemplate: 'test://bar/{name}' },
-            ],
+      await expectResult(
+        {
+          resources: {
+            list: () => ({ resources: [] }),
+            listTemplates: () => {
+              return {
+                resourceTemplates: [
+                  { name: 'foo', uriTemplate: 'test://foo/{name}' },
+                  { name: 'bar', uriTemplate: 'test://bar/{name}' },
+                ],
+              }
+            },
+            read: () => ({ contents: [] }),
           },
         },
-      })
-
-      await transports.dispose()
+        { method: 'resources/templates/list' },
+        {
+          resourceTemplates: [
+            { name: 'foo', uriTemplate: 'test://foo/{name}' },
+            { name: 'bar', uriTemplate: 'test://bar/{name}' },
+          ],
+        },
+      )
     })
 
     test('reads a resources', async () => {
-      const transports = new DirectTransports<ServerMessage, ClientMessage>()
-
-      serve({
-        name: 'test',
-        version: '0',
-        transport: transports.server,
-        resources: {
-          list: () => ({ resources: [] }),
-          listTemplates: () => ({ resourceTemplates: [] }),
-          read: ({ params }) => {
-            return { contents: [{ uri: params.uri, text: 'test resource' }] }
+      await expectResult(
+        {
+          resources: {
+            list: () => ({ resources: [] }),
+            listTemplates: () => ({ resourceTemplates: [] }),
+            read: ({ params }) => {
+              return { contents: [{ uri: params.uri, text: 'test resource' }] }
+            },
           },
         },
-      })
-
-      transports.client.write({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'resources/read',
-        params: { uri: 'test://foo' },
-      })
-
-      await expect(transports.client.read()).resolves.toEqual({
-        done: false,
-        value: {
-          jsonrpc: '2.0',
-          id: 1,
-          result: { contents: [{ uri: 'test://foo', text: 'test resource' }] },
-        },
-      })
-
-      await transports.dispose()
+        { method: 'resources/read', params: { uri: 'test://foo' } },
+        { contents: [{ uri: 'test://foo', text: 'test resource' }] },
+      )
     })
   })
 
   describe('supports tool calls', () => {
     test('lists available tools', async () => {
-      const transports = new DirectTransports<ServerMessage, ClientMessage>()
-
-      serve({
-        name: 'test',
-        version: '0',
-        specification: {
-          tools: {
-            test: {
-              input: {
-                type: 'object',
-                properties: { bar: { type: 'string' } },
-                additionalProperties: false,
-              },
-            },
-            other: {
-              description: 'another tool',
-              input: {
-                type: 'object',
-                properties: { foo: { type: 'string' } },
-                additionalProperties: false,
-              },
-            },
-          },
-        } as const,
-        transport: transports.server,
-        tools: {
-          test: (req) => {
-            return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
-          },
-          other: () => {
-            return { content: [{ type: 'text', text: 'test' }] }
-          },
-        },
-      })
-
-      transports.client.write({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'tools/list',
-      })
-
-      await expect(transports.client.read()).resolves.toEqual({
-        done: false,
-        value: {
-          jsonrpc: '2.0',
-          id: 1,
-          result: {
-            tools: [
-              {
-                name: 'test',
-                description: undefined,
-                inputSchema: {
+      await expectResult(
+        {
+          specification: {
+            tools: {
+              test: {
+                input: {
                   type: 'object',
                   properties: { bar: { type: 'string' } },
                   additionalProperties: false,
                 },
               },
-              {
-                name: 'other',
+              other: {
                 description: 'another tool',
-                inputSchema: {
+                input: {
                   type: 'object',
                   properties: { foo: { type: 'string' } },
                   additionalProperties: false,
                 },
               },
-            ],
+            },
+          } as const,
+          tools: {
+            test: (req) => {
+              return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
+            },
+            other: () => {
+              return { content: [{ type: 'text' as const, text: 'test' }] }
+            },
           },
         },
-      })
-
-      await transports.dispose()
-    })
-
-    test('executes tool call handler', async () => {
-      const transports = new DirectTransports<ServerMessage, ClientMessage>()
-
-      serve({
-        name: 'test',
-        version: '0',
-        specification: {
-          tools: {
-            test: {
-              input: {
+        { method: 'tools/list' },
+        {
+          tools: [
+            {
+              name: 'test',
+              description: undefined,
+              inputSchema: {
                 type: 'object',
                 properties: { bar: { type: 'string' } },
                 additionalProperties: false,
               },
             },
-          },
-        } as const,
-        transport: transports.server,
-        tools: {
-          test: (req) => {
-            return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
+            {
+              name: 'other',
+              description: 'another tool',
+              inputSchema: {
+                type: 'object',
+                properties: { foo: { type: 'string' } },
+                additionalProperties: false,
+              },
+            },
+          ],
+        },
+      )
+    })
+
+    test('executes tool call handler', async () => {
+      await expectResult(
+        {
+          specification: {
+            tools: {
+              test: {
+                input: {
+                  type: 'object',
+                  properties: { bar: { type: 'string' } },
+                  additionalProperties: false,
+                },
+              },
+            },
+          } as const,
+          tools: {
+            test: (req) => {
+              return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
+            },
           },
         },
-      })
-
-      transports.client.write({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'tools/call',
-        params: {
-          name: 'test',
-          arguments: { bar: 'foo' },
-        },
-      })
-
-      await expect(transports.client.read()).resolves.toEqual({
-        done: false,
-        value: {
-          jsonrpc: '2.0',
-          id: 1,
-          result: {
-            content: [{ type: 'text', text: 'bar is foo' }],
+        {
+          method: 'tools/call',
+          params: {
+            name: 'test',
+            arguments: { bar: 'foo' },
           },
         },
-      })
-
-      await transports.dispose()
+        { content: [{ type: 'text', text: 'bar is foo' }] },
+      )
     })
   })
 })

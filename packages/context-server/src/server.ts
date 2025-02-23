@@ -18,7 +18,6 @@ import type {
   Implementation,
   InitializeResult,
   Prompt,
-  ReadResourceRequest,
   RequestID,
   ServerCapabilities,
   ServerMessage,
@@ -37,7 +36,9 @@ import type {
   ToolHandler,
 } from './types.js'
 
-export type ServerParams<Spec extends SpecificationDefinition> = {
+export type NoSpecification = { prompts: undefined; tools: undefined }
+
+export type ServerParams<Spec extends SpecificationDefinition = NoSpecification> = {
   name: string
   version: string
   specification?: Spec
@@ -54,7 +55,7 @@ function isRequestID(id: unknown): id is RequestID {
   return typeof id === 'string' || typeof id === 'number'
 }
 
-export class ContextServer<Spec extends SpecificationDefinition = SpecificationDefinition> {
+export class ContextServer<Spec extends SpecificationDefinition = NoSpecification> {
   #capabilities: ServerCapabilities = {}
   #serverInfo: Implementation
   #promptHandlers: Spec['prompts'] extends Record<string, unknown>
@@ -247,7 +248,7 @@ export class ContextServer<Spec extends SpecificationDefinition = SpecificationD
   }
 }
 
-export function serve<Spec extends SpecificationDefinition>(
+export function serve<Spec extends SpecificationDefinition = NoSpecification>(
   params: ServerParams<Spec>,
 ): ContextServer<Spec> {
   return new ContextServer<Spec>(params)
