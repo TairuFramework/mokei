@@ -16,7 +16,6 @@ export {
   type ClientRequest,
   type ClientResponse,
   clientMessage,
-  createClientMessage,
 } from './client.js'
 export type {
   ClientCapabilities,

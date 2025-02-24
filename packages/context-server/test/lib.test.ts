@@ -1,4 +1,5 @@
 import { DirectTransports } from '@enkaku/transport'
+import { INVALID_PARAMS } from '@mokei/context-protocol'
 import type { ClientMessage, ClientRequest, ServerMessage } from '@mokei/context-protocol'
 
 import type { SpecificationDefinition } from '../src/definitions.js'
@@ -27,18 +28,34 @@ function createTestContext<Spec extends SpecificationDefinition = NoSpecificatio
   return transports
 }
 
-async function expectResult<Spec extends SpecificationDefinition = NoSpecification>(
+async function expectResponse<Spec extends SpecificationDefinition = NoSpecification>(
   params: TestContextParams<Spec>,
   request: Omit<ClientRequest, 'jsonrpc' | 'id'>,
-  result: unknown,
+  response: Record<string, unknown>,
 ): Promise<void> {
   const context = createTestContext<Spec>(params)
   context.client.write({ jsonrpc: '2.0' as const, id: 1, ...request } as ClientRequest)
   await expect(context.client.read()).resolves.toEqual({
     done: false,
-    value: { jsonrpc: '2.0', id: 1, result },
+    value: { jsonrpc: '2.0', id: 1, ...response },
   })
   await context.dispose()
+}
+
+async function expectResult<Spec extends SpecificationDefinition = NoSpecification>(
+  params: TestContextParams<Spec>,
+  request: Omit<ClientRequest, 'jsonrpc' | 'id'>,
+  result: unknown,
+): Promise<void> {
+  await expectResponse<Spec>(params, request, { result })
+}
+
+async function expectError<Spec extends SpecificationDefinition = NoSpecification>(
+  params: TestContextParams<Spec>,
+  request: Omit<ClientRequest, 'jsonrpc' | 'id'>,
+  error: unknown,
+): Promise<void> {
+  await expectResponse<Spec>(params, request, { error })
 }
 
 describe('ContextServer', () => {
@@ -130,6 +147,53 @@ describe('ContextServer', () => {
               content: { type: 'text', text: 'Hello, my name is Bob' },
             },
           ],
+        },
+      )
+    })
+
+    test('validates prompt arguments', async () => {
+      await expectError(
+        {
+          specification: {
+            prompts: {
+              hello: {
+                description: 'Hello prompt',
+                arguments: {
+                  type: 'object',
+                  properties: { name: { type: 'string' } },
+                  required: ['name'],
+                },
+              },
+            },
+          } as const,
+          prompts: {
+            hello: () => {
+              return {
+                messages: [
+                  {
+                    role: 'assistant' as const,
+                    content: { type: 'text' as const, text: 'Hello' },
+                  },
+                ],
+              }
+            },
+          },
+        },
+        {
+          method: 'prompts/get',
+          params: {
+            name: 'hello',
+            arguments: {},
+          },
+        },
+        {
+          code: INVALID_PARAMS,
+          message: 'Prompt validation failed',
+          data: {
+            issues: [
+              { message: "must have required property 'name'", path: ['', 'params', 'arguments'] },
+            ],
+          },
         },
       )
     })
@@ -291,6 +355,46 @@ describe('ContextServer', () => {
           },
         },
         { content: [{ type: 'text', text: 'bar is foo' }] },
+      )
+    })
+
+    test('validates tool call inputs', async () => {
+      await expectError(
+        {
+          specification: {
+            tools: {
+              test: {
+                input: {
+                  type: 'object',
+                  properties: { bar: { type: 'string' } },
+                  additionalProperties: false,
+                  required: ['bar'],
+                },
+              },
+            },
+          } as const,
+          tools: {
+            test: (req) => {
+              return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
+            },
+          },
+        },
+        {
+          method: 'tools/call',
+          params: {
+            name: 'test',
+            arguments: {},
+          },
+        },
+        {
+          code: INVALID_PARAMS,
+          message: 'Tool call validation failed',
+          data: {
+            issues: [
+              { message: "must have required property 'bar'", path: ['', 'params', 'arguments'] },
+            ],
+          },
+        },
       )
     })
   })

@@ -1,11 +1,10 @@
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
-import { type Schema, type Validator, createValidator } from '@enkaku/schema'
+import type { Schema, Validator } from '@enkaku/schema'
 import {
+  INVALID_PARAMS,
   INVALID_REQUEST,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
-  clientMessage,
-  createClientMessage,
 } from '@mokei/context-protocol'
 import type {
   CallToolRequest,
@@ -35,6 +34,11 @@ import type {
   ToToolHandlers,
   ToolHandler,
 } from './types.js'
+import {
+  createCallToolsValidator,
+  createGetPromptsValidator,
+  validateClientMessage,
+} from './validation.js'
 
 export type NoSpecification = { prompts: undefined; tools: undefined }
 
@@ -67,7 +71,8 @@ export class ContextServer<Spec extends SpecificationDefinition = NoSpecificatio
     ? ToToolHandlers<Spec['tools']>
     : Record<string, never>
   #toolsList: Array<Tool> = []
-  #validator: Validator<ClientMessage>
+  #validateCallTool?: Validator<CallToolRequest>
+  #validateGetPrompt?: Validator<GetPromptRequest>
 
   constructor(params: ServerParams<Spec>) {
     this.#serverInfo = { name: params.name, version: params.version }
@@ -88,6 +93,7 @@ export class ContextServer<Spec extends SpecificationDefinition = NoSpecificatio
     }
     if (this.#promptsList.length !== 0) {
       this.#capabilities.prompts = {}
+      this.#validateGetPrompt = createGetPromptsValidator(promptArguments)
     }
 
     if (this.#resources != null) {
@@ -101,13 +107,8 @@ export class ContextServer<Spec extends SpecificationDefinition = NoSpecificatio
     }
     if (this.#toolsList.length !== 0) {
       this.#capabilities.tools = {}
+      this.#validateCallTool = createCallToolsValidator(toolInputs)
     }
-
-    this.#validator = createValidator(
-      this.#promptsList.length === 0 && this.#toolsList.length === 0
-        ? clientMessage
-        : createClientMessage({ promptArguments, callTools: toolInputs }),
-    )
 
     const transport =
       params.transport ??
@@ -127,22 +128,28 @@ export class ContextServer<Spec extends SpecificationDefinition = NoSpecificatio
       }
 
       const id = next.value.id
-      const validated = this.#validator(next.value)
+      const validated = validateClientMessage(next.value)
       if (validated.issues == null) {
-        this.handleMessage(validated.value, inflight).then(
-          (result) => {
-            if (result != null && isRequestID(id)) {
-              transport.write({ jsonrpc: '2.0', id, result })
-            }
-          },
-          (cause) => {
+        this.handleMessage(validated.value, inflight)
+          .then(
+            (result) => {
+              if (result != null && isRequestID(id)) {
+                transport.write({ jsonrpc: '2.0', id, result })
+              }
+            },
+            (cause) => {
+              if (isRequestID(id)) {
+                transport.write(errorResponse(id, cause))
+              } else {
+                // TODO: call optional error handler
+              }
+            },
+          )
+          .finally(() => {
             if (isRequestID(id)) {
-              transport.write(errorResponse(id, cause))
-            } else {
-              // TODO: call optional error handler
+              delete inflight[id]
             }
-          },
-        )
+          })
       } else {
         if (next.value.method != null && isRequestID(id)) {
           // Send an error response if incoming message is a request
@@ -189,11 +196,7 @@ export class ContextServer<Spec extends SpecificationDefinition = NoSpecificatio
     const request = message as ClientRequest
     const controller = new AbortController()
     inflight[request.id] = controller
-    const handledRequest = this.handleRequest(request, controller.signal)
-    handledRequest.finally(() => {
-      delete inflight[request.id]
-    })
-    return await handledRequest
+    return await this.handleRequest(request, controller.signal)
   }
 
   async handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
@@ -232,18 +235,38 @@ export class ContextServer<Spec extends SpecificationDefinition = NoSpecificatio
   }
 
   async callTool(request: CallToolRequest, signal: AbortSignal): Promise<CallToolResult> {
+    if (this.#validateCallTool != null) {
+      const validated = this.#validateCallTool(request)
+      if (validated.issues != null) {
+        throw new RPCError(INVALID_PARAMS, 'Tool call validation failed', {
+          issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
+        })
+      }
+    }
+
     const handler = this.#toolHandlers[request.params.name] as ToolHandler<Schema>
     if (handler == null) {
-      throw new Error(`Tool ${request.params.name} not found`)
+      throw new RPCError(INVALID_PARAMS, `Tool ${request.params.name} not found`)
     }
+
     return await handler({ input: request.params.arguments, signal })
   }
 
   async getPrompt(request: GetPromptRequest, signal: AbortSignal): Promise<GetPromptResult> {
+    if (this.#validateGetPrompt != null) {
+      const validated = this.#validateGetPrompt(request)
+      if (validated.issues != null) {
+        throw new RPCError(INVALID_PARAMS, 'Prompt validation failed', {
+          issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
+        })
+      }
+    }
+
     const handler = this.#promptHandlers[request.params.name] as PromptHandler<Schema>
     if (handler == null) {
-      throw new Error(`Prompt ${request.params.name} not found`)
+      throw new RPCError(INVALID_PARAMS, `Prompt ${request.params.name} not found`)
     }
+
     return await handler({ arguments: request.params.arguments, signal })
   }
 }
