@@ -7,6 +7,8 @@ import type {
   GenericToolDefinition,
   HandlerRequest,
   PromptHandlerReturn,
+  ResourceDefinitions,
+  ResourceHandlers,
   ToolHandlerReturn,
   TypedPromptHandler,
   TypedToolHandler,
@@ -55,4 +57,16 @@ export function createTool<InputSchema extends Schema, Input = FromSchema<InputS
   }
 
   return { description, inputSchema: inputSchema as ToolInputSchema, handler: wrappedHandler }
+}
+
+export function toResourceHandlers(definitions: ResourceDefinitions): ResourceHandlers {
+  const { list, listTemplates, read } = definitions
+  return {
+    list: typeof list === 'function' ? list : () => ({ resources: list ?? [] }),
+    listTemplates:
+      typeof listTemplates === 'function'
+        ? listTemplates
+        : () => ({ resourceTemplates: listTemplates ?? [] }),
+    read,
+  }
 }

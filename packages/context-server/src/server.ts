@@ -25,11 +25,13 @@ import type {
   Tool,
 } from '@mokei/context-protocol'
 
+import { toResourceHandlers } from './definitions.js'
 import { RPCError, errorResponse } from './error.js'
 import type {
   GenericPromptHandler,
   GenericToolHandler,
   PromptDefinitions,
+  ResourceDefinitions,
   ResourceHandlers,
   ServerTransport,
   ToolDefinitions,
@@ -37,14 +39,12 @@ import type {
 
 const validateClientMessage = createValidator(clientMessage)
 
-export type NoSpecification = { prompts: undefined; tools: undefined }
-
 export type ServerParams = {
   name: string
   version: string
   transport?: ServerTransport
   prompts?: PromptDefinitions
-  resources?: ResourceHandlers
+  resources?: ResourceDefinitions
   tools?: ToolDefinitions
 }
 
@@ -63,7 +63,6 @@ export class ContextServer {
 
   constructor(params: ServerParams) {
     this.#serverInfo = { name: params.name, version: params.version }
-    this.#resources = params.resources
 
     for (const [name, prompt] of Object.entries(params.prompts ?? {})) {
       const { handler, ...info } = prompt
@@ -74,8 +73,9 @@ export class ContextServer {
       this.#capabilities.prompts = {}
     }
 
-    if (this.#resources != null) {
+    if (params.resources != null) {
       this.#capabilities.resources = {}
+      this.#resources = toResourceHandlers(params.resources)
     }
 
     for (const [name, tool] of Object.entries(params.tools ?? {})) {

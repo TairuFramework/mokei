@@ -10,6 +10,8 @@ import type {
   ListResourcesResult,
   ReadResourceRequest,
   ReadResourceResult,
+  Resource,
+  ResourceTemplate,
   ServerMessage,
   InputSchema as ToolInputSchema,
 } from '@mokei/context-protocol'
@@ -44,18 +46,28 @@ export type TypedPromptDefinition<ArgumentsSchema extends Schema> = {
 
 export type PromptDefinitions = Record<string, GenericPromptDefinition>
 
+export type ListResourcesHandler = (
+  request: HandlerRequest<{ params: ListResourcesRequest['params'] }>,
+) => ListResourcesResult | Promise<ListResourcesResult>
+
+export type ListResourceTemplatesHandler = (
+  request: HandlerRequest<{ params: ListResourceTemplatesRequest['params'] }>,
+) => ListResourceTemplatesResult | Promise<ListResourceTemplatesResult>
+
+export type ReadResourceHandler = (
+  request: HandlerRequest<{ params: ReadResourceRequest['params'] }>,
+) => ReadResourceResult | Promise<ReadResourceResult>
+
+export type ResourceDefinitions = {
+  list?: ListResourcesHandler | Array<Resource>
+  listTemplates?: ListResourceTemplatesHandler | Array<ResourceTemplate>
+  read: ReadResourceHandler
+}
+
 export type ResourceHandlers = {
-  // TODO: accept harcoded list of Resource objects
-  list: (
-    request: HandlerRequest<{ params: ListResourcesRequest['params'] }>,
-  ) => ListResourcesResult | Promise<ListResourcesResult>
-  // TODO: accept harcoded list of Resource objects
-  listTemplates: (
-    request: HandlerRequest<{ params: ListResourceTemplatesRequest['params'] }>,
-  ) => ListResourceTemplatesResult | Promise<ListResourcesResult>
-  read: (
-    request: HandlerRequest<{ params: ReadResourceRequest['params'] }>,
-  ) => ReadResourceResult | Promise<ReadResourceResult>
+  list: ListResourcesHandler
+  listTemplates: ListResourceTemplatesHandler
+  read: ReadResourceHandler
 }
 
 export type ToolHandlerReturn = CallToolResult | Promise<CallToolResult>

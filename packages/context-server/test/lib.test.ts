@@ -183,55 +183,75 @@ describe('ContextServer', () => {
   })
 
   describe('supports resource calls', () => {
-    test('lists available resources', async () => {
+    test('lists available resources by calling the provided handler', async () => {
+      const resources = [
+        { name: 'foo', uri: 'test://foo' },
+        { name: 'bar', uri: 'test://bar' },
+      ]
+
       await expectResult(
         {
           resources: {
-            list: () => {
-              return {
-                resources: [
-                  { name: 'foo', uri: 'test://foo' },
-                  { name: 'bar', uri: 'test://bar' },
-                ],
-              }
-            },
-            listTemplates: () => ({ resourceTemplates: [] }),
+            list: () => ({ resources }),
             read: () => ({ contents: [] }),
           },
         },
         { method: 'resources/list' },
-        {
-          resources: [
-            { name: 'foo', uri: 'test://foo' },
-            { name: 'bar', uri: 'test://bar' },
-          ],
-        },
+        { resources },
       )
     })
 
-    test('lists available resources templates', async () => {
+    test('lists available resources provided directly', async () => {
+      const resources = [
+        { name: 'foo', uri: 'test://foo' },
+        { name: 'bar', uri: 'test://bar' },
+      ]
+
       await expectResult(
         {
           resources: {
-            list: () => ({ resources: [] }),
-            listTemplates: () => {
-              return {
-                resourceTemplates: [
-                  { name: 'foo', uriTemplate: 'test://foo/{name}' },
-                  { name: 'bar', uriTemplate: 'test://bar/{name}' },
-                ],
-              }
-            },
+            list: resources,
+            read: () => ({ contents: [] }),
+          },
+        },
+        { method: 'resources/list' },
+        { resources },
+      )
+    })
+
+    test('lists available resources templates by calling the provided handler', async () => {
+      const resourceTemplates = [
+        { name: 'foo', uriTemplate: 'test://foo/{name}' },
+        { name: 'bar', uriTemplate: 'test://bar/{name}' },
+      ]
+
+      await expectResult(
+        {
+          resources: {
+            listTemplates: () => ({ resourceTemplates }),
             read: () => ({ contents: [] }),
           },
         },
         { method: 'resources/templates/list' },
+        { resourceTemplates },
+      )
+    })
+
+    test('lists available resources templates provided directly', async () => {
+      const resourceTemplates = [
+        { name: 'foo', uriTemplate: 'test://foo/{name}' },
+        { name: 'bar', uriTemplate: 'test://bar/{name}' },
+      ]
+
+      await expectResult(
         {
-          resourceTemplates: [
-            { name: 'foo', uriTemplate: 'test://foo/{name}' },
-            { name: 'bar', uriTemplate: 'test://bar/{name}' },
-          ],
+          resources: {
+            listTemplates: resourceTemplates,
+            read: () => ({ contents: [] }),
+          },
         },
+        { method: 'resources/templates/list' },
+        { resourceTemplates },
       )
     })
 
@@ -239,8 +259,6 @@ describe('ContextServer', () => {
       await expectResult(
         {
           resources: {
-            list: () => ({ resources: [] }),
-            listTemplates: () => ({ resourceTemplates: [] }),
             read: ({ params }) => {
               return { contents: [{ uri: params.uri, text: 'test resource' }] }
             },
