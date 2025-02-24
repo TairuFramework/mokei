@@ -1,10 +1,11 @@
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
-import type { Schema, Validator } from '@enkaku/schema'
+import { createValidator } from '@enkaku/schema'
 import {
   INVALID_PARAMS,
   INVALID_REQUEST,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
+  clientMessage,
 } from '@mokei/context-protocol'
 import type {
   CallToolRequest,
@@ -24,90 +25,66 @@ import type {
   Tool,
 } from '@mokei/context-protocol'
 
-import type { SpecificationDefinition } from './definitions.js'
 import { RPCError, errorResponse } from './error.js'
 import type {
-  PromptHandler,
+  GenericPromptHandler,
+  GenericToolHandler,
+  PromptDefinitions,
   ResourceHandlers,
   ServerTransport,
-  ToPromptHandlers,
-  ToToolHandlers,
-  ToolHandler,
+  ToolDefinitions,
 } from './types.js'
-import {
-  createCallToolsValidator,
-  createGetPromptsValidator,
-  validateClientMessage,
-} from './validation.js'
+
+const validateClientMessage = createValidator(clientMessage)
 
 export type NoSpecification = { prompts: undefined; tools: undefined }
 
-export type ServerParams<Spec extends SpecificationDefinition = NoSpecification> = {
+export type ServerParams = {
   name: string
   version: string
-  specification?: Spec
   transport?: ServerTransport
+  prompts?: PromptDefinitions
   resources?: ResourceHandlers
-} & (Spec['prompts'] extends Record<string, unknown>
-  ? { prompts: ToPromptHandlers<Spec['prompts']> }
-  : { prompts?: never }) &
-  (Spec['tools'] extends Record<string, unknown>
-    ? { tools: ToToolHandlers<Spec['tools']> }
-    : { tools?: never })
+  tools?: ToolDefinitions
+}
 
 function isRequestID(id: unknown): id is RequestID {
   return typeof id === 'string' || typeof id === 'number'
 }
 
-export class ContextServer<Spec extends SpecificationDefinition = NoSpecification> {
+export class ContextServer {
   #capabilities: ServerCapabilities = {}
   #serverInfo: Implementation
-  #promptHandlers: Spec['prompts'] extends Record<string, unknown>
-    ? ToPromptHandlers<Spec['prompts']>
-    : Record<string, never>
+  #promptHandlers: Record<string, GenericPromptHandler> = {}
   #promptsList: Array<Prompt> = []
   #resources?: ResourceHandlers
-  #toolHandlers: Spec['tools'] extends Record<string, unknown>
-    ? ToToolHandlers<Spec['tools']>
-    : Record<string, never>
+  #toolHandlers: Record<string, GenericToolHandler> = {}
   #toolsList: Array<Tool> = []
-  #validateCallTool?: Validator<CallToolRequest>
-  #validateGetPrompt?: Validator<GetPromptRequest>
 
-  constructor(params: ServerParams<Spec>) {
+  constructor(params: ServerParams) {
     this.#serverInfo = { name: params.name, version: params.version }
-    // @ts-ignore type instantiation too deep
-    this.#promptHandlers = params.prompts ?? {}
     this.#resources = params.resources
-    // @ts-ignore type instantiation too deep
-    this.#toolHandlers = params.tools ?? {}
 
-    const promptArguments: Record<string, Schema | undefined> = {}
-    for (const [name, prompt] of Object.entries(params.specification?.prompts ?? {})) {
-      promptArguments[name] = prompt.arguments
-      this.#promptsList.push({
-        name,
-        description: prompt.description,
-        argumentsSchema: prompt.arguments,
-      })
+    for (const [name, prompt] of Object.entries(params.prompts ?? {})) {
+      const { handler, ...info } = prompt
+      this.#promptHandlers[name] = handler
+      this.#promptsList.push({ name, ...info })
     }
     if (this.#promptsList.length !== 0) {
       this.#capabilities.prompts = {}
-      this.#validateGetPrompt = createGetPromptsValidator(promptArguments)
     }
 
     if (this.#resources != null) {
       this.#capabilities.resources = {}
     }
 
-    const toolInputs: Record<string, Schema> = {}
-    for (const [name, tool] of Object.entries(params.specification?.tools ?? {})) {
-      toolInputs[name] = tool.input
-      this.#toolsList.push({ name, description: tool.description, inputSchema: tool.input })
+    for (const [name, tool] of Object.entries(params.tools ?? {})) {
+      const { handler, ...info } = tool
+      this.#toolHandlers[name] = handler
+      this.#toolsList.push({ name, ...info })
     }
     if (this.#toolsList.length !== 0) {
       this.#capabilities.tools = {}
-      this.#validateCallTool = createCallToolsValidator(toolInputs)
     }
 
     const transport =
@@ -235,44 +212,22 @@ export class ContextServer<Spec extends SpecificationDefinition = NoSpecificatio
   }
 
   async callTool(request: CallToolRequest, signal: AbortSignal): Promise<CallToolResult> {
-    if (this.#validateCallTool != null) {
-      const validated = this.#validateCallTool(request)
-      if (validated.issues != null) {
-        throw new RPCError(INVALID_PARAMS, 'Tool call validation failed', {
-          issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
-        })
-      }
-    }
-
-    const handler = this.#toolHandlers[request.params.name] as ToolHandler<Schema>
+    const handler = this.#toolHandlers[request.params.name]
     if (handler == null) {
       throw new RPCError(INVALID_PARAMS, `Tool ${request.params.name} not found`)
     }
-
-    return await handler({ input: request.params.arguments, signal })
+    return await handler({ input: request.params.arguments ?? {}, signal })
   }
 
   async getPrompt(request: GetPromptRequest, signal: AbortSignal): Promise<GetPromptResult> {
-    if (this.#validateGetPrompt != null) {
-      const validated = this.#validateGetPrompt(request)
-      if (validated.issues != null) {
-        throw new RPCError(INVALID_PARAMS, 'Prompt validation failed', {
-          issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
-        })
-      }
-    }
-
-    const handler = this.#promptHandlers[request.params.name] as PromptHandler<Schema>
+    const handler = this.#promptHandlers[request.params.name]
     if (handler == null) {
       throw new RPCError(INVALID_PARAMS, `Prompt ${request.params.name} not found`)
     }
-
     return await handler({ arguments: request.params.arguments, signal })
   }
 }
 
-export function serve<Spec extends SpecificationDefinition = NoSpecification>(
-  params: ServerParams<Spec>,
-): ContextServer<Spec> {
-  return new ContextServer<Spec>(params)
+export function serve(params: ServerParams): ContextServer {
+  return new ContextServer(params)
 }

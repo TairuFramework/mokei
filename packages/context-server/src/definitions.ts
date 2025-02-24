@@ -1,45 +1,58 @@
-import type { FromSchema, Schema } from '@enkaku/schema'
-import { inputSchema } from '@mokei/context-protocol'
+import { type FromSchema, type Schema, createValidator } from '@enkaku/schema'
+import { INVALID_PARAMS, type InputSchema as ToolInputSchema } from '@mokei/context-protocol'
 
-export const promptDefinition = {
-  type: 'object',
-  properties: {
-    description: { type: 'string' },
-    arguments: { type: 'object' },
-  },
-  additionalProperties: false,
-} as const satisfies Schema
-export type PromptDefinition = FromSchema<typeof promptDefinition>
+import { RPCError } from './error.js'
+import type {
+  GenericPromptDefinition,
+  GenericToolDefinition,
+  HandlerRequest,
+  PromptHandlerReturn,
+  ToolHandlerReturn,
+  TypedPromptHandler,
+  TypedToolHandler,
+} from './types.js'
 
-export const promptsDefinition = {
-  type: 'object',
-  additionalProperties: promptDefinition,
-} as const satisfies Schema
-export type PromptsDefinition = FromSchema<typeof promptsDefinition>
+export function createPrompt<
+  ArgumentsSchema extends Schema,
+  Arguments = FromSchema<ArgumentsSchema>,
+>(
+  description: string,
+  argumentsSchema: ArgumentsSchema,
+  handler: TypedPromptHandler<Arguments>,
+): GenericPromptDefinition {
+  const validate = createValidator<ArgumentsSchema, Arguments>(argumentsSchema)
 
-export const toolDefinition = {
-  type: 'object',
-  properties: {
-    description: { type: 'string' },
-    input: inputSchema,
-  },
-  required: ['input'],
-  additionalProperties: false,
-} as const satisfies Schema
-export type ToolDefinition = FromSchema<typeof toolDefinition>
+  const wrappedHandler = (request: HandlerRequest<{ arguments: unknown }>): PromptHandlerReturn => {
+    const validated = validate(request.arguments)
+    if (validated.issues == null) {
+      return handler({ arguments: validated.value, signal: request.signal })
+    }
+    throw new RPCError(INVALID_PARAMS, 'Invalid prompt arguments', {
+      issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
+    })
+  }
 
-export const toolsDefinition = {
-  type: 'object',
-  additionalProperties: toolDefinition,
-} as const satisfies Schema
-export type ToolsDefinition = FromSchema<typeof toolsDefinition>
+  return { description, argumentsSchema, handler: wrappedHandler }
+}
 
-export const specificationDefinition = {
-  type: 'object',
-  properties: {
-    prompts: promptsDefinition,
-    tools: toolsDefinition,
-  },
-  additionalProperties: false,
-} as const satisfies Schema
-export type SpecificationDefinition = FromSchema<typeof specificationDefinition>
+export function createTool<InputSchema extends Schema, Input = FromSchema<InputSchema>>(
+  description: string,
+  inputSchema: InputSchema,
+  handler: TypedToolHandler<Input>,
+): GenericToolDefinition {
+  const validate = createValidator<InputSchema, Input>(inputSchema)
+
+  const wrappedHandler = (
+    request: HandlerRequest<{ input: Record<string, unknown> }>,
+  ): ToolHandlerReturn => {
+    const validated = validate(request.input)
+    if (validated.issues == null) {
+      return handler({ input: validated.value, signal: request.signal })
+    }
+    throw new RPCError(INVALID_PARAMS, 'Invalid tool input', {
+      issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
+    })
+  }
+
+  return { description, inputSchema: inputSchema as ToolInputSchema, handler: wrappedHandler }
+}

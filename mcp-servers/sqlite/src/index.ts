@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { parseArgs } from 'node:util'
-import { type Schema, serve } from '@mokei/context-server'
+import { type Schema, createTool, serve } from '@mokei/context-server'
 
 const args = parseArgs({
   options: {
@@ -29,37 +29,30 @@ const toolInputSchema = {
 serve({
   name: 'sqlite',
   version: '0.1.0',
-  specification: {
-    tools: {
-      sqlite_all: {
-        description:
-          'This method executes a prepared statement and returns all results as an array of objects',
-        input: toolInputSchema,
-      },
-      sqlite_get: {
-        description:
-          'This method executes a prepared statement and returns the first result as an object',
-        input: toolInputSchema,
-      },
-      sqlite_run: {
-        description:
-          'This method executes a prepared statement and returns an object summarizing the resulting changes',
-        input: toolInputSchema,
-      },
-    },
-  },
   tools: {
-    sqlite_all: (ctx) => {
-      const results = db.prepare(ctx.input.sql).all(ctx.input.parameters ?? {})
-      return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
-    },
-    sqlite_get: (ctx) => {
-      const result = db.prepare(ctx.input.sql).get(ctx.input.parameters ?? {})
-      return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
-    },
-    sqlite_run: (ctx) => {
-      const changes = db.prepare(ctx.input.sql).run(ctx.input.parameters ?? {})
-      return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
-    },
+    sqlite_all: createTool(
+      'This method executes a prepared statement and returns all results as an array of objects',
+      toolInputSchema,
+      (req) => {
+        const results = db.prepare(req.input.sql).all(req.input.parameters ?? {})
+        return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
+      },
+    ),
+    sqlite_get: createTool(
+      'This method executes a prepared statement and returns the first result as an object',
+      toolInputSchema,
+      (req) => {
+        const result = db.prepare(req.input.sql).get(req.input.parameters ?? {})
+        return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
+      },
+    ),
+    sqlite_run: createTool(
+      'This method executes a prepared statement and returns an object summarizing the resulting changes',
+      toolInputSchema,
+      (req) => {
+        const changes = db.prepare(req.input.sql).run(req.input.parameters ?? {})
+        return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
+      },
+    ),
   },
 })

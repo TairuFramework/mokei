@@ -45,7 +45,13 @@ export {
   INVALID_PARAMS,
   INTERNAL_ERROR,
 } from './rpc.js'
-export { type CallToolRequest, type CallToolResult, type Tool, inputSchema } from './tool.js'
+export {
+  type CallToolRequest,
+  type CallToolResult,
+  type InputSchema,
+  type Tool,
+  inputSchema,
+} from './tool.js'
 export {
   type ServerMessage,
   type ServerNotification,

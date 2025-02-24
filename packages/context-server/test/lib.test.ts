@@ -2,38 +2,31 @@ import { DirectTransports } from '@enkaku/transport'
 import { INVALID_PARAMS } from '@mokei/context-protocol'
 import type { ClientMessage, ClientRequest, ServerMessage } from '@mokei/context-protocol'
 
-import type { SpecificationDefinition } from '../src/definitions.js'
-import { type ServerParams, serve } from '../src/index.js'
-import type { NoSpecification } from '../src/server.js'
+import { type Schema, type ServerParams, createPrompt, createTool, serve } from '../src/index.js'
 
 type TestContext = DirectTransports<ServerMessage, ClientMessage>
 
-type TestContextParams<Spec extends SpecificationDefinition = NoSpecification> = Omit<
-  ServerParams<Spec>,
-  'name' | 'transport' | 'version'
->
+type TestContextParams = Omit<ServerParams, 'name' | 'transport' | 'version'>
 
-function createTestContext<Spec extends SpecificationDefinition = NoSpecification>(
-  params: TestContextParams<Spec>,
-): TestContext {
+function createTestContext(params: TestContextParams): TestContext {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
 
-  serve<Spec>({
+  serve({
     name: 'test',
     version: '0',
     transport: transports.server,
     ...params,
-  } as ServerParams<Spec>)
+  })
 
   return transports
 }
 
-async function expectResponse<Spec extends SpecificationDefinition = NoSpecification>(
-  params: TestContextParams<Spec>,
+async function expectResponse(
+  params: TestContextParams,
   request: Omit<ClientRequest, 'jsonrpc' | 'id'>,
   response: Record<string, unknown>,
 ): Promise<void> {
-  const context = createTestContext<Spec>(params)
+  const context = createTestContext(params)
   context.client.write({ jsonrpc: '2.0' as const, id: 1, ...request } as ClientRequest)
   await expect(context.client.read()).resolves.toEqual({
     done: false,
@@ -42,20 +35,20 @@ async function expectResponse<Spec extends SpecificationDefinition = NoSpecifica
   await context.dispose()
 }
 
-async function expectResult<Spec extends SpecificationDefinition = NoSpecification>(
-  params: TestContextParams<Spec>,
+async function expectResult(
+  params: TestContextParams,
   request: Omit<ClientRequest, 'jsonrpc' | 'id'>,
   result: unknown,
 ): Promise<void> {
-  await expectResponse<Spec>(params, request, { result })
+  await expectResponse(params, request, { result })
 }
 
-async function expectError<Spec extends SpecificationDefinition = NoSpecification>(
-  params: TestContextParams<Spec>,
+async function expectError(
+  params: TestContextParams,
   request: Omit<ClientRequest, 'jsonrpc' | 'id'>,
   error: unknown,
 ): Promise<void> {
-  await expectResponse<Spec>(params, request, { error })
+  await expectResponse(params, request, { error })
 }
 
 describe('ContextServer', () => {
@@ -63,26 +56,23 @@ describe('ContextServer', () => {
     test('lists available prompts', async () => {
       await expectResult(
         {
-          specification: {
-            prompts: {
-              foo: { description: 'prompt foo', arguments: { type: 'object' } },
-              bar: { description: 'prompt bar' },
-            },
-          } as const,
           prompts: {
-            foo: () => {
+            foo: createPrompt('prompt foo', { type: 'object' }, () => {
               return {
                 messages: [
                   { role: 'assistant' as const, content: { type: 'text' as const, text: 'foo' } },
                 ],
               }
-            },
-            bar: () => {
-              return {
-                messages: [
-                  { role: 'assistant' as const, content: { type: 'text' as const, text: 'bar' } },
-                ],
-              }
+            }),
+            bar: {
+              description: 'prompt bar',
+              handler: () => {
+                return {
+                  messages: [
+                    { role: 'assistant' as const, content: { type: 'text' as const, text: 'bar' } },
+                  ],
+                }
+              },
             },
           },
         },
@@ -107,30 +97,29 @@ describe('ContextServer', () => {
     test('gets a prompt', async () => {
       await expectResult(
         {
-          specification: {
-            prompts: {
-              hello: {
-                description: 'Hello prompt',
-                arguments: { type: 'object', properties: { name: { type: 'string' } } },
-              },
-            },
-          } as const,
           prompts: {
-            hello: (req) => {
-              return {
-                messages: [
-                  {
-                    role: 'assistant',
-                    content: {
-                      type: 'text',
-                      text: req.arguments.name
-                        ? `Hello, my name is ${req.arguments.name}`
-                        : 'Hello',
+            hello: createPrompt(
+              'Hello prompt',
+              {
+                type: 'object',
+                properties: { name: { type: 'string' } },
+              } as const satisfies Schema,
+              (req) => {
+                return {
+                  messages: [
+                    {
+                      role: 'assistant',
+                      content: {
+                        type: 'text',
+                        text: req.arguments.name
+                          ? `Hello, my name is ${req.arguments.name}`
+                          : 'Hello',
+                      },
                     },
-                  },
-                ],
-              }
-            },
+                  ],
+                }
+              },
+            ),
           },
         },
         {
@@ -154,29 +143,25 @@ describe('ContextServer', () => {
     test('validates prompt arguments', async () => {
       await expectError(
         {
-          specification: {
-            prompts: {
-              hello: {
-                description: 'Hello prompt',
-                arguments: {
-                  type: 'object',
-                  properties: { name: { type: 'string' } },
-                  required: ['name'],
-                },
-              },
-            },
-          } as const,
           prompts: {
-            hello: () => {
-              return {
-                messages: [
-                  {
-                    role: 'assistant' as const,
-                    content: { type: 'text' as const, text: 'Hello' },
-                  },
-                ],
-              }
-            },
+            hello: createPrompt(
+              'Hello prompt',
+              {
+                type: 'object',
+                properties: { name: { type: 'string' } },
+                required: ['name'],
+              },
+              () => {
+                return {
+                  messages: [
+                    {
+                      role: 'assistant' as const,
+                      content: { type: 'text' as const, text: 'Hello' },
+                    },
+                  ],
+                }
+              },
+            ),
           },
         },
         {
@@ -188,11 +173,9 @@ describe('ContextServer', () => {
         },
         {
           code: INVALID_PARAMS,
-          message: 'Prompt validation failed',
+          message: 'Invalid prompt arguments',
           data: {
-            issues: [
-              { message: "must have required property 'name'", path: ['', 'params', 'arguments'] },
-            ],
+            issues: [{ message: "must have required property 'name'", path: [''] }],
           },
         },
       )
@@ -273,32 +256,29 @@ describe('ContextServer', () => {
     test('lists available tools', async () => {
       await expectResult(
         {
-          specification: {
-            tools: {
-              test: {
-                input: {
-                  type: 'object',
-                  properties: { bar: { type: 'string' } },
-                  additionalProperties: false,
-                },
-              },
-              other: {
-                description: 'another tool',
-                input: {
-                  type: 'object',
-                  properties: { foo: { type: 'string' } },
-                  additionalProperties: false,
-                },
-              },
-            },
-          } as const,
           tools: {
-            test: (req) => {
-              return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
-            },
-            other: () => {
-              return { content: [{ type: 'text' as const, text: 'test' }] }
-            },
+            test: createTool(
+              'test tool',
+              {
+                type: 'object',
+                properties: { bar: { type: 'string' } },
+                additionalProperties: false,
+              },
+              (req) => {
+                return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
+              },
+            ),
+            other: createTool(
+              'another tool',
+              {
+                type: 'object',
+                properties: { foo: { type: 'string' } },
+                additionalProperties: false,
+              },
+              () => {
+                return { content: [{ type: 'text' as const, text: 'test' }] }
+              },
+            ),
           },
         },
         { method: 'tools/list' },
@@ -306,7 +286,7 @@ describe('ContextServer', () => {
           tools: [
             {
               name: 'test',
-              description: undefined,
+              description: 'test tool',
               inputSchema: {
                 type: 'object',
                 properties: { bar: { type: 'string' } },
@@ -330,21 +310,18 @@ describe('ContextServer', () => {
     test('executes tool call handler', async () => {
       await expectResult(
         {
-          specification: {
-            tools: {
-              test: {
-                input: {
-                  type: 'object',
-                  properties: { bar: { type: 'string' } },
-                  additionalProperties: false,
-                },
-              },
-            },
-          } as const,
           tools: {
-            test: (req) => {
-              return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
-            },
+            test: createTool(
+              'test',
+              {
+                type: 'object',
+                properties: { bar: { type: 'string' } },
+                additionalProperties: false,
+              },
+              (req) => {
+                return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
+              },
+            ),
           },
         },
         {
@@ -361,22 +338,19 @@ describe('ContextServer', () => {
     test('validates tool call inputs', async () => {
       await expectError(
         {
-          specification: {
-            tools: {
-              test: {
-                input: {
-                  type: 'object',
-                  properties: { bar: { type: 'string' } },
-                  additionalProperties: false,
-                  required: ['bar'],
-                },
-              },
-            },
-          } as const,
           tools: {
-            test: (req) => {
-              return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
-            },
+            test: createTool(
+              'test',
+              {
+                type: 'object',
+                properties: { bar: { type: 'string' } },
+                additionalProperties: false,
+                required: ['bar'],
+              } as const,
+              (req) => {
+                return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
+              },
+            ),
           },
         },
         {
@@ -388,11 +362,9 @@ describe('ContextServer', () => {
         },
         {
           code: INVALID_PARAMS,
-          message: 'Tool call validation failed',
+          message: 'Invalid tool input',
           data: {
-            issues: [
-              { message: "must have required property 'bar'", path: ['', 'params', 'arguments'] },
-            ],
+            issues: [{ message: "must have required property 'bar'", path: [''] }],
           },
         },
       )

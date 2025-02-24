@@ -22,6 +22,7 @@ export const inputSchema = {
   required: ['type'],
   type: 'object',
 } as const satisfies Schema
+export type InputSchema = FromSchema<typeof inputSchema>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1969
 export const tool = {

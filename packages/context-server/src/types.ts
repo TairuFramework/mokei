@@ -11,9 +11,8 @@ import type {
   ReadResourceRequest,
   ReadResourceResult,
   ServerMessage,
+  InputSchema as ToolInputSchema,
 } from '@mokei/context-protocol'
-
-import type { PromptsDefinition, ToolsDefinition } from './definitions.js'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
@@ -21,19 +20,29 @@ export type HandlerRequest<C extends Record<string, unknown> = Record<string, ne
   signal: AbortSignal
 }
 
-export type PromptHandlerRequest<ArgumentsSchema> = ArgumentsSchema extends Schema
-  ? HandlerRequest<{ arguments: FromSchema<ArgumentsSchema> }>
-  : HandlerRequest
-
 export type PromptHandlerReturn = GetPromptResult | Promise<GetPromptResult>
 
-export type PromptHandler<ArgumentsSchema> = (
-  request: PromptHandlerRequest<ArgumentsSchema>,
+export type GenericPromptHandler = (
+  request: HandlerRequest<{ arguments: unknown }>,
 ) => PromptHandlerReturn
 
-export type ToPromptHandlers<Definition> = Definition extends PromptsDefinition
-  ? { [Name in keyof Definition & string]: PromptHandler<Definition[Name]['arguments']> }
-  : never
+export type TypedPromptHandler<Arguments> = (
+  request: HandlerRequest<{ arguments: Arguments }>,
+) => PromptHandlerReturn
+
+export type GenericPromptDefinition = {
+  description: string
+  argumentsSchema?: Schema
+  handler: GenericPromptHandler
+}
+
+export type TypedPromptDefinition<ArgumentsSchema extends Schema> = {
+  description: string
+  argumentsSchema: Schema
+  handler: TypedPromptHandler<FromSchema<ArgumentsSchema>>
+}
+
+export type PromptDefinitions = Record<string, GenericPromptDefinition>
 
 export type ResourceHandlers = {
   // TODO: accept harcoded list of Resource objects
@@ -49,16 +58,26 @@ export type ResourceHandlers = {
   ) => ReadResourceResult | Promise<ReadResourceResult>
 }
 
-export type ToolHandlerRequest<InputSchema> = InputSchema extends Schema
-  ? HandlerRequest<{ input: FromSchema<InputSchema> }>
-  : HandlerRequest
-
 export type ToolHandlerReturn = CallToolResult | Promise<CallToolResult>
 
-export type ToolHandler<InputSchema> = (
-  request: ToolHandlerRequest<InputSchema>,
+export type GenericToolHandler = (
+  request: HandlerRequest<{ input: Record<string, unknown> }>,
 ) => ToolHandlerReturn
 
-export type ToToolHandlers<Definition> = Definition extends ToolsDefinition
-  ? { [Name in keyof Definition & string]: ToolHandler<Definition[Name]['input']> }
-  : never
+export type TypedToolHandler<Input> = (
+  request: HandlerRequest<{ input: Input }>,
+) => ToolHandlerReturn
+
+export type GenericToolDefinition = {
+  description: string
+  inputSchema: ToolInputSchema
+  handler: GenericToolHandler
+}
+
+export type TypedToolDefinition<InputSchema extends Schema & ToolInputSchema> = {
+  description: string
+  inputSchema: InputSchema
+  handler: TypedToolHandler<FromSchema<InputSchema>>
+}
+
+export type ToolDefinitions = Record<string, GenericToolDefinition>
