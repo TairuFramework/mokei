@@ -28,6 +28,7 @@ import type {
 import { toResourceHandlers } from './definitions.js'
 import { RPCError, errorResponse } from './error.js'
 import type {
+  CompleteHandler,
   GenericPromptHandler,
   GenericToolHandler,
   PromptDefinitions,
@@ -43,6 +44,7 @@ export type ServerParams = {
   name: string
   version: string
   transport?: ServerTransport
+  complete?: CompleteHandler
   prompts?: PromptDefinitions
   resources?: ResourceDefinitions
   tools?: ToolDefinitions
@@ -54,6 +56,7 @@ function isRequestID(id: unknown): id is RequestID {
 
 export class ContextServer {
   #capabilities: ServerCapabilities = {}
+  #completeHandler?: CompleteHandler
   #serverInfo: Implementation
   #promptHandlers: Record<string, GenericPromptHandler> = {}
   #promptsList: Array<Prompt> = []
@@ -62,6 +65,7 @@ export class ContextServer {
   #toolsList: Array<Tool> = []
 
   constructor(params: ServerParams) {
+    this.#completeHandler = params.complete
     this.#serverInfo = { name: params.name, version: params.version }
 
     for (const [name, prompt] of Object.entries(params.prompts ?? {})) {
@@ -178,6 +182,11 @@ export class ContextServer {
 
   async handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
     switch (request.method) {
+      case 'completion/complete':
+        if (this.#completeHandler == null) {
+          break
+        }
+        return await this.#completeHandler({ params: request.params, signal })
       case 'initialize':
         return {
           capabilities: this.#capabilities,

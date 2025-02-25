@@ -81,6 +81,21 @@ describe('ContextClient', () => {
     await expect(initializedPromise).resolves.toEqual(DEFAULT_INITIALIZE_RESULT)
   })
 
+  test('supports completion calls', async () => {
+    const params = {
+      ref: { type: 'ref/prompt', name: 'test' },
+      argument: { name: 'test', value: 'one' },
+    } as const
+    const completion = { values: ['one', 'two'] }
+
+    const request = executeClientRequest(
+      (client) => client.complete(params),
+      { method: 'completion/complete', params },
+      { completion },
+    )
+    await expect(request).resolves.toEqual(completion)
+  })
+
   describe('supports prompt calls', () => {
     test('lists available prompts', async () => {
       const prompts = [

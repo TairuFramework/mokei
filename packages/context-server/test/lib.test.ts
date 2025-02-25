@@ -1,4 +1,5 @@
 import { DirectTransports } from '@enkaku/transport'
+import { jest } from '@jest/globals'
 import { INVALID_PARAMS } from '@mokei/context-protocol'
 import type { ClientMessage, ClientRequest, ServerMessage } from '@mokei/context-protocol'
 
@@ -52,6 +53,18 @@ async function expectError(
 }
 
 describe('ContextServer', () => {
+  test('supports completion calls', async () => {
+    const params = {
+      ref: { type: 'ref/prompt', name: 'test' },
+      argument: { name: 'test', value: 'one' },
+    }
+    const completion = { values: ['one', 'two'] }
+
+    const complete = jest.fn(() => ({ completion }))
+    await expectResult({ complete }, { method: 'completion/complete', params }, { completion })
+    expect(complete).toHaveBeenCalledWith({ params, signal: expect.any(AbortSignal) })
+  })
+
   describe('supports prompt calls', () => {
     test('lists available prompts', async () => {
       await expectResult(

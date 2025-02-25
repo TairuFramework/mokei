@@ -17,6 +17,7 @@ export {
   type ClientResponse,
   clientMessage,
 } from './client.js'
+export type { CompleteRequest, CompleteResult } from './completion.js'
 export type {
   ClientCapabilities,
   Implementation,

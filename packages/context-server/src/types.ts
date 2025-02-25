@@ -3,6 +3,8 @@ import type { TransportType } from '@enkaku/transport'
 import type {
   CallToolResult,
   ClientMessage,
+  CompleteRequest,
+  CompleteResult,
   GetPromptResult,
   ListResourceTemplatesRequest,
   ListResourceTemplatesResult,
@@ -21,6 +23,10 @@ export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 export type HandlerRequest<C extends Record<string, unknown> = Record<string, never>> = C & {
   signal: AbortSignal
 }
+
+export type CompleteHandler = (
+  request: HandlerRequest<{ params: CompleteRequest['params'] }>,
+) => CompleteResult | Promise<CompleteResult>
 
 export type PromptHandlerReturn = GetPromptResult | Promise<GetPromptResult>
 

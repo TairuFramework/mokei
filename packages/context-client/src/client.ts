@@ -9,6 +9,8 @@ import type {
   ClientNotification,
   ClientNotifications,
   ClientRequests,
+  CompleteRequest,
+  CompleteResult,
   ErrorResponse,
   GetPromptRequest,
   GetPromptResult,
@@ -205,6 +207,10 @@ export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
   ): ClientRequest<Value> {
     const request = this.request(method, params)
     return Object.assign(request.then(getValue), { id: request.id, cancel: request.cancel })
+  }
+
+  complete(params: CompleteRequest['params']): ClientRequest<CompleteResult['completion']> {
+    return this._requestValue('completion/complete', params, (result) => result.completion)
   }
 
   listPrompts(): ClientRequest<Array<Prompt>> {
