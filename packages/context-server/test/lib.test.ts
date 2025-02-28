@@ -1,25 +1,39 @@
 import { DirectTransports } from '@enkaku/transport'
 import { jest } from '@jest/globals'
 import { INVALID_PARAMS } from '@mokei/context-protocol'
-import type { ClientMessage, ClientRequest, ServerMessage } from '@mokei/context-protocol'
+import {
+  type ClientMessage,
+  type ClientRequest,
+  LATEST_PROTOCOL_VERSION,
+  type Log,
+  type ServerMessage,
+} from '@mokei/context-protocol'
 
-import { type Schema, type ServerParams, createPrompt, createTool, serve } from '../src/index.js'
+import {
+  type ContextServer,
+  type Schema,
+  type ServerParams,
+  createPrompt,
+  createTool,
+  serve,
+} from '../src/index.js'
 
-type TestContext = DirectTransports<ServerMessage, ClientMessage>
+type TestContext = {
+  server: ContextServer
+  transports: DirectTransports<ServerMessage, ClientMessage>
+}
 
 type TestContextParams = Omit<ServerParams, 'name' | 'transport' | 'version'>
 
-function createTestContext(params: TestContextParams): TestContext {
+function createTestContext(params: TestContextParams = {}): TestContext {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
-
-  serve({
+  const server = serve({
     name: 'test',
-    version: '0',
+    version: '0.0.0',
     transport: transports.server,
     ...params,
   })
-
-  return transports
+  return { server, transports }
 }
 
 async function expectResponse(
@@ -27,13 +41,13 @@ async function expectResponse(
   request: Omit<ClientRequest, 'jsonrpc' | 'id'>,
   response: Record<string, unknown>,
 ): Promise<void> {
-  const context = createTestContext(params)
-  context.client.write({ jsonrpc: '2.0' as const, id: 1, ...request } as ClientRequest)
-  await expect(context.client.read()).resolves.toEqual({
+  const { transports } = createTestContext(params)
+  transports.client.write({ jsonrpc: '2.0' as const, id: 1, ...request } as ClientRequest)
+  await expect(transports.client.read()).resolves.toEqual({
     done: false,
     value: { jsonrpc: '2.0', id: 1, ...response },
   })
-  await context.dispose()
+  await transports.dispose()
 }
 
 async function expectResult(
@@ -53,6 +67,127 @@ async function expectError(
 }
 
 describe('ContextServer', () => {
+  test('supports initialization lifecycle', async () => {
+    const { server, transports } = createTestContext()
+
+    const params = {
+      capabilities: {},
+      clientInfo: { name: 'mokei', version: '0.0.0' },
+      protocolVersion: LATEST_PROTOCOL_VERSION,
+    }
+
+    transports.client.write({
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'initialize',
+      params,
+    } as ClientRequest)
+
+    await expect(server.events.once('initialize')).resolves.toBe(params)
+
+    await expect(transports.client.read()).resolves.toEqual({
+      done: false,
+      value: {
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          capabilities: {},
+          protocolVersion: LATEST_PROTOCOL_VERSION,
+          serverInfo: { name: 'test', version: '0.0.0' },
+        },
+      },
+    })
+
+    const initialized = server.events.once('initialized')
+    transports.client.write({ jsonrpc: '2.0', method: 'notifications/initialized' })
+    await initialized
+    expect(server.clientInitialize).toBe(params)
+
+    await server.dispose()
+  })
+
+  test('supports sending logs', async () => {
+    const { server, transports } = createTestContext()
+    const serverLogs: Array<Log> = []
+    server.events.on('log', (log) => {
+      serverLogs.push(log)
+    })
+
+    server.log('info', { test: 0 })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'logging/setLevel',
+      params: { level: 'notice' },
+    })
+    await expect(transports.client.read()).resolves.toEqual({
+      done: false,
+      value: { jsonrpc: '2.0', id: 1, result: {} },
+    })
+
+    server.log('info', { test: 1 })
+    server.log('notice', { test: 2 })
+    server.log('warning', { test: 3 })
+
+    await expect(transports.client.read()).resolves.toEqual({
+      done: false,
+      value: {
+        jsonrpc: '2.0',
+        method: 'notifications/message',
+        params: { level: 'notice', data: { test: 2 } },
+      },
+    })
+    await expect(transports.client.read()).resolves.toEqual({
+      done: false,
+      value: {
+        jsonrpc: '2.0',
+        method: 'notifications/message',
+        params: { level: 'warning', data: { test: 3 } },
+      },
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'logging/setLevel',
+      params: { level: 'info' },
+    })
+    await expect(transports.client.read()).resolves.toEqual({
+      done: false,
+      value: { jsonrpc: '2.0', id: 2, result: {} },
+    })
+
+    server.log('info', { test: 4 })
+    server.log('notice', { test: 5 })
+    await expect(transports.client.read()).resolves.toEqual({
+      done: false,
+      value: {
+        jsonrpc: '2.0',
+        method: 'notifications/message',
+        params: { level: 'info', data: { test: 4 } },
+      },
+    })
+    await expect(transports.client.read()).resolves.toEqual({
+      done: false,
+      value: {
+        jsonrpc: '2.0',
+        method: 'notifications/message',
+        params: { level: 'notice', data: { test: 5 } },
+      },
+    })
+
+    await server.dispose()
+    expect(serverLogs).toEqual([
+      { level: 'info', data: { test: 0 } },
+      { level: 'info', data: { test: 1 } },
+      { level: 'notice', data: { test: 2 } },
+      { level: 'warning', data: { test: 3 } },
+      { level: 'info', data: { test: 4 } },
+      { level: 'notice', data: { test: 5 } },
+    ])
+  })
+
   test('supports completion calls', async () => {
     const params = {
       ref: { type: 'ref/prompt', name: 'test' },
@@ -62,7 +197,11 @@ describe('ContextServer', () => {
 
     const complete = jest.fn(() => ({ completion }))
     await expectResult({ complete }, { method: 'completion/complete', params }, { completion })
-    expect(complete).toHaveBeenCalledWith({ params, signal: expect.any(AbortSignal) })
+    expect(complete).toHaveBeenCalledWith({
+      log: expect.any(Function),
+      params,
+      signal: expect.any(AbortSignal),
+    })
   })
 
   describe('supports prompt calls', () => {

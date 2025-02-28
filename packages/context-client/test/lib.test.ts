@@ -5,6 +5,7 @@ import type {
   ClientMessage,
   ClientRequest,
   InitializeResult,
+  Log,
   ServerMessage,
 } from '@mokei/context-protocol'
 
@@ -65,6 +66,8 @@ describe('ContextClient', () => {
     const client = new ContextClient({ transport: transports.client })
     const initializedPromise = client.initialize()
 
+    const initializedEvent = client.events.once('initialized')
+
     await expect(handleServerInitialize(transports.server)).resolves.toEqual({
       jsonrpc: '2.0',
       id: 0,
@@ -78,7 +81,38 @@ describe('ContextClient', () => {
         protocolVersion: LATEST_PROTOCOL_VERSION,
       },
     })
+
+    await expect(initializedEvent).resolves.toEqual(DEFAULT_INITIALIZE_RESULT)
     await expect(initializedPromise).resolves.toEqual(DEFAULT_INITIALIZE_RESULT)
+  })
+
+  test('supports logs', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+
+    const logs: Array<Log> = []
+    client.events.on('log', (log) => {
+      logs.push(log)
+    })
+
+    client.initialize()
+    await handleServerInitialize(transports.server)
+
+    await transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/message',
+      params: { level: 'info', data: { message: 'test' } },
+    })
+    await transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/message',
+      params: { level: 'error', data: { message: 'test' } },
+    })
+
+    expect(logs).toEqual([
+      { level: 'info', data: { message: 'test' } },
+      { level: 'error', data: { message: 'test' } },
+    ])
   })
 
   test('supports completion calls', async () => {

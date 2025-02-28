@@ -6,10 +6,12 @@ import type {
   CompleteRequest,
   CompleteResult,
   GetPromptResult,
+  InitializeRequest,
   ListResourceTemplatesRequest,
   ListResourceTemplatesResult,
   ListResourcesRequest,
   ListResourcesResult,
+  LoggingLevel,
   ReadResourceRequest,
   ReadResourceResult,
   Resource,
@@ -20,7 +22,12 @@ import type {
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
+export type ClientInitialize = InitializeRequest['params']
+
+export type LogFunction = (level: LoggingLevel, data: unknown, logger?: string) => void
+
 export type HandlerRequest<C extends Record<string, unknown> = Record<string, never>> = C & {
+  log: LogFunction
   signal: AbortSignal
 }
 

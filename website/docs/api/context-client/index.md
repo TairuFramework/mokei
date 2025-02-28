@@ -10,17 +10,17 @@ npm install @mokei/context-client
 
 ## Classes
 
-### ContextClient\<Tools\>
+### ContextClient\<T\>
 
 #### Type Parameters
 
-• **Tools** *extends* `Record`\<`string`, `Record`\<`string`, `unknown`\>\> = `Record`\<`string`, `Record`\<`string`, `unknown`\>\>
+• **T** *extends* [`ContextTypes`](index.md#contexttypes) = [`UnknownContextTypes`](index.md#unknowncontexttypes)
 
 #### Constructors
 
 ##### new ContextClient()
 
-> **new ContextClient**\<`Tools`\>(`params`): [`ContextClient`](index.md#contextclienttools)\<`Tools`\>
+> **new ContextClient**\<`T`\>(`params`): [`ContextClient`](index.md#contextclientt)\<`T`\>
 
 ###### Parameters
 
@@ -30,9 +30,21 @@ npm install @mokei/context-client
 
 ###### Returns
 
-[`ContextClient`](index.md#contextclienttools)\<`Tools`\>
+[`ContextClient`](index.md#contextclientt)\<`T`\>
 
 #### Accessors
+
+##### events
+
+###### Get Signature
+
+> **get** **events**(): `EventEmitter`\<`ClientEvents`\>
+
+###### Returns
+
+`EventEmitter`\<`ClientEvents`\>
+
+***
 
 ##### notifications
 
@@ -48,7 +60,7 @@ npm install @mokei/context-client
 
 ##### callTool()
 
-> **callTool**\<`Name`\>(`name`, `args`): `Promise`\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: (\{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `resource`: \{ `[key: string]`: `unknown`;  `mimeType`: `string`; `text`: `string`; `uri`: `string`; \} \| \{ `[key: string]`: `unknown`;  `blob`: `string`; `mimeType`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError`: `boolean`; \}\>
+> **callTool**\<`Name`\>(`name`, `args`): [`ClientRequest`](index.md#clientrequestresult)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: (\{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `resource`: \{ `[key: string]`: `unknown`;  `mimeType`: `string`; `text`: `string`; `uri`: `string`; \} \| \{ `[key: string]`: `unknown`;  `blob`: `string`; `mimeType`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError`: `boolean`; \}\>
 
 ###### Type Parameters
 
@@ -62,11 +74,73 @@ npm install @mokei/context-client
 
 ###### args
 
-`Tools`\[`Name`\]
+`T`\[`"Tools"`\]\[`Name`\]
 
 ###### Returns
 
-`Promise`\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: (\{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `resource`: \{ `[key: string]`: `unknown`;  `mimeType`: `string`; `text`: `string`; `uri`: `string`; \} \| \{ `[key: string]`: `unknown`;  `blob`: `string`; `mimeType`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError`: `boolean`; \}\>
+[`ClientRequest`](index.md#clientrequestresult)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: (\{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `resource`: \{ `[key: string]`: `unknown`;  `mimeType`: `string`; `text`: `string`; `uri`: `string`; \} \| \{ `[key: string]`: `unknown`;  `blob`: `string`; `mimeType`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError`: `boolean`; \}\>
+
+***
+
+##### complete()
+
+> **complete**(`params`): [`ClientRequest`](index.md#clientrequestresult)\<\{ `[key: string]`: `unknown`;  `hasMore`: `boolean`; `total`: `number`; `values`: `string`[]; \}\>
+
+###### Parameters
+
+###### params
+
+###### _meta?
+
+\{ `[key: string]`: `unknown`;  `progressToken`: `string` \| `number`; \}
+
+###### _meta.progressToken?
+
+`string` \| `number`
+
+###### argument
+
+\{ `[key: string]`: `unknown`;  `name`: `string`; `value`: `string`; \}
+
+###### argument.name
+
+`string`
+
+###### argument.value
+
+`string`
+
+###### ref
+
+\{ `[key: string]`: `unknown`;  `name`: `string`; `type`: `"ref/prompt"`; \} \| \{ `[key: string]`: `unknown`;  `type`: `"ref/resource"`; `uri`: `string`; \}
+
+###### Returns
+
+[`ClientRequest`](index.md#clientrequestresult)\<\{ `[key: string]`: `unknown`;  `hasMore`: `boolean`; `total`: `number`; `values`: `string`[]; \}\>
+
+***
+
+##### getPrompt()
+
+> **getPrompt**\<`Name`\>(`name`, `args`): [`ClientRequest`](index.md#clientrequestresult)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `description`: `string`; `messages`: `object`[]; \}\>
+
+###### Type Parameters
+
+• **Name** *extends* `string`
+
+###### Parameters
+
+###### name
+
+`Name`
+
+###### args
+
+`T`\[`"Prompts"`\]\[`Name`\] *extends* `undefined` ? `never` : `T`\[`"Prompts"`\]\[`Name`\]
+
+###### Returns
+
+[`ClientRequest`](index.md#clientrequestresult)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `description`: `string`; `messages`: `object`[]; \}\>
 
 ***
 
@@ -80,13 +154,43 @@ npm install @mokei/context-client
 
 ***
 
-##### listTools()
+##### listPrompts()
 
-> **listTools**(): `Promise`\<`object`[]\>
+> **listPrompts**(): [`ClientRequest`](index.md#clientrequestresult)\<`object`[]\>
 
 ###### Returns
 
-`Promise`\<`object`[]\>
+[`ClientRequest`](index.md#clientrequestresult)\<`object`[]\>
+
+***
+
+##### listResources()
+
+> **listResources**(): [`ClientRequest`](index.md#clientrequestresult)\<`object`[]\>
+
+###### Returns
+
+[`ClientRequest`](index.md#clientrequestresult)\<`object`[]\>
+
+***
+
+##### listResourceTemplates()
+
+> **listResourceTemplates**(): [`ClientRequest`](index.md#clientrequestresult)\<`object`[]\>
+
+###### Returns
+
+[`ClientRequest`](index.md#clientrequestresult)\<`object`[]\>
+
+***
+
+##### listTools()
+
+> **listTools**(): [`ClientRequest`](index.md#clientrequestresult)\<`object`[]\>
+
+###### Returns
+
+[`ClientRequest`](index.md#clientrequestresult)\<`object`[]\>
 
 ***
 
@@ -114,9 +218,35 @@ npm install @mokei/context-client
 
 ***
 
+##### readResource()
+
+> **readResource**(`params`): [`ClientRequest`](index.md#clientrequestresult)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `contents`: (\{ `[key: string]`: `unknown`;  `mimeType`: `string`; `text`: `string`; `uri`: `string`; \} \| \{ `[key: string]`: `unknown`;  `blob`: `string`; `mimeType`: `string`; `uri`: `string`; \})[]; \}\>
+
+###### Parameters
+
+###### params
+
+###### _meta?
+
+\{ `[key: string]`: `unknown`;  `progressToken`: `string` \| `number`; \}
+
+###### _meta.progressToken?
+
+`string` \| `number`
+
+###### uri
+
+`string`
+
+###### Returns
+
+[`ClientRequest`](index.md#clientrequestresult)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `contents`: (\{ `[key: string]`: `unknown`;  `mimeType`: `string`; `text`: `string`; `uri`: `string`; \} \| \{ `[key: string]`: `unknown`;  `blob`: `string`; `mimeType`: `string`; `uri`: `string`; \})[]; \}\>
+
+***
+
 ##### request()
 
-> **request**\<`Method`\>(`method`, `params`): `ClientRequest`\<[`ClientRequests`](../context-protocol/index.md#clientrequests)\[`Method`\]\[`"Result"`\]\>
+> **request**\<`Method`\>(`method`, `params`): [`ClientRequest`](index.md#clientrequestresult)\<[`ClientRequests`](../context-protocol/index.md#clientrequests)\[`Method`\]\[`"Result"`\]\>
 
 ###### Type Parameters
 
@@ -134,7 +264,23 @@ npm install @mokei/context-client
 
 ###### Returns
 
-`ClientRequest`\<[`ClientRequests`](../context-protocol/index.md#clientrequests)\[`Method`\]\[`"Result"`\]\>
+[`ClientRequest`](index.md#clientrequestresult)\<[`ClientRequests`](../context-protocol/index.md#clientrequests)\[`Method`\]\[`"Result"`\]\>
+
+***
+
+##### setLoggingLevel()
+
+> **setLoggingLevel**(`level`): [`ClientRequest`](index.md#clientrequestresult)\<`void`\>
+
+###### Parameters
+
+###### level
+
+`"alert"` | `"critical"` | `"debug"` | `"emergency"` | `"error"` | `"info"` | `"notice"` | `"warning"`
+
+###### Returns
+
+[`ClientRequest`](index.md#clientrequestresult)\<`void`\>
 
 ***
 
@@ -262,7 +408,7 @@ npm install @mokei/context-client
 
 `number`
 
-###### error.data
+###### error.data?
 
 \{\}
 
@@ -296,6 +442,62 @@ npm install @mokei/context-client
 
 ***
 
+### ClientRequest\<Result\>
+
+> **ClientRequest**\<`Result`\>: `Promise`\<`Result`\> & `object`
+
+#### Type declaration
+
+##### cancel()
+
+> **cancel**: () => `void`
+
+###### Returns
+
+`void`
+
+##### id
+
+> **id**: `number`
+
+#### Type Parameters
+
+• **Result**
+
+***
+
 ### ClientTransport
 
 > **ClientTransport**: `TransportType`\<[`ServerMessage`](../context-protocol/index.md#servermessage), [`ClientMessage`](../context-protocol/index.md#clientmessage)\>
+
+***
+
+### ContextTypes
+
+> **ContextTypes**: `object`
+
+#### Type declaration
+
+##### Prompts?
+
+> `optional` **Prompts**: `Record`\<`string`, `Record`\<`string`, `unknown`\> \| `never`\>
+
+##### Tools?
+
+> `optional` **Tools**: `Record`\<`string`, `Record`\<`string`, `unknown`\>\>
+
+***
+
+### UnknownContextTypes
+
+> **UnknownContextTypes**: `object`
+
+#### Type declaration
+
+##### Prompts
+
+> **Prompts**: `Record`\<`string`, `Record`\<`string`, `unknown`\>\>
+
+##### Tools
+
+> **Tools**: `Record`\<`string`, `Record`\<`string`, `unknown`\>\>

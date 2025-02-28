@@ -11,6 +11,7 @@ export const loggingLevel = {
   enum: ['alert', 'critical', 'debug', 'emergency', 'error', 'info', 'notice', 'warning'],
   type: 'string',
 } as const satisfies Schema
+export type LoggingLevel = FromSchema<typeof loggingLevel>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1858
 export const setLevelRequest = {
@@ -38,6 +39,23 @@ export const setLevelRequest = {
 } as const satisfies Schema
 export type SetLevelRequest = FromSchema<typeof setLevelRequest>
 
+export const log = {
+  properties: {
+    data: {
+      description:
+        'The data to be logged, such as a string message or an object. Any JSON serializable type is allowed here.',
+    },
+    level: loggingLevel,
+    logger: {
+      description: 'An optional name of the logger issuing this message.',
+      type: 'string',
+    },
+  },
+  required: ['data', 'level'],
+  type: 'object',
+} as const satisfies Schema
+export type Log = FromSchema<typeof log>
+
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1071
 export const loggingMessageNotification = {
   description:
@@ -50,21 +68,7 @@ export const loggingMessageNotification = {
           const: 'notifications/message',
           type: 'string',
         },
-        params: {
-          properties: {
-            data: {
-              description:
-                'The data to be logged, such as a string message or an object. Any JSON serializable type is allowed here.',
-            },
-            level: loggingLevel,
-            logger: {
-              description: 'An optional name of the logger issuing this message.',
-              type: 'string',
-            },
-          },
-          required: ['data', 'level'],
-          type: 'object',
-        },
+        params: log,
       },
       required: ['method', 'params'],
       type: 'object',

@@ -1,4 +1,5 @@
 import { type Deferred, defer, lazy } from '@enkaku/async'
+import { EventEmitter } from '@enkaku/event'
 import { createValidator } from '@enkaku/schema'
 import { createReadable } from '@enkaku/stream'
 import { LATEST_PROTOCOL_VERSION, serverMessage } from '@mokei/context-protocol'
@@ -15,6 +16,8 @@ import type {
   GetPromptRequest,
   GetPromptResult,
   InitializeResult,
+  Log,
+  LoggingLevel,
   Prompt,
   ReadResourceRequest,
   ReadResourceResult,
@@ -32,6 +35,11 @@ import type { ClientTransport } from './types.js'
 type RequestController<Result> = AbortController & Deferred<Result>
 
 const validator = createValidator(serverMessage)
+
+export type ClientEvents = {
+  initialized: InitializeResult
+  log: Log
+}
 
 export type ClientRequest<Result> = Promise<Result> & {
   id: number
@@ -54,6 +62,7 @@ export type ClientParams = {
 
 export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
   #controllers: Record<RequestID, RequestController<unknown>> = {}
+  #events: EventEmitter<ClientEvents>
   #initialized: PromiseLike<InitializeResult>
   #notificationController: ReadableStreamDefaultController<ServerNotification>
   #notifications: ReadableStream<ServerNotification>
@@ -62,6 +71,7 @@ export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
 
   constructor(params: ClientParams) {
     const [stream, controller] = createReadable<ServerNotification>()
+    this.#events = new EventEmitter<ClientEvents>()
     this.#initialized = lazy(() => this.#initialize())
     this.#notificationController = controller
     this.#notifications = stream
@@ -97,8 +107,10 @@ export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
     // Notify server that client is initialized
     await this.#transport.write({ jsonrpc: '2.0', method: 'notifications/initialized' })
     // TODO: check result
+    const result = next.value.result as InitializeResult
     // Return result
-    return next.value.result as InitializeResult
+    this.#events.emit('initialized', result)
+    return result
   }
 
   async #read() {
@@ -112,7 +124,11 @@ export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
       if (validated.issues == null) {
         const msg = validated.value
         if (msg.id == null) {
-          this.#notificationController.enqueue(msg as ServerNotification)
+          const notification = msg as ServerNotification
+          if (notification.method === 'notifications/message') {
+            this.#events.emit('log', notification.params)
+          }
+          this.#notificationController.enqueue(notification)
         } else if (msg.method == null) {
           const controller = this.#controllers[msg.id]
           if (controller == null) {
@@ -150,6 +166,10 @@ export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
   async #write(message: ClientMessage): Promise<void> {
     await this.#initialized
     await this.#transport.write(message)
+  }
+
+  get events(): EventEmitter<ClientEvents> {
+    return this.#events
   }
 
   get notifications(): ReadableStream<ServerNotification> {
@@ -200,7 +220,7 @@ export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
     }) as ClientRequest<ClientRequests[Method]['Result']>
   }
 
-  _requestValue<Method extends keyof ClientRequests, Value>(
+  #requestValue<Method extends keyof ClientRequests, Value>(
     method: Method,
     params: ClientRequests[Method]['Params'],
     getValue: (result: ClientRequests[Method]['Result']) => Value,
@@ -209,12 +229,16 @@ export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
     return Object.assign(request.then(getValue), { id: request.id, cancel: request.cancel })
   }
 
+  setLoggingLevel(level: LoggingLevel): ClientRequest<void> {
+    return this.#requestValue('logging/setLevel', { level }, () => {})
+  }
+
   complete(params: CompleteRequest['params']): ClientRequest<CompleteResult['completion']> {
-    return this._requestValue('completion/complete', params, (result) => result.completion)
+    return this.#requestValue('completion/complete', params, (result) => result.completion)
   }
 
   listPrompts(): ClientRequest<Array<Prompt>> {
-    return this._requestValue('prompts/list', {}, (result) => result.prompts)
+    return this.#requestValue('prompts/list', {}, (result) => result.prompts)
   }
 
   getPrompt<Name extends keyof T['Prompts'] & string>(
@@ -225,11 +249,11 @@ export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
   }
 
   listResources(): ClientRequest<Array<Resource>> {
-    return this._requestValue('resources/list', {}, (result) => result.resources)
+    return this.#requestValue('resources/list', {}, (result) => result.resources)
   }
 
   listResourceTemplates(): ClientRequest<Array<ResourceTemplate>> {
-    return this._requestValue('resources/templates/list', {}, (result) => result.resourceTemplates)
+    return this.#requestValue('resources/templates/list', {}, (result) => result.resourceTemplates)
   }
 
   readResource(params: ReadResourceRequest['params']): ClientRequest<ReadResourceResult> {
@@ -237,7 +261,7 @@ export class ContextClient<T extends ContextTypes = UnknownContextTypes> {
   }
 
   listTools(): ClientRequest<Array<Tool>> {
-    return this._requestValue('tools/list', {}, (result) => result.tools)
+    return this.#requestValue('tools/list', {}, (result) => result.tools)
   }
 
   callTool<Name extends keyof T['Tools'] & string>(

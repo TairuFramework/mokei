@@ -22,6 +22,18 @@ npm install @mokei/context-protocol
 
 ***
 
+### CancelledNotification
+
+> **CancelledNotification**: `FromSchema`\<*typeof* `cancelledNotification`\>
+
+***
+
+### ClientCapabilities
+
+> **ClientCapabilities**: `FromSchema`\<*typeof* `clientCapabilities`\>
+
+***
+
 ### ClientMessage
 
 > **ClientMessage**: `FromSchema`\<*typeof* [`clientMessage`](index.md#clientmessage-1)\>
@@ -42,7 +54,7 @@ npm install @mokei/context-protocol
 
 ##### cancelled
 
-> **cancelled**: `CancelledNotification`
+> **cancelled**: [`CancelledNotification`](index.md#cancellednotification)
 
 ##### initialized
 
@@ -50,7 +62,7 @@ npm install @mokei/context-protocol
 
 ##### progress
 
-> **progress**: `ProgressNotification`
+> **progress**: [`ProgressNotification`](index.md#progressnotification)
 
 ***
 
@@ -72,15 +84,15 @@ npm install @mokei/context-protocol
 
 ###### completion/complete.Method
 
-> **completion/complete.Method**: `CompleteRequest`\[`"method"`\]
+> **completion/complete.Method**: [`CompleteRequest`](index.md#completerequest)\[`"method"`\]
 
 ###### completion/complete.Params
 
-> **completion/complete.Params**: `CompleteRequest`\[`"params"`\]
+> **completion/complete.Params**: [`CompleteRequest`](index.md#completerequest)\[`"params"`\]
 
 ###### completion/complete.Result
 
-> **completion/complete.Result**: `CompleteResult`
+> **completion/complete.Result**: [`CompleteResult`](index.md#completeresult)
 
 ##### initialize
 
@@ -88,11 +100,11 @@ npm install @mokei/context-protocol
 
 ###### initialize.Method
 
-> **initialize.Method**: `InitializeRequest`\[`"method"`\]
+> **initialize.Method**: [`InitializeRequest`](index.md#initializerequest)\[`"method"`\]
 
 ###### initialize.Params
 
-> **initialize.Params**: `InitializeRequest`\[`"params"`\]
+> **initialize.Params**: [`InitializeRequest`](index.md#initializerequest)\[`"params"`\]
 
 ###### initialize.Result
 
@@ -104,11 +116,11 @@ npm install @mokei/context-protocol
 
 ###### logging/setLevel.Method
 
-> **logging/setLevel.Method**: `SetLevelRequest`\[`"method"`\]
+> **logging/setLevel.Method**: [`SetLevelRequest`](index.md#setlevelrequest)\[`"method"`\]
 
 ###### logging/setLevel.Params
 
-> **logging/setLevel.Params**: `SetLevelRequest`\[`"params"`\]
+> **logging/setLevel.Params**: [`SetLevelRequest`](index.md#setlevelrequest)\[`"params"`\]
 
 ###### logging/setLevel.Result
 
@@ -136,11 +148,11 @@ npm install @mokei/context-protocol
 
 ###### prompts/get.Method
 
-> **prompts/get.Method**: `GetPromptRequest`\[`"method"`\]
+> **prompts/get.Method**: [`GetPromptRequest`](index.md#getpromptrequest)\[`"method"`\]
 
 ###### prompts/get.Params
 
-> **prompts/get.Params**: `GetPromptRequest`\[`"params"`\]
+> **prompts/get.Params**: [`GetPromptRequest`](index.md#getpromptrequest)\[`"params"`\]
 
 ###### prompts/get.Result
 
@@ -177,6 +189,22 @@ npm install @mokei/context-protocol
 ###### resources/list.Result
 
 > **resources/list.Result**: [`ListResourcesResult`](index.md#listresourcesresult)
+
+##### resources/read
+
+> **resources/read**: `object`
+
+###### resources/read.Method
+
+> **resources/read.Method**: [`ReadResourceRequest`](index.md#readresourcerequest)\[`"method"`\]
+
+###### resources/read.Params
+
+> **resources/read.Params**: [`ReadResourceRequest`](index.md#readresourcerequest)\[`"params"`\]
+
+###### resources/read.Result
+
+> **resources/read.Result**: [`ReadResourceResult`](index.md#readresourceresult)
 
 ##### resources/templates/list
 
@@ -234,9 +262,27 @@ npm install @mokei/context-protocol
 
 ***
 
+### CompleteRequest
+
+> **CompleteRequest**: `FromSchema`\<*typeof* `completeRequest`\>
+
+***
+
+### CompleteResult
+
+> **CompleteResult**: `FromSchema`\<*typeof* `completeResult`\>
+
+***
+
 ### ErrorResponse
 
 > **ErrorResponse**: `FromSchema`\<*typeof* `errorResponse`\>
+
+***
+
+### GetPromptRequest
+
+> **GetPromptRequest**: `FromSchema`\<*typeof* `getPromptRequest`\>
 
 ***
 
@@ -252,9 +298,21 @@ npm install @mokei/context-protocol
 
 ***
 
+### InitializeRequest
+
+> **InitializeRequest**: `FromSchema`\<*typeof* `initializeRequest`\>
+
+***
+
 ### InitializeResult
 
 > **InitializeResult**: `FromSchema`\<*typeof* `initializeResult`\>
+
+***
+
+### InputSchema
+
+> **InputSchema**: `FromSchema`\<*typeof* [`inputSchema`](index.md#inputschema-1)\>
 
 ***
 
@@ -282,6 +340,48 @@ npm install @mokei/context-protocol
 
 ***
 
+### Log
+
+> **Log**: `FromSchema`\<*typeof* `log`\>
+
+***
+
+### LoggingLevel
+
+> **LoggingLevel**: `FromSchema`\<*typeof* `loggingLevel`\>
+
+***
+
+### LoggingMessageNotification
+
+> **LoggingMessageNotification**: `FromSchema`\<*typeof* `loggingMessageNotification`\>
+
+***
+
+### ProgressNotification
+
+> **ProgressNotification**: `FromSchema`\<*typeof* `progressNotification`\>
+
+***
+
+### Prompt
+
+> **Prompt**: `FromSchema`\<*typeof* `prompt`\>
+
+***
+
+### PromptArgument
+
+> **PromptArgument**: `FromSchema`\<*typeof* `promptArgument`\>
+
+***
+
+### PromptListChangedNotification
+
+> **PromptListChangedNotification**: `FromSchema`\<*typeof* `promptListChangedNotification`\>
+
+***
+
 ### ReadResourceRequest
 
 > **ReadResourceRequest**: `FromSchema`\<*typeof* `readResourceRequest`\>
@@ -297,6 +397,36 @@ npm install @mokei/context-protocol
 ### RequestID
 
 > **RequestID**: `FromSchema`\<*typeof* `requestId`\>
+
+***
+
+### Resource
+
+> **Resource**: `FromSchema`\<*typeof* `resource`\>
+
+***
+
+### ResourceListChangedNotification
+
+> **ResourceListChangedNotification**: `FromSchema`\<*typeof* `resourceListChangedNotification`\>
+
+***
+
+### ResourceTemplate
+
+> **ResourceTemplate**: `FromSchema`\<*typeof* `resourceTemplate`\>
+
+***
+
+### ResourceUpdatedNotification
+
+> **ResourceUpdatedNotification**: `FromSchema`\<*typeof* `resourceUpdatedNotification`\>
+
+***
+
+### ServerCapabilities
+
+> **ServerCapabilities**: `FromSchema`\<*typeof* `serverCapabilities`\>
 
 ***
 
@@ -320,15 +450,15 @@ npm install @mokei/context-protocol
 
 ##### prompts/list\_changed
 
-> **prompts/list\_changed**: `PromptListChangedNotification`
+> **prompts/list\_changed**: [`PromptListChangedNotification`](index.md#promptlistchangednotification)
 
 ##### resources/list\_changed
 
-> **resources/list\_changed**: `ResourceListChangedNotification`
+> **resources/list\_changed**: [`ResourceListChangedNotification`](index.md#resourcelistchangednotification)
 
 ##### tools/list\_changed
 
-> **tools/list\_changed**: `ToolListChangedNotification`
+> **tools/list\_changed**: [`ToolListChangedNotification`](index.md#toollistchangednotification)
 
 ***
 
@@ -344,9 +474,21 @@ npm install @mokei/context-protocol
 
 ***
 
+### SetLevelRequest
+
+> **SetLevelRequest**: `FromSchema`\<*typeof* `setLevelRequest`\>
+
+***
+
 ### Tool
 
 > **Tool**: `FromSchema`\<*typeof* `tool`\>
+
+***
+
+### ToolListChangedNotification
+
+> **ToolListChangedNotification**: `FromSchema`\<*typeof* `toolListChangedNotification`\>
 
 ## Variables
 
@@ -471,19 +613,3 @@ Any MCP server message.
 ##### anyOf
 
 > `readonly` **anyOf**: readonly \[\{ `anyOf`: readonly \[\{ `allOf`: readonly \[\{ `properties`: \{ `id`: \{ `anyOf`: readonly \[\{ `type`: ...; \}, \{ `type`: ...; \}\]; `description`: `"A uniquely identifying ID for a request in JSON-RPC."`; \}; `jsonrpc`: \{ `const`: `"2.0"`; `type`: `"string"`; \}; `method`: \{ `type`: `"string"`; \}; `params`: \{ `additionalProperties`: \{\}; `properties`: \{ `_meta`: \{ `properties`: ...; `type`: ...; \}; \}; `type`: `"object"`; \}; \}; `required`: readonly \[`"id"`, `"jsonrpc"`, `"method"`\]; `type`: `"object"`; \}, \{ `description`: `"A ping, issued by either the server or the client, to check that the other party is still alive. The receiver must promptly respond, or else may be disconnected."`; `properties`: \{ `method`: \{ `const`: `"ping"`; `type`: `"string"`; \}; \}; `required`: readonly \[`"method"`\]; `type`: `"object"`; \}\]; \}, \{ `allOf`: readonly \[\{ `properties`: \{ `id`: \{ `anyOf`: readonly \[\{ `type`: ...; \}, \{ `type`: ...; \}\]; `description`: `"A uniquely identifying ID for a request in JSON-RPC."`; \}; `jsonrpc`: \{ `const`: `"2.0"`; `type`: `"string"`; \}; `method`: \{ `type`: `"string"`; \}; `params`: \{ `additionalProperties`: \{\}; `properties`: \{ `_meta`: \{ `properties`: ...; `type`: ...; \}; \}; `type`: `"object"`; \}; \}; `required`: readonly \[`"id"`, `"jsonrpc"`, `"method"`\]; `type`: `"object"`; \}, \{ `properties`: \{ `method`: \{ `const`: `"sampling/createMessage"`; `type`: `"string"`; \}; `params`: \{ `properties`: \{ `includeContext`: \{ `description`: ...; `enum`: ...; `type`: ...; \}; `maxTokens`: \{ `description`: ...; `type`: ...; \}; `messages`: \{ `items`: ...; `type`: ...; \}; `metadata`: \{ `additionalProperties`: ...; `description`: ...; `properties`: ...; `type`: ...; \}; `modelPreferences`: \{ `description`: ...; `properties`: ...; `type`: ...; \}; `stopSequences`: \{ `items`: ...; `type`: ...; \}; `systemPrompt`: \{ `description`: ...; `type`: ...; \}; `temperature`: \{ `type`: ...; \}; \}; `required`: readonly \[`"maxTokens"`, `"messages"`\]; `type`: `"object"`; \}; \}; `required`: readonly \[`"method"`, `"params"`\]; `type`: `"object"`; \}\]; `description`: `"A request from the server to sample an LLM via the client. The client has full discretion over which model to select. The client should also inform the user before beginning sampling, to allow them to inspect the request (human in the loop) and decide whether to approve it."`; \}, \{ `allOf`: readonly \[\{ `properties`: \{ `id`: \{ `anyOf`: readonly \[\{ `type`: ...; \}, \{ `type`: ...; \}\]; `description`: `"A uniquely identifying ID for a request in JSON-RPC."`; \}; `jsonrpc`: \{ `const`: `"2.0"`; `type`: `"string"`; \}; `method`: \{ `type`: `"string"`; \}; `params`: \{ `additionalProperties`: \{\}; `properties`: \{ `_meta`: \{ `properties`: ...; `type`: ...; \}; \}; `type`: `"object"`; \}; \}; `required`: readonly \[`"id"`, `"jsonrpc"`, `"method"`\]; `type`: `"object"`; \}, \{ `properties`: \{ `method`: \{ `const`: `"roots/list"`; `type`: `"string"`; \}; \}; `required`: readonly \[`"method"`\]; `type`: `"object"`; \}\]; `description`: "Sent from the server to request a list of root URIs from the client. Roots allow servers to ask for specific directories or files to operate on. A common example for roots is providing a set of repositories or directories a server should operate on.\n    \n  This request is typically used when the server needs to understand the file system structure or access specific locations that the client has permission to read from."; \}\]; \}, \{ `anyOf`: readonly \[\{ `allOf`: readonly \[\{ `properties`: \{ `jsonrpc`: \{ `const`: `"2.0"`; `type`: `"string"`; \}; `method`: \{ `type`: `"string"`; \}; `params`: \{ `additionalProperties`: \{\}; `properties`: \{ `_meta`: \{ `additionalProperties`: ...; `description`: ...; `type`: ...; \}; \}; `type`: `"object"`; \}; \}; `required`: readonly \[`"jsonrpc"`, `"method"`\]; `type`: `"object"`; \}, \{ `properties`: \{ `method`: \{ `const`: `"notifications/cancelled"`; `type`: `"string"`; \}; `params`: \{ `properties`: \{ `reason`: \{ `type`: ...; \}; `requestId`: \{ `anyOf`: ...; `description`: ...; \}; \}; `required`: readonly \[`"requestId"`\]; `type`: `"object"`; \}; \}; `required`: readonly \[`"method"`, `"params"`\]; `type`: `"object"`; \}\]; \}, \{ `allOf`: readonly \[\{ `properties`: \{ `jsonrpc`: \{ `const`: `"2.0"`; `type`: `"string"`; \}; `method`: \{ `type`: `"string"`; \}; `params`: \{ `additionalProperties`: \{\}; `properties`: \{ `_meta`: \{ `additionalProperties`: ...; `description`: ...; `type`: ...; \}; \}; `type`: `"object"`; \}; \}; `required`: readonly \[`"jsonrpc"`, `"method"`\]; `type`: `"object"`; \}, \{ `properties`: \{ `method`: \{ `const`: `"notifications/message"`; `type`: `"string"`; \}; `params`: \{ `properties`: \{ `data`: \{ `description`: ...; \}; `level`: \{ `description`: ...; `enum`: ...; `type`: ...; \}; `logger`: \{ `description`: ...; `type`: ...; \}; \}; `required`: readonly \[`"data"`, `"level"`\]; `type`: `"object"`; \}; \}; `required`: readonly \[`"method"`, `"params"`\]; `type`: `"object"`; \}\]; `description`: `"Notification of a log message passed from server to client. If no logging/setLevel request has been sent from the client, the server MAY decide which messages to send automatically."`; \}, \{ `description`: `"An out-of-band notification used to inform the receiver of a progress update for a long-running request."`; `properties`: \{ `method`: \{ `const`: `"notifications/progress"`; `type`: `"string"`; \}; `params`: \{ `properties`: \{ `progress`: \{ `description`: `"The progress thus far. This should increase every time progress is made, even if the total is unknown."`; `type`: `"number"`; \}; `progressToken`: \{ `anyOf`: readonly \[\{ `type`: ...; \}, \{ `type`: ...; \}\]; `description`: `"A progress token, used to associate progress notifications with the original request."`; \}; `total`: \{ `description`: `"Total number of items to process (or total progress required), if known."`; `type`: `"number"`; \}; \}; `required`: readonly \[`"progress"`, `"progressToken"`\]; `type`: `"object"`; \}; \}; `required`: readonly \[`"method"`, `"params"`\]; `type`: `"object"`; \}, \{ `allOf`: readonly \[\{ `properties`: \{ `jsonrpc`: \{ `const`: `"2.0"`; `type`: `"string"`; \}; `method`: \{ `type`: `"string"`; \}; `params`: \{ `additionalProperties`: \{\}; `properties`: \{ `_meta`: \{ `additionalProperties`: ...; `description`: ...; `type`: ...; \}; \}; `type`: `"object"`; \}; \}; `required`: readonly \[`"jsonrpc"`, `"method"`\]; `type`: `"object"`; \}, \{ `properties`: \{ `method`: \{ `const`: `"notifications/resources/updated"`; `type`: `"string"`; \}; `params`: \{ `properties`: \{ `uri`: \{ `description`: ...; `format`: ...; `type`: ...; \}; \}; `required`: readonly \[`"uri"`\]; `type`: `"object"`; \}; \}; `required`: readonly \[`"method"`, `"params"`\]; `type`: `"object"`; \}\]; `description`: `"A notification from the server to the client, informing it that a resource has changed and may need to be read again. This should only be sent if the client previously sent a resources/subscribe request."`; \}, \{ `allOf`: readonly \[\{ `properties`: \{ `jsonrpc`: \{ `const`: `"2.0"`; `type`: `"string"`; \}; `method`: \{ `type`: `"string"`; \}; `params`: \{ `additionalProperties`: \{\}; `properties`: \{ `_meta`: \{ `additionalProperties`: ...; `description`: ...; `type`: ...; \}; \}; `type`: `"object"`; \}; \}; `required`: readonly \[`"jsonrpc"`, `"method"`\]; `type`: `"object"`; \}, \{ `properties`: \{ `method`: \{ `const`: `"notifications/resources/list_changed"`; `type`: `"string"`; \}; \}; `required`: readonly \[`"method"`\]; `type`: `"object"`; \}\]; `description`: `"An optional notification from the server to the client, informing it that the list of resources it can read from has changed. This may be issued by servers without any previous subscription from the client."`; \}, \{ `allOf`: readonly \[\{ `properties`: \{ `jsonrpc`: \{ `const`: `"2.0"`; `type`: `"string"`; \}; `method`: \{ `type`: `"string"`; \}; `params`: \{ `additionalProperties`: \{\}; `properties`: \{ `_meta`: \{ `additionalProperties`: ...; `description`: ...; `type`: ...; \}; \}; `type`: `"object"`; \}; \}; `required`: readonly \[`"jsonrpc"`, `"method"`\]; `type`: `"object"`; \}, \{ `properties`: \{ `method`: \{ `const`: `"notifications/tools/list_changed"`; `type`: `"string"`; \}; \}; `required`: readonly \[`"method"`\]; `type`: `"object"`; \}\]; `description`: `"An optional notification from the server to the client, informing it that the list of tools it offers has changed. This may be issued by servers without any previous subscription from the client."`; \}, \{ `allOf`: readonly \[\{ `properties`: \{ `jsonrpc`: \{ `const`: `"2.0"`; `type`: `"string"`; \}; `method`: \{ `type`: `"string"`; \}; `params`: \{ `additionalProperties`: \{\}; `properties`: \{ `_meta`: \{ `additionalProperties`: ...; `description`: ...; `type`: ...; \}; \}; `type`: `"object"`; \}; \}; `required`: readonly \[`"jsonrpc"`, `"method"`\]; `type`: `"object"`; \}, \{ `properties`: \{ `method`: \{ `const`: `"notifications/prompts/list_changed"`; `type`: `"string"`; \}; \}; `required`: readonly \[`"method"`\]; `type`: `"object"`; \}\]; `description`: `"An optional notification from the server to the client, informing it that the list of prompts it offers has changed. This may be issued by servers without any previous subscription from the client."`; \}\]; \}, \{ `allOf`: readonly \[\{ `properties`: \{ `id`: \{ `anyOf`: readonly \[\{ `type`: `"string"`; \}, \{ `type`: `"integer"`; \}\]; `description`: `"A uniquely identifying ID for a request in JSON-RPC."`; \}; `jsonrpc`: \{ `const`: `"2.0"`; `type`: `"string"`; \}; \}; `required`: readonly \[`"id"`, `"jsonrpc"`\]; `type`: `"object"`; \}, \{ `properties`: \{ `error`: \{ `properties`: \{ `code`: \{ `type`: `"number"`; \}; `data`: \{ `additionalProperties`: \{\}; `type`: `"object"`; \}; `message`: \{ `type`: `"string"`; \}; \}; `required`: readonly \[`"code"`, `"message"`\]; `type`: `"object"`; \}; \}; `required`: readonly \[`"error"`\]; `type`: `"object"`; \}\]; \}, \{ `allOf`: readonly \[\{ `properties`: \{ `id`: \{ `anyOf`: readonly \[\{ `type`: `"string"`; \}, \{ `type`: `"integer"`; \}\]; `description`: `"A uniquely identifying ID for a request in JSON-RPC."`; \}; `jsonrpc`: \{ `const`: `"2.0"`; `type`: `"string"`; \}; \}; `required`: readonly \[`"id"`, `"jsonrpc"`\]; `type`: `"object"`; \}, \{ `properties`: \{ `result`: \{ `anyOf`: readonly \[\{ `additionalProperties`: \{\}; `properties`: \{ `_meta`: \{ `additionalProperties`: ...; `description`: ...; `type`: ...; \}; \}; `type`: `"object"`; \}, \{ `allOf`: readonly \[\{ `additionalProperties`: ...; `properties`: ...; `type`: ...; \}, \{ `properties`: ...; `required`: ...; `type`: ...; \}\]; `description`: `"After receiving an initialize request from the client, the server sends this response."`; \}, \{ `allOf`: readonly \[\{ `additionalProperties`: ...; `properties`: ...; `type`: ...; \}, \{ `properties`: ...; `required`: ...; `type`: ...; \}\]; `description`: `"The server's response to a completion/complete request"`; \}, \{ `allOf`: readonly \[\{ `additionalProperties`: ...; `properties`: ...; `type`: ...; \}, \{ `properties`: ...; `required`: ...; `type`: ...; \}\]; `description`: `"The server's response to a prompts/get request from the client."`; \}, \{ `allOf`: readonly \[\{ `properties`: ...; `type`: ...; \}, \{ `properties`: ...; `required`: ...; `type`: ...; \}\]; `description`: `"The server's response to a prompts/list request from the client."`; \}, \{ `allOf`: readonly \[\{ `properties`: ...; `type`: ...; \}, \{ `properties`: ...; `required`: ...; `type`: ...; \}\]; `description`: `"The server's response to a resources/list request from the client."`; \}, \{ `allOf`: readonly \[\{ `properties`: ...; `type`: ...; \}, \{ `properties`: ...; `required`: ...; `type`: ...; \}\]; `description`: `"The server's response to a resources/templates/list request from the client."`; \}, \{ `allOf`: readonly \[\{ `additionalProperties`: ...; `properties`: ...; `type`: ...; \}, \{ `properties`: ...; `required`: ...; `type`: ...; \}\]; `description`: `"The server's response to a resources/read request from the client."`; \}, \{ `allOf`: readonly \[\{ `additionalProperties`: ...; `properties`: ...; `type`: ...; \}, \{ `properties`: ...; `required`: ...; `type`: ...; \}\]; `description`: "The server's response to a tool call.\n    \n    Any errors that originate from the tool SHOULD be reported inside the result object, with \"isError\" set to true, \_not\_ as an MCP protocol-level error response. Otherwise, the LLM would not be able to see that an error occurred and self-correct.\n    \n    However, any errors in \_finding\_ the tool, an error indicating that the server does not support tool calls, or any other exceptional conditions, should be reported as an MCP error response."; \}, \{ `allOf`: readonly \[\{ `properties`: ...; `type`: ...; \}, \{ `properties`: ...; `required`: ...; `type`: ...; \}\]; `description`: `"The server's response to a tools/list request from the client."`; \}\]; \}; \}; `required`: readonly \[`"result"`\]; `type`: `"object"`; \}\]; \}\]
-
-## Functions
-
-### createClientMessage()
-
-> **createClientMessage**(`callTools`?): `Schema`
-
-#### Parameters
-
-##### callTools?
-
-`Record`\<`string`, `Readonly`\<\{\}\>\>
-
-#### Returns
-
-`Schema`

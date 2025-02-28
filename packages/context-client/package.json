@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@enkaku/async": "^0.11.0",
+    "@enkaku/event": "^0.11.0",
     "@enkaku/node-streams-transport": "^0.11.0",
     "@enkaku/schema": "^0.11.0",
     "@enkaku/stream": "^0.11.0",

@@ -21,11 +21,19 @@ export type { CompleteRequest, CompleteResult } from './completion.js'
 export type {
   ClientCapabilities,
   Implementation,
+  InitializeRequest,
   InitializeResult,
   ServerCapabilities,
 } from './initialize.js'
+export type { Log, LoggingLevel, LoggingMessageNotification, SetLevelRequest } from './logging.js'
 export type { ClientNotifications, ClientRequests, ServerNotifications } from './procedure.js'
-export type { GetPromptRequest, GetPromptResult, Prompt, PromptArgument } from './prompt.js'
+export type {
+  GetPromptRequest,
+  GetPromptResult,
+  Prompt,
+  PromptArgument,
+  PromptListChangedNotification,
+} from './prompt.js'
 export type {
   ListResourceTemplatesRequest,
   ListResourceTemplatesResult,
@@ -34,9 +42,13 @@ export type {
   ReadResourceRequest,
   ReadResourceResult,
   Resource,
+  ResourceListChangedNotification,
   ResourceTemplate,
+  ResourceUpdatedNotification,
 } from './resource.js'
 export {
+  type CancelledNotification,
+  type ProgressNotification,
   type ErrorResponse,
   type RequestID,
   LATEST_PROTOCOL_VERSION,
@@ -51,6 +63,7 @@ export {
   type CallToolResult,
   type InputSchema,
   type Tool,
+  type ToolListChangedNotification,
   inputSchema,
 } from './tool.js'
 export {
