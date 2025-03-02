@@ -1,12 +1,14 @@
 import { DirectTransports } from '@enkaku/transport'
 import { jest } from '@jest/globals'
 import { INVALID_PARAMS } from '@mokei/context-protocol'
-import {
-  type ClientMessage,
-  type ClientRequest,
-  LATEST_PROTOCOL_VERSION,
-  type Log,
-  type ServerMessage,
+import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
+import type {
+  ClientMessage,
+  ClientRequest,
+  CreateMessageRequest,
+  CreateMessageResult,
+  Log,
+  ServerMessage,
 } from '@mokei/context-protocol'
 
 import {
@@ -35,7 +37,7 @@ function createTestContext(params: TestContextParams = {}): TestContext {
   return { server, transports }
 }
 
-async function expectResponse(
+async function expectServerResponse(
   params: TestContextParams,
   request: Omit<ClientRequest, 'jsonrpc' | 'id'>,
   response: Record<string, unknown>,
@@ -49,20 +51,20 @@ async function expectResponse(
   await transports.dispose()
 }
 
-async function expectResult(
+async function expectServerResult(
   params: TestContextParams,
   request: Omit<ClientRequest, 'jsonrpc' | 'id'>,
   result: unknown,
 ): Promise<void> {
-  await expectResponse(params, request, { result })
+  await expectServerResponse(params, request, { result })
 }
 
-async function expectError(
+async function expectServerError(
   params: TestContextParams,
   request: Omit<ClientRequest, 'jsonrpc' | 'id'>,
   error: unknown,
 ): Promise<void> {
-  await expectResponse(params, request, { error })
+  await expectServerResponse(params, request, { error })
 }
 
 describe('ContextServer', () => {
@@ -187,6 +189,47 @@ describe('ContextServer', () => {
     ])
   })
 
+  test('supports sending roots list requests', async () => {
+    const { server, transports } = createTestContext()
+    const roots = [{ name: 'test', url: 'test://test' }]
+
+    const responsePromise = server.listRoots()
+    await expect(transports.client.read()).resolves.toEqual({
+      done: false,
+      value: { jsonrpc: '2.0', id: 0, method: 'roots/list', params: {} },
+    })
+
+    transports.client.write({ jsonrpc: '2.0', id: 0, result: { roots } })
+    await expect(responsePromise).resolves.toEqual(roots)
+
+    await transports.dispose()
+  })
+
+  test('supports sampling messages requests', async () => {
+    const { server, transports } = createTestContext()
+
+    const params: CreateMessageRequest['params'] = {
+      messages: [{ role: 'user', content: { type: 'text', text: 'hello' } }],
+      maxTokens: 100,
+    }
+    const result: CreateMessageResult = {
+      role: 'assistant',
+      model: 'foo',
+      content: { type: 'text', text: 'test' },
+    }
+
+    const responsePromise = server.createMessage(params)
+    await expect(transports.client.read()).resolves.toEqual({
+      done: false,
+      value: { jsonrpc: '2.0', id: 0, method: 'sampling/createMessage', params },
+    })
+
+    transports.client.write({ jsonrpc: '2.0', id: 0, result })
+    await expect(responsePromise).resolves.toEqual(result)
+
+    await transports.dispose()
+  })
+
   test('supports completion calls', async () => {
     const params = {
       ref: { type: 'ref/prompt', name: 'test' },
@@ -195,7 +238,11 @@ describe('ContextServer', () => {
     const completion = { values: ['one', 'two'] }
 
     const complete = jest.fn(() => ({ completion }))
-    await expectResult({ complete }, { method: 'completion/complete', params }, { completion })
+    await expectServerResult(
+      { complete },
+      { method: 'completion/complete', params },
+      { completion },
+    )
     expect(complete).toHaveBeenCalledWith({
       log: expect.any(Function),
       params,
@@ -205,7 +252,7 @@ describe('ContextServer', () => {
 
   describe('supports prompt calls', () => {
     test('lists available prompts', async () => {
-      await expectResult(
+      await expectServerResult(
         {
           prompts: {
             foo: createPrompt('prompt foo', { type: 'object' }, () => {
@@ -246,7 +293,7 @@ describe('ContextServer', () => {
     })
 
     test('gets a prompt', async () => {
-      await expectResult(
+      await expectServerResult(
         {
           prompts: {
             hello: createPrompt(
@@ -292,7 +339,7 @@ describe('ContextServer', () => {
     })
 
     test('validates prompt arguments', async () => {
-      await expectError(
+      await expectServerError(
         {
           prompts: {
             hello: createPrompt(
@@ -340,7 +387,7 @@ describe('ContextServer', () => {
         { name: 'bar', uri: 'test://bar' },
       ]
 
-      await expectResult(
+      await expectServerResult(
         {
           resources: {
             list: () => ({ resources }),
@@ -358,7 +405,7 @@ describe('ContextServer', () => {
         { name: 'bar', uri: 'test://bar' },
       ]
 
-      await expectResult(
+      await expectServerResult(
         {
           resources: {
             list: resources,
@@ -376,7 +423,7 @@ describe('ContextServer', () => {
         { name: 'bar', uriTemplate: 'test://bar/{name}' },
       ]
 
-      await expectResult(
+      await expectServerResult(
         {
           resources: {
             listTemplates: () => ({ resourceTemplates }),
@@ -394,7 +441,7 @@ describe('ContextServer', () => {
         { name: 'bar', uriTemplate: 'test://bar/{name}' },
       ]
 
-      await expectResult(
+      await expectServerResult(
         {
           resources: {
             listTemplates: resourceTemplates,
@@ -407,7 +454,7 @@ describe('ContextServer', () => {
     })
 
     test('reads a resources', async () => {
-      await expectResult(
+      await expectServerResult(
         {
           resources: {
             read: ({ params }) => {
@@ -423,7 +470,7 @@ describe('ContextServer', () => {
 
   describe('supports tool calls', () => {
     test('lists available tools', async () => {
-      await expectResult(
+      await expectServerResult(
         {
           tools: {
             test: createTool(
@@ -477,7 +524,7 @@ describe('ContextServer', () => {
     })
 
     test('executes tool call handler', async () => {
-      await expectResult(
+      await expectServerResult(
         {
           tools: {
             test: createTool(
@@ -505,7 +552,7 @@ describe('ContextServer', () => {
     })
 
     test('validates tool call inputs', async () => {
-      await expectError(
+      await expectServerError(
         {
           tools: {
             test: createTool(

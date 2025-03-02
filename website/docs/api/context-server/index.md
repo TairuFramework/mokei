@@ -102,7 +102,7 @@ npm install @mokei/context-server
 
 ###### notification
 
-\{ `[key: string]`: `unknown`;  `jsonrpc`: `"2.0"`; `method`: `"notifications/cancelled"`; `params`: \{ `[key: string]`: `unknown`;  `_meta`: \{\}; `reason`: `string`; `requestId`: `string` \| `number`; \}; \} | \{ `[key: string]`: `unknown`;  `jsonrpc`: `"2.0"`; `method`: `"notifications/progress"`; `params`: \{ `[key: string]`: `unknown`;  `_meta`: \{\}; `progress`: `number`; `progressToken`: `string` \| `number`; `total`: `number`; \}; \} | \{ `[key: string]`: `unknown`;  `jsonrpc`: `"2.0"`; `method`: `"notifications/initialized"`; `params`: \{ `[key: string]`: `unknown`;  `_meta`: \{\}; \}; \} | \{ `[key: string]`: `unknown`;  `jsonrpc`: `"2.0"`; `method`: `"notifications/roots/list_changed"`; `params`: \{ `[key: string]`: `unknown`;  `_meta`: \{\}; \}; \}
+`HandleNotification`
 
 ###### Returns
 
@@ -169,6 +169,86 @@ npm install @mokei/context-server
 ###### Inherited from
 
 [`ContextRPC`](../context-rpc/index.md#contextrpct).[`_write`](../context-rpc/index.md#_write-2)
+
+***
+
+##### createMessage()
+
+> **createMessage**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequestresult)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \}; `model`: `string`; `role`: `"assistant"` \| `"user"`; `stopReason`: `string`; \}\>
+
+###### Parameters
+
+###### params
+
+###### _meta?
+
+\{ `[key: string]`: `unknown`;  `progressToken`: `string` \| `number`; \}
+
+###### _meta.progressToken?
+
+`string` \| `number`
+
+###### includeContext?
+
+`"allServers"` \| `"none"` \| `"thisServer"`
+
+###### maxTokens
+
+`number`
+
+###### messages
+
+`object`[]
+
+###### metadata?
+
+\{\}
+
+###### modelPreferences?
+
+\{ `[key: string]`: `unknown`;  `costPriority`: `number`; `hints`: `object`[]; `intelligencePriority`: `number`; `speedPriority`: `number`; \}
+
+###### modelPreferences.costPriority?
+
+`number`
+
+###### modelPreferences.hints?
+
+`object`[]
+
+###### modelPreferences.intelligencePriority?
+
+`number`
+
+###### modelPreferences.speedPriority?
+
+`number`
+
+###### stopSequences?
+
+`string`[]
+
+###### systemPrompt?
+
+`string`
+
+###### temperature?
+
+`number`
+
+###### Returns
+
+[`SentRequest`](../context-rpc/index.md#sentrequestresult)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \}; `model`: `string`; `role`: `"assistant"` \| `"user"`; `stopReason`: `string`; \}\>
+
+***
+
+##### listRoots()
+
+> **listRoots**(): [`SentRequest`](../context-rpc/index.md#sentrequestresult)\<`object`[]\>
+
+###### Returns
+
+[`SentRequest`](../context-rpc/index.md#sentrequestresult)\<`object`[]\>
 
 ***
 
@@ -249,6 +329,40 @@ npm install @mokei/context-server
 ###### Inherited from
 
 [`ContextRPC`](../context-rpc/index.md#contextrpct).[`request`](../context-rpc/index.md#request-3)
+
+***
+
+##### requestValue()
+
+> **requestValue**\<`Method`, `Value`\>(`method`, `params`, `getValue`): [`SentRequest`](../context-rpc/index.md#sentrequestresult)\<`Value`\>
+
+###### Type Parameters
+
+• **Method** *extends* keyof [`ServerRequests`](../context-protocol/index.md#serverrequests)
+
+• **Value**
+
+###### Parameters
+
+###### method
+
+`Method`
+
+###### params
+
+[`ServerRequests`](../context-protocol/index.md#serverrequests)\[`Method`\]\[`"Params"`\]
+
+###### getValue
+
+(`result`) => `Value`
+
+###### Returns
+
+[`SentRequest`](../context-rpc/index.md#sentrequestresult)\<`Value`\>
+
+###### Inherited from
+
+[`ContextRPC`](../context-rpc/index.md#contextrpct).[`requestValue`](../context-rpc/index.md#requestvalue-1)
 
 ## Type Aliases
 

@@ -11,6 +11,8 @@ import type {
   ClientResult,
   CompleteRequest,
   CompleteResult,
+  CreateMessageRequest,
+  CreateMessageResult,
   GetPromptRequest,
   GetPromptResult,
   InitializeResult,
@@ -34,6 +36,10 @@ import type { ClientTransport } from './types.js'
 
 const validateServerMessage = createValidator(serverMessage)
 
+export type CreateMessageHandler = (
+  params: CreateMessageRequest['params'],
+  signal: AbortSignal,
+) => CreateMessageResult | Promise<CreateMessageResult>
 export type ListRootsHandler = (signal: AbortSignal) => Array<Root> | Promise<Array<Root>>
 
 export type ClientEvents = {
@@ -65,6 +71,7 @@ export type UnknownContextTypes = {
 }
 
 export type ClientParams = {
+  createMessage?: CreateMessageHandler
   listRoots?: Array<Root> | ListRootsHandler
   transport: ClientTransport
 }
@@ -72,6 +79,7 @@ export type ClientParams = {
 export class ContextClient<
   T extends ContextTypes = UnknownContextTypes,
 > extends ContextRPC<ClientTypes> {
+  #createMessage?: CreateMessageHandler
   #initialized: PromiseLike<InitializeResult>
   #listRoots?: Array<Root> | ListRootsHandler
   #notificationController: ReadableStreamDefaultController<HandleNotification>
@@ -80,6 +88,7 @@ export class ContextClient<
   constructor(params: ClientParams) {
     super({ validateMessageIn: validateServerMessage, transport: params.transport })
     const [stream, controller] = createReadable<HandleNotification>()
+    this.#createMessage = params.createMessage
     this.#initialized = lazy(() => this.#initialize())
     this.#listRoots = params.listRoots
     this.#notificationController = controller
@@ -146,7 +155,9 @@ export class ContextClient<
         return { roots }
       }
       case 'sampling/createMessage':
-      // TODO: implement support
+        if (this.#createMessage != null) {
+          return await this.#createMessage(request.params, signal)
+        }
     }
     throw new RPCError(METHOD_NOT_FOUND, 'Method not implemented')
   }
@@ -159,25 +170,16 @@ export class ContextClient<
     return await this.#initialized
   }
 
-  #requestValue<Method extends keyof ClientRequests, Value>(
-    method: Method,
-    params: ClientRequests[Method]['Params'],
-    getValue: (result: ClientRequests[Method]['Result']) => Value,
-  ): SentRequest<Value> {
-    const request = this.request(method, params)
-    return Object.assign(request.then(getValue), { id: request.id, cancel: request.cancel })
-  }
-
   setLoggingLevel(level: LoggingLevel): SentRequest<void> {
-    return this.#requestValue('logging/setLevel', { level }, () => {})
+    return this.requestValue('logging/setLevel', { level }, () => {})
   }
 
   complete(params: CompleteRequest['params']): SentRequest<CompleteResult['completion']> {
-    return this.#requestValue('completion/complete', params, (result) => result.completion)
+    return this.requestValue('completion/complete', params, (result) => result.completion)
   }
 
   listPrompts(): SentRequest<Array<Prompt>> {
-    return this.#requestValue('prompts/list', {}, (result) => result.prompts)
+    return this.requestValue('prompts/list', {}, (result) => result.prompts)
   }
 
   getPrompt<Name extends keyof T['Prompts'] & string>(
@@ -188,11 +190,11 @@ export class ContextClient<
   }
 
   listResources(): SentRequest<Array<Resource>> {
-    return this.#requestValue('resources/list', {}, (result) => result.resources)
+    return this.requestValue('resources/list', {}, (result) => result.resources)
   }
 
   listResourceTemplates(): SentRequest<Array<ResourceTemplate>> {
-    return this.#requestValue('resources/templates/list', {}, (result) => result.resourceTemplates)
+    return this.requestValue('resources/templates/list', {}, (result) => result.resourceTemplates)
   }
 
   readResource(params: ReadResourceRequest['params']): SentRequest<ReadResourceResult> {
@@ -200,7 +202,7 @@ export class ContextClient<
   }
 
   listTools(): SentRequest<Array<Tool>> {
-    return this.#requestValue('tools/list', {}, (result) => result.tools)
+    return this.requestValue('tools/list', {}, (result) => result.tools)
   }
 
   callTool<Name extends keyof T['Tools'] & string>(

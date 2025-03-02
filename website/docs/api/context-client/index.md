@@ -394,6 +394,40 @@ npm install @mokei/context-client
 
 ***
 
+##### requestValue()
+
+> **requestValue**\<`Method`, `Value`\>(`method`, `params`, `getValue`): [`SentRequest`](../context-rpc/index.md#sentrequestresult)\<`Value`\>
+
+###### Type Parameters
+
+• **Method** *extends* keyof [`ClientRequests`](../context-protocol/index.md#clientrequests)
+
+• **Value**
+
+###### Parameters
+
+###### method
+
+`Method`
+
+###### params
+
+[`ClientRequests`](../context-protocol/index.md#clientrequests)\[`Method`\]\[`"Params"`\]
+
+###### getValue
+
+(`result`) => `Value`
+
+###### Returns
+
+[`SentRequest`](../context-rpc/index.md#sentrequestresult)\<`Value`\>
+
+###### Inherited from
+
+[`ContextRPC`](../context-rpc/index.md#contextrpct).[`requestValue`](../context-rpc/index.md#requestvalue-1)
+
+***
+
 ##### setLoggingLevel()
 
 > **setLoggingLevel**(`level`): [`SentRequest`](../context-rpc/index.md#sentrequestresult)\<`void`\>
@@ -415,6 +449,10 @@ npm install @mokei/context-client
 > **ClientParams**: `object`
 
 #### Type declaration
+
+##### createMessage?
+
+> `optional` **createMessage**: `CreateMessageHandler`
 
 ##### listRoots?
 

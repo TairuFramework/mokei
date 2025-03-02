@@ -1,16 +1,21 @@
 import { DirectTransports, type TransportType } from '@enkaku/transport'
+import { jest } from '@jest/globals'
 import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import type {
   CallToolResult,
   ClientMessage,
   ClientRequest,
+  CreateMessageRequest,
+  CreateMessageResult,
   InitializeResult,
   Log,
+  Root,
   ServerMessage,
+  ServerRequest,
 } from '@mokei/context-protocol'
 import type { SentRequest as Request } from '@mokei/context-rpc'
 
-import { ContextClient } from '../src/index.js'
+import { type ClientParams, ContextClient } from '../src/index.js'
 
 const DEFAULT_INITIALIZE_RESULT: InitializeResult = {
   capabilities: {},
@@ -45,7 +50,6 @@ async function executeClientRequest<T>(
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const client = new ContextClient({ transport: transports.client })
 
-  // Initialize the client
   client.initialize()
   await handleServerInitialize(transports.server)
 
@@ -58,6 +62,23 @@ async function executeClientRequest<T>(
   transports.server.write({ jsonrpc: '2.0', id: 1, result } as ServerMessage)
 
   return request
+}
+
+async function expectClientResponse(
+  params: Omit<ClientParams, 'transport'>,
+  request: Omit<ServerRequest, 'jsonrpc' | 'id'>,
+  response: Record<string, unknown>,
+): Promise<void> {
+  const transports = new DirectTransports<ServerMessage, ClientMessage>()
+  const client = new ContextClient({ ...params, transport: transports.client })
+  client.initialize()
+  await handleServerInitialize(transports.server)
+  transports.server.write({ jsonrpc: '2.0' as const, id: 1, ...request } as ServerRequest)
+  await expect(transports.server.read()).resolves.toEqual({
+    done: false,
+    value: { jsonrpc: '2.0', id: 1, ...response },
+  })
+  await transports.dispose()
 }
 
 describe('ContextClient', () => {
@@ -115,6 +136,35 @@ describe('ContextClient', () => {
       { level: 'info', data: { message: 'test' } },
       { level: 'error', data: { message: 'test' } },
     ])
+  })
+
+  test('supports roots list requests', async () => {
+    const roots: Array<Root> = [{ name: 'test', uri: 'test://test' }]
+    await expectClientResponse(
+      { listRoots: roots },
+      { method: 'roots/list' },
+      { result: { roots } },
+    )
+  })
+
+  test('supports sampling messages requests', async () => {
+    const params: CreateMessageRequest['params'] = {
+      messages: [{ role: 'user', content: { type: 'text', text: 'hello' } }],
+      maxTokens: 100,
+    }
+    const result: CreateMessageResult = {
+      role: 'assistant',
+      model: 'foo',
+      content: { type: 'text', text: 'test' },
+    }
+    const createMessage = jest.fn(() => result)
+
+    await expectClientResponse(
+      { createMessage },
+      { method: 'sampling/createMessage', params },
+      { result },
+    )
+    expect(createMessage).toHaveBeenCalledWith(params, expect.any(AbortSignal))
   })
 
   test('supports completion calls', async () => {

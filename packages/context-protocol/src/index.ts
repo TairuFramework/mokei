@@ -75,6 +75,7 @@ export {
   INVALID_PARAMS,
   INTERNAL_ERROR,
 } from './rpc.js'
+export type { CreateMessageRequest, CreateMessageResult } from './sampling.js'
 export {
   type ServerMessage,
   type ServerNotification,

@@ -100,7 +100,7 @@ export type ServerRequests = {
     Params: ListRootsRequest['params']
     Result: ListRootsResult
   }
-  'sampling/create_message': {
+  'sampling/createMessage': {
     Params: CreateMessageRequest['params']
     Result: CreateMessageResult
   }

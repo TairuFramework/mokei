@@ -260,6 +260,18 @@ npm install @mokei/context-protocol
 
 ***
 
+### CreateMessageRequest
+
+> **CreateMessageRequest**: `FromSchema`\<*typeof* `createMessageRequest`\>
+
+***
+
+### CreateMessageResult
+
+> **CreateMessageResult**: `FromSchema`\<*typeof* `createMessageResult`\>
+
+***
+
 ### ErrorResponse
 
 > **ErrorResponse**: `FromSchema`\<*typeof* `errorResponse`\>
@@ -514,17 +526,17 @@ npm install @mokei/context-protocol
 
 > **roots/list.Result**: [`ListRootsResult`](index.md#listrootsresult)
 
-##### sampling/create\_message
+##### sampling/createMessage
 
-> **sampling/create\_message**: `object`
+> **sampling/createMessage**: `object`
 
-###### sampling/create\_message.Params
+###### sampling/createMessage.Params
 
-> **sampling/create\_message.Params**: `CreateMessageRequest`\[`"params"`\]
+> **sampling/createMessage.Params**: [`CreateMessageRequest`](index.md#createmessagerequest)\[`"params"`\]
 
-###### sampling/create\_message.Result
+###### sampling/createMessage.Result
 
-> **sampling/create\_message.Result**: `CreateMessageResult`
+> **sampling/createMessage.Result**: [`CreateMessageResult`](index.md#createmessageresult)
 
 ***
 

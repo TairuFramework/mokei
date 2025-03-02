@@ -189,6 +189,36 @@ npm install @mokei/context-rpc
 
 ***
 
+##### requestValue()
+
+> **requestValue**\<`Method`, `Value`\>(`method`, `params`, `getValue`): [`SentRequest`](index.md#sentrequestresult)\<`Value`\>
+
+###### Type Parameters
+
+• **Method** *extends* `string` \| `number` \| `symbol`
+
+• **Value**
+
+###### Parameters
+
+###### method
+
+`Method`
+
+###### params
+
+`T`\[`"SendRequests"`\]\[`Method`\]\[`"Params"`\]
+
+###### getValue
+
+(`result`) => `Value`
+
+###### Returns
+
+[`SentRequest`](index.md#sentrequestresult)\<`Value`\>
+
+***
+
 ### RPCError
 
 #### Extends

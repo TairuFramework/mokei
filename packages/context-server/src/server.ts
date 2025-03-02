@@ -12,6 +12,8 @@ import type {
   ClientMessage,
   ClientNotification,
   ClientRequest,
+  CreateMessageRequest,
+  CreateMessageResult,
   GetPromptRequest,
   GetPromptResult,
   Implementation,
@@ -20,6 +22,7 @@ import type {
   LoggingLevel,
   ProgressNotification,
   Prompt,
+  Root,
   ServerCapabilities,
   ServerMessage,
   ServerNotifications,
@@ -27,7 +30,7 @@ import type {
   ServerResult,
   Tool,
 } from '@mokei/context-protocol'
-import { ContextRPC, RPCError } from '@mokei/context-rpc'
+import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
 
 import { toResourceHandlers } from './definitions.js'
 import type {
@@ -135,6 +138,14 @@ export class ContextServer extends ContextRPC<ServerTypes> {
 
   log = (level: LoggingLevel, data: unknown, logger?: string) => {
     this.events.emit('log', { level, data, logger })
+  }
+
+  listRoots(): SentRequest<Array<Root>> {
+    return this.requestValue('roots/list', {}, (result) => result.roots)
+  }
+
+  createMessage(params: CreateMessageRequest['params']): SentRequest<CreateMessageResult> {
+    return this.request('sampling/createMessage', params)
   }
 
   _handle() {

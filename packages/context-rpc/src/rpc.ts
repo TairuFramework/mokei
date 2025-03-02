@@ -221,4 +221,13 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       },
     }) as SentRequest<T['SendRequests'][Method]['Result']>
   }
+
+  requestValue<Method extends keyof T['SendRequests'], Value>(
+    method: Method,
+    params: T['SendRequests'][Method]['Params'],
+    getValue: (result: T['SendRequests'][Method]['Result']) => Value,
+  ): SentRequest<Value> {
+    const request = this.request(method, params)
+    return Object.assign(request.then(getValue), { id: request.id, cancel: request.cancel })
+  }
 }
