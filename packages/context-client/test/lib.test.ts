@@ -8,8 +8,9 @@ import type {
   Log,
   ServerMessage,
 } from '@mokei/context-protocol'
+import type { SentRequest as Request } from '@mokei/context-rpc'
 
-import { ContextClient, type ClientRequest as Request } from '../src/index.js'
+import { ContextClient } from '../src/index.js'
 
 const DEFAULT_INITIALIZE_RESULT: InitializeResult = {
   capabilities: {},
@@ -109,6 +110,7 @@ describe('ContextClient', () => {
       params: { level: 'error', data: { message: 'test' } },
     })
 
+    await transports.dispose()
     expect(logs).toEqual([
       { level: 'info', data: { message: 'test' } },
       { level: 'error', data: { message: 'test' } },

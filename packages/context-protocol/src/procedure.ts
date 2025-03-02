@@ -17,7 +17,9 @@ import type {
   ReadResourceResult,
   ResourceListChangedNotification,
 } from './resource.js'
+import type { ListRootsRequest, ListRootsResult, RootsListChangedNotification } from './root.js'
 import type { CancelledNotification, PingRequest, ProgressNotification } from './rpc.js'
+import type { CreateMessageRequest, CreateMessageResult } from './sampling.js'
 import type {
   CallToolRequest,
   CallToolResult,
@@ -26,65 +28,62 @@ import type {
   ToolListChangedNotification,
 } from './tool.js'
 
-export type ClientNotifications = {
+export type CommonNotifications = {
   cancelled: CancelledNotification
-  initialized: InitializedNotification
   progress: ProgressNotification
 }
 
-export type ClientRequests = {
-  'completion/complete': {
-    Method: CompleteRequest['method']
-    Params: CompleteRequest['params']
-    Result: CompleteResult
-  }
-  initialize: {
-    Method: InitializeRequest['method']
-    Params: InitializeRequest['params']
-    Result: InitializeResult
-  }
-  'logging/setLevel': {
-    Method: SetLevelRequest['method']
-    Params: SetLevelRequest['params']
-    Result: undefined
-  }
+export type CommonRequests = {
   ping: {
     Method: PingRequest['method']
     Params: PingRequest['params']
     Result: undefined
   }
+}
+
+export type ClientNotifications = {
+  initialized: InitializedNotification
+  'roots/list_changed': RootsListChangedNotification
+}
+
+export type ClientRequests = {
+  'completion/complete': {
+    Params: CompleteRequest['params']
+    Result: CompleteResult
+  }
+  initialize: {
+    Params: InitializeRequest['params']
+    Result: InitializeResult
+  }
+  'logging/setLevel': {
+    Params: SetLevelRequest['params']
+    Result: undefined
+  }
   'prompts/get': {
-    Method: GetPromptRequest['method']
     Params: GetPromptRequest['params']
     Result: GetPromptResult
   }
   'prompts/list': {
-    Method: ListPromptsRequest['method']
     Params: ListPromptsRequest['params']
     Result: ListPromptsResult
   }
   'resources/list': {
-    Method: ListResourcesRequest['method']
     Params: ListResourcesRequest['params']
     Result: ListResourcesResult
   }
   'resources/read': {
-    Method: ReadResourceRequest['method']
     Params: ReadResourceRequest['params']
     Result: ReadResourceResult
   }
   'resources/templates/list': {
-    Method: ListResourceTemplatesRequest['method']
     Params: ListResourceTemplatesRequest['params']
     Result: ListResourceTemplatesResult
   }
   'tools/call': {
-    Method: CallToolRequest['method']
     Params: CallToolRequest['params']
     Result: CallToolResult
   }
   'tools/list': {
-    Method: ListToolsRequest['method']
     Params: ListToolsRequest['params']
     Result: ListToolsResult
   }
@@ -94,4 +93,15 @@ export type ServerNotifications = {
   'prompts/list_changed': PromptListChangedNotification
   'resources/list_changed': ResourceListChangedNotification
   'tools/list_changed': ToolListChangedNotification
+}
+
+export type ServerRequests = {
+  'roots/list': {
+    Params: ListRootsRequest['params']
+    Result: ListRootsResult
+  }
+  'sampling/create_message': {
+    Params: CreateMessageRequest['params']
+    Result: CreateMessageResult
+  }
 }

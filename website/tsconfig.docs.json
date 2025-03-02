@@ -12,6 +12,7 @@
     "entryPoints": [
       "../packages/context-client",
       "../packages/context-protocol",
+      "../packages/context-rpc",
       "../packages/context-server",
       "../packages/host",
       "../packages/host-monitor",

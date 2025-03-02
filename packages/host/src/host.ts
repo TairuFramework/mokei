@@ -1,13 +1,13 @@
 import { Disposer } from '@enkaku/async'
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 import {
-  type ClientRequest,
   type ClientTransport,
   ContextClient,
   type ContextTypes,
   type UnknownContextTypes,
 } from '@mokei/context-client'
 import type { CallToolResult, GetPromptResult, Tool } from '@mokei/context-protocol'
+import type { SentRequest } from '@mokei/context-rpc'
 
 import { spawnContextServer } from './spawn.js'
 
@@ -122,15 +122,11 @@ export class ContextHost extends Disposer {
     key: string,
     name: string,
     args: Record<string, unknown> = {},
-  ): ClientRequest<GetPromptResult> {
+  ): SentRequest<GetPromptResult> {
     return this.getContext(key).client.getPrompt(name, args)
   }
 
-  callTool(
-    key: string,
-    name: string,
-    args: Record<string, unknown>,
-  ): ClientRequest<CallToolResult> {
+  callTool(key: string, name: string, args: Record<string, unknown>): SentRequest<CallToolResult> {
     return this.getContext(key).client.callTool(name, args)
   }
 }

@@ -10,12 +10,11 @@ import {
 } from '@mokei/context-protocol'
 
 import {
-  type ContextServer,
+  ContextServer,
   type Schema,
   type ServerParams,
   createPrompt,
   createTool,
-  serve,
 } from '../src/index.js'
 
 type TestContext = {
@@ -27,7 +26,7 @@ type TestContextParams = Omit<ServerParams, 'name' | 'transport' | 'version'>
 
 function createTestContext(params: TestContextParams = {}): TestContext {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
-  const server = serve({
+  const server = new ContextServer({
     name: 'test',
     version: '0.0.0',
     transport: transports.server,

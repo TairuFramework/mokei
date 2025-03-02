@@ -12,7 +12,12 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Context',
       collapsed: false,
-      items: ['api/context-protocol/index', 'api/context-server/index', 'api/context-client/index'],
+      items: [
+        'api/context-protocol/index',
+        'api/context-rpc/index',
+        'api/context-server/index',
+        'api/context-client/index',
+      ],
     },
     {
       type: 'category',

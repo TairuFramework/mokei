@@ -41,6 +41,7 @@ export const notification = {
   required: ['jsonrpc', 'method'],
   type: 'object',
 } as const satisfies Schema
+export type Notification = FromSchema<typeof notification>
 
 export const cancelledNotification = {
   allOf: [
@@ -73,32 +74,38 @@ export const progressToken = {
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1230
 export const progressNotification = {
-  description:
-    'An out-of-band notification used to inform the receiver of a progress update for a long-running request.',
-  properties: {
-    method: {
-      const: 'notifications/progress',
-      type: 'string',
-    },
-    params: {
+  allOf: [
+    notification,
+    {
+      description:
+        'An out-of-band notification used to inform the receiver of a progress update for a long-running request.',
       properties: {
-        progress: {
-          description:
-            'The progress thus far. This should increase every time progress is made, even if the total is unknown.',
-          type: 'number',
+        method: {
+          const: 'notifications/progress',
+          type: 'string',
         },
-        progressToken,
-        total: {
-          description: 'Total number of items to process (or total progress required), if known.',
-          type: 'number',
+        params: {
+          properties: {
+            progress: {
+              description:
+                'The progress thus far. This should increase every time progress is made, even if the total is unknown.',
+              type: 'number',
+            },
+            progressToken,
+            total: {
+              description:
+                'Total number of items to process (or total progress required), if known.',
+              type: 'number',
+            },
+          },
+          required: ['progress', 'progressToken'],
+          type: 'object',
         },
       },
-      required: ['progress', 'progressToken'],
+      required: ['method', 'params'],
       type: 'object',
     },
-  },
-  required: ['method', 'params'],
-  type: 'object',
+  ],
 } as const satisfies Schema
 export type ProgressNotification = FromSchema<typeof progressNotification>
 
@@ -126,6 +133,7 @@ export const request = {
   required: ['id', 'jsonrpc', 'method'],
   type: 'object',
 } as const satisfies Schema
+export type Request = FromSchema<typeof request>
 
 export const cursor = {
   description:
@@ -184,6 +192,7 @@ export const response = {
   required: ['id', 'jsonrpc'],
   type: 'object',
 } as const satisfies Schema
+export type Response = FromSchema<typeof response>
 
 export const error = {
   properties: {
@@ -219,3 +228,5 @@ export const pingRequest = {
   ],
 } as const satisfies Schema
 export type PingRequest = FromSchema<typeof pingRequest>
+
+export type AnyMessage = Notification | Request | Response

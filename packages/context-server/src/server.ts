@@ -1,11 +1,7 @@
-import { Disposer } from '@enkaku/async'
-import { EventEmitter } from '@enkaku/event'
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 import { createValidator } from '@enkaku/schema'
-import type { TransportType } from '@enkaku/transport'
 import {
   INVALID_PARAMS,
-  INVALID_REQUEST,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
   clientMessage,
@@ -22,16 +18,18 @@ import type {
   InitializeResult,
   Log,
   LoggingLevel,
+  ProgressNotification,
   Prompt,
-  RequestID,
   ServerCapabilities,
   ServerMessage,
+  ServerNotifications,
+  ServerRequests,
   ServerResult,
   Tool,
 } from '@mokei/context-protocol'
+import { ContextRPC, RPCError } from '@mokei/context-rpc'
 
 import { toResourceHandlers } from './definitions.js'
-import { RPCError, errorResponse } from './error.js'
 import type {
   ClientInitialize,
   CompleteHandler,
@@ -58,14 +56,10 @@ const LOGGING_LEVELS: Record<LoggingLevel, number> = {
 
 const validateClientMessage = createValidator(clientMessage)
 
-function isRequestID(id: unknown): id is RequestID {
-  return typeof id === 'string' || typeof id === 'number'
-}
-
 export type ServerParams = {
   name: string
   version: string
-  transport?: ServerTransport
+  transport: ServerTransport
   complete?: CompleteHandler
   prompts?: PromptDefinitions
   resources?: ResourceDefinitions
@@ -78,29 +72,35 @@ export type ServerEvents = {
   log: Log
 }
 
-export class ContextServer extends Disposer {
+type HandleNotification = ProgressNotification | ClientNotification
+
+type ServerTypes = {
+  Events: ServerEvents
+  MessageIn: ClientMessage
+  MessageOut: ServerMessage
+  HandleNotification: HandleNotification
+  HandleRequest: ClientRequest
+  SendNotifications: ServerNotifications
+  SendRequests: ServerRequests
+  SendResult: ServerResult
+}
+
+export class ContextServer extends ContextRPC<ServerTypes> {
   #capabilities: ServerCapabilities = {}
   #clientInitialize?: ClientInitialize
   #clientLoggingLevel?: LoggingLevel
   #completeHandler?: CompleteHandler
-  #events: EventEmitter<ServerEvents>
   #serverInfo: Implementation
   #promptHandlers: Record<string, GenericPromptHandler> = {}
   #promptsList: Array<Prompt> = []
   #resources?: ResourceHandlers
   #toolHandlers: Record<string, GenericToolHandler> = {}
   #toolsList: Array<Tool> = []
-  #transports: Array<TransportType<ClientMessage, ServerMessage>> = []
 
   constructor(params: ServerParams) {
-    super({
-      dispose: async () => {
-        await Promise.all(this.#transports.map((transport) => transport.dispose()))
-      },
-    })
+    super({ transport: params.transport, validateMessageIn: validateClientMessage })
 
     this.#completeHandler = params.complete
-    this.#events = new EventEmitter<ServerEvents>()
     this.#serverInfo = { name: params.name, version: params.version }
 
     for (const [name, prompt] of Object.entries(params.prompts ?? {})) {
@@ -126,122 +126,39 @@ export class ContextServer extends Disposer {
       this.#capabilities.tools = {}
     }
 
-    const transport =
-      params.transport ??
-      new NodeStreamsTransport<ClientMessage, ServerMessage>({
-        streams: { readable: process.stdin, writable: process.stdout },
-      })
-    this.handle(transport)
+    this._handle()
   }
 
   get clientInitialize(): ClientInitialize | undefined {
     return this.#clientInitialize
   }
 
-  get events(): EventEmitter<ServerEvents> {
-    return this.#events
-  }
-
   log = (level: LoggingLevel, data: unknown, logger?: string) => {
-    this.#events.emit('log', { level, data, logger })
+    this.events.emit('log', { level, data, logger })
   }
 
-  handle(transport: ServerTransport) {
-    this.#transports.push(transport)
-    const inflight: Record<string, AbortController> = {}
-
-    this.#events.on('log', (log) => {
+  _handle() {
+    this.events.on('log', (log) => {
       // Only send log if client has opted-in and it's at least as verbose as the client has requested
       if (
         this.#clientLoggingLevel != null &&
         LOGGING_LEVELS[log.level] <= LOGGING_LEVELS[this.#clientLoggingLevel]
       ) {
-        transport.write({ jsonrpc: '2.0', method: 'notifications/message', params: log })
+        this._write({ jsonrpc: '2.0', method: 'notifications/message', params: log })
       }
     })
-
-    const handleNext = async () => {
-      const next = await transport.read()
-      if (next.done) {
-        return
-      }
-
-      const id = next.value.id
-      const validated = validateClientMessage(next.value)
-      if (validated.issues == null) {
-        this.#handleMessage(validated.value, inflight)
-          .then(
-            (result) => {
-              if (result != null && isRequestID(id)) {
-                transport.write({ jsonrpc: '2.0', id, result })
-              }
-            },
-            (cause) => {
-              if (isRequestID(id)) {
-                transport.write(errorResponse(id, cause))
-              } else {
-                // TODO: call optional error handler
-              }
-            },
-          )
-          .finally(() => {
-            if (isRequestID(id)) {
-              delete inflight[id]
-            }
-          })
-      } else {
-        if (next.value.method != null && isRequestID(id)) {
-          // Send an error response if incoming message is a request
-          transport.write({
-            jsonrpc: '2.0',
-            id,
-            error: { code: INVALID_REQUEST, message: 'Invalid request' },
-          })
-        } else {
-          // TODO: call optional error handler
-        }
-      }
-
-      handleNext()
-    }
-
-    handleNext()
+    super._handle()
   }
 
-  async #handleMessage(
-    message: ClientMessage,
-    inflight: Record<string, AbortController>,
-  ): Promise<ServerResult | null> {
-    if (message.id == null) {
-      const notification = message as ClientNotification
-      switch (notification.method) {
-        case 'notifications/cancelled': {
-          const controller = inflight[notification.params.requestId]
-          if (controller != null) {
-            controller.abort()
-            delete inflight[notification.params.requestId]
-          }
-          break
-        }
-        case 'notifications/initialized':
-          this.#events.emit('initialized')
-          break
-      }
-      return null
+  _handleNotification(notification: HandleNotification) {
+    switch (notification.method) {
+      case 'notifications/initialized':
+        this.events.emit('initialized')
+        break
     }
-
-    if (message.method == null) {
-      // TODO: handle response or error
-      return null
-    }
-
-    const request = message as ClientRequest
-    const controller = new AbortController()
-    inflight[request.id] = controller
-    return await this.#handleRequest(request, controller.signal)
   }
 
-  async #handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
+  async _handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
     switch (request.method) {
       case 'completion/complete':
         if (this.#completeHandler == null) {
@@ -250,7 +167,7 @@ export class ContextServer extends Disposer {
         return await this.#completeHandler({ log: this.log, params: request.params, signal })
       case 'initialize':
         this.#clientInitialize = request.params
-        this.#events.emit('initialize', request.params)
+        this.events.emit('initialize', request.params)
         return {
           capabilities: this.#capabilities,
           protocolVersion: LATEST_PROTOCOL_VERSION,
@@ -303,6 +220,11 @@ export class ContextServer extends Disposer {
   }
 }
 
-export function serve(params: ServerParams): ContextServer {
-  return new ContextServer(params)
+export type ServeProcessParams = Omit<ServerParams, 'transport'>
+
+export function serveProcess(params: ServeProcessParams): ContextServer {
+  const transport = new NodeStreamsTransport<ClientMessage, ServerMessage>({
+    streams: { readable: process.stdin, writable: process.stdout },
+  })
+  return new ContextServer({ ...params, transport })
 }

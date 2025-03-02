@@ -54,6 +54,11 @@ export const clientNotification = {
 } as const satisfies Schema
 export type ClientNotification = FromSchema<typeof clientNotification>
 
+export const clientResult = {
+  anyOf: [result, createMessageResult, listRootsResult],
+} as const satisfies Schema
+export type ClientResult = FromSchema<typeof clientResult>
+
 export const clientResponse = {
   anyOf: [
     errorResponse,
@@ -62,7 +67,7 @@ export const clientResponse = {
         response,
         {
           type: 'object',
-          properties: { result: { anyOf: [result, createMessageResult, listRootsResult] } },
+          properties: { result: clientResult },
           required: ['result'],
         },
       ],

@@ -20,6 +20,7 @@ export const root = {
   required: ['uri'],
   type: 'object',
 } as const satisfies Schema
+export type Root = FromSchema<typeof root>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L963
 export const listRootsRequest = {

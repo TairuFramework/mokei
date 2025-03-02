@@ -4,6 +4,7 @@ import {
   INVALID_PARAMS,
   INVALID_REQUEST,
   METHOD_NOT_FOUND,
+  type RequestID,
 } from '@mokei/context-protocol'
 
 export class RPCError extends Error {
@@ -42,5 +43,27 @@ export class RPCError extends Error {
 
   get isMethodNotFound(): boolean {
     return this.code === METHOD_NOT_FOUND
+  }
+
+  toResponse(id: RequestID): ErrorResponse {
+    return {
+      jsonrpc: '2.0',
+      id,
+      error: { code: this.#code, message: this.message, data: this.#data },
+    }
+  }
+}
+
+export function errorResponse(id: RequestID, cause: unknown): ErrorResponse {
+  if (cause instanceof RPCError) {
+    return cause.toResponse(id)
+  }
+
+  const message =
+    cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : 'Unknown error'
+  return {
+    jsonrpc: '2.0',
+    id,
+    error: { code: INTERNAL_ERROR, message },
   }
 }

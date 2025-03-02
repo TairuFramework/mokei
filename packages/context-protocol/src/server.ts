@@ -59,11 +59,6 @@ export const serverResult = {
 } as const satisfies Schema
 export type ServerResult = FromSchema<typeof serverResult>
 
-export const serverResponse = {
-  anyOf: [],
-} as const satisfies Schema
-export type ServerResponse = FromSchema<typeof serverResponse>
-
 /**
  * Any MCP server message.
  */

@@ -1,4 +1,4 @@
-import type { Schema } from '@enkaku/schema'
+import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { imageContent, role, textContent } from './content.js'
 import { request, result } from './rpc.js'
@@ -141,6 +141,7 @@ export const createMessageRequest = {
     },
   ],
 } as const satisfies Schema
+export type CreateMessageRequest = FromSchema<typeof createMessageRequest>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L397
 export const createMessageResult = {
@@ -168,3 +169,4 @@ export const createMessageResult = {
     },
   ],
 } as const satisfies Schema
+export type CreateMessageResult = FromSchema<typeof createMessageResult>

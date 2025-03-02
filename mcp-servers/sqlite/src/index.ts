@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { parseArgs } from 'node:util'
-import { type Schema, createTool, serve } from '@mokei/context-server'
+import { type Schema, createTool, serveProcess } from '@mokei/context-server'
 
 const args = parseArgs({
   options: {
@@ -26,7 +26,7 @@ const toolInputSchema = {
   additionalProperties: false,
 } as const satisfies Schema
 
-serve({
+serveProcess({
   name: 'sqlite',
   version: '0.1.0',
   tools: {

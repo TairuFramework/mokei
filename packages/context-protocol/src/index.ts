@@ -14,7 +14,7 @@ export {
   type ClientMessage,
   type ClientNotification,
   type ClientRequest,
-  type ClientResponse,
+  type ClientResult,
   clientMessage,
 } from './client.js'
 export type { CompleteRequest, CompleteResult } from './completion.js'
@@ -26,7 +26,14 @@ export type {
   ServerCapabilities,
 } from './initialize.js'
 export type { Log, LoggingLevel, LoggingMessageNotification, SetLevelRequest } from './logging.js'
-export type { ClientNotifications, ClientRequests, ServerNotifications } from './procedure.js'
+export type {
+  ClientNotifications,
+  ClientRequests,
+  CommonNotifications,
+  CommonRequests,
+  ServerNotifications,
+  ServerRequests,
+} from './procedure.js'
 export type {
   GetPromptRequest,
   GetPromptResult,
@@ -46,11 +53,21 @@ export type {
   ResourceTemplate,
   ResourceUpdatedNotification,
 } from './resource.js'
+export type {
+  ListRootsRequest,
+  ListRootsResult,
+  Root,
+  RootsListChangedNotification,
+} from './root.js'
 export {
+  type AnyMessage,
   type CancelledNotification,
   type ProgressNotification,
   type ErrorResponse,
+  type Notification,
+  type Request,
   type RequestID,
+  type Response,
   LATEST_PROTOCOL_VERSION,
   PARSE_ERROR,
   INVALID_REQUEST,
@@ -59,6 +76,13 @@ export {
   INTERNAL_ERROR,
 } from './rpc.js'
 export {
+  type ServerMessage,
+  type ServerNotification,
+  type ServerRequest,
+  type ServerResult,
+  serverMessage,
+} from './server.js'
+export {
   type CallToolRequest,
   type CallToolResult,
   type InputSchema,
@@ -66,10 +90,3 @@ export {
   type ToolListChangedNotification,
   inputSchema,
 } from './tool.js'
-export {
-  type ServerMessage,
-  type ServerNotification,
-  type ServerRequest,
-  type ServerResult,
-  serverMessage,
-} from './server.js'
