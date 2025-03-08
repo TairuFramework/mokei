@@ -1,9 +1,9 @@
 import { ProxyHost } from '@mokei/host'
+import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
 import { Command } from '@oclif/core'
 
 import { ChatSession } from '../../chat-session.js'
 import { modelFlag, providerAPIFlag } from '../../flags.js'
-import { OllamaProvider, type OllamaTypes } from '../../providers/ollama.js'
 
 export default class Chat extends Command {
   static description = 'Interactive chat with a local model'

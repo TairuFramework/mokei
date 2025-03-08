@@ -2,9 +2,6 @@ import { Writable } from 'node:stream'
 import { Disposer } from '@enkaku/async'
 import { createReadable } from '@enkaku/stream'
 import { type ContextHost, getContextToolInfo } from '@mokei/host'
-import ora, { type Ora } from 'ora'
-
-import { type Choice, confirm, input, list, prompt } from './prompt.js'
 import type {
   AggregatedMessage,
   ClientToolMessage,
@@ -12,7 +9,10 @@ import type {
   Message,
   ModelProvider,
   ProviderTypes,
-} from './providers/model.js'
+} from '@mokei/model-provider'
+import ora, { type Ora } from 'ora'
+
+import { type Choice, confirm, input, list, prompt } from './prompt.js'
 
 const SESSION_ACTIONS = {
   'session.dispose': 'End the session',

@@ -1,14 +1,14 @@
 {
-  "name": "@mokei/host-monitor",
+  "name": "@mokei/ollama-provider",
   "version": "0.2.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
-  "description": "Mokei Host monitor",
+  "description": "Mokei Ollama provider",
   "keywords": ["model", "context", "protocol", "mcp", "llm", "ai"],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "packages/host-monitor"
+    "directory": "packages/ollama-provider"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -16,10 +16,9 @@
   "exports": {
     ".": "./lib/index.js"
   },
-  "files": ["dist/*", "lib/*"],
+  "files": ["lib/*"],
   "sideEffects": false,
   "scripts": {
-    "app:copy": "del dist && cp -r ../../monitor/dist ./dist",
     "build:clean": "del lib",
     "build:js": "swc src -d ./lib --config-file ../../swc.json --strip-leading-paths",
     "build:types": "tsc --emitDeclarationOnly --skipLibCheck",
@@ -28,15 +27,14 @@
     "test:types": "tsc --noEmit",
     "test:unit": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
     "test": "pnpm run test:types && pnpm run test:unit",
-    "prepublishOnly": "pnpm run app:copy && pnpm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "^0.11.0",
-    "@enkaku/http-server-transport": "^0.11.0",
-    "@enkaku/socket-transport": "^0.11.0",
-    "@hono/node-server": "^1.13.8",
-    "@mokei/host-protocol": "workspace:^",
-    "get-port": "^7.1.0",
-    "hono": "^4.7.4"
+    "@enkaku/stream": "^0.11.0",
+    "@mokei/model-provider": "workspace:^",
+    "ky": "^1.7.5"
+  },
+  "devDependencies": {
+    "@mokei/context-protocol": "workspace:^"
   }
 }

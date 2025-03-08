@@ -1,17 +1,30 @@
+/**
+ * Mokei Ollama provider.
+ *
+ * ## Installation
+ *
+ * ```sh
+ * npm install @mokei/ollama-provider
+ * ```
+ *
+ * @module ollama-provider
+ */
+
 import { fromJSONLines } from '@enkaku/stream'
 import type { Tool as ContextTool } from '@mokei/context-protocol'
-import ky, { type KyInstance, type ResponsePromise } from 'ky'
-
-import type { SingleOrStreamResponse, SingleResponse, StreamResponse } from './client.js'
-import { tryParseJSON } from './model.js'
+import { tryParseJSON } from '@mokei/model-provider'
 import type {
   AggregatedMessage,
   FunctionToolCall,
   MessagePart,
   ModelProvider,
   ServerMessage,
+  SingleOrStreamResponse,
+  SingleResponse,
   StreamChatParams,
-} from './model.js'
+  StreamResponse,
+} from '@mokei/model-provider'
+import ky, { type KyInstance, type ResponsePromise } from 'ky'
 
 function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStream<T>> {
   return response.then((res) => {

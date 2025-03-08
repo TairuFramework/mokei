@@ -1,5 +1,21 @@
+/**
+ * Mokei model provider.
+ *
+ * ## Installation
+ *
+ * ```sh
+ * npm install @mokei/model-provider
+ * ```
+ *
+ * @module model-provider
+ */
+
 import { type Validator, asType, createValidator } from '@enkaku/schema'
 import type { Tool } from '@mokei/context-protocol'
+
+export type SingleResponse<T> = AbortController & Promise<T>
+export type StreamResponse<T> = AbortController & Promise<ReadableStream<T>>
+export type SingleOrStreamResponse<T> = SingleResponse<T> | StreamResponse<T>
 
 const objectValidator = createValidator({ type: 'object' })
 

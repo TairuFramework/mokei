@@ -14,8 +14,8 @@
     "@mantine/core": "^7.17.1",
     "@mantine/hooks": "^7.17.1",
     "@mokei/host-protocol": "workspace:^",
-    "@tabler/icons-react": "^3.30.0",
-    "@tanstack/react-router": "^1.112.0",
+    "@tabler/icons-react": "^3.31.0",
+    "@tanstack/react-router": "^1.112.18",
     "@tanstack/react-virtual": "^3.13.2",
     "jotai": "^2.12.1",
     "luxon": "^3.5.0",
@@ -26,8 +26,8 @@
     "@enkaku/protocol": "^0.11.0",
     "@enkaku/schema": "^0.11.0",
     "@mokei/context-protocol": "workspace:^",
-    "@tanstack/router-devtools": "^1.112.6",
-    "@tanstack/router-plugin": "^1.112.3",
+    "@tanstack/router-devtools": "^1.114.0",
+    "@tanstack/router-plugin": "^1.113.0",
     "@types/luxon": "^3.4.2",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
@@ -37,7 +37,7 @@
     "postcss-preset-mantine": "^1.17.0",
     "postcss-simple-vars": "^7.0.1",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0",
+    "vite": "^6.2.1",
     "vite-bundle-analyzer": "^0.17.1"
   }
 }

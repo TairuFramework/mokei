@@ -1,17 +1,17 @@
 import type { Tool as ContextTool } from '@mokei/context-protocol'
-import { type EventSourceMessage, EventSourceParserStream } from 'eventsource-parser/stream'
-import ky, { type KyInstance, type ResponsePromise } from 'ky'
-
-import type { SingleResponse, StreamResponse } from './client.js'
-import { tryParseJSON } from './model.js'
+import { tryParseJSON } from '@mokei/model-provider'
 import type {
   AggregatedMessage,
   FunctionToolCall,
   MessagePart,
   ModelProvider,
   ServerMessage,
+  SingleResponse,
   StreamChatParams,
-} from './model.js'
+  StreamResponse,
+} from '@mokei/model-provider'
+import { type EventSourceMessage, EventSourceParserStream } from 'eventsource-parser/stream'
+import ky, { type KyInstance, type ResponsePromise } from 'ky'
 
 function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStream<T | null>> {
   return response.then((res) => {
