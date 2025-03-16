@@ -12,17 +12,21 @@ npm install @mokei/host-monitor
 
 ### Monitor
 
-> **Monitor**: `object`
+> **Monitor** = `object`
 
-#### Type declaration
+#### Properties
 
 ##### disposer
 
 > **disposer**: `Disposer`
 
+***
+
 ##### port
 
 > **port**: `number`
+
+***
 
 ##### server
 
@@ -32,13 +36,15 @@ npm install @mokei/host-monitor
 
 ### MonitorParams
 
-> **MonitorParams**: `object`
+> **MonitorParams** = `object`
 
-#### Type declaration
+#### Properties
 
 ##### port?
 
 > `optional` **port**: `number`
+
+***
 
 ##### socketPath?
 
@@ -48,14 +54,14 @@ npm install @mokei/host-monitor
 
 ### startMonitor()
 
-> **startMonitor**(`params`): `Promise`\<[`Monitor`](index.md#monitor)\>
+> **startMonitor**(`params`): `Promise`\<[`Monitor`](#monitor)\>
 
 #### Parameters
 
 ##### params
 
-[`MonitorParams`](index.md#monitorparams) = `{}`
+[`MonitorParams`](#monitorparams) = `{}`
 
 #### Returns
 
-`Promise`\<[`Monitor`](index.md#monitor)\>
+`Promise`\<[`Monitor`](#monitor)\>

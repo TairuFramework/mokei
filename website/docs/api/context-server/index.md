@@ -14,27 +14,27 @@ npm install @mokei/context-server
 
 #### Extends
 
-- [`ContextRPC`](../context-rpc/index.md#contextrpct)\<`ServerTypes`\>
+- [`ContextRPC`](../context-rpc/index.md#contextrpc)\<`ServerTypes`\>
 
 #### Constructors
 
 ##### new ContextServer()
 
-> **new ContextServer**(`params`): [`ContextServer`](index.md#contextserver)
+> **new ContextServer**(`params`): [`ContextServer`](#contextserver)
 
 ###### Parameters
 
 ###### params
 
-[`ServerParams`](index.md#serverparams)
+[`ServerParams`](#serverparams)
 
 ###### Returns
 
-[`ContextServer`](index.md#contextserver)
+[`ContextServer`](#contextserver)
 
 ###### Overrides
 
-[`ContextRPC`](../context-rpc/index.md#contextrpct).[`constructor`](../context-rpc/index.md#constructors-1)
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`constructor`](../context-rpc/index.md#contextrpc#constructor)
 
 #### Accessors
 
@@ -62,7 +62,7 @@ npm install @mokei/context-server
 
 ###### Inherited from
 
-[`ContextRPC`](../context-rpc/index.md#contextrpct).[`events`](../context-rpc/index.md#events-2)
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`events`](../context-rpc/index.md#contextrpc#events)
 
 #### Methods
 
@@ -76,7 +76,7 @@ npm install @mokei/context-server
 
 ###### Inherited from
 
-[`ContextRPC`](../context-rpc/index.md#contextrpct).[`_getNextRequestID`](../context-rpc/index.md#_getnextrequestid-2)
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`_getNextRequestID`](../context-rpc/index.md#contextrpc#_getnextrequestid)
 
 ***
 
@@ -90,7 +90,7 @@ npm install @mokei/context-server
 
 ###### Overrides
 
-[`ContextRPC`](../context-rpc/index.md#contextrpct).[`_handle`](../context-rpc/index.md#_handle-2)
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`_handle`](../context-rpc/index.md#contextrpc#_handle)
 
 ***
 
@@ -110,7 +110,7 @@ npm install @mokei/context-server
 
 ###### Overrides
 
-[`ContextRPC`](../context-rpc/index.md#contextrpct).[`_handleNotification`](../context-rpc/index.md#_handlenotification-2)
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`_handleNotification`](../context-rpc/index.md#contextrpc#_handlenotification)
 
 ***
 
@@ -134,7 +134,7 @@ npm install @mokei/context-server
 
 ###### Overrides
 
-[`ContextRPC`](../context-rpc/index.md#contextrpct).[`_handleRequest`](../context-rpc/index.md#_handlerequest-2)
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`_handleRequest`](../context-rpc/index.md#contextrpc#_handlerequest)
 
 ***
 
@@ -148,7 +148,7 @@ npm install @mokei/context-server
 
 ###### Inherited from
 
-[`ContextRPC`](../context-rpc/index.md#contextrpct).[`_read`](../context-rpc/index.md#_read-2)
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`_read`](../context-rpc/index.md#contextrpc#_read)
 
 ***
 
@@ -168,13 +168,13 @@ npm install @mokei/context-server
 
 ###### Inherited from
 
-[`ContextRPC`](../context-rpc/index.md#contextrpct).[`_write`](../context-rpc/index.md#_write-2)
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`_write`](../context-rpc/index.md#contextrpc#_write)
 
 ***
 
 ##### createMessage()
 
-> **createMessage**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequestresult)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \}; `model`: `string`; `role`: `"assistant"` \| `"user"`; `stopReason`: `string`; \}\>
+> **createMessage**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \}; `model`: `string`; `role`: `"assistant"` \| `"user"`; `stopReason`: `string`; \}\>
 
 ###### Parameters
 
@@ -238,17 +238,17 @@ npm install @mokei/context-server
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequestresult)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \}; `model`: `string`; `role`: `"assistant"` \| `"user"`; `stopReason`: `string`; \}\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \}; `model`: `string`; `role`: `"assistant"` \| `"user"`; `stopReason`: `string`; \}\>
 
 ***
 
 ##### listRoots()
 
-> **listRoots**(): [`SentRequest`](../context-rpc/index.md#sentrequestresult)\<`object`[]\>
+> **listRoots**(): [`SentRequest`](../context-rpc/index.md#sentrequest)\<`object`[]\>
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequestresult)\<`object`[]\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<`object`[]\>
 
 ***
 
@@ -282,7 +282,9 @@ npm install @mokei/context-server
 
 ###### Type Parameters
 
-• **Event** *extends* `"prompts/list_changed"` \| `"resources/list_changed"` \| `"tools/list_changed"`
+###### Event
+
+`Event` *extends* `"prompts/list_changed"` \| `"resources/list_changed"` \| `"tools/list_changed"`
 
 ###### Parameters
 
@@ -300,17 +302,19 @@ npm install @mokei/context-server
 
 ###### Inherited from
 
-[`ContextRPC`](../context-rpc/index.md#contextrpct).[`notify`](../context-rpc/index.md#notify-1)
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`notify`](../context-rpc/index.md#contextrpc#notify)
 
 ***
 
 ##### request()
 
-> **request**\<`Method`\>(`method`, `params`): [`SentRequest`](../context-rpc/index.md#sentrequestresult)\<[`ServerRequests`](../context-protocol/index.md#serverrequests)\[`Method`\]\[`"Result"`\]\>
+> **request**\<`Method`\>(`method`, `params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<[`ServerRequests`](../context-protocol/index.md#serverrequests)\[`Method`\]\[`"Result"`\]\>
 
 ###### Type Parameters
 
-• **Method** *extends* keyof [`ServerRequests`](../context-protocol/index.md#serverrequests)
+###### Method
+
+`Method` *extends* keyof [`ServerRequests`](../context-protocol/index.md#serverrequests)
 
 ###### Parameters
 
@@ -324,23 +328,27 @@ npm install @mokei/context-server
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequestresult)\<[`ServerRequests`](../context-protocol/index.md#serverrequests)\[`Method`\]\[`"Result"`\]\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<[`ServerRequests`](../context-protocol/index.md#serverrequests)\[`Method`\]\[`"Result"`\]\>
 
 ###### Inherited from
 
-[`ContextRPC`](../context-rpc/index.md#contextrpct).[`request`](../context-rpc/index.md#request-3)
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`request`](../context-rpc/index.md#contextrpc#request)
 
 ***
 
 ##### requestValue()
 
-> **requestValue**\<`Method`, `Value`\>(`method`, `params`, `getValue`): [`SentRequest`](../context-rpc/index.md#sentrequestresult)\<`Value`\>
+> **requestValue**\<`Method`, `Value`\>(`method`, `params`, `getValue`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<`Value`\>
 
 ###### Type Parameters
 
-• **Method** *extends* keyof [`ServerRequests`](../context-protocol/index.md#serverrequests)
+###### Method
 
-• **Value**
+`Method` *extends* keyof [`ServerRequests`](../context-protocol/index.md#serverrequests)
+
+###### Value
+
+`Value`
 
 ###### Parameters
 
@@ -358,39 +366,43 @@ npm install @mokei/context-server
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequestresult)\<`Value`\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<`Value`\>
 
 ###### Inherited from
 
-[`ContextRPC`](../context-rpc/index.md#contextrpct).[`requestValue`](../context-rpc/index.md#requestvalue-1)
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`requestValue`](../context-rpc/index.md#contextrpc#requestvalue)
 
 ## Type Aliases
 
 ### ClientInitialize
 
-> **ClientInitialize**: [`InitializeRequest`](../context-protocol/index.md#initializerequest)\[`"params"`\]
+> **ClientInitialize** = [`InitializeRequest`](../context-protocol/index.md#initializerequest)\[`"params"`\]
 
 ***
 
 ### ServeProcessParams
 
-> **ServeProcessParams**: `Omit`\<[`ServerParams`](index.md#serverparams), `"transport"`\>
+> **ServeProcessParams** = `Omit`\<[`ServerParams`](#serverparams), `"transport"`\>
 
 ***
 
 ### ServerEvents
 
-> **ServerEvents**: `object`
+> **ServerEvents** = `object`
 
-#### Type declaration
+#### Properties
 
 ##### initialize
 
-> **initialize**: [`ClientInitialize`](index.md#clientinitialize-4)
+> **initialize**: [`ClientInitialize`](#clientinitialize-1)
+
+***
 
 ##### initialized
 
 > **initialized**: `undefined`
+
+***
 
 ##### log
 
@@ -400,33 +412,45 @@ npm install @mokei/context-server
 
 ### ServerParams
 
-> **ServerParams**: `object`
+> **ServerParams** = `object`
 
-#### Type declaration
+#### Properties
 
 ##### complete?
 
 > `optional` **complete**: `CompleteHandler`
 
+***
+
 ##### name
 
 > **name**: `string`
+
+***
 
 ##### prompts?
 
 > `optional` **prompts**: `PromptDefinitions`
 
+***
+
 ##### resources?
 
 > `optional` **resources**: `ResourceDefinitions`
+
+***
 
 ##### tools?
 
 > `optional` **tools**: `ToolDefinitions`
 
+***
+
 ##### transport
 
-> **transport**: [`ServerTransport`](index.md#servertransport)
+> **transport**: [`ServerTransport`](#servertransport)
+
+***
 
 ##### version
 
@@ -436,7 +460,7 @@ npm install @mokei/context-server
 
 ### ServerTransport
 
-> **ServerTransport**: `TransportType`\<[`ClientMessage`](../context-protocol/index.md#clientmessage), [`ServerMessage`](../context-protocol/index.md#servermessage)\>
+> **ServerTransport** = `TransportType`\<[`ClientMessage`](../context-protocol/index.md#clientmessage), [`ServerMessage`](../context-protocol/index.md#servermessage)\>
 
 ## Functions
 
@@ -446,9 +470,13 @@ npm install @mokei/context-server
 
 #### Type Parameters
 
-• **ArgumentsSchema** *extends* `Readonly`\<\{\}\>
+##### ArgumentsSchema
 
-• **Arguments** = `FromSchema`\<`ArgumentsSchema`\>
+`ArgumentsSchema` *extends* `Readonly`\<\{\}\>
+
+##### Arguments
+
+`Arguments` = `FromSchema`\<`ArgumentsSchema`\>
 
 #### Parameters
 
@@ -476,9 +504,13 @@ npm install @mokei/context-server
 
 #### Type Parameters
 
-• **InputSchema** *extends* `Readonly`\<\{\}\>
+##### InputSchema
 
-• **Input** = `FromSchema`\<`InputSchema`\>
+`InputSchema` *extends* `Readonly`\<\{\}\>
+
+##### Input
+
+`Input` = `FromSchema`\<`InputSchema`\>
 
 #### Parameters
 
@@ -502,14 +534,14 @@ npm install @mokei/context-server
 
 ### serveProcess()
 
-> **serveProcess**(`params`): [`ContextServer`](index.md#contextserver)
+> **serveProcess**(`params`): [`ContextServer`](#contextserver)
 
 #### Parameters
 
 ##### params
 
-[`ServeProcessParams`](index.md#serveprocessparams)
+[`ServeProcessParams`](#serveprocessparams)
 
 #### Returns
 
-[`ContextServer`](index.md#contextserver)
+[`ContextServer`](#contextserver)

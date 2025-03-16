@@ -18,28 +18,30 @@ npm install @mokei/context-rpc
 
 #### Extended by
 
-- [`ContextClient`](../context-client/index.md#contextclientt)
+- [`ContextClient`](../context-client/index.md#contextclient)
 - [`ContextServer`](../context-server/index.md#contextserver)
 
 #### Type Parameters
 
-• **T** *extends* [`RPCTypes`](index.md#rpctypes)
+##### T
+
+`T` *extends* [`RPCTypes`](#rpctypes)
 
 #### Constructors
 
 ##### new ContextRPC()
 
-> **new ContextRPC**\<`T`\>(`params`): [`ContextRPC`](index.md#contextrpct)\<`T`\>
+> **new ContextRPC**\<`T`\>(`params`): [`ContextRPC`](#contextrpc)\<`T`\>
 
 ###### Parameters
 
 ###### params
 
-[`RPCParams`](index.md#rpcparamst)\<`T`\>
+[`RPCParams`](#rpcparams)\<`T`\>
 
 ###### Returns
 
-[`ContextRPC`](index.md#contextrpct)\<`T`\>
+[`ContextRPC`](#contextrpc)\<`T`\>
 
 ###### Overrides
 
@@ -147,7 +149,9 @@ npm install @mokei/context-rpc
 
 ###### Type Parameters
 
-• **Event** *extends* `string`
+###### Event
+
+`Event` *extends* `string`
 
 ###### Parameters
 
@@ -167,11 +171,13 @@ npm install @mokei/context-rpc
 
 ##### request()
 
-> **request**\<`Method`\>(`method`, `params`): [`SentRequest`](index.md#sentrequestresult)\<`T`\[`"SendRequests"`\]\[`Method`\]\[`"Result"`\]\>
+> **request**\<`Method`\>(`method`, `params`): [`SentRequest`](#sentrequest)\<`T`\[`"SendRequests"`\]\[`Method`\]\[`"Result"`\]\>
 
 ###### Type Parameters
 
-• **Method** *extends* `string` \| `number` \| `symbol`
+###### Method
+
+`Method` *extends* `string` \| `number` \| `symbol`
 
 ###### Parameters
 
@@ -185,19 +191,23 @@ npm install @mokei/context-rpc
 
 ###### Returns
 
-[`SentRequest`](index.md#sentrequestresult)\<`T`\[`"SendRequests"`\]\[`Method`\]\[`"Result"`\]\>
+[`SentRequest`](#sentrequest)\<`T`\[`"SendRequests"`\]\[`Method`\]\[`"Result"`\]\>
 
 ***
 
 ##### requestValue()
 
-> **requestValue**\<`Method`, `Value`\>(`method`, `params`, `getValue`): [`SentRequest`](index.md#sentrequestresult)\<`Value`\>
+> **requestValue**\<`Method`, `Value`\>(`method`, `params`, `getValue`): [`SentRequest`](#sentrequest)\<`Value`\>
 
 ###### Type Parameters
 
-• **Method** *extends* `string` \| `number` \| `symbol`
+###### Method
 
-• **Value**
+`Method` *extends* `string` \| `number` \| `symbol`
+
+###### Value
+
+`Value`
 
 ###### Parameters
 
@@ -215,7 +225,7 @@ npm install @mokei/context-rpc
 
 ###### Returns
 
-[`SentRequest`](index.md#sentrequestresult)\<`Value`\>
+[`SentRequest`](#sentrequest)\<`Value`\>
 
 ***
 
@@ -229,7 +239,7 @@ npm install @mokei/context-rpc
 
 ##### new RPCError()
 
-> **new RPCError**(`code`, `message`, `data`?): [`RPCError`](index.md#rpcerror)
+> **new RPCError**(`code`, `message`, `data`?): [`RPCError`](#rpcerror)
 
 ###### Parameters
 
@@ -247,7 +257,7 @@ npm install @mokei/context-rpc
 
 ###### Returns
 
-[`RPCError`](index.md#rpcerror)
+[`RPCError`](#rpcerror)
 
 ###### Overrides
 
@@ -377,7 +387,7 @@ npm install @mokei/context-rpc
 
 ##### fromResponse()
 
-> `static` **fromResponse**(`response`): [`RPCError`](index.md#rpcerror)
+> `static` **fromResponse**(`response`): [`RPCError`](#rpcerror)
 
 ###### Parameters
 
@@ -409,23 +419,27 @@ npm install @mokei/context-rpc
 
 ###### Returns
 
-[`RPCError`](index.md#rpcerror)
+[`RPCError`](#rpcerror)
 
 ## Type Aliases
 
 ### RPCParams\<T\>
 
-> **RPCParams**\<`T`\>: `object`
+> **RPCParams**\<`T`\> = `object`
 
 #### Type Parameters
 
-• **T** *extends* [`RPCTypes`](index.md#rpctypes)
+##### T
 
-#### Type declaration
+`T` *extends* [`RPCTypes`](#rpctypes)
+
+#### Properties
 
 ##### transport
 
 > **transport**: `TransportType`\<`T`\[`"MessageIn"`\], `T`\[`"MessageOut"`\]\>
+
+***
 
 ##### validateMessageIn
 
@@ -435,37 +449,51 @@ npm install @mokei/context-rpc
 
 ### RPCTypes
 
-> **RPCTypes**: `object`
+> **RPCTypes** = `object`
 
-#### Type declaration
+#### Properties
 
 ##### Events
 
 > **Events**: `Record`\<`string`, `unknown`\>
 
+***
+
 ##### HandleNotification
 
 > **HandleNotification**: [`Notification`](../context-protocol/index.md#notification)
+
+***
 
 ##### HandleRequest
 
 > **HandleRequest**: [`Request`](../context-protocol/index.md#request)
 
+***
+
 ##### MessageIn
 
 > **MessageIn**: [`AnyMessage`](../context-protocol/index.md#anymessage)
+
+***
 
 ##### MessageOut
 
 > **MessageOut**: [`AnyMessage`](../context-protocol/index.md#anymessage)
 
+***
+
 ##### SendNotifications
 
 > **SendNotifications**: `Record`\<`string`, [`Notification`](../context-protocol/index.md#notification)\>
 
+***
+
 ##### SendRequests
 
 > **SendRequests**: `Record`\<`string`, `RequestDefinition`\>
+
+***
 
 ##### SendResult
 
@@ -475,7 +503,7 @@ npm install @mokei/context-rpc
 
 ### SentRequest\<Result\>
 
-> **SentRequest**\<`Result`\>: `Promise`\<`Result`\> & `object`
+> **SentRequest**\<`Result`\> = `Promise`\<`Result`\> & `object`
 
 #### Type declaration
 
@@ -493,4 +521,6 @@ npm install @mokei/context-rpc
 
 #### Type Parameters
 
-• **Result**
+##### Result
+
+`Result`

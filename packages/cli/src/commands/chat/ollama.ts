@@ -16,7 +16,7 @@ export default class Chat extends Command {
   async run(): Promise<void> {
     const { flags } = await this.parse(Chat)
     const host = await ProxyHost.forDaemon()
-    const provider = new OllamaProvider({ client: { baseURL: flags['api-url'] } })
+    const provider = new OllamaProvider({ client: { baseURL: flags['api-url'], timeout: false } })
     const session = new ChatSession<OllamaTypes>({ host, model: flags.model, provider })
     return await session.run()
   }

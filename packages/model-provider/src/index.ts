@@ -13,9 +13,9 @@
 import { type Validator, asType, createValidator } from '@enkaku/schema'
 import type { Tool } from '@mokei/context-protocol'
 
-export type SingleResponse<T> = AbortController & Promise<T>
-export type StreamResponse<T> = AbortController & Promise<ReadableStream<T>>
-export type SingleOrStreamResponse<T> = SingleResponse<T> | StreamResponse<T>
+export type SingleReplyRequest<T> = AbortController & Promise<T>
+export type StreamReplyRequest<T> = AbortController & Promise<ReadableStream<T>>
+export type AnyReplyRequest<T> = SingleReplyRequest<T> | StreamReplyRequest<T>
 
 const objectValidator = createValidator({ type: 'object' })
 
@@ -107,8 +107,12 @@ export type StreamChatParams<RawMessage, RawToolCall, RawTool> = {
   tools?: Array<RawTool>
 }
 
-export type StreamChatResponse<RawMessagePart, RawToolCall> = AbortController &
-  Promise<ReadableStream<MessagePart<RawMessagePart, RawToolCall>>>
+export type StreamChatResponse<RawMessagePart, RawToolCall> = ReadableStream<
+  MessagePart<RawMessagePart, RawToolCall>
+>
+
+export type StreamChatRequest<RawMessagePart, RawToolCall> = AbortController &
+  Promise<StreamChatResponse<RawMessagePart, RawToolCall>>
 
 export type ProviderTypes = {
   Message: unknown
@@ -125,6 +129,6 @@ export type ModelProvider<T extends ProviderTypes> = {
   listModels: () => Promise<Array<Model<T['Model']>>>
   streamChat: (
     params: StreamChatParams<T['Message'], T['ToolCall'], T['Tool']>,
-  ) => StreamChatResponse<T['MessagePart'], T['ToolCall']>
+  ) => StreamChatRequest<T['MessagePart'], T['ToolCall']>
   toolFromMCP(tool: Tool): T['Tool']
 }

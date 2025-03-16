@@ -12,43 +12,43 @@ npm install @mokei/host-protocol
 
 ### ActiveContextInfo
 
-> **ActiveContextInfo**: `FromSchema`\<*typeof* [`activeContextInfoSchema`](index.md#activecontextinfoschema)\>
+> **ActiveContextInfo** = `FromSchema`\<*typeof* [`activeContextInfoSchema`](#activecontextinfoschema)\>
 
 ***
 
 ### ClientMessage
 
-> **ClientMessage**: `AnyClientMessageOf`\<[`Protocol`](index.md#protocol)\>
+> **ClientMessage** = `AnyClientMessageOf`\<[`Protocol`](#protocol)\>
 
 ***
 
 ### HostEvent
 
-> **HostEvent**: `FromSchema`\<*typeof* [`hostEventSchema`](index.md#hosteventschema)\>
+> **HostEvent** = `FromSchema`\<*typeof* [`hostEventSchema`](#hosteventschema)\>
 
 ***
 
 ### HostEventMeta
 
-> **HostEventMeta**: `FromSchema`\<*typeof* [`hostEventMetaSchema`](index.md#hosteventmetaschema)\>
+> **HostEventMeta** = `FromSchema`\<*typeof* [`hostEventMetaSchema`](#hosteventmetaschema)\>
 
 ***
 
 ### HostInfoResult
 
-> **HostInfoResult**: `FromSchema`\<*typeof* [`hostInfoResultSchema`](index.md#hostinforesultschema)\>
+> **HostInfoResult** = `FromSchema`\<*typeof* [`hostInfoResultSchema`](#hostinforesultschema)\>
 
 ***
 
 ### Protocol
 
-> **Protocol**: *typeof* [`protocol`](index.md#protocol-1)
+> **Protocol** = *typeof* [`protocol`](#protocol-1)
 
 ***
 
 ### ServerMessage
 
-> **ServerMessage**: `AnyServerMessageOf`\<[`Protocol`](index.md#protocol)\>
+> **ServerMessage** = `AnyServerMessageOf`\<[`Protocol`](#protocol)\>
 
 ## Variables
 

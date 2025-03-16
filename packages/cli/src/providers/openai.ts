@@ -6,9 +6,9 @@ import type {
   MessagePart,
   ModelProvider,
   ServerMessage,
-  SingleResponse,
+  SingleReplyRequest,
   StreamChatParams,
-  StreamResponse,
+  StreamReplyRequest,
 } from '@mokei/model-provider'
 import { type EventSourceMessage, EventSourceParserStream } from 'eventsource-parser/stream'
 import ky, { type KyInstance, type ResponsePromise } from 'ky'
@@ -286,8 +286,8 @@ export class OpenAIClient {
     return res.data
   }
 
-  chat(params: ChatParams & { stream?: false | null }): SingleResponse<ChatCompletion>
-  chat(params: ChatParams & { stream: true }): StreamResponse<ChatCompletionChunk | null>
+  chat(params: ChatParams & { stream?: false | null }): SingleReplyRequest<ChatCompletion>
+  chat(params: ChatParams & { stream: true }): StreamReplyRequest<ChatCompletionChunk | null>
   chat(params: ChatParams) {
     const controller = new AbortController()
     const request = this.#api.post('chat/completions', {

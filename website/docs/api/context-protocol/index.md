@@ -12,555 +12,583 @@ npm install @mokei/context-protocol
 
 ### AnyMessage
 
-> **AnyMessage**: [`Notification`](index.md#notification) \| [`Request`](index.md#request) \| [`Response`](index.md#response)
+> **AnyMessage** = [`Notification`](#notification) \| [`Request`](#request) \| [`Response`](#response)
 
 ***
 
 ### CallToolRequest
 
-> **CallToolRequest**: `FromSchema`\<*typeof* `callToolRequest`\>
+> **CallToolRequest** = `FromSchema`\<*typeof* `callToolRequest`\>
 
 ***
 
 ### CallToolResult
 
-> **CallToolResult**: `FromSchema`\<*typeof* `callToolResult`\>
+> **CallToolResult** = `FromSchema`\<*typeof* `callToolResult`\>
 
 ***
 
 ### CancelledNotification
 
-> **CancelledNotification**: `FromSchema`\<*typeof* `cancelledNotification`\>
+> **CancelledNotification** = `FromSchema`\<*typeof* `cancelledNotification`\>
 
 ***
 
 ### ClientCapabilities
 
-> **ClientCapabilities**: `FromSchema`\<*typeof* `clientCapabilities`\>
+> **ClientCapabilities** = `FromSchema`\<*typeof* `clientCapabilities`\>
 
 ***
 
 ### ClientMessage
 
-> **ClientMessage**: `FromSchema`\<*typeof* [`clientMessage`](index.md#clientmessage-1)\>
+> **ClientMessage** = `FromSchema`\<*typeof* [`clientMessage`](#clientmessage-1)\>
 
 ***
 
 ### ClientNotification
 
-> **ClientNotification**: `FromSchema`\<*typeof* `clientNotification`\>
+> **ClientNotification** = `FromSchema`\<*typeof* `clientNotification`\>
 
 ***
 
 ### ClientNotifications
 
-> **ClientNotifications**: `object`
+> **ClientNotifications** = `object`
 
-#### Type declaration
+#### Properties
 
 ##### initialized
 
 > **initialized**: `InitializedNotification`
 
+***
+
 ##### roots/list\_changed
 
-> **roots/list\_changed**: [`RootsListChangedNotification`](index.md#rootslistchangednotification)
+> **roots/list\_changed**: [`RootsListChangedNotification`](#rootslistchangednotification)
 
 ***
 
 ### ClientRequest
 
-> **ClientRequest**: `FromSchema`\<*typeof* `clientRequest`\>
+> **ClientRequest** = `FromSchema`\<*typeof* `clientRequest`\>
 
 ***
 
 ### ClientRequests
 
-> **ClientRequests**: `object`
+> **ClientRequests** = `object`
 
-#### Type declaration
+#### Properties
 
 ##### completion/complete
 
 > **completion/complete**: `object`
 
-###### completion/complete.Params
+###### Params
 
-> **completion/complete.Params**: [`CompleteRequest`](index.md#completerequest)\[`"params"`\]
+> **Params**: [`CompleteRequest`](#completerequest)\[`"params"`\]
 
-###### completion/complete.Result
+###### Result
 
-> **completion/complete.Result**: [`CompleteResult`](index.md#completeresult)
+> **Result**: [`CompleteResult`](#completeresult)
+
+***
 
 ##### initialize
 
 > **initialize**: `object`
 
-###### initialize.Params
+###### Params
 
-> **initialize.Params**: [`InitializeRequest`](index.md#initializerequest)\[`"params"`\]
+> **Params**: [`InitializeRequest`](#initializerequest)\[`"params"`\]
 
-###### initialize.Result
+###### Result
 
-> **initialize.Result**: [`InitializeResult`](index.md#initializeresult)
+> **Result**: [`InitializeResult`](#initializeresult)
+
+***
 
 ##### logging/setLevel
 
 > **logging/setLevel**: `object`
 
-###### logging/setLevel.Params
+###### Params
 
-> **logging/setLevel.Params**: [`SetLevelRequest`](index.md#setlevelrequest)\[`"params"`\]
+> **Params**: [`SetLevelRequest`](#setlevelrequest)\[`"params"`\]
 
-###### logging/setLevel.Result
+###### Result
 
-> **logging/setLevel.Result**: `undefined`
+> **Result**: `undefined`
+
+***
 
 ##### prompts/get
 
 > **prompts/get**: `object`
 
-###### prompts/get.Params
+###### Params
 
-> **prompts/get.Params**: [`GetPromptRequest`](index.md#getpromptrequest)\[`"params"`\]
+> **Params**: [`GetPromptRequest`](#getpromptrequest)\[`"params"`\]
 
-###### prompts/get.Result
+###### Result
 
-> **prompts/get.Result**: [`GetPromptResult`](index.md#getpromptresult)
+> **Result**: [`GetPromptResult`](#getpromptresult)
+
+***
 
 ##### prompts/list
 
 > **prompts/list**: `object`
 
-###### prompts/list.Params
+###### Params
 
-> **prompts/list.Params**: `ListPromptsRequest`\[`"params"`\]
+> **Params**: `ListPromptsRequest`\[`"params"`\]
 
-###### prompts/list.Result
+###### Result
 
-> **prompts/list.Result**: `ListPromptsResult`
+> **Result**: `ListPromptsResult`
+
+***
 
 ##### resources/list
 
 > **resources/list**: `object`
 
-###### resources/list.Params
+###### Params
 
-> **resources/list.Params**: [`ListResourcesRequest`](index.md#listresourcesrequest)\[`"params"`\]
+> **Params**: [`ListResourcesRequest`](#listresourcesrequest)\[`"params"`\]
 
-###### resources/list.Result
+###### Result
 
-> **resources/list.Result**: [`ListResourcesResult`](index.md#listresourcesresult)
+> **Result**: [`ListResourcesResult`](#listresourcesresult)
+
+***
 
 ##### resources/read
 
 > **resources/read**: `object`
 
-###### resources/read.Params
+###### Params
 
-> **resources/read.Params**: [`ReadResourceRequest`](index.md#readresourcerequest)\[`"params"`\]
+> **Params**: [`ReadResourceRequest`](#readresourcerequest)\[`"params"`\]
 
-###### resources/read.Result
+###### Result
 
-> **resources/read.Result**: [`ReadResourceResult`](index.md#readresourceresult)
+> **Result**: [`ReadResourceResult`](#readresourceresult)
+
+***
 
 ##### resources/templates/list
 
 > **resources/templates/list**: `object`
 
-###### resources/templates/list.Params
+###### Params
 
-> **resources/templates/list.Params**: [`ListResourceTemplatesRequest`](index.md#listresourcetemplatesrequest)\[`"params"`\]
+> **Params**: [`ListResourceTemplatesRequest`](#listresourcetemplatesrequest)\[`"params"`\]
 
-###### resources/templates/list.Result
+###### Result
 
-> **resources/templates/list.Result**: [`ListResourceTemplatesResult`](index.md#listresourcetemplatesresult)
+> **Result**: [`ListResourceTemplatesResult`](#listresourcetemplatesresult)
+
+***
 
 ##### tools/call
 
 > **tools/call**: `object`
 
-###### tools/call.Params
+###### Params
 
-> **tools/call.Params**: [`CallToolRequest`](index.md#calltoolrequest)\[`"params"`\]
+> **Params**: [`CallToolRequest`](#calltoolrequest)\[`"params"`\]
 
-###### tools/call.Result
+###### Result
 
-> **tools/call.Result**: [`CallToolResult`](index.md#calltoolresult)
+> **Result**: [`CallToolResult`](#calltoolresult)
+
+***
 
 ##### tools/list
 
 > **tools/list**: `object`
 
-###### tools/list.Params
+###### Params
 
-> **tools/list.Params**: `ListToolsRequest`\[`"params"`\]
+> **Params**: `ListToolsRequest`\[`"params"`\]
 
-###### tools/list.Result
+###### Result
 
-> **tools/list.Result**: `ListToolsResult`
+> **Result**: `ListToolsResult`
 
 ***
 
 ### ClientResult
 
-> **ClientResult**: `FromSchema`\<*typeof* `clientResult`\>
+> **ClientResult** = `FromSchema`\<*typeof* `clientResult`\>
 
 ***
 
 ### CommonNotifications
 
-> **CommonNotifications**: `object`
+> **CommonNotifications** = `object`
 
-#### Type declaration
+#### Properties
 
 ##### cancelled
 
-> **cancelled**: [`CancelledNotification`](index.md#cancellednotification)
+> **cancelled**: [`CancelledNotification`](#cancellednotification)
+
+***
 
 ##### progress
 
-> **progress**: [`ProgressNotification`](index.md#progressnotification)
+> **progress**: [`ProgressNotification`](#progressnotification)
 
 ***
 
 ### CommonRequests
 
-> **CommonRequests**: `object`
+> **CommonRequests** = `object`
 
-#### Type declaration
+#### Properties
 
 ##### ping
 
 > **ping**: `object`
 
-###### ping.Method
+###### Method
 
-> **ping.Method**: `PingRequest`\[`"method"`\]
+> **Method**: `PingRequest`\[`"method"`\]
 
-###### ping.Params
+###### Params
 
-> **ping.Params**: `PingRequest`\[`"params"`\]
+> **Params**: `PingRequest`\[`"params"`\]
 
-###### ping.Result
+###### Result
 
-> **ping.Result**: `undefined`
+> **Result**: `undefined`
 
 ***
 
 ### CompleteRequest
 
-> **CompleteRequest**: `FromSchema`\<*typeof* `completeRequest`\>
+> **CompleteRequest** = `FromSchema`\<*typeof* `completeRequest`\>
 
 ***
 
 ### CompleteResult
 
-> **CompleteResult**: `FromSchema`\<*typeof* `completeResult`\>
+> **CompleteResult** = `FromSchema`\<*typeof* `completeResult`\>
 
 ***
 
 ### CreateMessageRequest
 
-> **CreateMessageRequest**: `FromSchema`\<*typeof* `createMessageRequest`\>
+> **CreateMessageRequest** = `FromSchema`\<*typeof* `createMessageRequest`\>
 
 ***
 
 ### CreateMessageResult
 
-> **CreateMessageResult**: `FromSchema`\<*typeof* `createMessageResult`\>
+> **CreateMessageResult** = `FromSchema`\<*typeof* `createMessageResult`\>
 
 ***
 
 ### ErrorResponse
 
-> **ErrorResponse**: `FromSchema`\<*typeof* `errorResponse`\>
+> **ErrorResponse** = `FromSchema`\<*typeof* `errorResponse`\>
 
 ***
 
 ### GetPromptRequest
 
-> **GetPromptRequest**: `FromSchema`\<*typeof* `getPromptRequest`\>
+> **GetPromptRequest** = `FromSchema`\<*typeof* `getPromptRequest`\>
 
 ***
 
 ### GetPromptResult
 
-> **GetPromptResult**: `FromSchema`\<*typeof* `getPromptResult`\>
+> **GetPromptResult** = `FromSchema`\<*typeof* `getPromptResult`\>
 
 ***
 
 ### Implementation
 
-> **Implementation**: `FromSchema`\<*typeof* `implementation`\>
+> **Implementation** = `FromSchema`\<*typeof* `implementation`\>
 
 ***
 
 ### InitializeRequest
 
-> **InitializeRequest**: `FromSchema`\<*typeof* `initializeRequest`\>
+> **InitializeRequest** = `FromSchema`\<*typeof* `initializeRequest`\>
 
 ***
 
 ### InitializeResult
 
-> **InitializeResult**: `FromSchema`\<*typeof* `initializeResult`\>
+> **InitializeResult** = `FromSchema`\<*typeof* `initializeResult`\>
 
 ***
 
 ### InputSchema
 
-> **InputSchema**: `FromSchema`\<*typeof* [`inputSchema`](index.md#inputschema-1)\>
+> **InputSchema** = `FromSchema`\<*typeof* [`inputSchema`](#inputschema-1)\>
 
 ***
 
 ### ListResourcesRequest
 
-> **ListResourcesRequest**: `FromSchema`\<*typeof* `listResourcesRequest`\>
+> **ListResourcesRequest** = `FromSchema`\<*typeof* `listResourcesRequest`\>
 
 ***
 
 ### ListResourcesResult
 
-> **ListResourcesResult**: `FromSchema`\<*typeof* `listResourcesResult`\>
+> **ListResourcesResult** = `FromSchema`\<*typeof* `listResourcesResult`\>
 
 ***
 
 ### ListResourceTemplatesRequest
 
-> **ListResourceTemplatesRequest**: `FromSchema`\<*typeof* `listResourceTemplatesRequest`\>
+> **ListResourceTemplatesRequest** = `FromSchema`\<*typeof* `listResourceTemplatesRequest`\>
 
 ***
 
 ### ListResourceTemplatesResult
 
-> **ListResourceTemplatesResult**: `FromSchema`\<*typeof* `listResourceTemplatesResult`\>
+> **ListResourceTemplatesResult** = `FromSchema`\<*typeof* `listResourceTemplatesResult`\>
 
 ***
 
 ### ListRootsRequest
 
-> **ListRootsRequest**: `FromSchema`\<*typeof* `listRootsRequest`\>
+> **ListRootsRequest** = `FromSchema`\<*typeof* `listRootsRequest`\>
 
 ***
 
 ### ListRootsResult
 
-> **ListRootsResult**: `FromSchema`\<*typeof* `listRootsResult`\>
+> **ListRootsResult** = `FromSchema`\<*typeof* `listRootsResult`\>
 
 ***
 
 ### Log
 
-> **Log**: `FromSchema`\<*typeof* `log`\>
+> **Log** = `FromSchema`\<*typeof* `log`\>
 
 ***
 
 ### LoggingLevel
 
-> **LoggingLevel**: `FromSchema`\<*typeof* `loggingLevel`\>
+> **LoggingLevel** = `FromSchema`\<*typeof* `loggingLevel`\>
 
 ***
 
 ### LoggingMessageNotification
 
-> **LoggingMessageNotification**: `FromSchema`\<*typeof* `loggingMessageNotification`\>
+> **LoggingMessageNotification** = `FromSchema`\<*typeof* `loggingMessageNotification`\>
 
 ***
 
 ### Notification
 
-> **Notification**: `FromSchema`\<*typeof* `notification`\>
+> **Notification** = `FromSchema`\<*typeof* `notification`\>
 
 ***
 
 ### ProgressNotification
 
-> **ProgressNotification**: `FromSchema`\<*typeof* `progressNotification`\>
+> **ProgressNotification** = `FromSchema`\<*typeof* `progressNotification`\>
 
 ***
 
 ### Prompt
 
-> **Prompt**: `FromSchema`\<*typeof* `prompt`\>
+> **Prompt** = `FromSchema`\<*typeof* `prompt`\>
 
 ***
 
 ### PromptArgument
 
-> **PromptArgument**: `FromSchema`\<*typeof* `promptArgument`\>
+> **PromptArgument** = `FromSchema`\<*typeof* `promptArgument`\>
 
 ***
 
 ### PromptListChangedNotification
 
-> **PromptListChangedNotification**: `FromSchema`\<*typeof* `promptListChangedNotification`\>
+> **PromptListChangedNotification** = `FromSchema`\<*typeof* `promptListChangedNotification`\>
 
 ***
 
 ### ReadResourceRequest
 
-> **ReadResourceRequest**: `FromSchema`\<*typeof* `readResourceRequest`\>
+> **ReadResourceRequest** = `FromSchema`\<*typeof* `readResourceRequest`\>
 
 ***
 
 ### ReadResourceResult
 
-> **ReadResourceResult**: `FromSchema`\<*typeof* `readResourceResult`\>
+> **ReadResourceResult** = `FromSchema`\<*typeof* `readResourceResult`\>
 
 ***
 
 ### Request
 
-> **Request**: `FromSchema`\<*typeof* `request`\>
+> **Request** = `FromSchema`\<*typeof* `request`\>
 
 ***
 
 ### RequestID
 
-> **RequestID**: `FromSchema`\<*typeof* `requestId`\>
+> **RequestID** = `FromSchema`\<*typeof* `requestId`\>
 
 ***
 
 ### Resource
 
-> **Resource**: `FromSchema`\<*typeof* `resource`\>
+> **Resource** = `FromSchema`\<*typeof* `resource`\>
 
 ***
 
 ### ResourceListChangedNotification
 
-> **ResourceListChangedNotification**: `FromSchema`\<*typeof* `resourceListChangedNotification`\>
+> **ResourceListChangedNotification** = `FromSchema`\<*typeof* `resourceListChangedNotification`\>
 
 ***
 
 ### ResourceTemplate
 
-> **ResourceTemplate**: `FromSchema`\<*typeof* `resourceTemplate`\>
+> **ResourceTemplate** = `FromSchema`\<*typeof* `resourceTemplate`\>
 
 ***
 
 ### ResourceUpdatedNotification
 
-> **ResourceUpdatedNotification**: `FromSchema`\<*typeof* `resourceUpdatedNotification`\>
+> **ResourceUpdatedNotification** = `FromSchema`\<*typeof* `resourceUpdatedNotification`\>
 
 ***
 
 ### Response
 
-> **Response**: `FromSchema`\<*typeof* `response`\>
+> **Response** = `FromSchema`\<*typeof* `response`\>
 
 ***
 
 ### Root
 
-> **Root**: `FromSchema`\<*typeof* `root`\>
+> **Root** = `FromSchema`\<*typeof* `root`\>
 
 ***
 
 ### RootsListChangedNotification
 
-> **RootsListChangedNotification**: `FromSchema`\<*typeof* `rootsListChangedNotification`\>
+> **RootsListChangedNotification** = `FromSchema`\<*typeof* `rootsListChangedNotification`\>
 
 ***
 
 ### ServerCapabilities
 
-> **ServerCapabilities**: `FromSchema`\<*typeof* `serverCapabilities`\>
+> **ServerCapabilities** = `FromSchema`\<*typeof* `serverCapabilities`\>
 
 ***
 
 ### ServerMessage
 
-> **ServerMessage**: `FromSchema`\<*typeof* [`serverMessage`](index.md#servermessage-1)\>
+> **ServerMessage** = `FromSchema`\<*typeof* [`serverMessage`](#servermessage-1)\>
 
 ***
 
 ### ServerNotification
 
-> **ServerNotification**: `FromSchema`\<*typeof* `serverNotification`\>
+> **ServerNotification** = `FromSchema`\<*typeof* `serverNotification`\>
 
 ***
 
 ### ServerNotifications
 
-> **ServerNotifications**: `object`
+> **ServerNotifications** = `object`
 
-#### Type declaration
+#### Properties
 
 ##### prompts/list\_changed
 
-> **prompts/list\_changed**: [`PromptListChangedNotification`](index.md#promptlistchangednotification)
+> **prompts/list\_changed**: [`PromptListChangedNotification`](#promptlistchangednotification)
+
+***
 
 ##### resources/list\_changed
 
-> **resources/list\_changed**: [`ResourceListChangedNotification`](index.md#resourcelistchangednotification)
+> **resources/list\_changed**: [`ResourceListChangedNotification`](#resourcelistchangednotification)
+
+***
 
 ##### tools/list\_changed
 
-> **tools/list\_changed**: [`ToolListChangedNotification`](index.md#toollistchangednotification)
+> **tools/list\_changed**: [`ToolListChangedNotification`](#toollistchangednotification)
 
 ***
 
 ### ServerRequest
 
-> **ServerRequest**: `FromSchema`\<*typeof* `serverRequest`\>
+> **ServerRequest** = `FromSchema`\<*typeof* `serverRequest`\>
 
 ***
 
 ### ServerRequests
 
-> **ServerRequests**: `object`
+> **ServerRequests** = `object`
 
-#### Type declaration
+#### Properties
 
 ##### roots/list
 
 > **roots/list**: `object`
 
-###### roots/list.Params
+###### Params
 
-> **roots/list.Params**: [`ListRootsRequest`](index.md#listrootsrequest)\[`"params"`\]
+> **Params**: [`ListRootsRequest`](#listrootsrequest)\[`"params"`\]
 
-###### roots/list.Result
+###### Result
 
-> **roots/list.Result**: [`ListRootsResult`](index.md#listrootsresult)
+> **Result**: [`ListRootsResult`](#listrootsresult)
+
+***
 
 ##### sampling/createMessage
 
 > **sampling/createMessage**: `object`
 
-###### sampling/createMessage.Params
+###### Params
 
-> **sampling/createMessage.Params**: [`CreateMessageRequest`](index.md#createmessagerequest)\[`"params"`\]
+> **Params**: [`CreateMessageRequest`](#createmessagerequest)\[`"params"`\]
 
-###### sampling/createMessage.Result
+###### Result
 
-> **sampling/createMessage.Result**: [`CreateMessageResult`](index.md#createmessageresult)
+> **Result**: [`CreateMessageResult`](#createmessageresult)
 
 ***
 
 ### ServerResult
 
-> **ServerResult**: `FromSchema`\<*typeof* `serverResult`\>
+> **ServerResult** = `FromSchema`\<*typeof* `serverResult`\>
 
 ***
 
 ### SetLevelRequest
 
-> **SetLevelRequest**: `FromSchema`\<*typeof* `setLevelRequest`\>
+> **SetLevelRequest** = `FromSchema`\<*typeof* `setLevelRequest`\>
 
 ***
 
 ### Tool
 
-> **Tool**: `FromSchema`\<*typeof* `tool`\>
+> **Tool** = `FromSchema`\<*typeof* `tool`\>
 
 ***
 
 ### ToolListChangedNotification
 
-> **ToolListChangedNotification**: `FromSchema`\<*typeof* `toolListChangedNotification`\>
+> **ToolListChangedNotification** = `FromSchema`\<*typeof* `toolListChangedNotification`\>
 
 ## Variables
 
