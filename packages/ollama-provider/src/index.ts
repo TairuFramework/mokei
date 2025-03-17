@@ -208,7 +208,7 @@ export type OllamaTypes = {
 }
 
 export type OllamaProviderParams = {
-  client: OllamaClient | OllamaClientParams
+  client?: OllamaClient | OllamaClientParams
 }
 
 export class OllamaProvider implements ModelProvider<OllamaTypes> {

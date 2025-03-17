@@ -1,14 +1,14 @@
 {
-  "name": "@mokei/ollama-provider",
-  "version": "0.2.2",
+  "name": "@mokei/mcp-fetch",
+  "version": "0.2.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
-  "description": "Mokei Ollama provider",
-  "keywords": ["model", "context", "protocol", "mcp", "llm", "ai"],
+  "description": "Fetch MCP server",
+  "keywords": ["model", "context", "protocol", "mcp", "server", "llm", "ai", "fetch"],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "packages/ollama-provider"
+    "directory": "mcp-servers/fetch"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -30,11 +30,10 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/stream": "^0.11.0",
-    "@mokei/model-provider": "workspace:^",
-    "ky": "^1.7.5"
+    "@mokei/context-server": "workspace:^",
+    "turndown": "^7.2.0"
   },
   "devDependencies": {
-    "@mokei/context-protocol": "workspace:^"
+    "@types/turndown": "^5.0.5"
   }
 }
