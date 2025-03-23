@@ -12,7 +12,7 @@
 
 import { fromJSONLines } from '@enkaku/stream'
 import type { Tool as ContextTool } from '@mokei/context-protocol'
-import { tryParseJSON } from '@mokei/model-provider'
+import { type RequestParams, tryParseJSON } from '@mokei/model-provider'
 import type {
   AggregatedMessage,
   AnyReplyRequest,
@@ -92,7 +92,14 @@ export type Tool = {
   function: ToolFunction
 }
 
-export type GenerateParams = {
+export type RequestOptions = {
+  retry?: RetryOptions | number
+  timeout?: number | false
+}
+
+export type ListModelParams = RequestParams & { request?: RequestOptions }
+
+export type GenerateParams = RequestParams & {
   model: string
   prompt: string
   suffix?: string
@@ -104,6 +111,7 @@ export type GenerateParams = {
   stream?: boolean
   raw?: boolean
   keep_alive?: string
+  request?: RequestOptions
 }
 
 export type GenerateResponse = {
@@ -114,7 +122,7 @@ export type GenerateResponse = {
   done_reason?: string
 }
 
-export type ChatParams = {
+export type ChatParams = RequestParams & {
   model: string
   messages: Array<Message>
   stream?: boolean
@@ -122,6 +130,7 @@ export type ChatParams = {
   keep_alive?: string // duration
   tools?: Array<Tool>
   options?: Record<string, unknown>
+  request?: RequestOptions
 }
 
 export type ChatResponse = {
@@ -130,11 +139,6 @@ export type ChatResponse = {
   message: Message
   done: boolean
   done_reason?: string
-}
-
-export type RequestOptions = {
-  retry?: RetryOptions | number
-  timeout?: number | false
 }
 
 export type OllamaClientParams = {
@@ -152,47 +156,41 @@ export class OllamaClient {
     })
   }
 
-  async listModels(options?: RequestOptions): Promise<Array<Model>> {
+  async listModels(params: ListModelParams = {}): Promise<Array<Model>> {
+    const options = params.request
+      ? { ...params.request, signal: params.signal }
+      : { signal: params.signal }
     const res = await this.#api.get<{ models: Array<Model> }>('tags', options).json()
     return res.models
   }
 
-  generate(
-    params: GenerateParams & { stream?: false },
-    options?: RequestOptions,
-  ): SingleReplyRequest<GenerateResponse>
-  generate(
-    params: GenerateParams & { stream: true },
-    options?: RequestOptions,
-  ): StreamReplyRequest<GenerateResponse>
-  generate(
-    params: GenerateParams,
-    options: RequestOptions = {},
-  ): AnyReplyRequest<GenerateResponse> {
+  generate(params: GenerateParams & { stream?: false }): SingleReplyRequest<GenerateResponse>
+  generate(params: GenerateParams & { stream: true }): StreamReplyRequest<GenerateResponse>
+  generate(params: GenerateParams): AnyReplyRequest<GenerateResponse> {
     const controller = new AbortController()
+    const options = params.request ?? {}
     const request = this.#api.post<GenerateResponse>('generate', {
       ...options,
       json: params,
-      signal: controller.signal,
+      signal: params.signal
+        ? AbortSignal.any([params.signal, controller.signal])
+        : controller.signal,
     })
     const response = params.stream ? toResponseStream(request) : request.json()
     return Object.assign(response, controller)
   }
 
-  chat(
-    params: ChatParams & { stream?: false },
-    options?: RequestOptions,
-  ): SingleReplyRequest<ChatResponse>
-  chat(
-    params: ChatParams & { stream: true },
-    options?: RequestOptions,
-  ): StreamReplyRequest<ChatResponse>
-  chat(params: ChatParams, options: RequestOptions = {}): AnyReplyRequest<ChatResponse> {
+  chat(params: ChatParams & { stream?: false }): SingleReplyRequest<ChatResponse>
+  chat(params: ChatParams & { stream: true }): StreamReplyRequest<ChatResponse>
+  chat(params: ChatParams): AnyReplyRequest<ChatResponse> {
     const controller = new AbortController()
+    const options = params.request ?? {}
     const request = this.#api.post<ChatResponse>('chat', {
       ...options,
       json: params,
-      signal: controller.signal,
+      signal: params.signal
+        ? AbortSignal.any([params.signal, controller.signal])
+        : controller.signal,
     })
     const response = params.stream ? toResponseStream(request) : request.json()
     return Object.assign(response, { abort: () => controller.abort(), signal: controller.signal })
@@ -219,8 +217,8 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
       params.client instanceof OllamaClient ? params.client : new OllamaClient(params.client)
   }
 
-  async listModels(options?: RequestOptions) {
-    const models = await this.#client.listModels(options)
+  async listModels(params?: ListModelParams) {
+    const models = await this.#client.listModels(params)
     return models.map((model) => ({ id: model.name, raw: model }))
   }
 
@@ -240,29 +238,27 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
     return { source: 'aggregated', role: 'assistant', text, toolCalls }
   }
 
-  streamChat(params: StreamChatParams<Message, ToolCall, Tool>, options?: RequestOptions) {
-    const request = this.#client.chat(
-      {
-        messages: params.messages.map((msg) => {
-          switch (msg.source) {
-            case 'aggregated':
-              return {
-                role: msg.role,
-                content: msg.text,
-                tool_calls: msg.toolCalls.map((c) => c.raw),
-              }
-            case 'client':
-              return { role: msg.role, content: msg.text }
-            case 'server':
-              return msg.raw
-          }
-        }),
-        model: params.model,
-        stream: true,
-        tools: params.tools,
-      },
-      options,
-    )
+  streamChat(params: StreamChatParams<Message, ToolCall, Tool>) {
+    const request = this.#client.chat({
+      messages: params.messages.map((msg) => {
+        switch (msg.source) {
+          case 'aggregated':
+            return {
+              role: msg.role,
+              content: msg.text,
+              tool_calls: msg.toolCalls.map((c) => c.raw),
+            }
+          case 'client':
+            return { role: msg.role, content: msg.text }
+          case 'server':
+            return msg.raw
+        }
+      }),
+      model: params.model,
+      signal: params.signal,
+      stream: true,
+      tools: params.tools,
+    })
     const response = request.then((stream) => {
       return stream.pipeThrough(
         new TransformStream<ChatResponse, MessagePart<ChatResponse, ToolCall>>({

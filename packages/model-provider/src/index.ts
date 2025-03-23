@@ -13,10 +13,6 @@
 import { type Validator, asType, createValidator } from '@enkaku/schema'
 import type { Tool } from '@mokei/context-protocol'
 
-export type SingleReplyRequest<T> = AbortController & Promise<T>
-export type StreamReplyRequest<T> = AbortController & Promise<ReadableStream<T>>
-export type AnyReplyRequest<T> = SingleReplyRequest<T> | StreamReplyRequest<T>
-
 const objectValidator = createValidator({ type: 'object' })
 
 export function tryParseJSON<T = Record<string, unknown>>(
@@ -101,7 +97,15 @@ export type MessageAggregate<RawMessage, RawToolCall, State> = {
   state: State
 }
 
-export type StreamChatParams<RawMessage, RawToolCall, RawTool> = {
+export type RequestParams = {
+  signal?: AbortSignal
+}
+
+export type SingleReplyRequest<T> = AbortController & Promise<T>
+export type StreamReplyRequest<T> = AbortController & Promise<ReadableStream<T>>
+export type AnyReplyRequest<T> = SingleReplyRequest<T> | StreamReplyRequest<T>
+
+export type StreamChatParams<RawMessage, RawToolCall, RawTool> = RequestParams & {
   model: string
   messages: Array<Message<RawMessage, RawToolCall>>
   tools?: Array<RawTool>
@@ -126,7 +130,7 @@ export type ModelProvider<T extends ProviderTypes> = {
   aggregateMessage: (
     parts: Array<ServerMessage<T['MessagePart'], T['ToolCall']>>,
   ) => AggregatedMessage<T['ToolCall']>
-  listModels: () => Promise<Array<Model<T['Model']>>>
+  listModels: (params?: RequestParams) => Promise<Array<Model<T['Model']>>>
   streamChat: (
     params: StreamChatParams<T['Message'], T['ToolCall'], T['Tool']>,
   ) => StreamChatRequest<T['MessagePart'], T['ToolCall']>
