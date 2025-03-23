@@ -1,6 +1,6 @@
 {
   "name": "@mokei/ollama-provider",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei Ollama provider",
@@ -30,6 +30,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
+    "@enkaku/schema": "^0.11.0",
     "@enkaku/stream": "^0.11.0",
     "@mokei/model-provider": "workspace:^",
     "ky": "^1.7.5"
