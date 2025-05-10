@@ -399,6 +399,25 @@ importers:
         specifier: workspace:^
         version: link:../context-protocol
 
+  packages/openai-provider:
+    dependencies:
+      '@enkaku/schema':
+        specifier: ^0.12.0
+        version: 0.12.0
+      '@enkaku/stream':
+        specifier: ^0.12.0
+        version: 0.12.0
+      '@mokei/model-provider':
+        specifier: workspace:^
+        version: link:../model-provider
+      ky:
+        specifier: ^1.2.0
+        version: 1.8.1
+    devDependencies:
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+
   website:
     dependencies:
       '@dipakparmar/docusaurus-plugin-umami':
@@ -19239,7 +19258,7 @@ snapshots:
 
   regenerator-transform@0.15.2:
     dependencies:
-      '@babel/runtime': 7.26.10
+      '@babel/runtime': 7.27.1
 
   regex-recursion@5.1.1:
     dependencies:
