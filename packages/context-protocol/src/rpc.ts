@@ -1,6 +1,6 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
-export const LATEST_PROTOCOL_VERSION = '2024-11-05'
+export const LATEST_PROTOCOL_VERSION = '2025-03-26'
 export const JSONRPC_VERSION = '2.0'
 
 export const PARSE_ERROR = -32700
@@ -86,6 +86,10 @@ export const progressNotification = {
         },
         params: {
           properties: {
+            message: {
+              description: 'An optional message describing the current progress.',
+              type: 'string',
+            },
             progress: {
               description:
                 'The progress thus far. This should increase every time progress is made, even if the total is unknown.',
@@ -229,4 +233,6 @@ export const pingRequest = {
 } as const satisfies Schema
 export type PingRequest = FromSchema<typeof pingRequest>
 
-export type AnyMessage = Notification | Request | Response
+export type SingleMessage = Notification | Request | Response
+
+export type AnyMessage = SingleMessage | Array<Request> | Array<Response>

@@ -4,7 +4,7 @@ import {
   INVALID_PARAMS,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
-  clientMessage,
+  singleClientMessage,
 } from '@mokei/context-protocol'
 import type {
   CallToolRequest,
@@ -28,6 +28,7 @@ import type {
   ServerNotifications,
   ServerRequests,
   ServerResult,
+  SingleClientMessage,
   Tool,
 } from '@mokei/context-protocol'
 import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
@@ -57,7 +58,7 @@ const LOGGING_LEVELS: Record<LoggingLevel, number> = {
   debug: 7,
 } as const
 
-const validateClientMessage = createValidator(clientMessage)
+const validateClientMessage = createValidator(singleClientMessage)
 
 export type ServerParams = {
   name: string
@@ -81,6 +82,7 @@ type ServerTypes = {
   Events: ServerEvents
   MessageIn: ClientMessage
   MessageOut: ServerMessage
+  HandleMessage: SingleClientMessage
   HandleNotification: HandleNotification
   HandleRequest: ClientRequest
   SendNotifications: ServerNotifications

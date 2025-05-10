@@ -1,7 +1,11 @@
 import { lazy } from '@enkaku/async'
 import { createValidator } from '@enkaku/schema'
 import { createReadable } from '@enkaku/stream'
-import { LATEST_PROTOCOL_VERSION, METHOD_NOT_FOUND, serverMessage } from '@mokei/context-protocol'
+import {
+  LATEST_PROTOCOL_VERSION,
+  METHOD_NOT_FOUND,
+  singleServerMessage,
+} from '@mokei/context-protocol'
 import type {
   CallToolRequest,
   CallToolResult,
@@ -28,13 +32,14 @@ import type {
   ServerMessage,
   ServerNotification,
   ServerRequest,
+  SingleServerMessage,
   Tool,
 } from '@mokei/context-protocol'
 import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
 
 import type { ClientTransport } from './types.js'
 
-const validateServerMessage = createValidator(serverMessage)
+const validateServerMessage = createValidator(singleServerMessage)
 
 export type CreateMessageHandler = (
   params: CreateMessageRequest['params'],
@@ -53,6 +58,7 @@ type ClientTypes = {
   Events: ClientEvents
   MessageIn: ServerMessage
   MessageOut: ClientMessage
+  HandleMessage: SingleServerMessage
   HandleNotification: HandleNotification
   HandleRequest: ServerRequest
   SendNotifications: ClientNotifications
@@ -116,7 +122,7 @@ export class ContextClient<
     if (next.done) {
       throw new Error('Server did not respond to initialize request')
     }
-    if (next.value.id !== id) {
+    if (Array.isArray(next.value) || next.value.id !== id) {
       throw new Error('Server did not correctly respond to initialize request')
     }
     // Start listening for incoming messages

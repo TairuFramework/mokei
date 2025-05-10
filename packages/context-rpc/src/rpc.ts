@@ -12,6 +12,7 @@ import type {
   Request,
   RequestID,
   Response,
+  SingleMessage,
 } from '@mokei/context-protocol'
 
 import { RPCError, errorResponse } from './error.js'
@@ -36,6 +37,7 @@ export type RPCTypes = {
   Events: Record<string, unknown>
   MessageIn: AnyMessage
   MessageOut: AnyMessage
+  HandleMessage: SingleMessage
   HandleNotification: Notification
   HandleRequest: Request
   SendNotifications: Record<string, Notification>
@@ -45,7 +47,7 @@ export type RPCTypes = {
 
 export type RPCParams<T extends RPCTypes> = {
   transport: TransportType<T['MessageIn'], T['MessageOut']>
-  validateMessageIn: Validator<T['MessageIn']>
+  validateMessageIn: Validator<T['HandleMessage']>
 }
 
 export class ContextRPC<T extends RPCTypes> extends Disposer {
@@ -54,7 +56,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #requestID = 0
   #sentRequests: Record<RequestID, RequestController<unknown>> = {}
   #transport: TransportType<T['MessageIn'], T['MessageOut']>
-  #validateMessageIn: Validator<T['MessageIn']>
+  #validateMessageIn: Validator<T['HandleMessage']>
 
   constructor(params: RPCParams<T>) {
     super({ dispose: () => this.#transport.dispose() })
@@ -86,85 +88,18 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         return
       }
 
-      const validated = this.#validateMessageIn(next.value)
-      if (validated.issues == null) {
-        // Message is valid for protocol
-        const id = validated.value.id as RequestID | undefined
-        if (id == null) {
-          // Message is a notification
-          const notification = validated.value as
-            | CancelledNotification
-            | ProgressNotification
-            | T['HandleNotification']
-          if (notification.method === 'notifications/cancelled') {
-            const cancelled = notification as CancelledNotification
-            const controller = this.#receivedRequests[cancelled.params.requestId]
-            if (controller != null) {
-              controller.abort()
-              delete this.#receivedRequests[cancelled.params.requestId]
-            }
-          } else {
-            void this._handleNotification(notification)
-          }
-        } else if (validated.value.method == null) {
-          // Message is a response
-          const response = validated.value as Response
-          const controller = this.#sentRequests[id]
-          if (controller == null) {
-            // TODO: error unknown sent request
-          } else if ('error' in response) {
-            controller.reject(RPCError.fromResponse(response as ErrorResponse))
-          } else if ('result' in response) {
-            controller.resolve(response.result)
-          } else {
-            // TODO: error invalid response
-          }
-        } else if (validated.value.method === 'ping') {
-          // Handle ping request
-          this._write({ jsonrpc: '2.0', id, result: {} })
-        } else {
-          // Message is a request
-          const controller = new AbortController()
-          this.#receivedRequests[id] = controller
-          toPromise(() => {
-            return this._handleRequest(validated.value as T['HandleRequest'], controller.signal)
-          })
-            .then(
-              (result) => {
-                if (
-                  this.#receivedRequests[id] != null &&
-                  !this.#receivedRequests[id].signal.aborted
-                ) {
-                  if (result == null) {
-                    this._write(new RPCError(INTERNAL_ERROR, 'No result').toResponse(id))
-                  } else {
-                    this._write({ jsonrpc: '2.0', id, result })
-                  }
-                }
-              },
-              (cause) => {
-                if (
-                  this.#receivedRequests[id] != null &&
-                  !this.#receivedRequests[id].signal.aborted
-                ) {
-                  this._write(errorResponse(id, cause))
-                } else {
-                  // TODO: call optional error handler
-                }
-              },
-            )
-            .finally(() => {
-              delete this.#receivedRequests[id]
-            })
+      if (Array.isArray(next.value)) {
+        const handled = await Promise.all(
+          next.value.map((message) => this._handleSingleMessage(message)),
+        )
+        const responses = handled.filter((response) => response != null)
+        if (responses.length !== 0) {
+          this._write(responses)
         }
       } else {
-        // Message is invalid for the protocol
-        const id = next.value.id
-        if (next.value.method != null && isRequestID(id)) {
-          // Send an error response if incoming message is a request
-          this._write(new RPCError(INVALID_REQUEST, 'Invalid request').toResponse(id))
-        } else {
-          // TODO: call optional error handler
+        const response = await this._handleSingleMessage(next.value)
+        if (response != null) {
+          this._write(response)
         }
       }
 
@@ -172,6 +107,88 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     }
 
     handleNext()
+  }
+
+  _handleSingleMessage(message: SingleMessage): Response | null | Promise<Response | null> {
+    const validated = this.#validateMessageIn(message)
+    if (validated.issues != null) {
+      // Message is invalid for the protocol
+      const id = message.id
+      if (message.method != null && isRequestID(id)) {
+        // Send an error response if incoming message is a request
+        return new RPCError(INVALID_REQUEST, 'Invalid request').toResponse(id)
+      }
+      // TODO: call optional error handler
+      return null
+    }
+
+    // Message is valid for protocol
+    const id = validated.value.id as RequestID | undefined
+    if (id == null) {
+      // Message is a notification
+      const notification = validated.value as
+        | CancelledNotification
+        | ProgressNotification
+        | T['HandleNotification']
+      if (notification.method === 'notifications/cancelled') {
+        const cancelled = notification as CancelledNotification
+        const controller = this.#receivedRequests[cancelled.params.requestId]
+        if (controller != null) {
+          controller.abort()
+          delete this.#receivedRequests[cancelled.params.requestId]
+        }
+      } else {
+        void this._handleNotification(notification)
+      }
+      return null
+    }
+
+    if (validated.value.method == null) {
+      // Message is a response
+      const response = validated.value as Response
+      const controller = this.#sentRequests[id]
+      if (controller == null) {
+        // TODO: error unknown sent request
+      } else if ('error' in response) {
+        controller.reject(RPCError.fromResponse(response as ErrorResponse))
+      } else if ('result' in response) {
+        controller.resolve(response.result)
+      } else {
+        // TODO: error invalid response
+      }
+      return null
+    }
+
+    if (validated.value.method === 'ping') {
+      // Handle ping request
+      return { jsonrpc: '2.0', id, result: {} }
+    }
+
+    // Message is a request
+    const controller = new AbortController()
+    this.#receivedRequests[id] = controller
+    return toPromise(() => {
+      return this._handleRequest(validated.value as T['HandleRequest'], controller.signal)
+    })
+      .then(
+        (result) => {
+          if (this.#receivedRequests[id] == null || this.#receivedRequests[id].signal.aborted) {
+            return null
+          }
+          return result == null
+            ? new RPCError(INTERNAL_ERROR, 'No result').toResponse(id)
+            : { jsonrpc: '2.0' as const, id, result }
+        },
+        (cause) => {
+          // TODO: call optional error handler
+          return this.#receivedRequests[id] == null || this.#receivedRequests[id].signal.aborted
+            ? null
+            : errorResponse(id, cause)
+        },
+      )
+      .finally(() => {
+        delete this.#receivedRequests[id]
+      })
   }
 
   // TODO: handle cancel notification, delegate to handler for other notifications

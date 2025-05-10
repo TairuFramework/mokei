@@ -70,6 +70,29 @@ export const imageContent = {
   type: 'object',
 } as const satisfies Schema
 
+export const audioContent = {
+  description: 'Audio provided to or from an LLM.',
+  properties: {
+    annotations,
+    data: {
+      description: 'The base64-encoded audio data.',
+      format: 'byte',
+      type: 'string',
+    },
+    mimeType: {
+      description:
+        'The MIME type of the audio. Different providers may support different audio types.',
+      type: 'string',
+    },
+    type: {
+      const: 'audio',
+      type: 'string',
+    },
+  },
+  required: ['data', 'mimeType', 'type'],
+  type: 'object',
+} as const satisfies Schema
+
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L1947
 export const textResourceContents = {
   properties: {
@@ -135,5 +158,5 @@ export const embeddedResource = {
 } as const satisfies Schema
 
 export const content = {
-  anyOf: [textContent, imageContent, embeddedResource],
+  anyOf: [textContent, imageContent, audioContent, embeddedResource],
 } as const satisfies Schema

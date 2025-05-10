@@ -30,12 +30,12 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "^0.11.0",
-    "@enkaku/event": "^0.11.0",
+    "@enkaku/async": "^0.12.0",
+    "@enkaku/event": "^0.12.0",
     "@mokei/context-protocol": "workspace:^"
   },
   "devDependencies": {
-    "@enkaku/schema": "^0.11.0",
-    "@enkaku/transport": "^0.11.0"
+    "@enkaku/schema": "^0.12.0",
+    "@enkaku/transport": "^0.12.0"
   }
 }

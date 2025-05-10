@@ -81,7 +81,7 @@ export type ClientResponse = FromSchema<typeof clientResponse>
 /**
  * Any MCP client message.
  */
-export const clientMessage = {
+export const singleClientMessage = {
   anyOf: [
     pingRequest,
     initializeRequest,
@@ -100,4 +100,6 @@ export const clientMessage = {
     clientResponse,
   ],
 } as const satisfies Schema
-export type ClientMessage = FromSchema<typeof clientMessage>
+export type SingleClientMessage = FromSchema<typeof singleClientMessage>
+
+export type ClientMessage = SingleClientMessage | Array<ClientRequest> | Array<ClientResponse>

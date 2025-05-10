@@ -15,7 +15,8 @@ export {
   type ClientNotification,
   type ClientRequest,
   type ClientResult,
-  clientMessage,
+  type SingleClientMessage,
+  singleClientMessage,
 } from './client.js'
 export type { CompleteRequest, CompleteResult } from './completion.js'
 export type {
@@ -68,6 +69,7 @@ export {
   type Request,
   type RequestID,
   type Response,
+  type SingleMessage,
   LATEST_PROTOCOL_VERSION,
   PARSE_ERROR,
   INVALID_REQUEST,
@@ -81,7 +83,8 @@ export {
   type ServerNotification,
   type ServerRequest,
   type ServerResult,
-  serverMessage,
+  type SingleServerMessage,
+  singleServerMessage,
 } from './server.js'
 export {
   type CallToolRequest,

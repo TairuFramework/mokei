@@ -59,13 +59,8 @@ export const serverResult = {
 } as const satisfies Schema
 export type ServerResult = FromSchema<typeof serverResult>
 
-/**
- * Any MCP server message.
- */
-export const serverMessage = {
+export const serverResponse = {
   anyOf: [
-    serverRequest,
-    serverNotification,
     errorResponse,
     {
       allOf: [
@@ -79,4 +74,14 @@ export const serverMessage = {
     },
   ],
 } as const satisfies Schema
-export type ServerMessage = FromSchema<typeof serverMessage>
+export type ServerResponse = FromSchema<typeof serverResponse>
+
+/**
+ * Any MCP server message.
+ */
+export const singleServerMessage = {
+  anyOf: [serverRequest, serverNotification, serverResponse],
+} as const satisfies Schema
+export type SingleServerMessage = FromSchema<typeof singleServerMessage>
+
+export type ServerMessage = SingleServerMessage | Array<ServerRequest> | Array<ServerResponse>

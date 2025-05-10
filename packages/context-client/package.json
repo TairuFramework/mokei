@@ -30,14 +30,14 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "^0.11.0",
-    "@enkaku/node-streams-transport": "^0.11.0",
-    "@enkaku/schema": "^0.11.0",
-    "@enkaku/stream": "^0.11.0",
+    "@enkaku/async": "^0.12.0",
+    "@enkaku/node-streams-transport": "^0.12.0",
+    "@enkaku/schema": "^0.12.0",
+    "@enkaku/stream": "^0.12.0",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^"
   },
   "devDependencies": {
-    "@enkaku/transport": "^0.11.0"
+    "@enkaku/transport": "^0.12.0"
   }
 }
