@@ -11,8 +11,6 @@ import {
 } from '@mokei/host-protocol'
 import spawn from 'nano-spawn'
 
-const PROCESS_SCRIPT_PATH = fileURLToPath(import.meta.resolve('./process.js'))
-
 export type HostClient = Client<Protocol>
 
 export async function createClient(socketPath = DEFAULT_SOCKET_PATH): Promise<HostClient> {
@@ -28,10 +26,11 @@ export type DaemonOptions = {
 }
 
 export async function spawnDaemon(options: DaemonOptions = {}): Promise<void> {
+  const scriptPath = fileURLToPath(import.meta.resolve('./process.js'))
   const socketPath = options.socketPath ?? DEFAULT_SOCKET_PATH
   const out = options.outFile ? openSync(options.outFile, 'a') : 'ignore'
   const err = options.errFile ? openSync(options.errFile, 'a') : 'ignore'
-  const subprocess = spawn('node', [PROCESS_SCRIPT_PATH, '--path', socketPath], {
+  const subprocess = spawn('node', [scriptPath, '--path', socketPath], {
     detached: true,
     stdio: ['ignore', out, err],
   })

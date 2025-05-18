@@ -35,7 +35,7 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
 
   #client: OllamaClient
 
-  constructor(params: OllamaProviderParams) {
+  constructor(params: OllamaProviderParams = {}) {
     this.#client =
       params.client instanceof OllamaClient ? params.client : new OllamaClient(params.client)
   }

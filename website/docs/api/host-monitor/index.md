@@ -20,13 +20,9 @@ npm install @mokei/host-monitor
 
 > **disposer**: `Disposer`
 
-***
-
 ##### port
 
 > **port**: `number`
-
-***
 
 ##### server
 
@@ -43,8 +39,6 @@ npm install @mokei/host-monitor
 ##### port?
 
 > `optional` **port**: `number`
-
-***
 
 ##### socketPath?
 
