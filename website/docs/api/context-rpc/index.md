@@ -29,7 +29,7 @@ npm install @mokei/context-rpc
 
 #### Constructors
 
-##### new ContextRPC()
+##### Constructor
 
 > **new ContextRPC**\<`T`\>(`params`): [`ContextRPC`](#contextrpc)\<`T`\>
 
@@ -69,8 +69,6 @@ npm install @mokei/context-rpc
 
 `string` \| `number`
 
-***
-
 ##### \_handle()
 
 > **\_handle**(): `void`
@@ -78,8 +76,6 @@ npm install @mokei/context-rpc
 ###### Returns
 
 `void`
-
-***
 
 ##### \_handleNotification()
 
@@ -89,13 +85,11 @@ npm install @mokei/context-rpc
 
 ###### notification
 
-\{ `[key: string]`: `unknown`;  `jsonrpc`: `"2.0"`; `method`: `"notifications/progress"`; `params`: \{ `[key: string]`: `unknown`;  `_meta`: \{\}; `progress`: `number`; `progressToken`: `string` \| `number`; `total`: `number`; \}; \} | `T`\[`"HandleNotification"`\]
+\{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/progress"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `message?`: `string`; `progress`: `number`; `progressToken`: `string` \| `number`; `total?`: `number`; \}; \} | `T`\[`"HandleNotification"`\]
 
 ###### Returns
 
 `void` \| `Promise`\<`void`\>
-
-***
 
 ##### \_handleRequest()
 
@@ -115,7 +109,19 @@ npm install @mokei/context-rpc
 
 `T`\[`"SendResult"`\] \| `Promise`\<`T`\[`"SendResult"`\]\>
 
-***
+##### \_handleSingleMessage()
+
+> **\_handleSingleMessage**(`message`): `null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
+
+###### Parameters
+
+###### message
+
+[`SingleMessage`](../context-protocol/index.md#singlemessage)
+
+###### Returns
+
+`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
 
 ##### \_read()
 
@@ -124,8 +130,6 @@ npm install @mokei/context-rpc
 ###### Returns
 
 `Promise`\<`ReadableStreamReadResult`\<`T`\[`"MessageIn"`\]\>\>
-
-***
 
 ##### \_write()
 
@@ -140,8 +144,6 @@ npm install @mokei/context-rpc
 ###### Returns
 
 `Promise`\<`void`\>
-
-***
 
 ##### notify()
 
@@ -167,8 +169,6 @@ npm install @mokei/context-rpc
 
 `Promise`\<`void`\>
 
-***
-
 ##### request()
 
 > **request**\<`Method`\>(`method`, `params`): [`SentRequest`](#sentrequest)\<`T`\[`"SendRequests"`\]\[`Method`\]\[`"Result"`\]\>
@@ -192,8 +192,6 @@ npm install @mokei/context-rpc
 ###### Returns
 
 [`SentRequest`](#sentrequest)\<`T`\[`"SendRequests"`\]\[`Method`\]\[`"Result"`\]\>
-
-***
 
 ##### requestValue()
 
@@ -237,9 +235,9 @@ npm install @mokei/context-rpc
 
 #### Constructors
 
-##### new RPCError()
+##### Constructor
 
-> **new RPCError**(`code`, `message`, `data`?): [`RPCError`](#rpcerror)
+> **new RPCError**(`code`, `message`, `data?`): [`RPCError`](#rpcerror)
 
 ###### Parameters
 
@@ -275,8 +273,6 @@ npm install @mokei/context-rpc
 
 `number`
 
-***
-
 ##### data
 
 ###### Get Signature
@@ -286,8 +282,6 @@ npm install @mokei/context-rpc
 ###### Returns
 
 `undefined` \| `Record`\<`string`, `unknown`\>
-
-***
 
 ##### isInternal
 
@@ -299,8 +293,6 @@ npm install @mokei/context-rpc
 
 `boolean`
 
-***
-
 ##### isInvalidParams
 
 ###### Get Signature
@@ -311,8 +303,6 @@ npm install @mokei/context-rpc
 
 `boolean`
 
-***
-
 ##### isInvalidRequest
 
 ###### Get Signature
@@ -322,8 +312,6 @@ npm install @mokei/context-rpc
 ###### Returns
 
 `boolean`
-
-***
 
 ##### isMethodNotFound
 
@@ -383,8 +371,6 @@ npm install @mokei/context-rpc
 
 > **jsonrpc**: `"2.0"`
 
-***
-
 ##### fromResponse()
 
 > `static` **fromResponse**(`response`): [`RPCError`](#rpcerror)
@@ -395,7 +381,7 @@ npm install @mokei/context-rpc
 
 ###### error
 
-\{ `[key: string]`: `unknown`;  `code`: `number`; `data`: \{\}; `message`: `string`; \}
+\{[`key`: `string`]: `unknown`; `code`: `number`; `data?`: \{[`key`: `string`]: `unknown`; \}; `message`: `string`; \}
 
 ###### error.code
 
@@ -403,7 +389,7 @@ npm install @mokei/context-rpc
 
 ###### error.data?
 
-\{\}
+\{[`key`: `string`]: `unknown`; \}
 
 ###### error.message
 
@@ -439,11 +425,9 @@ npm install @mokei/context-rpc
 
 > **transport**: `TransportType`\<`T`\[`"MessageIn"`\], `T`\[`"MessageOut"`\]\>
 
-***
-
 ##### validateMessageIn
 
-> **validateMessageIn**: `Validator`\<`T`\[`"MessageIn"`\]\>
+> **validateMessageIn**: `Validator`\<`T`\[`"HandleMessage"`\]\>
 
 ***
 
@@ -457,43 +441,33 @@ npm install @mokei/context-rpc
 
 > **Events**: `Record`\<`string`, `unknown`\>
 
-***
+##### HandleMessage
+
+> **HandleMessage**: [`SingleMessage`](../context-protocol/index.md#singlemessage)
 
 ##### HandleNotification
 
 > **HandleNotification**: [`Notification`](../context-protocol/index.md#notification)
 
-***
-
 ##### HandleRequest
 
 > **HandleRequest**: [`Request`](../context-protocol/index.md#request)
-
-***
 
 ##### MessageIn
 
 > **MessageIn**: [`AnyMessage`](../context-protocol/index.md#anymessage)
 
-***
-
 ##### MessageOut
 
 > **MessageOut**: [`AnyMessage`](../context-protocol/index.md#anymessage)
-
-***
 
 ##### SendNotifications
 
 > **SendNotifications**: `Record`\<`string`, [`Notification`](../context-protocol/index.md#notification)\>
 
-***
-
 ##### SendRequests
 
 > **SendRequests**: `Record`\<`string`, `RequestDefinition`\>
-
-***
 
 ##### SendResult
 

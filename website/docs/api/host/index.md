@@ -22,9 +22,9 @@ npm install @mokei/host
 
 #### Constructors
 
-##### new ContextHost()
+##### Constructor
 
-> **new ContextHost**(`params`?): [`ContextHost`](#contexthost)
+> **new ContextHost**(`params?`): [`ContextHost`](#contexthost)
 
 ###### Parameters
 
@@ -56,7 +56,7 @@ npm install @mokei/host
 
 ##### callTool()
 
-> **callTool**(`key`, `name`, `args`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: (\{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `resource`: \{ `[key: string]`: `unknown`;  `mimeType`: `string`; `text`: `string`; `uri`: `string`; \} \| \{ `[key: string]`: `unknown`;  `blob`: `string`; `mimeType`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError`: `boolean`; \}\>
+> **callTool**(`key`, `name`, `args`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; \}\>
 
 ###### Parameters
 
@@ -74,9 +74,7 @@ npm install @mokei/host
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: (\{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `resource`: \{ `[key: string]`: `unknown`;  `mimeType`: `string`; `text`: `string`; `uri`: `string`; \} \| \{ `[key: string]`: `unknown`;  `blob`: `string`; `mimeType`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError`: `boolean`; \}\>
-
-***
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; \}\>
 
 ##### getContext()
 
@@ -98,8 +96,6 @@ npm install @mokei/host
 
 [`HostedContext`](#hostedcontext)\<`T`\>
 
-***
-
 ##### getContextKeys()
 
 > **getContextKeys**(): `string`[]
@@ -107,8 +103,6 @@ npm install @mokei/host
 ###### Returns
 
 `string`[]
-
-***
 
 ##### getEnabledTools()
 
@@ -118,11 +112,9 @@ npm install @mokei/host
 
 [`ContextTool`](#contexttool)[]
 
-***
-
 ##### getPrompt()
 
-> **getPrompt**(`key`, `name`, `args`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `description`: `string`; `messages`: `object`[]; \}\>
+> **getPrompt**(`key`, `name`, `args`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `description?`: `string`; `messages`: `object`[]; \}\>
 
 ###### Parameters
 
@@ -140,9 +132,7 @@ npm install @mokei/host
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `description`: `string`; `messages`: `object`[]; \}\>
-
-***
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `description?`: `string`; `messages`: `object`[]; \}\>
 
 ##### remove()
 
@@ -157,8 +147,6 @@ npm install @mokei/host
 ###### Returns
 
 `Promise`\<`void`\>
-
-***
 
 ##### setContextTools()
 
@@ -178,8 +166,6 @@ npm install @mokei/host
 
 `void`
 
-***
-
 ##### setup()
 
 > **setup**(`key`): `Promise`\<[`ContextTool`](#contexttool)[]\>
@@ -193,8 +179,6 @@ npm install @mokei/host
 ###### Returns
 
 `Promise`\<[`ContextTool`](#contexttool)[]\>
-
-***
 
 ##### spawn()
 
@@ -228,7 +212,7 @@ npm install @mokei/host
 
 #### Constructors
 
-##### new ProxyHost()
+##### Constructor
 
 > **new ProxyHost**(`client`): [`ProxyHost`](#proxyhost)
 
@@ -258,8 +242,6 @@ npm install @mokei/host
 
 [`HostClient`](#hostclient)
 
-***
-
 ##### contexts
 
 ###### Get Signature
@@ -278,7 +260,7 @@ npm install @mokei/host
 
 ##### callTool()
 
-> **callTool**(`key`, `name`, `args`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: (\{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `resource`: \{ `[key: string]`: `unknown`;  `mimeType`: `string`; `text`: `string`; `uri`: `string`; \} \| \{ `[key: string]`: `unknown`;  `blob`: `string`; `mimeType`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError`: `boolean`; \}\>
+> **callTool**(`key`, `name`, `args`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; \}\>
 
 ###### Parameters
 
@@ -296,13 +278,11 @@ npm install @mokei/host
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `content`: (\{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{ `[key: string]`: `unknown`;  `annotations`: \{ `[key: string]`: `unknown`;  `audience`: (`"assistant"` \| `"user"`)[]; `priority`: `number`; \}; `resource`: \{ `[key: string]`: `unknown`;  `mimeType`: `string`; `text`: `string`; `uri`: `string`; \} \| \{ `[key: string]`: `unknown`;  `blob`: `string`; `mimeType`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError`: `boolean`; \}\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; \}\>
 
 ###### Inherited from
 
 [`ContextHost`](#contexthost).[`callTool`](#calltool)
-
-***
 
 ##### getContext()
 
@@ -328,8 +308,6 @@ npm install @mokei/host
 
 [`ContextHost`](#contexthost).[`getContext`](#getcontext)
 
-***
-
 ##### getContextKeys()
 
 > **getContextKeys**(): `string`[]
@@ -341,8 +319,6 @@ npm install @mokei/host
 ###### Inherited from
 
 [`ContextHost`](#contexthost).[`getContextKeys`](#getcontextkeys)
-
-***
 
 ##### getEnabledTools()
 
@@ -356,11 +332,9 @@ npm install @mokei/host
 
 [`ContextHost`](#contexthost).[`getEnabledTools`](#getenabledtools)
 
-***
-
 ##### getPrompt()
 
-> **getPrompt**(`key`, `name`, `args`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `description`: `string`; `messages`: `object`[]; \}\>
+> **getPrompt**(`key`, `name`, `args`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `description?`: `string`; `messages`: `object`[]; \}\>
 
 ###### Parameters
 
@@ -378,13 +352,11 @@ npm install @mokei/host
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{ `[key: string]`: `unknown`;  `_meta`: \{\}; `description`: `string`; `messages`: `object`[]; \}\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `description?`: `string`; `messages`: `object`[]; \}\>
 
 ###### Inherited from
 
 [`ContextHost`](#contexthost).[`getPrompt`](#getprompt)
-
-***
 
 ##### remove()
 
@@ -403,8 +375,6 @@ npm install @mokei/host
 ###### Inherited from
 
 [`ContextHost`](#contexthost).[`remove`](#remove)
-
-***
 
 ##### setContextTools()
 
@@ -428,8 +398,6 @@ npm install @mokei/host
 
 [`ContextHost`](#contexthost).[`setContextTools`](#setcontexttools)
 
-***
-
 ##### setup()
 
 > **setup**(`key`): `Promise`\<[`ContextTool`](#contexttool)[]\>
@@ -447,8 +415,6 @@ npm install @mokei/host
 ###### Inherited from
 
 [`ContextHost`](#contexthost).[`setup`](#setup)
-
-***
 
 ##### spawn()
 
@@ -476,11 +442,9 @@ npm install @mokei/host
 
 [`ContextHost`](#contexthost).[`spawn`](#spawn)
 
-***
-
 ##### forDaemon()
 
-> `static` **forDaemon**(`options`?): `Promise`\<[`ProxyHost`](#proxyhost)\>
+> `static` **forDaemon**(`options?`): `Promise`\<[`ProxyHost`](#proxyhost)\>
 
 ###### Parameters
 
@@ -510,19 +474,13 @@ npm install @mokei/host
 
 > `optional` **allow**: [`AllowToolCalls`](#allowtoolcalls)
 
-***
-
 ##### enabled
 
 > **enabled**: `boolean`
 
-***
-
 ##### id
 
 > **id**: `string`
-
-***
 
 ##### tool
 
@@ -552,13 +510,9 @@ npm install @mokei/host
 
 > **client**: [`ContextClient`](../context-client/index.md#contextclient)\<`T`\>
 
-***
-
 ##### disposer
 
 > **disposer**: `Disposer`
-
-***
 
 ##### tools
 
@@ -579,8 +533,6 @@ npm install @mokei/host
 ###### Returns
 
 `void` \| `Promise`\<`void`\>
-
-***
 
 ##### socketPath?
 

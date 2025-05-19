@@ -1,6 +1,6 @@
 {
   "name": "@mokei/context-client",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei MCP client",
@@ -33,7 +33,7 @@
     "@enkaku/async": "^0.12.0",
     "@enkaku/node-streams-transport": "^0.12.0",
     "@enkaku/schema": "^0.12.0",
-    "@enkaku/stream": "^0.12.0",
+    "@enkaku/stream": "^0.12.1",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^"
   },

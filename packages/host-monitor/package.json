@@ -1,6 +1,6 @@
 {
   "name": "@mokei/host-monitor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei Host monitor",
@@ -37,6 +37,6 @@
     "@hono/node-server": "^1.14.1",
     "@mokei/host-protocol": "workspace:^",
     "get-port": "^7.1.0",
-    "hono": "^4.7.9"
+    "hono": "^4.7.10"
   }
 }
