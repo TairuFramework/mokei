@@ -373,7 +373,7 @@ describe('ContextServer', () => {
           code: INVALID_PARAMS,
           message: 'Invalid prompt arguments',
           data: {
-            issues: [{ message: "must have required property 'name'", path: [''] }],
+            issues: [{ message: "must have required property 'name'", path: [] }],
           },
         },
       )
@@ -580,7 +580,7 @@ describe('ContextServer', () => {
           code: INVALID_PARAMS,
           message: 'Invalid tool input',
           data: {
-            issues: [{ message: "must have required property 'bar'", path: [''] }],
+            issues: [{ message: "must have required property 'bar'", path: [] }],
           },
         },
       )

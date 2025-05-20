@@ -38,6 +38,6 @@
     "postcss-simple-vars": "^7.0.1",
     "typescript": "~5.8.3",
     "vite": "^6.3.5",
-    "vite-bundle-analyzer": "^0.20.2"
+    "vite-bundle-analyzer": "^0.21.0"
   }
 }

@@ -57,4 +57,4 @@ export type ChatCompletionChunk = {
     delta: Partial<Message>
     finish_reason: string | null
   }>
-} 
+}

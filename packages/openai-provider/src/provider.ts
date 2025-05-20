@@ -38,9 +38,6 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
   #client: OpenAIClient
 
   constructor(params: OpenAIProviderParams) {
-    if (!params.client) {
-      throw new Error('OpenAI client configuration is required')
-    }
     this.#client =
       params.client instanceof OpenAIClient ? params.client : new OpenAIClient(params.client)
   }
@@ -68,20 +65,22 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
 
   streamChat(params: StreamChatParams<Message, ToolCall, Tool>) {
     const request = this.#client.chat({
-      messages: params.messages.map((msg: ClientMessage | ServerMessage<Message, ToolCall> | AggregatedMessage<ToolCall>) => {
-        switch (msg.source) {
-          case 'aggregated':
-            return {
-              role: msg.role,
-              content: msg.text,
-              tool_calls: msg.toolCalls.map((c: FunctionToolCall<ToolCall>) => c.raw),
-            }
-          case 'client':
-            return { role: msg.role, content: msg.text }
-          case 'server':
-            return msg.raw
-        }
-      }),
+      messages: params.messages.map(
+        (msg: ClientMessage | ServerMessage<Message, ToolCall> | AggregatedMessage<ToolCall>) => {
+          switch (msg.source) {
+            case 'aggregated':
+              return {
+                role: msg.role,
+                content: msg.text,
+                tool_calls: msg.toolCalls.map((c: FunctionToolCall<ToolCall>) => c.raw),
+              }
+            case 'client':
+              return { role: msg.role, content: msg.text }
+            case 'server':
+              return msg.raw
+          }
+        },
+      ),
       model: params.model,
       signal: params.signal,
       stream: true,
@@ -129,4 +128,4 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
       },
     } as Tool
   }
-} 
+}

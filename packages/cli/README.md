@@ -12,7 +12,7 @@ $ npm install -g mokei
 $ mokei COMMAND
 running command...
 $ mokei (--version)
-mokei/0.2.1 darwin-arm64 node-v23.7.0
+mokei/0.3.0 darwin-arm64 node-v23.11.0
 $ mokei --help [COMMAND]
 USAGE
   $ mokei COMMAND
@@ -22,6 +22,7 @@ USAGE
 # Commands
 <!-- commands -->
 * [`mokei chat ollama`](#mokei-chat-ollama)
+* [`mokei chat openai`](#mokei-chat-openai)
 * [`mokei context inspect COMMAND`](#mokei-context-inspect-command)
 * [`mokei context monitor`](#mokei-context-monitor)
 * [`mokei context proxy COMMAND`](#mokei-context-proxy-command)
@@ -41,6 +42,23 @@ FLAGS
 
 DESCRIPTION
   Interactive chat with a local model
+```
+
+## `mokei chat openai`
+
+Interactive chat with a model provider using OpenAI APIs
+
+```
+USAGE
+  $ mokei chat openai [-k <value>] [-p <value>] [-m <value>]
+
+FLAGS
+  -k, --api-key=<value>  OpenAI API key
+  -m, --model=<value>    Name of the model to use
+  -p, --api-url=<value>  Provider API URL
+
+DESCRIPTION
+  Interactive chat with a model provider using OpenAI APIs
 ```
 
 ## `mokei context inspect COMMAND`
@@ -110,5 +128,5 @@ DESCRIPTION
   Display help for mokei.
 ```
 
-_See code: [@oclif/plugin-help](https://github.com/oclif/plugin-help/blob/v6.2.26/src/commands/help.ts)_
+_See code: [@oclif/plugin-help](https://github.com/oclif/plugin-help/blob/v6.2.27/src/commands/help.ts)_
 <!-- commandsstop -->

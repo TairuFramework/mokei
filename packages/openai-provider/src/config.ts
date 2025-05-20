@@ -15,10 +15,10 @@ export const configurationSchema = {
       ],
     },
   },
-  required: ['apiKey'],
+  required: [],
   additionalProperties: false,
 } as const satisfies Schema
 
 export type OpenAIConfiguration = FromSchema<typeof configurationSchema>
 
-export const validateConfiguration = createValidator(configurationSchema) 
+export const validateConfiguration = createValidator(configurationSchema)

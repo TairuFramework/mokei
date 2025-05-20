@@ -1,6 +1,13 @@
 packages:
-  - 'mcp-servers/*'
+  - mcp-servers/*
   - monitor
-  - 'packages/*'
-  - 'tests/*'
+  - packages/*
+  - tests/*
   - website
+onlyBuiltDependencies:
+  - '@biomejs/biome'
+  - '@swc/core'
+  - core-js
+  - core-js-pure
+  - esbuild
+  - yarn

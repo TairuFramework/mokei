@@ -13,4 +13,4 @@
 export * from './client.js'
 export * from './config.js'
 export * from './provider.js'
-export * from './types.js' 
+export * from './types.js'

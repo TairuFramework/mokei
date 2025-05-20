@@ -39,7 +39,7 @@
     "@enkaku/transport": "^0.12.0",
     "@mokei/context-client": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
-    "nano-spawn": "^1.0.1"
+    "nano-spawn": "^1.0.2"
   },
   "devDependencies": {
     "@mokei/context-protocol": "workspace:^",
