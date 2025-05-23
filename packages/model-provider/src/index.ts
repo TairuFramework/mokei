@@ -40,7 +40,7 @@ export type Model<Raw> = {
 export type FunctionToolCall<Raw> = {
   name: string
   id: string
-  input: Record<string, unknown>
+  input: string
   raw: Raw
 }
 

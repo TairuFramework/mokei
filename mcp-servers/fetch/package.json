@@ -1,6 +1,6 @@
 {
   "name": "@mokei/mcp-fetch",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Fetch MCP server",

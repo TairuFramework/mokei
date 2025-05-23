@@ -1,6 +1,6 @@
 {
   "name": "@mokei/openai-provider",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei OpenAI provider",
@@ -31,11 +31,11 @@
   },
   "dependencies": {
     "@enkaku/schema": "^0.12.0",
-    "@mokei/model-provider": "workspace:^",
     "eventsource-parser": "^3.0.2",
     "ky": "^1.8.1"
   },
   "devDependencies": {
-    "@mokei/context-protocol": "workspace:^"
+    "@mokei/context-protocol": "workspace:^",
+    "@mokei/model-provider": "workspace:^"
   }
 }

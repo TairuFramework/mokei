@@ -1,6 +1,5 @@
 import { assertType } from '@enkaku/schema'
 import type { Tool as ContextTool } from '@mokei/context-protocol'
-import { tryParseJSON } from '@mokei/model-provider'
 import type {
   AggregatedMessage,
   ClientMessage,
@@ -51,14 +50,28 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
     parts: Array<ServerMessage<ChatCompletionChunk, ToolCall>>,
   ): AggregatedMessage<ToolCall> {
     let text = ''
-    let toolCalls: Array<FunctionToolCall<ToolCall>> = []
+    const toolCalls: Array<FunctionToolCall<ToolCall>> = []
+    let currentToolCall: FunctionToolCall<ToolCall> | null = null
+
     for (const part of parts) {
       if (part.text != null) {
         text += part.text
       }
       if (part.toolCalls != null) {
-        toolCalls = toolCalls.concat(part.toolCalls)
+        for (const toolCall of part.toolCalls) {
+          if (toolCall.id != null) {
+            if (currentToolCall != null) {
+              toolCalls.push(currentToolCall)
+            }
+            currentToolCall = toolCall
+          } else if (currentToolCall != null) {
+            currentToolCall.input += toolCall.input
+          }
+        }
       }
+    }
+    if (currentToolCall != null) {
+      toolCalls.push(currentToolCall)
     }
     return { source: 'aggregated', role: 'assistant', text, toolCalls }
   }
@@ -100,7 +113,7 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
                 toolCalls: delta.tool_calls.map((call: ToolCall) => {
                   return {
                     name: call.function.name,
-                    input: tryParseJSON(call.function.arguments),
+                    input: call.function.arguments,
                     id: call.id,
                     raw: call,
                   }

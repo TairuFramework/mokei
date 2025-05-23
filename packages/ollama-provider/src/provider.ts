@@ -1,6 +1,5 @@
 import { assertType } from '@enkaku/schema'
 import type { Tool as ContextTool } from '@mokei/context-protocol'
-import { tryParseJSON } from '@mokei/model-provider'
 import type {
   AggregatedMessage,
   FunctionToolCall,
@@ -95,7 +94,10 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
                 toolCalls: part.message.tool_calls.map((call) => {
                   return {
                     name: call.function.name,
-                    input: tryParseJSON(call.function.arguments),
+                    input:
+                      typeof call.function.arguments === 'string'
+                        ? call.function.arguments
+                        : JSON.stringify(call.function.arguments),
                     id: globalThis.crypto.randomUUID(),
                     raw: call,
                   }

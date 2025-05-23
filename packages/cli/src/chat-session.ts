@@ -2,13 +2,16 @@ import { Writable } from 'node:stream'
 import { Disposer } from '@enkaku/async'
 import { createReadable } from '@enkaku/stream'
 import { type ContextHost, getContextToolInfo } from '@mokei/host'
+import { tryParseJSON } from '@mokei/model-provider'
 import type {
   AggregatedMessage,
   ClientToolMessage,
   FunctionToolCall,
   Message,
+  MessagePart,
   ModelProvider,
   ProviderTypes,
+  ServerMessage,
 } from '@mokei/model-provider'
 import ora, { type Ora } from 'ora'
 
@@ -191,8 +194,7 @@ export class ChatSession<T extends ProviderTypes> extends Disposer {
     while (true) {
       try {
         const messageStream = this.#provider.streamChat({ messages: this.#messages, model, tools })
-        const toolCalls: Array<FunctionToolCall<T['ToolCall']>> = []
-        let text = ''
+        const parts: Array<ServerMessage<T['MessagePart'], T['ToolCall']>> = []
 
         this.#loader.start('Generating...')
         this.#requestState = { type: 'streaming', abort: () => messageStream.abort() }
@@ -212,35 +214,31 @@ export class ChatSession<T extends ProviderTypes> extends Disposer {
               if (this.#loader.isSpinning) {
                 this.#loader.stop()
               }
-              toolCalls.push(...part.toolCalls)
+              parts.push({ ...part, source: 'server', role: 'assistant' })
               break
             case 'text-delta':
               if (this.#loader.isSpinning) {
                 this.#loader.stop()
                 await this.#writer.write('🤖')
               }
-              text += part.text
+              parts.push({ ...part, source: 'server', role: 'assistant' })
               await this.#writer.write(part.text)
               break
           }
         }
 
         this.#requestState = { type: 'idle' }
-        const aggregatedMessage: AggregatedMessage<T['ToolCall']> = {
-          source: 'aggregated',
-          role: 'assistant',
-          text,
-          toolCalls,
-        }
+        const aggregatedMessage: AggregatedMessage<T['ToolCall']> =
+          this.#provider.aggregateMessage(parts)
 
-        if (toolCalls.length === 0) {
+        if (aggregatedMessage.toolCalls.length === 0) {
           await this.#writer.write('\n')
           this.#loader.succeed('Generation completed')
           this.#messages.push(aggregatedMessage)
           return 'user.prompt.text'
         }
 
-        const toolMessages = await this.#runTools(toolCalls)
+        const toolMessages = await this.#runTools(aggregatedMessage.toolCalls)
         this.#messages.push(aggregatedMessage, ...toolMessages)
       } catch (reason) {
         if (reason instanceof Error && reason.name === 'AbortError') {
@@ -263,12 +261,12 @@ export class ChatSession<T extends ProviderTypes> extends Disposer {
       const [context, name] = getContextToolInfo(toolCall.name)
       let text: string
       const ok = await confirm(
-        `Allow call of tool ${name} in context ${context} with arguments ${JSON.stringify(toolCall.input)}?`,
+        `Allow call of tool ${name} in context ${context} with arguments ${toolCall.input}?`,
       )
       if (ok) {
         this.#loader.info('Tool call accepted').start('Calling tool...')
         try {
-          const result = await this.#host.callTool(context, name, toolCall.input)
+          const result = await this.#host.callTool(context, name, tryParseJSON(toolCall.input))
           const resultContent =
             result.content.find((c) => c.type === 'text')?.text ?? 'No text content'
           if (result.isError) {
