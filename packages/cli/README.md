@@ -12,7 +12,7 @@ $ npm install -g mokei
 $ mokei COMMAND
 running command...
 $ mokei (--version)
-mokei/0.3.0 darwin-arm64 node-v23.11.0
+mokei/0.3.1 darwin-arm64 node-v23.11.0
 $ mokei --help [COMMAND]
 USAGE
   $ mokei COMMAND
@@ -128,5 +128,5 @@ DESCRIPTION
   Display help for mokei.
 ```
 
-_See code: [@oclif/plugin-help](https://github.com/oclif/plugin-help/blob/v6.2.27/src/commands/help.ts)_
+_See code: [@oclif/plugin-help](https://github.com/oclif/plugin-help/blob/v6.2.28/src/commands/help.ts)_
 <!-- commandsstop -->
