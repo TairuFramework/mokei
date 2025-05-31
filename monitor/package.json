@@ -11,13 +11,13 @@
   "dependencies": {
     "@enkaku/client": "^0.12.0",
     "@enkaku/http-client-transport": "^0.12.0",
-    "@mantine/core": "^8.0.1",
-    "@mantine/hooks": "^8.0.1",
+    "@mantine/core": "^8.0.2",
+    "@mantine/hooks": "^8.0.2",
     "@mokei/host-protocol": "workspace:^",
     "@tabler/icons-react": "^3.33.0",
-    "@tanstack/react-router": "^1.120.10",
+    "@tanstack/react-router": "^1.120.13",
     "@tanstack/react-virtual": "^3.13.9",
-    "jotai": "^2.12.4",
+    "jotai": "^2.12.5",
     "luxon": "^3.6.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
@@ -26,18 +26,18 @@
     "@enkaku/protocol": "^0.12.0",
     "@enkaku/schema": "^0.12.0",
     "@mokei/context-protocol": "workspace:^",
-    "@tanstack/router-devtools": "^1.120.10",
-    "@tanstack/router-plugin": "^1.120.10",
+    "@tanstack/router-devtools": "^1.120.13",
+    "@tanstack/router-plugin": "^1.120.13",
     "@types/luxon": "^3.6.2",
-    "@types/react": "^19.1.5",
+    "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "@vitejs/plugin-react-swc": "^3.10.0",
-    "globals": "^16.1.0",
-    "postcss": "^8.5.3",
+    "globals": "^16.2.0",
+    "postcss": "^8.5.4",
     "postcss-preset-mantine": "^1.17.0",
     "postcss-simple-vars": "^7.0.1",
     "typescript": "~5.8.3",
     "vite": "^6.3.5",
-    "vite-bundle-analyzer": "^0.21.0"
+    "vite-bundle-analyzer": "^0.22.0"
   }
 }

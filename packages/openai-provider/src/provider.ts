@@ -3,6 +3,7 @@ import type { Tool as ContextTool } from '@mokei/context-protocol'
 import type {
   AggregatedMessage,
   ClientMessage,
+  EmbedParams,
   FunctionToolCall,
   MessagePart,
   ModelProvider,
@@ -14,7 +15,7 @@ import type {
 import { OpenAIClient } from './client.js'
 import type { ChatCompletionChunk, OpenAIClientParams } from './client.js'
 import { type OpenAIConfiguration, validateConfiguration } from './config.js'
-import type { Message, Model, Tool, ToolCall } from './types.js'
+import type { ChatCompletionUsage, Message, Model, Tool, ToolCall } from './types.js'
 
 export type OpenAITypes = {
   Message: Message
@@ -46,12 +47,19 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
     return models.map((model) => ({ id: model.id, raw: model }))
   }
 
+  async embed(params: EmbedParams) {
+    const embeddings = await this.#client.embeddings(params)
+    return { embeddings: embeddings.map((e) => e.embedding) }
+  }
+
   aggregateMessage(
     parts: Array<ServerMessage<ChatCompletionChunk, ToolCall>>,
   ): AggregatedMessage<ToolCall> {
     let text = ''
     const toolCalls: Array<FunctionToolCall<ToolCall>> = []
     let currentToolCall: FunctionToolCall<ToolCall> | null = null
+    let inputTokens = 0
+    let outputTokens = 0
 
     for (const part of parts) {
       if (part.text != null) {
@@ -69,11 +77,17 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
           }
         }
       }
+      if (part.inputTokens != null) {
+        inputTokens += part.inputTokens
+      }
+      if (part.outputTokens != null) {
+        outputTokens += part.outputTokens
+      }
     }
     if (currentToolCall != null) {
       toolCalls.push(currentToolCall)
     }
-    return { source: 'aggregated', role: 'assistant', text, toolCalls }
+    return { source: 'aggregated', role: 'assistant', text, toolCalls, inputTokens, outputTokens }
   }
 
   streamChat(params: StreamChatParams<Message, ToolCall, Tool>) {
@@ -99,6 +113,8 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
       stream: true,
       tools: params.tools,
     })
+
+    let usage: ChatCompletionUsage | null = null
     const response = request.then((stream: ReadableStream<ChatCompletionChunk>) => {
       return stream.pipeThrough(
         new TransformStream<ChatCompletionChunk, MessagePart<ChatCompletionChunk, ToolCall>>({
@@ -122,7 +138,15 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
               })
             }
             if (part.choices[0]?.finish_reason) {
-              controller.enqueue({ type: 'done', reason: part.choices[0].finish_reason })
+              controller.enqueue({
+                type: 'done',
+                reason: part.choices[0].finish_reason,
+                inputTokens: usage?.prompt_tokens ?? 0,
+                outputTokens: usage?.completion_tokens ?? 0,
+              })
+            }
+            if (part.usage != null) {
+              usage = part.usage
             }
           },
         }),

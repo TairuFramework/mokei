@@ -35,8 +35,8 @@
   },
   "dependencies": {
     "@enkaku/async": "^0.12.0",
-    "@enkaku/node-streams-transport": "^0.12.0",
-    "@enkaku/stream": "^0.12.1",
+    "@enkaku/node-streams-transport": "^0.12.1",
+    "@enkaku/stream": "^0.12.4",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/host": "workspace:^",

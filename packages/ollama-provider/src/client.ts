@@ -1,6 +1,10 @@
 import { fromJSONLines } from '@enkaku/stream'
-import type { RequestParams } from '@mokei/model-provider'
-import type { AnyReplyRequest, SingleReplyRequest, StreamReplyRequest } from '@mokei/model-provider'
+import type {
+  AnyReplyRequest,
+  RequestParams,
+  SingleReplyRequest,
+  StreamReplyRequest,
+} from '@mokei/model-provider'
 import ky, { type KyInstance, type ResponsePromise, type RetryOptions } from 'ky'
 
 import { DEFAULT_BASE_URL, DEFAULT_TIMEOUT, type OllamaConfiguration } from './config.js'
@@ -21,6 +25,17 @@ export type RequestOptions = {
 }
 
 export type ListModelParams = RequestParams & { request?: RequestOptions }
+
+export type EmbedParams = RequestParams & {
+  model: string
+  input: string | Array<string>
+  truncate?: boolean
+}
+
+export type EmbedResponse = {
+  model: string
+  embeddings: Array<Array<number>>
+}
 
 export type GenerateParams = RequestParams & {
   model: string
@@ -56,13 +71,27 @@ export type ChatParams = RequestParams & {
   request?: RequestOptions
 }
 
-export type ChatResponse = {
+export type ChatResponseStreaming = {
   model: string
   created_at: string
   message: Message
-  done: boolean
-  done_reason?: string
+  done: false
+  done_reason?: never
+  prompt_eval_count?: never
+  eval_count?: never
 }
+
+export type ChatResponseFinal = {
+  model: string
+  created_at: string
+  message: Message
+  done: true
+  done_reason?: string
+  prompt_eval_count: number
+  eval_count: number
+}
+
+export type ChatResponse = ChatResponseStreaming | ChatResponseFinal
 
 export type OllamaClientParams = OllamaConfiguration
 
@@ -84,6 +113,11 @@ export class OllamaClient {
     return res.models
   }
 
+  async embed(params: EmbedParams): Promise<EmbedResponse> {
+    const { signal, ...request } = params
+    return await this.#api.post<EmbedResponse>('embed', { json: request, signal }).json()
+  }
+
   generate(params: GenerateParams & { stream?: false }): SingleReplyRequest<GenerateResponse>
   generate(params: GenerateParams & { stream: true }): StreamReplyRequest<GenerateResponse>
   generate(params: GenerateParams): AnyReplyRequest<GenerateResponse> {
@@ -100,7 +134,7 @@ export class OllamaClient {
     return Object.assign(response, controller)
   }
 
-  chat(params: ChatParams & { stream?: false }): SingleReplyRequest<ChatResponse>
+  chat(params: ChatParams & { stream?: false }): SingleReplyRequest<ChatResponseFinal>
   chat(params: ChatParams & { stream: true }): StreamReplyRequest<ChatResponse>
   chat(params: ChatParams): AnyReplyRequest<ChatResponse> {
     const controller = new AbortController()

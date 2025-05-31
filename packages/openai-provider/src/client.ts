@@ -4,7 +4,14 @@ import { type EventSourceMessage, EventSourceParserStream } from 'eventsource-pa
 import ky, { type KyInstance, type ResponsePromise } from 'ky'
 
 import { DEFAULT_BASE_URL, DEFAULT_TIMEOUT, type OpenAIConfiguration } from './config.js'
-import type { ChatCompletionChunk, ChatCompletionResponse, Message, Model, Tool } from './types.js'
+import type {
+  ChatCompletionChunk,
+  ChatCompletionResponse,
+  Embedding,
+  Message,
+  Model,
+  Tool,
+} from './types.js'
 
 function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStream<T>> {
   return response.then((res) => {
@@ -28,6 +35,14 @@ function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStre
 }
 
 export type ListModelParams = RequestParams
+
+export type EmbeddingsParams = RequestParams & {
+  input: string | Array<string>
+  model: string
+  dimensions?: number
+  encoding_format?: 'float' | 'base64'
+  user?: string
+}
 
 export type ChatParams = RequestParams & {
   model: string
@@ -70,6 +85,14 @@ export class OpenAIClient {
     return res.data
   }
 
+  async embeddings(params: EmbeddingsParams): Promise<Array<Embedding>> {
+    const { signal, ...request } = params
+    const res = await this.#api
+      .post<{ data: Array<Embedding> }>('embeddings', { json: request, signal })
+      .json()
+    return res.data
+  }
+
   chat(params: ChatParams & { stream?: false }): SingleReplyRequest<ChatCompletionResponse>
   chat(params: ChatParams & { stream: true }): StreamReplyRequest<ChatCompletionChunk>
   chat(params: ChatParams): AnyReplyRequest<ChatCompletionResponse | ChatCompletionChunk> {
@@ -81,6 +104,7 @@ export class OpenAIClient {
           model: params.model,
           messages: params.messages,
           stream: params.stream,
+          stream_options: { include_usage: true }, // Ensure we get usage stats
           tools: params.tools,
           temperature: params.temperature,
           top_p: params.top_p,

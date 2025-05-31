@@ -1,4 +1,5 @@
 packages:
+  - integration-tests
   - mcp-servers/*
   - monitor
   - packages/*

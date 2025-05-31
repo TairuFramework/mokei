@@ -60,14 +60,17 @@ const LOGGING_LEVELS: Record<LoggingLevel, number> = {
 
 const validateClientMessage = createValidator(singleClientMessage)
 
-export type ServerParams = {
+export type ServerConfig = {
   name: string
   version: string
-  transport: ServerTransport
   complete?: CompleteHandler
   prompts?: PromptDefinitions
   resources?: ResourceDefinitions
   tools?: ToolDefinitions
+}
+
+export type ServerParams = ServerConfig & {
+  transport: ServerTransport
 }
 
 export type ServerEvents = {
@@ -233,11 +236,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   }
 }
 
-export type ServeProcessParams = Omit<ServerParams, 'transport'>
-
-export function serveProcess(params: ServeProcessParams): ContextServer {
+export function serveProcess(config: ServerConfig): ContextServer {
   const transport = new NodeStreamsTransport<ClientMessage, ServerMessage>({
     streams: { readable: process.stdin, writable: process.stdout },
   })
-  return new ContextServer({ ...params, transport })
+  return new ContextServer({ ...config, transport })
 }

@@ -1,0 +1,24 @@
+{
+  "name": "mokei-integration-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-vm-modules ../node_modules/jest/bin/jest.js"
+  },
+  "dependencies": {
+    "@enkaku/node-streams-transport": "^0.12.1",
+    "@enkaku/transport": "^0.12.0",
+    "@mokei/context-client": "workspace:^",
+    "@mokei/context-protocol": "workspace:^",
+    "@mokei/context-server": "workspace:^",
+    "@mokei/host": "workspace:^",
+    "@mokei/mcp-fetch": "workspace:^",
+    "@mokei/model-provider": "workspace:^",
+    "@mokei/ollama-provider": "workspace:^",
+    "@mokei/openai-provider": "workspace:^"
+  },
+  "devDependencies": {
+    "@enkaku/generator": "^0.12.0"
+  }
+}

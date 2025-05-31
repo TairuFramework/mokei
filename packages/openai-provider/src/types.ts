@@ -5,6 +5,11 @@ export type Model = {
   object: string
 }
 
+export type Embedding = {
+  index: number
+  embedding: Array<number>
+}
+
 export type Message = {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string | null
@@ -30,6 +35,12 @@ export type Tool = {
   }
 }
 
+export type ChatCompletionUsage = {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+}
+
 export type ChatCompletionResponse = {
   id: string
   object: string
@@ -40,11 +51,7 @@ export type ChatCompletionResponse = {
     message: Message
     finish_reason: string | null
   }>
-  usage: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  }
+  usage: ChatCompletionUsage
 }
 
 export type ChatCompletionChunk = {
@@ -57,4 +64,5 @@ export type ChatCompletionChunk = {
     delta: Partial<Message>
     finish_reason: string | null
   }>
+  usage?: ChatCompletionUsage | null
 }

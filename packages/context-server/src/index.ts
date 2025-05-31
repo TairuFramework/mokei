@@ -15,7 +15,7 @@ export type { Schema } from '@enkaku/schema'
 export { createPrompt, createTool } from './definitions.js'
 export {
   ContextServer,
-  type ServeProcessParams,
+  type ServerConfig,
   type ServerEvents,
   type ServerParams,
   serveProcess,

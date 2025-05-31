@@ -2,6 +2,7 @@ import { assertType } from '@enkaku/schema'
 import type { Tool as ContextTool } from '@mokei/context-protocol'
 import type {
   AggregatedMessage,
+  EmbedParams,
   FunctionToolCall,
   MessagePart,
   ModelProvider,
@@ -39,25 +40,16 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
       params.client instanceof OllamaClient ? params.client : new OllamaClient(params.client)
   }
 
+  // Client APIs wrappers
+
   async listModels(params?: ListModelParams) {
     const models = await this.#client.listModels(params)
     return models.map((model) => ({ id: model.name, raw: model }))
   }
 
-  aggregateMessage(
-    parts: Array<ServerMessage<ChatResponse, ToolCall>>,
-  ): AggregatedMessage<ToolCall> {
-    let text = ''
-    let toolCalls: Array<FunctionToolCall<ToolCall>> = []
-    for (const part of parts) {
-      if (part.text != null) {
-        text += part.text
-      }
-      if (part.toolCalls != null) {
-        toolCalls = toolCalls.concat(part.toolCalls)
-      }
-    }
-    return { source: 'aggregated', role: 'assistant', text, toolCalls }
+  async embed(params: EmbedParams) {
+    const res = await this.#client.embed(params)
+    return { embeddings: res.embeddings }
   }
 
   streamChat(params: StreamChatParams<Message, ToolCall, Tool>) {
@@ -106,13 +98,44 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
               })
             }
             if (part.done) {
-              controller.enqueue({ type: 'done', reason: part.done_reason })
+              controller.enqueue({
+                type: 'done',
+                reason: part.done_reason,
+                inputTokens: part.prompt_eval_count ?? 0,
+                outputTokens: part.eval_count ?? 0,
+              })
             }
           },
         }),
       )
     })
     return Object.assign(response, { abort: request.abort, signal: request.signal })
+  }
+
+  // Utilities
+
+  aggregateMessage(
+    parts: Array<ServerMessage<ChatResponse, ToolCall>>,
+  ): AggregatedMessage<ToolCall> {
+    let text = ''
+    let toolCalls: Array<FunctionToolCall<ToolCall>> = []
+    let inputTokens = 0
+    let outputTokens = 0
+    for (const part of parts) {
+      if (part.text != null) {
+        text += part.text
+      }
+      if (part.toolCalls != null) {
+        toolCalls = toolCalls.concat(part.toolCalls)
+      }
+      if (part.inputTokens != null) {
+        inputTokens += part.inputTokens
+      }
+      if (part.outputTokens != null) {
+        outputTokens += part.outputTokens
+      }
+    }
+    return { source: 'aggregated', role: 'assistant', text, toolCalls, inputTokens, outputTokens }
   }
 
   toolFromMCP(tool: ContextTool): Tool {

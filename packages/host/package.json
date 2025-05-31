@@ -32,10 +32,10 @@
   "dependencies": {
     "@enkaku/async": "^0.12.0",
     "@enkaku/client": "^0.12.0",
-    "@enkaku/node-streams-transport": "^0.12.0",
+    "@enkaku/node-streams-transport": "^0.12.1",
     "@enkaku/server": "^0.12.0",
-    "@enkaku/socket-transport": "^0.12.0",
-    "@enkaku/stream": "^0.12.1",
+    "@enkaku/socket-transport": "^0.12.1",
+    "@enkaku/stream": "^0.12.4",
     "@enkaku/transport": "^0.12.0",
     "@mokei/context-client": "workspace:^",
     "@mokei/host-protocol": "workspace:^",

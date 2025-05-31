@@ -65,6 +65,8 @@ export type ServerMessage<RawMessage, RawToolCall> = {
   role: 'assistant'
   text?: string
   toolCalls?: Array<FunctionToolCall<RawToolCall>>
+  inputTokens?: number
+  outputTokens?: number
   raw: RawMessage
 }
 
@@ -73,6 +75,8 @@ export type AggregatedMessage<RawToolCall> = {
   role: 'assistant'
   text: string
   toolCalls: Array<FunctionToolCall<RawToolCall>>
+  inputTokens: number
+  outputTokens: number
 }
 
 export type Message<RawMessage, RawToolCall> =
@@ -89,7 +93,13 @@ export type MessagePart<RawMessagePart, RawToolCall> =
       role?: string
     }
   | { type: 'unsupported'; raw: RawMessagePart }
-  | { type: 'done'; raw?: RawMessagePart; reason?: string }
+  | {
+      type: 'done'
+      raw?: RawMessagePart
+      reason?: string
+      inputTokens: number
+      outputTokens: number
+    }
   | { type: 'error'; raw?: RawMessagePart; error: unknown }
 
 export type MessageAggregate<RawMessage, RawToolCall, State> = {
@@ -99,6 +109,15 @@ export type MessageAggregate<RawMessage, RawToolCall, State> = {
 
 export type RequestParams = {
   signal?: AbortSignal
+}
+
+export type EmbedParams = RequestParams & {
+  model: string
+  input: string | Array<string>
+}
+
+export type EmbedResponse = {
+  embeddings: Array<Array<number>>
 }
 
 export type SingleReplyRequest<T> = AbortController & Promise<T>
@@ -130,6 +149,7 @@ export type ModelProvider<T extends ProviderTypes> = {
   aggregateMessage: (
     parts: Array<ServerMessage<T['MessagePart'], T['ToolCall']>>,
   ) => AggregatedMessage<T['ToolCall']>
+  embed: (params: EmbedParams) => Promise<EmbedResponse>
   listModels: (params?: RequestParams) => Promise<Array<Model<T['Model']>>>
   streamChat: (
     params: StreamChatParams<T['Message'], T['ToolCall'], T['Tool']>,
