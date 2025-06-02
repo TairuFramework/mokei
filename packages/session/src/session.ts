@@ -22,6 +22,7 @@ export type AddContextParams = {
 }
 
 export type ChatParams<T extends ProviderTypes = ProviderTypes> = {
+  provider: string | ModelProvider<T>
   model: string
   messages: Array<Message<T['MessagePart'], T['ToolCall']>>
   tools?: Array<T['Tool']>
@@ -44,15 +45,15 @@ export type SessionEvents<T extends ProviderTypes = ProviderTypes> = {
 }
 
 export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
-  provider: ModelProvider<T>
+  providers?: Record<string, ModelProvider<T>>
 }
 
 export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #events: EventEmitter<SessionEvents<T>>
   #host: ContextHost
-  #provider: ModelProvider<T>
+  #providers: Map<string, ModelProvider<T>>
 
-  constructor(params: SessionParams<T>) {
+  constructor(params: SessionParams<T> = {}) {
     super({
       dispose: async () => {
         await this.#host.dispose()
@@ -60,11 +61,15 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     })
     this.#events = new EventEmitter()
     this.#host = new ContextHost()
-    this.#provider = params.provider
+    this.#providers = new Map(Object.entries(params.providers ?? {}))
   }
 
   get events(): EventEmitter<SessionEvents<T>> {
     return this.#events
+  }
+
+  get providers(): Map<string, ModelProvider<T>> {
+    return this.#providers
   }
 
   async #setupContext(key: string, file: string, args: Array<string>): Promise<Array<ContextTool>> {
@@ -90,15 +95,36 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     this.#events.emit('context-removed', { key })
   }
 
-  getToolsForProvider(): Array<T['Tool']> {
-    return this.#host.getCallableTools().map(this.#provider.toolFromMCP)
+  addProvider<P extends T = T>(key: string, provider: ModelProvider<P>): void {
+    if (this.#providers.has(key)) {
+      throw new Error(`Provider with key ${key} already exists`)
+    }
+    this.#providers.set(key, provider as unknown as ModelProvider<T>)
   }
 
-  async chat(params: ChatParams): Promise<AggregatedMessage<T['ToolCall']>> {
-    const tools = params.tools ?? this.getToolsForProvider()
-    const stream = await this.#provider.streamChat({ ...params, tools })
+  getProvider<P extends T = T>(key: string): ModelProvider<P> {
+    const provider = this.#providers.get(key)
+    if (provider == null) {
+      throw new Error(`Provider with key ${key} does not exist`)
+    }
+    return provider as unknown as ModelProvider<P>
+  }
 
-    const messagesParts: Array<ServerMessage<T['MessagePart'], T['ToolCall']>> = []
+  removeProvider(key: string): void {
+    this.#providers.delete(key)
+  }
+
+  getToolsForProvider<P extends T = T>(provider: ModelProvider<P>): Array<P['Tool']> {
+    return this.#host.getCallableTools().map(provider.toolFromMCP)
+  }
+
+  async chat<P extends T = T>(params: ChatParams<P>): Promise<AggregatedMessage<P['ToolCall']>> {
+    const provider =
+      typeof params.provider === 'string' ? this.getProvider<P>(params.provider) : params.provider
+    const tools = params.tools ?? this.getToolsForProvider(provider)
+    const stream = await provider.streamChat({ ...params, tools })
+
+    const messagesParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
     for await (const chunk of fromStream(stream)) {
       this.#events.emit('message-part', chunk)
       switch (chunk.type) {
@@ -140,11 +166,11 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       }
     }
 
-    return this.#provider.aggregateMessage(messagesParts)
+    return provider.aggregateMessage(messagesParts)
   }
 
-  executeToolCall(
-    toolCall: FunctionToolCall<T['ToolCall']>,
+  executeToolCall<P extends T = T>(
+    toolCall: FunctionToolCall<P['ToolCall']>,
     signal?: AbortSignal,
   ): SentRequest<CallToolResult> {
     if (signal == null) {

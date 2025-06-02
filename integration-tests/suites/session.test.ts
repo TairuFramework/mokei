@@ -1,44 +1,45 @@
+import type { ModelProvider } from '@mokei/model-provider'
 import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
 import { OpenAIProvider, type OpenAITypes } from '@mokei/openai-provider'
 import { Session } from '@mokei/session'
 
+type ProviderTypes = OllamaTypes | OpenAITypes
+
 const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/index.js'
 
-describe.each([
-  [
-    'Ollama',
-    {
-      T: {} as OllamaTypes,
-      model: 'qwen3:8b',
-      session: new Session<OllamaTypes>({ provider: new OllamaProvider() }),
-    },
-  ],
-  [
-    'OpenAI',
-    {
-      T: {} as OpenAITypes,
-      model: 'qwen3-8b',
-      session: new Session<OpenAITypes>({
+describe('Session', () => {
+  const session = new Session<ProviderTypes>()
+
+  beforeAll(async () => {
+    await session.addContext({
+      key: 'fetch',
+      file: 'node',
+      arguments: [FETCH_MCP_SERVER_PATH],
+    })
+  })
+
+  describe.each([
+    [
+      'Ollama',
+      {
+        model: 'qwen3:8b',
+        provider: new OllamaProvider() as ModelProvider<ProviderTypes>,
+      },
+    ],
+    [
+      'OpenAI',
+      {
+        model: 'qwen3-8b',
         provider: new OpenAIProvider({
           // LM Studio
           client: { baseURL: 'http://127.0.0.1:1234/v1' },
-        }),
-      }),
-    },
-  ],
-])('Using the %s provider', (name, config) => {
-  const session = config.session as Session<typeof config.T>
-
-  test('executes a tool call', async () => {
-    try {
-      const tools = await session.addContext({
-        key: 'fetch',
-        file: 'node',
-        arguments: [FETCH_MCP_SERVER_PATH],
-      })
-      expect(tools).toHaveLength(1)
-
+        }) as ModelProvider<ProviderTypes>,
+      },
+    ],
+  ])('using the %s provider', (name, config) => {
+    test('executes a tool call', async () => {
       const reply = await session.chat({
+        provider: config.provider,
         model: config.model,
         messages: [
           {
@@ -60,8 +61,10 @@ describe.each([
         content: [{ type: 'text', text: expect.stringContaining('Mokei') }],
         isError: false,
       })
-    } finally {
-      await session.dispose()
-    }
-  }, 30_000)
+    }, 30_000)
+  })
+
+  afterAll(async () => {
+    await session.dispose()
+  })
 })
