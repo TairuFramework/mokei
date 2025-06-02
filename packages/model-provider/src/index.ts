@@ -64,6 +64,7 @@ export type ServerMessage<RawMessage, RawToolCall> = {
   source: 'server'
   role: 'assistant'
   text?: string
+  reasoning?: string
   toolCalls?: Array<FunctionToolCall<RawToolCall>>
   inputTokens?: number
   outputTokens?: number
@@ -75,6 +76,7 @@ export type AggregatedMessage<RawToolCall> = {
   role: 'assistant'
   text: string
   toolCalls: Array<FunctionToolCall<RawToolCall>>
+  reasoning?: string
   inputTokens: number
   outputTokens: number
 }
@@ -86,6 +88,7 @@ export type Message<RawMessage, RawToolCall> =
 
 export type MessagePart<RawMessagePart, RawToolCall> =
   | { type: 'text-delta'; raw: RawMessagePart; text: string; role?: string }
+  | { type: 'reasoning-delta'; raw: RawMessagePart; reasoning: string; role?: string }
   | {
       type: 'tool-call'
       raw: RawMessagePart

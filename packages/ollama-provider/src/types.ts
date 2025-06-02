@@ -27,8 +27,9 @@ export type ToolCall = {
 
 export type Message = {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string
+  content?: string
   images?: Array<string>
+  thinking?: string
   tool_calls?: Array<ToolCall>
 }
 

@@ -45,8 +45,8 @@ importers:
         specifier: ^0.28.5
         version: 0.28.5(typescript@5.8.3)
       typedoc-plugin-markdown:
-        specifier: ^4.6.3
-        version: 4.6.3(typedoc@0.28.5(typescript@5.8.3))
+        specifier: ^4.6.4
+        version: 4.6.4(typedoc@0.28.5(typescript@5.8.3))
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
@@ -83,6 +83,9 @@ importers:
       '@mokei/openai-provider':
         specifier: workspace:^
         version: link:../packages/openai-provider
+      '@mokei/session':
+        specifier: workspace:^
+        version: link:../packages/session
     devDependencies:
       '@enkaku/generator':
         specifier: ^0.12.0
@@ -213,8 +216,8 @@ importers:
   packages/cli:
     dependencies:
       '@enkaku/async':
-        specifier: ^0.12.0
-        version: 0.12.0
+        specifier: ^0.12.1
+        version: 0.12.1
       '@enkaku/node-streams-transport':
         specifier: ^0.12.1
         version: 0.12.1
@@ -286,8 +289,8 @@ importers:
   packages/context-client:
     dependencies:
       '@enkaku/async':
-        specifier: ^0.12.0
-        version: 0.12.0
+        specifier: ^0.12.1
+        version: 0.12.1
       '@enkaku/node-streams-transport':
         specifier: ^0.12.1
         version: 0.12.1
@@ -317,8 +320,8 @@ importers:
   packages/context-rpc:
     dependencies:
       '@enkaku/async':
-        specifier: ^0.12.0
-        version: 0.12.0
+        specifier: ^0.12.1
+        version: 0.12.1
       '@enkaku/event':
         specifier: ^0.12.0
         version: 0.12.0
@@ -355,8 +358,8 @@ importers:
   packages/host:
     dependencies:
       '@enkaku/async':
-        specifier: ^0.12.0
-        version: 0.12.0
+        specifier: ^0.12.1
+        version: 0.12.1
       '@enkaku/client':
         specifier: ^0.12.0
         version: 0.12.0
@@ -395,8 +398,8 @@ importers:
   packages/host-monitor:
     dependencies:
       '@enkaku/async':
-        specifier: ^0.12.0
-        version: 0.12.0
+        specifier: ^0.12.1
+        version: 0.12.1
       '@enkaku/http-server-transport':
         specifier: ^0.12.0
         version: 0.12.0
@@ -405,7 +408,7 @@ importers:
         version: 0.12.1
       '@hono/node-server':
         specifier: ^1.14.3
-        version: 1.14.3(hono@4.7.10)
+        version: 1.14.3(hono@4.7.11)
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
@@ -413,8 +416,8 @@ importers:
         specifier: ^7.1.0
         version: 7.1.0
       hono:
-        specifier: ^4.7.10
-        version: 4.7.10
+        specifier: ^4.7.11
+        version: 4.7.11
 
   packages/host-protocol:
     dependencies:
@@ -473,6 +476,31 @@ importers:
         specifier: workspace:^
         version: link:../model-provider
 
+  packages/session:
+    dependencies:
+      '@enkaku/async':
+        specifier: ^0.12.1
+        version: 0.12.1
+      '@enkaku/event':
+        specifier: ^0.12.0
+        version: 0.12.0
+      '@enkaku/generator':
+        specifier: ^0.12.0
+        version: 0.12.0
+      '@mokei/host':
+        specifier: workspace:^
+        version: link:../host
+    devDependencies:
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+      '@mokei/context-rpc':
+        specifier: workspace:^
+        version: link:../context-rpc
+      '@mokei/model-provider':
+        specifier: workspace:^
+        version: link:../model-provider
+
   website:
     dependencies:
       '@dipakparmar/docusaurus-plugin-umami':
@@ -498,7 +526,7 @@ importers:
         version: 2.1.1
       docusaurus-plugin-typedoc:
         specifier: ^1.4.0
-        version: 1.4.0(typedoc-plugin-markdown@4.6.3(typedoc@0.28.5(typescript@5.8.3)))
+        version: 1.4.0(typedoc-plugin-markdown@4.6.4(typedoc@0.28.5(typescript@5.8.3)))
       prism-react-renderer:
         specifier: ^2.3.0
         version: 2.4.1(react@19.1.0)
@@ -1917,8 +1945,8 @@ packages:
     resolution: {integrity: sha512-e7zcB6TPnVzyUaHMJyLSArKa2AG3h9+4CfvKXKKWNx6hRs+p0a+u7HHTJBgo6KW2m+vqDnuIHK4X+bhmoghAFA==}
     engines: {node: '>=18.0'}
 
-  '@enkaku/async@0.12.0':
-    resolution: {integrity: sha512-JQaPWMLmbVEtvWkJbxgXEgMZCZ6Vhdjef34lnRC3bwu9yX7p5thkSqFt3ikrwbdXZoSn+DXNCkzlDWioDShI3A==}
+  '@enkaku/async@0.12.1':
+    resolution: {integrity: sha512-k5VAWrnfcNjk5bIRZeGNESl0CulQ/oYUMknUcas+GQW3If2dQnYxNO8oOuSM35AQC4d1FHof02iWw+RC8svmHA==}
 
   '@enkaku/capability@0.12.0':
     resolution: {integrity: sha512-fuO4IgeU2sNs4KwkxbhCDJa7VI4Nb4ANuu2RMc2pV+APkkFghOsZ2V+IEZFgBhWFN5UFlc7phiZenStJL6YHHA==}
@@ -2115,14 +2143,14 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@floating-ui/core@1.7.0':
-    resolution: {integrity: sha512-FRdBLykrPPA6P76GGGqlex/e7fbe0F1ykgxHYNXQsH/iTEtjMj/f9bpY5oQqbjt5VgZvgz/uKXbGuROijh3VLA==}
+  '@floating-ui/core@1.7.1':
+    resolution: {integrity: sha512-azI0DrjMMfIug/ExbBaeDVJXcY0a7EPvPjb2xAJPa4HeimBX+Z18HK8QQR3jb6356SnDDdxx+hinMLcJEDdOjw==}
 
-  '@floating-ui/dom@1.7.0':
-    resolution: {integrity: sha512-lGTor4VlXcesUMh1cupTUTDoCxMb0V6bm3CnxHzQcw8Eaf1jQbgQX4i02fYgT0vJ82tb5MZ4CZk1LRGkktJCzg==}
+  '@floating-ui/dom@1.7.1':
+    resolution: {integrity: sha512-cwsmW/zyw5ltYTUeeYJ60CnQuPqmGwuGVhG9w0PRaRKkAyi38BT5CKrpIbb+jtahSwUl04cWzSx9ZOIxeS6RsQ==}
 
-  '@floating-ui/react-dom@2.1.2':
-    resolution: {integrity: sha512-06okr5cgPzMNBy+Ycse2A6udMi4bqwW/zgBF/rwjcNqWkyr82Mcg8b0vjX8OJpZFy/FKjJmw6wV7t44kK6kW7A==}
+  '@floating-ui/react-dom@2.1.3':
+    resolution: {integrity: sha512-huMBfiU9UnQ2oBwIhgzyIiSpVgvlDstU8CX0AF+wS+KzmYMs0J2a3GwuFHV1Lz+jlrQGeC1fF+Nv0QoumyV0bA==}
     peerDependencies:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
@@ -2579,8 +2607,8 @@ packages:
     resolution: {integrity: sha512-eFLP2yjiK+xMRGcv9k9jOWV08HB+/Cgg1ND91zS4Uwgp1krMoL39Is+hIqnZOKkmiEMtiv8k5EDqCVv+DTRywg==}
     engines: {node: '>=18.0.0'}
 
-  '@oclif/plugin-not-found@3.2.54':
-    resolution: {integrity: sha512-5UARYjv91+aD30XaSw9vb6IgOvMMNA7DlnHVyt+u2OkK8TlyBflpaasvC7xSLnP+DKDQIgxTuGqJI/ZbcNAFxQ==}
+  '@oclif/plugin-not-found@3.2.55':
+    resolution: {integrity: sha512-+zgaRKoDsq431UyR/rOlJFDa6zdFkaNenQnLecrUWt9y9bwvw6Bs+mkQymAUJZCd9+JS4sZwqUilONXxU9g6DQ==}
     engines: {node: '>=18.0.0'}
 
   '@oclif/plugin-plugins@5.4.38':
@@ -5469,8 +5497,8 @@ packages:
   hoist-non-react-statics@3.3.2:
     resolution: {integrity: sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==}
 
-  hono@4.7.10:
-    resolution: {integrity: sha512-QkACju9MiN59CKSY5JsGZCYmPZkA6sIW6OFCUp7qDjZu6S6KHtJHhAc9Uy9mV9F8PJ1/HQ3ybZF2yjCa/73fvQ==}
+  hono@4.7.11:
+    resolution: {integrity: sha512-rv0JMwC0KALbbmwJDEnxvQCeJh+xbS3KEWW5PC9cMJ08Ur9xgatI0HmtgYZfOdOSOeYsp5LO2cOhdI8cLEbDEQ==}
     engines: {node: '>=16.9.0'}
 
   hosted-git-info@7.0.2:
@@ -7703,8 +7731,8 @@ packages:
       '@types/react':
         optional: true
 
-  react-remove-scroll@2.7.0:
-    resolution: {integrity: sha512-sGsQtcjMqdQyijAHytfGEELB8FufGbfXIsvUTe+NLx1GDRJCXtCFLBLUI1eyZCKXXvbEU2C6gai0PZKoIE9Vbg==}
+  react-remove-scroll@2.7.1:
+    resolution: {integrity: sha512-HpMh8+oahmIdOuS5aFKKY6Pyog+FNaZV/XyJOq7b4YFwsFHe5yYfdbIalI4k3vU2nSDql7YskmUseHsRrJqIPA==}
     engines: {node: '>=10'}
     peerDependencies:
       '@types/react': '*'
@@ -8164,8 +8192,8 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
-  shell-quote@1.8.2:
-    resolution: {integrity: sha512-AzqKpGKjrj7EM6rKVQEPpB288oCfnrEIuyoT9cyF4nmGa7V8Zk6f7RRqYisX8X9m+Q7bd632aZW4ky7EhbQztA==}
+  shell-quote@1.8.3:
+    resolution: {integrity: sha512-ObmnIF4hXNg1BqhnHmgbDETF8dLPCggZWBjkQfhZpbszZnYur5DUljTcCHii5LC3J5E0yeO/1LIMyH+UvHQgyw==}
     engines: {node: '>= 0.4'}
 
   shelljs@0.8.5:
@@ -8634,8 +8662,8 @@ packages:
     peerDependencies:
       typedoc-plugin-markdown: '>=4.6.3'
 
-  typedoc-plugin-markdown@4.6.3:
-    resolution: {integrity: sha512-86oODyM2zajXwLs4Wok2mwVEfCwCnp756QyhLGX2IfsdRYr1DXLCgJgnLndaMUjJD7FBhnLk2okbNE9PdLxYRw==}
+  typedoc-plugin-markdown@4.6.4:
+    resolution: {integrity: sha512-AnbToFS1T1H+n40QbO2+i0wE6L+55rWnj7zxnM1r781+2gmhMF2dB6dzFpaylWLQYkbg4D1Y13sYnne/6qZwdw==}
     engines: {node: '>= 18'}
     peerDependencies:
       typedoc: 0.28.x
@@ -9195,8 +9223,8 @@ packages:
   zod@3.24.3:
     resolution: {integrity: sha512-HhY1oqzWCQWuUqvBFnsyrtZRhyPeR7SUGv+C4+MsisMuVfSPx8HpwWqH8tRahSlt6M3PiFAcoeFhZAqIXTxoSg==}
 
-  zod@3.25.42:
-    resolution: {integrity: sha512-PcALTLskaucbeHc41tU/xfjfhcz8z0GdhhDcSgrCTmSazUuqnYqiXO63M0QUBVwpBlsLsNVn5qHSC5Dw3KZvaQ==}
+  zod@3.25.48:
+    resolution: {integrity: sha512-0X1mz8FtgEIvaxGjdIImYpZEaZMrund9pGXm3M6vM7Reba0e2eI71KPjSCGXBfwKDPwPoywf6waUKc3/tFvX2Q==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -11765,7 +11793,7 @@ snapshots:
       - uglify-js
       - webpack-cli
 
-  '@enkaku/async@0.12.0': {}
+  '@enkaku/async@0.12.1': {}
 
   '@enkaku/capability@0.12.0':
     dependencies:
@@ -11773,7 +11801,7 @@ snapshots:
 
   '@enkaku/client@0.12.0':
     dependencies:
-      '@enkaku/async': 0.12.0
+      '@enkaku/async': 0.12.1
       '@enkaku/stream': 0.12.4
       '@enkaku/token': 0.12.0
 
@@ -11787,7 +11815,7 @@ snapshots:
 
   '@enkaku/generator@0.12.0':
     dependencies:
-      '@enkaku/async': 0.12.0
+      '@enkaku/async': 0.12.1
 
   '@enkaku/http-client-transport@0.12.0':
     dependencies:
@@ -11797,7 +11825,7 @@ snapshots:
 
   '@enkaku/http-server-transport@0.12.0':
     dependencies:
-      '@enkaku/async': 0.12.0
+      '@enkaku/async': 0.12.1
       '@enkaku/protocol': 0.12.0
       '@enkaku/stream': 0.12.4
       '@enkaku/transport': 0.12.0
@@ -11820,7 +11848,7 @@ snapshots:
 
   '@enkaku/server@0.12.0':
     dependencies:
-      '@enkaku/async': 0.12.0
+      '@enkaku/async': 0.12.1
       '@enkaku/capability': 0.12.0
       '@enkaku/event': 0.12.0
       '@enkaku/protocol': 0.12.0
@@ -11835,7 +11863,7 @@ snapshots:
 
   '@enkaku/stream@0.12.4':
     dependencies:
-      '@enkaku/async': 0.12.0
+      '@enkaku/async': 0.12.1
 
   '@enkaku/token@0.12.0':
     dependencies:
@@ -11847,7 +11875,7 @@ snapshots:
 
   '@enkaku/transport@0.12.0':
     dependencies:
-      '@enkaku/async': 0.12.0
+      '@enkaku/async': 0.12.1
       '@enkaku/event': 0.12.0
       '@enkaku/stream': 0.12.4
 
@@ -11926,24 +11954,24 @@ snapshots:
   '@esbuild/win32-x64@0.25.5':
     optional: true
 
-  '@floating-ui/core@1.7.0':
+  '@floating-ui/core@1.7.1':
     dependencies:
       '@floating-ui/utils': 0.2.9
 
-  '@floating-ui/dom@1.7.0':
+  '@floating-ui/dom@1.7.1':
     dependencies:
-      '@floating-ui/core': 1.7.0
+      '@floating-ui/core': 1.7.1
       '@floating-ui/utils': 0.2.9
 
-  '@floating-ui/react-dom@2.1.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@floating-ui/react-dom@2.1.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@floating-ui/dom': 1.7.0
+      '@floating-ui/dom': 1.7.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
   '@floating-ui/react@0.26.28(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@floating-ui/react-dom': 2.1.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@floating-ui/react-dom': 2.1.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@floating-ui/utils': 0.2.9
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
@@ -11965,9 +11993,9 @@ snapshots:
     dependencies:
       '@hapi/hoek': 9.3.0
 
-  '@hono/node-server@1.14.3(hono@4.7.10)':
+  '@hono/node-server@1.14.3(hono@4.7.11)':
     dependencies:
-      hono: 4.7.10
+      hono: 4.7.11
 
   '@inquirer/checkbox@4.1.8(@types/node@22.15.29)':
     dependencies:
@@ -12344,7 +12372,7 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
       react-number-format: 5.4.4(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      react-remove-scroll: 2.7.0(@types/react@19.1.6)(react@19.1.0)
+      react-remove-scroll: 2.7.1(@types/react@19.1.6)(react@19.1.0)
       react-textarea-autosize: 8.5.9(@types/react@19.1.6)(react@19.1.0)
       type-fest: 4.41.0
     transitivePeerDependencies:
@@ -12528,7 +12556,7 @@ snapshots:
     dependencies:
       '@oclif/core': 4.3.0
 
-  '@oclif/plugin-not-found@3.2.54(@types/node@22.15.29)':
+  '@oclif/plugin-not-found@3.2.55(@types/node@22.15.29)':
     dependencies:
       '@inquirer/prompts': 7.5.3(@types/node@22.15.29)
       '@oclif/core': 4.3.0
@@ -13554,7 +13582,7 @@ snapshots:
       '@tanstack/virtual-file-routes': 1.115.0
       prettier: 3.5.3
       tsx: 4.19.4
-      zod: 3.25.42
+      zod: 3.25.48
     optionalDependencies:
       '@tanstack/react-router': 1.120.13(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
 
@@ -13576,7 +13604,7 @@ snapshots:
       babel-dead-code-elimination: 1.0.10
       chokidar: 3.6.0
       unplugin: 2.3.5
-      zod: 3.25.42
+      zod: 3.25.48
     optionalDependencies:
       '@tanstack/react-router': 1.120.13(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       vite: 6.3.5(@types/node@22.15.29)(jiti@1.21.7)(lightningcss@1.30.1)(sugarss@4.0.1(postcss@8.5.4))(terser@5.40.0)(tsx@4.19.4)(yaml@2.8.0)
@@ -14990,10 +15018,10 @@ snapshots:
     dependencies:
       '@leichtgewicht/ip-codec': 2.0.5
 
-  docusaurus-plugin-typedoc@1.4.0(typedoc-plugin-markdown@4.6.3(typedoc@0.28.5(typescript@5.8.3))):
+  docusaurus-plugin-typedoc@1.4.0(typedoc-plugin-markdown@4.6.4(typedoc@0.28.5(typescript@5.8.3))):
     dependencies:
-      typedoc-docusaurus-theme: 1.4.0(typedoc-plugin-markdown@4.6.3(typedoc@0.28.5(typescript@5.8.3)))
-      typedoc-plugin-markdown: 4.6.3(typedoc@0.28.5(typescript@5.8.3))
+      typedoc-docusaurus-theme: 1.4.0(typedoc-plugin-markdown@4.6.4(typedoc@0.28.5(typescript@5.8.3)))
+      typedoc-plugin-markdown: 4.6.4(typedoc@0.28.5(typescript@5.8.3))
 
   dom-converter@0.2.0:
     dependencies:
@@ -15970,7 +15998,7 @@ snapshots:
     dependencies:
       react-is: 16.13.1
 
-  hono@4.7.10: {}
+  hono@4.7.11: {}
 
   hosted-git-info@7.0.2:
     dependencies:
@@ -16788,7 +16816,7 @@ snapshots:
   launch-editor@2.10.0:
     dependencies:
       picocolors: 1.1.1
-      shell-quote: 1.8.2
+      shell-quote: 1.8.3
 
   leven@3.1.0: {}
 
@@ -17803,7 +17831,7 @@ snapshots:
       '@inquirer/select': 2.5.0
       '@oclif/core': 4.3.0
       '@oclif/plugin-help': 6.2.28
-      '@oclif/plugin-not-found': 3.2.54(@types/node@22.15.29)
+      '@oclif/plugin-not-found': 3.2.55(@types/node@22.15.29)
       '@oclif/plugin-warn-if-update-available': 3.1.40
       async-retry: 1.3.3
       chalk: 4.1.2
@@ -18621,7 +18649,7 @@ snapshots:
       prompts: 2.4.2
       react-error-overlay: 6.1.0
       recursive-readdir: 2.2.3
-      shell-quote: 1.8.2
+      shell-quote: 1.8.3
       strip-ansi: 6.0.1
       text-table: 0.2.0
       webpack: 5.99.9(@swc/core@1.11.29)
@@ -18670,7 +18698,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.1.6
 
-  react-remove-scroll@2.7.0(@types/react@19.1.6)(react@19.1.0):
+  react-remove-scroll@2.7.1(@types/react@19.1.6)(react@19.1.0):
     dependencies:
       react: 19.1.0
       react-remove-scroll-bar: 2.3.8(@types/react@19.1.6)(react@19.1.0)
@@ -19430,7 +19458,7 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  shell-quote@1.8.2: {}
+  shell-quote@1.8.3: {}
 
   shelljs@0.8.5:
     dependencies:
@@ -19909,11 +19937,11 @@ snapshots:
     dependencies:
       is-typedarray: 1.0.0
 
-  typedoc-docusaurus-theme@1.4.0(typedoc-plugin-markdown@4.6.3(typedoc@0.28.5(typescript@5.8.3))):
+  typedoc-docusaurus-theme@1.4.0(typedoc-plugin-markdown@4.6.4(typedoc@0.28.5(typescript@5.8.3))):
     dependencies:
-      typedoc-plugin-markdown: 4.6.3(typedoc@0.28.5(typescript@5.8.3))
+      typedoc-plugin-markdown: 4.6.4(typedoc@0.28.5(typescript@5.8.3))
 
-  typedoc-plugin-markdown@4.6.3(typedoc@0.28.5(typescript@5.8.3)):
+  typedoc-plugin-markdown@4.6.4(typedoc@0.28.5(typescript@5.8.3)):
     dependencies:
       typedoc: 0.28.5(typescript@5.8.3)
 
@@ -20504,6 +20532,6 @@ snapshots:
 
   zod@3.24.3: {}
 
-  zod@3.25.42: {}
+  zod@3.25.48: {}
 
   zwitch@2.0.4: {}

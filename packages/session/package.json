@@ -1,14 +1,14 @@
 {
-  "name": "@mokei/model-provider",
-  "version": "0.3.3",
+  "name": "@mokei/session",
+  "version": "0.3.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
-  "description": "Mokei model provider",
-  "keywords": ["model", "context", "protocol", "mcp", "llm", "ai"],
+  "description": "Mokei session",
+  "keywords": ["model", "context", "protocol", "mcp", "llm", "ai", "chat"],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "packages/model-provider"
+    "directory": "packages/session"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -30,9 +30,14 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/schema": "^0.12.0"
+    "@enkaku/async": "^0.12.1",
+    "@enkaku/event": "^0.12.0",
+    "@enkaku/generator": "^0.12.0",
+    "@mokei/host": "workspace:^"
   },
   "devDependencies": {
-    "@mokei/context-protocol": "workspace:^"
+    "@mokei/context-protocol": "workspace:^",
+    "@mokei/context-rpc": "workspace:^",
+    "@mokei/model-provider": "workspace:^"
   }
 }

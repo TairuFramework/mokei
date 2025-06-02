@@ -77,8 +77,15 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
       return stream.pipeThrough(
         new TransformStream<ChatResponse, MessagePart<ChatResponse, ToolCall>>({
           transform(part, controller) {
-            if (part.message.content !== '') {
+            if (part.message.content != null && part.message.content !== '') {
               controller.enqueue({ type: 'text-delta', text: part.message.content, raw: part })
+            }
+            if (part.message.thinking != null && part.message.thinking !== '') {
+              controller.enqueue({
+                type: 'reasoning-delta',
+                reasoning: part.message.thinking,
+                raw: part,
+              })
             }
             if (part.message.tool_calls != null) {
               controller.enqueue({
@@ -118,12 +125,16 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
     parts: Array<ServerMessage<ChatResponse, ToolCall>>,
   ): AggregatedMessage<ToolCall> {
     let text = ''
+    let reasoning = ''
     let toolCalls: Array<FunctionToolCall<ToolCall>> = []
     let inputTokens = 0
     let outputTokens = 0
     for (const part of parts) {
       if (part.text != null) {
         text += part.text
+      }
+      if (part.reasoning != null) {
+        reasoning += part.reasoning
       }
       if (part.toolCalls != null) {
         toolCalls = toolCalls.concat(part.toolCalls)

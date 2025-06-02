@@ -49,6 +49,7 @@ export type GenerateParams = RequestParams & {
   stream?: boolean
   raw?: boolean
   keep_alive?: string
+  think?: boolean
   request?: RequestOptions
 }
 
@@ -67,6 +68,7 @@ export type ChatParams = RequestParams & {
   format?: 'json' | Record<string, unknown> // JSON schema
   keep_alive?: string // duration
   tools?: Array<Tool>
+  think?: boolean
   options?: Record<string, unknown>
   request?: RequestOptions
 }

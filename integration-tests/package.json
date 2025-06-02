@@ -16,7 +16,8 @@
     "@mokei/mcp-fetch": "workspace:^",
     "@mokei/model-provider": "workspace:^",
     "@mokei/ollama-provider": "workspace:^",
-    "@mokei/openai-provider": "workspace:^"
+    "@mokei/openai-provider": "workspace:^",
+    "@mokei/session": "workspace:^"
   },
   "devDependencies": {
     "@enkaku/generator": "^0.12.0"

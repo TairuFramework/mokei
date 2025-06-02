@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream'
 import { Disposer } from '@enkaku/async'
-import { createPipe, createReadable, writeTo } from '@enkaku/stream'
+import { createReadable } from '@enkaku/stream'
 import { type ContextHost, getContextToolInfo } from '@mokei/host'
 import { tryParseJSON } from '@mokei/model-provider'
 import type {
@@ -118,13 +118,7 @@ export class ChatSession<T extends ProviderTypes> extends Disposer {
 
     this.#loader.start('Adding context...')
     try {
-      const errorStream = createPipe<string>()
-      errorStream.readable.pipeTo(
-        writeTo((chunk) => {
-          console.log('error from spawned server:', chunk)
-        }),
-      )
-      await this.#host.spawn(config.key, config.file, args, errorStream.writable)
+      await this.#host.spawn(config.key, config.file, args)
       const tools = await this.#host.setup(config.key)
       this.#loader.succeed(`Context ${config.key} successfully added`)
       if (tools.length !== 0) {
