@@ -14,7 +14,7 @@ describe('Session', () => {
     await session.addContext({
       key: 'fetch',
       file: 'node',
-      arguments: [FETCH_MCP_SERVER_PATH],
+      args: [FETCH_MCP_SERVER_PATH],
     })
   })
 
