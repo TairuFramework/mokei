@@ -3,7 +3,7 @@ import { EventEmitter } from '@enkaku/event'
 import { fromStream } from '@enkaku/generator'
 import type { CallToolResult } from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
-import { ContextHost, type ContextTool } from '@mokei/host'
+import { ContextHost, type ContextTool, type EnableToolsArg } from '@mokei/host'
 import type {
   AggregatedMessage,
   FunctionToolCall,
@@ -18,8 +18,9 @@ import type {
 export type AddContextParams = {
   key: string
   file: string
-  arguments?: Array<string>
+  args?: Array<string>
   signal?: AbortSignal
+  enableTools?: EnableToolsArg
 }
 
 export type ChatParams<T extends ProviderTypes = ProviderTypes> = {
@@ -53,22 +54,26 @@ export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
 export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #activeChatRequest: StreamChatRequest<T['MessagePart'], T['ToolCall']> | null = null
   #events: EventEmitter<SessionEvents<T>>
-  #host: ContextHost
+  #contextHost: ContextHost
   #providers: Map<string, ModelProvider<T>>
 
   constructor(params: SessionParams<T> = {}) {
     super({
       dispose: async () => {
-        await this.#host.dispose()
+        await this.#contextHost.dispose()
       },
     })
     this.#events = new EventEmitter()
-    this.#host = new ContextHost()
+    this.#contextHost = new ContextHost()
     this.#providers = new Map(Object.entries(params.providers ?? {}))
   }
 
   get activeChatRequest(): StreamChatRequest<T['MessagePart'], T['ToolCall']> | null {
     return this.#activeChatRequest
+  }
+
+  get contextHost(): ContextHost {
+    return this.#contextHost
   }
 
   get events(): EventEmitter<SessionEvents<T>> {
@@ -79,26 +84,31 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     return this.#providers
   }
 
-  async #setupContext(key: string, file: string, args: Array<string>): Promise<Array<ContextTool>> {
-    await this.#host.spawn(key, file, args)
-    const tools = await this.#host.setup(key)
+  async #setupContext(
+    key: string,
+    file: string,
+    args: Array<string>,
+    enableTools: EnableToolsArg = true,
+  ): Promise<Array<ContextTool>> {
+    await this.#contextHost.spawn(key, file, args)
+    const tools = await this.#contextHost.setup(key, enableTools)
     this.#events.emit('context-added', { key, tools })
     return tools
   }
 
   addContext(params: AddContextParams): Promise<Array<ContextTool>> {
-    const key = params.key
-    const args = params.arguments ?? []
-    return params.signal
-      ? raceSignal(this.#setupContext(key, params.file, args), params.signal).catch((err) => {
-          this.#host.remove(key)
+    const { key, file, enableTools, signal } = params
+    const args = params.args ?? []
+    return signal
+      ? raceSignal(this.#setupContext(key, file, args, enableTools), signal).catch((err) => {
+          this.#contextHost.remove(key)
           throw err
         })
-      : this.#setupContext(key, params.file, args)
+      : this.#setupContext(key, file, args)
   }
 
   removeContext(key: string): void {
-    this.#host.remove(key)
+    this.#contextHost.remove(key)
     this.#events.emit('context-removed', { key })
   }
 
@@ -122,7 +132,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   }
 
   getToolsForProvider<P extends T = T>(provider: ModelProvider<P>): Array<P['Tool']> {
-    return this.#host.getCallableTools().map(provider.toolFromMCP)
+    return this.#contextHost.getCallableTools().map(provider.toolFromMCP)
   }
 
   async chat<P extends T = T>(params: ChatParams<P>): Promise<AggregatedMessage<P['ToolCall']>> {
@@ -194,12 +204,12 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     signal?: AbortSignal,
   ): SentRequest<CallToolResult> {
     if (signal == null) {
-      return this.#host.callNamespacedTool(toolCall.name, JSON.parse(toolCall.input))
+      return this.#contextHost.callNamespacedTool(toolCall.name, JSON.parse(toolCall.input))
     }
     if (signal.aborted) {
       throw signal.reason
     }
-    const request = this.#host.callNamespacedTool(toolCall.name, JSON.parse(toolCall.input))
+    const request = this.#contextHost.callNamespacedTool(toolCall.name, JSON.parse(toolCall.input))
     signal.addEventListener('abort', () => request.cancel())
     return request
   }

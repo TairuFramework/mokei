@@ -11,6 +11,10 @@ import type { SentRequest } from '@mokei/context-rpc'
 
 import { type StderrOption, spawnContextServer } from './spawn.js'
 
+export type EnableTools = boolean | Array<string>
+export type EnableToolsFn = (tools: Array<Tool>) => EnableTools | Promise<EnableTools>
+export type EnableToolsArg = EnableTools | EnableToolsFn
+
 export function getContextToolID(contextKey: string, toolName: string): string {
   return `${contextKey}:${toolName}`
 }
@@ -84,6 +88,30 @@ export class ContextHost extends Disposer {
     this.getContext(key).tools = tools
   }
 
+  #mapContextTools(key: string, fn: (tool: ContextTool) => ContextTool): Array<ContextTool> {
+    const newTools = this.getContext(key).tools.map(fn)
+    this.setContextTools(key, newTools)
+    return newTools
+  }
+
+  disableContextTools(key: string, toolNames: Array<string>): Array<ContextTool> {
+    return this.#mapContextTools(key, (ct) => {
+      return toolNames.includes(ct.tool.name) ? { ...ct, enabled: false } : ct
+    })
+  }
+
+  enableContextTools(key: string, toolNames: Array<string>): Array<ContextTool> {
+    return this.#mapContextTools(key, (ct) => {
+      return toolNames.includes(ct.tool.name) ? { ...ct, enabled: true } : ct
+    })
+  }
+
+  setEnabledContextTools(key: string, toolNames: Array<string>): Array<ContextTool> {
+    return this.#mapContextTools(key, (ct) => {
+      return toolNames.includes(ct.tool.name) ? { ...ct, enabled: true } : { ...ct, enabled: false }
+    })
+  }
+
   getEnabledTools(): Array<ContextTool> {
     return Object.values(this._contexts)
       .flatMap((ctx) => ctx.tools)
@@ -117,10 +145,13 @@ export class ContextHost extends Disposer {
     return context.client
   }
 
-  async setup(key: string): Promise<Array<ContextTool>> {
+  async setup(key: string, enableTools: EnableToolsArg = true): Promise<Array<ContextTool>> {
     const tools = await this.getContext(key).client.listTools()
+    const enabledTools = typeof enableTools === 'function' ? await enableTools(tools) : enableTools
     const contextTools = tools.map((tool) => {
-      return { id: getContextToolID(key, tool.name), tool, enabled: true }
+      const enabled =
+        typeof enabledTools === 'boolean' ? enabledTools : enabledTools.includes(tool.name)
+      return { id: getContextToolID(key, tool.name), tool, enabled }
     })
     this._contexts[key].tools = contextTools
     return contextTools
