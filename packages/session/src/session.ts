@@ -12,6 +12,7 @@ import type {
   ModelProvider,
   ProviderTypes,
   ServerMessage,
+  StreamChatRequest,
 } from '@mokei/model-provider'
 
 export type AddContextParams = {
@@ -27,6 +28,7 @@ export type ChatParams<T extends ProviderTypes = ProviderTypes> = {
   messages: Array<Message<T['MessagePart'], T['ToolCall']>>
   tools?: Array<T['Tool']>
   signal?: AbortSignal
+  abortActiveRequest?: boolean
 }
 
 export type ContextAddedEvent = {
@@ -49,6 +51,7 @@ export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
 }
 
 export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
+  #activeChatRequest: StreamChatRequest<T['MessagePart'], T['ToolCall']> | null = null
   #events: EventEmitter<SessionEvents<T>>
   #host: ContextHost
   #providers: Map<string, ModelProvider<T>>
@@ -62,6 +65,10 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     this.#events = new EventEmitter()
     this.#host = new ContextHost()
     this.#providers = new Map(Object.entries(params.providers ?? {}))
+  }
+
+  get activeChatRequest(): StreamChatRequest<T['MessagePart'], T['ToolCall']> | null {
+    return this.#activeChatRequest
   }
 
   get events(): EventEmitter<SessionEvents<T>> {
@@ -119,54 +126,67 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   }
 
   async chat<P extends T = T>(params: ChatParams<P>): Promise<AggregatedMessage<P['ToolCall']>> {
-    const provider =
-      typeof params.provider === 'string' ? this.getProvider<P>(params.provider) : params.provider
-    const tools = params.tools ?? this.getToolsForProvider(provider)
-    const stream = await provider.streamChat({ ...params, tools })
-
-    const messagesParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
-    for await (const chunk of fromStream(stream)) {
-      this.#events.emit('message-part', chunk)
-      switch (chunk.type) {
-        case 'tool-call':
-          messagesParts.push({
-            source: 'server',
-            role: 'assistant',
-            toolCalls: chunk.toolCalls,
-            raw: chunk.raw,
-          })
-          break
-        case 'text-delta':
-          messagesParts.push({
-            source: 'server',
-            role: 'assistant',
-            text: chunk.text,
-            raw: chunk.raw,
-          })
-          break
-        case 'reasoning-delta':
-          messagesParts.push({
-            source: 'server',
-            role: 'assistant',
-            reasoning: chunk.reasoning,
-            raw: chunk.raw,
-          })
-          break
-        case 'done':
-          messagesParts.push({
-            source: 'server',
-            role: 'assistant',
-            inputTokens: chunk.inputTokens,
-            outputTokens: chunk.outputTokens,
-            raw: chunk.raw,
-          })
-          break
-        case 'error':
-          throw chunk.error
+    if (this.#activeChatRequest != null) {
+      if (params.abortActiveRequest) {
+        this.#activeChatRequest.abort()
+      } else {
+        throw new Error('A chat request is already active')
       }
     }
 
-    return provider.aggregateMessage(messagesParts)
+    const provider =
+      typeof params.provider === 'string' ? this.getProvider<P>(params.provider) : params.provider
+    const tools = params.tools ?? this.getToolsForProvider(provider)
+
+    try {
+      this.#activeChatRequest = provider.streamChat({ ...params, tools })
+      const stream = await this.#activeChatRequest
+
+      const messagesParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
+      for await (const chunk of fromStream(stream)) {
+        this.#events.emit('message-part', chunk)
+        switch (chunk.type) {
+          case 'tool-call':
+            messagesParts.push({
+              source: 'server',
+              role: 'assistant',
+              toolCalls: chunk.toolCalls,
+              raw: chunk.raw,
+            })
+            break
+          case 'text-delta':
+            messagesParts.push({
+              source: 'server',
+              role: 'assistant',
+              text: chunk.text,
+              raw: chunk.raw,
+            })
+            break
+          case 'reasoning-delta':
+            messagesParts.push({
+              source: 'server',
+              role: 'assistant',
+              reasoning: chunk.reasoning,
+              raw: chunk.raw,
+            })
+            break
+          case 'done':
+            messagesParts.push({
+              source: 'server',
+              role: 'assistant',
+              inputTokens: chunk.inputTokens,
+              outputTokens: chunk.outputTokens,
+              raw: chunk.raw,
+            })
+            break
+          case 'error':
+            throw chunk.error
+        }
+      }
+      return provider.aggregateMessage(messagesParts)
+    } finally {
+      this.#activeChatRequest = null
+    }
   }
 
   executeToolCall<P extends T = T>(
