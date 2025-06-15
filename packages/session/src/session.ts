@@ -3,7 +3,7 @@ import { EventEmitter } from '@enkaku/event'
 import { fromStream } from '@enkaku/generator'
 import type { CallToolResult } from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
-import { ContextHost, type ContextTool, type EnableToolsArg } from '@mokei/host'
+import { ContextHost, type ContextTool, type EnableToolsArg, type SpawnParams } from '@mokei/host'
 import type {
   AggregatedMessage,
   FunctionToolCall,
@@ -17,8 +17,9 @@ import type {
 
 export type AddContextParams = {
   key: string
-  file: string
+  command: string
   args?: Array<string>
+  env?: Record<string, string>
   signal?: AbortSignal
   enableTools?: EnableToolsArg
 }
@@ -84,27 +85,21 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     return this.#providers
   }
 
-  async #setupContext(
-    key: string,
-    file: string,
-    args: Array<string>,
-    enableTools: EnableToolsArg = true,
-  ): Promise<Array<ContextTool>> {
-    await this.#contextHost.spawn(key, file, args)
-    const tools = await this.#contextHost.setup(key, enableTools)
+  async #setupContext(params: AddContextParams): Promise<Array<ContextTool>> {
+    const { key, command, args, env, enableTools } = params
+    await this.#contextHost.spawn({ key, command, args, env })
+    const tools = await this.#contextHost.setup(key, enableTools ?? true)
     this.#events.emit('context-added', { key, tools })
     return tools
   }
 
   addContext(params: AddContextParams): Promise<Array<ContextTool>> {
-    const { key, file, enableTools, signal } = params
-    const args = params.args ?? []
-    return signal
-      ? raceSignal(this.#setupContext(key, file, args, enableTools), signal).catch((err) => {
-          this.#contextHost.remove(key)
+    return params.signal
+      ? raceSignal(this.#setupContext(params), params.signal).catch((err) => {
+          this.#contextHost.remove(params.key)
           throw err
         })
-      : this.#setupContext(key, file, args)
+      : this.#setupContext(params)
   }
 
   removeContext(key: string): void {

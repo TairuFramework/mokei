@@ -374,9 +374,35 @@ npm install @mokei/context-server
 
 ***
 
-### ServeProcessParams
+### ServerConfig
 
-> **ServeProcessParams** = `Omit`\<[`ServerParams`](#serverparams), `"transport"`\>
+> **ServerConfig** = `object`
+
+#### Properties
+
+##### complete?
+
+> `optional` **complete**: `CompleteHandler`
+
+##### name
+
+> **name**: `string`
+
+##### prompts?
+
+> `optional` **prompts**: `PromptDefinitions`
+
+##### resources?
+
+> `optional` **resources**: `ResourceDefinitions`
+
+##### tools?
+
+> `optional` **tools**: `ToolDefinitions`
+
+##### version
+
+> **version**: `string`
 
 ***
 
@@ -402,37 +428,13 @@ npm install @mokei/context-server
 
 ### ServerParams
 
-> **ServerParams** = `object`
+> **ServerParams** = [`ServerConfig`](#serverconfig) & `object`
 
-#### Properties
-
-##### complete?
-
-> `optional` **complete**: `CompleteHandler`
-
-##### name
-
-> **name**: `string`
-
-##### prompts?
-
-> `optional` **prompts**: `PromptDefinitions`
-
-##### resources?
-
-> `optional` **resources**: `ResourceDefinitions`
-
-##### tools?
-
-> `optional` **tools**: `ToolDefinitions`
+#### Type declaration
 
 ##### transport
 
 > **transport**: [`ServerTransport`](#servertransport)
-
-##### version
-
-> **version**: `string`
 
 ***
 
@@ -512,13 +514,13 @@ npm install @mokei/context-server
 
 ### serveProcess()
 
-> **serveProcess**(`params`): [`ContextServer`](#contextserver)
+> **serveProcess**(`config`): [`ContextServer`](#contextserver)
 
 #### Parameters
 
-##### params
+##### config
 
-[`ServeProcessParams`](#serveprocessparams)
+[`ServerConfig`](#serverconfig)
 
 #### Returns
 

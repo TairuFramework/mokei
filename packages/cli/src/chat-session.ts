@@ -103,9 +103,9 @@ export class ChatSession<T extends ProviderTypes> extends Disposer {
   }
 
   async #addContext(): Promise<null> {
-    const config = await prompt<{ key: string; file: string }>([
+    const config = await prompt<{ key: string; command: string }>([
       { type: 'input', name: 'key', message: 'Context key (unique per session)' },
-      { type: 'input', name: 'file', message: 'MCP server command' },
+      { type: 'input', name: 'command', message: 'MCP server command' },
     ])
     if (config == null) {
       return null
@@ -118,7 +118,7 @@ export class ChatSession<T extends ProviderTypes> extends Disposer {
 
     this.#loader.start('Adding context...')
     try {
-      await this.#host.spawn(config.key, config.file, args)
+      await this.#host.spawn({ ...config, args })
       const tools = await this.#host.setup(config.key)
       this.#loader.succeed(`Context ${config.key} successfully added`)
       if (tools.length !== 0) {

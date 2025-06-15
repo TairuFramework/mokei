@@ -1,6 +1,6 @@
 {
   "name": "@mokei/host",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei Context host",
@@ -30,16 +30,16 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "^0.12.1",
-    "@enkaku/client": "^0.12.0",
-    "@enkaku/node-streams-transport": "^0.12.1",
-    "@enkaku/server": "^0.12.0",
-    "@enkaku/socket-transport": "^0.12.1",
-    "@enkaku/stream": "^0.12.4",
-    "@enkaku/transport": "^0.12.0",
+    "@enkaku/async": "catalog:",
+    "@enkaku/client": "catalog:",
+    "@enkaku/node-streams-transport": "catalog:",
+    "@enkaku/server": "catalog:",
+    "@enkaku/socket-transport": "catalog:",
+    "@enkaku/stream": "catalog:",
+    "@enkaku/transport": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
-    "nano-spawn": "^1.0.2"
+    "nano-spawn": "catalog:"
   },
   "devDependencies": {
     "@mokei/context-protocol": "workspace:^",

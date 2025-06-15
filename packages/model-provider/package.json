@@ -30,7 +30,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/schema": "^0.12.0"
+    "@enkaku/schema": "catalog:"
   },
   "devDependencies": {
     "@mokei/context-protocol": "workspace:^"

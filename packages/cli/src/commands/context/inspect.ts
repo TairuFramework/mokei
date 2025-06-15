@@ -19,7 +19,10 @@ export default class ContextInspect extends Command {
 
     let hosted: HostedContext | undefined
     try {
-      hosted = await createHostedContext(args.command, argv.slice(1) as Array<string>)
+      hosted = await createHostedContext({
+        command: args.command,
+        args: argv.slice(1) as Array<string>,
+      })
       const initialized = await hosted.client.initialize()
       loader.succeed('Initialized')
       this.logJson(initialized)

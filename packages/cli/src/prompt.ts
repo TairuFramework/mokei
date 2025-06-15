@@ -18,7 +18,7 @@ export async function prompt<T extends Record<string, unknown> = Record<string, 
 ): Promise<T | null> {
   try {
     return await enquirer.prompt(options)
-  } catch (reason) {
+  } catch {
     return null
   }
 }

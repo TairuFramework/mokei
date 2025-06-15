@@ -4,7 +4,7 @@
   "author": "Paul Le Cam",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@10.11.1",
+  "packageManager": "pnpm@10.12.1",
   "scripts": {
     "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
     "test": "node --experimental-eventsource --experimental-vm-modules ./node_modules/jest/bin/jest.js ./packages",
@@ -16,19 +16,19 @@
     "build:ci": "pnpm run build:types:ci && pnpm run build:js"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "@jest/globals": "^29.7.0",
-    "@swc/cli": "0.7.7",
-    "@swc/core": "1.11.31",
-    "@swc/jest": "^0.2.38",
-    "@types/jest": "^29.5.14",
-    "@types/node": "^22.15.30",
-    "del-cli": "^6.0.0",
-    "jest": "^29.7.0",
-    "tsx": "^4.19.4",
-    "turbo": "^2.5.4",
-    "typedoc": "^0.28.5",
-    "typedoc-plugin-markdown": "^4.6.4",
+    "@biomejs/biome": "catalog:",
+    "@jest/globals": "catalog:",
+    "@swc/cli": "catalog:",
+    "@swc/core": "catalog:",
+    "@swc/jest": "catalog:",
+    "@types/jest": "catalog:",
+    "@types/node": "catalog:",
+    "del-cli": "catalog:",
+    "jest": "catalog:",
+    "tsx": "catalog:",
+    "turbo": "catalog:",
+    "typedoc": "catalog:",
+    "typedoc-plugin-markdown": "catalog:",
     "typescript": "^5.8.3"
   }
 }

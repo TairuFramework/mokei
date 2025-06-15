@@ -7,8 +7,8 @@
     "test": "node --experimental-vm-modules ../node_modules/jest/bin/jest.js"
   },
   "dependencies": {
-    "@enkaku/node-streams-transport": "^0.12.1",
-    "@enkaku/transport": "^0.12.0",
+    "@enkaku/node-streams-transport": "catalog:",
+    "@enkaku/transport": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
@@ -20,6 +20,6 @@
     "@mokei/session": "workspace:^"
   },
   "devDependencies": {
-    "@enkaku/generator": "^0.12.0"
+    "@enkaku/generator": "catalog:"
   }
 }

@@ -16,6 +16,7 @@ const config: Config = {
   onBrokenMarkdownLinks: 'warn',
   future: {
     experimental_faster: true,
+    v4: true,
   },
   i18n: {
     defaultLocale: 'en',

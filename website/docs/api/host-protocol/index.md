@@ -348,6 +348,22 @@ npm install @mokei/host-protocol
 
 > `readonly` **spawn.param.properties.command.type**: `"string"` = `'string'`
 
+###### spawn.param.properties.env
+
+> `readonly` **spawn.param.properties.env**: `object`
+
+###### spawn.param.properties.env.additionalProperties
+
+> `readonly` **spawn.param.properties.env.additionalProperties**: `object`
+
+###### spawn.param.properties.env.additionalProperties.type
+
+> `readonly` **spawn.param.properties.env.additionalProperties.type**: `"string"` = `'string'`
+
+###### spawn.param.properties.env.type
+
+> `readonly` **spawn.param.properties.env.type**: `"object"` = `'object'`
+
 ###### spawn.param.required
 
 > `readonly` **spawn.param.required**: readonly \[`"command"`\]

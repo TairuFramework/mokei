@@ -1,6 +1,6 @@
 {
   "name": "@mokei/session",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei session",
@@ -30,9 +30,9 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "^0.12.1",
-    "@enkaku/event": "^0.12.0",
-    "@enkaku/generator": "^0.12.0",
+    "@enkaku/async": "catalog:",
+    "@enkaku/event": "catalog:",
+    "@enkaku/generator": "catalog:",
     "@mokei/host": "workspace:^"
   },
   "devDependencies": {

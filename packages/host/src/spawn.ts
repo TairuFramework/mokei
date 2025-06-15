@@ -3,6 +3,8 @@ import type { Writable } from 'node:stream'
 import type { Streams } from '@enkaku/node-streams-transport'
 import spawn, { type Subprocess, SubprocessError } from 'nano-spawn'
 
+import { filterEnv } from './utils.js'
+
 function isSubprocessExit(reason: unknown): boolean {
   return (
     reason instanceof SubprocessError &&
@@ -13,6 +15,13 @@ function isSubprocessExit(reason: unknown): boolean {
 
 export type StderrOption = IOType | number | Writable
 
+export type SpawnContextServerParams = {
+  command: string
+  args?: Array<string>
+  env?: Record<string, string | null | undefined>
+  stderr?: StderrOption
+}
+
 export type SpawnedContext = {
   childProcess: ChildProcess
   streams: Streams
@@ -20,12 +29,11 @@ export type SpawnedContext = {
 }
 
 export async function spawnContextServer(
-  command: string,
-  args: Array<string> = [],
-  stderr: StderrOption = 'ignore',
+  params: SpawnContextServerParams,
 ): Promise<SpawnedContext> {
-  const subprocess = spawn(command, args, {
-    stdio: ['pipe', 'pipe', stderr],
+  const subprocess = spawn(params.command, params.args ?? [], {
+    stdio: ['pipe', 'pipe', params.stderr ?? 'ignore'],
+    env: filterEnv(params.env),
   })
   subprocess.catch((err) => {
     if (!isSubprocessExit(err)) {

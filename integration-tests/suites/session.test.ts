@@ -13,7 +13,7 @@ describe('Session', () => {
   beforeAll(async () => {
     await session.addContext({
       key: 'fetch',
-      file: 'node',
+      command: 'node',
       args: [FETCH_MCP_SERVER_PATH],
     })
   })

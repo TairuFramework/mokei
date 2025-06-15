@@ -123,6 +123,7 @@ export const protocol = {
       properties: {
         command: { type: 'string' },
         args: { type: 'array', items: { type: 'string' } },
+        env: { type: 'object', additionalProperties: { type: 'string' } },
       },
       required: ['command'],
       additionalProperties: false,

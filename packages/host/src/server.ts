@@ -57,7 +57,7 @@ function createHandlers({
     },
     spawn: async (ctx) => {
       const contextID = randomUUID()
-      const spawned = await spawnContextServer(ctx.param.command, ctx.param.args)
+      const spawned = await spawnContextServer(ctx.param)
       activeContexts[contextID] = { startedTime: Date.now() }
       events.dispatchEvent(
         new CustomEvent('context:start', {

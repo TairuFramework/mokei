@@ -4,6 +4,14 @@ import { type ClientTransport, ContextClient } from '@mokei/context-client'
 
 import { type DaemonOptions, type HostClient, runDaemon } from './daemon/controller.js'
 import { ContextHost } from './host.js'
+import { filterEnv } from './utils.js'
+
+export type ProxySpawnParams = {
+  key: string
+  command: string
+  args?: Array<string>
+  env?: Record<string, string | null | undefined>
+}
 
 export class ProxyHost extends ContextHost {
   static async forDaemon(options?: DaemonOptions): Promise<ProxyHost> {
@@ -28,12 +36,15 @@ export class ProxyHost extends ContextHost {
     await this.#client.dispose()
   }
 
-  async spawn(key: string, command: string, args: Array<string> = []): Promise<ContextClient> {
+  async spawn(params: ProxySpawnParams): Promise<ContextClient> {
+    const { key, env, ...spawnParam } = params
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
 
-    const channel = this.#client.createChannel('spawn', { param: { command, args } })
+    const channel = this.#client.createChannel('spawn', {
+      param: { ...spawnParam, env: filterEnv(env) },
+    })
     const transport = new Transport({
       stream: { readable: channel.readable, writable: channel.writable },
     }) as ClientTransport

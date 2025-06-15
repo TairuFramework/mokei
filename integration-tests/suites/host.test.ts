@@ -13,7 +13,11 @@ test('executes a tool call', async () => {
   })
 
   try {
-    await host.spawn('fetch', 'node', [FETCH_MCP_SERVER_PATH])
+    await host.spawn({
+      key: 'fetch',
+      command: 'node',
+      args: [FETCH_MCP_SERVER_PATH],
+    })
     await host.setup('fetch')
 
     const tools = host.getCallableTools().map(provider.toolFromMCP)

@@ -19,9 +19,11 @@ export {
   type EnableToolsFn,
   type EnableToolsArg,
   type HostedContext,
+  type SpawnParams,
   createHostedContext,
   getContextToolID,
   getContextToolInfo,
 } from './host.js'
 export { ProxyHost } from './proxy.js'
 export { type ServerParams, startServer } from './server.js'
+export type { SpawnContextServerParams, StderrOption } from './spawn.js'

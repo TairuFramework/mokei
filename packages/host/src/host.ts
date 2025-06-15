@@ -9,7 +9,11 @@ import {
 import type { CallToolResult, GetPromptResult, Tool } from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
 
-import { type StderrOption, spawnContextServer } from './spawn.js'
+import { type SpawnContextServerParams, spawnContextServer } from './spawn.js'
+
+export type SpawnParams = SpawnContextServerParams & {
+  key: string
+}
 
 export type EnableTools = boolean | Array<string>
 export type EnableToolsFn = (tools: Array<Tool>) => EnableTools | Promise<EnableTools>
@@ -43,11 +47,9 @@ export type HostedContext<T extends ContextTypes = UnknownContextTypes> = {
 }
 
 export async function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
-  command: string,
-  args: Array<string> = [],
-  stderr?: StderrOption,
+  params: SpawnContextServerParams,
 ): Promise<HostedContext<T>> {
-  const { childProcess, streams } = await spawnContextServer(command, args, stderr)
+  const { childProcess, streams } = await spawnContextServer(params)
   const transport = new NodeStreamsTransport({ streams }) as ClientTransport
   const client = new ContextClient<T>({ transport })
   const disposer = new Disposer({
@@ -130,17 +132,13 @@ export class ContextHost extends Disposer {
     return tools
   }
 
-  async spawn(
-    key: string,
-    command: string,
-    args: Array<string> = [],
-    stderr?: StderrOption,
-  ): Promise<ContextClient> {
+  async spawn(params: SpawnParams): Promise<ContextClient> {
+    const { key, ...spawnParams } = params
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
 
-    const context = await createHostedContext(command, args, stderr)
+    const context = await createHostedContext(spawnParams)
     this._contexts[key] = context
     return context.client
   }

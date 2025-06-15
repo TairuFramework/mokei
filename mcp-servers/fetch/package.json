@@ -32,14 +32,14 @@
   },
   "dependencies": {
     "@mokei/context-server": "workspace:^",
-    "turndown": "^7.2.0",
-    "turndown-plugin-gfm": "^1.0.2"
+    "turndown": "catalog:",
+    "turndown-plugin-gfm": "catalog:"
   },
   "devDependencies": {
-    "@enkaku/node-streams-transport": "^0.12.1",
-    "@enkaku/transport": "^0.12.0",
+    "@enkaku/node-streams-transport": "catalog:",
+    "@enkaku/transport": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
-    "@types/turndown": "^5.0.5"
+    "@types/turndown": "catalog:"
   }
 }
