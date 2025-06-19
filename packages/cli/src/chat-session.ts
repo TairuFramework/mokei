@@ -2,7 +2,6 @@ import { Writable } from 'node:stream'
 import { Disposer } from '@enkaku/async'
 import { createReadable } from '@enkaku/stream'
 import { type ContextHost, getContextToolInfo } from '@mokei/host'
-import { tryParseJSON } from '@mokei/model-provider'
 import type {
   AggregatedMessage,
   ClientToolMessage,
@@ -12,6 +11,7 @@ import type {
   ProviderTypes,
   ServerMessage,
 } from '@mokei/model-provider'
+import { tryParseJSON } from '@mokei/model-provider'
 import ora, { type Ora } from 'ora'
 
 import { type Choice, confirm, input, list, prompt } from './prompt.js'

@@ -9,9 +9,8 @@ export const resource = {
   properties: {
     annotations,
     description: {
-      description: `A description of what this resource represents.
-        
-        This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a "hint" to the model.`,
+      description:
+        'A description of what this resource represents.\n\nThis can be used by clients to improve the LLM\'s understanding of available resources. It can be thought of like a "hint" to the model.',
       type: 'string',
     },
     mimeType: {
@@ -19,9 +18,8 @@ export const resource = {
       type: 'string',
     },
     name: {
-      description: `A human-readable name for this resource.
-        
-        This can be used by clients to populate UI elements.`,
+      description:
+        'A human-readable name for this resource.\n\nThis can be used by clients to populate UI elements.',
       type: 'string',
     },
     uri: {
@@ -41,9 +39,8 @@ export const resourceTemplate = {
   properties: {
     annotations,
     description: {
-      description: `A description of what this template is for.
-        
-        This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a "hint" to the model.`,
+      description:
+        'A description of what this template is for.\n\nThis can be used by clients to improve the LLM\'s understanding of available resources. It can be thought of like a "hint" to the model.',
       type: 'string',
     },
     mimeType: {
@@ -52,9 +49,8 @@ export const resourceTemplate = {
       type: 'string',
     },
     name: {
-      description: `A human-readable name for the type of resource this template refers to.
-        
-        This can be used by clients to populate UI elements.`,
+      description:
+        'A human-readable name for the type of resource this template refers to.\n\nThis can be used by clients to populate UI elements.',
       type: 'string',
     },
     uriTemplate: {

@@ -4,10 +4,8 @@ import { notification, request } from './rpc.js'
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1057
 export const loggingLevel = {
-  description: `The severity of a log message.
-    
-    These map to syslog message severities, as specified in RFC-5424:
-    https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1`,
+  description:
+    'The severity of a log message.\n\nThese map to syslog message severities, as specified in RFC-5424:\nhttps://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1',
   enum: ['alert', 'critical', 'debug', 'emergency', 'error', 'info', 'notice', 'warning'],
   type: 'string',
 } as const satisfies Schema

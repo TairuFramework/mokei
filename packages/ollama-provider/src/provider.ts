@@ -9,9 +9,8 @@ import type {
   ServerMessage,
   StreamChatParams,
 } from '@mokei/model-provider'
-
-import { OllamaClient } from './client.js'
 import type { ChatResponse, ListModelParams, OllamaClientParams } from './client.js'
+import { OllamaClient } from './client.js'
 import { type OllamaConfiguration, validateConfiguration } from './config.js'
 import type { Message, Model, Tool, ToolCall } from './types.js'
 
@@ -146,7 +145,15 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
         outputTokens += part.outputTokens
       }
     }
-    return { source: 'aggregated', role: 'assistant', text, toolCalls, inputTokens, outputTokens }
+    return {
+      source: 'aggregated',
+      role: 'assistant',
+      text,
+      reasoning,
+      toolCalls,
+      inputTokens,
+      outputTokens,
+    }
   }
 
   toolFromMCP(tool: ContextTool): Tool {

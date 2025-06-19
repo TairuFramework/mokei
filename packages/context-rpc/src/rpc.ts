@@ -2,7 +2,6 @@ import { type Deferred, Disposer, defer, toPromise } from '@enkaku/async'
 import { EventEmitter } from '@enkaku/event'
 import type { Validator } from '@enkaku/schema'
 import type { TransportType } from '@enkaku/transport'
-import { INTERNAL_ERROR, INVALID_REQUEST } from '@mokei/context-protocol'
 import type {
   AnyMessage,
   CancelledNotification,
@@ -12,10 +11,10 @@ import type {
   Request,
   RequestID,
   Response,
-  SingleMessage,
 } from '@mokei/context-protocol'
+import { INTERNAL_ERROR, INVALID_REQUEST } from '@mokei/context-protocol'
 
-import { RPCError, errorResponse } from './error.js'
+import { errorResponse, RPCError } from './error.js'
 
 function isRequestID(id: unknown): id is RequestID {
   return typeof id === 'string' || typeof id === 'number'
@@ -37,7 +36,6 @@ export type RPCTypes = {
   Events: Record<string, unknown>
   MessageIn: AnyMessage
   MessageOut: AnyMessage
-  HandleMessage: SingleMessage
   HandleNotification: Notification
   HandleRequest: Request
   SendNotifications: Record<string, Notification>
@@ -47,7 +45,7 @@ export type RPCTypes = {
 
 export type RPCParams<T extends RPCTypes> = {
   transport: TransportType<T['MessageIn'], T['MessageOut']>
-  validateMessageIn: Validator<T['HandleMessage']>
+  validateMessageIn: Validator<T['MessageIn']>
 }
 
 export class ContextRPC<T extends RPCTypes> extends Disposer {
@@ -56,7 +54,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #requestID = 0
   #sentRequests: Record<RequestID, RequestController<unknown>> = {}
   #transport: TransportType<T['MessageIn'], T['MessageOut']>
-  #validateMessageIn: Validator<T['HandleMessage']>
+  #validateMessageIn: Validator<T['MessageIn']>
 
   constructor(params: RPCParams<T>) {
     super({ dispose: () => this.#transport.dispose() })
@@ -88,19 +86,9 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         return
       }
 
-      if (Array.isArray(next.value)) {
-        const handled = await Promise.all(
-          next.value.map((message) => this._handleSingleMessage(message)),
-        )
-        const responses = handled.filter((response) => response != null)
-        if (responses.length !== 0) {
-          this._write(responses)
-        }
-      } else {
-        const response = await this._handleSingleMessage(next.value)
-        if (response != null) {
-          this._write(response)
-        }
+      const response = await this._handleMessage(next.value)
+      if (response != null) {
+        this._write(response)
       }
 
       handleNext()
@@ -109,7 +97,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     handleNext()
   }
 
-  _handleSingleMessage(message: SingleMessage): Response | null | Promise<Response | null> {
+  _handleMessage(message: T['MessageIn']): Response | null | Promise<Response | null> {
     const validated = this.#validateMessageIn(message)
     if (validated.issues != null) {
       // Message is invalid for the protocol
@@ -193,12 +181,12 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
 
   // TODO: handle cancel notification, delegate to handler for other notifications
   _handleNotification(
-    notification: ProgressNotification | T['HandleNotification'],
+    _notification: ProgressNotification | T['HandleNotification'],
   ): void | Promise<void> {}
 
   _handleRequest(
-    request: T['HandleRequest'],
-    signal: AbortSignal,
+    _request: T['HandleRequest'],
+    _signal: AbortSignal,
   ): T['SendResult'] | Promise<T['SendResult']> {
     throw new Error('_handleRequest() method must be implemented')
   }

@@ -1,4 +1,4 @@
-import { type Schema, type ServerConfig, createTool } from '@mokei/context-server'
+import { createTool, type Schema, type ServerConfig } from '@mokei/context-server'
 import Turndown from 'turndown'
 // @ts-expect-error no types
 import { gfm } from 'turndown-plugin-gfm'

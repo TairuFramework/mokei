@@ -1,7 +1,5 @@
 import { DirectTransports } from '@enkaku/transport'
 import { jest } from '@jest/globals'
-import { INVALID_PARAMS } from '@mokei/context-protocol'
-import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import type {
   ClientMessage,
   ClientRequest,
@@ -10,13 +8,14 @@ import type {
   Log,
   ServerMessage,
 } from '@mokei/context-protocol'
+import { INVALID_PARAMS, LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 
 import {
   ContextServer,
-  type Schema,
-  type ServerParams,
   createPrompt,
   createTool,
+  type Schema,
+  type ServerParams,
 } from '../src/index.js'
 
 type TestContext = {
@@ -200,7 +199,7 @@ describe('ContextServer', () => {
     })
 
     transports.client.write({ jsonrpc: '2.0', id: 0, result: { roots } })
-    await expect(responsePromise).resolves.toEqual(roots)
+    await expect(responsePromise).resolves.toEqual({ roots })
 
     await transports.dispose()
   })

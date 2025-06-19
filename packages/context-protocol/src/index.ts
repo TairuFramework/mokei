@@ -15,10 +15,10 @@ export {
   type ClientNotification,
   type ClientRequest,
   type ClientResult,
-  type SingleClientMessage,
-  singleClientMessage,
+  clientMessage,
 } from './client.js'
 export type { CompleteRequest, CompleteResult } from './completion.js'
+export type { ElicitRequest, ElicitResult } from './elicitation.js'
 export type {
   ClientCapabilities,
   Implementation,
@@ -43,10 +43,10 @@ export type {
   PromptListChangedNotification,
 } from './prompt.js'
 export type {
-  ListResourceTemplatesRequest,
-  ListResourceTemplatesResult,
   ListResourcesRequest,
   ListResourcesResult,
+  ListResourceTemplatesRequest,
+  ListResourceTemplatesResult,
   ReadResourceRequest,
   ReadResourceResult,
   Resource,
@@ -63,19 +63,18 @@ export type {
 export {
   type AnyMessage,
   type CancelledNotification,
-  type ProgressNotification,
   type ErrorResponse,
+  INTERNAL_ERROR,
+  INVALID_PARAMS,
+  INVALID_REQUEST,
+  LATEST_PROTOCOL_VERSION,
+  METHOD_NOT_FOUND,
   type Notification,
+  PARSE_ERROR,
+  type ProgressNotification,
   type Request,
   type RequestID,
   type Response,
-  type SingleMessage,
-  LATEST_PROTOCOL_VERSION,
-  PARSE_ERROR,
-  INVALID_REQUEST,
-  METHOD_NOT_FOUND,
-  INVALID_PARAMS,
-  INTERNAL_ERROR,
 } from './rpc.js'
 export type { CreateMessageRequest, CreateMessageResult } from './sampling.js'
 export {
@@ -83,14 +82,14 @@ export {
   type ServerNotification,
   type ServerRequest,
   type ServerResult,
-  type SingleServerMessage,
-  singleServerMessage,
+  serverMessage,
 } from './server.js'
 export {
   type CallToolRequest,
   type CallToolResult,
   type InputSchema,
+  inputSchema,
+  outputSchema,
   type Tool,
   type ToolListChangedNotification,
-  inputSchema,
 } from './tool.js'

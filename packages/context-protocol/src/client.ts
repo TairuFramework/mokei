@@ -1,12 +1,13 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { completeRequest } from './completion.js'
-import { initializeRequest, initializedNotification } from './initialize.js'
+import { elicitResult } from './elicitation.js'
+import { initializedNotification, initializeRequest } from './initialize.js'
 import { setLevelRequest } from './logging.js'
 import { getPromptRequest, listPromptsRequest } from './prompt.js'
 import {
-  listResourceTemplatesRequest,
   listResourcesRequest,
+  listResourceTemplatesRequest,
   readResourceRequest,
   subscribeRequest,
   unsubscribeRequest,
@@ -55,7 +56,7 @@ export const clientNotification = {
 export type ClientNotification = FromSchema<typeof clientNotification>
 
 export const clientResult = {
-  anyOf: [result, createMessageResult, listRootsResult],
+  anyOf: [result, createMessageResult, listRootsResult, elicitResult],
 } as const satisfies Schema
 export type ClientResult = FromSchema<typeof clientResult>
 
@@ -81,7 +82,7 @@ export type ClientResponse = FromSchema<typeof clientResponse>
 /**
  * Any MCP client message.
  */
-export const singleClientMessage = {
+export const clientMessage = {
   anyOf: [
     pingRequest,
     initializeRequest,
@@ -100,6 +101,4 @@ export const singleClientMessage = {
     clientResponse,
   ],
 } as const satisfies Schema
-export type SingleClientMessage = FromSchema<typeof singleClientMessage>
-
-export type ClientMessage = SingleClientMessage | Array<ClientRequest> | Array<ClientResponse>
+export type ClientMessage = FromSchema<typeof clientMessage>

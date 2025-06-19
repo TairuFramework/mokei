@@ -1,6 +1,6 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
-import { content, role } from './content.js'
+import { contentBlock, role } from './content.js'
 import { notification, paginatedRequest, paginatedResult, request, result } from './rpc.js'
 
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L1296
@@ -49,11 +49,10 @@ export type Prompt = FromSchema<typeof prompt>
 
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L1341
 export const promptMessage = {
-  description: `Describes a message returned as part of a prompt.
-    
-    This is similar to "SamplingMessage", but also supports the embedding of resources from the MCP server.`,
+  description:
+    'Describes a message returned as part of a prompt.\n\nThis is similar to `SamplingMessage`, but also supports the embedding of\nresources from the MCP server.',
   properties: {
-    content,
+    content: contentBlock,
     role,
   },
   required: ['content', 'role'],

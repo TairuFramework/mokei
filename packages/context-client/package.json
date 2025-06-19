@@ -4,7 +4,15 @@
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei MCP client",
-  "keywords": ["model", "context", "protocol", "mcp", "client", "llm", "ai"],
+  "keywords": [
+    "model",
+    "context",
+    "protocol",
+    "mcp",
+    "client",
+    "llm",
+    "ai"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
@@ -16,7 +24,9 @@
   "exports": {
     ".": "./lib/index.js"
   },
-  "files": ["lib/*"],
+  "files": [
+    "lib/*"
+  ],
   "sideEffects": false,
   "scripts": {
     "build:clean": "del lib",

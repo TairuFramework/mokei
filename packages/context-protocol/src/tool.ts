@@ -1,7 +1,14 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
-import { content } from './content.js'
-import { notification, paginatedRequest, paginatedResult, request, result } from './rpc.js'
+import { contentBlock } from './content.js'
+import {
+  metadata,
+  notification,
+  paginatedRequest,
+  paginatedResult,
+  request,
+  result,
+} from './rpc.js'
 
 export const inputSchema = {
   description: 'A JSON Schema object defining the expected parameters for the tool.',
@@ -23,6 +30,34 @@ export const inputSchema = {
   type: 'object',
 } as const satisfies Schema
 export type InputSchema = FromSchema<typeof inputSchema>
+
+export const outputSchema = {
+  description:
+    "An optional JSON Schema object defining the structure of the tool's output returned in\nthe structuredContent field of a CallToolResult.",
+  properties: {
+    properties: {
+      additionalProperties: {
+        additionalProperties: true,
+        properties: {},
+        type: 'object',
+      },
+      type: 'object',
+    },
+    required: {
+      items: {
+        type: 'string',
+      },
+      type: 'array',
+    },
+    type: {
+      const: 'object',
+      type: 'string',
+    },
+  },
+  required: ['type'],
+  type: 'object',
+} as const satisfies Schema
+export type OutputSchema = FromSchema<typeof outputSchema>
 
 export const toolAnnotations = {
   description:
@@ -60,6 +95,7 @@ export type ToolAnnotations = FromSchema<typeof toolAnnotations>
 export const tool = {
   description: 'Definition for a tool the client can call.',
   properties: {
+    _meta: metadata,
     annotations: toolAnnotations,
     description: {
       description:
@@ -69,6 +105,12 @@ export const tool = {
     inputSchema,
     name: {
       description: 'The name of the tool.',
+      type: 'string',
+    },
+    outputSchema,
+    title: {
+      description:
+        'Intended for UI and end-user contexts — optimized to be human-readable and easily understood,\neven by those unfamiliar with domain-specific terminology.\n\nIf not provided, the name should be used for display (except for Tool,\nwhere `annotations.title` should be given precedence over using `name`,\nif present).',
       type: 'string',
     },
   },
@@ -111,24 +153,28 @@ export type CallToolRequest = FromSchema<typeof callToolRequest>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L80
 export const callToolResult = {
-  description: `The server's response to a tool call.
-    
-    Any errors that originate from the tool SHOULD be reported inside the result object, with "isError" set to true, _not_ as an MCP protocol-level error response. Otherwise, the LLM would not be able to see that an error occurred and self-correct.
-    
-    However, any errors in _finding_ the tool, an error indicating that the server does not support tool calls, or any other exceptional conditions, should be reported as an MCP error response.`,
+  description:
+    'The server\'s response to a tool call.\n\nAny errors that originate from the tool SHOULD be reported inside the result object, with "isError" set to true, _not_ as an MCP protocol-level error response. Otherwise, the LLM would not be able to see that an error occurred and self-correct.\n\nHowever, any errors in _finding_ the tool, an error indicating that the server does not support tool calls, or any other exceptional conditions, should be reported as an MCP error response.',
   allOf: [
     result,
     {
       properties: {
         content: {
-          items: content,
+          description:
+            'A list of content objects that represent the unstructured result of the tool call.',
+          items: contentBlock,
           type: 'array',
         },
         isError: {
-          description: `Whether the tool call ended in an error.
-        
-        If not set, this is assumed to be false (the call was successful).`,
+          description:
+            'Whether the tool call ended in an error.\n\nIf not set, this is assumed to be false (the call was successful).',
           type: 'boolean',
+        },
+        structuredContent: {
+          additionalProperties: {},
+          description:
+            'An optional JSON object that represents the structured result of the tool call.',
+          type: 'object',
         },
       },
       required: ['content'],

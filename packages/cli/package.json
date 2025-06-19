@@ -4,13 +4,25 @@
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei CLI",
-  "keywords": ["model", "context", "protocol", "mcp", "llm", "ai", "cli"],
+  "keywords": [
+    "model",
+    "context",
+    "protocol",
+    "mcp",
+    "llm",
+    "ai",
+    "cli"
+  ],
   "type": "module",
   "engines": {
     "node": ">=22.0.0"
   },
   "main": "dist/index.js",
-  "files": ["/bin", "/dist", "/oclif.manifest.json"],
+  "files": [
+    "/bin",
+    "/dist",
+    "/oclif.manifest.json"
+  ],
   "bin": {
     "mokei": "./bin/run.js"
   },
@@ -29,7 +41,9 @@
     "bin": "mokei",
     "dirname": "mokei",
     "commands": "./dist/commands",
-    "plugins": ["@oclif/plugin-help"],
+    "plugins": [
+      "@oclif/plugin-help"
+    ],
     "topicSeparator": " ",
     "topics": {}
   },

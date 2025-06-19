@@ -1,20 +1,20 @@
 import '@mantine/core/styles.css'
 import {
   AppShell,
+  createTheme,
   Group,
   Image,
   type MantineColorsTuple,
   MantineProvider,
   Title,
-  createTheme,
 } from '@mantine/core'
 import type { Protocol } from '@mokei/host-protocol'
-import { Outlet, createRootRoute } from '@tanstack/react-router'
+import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { Provider as JotaiProvider } from 'jotai'
-import { Suspense, lazy } from 'react'
+import { lazy, Suspense } from 'react'
 
 import { EnkakuProvider } from '../enkaku/Provider.js'
-import { type HostClient, createHostClient } from '../host/client.js'
+import { createHostClient, type HostClient } from '../host/client.js'
 
 const TanStackRouterDevtools =
   process.env.NODE_ENV === 'production'

@@ -4,7 +4,14 @@
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei Host monitor",
-  "keywords": ["model", "context", "protocol", "mcp", "llm", "ai"],
+  "keywords": [
+    "model",
+    "context",
+    "protocol",
+    "mcp",
+    "llm",
+    "ai"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
@@ -16,7 +23,10 @@
   "exports": {
     ".": "./lib/index.js"
   },
-  "files": ["dist/*", "lib/*"],
+  "files": [
+    "dist/*",
+    "lib/*"
+  ],
   "sideEffects": false,
   "scripts": {
     "app:copy": "del dist && cp -r ../../monitor/dist ./dist",

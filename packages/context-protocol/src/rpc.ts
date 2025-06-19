@@ -1,6 +1,6 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
-export const LATEST_PROTOCOL_VERSION = '2025-03-26'
+export const LATEST_PROTOCOL_VERSION = '2025-06-18'
 export const JSONRPC_VERSION = '2.0'
 
 export const PARSE_ERROR = -32700
@@ -16,11 +16,12 @@ export const requestId = {
 } as const satisfies Schema
 export type RequestID = FromSchema<typeof requestId>
 
-export const paramsMeta = {
-  additionalProperties: {},
-  description:
-    'This parameter name is reserved by MCP to allow clients and servers to attach additional metadata to their notifications.',
+// https://modelcontextprotocol.io/specification/2025-06-18/basic/index#meta
+export const metadata = {
   type: 'object',
+  description:
+    'See [specification/2025-06-18/basic/index#general-fields] for notes on _meta usage.',
+  additionalProperties: {},
 } as const satisfies Schema
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1146
@@ -33,7 +34,7 @@ export const notification = {
     params: {
       additionalProperties: {},
       properties: {
-        _meta: paramsMeta,
+        _meta: metadata,
       },
       type: 'object',
     },
@@ -163,18 +164,11 @@ export const paginatedRequest = {
   ],
 } as const satisfies Schema
 
-export const resultMeta = {
-  additionalProperties: {},
-  description:
-    'This result property is reserved by the protocol to allow clients and servers to attach additional metadata to their responses.',
-  type: 'object',
-} as const satisfies Schema
-
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1650
 export const result = {
   additionalProperties: {},
   properties: {
-    _meta: resultMeta,
+    _meta: metadata,
   },
   type: 'object',
 } as const satisfies Schema
@@ -182,7 +176,7 @@ export const result = {
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1188
 export const paginatedResult = {
   properties: {
-    _meta: resultMeta,
+    _meta: metadata,
     nextCursor: cursor,
   },
   type: 'object',
@@ -233,6 +227,4 @@ export const pingRequest = {
 } as const satisfies Schema
 export type PingRequest = FromSchema<typeof pingRequest>
 
-export type SingleMessage = Notification | Request | Response
-
-export type AnyMessage = SingleMessage | Array<Request> | Array<Response>
+export type AnyMessage = Notification | Request | Response

@@ -4,7 +4,16 @@
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Fetch MCP server",
-  "keywords": ["model", "context", "protocol", "mcp", "server", "llm", "ai", "fetch"],
+  "keywords": [
+    "model",
+    "context",
+    "protocol",
+    "mcp",
+    "server",
+    "llm",
+    "ai",
+    "fetch"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
@@ -17,7 +26,9 @@
     ".": "./lib/index.js",
     "./config": "./lib/config.js"
   },
-  "files": ["lib/*"],
+  "files": [
+    "lib/*"
+  ],
   "sideEffects": false,
   "scripts": {
     "build:clean": "del lib",

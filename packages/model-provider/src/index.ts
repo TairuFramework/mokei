@@ -10,7 +10,7 @@
  * @module model-provider
  */
 
-import { type Validator, asType, createValidator } from '@enkaku/schema'
+import { asType, createValidator, type Validator } from '@enkaku/schema'
 import type { Tool } from '@mokei/context-protocol'
 
 const objectValidator = createValidator({ type: 'object' })
@@ -23,7 +23,7 @@ export function tryParseJSON<T = Record<string, unknown>>(
   if (typeof value === 'string') {
     try {
       parsedValue = JSON.parse(value)
-    } catch (error) {
+    } catch {
       throw new Error(`Failed to parse JSON string: ${value}`)
     }
   } else {

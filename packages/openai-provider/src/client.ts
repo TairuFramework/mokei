@@ -1,5 +1,9 @@
-import type { RequestParams } from '@mokei/model-provider'
-import type { AnyReplyRequest, SingleReplyRequest, StreamReplyRequest } from '@mokei/model-provider'
+import type {
+  AnyReplyRequest,
+  RequestParams,
+  SingleReplyRequest,
+  StreamReplyRequest,
+} from '@mokei/model-provider'
 import { type EventSourceMessage, EventSourceParserStream } from 'eventsource-parser/stream'
 import ky, { type KyInstance, type ResponsePromise } from 'ky'
 

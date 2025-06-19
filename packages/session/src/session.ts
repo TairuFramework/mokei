@@ -3,7 +3,7 @@ import { EventEmitter } from '@enkaku/event'
 import { fromStream } from '@enkaku/generator'
 import type { CallToolResult } from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
-import { ContextHost, type ContextTool, type EnableToolsArg, type SpawnParams } from '@mokei/host'
+import { ContextHost, type ContextTool, type EnableToolsArg } from '@mokei/host'
 import type {
   AggregatedMessage,
   FunctionToolCall,

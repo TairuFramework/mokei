@@ -1,11 +1,6 @@
 import { lazy } from '@enkaku/async'
 import { createValidator } from '@enkaku/schema'
 import { createReadable } from '@enkaku/stream'
-import {
-  LATEST_PROTOCOL_VERSION,
-  METHOD_NOT_FOUND,
-  singleServerMessage,
-} from '@mokei/context-protocol'
 import type {
   CallToolRequest,
   CallToolResult,
@@ -17,6 +12,8 @@ import type {
   CompleteResult,
   CreateMessageRequest,
   CreateMessageResult,
+  ElicitRequest,
+  ElicitResult,
   GetPromptRequest,
   GetPromptResult,
   InitializeResult,
@@ -32,19 +29,25 @@ import type {
   ServerMessage,
   ServerNotification,
   ServerRequest,
-  SingleServerMessage,
   Tool,
 } from '@mokei/context-protocol'
+import { LATEST_PROTOCOL_VERSION, METHOD_NOT_FOUND, serverMessage } from '@mokei/context-protocol'
 import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
 
 import type { ClientTransport } from './types.js'
 
-const validateServerMessage = createValidator(singleServerMessage)
+const validateServerMessage = createValidator(serverMessage)
+
+export type ElicitHandler = (
+  params: ElicitRequest['params'],
+  signal: AbortSignal,
+) => ElicitResult | Promise<ElicitResult>
 
 export type CreateMessageHandler = (
   params: CreateMessageRequest['params'],
   signal: AbortSignal,
 ) => CreateMessageResult | Promise<CreateMessageResult>
+
 export type ListRootsHandler = (signal: AbortSignal) => Array<Root> | Promise<Array<Root>>
 
 export type ClientEvents = {
@@ -58,7 +61,6 @@ type ClientTypes = {
   Events: ClientEvents
   MessageIn: ServerMessage
   MessageOut: ClientMessage
-  HandleMessage: SingleServerMessage
   HandleNotification: HandleNotification
   HandleRequest: ServerRequest
   SendNotifications: ClientNotifications
@@ -78,6 +80,7 @@ export type UnknownContextTypes = {
 
 export type ClientParams = {
   createMessage?: CreateMessageHandler
+  elicit?: ElicitHandler
   listRoots?: Array<Root> | ListRootsHandler
   transport: ClientTransport
 }
@@ -86,6 +89,7 @@ export class ContextClient<
   T extends ContextTypes = UnknownContextTypes,
 > extends ContextRPC<ClientTypes> {
   #createMessage?: CreateMessageHandler
+  #elicit?: ElicitHandler
   #initialized: PromiseLike<InitializeResult>
   #listRoots?: Array<Root> | ListRootsHandler
   #notificationController: ReadableStreamDefaultController<HandleNotification>
@@ -122,7 +126,7 @@ export class ContextClient<
     if (next.done) {
       throw new Error('Server did not respond to initialize request')
     }
-    if (Array.isArray(next.value) || next.value.id !== id) {
+    if (next.value.id !== id) {
       throw new Error('Server did not correctly respond to initialize request')
     }
     // Start listening for incoming messages
@@ -151,6 +155,12 @@ export class ContextClient<
 
   async _handleRequest(request: ServerRequest, signal: AbortSignal): Promise<ClientResult> {
     switch (request.method) {
+      case 'elicitation/create': {
+        if (this.#elicit != null) {
+          return await this.#elicit(request.params, signal)
+        }
+        break
+      }
       case 'roots/list': {
         const roots =
           this.#listRoots == null

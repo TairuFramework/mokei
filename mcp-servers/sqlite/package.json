@@ -4,7 +4,16 @@
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "SQLite MCP server",
-  "keywords": ["model", "context", "protocol", "mcp", "server", "llm", "ai", "sqlite"],
+  "keywords": [
+    "model",
+    "context",
+    "protocol",
+    "mcp",
+    "server",
+    "llm",
+    "ai",
+    "sqlite"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
@@ -16,7 +25,9 @@
   "exports": {
     ".": "./lib/index.js"
   },
-  "files": ["lib/*"],
+  "files": [
+    "lib/*"
+  ],
   "sideEffects": false,
   "scripts": {
     "build:clean": "del lib",

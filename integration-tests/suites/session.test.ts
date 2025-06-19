@@ -36,7 +36,7 @@ describe('Session', () => {
         }) as ModelProvider<ProviderTypes>,
       },
     ],
-  ])('using the %s provider', (name, config) => {
+  ])('using the %s provider', (_name, config) => {
     test('executes a tool call', async () => {
       const reply = await session.chat({
         provider: config.provider,

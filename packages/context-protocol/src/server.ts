@@ -1,12 +1,13 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { completeResult } from './completion.js'
+import { elicitRequest } from './elicitation.js'
 import { initializeResult } from './initialize.js'
 import { loggingMessageNotification } from './logging.js'
 import { getPromptResult, listPromptsResult, promptListChangedNotification } from './prompt.js'
 import {
-  listResourceTemplatesResult,
   listResourcesResult,
+  listResourceTemplatesResult,
   readResourceResult,
   resourceListChangedNotification,
   resourceUpdatedNotification,
@@ -26,7 +27,7 @@ import { callToolResult, listToolsResult, toolListChangedNotification } from './
 // Server messages from https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.ts#L1089
 
 export const serverRequest = {
-  anyOf: [pingRequest, createMessageRequest, listRootsRequest],
+  anyOf: [pingRequest, createMessageRequest, listRootsRequest, elicitRequest],
 } as const satisfies Schema
 export type ServerRequest = FromSchema<typeof serverRequest>
 
@@ -79,9 +80,7 @@ export type ServerResponse = FromSchema<typeof serverResponse>
 /**
  * Any MCP server message.
  */
-export const singleServerMessage = {
+export const serverMessage = {
   anyOf: [serverRequest, serverNotification, serverResponse],
 } as const satisfies Schema
-export type SingleServerMessage = FromSchema<typeof singleServerMessage>
-
-export type ServerMessage = SingleServerMessage | Array<ServerRequest> | Array<ServerResponse>
+export type ServerMessage = FromSchema<typeof serverMessage>

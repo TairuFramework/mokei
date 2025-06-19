@@ -1,11 +1,5 @@
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 import { createValidator } from '@enkaku/schema'
-import {
-  INVALID_PARAMS,
-  LATEST_PROTOCOL_VERSION,
-  METHOD_NOT_FOUND,
-  singleClientMessage,
-} from '@mokei/context-protocol'
 import type {
   CallToolRequest,
   CallToolResult,
@@ -14,22 +8,29 @@ import type {
   ClientRequest,
   CreateMessageRequest,
   CreateMessageResult,
+  ElicitRequest,
+  ElicitResult,
   GetPromptRequest,
   GetPromptResult,
   Implementation,
   InitializeResult,
+  ListRootsResult,
   Log,
   LoggingLevel,
   ProgressNotification,
   Prompt,
-  Root,
   ServerCapabilities,
   ServerMessage,
   ServerNotifications,
   ServerRequests,
   ServerResult,
-  SingleClientMessage,
   Tool,
+} from '@mokei/context-protocol'
+import {
+  clientMessage,
+  INVALID_PARAMS,
+  LATEST_PROTOCOL_VERSION,
+  METHOD_NOT_FOUND,
 } from '@mokei/context-protocol'
 import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
 
@@ -58,7 +59,7 @@ const LOGGING_LEVELS: Record<LoggingLevel, number> = {
   debug: 7,
 } as const
 
-const validateClientMessage = createValidator(singleClientMessage)
+const validateClientMessage = createValidator(clientMessage)
 
 export type ServerConfig = {
   name: string
@@ -85,7 +86,6 @@ type ServerTypes = {
   Events: ServerEvents
   MessageIn: ClientMessage
   MessageOut: ServerMessage
-  HandleMessage: SingleClientMessage
   HandleNotification: HandleNotification
   HandleRequest: ClientRequest
   SendNotifications: ServerNotifications
@@ -145,8 +145,12 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this.events.emit('log', { level, data, logger })
   }
 
-  listRoots(): SentRequest<Array<Root>> {
-    return this.requestValue('roots/list', {}, (result) => result.roots)
+  elicit(params: ElicitRequest['params']): SentRequest<ElicitResult> {
+    return this.request('elicitation/create', params)
+  }
+
+  listRoots(): SentRequest<ListRootsResult> {
+    return this.request('roots/list', {})
   }
 
   createMessage(params: CreateMessageRequest['params']): SentRequest<CreateMessageResult> {

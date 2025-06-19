@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { type Server, type Socket, createServer } from 'node:net'
+import { createServer, type Server, type Socket } from 'node:net'
 import { createTransportStream } from '@enkaku/node-streams-transport'
 import { type ProcedureHandlers, serve } from '@enkaku/server'
 import { SocketTransport } from '@enkaku/socket-transport'

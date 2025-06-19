@@ -1,6 +1,5 @@
 import { DirectTransports, type TransportType } from '@enkaku/transport'
 import { jest } from '@jest/globals'
-import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import type {
   CallToolResult,
   ClientMessage,
@@ -13,6 +12,7 @@ import type {
   ServerMessage,
   ServerRequest,
 } from '@mokei/context-protocol'
+import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import type { SentRequest as Request } from '@mokei/context-rpc'
 
 import { type ClientParams, ContextClient } from '../src/index.js'

@@ -1,4 +1,4 @@
-import { type FromSchema, type Schema, createValidator } from '@enkaku/schema'
+import { createValidator, type FromSchema, type Schema } from '@enkaku/schema'
 import { INVALID_PARAMS, type InputSchema as ToolInputSchema } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
 

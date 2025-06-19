@@ -1,16 +1,13 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "ignore": ["**/dist", "**/routeTree.gen.ts", "./website/.docusaurus", "./website/build"]
+    "includes": ["**", "!**/dist", "!**/routeTree.gen.ts", "!website/.docusaurus", "!website/build"]
   },
-  "organizeImports": {
-    "enabled": true,
-    "ignore": []
-  },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "formatter": {
     "enabled": true,
     "formatWithErrors": false,
-    "ignore": [],
+    "includes": ["**"],
     "attributePosition": "auto",
     "indentStyle": "space",
     "indentWidth": 2,
@@ -30,9 +27,21 @@
   },
   "linter": {
     "enabled": true,
-    "ignore": [],
+    "includes": ["**"],
     "rules": {
-      "recommended": true
+      "recommended": true,
+      "style": {
+        "noParameterAssign": "error",
+        "useAsConstAssertion": "error",
+        "useDefaultParameterLast": "error",
+        "useEnumInitializers": "error",
+        "useSelfClosingElements": "error",
+        "useSingleVarDeclarator": "error",
+        "noUnusedTemplateLiteral": "error",
+        "useNumberNamespace": "error",
+        "noInferrableTypes": "error",
+        "noUselessElse": "error"
+      }
     }
   },
   "vcs": {

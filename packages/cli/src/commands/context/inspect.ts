@@ -1,4 +1,4 @@
-import { type HostedContext, createHostedContext } from '@mokei/host'
+import { createHostedContext, type HostedContext } from '@mokei/host'
 import { Args, Command } from '@oclif/core'
 import ora from 'ora'
 

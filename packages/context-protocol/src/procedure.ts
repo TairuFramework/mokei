@@ -1,5 +1,6 @@
 import type { CompleteRequest, CompleteResult } from './completion.js'
-import type { InitializeRequest, InitializeResult, InitializedNotification } from './initialize.js'
+import type { ElicitRequest, ElicitResult } from './elicitation.js'
+import type { InitializedNotification, InitializeRequest, InitializeResult } from './initialize.js'
 import type { SetLevelRequest } from './logging.js'
 import type {
   GetPromptRequest,
@@ -9,10 +10,10 @@ import type {
   PromptListChangedNotification,
 } from './prompt.js'
 import type {
-  ListResourceTemplatesRequest,
-  ListResourceTemplatesResult,
   ListResourcesRequest,
   ListResourcesResult,
+  ListResourceTemplatesRequest,
+  ListResourceTemplatesResult,
   ReadResourceRequest,
   ReadResourceResult,
   ResourceListChangedNotification,
@@ -96,6 +97,10 @@ export type ServerNotifications = {
 }
 
 export type ServerRequests = {
+  'elicitation/create': {
+    Params: ElicitRequest['params']
+    Result: ElicitResult
+  }
   'roots/list': {
     Params: ListRootsRequest['params']
     Result: ListRootsResult

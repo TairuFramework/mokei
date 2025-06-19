@@ -17,6 +17,12 @@ export const clientCapabilities = {
   description:
     'Capabilities a client may support. Known capabilities are defined here, in this schema, but this is not a closed set: any client can define its own, additional capabilities.',
   properties: {
+    elicitation: {
+      additionalProperties: true,
+      description: 'Present if the client supports elicitation from the server.',
+      properties: {},
+      type: 'object',
+    },
     experimental: experimentalCapabilities,
     roots: {
       description: 'Present if the client supports listing roots.',
@@ -156,9 +162,8 @@ export const initializeResult = {
       properties: {
         capabilities: serverCapabilities,
         instructions: {
-          description: `Instructions describing how to use the server and its features.
-        
-        This can be used by clients to improve the LLM's understanding of available tools, resources, etc. It can be thought of like a "hint" to the model. For example, this information MAY be added to the system prompt.`,
+          description:
+            'Instructions describing how to use the server and its features.\n\nThis can be used by clients to improve the LLM\'s understanding of available tools, resources, etc. It can be thought of like a "hint" to the model. For example, this information MAY be added to the system prompt.',
           type: 'string',
         },
         protocolVersion: {

@@ -2,7 +2,7 @@ import { openSync, rmSync } from 'node:fs'
 import { setTimeout } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { Client } from '@enkaku/client'
-import { SocketTransport, connectSocket } from '@enkaku/socket-transport'
+import { connectSocket, SocketTransport } from '@enkaku/socket-transport'
 import {
   type ClientMessage,
   DEFAULT_SOCKET_PATH,

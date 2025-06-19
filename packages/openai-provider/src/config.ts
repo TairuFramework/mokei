@@ -1,4 +1,4 @@
-import { type FromSchema, type Schema, createValidator } from '@enkaku/schema'
+import { createValidator, type FromSchema, type Schema } from '@enkaku/schema'
 
 export const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 export const DEFAULT_TIMEOUT = 30_000
