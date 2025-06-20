@@ -10,10 +10,15 @@
  * @module context-client
  */
 
-export {
-  type ClientParams,
-  ContextClient,
-  type ContextTypes,
-  type UnknownContextTypes,
+export type {
+  ClientParams,
+  ContextTypes,
+  CreateMessageHandler,
+  ElicitHandler,
+  ListRootsHandler,
+  PromptParams,
+  ToolParams,
+  UnknownContextTypes,
 } from './client.js'
+export { ContextClient } from './client.js'
 export type { ClientTransport } from './types.js'

@@ -92,7 +92,7 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
                 toolCalls: part.message.tool_calls.map((call) => {
                   return {
                     name: call.function.name,
-                    input:
+                    arguments:
                       typeof call.function.arguments === 'string'
                         ? call.function.arguments
                         : JSON.stringify(call.function.arguments),

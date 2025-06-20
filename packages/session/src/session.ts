@@ -199,12 +199,12 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     signal?: AbortSignal,
   ): SentRequest<CallToolResult> {
     if (signal == null) {
-      return this.#contextHost.callNamespacedTool(toolCall.name, JSON.parse(toolCall.input))
+      return this.#contextHost.callNamespacedTool(toolCall.name, JSON.parse(toolCall.arguments))
     }
     if (signal.aborted) {
       throw signal.reason
     }
-    const request = this.#contextHost.callNamespacedTool(toolCall.name, JSON.parse(toolCall.input))
+    const request = this.#contextHost.callNamespacedTool(toolCall.name, JSON.parse(toolCall.arguments))
     signal.addEventListener('abort', () => request.cancel())
     return request
   }

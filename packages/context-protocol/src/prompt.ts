@@ -12,12 +12,18 @@ export const promptArgument = {
       type: 'string',
     },
     name: {
-      description: 'The name of the argument.',
+      description:
+        "Intended for programmatic or logical use, but used as a display name in past specs or fallback (if title isn't present).",
       type: 'string',
     },
     required: {
       description: 'Whether this argument must be provided.',
       type: 'boolean',
+    },
+    title: {
+      description:
+        'Intended for UI and end-user contexts — optimized to be human-readable and easily understood,\neven by those unfamiliar with domain-specific terminology.\n\nIf not provided, the name should be used for display (except for Tool,\nwhere `annotations.title` should be given precedence over using `name`,\nif present).',
+      type: 'string',
     },
   },
   required: ['name'],

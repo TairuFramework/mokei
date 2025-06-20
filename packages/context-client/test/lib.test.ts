@@ -6,6 +6,9 @@ import type {
   ClientRequest,
   CreateMessageRequest,
   CreateMessageResult,
+  ElicitRequest,
+  ElicitResult,
+  InitializeRequest,
   InitializeResult,
   Log,
   Root,
@@ -15,6 +18,7 @@ import type {
 import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import type { SentRequest as Request } from '@mokei/context-rpc'
 
+import { DEFAULT_INITIALIZE_PARAMS } from '../src/client.js'
 import { type ClientParams, ContextClient } from '../src/index.js'
 
 const DEFAULT_INITIALIZE_RESULT: InitializeResult = {
@@ -46,12 +50,16 @@ async function executeClientRequest<T>(
   runRequest: RunClientRequest<T>,
   expectedRequest: Omit<ClientRequest, 'jsonrpc' | 'id'>,
   result: unknown,
+  expectedInitializeParams?: InitializeRequest['params'],
 ): Promise<T> {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const client = new ContextClient({ transport: transports.client })
 
   client.initialize()
-  await handleServerInitialize(transports.server)
+  const initRequest = await handleServerInitialize(transports.server)
+  if (expectedInitializeParams != null) {
+    expect(initRequest.params).toEqual(expectedInitializeParams)
+  }
 
   const request = runRequest(client)
   const incomingRequest = await transports.server.read()
@@ -68,21 +76,31 @@ async function expectClientResponse(
   params: Omit<ClientParams, 'transport'>,
   request: Omit<ServerRequest, 'jsonrpc' | 'id'>,
   response: Record<string, unknown>,
+  expectedInitializeParams?: Partial<InitializeRequest['params']>,
 ): Promise<void> {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const client = new ContextClient({ ...params, transport: transports.client })
+
   client.initialize()
-  await handleServerInitialize(transports.server)
+  const initRequest = await handleServerInitialize(transports.server)
+  if (expectedInitializeParams != null) {
+    expect(initRequest.params).toEqual({
+      ...DEFAULT_INITIALIZE_PARAMS,
+      ...expectedInitializeParams,
+    })
+  }
+
   transports.server.write({ jsonrpc: '2.0' as const, id: 1, ...request } as ServerRequest)
   await expect(transports.server.read()).resolves.toEqual({
     done: false,
     value: { jsonrpc: '2.0', id: 1, ...response },
   })
+
   await transports.dispose()
 }
 
 describe('ContextClient', () => {
-  test('initializes', async () => {
+  test('supports initialization lifecycle', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
 
     const client = new ContextClient({ transport: transports.client })
@@ -98,7 +116,7 @@ describe('ContextClient', () => {
         capabilities: {},
         clientInfo: {
           name: 'Mokei',
-          version: '0.1.0',
+          version: '0.4.0',
         },
         protocolVersion: LATEST_PROTOCOL_VERSION,
       },
@@ -108,7 +126,7 @@ describe('ContextClient', () => {
     await expect(initializedPromise).resolves.toEqual(DEFAULT_INITIALIZE_RESULT)
   })
 
-  test('supports logs', async () => {
+  test('supports logs notifications', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({ transport: transports.client })
 
@@ -138,16 +156,17 @@ describe('ContextClient', () => {
     ])
   })
 
-  test('supports roots list requests', async () => {
+  test('supports incoming roots list requests', async () => {
     const roots: Array<Root> = [{ name: 'test', uri: 'test://test' }]
     await expectClientResponse(
       { listRoots: roots },
       { method: 'roots/list' },
       { result: { roots } },
+      { capabilities: { roots: {} } },
     )
   })
 
-  test('supports sampling messages requests', async () => {
+  test('supports incoming sampling messages requests', async () => {
     const params: CreateMessageRequest['params'] = {
       messages: [{ role: 'user', content: { type: 'text', text: 'hello' } }],
       maxTokens: 100,
@@ -163,11 +182,35 @@ describe('ContextClient', () => {
       { createMessage },
       { method: 'sampling/createMessage', params },
       { result },
+      { capabilities: { sampling: {} } },
     )
     expect(createMessage).toHaveBeenCalledWith(params, expect.any(AbortSignal))
   })
 
-  test('supports completion calls', async () => {
+  test('supports incoming elicit requests', async () => {
+    const params: ElicitRequest['params'] = {
+      message: 'Run this test?',
+      requestedSchema: {
+        type: 'object',
+        properties: { run: { type: 'string', enum: ['once', 'always'] } },
+      },
+    }
+    const result: ElicitResult = {
+      action: 'accept',
+      content: { run: 'once' },
+    }
+    const elicit = jest.fn(() => result)
+
+    await expectClientResponse(
+      { elicit },
+      { method: 'elicitation/create', params },
+      { result },
+      { capabilities: { elicitation: {} } },
+    )
+    expect(elicit).toHaveBeenCalledWith(params, expect.any(AbortSignal))
+  })
+
+  test('supports outgoing completion requests', async () => {
     const params = {
       ref: { type: 'ref/prompt', name: 'test' },
       argument: { name: 'test', value: 'one' },
@@ -179,10 +222,10 @@ describe('ContextClient', () => {
       { method: 'completion/complete', params },
       { completion },
     )
-    await expect(request).resolves.toEqual(completion)
+    await expect(request).resolves.toEqual({ completion })
   })
 
-  describe('supports prompt calls', () => {
+  describe('supports outgoing prompt requests', () => {
     test('lists available prompts', async () => {
       const prompts = [
         { name: 'first', description: 'test', arguments: { type: 'object' } },
@@ -193,7 +236,7 @@ describe('ContextClient', () => {
         { method: 'prompts/list', params: {} },
         { prompts },
       )
-      await expect(request).resolves.toEqual(prompts)
+      await expect(request).resolves.toEqual({ prompts })
     })
 
     test('gets a prompt', async () => {
@@ -201,7 +244,7 @@ describe('ContextClient', () => {
         messages: [{ role: 'assistant', content: { type: 'text', text: 'Hello World!' } }],
       }
       const request = executeClientRequest(
-        (client) => client.getPrompt('hello', { name: 'World' }),
+        (client) => client.getPrompt({ name: 'hello', arguments: { name: 'World' } }),
         {
           method: 'prompts/get',
           params: {
@@ -215,7 +258,7 @@ describe('ContextClient', () => {
     })
   })
 
-  describe('supports resource calls', () => {
+  describe('supports outgoing resource requests', () => {
     test('lists available resources', async () => {
       const resources = [
         { name: 'foo', uri: 'test://foo' },
@@ -226,7 +269,7 @@ describe('ContextClient', () => {
         { method: 'resources/list', params: {} },
         { resources },
       )
-      await expect(request).resolves.toEqual(resources)
+      await expect(request).resolves.toEqual({ resources })
     })
 
     test('lists available resource templates', async () => {
@@ -239,7 +282,7 @@ describe('ContextClient', () => {
         { method: 'resources/templates/list', params: {} },
         { resourceTemplates },
       )
-      await expect(request).resolves.toEqual(resourceTemplates)
+      await expect(request).resolves.toEqual({ resourceTemplates })
     })
 
     test('reads a resource', async () => {
@@ -253,7 +296,7 @@ describe('ContextClient', () => {
     })
   })
 
-  describe('supports tool calls', () => {
+  describe('supports outgoing tool requests', () => {
     test('lists available tools', async () => {
       const tools = [
         { name: 'first', description: 'test', inputSchema: { type: 'object' } },
@@ -264,7 +307,7 @@ describe('ContextClient', () => {
         { method: 'tools/list', params: {} },
         { tools },
       )
-      await expect(request).resolves.toEqual(tools)
+      await expect(request).resolves.toEqual({ tools })
     })
 
     test('calls a tool', async () => {
@@ -272,7 +315,7 @@ describe('ContextClient', () => {
         content: [{ type: 'text', text: 'hello World' }],
       }
       const request = executeClientRequest(
-        (client) => client.callTool('hello', { name: 'World' }),
+        (client) => client.callTool({ name: 'hello', arguments: { name: 'World' } }),
         {
           method: 'tools/call',
           params: {

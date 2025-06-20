@@ -105,9 +105,17 @@ export type ServerCapabilities = FromSchema<typeof serverCapabilities>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L582
 export const implementation = {
-  description: 'Describes the name and version of an MCP implementation.',
+  description:
+    'Describes the name and version of an MCP implementation, with an optional title for UI representation.',
   properties: {
     name: {
+      description:
+        "Intended for programmatic or logical use, but used as a display name in past specs or fallback (if title isn't present).",
+      type: 'string',
+    },
+    title: {
+      description:
+        'Intended for UI and end-user contexts — optimized to be human-readable and easily understood,\neven by those unfamiliar with domain-specific terminology.\n\nIf not provided, the name should be used for display (except for Tool,\nwhere `annotations.title` should be given precedence over using `name`,\nif present).',
       type: 'string',
     },
     version: {

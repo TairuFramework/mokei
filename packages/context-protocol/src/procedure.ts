@@ -19,7 +19,7 @@ import type {
   ResourceListChangedNotification,
 } from './resource.js'
 import type { ListRootsRequest, ListRootsResult, RootsListChangedNotification } from './root.js'
-import type { CancelledNotification, PingRequest, ProgressNotification } from './rpc.js'
+import type { CancelledNotification, PingRequest, ProgressNotification, Result } from './rpc.js'
 import type { CreateMessageRequest, CreateMessageResult } from './sampling.js'
 import type {
   CallToolRequest,
@@ -38,7 +38,7 @@ export type CommonRequests = {
   ping: {
     Method: PingRequest['method']
     Params: PingRequest['params']
-    Result: undefined
+    Result: Result
   }
 }
 
@@ -58,7 +58,7 @@ export type ClientRequests = {
   }
   'logging/setLevel': {
     Params: SetLevelRequest['params']
-    Result: undefined
+    Result: Result
   }
   'prompts/get': {
     Params: GetPromptRequest['params']

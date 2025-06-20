@@ -51,10 +51,10 @@ test('executes a tool call', async () => {
     const toolCall = aggregatedMessage.toolCalls[0]
     expect(toolCall).toMatchObject({
       name: 'fetch:get_markdown',
-      input: expect.stringContaining('https://mokei.dev'),
+      arguments: expect.stringContaining('https://mokei.dev'),
     })
 
-    const toolResult = await host.callNamespacedTool(toolCall.name, JSON.parse(toolCall.input))
+    const toolResult = await host.callNamespacedTool(toolCall.name, JSON.parse(toolCall.arguments))
     expect(toolResult).toMatchObject({
       content: [{ type: 'text', text: expect.stringContaining('Mokei') }],
       isError: false,

@@ -4,6 +4,7 @@ import { createReadable } from '@enkaku/stream'
 import type {
   CallToolRequest,
   CallToolResult,
+  ClientCapabilities,
   ClientMessage,
   ClientNotifications,
   ClientRequests,
@@ -16,20 +17,27 @@ import type {
   ElicitResult,
   GetPromptRequest,
   GetPromptResult,
+  InitializeRequest,
   InitializeResult,
+  ListPromptsRequest,
+  ListPromptsResult,
+  ListResourcesRequest,
+  ListResourcesResult,
+  ListResourceTemplatesRequest,
+  ListResourceTemplatesResult,
+  ListToolsRequest,
+  ListToolsResult,
   Log,
-  LoggingLevel,
+  Metadata,
   ProgressNotification,
-  Prompt,
   ReadResourceRequest,
   ReadResourceResult,
-  Resource,
-  ResourceTemplate,
+  Result,
   Root,
   ServerMessage,
   ServerNotification,
   ServerRequest,
-  Tool,
+  SetLevelRequest,
 } from '@mokei/context-protocol'
 import { LATEST_PROTOCOL_VERSION, METHOD_NOT_FOUND, serverMessage } from '@mokei/context-protocol'
 import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
@@ -37,6 +45,15 @@ import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
 import type { ClientTransport } from './types.js'
 
 const validateServerMessage = createValidator(serverMessage)
+
+export const DEFAULT_INITIALIZE_PARAMS: InitializeRequest['params'] = {
+  capabilities: {},
+  clientInfo: {
+    name: 'Mokei',
+    version: '0.4.0',
+  },
+  protocolVersion: LATEST_PROTOCOL_VERSION,
+}
 
 export type ElicitHandler = (
   params: ElicitRequest['params'],
@@ -78,6 +95,20 @@ export type UnknownContextTypes = {
   Tools: Record<string, Record<string, unknown>>
 }
 
+export type PromptParams<T extends ContextTypes> = {
+  name: keyof T['Prompts'] & string
+  arguments: T['Prompts'][keyof T['Prompts']] extends undefined
+    ? never
+    : T['Prompts'][keyof T['Prompts']]
+  _meta?: Metadata
+}
+
+export type ToolParams<T extends ContextTypes> = {
+  name: keyof T['Tools'] & string
+  arguments: T['Tools'][keyof T['Tools']] extends undefined ? never : T['Tools'][keyof T['Tools']]
+  _meta?: Metadata
+}
+
 export type ClientParams = {
   createMessage?: CreateMessageHandler
   elicit?: ElicitHandler
@@ -99,6 +130,7 @@ export class ContextClient<
     super({ validateMessageIn: validateServerMessage, transport: params.transport })
     const [stream, controller] = createReadable<HandleNotification>()
     this.#createMessage = params.createMessage
+    this.#elicit = params.elicit
     this.#initialized = lazy(() => this.#initialize())
     this.#listRoots = params.listRoots
     this.#notificationController = controller
@@ -107,19 +139,23 @@ export class ContextClient<
 
   async #initialize(): Promise<InitializeResult> {
     const id = this._getNextRequestID()
+    // Build capabilities
+    const capabilities: ClientCapabilities = {}
+    if (this.#elicit != null) {
+      capabilities.elicitation = {}
+    }
+    if (this.#createMessage != null) {
+      capabilities.sampling = {}
+    }
+    if (this.#listRoots != null) {
+      capabilities.roots = {}
+    }
     // Send initialize request
     await super._write({
       jsonrpc: '2.0',
       id,
       method: 'initialize',
-      params: {
-        capabilities: {},
-        clientInfo: {
-          name: 'Mokei',
-          version: '0.1.0',
-        },
-        protocolVersion: LATEST_PROTOCOL_VERSION,
-      },
+      params: { ...DEFAULT_INITIALIZE_PARAMS, capabilities },
     })
     // Wait for initialize response
     const next = await this._read()
@@ -186,45 +222,41 @@ export class ContextClient<
     return await this.#initialized
   }
 
-  setLoggingLevel(level: LoggingLevel): SentRequest<void> {
-    return this.requestValue('logging/setLevel', { level }, () => {})
+  setLoggingLevel(params: SetLevelRequest['params']): SentRequest<Result> {
+    return this.request('logging/setLevel', params)
   }
 
-  complete(params: CompleteRequest['params']): SentRequest<CompleteResult['completion']> {
-    return this.requestValue('completion/complete', params, (result) => result.completion)
+  complete(params: CompleteRequest['params']): SentRequest<CompleteResult> {
+    return this.request('completion/complete', params)
   }
 
-  listPrompts(): SentRequest<Array<Prompt>> {
-    return this.requestValue('prompts/list', {}, (result) => result.prompts)
+  listPrompts(params: ListPromptsRequest['params'] = {}): SentRequest<ListPromptsResult> {
+    return this.request('prompts/list', params)
   }
 
-  getPrompt<Name extends keyof T['Prompts'] & string>(
-    name: Name,
-    args: T['Prompts'][Name] extends undefined ? never : T['Prompts'][Name],
-  ): SentRequest<GetPromptResult> {
-    return this.request('prompts/get', { name, arguments: args } as GetPromptRequest['params'])
+  getPrompt(params: PromptParams<T>): SentRequest<GetPromptResult> {
+    return this.request('prompts/get', params as GetPromptRequest['params'])
   }
 
-  listResources(): SentRequest<Array<Resource>> {
-    return this.requestValue('resources/list', {}, (result) => result.resources)
+  listResources(params: ListResourcesRequest['params'] = {}): SentRequest<ListResourcesResult> {
+    return this.request('resources/list', params)
   }
 
-  listResourceTemplates(): SentRequest<Array<ResourceTemplate>> {
-    return this.requestValue('resources/templates/list', {}, (result) => result.resourceTemplates)
+  listResourceTemplates(
+    params: ListResourceTemplatesRequest['params'] = {},
+  ): SentRequest<ListResourceTemplatesResult> {
+    return this.request('resources/templates/list', params)
   }
 
   readResource(params: ReadResourceRequest['params']): SentRequest<ReadResourceResult> {
     return this.request('resources/read', params)
   }
 
-  listTools(): SentRequest<Array<Tool>> {
-    return this.requestValue('tools/list', {}, (result) => result.tools)
+  listTools(params: ListToolsRequest['params'] = {}): SentRequest<ListToolsResult> {
+    return this.request('tools/list', params)
   }
 
-  callTool<Name extends keyof T['Tools'] & string>(
-    name: Name,
-    args: T['Tools'][Name],
-  ): SentRequest<CallToolResult> {
-    return this.request('tools/call', { name, arguments: args } as CallToolRequest['params'])
+  callTool(params: ToolParams<T>): SentRequest<CallToolResult> {
+    return this.request('tools/call', params as CallToolRequest['params'])
   }
 }

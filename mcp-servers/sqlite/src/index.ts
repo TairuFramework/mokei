@@ -34,7 +34,7 @@ serveProcess({
       'This method executes a prepared statement and returns all results as an array of objects',
       toolInputSchema,
       (req) => {
-        const results = db.prepare(req.input.sql).all(req.input.parameters ?? {})
+        const results = db.prepare(req.arguments.sql).all(req.arguments.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
       },
     ),
@@ -42,7 +42,7 @@ serveProcess({
       'This method executes a prepared statement and returns the first result as an object',
       toolInputSchema,
       (req) => {
-        const result = db.prepare(req.input.sql).get(req.input.parameters ?? {})
+        const result = db.prepare(req.arguments.sql).get(req.arguments.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
       },
     ),
@@ -50,7 +50,7 @@ serveProcess({
       'This method executes a prepared statement and returns an object summarizing the resulting changes',
       toolInputSchema,
       (req) => {
-        const changes = db.prepare(req.input.sql).run(req.input.parameters ?? {})
+        const changes = db.prepare(req.arguments.sql).run(req.arguments.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
       },
     ),

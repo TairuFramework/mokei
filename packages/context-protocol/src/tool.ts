@@ -61,7 +61,7 @@ export type OutputSchema = FromSchema<typeof outputSchema>
 
 export const toolAnnotations = {
   description:
-    'Additional properties describing a Tool to clients.\n\nNOTE: all properties in ToolAnnotations are **hints**. \nThey are not guaranteed to provide a faithful description of \ntool behavior (including descriptive properties like `title`).\n\nClients should never make tool use decisions based on ToolAnnotations\nreceived from untrusted servers.',
+    'Additional properties describing a Tool to clients.\n\nNOTE: all properties in ToolAnnotations are **hints**.\nThey are not guaranteed to provide a faithful description of\ntool behavior (including descriptive properties like `title`).\n\nClients should never make tool use decisions based on ToolAnnotations\nreceived from untrusted servers.',
   properties: {
     destructiveHint: {
       description:

@@ -260,12 +260,12 @@ export class ChatSession<T extends ProviderTypes> extends Disposer {
       const [context, name] = getContextToolInfo(toolCall.name)
       let text: string
       const ok = await confirm(
-        `Allow call of tool ${name} in context ${context} with arguments ${toolCall.input}?`,
+        `Allow call of tool ${name} in context ${context} with arguments ${toolCall.arguments}?`,
       )
       if (ok) {
         this.#loader.info('Tool call accepted').start('Calling tool...')
         try {
-          const result = await this.#host.callTool(context, name, tryParseJSON(toolCall.input))
+          const result = await this.#host.callTool(context, { name, arguments: tryParseJSON(toolCall.arguments) })
           const resultContent =
             result.content.find((c) => c.type === 'text')?.text ?? 'No text content'
           if (result.isError) {

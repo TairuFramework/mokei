@@ -53,7 +53,7 @@ describe('Session', () => {
       const toolCall = reply.toolCalls[0]
       expect(toolCall).toMatchObject({
         name: 'fetch:get_markdown',
-        input: expect.stringContaining('https://mokei.dev'),
+        arguments: expect.stringContaining('https://mokei.dev'),
       })
 
       const toolResult = await session.executeToolCall(toolCall)

@@ -5,12 +5,18 @@ import type {
   ClientMessage,
   CompleteRequest,
   CompleteResult,
+  CreateMessageRequest,
+  CreateMessageResult,
+  ElicitRequest,
+  ElicitResult,
   GetPromptResult,
   InitializeRequest,
   ListResourcesRequest,
   ListResourcesResult,
   ListResourceTemplatesRequest,
   ListResourceTemplatesResult,
+  ListRootsRequest,
+  ListRootsResult,
   LoggingLevel,
   ReadResourceRequest,
   ReadResourceResult,
@@ -19,6 +25,7 @@ import type {
   ServerMessage,
   InputSchema as ToolInputSchema,
 } from '@mokei/context-protocol'
+import type { SentRequest } from '@mokei/context-rpc'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
@@ -26,8 +33,15 @@ export type ClientInitialize = InitializeRequest['params']
 
 export type LogFunction = (level: LoggingLevel, data: unknown, logger?: string) => void
 
-export type HandlerRequest<C extends Record<string, unknown> = Record<string, never>> = C & {
+export type ServerClient = {
+  createMessage: (params: CreateMessageRequest['params']) => SentRequest<CreateMessageResult>
+  elicit: (params: ElicitRequest['params']) => SentRequest<ElicitResult>
+  listRoots: (params?: ListRootsRequest['params']) => SentRequest<ListRootsResult>
   log: LogFunction
+}
+
+export type HandlerRequest<C extends Record<string, unknown> = Record<string, never>> = C & {
+  client: ServerClient
   signal: AbortSignal
 }
 
@@ -86,11 +100,11 @@ export type ResourceHandlers = {
 export type ToolHandlerReturn = CallToolResult | Promise<CallToolResult>
 
 export type GenericToolHandler = (
-  request: HandlerRequest<{ input: Record<string, unknown> }>,
+  request: HandlerRequest<{ arguments: Record<string, unknown> }>,
 ) => ToolHandlerReturn
 
-export type TypedToolHandler<Input> = (
-  request: HandlerRequest<{ input: Input }>,
+export type TypedToolHandler<Arguments> = (
+  request: HandlerRequest<{ arguments: Arguments }>,
 ) => ToolHandlerReturn
 
 export type GenericToolDefinition = {

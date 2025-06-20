@@ -14,6 +14,7 @@ import type {
   GetPromptResult,
   Implementation,
   InitializeResult,
+  ListRootsRequest,
   ListRootsResult,
   Log,
   LoggingLevel,
@@ -43,6 +44,7 @@ import type {
   PromptDefinitions,
   ResourceDefinitions,
   ResourceHandlers,
+  ServerClient,
   ServerTransport,
   ToolDefinitions,
 } from './types.js'
@@ -95,6 +97,7 @@ type ServerTypes = {
 
 export class ContextServer extends ContextRPC<ServerTypes> {
   #capabilities: ServerCapabilities = {}
+  #client: ServerClient
   #clientInitialize?: ClientInitialize
   #clientLoggingLevel?: LoggingLevel
   #completeHandler?: CompleteHandler
@@ -108,6 +111,12 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   constructor(params: ServerParams) {
     super({ transport: params.transport, validateMessageIn: validateClientMessage })
 
+    this.#client = {
+      createMessage: this.createMessage.bind(this),
+      elicit: this.elicit.bind(this),
+      listRoots: this.listRoots.bind(this),
+      log: this.log.bind(this),
+    }
     this.#completeHandler = params.complete
     this.#serverInfo = { name: params.name, version: params.version }
 
@@ -141,7 +150,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return this.#clientInitialize
   }
 
-  log = (level: LoggingLevel, data: unknown, logger?: string) => {
+  log(level: LoggingLevel, data: unknown, logger?: string) {
     this.events.emit('log', { level, data, logger })
   }
 
@@ -149,8 +158,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return this.request('elicitation/create', params)
   }
 
-  listRoots(): SentRequest<ListRootsResult> {
-    return this.request('roots/list', {})
+  listRoots(params: ListRootsRequest['params'] = {}): SentRequest<ListRootsResult> {
+    return this.request('roots/list', params)
   }
 
   createMessage(params: CreateMessageRequest['params']): SentRequest<CreateMessageResult> {
@@ -184,7 +193,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         if (this.#completeHandler == null) {
           break
         }
-        return await this.#completeHandler({ log: this.log, params: request.params, signal })
+        return await this.#completeHandler({ client: this.#client, params: request.params, signal })
       case 'initialize':
         this.#clientInitialize = request.params
         this.events.emit('initialize', request.params)
@@ -204,17 +213,21 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         if (this.#resources == null) {
           break
         }
-        return this.#resources.list({ log: this.log, params: request.params, signal })
+        return this.#resources.list({ client: this.#client, params: request.params, signal })
       case 'resources/read':
         if (this.#resources == null) {
           break
         }
-        return this.#resources.read({ log: this.log, params: request.params, signal })
+        return this.#resources.read({ client: this.#client, params: request.params, signal })
       case 'resources/templates/list':
         if (this.#resources == null) {
           break
         }
-        return this.#resources.listTemplates({ log: this.log, params: request.params, signal })
+        return this.#resources.listTemplates({
+          client: this.#client,
+          params: request.params,
+          signal,
+        })
       case 'tools/call':
         return await this.#callTool(request, signal)
       case 'tools/list':
@@ -228,7 +241,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (handler == null) {
       throw new RPCError(INVALID_PARAMS, `Tool ${request.params.name} not found`)
     }
-    return await handler({ input: request.params.arguments ?? {}, log: this.log, signal })
+    return await handler({
+      arguments: request.params.arguments ?? {},
+      client: this.#client,
+      signal,
+    })
   }
 
   async #getPrompt(request: GetPromptRequest, signal: AbortSignal): Promise<GetPromptResult> {
@@ -236,7 +253,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (handler == null) {
       throw new RPCError(INVALID_PARAMS, `Prompt ${request.params.name} not found`)
     }
-    return await handler({ arguments: request.params.arguments, log: this.log, signal })
+    return await handler({ arguments: request.params.arguments, client: this.#client, signal })
   }
 }
 

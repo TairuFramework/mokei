@@ -5,6 +5,8 @@ import type {
   ClientRequest,
   CreateMessageRequest,
   CreateMessageResult,
+  ElicitRequest,
+  ElicitResult,
   Log,
   ServerMessage,
 } from '@mokei/context-protocol'
@@ -64,6 +66,13 @@ async function expectServerError(
   error: unknown,
 ): Promise<void> {
   await expectServerResponse(params, request, { error })
+}
+
+const expectedClient = {
+  createMessage: expect.any(Function),
+  elicit: expect.any(Function),
+  listRoots: expect.any(Function),
+  log: expect.any(Function),
 }
 
 describe('ContextServer', () => {
@@ -188,7 +197,7 @@ describe('ContextServer', () => {
     ])
   })
 
-  test('supports sending roots list requests', async () => {
+  test('supports outgoing roots list requests', async () => {
     const { server, transports } = createTestContext()
     const roots = [{ name: 'test', url: 'test://test' }]
 
@@ -204,7 +213,7 @@ describe('ContextServer', () => {
     await transports.dispose()
   })
 
-  test('supports sampling messages requests', async () => {
+  test('supports outgoing sampling messages requests', async () => {
     const { server, transports } = createTestContext()
 
     const params: CreateMessageRequest['params'] = {
@@ -229,7 +238,34 @@ describe('ContextServer', () => {
     await transports.dispose()
   })
 
-  test('supports completion calls', async () => {
+  test('supports outgoing elicit requests', async () => {
+    const { server, transports } = createTestContext()
+
+    const params: ElicitRequest['params'] = {
+      message: 'Run this test?',
+      requestedSchema: {
+        type: 'object',
+        properties: { run: { type: 'string', enum: ['once', 'always'] } },
+      },
+    }
+    const result: ElicitResult = {
+      action: 'accept',
+      content: { run: 'once' },
+    }
+
+    const responsePromise = server.elicit(params)
+    await expect(transports.client.read()).resolves.toEqual({
+      done: false,
+      value: { jsonrpc: '2.0', id: 0, method: 'elicitation/create', params },
+    })
+
+    transports.client.write({ jsonrpc: '2.0', id: 0, result })
+    await expect(responsePromise).resolves.toEqual(result)
+
+    await transports.dispose()
+  })
+
+  test('supports incoming completion requests', async () => {
     const params = {
       ref: { type: 'ref/prompt', name: 'test' },
       argument: { name: 'test', value: 'one' },
@@ -243,13 +279,13 @@ describe('ContextServer', () => {
       { completion },
     )
     expect(complete).toHaveBeenCalledWith({
-      log: expect.any(Function),
+      client: expect.objectContaining(expectedClient),
       params,
       signal: expect.any(AbortSignal),
     })
   })
 
-  describe('supports prompt calls', () => {
+  describe('supports incoming prompt requests', () => {
     test('lists available prompts', async () => {
       await expectServerResult(
         {
@@ -379,7 +415,7 @@ describe('ContextServer', () => {
     })
   })
 
-  describe('supports resource calls', () => {
+  describe('supports incoming resource requests', () => {
     test('lists available resources by calling the provided handler', async () => {
       const resources = [
         { name: 'foo', uri: 'test://foo' },
@@ -467,7 +503,7 @@ describe('ContextServer', () => {
     })
   })
 
-  describe('supports tool calls', () => {
+  describe('supports incoming tool requests', () => {
     test('lists available tools', async () => {
       await expectServerResult(
         {
@@ -480,7 +516,7 @@ describe('ContextServer', () => {
                 additionalProperties: false,
               },
               (req) => {
-                return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
+                return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
               },
             ),
             other: createTool(
@@ -534,7 +570,7 @@ describe('ContextServer', () => {
                 additionalProperties: false,
               },
               (req) => {
-                return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
+                return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
               },
             ),
           },
@@ -563,7 +599,7 @@ describe('ContextServer', () => {
                 required: ['bar'],
               } as const,
               (req) => {
-                return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
+                return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
               },
             ),
           },

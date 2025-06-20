@@ -38,6 +38,8 @@ export type {
 export type {
   GetPromptRequest,
   GetPromptResult,
+  ListPromptsRequest,
+  ListPromptsResult,
   Prompt,
   PromptArgument,
   PromptListChangedNotification,
@@ -69,12 +71,15 @@ export {
   INVALID_REQUEST,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
+  type Metadata,
   type Notification,
   PARSE_ERROR,
+  type PaginatedResult,
   type ProgressNotification,
   type Request,
   type RequestID,
   type Response,
+  type Result,
 } from './rpc.js'
 export type { CreateMessageRequest, CreateMessageResult } from './sampling.js'
 export {
@@ -89,6 +94,8 @@ export {
   type CallToolResult,
   type InputSchema,
   inputSchema,
+  type ListToolsRequest,
+  type ListToolsResult,
   outputSchema,
   type Tool,
   type ToolListChangedNotification,

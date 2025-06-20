@@ -27,7 +27,7 @@ export function createPrompt<
   const wrappedHandler = (request: HandlerRequest<{ arguments: unknown }>): PromptHandlerReturn => {
     const validated = validate(request.arguments)
     if (validated.issues == null) {
-      return handler({ arguments: validated.value, log: request.log, signal: request.signal })
+      return handler({ arguments: validated.value, client: request.client, signal: request.signal })
     }
     throw new RPCError(INVALID_PARAMS, 'Invalid prompt arguments', {
       issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
@@ -45,11 +45,11 @@ export function createTool<InputSchema extends Schema, Input = FromSchema<InputS
   const validate = createValidator<InputSchema, Input>(inputSchema)
 
   const wrappedHandler = (
-    request: HandlerRequest<{ input: Record<string, unknown> }>,
+    request: HandlerRequest<{ arguments: Record<string, unknown> }>,
   ): ToolHandlerReturn => {
-    const validated = validate(request.input)
+    const validated = validate(request.arguments)
     if (validated.issues == null) {
-      return handler({ input: validated.value, log: request.log, signal: request.signal })
+      return handler({ arguments: validated.value, client: request.client, signal: request.signal })
     }
     throw new RPCError(INVALID_PARAMS, 'Invalid tool input', {
       issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),

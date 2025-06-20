@@ -1,12 +1,20 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { annotations, resourceContents } from './content.js'
-import { notification, paginatedRequest, paginatedResult, request, result } from './rpc.js'
+import {
+  metadata,
+  notification,
+  paginatedRequest,
+  paginatedResult,
+  request,
+  result,
+} from './rpc.js'
 
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L1472
 export const resource = {
   description: 'A known resource that the server is capable of reading.',
   properties: {
+    _meta: metadata,
     annotations,
     description: {
       description:
@@ -19,7 +27,17 @@ export const resource = {
     },
     name: {
       description:
-        'A human-readable name for this resource.\n\nThis can be used by clients to populate UI elements.',
+        "Intended for programmatic or logical use, but used as a display name in past specs or fallback (if title isn't present).",
+      type: 'string',
+    },
+    size: {
+      description:
+        'The size of the raw resource content, in bytes (i.e., before base64 encoding or any tokenization), if known.\n\nThis can be used by Hosts to display file sizes and estimate context window usage.',
+      type: 'integer',
+    },
+    title: {
+      description:
+        'Intended for UI and end-user contexts — optimized to be human-readable and easily understood,\neven by those unfamiliar with domain-specific terminology.\n\nIf not provided, the name should be used for display (except for Tool,\nwhere `annotations.title` should be given precedence over using `name`,\nif present).',
       type: 'string',
     },
     uri: {
@@ -50,7 +68,12 @@ export const resourceTemplate = {
     },
     name: {
       description:
-        'A human-readable name for the type of resource this template refers to.\n\nThis can be used by clients to populate UI elements.',
+        "Intended for programmatic or logical use, but used as a display name in past specs or fallback (if title isn't present).",
+      type: 'string',
+    },
+    title: {
+      description:
+        'Intended for UI and end-user contexts — optimized to be human-readable and easily understood,\neven by those unfamiliar with domain-specific terminology.\n\nIf not provided, the name should be used for display (except for Tool,\nwhere `annotations.title` should be given precedence over using `name`,\nif present).',
       type: 'string',
     },
     uriTemplate: {

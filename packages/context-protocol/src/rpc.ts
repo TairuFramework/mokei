@@ -23,6 +23,7 @@ export const metadata = {
     'See [specification/2025-06-18/basic/index#general-fields] for notes on _meta usage.',
   additionalProperties: {},
 } as const satisfies Schema
+export type Metadata = FromSchema<typeof metadata>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1146
 export const notification = {
@@ -172,6 +173,7 @@ export const result = {
   },
   type: 'object',
 } as const satisfies Schema
+export type Result = FromSchema<typeof result>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1188
 export const paginatedResult = {
@@ -181,6 +183,7 @@ export const paginatedResult = {
   },
   type: 'object',
 } as const satisfies Schema
+export type PaginatedResult = FromSchema<typeof paginatedResult>
 
 export const response = {
   properties: {

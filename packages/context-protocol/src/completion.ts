@@ -7,7 +7,13 @@ export const promptReference = {
   description: 'Identifies a prompt.',
   properties: {
     name: {
-      description: 'The name of the prompt or prompt template',
+      description:
+        "Intended for programmatic or logical use, but used as a display name in past specs or fallback (if title isn't present).",
+      type: 'string',
+    },
+    title: {
+      description:
+        'Intended for UI and end-user contexts — optimized to be human-readable and easily understood,\neven by those unfamiliar with domain-specific terminology.\n\nIf not provided, the name should be used for display (except for Tool,\nwhere `annotations.title` should be given precedence over using `name`,\nif present).',
       type: 'string',
     },
     type: {
@@ -20,7 +26,7 @@ export const promptReference = {
 } as const satisfies Schema
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1559
-export const resourceReference = {
+export const resourceTemplateReference = {
   description: 'A reference to a resource or resource template definition.',
   properties: {
     type: {
@@ -65,8 +71,21 @@ export const completeRequest = {
               required: ['name', 'value'],
               type: 'object',
             },
+            context: {
+              description: 'Additional, optional context for completions',
+              properties: {
+                arguments: {
+                  additionalProperties: {
+                    type: 'string',
+                  },
+                  description: 'Previously-resolved variables in a URI template or prompt.',
+                  type: 'object',
+                },
+              },
+              type: 'object',
+            },
             ref: {
-              anyOf: [promptReference, resourceReference],
+              anyOf: [promptReference, resourceTemplateReference],
             },
           },
           required: ['argument', 'ref'],

@@ -4,9 +4,11 @@ import {
   type ClientTransport,
   ContextClient,
   type ContextTypes,
+  type PromptParams,
+  type ToolParams,
   type UnknownContextTypes,
 } from '@mokei/context-client'
-import type { CallToolResult, GetPromptResult, Tool } from '@mokei/context-protocol'
+import type { CallToolResult, GetPromptResult, Metadata, Tool } from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
 
 import { type SpawnContextServerParams, spawnContextServer } from './spawn.js'
@@ -83,7 +85,7 @@ export class ContextHost extends Disposer {
     if (ctx == null) {
       throw new Error(`Context ${key} does not exist`)
     }
-    return ctx as HostedContext<T>
+    return ctx as unknown as HostedContext<T>
   }
 
   setContextTools(key: string, tools: Array<ContextTool>): void {
@@ -144,7 +146,7 @@ export class ContextHost extends Disposer {
   }
 
   async setup(key: string, enableTools: EnableToolsArg = true): Promise<Array<ContextTool>> {
-    const tools = await this.getContext(key).client.listTools()
+    const { tools } = await this.getContext(key).client.listTools()
     const enabledTools = typeof enableTools === 'function' ? await enableTools(tools) : enableTools
     const contextTools = tools.map((tool) => {
       const enabled =
@@ -165,20 +167,26 @@ export class ContextHost extends Disposer {
     delete this._contexts[key]
   }
 
-  getPrompt(
+  getPrompt<T extends ContextTypes = UnknownContextTypes>(
     key: string,
-    name: string,
-    args: Record<string, unknown> = {},
+    params: PromptParams<T>,
   ): SentRequest<GetPromptResult> {
-    return this.getContext(key).client.getPrompt(name, args)
+    return this.getContext<T>(key).client.getPrompt(params)
   }
 
-  callTool(key: string, name: string, args: Record<string, unknown>): SentRequest<CallToolResult> {
-    return this.getContext(key).client.callTool(name, args)
+  callTool<T extends ContextTypes = UnknownContextTypes>(
+    key: string,
+    params: ToolParams<T>,
+  ): SentRequest<CallToolResult> {
+    return this.getContext<T>(key).client.callTool(params)
   }
 
-  callNamespacedTool(id: string, args: Record<string, unknown>): SentRequest<CallToolResult> {
+  callNamespacedTool(
+    id: string,
+    args: Record<string, unknown> = {},
+    metadata?: Metadata,
+  ): SentRequest<CallToolResult> {
     const [key, name] = getContextToolInfo(id)
-    return this.callTool(key, name, args)
+    return this.callTool(key, { name, arguments: args, _meta: metadata })
   }
 }

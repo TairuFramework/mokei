@@ -72,7 +72,7 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
             }
             currentToolCall = toolCall
           } else if (currentToolCall != null) {
-            currentToolCall.input += toolCall.input
+            currentToolCall.arguments += toolCall.arguments
           }
         }
       }
@@ -128,7 +128,7 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
                 toolCalls: delta.tool_calls.map((call: ToolCall) => {
                   return {
                     name: call.function.name,
-                    input: call.function.arguments,
+                    arguments: call.function.arguments,
                     id: call.id,
                     raw: call,
                   }

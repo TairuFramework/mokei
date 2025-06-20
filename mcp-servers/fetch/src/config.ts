@@ -20,9 +20,9 @@ export const config: ServerConfig = {
         additionalProperties: false,
       } as const satisfies Schema,
       async (req) => {
-        process.stderr.write(`fetching ${req.input.url}\n`)
+        process.stderr.write(`fetching ${req.arguments.url}\n`)
         try {
-          const res = await fetch(req.input.url)
+          const res = await fetch(req.arguments.url)
           if (!res.ok) {
             return {
               content: [

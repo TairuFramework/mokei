@@ -12,7 +12,7 @@ $ npm install -g mokei
 $ mokei COMMAND
 running command...
 $ mokei (--version)
-mokei/0.3.2 darwin-arm64 node-v24.2.0
+mokei/0.4.0 darwin-arm64 node-v24.2.0
 $ mokei --help [COMMAND]
 USAGE
   $ mokei COMMAND
