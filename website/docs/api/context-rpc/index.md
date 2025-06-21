@@ -77,13 +77,27 @@ npm install @mokei/context-rpc
 
 `void`
 
-##### \_handleNotification()
+##### \_handleMessage()
 
-> **\_handleNotification**(`notification`): `void` \| `Promise`\<`void`\>
+> **\_handleMessage**(`message`): `null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
 
 ###### Parameters
 
-###### notification
+###### message
+
+`T`\[`"MessageIn"`\]
+
+###### Returns
+
+`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
+
+##### \_handleNotification()
+
+> **\_handleNotification**(`_notification`): `void` \| `Promise`\<`void`\>
+
+###### Parameters
+
+###### \_notification
 
 \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/progress"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `message?`: `string`; `progress`: `number`; `progressToken`: `string` \| `number`; `total?`: `number`; \}; \} | `T`\[`"HandleNotification"`\]
 
@@ -93,35 +107,21 @@ npm install @mokei/context-rpc
 
 ##### \_handleRequest()
 
-> **\_handleRequest**(`request`, `signal`): `T`\[`"SendResult"`\] \| `Promise`\<`T`\[`"SendResult"`\]\>
+> **\_handleRequest**(`_request`, `_signal`): `T`\[`"SendResult"`\] \| `Promise`\<`T`\[`"SendResult"`\]\>
 
 ###### Parameters
 
-###### request
+###### \_request
 
 `T`\[`"HandleRequest"`\]
 
-###### signal
+###### \_signal
 
 `AbortSignal`
 
 ###### Returns
 
 `T`\[`"SendResult"`\] \| `Promise`\<`T`\[`"SendResult"`\]\>
-
-##### \_handleSingleMessage()
-
-> **\_handleSingleMessage**(`message`): `null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
-
-###### Parameters
-
-###### message
-
-[`SingleMessage`](../context-protocol/index.md#singlemessage)
-
-###### Returns
-
-`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
 
 ##### \_read()
 
@@ -427,7 +427,7 @@ npm install @mokei/context-rpc
 
 ##### validateMessageIn
 
-> **validateMessageIn**: `Validator`\<`T`\[`"HandleMessage"`\]\>
+> **validateMessageIn**: `Validator`\<`T`\[`"MessageIn"`\]\>
 
 ***
 
@@ -440,10 +440,6 @@ npm install @mokei/context-rpc
 ##### Events
 
 > **Events**: `Record`\<`string`, `unknown`\>
-
-##### HandleMessage
-
-> **HandleMessage**: [`SingleMessage`](../context-protocol/index.md#singlemessage)
 
 ##### HandleNotification
 

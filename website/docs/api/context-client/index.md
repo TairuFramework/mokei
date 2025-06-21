@@ -94,6 +94,24 @@ npm install @mokei/context-client
 
 [`ContextRPC`](../context-rpc/index.md#contextrpc).[`_handle`](../context-rpc/index.md#contextrpc#_handle)
 
+##### \_handleMessage()
+
+> **\_handleMessage**(`message`): `null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
+
+###### Parameters
+
+###### message
+
+\{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"ping"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"sampling/createMessage"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `includeContext?`: `"allServers"` \| `"none"` \| `"thisServer"`; `maxTokens`: `number`; `messages`: `object`[]; `metadata?`: \{[`key`: `string`]: `unknown`; \}; `modelPreferences?`: \{[`key`: `string`]: `unknown`; `costPriority?`: `number`; `hints?`: `object`[]; `intelligencePriority?`: `number`; `speedPriority?`: `number`; \}; `stopSequences?`: `string`[]; `systemPrompt?`: `string`; `temperature?`: `number`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"roots/list"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"elicitation/create"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `message`: `string`; `requestedSchema`: \{[`key`: `string`]: `unknown`; `properties`: \{[`key`: `string`]: \{[`key`: `string`]: `unknown`; `description?`: `string`; `format?`: `"uri"` \| `"date-time"` \| `"date"` \| `"email"`; `maxLength?`: `number`; `minLength?`: `number`; `title?`: `string`; `type`: `"string"`; \} \| \{[`key`: `string`]: `unknown`; `description?`: `string`; `maximum?`: `number`; `minimum?`: `number`; `title?`: `string`; `type`: `"number"` \| `"integer"`; \} \| \{[`key`: `string`]: `unknown`; `default?`: `boolean`; `description?`: `string`; `title?`: `string`; `type`: `"boolean"`; \} \| \{[`key`: `string`]: `unknown`; `description?`: `string`; `enum`: `string`[]; `enumNames?`: `string`[]; `title?`: `string`; `type`: `"string"`; \}; \}; `required?`: `string`[]; `type`: `"object"`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/cancelled"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `reason?`: `string`; `requestId`: `string` \| `number`; \}; \} | \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/message"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `data`: `unknown`; `level`: `"alert"` \| `"critical"` \| `"debug"` \| `"emergency"` \| `"error"` \| `"info"` \| `"notice"` \| `"warning"`; `logger?`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/progress"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `message?`: `string`; `progress`: `number`; `progressToken`: `string` \| `number`; `total?`: `number`; \}; \} | \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/resources/updated"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `uri`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/resources/list_changed"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/tools/list_changed"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/prompts/list_changed"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `error`: \{[`key`: `string`]: `unknown`; `code`: `number`; `data?`: \{[`key`: `string`]: `unknown`; \}; `message`: `string`; \}; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `result`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `capabilities`: \{[`key`: `string`]: `unknown`; `completions?`: \{[`key`: `string`]: `unknown`; \}; `experimental?`: \{[`key`: `string`]: `object`; \}; `logging?`: \{[`key`: `string`]: `unknown`; \}; `prompts?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; `resources?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; `subscribe?`: `boolean`; \}; `tools?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; \}; `instructions?`: `string`; `protocolVersion`: `string`; `serverInfo`: \{[`key`: `string`]: `unknown`; `name`: `string`; `title?`: `string`; `version`: `string`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `completion`: \{[`key`: `string`]: `unknown`; `hasMore?`: `boolean`; `total?`: `number`; `values`: `string`[]; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `description?`: `string`; `messages`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `prompts`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `resources`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `resourceTemplates`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `contents`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \})[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: ...[]; `lastModified?`: `string`; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: ...[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: ...[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: ...[]; `lastModified?`: `string`; `priority?`: `number`; \}; `description?`: `string`; `mimeType?`: `string`; `name`: `string`; `size?`: `number`; `title?`: `string`; `type`: `"resource_link"`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: ...[]; `lastModified?`: `string`; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; `structuredContent?`: \{[`key`: `string`]: `unknown`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `tools`: `object`[]; \}; \}
+
+###### Returns
+
+`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
+
+###### Inherited from
+
+[`ContextRPC`](../context-rpc/index.md#contextrpc).[`_handleMessage`](../context-rpc/index.md#contextrpc#_handlemessage)
+
 ##### \_handleNotification()
 
 > **\_handleNotification**(`notification`): `void`
@@ -114,13 +132,13 @@ npm install @mokei/context-client
 
 ##### \_handleRequest()
 
-> **\_handleRequest**(`request`, `signal`): `Promise`\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \}; `model`: `string`; `role`: `"assistant"` \| `"user"`; `stopReason?`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `roots`: `object`[]; \}\>
+> **\_handleRequest**(`request`, `signal`): `Promise`\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \}; `model`: `string`; `role`: `"assistant"` \| `"user"`; `stopReason?`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `roots`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `action`: `"accept"` \| `"cancel"` \| `"decline"`; `content?`: \{[`key`: `string`]: `string` \| `number` \| `boolean`; \}; \}\>
 
 ###### Parameters
 
 ###### request
 
-\{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"ping"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"sampling/createMessage"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `includeContext?`: `"allServers"` \| `"none"` \| `"thisServer"`; `maxTokens`: `number`; `messages`: `object`[]; `metadata?`: \{[`key`: `string`]: `unknown`; \}; `modelPreferences?`: \{[`key`: `string`]: `unknown`; `costPriority?`: `number`; `hints?`: `object`[]; `intelligencePriority?`: `number`; `speedPriority?`: `number`; \}; `stopSequences?`: `string`[]; `systemPrompt?`: `string`; `temperature?`: `number`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"roots/list"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; \}; \}
+\{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"ping"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"sampling/createMessage"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `includeContext?`: `"allServers"` \| `"none"` \| `"thisServer"`; `maxTokens`: `number`; `messages`: `object`[]; `metadata?`: \{[`key`: `string`]: `unknown`; \}; `modelPreferences?`: \{[`key`: `string`]: `unknown`; `costPriority?`: `number`; `hints?`: `object`[]; `intelligencePriority?`: `number`; `speedPriority?`: `number`; \}; `stopSequences?`: `string`[]; `systemPrompt?`: `string`; `temperature?`: `number`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"roots/list"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"elicitation/create"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `message`: `string`; `requestedSchema`: \{[`key`: `string`]: `unknown`; `properties`: \{[`key`: `string`]: \{[`key`: `string`]: `unknown`; `description?`: `string`; `format?`: `"uri"` \| `"date-time"` \| `"date"` \| `"email"`; `maxLength?`: `number`; `minLength?`: `number`; `title?`: `string`; `type`: `"string"`; \} \| \{[`key`: `string`]: `unknown`; `description?`: `string`; `maximum?`: `number`; `minimum?`: `number`; `title?`: `string`; `type`: `"number"` \| `"integer"`; \} \| \{[`key`: `string`]: `unknown`; `default?`: `boolean`; `description?`: `string`; `title?`: `string`; `type`: `"boolean"`; \} \| \{[`key`: `string`]: `unknown`; `description?`: `string`; `enum`: `string`[]; `enumNames?`: `string`[]; `title?`: `string`; `type`: `"string"`; \}; \}; `required?`: `string`[]; `type`: `"object"`; \}; \}; \}
 
 ###### signal
 
@@ -128,37 +146,19 @@ npm install @mokei/context-client
 
 ###### Returns
 
-`Promise`\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \}; `model`: `string`; `role`: `"assistant"` \| `"user"`; `stopReason?`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `roots`: `object`[]; \}\>
+`Promise`\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \}; `model`: `string`; `role`: `"assistant"` \| `"user"`; `stopReason?`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `roots`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `action`: `"accept"` \| `"cancel"` \| `"decline"`; `content?`: \{[`key`: `string`]: `string` \| `number` \| `boolean`; \}; \}\>
 
 ###### Overrides
 
 [`ContextRPC`](../context-rpc/index.md#contextrpc).[`_handleRequest`](../context-rpc/index.md#contextrpc#_handlerequest)
 
-##### \_handleSingleMessage()
-
-> **\_handleSingleMessage**(`message`): `null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
-
-###### Parameters
-
-###### message
-
-[`SingleMessage`](../context-protocol/index.md#singlemessage)
-
-###### Returns
-
-`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
-
-###### Inherited from
-
-[`ContextRPC`](../context-rpc/index.md#contextrpc).[`_handleSingleMessage`](../context-rpc/index.md#contextrpc#_handlesinglemessage)
-
 ##### \_read()
 
-> **\_read**(): `Promise`\<`ReadableStreamReadResult`\<[`ServerMessage`](../context-protocol/index.md#servermessage)\>\>
+> **\_read**(): `Promise`\<`ReadableStreamReadResult`\<\{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"ping"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"sampling/createMessage"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `includeContext?`: `"allServers"` \| `"none"` \| `"thisServer"`; `maxTokens`: `number`; `messages`: `object`[]; `metadata?`: \{[`key`: `string`]: `unknown`; \}; `modelPreferences?`: \{[`key`: `string`]: `unknown`; `costPriority?`: `number`; `hints?`: `object`[]; `intelligencePriority?`: `number`; `speedPriority?`: `number`; \}; `stopSequences?`: `string`[]; `systemPrompt?`: `string`; `temperature?`: `number`; \}; \} \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"roots/list"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"elicitation/create"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `message`: `string`; `requestedSchema`: \{[`key`: `string`]: `unknown`; `properties`: \{[`key`: `string`]: \{[`key`: `string`]: `unknown`; `description?`: `string`; `format?`: `"uri"` \| `"date-time"` \| `"date"` \| `"email"`; `maxLength?`: `number`; `minLength?`: `number`; `title?`: `string`; `type`: `"string"`; \} \| \{[`key`: `string`]: `unknown`; `description?`: `string`; `maximum?`: `number`; `minimum?`: `number`; `title?`: `string`; `type`: `"number"` \| `"integer"`; \} \| \{[`key`: `string`]: `unknown`; `default?`: `boolean`; `description?`: `string`; `title?`: `string`; `type`: `"boolean"`; \} \| \{[`key`: `string`]: `unknown`; `description?`: `string`; `enum`: `string`[]; `enumNames?`: ...[]; `title?`: `string`; `type`: `"string"`; \}; \}; `required?`: `string`[]; `type`: `"object"`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/cancelled"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `reason?`: `string`; `requestId`: `string` \| `number`; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/message"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `data`: `unknown`; `level`: `"alert"` \| `"critical"` \| `"debug"` \| `"emergency"` \| `"error"` \| `"info"` \| `"notice"` \| `"warning"`; `logger?`: `string`; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/progress"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `message?`: `string`; `progress`: `number`; `progressToken`: `string` \| `number`; `total?`: `number`; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/resources/updated"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `uri`: `string`; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/resources/list_changed"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/tools/list_changed"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/prompts/list_changed"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `error`: \{[`key`: `string`]: `unknown`; `code`: `number`; `data?`: \{[`key`: `string`]: `unknown`; \}; `message`: `string`; \}; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `result`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `capabilities`: \{[`key`: `string`]: `unknown`; `completions?`: \{[`key`: `string`]: `unknown`; \}; `experimental?`: \{[`key`: `string`]: `object`; \}; `logging?`: \{[`key`: `string`]: `unknown`; \}; `prompts?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; `resources?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; `subscribe?`: `boolean`; \}; `tools?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; \}; `instructions?`: `string`; `protocolVersion`: `string`; `serverInfo`: \{[`key`: `string`]: `unknown`; `name`: `string`; `title?`: `string`; `version`: `string`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `completion`: \{[`key`: `string`]: `unknown`; `hasMore?`: `boolean`; `total?`: `number`; `values`: `string`[]; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `description?`: `string`; `messages`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `prompts`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `resources`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `resourceTemplates`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `contents`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \})[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `annotations?`: \{[`key`: ...]: ...; `audience?`: ...; `lastModified?`: ...; `priority?`: ...; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `annotations?`: \{[`key`: ...]: ...; `audience?`: ...; `lastModified?`: ...; `priority?`: ...; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `annotations?`: \{[`key`: ...]: ...; `audience?`: ...; `lastModified?`: ...; `priority?`: ...; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `annotations?`: \{[`key`: ...]: ...; `audience?`: ...; `lastModified?`: ...; `priority?`: ...; \}; `description?`: `string`; `mimeType?`: `string`; `name`: `string`; `size?`: `number`; `title?`: `string`; `type`: `"resource_link"`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `annotations?`: \{[`key`: ...]: ...; `audience?`: ...; `lastModified?`: ...; `priority?`: ...; \}; `resource`: \{[`key`: ...]: ...; `_meta?`: ...; `mimeType?`: ...; `text`: ...; `uri`: ...; \} \| \{[`key`: ...]: ...; `_meta?`: ...; `blob`: ...; `mimeType?`: ...; `uri`: ...; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; `structuredContent?`: \{[`key`: `string`]: `unknown`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `tools`: `object`[]; \}; \}\>\>
 
 ###### Returns
 
-`Promise`\<`ReadableStreamReadResult`\<[`ServerMessage`](../context-protocol/index.md#servermessage)\>\>
+`Promise`\<`ReadableStreamReadResult`\<\{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"ping"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"sampling/createMessage"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `includeContext?`: `"allServers"` \| `"none"` \| `"thisServer"`; `maxTokens`: `number`; `messages`: `object`[]; `metadata?`: \{[`key`: `string`]: `unknown`; \}; `modelPreferences?`: \{[`key`: `string`]: `unknown`; `costPriority?`: `number`; `hints?`: `object`[]; `intelligencePriority?`: `number`; `speedPriority?`: `number`; \}; `stopSequences?`: `string`[]; `systemPrompt?`: `string`; `temperature?`: `number`; \}; \} \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"roots/list"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"elicitation/create"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `message`: `string`; `requestedSchema`: \{[`key`: `string`]: `unknown`; `properties`: \{[`key`: `string`]: \{[`key`: `string`]: `unknown`; `description?`: `string`; `format?`: `"uri"` \| `"date-time"` \| `"date"` \| `"email"`; `maxLength?`: `number`; `minLength?`: `number`; `title?`: `string`; `type`: `"string"`; \} \| \{[`key`: `string`]: `unknown`; `description?`: `string`; `maximum?`: `number`; `minimum?`: `number`; `title?`: `string`; `type`: `"number"` \| `"integer"`; \} \| \{[`key`: `string`]: `unknown`; `default?`: `boolean`; `description?`: `string`; `title?`: `string`; `type`: `"boolean"`; \} \| \{[`key`: `string`]: `unknown`; `description?`: `string`; `enum`: `string`[]; `enumNames?`: ...[]; `title?`: `string`; `type`: `"string"`; \}; \}; `required?`: `string`[]; `type`: `"object"`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/cancelled"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `reason?`: `string`; `requestId`: `string` \| `number`; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/message"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `data`: `unknown`; `level`: `"alert"` \| `"critical"` \| `"debug"` \| `"emergency"` \| `"error"` \| `"info"` \| `"notice"` \| `"warning"`; `logger?`: `string`; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/progress"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `message?`: `string`; `progress`: `number`; `progressToken`: `string` \| `number`; `total?`: `number`; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/resources/updated"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `uri`: `string`; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/resources/list_changed"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/tools/list_changed"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/prompts/list_changed"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}; \} \| \{[`key`: `string`]: `unknown`; `error`: \{[`key`: `string`]: `unknown`; `code`: `number`; `data?`: \{[`key`: `string`]: `unknown`; \}; `message`: `string`; \}; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `result`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `capabilities`: \{[`key`: `string`]: `unknown`; `completions?`: \{[`key`: `string`]: `unknown`; \}; `experimental?`: \{[`key`: `string`]: `object`; \}; `logging?`: \{[`key`: `string`]: `unknown`; \}; `prompts?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; `resources?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; `subscribe?`: `boolean`; \}; `tools?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; \}; `instructions?`: `string`; `protocolVersion`: `string`; `serverInfo`: \{[`key`: `string`]: `unknown`; `name`: `string`; `title?`: `string`; `version`: `string`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `completion`: \{[`key`: `string`]: `unknown`; `hasMore?`: `boolean`; `total?`: `number`; `values`: `string`[]; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `description?`: `string`; `messages`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `prompts`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `resources`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `resourceTemplates`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `contents`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \})[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `annotations?`: \{[`key`: ...]: ...; `audience?`: ...; `lastModified?`: ...; `priority?`: ...; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `annotations?`: \{[`key`: ...]: ...; `audience?`: ...; `lastModified?`: ...; `priority?`: ...; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `annotations?`: \{[`key`: ...]: ...; `audience?`: ...; `lastModified?`: ...; `priority?`: ...; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `annotations?`: \{[`key`: ...]: ...; `audience?`: ...; `lastModified?`: ...; `priority?`: ...; \}; `description?`: `string`; `mimeType?`: `string`; `name`: `string`; `size?`: `number`; `title?`: `string`; `type`: `"resource_link"`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: ...]: ...; \}; `annotations?`: \{[`key`: ...]: ...; `audience?`: ...; `lastModified?`: ...; `priority?`: ...; \}; `resource`: \{[`key`: ...]: ...; `_meta?`: ...; `mimeType?`: ...; `text`: ...; `uri`: ...; \} \| \{[`key`: ...]: ...; `_meta?`: ...; `blob`: ...; `mimeType?`: ...; `uri`: ...; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; `structuredContent?`: \{[`key`: `string`]: `unknown`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `tools`: `object`[]; \}; \}\>\>
 
 ###### Inherited from
 
@@ -172,7 +172,7 @@ npm install @mokei/context-client
 
 ###### message
 
-[`ClientMessage`](../context-protocol/index.md#clientmessage)
+\{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"ping"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"initialize"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `capabilities`: \{[`key`: `string`]: `unknown`; `elicitation?`: \{[`key`: `string`]: `unknown`; \}; `experimental?`: \{[`key`: `string`]: `object`; \}; `roots?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; `sampling?`: \{[`key`: `string`]: `unknown`; \}; \}; `clientInfo`: \{[`key`: `string`]: `unknown`; `name`: `string`; `title?`: `string`; `version`: `string`; \}; `protocolVersion`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"completion/complete"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `argument`: \{[`key`: `string`]: `unknown`; `name`: `string`; `value`: `string`; \}; `context?`: \{[`key`: `string`]: `unknown`; `arguments?`: \{[`key`: `string`]: `string`; \}; \}; `ref`: \{[`key`: `string`]: `unknown`; `name`: `string`; `title?`: `string`; `type`: `"ref/prompt"`; \} \| \{[`key`: `string`]: `unknown`; `type`: `"ref/resource"`; `uri`: `string`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"logging/setLevel"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `level`: `"alert"` \| `"critical"` \| `"debug"` \| `"emergency"` \| `"error"` \| `"info"` \| `"notice"` \| `"warning"`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"prompts/get"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `arguments?`: \{[`key`: `string`]: `string`; \}; `name`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"prompts/list"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `cursor?`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"resources/list"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `cursor?`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"resources/templates/list"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `cursor?`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"resources/read"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `uri`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"resources/subscribe"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `uri`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"resources/unsubscribe"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `uri`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"tools/list"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `cursor?`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `method`: `"tools/call"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `arguments?`: \{[`key`: `string`]: `unknown`; \}; `name`: `string`; \}; \} | \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/cancelled"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `reason?`: `string`; `requestId`: `string` \| `number`; \}; \} | \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/progress"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `message?`: `string`; `progress`: `number`; `progressToken`: `string` \| `number`; `total?`: `number`; \}; \} | \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/initialized"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/roots/list_changed"`; `params?`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}; \} | \{[`key`: `string`]: `unknown`; `error`: \{[`key`: `string`]: `unknown`; `code`: `number`; `data?`: \{[`key`: `string`]: `unknown`; \}; `message`: `string`; \}; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} | \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; `result`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (... \| ...)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (... \| ...)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (... \| ...)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \}; `model`: `string`; `role`: `"assistant"` \| `"user"`; `stopReason?`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `roots`: `object`[]; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `action`: `"accept"` \| `"cancel"` \| `"decline"`; `content?`: \{[`key`: `string`]: `string` \| `number` \| `boolean`; \}; \}; \}
 
 ###### Returns
 
@@ -184,31 +184,21 @@ npm install @mokei/context-client
 
 ##### callTool()
 
-> **callTool**\<`Name`\>(`name`, `args`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; \}\>
-
-###### Type Parameters
-
-###### Name
-
-`Name` *extends* `string`
+> **callTool**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `description?`: `string`; `mimeType?`: `string`; `name`: `string`; `size?`: `number`; `title?`: `string`; `type`: `"resource_link"`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; `structuredContent?`: \{[`key`: `string`]: `unknown`; \}; \}\>
 
 ###### Parameters
 
-###### name
+###### params
 
-`Name`
-
-###### args
-
-`T`\[`"Tools"`\]\[`Name`\]
+[`ToolParams`](#toolparams)\<`T`\>
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; \}\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `description?`: `string`; `mimeType?`: `string`; `name`: `string`; `size?`: `number`; `title?`: `string`; `type`: `"resource_link"`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; `structuredContent?`: \{[`key`: `string`]: `unknown`; \}; \}\>
 
 ##### complete()
 
-> **complete**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `hasMore?`: `boolean`; `total?`: `number`; `values`: `string`[]; \}\>
+> **complete**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `completion`: \{[`key`: `string`]: `unknown`; `hasMore?`: `boolean`; `total?`: `number`; `values`: `string`[]; \}; \}\>
 
 ###### Parameters
 
@@ -234,33 +224,31 @@ npm install @mokei/context-client
 
 `string`
 
+###### context?
+
+\{[`key`: `string`]: `unknown`; `arguments?`: \{[`key`: `string`]: `string`; \}; \}
+
+###### context.arguments?
+
+\{[`key`: `string`]: `string`; \}
+
 ###### ref
 
-\{[`key`: `string`]: `unknown`; `name`: `string`; `type`: `"ref/prompt"`; \} \| \{[`key`: `string`]: `unknown`; `type`: `"ref/resource"`; `uri`: `string`; \}
+\{[`key`: `string`]: `unknown`; `name`: `string`; `title?`: `string`; `type`: `"ref/prompt"`; \} \| \{[`key`: `string`]: `unknown`; `type`: `"ref/resource"`; `uri`: `string`; \}
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `hasMore?`: `boolean`; `total?`: `number`; `values`: `string`[]; \}\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `completion`: \{[`key`: `string`]: `unknown`; `hasMore?`: `boolean`; `total?`: `number`; `values`: `string`[]; \}; \}\>
 
 ##### getPrompt()
 
-> **getPrompt**\<`Name`\>(`name`, `args`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `description?`: `string`; `messages`: `object`[]; \}\>
-
-###### Type Parameters
-
-###### Name
-
-`Name` *extends* `string`
+> **getPrompt**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `description?`: `string`; `messages`: `object`[]; \}\>
 
 ###### Parameters
 
-###### name
+###### params
 
-`Name`
-
-###### args
-
-`T`\[`"Prompts"`\]\[`Name`\] *extends* `undefined` ? `never` : `T`\[`"Prompts"`\]\[`Name`\]
+[`PromptParams`](#promptparams)\<`T`\>
 
 ###### Returns
 
@@ -268,43 +256,67 @@ npm install @mokei/context-client
 
 ##### initialize()
 
-> **initialize**(): `Promise`\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `capabilities`: \{[`key`: `string`]: `unknown`; `completions?`: \{[`key`: `string`]: `unknown`; \}; `experimental?`: \{[`key`: `string`]: `object`; \}; `logging?`: \{[`key`: `string`]: `unknown`; \}; `prompts?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; `resources?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; `subscribe?`: `boolean`; \}; `tools?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; \}; `instructions?`: `string`; `protocolVersion`: `string`; `serverInfo`: \{[`key`: `string`]: `unknown`; `name`: `string`; `version`: `string`; \}; \}\>
+> **initialize**(): `Promise`\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `capabilities`: \{[`key`: `string`]: `unknown`; `completions?`: \{[`key`: `string`]: `unknown`; \}; `experimental?`: \{[`key`: `string`]: `object`; \}; `logging?`: \{[`key`: `string`]: `unknown`; \}; `prompts?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; `resources?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; `subscribe?`: `boolean`; \}; `tools?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; \}; `instructions?`: `string`; `protocolVersion`: `string`; `serverInfo`: \{[`key`: `string`]: `unknown`; `name`: `string`; `title?`: `string`; `version`: `string`; \}; \}\>
 
 ###### Returns
 
-`Promise`\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `capabilities`: \{[`key`: `string`]: `unknown`; `completions?`: \{[`key`: `string`]: `unknown`; \}; `experimental?`: \{[`key`: `string`]: `object`; \}; `logging?`: \{[`key`: `string`]: `unknown`; \}; `prompts?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; `resources?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; `subscribe?`: `boolean`; \}; `tools?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; \}; `instructions?`: `string`; `protocolVersion`: `string`; `serverInfo`: \{[`key`: `string`]: `unknown`; `name`: `string`; `version`: `string`; \}; \}\>
+`Promise`\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `capabilities`: \{[`key`: `string`]: `unknown`; `completions?`: \{[`key`: `string`]: `unknown`; \}; `experimental?`: \{[`key`: `string`]: `object`; \}; `logging?`: \{[`key`: `string`]: `unknown`; \}; `prompts?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; `resources?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; `subscribe?`: `boolean`; \}; `tools?`: \{[`key`: `string`]: `unknown`; `listChanged?`: `boolean`; \}; \}; `instructions?`: `string`; `protocolVersion`: `string`; `serverInfo`: \{[`key`: `string`]: `unknown`; `name`: `string`; `title?`: `string`; `version`: `string`; \}; \}\>
 
 ##### listPrompts()
 
-> **listPrompts**(): [`SentRequest`](../context-rpc/index.md#sentrequest)\<`object`[]\>
+> **listPrompts**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `prompts`: `object`[]; \}\>
+
+###### Parameters
+
+###### params
+
+`undefined` | \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `cursor?`: `string`; \}
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<`object`[]\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `prompts`: `object`[]; \}\>
 
 ##### listResources()
 
-> **listResources**(): [`SentRequest`](../context-rpc/index.md#sentrequest)\<`object`[]\>
+> **listResources**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `resources`: `object`[]; \}\>
+
+###### Parameters
+
+###### params
+
+`undefined` | \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `cursor?`: `string`; \}
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<`object`[]\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `resources`: `object`[]; \}\>
 
 ##### listResourceTemplates()
 
-> **listResourceTemplates**(): [`SentRequest`](../context-rpc/index.md#sentrequest)\<`object`[]\>
+> **listResourceTemplates**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `resourceTemplates`: `object`[]; \}\>
+
+###### Parameters
+
+###### params
+
+`undefined` | \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `cursor?`: `string`; \}
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<`object`[]\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `resourceTemplates`: `object`[]; \}\>
 
 ##### listTools()
 
-> **listTools**(): [`SentRequest`](../context-rpc/index.md#sentrequest)\<`object`[]\>
+> **listTools**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `tools`: `object`[]; \}\>
+
+###### Parameters
+
+###### params
+
+`undefined` | \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}; `cursor?`: `string`; \}
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<`object`[]\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `nextCursor?`: `string`; `tools`: `object`[]; \}\>
 
 ##### notify()
 
@@ -336,7 +348,7 @@ npm install @mokei/context-client
 
 ##### readResource()
 
-> **readResource**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `contents`: (\{[`key`: `string`]: `unknown`; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \})[]; \}\>
+> **readResource**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `contents`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \})[]; \}\>
 
 ###### Parameters
 
@@ -356,7 +368,7 @@ npm install @mokei/context-client
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `contents`: (\{[`key`: `string`]: `unknown`; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \})[]; \}\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `contents`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \})[]; \}\>
 
 ##### request()
 
@@ -424,17 +436,27 @@ npm install @mokei/context-client
 
 ##### setLoggingLevel()
 
-> **setLoggingLevel**(`level`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<`void`\>
+> **setLoggingLevel**(`params`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}\>
 
 ###### Parameters
 
+###### params
+
+###### _meta?
+
+\{[`key`: `string`]: `unknown`; `progressToken?`: `string` \| `number`; \}
+
+###### _meta.progressToken?
+
+`string` \| `number`
+
 ###### level
 
-`"alert"` | `"critical"` | `"debug"` | `"emergency"` | `"error"` | `"info"` | `"notice"` | `"warning"`
+`"alert"` \| `"critical"` \| `"debug"` \| `"emergency"` \| `"error"` \| `"info"` \| `"notice"` \| `"warning"`
 
 ###### Returns
 
-[`SentRequest`](../context-rpc/index.md#sentrequest)\<`void`\>
+[`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; \}\>
 
 ## Type Aliases
 
@@ -446,11 +468,15 @@ npm install @mokei/context-client
 
 ##### createMessage?
 
-> `optional` **createMessage**: `CreateMessageHandler`
+> `optional` **createMessage**: [`CreateMessageHandler`](#createmessagehandler)
+
+##### elicit?
+
+> `optional` **elicit**: [`ElicitHandler`](#elicithandler)
 
 ##### listRoots?
 
-> `optional` **listRoots**: [`Root`](../context-protocol/index.md#root)[] \| `ListRootsHandler`
+> `optional` **listRoots**: [`Root`](../context-protocol/index.md#root)[] \| [`ListRootsHandler`](#listrootshandler)
 
 ##### transport
 
@@ -477,6 +503,114 @@ npm install @mokei/context-client
 ##### Tools?
 
 > `optional` **Tools**: `Record`\<`string`, `Record`\<`string`, `unknown`\>\>
+
+***
+
+### CreateMessageHandler()
+
+> **CreateMessageHandler** = (`params`, `signal`) => [`CreateMessageResult`](../context-protocol/index.md#createmessageresult) \| `Promise`\<[`CreateMessageResult`](../context-protocol/index.md#createmessageresult)\>
+
+#### Parameters
+
+##### params
+
+[`CreateMessageRequest`](../context-protocol/index.md#createmessagerequest)\[`"params"`\]
+
+##### signal
+
+`AbortSignal`
+
+#### Returns
+
+[`CreateMessageResult`](../context-protocol/index.md#createmessageresult) \| `Promise`\<[`CreateMessageResult`](../context-protocol/index.md#createmessageresult)\>
+
+***
+
+### ElicitHandler()
+
+> **ElicitHandler** = (`params`, `signal`) => [`ElicitResult`](../context-protocol/index.md#elicitresult) \| `Promise`\<[`ElicitResult`](../context-protocol/index.md#elicitresult)\>
+
+#### Parameters
+
+##### params
+
+[`ElicitRequest`](../context-protocol/index.md#elicitrequest)\[`"params"`\]
+
+##### signal
+
+`AbortSignal`
+
+#### Returns
+
+[`ElicitResult`](../context-protocol/index.md#elicitresult) \| `Promise`\<[`ElicitResult`](../context-protocol/index.md#elicitresult)\>
+
+***
+
+### ListRootsHandler()
+
+> **ListRootsHandler** = (`signal`) => [`Root`](../context-protocol/index.md#root)[] \| `Promise`\<[`Root`](../context-protocol/index.md#root)[]\>
+
+#### Parameters
+
+##### signal
+
+`AbortSignal`
+
+#### Returns
+
+[`Root`](../context-protocol/index.md#root)[] \| `Promise`\<[`Root`](../context-protocol/index.md#root)[]\>
+
+***
+
+### PromptParams\<T\>
+
+> **PromptParams**\<`T`\> = `object`
+
+#### Type Parameters
+
+##### T
+
+`T` *extends* [`ContextTypes`](#contexttypes)
+
+#### Properties
+
+##### \_meta?
+
+> `optional` **\_meta**: [`Metadata`](../context-protocol/index.md#metadata)
+
+##### arguments
+
+> **arguments**: `T`\[`"Prompts"`\]\[keyof `T`\[`"Prompts"`\]\] *extends* `undefined` ? `never` : `T`\[`"Prompts"`\]\[keyof `T`\[`"Prompts"`\]\]
+
+##### name
+
+> **name**: keyof `T`\[`"Prompts"`\] & `string`
+
+***
+
+### ToolParams\<T\>
+
+> **ToolParams**\<`T`\> = `object`
+
+#### Type Parameters
+
+##### T
+
+`T` *extends* [`ContextTypes`](#contexttypes)
+
+#### Properties
+
+##### \_meta?
+
+> `optional` **\_meta**: [`Metadata`](../context-protocol/index.md#metadata)
+
+##### arguments
+
+> **arguments**: `T`\[`"Tools"`\]\[keyof `T`\[`"Tools"`\]\] *extends* `undefined` ? `never` : `T`\[`"Tools"`\]\[keyof `T`\[`"Tools"`\]\]
+
+##### name
+
+> **name**: keyof `T`\[`"Tools"`\] & `string`
 
 ***
 
