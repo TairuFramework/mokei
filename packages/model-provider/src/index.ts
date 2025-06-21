@@ -66,6 +66,7 @@ export type ServerMessage<RawMessage, RawToolCall> = {
   text?: string
   reasoning?: string
   toolCalls?: Array<FunctionToolCall<RawToolCall>>
+  doneReason?: string
   inputTokens?: number
   outputTokens?: number
   raw: RawMessage
@@ -75,8 +76,9 @@ export type AggregatedMessage<RawToolCall> = {
   source: 'aggregated'
   role: 'assistant'
   text: string
-  toolCalls: Array<FunctionToolCall<RawToolCall>>
   reasoning?: string
+  toolCalls: Array<FunctionToolCall<RawToolCall>>
+  doneReason?: string
   inputTokens: number
   outputTokens: number
 }

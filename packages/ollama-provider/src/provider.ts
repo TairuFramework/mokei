@@ -128,6 +128,7 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
     let toolCalls: Array<FunctionToolCall<ToolCall>> = []
     let inputTokens = 0
     let outputTokens = 0
+    let doneReason: string | undefined
     for (const part of parts) {
       if (part.text != null) {
         text += part.text
@@ -137,6 +138,9 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
       }
       if (part.toolCalls != null) {
         toolCalls = toolCalls.concat(part.toolCalls)
+      }
+      if (part.doneReason != null) {
+        doneReason = part.doneReason
       }
       if (part.inputTokens != null) {
         inputTokens += part.inputTokens
@@ -151,6 +155,7 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
       text,
       reasoning,
       toolCalls,
+      doneReason,
       inputTokens,
       outputTokens,
     }

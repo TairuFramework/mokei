@@ -7,7 +7,7 @@ packages:
   - website
 
 catalog:
-  '@biomejs/biome': 2.0.0
+  '@biomejs/biome': ^2.0.4
   '@enkaku/async': ^0.12.1
   '@enkaku/client': ^0.12.0
   '@enkaku/event': ^0.12.0
@@ -27,7 +27,7 @@ catalog:
   '@mantine/hooks': ^8.1.1
   '@oclif/core': ^4.4.0
   '@oclif/plugin-help': ^6.2.28
-  '@oclif/plugin-plugins': ^5.4.41
+  '@oclif/plugin-plugins': ^5.4.42
   '@oclif/test': ^4.1.13
   '@swc/cli': ^0.7.7
   '@swc/core': ^1.12.5

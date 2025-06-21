@@ -57,6 +57,7 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
     let text = ''
     const toolCalls: Array<FunctionToolCall<ToolCall>> = []
     let currentToolCall: FunctionToolCall<ToolCall> | null = null
+    let doneReason: string | undefined
     let inputTokens = 0
     let outputTokens = 0
 
@@ -76,6 +77,9 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
           }
         }
       }
+      if (part.doneReason != null) {
+        doneReason = part.doneReason
+      }
       if (part.inputTokens != null) {
         inputTokens += part.inputTokens
       }
@@ -86,7 +90,15 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
     if (currentToolCall != null) {
       toolCalls.push(currentToolCall)
     }
-    return { source: 'aggregated', role: 'assistant', text, toolCalls, inputTokens, outputTokens }
+    return {
+      source: 'aggregated',
+      role: 'assistant',
+      text,
+      toolCalls,
+      doneReason,
+      inputTokens,
+      outputTokens,
+    }
   }
 
   streamChat(params: StreamChatParams<Message, ToolCall, Tool>) {
