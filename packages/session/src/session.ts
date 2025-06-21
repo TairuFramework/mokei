@@ -204,7 +204,10 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     if (signal.aborted) {
       throw signal.reason
     }
-    const request = this.#contextHost.callNamespacedTool(toolCall.name, JSON.parse(toolCall.arguments))
+    const request = this.#contextHost.callNamespacedTool(
+      toolCall.name,
+      JSON.parse(toolCall.arguments),
+    )
     signal.addEventListener('abort', () => request.cancel())
     return request
   }

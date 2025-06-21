@@ -218,7 +218,6 @@ export class ChatSession<T extends ProviderTypes> extends Disposer {
             case 'text-delta':
               if (this.#loader.isSpinning) {
                 this.#loader.stop()
-                await this.#writer.write('🤖')
               }
               parts.push({ ...part, source: 'server', role: 'assistant' })
               await this.#writer.write(part.text)
@@ -265,7 +264,10 @@ export class ChatSession<T extends ProviderTypes> extends Disposer {
       if (ok) {
         this.#loader.info('Tool call accepted').start('Calling tool...')
         try {
-          const result = await this.#host.callTool(context, { name, arguments: tryParseJSON(toolCall.arguments) })
+          const result = await this.#host.callTool(context, {
+            name,
+            arguments: tryParseJSON(toolCall.arguments),
+          })
           const resultContent =
             result.content.find((c) => c.type === 'text')?.text ?? 'No text content'
           if (result.isError) {

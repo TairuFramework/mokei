@@ -30,7 +30,7 @@ catalog:
   '@oclif/plugin-plugins': ^5.4.41
   '@oclif/test': ^4.1.13
   '@swc/cli': ^0.7.7
-  '@swc/core': ^1.12.4
+  '@swc/core': ^1.12.5
   '@swc/jest': ^0.2.38
   '@tabler/icons-react': ^3.34.0
   '@tanstack/react-router': ^1.121.27
@@ -50,7 +50,7 @@ catalog:
   eventsource-parser: ^3.0.2
   get-port: ^7.1.0
   globals: ^16.2.0
-  hono: ^4.8.1
+  hono: ^4.8.2
   jest: ^30.0.2
   jotai: ^2.12.5
   ky: ^1.8.1
