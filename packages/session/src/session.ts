@@ -87,7 +87,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
 
   async #setupContext(params: AddContextParams): Promise<Array<ContextTool>> {
     const { key, command, args, env, enableTools } = params
-    await this.#contextHost.spawn({ key, command, args, env })
+    await this.#contextHost.addLocalContext({ key, command, args, env })
     const tools = await this.#contextHost.setup(key, enableTools ?? true)
     this.#events.emit('context-added', { key, tools })
     return tools

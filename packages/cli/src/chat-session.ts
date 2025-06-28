@@ -118,7 +118,7 @@ export class ChatSession<T extends ProviderTypes> extends Disposer {
 
     this.#loader.start('Adding context...')
     try {
-      await this.#host.spawn({ ...config, args })
+      await this.#host.addLocalContext({ ...config, args })
       const tools = await this.#host.setup(config.key)
       this.#loader.succeed(`Context ${config.key} successfully added`)
       if (tools.length !== 0) {

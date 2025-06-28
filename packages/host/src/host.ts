@@ -1,5 +1,6 @@
 import { Disposer } from '@enkaku/async'
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
+import { DirectTransports } from '@enkaku/transport'
 import {
   type ClientTransport,
   ContextClient,
@@ -8,14 +9,18 @@ import {
   type ToolParams,
   type UnknownContextTypes,
 } from '@mokei/context-client'
-import type { CallToolResult, GetPromptResult, Metadata, Tool } from '@mokei/context-protocol'
+import type {
+  CallToolResult,
+  ClientMessage,
+  GetPromptResult,
+  Metadata,
+  ServerMessage,
+  Tool,
+} from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
+import { ContextServer, type ServerConfig } from '@mokei/context-server'
 
 import { type SpawnContextServerParams, spawnContextServer } from './spawn.js'
-
-export type SpawnParams = SpawnContextServerParams & {
-  key: string
-}
 
 export type EnableTools = boolean | Array<string>
 export type EnableToolsFn = (tools: Array<Tool>) => EnableTools | Promise<EnableTools>
@@ -48,19 +53,51 @@ export type HostedContext<T extends ContextTypes = UnknownContextTypes> = {
   tools: Array<ContextTool>
 }
 
-export async function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
-  params: SpawnContextServerParams,
-): Promise<HostedContext<T>> {
-  const { childProcess, streams } = await spawnContextServer(params)
-  const transport = new NodeStreamsTransport({ streams }) as ClientTransport
+export type CreateHostedContextParams = {
+  transport: ClientTransport
+  tools?: Array<ContextTool>
+  dispose?: () => void | Promise<void>
+}
+
+export type CreateContextParams = CreateHostedContextParams & {
+  key: string
+}
+
+export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
+  params: CreateHostedContextParams,
+): HostedContext<T> {
+  const { transport, tools = [], dispose } = params
   const client = new ContextClient<T>({ transport })
   const disposer = new Disposer({
     dispose: async () => {
       await transport.dispose()
+      await dispose?.()
+    },
+  })
+  return { client, disposer, tools }
+}
+
+export async function spawnHostedContext<T extends ContextTypes = UnknownContextTypes>(
+  params: SpawnContextServerParams,
+): Promise<HostedContext<T>> {
+  const { childProcess, streams } = await spawnContextServer(params)
+  const transport = new NodeStreamsTransport({ streams }) as ClientTransport
+  return createHostedContext({
+    transport,
+    dispose: () => {
       childProcess.kill()
     },
   })
-  return { client, disposer, tools: [] }
+}
+
+export type AddDirectContextParams = {
+  key: string
+  config: ServerConfig
+  tools?: Array<ContextTool>
+}
+
+export type AddLocalContextParams = SpawnContextServerParams & {
+  key: string
 }
 
 export class ContextHost extends Disposer {
@@ -134,21 +171,56 @@ export class ContextHost extends Disposer {
     return tools
   }
 
-  async spawn(params: SpawnParams): Promise<ContextClient> {
+  createContext<T extends ContextTypes = UnknownContextTypes>(
+    params: CreateContextParams,
+  ): ContextClient<T> {
+    const { key, ...hostedParams } = params
+    if (this._contexts[key] != null) {
+      throw new Error(`Context ${key} already exists`)
+    }
+
+    const context = createHostedContext<T>(hostedParams)
+    this._contexts[key] = context as unknown as HostedContext
+    return context.client
+  }
+
+  addDirectContext<T extends ContextTypes = UnknownContextTypes>(
+    params: AddDirectContextParams,
+  ): ContextClient<T> {
+    const { key, config, tools } = params
+    if (this._contexts[key] != null) {
+      throw new Error(`Context ${key} already exists`)
+    }
+
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const server = new ContextServer({ ...config, transport: transports.server })
+    return this.createContext({
+      key,
+      transport: transports.client,
+      tools,
+      dispose: async () => {
+        await Promise.all([server.dispose(), transports.client.dispose()])
+      },
+    })
+  }
+
+  async addLocalContext<T extends ContextTypes = UnknownContextTypes>(
+    params: AddLocalContextParams,
+  ): Promise<ContextClient<T>> {
     const { key, ...spawnParams } = params
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
 
-    const context = await createHostedContext(spawnParams)
-    this._contexts[key] = context
+    const context = await spawnHostedContext<T>(spawnParams)
+    this._contexts[key] = context as unknown as HostedContext
     return context.client
   }
 
   async setup(key: string, enableTools: EnableToolsArg = true): Promise<Array<ContextTool>> {
     const { tools } = await this.getContext(key).client.listTools()
     const enabledTools = typeof enableTools === 'function' ? await enableTools(tools) : enableTools
-    const contextTools = tools.map((tool) => {
+    const contextTools = tools.map((tool: Tool) => {
       const enabled =
         typeof enabledTools === 'boolean' ? enabledTools : enabledTools.includes(tool.name)
       return { id: getContextToolID(key, tool.name), tool, enabled }

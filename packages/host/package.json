@@ -1,6 +1,6 @@
 {
   "name": "@mokei/host",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei Context host",
@@ -48,6 +48,7 @@
     "@enkaku/stream": "catalog:",
     "@enkaku/transport": "catalog:",
     "@mokei/context-client": "workspace:^",
+    "@mokei/context-server": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "nano-spawn": "catalog:"
   },

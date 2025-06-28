@@ -54,6 +54,46 @@ npm install @mokei/host
 
 #### Methods
 
+##### addDirectContext()
+
+> **addDirectContext**\<`T`\>(`params`): [`ContextClient`](../context-client/index.md#contextclient)\<`T`\>
+
+###### Type Parameters
+
+###### T
+
+`T` *extends* [`ContextTypes`](../context-client/index.md#contexttypes) = [`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)
+
+###### Parameters
+
+###### params
+
+[`AddDirectContextParams`](#adddirectcontextparams)
+
+###### Returns
+
+[`ContextClient`](../context-client/index.md#contextclient)\<`T`\>
+
+##### addLocalContext()
+
+> **addLocalContext**\<`T`\>(`params`): `Promise`\<[`ContextClient`](../context-client/index.md#contextclient)\<`T`\>\>
+
+###### Type Parameters
+
+###### T
+
+`T` *extends* [`ContextTypes`](../context-client/index.md#contexttypes) = [`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)
+
+###### Parameters
+
+###### params
+
+[`AddLocalContextParams`](#addlocalcontextparams)
+
+###### Returns
+
+`Promise`\<[`ContextClient`](../context-client/index.md#contextclient)\<`T`\>\>
+
 ##### callNamespacedTool()
 
 > **callNamespacedTool**(`id`, `args`, `metadata?`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `description?`: `string`; `mimeType?`: `string`; `name`: `string`; `size?`: `number`; `title?`: `string`; `type`: `"resource_link"`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; `structuredContent?`: \{[`key`: `string`]: `unknown`; \}; \}\>
@@ -97,6 +137,26 @@ npm install @mokei/host
 ###### Returns
 
 [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `description?`: `string`; `mimeType?`: `string`; `name`: `string`; `size?`: `number`; `title?`: `string`; `type`: `"resource_link"`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; `structuredContent?`: \{[`key`: `string`]: `unknown`; \}; \}\>
+
+##### createContext()
+
+> **createContext**\<`T`\>(`params`): [`ContextClient`](../context-client/index.md#contextclient)\<`T`\>
+
+###### Type Parameters
+
+###### T
+
+`T` *extends* [`ContextTypes`](../context-client/index.md#contexttypes) = [`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)
+
+###### Parameters
+
+###### params
+
+[`CreateContextParams`](#createcontextparams)
+
+###### Returns
+
+[`ContextClient`](../context-client/index.md#contextclient)\<`T`\>
 
 ##### disableContextTools()
 
@@ -270,20 +330,6 @@ npm install @mokei/host
 
 `Promise`\<[`ContextTool`](#contexttool)[]\>
 
-##### spawn()
-
-> **spawn**(`params`): `Promise`\<[`ContextClient`](../context-client/index.md#contextclient)\<[`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)\>\>
-
-###### Parameters
-
-###### params
-
-[`SpawnParams`](#spawnparams)
-
-###### Returns
-
-`Promise`\<[`ContextClient`](../context-client/index.md#contextclient)\<[`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)\>\>
-
 ***
 
 ### ProxyHost
@@ -340,6 +386,54 @@ npm install @mokei/host
 
 #### Methods
 
+##### addDirectContext()
+
+> **addDirectContext**\<`T`\>(`params`): [`ContextClient`](../context-client/index.md#contextclient)\<`T`\>
+
+###### Type Parameters
+
+###### T
+
+`T` *extends* [`ContextTypes`](../context-client/index.md#contexttypes) = [`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)
+
+###### Parameters
+
+###### params
+
+[`AddDirectContextParams`](#adddirectcontextparams)
+
+###### Returns
+
+[`ContextClient`](../context-client/index.md#contextclient)\<`T`\>
+
+###### Inherited from
+
+[`ContextHost`](#contexthost).[`addDirectContext`](#adddirectcontext)
+
+##### addLocalContext()
+
+> **addLocalContext**\<`T`\>(`params`): `Promise`\<[`ContextClient`](../context-client/index.md#contextclient)\<`T`\>\>
+
+###### Type Parameters
+
+###### T
+
+`T` *extends* [`ContextTypes`](../context-client/index.md#contexttypes) = [`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)
+
+###### Parameters
+
+###### params
+
+[`AddLocalContextParams`](#addlocalcontextparams)
+
+###### Returns
+
+`Promise`\<[`ContextClient`](../context-client/index.md#contextclient)\<`T`\>\>
+
+###### Inherited from
+
+[`ContextHost`](#contexthost).[`addLocalContext`](#addlocalcontext)
+
 ##### callNamespacedTool()
 
 > **callNamespacedTool**(`id`, `args`, `metadata?`): [`SentRequest`](../context-rpc/index.md#sentrequest)\<\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `content`: (\{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `text`: `string`; `type`: `"text"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"image"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `data`: `string`; `mimeType`: `string`; `type`: `"audio"`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `description?`: `string`; `mimeType?`: `string`; `name`: `string`; `size?`: `number`; `title?`: `string`; `type`: `"resource_link"`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `annotations?`: \{[`key`: `string`]: `unknown`; `audience?`: (`"assistant"` \| `"user"`)[]; `lastModified?`: `string`; `priority?`: `number`; \}; `resource`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `mimeType?`: `string`; `text`: `string`; `uri`: `string`; \} \| \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `blob`: `string`; `mimeType?`: `string`; `uri`: `string`; \}; `type`: `"resource"`; \})[]; `isError?`: `boolean`; `structuredContent?`: \{[`key`: `string`]: `unknown`; \}; \}\>
@@ -391,6 +485,30 @@ npm install @mokei/host
 ###### Inherited from
 
 [`ContextHost`](#contexthost).[`callTool`](#calltool)
+
+##### createContext()
+
+> **createContext**\<`T`\>(`params`): [`ContextClient`](../context-client/index.md#contextclient)\<`T`\>
+
+###### Type Parameters
+
+###### T
+
+`T` *extends* [`ContextTypes`](../context-client/index.md#contexttypes) = [`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)
+
+###### Parameters
+
+###### params
+
+[`CreateContextParams`](#createcontextparams)
+
+###### Returns
+
+[`ContextClient`](../context-client/index.md#contextclient)\<`T`\>
+
+###### Inherited from
+
+[`ContextHost`](#contexthost).[`createContext`](#createcontext)
 
 ##### disableContextTools()
 
@@ -610,7 +728,13 @@ npm install @mokei/host
 
 ##### spawn()
 
-> **spawn**(`params`): `Promise`\<[`ContextClient`](../context-client/index.md#contextclient)\<[`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)\>\>
+> **spawn**\<`T`\>(`params`): `Promise`\<[`ContextClient`](../context-client/index.md#contextclient)\<`T`\>\>
+
+###### Type Parameters
+
+###### T
+
+`T` *extends* [`ContextTypes`](../context-client/index.md#contexttypes) = [`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)
 
 ###### Parameters
 
@@ -620,11 +744,7 @@ npm install @mokei/host
 
 ###### Returns
 
-`Promise`\<[`ContextClient`](../context-client/index.md#contextclient)\<[`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)\>\>
-
-###### Overrides
-
-[`ContextHost`](#contexthost).[`spawn`](#spawn)
+`Promise`\<[`ContextClient`](../context-client/index.md#contextclient)\<`T`\>\>
 
 ##### forDaemon()
 
@@ -641,6 +761,38 @@ npm install @mokei/host
 `Promise`\<[`ProxyHost`](#proxyhost)\>
 
 ## Type Aliases
+
+### AddDirectContextParams
+
+> **AddDirectContextParams** = `object`
+
+#### Properties
+
+##### config
+
+> **config**: [`ServerConfig`](../context-server/index.md#serverconfig)
+
+##### key
+
+> **key**: `string`
+
+##### tools?
+
+> `optional` **tools**: [`ContextTool`](#contexttool)[]
+
+***
+
+### AddLocalContextParams
+
+> **AddLocalContextParams** = [`SpawnContextServerParams`](#spawncontextserverparams) & `object`
+
+#### Type declaration
+
+##### key
+
+> **key**: `string`
+
+***
 
 ### AllowToolCalls
 
@@ -669,6 +821,18 @@ npm install @mokei/host
 ##### tool
 
 > **tool**: [`Tool`](../context-protocol/index.md#tool)
+
+***
+
+### CreateContextParams
+
+> **CreateContextParams** = `CreateHostedContextParams` & `object`
+
+#### Type declaration
+
+##### key
+
+> **key**: `string`
 
 ***
 
@@ -776,18 +940,6 @@ npm install @mokei/host
 
 ***
 
-### SpawnParams
-
-> **SpawnParams** = [`SpawnContextServerParams`](#spawncontextserverparams) & `object`
-
-#### Type declaration
-
-##### key
-
-> **key**: `string`
-
-***
-
 ### StderrOption
 
 > **StderrOption** = `IOType` \| `number` \| `Writable`
@@ -812,7 +964,7 @@ npm install @mokei/host
 
 ### createHostedContext()
 
-> **createHostedContext**\<`T`\>(`params`): `Promise`\<[`HostedContext`](#hostedcontext)\<`T`\>\>
+> **createHostedContext**\<`T`\>(`params`): [`HostedContext`](#hostedcontext)\<`T`\>
 
 #### Type Parameters
 
@@ -824,11 +976,11 @@ npm install @mokei/host
 
 ##### params
 
-[`SpawnContextServerParams`](#spawncontextserverparams)
+`CreateHostedContextParams`
 
 #### Returns
 
-`Promise`\<[`HostedContext`](#hostedcontext)\<`T`\>\>
+[`HostedContext`](#hostedcontext)\<`T`\>
 
 ***
 
@@ -881,6 +1033,28 @@ npm install @mokei/host
 #### Returns
 
 `Promise`\<[`HostClient`](#hostclient)\>
+
+***
+
+### spawnHostedContext()
+
+> **spawnHostedContext**\<`T`\>(`params`): `Promise`\<[`HostedContext`](#hostedcontext)\<`T`\>\>
+
+#### Type Parameters
+
+##### T
+
+`T` *extends* [`ContextTypes`](../context-client/index.md#contexttypes) = [`UnknownContextTypes`](../context-client/index.md#unknowncontexttypes)
+
+#### Parameters
+
+##### params
+
+[`SpawnContextServerParams`](#spawncontextserverparams)
+
+#### Returns
+
+`Promise`\<[`HostedContext`](#hostedcontext)\<`T`\>\>
 
 ***
 

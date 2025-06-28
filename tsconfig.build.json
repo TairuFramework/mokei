@@ -6,7 +6,7 @@
     "esModuleInterop": true,
     "lib": ["dom", "es2022"],
     "module": "es2022",
-    "moduleResolution": "node",
+    "moduleResolution": "nodenext",
     "strict": true,
     "target": "es2022"
   }

@@ -12,7 +12,7 @@ test('run server', async () => {
   const client = new ContextClient({ transport: transports.client })
 
   await expect(
-    client.callTool('get_markdown', { url: 'https://mokei.dev' }),
+    client.callTool({ name: 'get_markdown', arguments: { url: 'https://mokei.dev' } }),
   ).resolves.toMatchObject({
     content: [{ type: 'text', text: expect.stringContaining('Mokei') }],
     isError: false,

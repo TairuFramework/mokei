@@ -1,4 +1,4 @@
-import { createHostedContext, type HostedContext } from '@mokei/host'
+import { type HostedContext, spawnHostedContext } from '@mokei/host'
 import { Args, Command } from '@oclif/core'
 import ora from 'ora'
 
@@ -19,7 +19,7 @@ export default class ContextInspect extends Command {
 
     let hosted: HostedContext | undefined
     try {
-      hosted = await createHostedContext({
+      hosted = await spawnHostedContext({
         command: args.command,
         args: argv.slice(1) as Array<string>,
       })

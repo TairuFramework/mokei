@@ -24,7 +24,10 @@
   "types": "lib/index.d.ts",
   "exports": {
     ".": "./lib/index.js",
-    "./config": "./lib/config.js"
+    "./config": {
+      "types": "./lib/config.d.ts",
+      "default": "./lib/config.js"
+    }
   },
   "files": [
     "lib/*"

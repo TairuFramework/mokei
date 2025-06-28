@@ -1,6 +1,10 @@
-import { Disposer } from '@enkaku/async'
 import { Transport } from '@enkaku/transport'
-import { type ClientTransport, ContextClient } from '@mokei/context-client'
+import type {
+  ClientTransport,
+  ContextClient,
+  ContextTypes,
+  UnknownContextTypes,
+} from '@mokei/context-client'
 
 import { type DaemonOptions, type HostClient, runDaemon } from './daemon/controller.js'
 import { ContextHost } from './host.js'
@@ -36,7 +40,9 @@ export class ProxyHost extends ContextHost {
     await this.#client.dispose()
   }
 
-  async spawn(params: ProxySpawnParams): Promise<ContextClient> {
+  async spawn<T extends ContextTypes = UnknownContextTypes>(
+    params: ProxySpawnParams,
+  ): Promise<ContextClient<T>> {
     const { key, env, ...spawnParam } = params
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
@@ -45,18 +51,14 @@ export class ProxyHost extends ContextHost {
     const channel = this.#client.createChannel('spawn', {
       param: { ...spawnParam, env: filterEnv(env) },
     })
-    const transport = new Transport({
-      stream: { readable: channel.readable, writable: channel.writable },
-    }) as ClientTransport
-    const client = new ContextClient({ transport })
-    const disposer = new Disposer({
-      dispose: async () => {
+    const transport = new Transport({ stream: channel }) as ClientTransport
+
+    return this.createContext({
+      key,
+      transport,
+      dispose: () => {
         channel.close()
-        await transport.dispose()
       },
     })
-
-    this._contexts[key] = { client, disposer, tools: [] }
-    return client
   }
 }
