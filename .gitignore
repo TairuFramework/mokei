@@ -1,6 +1,9 @@
-node_modules
-.turbo
-.swc
-.vscode
-lib
 coverage
+lib
+node_modules
+
+.claude
+.cursor
+.swc
+.turbo
+.vscode

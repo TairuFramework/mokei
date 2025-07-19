@@ -4,7 +4,7 @@
   "author": "Paul Le Cam",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@10.12.4",
+  "packageManager": "pnpm@10.13.1",
   "scripts": {
     "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
     "test": "node --experimental-eventsource --experimental-vm-modules ./node_modules/jest/bin/jest.js ./packages",
