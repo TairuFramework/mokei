@@ -65,6 +65,8 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
             return { role: msg.role, content: msg.text }
           case 'server':
             return msg.raw
+          default:
+            throw new Error('Unknown message source')
         }
       }),
       model: params.model,

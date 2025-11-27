@@ -24,7 +24,7 @@ export function useChannelState<
   return useCallState<Protocol, T['Result'], ChannelCall<T['Receive'], T['Send'], T['Result']>>(
     key,
     (client) => {
-      // @ts-ignore param type check
+      // @ts-expect-error param type check
       return client.createChannel<Procedure, T>(config.procedure, { param: config.param })
     },
   )

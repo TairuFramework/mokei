@@ -23,7 +23,7 @@ export const annotations = {
       type: 'number',
     },
     lastModified: {
-      description: `The moment the resource was last modified, as an ISO 8601 formatted string.\n\nShould be an ISO 8601 formatted string (e.g., \"2025-01-12T15:00:58Z\").\n\nExamples: last activity timestamp in an open file, timestamp when the resource\nwas attached, etc.`,
+      description: `The moment the resource was last modified, as an ISO 8601 formatted string.\n\nShould be an ISO 8601 formatted string (e.g., "2025-01-12T15:00:58Z").\n\nExamples: last activity timestamp in an open file, timestamp when the resource\nwas attached, etc.`,
       format: 'date-time',
       type: 'string',
     },

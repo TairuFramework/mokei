@@ -22,6 +22,9 @@ export const booleanSchema = {
 
 export const stringSchema = {
   properties: {
+    default: {
+      type: 'string',
+    },
     description: {
       type: 'string',
     },
@@ -49,6 +52,9 @@ export const stringSchema = {
 
 export const numberSchema = {
   properties: {
+    default: {
+      type: 'number',
+    },
     description: {
       type: 'string',
     },
@@ -70,8 +76,12 @@ export const numberSchema = {
   type: 'object',
 } as const satisfies Schema
 
+// Single-select enum with optional default
 export const enumSchema = {
   properties: {
+    default: {
+      type: 'string',
+    },
     description: {
       type: 'string',
     },
@@ -99,8 +109,54 @@ export const enumSchema = {
   type: 'object',
 } as const satisfies Schema
 
+// Multi-select enum (array of strings)
+export const multiSelectEnumSchema = {
+  properties: {
+    default: {
+      items: {
+        type: 'string',
+      },
+      type: 'array',
+    },
+    description: {
+      type: 'string',
+    },
+    items: {
+      properties: {
+        enum: {
+          items: {
+            type: 'string',
+          },
+          type: 'array',
+        },
+        enumNames: {
+          items: {
+            type: 'string',
+          },
+          type: 'array',
+        },
+        type: {
+          const: 'string',
+          type: 'string',
+        },
+      },
+      required: ['enum', 'type'],
+      type: 'object',
+    },
+    title: {
+      type: 'string',
+    },
+    type: {
+      const: 'array',
+      type: 'string',
+    },
+  },
+  required: ['items', 'type'],
+  type: 'object',
+} as const satisfies Schema
+
 export const primitiveSchemaDefinition = {
-  anyOf: [stringSchema, numberSchema, booleanSchema, enumSchema],
+  anyOf: [stringSchema, numberSchema, booleanSchema, enumSchema, multiSelectEnumSchema],
   description:
     'Restricted schema definitions that only allow primitive types\nwithout nested objects or arrays.',
 } as const satisfies Schema

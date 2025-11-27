@@ -2,6 +2,7 @@ import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { contentBlock } from './content.js'
 import {
+  icon,
   metadata,
   notification,
   paginatedRequest,
@@ -101,6 +102,11 @@ export const tool = {
       description:
         'A human-readable description of the tool.\n\nThis can be used by clients to improve the LLM\'s understanding of available tools. It can be thought of like a "hint" to the model.',
       type: 'string',
+    },
+    icons: {
+      description: 'Optional icons representing the tool.',
+      items: icon,
+      type: 'array',
     },
     inputSchema,
     name: {

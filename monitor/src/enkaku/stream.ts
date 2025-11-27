@@ -24,7 +24,7 @@ export function useStreamState<
   return useCallState<Protocol, T['Result'], StreamCall<T['Receive'], T['Result']>>(
     key,
     (client) => {
-      // @ts-ignore param type check
+      // @ts-expect-error param type check
       return client.createStream<Procedure, T>(config.procedure, { param: config.param })
     },
   )

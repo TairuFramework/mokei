@@ -36,7 +36,7 @@
     "postcss": "catalog:",
     "postcss-preset-mantine": "catalog:",
     "postcss-simple-vars": "catalog:",
-    "typescript": "~5.8.3",
+    "typescript": "~5.9.3",
     "vite": "catalog:",
     "vite-bundle-analyzer": "catalog:"
   }

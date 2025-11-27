@@ -22,7 +22,7 @@ export function useRequestState<
 ): CallState<T['Result'], RequestCall<T['Result']>> {
   const key = useCallKey(config.procedure, config.param)
   return useCallState<Protocol, T['Result'], RequestCall<T['Result']>>(key, (client) => {
-    // @ts-ignore param type check
+    // @ts-expect-error param type check
     return client.request(config.procedure, { param: config.param })
   })
 }

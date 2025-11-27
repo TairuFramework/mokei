@@ -2,6 +2,7 @@ import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { annotations, resourceContents } from './content.js'
 import {
+  icon,
   metadata,
   notification,
   paginatedRequest,
@@ -20,6 +21,11 @@ export const resource = {
       description:
         'A description of what this resource represents.\n\nThis can be used by clients to improve the LLM\'s understanding of available resources. It can be thought of like a "hint" to the model.',
       type: 'string',
+    },
+    icons: {
+      description: 'Optional icons representing the resource.',
+      items: icon,
+      type: 'array',
     },
     mimeType: {
       description: 'The MIME type of this resource, if known.',
@@ -60,6 +66,11 @@ export const resourceTemplate = {
       description:
         'A description of what this template is for.\n\nThis can be used by clients to improve the LLM\'s understanding of available resources. It can be thought of like a "hint" to the model.',
       type: 'string',
+    },
+    icons: {
+      description: 'Optional icons representing resources matching this template.',
+      items: icon,
+      type: 'array',
     },
     mimeType: {
       description:

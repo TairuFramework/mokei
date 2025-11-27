@@ -1,6 +1,6 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
-export const LATEST_PROTOCOL_VERSION = '2025-06-18'
+export const LATEST_PROTOCOL_VERSION = '2025-11-25'
 export const JSONRPC_VERSION = '2.0'
 
 export const PARSE_ERROR = -32700
@@ -16,11 +16,47 @@ export const requestId = {
 } as const satisfies Schema
 export type RequestID = FromSchema<typeof requestId>
 
-// https://modelcontextprotocol.io/specification/2025-06-18/basic/index#meta
+// https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities#icons
+export const icon = {
+  description:
+    'An icon representing a resource, tool, prompt, or other entity. Icons can be HTTP/HTTPS URLs or data URIs.',
+  properties: {
+    src: {
+      description:
+        'The URI of the icon. This can be an HTTP/HTTPS URL or a data URI. Icons should be square and support transparency.',
+      format: 'uri',
+      type: 'string',
+    },
+    mimeType: {
+      description:
+        'The MIME type of the icon. This is optional and can be used to override the type inferred from the URI.',
+      type: 'string',
+    },
+    sizes: {
+      description:
+        'The sizes of the icon in WxH format (e.g., "48x48"). Use "any" for scalable formats like SVG.',
+      items: {
+        type: 'string',
+      },
+      type: 'array',
+    },
+    theme: {
+      description:
+        'The theme the icon is designed for. If not specified, the icon is assumed to work for both themes.',
+      enum: ['light', 'dark'],
+      type: 'string',
+    },
+  },
+  required: ['src'],
+  type: 'object',
+} as const satisfies Schema
+export type Icon = FromSchema<typeof icon>
+
+// https://modelcontextprotocol.io/specification/2025-11-25/basic/index#meta
 export const metadata = {
   type: 'object',
   description:
-    'See [specification/2025-06-18/basic/index#general-fields] for notes on _meta usage.',
+    'See [specification/2025-11-25/basic/index#general-fields] for notes on _meta usage.',
   additionalProperties: {},
 } as const satisfies Schema
 export type Metadata = FromSchema<typeof metadata>

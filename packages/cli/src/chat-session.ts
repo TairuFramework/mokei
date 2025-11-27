@@ -124,7 +124,7 @@ export class ChatSession<T extends ProviderTypes> extends Disposer {
       if (tools.length !== 0) {
         const selected = await prompt<{ enabledTools: Array<string> }>({
           type: 'select',
-          // @ts-ignore
+          // @ts-expect-error
           multiple: true,
           name: 'enabledTools',
           message: `Select tools to enable for context ${config.key}`,

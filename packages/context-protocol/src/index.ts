@@ -66,6 +66,7 @@ export {
   type AnyMessage,
   type CancelledNotification,
   type ErrorResponse,
+  type Icon,
   INTERNAL_ERROR,
   INVALID_PARAMS,
   INVALID_REQUEST,

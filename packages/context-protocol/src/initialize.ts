@@ -1,6 +1,6 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
-import { notification, request, result } from './rpc.js'
+import { icon, notification, request, result } from './rpc.js'
 
 export const experimentalCapabilities = {
   additionalProperties: {
@@ -37,7 +37,15 @@ export const clientCapabilities = {
     sampling: {
       additionalProperties: true,
       description: 'Present if the client supports sampling from an LLM.',
-      properties: {},
+      properties: {
+        tools: {
+          additionalProperties: true,
+          description:
+            'Present if the client supports tool calling within sampling requests. When declared, the server can include tools and toolChoice parameters in sampling/createMessage requests.',
+          properties: {},
+          type: 'object',
+        },
+      },
       type: 'object',
     },
   },
@@ -108,6 +116,15 @@ export const implementation = {
   description:
     'Describes the name and version of an MCP implementation, with an optional title for UI representation.',
   properties: {
+    description: {
+      description: 'A human-readable description of the implementation.',
+      type: 'string',
+    },
+    icons: {
+      description: 'Optional icons representing the implementation.',
+      items: icon,
+      type: 'array',
+    },
     name: {
       description:
         "Intended for programmatic or logical use, but used as a display name in past specs or fallback (if title isn't present).",
@@ -119,6 +136,11 @@ export const implementation = {
       type: 'string',
     },
     version: {
+      type: 'string',
+    },
+    websiteUrl: {
+      description: 'Optional URL to the implementation website.',
+      format: 'uri',
       type: 'string',
     },
   },

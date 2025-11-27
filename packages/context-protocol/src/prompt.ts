@@ -1,7 +1,7 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { contentBlock, role } from './content.js'
-import { notification, paginatedRequest, paginatedResult, request, result } from './rpc.js'
+import { icon, notification, paginatedRequest, paginatedResult, request, result } from './rpc.js'
 
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L1296
 export const promptArgument = {
@@ -43,8 +43,18 @@ export const prompt = {
       description: 'An optional description of what this prompt provides',
       type: 'string',
     },
+    icons: {
+      description: 'Optional icons representing the prompt.',
+      items: icon,
+      type: 'array',
+    },
     name: {
       description: 'The name of the prompt or prompt template.',
+      type: 'string',
+    },
+    title: {
+      description:
+        'Intended for UI and end-user contexts — optimized to be human-readable and easily understood,\neven by those unfamiliar with domain-specific terminology.\n\nIf not provided, the name should be used for display.',
       type: 'string',
     },
   },

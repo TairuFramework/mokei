@@ -116,6 +116,8 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
               return { role: msg.role, content: msg.text }
             case 'server':
               return msg.raw
+            default:
+              throw new Error('Unknown message source')
           }
         },
       ),

@@ -2,6 +2,7 @@ import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { audioContent, imageContent, role, textContent } from './content.js'
 import { request, result } from './rpc.js'
+import { tool } from './tool.js'
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1105
 export const modelHint = {
@@ -66,6 +67,51 @@ export const samplingMessage = {
   type: 'object',
 } as const satisfies Schema
 
+// Tool choice configuration for sampling
+export const toolChoice = {
+  description:
+    'Controls how the model should use the provided tools. Can be "auto" (model decides), "required" (must use a tool), or specify a particular tool.',
+  anyOf: [
+    {
+      properties: {
+        type: {
+          const: 'auto',
+          description: 'The model decides whether to call tools.',
+          type: 'string',
+        },
+      },
+      required: ['type'],
+      type: 'object',
+    },
+    {
+      properties: {
+        type: {
+          const: 'required',
+          description: 'The model must call at least one tool.',
+          type: 'string',
+        },
+      },
+      required: ['type'],
+      type: 'object',
+    },
+    {
+      properties: {
+        toolName: {
+          description: 'The name of the specific tool to use.',
+          type: 'string',
+        },
+        type: {
+          const: 'tool',
+          description: 'The model must call the specified tool.',
+          type: 'string',
+        },
+      },
+      required: ['toolName', 'type'],
+      type: 'object',
+    },
+  ],
+} as const satisfies Schema
+
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L332
 export const createMessageRequest = {
   description:
@@ -116,6 +162,17 @@ export const createMessageRequest = {
             },
             temperature: {
               type: 'number',
+            },
+            toolChoice: {
+              ...toolChoice,
+              description:
+                'Controls how the model should use the provided tools. Only valid if the client declares the sampling.tools capability.',
+            },
+            tools: {
+              description:
+                'An array of tools that the model can call during sampling. Only valid if the client declares the sampling.tools capability. The client MUST return an error if this field is provided but the capability is not declared.',
+              items: tool,
+              type: 'array',
             },
           },
           required: ['maxTokens', 'messages'],
