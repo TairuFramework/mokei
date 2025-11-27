@@ -1,0 +1,130 @@
+{
+  "manifest_version": "0.3",
+  "name": "mcp-sqlite",
+  "display_name": "SQLite MCP Server",
+  "version": "0.4.0",
+  "description": "SQLite MCP server for executing SQL queries",
+  "long_description": "An MCP server that provides tools to interact with SQLite databases, including executing queries that return all results, single results, or performing data modifications.",
+  "author": {
+    "name": "Mokei Team"
+  },
+  "license": "MIT",
+  "homepage": "https://mokei.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TairuFramework/mokei",
+    "directory": "mcp-servers/sqlite"
+  },
+  "keywords": [
+    "model",
+    "context",
+    "protocol",
+    "mcp",
+    "server",
+    "llm",
+    "ai",
+    "sqlite",
+    "database",
+    "sql"
+  ],
+  "server": {
+    "type": "nodejs",
+    "entry": "lib/index.js"
+  },
+  "tools": [
+    {
+      "name": "sqlite_all",
+      "description": "This method executes a prepared statement and returns all results as an array of objects",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string",
+            "description": "A SQL string to compile to a prepared statement"
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                { "type": "string" },
+                { "type": "number" },
+                { "type": "null" }
+              ]
+            },
+            "description": "An object of parameter values"
+          }
+        },
+        "required": ["sql"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sqlite_get",
+      "description": "This method executes a prepared statement and returns the first result as an object",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string",
+            "description": "A SQL string to compile to a prepared statement"
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                { "type": "string" },
+                { "type": "number" },
+                { "type": "null" }
+              ]
+            },
+            "description": "An object of parameter values"
+          }
+        },
+        "required": ["sql"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sqlite_run",
+      "description": "This method executes a prepared statement and returns an object summarizing the resulting changes",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string",
+            "description": "A SQL string to compile to a prepared statement"
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                { "type": "string" },
+                { "type": "number" },
+                { "type": "null" }
+              ]
+            },
+            "description": "An object of parameter values"
+          }
+        },
+        "required": ["sql"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "user_config": [
+    {
+      "name": "db",
+      "type": "string",
+      "description": "Path to the SQLite database file",
+      "required": false,
+      "default": ":memory:"
+    }
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"],
+    "runtime": {
+      "type": "nodejs",
+      "minimum_version": "22.5.0"
+    }
+  }
+}

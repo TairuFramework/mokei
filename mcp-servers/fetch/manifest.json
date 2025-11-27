@@ -1,0 +1,59 @@
+{
+  "manifest_version": "0.3",
+  "name": "mcp-fetch",
+  "display_name": "Fetch MCP Server",
+  "version": "0.4.0",
+  "description": "Fetch MCP server for retrieving web content as markdown",
+  "long_description": "An MCP server that provides a tool to fetch URLs and convert their HTML content to markdown format using Turndown with GitHub Flavored Markdown support.",
+  "author": {
+    "name": "Mokei Team"
+  },
+  "license": "MIT",
+  "homepage": "https://mokei.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TairuFramework/mokei",
+    "directory": "mcp-servers/fetch"
+  },
+  "keywords": [
+    "model",
+    "context",
+    "protocol",
+    "mcp",
+    "server",
+    "llm",
+    "ai",
+    "fetch",
+    "web",
+    "markdown"
+  ],
+  "server": {
+    "type": "nodejs",
+    "entry": "lib/index.js"
+  },
+  "tools": [
+    {
+      "name": "get_markdown",
+      "description": "Fetch a URL and return its contents as markdown",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "HTTP URL to fetch contents from"
+          }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"],
+    "runtime": {
+      "type": "nodejs",
+      "minimum_version": "18.0.0"
+    }
+  }
+}
