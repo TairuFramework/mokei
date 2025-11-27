@@ -6,14 +6,13 @@
   "description": "SQLite MCP server for executing SQL queries",
   "long_description": "An MCP server that provides tools to interact with SQLite databases, including executing queries that return all results, single results, or performing data modifications.",
   "author": {
-    "name": "Mokei Team"
+    "name": "Paul Le Cam"
   },
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/TairuFramework/mokei",
-    "directory": "mcp-servers/sqlite"
+    "url": "https://github.com/TairuFramework/mokei"
   },
   "keywords": [
     "model",
@@ -28,87 +27,25 @@
     "sql"
   ],
   "server": {
-    "type": "nodejs",
-    "entry": "lib/index.js"
+    "type": "node",
+    "entry_point": "lib/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["lib/index.js"]
+    }
   },
   "tools": [
     {
       "name": "sqlite_all",
-      "description": "This method executes a prepared statement and returns all results as an array of objects",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "sql": {
-            "type": "string",
-            "description": "A SQL string to compile to a prepared statement"
-          },
-          "parameters": {
-            "type": "object",
-            "additionalProperties": {
-              "anyOf": [
-                { "type": "string" },
-                { "type": "number" },
-                { "type": "null" }
-              ]
-            },
-            "description": "An object of parameter values"
-          }
-        },
-        "required": ["sql"],
-        "additionalProperties": false
-      }
+      "description": "This method executes a prepared statement and returns all results as an array of objects"
     },
     {
       "name": "sqlite_get",
-      "description": "This method executes a prepared statement and returns the first result as an object",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "sql": {
-            "type": "string",
-            "description": "A SQL string to compile to a prepared statement"
-          },
-          "parameters": {
-            "type": "object",
-            "additionalProperties": {
-              "anyOf": [
-                { "type": "string" },
-                { "type": "number" },
-                { "type": "null" }
-              ]
-            },
-            "description": "An object of parameter values"
-          }
-        },
-        "required": ["sql"],
-        "additionalProperties": false
-      }
+      "description": "This method executes a prepared statement and returns the first result as an object"
     },
     {
       "name": "sqlite_run",
-      "description": "This method executes a prepared statement and returns an object summarizing the resulting changes",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "sql": {
-            "type": "string",
-            "description": "A SQL string to compile to a prepared statement"
-          },
-          "parameters": {
-            "type": "object",
-            "additionalProperties": {
-              "anyOf": [
-                { "type": "string" },
-                { "type": "number" },
-                { "type": "null" }
-              ]
-            },
-            "description": "An object of parameter values"
-          }
-        },
-        "required": ["sql"],
-        "additionalProperties": false
-      }
+      "description": "This method executes a prepared statement and returns an object summarizing the resulting changes"
     }
   ],
   "user_config": [
@@ -122,9 +59,8 @@
   ],
   "compatibility": {
     "platforms": ["darwin", "linux", "win32"],
-    "runtime": {
-      "type": "nodejs",
-      "minimum_version": "22.5.0"
+    "runtimes": {
+      "node": ">=24.0.0"
     }
   }
 }
