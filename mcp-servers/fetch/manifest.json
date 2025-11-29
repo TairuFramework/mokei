@@ -1,37 +1,19 @@
 {
-  "manifest_version": "0.3",
-  "name": "mcp-fetch",
+  "manifest_version": "0.2",
+  "name": "@mokei/mcp-fetch",
   "display_name": "Mokei Fetch",
   "version": "0.4.0",
-  "description": "Fetch MCP server for retrieving web content as markdown",
-  "long_description": "An MCP server that provides a tool to fetch URLs and convert their HTML content to markdown format using Turndown with GitHub Flavored Markdown support.",
+  "description": "Fetch MCP server",
   "author": {
     "name": "Paul Le Cam"
   },
-  "license": "MIT",
-  "homepage": "https://mokei.dev",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/TairuFramework/mokei"
-  },
-  "keywords": [
-    "model",
-    "context",
-    "protocol",
-    "mcp",
-    "server",
-    "llm",
-    "ai",
-    "fetch",
-    "web",
-    "markdown"
-  ],
   "server": {
     "type": "node",
     "entry_point": "lib/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["lib/index.js"]
+      "args": ["${__dirname}/lib/index.js"],
+      "env": {}
     }
   },
   "tools": [
@@ -40,10 +22,9 @@
       "description": "Fetch a URL and return its contents as markdown"
     }
   ],
-  "compatibility": {
-    "platforms": ["darwin", "linux", "win32"],
-    "runtimes": {
-      "node": ">=24.0.0"
-    }
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TairuFramework/mokei"
   }
 }

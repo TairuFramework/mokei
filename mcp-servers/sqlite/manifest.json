@@ -1,37 +1,19 @@
 {
-  "manifest_version": "0.3",
-  "name": "mcp-sqlite",
-  "display_name": "SQLite MCP Server",
+  "manifest_version": "0.2",
+  "name": "@mokei/mcp-sqlite",
+  "display_name": "Mokei SQLite",
   "version": "0.4.0",
-  "description": "SQLite MCP server for executing SQL queries",
-  "long_description": "An MCP server that provides tools to interact with SQLite databases, including executing queries that return all results, single results, or performing data modifications.",
+  "description": "SQLite MCP server",
   "author": {
     "name": "Paul Le Cam"
   },
-  "license": "MIT",
-  "homepage": "https://mokei.dev",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/TairuFramework/mokei"
-  },
-  "keywords": [
-    "model",
-    "context",
-    "protocol",
-    "mcp",
-    "server",
-    "llm",
-    "ai",
-    "sqlite",
-    "database",
-    "sql"
-  ],
   "server": {
     "type": "node",
     "entry_point": "lib/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["lib/index.js"]
+      "args": ["${__dirname}/lib/index.js"],
+      "env": {}
     }
   },
   "tools": [
@@ -48,19 +30,9 @@
       "description": "This method executes a prepared statement and returns an object summarizing the resulting changes"
     }
   ],
-  "user_config": [
-    {
-      "name": "db",
-      "type": "string",
-      "description": "Path to the SQLite database file",
-      "required": false,
-      "default": ":memory:"
-    }
-  ],
-  "compatibility": {
-    "platforms": ["darwin", "linux", "win32"],
-    "runtimes": {
-      "node": ">=24.0.0"
-    }
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TairuFramework/mokei"
   }
 }
