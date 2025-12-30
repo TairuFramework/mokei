@@ -1,51 +1,61 @@
-import { createTool, type Schema, type ServerConfig } from '@mokei/context-server'
+import type {
+  ExtractServerTypes,
+  Schema,
+  ServerConfig,
+  ToolDefinitions,
+} from '@mokei/context-server'
+import { createTool } from '@mokei/context-server'
 import Turndown from 'turndown'
 // @ts-expect-error no types
 import { gfm } from 'turndown-plugin-gfm'
 
 const turndownService = new Turndown().use(gfm).remove(['script', 'style'])
 
-export const config: ServerConfig = {
-  name: 'fetch',
-  version: '0.1.0',
-  tools: {
-    get_markdown: createTool(
-      'Fetch a URL and return its contents as markdown',
-      {
-        type: 'object',
-        properties: {
-          url: { type: 'string', format: 'uri', description: 'HTTP URL to fetch contents from' },
-        },
-        required: ['url'],
-        additionalProperties: false,
-      } as const satisfies Schema,
-      async (req) => {
-        process.stderr.write(`fetching ${req.arguments.url}\n`)
-        try {
-          const res = await fetch(req.arguments.url)
-          if (!res.ok) {
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: `Failed to fetch with response status ${res.status}: ${res.statusText}`,
-                },
-              ],
-              isError: true,
-            }
-          }
-
-          const text = await res.text()
-          const markdown = turndownService.turndown(text)
-
-          return { content: [{ type: 'text', text: markdown }], isError: false }
-        } catch (err) {
+const tools = {
+  get_markdown: createTool(
+    'Fetch a URL and return its contents as markdown',
+    {
+      type: 'object',
+      properties: {
+        url: { type: 'string', format: 'uri', description: 'HTTP URL to fetch contents from' },
+      },
+      required: ['url'],
+      additionalProperties: false,
+    } as const satisfies Schema,
+    async (req) => {
+      process.stderr.write(`fetching ${req.arguments.url}\n`)
+      try {
+        const res = await fetch(req.arguments.url)
+        if (!res.ok) {
           return {
-            content: [{ type: 'text', text: (err as Error).message ?? 'Unknown error' }],
+            content: [
+              {
+                type: 'text',
+                text: `Failed to fetch with response status ${res.status}: ${res.statusText}`,
+              },
+            ],
             isError: true,
           }
         }
-      },
-    ),
-  },
-}
+
+        const text = await res.text()
+        const markdown = turndownService.turndown(text)
+
+        return { content: [{ type: 'text', text: markdown }], isError: false }
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: (err as Error).message ?? 'Unknown error' }],
+          isError: true,
+        }
+      }
+    },
+  ),
+} satisfies ToolDefinitions
+
+export const config = {
+  name: 'fetch',
+  version: '0.1.0',
+  tools,
+} satisfies ServerConfig
+
+export type ServerTypes = ExtractServerTypes<typeof config>

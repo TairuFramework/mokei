@@ -20,4 +20,9 @@ export {
   type ServerParams,
   serveProcess,
 } from './server.js'
-export type { ClientInitialize, ServerTransport } from './types.js'
+export type {
+  ExtractPromptTypes,
+  ExtractServerTypes,
+  ExtractToolTypes,
+} from './types.js'
+export * from './types.js'

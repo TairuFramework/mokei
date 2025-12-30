@@ -120,3 +120,69 @@ export type TypedToolDefinition<InputSchema extends Schema & ToolInputSchema> = 
 }
 
 export type ToolDefinitions = Record<string, GenericToolDefinition>
+
+/**
+ * Extract TypeScript types from tool definitions for type-safe client usage.
+ *
+ * @example
+ * ```typescript
+ * const tools = {
+ *   myTool: createTool('Description', { type: 'object', properties: { foo: { type: 'string' } } } as const, handler)
+ * } satisfies ToolDefinitions
+ *
+ * type MyTools = ExtractToolTypes<typeof tools>
+ * // Result: { myTool: { foo: string } }
+ * ```
+ */
+export type ExtractToolTypes<T extends ToolDefinitions> = {
+  [K in keyof T]: T[K] extends TypedToolDefinition<infer S>
+    ? FromSchema<S>
+    : T[K] extends GenericToolDefinition
+      ? Record<string, unknown>
+      : never
+}
+
+/**
+ * Extract TypeScript types from prompt definitions for type-safe client usage.
+ *
+ * @example
+ * ```typescript
+ * const prompts = {
+ *   myPrompt: createPrompt('Description', { type: 'object', properties: { name: { type: 'string' } } } as const, handler)
+ * } satisfies PromptDefinitions
+ *
+ * type MyPrompts = ExtractPromptTypes<typeof prompts>
+ * // Result: { myPrompt: { name: string } }
+ * ```
+ */
+export type ExtractPromptTypes<T extends PromptDefinitions> = {
+  [K in keyof T]: T[K] extends TypedPromptDefinition<infer S>
+    ? FromSchema<S>
+    : T[K] extends GenericPromptDefinition
+      ? Record<string, unknown>
+      : never
+}
+
+/**
+ * Extract complete context types from a server configuration for type-safe client usage.
+ *
+ * @example
+ * ```typescript
+ * const config = {
+ *   name: 'my-server',
+ *   version: '1.0.0',
+ *   tools: { ... },
+ *   prompts: { ... }
+ * } satisfies ServerConfig
+ *
+ * type MyServerTypes = ExtractServerTypes<typeof config>
+ * const client = new ContextClient<MyServerTypes>({ transport })
+ * ```
+ */
+export type ExtractServerTypes<T extends { tools?: ToolDefinitions; prompts?: PromptDefinitions }> =
+  {
+    Tools: T['tools'] extends ToolDefinitions ? ExtractToolTypes<T['tools']> : Record<string, never>
+    Prompts: T['prompts'] extends PromptDefinitions
+      ? ExtractPromptTypes<T['prompts']>
+      : Record<string, never>
+  }
