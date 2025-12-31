@@ -7,8 +7,7 @@
   "packageManager": "pnpm@10.26.2",
   "scripts": {
     "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
-    "test": "node --experimental-eventsource --experimental-vm-modules ./node_modules/jest/bin/jest.js ./packages ./mcp-servers",
-    "test:ci": "pnpm run test --ci --runInBand",
+    "test": "pnpm run --filter './packages/**' --filter './mcp-servers/**' test",
     "build:js": "turbo run build:js",
     "build:types": "pnpm run -r build:types",
     "build:types:ci": "pnpm run -r build:types:ci",
@@ -18,18 +17,16 @@
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
     "@biomejs/biome": "catalog:",
-    "@jest/globals": "catalog:",
     "@swc/cli": "catalog:",
     "@swc/core": "catalog:",
-    "@swc/jest": "catalog:",
-    "@types/jest": "catalog:",
     "@types/node": "catalog:",
+    "@vitest/ui": "catalog:",
     "del-cli": "catalog:",
-    "jest": "catalog:",
     "tsx": "catalog:",
     "turbo": "catalog:",
     "typedoc": "catalog:",
     "typedoc-plugin-markdown": "catalog:",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "catalog:"
   }
 }

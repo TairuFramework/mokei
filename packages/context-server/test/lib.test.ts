@@ -1,5 +1,4 @@
 import { DirectTransports } from '@enkaku/transport'
-import { jest } from '@jest/globals'
 import type {
   ClientMessage,
   ClientRequest,
@@ -11,6 +10,7 @@ import type {
   ServerMessage,
 } from '@mokei/context-protocol'
 import { INVALID_PARAMS, LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
+import { vi } from 'vitest'
 
 import {
   ContextServer,
@@ -272,7 +272,7 @@ describe('ContextServer', () => {
     }
     const completion = { values: ['one', 'two'] }
 
-    const complete = jest.fn(() => ({ completion }))
+    const complete = vi.fn(() => ({ completion }))
     await expectServerResult(
       { complete },
       { method: 'completion/complete', params },

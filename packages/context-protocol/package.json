@@ -34,7 +34,7 @@
     "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
     "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
     "test:types": "tsc --noEmit --skipLibCheck",
-    "test:unit": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
+    "test:unit": "vitest run",
     "test": "pnpm run test:types && pnpm run test:unit",
     "prepublishOnly": "pnpm run build"
   },

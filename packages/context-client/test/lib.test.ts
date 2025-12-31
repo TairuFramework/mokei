@@ -1,5 +1,4 @@
 import { DirectTransports, type TransportType } from '@enkaku/transport'
-import { jest } from '@jest/globals'
 import type {
   CallToolResult,
   ClientMessage,
@@ -17,6 +16,7 @@ import type {
 } from '@mokei/context-protocol'
 import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import type { SentRequest as Request } from '@mokei/context-rpc'
+import { vi } from 'vitest'
 
 import { DEFAULT_INITIALIZE_PARAMS } from '../src/client.js'
 import { type ClientParams, ContextClient } from '../src/index.js'
@@ -176,7 +176,7 @@ describe('ContextClient', () => {
       model: 'foo',
       content: { type: 'text', text: 'test' },
     }
-    const createMessage = jest.fn(() => result)
+    const createMessage = vi.fn(() => result)
 
     await expectClientResponse(
       { createMessage },
@@ -199,7 +199,7 @@ describe('ContextClient', () => {
       action: 'accept',
       content: { run: 'once' },
     }
-    const elicit = jest.fn(() => result)
+    const elicit = vi.fn(() => result)
 
     await expectClientResponse(
       { elicit },

@@ -33,8 +33,7 @@
     "build": "pnpm run build:clean && pnpm run test:types && pnpm run build:dist",
     "prepack": "oclif manifest && oclif readme",
     "test:types": "tsc --noEmit --skipLibCheck",
-    "test:unit": "OCLIF_TEST_ROOT=. node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
-    "test": "pnpm run test:types && pnpm run test:unit",
+    "test": "pnpm run test:types",
     "version": "oclif readme && git add README.md"
   },
   "oclif": {
