@@ -31,6 +31,7 @@ For detailed documentation, load the relevant topic file:
 - `llms/client.md` - Creating MCP clients to connect to servers
 - `llms/host.md` - Managing multiple MCP server connections
 - `llms/session.md` - Chat sessions with tool calling integration
+- `llms/agent.md` - Agent sessions with automatic tool loop execution
 - `llms/providers.md` - Model provider integration (OpenAI, Ollama)
 - `llms/cli.md` - CLI usage reference
 
@@ -90,6 +91,9 @@ const response = await session.chat({
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
+│                     AgentSession                             │
+│  (Automatic agent loop with tool execution)                  │
+├─────────────────────────────────────────────────────────────┤
 │                        Session                               │
 │  (High-level abstraction for chat + MCP)                    │
 ├─────────────────────────────────────────────────────────────┤

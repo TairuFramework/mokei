@@ -4,10 +4,12 @@
  * ## Installation
  *
  * ```sh
- * npm install @mokei/chat-session
+ * npm install @mokei/session
  * ```
  *
- * @module chat-session
+ * @module session
  */
 
+export * from './agent-session.js'
+export * from './agent-types.js'
 export * from './session.js'
