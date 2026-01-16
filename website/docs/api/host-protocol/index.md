@@ -56,7 +56,7 @@ npm install @mokei/host-protocol
 
 > `const` **activeContextInfoSchema**: `object`
 
-#### Type declaration
+#### Type Declaration
 
 ##### properties
 
@@ -64,11 +64,11 @@ npm install @mokei/host-protocol
 
 ###### properties.startedTime
 
-> `readonly` **properties.startedTime**: `object`
+> `readonly` **startedTime**: `object`
 
 ###### properties.startedTime.type
 
-> `readonly` **properties.startedTime.type**: `"integer"` = `'integer'`
+> `readonly` **type**: `"integer"` = `'integer'`
 
 ##### required
 
@@ -90,7 +90,7 @@ npm install @mokei/host-protocol
 
 > `const` **hostEventMetaSchema**: `object`
 
-#### Type declaration
+#### Type Declaration
 
 ##### additionalProperties
 
@@ -102,27 +102,27 @@ npm install @mokei/host-protocol
 
 ###### properties.contextID
 
-> `readonly` **properties.contextID**: `object`
+> `readonly` **contextID**: `object`
 
 ###### properties.contextID.type
 
-> `readonly` **properties.contextID.type**: `"string"` = `'string'`
+> `readonly` **type**: `"string"` = `'string'`
 
 ###### properties.eventID
 
-> `readonly` **properties.eventID**: `object`
+> `readonly` **eventID**: `object`
 
 ###### properties.eventID.type
 
-> `readonly` **properties.eventID.type**: `"string"` = `'string'`
+> `readonly` **type**: `"string"` = `'string'`
 
 ###### properties.time
 
-> `readonly` **properties.time**: `object`
+> `readonly` **time**: `object`
 
 ###### properties.time.type
 
-> `readonly` **properties.time.type**: `"integer"` = `'integer'`
+> `readonly` **type**: `"integer"` = `'integer'`
 
 ##### required
 
@@ -138,7 +138,7 @@ npm install @mokei/host-protocol
 
 > `const` **hostEventSchema**: `object`
 
-#### Type declaration
+#### Type Declaration
 
 ##### anyOf
 
@@ -150,7 +150,7 @@ npm install @mokei/host-protocol
 
 > `const` **hostInfoResultSchema**: `object`
 
-#### Type declaration
+#### Type Declaration
 
 ##### additionalProperties
 
@@ -162,43 +162,43 @@ npm install @mokei/host-protocol
 
 ###### properties.activeContexts
 
-> `readonly` **properties.activeContexts**: `object`
+> `readonly` **activeContexts**: `object`
 
 ###### properties.activeContexts.additionalProperties
 
-> `readonly` **properties.activeContexts.additionalProperties**: `object` = `activeContextInfoSchema`
+> `readonly` **additionalProperties**: `object` = `activeContextInfoSchema`
 
 ###### properties.activeContexts.additionalProperties.properties
 
-> `readonly` **properties.activeContexts.additionalProperties.properties**: `object`
+> `readonly` **properties**: `object`
 
 ###### properties.activeContexts.additionalProperties.properties.startedTime
 
-> `readonly` **properties.activeContexts.additionalProperties.properties.startedTime**: `object`
+> `readonly` **startedTime**: `object`
 
 ###### properties.activeContexts.additionalProperties.properties.startedTime.type
 
-> `readonly` **properties.activeContexts.additionalProperties.properties.startedTime.type**: `"integer"` = `'integer'`
+> `readonly` **type**: `"integer"` = `'integer'`
 
 ###### properties.activeContexts.additionalProperties.required
 
-> `readonly` **properties.activeContexts.additionalProperties.required**: readonly \[`"startedTime"`\]
+> `readonly` **required**: readonly \[`"startedTime"`\]
 
 ###### properties.activeContexts.additionalProperties.type
 
-> `readonly` **properties.activeContexts.additionalProperties.type**: `"object"` = `'object'`
+> `readonly` **type**: `"object"` = `'object'`
 
 ###### properties.activeContexts.type
 
-> `readonly` **properties.activeContexts.type**: `"object"` = `'object'`
+> `readonly` **type**: `"object"` = `'object'`
 
 ###### properties.startedTime
 
-> `readonly` **properties.startedTime**: `object`
+> `readonly` **startedTime**: `object`
 
 ###### properties.startedTime.type
 
-> `readonly` **properties.startedTime.type**: `"integer"` = `'integer'`
+> `readonly` **type**: `"integer"` = `'integer'`
 
 ##### required
 
@@ -214,7 +214,7 @@ npm install @mokei/host-protocol
 
 > `const` **protocol**: `object`
 
-#### Type declaration
+#### Type Declaration
 
 ##### events
 
@@ -222,15 +222,15 @@ npm install @mokei/host-protocol
 
 ###### events.receive
 
-> `readonly` **events.receive**: `object`
+> `readonly` **receive**: `object`
 
 ###### events.receive.type
 
-> `readonly` **events.receive.type**: `"object"` = `'object'`
+> `readonly` **type**: `"object"` = `'object'`
 
 ###### events.type
 
-> `readonly` **events.type**: `"stream"` = `'stream'`
+> `readonly` **type**: `"stream"` = `'stream'`
 
 ##### info
 
@@ -238,67 +238,67 @@ npm install @mokei/host-protocol
 
 ###### info.result
 
-> `readonly` **info.result**: `object` = `hostInfoResultSchema`
+> `readonly` **result**: `object` = `hostInfoResultSchema`
 
 ###### info.result.additionalProperties
 
-> `readonly` **info.result.additionalProperties**: `false` = `false`
+> `readonly` **additionalProperties**: `false` = `false`
 
 ###### info.result.properties
 
-> `readonly` **info.result.properties**: `object`
+> `readonly` **properties**: `object`
 
 ###### info.result.properties.activeContexts
 
-> `readonly` **info.result.properties.activeContexts**: `object`
+> `readonly` **activeContexts**: `object`
 
 ###### info.result.properties.activeContexts.additionalProperties
 
-> `readonly` **info.result.properties.activeContexts.additionalProperties**: `object` = `activeContextInfoSchema`
+> `readonly` **additionalProperties**: `object` = `activeContextInfoSchema`
 
 ###### info.result.properties.activeContexts.additionalProperties.properties
 
-> `readonly` **info.result.properties.activeContexts.additionalProperties.properties**: `object`
+> `readonly` **properties**: `object`
 
 ###### info.result.properties.activeContexts.additionalProperties.properties.startedTime
 
-> `readonly` **info.result.properties.activeContexts.additionalProperties.properties.startedTime**: `object`
+> `readonly` **startedTime**: `object`
 
 ###### info.result.properties.activeContexts.additionalProperties.properties.startedTime.type
 
-> `readonly` **info.result.properties.activeContexts.additionalProperties.properties.startedTime.type**: `"integer"` = `'integer'`
+> `readonly` **type**: `"integer"` = `'integer'`
 
 ###### info.result.properties.activeContexts.additionalProperties.required
 
-> `readonly` **info.result.properties.activeContexts.additionalProperties.required**: readonly \[`"startedTime"`\]
+> `readonly` **required**: readonly \[`"startedTime"`\]
 
 ###### info.result.properties.activeContexts.additionalProperties.type
 
-> `readonly` **info.result.properties.activeContexts.additionalProperties.type**: `"object"` = `'object'`
+> `readonly` **type**: `"object"` = `'object'`
 
 ###### info.result.properties.activeContexts.type
 
-> `readonly` **info.result.properties.activeContexts.type**: `"object"` = `'object'`
+> `readonly` **type**: `"object"` = `'object'`
 
 ###### info.result.properties.startedTime
 
-> `readonly` **info.result.properties.startedTime**: `object`
+> `readonly` **startedTime**: `object`
 
 ###### info.result.properties.startedTime.type
 
-> `readonly` **info.result.properties.startedTime.type**: `"integer"` = `'integer'`
+> `readonly` **type**: `"integer"` = `'integer'`
 
 ###### info.result.required
 
-> `readonly` **info.result.required**: readonly \[`"activeContexts"`, `"startedTime"`\]
+> `readonly` **required**: readonly \[`"activeContexts"`, `"startedTime"`\]
 
 ###### info.result.type
 
-> `readonly` **info.result.type**: `"object"` = `'object'`
+> `readonly` **type**: `"object"` = `'object'`
 
 ###### info.type
 
-> `readonly` **info.type**: `"request"` = `'request'`
+> `readonly` **type**: `"request"` = `'request'`
 
 ##### shutdown
 
@@ -306,7 +306,7 @@ npm install @mokei/host-protocol
 
 ###### shutdown.type
 
-> `readonly` **shutdown.type**: `"request"` = `'request'`
+> `readonly` **type**: `"request"` = `'request'`
 
 ##### spawn
 
@@ -314,80 +314,80 @@ npm install @mokei/host-protocol
 
 ###### spawn.param
 
-> `readonly` **spawn.param**: `object`
+> `readonly` **param**: `object`
 
 ###### spawn.param.additionalProperties
 
-> `readonly` **spawn.param.additionalProperties**: `false` = `false`
+> `readonly` **additionalProperties**: `false` = `false`
 
 ###### spawn.param.properties
 
-> `readonly` **spawn.param.properties**: `object`
+> `readonly` **properties**: `object`
 
 ###### spawn.param.properties.args
 
-> `readonly` **spawn.param.properties.args**: `object`
+> `readonly` **args**: `object`
 
 ###### spawn.param.properties.args.items
 
-> `readonly` **spawn.param.properties.args.items**: `object`
+> `readonly` **items**: `object`
 
 ###### spawn.param.properties.args.items.type
 
-> `readonly` **spawn.param.properties.args.items.type**: `"string"` = `'string'`
+> `readonly` **type**: `"string"` = `'string'`
 
 ###### spawn.param.properties.args.type
 
-> `readonly` **spawn.param.properties.args.type**: `"array"` = `'array'`
+> `readonly` **type**: `"array"` = `'array'`
 
 ###### spawn.param.properties.command
 
-> `readonly` **spawn.param.properties.command**: `object`
+> `readonly` **command**: `object`
 
 ###### spawn.param.properties.command.type
 
-> `readonly` **spawn.param.properties.command.type**: `"string"` = `'string'`
+> `readonly` **type**: `"string"` = `'string'`
 
 ###### spawn.param.properties.env
 
-> `readonly` **spawn.param.properties.env**: `object`
+> `readonly` **env**: `object`
 
 ###### spawn.param.properties.env.additionalProperties
 
-> `readonly` **spawn.param.properties.env.additionalProperties**: `object`
+> `readonly` **additionalProperties**: `object`
 
 ###### spawn.param.properties.env.additionalProperties.type
 
-> `readonly` **spawn.param.properties.env.additionalProperties.type**: `"string"` = `'string'`
+> `readonly` **type**: `"string"` = `'string'`
 
 ###### spawn.param.properties.env.type
 
-> `readonly` **spawn.param.properties.env.type**: `"object"` = `'object'`
+> `readonly` **type**: `"object"` = `'object'`
 
 ###### spawn.param.required
 
-> `readonly` **spawn.param.required**: readonly \[`"command"`\]
+> `readonly` **required**: readonly \[`"command"`\]
 
 ###### spawn.param.type
 
-> `readonly` **spawn.param.type**: `"object"` = `'object'`
+> `readonly` **type**: `"object"` = `'object'`
 
 ###### spawn.receive
 
-> `readonly` **spawn.receive**: `object`
+> `readonly` **receive**: `object`
 
 ###### spawn.receive.type
 
-> `readonly` **spawn.receive.type**: `"object"` = `'object'`
+> `readonly` **type**: `"object"` = `'object'`
 
 ###### spawn.send
 
-> `readonly` **spawn.send**: `object`
+> `readonly` **send**: `object`
 
 ###### spawn.send.type
 
-> `readonly` **spawn.send.type**: `"object"` = `'object'`
+> `readonly` **type**: `"object"` = `'object'`
 
 ###### spawn.type
 
-> `readonly` **spawn.type**: `"channel"` = `'channel'`
+> `readonly` **type**: `"channel"` = `'channel'`

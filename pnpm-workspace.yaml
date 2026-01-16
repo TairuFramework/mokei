@@ -7,9 +7,9 @@ packages:
   - website
 
 catalog:
-  '@biomejs/biome': ^2.3.10
+  '@biomejs/biome': ^2.3.11
   '@enkaku/async': ^0.12.2
-  '@enkaku/client': ^0.12.1
+  '@enkaku/client': ^0.12.3
   '@enkaku/event': ^0.12.1
   '@enkaku/generator': ^0.12.1
   '@enkaku/http-client-transport': ^0.12.0
@@ -17,43 +17,43 @@ catalog:
   '@enkaku/node-streams-transport': ^0.12.1
   '@enkaku/protocol': ^0.12.1
   '@enkaku/schema': ^0.12.1
-  '@enkaku/server': ^0.12.1
+  '@enkaku/server': ^0.12.3
   '@enkaku/socket-transport': ^0.12.1
   '@enkaku/stream': ^0.12.4
   '@enkaku/transport': ^0.12.0
-  '@hono/node-server': ^1.19.7
-  '@mantine/core': ^8.3.10
-  '@mantine/hooks': ^8.3.10
+  '@hono/node-server': ^1.19.9
+  '@mantine/core': ^8.3.12
+  '@mantine/hooks': ^8.3.12
   '@oclif/core': ^4.8.0
   '@oclif/plugin-help': ^6.2.36
   '@oclif/plugin-plugins': ^5.4.54
   '@oclif/test': ^4.1.15
-  '@swc/cli': ^0.7.9
+  '@swc/cli': ^0.7.10
   '@swc/core': ^1.15.8
-  '@tabler/icons-react': ^3.36.0
-  '@tanstack/react-router': ^1.144.0
-  '@tanstack/react-virtual': ^3.13.14
-  '@tanstack/router-devtools': ^1.144.0
-  '@tanstack/router-plugin': ^1.145.2
+  '@tabler/icons-react': ^3.36.1
+  '@tanstack/react-router': ^1.150.0
+  '@tanstack/react-virtual': ^3.13.18
+  '@tanstack/router-devtools': ^1.150.0
+  '@tanstack/router-plugin': ^1.150.0
   '@types/luxon': ^3.7.1
-  '@types/node': ^25.0.3
-  '@types/react': ^19.2.7
+  '@types/node': ^25.0.9
+  '@types/react': ^19.2.8
   '@types/react-dom': ^19.2.3
   '@types/turndown': ^5.0.6
   '@vitejs/plugin-react-swc': ^4.2.2
-  '@vitest/ui': ^4.0.16
+  '@vitest/ui': ^4.0.17
   ansi-colors: ^4.1.3
   del-cli: ^7.0.0
   enquirer: ^2.4.1
   eventsource-parser: ^3.0.6
   get-port: ^7.1.0
-  globals: ^16.5.0
-  hono: ^4.11.3
-  jotai: ^2.16.1
+  globals: ^17.0.0
+  hono: ^4.11.4
+  jotai: ^2.16.2
   ky: ^1.14.2
   luxon: ^3.7.2
   nano-spawn: ^2.0.0
-  oclif: ^4.22.61
+  oclif: ^4.22.65
   ora: ^9.0.0
   postcss: ^8.5.6
   postcss-preset-mantine: ^1.18.0
@@ -62,14 +62,14 @@ catalog:
   react: ^19.2.3
   react-dom: ^19.2.3
   tsx: ^4.21.0
-  turbo: ^2.7.2
+  turbo: ^2.7.4
   turndown: ^7.2.2
   turndown-plugin-gfm: ^1.0.2
-  typedoc: ^0.28.15
+  typedoc: ^0.28.16
   typedoc-plugin-markdown: ^4.9.0
-  vite: ^7.3.0
+  vite: ^7.3.1
   vite-bundle-analyzer: ^1.3.2
-  vitest: ^4.0.16
+  vitest: ^4.0.17
 
 catalogMode: manual
 

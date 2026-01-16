@@ -10,7 +10,7 @@ npm install @mokei/context-rpc
 
 ## Classes
 
-### ContextRPC\<T\>
+### ContextRPC
 
 #### Extends
 
@@ -79,7 +79,7 @@ npm install @mokei/context-rpc
 
 ##### \_handleMessage()
 
-> **\_handleMessage**(`message`): `null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
+> **\_handleMessage**(`message`): \{\[`key`: `string`\]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<\{\[`key`: `string`\]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `null`\> \| `null`
 
 ###### Parameters
 
@@ -89,7 +89,7 @@ npm install @mokei/context-rpc
 
 ###### Returns
 
-`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<`null` \| \{[`key`: `string`]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \}\>
+\{\[`key`: `string`\]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `Promise`\<\{\[`key`: `string`\]: `unknown`; `id`: `string` \| `number`; `jsonrpc`: `"2.0"`; \} \| `null`\> \| `null`
 
 ##### \_handleNotification()
 
@@ -99,7 +99,7 @@ npm install @mokei/context-rpc
 
 ###### \_notification
 
-\{[`key`: `string`]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/progress"`; `params`: \{[`key`: `string`]: `unknown`; `_meta?`: \{[`key`: `string`]: `unknown`; \}; `message?`: `string`; `progress`: `number`; `progressToken`: `string` \| `number`; `total?`: `number`; \}; \} | `T`\[`"HandleNotification"`\]
+\{\[`key`: `string`\]: `unknown`; `jsonrpc`: `"2.0"`; `method`: `"notifications/progress"`; `params`: \{\[`key`: `string`\]: `unknown`; `_meta?`: \{\[`key`: `string`\]: `unknown`; \}; `message?`: `string`; `progress`: `number`; `progressToken`: `string` \| `number`; `total?`: `number`; \}; \} | `T`\[`"HandleNotification"`\]
 
 ###### Returns
 
@@ -277,11 +277,11 @@ npm install @mokei/context-rpc
 
 ###### Get Signature
 
-> **get** **data**(): `undefined` \| `Record`\<`string`, `unknown`\>
+> **get** **data**(): `Record`\<`string`, `unknown`\> \| `undefined`
 
 ###### Returns
 
-`undefined` \| `Record`\<`string`, `unknown`\>
+`Record`\<`string`, `unknown`\> \| `undefined`
 
 ##### isInternal
 
@@ -349,11 +349,11 @@ npm install @mokei/context-rpc
 
 ###### error.code
 
-> **error.code**: `number`
+> **code**: `number`
 
 ###### error.data?
 
-> `optional` **error.data**: `object`
+> `optional` **data**: `object`
 
 ###### Index Signature
 
@@ -361,7 +361,7 @@ npm install @mokei/context-rpc
 
 ###### error.message
 
-> **error.message**: `string`
+> **message**: `string`
 
 ###### id
 
@@ -381,7 +381,7 @@ npm install @mokei/context-rpc
 
 ###### error
 
-\{[`key`: `string`]: `unknown`; `code`: `number`; `data?`: \{[`key`: `string`]: `unknown`; \}; `message`: `string`; \}
+\{\[`key`: `string`\]: `unknown`; `code`: `number`; `data?`: \{\[`key`: `string`\]: `unknown`; \}; `message`: `string`; \}
 
 ###### error.code
 
@@ -389,7 +389,7 @@ npm install @mokei/context-rpc
 
 ###### error.data?
 
-\{[`key`: `string`]: `unknown`; \}
+\{\[`key`: `string`\]: `unknown`; \}
 
 ###### error.message
 
@@ -409,7 +409,7 @@ npm install @mokei/context-rpc
 
 ## Type Aliases
 
-### RPCParams\<T\>
+### RPCParams
 
 > **RPCParams**\<`T`\> = `object`
 
@@ -471,11 +471,11 @@ npm install @mokei/context-rpc
 
 ***
 
-### SentRequest\<Result\>
+### SentRequest
 
 > **SentRequest**\<`Result`\> = `Promise`\<`Result`\> & `object`
 
-#### Type declaration
+#### Type Declaration
 
 ##### cancel()
 

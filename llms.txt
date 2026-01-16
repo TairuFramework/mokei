@@ -1,0 +1,120 @@
+# Mokei - MCP Toolkit for TypeScript
+
+> TypeScript toolkit for creating, interacting with, and monitoring clients and servers using the Model Context Protocol (MCP).
+
+## Overview
+
+Mokei provides a comprehensive framework for building MCP-based applications with AI model integration. It includes libraries for creating MCP servers and clients, a host system for managing multiple server connections, session management for chat with tool calling, and model provider integrations.
+
+Website: https://mokei.dev
+Repository: https://github.com/TairuFramework/mokei
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `@mokei/context-protocol` | MCP protocol constants, schemas and TypeScript types |
+| `@mokei/context-rpc` | JSON-RPC implementation for MCP |
+| `@mokei/context-server` | MCP server implementation |
+| `@mokei/context-client` | MCP client implementation |
+| `@mokei/host` | Host system for managing multiple MCP server connections |
+| `@mokei/session` | High-level session management combining hosts with model providers |
+| `@mokei/openai-provider` | OpenAI model provider integration |
+| `@mokei/ollama-provider` | Ollama model provider integration |
+| `mokei` | CLI for interacting with MCP servers and AI models |
+
+## Topic Documentation
+
+For detailed documentation, load the relevant topic file:
+
+- `llms/server.md` - Creating MCP servers with tools, prompts, and resources
+- `llms/client.md` - Creating MCP clients to connect to servers
+- `llms/host.md` - Managing multiple MCP server connections
+- `llms/session.md` - Chat sessions with tool calling integration
+- `llms/providers.md` - Model provider integration (OpenAI, Ollama)
+- `llms/cli.md` - CLI usage reference
+
+## Quick Start
+
+### Creating an MCP Server
+
+```typescript
+import { createTool, serveProcess } from '@mokei/context-server'
+
+const tools = {
+  greet: createTool(
+    'Greets a user by name',
+    {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Name to greet' }
+      },
+      required: ['name']
+    },
+    (req) => ({
+      content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }],
+      isError: false
+    })
+  )
+}
+
+serveProcess({ name: 'my-server', version: '1.0.0', tools })
+```
+
+### Using Session with Model Provider
+
+```typescript
+import { Session } from '@mokei/session'
+import { OpenAIProvider } from '@mokei/openai-provider'
+
+const session = new Session({
+  providers: { openai: OpenAIProvider.fromConfig({ apiKey: 'sk-...' }) }
+})
+
+// Add an MCP server context
+await session.addContext({
+  key: 'myserver',
+  command: 'node',
+  args: ['my-server.js']
+})
+
+// Chat with tool access
+const response = await session.chat({
+  provider: 'openai',
+  model: 'gpt-4',
+  messages: [{ source: 'client', role: 'user', text: 'Greet Alice' }]
+})
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Session                               │
+│  (High-level abstraction for chat + MCP)                    │
+├─────────────────────────────────────────────────────────────┤
+│                     ContextHost                              │
+│  (Manages multiple MCP server connections)                   │
+├─────────────────────────────────────────────────────────────┤
+│   ContextClient          │          Model Providers          │
+│   (MCP client)           │   (OpenAI, Ollama)               │
+├──────────────────────────┼──────────────────────────────────┤
+│   ContextServer          │                                   │
+│   (MCP server)           │                                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Communication Flow
+
+1. Host spawns MCP server processes via stdio streams
+2. Client initializes connection and discovers tools/prompts
+3. Tools are namespaced as `contextKey:toolName`
+4. Session routes tool calls to appropriate MCP servers
+5. Results are aggregated and returned to model providers
+
+## Code Style
+
+When working with this codebase:
+- Use `type` instead of `interface` for type definitions
+- Use `Array<T>` instead of `T[]` for array types
+- Use TypeScript strict mode

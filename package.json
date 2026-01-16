@@ -4,7 +4,7 @@
   "author": "Paul Le Cam",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@10.26.2",
+  "packageManager": "pnpm@10.28.0",
   "scripts": {
     "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
     "test": "pnpm run --filter './packages/**' --filter './mcp-servers/**' test",
