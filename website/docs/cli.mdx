@@ -35,6 +35,18 @@ Usage: `mokei chat ollama --model "llama3.1:8b"`
 - `--api-url`: URL of the Ollama API, if not provided the default URL will be used
 - `--model`: model identifier, if not provided it will be prompted when needed
 
+### `mokei chat openai`
+
+Interactive chat with a model provider using OpenAI APIs.
+
+Usage: `mokei chat openai --model "gpt-4"`
+
+#### Flags
+
+- `--api-key`: OpenAI API key, can also be set via the `OPENAI_API_KEY` environment variable
+- `--api-url`: URL of the OpenAI-compatible API, if not provided the default OpenAI URL will be used
+- `--model`: model identifier, if not provided it will be prompted when needed
+
 ### `mokei context inspect <COMMAND> -- <ARGS...>`
 
 Spawns a local MCP server and run an [`inspect` request](https://spec.modelcontextprotocol.io/specification/2024-11-05/basic/lifecycle/#initialization) on it.

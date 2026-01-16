@@ -96,7 +96,7 @@ Now let's create the `index.js` file with the following imports:
 ```js title="index.js"
 import { DatabaseSync } from 'node:sqlite'
 import { parseArgs } from 'node:util'
-import { serve } from '@mokei/context-server'
+import { createTool, serveProcess } from '@mokei/context-server'
 ```
 
 #### Creating the database
@@ -141,61 +141,57 @@ Our defined tool input is a JSON object containing two properties:
 
 Providing a `description` to each property allows to provide information about how to use these properties to the LLM.
 
-#### Server specification
+#### Tool definitions
 
-Using our `toolInputSchema` defined above, we'll now define the full server specification, describing the API that our server will expose:
+Using our `toolInputSchema` defined above, we'll now define the tools using the `createTool` function, which takes a description, input schema, and handler function:
 
 ```js title="index.js (continued)"
-const specification = {
-  tools: {
-    sqlite_all: {
-      description:
-        'This method executes a prepared statement and returns all results as an array of objects',
-      input: toolInputSchema,
+const tools = {
+  sqlite_all: createTool(
+    'This method executes a prepared statement and returns all results as an array of objects',
+    toolInputSchema,
+    (req) => {
+      const results = db.prepare(req.arguments.sql).all(req.arguments.parameters ?? {})
+      return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
     },
-    sqlite_get: {
-      description:
-        'This method executes a prepared statement and returns the first result as an object',
-      input: toolInputSchema,
+  ),
+  sqlite_get: createTool(
+    'This method executes a prepared statement and returns the first result as an object',
+    toolInputSchema,
+    (req) => {
+      const result = db.prepare(req.arguments.sql).get(req.arguments.parameters ?? {})
+      return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
     },
-    sqlite_run: {
-      description:
-        'This method executes a prepared statement and returns an object summarizing the resulting changes',
-      input: toolInputSchema,
+  ),
+  sqlite_run: createTool(
+    'This method executes a prepared statement and returns an object summarizing the resulting changes',
+    toolInputSchema,
+    (req) => {
+      const changes = db.prepare(req.arguments.sql).run(req.arguments.parameters ?? {})
+      return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
     },
-  },
+  ),
 }
 ```
 
 Here we define 3 tools, approximately matching some of the APIs provided by [Node.js' SQLite module](https://nodejs.org/docs/latest/api/sqlite.html).
 
-Each of these tools provides a `description` to inform the LLM about usage, as well as the `input` supported by the tool.
+Each tool is created with `createTool()` which takes:
+- A `description` to inform the LLM about usage
+- An `inputSchema` defining the expected input format
+- A handler function that receives `req.arguments` with the validated input
 
-#### MCP implementation
+#### MCP server
 
-Finally, we'll provide the implementation for the specification previously defined, and start the server to handle connections from MCP clients.
+Finally, we'll start the server to handle connections from MCP clients using `serveProcess()`.
 
 The Mokei server and client libraries currently only support the Standard I/O transport.
 
 ```js title="index.js (continued)"
-serve({
+serveProcess({
   name: 'sqlite',
   version: '0.1.0',
-  specification,
-  tools: {
-    sqlite_all: (ctx) => {
-      const results = db.prepare(ctx.input.sql).all(ctx.input.parameters ?? {})
-      return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
-    },
-    sqlite_get: (ctx) => {
-      const result = db.prepare(ctx.input.sql).get(ctx.input.parameters ?? {})
-      return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
-    },
-    sqlite_run: (ctx) => {
-      const changes = db.prepare(ctx.input.sql).run(ctx.input.parameters ?? {})
-      return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
-    },
-  },
+  tools,
 })
 ```
 
@@ -209,7 +205,7 @@ This example server is available on npm as the `@mokei/mcp-sqlite` package, with
 ```js title="index.js"
 import { DatabaseSync } from 'node:sqlite'
 import { parseArgs } from 'node:util'
-import { serve } from '@mokei/context-server'
+import { createTool, serveProcess } from '@mokei/context-server'
 
 const args = parseArgs({
   options: {
@@ -234,44 +230,37 @@ const toolInputSchema = {
   additionalProperties: false,
 }
 
-const specification = {
-  tools: {
-    sqlite_all: {
-      description:
-        'This method executes a prepared statement and returns all results as an array of objects',
-      input: toolInputSchema,
-    },
-    sqlite_get: {
-      description:
-        'This method executes a prepared statement and returns the first result as an object',
-      input: toolInputSchema,
-    },
-    sqlite_run: {
-      description:
-        'This method executes a prepared statement and returns an object summarizing the resulting changes',
-      input: toolInputSchema,
-    },
-  },
-}
-
-serve({
-  name: 'sqlite',
-  version: '0.1.0',
-  specification,
-  tools: {
-    sqlite_all: (ctx) => {
-      const results = db.prepare(ctx.input.sql).all(ctx.input.parameters ?? {})
+const tools = {
+  sqlite_all: createTool(
+    'This method executes a prepared statement and returns all results as an array of objects',
+    toolInputSchema,
+    (req) => {
+      const results = db.prepare(req.arguments.sql).all(req.arguments.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
     },
-    sqlite_get: (ctx) => {
-      const result = db.prepare(ctx.input.sql).get(ctx.input.parameters ?? {})
+  ),
+  sqlite_get: createTool(
+    'This method executes a prepared statement and returns the first result as an object',
+    toolInputSchema,
+    (req) => {
+      const result = db.prepare(req.arguments.sql).get(req.arguments.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
     },
-    sqlite_run: (ctx) => {
-      const changes = db.prepare(ctx.input.sql).run(ctx.input.parameters ?? {})
+  ),
+  sqlite_run: createTool(
+    'This method executes a prepared statement and returns an object summarizing the resulting changes',
+    toolInputSchema,
+    (req) => {
+      const changes = db.prepare(req.arguments.sql).run(req.arguments.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
     },
-  },
+  ),
+}
+
+serveProcess({
+  name: 'sqlite',
+  version: '0.1.0',
+  tools,
 })
 ```
 
