@@ -10,7 +10,7 @@ import type {
   ServerMessage,
 } from '@mokei/context-protocol'
 import { INVALID_PARAMS, LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
-import { vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import {
   ContextServer,

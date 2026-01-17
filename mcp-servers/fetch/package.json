@@ -29,6 +29,9 @@
       "default": "./lib/config.js"
     }
   },
+  "bin": {
+    "mcp-fetch": "./lib/serve.js"
+  },
   "files": [
     "lib/*"
   ],

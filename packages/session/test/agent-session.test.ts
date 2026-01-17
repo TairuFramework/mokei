@@ -9,7 +9,7 @@ import type {
   ServerMessage as ProviderServerMessage,
   StreamChatRequest,
 } from '@mokei/model-provider'
-import { vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { AGENT_DEFAULTS, type AgentEvent, AgentSession, Session } from '../src/index.js'
 

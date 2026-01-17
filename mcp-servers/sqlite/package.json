@@ -25,6 +25,9 @@
   "exports": {
     ".": "./lib/index.js"
   },
+  "bin": {
+    "mcp-sqlite": "./lib/serve.js"
+  },
   "files": [
     "lib/*"
   ],
@@ -36,10 +39,16 @@
     "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
     "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
     "test:types": "tsc --noEmit --skipLibCheck",
-    "test": "pnpm run test:types",
+    "test:unit": "vitest run",
+    "test": "pnpm run test:types && pnpm run test:unit",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@mokei/context-server": "workspace:^"
+  },
+  "devDependencies": {
+    "@enkaku/transport": "catalog:",
+    "@mokei/context-client": "workspace:^",
+    "@mokei/context-protocol": "workspace:^"
   }
 }

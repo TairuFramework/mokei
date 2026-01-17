@@ -316,6 +316,16 @@ importers:
       '@mokei/context-server':
         specifier: workspace:^
         version: link:../../packages/context-server
+    devDependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.12.0
+      '@mokei/context-client':
+        specifier: workspace:^
+        version: link:../../packages/context-client
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../../packages/context-protocol
 
   monitor:
     dependencies:

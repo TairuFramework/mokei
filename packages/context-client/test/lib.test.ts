@@ -16,7 +16,7 @@ import type {
 } from '@mokei/context-protocol'
 import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import type { SentRequest as Request } from '@mokei/context-rpc'
-import { vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { DEFAULT_INITIALIZE_PARAMS } from '../src/client.js'
 import { type ClientParams, ContextClient } from '../src/index.js'

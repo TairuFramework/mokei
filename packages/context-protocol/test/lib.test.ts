@@ -1,10 +1,12 @@
-import { clientMessage } from '../lib/client.js'
-import { imageContent, role, textContent } from '../lib/content.js'
-import { initializedNotification, initializeRequest, initializeResult } from '../lib/initialize.js'
-import { loggingLevel, loggingMessageNotification, setLevelRequest } from '../lib/logging.js'
-import { getPromptRequest, getPromptResult, prompt } from '../lib/prompt.js'
-import { readResourceRequest, resource, resourceTemplate } from '../lib/resource.js'
-import { listRootsRequest, root } from '../lib/root.js'
+import { describe, expect, test } from 'vitest'
+
+import { clientMessage } from '../src/client.js'
+import { imageContent, role, textContent } from '../src/content.js'
+import { initializedNotification, initializeRequest, initializeResult } from '../src/initialize.js'
+import { loggingLevel, loggingMessageNotification, setLevelRequest } from '../src/logging.js'
+import { getPromptRequest, getPromptResult, prompt } from '../src/prompt.js'
+import { readResourceRequest, resource, resourceTemplate } from '../src/resource.js'
+import { listRootsRequest, root } from '../src/root.js'
 import {
   INTERNAL_ERROR,
   INVALID_PARAMS,
@@ -17,10 +19,10 @@ import {
   progressNotification,
   request,
   response,
-} from '../lib/rpc.js'
-import { createMessageRequest, modelPreferences } from '../lib/sampling.js'
-import { serverMessage } from '../lib/server.js'
-import { callToolRequest, callToolResult, listToolsRequest, tool } from '../lib/tool.js'
+} from '../src/rpc.js'
+import { createMessageRequest, modelPreferences } from '../src/sampling.js'
+import { serverMessage } from '../src/server.js'
+import { callToolRequest, callToolResult, listToolsRequest, tool } from '../src/tool.js'
 
 describe('Protocol Version and Constants', () => {
   test('should use MCP protocol version 2025-11-25', async () => {

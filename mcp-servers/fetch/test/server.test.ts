@@ -2,14 +2,16 @@ import { DirectTransports } from '@enkaku/transport'
 import { ContextClient } from '@mokei/context-client'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { ContextServer } from '@mokei/context-server'
+import { expect, test } from 'vitest'
 
-import { config, type ServerTypes } from '../src/config.js'
+import { createFetchConfig, type FetchServerTypes } from '../src/config.js'
 
 test('run server', async () => {
+  const config = createFetchConfig()
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const server = new ContextServer({ ...config, transport: transports.server })
 
-  const client = new ContextClient<ServerTypes>({ transport: transports.client })
+  const client = new ContextClient<FetchServerTypes>({ transport: transports.client })
 
   await expect(
     client.callTool({ name: 'get_markdown', arguments: { url: 'https://mokei.dev' } }),
