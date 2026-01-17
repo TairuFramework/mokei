@@ -2,16 +2,16 @@ import { fromStream } from '@enkaku/generator'
 import { ContextHost } from '@mokei/host'
 import { config as fetchConfig } from '@mokei/mcp-fetch/config'
 import type { ServerMessage } from '@mokei/model-provider'
-import { OpenAIProvider, type OpenAITypes } from '@mokei/openai-provider'
+import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
+import { expect, test } from 'vitest'
 
 const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/index.js'
 
+const model = 'ministral-3:8b'
+const provider = new OllamaProvider()
+
 test('executes a tool call after adding a local context', async () => {
   const host = new ContextHost()
-  const provider = new OpenAIProvider({
-    // LM Studio
-    client: { baseURL: 'http://127.0.0.1:1234/v1' },
-  })
 
   try {
     await host.addLocalContext({
@@ -25,7 +25,7 @@ test('executes a tool call after adding a local context', async () => {
     expect(tools).toHaveLength(1)
 
     const result = await provider.streamChat({
-      model: 'qwen3-8b',
+      model,
       messages: [
         {
           source: 'client',
@@ -36,7 +36,7 @@ test('executes a tool call after adding a local context', async () => {
       tools,
     })
 
-    const toolChunks: Array<ServerMessage<OpenAITypes['MessagePart'], OpenAITypes['ToolCall']>> = []
+    const toolChunks: Array<ServerMessage<OllamaTypes['MessagePart'], OllamaTypes['ToolCall']>> = []
     for await (const chunk of fromStream(result)) {
       if (chunk.type === 'tool-call') {
         toolChunks.push({
@@ -63,14 +63,10 @@ test('executes a tool call after adding a local context', async () => {
   } finally {
     await host.dispose()
   }
-}, 120_000)
+})
 
 test('executes a tool call after adding a direct context', async () => {
   const host = new ContextHost()
-  const provider = new OpenAIProvider({
-    // LM Studio
-    client: { baseURL: 'http://127.0.0.1:1234/v1' },
-  })
 
   try {
     host.addDirectContext({ key: 'fetch', config: fetchConfig })
@@ -80,7 +76,7 @@ test('executes a tool call after adding a direct context', async () => {
     expect(tools).toHaveLength(1)
 
     const result = await provider.streamChat({
-      model: 'qwen3-8b',
+      model,
       messages: [
         {
           source: 'client',
@@ -91,7 +87,7 @@ test('executes a tool call after adding a direct context', async () => {
       tools,
     })
 
-    const toolChunks: Array<ServerMessage<OpenAITypes['MessagePart'], OpenAITypes['ToolCall']>> = []
+    const toolChunks: Array<ServerMessage<OllamaTypes['MessagePart'], OllamaTypes['ToolCall']>> = []
     for await (const chunk of fromStream(result)) {
       if (chunk.type === 'tool-call') {
         toolChunks.push({
@@ -118,4 +114,4 @@ test('executes a tool call after adding a direct context', async () => {
   } finally {
     await host.dispose()
   }
-}, 120_000)
+})

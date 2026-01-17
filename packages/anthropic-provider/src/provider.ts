@@ -54,8 +54,8 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
   }
 
   async listModels(params?: RequestParams) {
-    const models = await this.#client.listModels(params)
-    return models.map((model) => ({ id: model.id, raw: model }))
+    const result = await this.#client.listModels(params)
+    return result.data.map((model) => ({ id: model.id, raw: model }))
   }
 
   async embed(_params: EmbedParams): Promise<{ embeddings: Array<Array<number>> }> {

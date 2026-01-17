@@ -1,11 +1,20 @@
+import { AnthropicProvider, type AnthropicTypes } from '@mokei/anthropic-provider'
 import type { ModelProvider } from '@mokei/model-provider'
 import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
 import { OpenAIProvider, type OpenAITypes } from '@mokei/openai-provider'
 import { Session } from '@mokei/session'
+import { beforeAll, describe, expect, test } from 'vitest'
 
-type ProviderTypes = OllamaTypes | OpenAITypes
+type ProviderTypes = AnthropicTypes | OllamaTypes | OpenAITypes
 
 const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/index.js'
+
+// Ollama Anthropic and OpenAI compatibility endpoint
+const baseURL = 'http://localhost:11434/v1'
+const anthropicProvider = new AnthropicProvider({
+  client: { baseURL },
+}) as ModelProvider<ProviderTypes>
+const openaiProvider = new OpenAIProvider({ client: { baseURL } }) as ModelProvider<ProviderTypes>
 
 describe('Session', () => {
   const session = new Session<ProviderTypes>()
@@ -16,31 +25,21 @@ describe('Session', () => {
       command: 'node',
       args: [FETCH_MCP_SERVER_PATH],
     })
+
+    return async () => {
+      await session.dispose()
+    }
   })
 
   describe.each([
-    [
-      'Ollama',
-      {
-        model: 'qwen3:8b',
-        provider: new OllamaProvider() as ModelProvider<ProviderTypes>,
-      },
-    ],
-    [
-      'OpenAI',
-      {
-        model: 'qwen3-8b',
-        provider: new OpenAIProvider({
-          // LM Studio
-          client: { baseURL: 'http://127.0.0.1:1234/v1' },
-        }) as ModelProvider<ProviderTypes>,
-      },
-    ],
+    ['Ollama', { provider: new OllamaProvider() as ModelProvider<ProviderTypes> }],
+    ['Anthropic', { provider: anthropicProvider }],
+    ['OpenAI', { provider: openaiProvider }],
   ])('using the %s provider', (_name, config) => {
     test('executes a tool call', async () => {
       const reply = await session.chat({
         provider: config.provider,
-        model: config.model,
+        model: 'ministral-3:8b',
         messages: [
           {
             source: 'client',
@@ -62,9 +61,5 @@ describe('Session', () => {
         isError: false,
       })
     }, 30_000)
-  })
-
-  afterAll(async () => {
-    await session.dispose()
   })
 })

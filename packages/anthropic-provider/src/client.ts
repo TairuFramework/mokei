@@ -36,6 +36,13 @@ function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStre
 
 export type ListModelParams = RequestParams
 
+export type ListModelResult = {
+  data: Array<Model>
+  first_id: string
+  has_more: boolean
+  last_id: string
+}
+
 export type ToolChoice = { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string }
 
 export type MessagesParams = RequestParams & {
@@ -58,42 +65,6 @@ export type MessagesParams = RequestParams & {
 export type AnthropicClientParams = AnthropicConfiguration
 
 export type { StreamEvent }
-
-/**
- * Known Claude models - Anthropic doesn't have a list models endpoint
- */
-export const KNOWN_MODELS: Array<Model> = [
-  {
-    id: 'claude-sonnet-4-20250514',
-    type: 'model',
-    display_name: 'Claude Sonnet 4',
-    created_at: '2025-05-14',
-  },
-  {
-    id: 'claude-3-7-sonnet-20250219',
-    type: 'model',
-    display_name: 'Claude 3.7 Sonnet',
-    created_at: '2025-02-19',
-  },
-  {
-    id: 'claude-3-5-sonnet-20241022',
-    type: 'model',
-    display_name: 'Claude 3.5 Sonnet',
-    created_at: '2024-10-22',
-  },
-  {
-    id: 'claude-3-5-haiku-20241022',
-    type: 'model',
-    display_name: 'Claude 3.5 Haiku',
-    created_at: '2024-10-22',
-  },
-  {
-    id: 'claude-3-opus-20240229',
-    type: 'model',
-    display_name: 'Claude 3 Opus',
-    created_at: '2024-02-29',
-  },
-]
 
 export class AnthropicClient {
   #api: KyInstance
@@ -118,8 +89,8 @@ export class AnthropicClient {
   /**
    * List available models (returns known models since Anthropic doesn't have a list endpoint)
    */
-  async listModels(_params: ListModelParams = {}): Promise<Array<Model>> {
-    return KNOWN_MODELS
+  async listModels(_params: ListModelParams = {}): Promise<ListModelResult> {
+    return await this.#api.get('models').json<ListModelResult>()
   }
 
   /**
