@@ -93,6 +93,59 @@ const tools = await session.addContext({
 })
 ```
 
+## Remote HTTP Contexts
+
+Connect to remote MCP servers via HTTP using the MCP Streamable HTTP transport specification.
+
+```typescript
+// Basic HTTP connection
+const client = await session.contextHost.addHttpContext({
+  key: 'remote-api',
+  url: 'https://mcp.example.com/api',
+})
+
+// Setup tools after connecting
+const tools = await session.contextHost.setup('remote-api')
+
+// With authentication
+const client = await session.contextHost.addHttpContext({
+  key: 'authenticated-api',
+  url: 'https://mcp.example.com/api',
+  auth: { type: 'bearer', token: 'your-api-key' },
+  timeout: 60000,
+})
+
+// Basic auth
+const client = await session.contextHost.addHttpContext({
+  key: 'basic-auth-api',
+  url: 'https://mcp.example.com/api',
+  auth: { type: 'basic', username: 'user', password: 'pass' },
+})
+
+// Custom header auth (e.g., API keys)
+const client = await session.contextHost.addHttpContext({
+  key: 'api-key-api',
+  url: 'https://mcp.example.com/api',
+  auth: { type: 'header', name: 'X-API-Key', value: 'your-key' },
+})
+
+// Custom headers
+const client = await session.contextHost.addHttpContext({
+  key: 'custom-headers',
+  url: 'https://mcp.example.com/api',
+  headers: {
+    'X-Custom-Header': 'value',
+    'X-Request-ID': crypto.randomUUID(),
+  },
+})
+```
+
+The HTTP transport:
+- Implements MCP Streamable HTTP specification
+- Manages session IDs automatically via `Mcp-Session-Id` header
+- Supports JSON and SSE responses
+- Includes protocol version header on all requests
+
 ## Managing Providers
 
 ```typescript
@@ -111,6 +164,139 @@ session.removeProvider('ollama')
 
 // List providers
 const providerNames = [...session.providers.keys()]
+```
+
+## Local Tools
+
+Register tools directly without setting up an MCP server. Local tools are namespaced with `local:` prefix.
+
+### Defining Local Tools
+
+```typescript
+import { Session, type LocalToolDefinition } from '@mokei/session'
+
+const calculateTool: LocalToolDefinition = {
+  name: 'calculate',
+  description: 'Evaluate a math expression',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      expression: { type: 'string', description: 'Math expression to evaluate' }
+    },
+    required: ['expression']
+  },
+  execute: async ({ expression }) => {
+    try {
+      const result = Function(`"use strict"; return (${expression})`)()
+      return { content: [{ type: 'text', text: String(result) }] }
+    } catch (error) {
+      return { 
+        content: [{ type: 'text', text: `Error: ${error.message}` }],
+        isError: true 
+      }
+    }
+  }
+}
+```
+
+### Registering at Construction
+
+```typescript
+const session = new Session({
+  providers: { openai },
+  localTools: [
+    calculateTool,
+    {
+      name: 'echo',
+      description: 'Echo the input back',
+      inputSchema: {
+        type: 'object',
+        properties: { message: { type: 'string' } }
+      },
+      execute: async ({ message }) => ({
+        content: [{ type: 'text', text: message as string }]
+      })
+    }
+  ]
+})
+```
+
+### Dynamic Registration
+
+```typescript
+// Add a single tool
+session.addLocalTool({
+  name: 'getCurrentTime',
+  description: 'Get the current time',
+  inputSchema: { type: 'object' },
+  execute: async () => ({
+    content: [{ type: 'text', text: new Date().toISOString() }]
+  })
+})
+
+// Add multiple tools
+session.addLocalTools([tool1, tool2, tool3])
+
+// Remove a tool
+session.removeLocalTool('getCurrentTime')
+```
+
+### Mixed Local and MCP Tools
+
+Local tools work alongside MCP server tools:
+
+```typescript
+const session = new Session({
+  providers: { openai },
+  localTools: [calculateTool]
+})
+
+// Add MCP server
+await session.addContext({
+  key: 'sqlite',
+  command: 'npx',
+  args: ['-y', '@mokei/mcp-sqlite']
+})
+
+// Both tools available
+const tools = session.contextHost.getCallableTools()
+// ['local:calculate', 'sqlite:query', 'sqlite:execute', ...]
+```
+
+### Executing Local Tools
+
+Local tools are executed the same way as MCP tools:
+
+```typescript
+const result = await session.executeToolCall({
+  id: 'call-1',
+  name: 'local:calculate',
+  arguments: JSON.stringify({ expression: '2 + 2' }),
+  raw: {}
+})
+
+console.log(result.content[0].text)  // "4"
+```
+
+### Tool Annotations
+
+Provide hints about tool behavior:
+
+```typescript
+const safeTool: LocalToolDefinition = {
+  name: 'readConfig',
+  description: 'Read configuration file',
+  inputSchema: { type: 'object' },
+  annotations: {
+    readOnlyHint: true,      // Doesn't modify anything
+    idempotentHint: true,    // Same result on repeated calls
+    openWorldHint: false,    // Closed domain (local files only)
+    title: 'Read Config'     // UI display name
+  },
+  execute: async () => ({
+    content: [{ type: 'text', text: '{}' }]
+  })
+}
 ```
 
 ## Chat API

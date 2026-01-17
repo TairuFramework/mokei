@@ -73,6 +73,8 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
       signal: params.signal,
       stream: true,
       tools: params.tools,
+      // Use format parameter for structured output (Ollama accepts JSON schema directly)
+      format: params.output ? (params.output.schema as Record<string, unknown>) : undefined,
     })
     const response = request.then((stream) => {
       return stream.pipeThrough(

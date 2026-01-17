@@ -125,6 +125,18 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
       signal: params.signal,
       stream: true,
       tools: params.tools,
+      // Add response_format for structured output
+      response_format: params.output
+        ? {
+            type: 'json_schema' as const,
+            json_schema: {
+              name: params.output.name ?? 'response',
+              description: params.output.description,
+              schema: params.output.schema as Record<string, unknown>,
+              strict: params.output.strict ?? true,
+            },
+          }
+        : undefined,
     })
 
     let usage: ChatCompletionUsage | null = null

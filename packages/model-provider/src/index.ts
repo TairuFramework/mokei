@@ -10,7 +10,13 @@
  * @module model-provider
  */
 
-import { asType, createValidator, type Validator } from '@enkaku/schema'
+import {
+  asType,
+  createValidator,
+  type FromSchema,
+  type Schema,
+  type Validator,
+} from '@enkaku/schema'
 import type { Tool } from '@mokei/context-protocol'
 
 const objectValidator = createValidator({ type: 'object' })
@@ -31,6 +37,82 @@ export function tryParseJSON<T = Record<string, unknown>>(
   }
   return asType(validator, parsedValue)
 }
+
+/**
+ * Issue from schema validation
+ */
+export type ValidationIssue = {
+  message: string
+  path?: ReadonlyArray<unknown>
+}
+
+/**
+ * Validates a value against a JSON schema and returns the result
+ */
+export function validateWithSchema<S extends Schema, T = FromSchema<S>>(
+  schema: S,
+  value: unknown,
+): StructuredValidationResult<T> {
+  const validator = createValidator<S, T>(schema)
+  const result = validator(value)
+  if (result.issues == null) {
+    return { success: true, data: result.value }
+  }
+  return {
+    success: false,
+    error: new StructuredOutputError(
+      'Validation failed',
+      result.issues.map((i) => ({ message: i.message, path: i.path as ReadonlyArray<unknown> })),
+    ),
+  }
+}
+
+/**
+ * Error thrown when structured output validation fails
+ */
+export class StructuredOutputError extends Error {
+  readonly issues: Array<ValidationIssue>
+
+  constructor(message: string, issues: Array<ValidationIssue>) {
+    super(message)
+    this.name = 'StructuredOutputError'
+    this.issues = issues
+  }
+}
+
+/**
+ * Result of structured output validation
+ */
+export type StructuredValidationResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: StructuredOutputError }
+
+/**
+ * Parameters for requesting structured output from a model
+ */
+export type StructuredOutputParams<S extends Schema = Schema> = {
+  /** JSON Schema defining the expected output structure */
+  schema: S
+  /** Name for the schema (used by some providers) */
+  name?: string
+  /** Description of what the output should contain */
+  description?: string
+  /** Whether to enforce strict schema adherence (default: true) */
+  strict?: boolean
+}
+
+/**
+ * Result containing both raw and validated structured output
+ */
+export type StructuredOutputResult<T> = {
+  /** The validated and typed output data */
+  data: T
+  /** The raw JSON string from the model */
+  raw: string
+}
+
+// Re-export schema types for convenience
+export type { FromSchema, Schema }
 
 export type Model<Raw> = {
   id: string
@@ -72,7 +154,7 @@ export type ServerMessage<RawMessage, RawToolCall> = {
   raw: RawMessage
 }
 
-export type AggregatedMessage<RawToolCall> = {
+export type AggregatedMessage<RawToolCall, TStructured = unknown> = {
   source: 'aggregated'
   role: 'assistant'
   text: string
@@ -81,6 +163,8 @@ export type AggregatedMessage<RawToolCall> = {
   doneReason?: string
   inputTokens: number
   outputTokens: number
+  /** Structured output result when output schema was provided */
+  structured?: StructuredOutputResult<TStructured>
 }
 
 export type Message<RawMessage, RawToolCall> =
@@ -133,6 +217,8 @@ export type StreamChatParams<RawMessage, RawToolCall, RawTool> = RequestParams &
   model: string
   messages: Array<Message<RawMessage, RawToolCall>>
   tools?: Array<RawTool>
+  /** Request structured output conforming to a JSON schema */
+  output?: StructuredOutputParams
 }
 
 export type StreamChatResponse<RawMessagePart, RawToolCall> = ReadableStream<

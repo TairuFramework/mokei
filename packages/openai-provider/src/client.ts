@@ -48,6 +48,19 @@ export type EmbeddingsParams = RequestParams & {
   user?: string
 }
 
+export type ResponseFormat =
+  | { type: 'text' }
+  | { type: 'json_object' }
+  | {
+      type: 'json_schema'
+      json_schema: {
+        name: string
+        description?: string
+        schema: Record<string, unknown>
+        strict?: boolean
+      }
+    }
+
 export type ChatParams = RequestParams & {
   model: string
   messages: Array<Message>
@@ -59,6 +72,7 @@ export type ChatParams = RequestParams & {
   max_tokens?: number
   presence_penalty?: number
   frequency_penalty?: number
+  response_format?: ResponseFormat
 }
 
 export type OpenAIClientParams = OpenAIConfiguration
@@ -116,6 +130,7 @@ export class OpenAIClient {
           max_tokens: params.max_tokens,
           presence_penalty: params.presence_penalty,
           frequency_penalty: params.frequency_penalty,
+          response_format: params.response_format,
         },
         signal: params.signal
           ? AbortSignal.any([params.signal, controller.signal])

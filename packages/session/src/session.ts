@@ -3,7 +3,12 @@ import { EventEmitter } from '@enkaku/event'
 import { fromStream } from '@enkaku/generator'
 import type { CallToolResult } from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
-import { ContextHost, type ContextTool, type EnableToolsArg } from '@mokei/host'
+import {
+  ContextHost,
+  type ContextTool,
+  type EnableToolsArg,
+  type LocalToolDefinition,
+} from '@mokei/host'
 import type {
   AggregatedMessage,
   FunctionToolCall,
@@ -50,6 +55,31 @@ export type SessionEvents<T extends ProviderTypes = ProviderTypes> = {
 
 export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
   providers?: Record<string, ModelProvider<T>>
+  /**
+   * Local tools that can be called directly without setting up an MCP server.
+   * These tools are registered with the `local:` namespace prefix.
+   *
+   * @example
+   * ```typescript
+   * const session = new Session({
+   *   providers: { openai },
+   *   localTools: [{
+   *     name: 'calculate',
+   *     description: 'Evaluate a math expression',
+   *     inputSchema: {
+   *       type: 'object',
+   *       properties: { expression: { type: 'string' } },
+   *       required: ['expression']
+   *     },
+   *     execute: async ({ expression }) => {
+   *       const result = eval(expression)
+   *       return { content: [{ type: 'text', text: String(result) }] }
+   *     }
+   *   }]
+   * })
+   * ```
+   */
+  localTools?: Array<LocalToolDefinition>
 }
 
 export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
@@ -67,6 +97,11 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     this.#events = new EventEmitter()
     this.#contextHost = new ContextHost()
     this.#providers = new Map(Object.entries(params.providers ?? {}))
+
+    // Register local tools if provided
+    if (params.localTools) {
+      this.#contextHost.addLocalTools(params.localTools)
+    }
   }
 
   get activeChatRequest(): StreamChatRequest<T['MessagePart'], T['ToolCall']> | null {
@@ -105,6 +140,28 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   removeContext(key: string): void {
     this.#contextHost.remove(key)
     this.#events.emit('context-removed', { key })
+  }
+
+  /**
+   * Add a local tool that can be called directly without setting up an MCP server.
+   * Local tools are namespaced as `local:toolName`.
+   */
+  addLocalTool(definition: LocalToolDefinition): void {
+    this.#contextHost.addLocalTool(definition)
+  }
+
+  /**
+   * Add multiple local tools at once.
+   */
+  addLocalTools(definitions: Array<LocalToolDefinition>): void {
+    this.#contextHost.addLocalTools(definitions)
+  }
+
+  /**
+   * Remove a local tool by name.
+   */
+  removeLocalTool(name: string): boolean {
+    return this.#contextHost.removeLocalTool(name)
   }
 
   addProvider<P extends T = T>(key: string, provider: ModelProvider<P>): void {

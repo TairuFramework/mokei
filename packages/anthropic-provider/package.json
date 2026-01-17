@@ -1,22 +1,23 @@
 {
-  "name": "@mokei/host",
+  "name": "@mokei/anthropic-provider",
   "version": "0.4.1",
   "license": "MIT",
   "homepage": "https://mokei.dev",
-  "description": "Mokei Context host",
+  "description": "Mokei Anthropic provider",
   "keywords": [
     "model",
     "context",
     "protocol",
     "mcp",
-    "host",
     "llm",
-    "ai"
+    "ai",
+    "anthropic",
+    "claude"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "packages/host"
+    "directory": "packages/anthropic-provider"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -39,21 +40,12 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "catalog:",
-    "@enkaku/client": "catalog:",
-    "@enkaku/node-streams-transport": "catalog:",
-    "@enkaku/server": "catalog:",
-    "@enkaku/socket-transport": "catalog:",
-    "@enkaku/stream": "catalog:",
-    "@enkaku/transport": "catalog:",
-    "@mokei/context-client": "workspace:^",
-    "@mokei/context-protocol": "workspace:^",
-    "@mokei/context-server": "workspace:^",
-    "@mokei/host-protocol": "workspace:^",
-    "nano-spawn": "catalog:"
+    "@enkaku/schema": "catalog:",
+    "eventsource-parser": "catalog:",
+    "ky": "catalog:"
   },
   "devDependencies": {
     "@mokei/context-protocol": "workspace:^",
-    "@mokei/context-rpc": "workspace:^"
+    "@mokei/model-provider": "workspace:^"
   }
 }

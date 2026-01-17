@@ -1,4 +1,4 @@
-# Mokei - MCP Toolkit for TypeScript
+# Mokei Documentation
 
 > TypeScript toolkit for creating, interacting with, and monitoring clients and servers using the Model Context Protocol (MCP).
 
@@ -6,8 +6,8 @@
 
 Mokei provides a comprehensive framework for building MCP-based applications with AI model integration. It includes libraries for creating MCP servers and clients, a host system for managing multiple server connections, session management for chat with tool calling, and model provider integrations.
 
-Website: https://mokei.dev
-Repository: https://github.com/TairuFramework/mokei
+**Website**: https://mokei.dev
+**Repository**: https://github.com/TairuFramework/mokei
 
 ## Packages
 
@@ -19,79 +19,24 @@ Repository: https://github.com/TairuFramework/mokei
 | `@mokei/context-client` | MCP client implementation |
 | `@mokei/host` | Host system for managing multiple MCP server connections |
 | `@mokei/session` | High-level session management combining hosts with model providers |
+| `@mokei/model-provider` | Model provider interface definitions |
 | `@mokei/openai-provider` | OpenAI model provider integration |
 | `@mokei/anthropic-provider` | Anthropic Claude model provider integration |
 | `@mokei/ollama-provider` | Ollama model provider integration |
 | `mokei` | CLI for interacting with MCP servers and AI models |
 
-## Documentation
+## Guides
 
-For detailed documentation, load the relevant file:
+Start here to learn Mokei:
 
-- `docs/guides/quick-start.md` - Getting started guide
-- `docs/guides/server.md` - Creating MCP servers with tools, prompts, and resources
-- `docs/guides/client.md` - Creating MCP clients to connect to servers
-- `docs/guides/host.md` - Managing multiple MCP server connections
-- `docs/guides/session.md` - Chat sessions with tool calling integration
-- `docs/guides/agent.md` - Agent sessions with automatic tool loop execution
-- `docs/guides/providers.md` - Model provider integration (OpenAI, Anthropic, Ollama)
-- `docs/guides/cli.md` - CLI usage reference
-
-## For AI Assistants
-
-See `AGENTS.md` for codebase guidance, development commands, and code style rules.
-
-## Quick Start
-
-### Creating an MCP Server
-
-```typescript
-import { createTool, serveProcess } from '@mokei/context-server'
-
-const tools = {
-  greet: createTool(
-    'Greets a user by name',
-    {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: 'Name to greet' }
-      },
-      required: ['name']
-    },
-    (req) => ({
-      content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }],
-      isError: false
-    })
-  )
-}
-
-serveProcess({ name: 'my-server', version: '1.0.0', tools })
-```
-
-### Using Session with Model Provider
-
-```typescript
-import { Session } from '@mokei/session'
-import { OpenAIProvider } from '@mokei/openai-provider'
-
-const session = new Session({
-  providers: { openai: OpenAIProvider.fromConfig({ apiKey: 'sk-...' }) }
-})
-
-// Add an MCP server context
-await session.addContext({
-  key: 'myserver',
-  command: 'node',
-  args: ['my-server.js']
-})
-
-// Chat with tool access
-const response = await session.chat({
-  provider: 'openai',
-  model: 'gpt-4',
-  messages: [{ source: 'client', role: 'user', text: 'Greet Alice' }]
-})
-```
+- [Quick Start](guides/quick-start.md) - Get up and running in minutes
+- [Creating MCP Servers](guides/server.md) - Build servers with tools, prompts, and resources
+- [Creating MCP Clients](guides/client.md) - Connect to MCP servers
+- [Managing Connections](guides/host.md) - Orchestrate multiple MCP servers
+- [Chat Sessions](guides/session.md) - High-level chat with tool calling
+- [Agent Sessions](guides/agent.md) - Automatic agent loops with tool execution
+- [Model Providers](guides/providers.md) - OpenAI, Anthropic, and Ollama integration
+- [CLI Reference](guides/cli.md) - Command-line interface usage
 
 ## Architecture
 
@@ -114,9 +59,14 @@ const response = await session.chat({
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Code Style
+## Communication Flow
 
-When working with this codebase:
-- Use `type` instead of `interface` for type definitions
-- Use `Array<T>` instead of `T[]` for array types
-- Use TypeScript strict mode
+1. Host spawns MCP server processes via stdio streams (or connects via HTTP)
+2. Client initializes connection and discovers tools/prompts
+3. Tools are namespaced as `contextKey:toolName` (or `local:toolName` for local tools)
+4. Session routes tool calls to appropriate MCP servers
+5. Results are aggregated and returned to model providers
+
+## Project Planning
+
+- [Roadmap](plans/roadmap.md) - Project vision, completed work, and planned features

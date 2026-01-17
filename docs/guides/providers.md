@@ -3,6 +3,7 @@
 Packages:
 - `@mokei/model-provider` - Base types and interfaces
 - `@mokei/openai-provider` - OpenAI API integration
+- `@mokei/anthropic-provider` - Anthropic Claude API integration
 - `@mokei/ollama-provider` - Ollama local models integration
 
 ## Installation
@@ -13,6 +14,9 @@ npm install @mokei/model-provider
 
 # OpenAI provider
 npm install @mokei/openai-provider
+
+# Anthropic provider
+npm install @mokei/anthropic-provider
 
 # Ollama provider  
 npm install @mokei/ollama-provider
@@ -127,6 +131,89 @@ const openAITool = provider.toolFromMCP(mcpTool)
 // { type: 'function', function: { name: 'greet', description: '...', parameters: {...} } }
 ```
 
+## Anthropic Provider
+
+### Configuration
+
+```typescript
+import { AnthropicProvider } from '@mokei/anthropic-provider'
+
+// From configuration
+const provider = AnthropicProvider.fromConfig({
+  apiKey: process.env.ANTHROPIC_API_KEY,      // Required
+  baseURL: 'https://api.anthropic.com/v1',    // Optional, default shown
+  timeout: 60000,                              // Optional, ms (false = no timeout)
+  anthropicVersion: '2023-06-01'              // Optional, API version
+})
+
+// Or with custom client
+import { AnthropicClient } from '@mokei/anthropic-provider'
+
+const client = new AnthropicClient({ apiKey: '...' })
+const provider = new AnthropicProvider({ client, defaultMaxTokens: 8192 })
+```
+
+### Listing Models
+
+```typescript
+const models = await provider.listModels()
+
+for (const model of models) {
+  console.log(model.id)      // 'claude-sonnet-4-20250514', etc.
+  console.log(model.raw)     // Full model object
+}
+```
+
+**Note**: Anthropic doesn't have a list models endpoint, so known Claude models are returned.
+
+### Streaming Chat
+
+```typescript
+const request = provider.streamChat({
+  model: 'claude-sonnet-4-20250514',
+  messages: [
+    { source: 'client', role: 'system', text: 'You are a helpful assistant.' },
+    { source: 'client', role: 'user', text: 'Hello!' }
+  ],
+  tools: [/* provider-specific tool format */]
+})
+
+const stream = await request
+
+const reader = stream.getReader()
+while (true) {
+  const { done, value } = await reader.read()
+  if (done) break
+  
+  switch (value.type) {
+    case 'text-delta':
+      process.stdout.write(value.text)
+      break
+    case 'reasoning-delta':
+      // Extended thinking content (for supported models)
+      console.log('Thinking:', value.reasoning)
+      break
+    case 'tool-call':
+      console.log('Tool calls:', value.toolCalls)
+      break
+    case 'done':
+      console.log(`Tokens: ${value.inputTokens}/${value.outputTokens}`)
+      break
+  }
+}
+```
+
+### Converting MCP Tools
+
+```typescript
+const anthropicTool = provider.toolFromMCP(mcpTool)
+// { name: 'greet', description: '...', input_schema: {...} }
+```
+
+**Limitations**:
+- No embeddings API - use OpenAI or another provider for embeddings
+- No list models endpoint - known models are returned instead
+
 ## Ollama Provider
 
 ### Configuration
@@ -200,6 +287,66 @@ const result = await provider.embed({
 })
 
 console.log(result.embeddings[0])
+```
+
+## Structured Output
+
+All providers support structured output to get validated JSON responses conforming to a schema.
+
+### Basic Usage
+
+```typescript
+import type { Schema } from '@mokei/model-provider'
+
+// Define your output schema (JSON Schema format)
+const responseSchema = {
+  type: 'object',
+  properties: {
+    answer: { type: 'string' },
+    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    sources: {
+      type: 'array',
+      items: { type: 'string' }
+    }
+  },
+  required: ['answer', 'confidence']
+} as const satisfies Schema
+
+// Request structured output
+const request = provider.streamChat({
+  model: 'gpt-4',
+  messages: [
+    { source: 'client', role: 'user', text: 'What is the capital of France?' }
+  ],
+  output: {
+    schema: responseSchema,
+    name: 'response',           // Optional: name for the schema
+    description: 'The answer',  // Optional: description
+    strict: true                // Optional: enforce strict adherence (default: true)
+  }
+})
+```
+
+### Provider-Specific Implementation
+
+- **OpenAI**: Uses `response_format` with `json_schema` type (GPT-4o+)
+- **Anthropic**: Uses tool calling with forced `tool_choice` to extract structured data
+- **Ollama**: Uses the `format` parameter with JSON schema
+
+### Validating Results
+
+```typescript
+import { validateWithSchema, StructuredOutputError } from '@mokei/model-provider'
+
+// After getting the response text
+const result = validateWithSchema(responseSchema, JSON.parse(responseText))
+
+if (result.success) {
+  console.log('Answer:', result.data.answer)
+  console.log('Confidence:', result.data.confidence)
+} else {
+  console.error('Validation failed:', result.error.issues)
+}
 ```
 
 ## Common Interface
@@ -361,11 +508,13 @@ The recommended way to use providers is through `Session`:
 ```typescript
 import { Session } from '@mokei/session'
 import { OpenAIProvider } from '@mokei/openai-provider'
+import { AnthropicProvider } from '@mokei/anthropic-provider'
 import { OllamaProvider } from '@mokei/ollama-provider'
 
 const session = new Session({
   providers: {
     openai: OpenAIProvider.fromConfig({ apiKey: '...' }),
+    anthropic: AnthropicProvider.fromConfig({ apiKey: '...' }),
     ollama: new OllamaProvider()
   }
 })
@@ -377,8 +526,15 @@ const response1 = await session.chat({
   messages: [...]
 })
 
-// Use Ollama
+// Use Anthropic
 const response2 = await session.chat({
+  provider: 'anthropic',
+  model: 'claude-sonnet-4-20250514',
+  messages: [...]
+})
+
+// Use Ollama
+const response3 = await session.chat({
   provider: 'ollama',
   model: 'llama3.1:8b',
   messages: [...]

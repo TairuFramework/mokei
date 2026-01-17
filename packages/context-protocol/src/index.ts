@@ -99,5 +99,6 @@ export {
   type ListToolsResult,
   outputSchema,
   type Tool,
+  type ToolAnnotations,
   type ToolListChangedNotification,
 } from './tool.js'
