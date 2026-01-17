@@ -1,6 +1,8 @@
 import type { CallToolResult } from '@mokei/context-protocol'
-import type { ContextHost, ContextTool } from '@mokei/host'
+import type { ContextTool } from '@mokei/host'
 import type { FunctionToolCall, ModelProvider, ProviderTypes } from '@mokei/model-provider'
+
+import type { Session } from './session.js'
 
 /**
  * Tool approval strategy for agent execution.
@@ -48,12 +50,12 @@ export type ToolApprovalDecision = {
  * Parameters for creating an AgentSession.
  */
 export type AgentParams<T extends ProviderTypes = ProviderTypes> = {
-  /** Provider key (string) or ModelProvider instance */
+  /** Session instance managing providers and MCP connections */
+  session: Session<T>
+  /** Provider key (string to lookup from session) or ModelProvider instance */
   provider: string | ModelProvider<T>
   /** Model identifier to use for chat completions */
   model: string
-  /** ContextHost managing MCP server connections */
-  host: ContextHost
   /** Optional system prompt prepended to messages */
   systemPrompt?: string
   /** Tool approval strategy (default: 'auto') */
@@ -70,9 +72,9 @@ export type AgentParams<T extends ProviderTypes = ProviderTypes> = {
  * Internal resolved params with all defaults applied.
  */
 export type ResolvedAgentParams<T extends ProviderTypes = ProviderTypes> = {
+  session: Session<T>
   provider: ModelProvider<T>
   model: string
-  host: ContextHost
   systemPrompt: string | undefined
   toolApproval: ToolApprovalStrategy
   maxIterations: number

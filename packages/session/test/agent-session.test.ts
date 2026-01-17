@@ -1,7 +1,6 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { CallToolResult, ClientMessage, ServerMessage, Tool } from '@mokei/context-protocol'
 import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
-import { ContextHost } from '@mokei/host'
 import type {
   AggregatedMessage,
   FunctionToolCall,
@@ -12,7 +11,7 @@ import type {
 } from '@mokei/model-provider'
 import { vi } from 'vitest'
 
-import { AGENT_DEFAULTS, type AgentEvent, AgentSession } from '../src/index.js'
+import { AGENT_DEFAULTS, type AgentEvent, AgentSession, Session } from '../src/index.js'
 
 /**
  * Creates a mock StreamChatRequest that combines AbortController and Promise.
@@ -142,11 +141,12 @@ function createMockProvider(
   }
 }
 
-// Create a mock host with a direct context
-async function createMockHostWithTools(
+// Create a Session with a mock context for testing
+async function createMockSessionWithTools(
   tools: Array<{ name: string; description: string; result: CallToolResult }>,
-): Promise<ContextHost> {
-  const host = new ContextHost()
+  providers?: Record<string, ModelProvider<MockProviderTypes>>,
+): Promise<Session<MockProviderTypes>> {
+  const session = new Session<MockProviderTypes>({ providers })
 
   // Create a mock server transport pair
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
@@ -208,59 +208,55 @@ async function createMockHostWithTools(
   // Start server in background
   serverLoop().catch(() => {})
 
-  // Add the context to host
-  host.createContext({
+  // Add the context using session's contextHost
+  session.contextHost.createContext({
     key: 'mock',
     transport: transports.client,
   })
 
   // Initialize and setup
-  await host.setup('mock')
+  await session.contextHost.setup('mock')
 
-  return host
+  return session
 }
 
 describe('AgentSession', () => {
   describe('constructor', () => {
     test('applies default values', () => {
       const provider = createMockProvider([{ text: 'Hello' }])
-      const host = new ContextHost()
+      const session = new Session({ providers: { test: provider } })
 
       const agent = new AgentSession({
+        session,
         provider,
         model: 'test-model',
-        host,
       })
 
       expect(agent).toBeInstanceOf(AgentSession)
     })
 
     test('throws if string provider not found', () => {
-      const host = new ContextHost()
+      const session = new Session()
 
       expect(
         () =>
           new AgentSession({
+            session,
             provider: 'nonexistent',
             model: 'test-model',
-            host,
           }),
-      ).toThrow('Provider "nonexistent" not found')
+      ).toThrow('Provider with key nonexistent does not exist')
     })
 
-    test('accepts provider from providers map', () => {
+    test('accepts provider from session.providers', () => {
       const provider = createMockProvider([{ text: 'Hello' }])
-      const host = new ContextHost()
-      const providers = new Map([['test', provider]])
+      const session = new Session({ providers: { test: provider } })
 
-      const agent = new AgentSession(
-        {
-          provider: 'test',
-          model: 'test-model',
-          host,
-        },
-        providers,
-      )
+      const agent = new AgentSession({
+        session,
+        provider: 'test',
+        model: 'test-model',
+      })
 
       expect(agent).toBeInstanceOf(AgentSession)
     })
@@ -271,12 +267,12 @@ describe('AgentSession', () => {
       const provider = createMockProvider([
         { text: 'Hello, world!', inputTokens: 5, outputTokens: 3 },
       ])
-      const host = new ContextHost()
+      const session = new Session({ providers: { test: provider } })
 
       const agent = new AgentSession({
+        session,
         provider,
         model: 'test-model',
-        host,
       })
 
       const result = await agent.run('Say hello')
@@ -305,18 +301,21 @@ describe('AgentSession', () => {
         { toolCalls: [toolCall] },
       ])
 
-      const host = await createMockHostWithTools([
-        {
-          name: 'test-tool',
-          description: 'Test tool',
-          result: { content: [{ type: 'text', text: 'OK' }] },
-        },
-      ])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'test-tool',
+            description: 'Test tool',
+            result: { content: [{ type: 'text', text: 'OK' }] },
+          },
+        ],
+        { test: provider },
+      )
 
       const agent = new AgentSession({
+        session,
         provider,
         model: 'test-model',
-        host,
         maxIterations: 2,
         toolApproval: 'auto',
       })
@@ -326,20 +325,20 @@ describe('AgentSession', () => {
       expect(result.iterations).toBe(2)
       expect(result.finishReason).toBe('max-iterations')
 
-      await host.dispose()
+      await session.dispose()
     })
 
     test('handles abort signal', async () => {
       const provider = createMockProvider([{ text: 'Hello' }])
-      const host = new ContextHost()
+      const session = new Session({ providers: { test: provider } })
 
       const controller = new AbortController()
       controller.abort()
 
       const agent = new AgentSession({
+        session,
         provider,
         model: 'test-model',
-        host,
       })
 
       const result = await agent.run('Say hello', controller.signal)
@@ -350,12 +349,12 @@ describe('AgentSession', () => {
   describe('stream()', () => {
     test('yields correct event sequence for simple prompt', async () => {
       const provider = createMockProvider([{ text: 'Hi!', inputTokens: 5, outputTokens: 2 }])
-      const host = new ContextHost()
+      const session = new Session({ providers: { test: provider } })
 
       const agent = new AgentSession({
+        session,
         provider,
         model: 'test-model',
-        host,
       })
 
       const events: Array<AgentEvent> = []
@@ -383,7 +382,7 @@ describe('AgentSession', () => {
 
     test('emits onEvent callback for each event', async () => {
       const provider = createMockProvider([{ text: 'Test' }])
-      const host = new ContextHost()
+      const session = new Session({ providers: { test: provider } })
 
       const receivedEvents: Array<AgentEvent> = []
       const onEvent = vi.fn((event: AgentEvent) => {
@@ -391,9 +390,9 @@ describe('AgentSession', () => {
       })
 
       const agent = new AgentSession({
+        session,
         provider,
         model: 'test-model',
-        host,
         onEvent,
       })
 
@@ -421,18 +420,21 @@ describe('AgentSession', () => {
         { text: 'Done!', inputTokens: 15, outputTokens: 4 },
       ])
 
-      const host = await createMockHostWithTools([
-        {
-          name: 'greet',
-          description: 'Greets someone',
-          result: { content: [{ type: 'text', text: 'Hello, World!' }] },
-        },
-      ])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'greet',
+            description: 'Greets someone',
+            result: { content: [{ type: 'text', text: 'Hello, World!' }] },
+          },
+        ],
+        { test: provider },
+      )
 
       const agent = new AgentSession({
+        session,
         provider,
         model: 'test-model',
-        host,
         toolApproval: 'auto',
       })
 
@@ -448,7 +450,7 @@ describe('AgentSession', () => {
       expect(eventTypes).toContain('tool-call-complete')
       expect(eventTypes).not.toContain('tool-call-denied')
 
-      await host.dispose()
+      await session.dispose()
     })
 
     test("'never' skips all tool execution", async () => {
@@ -461,18 +463,21 @@ describe('AgentSession', () => {
 
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'OK then' }])
 
-      const host = await createMockHostWithTools([
-        {
-          name: 'greet',
-          description: 'Greets',
-          result: { content: [{ type: 'text', text: 'Hi' }] },
-        },
-      ])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'greet',
+            description: 'Greets',
+            result: { content: [{ type: 'text', text: 'Hi' }] },
+          },
+        ],
+        { test: provider },
+      )
 
       const agent = new AgentSession({
+        session,
         provider,
         model: 'test-model',
-        host,
         toolApproval: 'never',
       })
 
@@ -486,7 +491,7 @@ describe('AgentSession', () => {
       expect(eventTypes).toContain('tool-call-denied')
       expect(eventTypes).not.toContain('tool-call-start')
 
-      await host.dispose()
+      await session.dispose()
     })
 
     test('custom function is called with correct context', async () => {
@@ -499,9 +504,16 @@ describe('AgentSession', () => {
 
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Done' }])
 
-      const host = await createMockHostWithTools([
-        { name: 'test', description: 'Test', result: { content: [{ type: 'text', text: 'OK' }] } },
-      ])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'test',
+            description: 'Test',
+            result: { content: [{ type: 'text', text: 'OK' }] },
+          },
+        ],
+        { test: provider },
+      )
 
       const approvalFn = vi.fn(async (call, context) => {
         expect(call.name).toBe('mock:test')
@@ -511,9 +523,9 @@ describe('AgentSession', () => {
       })
 
       const agent = new AgentSession({
+        session,
         provider,
         model: 'test-model',
-        host,
         toolApproval: approvalFn,
       })
 
@@ -521,7 +533,7 @@ describe('AgentSession', () => {
 
       expect(approvalFn).toHaveBeenCalled()
 
-      await host.dispose()
+      await session.dispose()
     })
 
     test('custom function can deny with reason', async () => {
@@ -534,13 +546,16 @@ describe('AgentSession', () => {
 
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Understood' }])
 
-      const host = await createMockHostWithTools([
-        {
-          name: 'dangerous',
-          description: 'Dangerous op',
-          result: { content: [{ type: 'text', text: 'Boom' }] },
-        },
-      ])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'dangerous',
+            description: 'Dangerous op',
+            result: { content: [{ type: 'text', text: 'Boom' }] },
+          },
+        ],
+        { test: provider },
+      )
 
       const approvalFn = vi.fn(async () => ({
         approved: false,
@@ -548,9 +563,9 @@ describe('AgentSession', () => {
       }))
 
       const agent = new AgentSession({
+        session,
         provider,
         model: 'test-model',
-        host,
         toolApproval: approvalFn,
       })
 
@@ -563,19 +578,19 @@ describe('AgentSession', () => {
       expect(deniedEvent).toBeDefined()
       expect((deniedEvent as { reason?: string }).reason).toBe('Too dangerous')
 
-      await host.dispose()
+      await session.dispose()
     })
   })
 
   describe('events emitter', () => {
     test('emits events through events property', async () => {
       const provider = createMockProvider([{ text: 'Hello' }])
-      const host = new ContextHost()
+      const session = new Session({ providers: { test: provider } })
 
       const agent = new AgentSession({
+        session,
         provider,
         model: 'test-model',
-        host,
       })
 
       const receivedEvents: Array<AgentEvent> = []
@@ -633,28 +648,31 @@ describe('AgentSession', () => {
           { text: 'Done! Found 1 user: Alice', inputTokens: 40, outputTokens: 20 },
         ])
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'create_table',
-            description: 'Create table',
-            result: { content: [{ type: 'text', text: 'Table created' }] },
-          },
-          {
-            name: 'insert',
-            description: 'Insert data',
-            result: { content: [{ type: 'text', text: 'Inserted 1 row' }] },
-          },
-          {
-            name: 'query',
-            description: 'Query data',
-            result: { content: [{ type: 'text', text: '[{"name":"Alice"}]' }] },
-          },
-        ])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'create_table',
+              description: 'Create table',
+              result: { content: [{ type: 'text', text: 'Table created' }] },
+            },
+            {
+              name: 'insert',
+              description: 'Insert data',
+              result: { content: [{ type: 'text', text: 'Inserted 1 row' }] },
+            },
+            {
+              name: 'query',
+              description: 'Query data',
+              result: { content: [{ type: 'text', text: '[{"name":"Alice"}]' }] },
+            },
+          ],
+          { test: provider },
+        )
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: 'auto',
         })
 
@@ -670,7 +688,7 @@ describe('AgentSession', () => {
         expect(result.inputTokens).toBe(115) // 20+30+25+40
         expect(result.outputTokens).toBe(57) // 10+15+12+20
 
-        await host.dispose()
+        await session.dispose()
       })
 
       test('handles multiple tool calls in single response', async () => {
@@ -699,18 +717,21 @@ describe('AgentSession', () => {
           { text: 'London: 15°C, Paris: 18°C, Tokyo: 22°C' },
         ])
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'get_weather',
-            description: 'Get weather',
-            result: { content: [{ type: 'text', text: '20°C' }] },
-          },
-        ])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'get_weather',
+              description: 'Get weather',
+              result: { content: [{ type: 'text', text: '20°C' }] },
+            },
+          ],
+          { test: provider },
+        )
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: 'auto',
         })
 
@@ -721,7 +742,7 @@ describe('AgentSession', () => {
         expect(result.toolCalls.every((tc) => tc.approved)).toBe(true)
         expect(result.finishReason).toBe('complete')
 
-        await host.dispose()
+        await session.dispose()
       })
     })
 
@@ -739,18 +760,21 @@ describe('AgentSession', () => {
           { text: 'Tool failed, but I can continue without it.' },
         ])
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'failing_tool',
-            description: 'This tool fails',
-            result: { content: [{ type: 'text', text: 'Error occurred' }], isError: true },
-          },
-        ])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'failing_tool',
+              description: 'This tool fails',
+              result: { content: [{ type: 'text', text: 'Error occurred' }], isError: true },
+            },
+          ],
+          { test: provider },
+        )
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: 'auto',
         })
 
@@ -765,7 +789,7 @@ describe('AgentSession', () => {
         expect(result).toBeDefined()
         expect(result.result.toolCalls[0].result?.isError).toBe(true)
 
-        await host.dispose()
+        await session.dispose()
       })
 
       test('records tool execution errors', async () => {
@@ -782,18 +806,21 @@ describe('AgentSession', () => {
           { text: 'Could not find the tool.' },
         ])
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'other_tool',
-            description: 'Other',
-            result: { content: [{ type: 'text', text: 'OK' }] },
-          },
-        ])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'other_tool',
+              description: 'Other',
+              result: { content: [{ type: 'text', text: 'OK' }] },
+            },
+          ],
+          { test: provider },
+        )
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: 'auto',
         })
 
@@ -806,19 +833,19 @@ describe('AgentSession', () => {
         const errorEvent = events.find((e) => e.type === 'tool-call-error')
         expect(errorEvent).toBeDefined()
 
-        await host.dispose()
+        await session.dispose()
       })
     })
 
     describe('system prompt', () => {
       test('includes system prompt in conversation', async () => {
         const provider = createMockProvider([{ text: 'I am a helpful database assistant.' }])
-        const host = new ContextHost()
+        const session = new Session({ providers: { test: provider } })
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           systemPrompt: 'You are a helpful database assistant. Always explain your actions.',
         })
 
@@ -844,12 +871,12 @@ describe('AgentSession', () => {
 
       test('does not include system prompt when not provided', async () => {
         const provider = createMockProvider([{ text: 'Hello!' }])
-        const host = new ContextHost()
+        const session = new Session({ providers: { test: provider } })
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           // No systemPrompt
         })
 
@@ -880,18 +907,21 @@ describe('AgentSession', () => {
           { text: 'Found results', inputTokens: 150, outputTokens: 75 },
         ])
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'search',
-            description: 'Search',
-            result: { content: [{ type: 'text', text: 'results' }] },
-          },
-        ])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'search',
+              description: 'Search',
+              result: { content: [{ type: 'text', text: 'results' }] },
+            },
+          ],
+          { test: provider },
+        )
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: 'auto',
         })
 
@@ -900,7 +930,7 @@ describe('AgentSession', () => {
         expect(result.inputTokens).toBe(250) // 100 + 150
         expect(result.outputTokens).toBe(125) // 50 + 75
 
-        await host.dispose()
+        await session.dispose()
       })
     })
 
@@ -924,23 +954,26 @@ describe('AgentSession', () => {
           { text: 'Read the file but could not delete.' },
         ])
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'read_file',
-            description: 'Read file',
-            result: { content: [{ type: 'text', text: 'file contents' }] },
-          },
-          {
-            name: 'delete_file',
-            description: 'Delete file',
-            result: { content: [{ type: 'text', text: 'deleted' }] },
-          },
-        ])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'read_file',
+              description: 'Read file',
+              result: { content: [{ type: 'text', text: 'file contents' }] },
+            },
+            {
+              name: 'delete_file',
+              description: 'Delete file',
+              result: { content: [{ type: 'text', text: 'deleted' }] },
+            },
+          ],
+          { test: provider },
+        )
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: async (toolCall) => {
             if (toolCall.name.includes('delete')) {
               return { approved: false, reason: 'Deletion not allowed' }
@@ -963,7 +996,7 @@ describe('AgentSession', () => {
         expect(deleteCall?.denialReason).toBe('Deletion not allowed')
         expect(deleteCall?.result).toBeUndefined()
 
-        await host.dispose()
+        await session.dispose()
       })
 
       test('approval function receives event history', async () => {
@@ -986,26 +1019,29 @@ describe('AgentSession', () => {
           { text: 'Done' },
         ])
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'first_tool',
-            description: 'First',
-            result: { content: [{ type: 'text', text: 'first result' }] },
-          },
-          {
-            name: 'second_tool',
-            description: 'Second',
-            result: { content: [{ type: 'text', text: 'second result' }] },
-          },
-        ])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'first_tool',
+              description: 'First',
+              result: { content: [{ type: 'text', text: 'first result' }] },
+            },
+            {
+              name: 'second_tool',
+              description: 'Second',
+              result: { content: [{ type: 'text', text: 'second result' }] },
+            },
+          ],
+          { test: provider },
+        )
 
         const historyLengths: Array<number> = []
         const iterations: Array<number> = []
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: async (_toolCall, context) => {
             historyLengths.push(context.history.length)
             iterations.push(context.iteration)
@@ -1019,19 +1055,19 @@ describe('AgentSession', () => {
         expect(iterations).toEqual([1, 2])
         expect(historyLengths[1]).toBeGreaterThan(historyLengths[0])
 
-        await host.dispose()
+        await session.dispose()
       })
     })
 
     describe('duration tracking', () => {
       test('tracks execution duration', async () => {
         const provider = createMockProvider([{ text: 'Quick response' }])
-        const host = new ContextHost()
+        const session = new Session({ providers: { test: provider } })
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
         })
 
         const startTime = Date.now()
@@ -1046,12 +1082,12 @@ describe('AgentSession', () => {
     describe('event timestamps', () => {
       test('all events have valid timestamps', async () => {
         const provider = createMockProvider([{ text: 'Hello' }])
-        const host = new ContextHost()
+        const session = new Session({ providers: { test: provider } })
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
         })
 
         const startTime = Date.now()
@@ -1076,12 +1112,12 @@ describe('AgentSession', () => {
     describe('edge cases', () => {
       test('handles empty text response', async () => {
         const provider = createMockProvider([{ text: '', inputTokens: 5, outputTokens: 0 }])
-        const host = new ContextHost()
+        const session = new Session({ providers: { test: provider } })
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
         })
 
         const result = await agent.run('Generate empty response')
@@ -1092,12 +1128,12 @@ describe('AgentSession', () => {
 
       test('handles no tools available', async () => {
         const provider = createMockProvider([{ text: 'I have no tools to use.' }])
-        const host = new ContextHost() // No contexts added
+        const session = new Session({ providers: { test: provider } }) // No contexts added
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: 'auto',
         })
 
@@ -1110,12 +1146,12 @@ describe('AgentSession', () => {
 
       test('completes immediately when already aborted', async () => {
         const provider = createMockProvider([{ text: 'Should not see this' }])
-        const host = new ContextHost()
+        const session = new Session({ providers: { test: provider } })
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
         })
 
         const abortController = new AbortController()
@@ -1141,18 +1177,21 @@ describe('AgentSession', () => {
           { text: 'Processed large data' },
         ])
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'process_data',
-            description: 'Process',
-            result: { content: [{ type: 'text', text: 'OK' }] },
-          },
-        ])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'process_data',
+              description: 'Process',
+              result: { content: [{ type: 'text', text: 'OK' }] },
+            },
+          ],
+          { test: provider },
+        )
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: 'auto',
         })
 
@@ -1161,7 +1200,7 @@ describe('AgentSession', () => {
         expect(result.finishReason).toBe('complete')
         expect(result.toolCalls[0].approved).toBe(true)
 
-        await host.dispose()
+        await session.dispose()
       })
     })
 
@@ -1190,18 +1229,21 @@ describe('AgentSession', () => {
           >
         })
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'get_info',
-            description: 'Get info',
-            result: { content: [{ type: 'text', text: 'info result' }] },
-          },
-        ])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'get_info',
+              description: 'Get info',
+              result: { content: [{ type: 'text', text: 'info result' }] },
+            },
+          ],
+          { test: provider },
+        )
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: 'auto',
         })
 
@@ -1210,7 +1252,7 @@ describe('AgentSession', () => {
         // On second call, should have: user message, assistant (with tool call), tool result
         expect(messageCount).toBeGreaterThan(1)
 
-        await host.dispose()
+        await session.dispose()
       })
     })
 
@@ -1228,20 +1270,23 @@ describe('AgentSession', () => {
           { text: 'Generated an image for you' },
         ])
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'generate_image',
-            description: 'Generate image',
-            result: {
-              content: [{ type: 'image', data: 'base64encodeddata', mimeType: 'image/png' }],
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'generate_image',
+              description: 'Generate image',
+              result: {
+                content: [{ type: 'image', data: 'base64encodeddata', mimeType: 'image/png' }],
+              },
             },
-          },
-        ])
+          ],
+          { test: provider },
+        )
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: 'auto',
         })
 
@@ -1250,7 +1295,7 @@ describe('AgentSession', () => {
         expect(result.finishReason).toBe('complete')
         expect(result.toolCalls[0].result?.content[0].type).toBe('image')
 
-        await host.dispose()
+        await session.dispose()
       })
 
       test('handles tool result with multiple content items', async () => {
@@ -1266,23 +1311,26 @@ describe('AgentSession', () => {
           { text: 'Analysis complete' },
         ])
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'analyze',
-            description: 'Analyze data',
-            result: {
-              content: [
-                { type: 'text', text: 'Analysis summary' },
-                { type: 'text', text: 'Detailed findings' },
-              ],
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'analyze',
+              description: 'Analyze data',
+              result: {
+                content: [
+                  { type: 'text', text: 'Analysis summary' },
+                  { type: 'text', text: 'Detailed findings' },
+                ],
+              },
             },
-          },
-        ])
+          ],
+          { test: provider },
+        )
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: 'auto',
         })
 
@@ -1290,7 +1338,7 @@ describe('AgentSession', () => {
 
         expect(result.toolCalls[0].result?.content).toHaveLength(2)
 
-        await host.dispose()
+        await session.dispose()
       })
     })
 
@@ -1305,18 +1353,21 @@ describe('AgentSession', () => {
 
         const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Done' }])
 
-        const host = await createMockHostWithTools([
-          {
-            name: 'step',
-            description: 'Step',
-            result: { content: [{ type: 'text', text: 'OK' }] },
-          },
-        ])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'step',
+              description: 'Step',
+              result: { content: [{ type: 'text', text: 'OK' }] },
+            },
+          ],
+          { test: provider },
+        )
 
         const agent = new AgentSession({
+          session,
           provider,
           model: 'test-model',
-          host,
           toolApproval: 'auto',
         })
 
@@ -1335,7 +1386,7 @@ describe('AgentSession', () => {
         expect(iterCompletes[0].hasToolCalls).toBe(true) // First iteration had tool calls
         expect(iterCompletes[1].hasToolCalls).toBe(false) // Second iteration completed
 
-        await host.dispose()
+        await session.dispose()
       })
     })
   })

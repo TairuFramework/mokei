@@ -46,6 +46,7 @@
     "@mokei/host": "workspace:^"
   },
   "devDependencies": {
+    "@enkaku/transport": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^",
     "@mokei/model-provider": "workspace:^"

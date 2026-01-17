@@ -1,18 +1,13 @@
 import { Disposer } from '@enkaku/async'
 import { EventEmitter } from '@enkaku/event'
-import { fromStream } from '@enkaku/generator'
 import type { CallToolResult } from '@mokei/context-protocol'
 import { getContextToolInfo } from '@mokei/host'
 import type {
   ClientToolMessage,
   FunctionToolCall,
   Message,
-  ModelProvider,
   ProviderTypes,
-  ServerMessage,
 } from '@mokei/model-provider'
-import { tryParseJSON } from '@mokei/model-provider'
-
 import {
   AGENT_DEFAULTS,
   type AgentCompleteEvent,
@@ -40,10 +35,13 @@ export type AgentSessionEvents = {
  *
  * @example
  * ```typescript
+ * const session = new Session({ providers: { openai: openaiProvider } })
+ * await session.addContext({ key: 'db', command: 'mcp-sqlite' })
+ *
  * const agent = new AgentSession({
- *   provider: openaiProvider,
+ *   session,
+ *   provider: 'openai',
  *   model: 'gpt-4',
- *   host: contextHost,
  *   toolApproval: 'auto',
  * })
  *
@@ -59,29 +57,23 @@ export type AgentSessionEvents = {
 export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #params: ResolvedAgentParams<T>
   #events: EventEmitter<AgentSessionEvents>
-  #providers: Map<string, ModelProvider<T>>
 
-  constructor(params: AgentParams<T>, providers?: Map<string, ModelProvider<T>>) {
+  constructor(params: AgentParams<T>) {
     super()
     this.#events = new EventEmitter()
-    this.#providers = providers ?? new Map()
 
-    // Resolve provider
-    let provider: ModelProvider<T>
-    if (typeof params.provider === 'string') {
-      const p = this.#providers.get(params.provider)
-      if (p == null) {
-        throw new Error(`Provider "${params.provider}" not found`)
-      }
-      provider = p
-    } else {
-      provider = params.provider
-    }
+    const { session } = params
+
+    // Resolve provider from session or use direct instance
+    const provider =
+      typeof params.provider === 'string'
+        ? session.getProvider<T>(params.provider)
+        : params.provider
 
     this.#params = {
+      session,
       provider,
       model: params.model,
-      host: params.host,
       systemPrompt: params.systemPrompt,
       toolApproval: params.toolApproval ?? AGENT_DEFAULTS.toolApproval,
       maxIterations: params.maxIterations ?? AGENT_DEFAULTS.maxIterations,
@@ -129,8 +121,16 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
    */
   async *stream(prompt: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
     const startTime = Date.now()
-    const { provider, model, host, systemPrompt, toolApproval, maxIterations, timeout, onEvent } =
-      this.#params
+    const {
+      session,
+      provider,
+      model,
+      systemPrompt,
+      toolApproval,
+      maxIterations,
+      timeout,
+      onEvent,
+    } = this.#params
 
     // Set up timeout
     const timeoutController = new AbortController()
@@ -162,8 +162,8 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       }
       messages.push({ source: 'client', role: 'user', text: prompt })
 
-      // Get tools from host
-      const tools = host.getCallableTools().map((tool) => provider.toolFromMCP(tool))
+      // Get tools from session
+      const tools = session.getToolsForProvider(provider)
 
       // Tracking
       const eventHistory: Array<AgentEvent> = []
@@ -198,15 +198,20 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         yield iterStartEvent
         eventHistory.push(iterStartEvent)
 
-        // Call the model
-        const request = provider.streamChat({ model, messages, tools, signal: combinedSignal })
-        const stream = await request
-
-        // Collect response parts
-        const responseParts: Array<ServerMessage<T['MessagePart'], T['ToolCall']>> = []
+        // Call the model via session's streamChatTurn
         let iterationText = ''
+        const chatTurn = session.streamChatTurn({
+          provider,
+          model,
+          messages,
+          tools,
+          signal: combinedSignal,
+        })
 
-        for await (const chunk of fromStream(stream)) {
+        // Iterate through chunks, yielding text events in real-time
+        let result = await chatTurn.next()
+        while (!result.done) {
+          const chunk = result.value
           if (chunk.type === 'text-delta') {
             iterationText += chunk.text
             const textEvent = emitEvent({
@@ -216,36 +221,15 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
             })
             yield textEvent
             eventHistory.push(textEvent)
-            responseParts.push({
-              source: 'server',
-              role: 'assistant',
-              text: chunk.text,
-              raw: chunk.raw,
-            })
-          } else if (chunk.type === 'tool-call') {
-            responseParts.push({
-              source: 'server',
-              role: 'assistant',
-              toolCalls: chunk.toolCalls,
-              raw: chunk.raw,
-            })
           } else if (chunk.type === 'done') {
             totalInputTokens += chunk.inputTokens
             totalOutputTokens += chunk.outputTokens
-            responseParts.push({
-              source: 'server',
-              role: 'assistant',
-              inputTokens: chunk.inputTokens,
-              outputTokens: chunk.outputTokens,
-              raw: chunk.raw,
-            })
-          } else if (chunk.type === 'error') {
-            throw chunk.error
           }
+          result = await chatTurn.next()
         }
 
-        // Aggregate response
-        const aggregated = provider.aggregateMessage(responseParts)
+        // Get aggregated message from generator return value
+        const aggregated = result.value
         currentText = aggregated.text || currentText
 
         // Emit text complete if we got text
@@ -397,7 +381,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   #findTool(namespacedName: string) {
     try {
       const [contextKey, toolName] = getContextToolInfo(namespacedName)
-      const context = this.#params.host.getContext(contextKey)
+      const context = this.#params.session.contextHost.getContext(contextKey)
       return context.tools.find((t) => t.tool.name === toolName)
     } catch {
       return undefined
@@ -504,20 +488,8 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     events.push(startEvent)
 
     try {
-      // Parse tool name to get context and tool
-      const [contextKey, toolName] = getContextToolInfo(toolCall.name)
-      const args = tryParseJSON(toolCall.arguments)
-
-      // Execute via host
-      const request = this.#params.host.callTool(contextKey, { name: toolName, arguments: args })
-
-      // Handle abort
-      if (signal.aborted) {
-        request.cancel()
-        throw new Error('Aborted')
-      }
-      signal.addEventListener('abort', () => request.cancel(), { once: true })
-
+      // Execute via session (handles namespaced tool parsing internally)
+      const request = this.#params.session.executeToolCall(toolCall, signal)
       const result = await request
 
       // Emit complete event

@@ -702,6 +702,9 @@ importers:
         specifier: workspace:^
         version: link:../host
     devDependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.12.0
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol

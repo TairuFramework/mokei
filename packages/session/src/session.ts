@@ -82,6 +82,47 @@ export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
   localTools?: Array<LocalToolDefinition>
 }
 
+/**
+ * Convert a message part chunk to a ServerMessage for aggregation.
+ * Returns null for error chunks which should be handled separately.
+ */
+function chunkToServerMessage<M, TC>(chunk: MessagePart<M, TC>): ServerMessage<M, TC> | null {
+  switch (chunk.type) {
+    case 'tool-call':
+      return {
+        source: 'server',
+        role: 'assistant',
+        toolCalls: chunk.toolCalls,
+        raw: chunk.raw as M,
+      }
+    case 'text-delta':
+      return {
+        source: 'server',
+        role: 'assistant',
+        text: chunk.text,
+        raw: chunk.raw as M,
+      }
+    case 'reasoning-delta':
+      return {
+        source: 'server',
+        role: 'assistant',
+        reasoning: chunk.reasoning,
+        raw: chunk.raw as M,
+      }
+    case 'done':
+      return {
+        source: 'server',
+        role: 'assistant',
+        inputTokens: chunk.inputTokens,
+        outputTokens: chunk.outputTokens,
+        raw: chunk.raw as M,
+      }
+    case 'error':
+    default:
+      return null
+  }
+}
+
 export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #activeChatRequest: StreamChatRequest<T['MessagePart'], T['ToolCall']> | null = null
   #events: EventEmitter<SessionEvents<T>>
@@ -187,6 +228,78 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     return this.#contextHost.getCallableTools().map(provider.toolFromMCP)
   }
 
+  /**
+   * Resolve a provider from a string key or return the provider directly.
+   */
+  resolveProvider<P extends T = T>(provider: string | ModelProvider<P>): ModelProvider<P> {
+    return typeof provider === 'string' ? this.getProvider<P>(provider) : provider
+  }
+
+  /**
+   * Stream a single chat turn, yielding message parts as they arrive.
+   * Returns the aggregated message when the stream completes.
+   *
+   * This is a lower-level method that can be used to build custom chat loops
+   * while sharing the streaming infrastructure with `chat()`.
+   *
+   * @example
+   * ```typescript
+   * const generator = session.streamChatTurn({
+   *   provider: 'openai',
+   *   model: 'gpt-4',
+   *   messages: [{ source: 'client', role: 'user', text: 'Hello' }],
+   * })
+   *
+   * for await (const chunk of generator) {
+   *   if (chunk.type === 'text-delta') {
+   *     process.stdout.write(chunk.text)
+   *   }
+   * }
+   *
+   * const aggregated = await generator.next().then(r => r.value)
+   * ```
+   */
+  async *streamChatTurn<P extends T = T>(params: {
+    provider: string | ModelProvider<P>
+    model: string
+    messages: Array<Message<P['MessagePart'], P['ToolCall']>>
+    tools?: Array<P['Tool']>
+    signal?: AbortSignal
+  }): AsyncGenerator<
+    MessagePart<P['MessagePart'], P['ToolCall']>,
+    AggregatedMessage<P['ToolCall']>,
+    unknown
+  > {
+    const provider = this.resolveProvider(params.provider)
+    const tools = params.tools ?? this.getToolsForProvider(provider)
+
+    const request = provider.streamChat({ ...params, tools })
+    const stream = await request
+
+    const messageParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
+
+    for await (const chunk of fromStream(stream)) {
+      this.#events.emit('message-part', chunk)
+
+      if (chunk.type === 'error') {
+        throw chunk.error
+      }
+
+      const serverMessage = chunkToServerMessage(chunk)
+      if (serverMessage != null) {
+        messageParts.push(serverMessage)
+      }
+
+      yield chunk
+    }
+
+    return provider.aggregateMessage(messageParts)
+  }
+
+  /**
+   * Perform a single chat completion and return the aggregated response.
+   * Emits 'message-part' events for each chunk received.
+   */
   async chat<P extends T = T>(params: ChatParams<P>): Promise<AggregatedMessage<P['ToolCall']>> {
     if (this.#activeChatRequest != null) {
       if (params.abortActiveRequest) {
@@ -196,56 +309,29 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       }
     }
 
-    const provider =
-      typeof params.provider === 'string' ? this.getProvider<P>(params.provider) : params.provider
+    const provider = this.resolveProvider(params.provider)
     const tools = params.tools ?? this.getToolsForProvider(provider)
 
     try {
       this.#activeChatRequest = provider.streamChat({ ...params, tools })
       const stream = await this.#activeChatRequest
 
-      const messagesParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
+      const messageParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
+
       for await (const chunk of fromStream(stream)) {
         this.#events.emit('message-part', chunk)
-        switch (chunk.type) {
-          case 'tool-call':
-            messagesParts.push({
-              source: 'server',
-              role: 'assistant',
-              toolCalls: chunk.toolCalls,
-              raw: chunk.raw,
-            })
-            break
-          case 'text-delta':
-            messagesParts.push({
-              source: 'server',
-              role: 'assistant',
-              text: chunk.text,
-              raw: chunk.raw,
-            })
-            break
-          case 'reasoning-delta':
-            messagesParts.push({
-              source: 'server',
-              role: 'assistant',
-              reasoning: chunk.reasoning,
-              raw: chunk.raw,
-            })
-            break
-          case 'done':
-            messagesParts.push({
-              source: 'server',
-              role: 'assistant',
-              inputTokens: chunk.inputTokens,
-              outputTokens: chunk.outputTokens,
-              raw: chunk.raw,
-            })
-            break
-          case 'error':
-            throw chunk.error
+
+        if (chunk.type === 'error') {
+          throw chunk.error
+        }
+
+        const serverMessage = chunkToServerMessage(chunk)
+        if (serverMessage != null) {
+          messageParts.push(serverMessage)
         }
       }
-      return provider.aggregateMessage(messagesParts)
+
+      return provider.aggregateMessage(messageParts)
     } finally {
       this.#activeChatRequest = null
     }
