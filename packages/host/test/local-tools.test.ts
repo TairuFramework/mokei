@@ -1,3 +1,4 @@
+import { createTool, type ToolDefinitions } from '@mokei/context-server'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -8,6 +9,8 @@ import {
   isLocalToolID,
   LOCAL_TOOL_NAMESPACE,
   type LocalToolDefinition,
+  toolsToLocalTools,
+  toolToLocalTool,
 } from '../src/index.js'
 
 describe('Local Tools Utilities', () => {
@@ -317,6 +320,214 @@ describe('ContextHost Local Tools', () => {
       await host._dispose()
 
       expect(host.localTools.size).toBe(0)
+    })
+  })
+})
+
+describe('Server Tool to Local Tool Conversion', () => {
+  describe('toolToLocalTool', () => {
+    test('converts a server tool definition to a local tool definition', async () => {
+      const serverTool = createTool(
+        'Calculate math expression',
+        {
+          type: 'object',
+          properties: {
+            a: { type: 'number' },
+            b: { type: 'number' },
+          },
+          required: ['a', 'b'],
+        } as const,
+        (req) => ({
+          content: [{ type: 'text', text: String(req.arguments.a + req.arguments.b) }],
+        }),
+      )
+
+      const localTool = toolToLocalTool('add', serverTool)
+
+      expect(localTool.name).toBe('add')
+      expect(localTool.description).toBe('Calculate math expression')
+      expect(localTool.inputSchema).toEqual(serverTool.inputSchema)
+      expect(typeof localTool.execute).toBe('function')
+    })
+
+    test('execute function works correctly', async () => {
+      const serverTool = createTool(
+        'Echo tool',
+        {
+          type: 'object',
+          properties: {
+            message: { type: 'string' },
+          },
+          required: ['message'],
+        } as const,
+        (req) => ({
+          content: [{ type: 'text', text: `Echo: ${req.arguments.message}` }],
+        }),
+      )
+
+      const localTool = toolToLocalTool('echo', serverTool)
+      const result = await localTool.execute({ message: 'hello' })
+
+      expect(result.content).toHaveLength(1)
+      expect(result.content[0]).toEqual({ type: 'text', text: 'Echo: hello' })
+    })
+
+    test('provides stub client that throws for createMessage', async () => {
+      const serverTool = createTool(
+        'Tool that needs client',
+        { type: 'object' } as const,
+        (req) => {
+          // This should throw when called
+          req.client.createMessage({ messages: [], maxTokens: 100 })
+          return { content: [] }
+        },
+      )
+
+      const localTool = toolToLocalTool('needsClient', serverTool)
+
+      await expect(localTool.execute({})).rejects.toThrow(
+        'createMessage() is not available for local tools',
+      )
+    })
+
+    test('provides stub client that allows log calls (no-op)', async () => {
+      const serverTool = createTool('Tool that logs', { type: 'object' } as const, (req) => {
+        // Logging should be a no-op, not throw
+        req.client.log('info', { message: 'test log' })
+        return { content: [{ type: 'text', text: 'logged' }] }
+      })
+
+      const localTool = toolToLocalTool('logger', serverTool)
+      const result = await localTool.execute({})
+
+      expect(result.content[0]).toEqual({ type: 'text', text: 'logged' })
+    })
+
+    test('provides signal to the handler', async () => {
+      let receivedSignal: AbortSignal | undefined
+
+      const serverTool = createTool(
+        'Tool that checks signal',
+        { type: 'object' } as const,
+        (req) => {
+          receivedSignal = req.signal
+          return { content: [{ type: 'text', text: 'done' }] }
+        },
+      )
+
+      const localTool = toolToLocalTool('signalChecker', serverTool)
+      await localTool.execute({})
+
+      expect(receivedSignal).toBeDefined()
+      expect(receivedSignal?.aborted).toBe(false)
+    })
+  })
+
+  describe('toolsToLocalTools', () => {
+    test('converts a ToolDefinitions record to array of LocalToolDefinitions', () => {
+      const tools = {
+        tool_one: createTool(
+          'First tool',
+          { type: 'object', properties: { x: { type: 'string' } } } as const,
+          () => ({ content: [{ type: 'text', text: 'one' }] }),
+        ),
+        tool_two: createTool(
+          'Second tool',
+          { type: 'object', properties: { y: { type: 'number' } } } as const,
+          () => ({ content: [{ type: 'text', text: 'two' }] }),
+        ),
+      } satisfies ToolDefinitions
+
+      const localTools = toolsToLocalTools(tools)
+
+      expect(localTools).toHaveLength(2)
+      expect(localTools[0].name).toBe('tool_one')
+      expect(localTools[0].description).toBe('First tool')
+      expect(localTools[1].name).toBe('tool_two')
+      expect(localTools[1].description).toBe('Second tool')
+    })
+
+    test('converted tools execute correctly', async () => {
+      const tools = {
+        greet: createTool(
+          'Greet someone',
+          {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            required: ['name'],
+          } as const,
+          (req) => ({ content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }] }),
+        ),
+      } satisfies ToolDefinitions
+
+      const localTools = toolsToLocalTools(tools)
+      const result = await localTools[0].execute({ name: 'World' })
+
+      expect(result.content[0]).toEqual({ type: 'text', text: 'Hello, World!' })
+    })
+
+    test('works with Session localTools parameter', () => {
+      // This test verifies the type compatibility
+      const tools = {
+        example: createTool('Example tool', { type: 'object' } as const, () => ({
+          content: [{ type: 'text', text: 'ok' }],
+        })),
+      } satisfies ToolDefinitions
+
+      const localTools = toolsToLocalTools(tools)
+
+      // Verify the structure matches LocalToolDefinition[]
+      for (const tool of localTools) {
+        expect(tool).toHaveProperty('name')
+        expect(tool).toHaveProperty('description')
+        expect(tool).toHaveProperty('inputSchema')
+        expect(tool).toHaveProperty('execute')
+        expect(typeof tool.execute).toBe('function')
+      }
+    })
+  })
+
+  describe('Integration with ContextHost', () => {
+    test('can add converted server tools as local tools', async () => {
+      const host = new ContextHost()
+
+      const tools = {
+        multiply: createTool(
+          'Multiply two numbers',
+          {
+            type: 'object',
+            properties: {
+              a: { type: 'number' },
+              b: { type: 'number' },
+            },
+            required: ['a', 'b'],
+          } as const,
+          (req) => ({
+            content: [{ type: 'text', text: String(req.arguments.a * req.arguments.b) }],
+          }),
+        ),
+      } satisfies ToolDefinitions
+
+      const localTools = toolsToLocalTools(tools)
+      host.addLocalTools(localTools)
+
+      expect(host.hasLocalTool('multiply')).toBe(true)
+
+      const result = await host.callLocalTool('multiply', { a: 6, b: 7 })
+      expect(result.content[0]).toEqual({ type: 'text', text: '42' })
+    })
+
+    test('converted tools appear in getCallableTools', () => {
+      const host = new ContextHost()
+
+      const tools = {
+        my_tool: createTool('My tool', { type: 'object' } as const, () => ({ content: [] })),
+      } satisfies ToolDefinitions
+
+      host.addLocalTools(toolsToLocalTools(tools))
+
+      const callableTools = host.getCallableTools()
+      expect(callableTools.some((t) => t.name === 'local:my_tool')).toBe(true)
     })
   })
 })

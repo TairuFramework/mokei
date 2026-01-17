@@ -1,4 +1,5 @@
 import type { CallToolResult, InputSchema, Tool, ToolAnnotations } from '@mokei/context-protocol'
+import type { GenericToolDefinition, ServerClient, ToolDefinitions } from '@mokei/context-server'
 
 /**
  * Execute function for a local tool.
@@ -95,4 +96,92 @@ export function getLocalToolName(id: string): string {
  */
 export function createLocalToolID(name: string): string {
   return `${LOCAL_TOOL_NAMESPACE}:${name}`
+}
+
+/**
+ * Creates a stub ServerClient for use with local tools.
+ * All methods throw errors explaining they're not available in local tool context.
+ */
+function createStubClient(): ServerClient {
+  const notAvailable = (method: string) => () => {
+    throw new Error(
+      `${method}() is not available for local tools. ` +
+        'Local tools run outside of an MCP server context and cannot access client methods.',
+    )
+  }
+
+  return {
+    createMessage: notAvailable('createMessage'),
+    elicit: notAvailable('elicit'),
+    listRoots: notAvailable('listRoots'),
+    log: () => {
+      // No-op for logging - tools may call this but we can safely ignore
+    },
+  } as ServerClient
+}
+
+/**
+ * Convert a server tool definition (created with `createTool()`) to a LocalToolDefinition.
+ *
+ * This allows tools defined for MCP servers to be used directly as local tools
+ * without needing to run a separate server process.
+ *
+ * Note: Tools that use `client` methods (createMessage, elicit, listRoots) will
+ * throw an error when those methods are called, as they require an MCP server context.
+ *
+ * @example
+ * ```typescript
+ * import { createTool } from '@mokei/context-server'
+ * import { toolToLocalTool } from '@mokei/host'
+ *
+ * const serverTool = createTool(
+ *   'Calculate math expression',
+ *   { type: 'object', properties: { expr: { type: 'string' } } } as const,
+ *   (req) => ({ content: [{ type: 'text', text: String(eval(req.arguments.expr)) }] })
+ * )
+ *
+ * const localTool = toolToLocalTool('calculate', serverTool)
+ * ```
+ */
+export function toolToLocalTool(
+  name: string,
+  definition: GenericToolDefinition,
+): LocalToolDefinition {
+  const stubClient = createStubClient()
+
+  return {
+    name,
+    description: definition.description,
+    inputSchema: definition.inputSchema,
+    execute: async (args: Record<string, unknown>) => {
+      // Create a never-aborting signal for local execution
+      const controller = new AbortController()
+      return definition.handler({
+        arguments: args,
+        client: stubClient,
+        signal: controller.signal,
+      })
+    },
+  }
+}
+
+/**
+ * Convert a record of server tool definitions to an array of LocalToolDefinitions.
+ *
+ * This allows an entire server config's tools to be used as local tools.
+ *
+ * @example
+ * ```typescript
+ * import { config } from '@mokei/mcp-sqlite'
+ * import { toolsToLocalTools } from '@mokei/host'
+ * import { Session } from '@mokei/session'
+ *
+ * const session = new Session({
+ *   providers: { openai },
+ *   localTools: toolsToLocalTools(config.tools)
+ * })
+ * ```
+ */
+export function toolsToLocalTools(tools: ToolDefinitions): Array<LocalToolDefinition> {
+  return Object.entries(tools).map(([name, definition]) => toolToLocalTool(name, definition))
 }

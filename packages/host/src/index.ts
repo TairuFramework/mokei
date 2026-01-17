@@ -45,6 +45,8 @@ export {
   type LocalTool,
   type LocalToolDefinition,
   type LocalToolExecute,
+  toolsToLocalTools,
+  toolToLocalTool,
 } from './local-tools.js'
 export { ProxyHost } from './proxy.js'
 export { type ServerParams, startServer } from './server.js'
