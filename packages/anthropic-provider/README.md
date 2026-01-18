@@ -88,16 +88,6 @@ const provider = AnthropicProvider.fromConfig({
 })
 ```
 
-## Supported Models
-
-The provider includes these known Claude models:
-
-- `claude-sonnet-4-20250514` - Claude Sonnet 4
-- `claude-3-7-sonnet-20250219` - Claude 3.7 Sonnet
-- `claude-3-5-sonnet-20241022` - Claude 3.5 Sonnet
-- `claude-3-5-haiku-20241022` - Claude 3.5 Haiku
-- `claude-3-opus-20240229` - Claude 3 Opus
-
 ## Extended Thinking
 
 Claude models with extended thinking capabilities will emit `reasoning-delta` events during streaming, which are captured in the `reasoning` field of aggregated messages.
@@ -105,7 +95,6 @@ Claude models with extended thinking capabilities will emit `reasoning-delta` ev
 ## Limitations
 
 - **No Embeddings**: Anthropic doesn't provide an embeddings API. Use OpenAI or another provider for embeddings.
-- **No Model Listing**: Anthropic doesn't have a models list endpoint; known models are returned instead.
 
 ## License
 

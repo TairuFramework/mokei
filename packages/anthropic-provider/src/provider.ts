@@ -199,15 +199,11 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
       return stream.pipeThrough(
         new TransformStream<StreamEvent, MessagePart<StreamEvent, ToolCall>>({
           transform(event, controller) {
+            let inputTokens = 0
             switch (event.type) {
               case 'message_start':
                 // Capture input tokens from message start
-                controller.enqueue({
-                  type: 'done',
-                  inputTokens: event.message.usage.input_tokens,
-                  outputTokens: 0,
-                  raw: event,
-                })
+                inputTokens = event.message.usage.input_tokens
                 break
 
               case 'content_block_start':
@@ -263,7 +259,7 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
                 controller.enqueue({
                   type: 'done',
                   reason: event.delta.stop_reason,
-                  inputTokens: 0,
+                  inputTokens,
                   outputTokens: event.usage.output_tokens,
                   raw: event,
                 })

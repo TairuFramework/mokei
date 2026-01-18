@@ -1,23 +1,21 @@
 {
-  "name": "@mokei/anthropic-provider",
+  "name": "@mokei/logger",
   "version": "0.5.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
-  "description": "Mokei Anthropic provider",
+  "description": "Mokei logger",
   "keywords": [
     "model",
     "context",
     "protocol",
     "mcp",
     "llm",
-    "ai",
-    "anthropic",
-    "claude"
+    "ai"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "packages/anthropic-provider"
+    "directory": "packages/logger"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -26,7 +24,8 @@
     ".": "./lib/index.js"
   },
   "files": [
-    "lib/*"
+    "lib/*",
+    "LICENSE.md"
   ],
   "sideEffects": false,
   "scripts": {
@@ -40,12 +39,6 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/schema": "catalog:",
-    "eventsource-parser": "catalog:",
-    "ky": "catalog:"
-  },
-  "devDependencies": {
-    "@mokei/context-protocol": "workspace:^",
-    "@mokei/model-provider": "workspace:^"
+    "@enkaku/log": "^0.12.1"
   }
 }

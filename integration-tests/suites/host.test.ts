@@ -1,11 +1,11 @@
 import { fromStream } from '@enkaku/generator'
 import { ContextHost } from '@mokei/host'
-import { config as fetchConfig } from '@mokei/mcp-fetch/config'
+import { createFetchConfig } from '@mokei/mcp-fetch'
 import type { ServerMessage } from '@mokei/model-provider'
 import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
 import { expect, test } from 'vitest'
 
-const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/index.js'
+const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
 
 const model = 'ministral-3:8b'
 const provider = new OllamaProvider()
@@ -69,7 +69,7 @@ test('executes a tool call after adding a direct context', async () => {
   const host = new ContextHost()
 
   try {
-    host.addDirectContext({ key: 'fetch', config: fetchConfig })
+    host.addDirectContext({ key: 'fetch', config: createFetchConfig() })
     await host.setup('fetch')
 
     const tools = host.getCallableTools().map(provider.toolFromMCP)

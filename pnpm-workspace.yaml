@@ -31,10 +31,10 @@ catalog:
   '@swc/cli': ^0.7.10
   '@swc/core': ^1.15.8
   '@tabler/icons-react': ^3.36.1
-  '@tanstack/react-router': ^1.150.0
+  '@tanstack/react-router': ^1.151.3
   '@tanstack/react-virtual': ^3.13.18
-  '@tanstack/router-devtools': ^1.150.0
-  '@tanstack/router-plugin': ^1.150.0
+  '@tanstack/router-devtools': ^1.151.3
+  '@tanstack/router-plugin': ^1.151.5
   '@types/luxon': ^3.7.1
   '@types/node': ^25.0.9
   '@types/react': ^19.2.8
@@ -53,7 +53,7 @@ catalog:
   ky: ^1.14.2
   luxon: ^3.7.2
   nano-spawn: ^2.0.0
-  oclif: ^4.22.65
+  oclif: ^4.22.67
   ora: ^9.0.0
   postcss: ^8.5.6
   postcss-preset-mantine: ^1.18.0

@@ -1,6 +1,6 @@
 {
   "name": "@mokei/openai-provider",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei OpenAI provider",

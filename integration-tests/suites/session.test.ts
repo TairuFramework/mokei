@@ -7,7 +7,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 type ProviderTypes = AnthropicTypes | OllamaTypes | OpenAITypes
 
-const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/index.js'
+const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
 
 // Ollama Anthropic and OpenAI compatibility endpoint
 const baseURL = 'http://localhost:11434/v1'
