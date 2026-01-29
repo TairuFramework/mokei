@@ -1,8 +1,12 @@
 # AgentSession Composition Refactoring Plan
 
+**Status:** complete
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Refactor `AgentSession` to accept a `Session` instance instead of separate `host` + `providers` parameters, eliminating code duplication and establishing Session as the canonical resource manager.
+
+**Summary:** `AgentSession` now accepts a `Session` instance via `AgentParams.session`. Provider resolution delegates to `session.getProvider()`, tool fetching uses `session.getToolsForProvider()`, and tool execution uses `session.executeToolCall()`. The second `providers` constructor argument was removed. This is a breaking API change.
 
 **Architecture:** `AgentSession` becomes a specialized execution layer that delegates resource management to `Session`. It uses `session.contextHost` for tool discovery, `session.providers` for provider lookup, and `session.executeToolCall()` for tool execution. Stream processing remains in `AgentSession` because it needs fine-grained event emission that `Session.chat()` doesn't support.
 

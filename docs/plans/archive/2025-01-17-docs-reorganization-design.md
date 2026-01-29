@@ -1,7 +1,9 @@
 # Documentation Reorganization Design
 
 **Date**: January 17, 2025
-**Status**: Approved
+**Status:** partial
+
+**Summary:** Core reorganization completed: `AGENTS.md` created as AI entry point, `docs/agents/` created with architecture/conventions/development/enkaku docs, `docs/guides/` populated with user-facing guides, `PRD.md` and `IMPLEMENTATION_PLAN.md` deleted. Remaining cleanup: `CLAUDE.md` still exists as a stub (contains only `@AGENTS.md` redirect), `llms.txt` still exists at root.
 
 ## Goals
 
