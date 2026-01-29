@@ -12,7 +12,7 @@ $ npm install -g mokei
 $ mokei COMMAND
 running command...
 $ mokei (--version)
-mokei/0.4.1 darwin-arm64 node-v24.2.0
+mokei/0.5.0 darwin-arm64 node-v24.13.0
 $ mokei --help [COMMAND]
 USAGE
   $ mokei COMMAND
@@ -21,12 +21,30 @@ USAGE
 <!-- usagestop -->
 # Commands
 <!-- commands -->
+* [`mokei chat anthropic`](#mokei-chat-anthropic)
 * [`mokei chat ollama`](#mokei-chat-ollama)
 * [`mokei chat openai`](#mokei-chat-openai)
 * [`mokei context inspect COMMAND`](#mokei-context-inspect-command)
 * [`mokei context monitor`](#mokei-context-monitor)
 * [`mokei context proxy COMMAND`](#mokei-context-proxy-command)
 * [`mokei help [COMMAND]`](#mokei-help-command)
+
+## `mokei chat anthropic`
+
+Interactive chat with a model provider using Anthropic APIs
+
+```
+USAGE
+  $ mokei chat anthropic [-k <value>] [-p <value>] [-m <value>]
+
+FLAGS
+  -k, --api-key=<value>  [env: ANTHROPIC_API_KEY] Anthropic API key
+  -m, --model=<value>    Name of the model to use
+  -p, --api-url=<value>  Provider API URL
+
+DESCRIPTION
+  Interactive chat with a model provider using Anthropic APIs
+```
 
 ## `mokei chat ollama`
 
@@ -53,7 +71,7 @@ USAGE
   $ mokei chat openai [-k <value>] [-p <value>] [-m <value>]
 
 FLAGS
-  -k, --api-key=<value>  OpenAI API key
+  -k, --api-key=<value>  [env: OPENAI_API_KEY] OpenAI API key
   -m, --model=<value>    Name of the model to use
   -p, --api-url=<value>  Provider API URL
 
@@ -119,7 +137,7 @@ USAGE
   $ mokei help [COMMAND...] [-n]
 
 ARGUMENTS
-  COMMAND...  Command to show help for.
+  [COMMAND...]  Command to show help for.
 
 FLAGS
   -n, --nested-commands  Include all nested commands in the output.
@@ -128,5 +146,5 @@ DESCRIPTION
   Display help for mokei.
 ```
 
-_See code: [@oclif/plugin-help](https://github.com/oclif/plugin-help/blob/v6.2.29/src/commands/help.ts)_
+_See code: [@oclif/plugin-help](https://github.com/oclif/plugin-help/blob/v6.2.36/src/commands/help.ts)_
 <!-- commandsstop -->
