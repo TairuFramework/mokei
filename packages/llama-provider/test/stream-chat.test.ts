@@ -7,9 +7,11 @@ import type { ChatResponseChunk, ToolCall } from '../src/types.js'
 // Mock node-llama-cpp
 const mockPromptWithMeta = vi.fn()
 const mockSessionDispose = vi.fn()
+const mockSetChatHistory = vi.fn()
 class MockChatSession {
   promptWithMeta = mockPromptWithMeta
   dispose = mockSessionDispose
+  setChatHistory = mockSetChatHistory
 }
 
 const mockTokenMeter = {
@@ -356,5 +358,170 @@ describe('LlamaProvider streamChat', () => {
     // Verify grammar was NOT passed
     const callArgs = mockPromptWithMeta.mock.calls[0][1] as Record<string, unknown>
     expect(callArgs).not.toHaveProperty('grammar')
+  })
+
+  test('converts full message history and sets chat history on session', async () => {
+    mockPromptWithMeta.mockClear()
+    mockSetChatHistory.mockClear()
+    mockPromptWithMeta.mockImplementation(
+      async (_prompt: string, options: Record<string, unknown>) => {
+        const onTextChunk = options.onTextChunk as (chunk: string) => void
+        onTextChunk('Hello')
+        return { responseText: 'Hello', response: ['Hello'], stopReason: 'eogToken' }
+      },
+    )
+
+    const provider = new LlamaProvider({
+      models: { 'test-model': { path: '/models/test.gguf' } },
+    })
+
+    const request = provider.streamChat({
+      model: 'test-model',
+      messages: [
+        { source: 'client', role: 'system', text: 'You are helpful' },
+        { source: 'client', role: 'user', text: 'Hello' },
+        {
+          source: 'aggregated',
+          role: 'assistant',
+          text: 'Hi there!',
+          toolCalls: [],
+          doneReason: 'stop',
+          inputTokens: 10,
+          outputTokens: 5,
+        },
+        { source: 'client', role: 'user', text: 'How are you?' },
+      ],
+    })
+
+    const stream = await request
+    const reader = stream.getReader()
+    let reading = true
+    while (reading) {
+      const { done } = await reader.read()
+      if (done) reading = false
+    }
+
+    // Verify prompt is the last user message
+    expect(mockPromptWithMeta).toHaveBeenCalledWith('How are you?', expect.any(Object))
+
+    // Verify setChatHistory was called with converted history
+    expect(mockSetChatHistory).toHaveBeenCalledWith([
+      { type: 'system', text: 'You are helpful' },
+      { type: 'user', text: 'Hello' },
+      { type: 'model', response: ['Hi there!'] },
+    ])
+  })
+
+  test('attaches tool results to preceding model function calls', async () => {
+    mockPromptWithMeta.mockClear()
+    mockSetChatHistory.mockClear()
+    mockPromptWithMeta.mockImplementation(
+      async (_prompt: string, options: Record<string, unknown>) => {
+        const onTextChunk = options.onTextChunk as (chunk: string) => void
+        onTextChunk('The weather is sunny')
+        return {
+          responseText: 'The weather is sunny',
+          response: ['The weather is sunny'],
+          stopReason: 'eogToken',
+        }
+      },
+    )
+
+    const provider = new LlamaProvider({
+      models: { 'test-model': { path: '/models/test.gguf' } },
+    })
+
+    const request = provider.streamChat({
+      model: 'test-model',
+      messages: [
+        { source: 'client', role: 'user', text: 'What is the weather?' },
+        {
+          source: 'aggregated',
+          role: 'assistant',
+          text: '',
+          toolCalls: [
+            {
+              name: 'get_weather',
+              id: 'call-1',
+              arguments: '{"city":"London"}',
+              raw: { function: { name: 'get_weather', arguments: { city: 'London' } } },
+            },
+          ],
+          doneReason: 'tool_calls',
+          inputTokens: 10,
+          outputTokens: 5,
+        },
+        {
+          source: 'client',
+          role: 'tool',
+          toolCallID: 'call-1',
+          toolCallName: 'get_weather',
+          text: 'Sunny, 22°C',
+        },
+        { source: 'client', role: 'user', text: 'Tell me more' },
+      ],
+    })
+
+    const stream = await request
+    const reader = stream.getReader()
+    let reading = true
+    while (reading) {
+      const { done } = await reader.read()
+      if (done) reading = false
+    }
+
+    // Verify setChatHistory was called
+    expect(mockSetChatHistory).toHaveBeenCalledWith([
+      { type: 'user', text: 'What is the weather?' },
+      {
+        type: 'model',
+        response: [
+          {
+            type: 'functionCall',
+            name: 'get_weather',
+            params: { city: 'London' },
+            result: 'Sunny, 22°C',
+          },
+        ],
+      },
+    ])
+
+    // Verify prompt is the last user message
+    expect(mockPromptWithMeta).toHaveBeenCalledWith('Tell me more', expect.any(Object))
+  })
+
+  test('handles single user message without setting chat history', async () => {
+    mockPromptWithMeta.mockClear()
+    mockSetChatHistory.mockClear()
+    mockPromptWithMeta.mockImplementation(
+      async (_prompt: string, options: Record<string, unknown>) => {
+        const onTextChunk = options.onTextChunk as (chunk: string) => void
+        onTextChunk('Hi')
+        return { responseText: 'Hi', response: ['Hi'], stopReason: 'eogToken' }
+      },
+    )
+
+    const provider = new LlamaProvider({
+      models: { 'test-model': { path: '/models/test.gguf' } },
+    })
+
+    const request = provider.streamChat({
+      model: 'test-model',
+      messages: [{ source: 'client', role: 'user', text: 'Hello' }],
+    })
+
+    const stream = await request
+    const reader = stream.getReader()
+    let reading = true
+    while (reading) {
+      const { done } = await reader.read()
+      if (done) reading = false
+    }
+
+    // Verify setChatHistory was NOT called (no history to set)
+    expect(mockSetChatHistory).not.toHaveBeenCalled()
+
+    // Verify prompt is the user message
+    expect(mockPromptWithMeta).toHaveBeenCalledWith('Hello', expect.any(Object))
   })
 })

@@ -11,6 +11,7 @@ import type {
   MessagePart,
   Model,
   ModelProvider,
+  Message as ProviderMessage,
   RequestParams,
   ServerMessage,
   StreamChatParams,
@@ -18,6 +19,7 @@ import type {
 } from '@mokei/model-provider'
 
 import type {
+  ChatHistoryItem,
   ChatSessionModelFunctions,
   Llama,
   LlamaContext,
@@ -290,16 +292,16 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
           ? await this.createContext(params.model)
           : await this.getContext(params.model))
 
-      const lastUserMessage = [...params.messages]
-        .reverse()
-        .find((m) => m.source === 'client' && m.role === 'user')
-      const prompt =
-        lastUserMessage != null && 'text' in lastUserMessage ? (lastUserMessage.text ?? '') : ''
+      const { history, prompt } = this.#convertMessages(params.messages)
 
       const { LlamaChatSession } = await import('node-llama-cpp')
       const sequence = context.getSequence()
       const tokensBefore = sequence.tokenMeter.getState()
       const session = new LlamaChatSession({ contextSequence: sequence })
+
+      if (history.length > 0) {
+        session.setChatHistory(history)
+      }
 
       const onTextChunk =
         (
@@ -410,6 +412,79 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     })()
 
     return Object.assign(response, { abort, signal })
+  }
+
+  #convertMessages(messages: Array<ProviderMessage<Message, ToolCall>>): {
+    history: Array<ChatHistoryItem>
+    prompt: string
+  } {
+    const history: Array<ChatHistoryItem> = []
+    let prompt = ''
+
+    // Find the last user message index - it becomes the prompt
+    let lastUserIdx = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      if (msg.source === 'client' && msg.role === 'user') {
+        lastUserIdx = i
+        break
+      }
+    }
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i]
+
+      if (msg.source === 'client' && msg.role === 'system') {
+        history.push({ type: 'system', text: msg.text } as ChatHistoryItem)
+      } else if (msg.source === 'client' && msg.role === 'user') {
+        if (i === lastUserIdx) {
+          prompt = msg.text
+        } else {
+          history.push({ type: 'user', text: msg.text } as ChatHistoryItem)
+        }
+      } else if (
+        (msg.source === 'aggregated' || msg.source === 'server') &&
+        msg.role === 'assistant'
+      ) {
+        const response: Array<unknown> = []
+        if (msg.text) {
+          response.push(msg.text)
+        }
+        if ('toolCalls' in msg && msg.toolCalls != null) {
+          for (const tc of msg.toolCalls) {
+            response.push({
+              type: 'functionCall',
+              name: tc.name,
+              params: JSON.parse(tc.arguments),
+            })
+          }
+        }
+        history.push({ type: 'model', response } as ChatHistoryItem)
+      } else if (msg.source === 'client' && msg.role === 'tool') {
+        // Find the last model response in history and attach result to the matching function call
+        for (let j = history.length - 1; j >= 0; j--) {
+          const item = history[j] as { type: string; response?: Array<unknown> }
+          if (item.type === 'model' && item.response != null) {
+            for (const respItem of item.response) {
+              if (
+                typeof respItem === 'object' &&
+                respItem != null &&
+                'type' in respItem &&
+                (respItem as { type: string }).type === 'functionCall' &&
+                'name' in respItem &&
+                (respItem as { name: string }).name === msg.toolCallName
+              ) {
+                ;(respItem as { result?: string }).result = msg.text
+                break
+              }
+            }
+            break
+          }
+        }
+      }
+    }
+
+    return { history, prompt }
   }
 
   #buildFunctions(tools?: Array<Tool>): ChatSessionModelFunctions | undefined {
