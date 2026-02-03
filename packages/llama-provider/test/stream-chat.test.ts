@@ -32,10 +32,14 @@ const mockLoadModel = vi.fn().mockResolvedValue({
   trainContextSize: 4096,
 })
 
+const mockGrammar = { type: 'grammar' }
+const mockCreateGrammarForJsonSchema = vi.fn().mockResolvedValue(mockGrammar)
+
 vi.mock('node-llama-cpp', () => ({
   getLlama: vi.fn().mockResolvedValue({
     loadModel: mockLoadModel,
     dispose: vi.fn().mockResolvedValue(undefined),
+    createGrammarForJsonSchema: mockCreateGrammarForJsonSchema,
   }),
   LlamaChatSession: MockChatSession,
 }))
@@ -237,5 +241,120 @@ describe('LlamaProvider streamChat', () => {
 
     expect(request.signal).toBeDefined()
     expect(typeof request.abort).toBe('function')
+  })
+
+  test('throws when both output and tools are provided', async () => {
+    const provider = new LlamaProvider({
+      models: { 'test-model': { path: '/models/test.gguf' } },
+    })
+
+    const request = provider.streamChat({
+      model: 'test-model',
+      messages: [{ source: 'client', role: 'user', text: 'Hi' }],
+      output: {
+        schema: { type: 'object', properties: { name: { type: 'string' } } },
+      },
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'get_weather',
+            description: 'Get weather',
+            parameters: { type: 'object', properties: {} },
+          },
+        },
+      ],
+    })
+
+    await expect(request).rejects.toThrow(
+      'Structured output (grammar) and tool calling (functions) cannot be used together',
+    )
+  })
+
+  test('passes grammar to promptWithMeta when output schema is provided', async () => {
+    mockCreateGrammarForJsonSchema.mockClear()
+
+    mockPromptWithMeta.mockImplementation(
+      async (_prompt: string, options: Record<string, unknown>) => {
+        const onTextChunk = options.onTextChunk as (chunk: string) => void
+        onTextChunk('{"name":"test"}')
+        return {
+          responseText: '{"name":"test"}',
+          response: ['{"name":"test"}'],
+          stopReason: 'eogToken',
+        }
+      },
+    )
+
+    const provider = new LlamaProvider({
+      models: { 'test-model': { path: '/models/test.gguf' } },
+    })
+
+    const request = provider.streamChat({
+      model: 'test-model',
+      messages: [{ source: 'client', role: 'user', text: 'Give me a name' }],
+      output: {
+        schema: { type: 'object', properties: { name: { type: 'string' } } },
+      },
+    })
+
+    const stream = await request
+    const reader = stream.getReader()
+    let reading = true
+    while (reading) {
+      const { done } = await reader.read()
+      if (done) reading = false
+    }
+
+    // Verify grammar was created from schema
+    expect(mockCreateGrammarForJsonSchema).toHaveBeenCalledWith({
+      type: 'object',
+      properties: { name: { type: 'string' } },
+    })
+
+    // Verify grammar was passed to promptWithMeta
+    expect(mockPromptWithMeta).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ grammar: mockGrammar }),
+    )
+
+    // Verify functions were NOT passed
+    const lastCallIdx = mockPromptWithMeta.mock.calls.length - 1
+    const callArgs = mockPromptWithMeta.mock.calls[lastCallIdx][1] as Record<string, unknown>
+    expect(callArgs).not.toHaveProperty('functions')
+  })
+
+  test('does not create grammar when no output is provided', async () => {
+    mockCreateGrammarForJsonSchema.mockClear()
+    mockPromptWithMeta.mockClear()
+
+    mockPromptWithMeta.mockImplementation(
+      async (_prompt: string, options: Record<string, unknown>) => {
+        const onTextChunk = options.onTextChunk as (chunk: string) => void
+        onTextChunk('Hello')
+        return { responseText: 'Hello', response: ['Hello'], stopReason: 'eogToken' }
+      },
+    )
+
+    const provider = new LlamaProvider({
+      models: { 'test-model': { path: '/models/test.gguf' } },
+    })
+
+    const request = provider.streamChat({
+      model: 'test-model',
+      messages: [{ source: 'client', role: 'user', text: 'Hi' }],
+    })
+
+    const stream = await request
+    const reader = stream.getReader()
+    let reading = true
+    while (reading) {
+      const { done } = await reader.read()
+      if (done) reading = false
+    }
+
+    // Verify grammar was NOT passed
+    const callArgs = mockPromptWithMeta.mock.calls[0][1] as Record<string, unknown>
+    expect(callArgs).not.toHaveProperty('grammar')
   })
 })

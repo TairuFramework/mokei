@@ -278,6 +278,12 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     const abort = () => controller.abort()
 
     const response = (async () => {
+      if (params.output != null && params.tools != null && params.tools.length > 0) {
+        throw new Error(
+          'Structured output (grammar) and tool calling (functions) cannot be used together with node-llama-cpp. Provide either output or tools, but not both.',
+        )
+      }
+
       const context =
         params.context ??
         (params.newContext
@@ -295,19 +301,36 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
       const tokensBefore = sequence.tokenMeter.getState()
       const session = new LlamaChatSession({ contextSequence: sequence })
 
-      const functions = this.#buildFunctions(params.tools)
+      const onTextChunk =
+        (
+          streamController: ReadableStreamDefaultController<
+            MessagePart<ChatResponseChunk, ToolCall>
+          >,
+        ) =>
+        (chunk: string) => {
+          const raw: ChatResponseChunk = { text: chunk, done: false }
+          streamController.enqueue({ type: 'text-delta', text: chunk, raw })
+        }
+
+      const promptOptions = params.output
+        ? {
+            signal,
+            grammar: await (await this.#getLlama()).createGrammarForJsonSchema(
+              params.output.schema as Parameters<Llama['createGrammarForJsonSchema']>[0],
+            ),
+            onTextChunk: undefined as ((chunk: string) => void) | undefined,
+          }
+        : {
+            signal,
+            functions: this.#buildFunctions(params.tools),
+            onTextChunk: undefined as ((chunk: string) => void) | undefined,
+          }
 
       return new ReadableStream<MessagePart<ChatResponseChunk, ToolCall>>({
         start(streamController) {
+          promptOptions.onTextChunk = onTextChunk(streamController)
           session
-            .promptWithMeta(prompt, {
-              signal,
-              functions,
-              onTextChunk(chunk: string) {
-                const raw: ChatResponseChunk = { text: chunk, done: false }
-                streamController.enqueue({ type: 'text-delta', text: chunk, raw })
-              },
-            })
+            .promptWithMeta(prompt, promptOptions)
             .then((result) => {
               const response = result.response as Array<unknown>
               const stopReason = result.stopReason as string
