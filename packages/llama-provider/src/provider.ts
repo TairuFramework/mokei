@@ -147,9 +147,29 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     }))
   }
 
-  async embed(_params: EmbedParams): Promise<EmbedResponse> {
-    // Will be implemented in Task 6 (embeddings)
-    throw new Error('Not implemented')
+  async embed(params: EmbedParams): Promise<EmbedResponse> {
+    const config = this.#registry.get(params.model)
+    if (config == null) {
+      throw new Error(`Model "${params.model}" is not registered`)
+    }
+
+    let embeddingContext = this.#embeddingContexts.get(params.model)
+    if (embeddingContext == null) {
+      const model = await this.#loadModel(params.model)
+      embeddingContext = await model.createEmbeddingContext()
+      this.#embeddingContexts.set(params.model, embeddingContext)
+      this.#managedContexts.add(embeddingContext)
+    }
+
+    const inputs = Array.isArray(params.input) ? params.input : [params.input]
+    const embeddings: Array<Array<number>> = []
+
+    for (const input of inputs) {
+      const embedding = await embeddingContext.getEmbeddingFor(input)
+      embeddings.push(Array.from(embedding.vector))
+    }
+
+    return { embeddings }
   }
 
   streamChat(
