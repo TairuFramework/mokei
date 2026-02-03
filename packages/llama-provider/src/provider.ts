@@ -1,6 +1,6 @@
 import { unlink } from 'node:fs/promises'
 
-import { Disposer } from '@enkaku/async'
+import { Disposer, lazy } from '@enkaku/async'
 import { assertType } from '@enkaku/schema'
 import type { Tool as ContextTool } from '@mokei/context-protocol'
 import type {
@@ -47,8 +47,9 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
   }
 
   #registry: Map<string, LlamaModelConfig>
-  #llama: Llama | null = null
+  #llamaPromise: Promise<Llama> | null = null
   #loadedModels: Map<string, LlamaModel> = new Map()
+  #loadingModels: Map<string, Promise<LlamaModel>> = new Map()
   #defaultContexts: Map<string, LlamaContext> = new Map()
   #embeddingContexts: Map<string, LlamaEmbeddingContext> = new Map()
   #managedContexts: Set<LlamaContext | LlamaEmbeddingContext> = new Set()
@@ -63,11 +64,13 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
   }
 
   async #getLlama(): Promise<Llama> {
-    if (this.#llama == null) {
-      const { getLlama } = await import('node-llama-cpp')
-      this.#llama = await getLlama()
+    if (this.#llamaPromise == null) {
+      this.#llamaPromise = lazy(async () => {
+        const { getLlama } = await import('node-llama-cpp')
+        return await getLlama()
+      })
     }
-    return this.#llama
+    return this.#llamaPromise
   }
 
   async #loadModel(name: string): Promise<LlamaModel> {
@@ -75,13 +78,29 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     if (existing != null) {
       return existing
     }
+    const loading = this.#loadingModels.get(name)
+    if (loading != null) {
+      return loading
+    }
     const config = this.#registry.get(name)
     if (config == null) {
       throw new Error(`Model "${name}" is not registered`)
     }
+    const promise = this.#doLoadModel(name, config)
+    this.#loadingModels.set(name, promise)
+    return promise
+  }
+
+  async #doLoadModel(name: string, config: LlamaModelConfig): Promise<LlamaModel> {
     const llama = await this.#getLlama()
-    const model = await llama.loadModel({ modelPath: config.path })
+    const gpuLayers =
+      config.gpu === true || config.gpu === 'auto' ? 'auto' : config.gpu === false ? 0 : undefined
+    const model = await llama.loadModel({
+      modelPath: config.path,
+      ...(gpuLayers != null ? { gpuLayers } : {}),
+    })
     this.#loadedModels.set(name, model)
+    this.#loadingModels.delete(name)
     return model
   }
 
@@ -98,9 +117,10 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     }
     this.#loadedModels.clear()
 
-    if (this.#llama != null) {
-      await this.#llama.dispose()
-      this.#llama = null
+    if (this.#llamaPromise != null) {
+      const llama = await this.#llamaPromise
+      await llama.dispose()
+      this.#llamaPromise = null
     }
   }
 
@@ -277,17 +297,26 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
                 streamController.enqueue({ type: 'text-delta', text: chunk, raw })
               },
             })
-            .then(
-              (result: {
-                responseText: string
-                functionCalls?: Array<{ functionName: string; params: Record<string, unknown> }>
-              }) => {
-                if (result.functionCalls != null) {
-                  for (const call of result.functionCalls) {
+            .then((result) => {
+              const response = result.response as Array<unknown>
+              const stopReason = result.stopReason as string
+
+              if (stopReason === 'functionCalls') {
+                for (const item of response) {
+                  if (
+                    typeof item === 'object' &&
+                    item != null &&
+                    'type' in item &&
+                    (item as { type: string }).type === 'functionCall'
+                  ) {
+                    const fnCall = item as { type: 'functionCall'; name: string; params: unknown }
                     const toolCall: ToolCall = {
                       function: {
-                        name: call.functionName,
-                        arguments: call.params,
+                        name: fnCall.name,
+                        arguments:
+                          fnCall.params != null && typeof fnCall.params === 'object'
+                            ? (fnCall.params as Record<string, unknown>)
+                            : {},
                       },
                     }
                     const raw: ChatResponseChunk = {
@@ -298,8 +327,8 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
                       type: 'tool-call',
                       toolCalls: [
                         {
-                          name: call.functionName,
-                          arguments: JSON.stringify(call.params),
+                          name: fnCall.name,
+                          arguments: JSON.stringify(fnCall.params ?? {}),
                           id: globalThis.crypto.randomUUID(),
                           raw: toolCall,
                         },
@@ -308,18 +337,18 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
                     })
                   }
                 }
+              }
 
-                const doneRaw: ChatResponseChunk = { done: true }
-                streamController.enqueue({
-                  type: 'done',
-                  reason: result.functionCalls != null ? 'tool_calls' : 'stop',
-                  inputTokens: 0,
-                  outputTokens: 0,
-                  raw: doneRaw,
-                })
-                streamController.close()
-              },
-            )
+              const doneRaw: ChatResponseChunk = { done: true }
+              streamController.enqueue({
+                type: 'done',
+                reason: stopReason === 'functionCalls' ? 'tool_calls' : 'stop',
+                inputTokens: 0,
+                outputTokens: 0,
+                raw: doneRaw,
+              })
+              streamController.close()
+            })
             .catch((error: unknown) => {
               if (signal.aborted) {
                 const doneRaw: ChatResponseChunk = { done: true }
@@ -337,6 +366,9 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
                 streamController.close()
               }
             })
+            .finally(() => {
+              session.dispose()
+            })
         },
       })
     })()
@@ -353,8 +385,8 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
       functions[tool.function.name] = {
         description: tool.function.description,
         params: tool.function.parameters,
-        handler: async (params: Record<string, unknown>) => {
-          return JSON.stringify(params)
+        handler: async (_params: Record<string, unknown>) => {
+          return ''
         },
       }
     }
