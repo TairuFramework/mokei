@@ -67,6 +67,30 @@ describe('LlamaProvider model management', () => {
       )
     })
 
+    test('passes onProgress callback to downloader with adapted format', async () => {
+      mockCreateModelDownloader.mockImplementation(async (opts: Record<string, unknown>) => {
+        const onProgress = opts.onProgress as
+          | ((status: { totalSize: number; downloadedSize: number }) => void)
+          | undefined
+        if (onProgress) {
+          onProgress({ totalSize: 1000, downloadedSize: 500 })
+          onProgress({ totalSize: 1000, downloadedSize: 1000 })
+        }
+        return { download: mockDownload }
+      })
+
+      const provider = new LlamaProvider()
+      const updates: Array<{ downloaded: number; total: number; percent: number }> = []
+
+      await provider.downloadModel('my-llama', 'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M', {
+        onProgress: (progress) => updates.push(progress),
+      })
+
+      expect(updates).toHaveLength(2)
+      expect(updates[0]).toEqual({ downloaded: 500, total: 1000, percent: 0.5 })
+      expect(updates[1]).toEqual({ downloaded: 1000, total: 1000, percent: 1 })
+    })
+
     test('stores optional config values', async () => {
       const provider = new LlamaProvider()
 

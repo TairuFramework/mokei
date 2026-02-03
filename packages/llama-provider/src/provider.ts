@@ -178,8 +178,18 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     },
   ): Promise<LlamaModelConfig> {
     const { createModelDownloader } = await import('node-llama-cpp')
+    const onProgress = options?.onProgress
     const downloader = await createModelDownloader({
       modelUri: uri,
+      onProgress: onProgress
+        ? (status: { totalSize: number; downloadedSize: number }) => {
+            onProgress({
+              downloaded: status.downloadedSize,
+              total: status.totalSize,
+              percent: status.totalSize > 0 ? status.downloadedSize / status.totalSize : 0,
+            })
+          }
+        : undefined,
     })
     const modelPath = await downloader.download()
 
