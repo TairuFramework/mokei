@@ -292,6 +292,7 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
 
       const { LlamaChatSession } = await import('node-llama-cpp')
       const sequence = context.getSequence()
+      const tokensBefore = sequence.tokenMeter.getState()
       const session = new LlamaChatSession({ contextSequence: sequence })
 
       const functions = this.#buildFunctions(params.tools)
@@ -349,24 +350,26 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
                 }
               }
 
+              const tokensDiff = sequence.tokenMeter.diff(tokensBefore)
               const doneRaw: ChatResponseChunk = { done: true }
               streamController.enqueue({
                 type: 'done',
                 reason: stopReason === 'functionCalls' ? 'tool_calls' : 'stop',
-                inputTokens: 0,
-                outputTokens: 0,
+                inputTokens: tokensDiff.usedInputTokens,
+                outputTokens: tokensDiff.usedOutputTokens,
                 raw: doneRaw,
               })
               streamController.close()
             })
             .catch((error: unknown) => {
               if (signal.aborted) {
+                const tokensDiff = sequence.tokenMeter.diff(tokensBefore)
                 const doneRaw: ChatResponseChunk = { done: true }
                 streamController.enqueue({
                   type: 'done',
                   reason: 'abort',
-                  inputTokens: 0,
-                  outputTokens: 0,
+                  inputTokens: tokensDiff.usedInputTokens,
+                  outputTokens: tokensDiff.usedOutputTokens,
                   raw: doneRaw,
                 })
                 streamController.close()

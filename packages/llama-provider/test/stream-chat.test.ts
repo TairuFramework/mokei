@@ -12,7 +12,11 @@ class MockChatSession {
   dispose = mockSessionDispose
 }
 
-const mockGetSequence = vi.fn().mockReturnValue({})
+const mockTokenMeter = {
+  getState: vi.fn().mockReturnValue({ usedInputTokens: 0, usedOutputTokens: 0 }),
+  diff: vi.fn().mockReturnValue({ usedInputTokens: 15, usedOutputTokens: 25 }),
+}
+const mockGetSequence = vi.fn().mockReturnValue({ tokenMeter: mockTokenMeter })
 const mockCreateContext = vi.fn().mockResolvedValue({
   dispose: vi.fn().mockResolvedValue(undefined),
   disposed: false,
@@ -178,6 +182,47 @@ describe('LlamaProvider streamChat', () => {
 
     // The chat session's dispose should have been called via .finally()
     expect(mockSessionDispose).toHaveBeenCalled()
+  })
+
+  test('emits token counts from token meter in done event', async () => {
+    mockPromptWithMeta.mockImplementation(
+      async (_prompt: string, options: Record<string, unknown>) => {
+        const onTextChunk = options.onTextChunk as (chunk: string) => void
+        onTextChunk('Hello')
+        return { responseText: 'Hello', response: ['Hello'], stopReason: 'eogToken' }
+      },
+    )
+
+    const provider = new LlamaProvider({
+      models: { 'test-model': { path: '/models/test.gguf' } },
+    })
+
+    const request = provider.streamChat({
+      model: 'test-model',
+      messages: [{ source: 'client', role: 'user', text: 'Hi' }],
+    })
+
+    const stream = await request
+    const reader = stream.getReader()
+    const parts: Array<MessagePart<ChatResponseChunk, ToolCall>> = []
+    let reading = true
+    while (reading) {
+      const { done, value } = await reader.read()
+      if (done) {
+        reading = false
+      } else {
+        parts.push(value)
+      }
+    }
+
+    const donePart = parts.find((p) => p.type === 'done') as {
+      type: 'done'
+      inputTokens: number
+      outputTokens: number
+    }
+    expect(donePart).toBeDefined()
+    expect(donePart.inputTokens).toBe(15)
+    expect(donePart.outputTokens).toBe(25)
   })
 
   test('supports abort signal', async () => {
