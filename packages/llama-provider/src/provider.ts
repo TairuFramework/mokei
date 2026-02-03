@@ -15,18 +15,9 @@ import type {
   StreamChatRequest,
 } from '@mokei/model-provider'
 
-import type {
-  Llama,
-  LlamaContext,
-  LlamaEmbeddingContext,
-  LlamaModel,
-} from 'node-llama-cpp'
+import type { Llama, LlamaContext, LlamaEmbeddingContext, LlamaModel } from 'node-llama-cpp'
 
-import {
-  type LlamaConfiguration,
-  type LlamaModelConfig,
-  validateConfiguration,
-} from './config.js'
+import { type LlamaConfiguration, type LlamaModelConfig, validateConfiguration } from './config.js'
 import type { ChatResponseChunk, Message, ModelInfo, Tool, ToolCall } from './types.js'
 
 export type LlamaTypes = {
@@ -123,10 +114,7 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     return context
   }
 
-  async createContext(
-    model: string,
-    options?: { contextSize?: number },
-  ): Promise<LlamaContext> {
+  async createContext(model: string, options?: { contextSize?: number }): Promise<LlamaContext> {
     const loadedModel = await this.#loadModel(model)
     const context = await loadedModel.createContext({
       contextSize: options?.contextSize,
@@ -165,10 +153,130 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
   }
 
   streamChat(
-    _params: StreamChatParams<Message, ToolCall, Tool>,
+    params: StreamChatParams<Message, ToolCall, Tool> & {
+      context?: LlamaContext
+      newContext?: boolean
+    },
   ): StreamChatRequest<ChatResponseChunk, ToolCall> {
-    // Will be implemented in Task 5 (streamChat)
-    throw new Error('Not implemented')
+    const controller = new AbortController()
+    if (params.signal != null) {
+      params.signal.addEventListener('abort', () => controller.abort(), { once: true })
+    }
+    const { signal } = controller
+    const abort = () => controller.abort()
+
+    const response = (async () => {
+      const context =
+        params.context ??
+        (params.newContext
+          ? await this.createContext(params.model)
+          : await this.getContext(params.model))
+
+      const lastUserMessage = [...params.messages]
+        .reverse()
+        .find((m) => m.source === 'client' && m.role === 'user')
+      const prompt =
+        lastUserMessage != null && 'text' in lastUserMessage ? lastUserMessage.text : ''
+
+      const { LlamaChatSession } = await import('node-llama-cpp')
+      const sequence = context.getSequence()
+      const session = new LlamaChatSession({ contextSequence: sequence })
+
+      const functions = this.#buildFunctions(params.tools)
+
+      return new ReadableStream<MessagePart<ChatResponseChunk, ToolCall>>({
+        start(streamController) {
+          session
+            .promptWithMeta(prompt, {
+              signal,
+              functions,
+              onTextChunk(chunk: string) {
+                const raw: ChatResponseChunk = { text: chunk, done: false }
+                streamController.enqueue({ type: 'text-delta', text: chunk, raw })
+              },
+            })
+            .then(
+              (result: {
+                responseText: string
+                functionCalls?: Array<{ functionName: string; params: Record<string, unknown> }>
+              }) => {
+                if (result.functionCalls != null) {
+                  for (const call of result.functionCalls) {
+                    const toolCall: ToolCall = {
+                      function: {
+                        name: call.functionName,
+                        arguments: call.params,
+                      },
+                    }
+                    const raw: ChatResponseChunk = {
+                      toolCalls: [toolCall],
+                      done: false,
+                    }
+                    streamController.enqueue({
+                      type: 'tool-call',
+                      toolCalls: [
+                        {
+                          name: call.functionName,
+                          arguments: JSON.stringify(call.params),
+                          id: globalThis.crypto.randomUUID(),
+                          raw: toolCall,
+                        },
+                      ],
+                      raw,
+                    })
+                  }
+                }
+
+                const doneRaw: ChatResponseChunk = { done: true }
+                streamController.enqueue({
+                  type: 'done',
+                  reason: result.functionCalls != null ? 'tool_calls' : 'stop',
+                  inputTokens: 0,
+                  outputTokens: 0,
+                  raw: doneRaw,
+                })
+                streamController.close()
+              },
+            )
+            .catch((error: unknown) => {
+              if (signal.aborted) {
+                const doneRaw: ChatResponseChunk = { done: true }
+                streamController.enqueue({
+                  type: 'done',
+                  reason: 'abort',
+                  inputTokens: 0,
+                  outputTokens: 0,
+                  raw: doneRaw,
+                })
+                streamController.close()
+              } else {
+                const errorRaw: ChatResponseChunk = { done: true }
+                streamController.enqueue({ type: 'error', error, raw: errorRaw })
+                streamController.close()
+              }
+            })
+        },
+      })
+    })()
+
+    return Object.assign(response, { abort, signal })
+  }
+
+  #buildFunctions(tools?: Array<Tool>): Record<string, unknown> | undefined {
+    if (tools == null || tools.length === 0) {
+      return undefined
+    }
+    const functions: Record<string, unknown> = {}
+    for (const tool of tools) {
+      functions[tool.function.name] = {
+        description: tool.function.description,
+        params: tool.function.parameters,
+        handler: async (params: Record<string, unknown>) => {
+          return JSON.stringify(params)
+        },
+      }
+    }
+    return functions
   }
 
   aggregateMessage(
