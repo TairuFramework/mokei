@@ -1,0 +1,59 @@
+{
+  "name": "@mokei/llama-provider",
+  "version": "0.5.0",
+  "license": "MIT",
+  "homepage": "https://mokei.dev",
+  "description": "Mokei node-llama-cpp provider",
+  "keywords": [
+    "model",
+    "context",
+    "protocol",
+    "mcp",
+    "llm",
+    "ai",
+    "llama",
+    "gguf"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TairuFramework/mokei",
+    "directory": "packages/llama-provider"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": "./lib/index.js"
+  },
+  "files": [
+    "lib/*"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build:clean": "del lib",
+    "build:js": "swc src -d ./lib --config-file ../../swc.json --strip-leading-paths",
+    "build:types": "tsc --emitDeclarationOnly --skipLibCheck",
+    "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
+    "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
+    "test:types": "tsc --noEmit --skipLibCheck",
+    "test:unit": "vitest run",
+    "test": "pnpm run test:types && pnpm run test:unit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@enkaku/async": "catalog:",
+    "@enkaku/schema": "catalog:"
+  },
+  "devDependencies": {
+    "@mokei/context-protocol": "workspace:^",
+    "@mokei/model-provider": "workspace:^"
+  },
+  "peerDependencies": {
+    "node-llama-cpp": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "node-llama-cpp": {
+      "optional": false
+    }
+  }
+}
