@@ -1,3 +1,5 @@
+import { unlink } from 'node:fs/promises'
+
 import { Disposer } from '@enkaku/async'
 import { assertType } from '@enkaku/schema'
 import type { Tool as ContextTool } from '@mokei/context-protocol'
@@ -138,6 +140,60 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
       }
     }
     await context.dispose()
+  }
+
+  async downloadModel(
+    name: string,
+    uri: string,
+    options?: {
+      contextSize?: number
+      gpu?: boolean | 'auto'
+      onProgress?: (progress: { downloaded: number; total: number; percent: number }) => void
+    },
+  ): Promise<LlamaModelConfig> {
+    const { createModelDownloader } = await import('node-llama-cpp')
+    const downloader = await createModelDownloader({
+      modelUri: uri,
+    })
+    const modelPath = await downloader.download()
+
+    const config: LlamaModelConfig = {
+      path: modelPath,
+      ...(options?.contextSize != null ? { contextSize: options.contextSize } : {}),
+      ...(options?.gpu != null ? { gpu: options.gpu } : {}),
+    }
+    this.#registry.set(name, config)
+    return config
+  }
+
+  async deleteModel(name: string): Promise<void> {
+    const config = this.#registry.get(name)
+    if (config == null) {
+      throw new Error(`Model "${name}" is not registered`)
+    }
+
+    const defaultCtx = this.#defaultContexts.get(name)
+    if (defaultCtx != null) {
+      await this.disposeContext(defaultCtx)
+    }
+    const embedCtx = this.#embeddingContexts.get(name)
+    if (embedCtx != null) {
+      await this.disposeContext(embedCtx)
+    }
+
+    const model = this.#loadedModels.get(name)
+    if (model != null) {
+      await model.dispose()
+      this.#loadedModels.delete(name)
+    }
+
+    await unlink(config.path)
+    this.#registry.delete(name)
+  }
+
+  async inspectRemoteModel(uri: string): Promise<unknown> {
+    const { readGgufFileInfo } = await import('node-llama-cpp')
+    return await readGgufFileInfo(uri)
   }
 
   async listModels(_params?: RequestParams): Promise<Array<Model<ModelInfo>>> {
