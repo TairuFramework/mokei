@@ -53,3 +53,9 @@ describe('validateConfiguration', () => {
     expect(result.issues).toBeDefined()
   })
 })
+
+test('configurationSchema is exported from barrel', async () => {
+  const barrel = await import('../src/index.js')
+  expect(barrel.configurationSchema).toBeDefined()
+  expect(barrel.configurationSchema.type).toBe('object')
+})
