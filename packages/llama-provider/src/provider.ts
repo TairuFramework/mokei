@@ -17,7 +17,13 @@ import type {
   StreamChatRequest,
 } from '@mokei/model-provider'
 
-import type { Llama, LlamaContext, LlamaEmbeddingContext, LlamaModel } from 'node-llama-cpp'
+import type {
+  ChatSessionModelFunctions,
+  Llama,
+  LlamaContext,
+  LlamaEmbeddingContext,
+  LlamaModel,
+} from 'node-llama-cpp'
 
 import { type LlamaConfiguration, type LlamaModelConfig, validateConfiguration } from './config.js'
 import type { ChatResponseChunk, Message, ModelInfo, Tool, ToolCall } from './types.js'
@@ -252,7 +258,7 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
         .reverse()
         .find((m) => m.source === 'client' && m.role === 'user')
       const prompt =
-        lastUserMessage != null && 'text' in lastUserMessage ? lastUserMessage.text : ''
+        lastUserMessage != null && 'text' in lastUserMessage ? (lastUserMessage.text ?? '') : ''
 
       const { LlamaChatSession } = await import('node-llama-cpp')
       const sequence = context.getSequence()
@@ -338,11 +344,11 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     return Object.assign(response, { abort, signal })
   }
 
-  #buildFunctions(tools?: Array<Tool>): Record<string, unknown> | undefined {
+  #buildFunctions(tools?: Array<Tool>): ChatSessionModelFunctions | undefined {
     if (tools == null || tools.length === 0) {
       return undefined
     }
-    const functions: Record<string, unknown> = {}
+    const functions: Record<string, ChatSessionModelFunctions[string]> = {}
     for (const tool of tools) {
       functions[tool.function.name] = {
         description: tool.function.description,

@@ -10,6 +10,6 @@
  * @module llama-provider
  */
 
-export { type LlamaConfiguration, type LlamaModelConfig } from './config.js'
+export { type LlamaConfiguration, type LlamaModelConfig, validateConfiguration } from './config.js'
 export { LlamaProvider, type LlamaProviderParams, type LlamaTypes } from './provider.js'
 export type * from './types.js'

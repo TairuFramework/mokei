@@ -147,7 +147,9 @@ describe('LlamaProvider', () => {
     test('aggregates tool calls', () => {
       const provider = new LlamaProvider()
 
-      const toolCall: ToolCall = { function: { name: 'get_weather', arguments: { city: 'London' } } }
+      const toolCall: ToolCall = {
+        function: { name: 'get_weather', arguments: { city: 'London' } },
+      }
 
       const parts: Array<ServerMessage<ChatResponseChunk, ToolCall>> = [
         { source: 'server', role: 'assistant', text: 'Let me check', raw: {} as ChatResponseChunk },

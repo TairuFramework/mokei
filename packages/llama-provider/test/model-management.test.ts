@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { LlamaProvider } from '../src/provider.js'
 
@@ -58,10 +58,7 @@ describe('LlamaProvider model management', () => {
     test('passes model URI to downloader', async () => {
       const provider = new LlamaProvider()
 
-      await provider.downloadModel(
-        'my-llama',
-        'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M',
-      )
+      await provider.downloadModel('my-llama', 'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M')
 
       expect(mockCreateModelDownloader).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -109,14 +106,10 @@ describe('LlamaProvider model management', () => {
     test('returns GGUF file info', async () => {
       const provider = new LlamaProvider()
 
-      const info = await provider.inspectRemoteModel(
-        'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M',
-      )
+      const info = await provider.inspectRemoteModel('hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M')
 
       expect(info).toBeDefined()
-      expect(mockReadGgufFileInfo).toHaveBeenCalledWith(
-        'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M',
-      )
+      expect(mockReadGgufFileInfo).toHaveBeenCalledWith('hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M')
     })
   })
 })

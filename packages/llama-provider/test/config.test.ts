@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { validateConfiguration, type LlamaConfiguration } from '../src/config.js'
+import { type LlamaConfiguration, validateConfiguration } from '../src/config.js'
 
 describe('validateConfiguration', () => {
   test('accepts valid config with models', () => {

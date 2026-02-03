@@ -75,8 +75,8 @@ describe('LlamaProvider context management', () => {
       models: { 'test-model': { path: '/models/test.gguf' } },
     })
 
-    const ctx1 = await provider.createContext('test-model')
-    const ctx2 = await provider.createContext('test-model')
+    const _ctx1 = await provider.createContext('test-model')
+    const _ctx2 = await provider.createContext('test-model')
     // Two separate createContext calls
     expect(mockCreateContext).toHaveBeenCalledTimes(2)
   })
