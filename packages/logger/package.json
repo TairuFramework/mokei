@@ -39,6 +39,6 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/log": "^0.12.1"
+    "@enkaku/log": "^0.13.0"
   }
 }

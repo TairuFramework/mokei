@@ -9,6 +9,7 @@ import type {
   ServerMessage,
   StreamChatParams,
 } from '@mokei/model-provider'
+
 import type { ChatResponse, ListModelParams, OllamaClientParams } from './client.js'
 import { OllamaClient } from './client.js'
 import { type OllamaConfiguration, validateConfiguration } from './config.js'

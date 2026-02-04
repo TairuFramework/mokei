@@ -1,3 +1,4 @@
+import { createReadable, writeTo } from '@enkaku/stream'
 import { Transport } from '@enkaku/transport'
 import type { ClientTransport } from '@mokei/context-client'
 import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
@@ -42,26 +43,15 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #getStreamAbortController: AbortController | null = null
 
   constructor(params: HTTPTransportParams) {
-    let controller!: ReadableStreamDefaultController<ServerMessage>
-
-    const readable = new ReadableStream<ServerMessage>({
-      start(c) {
-        controller = c
-      },
+    const [readable, controller] = createReadable<ServerMessage>()
+    const writable = writeTo<ClientMessage>(async (message) => {
+      await this.#sendMessage(message)
     })
-
-    const writable = new WritableStream<ClientMessage>({
-      write: async (message) => {
-        await this.#sendMessage(message)
-      },
-    })
-
     super({ stream: { readable, writable } })
-
+    this.#controller = controller
     this.#url = params.url
     this.#headers = buildHTTPHeaders(params.headers, params.auth)
     this.#timeout = params.timeout ?? 30000
-    this.#controller = controller
   }
 
   /**

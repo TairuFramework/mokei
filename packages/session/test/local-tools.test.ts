@@ -1,3 +1,4 @@
+import type { ModelProvider, ProviderTypes } from '@mokei/model-provider'
 import { describe, expect, test, vi } from 'vitest'
 
 import { type LocalToolDefinition, Session } from '../src/index.js'
@@ -35,7 +36,7 @@ describe('Session Local Tools', () => {
       }
 
       const session = new Session({
-        providers: { test: mockProvider as any },
+        providers: { test: mockProvider as ModelProvider<ProviderTypes> },
         localTools: [
           {
             name: 'myTool',
@@ -45,7 +46,7 @@ describe('Session Local Tools', () => {
         ],
       })
 
-      const tools = session.getToolsForProvider(mockProvider as any)
+      const tools = session.getToolsForProvider(mockProvider as ModelProvider<ProviderTypes>)
 
       expect(tools).toHaveLength(1)
       // toolFromMCP is called with (tool, index, array) from map

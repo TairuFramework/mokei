@@ -117,7 +117,7 @@ function chunkToServerMessage<M, TC>(chunk: MessagePart<M, TC>): ServerMessage<M
         outputTokens: chunk.outputTokens,
         raw: chunk.raw as M,
       }
-    case 'error':
+    // case 'error':
     default:
       return null
   }

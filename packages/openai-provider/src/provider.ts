@@ -11,6 +11,7 @@ import type {
   ServerMessage,
   StreamChatParams,
 } from '@mokei/model-provider'
+
 import type { ChatCompletionChunk, OpenAIClientParams } from './client.js'
 import { OpenAIClient } from './client.js'
 import { type OpenAIConfiguration, validateConfiguration } from './config.js'
