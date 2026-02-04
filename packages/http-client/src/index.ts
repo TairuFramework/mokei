@@ -9,3 +9,5 @@
  *
  * @module http-client
  */
+
+export { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
