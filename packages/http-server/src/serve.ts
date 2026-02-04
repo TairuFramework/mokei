@@ -1,4 +1,4 @@
-import { serve } from '@hono/node-server'
+import { serve, type ServerType } from '@hono/node-server'
 import { Hono } from 'hono'
 
 import { createHTTPHandler, type HTTPHandler, type HTTPHandlerParams } from './handler.js'
@@ -11,6 +11,7 @@ export type ServeHTTPParams = HTTPHandlerParams & {
 
 export type ServeHTTPResult = {
   handler: HTTPHandler
+  server: ServerType
   dispose: () => void
 }
 
@@ -27,6 +28,7 @@ export function serveHTTP(params: ServeHTTPParams): ServeHTTPResult {
 
   return {
     handler,
+    server,
     dispose: () => {
       handler.dispose()
       server.close()

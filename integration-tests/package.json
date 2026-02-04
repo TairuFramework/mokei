@@ -10,6 +10,8 @@
     "@enkaku/node-streams-transport": "catalog:",
     "@enkaku/transport": "catalog:",
     "@mokei/anthropic-provider": "workspace:^",
+    "@mokei/http-client": "workspace:^",
+    "@mokei/http-server": "workspace:^",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",

@@ -266,6 +266,12 @@ importers:
       '@mokei/host':
         specifier: workspace:^
         version: link:../packages/host
+      '@mokei/http-client':
+        specifier: workspace:^
+        version: link:../packages/http-client
+      '@mokei/http-server':
+        specifier: workspace:^
+        version: link:../packages/http-server
       '@mokei/mcp-fetch':
         specifier: workspace:^
         version: link:../mcp-servers/fetch
