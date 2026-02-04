@@ -1813,7 +1813,7 @@ feat(http-server): add serveHTTP convenience function
 
 Add `@mokei/http-client` dependency, remove any now-unnecessary deps.
 
-**Step 2: Update host.ts imports and addHttpContext**
+**Step 2: Update host.ts imports and addHTTPContext**
 
 Replace:
 ```typescript
@@ -1826,7 +1826,7 @@ With:
 import { createHTTPClient, type HTTPTransportParams, type HTTPAuthOptions } from '@mokei/http-client'
 ```
 
-Update `addHttpContext` to use `createHTTPClient` instead of manually creating transport + client.
+Update `addHTTPContext` to use `createHTTPClient` instead of manually creating transport + client.
 
 **Step 3: Delete old files**
 

@@ -19,10 +19,9 @@ import type {
 } from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
-
 import { HTTPTransport } from '@mokei/http-client'
 
-import type { HttpContextParams } from './http-context.js'
+import type { HTTPContextParams } from './http-context.js'
 import {
   createLocalToolID,
   createToolFromDefinition,
@@ -316,13 +315,13 @@ export class ContextHost extends Disposer {
    * @example
    * ```typescript
    * // Basic HTTP connection
-   * const client = await host.addHttpContext({
+   * const client = await host.addHTTPContext({
    *   key: 'remote-api',
    *   url: 'https://mcp.example.com/api',
    * })
    *
    * // With authentication
-   * const client = await host.addHttpContext({
+   * const client = await host.addHTTPContext({
    *   key: 'authenticated-api',
    *   url: 'https://mcp.example.com/api',
    *   auth: { type: 'bearer', token: 'your-api-key' },
@@ -333,8 +332,8 @@ export class ContextHost extends Disposer {
    * const tools = await host.setup('remote-api')
    * ```
    */
-  async addHttpContext<T extends ContextTypes = UnknownContextTypes>(
-    params: HttpContextParams<T>,
+  async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
+    params: HTTPContextParams<T>,
   ): Promise<ContextClient<T>> {
     const { key, url, headers, auth, timeout } = params
 

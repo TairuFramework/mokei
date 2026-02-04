@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto'
-
 import type { ContextServer } from '@mokei/context-server'
 
 import type { SSEWriter } from './sse-writer.js'
@@ -36,7 +34,7 @@ export class SessionManager {
     }
 
     const session: Session = {
-      sessionID: randomUUID(),
+      sessionID: globalThis.crypto.randomUUID(),
       server: null,
       postStreams: new Map(),
       getStream: null,

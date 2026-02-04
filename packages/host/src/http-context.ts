@@ -1,19 +1,12 @@
 import type { ContextTypes, UnknownContextTypes } from '@mokei/context-client'
 import type { HTTPAuthOptions } from '@mokei/http-client'
 
-export type { HTTPAuthOptions }
-
-/**
- * @deprecated Use `HTTPAuthOptions` instead.
- */
-export type HttpAuthOptions = HTTPAuthOptions
-
 /**
  * Parameters for adding an HTTP-based MCP context.
  *
  * @example
  * ```typescript
- * await host.addHttpContext({
+ * await host.addHTTPContext({
  *   key: 'remote-api',
  *   url: 'https://mcp.example.com/api',
  *   auth: { type: 'bearer', token: 'your-api-key' },
@@ -21,7 +14,7 @@ export type HttpAuthOptions = HTTPAuthOptions
  * })
  * ```
  */
-export type HttpContextParams<_T extends ContextTypes = UnknownContextTypes> = {
+export type HTTPContextParams<_T extends ContextTypes = UnknownContextTypes> = {
   /** Unique identifier for this context */
   key: string
   /** URL of the MCP HTTP endpoint */

@@ -63,7 +63,7 @@ describe('HTTPTransport', () => {
   })
 })
 
-describe('ContextHost.addHttpContext', () => {
+describe('ContextHost.addHTTPContext', () => {
   beforeEach(() => {
     mockFetch.mockReset()
   })
@@ -72,7 +72,7 @@ describe('ContextHost.addHttpContext', () => {
     const host = new ContextHost()
 
     // The client creation doesn't make any HTTP calls
-    const client = await host.addHttpContext({
+    const client = await host.addHTTPContext({
       key: 'remote',
       url: 'https://mcp.example.com/api',
     })
@@ -84,13 +84,13 @@ describe('ContextHost.addHttpContext', () => {
   test('throws if context key already exists', async () => {
     const host = new ContextHost()
 
-    await host.addHttpContext({
+    await host.addHTTPContext({
       key: 'remote',
       url: 'https://mcp.example.com/api',
     })
 
     await expect(
-      host.addHttpContext({
+      host.addHTTPContext({
         key: 'remote',
         url: 'https://mcp.example.com/other',
       }),
@@ -107,7 +107,7 @@ describe('ContextHost.addHttpContext', () => {
 
     const host = new ContextHost()
 
-    await host.addHttpContext({
+    await host.addHTTPContext({
       key: 'remote',
       url: 'https://mcp.example.com/api',
     })
@@ -122,7 +122,7 @@ describe('ContextHost.addHttpContext', () => {
   test('supports authentication options', async () => {
     const host = new ContextHost()
 
-    const client = await host.addHttpContext({
+    const client = await host.addHTTPContext({
       key: 'authenticated',
       url: 'https://mcp.example.com/api',
       auth: { type: 'bearer', token: 'api-key' },

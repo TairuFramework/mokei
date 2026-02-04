@@ -30,9 +30,7 @@ export {
 } from './host.js'
 export {
   DEFAULT_HTTP_TIMEOUT,
-  type HTTPAuthOptions,
-  type HttpAuthOptions,
-  type HttpContextParams,
+  type HTTPContextParams,
 } from './http-context.js'
 export {
   createLocalToolID,

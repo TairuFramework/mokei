@@ -99,7 +99,7 @@ Connect to remote MCP servers via HTTP using the MCP Streamable HTTP transport s
 
 ```typescript
 // Basic HTTP connection
-const client = await session.contextHost.addHttpContext({
+const client = await session.contextHost.addHTTPContext({
   key: 'remote-api',
   url: 'https://mcp.example.com/api',
 })
@@ -108,7 +108,7 @@ const client = await session.contextHost.addHttpContext({
 const tools = await session.contextHost.setup('remote-api')
 
 // With authentication
-const client = await session.contextHost.addHttpContext({
+const client = await session.contextHost.addHTTPContext({
   key: 'authenticated-api',
   url: 'https://mcp.example.com/api',
   auth: { type: 'bearer', token: 'your-api-key' },
@@ -116,21 +116,21 @@ const client = await session.contextHost.addHttpContext({
 })
 
 // Basic auth
-const client = await session.contextHost.addHttpContext({
+const client = await session.contextHost.addHTTPContext({
   key: 'basic-auth-api',
   url: 'https://mcp.example.com/api',
   auth: { type: 'basic', username: 'user', password: 'pass' },
 })
 
 // Custom header auth (e.g., API keys)
-const client = await session.contextHost.addHttpContext({
+const client = await session.contextHost.addHTTPContext({
   key: 'api-key-api',
   url: 'https://mcp.example.com/api',
   auth: { type: 'header', name: 'X-API-Key', value: 'your-key' },
 })
 
 // Custom headers
-const client = await session.contextHost.addHttpContext({
+const client = await session.contextHost.addHTTPContext({
   key: 'custom-headers',
   url: 'https://mcp.example.com/api',
   headers: {

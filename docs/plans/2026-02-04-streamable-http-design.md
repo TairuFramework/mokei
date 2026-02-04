@@ -263,7 +263,7 @@ reconnection.
 
 - Delete `packages/host/src/http-transport.ts` (replaced by `@mokei/http-client`)
 - Delete `packages/host/src/http-context.ts` (auth types move to `@mokei/http-client`)
-- Update `packages/host/src/host.ts`: `addHttpContext()` uses `HTTPTransport` from
+- Update `packages/host/src/host.ts`: `addHTTPContext()` uses `HTTPTransport` from
   `@mokei/http-client`, or delegates to `createHTTPClient()`
 - Add `@mokei/http-client` as dependency of `@mokei/host`
 
