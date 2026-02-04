@@ -674,6 +674,25 @@ importers:
         specifier: 'catalog:'
         version: 0.12.0
 
+  packages/http-server:
+    dependencies:
+      '@hono/node-server':
+        specifier: 'catalog:'
+        version: 1.19.9(hono@4.11.7)
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+      '@mokei/context-server':
+        specifier: workspace:^
+        version: link:../context-server
+      hono:
+        specifier: 'catalog:'
+        version: 4.11.7
+    devDependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.12.0
+
   packages/llama-provider:
     dependencies:
       '@enkaku/async':
