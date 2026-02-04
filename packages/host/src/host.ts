@@ -310,29 +310,6 @@ export class ContextHost extends Disposer {
   /**
    * Add a context that connects to a remote MCP server via HTTP.
    *
-   * @example
-   * ```typescript
-   * // Basic HTTP connection
-   * const client = await host.addHttpContext({
-   *   key: 'remote-api',
-   *   url: 'https://mcp.example.com/api',
-   * })
-   *
-   * // With authentication
-   * const client = await host.addHttpContext({
-   *   key: 'authenticated-api',
-   *   url: 'https://mcp.example.com/api',
-   *   auth: { type: 'bearer', token: 'your-api-key' },
-   *   timeout: 60000,
-   * })
-   *
-   * // Setup tools after connecting
-   * const tools = await host.setup('remote-api')
-   * ```
-   */
-  /**
-   * Add a context that connects to a remote MCP server via HTTP.
-   *
    * This implements the MCP Streamable HTTP transport specification,
    * supporting session management and both JSON and SSE responses.
    *

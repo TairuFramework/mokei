@@ -32,23 +32,9 @@ export type HttpContextParams<_T extends ContextTypes = UnknownContextTypes> = {
   auth?: HTTPAuthOptions
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number
-  /** Number of retry attempts on failure (default: 3) */
-  retries?: number
-  /** Delay between retries in milliseconds (default: 1000) */
-  retryDelay?: number
 }
 
 /**
  * Default timeout for HTTP requests (30 seconds).
  */
 export const DEFAULT_HTTP_TIMEOUT = 30000
-
-/**
- * Default number of retry attempts.
- */
-export const DEFAULT_HTTP_RETRIES = 3
-
-/**
- * Default delay between retries (1 second).
- */
-export const DEFAULT_HTTP_RETRY_DELAY = 1000

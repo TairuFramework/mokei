@@ -273,7 +273,6 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     const requestID = msg.id as string | number
 
     const responsePromise = new Promise<ServerMessage>((resolve, reject) => {
-      initWaiters.set(session.sessionID, { requestID, resolve })
       const timeout = setTimeout(() => {
         initWaiters.delete(session.sessionID)
         reject(new Error('Initialize timed out'))
@@ -282,6 +281,13 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       if (typeof timeout === 'object' && 'unref' in timeout) {
         timeout.unref()
       }
+      initWaiters.set(session.sessionID, {
+        requestID,
+        resolve: (message: ServerMessage) => {
+          clearTimeout(timeout)
+          resolve(message)
+        },
+      })
     })
 
     // Enqueue the initialize message to the transport
@@ -305,7 +311,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     })
   }
 
-  function handleGET(request: Request): Response {
+  async function handleGET(request: Request): Promise<Response> {
     if (!validateOrigin(request)) {
       return new Response('Forbidden', { status: 403 })
     }
@@ -345,11 +351,11 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     session.getStream = sseWriter
 
     // Send priming event
-    sseWriter.writePrimingEvent()
+    await sseWriter.writePrimingEvent()
 
     // Replay buffered events from the previous stream
     for (const event of replayEvents) {
-      sseWriter.writeEvent({ data: event.data })
+      await sseWriter.writeEvent({ data: event.data })
     }
 
     return new Response(readable, {
@@ -397,7 +403,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       case 'POST':
         return await handlePOST(request)
       case 'GET':
-        return handleGET(request)
+        return await handleGET(request)
       case 'DELETE':
         return handleDELETE(request)
       default:

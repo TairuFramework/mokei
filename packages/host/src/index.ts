@@ -29,8 +29,6 @@ export {
   spawnHostedContext,
 } from './host.js'
 export {
-  DEFAULT_HTTP_RETRIES,
-  DEFAULT_HTTP_RETRY_DELAY,
   DEFAULT_HTTP_TIMEOUT,
   type HTTPAuthOptions,
   type HttpAuthOptions,
