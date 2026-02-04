@@ -10,6 +10,7 @@
  * @module host
  */
 
+export { createHTTPClient, HTTPTransport, type HTTPTransportParams } from '@mokei/http-client'
 export { createClient, type HostClient, runDaemon } from './daemon/controller.js'
 export {
   type AddDirectContextParams,
@@ -27,15 +28,6 @@ export {
   type HostedContext,
   spawnHostedContext,
 } from './host.js'
-export {
-  buildHttpHeaders,
-  DEFAULT_HTTP_RETRIES,
-  DEFAULT_HTTP_RETRY_DELAY,
-  DEFAULT_HTTP_TIMEOUT,
-  type HttpAuthOptions,
-  type HttpContextParams,
-} from './http-context.js'
-export { McpHttpTransport, type McpHttpTransportParams } from './http-transport.js'
 export {
   createLocalToolID,
   createToolFromDefinition,

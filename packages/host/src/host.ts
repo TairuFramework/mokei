@@ -19,9 +19,8 @@ import type {
 } from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
+import { type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
 
-import type { HttpContextParams } from './http-context.js'
-import { McpHttpTransport } from './http-transport.js'
 import {
   createLocalToolID,
   createToolFromDefinition,
@@ -108,6 +107,19 @@ export type AddDirectContextParams = {
 
 export type AddLocalContextParams = SpawnContextServerParams & {
   key: string
+}
+
+export type HTTPContextParams = {
+  /** Unique identifier for this context */
+  key: string
+  /** URL of the MCP HTTP endpoint */
+  url: string
+  /** Optional custom headers to include in requests */
+  headers?: Record<string, string>
+  /** Optional authentication configuration */
+  auth?: HTTPAuthOptions
+  /** Request timeout in milliseconds (default: 30000) */
+  timeout?: number
 }
 
 export class ContextHost extends Disposer {
@@ -309,42 +321,19 @@ export class ContextHost extends Disposer {
   /**
    * Add a context that connects to a remote MCP server via HTTP.
    *
-   * @example
-   * ```typescript
-   * // Basic HTTP connection
-   * const client = await host.addHttpContext({
-   *   key: 'remote-api',
-   *   url: 'https://mcp.example.com/api',
-   * })
-   *
-   * // With authentication
-   * const client = await host.addHttpContext({
-   *   key: 'authenticated-api',
-   *   url: 'https://mcp.example.com/api',
-   *   auth: { type: 'bearer', token: 'your-api-key' },
-   *   timeout: 60000,
-   * })
-   *
-   * // Setup tools after connecting
-   * const tools = await host.setup('remote-api')
-   * ```
-   */
-  /**
-   * Add a context that connects to a remote MCP server via HTTP.
-   *
    * This implements the MCP Streamable HTTP transport specification,
    * supporting session management and both JSON and SSE responses.
    *
    * @example
    * ```typescript
    * // Basic HTTP connection
-   * const client = await host.addHttpContext({
+   * const client = await host.addHTTPContext({
    *   key: 'remote-api',
    *   url: 'https://mcp.example.com/api',
    * })
    *
    * // With authentication
-   * const client = await host.addHttpContext({
+   * const client = await host.addHTTPContext({
    *   key: 'authenticated-api',
    *   url: 'https://mcp.example.com/api',
    *   auth: { type: 'bearer', token: 'your-api-key' },
@@ -355,8 +344,8 @@ export class ContextHost extends Disposer {
    * const tools = await host.setup('remote-api')
    * ```
    */
-  async addHttpContext<T extends ContextTypes = UnknownContextTypes>(
-    params: HttpContextParams<T>,
+  async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
+    params: HTTPContextParams,
   ): Promise<ContextClient<T>> {
     const { key, url, headers, auth, timeout } = params
 
@@ -365,7 +354,7 @@ export class ContextHost extends Disposer {
     }
 
     // Create MCP HTTP transport
-    const transport = new McpHttpTransport({ url, headers, auth, timeout })
+    const transport = new HTTPTransport({ url, headers, auth, timeout })
 
     // Create the context client
     const client = new ContextClient<T>({ transport: transport as ClientTransport })

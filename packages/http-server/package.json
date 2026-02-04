@@ -1,22 +1,22 @@
 {
-  "name": "@mokei/host",
+  "name": "@mokei/http-server",
   "version": "0.5.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
-  "description": "Mokei Context host",
+  "description": "Mokei MCP HTTP server handler",
   "keywords": [
     "model",
     "context",
     "protocol",
     "mcp",
-    "host",
-    "llm",
-    "ai"
+    "http",
+    "server",
+    "transport"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "packages/host"
+    "directory": "packages/http-server"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -35,26 +35,17 @@
     "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
     "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
     "test:types": "tsc --noEmit --skipLibCheck",
-    "test": "pnpm run test:types",
+    "test:unit": "vitest run",
+    "test": "pnpm run test:types && pnpm run test:unit",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "catalog:",
-    "@enkaku/client": "catalog:",
-    "@enkaku/node-streams-transport": "catalog:",
-    "@enkaku/server": "catalog:",
-    "@enkaku/socket-transport": "catalog:",
-    "@enkaku/stream": "catalog:",
-    "@enkaku/transport": "catalog:",
-    "@mokei/http-client": "workspace:^",
-    "@mokei/context-client": "workspace:^",
+    "@hono/node-server": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
-    "@mokei/host-protocol": "workspace:^",
-    "nano-spawn": "catalog:"
+    "hono": "catalog:"
   },
   "devDependencies": {
-    "@mokei/context-protocol": "workspace:^",
-    "@mokei/context-rpc": "workspace:^"
+    "@enkaku/transport": "catalog:"
   }
 }
