@@ -1,4 +1,6 @@
 import { Transport } from '@enkaku/transport'
+import type { ClientTransport } from '@mokei/context-client'
+import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { parseServerSentEvents } from 'parse-sse'
@@ -263,4 +265,16 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
     await super.dispose()
   }
+}
+
+/**
+ * Create an MCP HTTP client with a single call.
+ *
+ * Instantiates an {@link HTTPTransport} and wires it to a {@link ContextClient}.
+ */
+export function createHTTPClient<T extends ContextTypes = UnknownContextTypes>(
+  params: HTTPTransportParams,
+): ContextClient<T> {
+  const transport = new HTTPTransport(params)
+  return new ContextClient<T>({ transport: transport as ClientTransport })
 }
