@@ -244,6 +244,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           method: 'DELETE',
           headers: {
             ...this.#headers,
+            'MCP-Protocol-Version': LATEST_PROTOCOL_VERSION,
             'Mcp-Session-Id': this.#sessionID,
           },
         })

@@ -345,6 +345,26 @@ describe('HTTPTransport', () => {
     })
   })
 
+  describe('SSE retry tracking', () => {
+    test('tracks retry field from SSE events', async () => {
+      const msg: ServerMessage = { jsonrpc: '2.0', id: 10, result: {} } as ServerMessage
+
+      fetchMock.mockResolvedValueOnce(
+        sseResponse([{ data: JSON.stringify(msg), id: 'evt-1', retry: 5000 }], {
+          'Mcp-Session-Id': 'session-retry',
+        }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+      await transport.read()
+
+      expect(transport.retryMs).toBe(5000)
+
+      await transport.dispose()
+    })
+  })
+
   // Task 6: GET stream for server-initiated messages
 
   describe('GET stream for server-initiated messages', () => {
