@@ -1,5 +1,5 @@
-import type { HTTPAuthOptions } from '@mokei/http-client'
 import type { ContextTypes, UnknownContextTypes } from '@mokei/context-client'
+import type { HTTPAuthOptions } from '@mokei/http-client'
 
 export type { HTTPAuthOptions }
 

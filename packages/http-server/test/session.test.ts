@@ -88,9 +88,8 @@ describe('SessionManager', () => {
     const session = manager.create()
     const originalActivity = session.lastActivity
 
-    // Advance time slightly
-    const later = originalActivity + 1000
-    session.lastActivity = originalActivity - 5000 // Set it back
+    // Set activity back so touch() updates it
+    session.lastActivity = originalActivity - 5000
     manager.touch(session.sessionID)
 
     expect(session.lastActivity).toBeGreaterThanOrEqual(originalActivity - 5000)

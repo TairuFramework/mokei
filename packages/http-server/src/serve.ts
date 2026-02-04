@@ -1,4 +1,4 @@
-import { serve, type ServerType } from '@hono/node-server'
+import { type ServerType, serve } from '@hono/node-server'
 import { Hono } from 'hono'
 
 import { createHTTPHandler, type HTTPHandler, type HTTPHandlerParams } from './handler.js'

@@ -10,6 +10,7 @@
  * @module host
  */
 
+export { createHTTPClient, HTTPTransport, type HTTPTransportParams } from '@mokei/http-client'
 export { createClient, type HostClient, runDaemon } from './daemon/controller.js'
 export {
   type AddDirectContextParams,
@@ -35,7 +36,6 @@ export {
   type HttpAuthOptions,
   type HttpContextParams,
 } from './http-context.js'
-export { createHTTPClient, HTTPTransport, type HTTPTransportParams } from '@mokei/http-client'
 export {
   createLocalToolID,
   createToolFromDefinition,

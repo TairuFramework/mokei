@@ -1,6 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-
 import { buildHTTPHeaders, type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { ContextHost, DEFAULT_HTTP_TIMEOUT } from '../src/index.js'
 

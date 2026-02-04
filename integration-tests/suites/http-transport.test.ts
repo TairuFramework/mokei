@@ -1,7 +1,7 @@
-import { HTTPTransport } from '@mokei/http-client'
 import type { ClientTransport } from '@mokei/context-client'
 import { ContextClient } from '@mokei/context-client'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
+import { HTTPTransport } from '@mokei/http-client'
 import { serveHTTP } from '@mokei/http-server'
 import { afterEach, describe, expect, test } from 'vitest'
 
@@ -45,11 +45,12 @@ describe('HTTP transport end-to-end', () => {
     })
 
     // Wait for the server to start listening
+    const server = serverResult.server
     await new Promise<void>((resolve) => {
-      if (serverResult!.server.listening) {
+      if (server.listening) {
         resolve()
       } else {
-        serverResult!.server.on('listening', resolve)
+        server.on('listening', resolve)
       }
     })
 

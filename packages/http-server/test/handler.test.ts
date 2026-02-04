@@ -263,7 +263,7 @@ describe('createHTTPHandler', () => {
       const dataEvent = events.find((e) => e.data !== '')
       expect(dataEvent).toBeDefined()
 
-      const result = JSON.parse(dataEvent!.data)
+      const result = JSON.parse(dataEvent?.data ?? '')
       expect(result.jsonrpc).toBe('2.0')
       expect(result.id).toBe(2)
       expect(result.result.content).toEqual([{ type: 'text', text: 'hello world' }])
@@ -427,6 +427,8 @@ describe('createHTTPHandler', () => {
 
       // The GET stream should have a priming event
       // Read a little from it to get the priming event ID
+      expect(getResponse1.body).toBeTruthy()
+      // biome-ignore lint/style/noNonNullAssertion: asserted above
       const reader = getResponse1.body!.getReader()
       const decoder = new TextDecoder()
 
@@ -448,7 +450,7 @@ describe('createHTTPHandler', () => {
         headers: {
           Accept: 'text/event-stream',
           'Mcp-Session-Id': sessionID,
-          'Last-Event-ID': lastEventID!,
+          'Last-Event-ID': lastEventID ?? '',
         },
       })
 

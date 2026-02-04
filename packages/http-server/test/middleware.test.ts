@@ -1,5 +1,5 @@
-import { Hono } from 'hono'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
+import { Hono } from 'hono'
 import { describe, expect, test } from 'vitest'
 
 import { mcpHTTPMiddleware } from '../src/middleware.js'
@@ -24,9 +24,12 @@ const SERVER_CONFIG: ServerConfig = {
 describe('mcpHTTPMiddleware', () => {
   test('handles MCP initialize through Hono app', async () => {
     const app = new Hono()
-    app.all('/mcp/*', mcpHTTPMiddleware({
-      createServer: (transport) => new ContextServer({ ...SERVER_CONFIG, transport }),
-    }))
+    app.all(
+      '/mcp/*',
+      mcpHTTPMiddleware({
+        createServer: (transport) => new ContextServer({ ...SERVER_CONFIG, transport }),
+      }),
+    )
 
     const response = await app.request('/mcp', {
       method: 'POST',
