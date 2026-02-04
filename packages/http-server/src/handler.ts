@@ -311,11 +311,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
 
     // Close any existing GET stream
     if (session.getStream != null) {
-      try {
-        session.getStream.close()
-      } catch {
-        // Ignore errors if the stream was already closed (e.g., client disconnected)
-      }
+      session.getStream.close()
       session.getStream = null
     }
 
@@ -347,6 +343,10 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   }
 
   function handleDELETE(request: Request): Response {
+    if (!validateOrigin(request)) {
+      return new Response('Forbidden', { status: 403 })
+    }
+
     const sessionID = request.headers.get('Mcp-Session-Id')
     if (sessionID == null) {
       return new Response('Mcp-Session-Id header required', { status: 400 })

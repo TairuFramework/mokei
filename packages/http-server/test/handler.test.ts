@@ -370,6 +370,27 @@ describe('createHTTPHandler', () => {
     }
   })
 
+  test('DELETE with disallowed Origin returns 403', async () => {
+    const handler = createHandler({ allowedOrigins: ['https://allowed.example.com'] })
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      const request = new Request('http://localhost/mcp', {
+        method: 'DELETE',
+        headers: {
+          'Mcp-Session-Id': sessionID,
+          Origin: 'https://evil.example.com',
+        },
+      })
+
+      const response = await handler.handleRequest(request)
+      expect(response.status).toBe(403)
+    } finally {
+      handler.dispose()
+    }
+  })
+
   test('DELETE without session ID returns 400', async () => {
     const handler = createHandler()
 

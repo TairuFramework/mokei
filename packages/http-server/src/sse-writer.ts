@@ -17,6 +17,7 @@ export class SSEWriter {
   #bufferSize: number
   #bufferStart = 0
   #bufferCount = 0
+  #closed = false
 
   constructor(params: SSEWriterParams) {
     this.#writer = params.writable.getWriter()
@@ -80,6 +81,8 @@ export class SSEWriter {
   }
 
   close(): void {
+    if (this.#closed) return
+    this.#closed = true
     this.#writer.close()
   }
 }
