@@ -149,6 +149,9 @@ describe('ContextClient', () => {
       params: { level: 'error', data: { message: 'test' } },
     })
 
+    // Allow the client to process both notifications before disposing
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
     await transports.dispose()
     expect(logs).toEqual([
       { level: 'info', data: { message: 'test' } },
