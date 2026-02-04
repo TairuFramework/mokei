@@ -94,8 +94,6 @@ function parseSSEEvents(text: string): Array<{ id?: string; data: string }> {
         id = line.slice(4)
       } else if (line.startsWith('data: ')) {
         data = line.slice(6)
-      } else if (line === 'data: ') {
-        data = ''
       }
     }
     events.push({ id, data })
@@ -128,9 +126,11 @@ describe('createHTTPHandler', () => {
       expect(sessionID).toBeTruthy()
 
       const body = await response.json()
-      expect(body.protocolVersion).toBe('2025-11-25')
-      expect(body.serverInfo).toEqual({ name: 'test-server', version: '1.0.0' })
-      expect(body.capabilities).toBeDefined()
+      expect(body.jsonrpc).toBe('2.0')
+      expect(body.id).toBe(1)
+      expect(body.result.protocolVersion).toBe('2025-11-25')
+      expect(body.result.serverInfo).toEqual({ name: 'test-server', version: '1.0.0' })
+      expect(body.result.capabilities).toBeDefined()
     } finally {
       handler.dispose()
     }
@@ -348,7 +348,7 @@ describe('createHTTPHandler', () => {
       })
 
       const deleteResponse = await handler.handleRequest(deleteRequest)
-      expect(deleteResponse.status).toBe(200)
+      expect(deleteResponse.status).toBe(204)
 
       // Subsequent requests should return 404
       const postRequest = new Request('http://localhost/mcp', {

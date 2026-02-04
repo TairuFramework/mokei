@@ -256,27 +256,47 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       return new Response('Too many sessions', { status: 503 })
     }
 
-    const bridge = createTransportBridge(session)
-    bridges.set(session.sessionID, bridge)
-
-    const server = createServer(bridge.transport)
-    session.server = server
+    let bridge: TransportBridge
+    try {
+      bridge = createTransportBridge(session)
+      bridges.set(session.sessionID, bridge)
+      const server = createServer(bridge.transport)
+      session.server = server
+    } catch {
+      bridges.delete(session.sessionID)
+      sessions.delete(session.sessionID)
+      return new Response('Server initialization failed', { status: 500 })
+    }
 
     // Set up a waiter to capture the initialize response
     const msg = message as unknown as Record<string, unknown>
     const requestID = msg.id as string | number
 
-    const responsePromise = new Promise<ServerMessage>((resolve) => {
+    const responsePromise = new Promise<ServerMessage>((resolve, reject) => {
       initWaiters.set(session.sessionID, { requestID, resolve })
+      const timeout = setTimeout(() => {
+        initWaiters.delete(session.sessionID)
+        reject(new Error('Initialize timed out'))
+      }, 30_000)
+      // Don't prevent process exit
+      if (typeof timeout === 'object' && 'unref' in timeout) {
+        timeout.unref()
+      }
     })
 
     // Enqueue the initialize message to the transport
     bridge.controller.enqueue(message)
 
-    // Wait for the server to process and respond
-    const response = await responsePromise
+    let response: ServerMessage
+    try {
+      response = await responsePromise
+    } catch {
+      bridges.delete(session.sessionID)
+      sessions.delete(session.sessionID)
+      return new Response('Initialize timed out', { status: 504 })
+    }
 
-    return new Response(JSON.stringify((response as unknown as Record<string, unknown>).result), {
+    return new Response(JSON.stringify(response), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
@@ -367,7 +387,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     // Delete session (disposes server, closes all streams)
     sessions.delete(sessionID)
 
-    return new Response(null, { status: 200 })
+    return new Response(null, { status: 204 })
   }
 
   async function handleRequest(request: Request): Promise<Response> {

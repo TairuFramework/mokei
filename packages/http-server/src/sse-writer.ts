@@ -46,6 +46,7 @@ export class SSEWriter {
   }
 
   async writePrimingEvent(): Promise<void> {
+    if (this.#closed) return
     const id = this.#nextID()
     const event: SSEEvent = { id, data: '' }
     this.#pushToBuffer(event)
@@ -53,6 +54,7 @@ export class SSEWriter {
   }
 
   async writeEvent(params: { data: string }): Promise<void> {
+    if (this.#closed) return
     const id = this.#nextID()
     const event: SSEEvent = { id, data: params.data }
     this.#pushToBuffer(event)
@@ -60,6 +62,7 @@ export class SSEWriter {
   }
 
   async writeRetry(ms: number): Promise<void> {
+    if (this.#closed) return
     await this.#writer.write(`retry: ${ms}\n\n`)
   }
 

@@ -5,9 +5,9 @@ import type { ContextServer } from '@mokei/context-server'
 import type { SSEWriter } from './sse-writer.js'
 
 export type Session = {
-  sessionID: string
+  readonly sessionID: string
   server: ContextServer | null
-  postStreams: Map<string | number, SSEWriter>
+  readonly postStreams: Map<string | number, SSEWriter>
   getStream: SSEWriter | null
   lastActivity: number
 }
