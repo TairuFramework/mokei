@@ -19,9 +19,8 @@ import type {
 } from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
-import { HTTPTransport } from '@mokei/http-client'
+import { type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
 
-import type { HTTPContextParams } from './http-context.js'
 import {
   createLocalToolID,
   createToolFromDefinition,
@@ -108,6 +107,19 @@ export type AddDirectContextParams = {
 
 export type AddLocalContextParams = SpawnContextServerParams & {
   key: string
+}
+
+export type HTTPContextParams = {
+  /** Unique identifier for this context */
+  key: string
+  /** URL of the MCP HTTP endpoint */
+  url: string
+  /** Optional custom headers to include in requests */
+  headers?: Record<string, string>
+  /** Optional authentication configuration */
+  auth?: HTTPAuthOptions
+  /** Request timeout in milliseconds (default: 30000) */
+  timeout?: number
 }
 
 export class ContextHost extends Disposer {
@@ -333,7 +345,7 @@ export class ContextHost extends Disposer {
    * ```
    */
   async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
-    params: HTTPContextParams<T>,
+    params: HTTPContextParams,
   ): Promise<ContextClient<T>> {
     const { key, url, headers, auth, timeout } = params
 

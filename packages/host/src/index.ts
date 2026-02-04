@@ -29,10 +29,6 @@ export {
   spawnHostedContext,
 } from './host.js'
 export {
-  DEFAULT_HTTP_TIMEOUT,
-  type HTTPContextParams,
-} from './http-context.js'
-export {
   createLocalToolID,
   createToolFromDefinition,
   getLocalToolName,
