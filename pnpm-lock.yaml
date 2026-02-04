@@ -617,6 +617,9 @@ importers:
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
+      '@mokei/http-client':
+        specifier: workspace:^
+        version: link:../http-client
       nano-spawn:
         specifier: 'catalog:'
         version: 2.0.0

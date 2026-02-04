@@ -46,6 +46,7 @@
     "@enkaku/socket-transport": "catalog:",
     "@enkaku/stream": "catalog:",
     "@enkaku/transport": "catalog:",
+    "@mokei/http-client": "workspace:^",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",

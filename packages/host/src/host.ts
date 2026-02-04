@@ -20,8 +20,9 @@ import type {
 import type { SentRequest } from '@mokei/context-rpc'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
 
+import { HTTPTransport } from '@mokei/http-client'
+
 import type { HttpContextParams } from './http-context.js'
-import { McpHttpTransport } from './http-transport.js'
 import {
   createLocalToolID,
   createToolFromDefinition,
@@ -365,7 +366,7 @@ export class ContextHost extends Disposer {
     }
 
     // Create MCP HTTP transport
-    const transport = new McpHttpTransport({ url, headers, auth, timeout })
+    const transport = new HTTPTransport({ url, headers, auth, timeout })
 
     // Create the context client
     const client = new ContextClient<T>({ transport: transport as ClientTransport })

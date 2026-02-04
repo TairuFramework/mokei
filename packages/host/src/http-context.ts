@@ -1,23 +1,12 @@
+import type { HTTPAuthOptions } from '@mokei/http-client'
 import type { ContextTypes, UnknownContextTypes } from '@mokei/context-client'
 
+export type { HTTPAuthOptions }
+
 /**
- * Authentication options for HTTP context.
+ * @deprecated Use `HTTPAuthOptions` instead.
  */
-export type HttpAuthOptions =
-  | {
-      type: 'bearer'
-      token: string
-    }
-  | {
-      type: 'basic'
-      username: string
-      password: string
-    }
-  | {
-      type: 'header'
-      name: string
-      value: string
-    }
+export type HttpAuthOptions = HTTPAuthOptions
 
 /**
  * Parameters for adding an HTTP-based MCP context.
@@ -40,7 +29,7 @@ export type HttpContextParams<_T extends ContextTypes = UnknownContextTypes> = {
   /** Optional custom headers to include in requests */
   headers?: Record<string, string>
   /** Optional authentication configuration */
-  auth?: HttpAuthOptions
+  auth?: HTTPAuthOptions
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number
   /** Number of retry attempts on failure (default: 3) */
@@ -63,34 +52,3 @@ export const DEFAULT_HTTP_RETRIES = 3
  * Default delay between retries (1 second).
  */
 export const DEFAULT_HTTP_RETRY_DELAY = 1000
-
-/**
- * Build headers for HTTP request including authentication.
- */
-export function buildHttpHeaders(
-  baseHeaders?: Record<string, string>,
-  auth?: HttpAuthOptions,
-): Record<string, string> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...baseHeaders,
-  }
-
-  if (auth) {
-    switch (auth.type) {
-      case 'bearer':
-        headers.Authorization = `Bearer ${auth.token}`
-        break
-      case 'basic': {
-        const credentials = btoa(`${auth.username}:${auth.password}`)
-        headers.Authorization = `Basic ${credentials}`
-        break
-      }
-      case 'header':
-        headers[auth.name] = auth.value
-        break
-    }
-  }
-
-  return headers
-}
