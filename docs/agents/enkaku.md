@@ -11,7 +11,7 @@ When building features in sakui, kubun, or mokei, prefer these Enkaku packages o
 | Zod | `@enkaku/schema` | JSON Schema validation |
 | EventEmitter / mitt | `@enkaku/event` | Event emitting |
 | Custom WebStream wrappers | `@enkaku/stream` | WebStreams utilities |
-| jsonwebtoken / jose | `@enkaku/token` | JWT signer creation/import, verification |
+| jsonwebtoken / jose | `@enkaku/token` | Identity types, JWT signing/verification, JWE encryption |
 | Custom RPC | `@enkaku/protocol` + `@enkaku/client` + `@enkaku/server` | RPC framework |
 | Custom codec logic | `@enkaku/codec` | Base64, UTF-8, canonical JSON encoding/decoding |
 
@@ -51,16 +51,18 @@ Replaces custom WebStream wrappers and stream helper libraries.
 
 **When to use:** Any data flow that involves streaming -- real-time updates, file processing, chunked responses. Use this instead of writing custom ReadableStream/WritableStream wrappers.
 
-### `@enkaku/token` -- JWT Tokens
+### `@enkaku/token` -- Identity, JWT Tokens & JWE Encryption
 
-Replaces jsonwebtoken, jose, or custom JWT implementations.
+Replaces jsonwebtoken, jose, or custom JWT/JWE implementations.
 
-- Create and import token signers
-- Sign and verify JWT-like tokens
-- DID (Decentralized Identifier) integration for issuer identity
+- Composable identity type hierarchy: `Identity`, `SigningIdentity`, `DecryptingIdentity`, `FullIdentity`, `OwnIdentity`
+- Sign and verify JWT-like tokens with DID (Decentralized Identifier) issuers
+- JWE message-level encryption using ECDH-ES (X25519) key agreement + A256GCM content encryption
+- Envelope wrapping modes: `plain`, `jws`, `jws-in-jwe`, `jwe-in-jws` for different security levels
+- `TokenEncrypter` for targeting a recipient's DID or public key
 - Supports both signed and unsigned tokens
 
-**When to use:** Authentication tokens, signed payloads, any scenario requiring cryptographic verification of data origin. Use this instead of jsonwebtoken or jose.
+**When to use:** Authentication tokens, signed payloads, message-level encryption beyond transport TLS, any scenario requiring cryptographic verification or confidentiality. Use this instead of jsonwebtoken or jose.
 
 ### `@enkaku/protocol` + `@enkaku/client` + `@enkaku/server` -- RPC Framework
 
@@ -119,7 +121,7 @@ When using the RPC framework, choose the appropriate transport:
 
 ### Keystore Implementations
 
-For token signing key management, choose the appropriate keystore for the target environment:
+For identity and key management, choose the appropriate keystore for the target environment:
 
 | Environment | Package |
 |-------------|---------|

@@ -34,6 +34,17 @@ packages/
 | `pnpm test` | Run all tests |
 | `pnpm lint` | Lint and format |
 
+## Important Guardrails
+
+**DO NOT:**
+- Use `interface` for type definitions (use `type`)
+- Use lowercase abbreviations in names (`ID` not `Id`, `HTTP` not `Http`, `JWT` not `Jwt`)
+- Use `T[]` instead of `Array<T>`
+- Use `any` type -- use `unknown`, `Record<string, unknown>`, or a more specific type
+- Use `npm`/`npx` -- always use `pnpm`/`pnpx`
+- Edit generated files (`.gen.ts`, `__generated__/`, `lib/`, `schema.graphql`)
+- Create new packages without checking with the user -- keep functionality in existing packages
+
 ## Additional Context
 
 Load these files based on your current task:

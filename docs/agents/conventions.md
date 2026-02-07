@@ -50,7 +50,7 @@ class ConnectionManager {
 
 ### Naming
 - Always use capital `ID` not `Id` (e.g., `threadID`, `spaceID`, `flowID`, `userID`)
-- Apply the same pattern for similar abbreviations: `DID` not `Did`, `JWT` not `Jwt`
+- Apply the same pattern for similar abbreviations: `HTTP` not `Http`, `DID` not `Did`, `JWT` not `Jwt`
 - Types use PascalCase, variables and functions use camelCase, constants use UPPER_SNAKE_CASE
 
 ### General Style

@@ -2,8 +2,7 @@ coverage
 lib
 node_modules
 
-.claude
-.cursor
+**/.claude/settings.local.json
 .swc
 .turbo
 .vscode
