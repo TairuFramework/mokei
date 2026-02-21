@@ -4,8 +4,9 @@
   "author": "Paul Le Cam",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@10.28.2",
+  "packageManager": "pnpm@10.30.1",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks",
     "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
     "test": "pnpm run --filter './packages/**' --filter './mcp-servers/**' test",
     "build:js": "turbo run build:js",

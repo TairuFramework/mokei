@@ -1,0 +1,19 @@
+#!/bin/sh
+
+echo "Running pre-commit checks..."
+
+echo "Linting staged files..."
+pnpm biome check --write --staged --no-errors-on-unmatched
+if [ $? -ne 0 ]; then
+  echo "Lint check failed. Fix errors before committing."
+  exit 1
+fi
+
+echo "Type checking..."
+pnpm run build:types
+if [ $? -ne 0 ]; then
+  echo "Type check failed. Fix errors before committing."
+  exit 1
+fi
+
+echo "Pre-commit checks passed."
