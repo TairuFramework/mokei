@@ -14,6 +14,8 @@ When building features in sakui, kubun, or mokei, prefer these Enkaku packages o
 | jsonwebtoken / jose | `@enkaku/token` | Identity types, JWT signing/verification, JWE encryption |
 | Custom RPC | `@enkaku/protocol` + `@enkaku/client` + `@enkaku/server` | RPC framework |
 | Custom codec logic | `@enkaku/codec` | Base64, UTF-8, canonical JSON encoding/decoding |
+| Custom logging | `@enkaku/log` | Structured logging (LogTape-based) |
+| Custom OTel wrappers | `@enkaku/otel` | OpenTelemetry tracing, context propagation, log bridge |
 
 ---
 
@@ -32,11 +34,13 @@ Replaces Zod for schema validation. Built on AJV with full JSON Schema support.
 
 ### `@enkaku/event` -- Event Emitting
 
-Replaces Node.js EventEmitter, mitt, or similar event libraries.
+Zero-dependency, type-safe event emitter.
 
 - Type-safe event definitions with TypeScript generics
-- Subscribe/unsubscribe with cleanup support
-- Lightweight implementation without Node.js dependencies
+- Subscribe with `on()`, await single events with `once()`
+- Listener filtering and AbortSignal support for automatic cleanup
+- Bridge to WebStreams via `readable()` and `writable()` methods
+- Parallel listener execution with error aggregation (`AggregateError` for multiple failures)
 
 **When to use:** Any component that needs to emit typed events to subscribers. Prefer this over Node.js EventEmitter for browser compatibility and type safety.
 
@@ -90,6 +94,31 @@ Replaces custom base64, UTF-8, or CBOR encoding logic.
 - Combined convenience functions (e.g., `b64uFromJSON`)
 
 **When to use:** Any encoding/decoding task -- serializing data for transport, preparing data for cryptographic signing, converting between string and binary representations. Use this instead of writing custom encoding helpers.
+
+### `@enkaku/log` -- Structured Logging
+
+Thin wrapper around LogTape for structured, category-based logging.
+
+- `getLogger(name)` and `getEnkakuLogger(namespace)` for namespaced loggers
+- `setup()` with sensible defaults or custom LogTape configuration
+- Structured properties via `logger.with({ key: value })`
+- Console sink included; integrates with `@enkaku/otel` for OTel log bridging
+
+**When to use:** Any logging need across Enkaku-based services. Use this instead of `console.log` or custom logging wrappers to get structured, filterable logs.
+
+### `@enkaku/otel` -- OpenTelemetry Integration
+
+Provides OpenTelemetry tracing, context propagation, and log bridging for Enkaku RPC.
+
+- **Tracing**: `createTracer()`, `withSpan()` (async), `withSyncSpan()` with automatic error recording and status management
+- **Context propagation**: `injectTraceContext()` / `extractTraceContext()` for propagating trace IDs across RPC boundaries via token headers (`tid`/`sid` fields)
+- **W3C Traceparent**: `formatTraceparent()` / `parseTraceparent()` for standard HTTP header interop
+- **Log bridge**: `createOTelLogSink()` routes `@enkaku/log` records to OTel LoggerProvider with severity mapping and span correlation
+- **Trace-aware logging**: `traceLogger()` enriches a logger with active `traceID`/`spanID` properties
+- **Semantic conventions**: Pre-defined `SpanNames` and `AttributeKeys` covering client, server, auth, transport, and streaming operations
+- **Re-exports**: Common OTel types (`Span`, `Tracer`, `Context`, `SpanStatusCode`, `TraceFlags`) so consumers don't need `@opentelemetry/api` directly
+
+**When to use:** Any service that needs distributed tracing, log correlation, or observability. Use this instead of writing custom OTel boilerplate -- it handles span lifecycle, error recording, and cross-service context propagation consistently.
 
 ---
 

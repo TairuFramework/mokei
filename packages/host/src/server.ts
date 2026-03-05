@@ -115,7 +115,7 @@ function createHandlers({
 function serveSocket(socket: Socket, context: HandlersContext): void {
   const handlers = createHandlers(context)
   const transport = new SocketTransport<HostClientMessage, HostServerMessage>({ socket })
-  const socketServer = serve<Protocol>({ handlers, transport, public: true })
+  const socketServer = serve<Protocol>({ accessControl: false, handlers, transport })
   socket.once('close', () => {
     socketServer.dispose()
   })

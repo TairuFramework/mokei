@@ -7,36 +7,37 @@ packages:
   - website
 
 catalog:
-  '@biomejs/biome': ^2.4.4
-  '@enkaku/async': ^0.13.0
-  '@enkaku/client': ^0.13.0
-  '@enkaku/event': ^0.13.0
-  '@enkaku/generator': ^0.13.0
-  '@enkaku/http-client-transport': ^0.13.0
-  '@enkaku/http-server-transport': ^0.13.0
-  '@enkaku/node-streams-transport': ^0.13.0
-  '@enkaku/protocol': ^0.13.0
-  '@enkaku/schema': ^0.13.0
-  '@enkaku/server': ^0.13.1
-  '@enkaku/socket-transport': ^0.13.0
-  '@enkaku/stream': ^0.13.0
-  '@enkaku/transport': ^0.13.1
-  '@hono/node-server': ^1.19.9
-  '@mantine/core': ^8.3.15
-  '@mantine/hooks': ^8.3.15
-  '@oclif/core': ^4.8.0
+  '@biomejs/biome': ^2.4.6
+  '@enkaku/async': ^0.14.0
+  '@enkaku/client': ^0.14.0
+  '@enkaku/event': ^0.14.1
+  '@enkaku/generator': ^0.14.0
+  '@enkaku/http-client-transport': ^0.14.0
+  '@enkaku/http-server-transport': ^0.14.0
+  '@enkaku/log': ^0.14.0
+  '@enkaku/node-streams-transport': ^0.14.0
+  '@enkaku/protocol': ^0.14.0
+  '@enkaku/schema': ^0.14.0
+  '@enkaku/server': ^0.14.0
+  '@enkaku/socket-transport': ^0.14.0
+  '@enkaku/stream': ^0.14.0
+  '@enkaku/transport': ^0.14.0
+  '@hono/node-server': ^1.19.11
+  '@mantine/core': ^8.3.16
+  '@mantine/hooks': ^8.3.16
+  '@oclif/core': ^4.8.3
   '@oclif/plugin-help': ^6.2.37
-  '@oclif/plugin-plugins': ^5.4.56
+  '@oclif/plugin-plugins': ^5.4.57
   '@oclif/test': ^4.1.16
   '@swc/cli': ^0.8.0
-  '@swc/core': ^1.15.11
-  '@tabler/icons-react': ^3.37.1
-  '@tanstack/react-router': ^1.161.3
-  '@tanstack/react-virtual': ^3.13.18
-  '@tanstack/router-devtools': ^1.161.3
-  '@tanstack/router-plugin': ^1.161.3
+  '@swc/core': ^1.15.18
+  '@tabler/icons-react': ^3.38.0
+  '@tanstack/react-router': ^1.166.2
+  '@tanstack/react-virtual': ^3.13.19
+  '@tanstack/router-devtools': ^1.166.2
+  '@tanstack/router-plugin': ^1.166.2
   '@types/luxon': ^3.7.1
-  '@types/node': ^25.3.0
+  '@types/node': ^25.3.3
   '@types/react': ^19.2.14
   '@types/react-dom': ^19.2.3
   '@types/turndown': ^5.0.6
@@ -47,23 +48,23 @@ catalog:
   enquirer: ^2.4.1
   eventsource-parser: ^3.0.6
   get-port: ^7.1.0
-  globals: ^17.3.0
-  hono: ^4.12.0
+  globals: ^17.4.0
+  hono: ^4.12.5
   jotai: ^2.18.0
   ky: ^1.14.3
   luxon: ^3.7.2
   nano-spawn: ^2.0.0
-  oclif: ^4.22.79
+  oclif: ^4.22.85
   ora: ^9.3.0
   parse-sse: ^0.1.0
-  postcss: ^8.5.6
+  postcss: ^8.5.8
   postcss-preset-mantine: ^1.18.0
   postcss-simple-vars: ^7.0.1
   prism-react-renderer: ^2.3.0
   react: ^19.2.4
   react-dom: ^19.2.4
   tsx: ^4.21.0
-  turbo: ^2.8.10
+  turbo: ^2.8.13
   turndown: ^7.2.2
   turndown-plugin-gfm: ^1.0.2
   typedoc: ^0.28.17
