@@ -92,28 +92,67 @@ Core tools shared across all Yulsi repos:
 
 ## 8. Planning and Documentation
 
-All repos use a `docs/plans/` directory for implementation planning.
+All repos use `docs/agents/plans/` for persistent plan artifacts and `docs/superpowers/` for ephemeral working documents.
+
+> **Migration note:** Some repos may still use the older `docs/plans/` structure. Migrate incrementally -- see the dev-loop-and-plan-lifecycle design spec for details.
 
 ### Directory Structure
 
+#### Ephemeral (branch/feature lifetime)
+
 ```
-docs/plans/              # Active plans (in progress or about to start)
-docs/plans/next/         # Immediate priorities (up next)
-docs/plans/backlog/      # Low-priority improvements (no timeline)
-docs/plans/archive/      # Completed, cancelled, or superseded plans
+docs/superpowers/
+  specs/          # Brainstorming design specs
+  plans/          # Implementation plans
 ```
+
+These files live on feature branches and are cleaned up when work is completed.
+
+#### Persistent (cross-feature, on main)
+
+```
+docs/agents/plans/
+  next/             # Immediate priorities -- concrete work to pick up soon
+  backlog/          # Low-priority improvements -- no committed timeline
+  completed/        # Recently finished -- individual summaries, still referenced by active work
+  archive/          # Long-term -- monthly summaries of plans no longer actively referenced
+  milestones/       # Detailed design docs for current focus areas (e.g., mvp-desktop-app.md)
+  roadmap.md        # Project roadmap -- repo-local, references milestones for detail
+  project-loop-state.md  # Project-loop activity timestamps -- repo-local
+```
+
+### Discovery
+
+- Working on something now? Check `docs/superpowers/plans/` and `docs/superpowers/specs/`
+- What's next? Check `docs/agents/plans/next/`
+- What could we do someday? Check `docs/agents/plans/backlog/`
+- What did we already do? Check `docs/agents/plans/archive/`
 
 ### Workflow
 
-1. **Before implementation**: Write a design or implementation plan in `docs/plans/YYYY-MM-DD-<topic>.md`
-2. **During implementation**: Reference the plan, update it if scope changes
-3. **After implementation**: Summarize what was built, add a status, and move the plan to `docs/plans/archive/`
-4. **Immediate next steps**: Extract high-priority follow-up work into `docs/plans/next/`
-5. **Deferred work**: Extract low-priority improvements or ideas into `docs/plans/backlog/`
+1. **Brainstorm**: Design spec written to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+2. **Plan**: Implementation plan written to `docs/superpowers/plans/YYYY-MM-DD-<topic>.md`
+3. **Execute**: Implement the plan on a feature branch
+4. **Review**: Code review pass
+5. **QA**: Human testing
+6. **Complete**: Summarise finished work to `docs/agents/plans/completed/`, clean up ephemeral files (use `/complete` skill)
+7. **Finish**: Merge branch or create PR
+8. **Archive**: Periodically consolidate unreferenced completed plans into monthly summaries (use `/archive` skill)
+
+### Skills
+
+Four shared skills manage the plan and project lifecycle:
+
+| Skill | Purpose |
+|-------|---------|
+| `/dev-loop` | Orchestrate the full development cycle with session resumption |
+| `/project-loop` | Manage project priorities, roadmap, architecture review, and triage |
+| `/complete` | Summarise finished plan, move to `completed/`, clean up ephemeral files |
+| `/archive` | Consolidate unreferenced completed plans into monthly summaries |
+
+Skills live in the `agents` repo under `skills/` and are manually propagated to `.claude/skills/` in each consuming repo.
 
 ### Archive Statuses
-
-When moving a plan to `docs/plans/archive/`, add a status at the top of the document:
 
 | Status | Meaning |
 |--------|---------|
@@ -122,14 +161,7 @@ When moving a plan to `docs/plans/archive/`, add a status at the top of the docu
 | **cancelled** | Work was not done, plan is no longer relevant |
 | **superseded** | Replaced by a newer plan (link to the replacement) |
 
-Format: Add `**Status:** complete` (or other status) near the top of the archived document.
-
-### Plan Lifecycle
-
-- **`docs/plans/`** -- Active work: plans currently being implemented or about to start
-- **`docs/plans/next/`** -- Immediate priorities: concrete work that should be picked up soon
-- **`docs/plans/backlog/`** -- Low-priority: potential improvements with no committed timeline
-- **`docs/plans/archive/`** -- Done: plans that have been resolved (with a status indicating outcome)
+Format: Filename suffix (e.g., `YYYY-MM-DD-feature-name.complete.md`) and `**Status:** complete` near the top of the document.
 
 ---
 
