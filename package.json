@@ -4,7 +4,7 @@
   "author": "Paul Le Cam",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@10.32.1",
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "prepare": "git config core.hooksPath .githooks",
     "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
