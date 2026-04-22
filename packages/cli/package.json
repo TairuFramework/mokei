@@ -29,7 +29,7 @@
   "scripts": {
     "mokei": "./bin/dev.js",
     "build:clean": "del dist",
-    "build:dist": "swc src -d ./dist --config-file ../../swc.json --strip-leading-paths",
+    "build:dist": "swc src -d ./dist --config-file ./swc.json --strip-leading-paths",
     "build": "pnpm run build:clean && pnpm run test:types && pnpm run build:dist",
     "prepack": "oclif manifest && oclif readme",
     "test:types": "tsc --noEmit --skipLibCheck",
