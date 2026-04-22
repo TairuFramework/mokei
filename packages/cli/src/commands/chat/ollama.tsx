@@ -1,8 +1,10 @@
 import { ProxyHost } from '@mokei/host'
 import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
+import { Session } from '@mokei/session'
 import { Command } from '@oclif/core'
+import { render } from 'ink'
 
-import { ChatSession } from '../../chat-session.js'
+import { ChatApp } from '../../chat/ChatApp.js'
 import { modelFlag, providerAPIFlag } from '../../flags.js'
 
 export default class ChatOllama extends Command {
@@ -17,7 +19,19 @@ export default class ChatOllama extends Command {
     const { flags } = await this.parse(ChatOllama)
     const host = await ProxyHost.forDaemon()
     const provider = new OllamaProvider({ client: { baseURL: flags['api-url'], timeout: false } })
-    const session = new ChatSession<OllamaTypes>({ host, model: flags.model, provider })
-    return await session.run()
+    const session = new Session<OllamaTypes>({
+      contextHost: host,
+      providers: { ollama: provider },
+    })
+    const app = render(
+      <ChatApp
+        session={session}
+        provider={provider}
+        providerKey="ollama"
+        initialModel={flags.model}
+      />,
+    )
+    await app.waitUntilExit()
+    await session.dispose()
   }
 }
