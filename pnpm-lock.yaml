@@ -55,11 +55,11 @@ catalogs:
       specifier: ^2.0.0
       version: 2.0.0
     '@mantine/core':
-      specifier: ^8.3.16
-      version: 8.3.16
+      specifier: ^9.1.0
+      version: 9.1.0
     '@mantine/hooks':
-      specifier: ^8.3.16
-      version: 8.3.16
+      specifier: ^9.1.0
+      version: 9.1.0
     '@oclif/core':
       specifier: ^4.10.5
       version: 4.10.5
@@ -358,10 +358,10 @@ importers:
         version: 0.14.3
       '@mantine/core':
         specifier: 'catalog:'
-        version: 8.3.16(@mantine/hooks@8.3.16(react@19.2.5))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+        version: 9.1.0(@mantine/hooks@9.1.0(react@19.2.5))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@mantine/hooks':
         specifier: 'catalog:'
-        version: 8.3.16(react@19.2.5)
+        version: 9.1.0(react@19.2.5)
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../packages/host-protocol
@@ -2959,17 +2959,17 @@ packages:
   '@logtape/logtape@2.0.4':
     resolution: {integrity: sha512-Z4COeAMdedcBFuFkXaPFvDPOVuHoEom1hwNnPCIkSyojyikuNguplwPoSG+kZthWrS7GiOJo1USQyjWwIFfTKA==}
 
-  '@mantine/core@8.3.16':
-    resolution: {integrity: sha512-YgmoYrb0I9UUDYfs9OVLvBUTgkA5vn5KZTfxlOaOSFxzhyYjrtwMQK+P7fvEIkenNQbbikhelj/IRcC2yNQyFQ==}
+  '@mantine/core@9.1.0':
+    resolution: {integrity: sha512-gT14pELclqrxhWZsFoY6MxN3dtVKxwUQFM9Y5SNzNyHgm6Mjh374pFdMg7P6FOECXYy1nlTP8y5S1vIR9CiNTA==}
     peerDependencies:
-      '@mantine/hooks': 8.3.16
-      react: ^18.x || ^19.x
-      react-dom: ^18.x || ^19.x
+      '@mantine/hooks': 9.1.0
+      react: ^19.2.0
+      react-dom: ^19.2.0
 
-  '@mantine/hooks@8.3.16':
-    resolution: {integrity: sha512-DthR8/KDCLIip3KoXyn370HEiKxiOwH+ZeXs1UoSv/e58xR88OE85Slyb5b5pRsDa4ndYnES+j9wyRyrRXLWfg==}
+  '@mantine/hooks@9.1.0':
+    resolution: {integrity: sha512-qWES5aD0fYfhEP1Kg82IYUZSg1fT9VTwJJF2jmn9lpIAYR2Bht9GIeWMd3WgjRNaxU+7A1I9rC2HADs0khKUpQ==}
     peerDependencies:
-      react: ^18.x || ^19.x
+      react: ^19.2.0
 
   '@mdx-js/mdx@3.1.1':
     resolution: {integrity: sha512-f6ZO2ifpwAQIpzGWaBQT2TXxPv6z3RBzQKpVftEWN78Vl/YweF1uwussDx8ECAXVtr3Rs89fKyG9YlzUs9DyGQ==}
@@ -8844,8 +8844,8 @@ packages:
       react-loadable: '*'
       webpack: '>=4.41.1 || 5.x'
 
-  react-number-format@5.4.4:
-    resolution: {integrity: sha512-wOmoNZoOpvMminhifQYiYSTCLUDOiUbBunrMrMjA+dV52sY+vck1S4UhR6PkgnoCquvvMSeJjErXZ4qSaWCliA==}
+  react-number-format@5.4.5:
+    resolution: {integrity: sha512-y8O2yHHj3w0aE9XO8d2BCcUOOdQTRSVq+WIuMlLVucAm5XNjJAy+BoOJiuQMldVYVOKTMyvVNfnbl2Oqp+YxGw==}
     peerDependencies:
       react: ^0.14 || ^15.0.0 || ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^0.14 || ^15.0.0 || ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -8898,12 +8898,6 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
-
-  react-textarea-autosize@8.5.9:
-    resolution: {integrity: sha512-U1DGlIQN5AwgjTyOEnI1oCcMuEr1pv1qOtklB2l4nyMGbHzWrI0eFsYK0zos2YWqAolJyG0IWJaqWmWj5ETh0A==}
-    engines: {node: '>=10'}
-    peerDependencies:
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   react@19.2.5:
     resolution: {integrity: sha512-llUJLzz1zTUBrskt2pwZgLq59AemifIftw4aB7JxOqf1HY2FDaGDxgwpAPVzHU1kdWabH7FauP4i1oEeer2WCA==}
@@ -9620,6 +9614,10 @@ packages:
   tabbable@6.4.0:
     resolution: {integrity: sha512-05PUHKSNE8ou2dwIxTngl4EzcnsCDZGJ/iCLtDflR/SHB/ny14rXc+qU5P4mG9JkusiV7EivzY9Mhm55AzAvCg==}
 
+  tagged-tag@1.0.0:
+    resolution: {integrity: sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng==}
+    engines: {node: '>=20'}
+
   tapable@2.3.0:
     resolution: {integrity: sha512-g9ljZiwki/LfxmQADO3dEY1CbpmXT5Hm2fJ+QaGKwSXUylMybePR7/67YW7jOrrvjEgL1Fmz5kzyAjWVWLlucg==}
     engines: {node: '>=6'}
@@ -9805,6 +9803,10 @@ packages:
   type-fest@4.41.0:
     resolution: {integrity: sha512-TeTSQ6H5YHvpqVwBRcnLDCBnDOHWYu7IvGbHT6N8AOymcr9PJGjc1GTtiWZTYg0NCgYwvnYWEkVChQAr9bjfwA==}
     engines: {node: '>=16'}
+
+  type-fest@5.6.0:
+    resolution: {integrity: sha512-8ZiHFm91orbSAe2PSAiSVBVko18pbhbiB3U9GglSzF/zCGkR+rxpHx6sEMCUm4kxY4LjDIUGgCfUMtwfZfjfUA==}
+    engines: {node: '>=20'}
 
   type-is@1.6.18:
     resolution: {integrity: sha512-TkRKr9sUTxEH8MdfuCSP7VizJyzRNMjj2J2do2Jr3Kym598JVdEksuzPQCnlFPW4ky9Q+iA+ma9BGm06XQBy8g==}
@@ -9995,33 +9997,6 @@ packages:
     peerDependencies:
       '@types/react': '*'
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0 || ^19.0.0-rc
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-
-  use-composed-ref@1.4.0:
-    resolution: {integrity: sha512-djviaxuOOh7wkj0paeO1Q/4wMZ8Zrnag5H6yBvzN7AKKe8beOaED9SF5/ByLqsku8NP4zQqsvM2u3ew/tJK8/w==}
-    peerDependencies:
-      '@types/react': '*'
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-
-  use-isomorphic-layout-effect@1.2.1:
-    resolution: {integrity: sha512-tpZZ+EX0gaghDAiFR37hj5MgY6ZN55kLiPkJsKxBMZ6GZdOSPJXiOzPM984oPYZ5AnehYx5WQp1+ME8I/P/pRA==}
-    peerDependencies:
-      '@types/react': '*'
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-
-  use-latest@1.3.0:
-    resolution: {integrity: sha512-mhg3xdm9NaM8q+gLT8KryJPnRFOz1/5XPBhmDEVZK1webPzDjrPk7f/mbpeLqTgB9msytYWANxgALOCJKnLvcQ==}
-    peerDependencies:
-      '@types/react': '*'
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
     peerDependenciesMeta:
       '@types/react':
         optional: true
@@ -13703,21 +13678,20 @@ snapshots:
 
   '@logtape/logtape@2.0.4': {}
 
-  '@mantine/core@8.3.16(@mantine/hooks@8.3.16(react@19.2.5))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@mantine/core@9.1.0(@mantine/hooks@9.1.0(react@19.2.5))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@floating-ui/react': 0.27.19(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@mantine/hooks': 8.3.16(react@19.2.5)
+      '@mantine/hooks': 9.1.0(react@19.2.5)
       clsx: 2.1.1
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
-      react-number-format: 5.4.4(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      react-number-format: 5.4.5(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       react-remove-scroll: 2.7.2(@types/react@19.2.14)(react@19.2.5)
-      react-textarea-autosize: 8.5.9(@types/react@19.2.14)(react@19.2.5)
-      type-fest: 4.41.0
+      type-fest: 5.6.0
     transitivePeerDependencies:
       - '@types/react'
 
-  '@mantine/hooks@8.3.16(react@19.2.5)':
+  '@mantine/hooks@9.1.0(react@19.2.5)':
     dependencies:
       react: 19.2.5
 
@@ -20459,7 +20433,7 @@ snapshots:
       react-loadable: '@docusaurus/react-loadable@6.0.0(react@19.2.5)'
       webpack: 5.105.0(@swc/core@1.15.30)(esbuild@0.27.2)
 
-  react-number-format@5.4.4(react-dom@19.2.5(react@19.2.5))(react@19.2.5):
+  react-number-format@5.4.5(react-dom@19.2.5(react@19.2.5))(react@19.2.5):
     dependencies:
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
@@ -20522,15 +20496,6 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.14
-
-  react-textarea-autosize@8.5.9(@types/react@19.2.14)(react@19.2.5):
-    dependencies:
-      '@babel/runtime': 7.28.6
-      react: 19.2.5
-      use-composed-ref: 1.4.0(@types/react@19.2.14)(react@19.2.5)
-      use-latest: 1.3.0(@types/react@19.2.14)(react@19.2.5)
-    transitivePeerDependencies:
-      - '@types/react'
 
   react@19.2.5: {}
 
@@ -21552,6 +21517,8 @@ snapshots:
 
   tabbable@6.4.0: {}
 
+  tagged-tag@1.0.0: {}
+
   tapable@2.3.0: {}
 
   tar-stream@3.1.7:
@@ -21723,6 +21690,10 @@ snapshots:
   type-fest@2.19.0: {}
 
   type-fest@4.41.0: {}
+
+  type-fest@5.6.0:
+    dependencies:
+      tagged-tag: 1.0.0
 
   type-is@1.6.18:
     dependencies:
@@ -21946,25 +21917,6 @@ snapshots:
     dependencies:
       react: 19.2.5
       tslib: 2.8.1
-    optionalDependencies:
-      '@types/react': 19.2.14
-
-  use-composed-ref@1.4.0(@types/react@19.2.14)(react@19.2.5):
-    dependencies:
-      react: 19.2.5
-    optionalDependencies:
-      '@types/react': 19.2.14
-
-  use-isomorphic-layout-effect@1.2.1(@types/react@19.2.14)(react@19.2.5):
-    dependencies:
-      react: 19.2.5
-    optionalDependencies:
-      '@types/react': 19.2.14
-
-  use-latest@1.3.0(@types/react@19.2.14)(react@19.2.5):
-    dependencies:
-      react: 19.2.5
-      use-isomorphic-layout-effect: 1.2.1(@types/react@19.2.14)(react@19.2.5)
     optionalDependencies:
       '@types/react': 19.2.14
 

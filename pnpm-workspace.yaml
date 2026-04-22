@@ -23,8 +23,8 @@ catalog:
   '@enkaku/stream': ^0.14.1
   '@enkaku/transport': ^0.14.1
   '@hono/node-server': ^2.0.0
-  '@mantine/core': ^8.3.16
-  '@mantine/hooks': ^8.3.16
+  '@mantine/core': ^9.1.0
+  '@mantine/hooks': ^9.1.0
   '@oclif/core': ^4.10.5
   '@oclif/plugin-help': ^6.2.44
   '@oclif/plugin-plugins': ^5.4.61
