@@ -90,7 +90,7 @@ export class OpenAIClient {
       headers.Authorization = `Bearer ${params.apiKey}`
     }
     this.#api = ky.create({
-      prefixUrl: params.baseURL ?? DEFAULT_BASE_URL,
+      prefix: params.baseURL ?? DEFAULT_BASE_URL,
       timeout: params.timeout ?? DEFAULT_TIMEOUT,
       headers,
     })
