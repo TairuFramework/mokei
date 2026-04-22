@@ -285,7 +285,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         />
       ) : null}
 
-      {modal === 'help' ? <HelpCard /> : null}
+      {modal === 'help' ? <HelpCard onClose={() => setModal(null)} /> : null}
 
       <Footer
         model={model ?? '(no model)'}

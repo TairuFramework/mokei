@@ -114,7 +114,7 @@ describe('footer + selects + help', () => {
   })
 
   test('HelpCard lists known commands', () => {
-    const { lastFrame } = render(<HelpCard />)
+    const { lastFrame } = render(<HelpCard onClose={() => {}} />)
     expect(lastFrame()).toContain('/help')
     expect(lastFrame()).toContain('/context')
     expect(lastFrame()).toContain('/model')

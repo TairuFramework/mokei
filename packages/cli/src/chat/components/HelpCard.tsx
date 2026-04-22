@@ -1,6 +1,13 @@
-import { Box, Text } from 'ink'
+import { Box, Text, useInput } from 'ink'
 
-export function HelpCard() {
+export type HelpCardProps = {
+  onClose: () => void
+}
+
+export function HelpCard({ onClose }: HelpCardProps) {
+  useInput((_, key) => {
+    if (key.escape || key.return) onClose()
+  })
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="cyan">
       <Text color="cyan">commands</Text>
@@ -12,6 +19,7 @@ export function HelpCard() {
       <Text>/tools enable/disable tools</Text>
       <Text>/quit, /exit end session</Text>
       <Text>esc abort current turn</Text>
+      <Text dimColor>[esc / enter] close</Text>
     </Box>
   )
 }
