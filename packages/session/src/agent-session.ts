@@ -26,8 +26,8 @@ import {
 /**
  * Events emitted by AgentSession.
  */
-export type AgentSessionEvents = {
-  event: AgentEvent
+export type AgentSessionEvents<T extends ProviderTypes = ProviderTypes> = {
+  event: AgentEvent<T>
 }
 
 /**
@@ -57,7 +57,7 @@ export type AgentSessionEvents = {
  */
 export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #params: ResolvedAgentParams<T>
-  #events: EventEmitter<AgentSessionEvents>
+  #events: EventEmitter<AgentSessionEvents<T>>
 
   constructor(params: AgentParams<T>) {
     super()
@@ -86,7 +86,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   /**
    * Event emitter for subscribing to agent events.
    */
-  get events(): EventEmitter<AgentSessionEvents> {
+  get events(): EventEmitter<AgentSessionEvents<T>> {
     return this.#events
   }
 
@@ -94,13 +94,16 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
    * Run the agent to completion with the given prompt.
    *
    * @param prompt - The user prompt to process
-   * @param signal - Optional AbortSignal for cancellation
+   * @param opts - Optional prior messages and AbortSignal for cancellation
    * @returns The final result of agent execution
    */
-  async run(prompt: string, signal?: AbortSignal): Promise<AgentResult> {
-    let result: AgentResult | undefined
+  async run(
+    prompt: string,
+    opts: { messages?: Array<Message<T['MessagePart'], T['ToolCall']>>; signal?: AbortSignal } = {},
+  ): Promise<AgentResult<T>> {
+    let result: AgentResult<T> | undefined
 
-    for await (const event of this.stream(prompt, signal)) {
+    for await (const event of this.stream(prompt, opts)) {
       if (event.type === 'complete') {
         result = event.result
       }
@@ -117,10 +120,14 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
    * Stream agent execution events.
    *
    * @param prompt - The user prompt to process
-   * @param signal - Optional AbortSignal for cancellation
+   * @param opts - Optional prior messages and AbortSignal for cancellation
    * @yields AgentEvent for each stage of execution
    */
-  async *stream(prompt: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
+  async *stream(
+    prompt: string,
+    opts: { messages?: Array<Message<T['MessagePart'], T['ToolCall']>>; signal?: AbortSignal } = {},
+  ): AsyncGenerator<AgentEvent<T>> {
+    const { messages: priorMessages, signal } = opts
     const startTime = Date.now()
     const {
       session,
@@ -142,7 +149,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       ? anySignal([signal, timeoutController.signal])
       : timeoutController.signal
 
-    const emitEvent = (event: AgentEvent): AgentEvent => {
+    const emitEvent = (event: AgentEvent<T>): AgentEvent<T> => {
       this.#events.emit('event', event)
       onEvent?.(event)
       return event
@@ -158,7 +165,13 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 
       // Build initial messages
       const messages: Array<Message<T['MessagePart'], T['ToolCall']>> = []
-      if (systemPrompt) {
+      if (priorMessages != null && priorMessages.length > 0) {
+        const hasSystem = priorMessages.some((m) => m.role === 'system')
+        if (systemPrompt && !hasSystem) {
+          messages.push({ source: 'client', role: 'system', text: systemPrompt })
+        }
+        messages.push(...priorMessages)
+      } else if (systemPrompt) {
         messages.push({ source: 'client', role: 'system', text: systemPrompt })
       }
       messages.push({ source: 'client', role: 'user', text: prompt })
@@ -167,7 +180,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       const tools = session.getToolsForProvider(provider)
 
       // Tracking
-      const eventHistory: Array<AgentEvent> = []
+      const eventHistory: Array<AgentEvent<T>> = []
       const allToolCalls: Array<AgentToolCallRecord> = []
       let totalInputTokens = 0
       let totalOutputTokens = 0
@@ -349,8 +362,9 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       }
 
       // Build final result
-      const result: AgentResult = {
+      const result: AgentResult<T> = {
         text: currentText,
+        messages,
         iterations: iteration,
         toolCalls: allToolCalls,
         inputTokens: totalInputTokens,
@@ -360,7 +374,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       }
 
       // Emit complete event
-      const completeEvent: AgentCompleteEvent = {
+      const completeEvent: AgentCompleteEvent<T> = {
         type: 'complete',
         result,
         timestamp: Date.now(),
@@ -393,9 +407,9 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     toolCall: FunctionToolCall<unknown>,
     strategy: ToolApprovalStrategy,
     context: ToolApprovalContext,
-    emitEvent: (event: AgentEvent) => AgentEvent,
-  ): Promise<{ approved: boolean; reason?: string; events: Array<AgentEvent> }> {
-    const events: Array<AgentEvent> = []
+    emitEvent: (event: AgentEvent<T>) => AgentEvent<T>,
+  ): Promise<{ approved: boolean; reason?: string; events: Array<AgentEvent<T>> }> {
+    const events: Array<AgentEvent<T>> = []
 
     if (strategy === 'auto') {
       const event = emitEvent({
@@ -475,10 +489,10 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 
   async #executeToolCall(
     toolCall: FunctionToolCall<unknown>,
-    emitEvent: (event: AgentEvent) => AgentEvent,
+    emitEvent: (event: AgentEvent<T>) => AgentEvent<T>,
     signal: AbortSignal,
-  ): Promise<{ result?: CallToolResult; error?: Error; events: Array<AgentEvent> }> {
-    const events: Array<AgentEvent> = []
+  ): Promise<{ result?: CallToolResult; error?: Error; events: Array<AgentEvent<T>> }> {
+    const events: Array<AgentEvent<T>> = []
 
     // Emit start event
     const startEvent = emitEvent({
