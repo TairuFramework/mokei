@@ -1,6 +1,5 @@
 import { type HostedContext, spawnHostedContext } from '@mokei/host'
 import { Args, Command } from '@oclif/core'
-import ora from 'ora'
 
 export default class ContextInspect extends Command {
   static strict = false
@@ -14,9 +13,9 @@ export default class ContextInspect extends Command {
   }
 
   async run(): Promise<void> {
-    const loader = ora().start('Initializing...')
     const { args, argv } = await this.parse(ContextInspect)
 
+    console.log('Initializing...')
     let hosted: HostedContext | undefined
     try {
       hosted = await spawnHostedContext({
@@ -24,10 +23,10 @@ export default class ContextInspect extends Command {
         args: argv.slice(1) as Array<string>,
       })
       const initialized = await hosted.client.initialize()
-      loader.succeed('Initialized')
+      console.log('Initialized')
       this.logJson(initialized)
     } catch (err) {
-      loader.fail((err as Error).message)
+      console.error((err as Error).message)
     } finally {
       await hosted?.disposer.dispose()
     }
