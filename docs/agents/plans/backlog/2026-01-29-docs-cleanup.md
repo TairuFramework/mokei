@@ -5,4 +5,4 @@
 ## Tasks
 
 - [ ] Remove `CLAUDE.md` stub (currently just contains `@AGENTS.md` redirect)
-- [ ] Remove or update `llms.txt` at root (may still be useful as an LLM discovery index — decide whether to keep, update, or delete)
+- [x] ~~Remove or update `llms.txt` at root~~ — deleted 2026-04-22

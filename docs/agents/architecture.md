@@ -83,11 +83,18 @@ packages/
 +-- context-server/       # MCP server implementation
 +-- context-client/       # MCP client implementation
 +-- host/                 # Multi-context orchestrator
++-- host-protocol/        # Host <-> monitor protocol types
++-- host-monitor/         # Monitor UI for host contexts
++-- http-client/          # MCP Streamable HTTP client transport
++-- http-server/          # MCP Streamable HTTP server transport
 +-- session/              # High-level chat + MCP abstraction
 +-- model-provider/       # Provider interface definitions
 +-- openai-provider/      # OpenAI integration
 +-- anthropic-provider/   # Anthropic Claude integration
 +-- ollama-provider/      # Ollama integration
++-- llama-provider/       # Local GGUF inference via node-llama-cpp
++-- logger/               # Shared logger utility
++-- cli/                  # mokei CLI (context + chat commands)
 ```
 
 ---
@@ -102,7 +109,7 @@ packages/
 | Host orchestration | `packages/host/src/` |
 | Session/Agent | `packages/session/src/` |
 | Provider interface | `packages/model-provider/src/` |
-| CLI commands | `mokei/src/commands/` |
+| CLI commands | `packages/cli/src/commands/` |
 | Tests | `packages/*/test/` |
 | Integration tests | `integration-tests/` |
 
@@ -116,6 +123,7 @@ mokei context inspect    # Inspect available tools and prompts
 mokei chat openai        # Interactive chat with OpenAI
 mokei chat ollama        # Interactive chat with Ollama
 mokei chat anthropic     # Interactive chat with Anthropic
+mokei chat llama         # Interactive chat with local Llama (GGUF)
 ```
 
 ---
@@ -127,5 +135,6 @@ Mokei supports multiple LLM providers through a unified provider interface:
 - **OpenAI** (`packages/openai-provider/`) -- Integration with OpenAI models
 - **Anthropic** (`packages/anthropic-provider/`) -- Integration with Anthropic Claude models
 - **Ollama** (`packages/ollama-provider/`) -- Integration with locally-running Ollama models
+- **Llama** (`packages/llama-provider/`) -- Local GGUF inference via node-llama-cpp
 
 Each provider implements the `ModelProvider` interface defined in `packages/model-provider/`, enabling consistent usage across different LLM backends.
