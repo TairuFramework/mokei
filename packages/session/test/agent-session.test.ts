@@ -1390,4 +1390,61 @@ describe('AgentSession', () => {
       })
     })
   })
+
+  describe('multi-turn history', () => {
+    test('AgentResult.messages contains the user prompt and assistant reply', async () => {
+      const provider = createMockProvider([{ text: 'Hello!' }])
+      const session = new Session({ providers: { mock: provider } })
+      const agent = new AgentSession({ session, provider: 'mock', model: 'test-model' })
+
+      const result = await agent.run('Hi')
+
+      expect(result.messages).toEqual([
+        { source: 'client', role: 'user', text: 'Hi' },
+        expect.objectContaining({ source: 'aggregated', role: 'assistant', text: 'Hello!' }),
+      ])
+    })
+
+    test('stream({ messages }) prepends prior history before the new prompt', async () => {
+      const provider = createMockProvider([{ text: 'Second reply' }])
+      const session = new Session({ providers: { mock: provider } })
+      const agent = new AgentSession({ session, provider: 'mock', model: 'test-model' })
+
+      const prior = [
+        { source: 'client' as const, role: 'user' as const, text: 'First prompt' },
+        { source: 'server' as const, role: 'assistant' as const, text: 'First reply', raw: {} },
+      ]
+
+      const result = await agent.run('Second prompt', { messages: prior })
+
+      expect(result.messages.slice(0, 2)).toEqual(prior)
+      expect(result.messages[2]).toEqual({
+        source: 'client',
+        role: 'user',
+        text: 'Second prompt',
+      })
+      expect(result.messages[3]).toMatchObject({ source: 'aggregated', role: 'assistant' })
+    })
+
+    test('system prompt is not duplicated when prior messages include a system role', async () => {
+      const provider = createMockProvider([{ text: 'ok' }])
+      const session = new Session({ providers: { mock: provider } })
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        systemPrompt: 'You are helpful',
+      })
+
+      const prior = [
+        { source: 'client' as const, role: 'system' as const, text: 'You are helpful' },
+        { source: 'client' as const, role: 'user' as const, text: 'First' },
+        { source: 'server' as const, role: 'assistant' as const, text: 'First reply', raw: {} },
+      ]
+
+      const result = await agent.run('Second', { messages: prior })
+      const systemCount = result.messages.filter((m) => m.role === 'system').length
+      expect(systemCount).toBe(1)
+    })
+  })
 })
