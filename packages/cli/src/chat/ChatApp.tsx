@@ -77,19 +77,40 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   const turn = useAgentTurn<T>({
     createAgent,
     onEvent: (event) => {
-      if (event.type === 'tool-call-complete') {
-        const content = event.result?.content
-        // CallToolResult content is a union of block types; only text blocks carry `.text`.
-        const textBlock = Array.isArray(content)
-          ? (content.find((c) => c.type === 'text') as { type: 'text'; text: string } | undefined)
-          : undefined
-        pushEntry({
-          kind: 'tool',
-          name: event.toolCall.name,
-          result: textBlock?.text ?? '',
-        })
-      } else if (event.type === 'tool-call-error') {
-        pushEntry({ kind: 'tool', name: event.toolCall.name, error: event.error.message })
+      switch (event.type) {
+        case 'text-complete':
+          if (event.text.length > 0) {
+            pushEntry({ kind: 'assistant', text: event.text })
+          }
+          break
+        case 'tool-call-complete': {
+          const content = event.result?.content
+          const text = Array.isArray(content)
+            ? (
+                content.find((c: { type: string }) => c.type === 'text') as
+                  | { type: 'text'; text: string }
+                  | undefined
+              )?.text
+            : undefined
+          pushEntry({ kind: 'tool', name: event.toolCall.name, result: text ?? '' })
+          break
+        }
+        case 'tool-call-error':
+          pushEntry({ kind: 'tool', name: event.toolCall.name, error: event.error.message })
+          break
+        case 'error':
+          pushEntry({ kind: 'notice', variant: 'error', text: event.error.message })
+          break
+        case 'timeout':
+          pushEntry({ kind: 'notice', variant: 'warning', text: 'turn timed out' })
+          break
+        case 'max-iterations':
+          pushEntry({
+            kind: 'notice',
+            variant: 'warning',
+            text: 'max iterations reached',
+          })
+          break
       }
     },
   })
@@ -108,12 +129,6 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           return
         }
         await turn.submit(parsed.text)
-        if (turn.lastAssistantText !== '') {
-          pushEntry({ kind: 'assistant', text: turn.lastAssistantText })
-        }
-        if (turn.lastError != null) {
-          pushEntry({ kind: 'notice', variant: 'error', text: turn.lastError })
-        }
         return
       }
 
