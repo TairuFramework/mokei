@@ -1,8 +1,10 @@
 import { AnthropicProvider, type AnthropicTypes } from '@mokei/anthropic-provider'
 import { ProxyHost } from '@mokei/host'
+import { Session } from '@mokei/session'
 import { Command, Flags } from '@oclif/core'
+import { render } from 'ink'
 
-import { ChatSession } from '../../chat-session.js'
+import { ChatApp } from '../../chat/ChatApp.js'
 import { modelFlag, providerAPIFlag } from '../../flags.js'
 
 export default class ChatAnthropic extends Command {
@@ -24,7 +26,20 @@ export default class ChatAnthropic extends Command {
     const provider = new AnthropicProvider({
       client: { apiKey: flags['api-key'], baseURL: flags['api-url'], timeout: false },
     })
-    const session = new ChatSession<AnthropicTypes>({ host, model: flags.model, provider })
-    return await session.run()
+    const session = new Session<AnthropicTypes>({
+      contextHost: host,
+      providers: { anthropic: provider },
+    })
+
+    const app = render(
+      <ChatApp
+        session={session}
+        provider={provider}
+        providerKey="anthropic"
+        initialModel={flags.model}
+      />,
+    )
+    await app.waitUntilExit()
+    await session.dispose()
   }
 }
