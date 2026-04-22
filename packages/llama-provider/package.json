@@ -46,7 +46,8 @@
   },
   "devDependencies": {
     "@mokei/context-protocol": "workspace:^",
-    "@mokei/model-provider": "workspace:^"
+    "@mokei/model-provider": "workspace:^",
+    "@types/node": "catalog:"
   },
   "peerDependencies": {
     "node-llama-cpp": ">=3.0.0"

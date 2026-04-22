@@ -46,6 +46,7 @@
     "@mokei/context-rpc": "workspace:^"
   },
   "devDependencies": {
-    "@enkaku/transport": "catalog:"
+    "@enkaku/transport": "catalog:",
+    "@types/node": "catalog:"
   }
 }

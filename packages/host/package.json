@@ -55,6 +55,7 @@
   },
   "devDependencies": {
     "@mokei/context-protocol": "workspace:^",
-    "@mokei/context-rpc": "workspace:^"
+    "@mokei/context-rpc": "workspace:^",
+    "@types/node": "catalog:"
   }
 }

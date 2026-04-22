@@ -7,71 +7,72 @@ packages:
   - website
 
 catalog:
-  '@biomejs/biome': ^2.4.7
-  '@enkaku/async': ^0.14.0
-  '@enkaku/client': ^0.14.1
+  '@biomejs/biome': ^2.4.12
+  '@enkaku/async': ^0.14.1
+  '@enkaku/client': ^0.14.4
   '@enkaku/event': ^0.14.1
   '@enkaku/generator': ^0.14.0
-  '@enkaku/http-client-transport': ^0.14.2
-  '@enkaku/http-server-transport': ^0.14.1
+  '@enkaku/http-client-transport': ^0.14.3
+  '@enkaku/http-server-transport': ^0.14.2
   '@enkaku/log': ^0.14.0
   '@enkaku/node-streams-transport': ^0.14.0
   '@enkaku/protocol': ^0.14.0
   '@enkaku/schema': ^0.14.0
-  '@enkaku/server': ^0.14.2
+  '@enkaku/server': ^0.14.4
   '@enkaku/socket-transport': ^0.14.0
   '@enkaku/stream': ^0.14.1
-  '@enkaku/transport': ^0.14.0
-  '@hono/node-server': ^1.19.11
-  '@mantine/core': ^8.3.16
-  '@mantine/hooks': ^8.3.16
-  '@oclif/core': ^4.9.0
-  '@oclif/plugin-help': ^6.2.37
-  '@oclif/plugin-plugins': ^5.4.58
-  '@oclif/test': ^4.1.16
-  '@swc/cli': ^0.8.0
-  '@swc/core': ^1.15.18
-  '@tabler/icons-react': ^3.40.0
-  '@tanstack/react-router': ^1.166.7
-  '@tanstack/react-virtual': ^3.13.22
-  '@tanstack/router-devtools': ^1.166.7
-  '@tanstack/router-plugin': ^1.166.7
+  '@enkaku/transport': ^0.14.1
+  '@hono/node-server': ^2.0.0
+  '@mantine/core': ^9.1.0
+  '@mantine/hooks': ^9.1.0
+  '@oclif/core': ^4.10.5
+  '@oclif/plugin-help': ^6.2.44
+  '@oclif/plugin-plugins': ^5.4.61
+  '@oclif/test': ^4.1.18
+  '@swc/cli': ^0.8.1
+  '@swc/core': ^1.15.30
+  '@tabler/icons-react': ^3.41.1
+  '@tanstack/react-router': ^1.168.23
+  '@tanstack/react-virtual': ^3.13.24
+  '@tanstack/router-devtools': ^1.166.13
+  '@tanstack/router-plugin': ^1.167.22
   '@types/luxon': ^3.7.1
-  '@types/node': ^25.5.0
+  '@types/node': ^25.6.0
   '@types/react': ^19.2.14
   '@types/react-dom': ^19.2.3
   '@types/turndown': ^5.0.6
-  '@vitejs/plugin-react-swc': ^4.3.0
-  '@vitest/ui': ^4.1.0
+  '@vitejs/plugin-react': ^6.0.1
+  '@vitest/ui': ^4.1.5
   ansi-colors: ^4.1.3
   del-cli: ^7.0.0
   enquirer: ^2.4.1
-  eventsource-parser: ^3.0.6
-  get-port: ^7.1.0
-  globals: ^17.4.0
-  hono: ^4.12.7
-  jotai: ^2.18.1
-  ky: ^1.14.3
+  eventsource-parser: ^3.0.8
+  get-port: ^7.2.0
+  globals: ^17.5.0
+  hono: ^4.12.14
+  jotai: ^2.19.1
+  ky: ^2.0.2
   luxon: ^3.7.2
-  nano-spawn: ^2.0.0
-  oclif: ^4.22.87
-  ora: ^9.3.0
+  nano-spawn: ^2.1.0
+  oclif: ^4.23.0
+  ora: ^9.4.0
   parse-sse: ^0.1.0
-  postcss: ^8.5.8
+  postcss: ^8.5.10
   postcss-preset-mantine: ^1.18.0
   postcss-simple-vars: ^7.0.1
   prism-react-renderer: ^2.3.0
-  react: ^19.2.4
-  react-dom: ^19.2.4
+  react: ^19.2.5
+  react-dom: ^19.2.5
   tsx: ^4.21.0
-  turbo: ^2.8.17
-  turndown: ^7.2.2
+  turbo: ^2.9.6
+  turndown: ^7.2.4
   turndown-plugin-gfm: ^1.0.2
-  typedoc: ^0.28.17
-  typedoc-plugin-markdown: ^4.10.0
-  vite: ^7.3.1
-  vite-bundle-analyzer: ^1.3.6
-  vitest: ^4.1.0
+  typedoc: ^0.28.19
+  typedoc-plugin-markdown: ^4.11.0
+  typescript: ^6.0.3
+  vite: ^8.0.9
+  vite-bundle-analyzer: ^1.3.7
+  vitest: ^4.1.5
 
 catalogMode: manual
 

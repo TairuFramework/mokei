@@ -57,6 +57,7 @@
     "@enkaku/transport": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
+    "@types/node": "catalog:",
     "@types/turndown": "catalog:"
   }
 }
