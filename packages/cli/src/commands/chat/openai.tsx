@@ -1,8 +1,10 @@
 import { ProxyHost } from '@mokei/host'
 import { OpenAIProvider, type OpenAITypes } from '@mokei/openai-provider'
+import { Session } from '@mokei/session'
 import { Command, Flags } from '@oclif/core'
+import { render } from 'ink'
 
-import { ChatSession } from '../../chat-session.js'
+import { ChatApp } from '../../chat/ChatApp.js'
 import { modelFlag, providerAPIFlag } from '../../flags.js'
 
 export default class ChatOpenAI extends Command {
@@ -24,7 +26,19 @@ export default class ChatOpenAI extends Command {
     const provider = new OpenAIProvider({
       client: { apiKey: flags['api-key'], baseURL: flags['api-url'], timeout: false },
     })
-    const session = new ChatSession<OpenAITypes>({ host, model: flags.model, provider })
-    return await session.run()
+    const session = new Session<OpenAITypes>({
+      contextHost: host,
+      providers: { openai: provider },
+    })
+    const app = render(
+      <ChatApp
+        session={session}
+        provider={provider}
+        providerKey="openai"
+        initialModel={flags.model}
+      />,
+    )
+    await app.waitUntilExit()
+    await session.dispose()
   }
 }
