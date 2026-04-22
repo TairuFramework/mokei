@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Stage:** planning
+**Stage:** executing
 
 **Goal:** Replace the enquirer + ora + raw-stdout loop in `packages/cli/src/chat-session.ts` with an Ink-based chat UI that delegates orchestration to `@mokei/session`'s `AgentSession` (extended for multi-turn history).
 
