@@ -33,7 +33,8 @@
     "build": "pnpm run build:clean && pnpm run test:types && pnpm run build:dist",
     "prepack": "oclif manifest && oclif readme",
     "test:types": "tsc --noEmit --skipLibCheck",
-    "test": "pnpm run test:types",
+    "test:unit": "vitest run",
+    "test": "pnpm run test:types && pnpm run test:unit",
     "version": "oclif readme && git add README.md"
   },
   "oclif": {
@@ -62,16 +63,20 @@
     "@oclif/core": "catalog:",
     "@oclif/plugin-help": "catalog:",
     "@oclif/plugin-plugins": "catalog:",
-    "ansi-colors": "catalog:",
-    "enquirer": "catalog:",
+    "@inkjs/ui": "catalog:",
+    "@mokei/session": "workspace:^",
     "eventsource-parser": "catalog:",
+    "ink": "catalog:",
     "ky": "catalog:",
     "nano-spawn": "catalog:",
-    "ora": "catalog:"
+    "react": "catalog:"
   },
   "devDependencies": {
     "@oclif/test": "catalog:",
+    "@types/react": "catalog:",
+    "ink-testing-library": "catalog:",
     "oclif": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
