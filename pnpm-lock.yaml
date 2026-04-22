@@ -189,6 +189,9 @@ catalogs:
     typedoc-plugin-markdown:
       specifier: ^4.11.0
       version: 4.11.0
+    typescript:
+      specifier: ^6.0.3
+      version: 6.0.3
     vite:
       specifier: ^7.3.1
       version: 7.3.1
@@ -235,13 +238,13 @@ importers:
         version: 2.9.6
       typedoc:
         specifier: 'catalog:'
-        version: 0.28.19(typescript@5.9.3)
+        version: 0.28.19(typescript@6.0.3)
       typedoc-plugin-markdown:
         specifier: 'catalog:'
-        version: 4.11.0(typedoc@0.28.19(typescript@5.9.3))
+        version: 4.11.0(typedoc@0.28.19(typescript@6.0.3))
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: 'catalog:'
+        version: 6.0.3
       vitest:
         specifier: 'catalog:'
         version: 4.1.5(@opentelemetry/api@1.9.0)(@types/node@25.6.0)(@vitest/ui@4.1.5)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.1(@types/node@25.6.0)(jiti@1.21.7)(lightningcss@1.31.1)(sugarss@5.0.1(postcss@8.5.10))(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
@@ -319,6 +322,9 @@ importers:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../../packages/context-protocol
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.6.0
       '@types/turndown':
         specifier: 'catalog:'
         version: 5.0.6
@@ -338,6 +344,9 @@ importers:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../../packages/context-protocol
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.6.0
 
   monitor:
     dependencies:
@@ -396,6 +405,9 @@ importers:
       '@types/luxon':
         specifier: 'catalog:'
         version: 3.7.1
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.6.0
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.14
@@ -418,8 +430,8 @@ importers:
         specifier: 'catalog:'
         version: 7.0.1(postcss@8.5.10)
       typescript:
-        specifier: ~5.9.3
-        version: 5.9.3
+        specifier: 'catalog:'
+        version: 6.0.3
       vite:
         specifier: 'catalog:'
         version: 7.3.1(@types/node@25.6.0)(jiti@1.21.7)(lightningcss@1.31.1)(sugarss@5.0.1(postcss@8.5.10))(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3)
@@ -519,8 +531,8 @@ importers:
         specifier: 'catalog:'
         version: 4.23.0(@types/node@25.6.0)
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: 'catalog:'
+        version: 6.0.3
 
   packages/context-client:
     dependencies:
@@ -590,6 +602,9 @@ importers:
       '@enkaku/transport':
         specifier: 'catalog:'
         version: 0.14.1
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.6.0
 
   packages/host:
     dependencies:
@@ -636,6 +651,9 @@ importers:
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../context-rpc
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.6.0
 
   packages/host-monitor:
     dependencies:
@@ -718,7 +736,7 @@ importers:
         version: 0.14.0
       node-llama-cpp:
         specifier: '>=3.0.0'
-        version: 3.15.1(typescript@5.9.3)
+        version: 3.15.1(typescript@6.0.3)
     devDependencies:
       '@mokei/context-protocol':
         specifier: workspace:^
@@ -726,6 +744,9 @@ importers:
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.6.0
 
   packages/logger:
     dependencies:
@@ -9764,6 +9785,11 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
   uc.micro@2.1.0:
     resolution: {integrity: sha512-ARDJmphmdvUk6Glw7y9DQ2bFkKBHwQHLi2lsaH6PPmz/Ka9sFOBsBluozhDltWmnv9u/cF6Rt87znRTPV+yp/A==}
 
@@ -15505,7 +15531,7 @@ snapshots:
 
   '@types/sax@1.2.7':
     dependencies:
-      '@types/node': 17.0.45
+      '@types/node': 25.6.0
 
   '@types/send@0.17.6':
     dependencies:
@@ -17290,8 +17316,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  follow-redirects@1.15.11: {}
-
   follow-redirects@1.15.11(debug@4.4.3):
     optionalDependencies:
       debug: 4.4.3(supports-color@8.1.1)
@@ -17968,7 +17992,7 @@ snapshots:
   http-proxy@1.18.1:
     dependencies:
       eventemitter3: 4.0.7
-      follow-redirects: 1.15.11
+      follow-redirects: 1.15.11(debug@4.4.3)
       requires-port: 1.0.0
     transitivePeerDependencies:
       - debug
@@ -19334,7 +19358,7 @@ snapshots:
 
   node-forge@1.3.3: {}
 
-  node-llama-cpp@3.15.1(typescript@5.9.3):
+  node-llama-cpp@3.15.1(typescript@6.0.3):
     dependencies:
       '@huggingface/jinja': 0.5.5
       async-retry: 1.3.3
@@ -19379,7 +19403,7 @@ snapshots:
       '@node-llama-cpp/win-x64-cuda': 3.15.1
       '@node-llama-cpp/win-x64-cuda-ext': 3.15.1
       '@node-llama-cpp/win-x64-vulkan': 3.15.1
-      typescript: 5.9.3
+      typescript: 6.0.3
     transitivePeerDependencies:
       - supports-color
 
@@ -21633,6 +21657,10 @@ snapshots:
     dependencies:
       typedoc: 0.28.19(typescript@5.9.3)
 
+  typedoc-plugin-markdown@4.11.0(typedoc@0.28.19(typescript@6.0.3)):
+    dependencies:
+      typedoc: 0.28.19(typescript@6.0.3)
+
   typedoc@0.28.19(typescript@5.9.3):
     dependencies:
       '@gerrit0/mini-shiki': 3.23.0
@@ -21642,7 +21670,18 @@ snapshots:
       typescript: 5.9.3
       yaml: 2.8.3
 
+  typedoc@0.28.19(typescript@6.0.3):
+    dependencies:
+      '@gerrit0/mini-shiki': 3.23.0
+      lunr: 2.3.9
+      markdown-it: 14.1.1
+      minimatch: 10.2.5
+      typescript: 6.0.3
+      yaml: 2.8.3
+
   typescript@5.9.3: {}
+
+  typescript@6.0.3: {}
 
   uc.micro@2.1.0: {}
 
