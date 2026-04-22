@@ -341,7 +341,7 @@ describe('AgentSession', () => {
         model: 'test-model',
       })
 
-      const result = await agent.run('Say hello', controller.signal)
+      const result = await agent.run('Say hello', { signal: controller.signal })
       expect(result.finishReason).toBe('aborted')
     })
   })
@@ -1157,7 +1157,7 @@ describe('AgentSession', () => {
         const abortController = new AbortController()
         abortController.abort('Pre-aborted')
 
-        const result = await agent.run('Test', abortController.signal)
+        const result = await agent.run('Test', { signal: abortController.signal })
 
         expect(result.finishReason).toBe('aborted')
         expect(result.iterations).toBe(0)
