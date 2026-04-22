@@ -55,6 +55,8 @@ export type SessionEvents<T extends ProviderTypes = ProviderTypes> = {
 
 export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
   providers?: Record<string, ModelProvider<T>>
+  /** Pre-built ContextHost instance. If omitted, a fresh ContextHost is created. */
+  contextHost?: ContextHost
   /**
    * Local tools that can be called directly without setting up an MCP server.
    * These tools are registered with the `local:` namespace prefix.
@@ -136,7 +138,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       },
     })
     this.#events = new EventEmitter()
-    this.#contextHost = new ContextHost()
+    this.#contextHost = params.contextHost ?? new ContextHost()
     this.#providers = new Map(Object.entries(params.providers ?? {}))
 
     // Register local tools if provided

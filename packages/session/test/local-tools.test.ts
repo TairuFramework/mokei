@@ -1,7 +1,16 @@
+import { ContextHost } from '@mokei/host'
 import type { ModelProvider, ProviderTypes } from '@mokei/model-provider'
 import { describe, expect, test, vi } from 'vitest'
 
 import { type LocalToolDefinition, Session } from '../src/index.js'
+
+describe('Session({ contextHost })', () => {
+  test('uses the supplied ContextHost instead of creating one', () => {
+    const host = new ContextHost()
+    const session = new Session({ contextHost: host })
+    expect(session.contextHost).toBe(host)
+  })
+})
 
 describe('Session Local Tools', () => {
   describe('constructor with localTools', () => {
