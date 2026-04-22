@@ -3,10 +3,15 @@ import { describe, expect, test } from 'vitest'
 
 import { AssistantMessage } from '../../src/chat/components/AssistantMessage.js'
 import { AssistantStreamingText } from '../../src/chat/components/AssistantStreamingText.js'
+import { Footer } from '../../src/chat/components/Footer.js'
+import { HelpCard } from '../../src/chat/components/HelpCard.js'
+import { ModelSelectCard } from '../../src/chat/components/ModelSelectCard.js'
+import { StatusLine } from '../../src/chat/components/StatusLine.js'
 import { SystemNotice } from '../../src/chat/components/SystemNotice.js'
 import { ToolApprovalCard } from '../../src/chat/components/ToolApprovalCard.js'
 import { ToolCallStatus } from '../../src/chat/components/ToolCallStatus.js'
 import { ToolResultCard } from '../../src/chat/components/ToolResultCard.js'
+import { ToolSelectCard } from '../../src/chat/components/ToolSelectCard.js'
 import { UserMessage } from '../../src/chat/components/UserMessage.js'
 
 describe('components', () => {
@@ -60,5 +65,60 @@ describe('streaming + approval', () => {
     const { lastFrame } = render(<ToolCallStatus name="ctx:read" phase="calling" />)
     expect(lastFrame()).toContain('ctx:read')
     expect(lastFrame()).toMatch(/calling/i)
+  })
+})
+
+describe('footer + selects + help', () => {
+  test('StatusLine shows model and streaming state', () => {
+    const { lastFrame } = render(
+      <StatusLine model="claude-3" state="streaming" contexts={['sqlite']} />,
+    )
+    expect(lastFrame()).toContain('claude-3')
+    expect(lastFrame()).toContain('sqlite')
+  })
+
+  test('Footer embeds StatusLine and the input prompt', () => {
+    const { lastFrame } = render(
+      <Footer model="claude-3" state="idle" contexts={[]} onSubmit={() => {}} />,
+    )
+    expect(lastFrame()).toContain('claude-3')
+    expect(lastFrame()).toContain('›')
+  })
+
+  test('ModelSelectCard renders each model id', () => {
+    const { lastFrame } = render(
+      <ModelSelectCard
+        models={[{ id: 'a' }, { id: 'b' }]}
+        onSelect={() => {}}
+        onCancel={() => {}}
+      />,
+    )
+    expect(lastFrame()).toContain('a')
+    expect(lastFrame()).toContain('b')
+  })
+
+  test('ToolSelectCard renders each tool option', () => {
+    const { lastFrame } = render(
+      <ToolSelectCard
+        groups={[
+          {
+            contextKey: 'ctx',
+            tools: [{ id: 'ctx:x', name: 'x', description: 'd', enabled: true }],
+          },
+        ]}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    )
+    expect(lastFrame()).toContain('ctx:x')
+  })
+
+  test('HelpCard lists known commands', () => {
+    const { lastFrame } = render(<HelpCard />)
+    expect(lastFrame()).toContain('/help')
+    expect(lastFrame()).toContain('/context')
+    expect(lastFrame()).toContain('/model')
+    expect(lastFrame()).toContain('/tools')
+    expect(lastFrame()).toContain('/quit')
   })
 })
