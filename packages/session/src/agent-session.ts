@@ -433,24 +433,23 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     }
 
     if (strategy === 'ask') {
-      // Emit pending event - external code should handle approval
-      // For now, we auto-approve since we don't have async approval mechanism
+      // No async approval bridge wired — refuse so host does not execute a tool
+      // the user never approved. Callers supply a ToolApprovalFn to interactively approve.
+      const reason = 'Tool approval required but no handler configured'
       const pendingEvent = emitEvent({
         type: 'tool-call-pending',
         toolCall,
         timestamp: Date.now(),
       })
       events.push(pendingEvent)
-
-      // Note: In a full implementation, this would wait for external approval
-      // For now, we auto-approve after emitting pending
-      const approvedEvent = emitEvent({
-        type: 'tool-call-approved',
+      const deniedEvent = emitEvent({
+        type: 'tool-call-denied',
         toolCall,
+        reason,
         timestamp: Date.now(),
       })
-      events.push(approvedEvent)
-      return { approved: true, events }
+      events.push(deniedEvent)
+      return { approved: false, reason, events }
     }
 
     // Custom function
