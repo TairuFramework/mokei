@@ -1,4 +1,5 @@
-import { Box } from 'ink'
+import { Spinner } from '@inkjs/ui'
+import { Box, Text } from 'ink'
 
 import type { PendingApproval } from '../hooks/useToolApproval.js'
 import type { TurnState } from '../turn-reducer.js'
@@ -16,9 +17,17 @@ export type PendingTurnProps = {
 export function PendingTurn({ turn, pending, onApprove, onDeny }: PendingTurnProps) {
   if (turn.state === 'idle') return null
 
+  const showSpinner = turn.state === 'streaming' && turn.currentText === ''
+
   return (
     <Box flexDirection="column">
       {turn.currentText !== '' ? <AssistantStreamingText text={turn.currentText} /> : null}
+      {showSpinner ? (
+        <Box>
+          <Spinner />
+          <Text dimColor> waiting for response…</Text>
+        </Box>
+      ) : null}
       {turn.state === 'awaiting-approval' && pending != null ? (
         <ToolApprovalCard call={pending.call} onApprove={onApprove} onDeny={onDeny} />
       ) : null}

@@ -37,10 +37,11 @@ export type ChatAppProps<T extends ProviderTypes> = {
   provider: ModelProvider<T>
   providerKey: string
   initialModel?: string
+  timeout?: number
 }
 
 export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
-  const { session, provider, providerKey, initialModel } = props
+  const { session, provider, providerKey, initialModel, timeout } = props
   const { exit } = useApp()
   const [model, setModel] = useState<string | undefined>(initialModel)
   const [transcript, setTranscript] = useState<Array<TranscriptEntry>>([])
@@ -50,6 +51,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   const [quitConfirm, setQuitConfirm] = useState(false)
   const quitConfirmRef = useRef(false)
   const quitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null)
 
   const loadModels = useCallback(() => {
     if (modelsPromiseRef.current == null) {
@@ -89,8 +91,9 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         provider: providerKey,
         model: model ?? '',
         toolApproval: toolApprovalFn,
+        ...(timeout != null ? { timeout } : {}),
       }),
-    [session, providerKey, model, toolApprovalFn],
+    [session, providerKey, model, toolApprovalFn, timeout],
   )
 
   const turn = useAgentTurn<T>({
@@ -117,12 +120,29 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         case 'tool-call-error':
           pushEntry({ kind: 'tool', name: event.toolCall.name, error: event.error.message })
           break
-        case 'error':
-          pushEntry({ kind: 'notice', variant: 'error', text: event.error.message })
+        case 'error': {
+          const err = event.error
+          const cause =
+            err.cause instanceof Error ? ` (cause: ${err.cause.name}: ${err.cause.message})` : ''
+          pushEntry({
+            kind: 'notice',
+            variant: 'error',
+            text: `${err.name}: ${err.message}${cause}`,
+          })
           break
-        case 'timeout':
-          pushEntry({ kind: 'notice', variant: 'warning', text: 'turn timed out' })
+        }
+        case 'timeout': {
+          const secs = timeout != null ? Math.round(timeout / 1000) : null
+          pushEntry({
+            kind: 'notice',
+            variant: 'warning',
+            text:
+              secs != null
+                ? `turn timed out after ${secs}s — pass --timeout to adjust`
+                : 'turn timed out — pass --timeout to adjust',
+          })
           break
+        }
         case 'max-iterations':
           pushEntry({
             kind: 'notice',
@@ -130,22 +150,42 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
             text: 'max iterations reached',
           })
           break
+        case 'complete':
+          if (event.result.text === '' && event.result.toolCalls.length === 0) {
+            pushEntry({
+              kind: 'notice',
+              variant: 'warning',
+              text: `stream ended with no output (finish: ${event.result.finishReason})`,
+            })
+          }
+          break
       }
     },
   })
+
+  useEffect(() => {
+    if (pendingPrompt != null && model != null && modal == null) {
+      const text = pendingPrompt
+      setPendingPrompt(null)
+      pushEntry({ kind: 'user', text })
+      turn.submit(text)
+    }
+  }, [pendingPrompt, model, modal, pushEntry, turn])
 
   const handleSubmit = useCallback(
     async (raw: string) => {
       const parsed = parseSlash(raw)
       if (parsed.kind === 'message') {
         if (parsed.text === '') return
-        pushEntry({ kind: 'user', text: parsed.text })
         if (model == null) {
+          setPendingPrompt(parsed.text)
           await loadModels()
           setModal('model')
           pushEntry({ kind: 'notice', variant: 'info', text: 'select a model to continue' })
           return
         }
+        pushEntry({ kind: 'user', text: parsed.text })
+        setPendingPrompt(null)
         await turn.submit(parsed.text)
         return
       }
@@ -339,6 +379,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         contexts={contexts}
         onSubmit={handleSubmit}
         disabled={modal != null}
+        defaultValue={pendingPrompt ?? undefined}
       />
     </Box>
   )

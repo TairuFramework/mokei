@@ -5,7 +5,7 @@ import { Command, Flags } from '@oclif/core'
 import { render } from 'ink'
 
 import { ChatApp } from '../../chat/ChatApp.js'
-import { modelFlag, providerAPIFlag } from '../../flags.js'
+import { modelFlag, providerAPIFlag, timeoutFlag } from '../../flags.js'
 
 export default class ChatOpenAI extends Command {
   static description = 'Interactive chat with a model provider using OpenAI APIs'
@@ -18,6 +18,7 @@ export default class ChatOpenAI extends Command {
     }),
     'api-url': providerAPIFlag,
     model: modelFlag,
+    timeout: timeoutFlag,
   }
 
   async run(): Promise<void> {
@@ -36,6 +37,7 @@ export default class ChatOpenAI extends Command {
         provider={provider}
         providerKey="openai"
         initialModel={flags.model}
+        timeout={flags.timeout * 1000}
       />,
       { exitOnCtrlC: false },
     )

@@ -16,3 +16,9 @@ export const socketPathFlag = Flags.string({
   description: 'Socket path',
   default: DEFAULT_SOCKET_PATH,
 })
+
+export const timeoutFlag = Flags.integer({
+  char: 't',
+  description: 'Agent turn timeout in seconds',
+  default: 300,
+})

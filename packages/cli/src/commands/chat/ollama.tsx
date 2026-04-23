@@ -5,7 +5,7 @@ import { Command } from '@oclif/core'
 import { render } from 'ink'
 
 import { ChatApp } from '../../chat/ChatApp.js'
-import { modelFlag, providerAPIFlag } from '../../flags.js'
+import { modelFlag, providerAPIFlag, timeoutFlag } from '../../flags.js'
 
 export default class ChatOllama extends Command {
   static description = 'Interactive chat with a local model'
@@ -13,6 +13,7 @@ export default class ChatOllama extends Command {
   static flags = {
     'api-url': providerAPIFlag,
     model: modelFlag,
+    timeout: timeoutFlag,
   }
 
   async run(): Promise<void> {
@@ -29,6 +30,7 @@ export default class ChatOllama extends Command {
         provider={provider}
         providerKey="ollama"
         initialModel={flags.model}
+        timeout={flags.timeout * 1000}
       />,
       { exitOnCtrlC: false },
     )
