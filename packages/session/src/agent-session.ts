@@ -382,11 +382,15 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       yield emitEvent(completeEvent)
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
-      yield emitEvent({
-        type: 'error',
-        error: err,
-        timestamp: Date.now(),
-      })
+      if (timeoutController.signal.aborted) {
+        yield emitEvent({ type: 'timeout', timestamp: Date.now() })
+      } else {
+        yield emitEvent({
+          type: 'error',
+          error: err,
+          timestamp: Date.now(),
+        })
+      }
       throw err
     } finally {
       clearTimeout(timeoutId)
