@@ -51,6 +51,9 @@ export function useAgentTurn<T extends ProviderTypes = ProviderTypes>(
             messagesRef.current = event.result.messages
           }
         }
+      } catch {
+        // Error/timeout/abort events were already dispatched before the throw;
+        // swallow here so callers don't hit unhandled rejections.
       } finally {
         abortRef.current = null
       }
