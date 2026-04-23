@@ -38,6 +38,7 @@ export default class ChatAnthropic extends Command {
         providerKey="anthropic"
         initialModel={flags.model}
       />,
+      { exitOnCtrlC: false },
     )
     await app.waitUntilExit()
     await session.dispose()

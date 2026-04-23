@@ -20,11 +20,13 @@ const COMMAND_SUGGESTIONS = SLASH_COMMANDS.map((c) => `/${c.name}`)
 
 export function Footer({ model, state, contexts, onSubmit, placeholder, disabled }: FooterProps) {
   const [value, setValue] = useState('')
+  const [submitSeq, setSubmitSeq] = useState(0)
 
   const suggestions = useMemo(() => matchSlashCommands(value), [value])
 
   const handleSubmit = (v: string) => {
     setValue('')
+    setSubmitSeq((n) => n + 1)
     onSubmit(v)
   }
 
@@ -36,6 +38,7 @@ export function Footer({ model, state, contexts, onSubmit, placeholder, disabled
         <Box>
           <Text color="cyan">› </Text>
           <TextInput
+            key={submitSeq}
             placeholder={placeholder ?? 'type a message or /help'}
             suggestions={COMMAND_SUGGESTIONS}
             onChange={setValue}

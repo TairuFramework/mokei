@@ -1,7 +1,7 @@
 import type { ModelProvider, ProviderTypes } from '@mokei/model-provider'
 import type { Session } from '@mokei/session'
 import { AgentSession } from '@mokei/session'
-import { Box, Static, useApp, useInput } from 'ink'
+import { Box, Static, Text, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AssistantMessage } from './components/AssistantMessage.js'
@@ -47,6 +47,9 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   const [modal, setModal] = useState<null | 'model' | 'tools' | 'help'>(null)
   const [models, setModels] = useState<Array<{ id: string }>>([])
   const modelsPromiseRef = useRef<Promise<Array<{ id: string }>> | null>(null)
+  const [quitConfirm, setQuitConfirm] = useState(false)
+  const quitConfirmRef = useRef(false)
+  const quitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadModels = useCallback(() => {
     if (modelsPromiseRef.current == null) {
@@ -230,12 +233,35 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
     [addContext, contexts, exit, model, provider, pushEntry, removeContext, turn],
   )
 
-  useInput((_, key) => {
+  useInput((input, key) => {
+    if (key.ctrl && input === 'c') {
+      if (quitConfirmRef.current) {
+        if (quitTimerRef.current) clearTimeout(quitTimerRef.current)
+        exit()
+        return
+      }
+      quitConfirmRef.current = true
+      setQuitConfirm(true)
+      if (quitTimerRef.current) clearTimeout(quitTimerRef.current)
+      quitTimerRef.current = setTimeout(() => {
+        quitConfirmRef.current = false
+        setQuitConfirm(false)
+        quitTimerRef.current = null
+      }, 3000)
+      return
+    }
     if (modal != null) return
     if (key.escape && turn.state !== 'idle' && turn.state !== 'awaiting-approval') {
       turn.abort()
     }
   })
+
+  useEffect(
+    () => () => {
+      if (quitTimerRef.current) clearTimeout(quitTimerRef.current)
+    },
+    [],
+  )
 
   return (
     <Box flexDirection="column">
@@ -300,6 +326,12 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
       ) : null}
 
       {modal === 'help' ? <HelpCard onClose={() => setModal(null)} /> : null}
+
+      {quitConfirm ? (
+        <Box paddingX={1}>
+          <Text color="yellow">press Ctrl+C again to quit (or wait to cancel)</Text>
+        </Box>
+      ) : null}
 
       <Footer
         model={model ?? '(no model)'}

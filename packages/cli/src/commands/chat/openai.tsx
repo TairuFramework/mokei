@@ -37,6 +37,7 @@ export default class ChatOpenAI extends Command {
         providerKey="openai"
         initialModel={flags.model}
       />,
+      { exitOnCtrlC: false },
     )
     await app.waitUntilExit()
     await session.dispose()

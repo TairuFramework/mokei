@@ -30,6 +30,7 @@ export default class ChatOllama extends Command {
         providerKey="ollama"
         initialModel={flags.model}
       />,
+      { exitOnCtrlC: false },
     )
     await app.waitUntilExit()
     await session.dispose()
