@@ -2,7 +2,7 @@ import type { ModelProvider, ProviderTypes } from '@mokei/model-provider'
 import type { Session } from '@mokei/session'
 import { AgentSession } from '@mokei/session'
 import { Box, Static, useApp, useInput } from 'ink'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AssistantMessage } from './components/AssistantMessage.js'
 import { Footer } from './components/Footer.js'
@@ -46,6 +46,24 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   const [transcript, setTranscript] = useState<Array<TranscriptEntry>>([])
   const [modal, setModal] = useState<null | 'model' | 'tools' | 'help'>(null)
   const [models, setModels] = useState<Array<{ id: string }>>([])
+  const modelsPromiseRef = useRef<Promise<Array<{ id: string }>> | null>(null)
+
+  const loadModels = useCallback(() => {
+    if (modelsPromiseRef.current == null) {
+      modelsPromiseRef.current = provider.listModels().then((list) => {
+        const mapped = list.map((m) => ({ id: m.id }))
+        setModels(mapped)
+        return mapped
+      })
+    }
+    return modelsPromiseRef.current
+  }, [provider])
+
+  useEffect(() => {
+    loadModels().catch(() => {
+      // Ignore — user will see the error when they attempt to pick a model.
+    })
+  }, [loadModels])
 
   const nextID = useMemo(() => {
     let n = 0
@@ -62,15 +80,13 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   const { pending, approve, deny, toolApprovalFn } = useToolApproval()
 
   const createAgent = useCallback(
-    () =>
-      // Cast: AgentSession<T> implements the structural AgentSessionLike<T>
-      // contract the hook requires (stream() async generator of AgentEvent).
+    (): AgentSessionLike<T> =>
       new AgentSession<T>({
         session,
         provider: providerKey,
         model: model ?? '',
         toolApproval: toolApprovalFn,
-      }) as unknown as AgentSessionLike<T>,
+      }),
     [session, providerKey, model, toolApprovalFn],
   )
 
@@ -122,8 +138,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         if (parsed.text === '') return
         pushEntry({ kind: 'user', text: parsed.text })
         if (model == null) {
-          const list = await provider.listModels()
-          setModels(list.map((m) => ({ id: m.id })))
+          await loadModels()
           setModal('model')
           pushEntry({ kind: 'notice', variant: 'info', text: 'select a model to continue' })
           return
@@ -192,8 +207,8 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         }
         case 'model': {
           const [id] = args
+          const list = await loadModels()
           if (id != null) {
-            const list = await provider.listModels()
             if (list.some((m) => m.id === id)) {
               setModel(id)
               pushEntry({ kind: 'notice', variant: 'success', text: `model: ${id}` })
@@ -201,8 +216,6 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
               pushEntry({ kind: 'notice', variant: 'error', text: `unknown model: ${id}` })
             }
           } else {
-            const list = await provider.listModels()
-            setModels(list.map((m) => ({ id: m.id })))
             setModal('model')
           }
           break
@@ -218,6 +231,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   )
 
   useInput((_, key) => {
+    if (modal != null) return
     if (key.escape && turn.state !== 'idle' && turn.state !== 'awaiting-approval') {
       turn.abort()
     }
@@ -292,6 +306,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         state={turn.state}
         contexts={contexts}
         onSubmit={handleSubmit}
+        disabled={modal != null}
       />
     </Box>
   )

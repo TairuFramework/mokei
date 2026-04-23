@@ -10,16 +10,19 @@ export type FooterProps = {
   contexts: Array<string>
   onSubmit: (value: string) => void
   placeholder?: string
+  disabled?: boolean
 }
 
-export function Footer({ model, state, contexts, onSubmit, placeholder }: FooterProps) {
+export function Footer({ model, state, contexts, onSubmit, placeholder, disabled }: FooterProps) {
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
       <StatusLine model={model} state={state} contexts={contexts} />
-      <Box>
-        <Text color="cyan">› </Text>
-        <TextInput placeholder={placeholder ?? 'type a message or /help'} onSubmit={onSubmit} />
-      </Box>
+      {disabled ? null : (
+        <Box>
+          <Text color="cyan">› </Text>
+          <TextInput placeholder={placeholder ?? 'type a message or /help'} onSubmit={onSubmit} />
+        </Box>
+      )}
     </Box>
   )
 }
