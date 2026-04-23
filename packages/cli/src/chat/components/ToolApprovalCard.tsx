@@ -1,10 +1,7 @@
+import type { FunctionToolCall } from '@mokei/model-provider'
 import { Box, Text, useInput } from 'ink'
 
-export type ToolCallRef = {
-  id: string
-  name: string
-  arguments: string
-}
+export type ToolCallRef = Pick<FunctionToolCall<unknown>, 'id' | 'name' | 'arguments'>
 
 export type ToolApprovalCardProps = {
   call: ToolCallRef
