@@ -574,9 +574,55 @@ describe('AgentSession', () => {
         events.push(event)
       }
 
-      const deniedEvent = events.find((e) => e.type === 'tool-call-denied')
-      expect(deniedEvent).toBeDefined()
-      expect((deniedEvent as { reason?: string }).reason).toBe('Too dangerous')
+      const pendingIdx = events.findIndex((e) => e.type === 'tool-call-pending')
+      const deniedIdx = events.findIndex((e) => e.type === 'tool-call-denied')
+      expect(pendingIdx).toBeGreaterThanOrEqual(0)
+      expect(deniedIdx).toBeGreaterThan(pendingIdx)
+      expect((events[deniedIdx] as { reason?: string }).reason).toBe('Too dangerous')
+
+      await session.dispose()
+    })
+
+    test('custom function receives tool-call-pending before approval is invoked', async () => {
+      const toolCall: FunctionToolCall<unknown> = {
+        id: 'call-1',
+        name: 'mock:test',
+        arguments: '{}',
+        raw: {},
+      }
+
+      const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Done' }])
+
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'test',
+            description: 'Test',
+            result: { content: [{ type: 'text', text: 'OK' }] },
+          },
+        ],
+        { test: provider },
+      )
+
+      const seenBeforeFn: Array<string> = []
+      const eventsCollected: Array<AgentEvent> = []
+      const approvalFn = vi.fn(async () => {
+        for (const e of eventsCollected) seenBeforeFn.push(e.type)
+        return true
+      })
+
+      const agent = new AgentSession({
+        session,
+        provider,
+        model: 'test-model',
+        toolApproval: approvalFn,
+      })
+
+      agent.events.on('event', (e) => eventsCollected.push(e))
+
+      await agent.run('Test')
+
+      expect(seenBeforeFn).toContain('tool-call-pending')
 
       await session.dispose()
     })

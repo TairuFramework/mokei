@@ -45,7 +45,7 @@ describe('turnReducer', () => {
     expect(s.pendingCall?.id).toBe('1')
   })
 
-  test('tool-call-approved moves to calling-tool', () => {
+  test('tool-call-approved moves to calling-tool and keeps pending call', () => {
     const s = apply([
       { type: 'start', prompt: 'hi', timestamp: 0 },
       {
@@ -60,6 +60,72 @@ describe('turnReducer', () => {
       },
     ])
     expect(s.state).toBe('calling-tool')
+    expect(s.pendingCall?.id).toBe('1')
+  })
+
+  test('tool-call-start (auto-approve path) sets calling-tool with pendingCall', () => {
+    const s = apply([
+      { type: 'start', prompt: 'hi', timestamp: 0 },
+      {
+        type: 'tool-call-approved',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        timestamp: 1,
+      },
+      {
+        type: 'tool-call-start',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        timestamp: 2,
+      },
+    ])
+    expect(s.state).toBe('calling-tool')
+    expect(s.pendingCall?.id).toBe('1')
+  })
+
+  test('tool-call-complete returns to streaming and clears pendingCall', () => {
+    const s = apply([
+      { type: 'start', prompt: 'hi', timestamp: 0 },
+      {
+        type: 'tool-call-approved',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        timestamp: 1,
+      },
+      {
+        type: 'tool-call-start',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        timestamp: 2,
+      },
+      {
+        type: 'tool-call-complete',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        result: { content: [{ type: 'text', text: 'ok' }] },
+        timestamp: 3,
+      },
+    ])
+    expect(s.state).toBe('streaming')
+    expect(s.pendingCall).toBeNull()
+  })
+
+  test('tool-call-error returns to streaming and clears pendingCall', () => {
+    const s = apply([
+      { type: 'start', prompt: 'hi', timestamp: 0 },
+      {
+        type: 'tool-call-approved',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        timestamp: 1,
+      },
+      {
+        type: 'tool-call-start',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        timestamp: 2,
+      },
+      {
+        type: 'tool-call-error',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        error: new Error('boom'),
+        timestamp: 3,
+      },
+    ])
+    expect(s.state).toBe('streaming')
     expect(s.pendingCall).toBeNull()
   })
 

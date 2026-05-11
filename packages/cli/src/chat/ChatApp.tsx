@@ -84,17 +84,15 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   const { contexts, addContext, removeContext } = useSession(session)
   const { pending, approve, deny, toolApprovalFn } = useToolApproval()
 
-  const createAgent = useCallback(
-    (): AgentSessionLike<T> =>
-      new AgentSession<T>({
-        session,
-        provider: providerKey,
-        model: model ?? '',
-        toolApproval: toolApprovalFn,
-        ...(timeout != null ? { timeout } : {}),
-      }),
-    [session, providerKey, model, toolApprovalFn, timeout],
-  )
+  const createAgent = useCallback((): AgentSessionLike<T> => {
+    return new AgentSession<T>({
+      session,
+      provider: providerKey,
+      model: model ?? '',
+      toolApproval: toolApprovalFn,
+      ...(timeout != null ? { timeout } : {}),
+    })
+  }, [session, providerKey, model, toolApprovalFn, timeout])
 
   const turn = useAgentTurn<T>({
     createAgent,
@@ -119,6 +117,13 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         }
         case 'tool-call-error':
           pushEntry({ kind: 'tool', name: event.toolCall.name, error: event.error.message })
+          break
+        case 'tool-call-denied':
+          pushEntry({
+            kind: 'notice',
+            variant: 'warning',
+            text: `tool denied: ${event.toolCall.name}${event.reason ? ` — ${event.reason}` : ''}`,
+          })
           break
         case 'error': {
           const err = event.error

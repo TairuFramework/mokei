@@ -45,12 +45,14 @@ export function turnReducer<T extends ProviderTypes = ProviderTypes>(
     case 'tool-call-pending':
       return { ...state, state: 'awaiting-approval', pendingCall: event.toolCall }
     case 'tool-call-approved':
-      return { ...state, state: 'calling-tool', pendingCall: null }
+      return { ...state, state: 'calling-tool', pendingCall: event.toolCall }
     case 'tool-call-denied':
       return { ...state, state: 'streaming', pendingCall: null }
     case 'tool-call-start':
+      return { ...state, state: 'calling-tool', pendingCall: event.toolCall }
     case 'tool-call-complete':
     case 'tool-call-error':
+      return { ...state, state: 'streaming', pendingCall: null }
     case 'iteration-complete':
       return state
     case 'complete':

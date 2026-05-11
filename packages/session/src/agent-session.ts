@@ -458,6 +458,12 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 
     // Custom function
     const fn = strategy as ToolApprovalFn
+    const pendingEvent = emitEvent({
+      type: 'tool-call-pending',
+      toolCall,
+      timestamp: Date.now(),
+    })
+    events.push(pendingEvent)
     const result = await fn(toolCall, context)
 
     let approved: boolean
