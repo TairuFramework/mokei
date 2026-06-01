@@ -1,6 +1,6 @@
 {
   "name": "mokei",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei CLI",
@@ -76,6 +76,7 @@
     "@types/react": "catalog:",
     "ink-testing-library": "catalog:",
     "oclif": "catalog:",
+    "react-dom": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
