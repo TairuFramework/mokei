@@ -143,7 +143,7 @@ function createMockProvider(
 
 // Create a Session with a mock context for testing
 async function createMockSessionWithTools(
-  tools: Array<{ name: string; description: string; result: CallToolResult }>,
+  tools: Array<{ name: string; description: string; result: CallToolResult; delayMs?: number }>,
   providers?: Record<string, ModelProvider<MockProviderTypes>>,
 ): Promise<Session<MockProviderTypes>> {
   const session = new Session<MockProviderTypes>({ providers })
@@ -195,11 +195,23 @@ async function createMockSessionWithTools(
         const request = req.value as { id: number; method: string; params?: { name: string } }
         if (request.method === 'tools/call') {
           const tool = tools.find((t) => t.name === request.params?.name)
-          transport.write({
-            jsonrpc: '2.0',
-            id: request.id,
-            result: tool?.result ?? { content: [{ type: 'text', text: 'Unknown tool' }] },
-          })
+          if (tool?.delayMs != null) {
+            const timer = setTimeout(() => {
+              transport.write({
+                jsonrpc: '2.0',
+                id: request.id,
+                result: tool.result,
+              })
+            }, tool.delayMs)
+            // Allow the process to exit even if a stalled response is still pending.
+            ;(timer as { unref?: () => void }).unref?.()
+          } else {
+            transport.write({
+              jsonrpc: '2.0',
+              id: request.id,
+              result: tool?.result ?? { content: [{ type: 'text', text: 'Unknown tool' }] },
+            })
+          }
         }
       }
     }
@@ -1434,6 +1446,130 @@ describe('AgentSession', () => {
 
         await session.dispose()
       })
+    })
+  })
+
+  describe('per-tool timeout and cancellation', () => {
+    const toolCall: FunctionToolCall<unknown> = {
+      id: 'call-1',
+      name: 'mock:slow',
+      arguments: '{}',
+      raw: {},
+    }
+
+    test('a tool exceeding toolTimeout yields ToolCallTimeoutError and the turn survives', async () => {
+      const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Recovered' }])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'slow',
+            description: 'never returns in time',
+            result: { content: [{ type: 'text', text: 'late' }] },
+            delayMs: 1000,
+          },
+        ],
+        { mock: provider },
+      )
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        toolTimeout: 50,
+      })
+
+      const events: Array<AgentEvent> = []
+      for await (const event of agent.stream('go')) {
+        events.push(event)
+      }
+
+      const errorEvent = events.find((e) => e.type === 'tool-call-error')
+      expect(errorEvent).toBeDefined()
+      expect((errorEvent as { error: Error }).error.name).toBe('ToolCallTimeoutError')
+      expect(events.some((e) => e.type === 'complete')).toBe(true)
+
+      await session.dispose()
+    })
+
+    test('cancelToolCall during execution yields ToolCallCancelledError and the turn survives', async () => {
+      const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'After cancel' }])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'slow',
+            description: 'stalls until cancelled',
+            result: { content: [{ type: 'text', text: 'late' }] },
+            delayMs: 1000,
+          },
+        ],
+        { mock: provider },
+      )
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        toolTimeout: 5000,
+      })
+
+      // Cancel as soon as the tool-call-start event fires (synchronous emitter).
+      agent.events.on('event', (e) => {
+        if (e.type === 'tool-call-start') {
+          agent.cancelToolCall()
+        }
+      })
+
+      const events: Array<AgentEvent> = []
+      for await (const event of agent.stream('go')) {
+        events.push(event)
+      }
+
+      const errorEvent = events.find((e) => e.type === 'tool-call-error')
+      expect(errorEvent).toBeDefined()
+      expect((errorEvent as { error: Error }).error.name).toBe('ToolCallCancelledError')
+      expect(events.some((e) => e.type === 'complete')).toBe(true)
+
+      await session.dispose()
+    })
+
+    test('a turn-level abort during a tool call does not produce a timeout/cancel error', async () => {
+      const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'unreached' }])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'slow',
+            description: 'stalls',
+            result: { content: [{ type: 'text', text: 'late' }] },
+            delayMs: 1000,
+          },
+        ],
+        { mock: provider },
+      )
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        toolTimeout: 5000,
+      })
+
+      const controller = new AbortController()
+      // Abort the turn as soon as the tool-call-start event fires (synchronous emitter).
+      agent.events.on('event', (e) => {
+        if (e.type === 'tool-call-start') {
+          controller.abort()
+        }
+      })
+
+      const events: Array<AgentEvent> = []
+      for await (const event of agent.stream('go', { signal: controller.signal })) {
+        events.push(event)
+      }
+
+      const errorEvent = events.find((e) => e.type === 'tool-call-error')
+      expect(errorEvent).toBeDefined()
+      const name = (errorEvent as { error: Error }).error.name
+      expect(name).not.toBe('ToolCallTimeoutError')
+      expect(name).not.toBe('ToolCallCancelledError')
+
+      await session.dispose()
     })
   })
 

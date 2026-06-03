@@ -519,6 +519,15 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   ): Promise<{ result?: CallToolResult; error?: Error; events: Array<AgentEvent<T>> }> {
     const events: Array<AgentEvent<T>> = []
 
+    // Per-call controller: fires on timeout or user cancel, independent of the turn.
+    // Set up BEFORE emitting tool-call-start so that cancelToolCall() called from
+    // within a tool-call-start handler takes effect on the live controller.
+    const callController = new AbortController()
+    this.#activeToolController = callController
+    const callTimer = setTimeout(() => {
+      callController.abort(TOOL_TIMEOUT_REASON)
+    }, this.#params.toolTimeout)
+
     // Emit start event
     const startEvent = emitEvent({
       type: 'tool-call-start',
@@ -526,13 +535,6 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       timestamp: Date.now(),
     })
     events.push(startEvent)
-
-    // Per-call controller: fires on timeout or user cancel, independent of the turn.
-    const callController = new AbortController()
-    this.#activeToolController = callController
-    const callTimer = setTimeout(() => {
-      callController.abort(TOOL_TIMEOUT_REASON)
-    }, this.#params.toolTimeout)
     // Forward a turn-level abort onto the per-call controller. The listener is
     // removed in `finally` so listeners don't accumulate on the turn signal
     // across many sequential tool calls.
