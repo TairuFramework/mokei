@@ -79,6 +79,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       toolApproval: params.toolApproval ?? AGENT_DEFAULTS.toolApproval,
       maxIterations: params.maxIterations ?? AGENT_DEFAULTS.maxIterations,
       timeout: params.timeout ?? AGENT_DEFAULTS.timeout,
+      toolTimeout: params.toolTimeout ?? AGENT_DEFAULTS.toolTimeout,
       onEvent: params.onEvent,
     }
   }

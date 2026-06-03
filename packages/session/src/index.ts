@@ -14,4 +14,5 @@
 export type { LocalToolDefinition, LocalToolExecute } from '@mokei/host'
 export * from './agent-session.js'
 export * from './agent-types.js'
+export * from './errors.js'
 export * from './session.js'

@@ -64,6 +64,8 @@ export type AgentParams<T extends ProviderTypes = ProviderTypes> = {
   maxIterations?: number
   /** Timeout in milliseconds (default: 300000 = 5 minutes) */
   timeout?: number
+  /** Per-tool-call timeout in milliseconds (default: 120000 = 2 minutes) */
+  toolTimeout?: number
   /** Optional callback for each event during execution */
   onEvent?: (event: AgentEvent) => void
 }
@@ -79,6 +81,7 @@ export type ResolvedAgentParams<T extends ProviderTypes = ProviderTypes> = {
   toolApproval: ToolApprovalStrategy
   maxIterations: number
   timeout: number
+  toolTimeout: number
   onEvent: ((event: AgentEvent) => void) | undefined
 }
 
@@ -290,5 +293,6 @@ export type AgentFinishReason = 'complete' | 'max-iterations' | 'timeout' | 'abo
 export const AGENT_DEFAULTS = {
   maxIterations: 10,
   timeout: 5 * 60 * 1000, // 5 minutes
+  toolTimeout: 2 * 60 * 1000, // 2 minutes
   toolApproval: 'auto' as const,
 } as const
