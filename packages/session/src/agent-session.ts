@@ -533,11 +533,21 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     const callTimer = setTimeout(() => {
       callController.abort(TOOL_TIMEOUT_REASON)
     }, this.#params.toolTimeout)
-    const callSignal = anySignal([signal, callController.signal])
+    // Forward a turn-level abort onto the per-call controller. The listener is
+    // removed in `finally` so listeners don't accumulate on the turn signal
+    // across many sequential tool calls.
+    const onTurnAbort = () => {
+      callController.abort(signal.reason)
+    }
+    if (signal.aborted) {
+      callController.abort(signal.reason)
+    } else {
+      signal.addEventListener('abort', onTurnAbort)
+    }
 
     try {
       // Execute via session (handles namespaced tool parsing internally)
-      const result = await this.#params.session.executeToolCall(toolCall, callSignal)
+      const result = await this.#params.session.executeToolCall(toolCall, callController.signal)
 
       // Emit complete event
       const completeEvent = emitEvent({
@@ -575,6 +585,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       return { error: err, events }
     } finally {
       clearTimeout(callTimer)
+      signal.removeEventListener('abort', onTurnAbort)
       this.#activeToolController = null
     }
   }
