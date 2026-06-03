@@ -22,6 +22,12 @@ import {
   type ToolApprovalFn,
   type ToolApprovalStrategy,
 } from './agent-types.js'
+import { ToolCallCancelledError, ToolCallTimeoutError } from './errors.js'
+
+/** Abort reason set when the per-tool timeout timer fires. */
+const TOOL_TIMEOUT_REASON = Symbol('mokei.tool-timeout')
+/** Abort reason set when the user cancels the active tool call. */
+const TOOL_CANCEL_REASON = Symbol('mokei.tool-cancel')
 
 /**
  * Events emitted by AgentSession.
@@ -58,6 +64,7 @@ export type AgentSessionEvents<T extends ProviderTypes = ProviderTypes> = {
 export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #params: ResolvedAgentParams<T>
   #events: EventEmitter<AgentSessionEvents<T>>
+  #activeToolController: AbortController | null = null
 
   constructor(params: AgentParams<T>) {
     super()
@@ -89,6 +96,14 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
    */
   get events(): EventEmitter<AgentSessionEvents<T>> {
     return this.#events
+  }
+
+  /**
+   * Cancel the tool call currently being executed, if any. The current turn
+   * continues with the remaining tool calls / iterations. No-op when idle.
+   */
+  cancelToolCall(): void {
+    this.#activeToolController?.abort(TOOL_CANCEL_REASON)
   }
 
   /**
@@ -512,10 +527,17 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     })
     events.push(startEvent)
 
+    // Per-call controller: fires on timeout or user cancel, independent of the turn.
+    const callController = new AbortController()
+    this.#activeToolController = callController
+    const callTimer = setTimeout(() => {
+      callController.abort(TOOL_TIMEOUT_REASON)
+    }, this.#params.toolTimeout)
+    const callSignal = anySignal([signal, callController.signal])
+
     try {
       // Execute via session (handles namespaced tool parsing internally)
-      const request = this.#params.session.executeToolCall(toolCall, signal)
-      const result = await request
+      const result = await this.#params.session.executeToolCall(toolCall, callSignal)
 
       // Emit complete event
       const completeEvent = emitEvent({
@@ -528,7 +550,18 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 
       return { result, events }
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error))
+      // Discriminate why the call ended. The turn-level signal taking priority
+      // preserves user-abort / turn-timeout semantics (turn ends elsewhere).
+      let err: Error
+      if (signal.aborted) {
+        err = error instanceof Error ? error : new Error(String(error))
+      } else if (callController.signal.reason === TOOL_TIMEOUT_REASON) {
+        err = new ToolCallTimeoutError(toolCall.name, this.#params.toolTimeout)
+      } else if (callController.signal.reason === TOOL_CANCEL_REASON) {
+        err = new ToolCallCancelledError(toolCall.name)
+      } else {
+        err = error instanceof Error ? error : new Error(String(error))
+      }
 
       // Emit error event
       const errorEvent = emitEvent({
@@ -540,6 +573,9 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       events.push(errorEvent)
 
       return { error: err, events }
+    } finally {
+      clearTimeout(callTimer)
+      this.#activeToolController = null
     }
   }
 }
