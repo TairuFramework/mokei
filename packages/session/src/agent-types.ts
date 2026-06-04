@@ -93,6 +93,8 @@ export type AgentEvent<T extends ProviderTypes = ProviderTypes> =
   | AgentIterationStartEvent
   | AgentTextDeltaEvent
   | AgentTextCompleteEvent
+  | AgentReasoningDeltaEvent
+  | AgentReasoningCompleteEvent
   | AgentToolCallPendingEvent
   | AgentToolCallApprovedEvent
   | AgentToolCallDeniedEvent
@@ -138,6 +140,26 @@ export type AgentTextDeltaEvent = {
 export type AgentTextCompleteEvent = {
   type: 'text-complete'
   text: string
+  timestamp: number
+}
+
+/**
+ * Emitted for each reasoning (thinking) chunk streamed from the model, for
+ * providers/models that expose a separate reasoning stream.
+ */
+export type AgentReasoningDeltaEvent = {
+  type: 'reasoning-delta'
+  reasoning: string
+  timestamp: number
+}
+
+/**
+ * Emitted when reasoning for an iteration completes (only when the model
+ * produced any reasoning).
+ */
+export type AgentReasoningCompleteEvent = {
+  type: 'reasoning-complete'
+  reasoning: string
   timestamp: number
 }
 

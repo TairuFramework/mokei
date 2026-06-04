@@ -6,6 +6,9 @@ export type TurnStateName = 'idle' | 'streaming' | 'awaiting-approval' | 'callin
 export type TurnState<T extends ProviderTypes = ProviderTypes> = {
   state: TurnStateName
   currentText: string
+  // Live reasoning (thinking) for the current model response, shown ephemerally
+  // while the model reasons before producing text or a tool call.
+  currentReasoning: string
   lastAssistantText: string
   messages: Array<Message<T['MessagePart'], T['ToolCall']>>
   pendingCall: FunctionToolCall<unknown> | null
@@ -21,6 +24,7 @@ export function initialTurnState<T extends ProviderTypes = ProviderTypes>(): Tur
   return {
     state: 'idle',
     currentText: '',
+    currentReasoning: '',
     lastAssistantText: '',
     messages: [],
     pendingCall: null,
@@ -41,11 +45,21 @@ export function turnReducer<T extends ProviderTypes = ProviderTypes>(
         ...state,
         state: 'streaming',
         currentText: '',
+        currentReasoning: '',
         lastError: null,
         streamStartedAt: event.timestamp,
       }
     case 'iteration-start':
-      return { ...state, iteration: event.iteration, streamStartedAt: event.timestamp }
+      return {
+        ...state,
+        iteration: event.iteration,
+        currentReasoning: '',
+        streamStartedAt: event.timestamp,
+      }
+    case 'reasoning-delta':
+      return { ...state, currentReasoning: state.currentReasoning + event.reasoning }
+    case 'reasoning-complete':
+      return state
     case 'text-delta':
       return { ...state, currentText: state.currentText + event.text }
     case 'text-complete':

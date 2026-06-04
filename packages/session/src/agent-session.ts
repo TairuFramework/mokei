@@ -230,6 +230,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 
         // Call the model via session's streamChatTurn
         let iterationText = ''
+        let iterationReasoning = ''
         const chatTurn = session.streamChatTurn({
           provider,
           model,
@@ -264,11 +265,31 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
             })
             yield textEvent
             eventHistory.push(textEvent)
+          } else if (chunk.type === 'reasoning-delta') {
+            iterationReasoning += chunk.reasoning
+            const reasoningEvent = emitEvent({
+              type: 'reasoning-delta',
+              reasoning: chunk.reasoning,
+              timestamp: Date.now(),
+            })
+            yield reasoningEvent
+            eventHistory.push(reasoningEvent)
           } else if (chunk.type === 'done') {
             totalInputTokens += chunk.inputTokens
             totalOutputTokens += chunk.outputTokens
           }
           result = await chatTurn.next()
+        }
+
+        // Emit reasoning complete if the model produced any reasoning
+        if (iterationReasoning) {
+          const reasoningCompleteEvent = emitEvent({
+            type: 'reasoning-complete',
+            reasoning: iterationReasoning,
+            timestamp: Date.now(),
+          })
+          yield reasoningCompleteEvent
+          eventHistory.push(reasoningCompleteEvent)
         }
 
         // Get aggregated message from generator return value

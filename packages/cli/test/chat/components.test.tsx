@@ -6,6 +6,7 @@ import { AssistantStreamingText } from '../../src/chat/components/AssistantStrea
 import { Footer } from '../../src/chat/components/Footer.js'
 import { HelpCard } from '../../src/chat/components/HelpCard.js'
 import { ModelSelectCard } from '../../src/chat/components/ModelSelectCard.js'
+import { ReasoningView } from '../../src/chat/components/ReasoningView.js'
 import { StatusLine } from '../../src/chat/components/StatusLine.js'
 import { SystemNotice } from '../../src/chat/components/SystemNotice.js'
 import { ToolApprovalCard } from '../../src/chat/components/ToolApprovalCard.js'
@@ -82,6 +83,27 @@ describe('ToolCallStatus elapsed + hang', () => {
     const { lastFrame } = render(
       <ToolCallStatus name="ctx:read" phase="calling" elapsedMs={12000} />,
     )
+    expect(lastFrame()).toMatch(/stuck/i)
+  })
+})
+
+describe('ReasoningView', () => {
+  test('shows the thinking label and reasoning text', () => {
+    const { lastFrame } = render(<ReasoningView reasoning="weighing options" elapsedMs={2000} />)
+    expect(lastFrame()).toMatch(/thinking/i)
+    expect(lastFrame()).toContain('weighing options')
+    expect(lastFrame()).toMatch(/2s/)
+  })
+
+  test('shows only the tail of long reasoning', () => {
+    const reasoning = Array.from({ length: 20 }, (_, i) => `line ${i}`).join('\n')
+    const { lastFrame } = render(<ReasoningView reasoning={reasoning} />)
+    expect(lastFrame()).toContain('line 19')
+    expect(lastFrame()).not.toContain('line 0')
+  })
+
+  test('warns past the hang threshold', () => {
+    const { lastFrame } = render(<ReasoningView reasoning="hmm" elapsedMs={12000} />)
     expect(lastFrame()).toMatch(/stuck/i)
   })
 })

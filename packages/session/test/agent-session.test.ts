@@ -65,6 +65,7 @@ type MockProviderTypes = {
 function createMockProvider(
   responses: Array<{
     text?: string
+    reasoning?: string
     toolCalls?: Array<FunctionToolCall<unknown>>
     inputTokens?: number
     outputTokens?: number
@@ -82,6 +83,10 @@ function createMockProvider(
       callIndex++
 
       const parts: Array<MessagePart<unknown, unknown>> = []
+
+      if (response.reasoning) {
+        parts.push({ type: 'reasoning-delta', reasoning: response.reasoning, raw: {} })
+      }
 
       if (response.text) {
         parts.push({ type: 'text-delta', text: response.text, raw: {} })
@@ -415,6 +420,39 @@ describe('AgentSession', () => {
 
       expect(onEvent).toHaveBeenCalled()
       expect(receivedEvents.length).toBe(events.length)
+    })
+
+    test('emits reasoning-delta and reasoning-complete when the model reasons', async () => {
+      const provider = createMockProvider([{ reasoning: 'Let me think.', text: 'Answer' }])
+      const session = new Session({ providers: { test: provider } })
+      const agent = new AgentSession({ session, provider, model: 'test-model' })
+
+      const events: Array<AgentEvent> = []
+      for await (const event of agent.stream('Hello')) {
+        events.push(event)
+      }
+
+      const reasoningDelta = events.find((e) => e.type === 'reasoning-delta')
+      const reasoningComplete = events.find((e) => e.type === 'reasoning-complete')
+      expect(reasoningDelta).toMatchObject({ reasoning: 'Let me think.' })
+      expect(reasoningComplete).toMatchObject({ reasoning: 'Let me think.' })
+      // reasoning-complete comes before text-complete
+      const types = events.map((e) => e.type)
+      expect(types.indexOf('reasoning-complete')).toBeLessThan(types.indexOf('text-complete'))
+    })
+
+    test('does not emit reasoning events when the model produces none', async () => {
+      const provider = createMockProvider([{ text: 'Answer' }])
+      const session = new Session({ providers: { test: provider } })
+      const agent = new AgentSession({ session, provider, model: 'test-model' })
+
+      const events: Array<AgentEvent> = []
+      for await (const event of agent.stream('Hello')) {
+        events.push(event)
+      }
+      const types = events.map((e) => e.type)
+      expect(types).not.toContain('reasoning-delta')
+      expect(types).not.toContain('reasoning-complete')
     })
   })
 

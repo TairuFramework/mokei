@@ -23,6 +23,22 @@ describe('turnReducer', () => {
     expect(iterated.streamStartedAt).toBe(250)
   })
 
+  test('reasoning-delta accumulates currentReasoning; iteration-start clears it', () => {
+    const s = apply([
+      { type: 'start', prompt: 'hi', timestamp: 0 },
+      { type: 'reasoning-delta', reasoning: 'Let me ', timestamp: 1 },
+      { type: 'reasoning-delta', reasoning: 'think.', timestamp: 2 },
+    ])
+    expect(s.currentReasoning).toBe('Let me think.')
+
+    const cleared = apply([
+      { type: 'start', prompt: 'hi', timestamp: 0 },
+      { type: 'reasoning-delta', reasoning: 'first pass', timestamp: 1 },
+      { type: 'iteration-start', iteration: 2, timestamp: 2 },
+    ])
+    expect(cleared.currentReasoning).toBe('')
+  })
+
   test('text-delta accumulates currentText', () => {
     const s = apply([
       { type: 'start', prompt: 'hi', timestamp: 0 },
