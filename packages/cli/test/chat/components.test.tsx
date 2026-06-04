@@ -106,6 +106,13 @@ describe('ReasoningView', () => {
     const { lastFrame } = render(<ReasoningView reasoning="hmm" elapsedMs={12000} />)
     expect(lastFrame()).toMatch(/stuck/i)
   })
+
+  test('hides reasoning text but keeps the status when showText is false', () => {
+    const { lastFrame } = render(<ReasoningView reasoning="secret thoughts" showText={false} />)
+    expect(lastFrame()).toMatch(/thinking/i)
+    expect(lastFrame()).not.toContain('secret thoughts')
+    expect(lastFrame()).toContain('/reasoning')
+  })
 })
 
 describe('WaitingStatus elapsed + hang', () => {

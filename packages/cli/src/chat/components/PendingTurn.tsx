@@ -14,9 +14,16 @@ export type PendingTurnProps = {
   pending: PendingApproval | null
   onApprove: () => void
   onDeny: () => void
+  showReasoning?: boolean
 }
 
-export function PendingTurn({ turn, pending, onApprove, onDeny }: PendingTurnProps) {
+export function PendingTurn({
+  turn,
+  pending,
+  onApprove,
+  onDeny,
+  showReasoning = true,
+}: PendingTurnProps) {
   const beforeText = turn.state === 'streaming' && turn.currentText === ''
   const thinking = beforeText && turn.currentReasoning !== ''
   const waiting = beforeText && turn.currentReasoning === ''
@@ -30,7 +37,13 @@ export function PendingTurn({ turn, pending, onApprove, onDeny }: PendingTurnPro
   return (
     <Box flexDirection="column">
       {turn.currentText !== '' ? <AssistantStreamingText text={turn.currentText} /> : null}
-      {thinking ? <ReasoningView reasoning={turn.currentReasoning} elapsedMs={elapsedMs} /> : null}
+      {thinking ? (
+        <ReasoningView
+          reasoning={turn.currentReasoning}
+          elapsedMs={elapsedMs}
+          showText={showReasoning}
+        />
+      ) : null}
       {waiting ? <WaitingStatus elapsedMs={elapsedMs} /> : null}
       {turn.state === 'awaiting-approval' && pending != null ? (
         <ToolApprovalCard call={pending.call} onApprove={onApprove} onDeny={onDeny} />

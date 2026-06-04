@@ -60,6 +60,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   const quitConfirmRef = useRef(false)
   const quitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null)
+  const [showReasoning, setShowReasoning] = useState(true)
   const toolStartRef = useRef<Map<string, number>>(new Map())
   const lastErrorDetailRef = useRef<string | null>(null)
 
@@ -327,11 +328,22 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
             pushEntry({ kind: 'notice', variant: 'info', text: lastErrorDetailRef.current })
           }
           break
+        case 'reasoning': {
+          const [arg] = args
+          const next = arg === 'on' ? true : arg === 'off' ? false : !showReasoning
+          setShowReasoning(next)
+          pushEntry({
+            kind: 'notice',
+            variant: 'info',
+            text: `reasoning display: ${next ? 'on' : 'off'}`,
+          })
+          break
+        }
         default:
           pushEntry({ kind: 'notice', variant: 'error', text: `unknown command: /${name}` })
       }
     },
-    [addContext, contexts, exit, model, provider, pushEntry, removeContext, turn],
+    [addContext, contexts, exit, model, provider, pushEntry, removeContext, showReasoning, turn],
   )
 
   useInput((input, key) => {
@@ -396,7 +408,13 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         }}
       </Static>
 
-      <PendingTurn turn={turn} pending={pending} onApprove={approve} onDeny={deny} />
+      <PendingTurn
+        turn={turn}
+        pending={pending}
+        onApprove={approve}
+        onDeny={deny}
+        showReasoning={showReasoning}
+      />
 
       {modal === 'model' ? (
         <ModelSelectCard
