@@ -1,6 +1,7 @@
 import { Spinner } from '@inkjs/ui'
 import { Box, Text } from 'ink'
 
+import { IconLine } from './IconLine.js'
 import { HANG_WARN_MS } from './ToolCallStatus.js'
 
 /** Number of trailing reasoning lines kept visible (bounds the live height). */
@@ -34,7 +35,11 @@ export function ReasoningView({ reasoning, elapsedMs, showText = true }: Reasoni
           {showText ? '' : ' (/reasoning to show)'}
         </Text>
       </Box>
-      {showText ? <Text dimColor>{tail}</Text> : null}
+      {showText ? (
+        <IconLine icon="○" color="magenta" dim>
+          {tail}
+        </IconLine>
+      ) : null}
     </Box>
   )
 }
