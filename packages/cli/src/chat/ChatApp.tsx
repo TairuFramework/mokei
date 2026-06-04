@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AssistantMessage } from './components/AssistantMessage.js'
 import { Footer } from './components/Footer.js'
 import { HelpCard } from './components/HelpCard.js'
+import { IconLine } from './components/IconLine.js'
 import { ModelSelectCard } from './components/ModelSelectCard.js'
 import { PendingTurn } from './components/PendingTurn.js'
 import { SystemNotice, type SystemNoticeVariant } from './components/SystemNotice.js'
@@ -31,6 +32,7 @@ type TranscriptEntry =
       durationMs?: number
     }
   | { kind: 'notice'; id: number; variant: SystemNoticeVariant; text: string }
+  | { kind: 'reasoning'; id: number; text: string }
 
 // Distributive omit preserves the discriminated union (plain `Omit<TranscriptEntry, 'id'>`
 // collapses into an intersection that drops variant-specific fields).
@@ -67,6 +69,9 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   // when the turn ends so `/reasoning last` can reprint it.
   const reasoningBufRef = useRef<string>('')
   const lastReasoningRef = useRef<string>('')
+  // Mirror of showReasoning readable from the (possibly stale) onEvent closure.
+  const showReasoningRef = useRef(showReasoning)
+  showReasoningRef.current = showReasoning
 
   const loadModels = useCallback(() => {
     if (modelsPromiseRef.current == null) {
@@ -118,6 +123,13 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           break
         case 'reasoning-delta':
           reasoningBufRef.current += event.reasoning
+          break
+        case 'reasoning-complete':
+          // Persist reasoning into the transcript so it stays visible after the
+          // response text, when reasoning display is enabled.
+          if (showReasoningRef.current && event.reasoning !== '') {
+            pushEntry({ kind: 'reasoning', text: event.reasoning })
+          }
           break
         case 'text-complete':
           if (event.text.length > 0) {
@@ -429,6 +441,12 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
               )
             case 'notice':
               return <SystemNotice key={entry.id} variant={entry.variant} text={entry.text} />
+            case 'reasoning':
+              return (
+                <IconLine key={entry.id} icon="○" color="magenta" dim>
+                  {entry.text}
+                </IconLine>
+              )
           }
         }}
       </Static>

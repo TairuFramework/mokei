@@ -1,4 +1,4 @@
-import { Box, Text } from 'ink'
+import { IconLine } from './IconLine.js'
 
 export type SystemNoticeVariant = 'info' | 'warning' | 'error' | 'success'
 
@@ -14,11 +14,17 @@ const COLOR: Record<SystemNoticeVariant, string> = {
   success: 'green',
 }
 
+const ICON: Record<SystemNoticeVariant, string> = {
+  info: 'ℹ',
+  warning: '!',
+  error: '✗',
+  success: '✓',
+}
+
 export function SystemNotice({ variant = 'info', text }: SystemNoticeProps) {
   return (
-    <Box>
-      <Text color={COLOR[variant]}>[{variant}] </Text>
-      <Text>{text}</Text>
-    </Box>
+    <IconLine icon={ICON[variant]} color={COLOR[variant]}>
+      {text}
+    </IconLine>
   )
 }
