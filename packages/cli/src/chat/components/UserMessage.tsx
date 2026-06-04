@@ -1,12 +1,13 @@
-import { Box, Text } from 'ink'
+import { Text } from 'ink'
 
 export type UserMessageProps = { text: string }
 
 export function UserMessage({ text }: UserMessageProps) {
+  // Single Text so the marker flows inline and the body wraps full width.
   return (
-    <Box>
+    <Text>
       <Text color="cyan">› </Text>
-      <Text>{text}</Text>
-    </Box>
+      {text}
+    </Text>
   )
 }
