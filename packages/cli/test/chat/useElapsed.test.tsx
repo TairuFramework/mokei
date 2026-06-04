@@ -1,5 +1,5 @@
 import { render } from 'ink-testing-library'
-import React, { act, useEffect } from 'react'
+import { act, useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { useElapsed } from '../../src/chat/hooks/useElapsed.js'
