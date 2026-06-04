@@ -84,4 +84,9 @@ describe('matchSlashCommands', () => {
   test('returns empty list when prefix matches nothing', () => {
     expect(matchSlashCommands('/zzz')).toEqual([])
   })
+
+  test('suggests reasoning and details commands', () => {
+    expect(matchSlashCommands('/r').map((c) => c.name)).toEqual(['reasoning'])
+    expect(matchSlashCommands('/d').map((c) => c.name)).toEqual(['details'])
+  })
 })
