@@ -238,9 +238,22 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
           signal: combinedSignal,
         })
 
-        // Iterate through chunks, yielding text events in real-time
+        // Iterate through chunks, yielding text events in real-time.
+        // Check the abort signal between chunks: aborting the signal does not
+        // reliably interrupt an actively-streaming provider response (the stream
+        // keeps yielding buffered chunks), so the loop must stop on its own and
+        // close the stream rather than wait for it to end. The throw is handled
+        // by the catch below, which emits the timeout/error event.
         let result = await chatTurn.next()
         while (!result.done) {
+          if (combinedSignal.aborted) {
+            // Close the provider stream (releases the reader / HTTP connection).
+            // `never` satisfies the generator's TReturn without a real value.
+            await chatTurn.return(undefined as never)
+            throw combinedSignal.reason instanceof Error
+              ? combinedSignal.reason
+              : new Error('Aborted')
+          }
           const chunk = result.value
           if (chunk.type === 'text-delta') {
             iterationText += chunk.text

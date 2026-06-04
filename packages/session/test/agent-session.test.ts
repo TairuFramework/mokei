@@ -1629,4 +1629,84 @@ describe('AgentSession', () => {
       expect(systemCount).toBe(1)
     })
   })
+
+  describe('mid-stream abort (timeout while streaming)', () => {
+    // A provider whose stream keeps yielding chunks and never reacts to the
+    // abort signal — mirrors a model (e.g. an ollama reasoning model) that keeps
+    // streaming after the turn signal aborts. The agent loop must stop consuming
+    // on its own rather than wait for the stream to end.
+    function createIgnoringStreamProvider(
+      chunkCount: number,
+      delayMs: number,
+    ): ModelProvider<MockProviderTypes> {
+      return {
+        listModels: vi.fn(async () => [{ id: 'test-model', raw: { id: 'test-model' } }]),
+        embed: vi.fn(async () => ({ embeddings: [[0]] })),
+        streamChat: vi.fn(() => {
+          let i = 0
+          const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+            async pull(controller) {
+              await new Promise((resolve) => setTimeout(resolve, delayMs))
+              if (i < chunkCount) {
+                controller.enqueue({ type: 'text-delta', text: `${i} `, raw: {} })
+                i++
+              } else {
+                controller.enqueue({ type: 'done', inputTokens: 1, outputTokens: 1, raw: {} })
+                controller.close()
+              }
+            },
+          })
+          return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
+            unknown,
+            unknown
+          >
+        }),
+        aggregateMessage: vi.fn(
+          (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => ({
+            source: 'aggregated',
+            role: 'assistant',
+            text: parts
+              .filter((p) => p.text)
+              .map((p) => p.text)
+              .join(''),
+            toolCalls: parts.flatMap((p) => p.toolCalls ?? []),
+            inputTokens: 0,
+            outputTokens: 0,
+          }),
+        ),
+        toolFromMCP: vi.fn((tool: Tool) => ({
+          name: tool.name,
+          description: tool.description ?? '',
+        })),
+      }
+    }
+
+    test('turn timeout interrupts an actively-streaming response', async () => {
+      const provider = createIgnoringStreamProvider(100, 5)
+      const session = new Session({ providers: { mock: provider } })
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        timeout: 20,
+      })
+
+      const events: Array<AgentEvent> = []
+      try {
+        for await (const event of agent.stream('go')) {
+          events.push(event)
+        }
+      } catch {
+        // The agent rethrows the abort after emitting the timeout event.
+      }
+
+      const types = events.map((e) => e.type)
+      const deltas = types.filter((t) => t === 'text-delta').length
+
+      expect(types).toContain('timeout')
+      expect(types).not.toContain('complete')
+      // Must have stopped well before draining all 100 chunks.
+      expect(deltas).toBeLessThan(100)
+    })
+  })
 })
