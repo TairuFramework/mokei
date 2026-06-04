@@ -68,6 +68,53 @@ describe('streaming + approval', () => {
   })
 })
 
+describe('ToolCallStatus elapsed + hang', () => {
+  test('shows elapsed seconds while calling', () => {
+    const { lastFrame } = render(
+      <ToolCallStatus name="ctx:read" phase="calling" elapsedMs={3000} />,
+    )
+    expect(lastFrame()).toContain('ctx:read')
+    expect(lastFrame()).toMatch(/3s/)
+  })
+
+  test('warns when elapsed passes the hang threshold', () => {
+    const { lastFrame } = render(
+      <ToolCallStatus name="ctx:read" phase="calling" elapsedMs={12000} />,
+    )
+    expect(lastFrame()).toMatch(/stuck/i)
+  })
+})
+
+describe('ToolResultCard outcomes', () => {
+  test('collapses a multi-line error to its first line with a details hint', () => {
+    const { lastFrame } = render(
+      <ToolResultCard name="ctx:read" error={'ENOENT: missing\nstack line 1\nstack line 2'} />,
+    )
+    expect(lastFrame()).toContain('ENOENT: missing')
+    expect(lastFrame()).not.toContain('stack line 1')
+    expect(lastFrame()).toContain('/details')
+  })
+
+  test('renders the timeout outcome', () => {
+    const { lastFrame } = render(
+      <ToolResultCard name="ctx:read" error="tool timed out" outcome="timeout" />,
+    )
+    expect(lastFrame()).toMatch(/timed out/i)
+  })
+
+  test('renders the cancelled outcome', () => {
+    const { lastFrame } = render(
+      <ToolResultCard name="ctx:read" error="cancelled by user" outcome="cancelled" />,
+    )
+    expect(lastFrame()).toMatch(/cancelled/i)
+  })
+
+  test('shows duration when provided', () => {
+    const { lastFrame } = render(<ToolResultCard name="ctx:read" result="ok" durationMs={1500} />)
+    expect(lastFrame()).toMatch(/1\.5s/)
+  })
+})
+
 describe('footer + selects + help', () => {
   test('StatusLine shows model and streaming state', () => {
     const { lastFrame } = render(
