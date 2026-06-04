@@ -10,6 +10,7 @@ export type AgentSessionLike<T extends ProviderTypes = ProviderTypes> = {
     prompt: string,
     opts?: { messages?: Array<Message<T['MessagePart'], T['ToolCall']>>; signal?: AbortSignal },
   ): AsyncGenerator<AgentEvent<T>>
+  cancelToolCall?(): void
 }
 
 export type UseAgentTurnParams<T extends ProviderTypes = ProviderTypes> = {
@@ -20,6 +21,7 @@ export type UseAgentTurnParams<T extends ProviderTypes = ProviderTypes> = {
 export type UseAgentTurnReturn<T extends ProviderTypes = ProviderTypes> = TurnState<T> & {
   submit: (text: string) => Promise<void>
   abort: () => void
+  cancelTool: () => void
 }
 
 export function useAgentTurn<T extends ProviderTypes = ProviderTypes>(
@@ -31,6 +33,7 @@ export function useAgentTurn<T extends ProviderTypes = ProviderTypes>(
     initialTurnState<T>,
   )
   const abortRef = useRef<AbortController | null>(null)
+  const agentRef = useRef<AgentSessionLike<T> | null>(null)
   const messagesRef = useRef<Array<Message<T['MessagePart'], T['ToolCall']>>>([])
   const { createAgent, onEvent } = params
 
@@ -40,6 +43,7 @@ export function useAgentTurn<T extends ProviderTypes = ProviderTypes>(
       const controller = new AbortController()
       abortRef.current = controller
       const agent = createAgent()
+      agentRef.current = agent
       try {
         for await (const event of agent.stream(text, {
           messages: messagesRef.current,
@@ -56,6 +60,7 @@ export function useAgentTurn<T extends ProviderTypes = ProviderTypes>(
         // swallow here so callers don't hit unhandled rejections.
       } finally {
         abortRef.current = null
+        agentRef.current = null
       }
     },
     [createAgent, onEvent],
@@ -65,5 +70,12 @@ export function useAgentTurn<T extends ProviderTypes = ProviderTypes>(
     abortRef.current?.abort()
   }, [])
 
-  return useMemo(() => ({ ...state, submit, abort }), [state, submit, abort])
+  const cancelTool = useCallback(() => {
+    agentRef.current?.cancelToolCall?.()
+  }, [])
+
+  return useMemo(
+    () => ({ ...state, submit, abort, cancelTool }),
+    [state, submit, abort, cancelTool],
+  )
 }

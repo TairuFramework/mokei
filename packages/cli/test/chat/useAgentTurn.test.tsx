@@ -156,4 +156,47 @@ describe('useAgentTurn', () => {
 
     hook.unmount()
   })
+
+  test('cancelTool calls the agent cancelToolCall while the turn is open', async () => {
+    let cancelCount = 0
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const agent: AgentSessionLike & { cancelToolCall: () => void } = {
+      async *stream() {
+        yield { type: 'start', prompt: 'hi', timestamp: 0 } as never
+        yield {
+          type: 'tool-call-start',
+          toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+          timestamp: 1,
+        } as never
+        // Hold the turn open so agentRef is still set when we cancel.
+        await gate
+      },
+      cancelToolCall() {
+        cancelCount++
+      },
+    }
+
+    const hook = await renderHook(() => useAgentTurn({ createAgent: () => agent }))
+
+    let submitPromise!: Promise<void>
+    await act(async () => {
+      submitPromise = hook.current().submit('hi')
+      // Let the generator reach `await gate`.
+      await new Promise((resolve) => setTimeout(resolve))
+    })
+
+    act(() => {
+      hook.current().cancelTool()
+    })
+    expect(cancelCount).toBe(1)
+
+    await act(async () => {
+      release()
+      await submitPromise
+    })
+    hook.unmount()
+  })
 })
