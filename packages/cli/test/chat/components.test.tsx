@@ -13,6 +13,7 @@ import { ToolCallStatus } from '../../src/chat/components/ToolCallStatus.js'
 import { ToolResultCard } from '../../src/chat/components/ToolResultCard.js'
 import { ToolSelectCard } from '../../src/chat/components/ToolSelectCard.js'
 import { UserMessage } from '../../src/chat/components/UserMessage.js'
+import { WaitingStatus } from '../../src/chat/components/WaitingStatus.js'
 
 describe('components', () => {
   test('UserMessage shows the prompt text with a marker', () => {
@@ -82,6 +83,25 @@ describe('ToolCallStatus elapsed + hang', () => {
       <ToolCallStatus name="ctx:read" phase="calling" elapsedMs={12000} />,
     )
     expect(lastFrame()).toMatch(/stuck/i)
+  })
+})
+
+describe('WaitingStatus elapsed + hang', () => {
+  test('shows waiting label and elapsed seconds', () => {
+    const { lastFrame } = render(<WaitingStatus elapsedMs={4000} />)
+    expect(lastFrame()).toMatch(/waiting for response/i)
+    expect(lastFrame()).toMatch(/4s/)
+  })
+
+  test('warns when waiting passes the hang threshold', () => {
+    const { lastFrame } = render(<WaitingStatus elapsedMs={15000} />)
+    expect(lastFrame()).toMatch(/stuck/i)
+    expect(lastFrame()).toMatch(/esc/i)
+  })
+
+  test('renders without elapsed when none provided', () => {
+    const { lastFrame } = render(<WaitingStatus />)
+    expect(lastFrame()).toMatch(/waiting for response/i)
   })
 })
 

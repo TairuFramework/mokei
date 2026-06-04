@@ -10,6 +10,9 @@ export type TurnState<T extends ProviderTypes = ProviderTypes> = {
   messages: Array<Message<T['MessagePart'], T['ToolCall']>>
   pendingCall: FunctionToolCall<unknown> | null
   activeToolCall: { call: FunctionToolCall<unknown>; startedAt: number } | null
+  // When the current model response began (start / each iteration-start). Drives
+  // the elapsed + hang display while waiting for the first token.
+  streamStartedAt: number | null
   lastError: string | null
   iteration: number
 }
@@ -22,6 +25,7 @@ export function initialTurnState<T extends ProviderTypes = ProviderTypes>(): Tur
     messages: [],
     pendingCall: null,
     activeToolCall: null,
+    streamStartedAt: null,
     lastError: null,
     iteration: 0,
   }
@@ -33,9 +37,15 @@ export function turnReducer<T extends ProviderTypes = ProviderTypes>(
 ): TurnState<T> {
   switch (event.type) {
     case 'start':
-      return { ...state, state: 'streaming', currentText: '', lastError: null }
+      return {
+        ...state,
+        state: 'streaming',
+        currentText: '',
+        lastError: null,
+        streamStartedAt: event.timestamp,
+      }
     case 'iteration-start':
-      return { ...state, iteration: event.iteration }
+      return { ...state, iteration: event.iteration, streamStartedAt: event.timestamp }
     case 'text-delta':
       return { ...state, currentText: state.currentText + event.text }
     case 'text-complete':

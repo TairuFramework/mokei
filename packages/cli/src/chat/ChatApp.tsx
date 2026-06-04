@@ -349,8 +349,10 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
     if (modal != null) return
     if (key.escape) {
       if (turn.state === 'calling-tool') {
+        pushEntry({ kind: 'notice', variant: 'info', text: 'cancelling tool…' })
         turn.cancelTool()
       } else if (turn.state === 'streaming') {
+        pushEntry({ kind: 'notice', variant: 'info', text: 'cancelling…' })
         turn.abort()
       }
     }

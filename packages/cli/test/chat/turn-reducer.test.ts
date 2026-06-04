@@ -13,6 +13,16 @@ describe('turnReducer', () => {
     expect(s.currentText).toBe('')
   })
 
+  test('start and iteration-start record streamStartedAt', () => {
+    const started = apply([{ type: 'start', prompt: 'hi', timestamp: 100 }])
+    expect(started.streamStartedAt).toBe(100)
+    const iterated = apply([
+      { type: 'start', prompt: 'hi', timestamp: 100 },
+      { type: 'iteration-start', iteration: 2, timestamp: 250 },
+    ])
+    expect(iterated.streamStartedAt).toBe(250)
+  })
+
   test('text-delta accumulates currentText', () => {
     const s = apply([
       { type: 'start', prompt: 'hi', timestamp: 0 },
