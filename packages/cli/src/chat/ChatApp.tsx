@@ -201,10 +201,15 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           break
         case 'complete':
           if (event.result.text === '' && event.result.toolCalls.length === 0) {
+            const toolCount = session.getToolsForProvider(provider).length
+            const hint =
+              toolCount === 0
+                ? ' — no tools are enabled for the model to call (add a context and enable its tools with /tools)'
+                : ` — ${toolCount} tool(s) available, but the model produced no text or tool call`
             pushEntry({
               kind: 'notice',
               variant: 'warning',
-              text: `stream ended with no output (finish: ${event.result.finishReason})`,
+              text: `stream ended with no output (finish: ${event.result.finishReason})${hint}`,
             })
           }
           break
