@@ -17,8 +17,9 @@ export function HelpCard({ onClose }: HelpCardProps) {
       <Text>/context remove KEY remove context</Text>
       <Text>/model [id] pick or switch model</Text>
       <Text>/tools enable/disable tools</Text>
+      <Text>/details show full text of the last error</Text>
       <Text>/quit, /exit end session</Text>
-      <Text>esc abort current turn</Text>
+      <Text>esc cancel active tool, else abort turn</Text>
       <Text dimColor>[esc / enter] close</Text>
     </Box>
   )

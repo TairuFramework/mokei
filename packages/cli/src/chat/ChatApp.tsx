@@ -21,7 +21,15 @@ import { parseSlash } from './slash.js'
 type TranscriptEntry =
   | { kind: 'user'; id: number; text: string }
   | { kind: 'assistant'; id: number; text: string }
-  | { kind: 'tool'; id: number; name: string; result?: string; error?: string }
+  | {
+      kind: 'tool'
+      id: number
+      name: string
+      result?: string
+      error?: string
+      outcome?: 'error' | 'timeout' | 'cancelled'
+      durationMs?: number
+    }
   | { kind: 'notice'; id: number; variant: SystemNoticeVariant; text: string }
 
 // Distributive omit preserves the discriminated union (plain `Omit<TranscriptEntry, 'id'>`
@@ -52,6 +60,8 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   const quitConfirmRef = useRef(false)
   const quitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null)
+  const toolStartRef = useRef<Map<string, number>>(new Map())
+  const lastErrorDetailRef = useRef<string | null>(null)
 
   const loadModels = useCallback(() => {
     if (modelsPromiseRef.current == null) {
@@ -103,6 +113,9 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
             pushEntry({ kind: 'assistant', text: event.text })
           }
           break
+        case 'tool-call-start':
+          toolStartRef.current.set(event.toolCall.id, event.timestamp)
+          break
         case 'tool-call-complete': {
           const content = event.result?.content
           const text = Array.isArray(content)
@@ -112,12 +125,42 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
                   | undefined
               )?.text
             : undefined
-          pushEntry({ kind: 'tool', name: event.toolCall.name, result: text ?? '' })
+          const startedAt = toolStartRef.current.get(event.toolCall.id)
+          toolStartRef.current.delete(event.toolCall.id)
+          pushEntry({
+            kind: 'tool',
+            name: event.toolCall.name,
+            result: text ?? '',
+            ...(startedAt != null ? { durationMs: event.timestamp - startedAt } : {}),
+          })
           break
         }
-        case 'tool-call-error':
-          pushEntry({ kind: 'tool', name: event.toolCall.name, error: event.error.message })
+        case 'tool-call-error': {
+          const startedAt = toolStartRef.current.get(event.toolCall.id)
+          toolStartRef.current.delete(event.toolCall.id)
+          const outcome =
+            event.error.name === 'ToolCallTimeoutError'
+              ? 'timeout'
+              : event.error.name === 'ToolCallCancelledError'
+                ? 'cancelled'
+                : 'error'
+          lastErrorDetailRef.current = event.error.stack ?? event.error.message
+          pushEntry({
+            kind: 'tool',
+            name: event.toolCall.name,
+            error: event.error.message,
+            outcome,
+            ...(startedAt != null ? { durationMs: event.timestamp - startedAt } : {}),
+          })
+          if (outcome === 'cancelled') {
+            pushEntry({
+              kind: 'notice',
+              variant: 'warning',
+              text: `tool cancelled: ${event.toolCall.name}`,
+            })
+          }
           break
+        }
         case 'tool-call-denied':
           pushEntry({
             kind: 'notice',
@@ -127,6 +170,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           break
         case 'error': {
           const err = event.error
+          lastErrorDetailRef.current = err.stack ?? err.message
           const cause =
             err.cause instanceof Error ? ` (cause: ${err.cause.name}: ${err.cause.message})` : ''
           pushEntry({
@@ -271,6 +315,13 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         case 'tools':
           setModal('tools')
           break
+        case 'details':
+          if (lastErrorDetailRef.current == null) {
+            pushEntry({ kind: 'notice', variant: 'info', text: 'no recent error details' })
+          } else {
+            pushEntry({ kind: 'notice', variant: 'info', text: lastErrorDetailRef.current })
+          }
+          break
         default:
           pushEntry({ kind: 'notice', variant: 'error', text: `unknown command: /${name}` })
       }
@@ -296,8 +347,12 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
       return
     }
     if (modal != null) return
-    if (key.escape && turn.state !== 'idle' && turn.state !== 'awaiting-approval') {
-      turn.abort()
+    if (key.escape) {
+      if (turn.state === 'calling-tool') {
+        turn.cancelTool()
+      } else if (turn.state === 'streaming') {
+        turn.abort()
+      }
     }
   })
 
@@ -324,6 +379,8 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
                   name={entry.name}
                   result={entry.result}
                   error={entry.error}
+                  outcome={entry.outcome}
+                  durationMs={entry.durationMs}
                 />
               )
             case 'notice':
