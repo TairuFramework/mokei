@@ -9,6 +9,7 @@ export type TurnState<T extends ProviderTypes = ProviderTypes> = {
   lastAssistantText: string
   messages: Array<Message<T['MessagePart'], T['ToolCall']>>
   pendingCall: FunctionToolCall<unknown> | null
+  activeToolCall: { call: FunctionToolCall<unknown>; startedAt: number } | null
   lastError: string | null
   iteration: number
 }
@@ -20,6 +21,7 @@ export function initialTurnState<T extends ProviderTypes = ProviderTypes>(): Tur
     lastAssistantText: '',
     messages: [],
     pendingCall: null,
+    activeToolCall: null,
     lastError: null,
     iteration: 0,
   }
@@ -45,14 +47,24 @@ export function turnReducer<T extends ProviderTypes = ProviderTypes>(
     case 'tool-call-pending':
       return { ...state, state: 'awaiting-approval', pendingCall: event.toolCall }
     case 'tool-call-approved':
-      return { ...state, state: 'calling-tool', pendingCall: event.toolCall }
+      return {
+        ...state,
+        state: 'calling-tool',
+        pendingCall: event.toolCall,
+        activeToolCall: { call: event.toolCall, startedAt: event.timestamp },
+      }
     case 'tool-call-denied':
-      return { ...state, state: 'streaming', pendingCall: null }
+      return { ...state, state: 'streaming', pendingCall: null, activeToolCall: null }
     case 'tool-call-start':
-      return { ...state, state: 'calling-tool', pendingCall: event.toolCall }
+      return {
+        ...state,
+        state: 'calling-tool',
+        pendingCall: event.toolCall,
+        activeToolCall: { call: event.toolCall, startedAt: event.timestamp },
+      }
     case 'tool-call-complete':
     case 'tool-call-error':
-      return { ...state, state: 'streaming', pendingCall: null }
+      return { ...state, state: 'streaming', pendingCall: null, activeToolCall: null }
     case 'iteration-complete':
       return state
     case 'complete':

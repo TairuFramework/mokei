@@ -178,4 +178,58 @@ describe('turnReducer', () => {
     expect(s.state).toBe('idle')
     expect(s.lastError).toBe('boom')
   })
+
+  test('tool-call-start records activeToolCall with startedAt', () => {
+    const s = apply([
+      { type: 'start', prompt: 'hi', timestamp: 0 },
+      {
+        type: 'tool-call-start',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        timestamp: 42,
+      },
+    ])
+    expect(s.state).toBe('calling-tool')
+    expect(s.activeToolCall).toEqual({
+      call: { id: '1', name: 'ns:tool', arguments: '{}' },
+      startedAt: 42,
+    })
+  })
+
+  test('tool-call-complete clears activeToolCall', () => {
+    const s = apply([
+      { type: 'start', prompt: 'hi', timestamp: 0 },
+      {
+        type: 'tool-call-start',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        timestamp: 1,
+      },
+      {
+        type: 'tool-call-complete',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        result: { content: [] },
+        timestamp: 2,
+      },
+    ])
+    expect(s.activeToolCall).toBeNull()
+    expect(s.state).toBe('streaming')
+  })
+
+  test('tool-call-error clears activeToolCall', () => {
+    const s = apply([
+      { type: 'start', prompt: 'hi', timestamp: 0 },
+      {
+        type: 'tool-call-start',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        timestamp: 1,
+      },
+      {
+        type: 'tool-call-error',
+        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        error: new Error('boom'),
+        timestamp: 2,
+      },
+    ])
+    expect(s.activeToolCall).toBeNull()
+    expect(s.state).toBe('streaming')
+  })
 })
