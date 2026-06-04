@@ -63,6 +63,10 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   const [showReasoning, setShowReasoning] = useState(true)
   const toolStartRef = useRef<Map<string, number>>(new Map())
   const lastErrorDetailRef = useRef<string | null>(null)
+  // Reasoning accumulated during the current turn, committed to lastReasoningRef
+  // when the turn ends so `/reasoning last` can reprint it.
+  const reasoningBufRef = useRef<string>('')
+  const lastReasoningRef = useRef<string>('')
 
   const loadModels = useCallback(() => {
     if (modelsPromiseRef.current == null) {
@@ -109,6 +113,12 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
     createAgent,
     onEvent: (event) => {
       switch (event.type) {
+        case 'start':
+          reasoningBufRef.current = ''
+          break
+        case 'reasoning-delta':
+          reasoningBufRef.current += event.reasoning
+          break
         case 'text-complete':
           if (event.text.length > 0) {
             pushEntry({ kind: 'assistant', text: event.text })
@@ -171,6 +181,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           break
         case 'error': {
           const err = event.error
+          lastReasoningRef.current = reasoningBufRef.current
           lastErrorDetailRef.current = err.stack ?? err.message
           const cause =
             err.cause instanceof Error ? ` (cause: ${err.cause.name}: ${err.cause.message})` : ''
@@ -191,9 +202,11 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
                 ? `turn timed out after ${secs}s — pass --timeout to adjust`
                 : 'turn timed out — pass --timeout to adjust',
           })
+          lastReasoningRef.current = reasoningBufRef.current
           break
         }
         case 'max-iterations':
+          lastReasoningRef.current = reasoningBufRef.current
           pushEntry({
             kind: 'notice',
             variant: 'warning',
@@ -201,6 +214,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           })
           break
         case 'complete':
+          lastReasoningRef.current = reasoningBufRef.current
           if (event.result.text === '' && event.result.toolCalls.length === 0) {
             const toolCount = session.getToolsForProvider(provider).length
             const hint =
@@ -330,6 +344,17 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           break
         case 'reasoning': {
           const [arg] = args
+          if (arg === 'last') {
+            pushEntry({
+              kind: 'notice',
+              variant: 'info',
+              text:
+                lastReasoningRef.current === ''
+                  ? 'no reasoning recorded for the last turn'
+                  : lastReasoningRef.current,
+            })
+            break
+          }
           const next = arg === 'on' ? true : arg === 'off' ? false : !showReasoning
           setShowReasoning(next)
           pushEntry({
