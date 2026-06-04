@@ -113,6 +113,14 @@ describe('ToolResultCard outcomes', () => {
     const { lastFrame } = render(<ToolResultCard name="ctx:read" result="ok" durationMs={1500} />)
     expect(lastFrame()).toMatch(/1\.5s/)
   })
+
+  test('truncates a long single-line error and shows the details hint', () => {
+    const long = `E: ${'x'.repeat(400)}`
+    const { lastFrame } = render(<ToolResultCard name="ctx:read" error={long} />)
+    expect(lastFrame()).toContain('…')
+    expect(lastFrame()).not.toContain('x'.repeat(400))
+    expect(lastFrame()).toContain('/details')
+  })
 })
 
 describe('footer + selects + help', () => {

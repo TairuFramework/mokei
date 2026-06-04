@@ -524,30 +524,34 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     // within a tool-call-start handler takes effect on the live controller.
     const callController = new AbortController()
     this.#activeToolController = callController
-    const callTimer = setTimeout(() => {
-      callController.abort(TOOL_TIMEOUT_REASON)
-    }, this.#params.toolTimeout)
-
-    // Emit start event
-    const startEvent = emitEvent({
-      type: 'tool-call-start',
-      toolCall,
-      timestamp: Date.now(),
-    })
-    events.push(startEvent)
     // Forward a turn-level abort onto the per-call controller. The listener is
     // removed in `finally` so listeners don't accumulate on the turn signal
     // across many sequential tool calls.
     const onTurnAbort = () => {
       callController.abort(signal.reason)
     }
-    if (signal.aborted) {
-      callController.abort(signal.reason)
-    } else {
-      signal.addEventListener('abort', onTurnAbort)
-    }
+    // Declared here so `finally` can always clear it, even if emitting the
+    // start event (which invokes a user `onEvent` callback) throws.
+    let callTimer: ReturnType<typeof setTimeout> | undefined
 
     try {
+      callTimer = setTimeout(() => {
+        callController.abort(TOOL_TIMEOUT_REASON)
+      }, this.#params.toolTimeout)
+
+      // Emit start event
+      const startEvent = emitEvent({
+        type: 'tool-call-start',
+        toolCall,
+        timestamp: Date.now(),
+      })
+      events.push(startEvent)
+      if (signal.aborted) {
+        callController.abort(signal.reason)
+      } else {
+        signal.addEventListener('abort', onTurnAbort)
+      }
+
       // Execute via session (handles namespaced tool parsing internally)
       const result = await this.#params.session.executeToolCall(toolCall, callController.signal)
 

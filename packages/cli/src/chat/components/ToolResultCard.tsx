@@ -10,9 +10,17 @@ export type ToolResultCardProps = {
   durationMs?: number
 }
 
+/** Max width for the collapsed single-line error before it is truncated. */
+const MAX_ERROR_LINE = 160
+
 function firstLine(text: string): { line: string; hasMore: boolean } {
   const lines = text.split('\n')
-  return { line: lines[0] ?? '', hasMore: lines.length > 1 }
+  const raw = lines[0] ?? ''
+  const multiLine = lines.length > 1
+  if (raw.length > MAX_ERROR_LINE) {
+    return { line: `${raw.slice(0, MAX_ERROR_LINE)}…`, hasMore: true }
+  }
+  return { line: raw, hasMore: multiLine }
 }
 
 const OUTCOME_LABEL: Record<ToolResultOutcome, string> = {
