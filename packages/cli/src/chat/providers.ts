@@ -13,6 +13,12 @@ const API_KEY_ENV: Record<string, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
 }
 
+const PROVIDERS = ['ollama', 'openai', 'anthropic']
+
+export function resolveApiKey(provider: string, apiKey?: string): string | undefined {
+  return apiKey ?? process.env[API_KEY_ENV[provider] ?? '']
+}
+
 export type ChatOptions = {
   apiKey?: string
   apiUrl?: string
@@ -26,8 +32,11 @@ export type BuiltChat = {
 }
 
 export async function buildChat(provider: string, opts: ChatOptions): Promise<BuiltChat> {
+  if (!PROVIDERS.some((p) => p === provider)) {
+    throw new Error(`unknown provider: ${provider}`)
+  }
   const host = await ProxyHost.forDaemon()
-  const apiKey = opts.apiKey ?? process.env[API_KEY_ENV[provider] ?? '']
+  const apiKey = resolveApiKey(provider, opts.apiKey)
   const timeoutMs = opts.timeoutMs
 
   function build<T extends ProviderTypes>(

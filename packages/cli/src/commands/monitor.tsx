@@ -26,6 +26,10 @@ export function createMonitorCommand(): Command {
     await runDaemon({ socketPath })
     const monitor = await startMonitor({ port, socketPath })
     const url = `http://localhost:${monitor.port}/`
+    // Rely on ink's own Ctrl+C handling (exitOnCtrlC) instead of a manual SIGINT
+    // handler: when the user quits, waitUntilExit() resolves and we dispose below.
+    // A non-TTY signal (e.g. `kill -INT`) bypasses this — acceptable for an
+    // interactive monitor.
     await runInk(MonitorStatus, { url }, { exitOnCtrlC: true })
     await monitor.disposer.dispose()
   })

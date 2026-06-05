@@ -10,9 +10,9 @@ export function createChatCommand(): Command {
   withChatOptions(cmd)
 
   cmd.action(async (opts: Record<string, string | undefined>) => {
-    const timeoutSec = Number.parseInt(opts.timeout ?? '300', 10)
-    if (Number.isNaN(timeoutSec)) {
-      console.error('error: --timeout must be a number (seconds)')
+    const timeoutSec = Number(opts.timeout ?? '300')
+    if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) {
+      console.error('error: --timeout must be a positive number of seconds')
       process.exitCode = 1
       return
     }
