@@ -43,7 +43,6 @@ export default class ChatAnthropic extends Command {
       { exitOnCtrlC: false },
     )
     await app.waitUntilExit()
-    void session.dispose()
-    process.exit(0)
+    await session.dispose()
   }
 }
