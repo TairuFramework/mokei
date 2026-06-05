@@ -1,9 +1,41 @@
 # Upstream issue: `@enkaku/socket-transport` leaks the socket handle on dispose
 
 **Date:** 2026-06-05
-**Affects:** `@enkaku/socket-transport@0.16.0` (in concert with `@enkaku/transport@0.16.0`)
+**Affects:** `@enkaku/socket-transport@0.16.0`; **partially** fixed in `0.16.1` (see
+"Update" below — the idle-connection case is still broken), in concert with
+`@enkaku/transport@0.16.0`.
 **Repo to fix:** enkaku (this is a dependency of mokei, not in this workspace)
 **Severity:** Medium — forces consumers to `process.exit()` to terminate.
+
+## Update (2026-06-05): 0.16.1 fix is incomplete
+
+`0.16.1` added `socket.unref()` to the writable-close callback in
+`createTransportStream`. Verified that this does **not** fix the mokei `chat` quit
+hang, because that path never materializes the transport stream:
+
+- `mokei chat` connects to the daemon eagerly (`ProxyHost.forDaemon()` →
+  `createClient()` → `connectSocket()`), but if the user never adds a context, **no
+  request is ever sent over the daemon socket**, so the lazily-created transport
+  stream (`Transport._stream`) is never built.
+- `Transport.dispose()` only runs the writable-close path when `this._stream != null`
+  (see trace below). With an idle connection it's `null`, so `writer.close()` — and
+  therefore the new `socket.unref()` — never runs.
+- The connected socket is left ref'd. Diagnostic after a fully-resolved
+  `session.dispose()`:
+  ```
+  __DBG WriteStream handle=TTY connecting=false
+  __DBG WriteStream handle=TTY connecting=false
+  __DBG Socket handle=Pipe connecting=false   <-- daemon Unix socket, still ref'd
+  __DBG manually unref-ed the Socket
+  → process then exits cleanly (exitCode 0)
+  ```
+  `handle=Pipe` confirms it's the Unix-domain daemon socket; manually `unref()`-ing it
+  releases the loop. So the socket is simply never unref'd/destroyed on dispose when
+  the stream was never used.
+
+**Required: release the socket on dispose regardless of whether the stream was ever
+materialized** — not only via the writable-close callback. See "Proposed fix
+(revised)" below.
 
 ## Summary
 
@@ -73,25 +105,56 @@ daemon connection and is what keeps the loop alive.
    `'close'` event and the handle is never released. Net result: the event loop stays
    alive after dispose.
 
-## Proposed fix
+## Proposed fix (revised — covers the idle-connection case)
 
-When the transport tears down, the socket must be released, not just half-closed.
-Minimal change in `@enkaku/socket-transport`'s `createTransportStream` close callback:
+The `socket.unref()` added to the writable-close callback in `0.16.1` is correct but
+insufficient: it only runs when the transport stream was materialized. The socket must
+be released on **transport dispose**, whether or not the stream was ever created.
+
+`SocketTransport` extends `Transport` (a `Disposer`) and is constructed with the
+`socket` (or a `connectSocket` source). It should track the resolved socket and release
+it on dispose:
+
+```js
+export class SocketTransport extends Transport {
+  constructor(params) {
+    const { socket, signal, ...options } = params
+    const source = typeof socket === 'string' ? connectSocket(socket) : socket
+    super({
+      stream: () => createTransportStream(source, options),
+      signal,
+    })
+    // Release the socket when the transport disposes, even if the stream was
+    // never created (an idle connection still holds a ref'd handle).
+    this.events.once('disposed', () => {
+      Promise.resolve(source).then((sock) => {
+        sock.unref()        // or sock.destroy() for a hard close
+      }, () => {})
+    })
+  }
+}
+```
+
+(Keep the existing `socket.end()` + `socket.unref()` in `createTransportStream` for the
+stream-was-used path — flushing on close is still correct. The `disposed`-event hook
+above covers the stream-never-used path.)
+
+`socket.unref()` is the gentlest fix: any pending writes are still flushed by `end()`
+on the used path, no data is dropped, and the handle stops *holding the event loop
+open*. `socket.destroy()` is the hard-close alternative if a deterministic close of the
+readable side is also wanted.
+
+### Original minimal change (0.16.1, keep it)
 
 ```js
 const writable = writeTo(
   (msg) => { socket.write(`${JSON.stringify(msg)}\n`) },
   () => {
     socket.end()
-    socket.unref()   // stop the half-closed socket from keeping the loop alive
+    socket.unref()
   },
 )
 ```
-
-`socket.unref()` is the gentlest fix: writes are still flushed by `end()`, no data is
-dropped, and the handle simply stops *holding the event loop open*. It does not abort
-in-flight work — by the time the writable closes (dispose), the consumer has signalled
-it is done with the transport.
 
 ### Alternative: hard close
 
