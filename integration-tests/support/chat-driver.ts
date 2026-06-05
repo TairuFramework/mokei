@@ -29,6 +29,10 @@ export const UI = {
   idle: '· idle',
   aborted: 'AbortError',
   assistant: '●',
+  toolSelect: 'enable tools',
+  confirm: 'confirm',
+  denied: 'tool denied',
+  removed: 'removed',
 } as const
 
 // Strips ANSI/OSC escape sequences. Matching the ESC/BEL control characters is
@@ -137,7 +141,22 @@ export class ChatDriver {
     await this.type(`/context add fetch node ${FETCH_SERVER}`)
     await delay(300)
     this.write('\r')
-    return this.waitFor(UI.contextAdded, timeoutMs)
+    const added = await this.waitFor(UI.contextAdded, timeoutMs)
+    // New flow: a tool-select card opens after add — accept defaults (all enabled).
+    if (await this.waitFor(UI.toolSelect, 5_000)) {
+      this.write('\r')
+    }
+    return added
+  }
+
+  /** Wait for the tool-approval card. */
+  waitForApproval(timeoutMs = 45_000): Promise<boolean> {
+    return this.waitFor(UI.approval, timeoutMs)
+  }
+
+  /** Wait for the confirm-removal card. */
+  waitForConfirm(timeoutMs = 5_000): Promise<boolean> {
+    return this.waitFor(UI.confirm, timeoutMs)
   }
 
   async submit(prompt: string): Promise<void> {
