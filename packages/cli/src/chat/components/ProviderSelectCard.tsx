@@ -1,5 +1,5 @@
 import { Select } from '@inkjs/ui'
-import { Box, Text, useApp, useInput } from 'ink'
+import { Box, Text, useInput } from 'ink'
 
 const PROVIDERS = [
   { label: 'ollama', value: 'ollama' },
@@ -13,11 +13,9 @@ export type ProviderSelectCardProps = {
 }
 
 export function ProviderSelectCard({ onSelect, onCancel }: ProviderSelectCardProps) {
-  const { exit } = useApp()
   useInput((_, key) => {
     if (key.escape) {
       onCancel()
-      exit()
     }
   })
   return (

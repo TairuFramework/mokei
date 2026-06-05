@@ -1,6 +1,6 @@
 import { Spinner } from '@inkjs/ui'
 import { Box, Text, useApp } from 'ink'
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { ProviderSelectCard } from './components/ProviderSelectCard.js'
 import { type BuiltChat, buildChat, type ChatOptions } from './providers.js'
@@ -16,10 +16,6 @@ export function ChatLauncher({ initialProvider, chatOptions }: ChatLauncherProps
   const [chat, setChat] = useState<BuiltChat | null>(null)
   const [error, setError] = useState<string | null>(null)
   const disposeRef = useRef<(() => Promise<void>) | null>(null)
-
-  const handleCancel = useCallback(() => {
-    exit()
-  }, [exit])
 
   useEffect(() => {
     if (provider == null) return
@@ -54,7 +50,7 @@ export function ChatLauncher({ initialProvider, chatOptions }: ChatLauncherProps
   }
 
   if (provider == null) {
-    return <ProviderSelectCard onSelect={setProvider} onCancel={handleCancel} />
+    return <ProviderSelectCard onSelect={setProvider} onCancel={exit} />
   }
 
   if (chat == null) {
