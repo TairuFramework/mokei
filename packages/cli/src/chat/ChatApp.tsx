@@ -5,6 +5,7 @@ import { Box, Static, Text, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AssistantMessage } from './components/AssistantMessage.js'
+import { ConfirmCard } from './components/ConfirmCard.js'
 import { Footer } from './components/Footer.js'
 import { HelpCard } from './components/HelpCard.js'
 import { IconLine } from './components/IconLine.js'
@@ -56,6 +57,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   const [model, setModel] = useState<string | undefined>(initialModel)
   const [transcript, setTranscript] = useState<Array<TranscriptEntry>>([])
   const [modal, setModal] = useState<null | 'model' | 'tools' | 'help'>(null)
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
   const [models, setModels] = useState<Array<{ id: string }>>([])
   const modelsPromiseRef = useRef<Promise<Array<{ id: string }>> | null>(null)
   const [quitConfirm, setQuitConfirm] = useState(false)
@@ -311,15 +313,14 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           } else if (sub === 'remove') {
             const [key] = rest
             if (!key) {
-              pushEntry({
-                kind: 'notice',
-                variant: 'error',
-                text: 'usage: /context remove <key>',
-              })
+              pushEntry({ kind: 'notice', variant: 'error', text: 'usage: /context remove <key>' })
               break
             }
-            removeContext(key)
-            pushEntry({ kind: 'notice', variant: 'success', text: `context ${key} removed` })
+            if (!contexts.includes(key)) {
+              pushEntry({ kind: 'notice', variant: 'error', text: `unknown context: ${key}` })
+              break
+            }
+            setConfirmRemove(key)
           } else {
             pushEntry({
               kind: 'notice',
@@ -380,7 +381,18 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           pushEntry({ kind: 'notice', variant: 'error', text: `unknown command: /${name}` })
       }
     },
-    [addContext, contexts, exit, model, provider, pushEntry, removeContext, showReasoning, turn],
+    [
+      addContext,
+      confirmRemove,
+      contexts,
+      exit,
+      model,
+      provider,
+      pushEntry,
+      removeContext,
+      showReasoning,
+      turn,
+    ],
   )
 
   useInput((input, key) => {
@@ -497,6 +509,26 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
 
       {modal === 'help' ? <HelpCard onClose={() => setModal(null)} /> : null}
 
+      {confirmRemove != null ? (
+        <ConfirmCard
+          message={`remove context ${confirmRemove}?`}
+          onConfirm={() => {
+            const key = confirmRemove
+            setConfirmRemove(null)
+            const removed = removeContext(key)
+            pushEntry(
+              removed
+                ? { kind: 'notice', variant: 'success', text: `context ${key} removed` }
+                : { kind: 'notice', variant: 'error', text: `context ${key} not found` },
+            )
+          }}
+          onCancel={() => {
+            setConfirmRemove(null)
+            pushEntry({ kind: 'notice', variant: 'info', text: 'remove cancelled' })
+          }}
+        />
+      ) : null}
+
       {quitConfirm ? (
         <Box paddingX={1}>
           <Text color="yellow">press Ctrl+C again to quit (or wait to cancel)</Text>
@@ -508,7 +540,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         state={turn.state}
         contexts={contexts}
         onSubmit={handleSubmit}
-        disabled={modal != null || turn.state !== 'idle'}
+        disabled={modal != null || confirmRemove != null || turn.state !== 'idle'}
         defaultValue={pendingPrompt ?? undefined}
       />
     </Box>
