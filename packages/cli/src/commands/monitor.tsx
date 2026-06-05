@@ -32,9 +32,6 @@ export function createMonitorCommand(): Command {
     // interactive monitor.
     await runInk(MonitorStatus, { url }, { exitOnCtrlC: true })
     await monitor.disposer.dispose()
-    // Exit explicitly: the daemon client holds a ref'd Unix socket that keeps the
-    // event loop alive (see the chat command + the enkaku dispose-leak issue doc).
-    process.exit(process.exitCode ?? 0)
   })
 
   return cmd

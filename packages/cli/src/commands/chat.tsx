@@ -27,14 +27,10 @@ export function createChatCommand(): Command {
       },
       lifecycle,
     })
-    // The ink app has exited. Dispose the session for a clean daemon disconnect,
-    // then exit explicitly. The daemon connection is an idle Unix socket whose
-    // enkaku transport stream is never materialized when no context was added, so
-    // the dispose-time socket.unref() in @enkaku/socket-transport never runs and
-    // the ref'd handle keeps the loop alive. See
-    // docs/agents/issues/2026-06-05-enkaku-socket-transport-dispose-leak.md.
+    // The ink app has exited; dispose the session so the daemon socket is
+    // released (ContextHost._dispose → client.dispose, and @enkaku/socket-transport
+    // unref's the socket on dispose) and the process can exit cleanly.
     await lifecycle.dispose?.()
-    process.exit(process.exitCode ?? 0)
   })
 
   return cmd

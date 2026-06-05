@@ -128,6 +128,13 @@ export class ContextHost extends Disposer {
   /** @internal */
   _localTools: Map<string, LocalTool> = new Map()
 
+  constructor() {
+    // Wire `_dispose()` into the Disposer lifecycle: the base only runs the
+    // `dispose` function it is given, so without this `_dispose()` (which tears
+    // down contexts and, in ProxyHost, the daemon client) would never run.
+    super({ dispose: () => this._dispose() })
+  }
+
   get contexts(): Record<string, HostedContext> {
     return this._contexts
   }

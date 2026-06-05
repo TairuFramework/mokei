@@ -1,11 +1,56 @@
-# Upstream issue: `@enkaku/socket-transport` leaks the socket handle on dispose
+# Daemon socket leak on dispose — `@enkaku/socket-transport` + mokei `ContextHost`
 
 **Date:** 2026-06-05
+**Status:** RESOLVED (2026-06-06) — see "Resolution" below.
+
+## Resolution (2026-06-06)
+
+The quit-hang had **two** independent causes; both are now fixed and the CLI
+`process.exit()` workaround was removed.
+
+1. **enkaku** (`@enkaku/socket-transport`): on dispose the socket was only
+   `socket.end()`'d, never `unref()`/`destroy()`'d, so the handle kept the loop
+   alive. Fixed in **`0.16.2`**: `createTransportStream` unref's on writable close,
+   **and** `SocketTransport` registers a `disposed` hook that unref's the socket even
+   when the stream was never materialized (the idle-connection case). Verified in
+   isolation: `connectSocket` → `SocketTransport` → `Client` → `client.dispose()`
+   leaves the socket `destroyed=true` and the process exits.
+
+2. **mokei** (`packages/host`, the primary bug): `ContextHost`/`ProxyHost` define
+   `_dispose()` but it was **never invoked**. `@enkaku/async`'s `Disposer` only runs
+   the `dispose` function passed to its constructor — it does **not** auto-call a
+   `_dispose()` method. `ContextHost` had no constructor, so `super()` ran with no
+   `dispose` fn: `host.dispose()` aborted the signal and resolved, but never tore down
+   contexts and never called `client.dispose()` → the daemon socket was never
+   released. Fixed by wiring it in `ContextHost`:
+   ```ts
+   constructor() {
+     super({ dispose: () => this._dispose() })
+   }
+   ```
+   `ProxyHost._dispose()` (which calls `super._dispose()` then `client.dispose()`) now
+   actually runs on disposal.
+
+With both fixes, `session.dispose()` truly releases the daemon connection. Verified
+on the real binary: two Ctrl+C exits in ~100ms (code 0) — idle **and** after a
+context was added — with no `process.exit`. Regression test:
+`integration-tests/suites/cli-chat.test.ts` › *"two Ctrl+C quits and the process
+exits cleanly"*. host/session/agent integration suites unaffected.
+
+> **Note:** the mokei `ContextHost` bug also meant `host.dispose()` previously never
+> removed contexts or disposed the client at all — a broader latent leak, not just the
+> CLI hang. Worth auditing other long-lived host consumers.
+
+---
+
+_Original investigation (enkaku-focused) below, kept for the trace._
+
 **Affects:** `@enkaku/socket-transport@0.16.0`; **partially** fixed in `0.16.1` (see
 "Update" below — the idle-connection case is still broken), in concert with
 `@enkaku/transport@0.16.0`.
-**Repo to fix:** enkaku (this is a dependency of mokei, not in this workspace)
-**Severity:** Medium — forces consumers to `process.exit()` to terminate.
+**Repo to fix:** enkaku (dependency of mokei) **and** mokei `packages/host` (see
+Resolution above — that was the primary cause).
+**Severity:** Medium.
 
 ## Update (2026-06-05): 0.16.1 fix is incomplete
 
