@@ -22,7 +22,7 @@ import {
   type ToolApprovalFn,
   type ToolApprovalStrategy,
 } from './agent-types.js'
-import { ToolCallCancelledError, ToolCallTimeoutError } from './errors.js'
+import { ToolCallCancelledError, ToolCallTimeoutError, UnknownToolError } from './errors.js'
 
 /** Abort reason set when the per-tool timeout timer fires. */
 const TOOL_TIMEOUT_REASON = Symbol('mokei.tool-timeout')
@@ -194,6 +194,12 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 
       // Get tools from session
       const tools = session.getToolsForProvider(provider)
+      // Canonical callable tool names (namespaced IDs), used to reject tool
+      // calls the model hallucinates with an unknown/malformed name before they
+      // reach execution and surface as an opaque error.
+      const callableToolNames = new Set(
+        session.contextHost.getCallableTools().map((tool) => tool.name),
+      )
 
       // Tracking
       const eventHistory: Array<AgentEvent<T>> = []
@@ -240,45 +246,81 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         })
 
         // Iterate through chunks, yielding text events in real-time.
-        // Check the abort signal between chunks: aborting the signal does not
-        // reliably interrupt an actively-streaming provider response (the stream
-        // keeps yielding buffered chunks), so the loop must stop on its own and
-        // close the stream rather than wait for it to end. The throw is handled
-        // by the catch below, which emits the timeout/error event.
-        let result = await chatTurn.next()
-        while (!result.done) {
+        //
+        // Aborting the turn signal must interrupt the stream even when the
+        // provider has stopped yielding entirely (a model hung mid-stream): in
+        // that case `chatTurn.next()` parks forever waiting for data that never
+        // arrives, so a between-chunk abort check would never run. Race each
+        // pull against the abort signal so a parked read is unblocked the moment
+        // the turn is aborted or times out. On abort we close the provider
+        // stream (releases the reader / HTTP connection) and throw; the catch
+        // below emits the timeout/error event.
+        const pull = (): ReturnType<typeof chatTurn.next> => {
           if (combinedSignal.aborted) {
-            // Close the provider stream (releases the reader / HTTP connection).
-            // `never` satisfies the generator's TReturn without a real value.
-            await chatTurn.return(undefined as never)
-            throw combinedSignal.reason instanceof Error
-              ? combinedSignal.reason
-              : new Error('Aborted')
+            return Promise.reject(
+              combinedSignal.reason instanceof Error ? combinedSignal.reason : new Error('Aborted'),
+            )
           }
-          const chunk = result.value
-          if (chunk.type === 'text-delta') {
-            iterationText += chunk.text
-            const textEvent = emitEvent({
-              type: 'text-delta',
-              text: chunk.text,
-              timestamp: Date.now(),
-            })
-            yield textEvent
-            eventHistory.push(textEvent)
-          } else if (chunk.type === 'reasoning-delta') {
-            iterationReasoning += chunk.reasoning
-            const reasoningEvent = emitEvent({
-              type: 'reasoning-delta',
-              reasoning: chunk.reasoning,
-              timestamp: Date.now(),
-            })
-            yield reasoningEvent
-            eventHistory.push(reasoningEvent)
-          } else if (chunk.type === 'done') {
-            totalInputTokens += chunk.inputTokens
-            totalOutputTokens += chunk.outputTokens
+          return new Promise((resolve, reject) => {
+            const onAbort = () => {
+              reject(
+                combinedSignal.reason instanceof Error
+                  ? combinedSignal.reason
+                  : new Error('Aborted'),
+              )
+            }
+            combinedSignal.addEventListener('abort', onAbort, { once: true })
+            chatTurn.next().then(
+              (value) => {
+                combinedSignal.removeEventListener('abort', onAbort)
+                resolve(value)
+              },
+              (error) => {
+                combinedSignal.removeEventListener('abort', onAbort)
+                reject(error)
+              },
+            )
+          })
+        }
+
+        let result: Awaited<ReturnType<typeof chatTurn.next>>
+        try {
+          result = await pull()
+          while (!result.done) {
+            const chunk = result.value
+            if (chunk.type === 'text-delta') {
+              iterationText += chunk.text
+              const textEvent = emitEvent({
+                type: 'text-delta',
+                text: chunk.text,
+                timestamp: Date.now(),
+              })
+              yield textEvent
+              eventHistory.push(textEvent)
+            } else if (chunk.type === 'reasoning-delta') {
+              iterationReasoning += chunk.reasoning
+              const reasoningEvent = emitEvent({
+                type: 'reasoning-delta',
+                reasoning: chunk.reasoning,
+                timestamp: Date.now(),
+              })
+              yield reasoningEvent
+              eventHistory.push(reasoningEvent)
+            } else if (chunk.type === 'done') {
+              totalInputTokens += chunk.inputTokens
+              totalOutputTokens += chunk.outputTokens
+            }
+            result = await pull()
           }
-          result = await chatTurn.next()
+        } catch (streamError) {
+          // Best-effort close so the provider releases its reader / HTTP
+          // connection. Fire-and-forget, never awaited: a generator parked on a
+          // read that ignores cancellation would queue `.return()` behind that
+          // never-settling read and deadlock the turn. In production the abort
+          // rejects the read and this settles promptly. Rethrow for the outer
+          // catch to surface as a timeout/error event.
+          void chatTurn.return(undefined as never).catch(() => {})
+          throw streamError
         }
 
         // Emit reasoning complete if the model produced any reasoning
@@ -334,26 +376,33 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         const toolMessages: Array<ClientToolMessage> = []
 
         for (const toolCall of toolCalls) {
-          // Handle approval
-          const approvalResult = await this.#handleToolApproval(
+          // Handle approval. Stream its events as they happen — the
+          // `tool-call-pending` event must reach the UI *before* the approval
+          // resolves so an interactive prompt can render and the turn signal can
+          // interrupt the wait, rather than buffering every event until after
+          // the user decides.
+          const approval = this.#streamToolApproval(
             toolCall,
             toolApproval,
             { iteration, history: eventHistory, tool: this.#findTool(toolCall.name) },
             emitEvent,
+            combinedSignal,
           )
-
-          for (const event of approvalResult.events) {
-            yield event
-            eventHistory.push(event)
+          let approvalStep = await approval.next()
+          while (!approvalStep.done) {
+            yield approvalStep.value
+            eventHistory.push(approvalStep.value)
+            approvalStep = await approval.next()
           }
+          const { approved: stepApproved, reason: stepReason } = approvalStep.value
 
           const record: AgentToolCallRecord = {
             call: toolCall,
-            approved: approvalResult.approved,
-            denialReason: approvalResult.reason,
+            approved: stepApproved,
+            denialReason: stepReason,
           }
 
-          if (!approvalResult.approved) {
+          if (!stepApproved) {
             // Tool denied - add error message
             toolMessages.push({
               source: 'client',
@@ -361,8 +410,31 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
               toolCallID: toolCall.id,
               toolCallName: toolCall.name,
               text: JSON.stringify({
-                error: approvalResult.reason ?? 'Tool call denied',
+                error: stepReason ?? 'Tool call denied',
               }),
+            })
+          } else if (!callableToolNames.has(toolCall.name)) {
+            // The model asked for a tool that does not exist (hallucinated or
+            // malformed name). Capture it as a tool-call-error and feed the list
+            // of valid tools back so the model can retry with a real name,
+            // rather than letting execution throw an opaque "Invalid context
+            // tool ID" deep in the host.
+            const error = new UnknownToolError(toolCall.name, [...callableToolNames])
+            const errorEvent = emitEvent({
+              type: 'tool-call-error',
+              toolCall,
+              error,
+              timestamp: Date.now(),
+            })
+            yield errorEvent
+            eventHistory.push(errorEvent)
+            record.error = error
+            toolMessages.push({
+              source: 'client',
+              role: 'tool',
+              toolCallID: toolCall.id,
+              toolCallName: toolCall.name,
+              text: JSON.stringify({ error: error.message }),
             })
           } else {
             // Execute tool
@@ -457,68 +529,49 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     }
   }
 
-  async #handleToolApproval(
+  /**
+   * Resolve a tool call's approval, yielding lifecycle events as they happen.
+   *
+   * Crucially, the `tool-call-pending` event is yielded *before* the approval
+   * decision is awaited, so an interactive UI can render an approval prompt and
+   * the turn signal can interrupt the wait. The terminal decision is the
+   * generator's return value.
+   */
+  async *#streamToolApproval(
     toolCall: FunctionToolCall<unknown>,
     strategy: ToolApprovalStrategy,
     context: ToolApprovalContext,
     emitEvent: (event: AgentEvent<T>) => AgentEvent<T>,
-  ): Promise<{ approved: boolean; reason?: string; events: Array<AgentEvent<T>> }> {
-    const events: Array<AgentEvent<T>> = []
-
+    signal: AbortSignal,
+  ): AsyncGenerator<AgentEvent<T>, { approved: boolean; reason?: string }> {
     if (strategy === 'auto') {
-      const event = emitEvent({
-        type: 'tool-call-approved',
-        toolCall,
-        timestamp: Date.now(),
-      })
-      events.push(event)
-      return { approved: true, events }
+      yield emitEvent({ type: 'tool-call-approved', toolCall, timestamp: Date.now() })
+      return { approved: true }
     }
 
     if (strategy === 'never') {
-      const event = emitEvent({
-        type: 'tool-call-denied',
-        toolCall,
-        reason: 'Tool execution disabled',
-        timestamp: Date.now(),
-      })
-      events.push(event)
-      return { approved: false, reason: 'Tool execution disabled', events }
+      const reason = 'Tool execution disabled'
+      yield emitEvent({ type: 'tool-call-denied', toolCall, reason, timestamp: Date.now() })
+      return { approved: false, reason }
     }
 
     if (strategy === 'ask') {
       // No async approval bridge wired — refuse so host does not execute a tool
       // the user never approved. Callers supply a ToolApprovalFn to interactively approve.
       const reason = 'Tool approval required but no handler configured'
-      const pendingEvent = emitEvent({
-        type: 'tool-call-pending',
-        toolCall,
-        timestamp: Date.now(),
-      })
-      events.push(pendingEvent)
-      const deniedEvent = emitEvent({
-        type: 'tool-call-denied',
-        toolCall,
-        reason,
-        timestamp: Date.now(),
-      })
-      events.push(deniedEvent)
-      return { approved: false, reason, events }
+      yield emitEvent({ type: 'tool-call-pending', toolCall, timestamp: Date.now() })
+      yield emitEvent({ type: 'tool-call-denied', toolCall, reason, timestamp: Date.now() })
+      return { approved: false, reason }
     }
 
-    // Custom function
+    // Custom function: surface the pending state, then await the decision while
+    // letting the turn signal (user cancel / timeout) interrupt the wait.
     const fn = strategy as ToolApprovalFn
-    const pendingEvent = emitEvent({
-      type: 'tool-call-pending',
-      toolCall,
-      timestamp: Date.now(),
-    })
-    events.push(pendingEvent)
-    const result = await fn(toolCall, context)
+    yield emitEvent({ type: 'tool-call-pending', toolCall, timestamp: Date.now() })
+    const result = await raceAbort(Promise.resolve(fn(toolCall, context)), signal)
 
     let approved: boolean
     let reason: string | undefined
-
     if (typeof result === 'boolean') {
       approved = result
     } else {
@@ -527,23 +580,11 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     }
 
     if (approved) {
-      const event = emitEvent({
-        type: 'tool-call-approved',
-        toolCall,
-        timestamp: Date.now(),
-      })
-      events.push(event)
+      yield emitEvent({ type: 'tool-call-approved', toolCall, timestamp: Date.now() })
     } else {
-      const event = emitEvent({
-        type: 'tool-call-denied',
-        toolCall,
-        reason,
-        timestamp: Date.now(),
-      })
-      events.push(event)
+      yield emitEvent({ type: 'tool-call-denied', toolCall, reason, timestamp: Date.now() })
     }
-
-    return { approved, reason, events }
+    return { approved, reason }
   }
 
   async #executeToolCall(
@@ -646,4 +687,31 @@ function anySignal(signals: Array<AbortSignal>): AbortSignal {
   }
 
   return controller.signal
+}
+
+/**
+ * Reject as soon as `signal` aborts, otherwise settle with `promise`. Used to
+ * make an otherwise un-cancellable await (e.g. waiting on interactive tool
+ * approval) responsive to a turn cancel / timeout.
+ */
+function raceAbort<R>(promise: Promise<R>, signal: AbortSignal): Promise<R> {
+  if (signal.aborted) {
+    return Promise.reject(signal.reason instanceof Error ? signal.reason : new Error('Aborted'))
+  }
+  return new Promise<R>((resolve, reject) => {
+    const onAbort = () => {
+      reject(signal.reason instanceof Error ? signal.reason : new Error('Aborted'))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
 }

@@ -7,7 +7,7 @@ import { expect, test } from 'vitest'
 
 const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
 
-const model = 'ministral-3:8b'
+const model = 'lfm2.5:latest'
 const provider = new OllamaProvider()
 
 test('executes a tool call after adding a local context', async () => {

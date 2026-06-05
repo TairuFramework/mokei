@@ -157,6 +157,30 @@ describe('useAgentTurn', () => {
     hook.unmount()
   })
 
+  test('submit is a no-op while a turn is already active', async () => {
+    let createCount = 0
+    const agent = {
+      stream: () => {
+        createCount++
+        return (async function* () {
+          await new Promise(() => {})
+        })()
+      },
+    }
+    const hook = await renderHook(() => useAgentTurn({ createAgent: () => agent }))
+
+    await act(async () => {
+      hook.current().submit('first')
+      await Promise.resolve()
+    })
+    await act(async () => {
+      hook.current().submit('second')
+      await Promise.resolve()
+    })
+
+    expect(createCount).toBe(1)
+  })
+
   test('cancelTool calls the agent cancelToolCall while the turn is open', async () => {
     let cancelCount = 0
     let release!: () => void

@@ -52,7 +52,6 @@ export function createFetchTools(options: FetchToolsOptions = {}): ToolDefinitio
         additionalProperties: false,
       } as const satisfies Schema,
       async (req) => {
-        process.stderr.write(`fetching ${req.arguments.url}\n`)
         try {
           const res = await fetch(req.arguments.url)
           if (!res.ok) {

@@ -40,6 +40,7 @@ export function useAgentTurn<T extends ProviderTypes = ProviderTypes>(
   const submit = useCallback(
     async (text: string) => {
       if (text.trim() === '') return
+      if (abortRef.current != null) return // a turn is already in flight
       const controller = new AbortController()
       abortRef.current = controller
       const agent = createAgent()

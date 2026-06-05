@@ -508,7 +508,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         state={turn.state}
         contexts={contexts}
         onSubmit={handleSubmit}
-        disabled={modal != null}
+        disabled={modal != null || turn.state !== 'idle'}
         defaultValue={pendingPrompt ?? undefined}
       />
     </Box>

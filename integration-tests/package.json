@@ -20,9 +20,11 @@
     "@mokei/model-provider": "workspace:^",
     "@mokei/ollama-provider": "workspace:^",
     "@mokei/openai-provider": "workspace:^",
-    "@mokei/session": "workspace:^"
+    "@mokei/session": "workspace:^",
+    "mokei": "workspace:^"
   },
   "devDependencies": {
-    "@enkaku/generator": "catalog:"
+    "@enkaku/generator": "catalog:",
+    "node-pty": "^1.1.0"
   }
 }

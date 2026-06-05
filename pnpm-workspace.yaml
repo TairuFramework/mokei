@@ -96,5 +96,6 @@ allowBuilds:
   core-js-pure: true
   esbuild: true
   node-llama-cpp: true
+  node-pty: true
   unrs-resolver: true
   yarn: true
