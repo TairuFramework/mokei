@@ -301,12 +301,15 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
               break
             }
             try {
-              await addContext({ key, command, args: cmdArgs })
+              const tools = await addContext({ key, command, args: cmdArgs })
               pushEntry({
                 kind: 'notice',
                 variant: 'success',
-                text: `context ${key} added`,
+                text: `context ${key} added (${tools.length} tool(s) enabled — deselect any below)`,
               })
+              if (tools.length > 0) {
+                setModal('tools')
+              }
             } catch (err) {
               pushEntry({ kind: 'notice', variant: 'error', text: (err as Error).message })
             }
