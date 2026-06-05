@@ -164,13 +164,31 @@ This task builds the commander program skeleton and the shared utilities. After 
 
 - [ ] **Step 1: Create `packages/cli/src/ink.ts`**
 
-```tsx
-import type { ReactNode } from 'react'
-import { render } from 'ink'
+`runInk(Component, props, options?)` builds the element internally so command
+files never call `createElement`. It defaults `exitOnCtrlC: false` (chat owns its
+own Ctrl+C handling) but lets callers override (monitor wants ink's default
+Ctrl+C exit). `renderStatic` renders a one-shot frame and unmounts immediately —
+for commands like `inspect` that print and exit rather than staying mounted.
 
-export async function runInk(element: ReactNode): Promise<void> {
-  const app = render(element, { exitOnCtrlC: false })
+```tsx
+import { type RenderOptions, render } from 'ink'
+import { type ComponentType, createElement } from 'react'
+
+export async function runInk<P extends object>(
+  Component: ComponentType<P>,
+  props: P = {} as P,
+  options: RenderOptions = {},
+): Promise<void> {
+  const app = render(createElement(Component, props), { exitOnCtrlC: false, ...options })
   await app.waitUntilExit()
+}
+
+export function renderStatic<P extends object>(
+  Component: ComponentType<P>,
+  props: P = {} as P,
+): void {
+  const { unmount } = render(createElement(Component, props))
+  unmount()
 }
 ```
 
@@ -342,17 +360,16 @@ export function ProviderSelectCard({ onSelect, onCancel }: ProviderSelectCardPro
 - [ ] **Step 2: Create `packages/cli/src/chat/providers.ts`**
 
 ```tsx
-import type { ReactNode } from 'react'
+import { type ReactNode, createElement } from 'react'
 
 import { AnthropicProvider, type AnthropicTypes } from '@mokei/anthropic-provider'
 import { ProxyHost } from '@mokei/host'
-import type { ProviderTypes } from '@mokei/model-provider'
+import type { ModelProvider, ProviderTypes } from '@mokei/model-provider'
 import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
 import { OpenAIProvider, type OpenAITypes } from '@mokei/openai-provider'
 import { Session } from '@mokei/session'
-import React from 'react'
 
-import { ChatApp } from './ChatApp.js'
+import { ChatApp, type ChatAppProps } from './ChatApp.js'
 
 const API_KEY_ENV: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
@@ -378,13 +395,13 @@ export async function buildChat(provider: string, opts: ChatOptions): Promise<Bu
 
   function build<T extends ProviderTypes>(
     session: Session<T>,
-    providerInstance: { listModels: Session<T>['providers'][string]['listModels'] },
+    providerInstance: ModelProvider<T>,
     providerKey: string,
   ): BuiltChat {
     return {
-      element: React.createElement(ChatApp<T>, {
+      element: createElement<ChatAppProps<T>>(ChatApp, {
         session,
-        provider: providerInstance as Session<T>['providers'][string],
+        provider: providerInstance,
         providerKey,
         initialModel: opts.model,
         timeout: timeoutMs,
@@ -422,7 +439,10 @@ export async function buildChat(provider: string, opts: ChatOptions): Promise<Bu
 }
 ```
 
-Note: the `build` helper inside `buildChat` uses `React.createElement` rather than JSX to avoid generic type issues when the tsx compiler erases the type parameter. The `providerInstance` type is kept structurally compatible with `ModelProvider<T>` — the Session constructor enforces this at the call site.
+Note: the `build<T>` helper uses `createElement<ChatAppProps<T>>(ChatApp, …)`
+rather than JSX because `<ChatApp<T> …>` is not valid JSX value syntax for a
+generic component. Each `switch` branch is monomorphic, so the provider instance
+(`OllamaProvider`, etc.) satisfies `ModelProvider<T>` with no cast.
 
 - [ ] **Step 3: Create `packages/cli/src/chat/ChatLauncher.tsx`**
 
@@ -503,7 +523,6 @@ export function ChatLauncher({ initialProvider, chatOptions }: ChatLauncherProps
 
 ```tsx
 import { Command } from 'commander'
-import React from 'react'
 
 import { ChatLauncher } from '../chat/ChatLauncher.js'
 import { runInk } from '../ink.js'
@@ -516,17 +535,15 @@ export function createChatCommand(): Command {
 
   cmd.action(async (opts: Record<string, string | undefined>) => {
     const timeoutSec = Number.parseInt(opts.timeout ?? '300', 10)
-    await runInk(
-      React.createElement(ChatLauncher, {
-        initialProvider: opts.provider,
-        chatOptions: {
-          apiKey: opts.apiKey,
-          apiUrl: opts.apiUrl,
-          model: opts.model,
-          timeoutMs: timeoutSec * 1000,
-        },
-      }),
-    )
+    await runInk(ChatLauncher, {
+      initialProvider: opts.provider,
+      chatOptions: {
+        apiKey: opts.apiKey,
+        apiUrl: opts.apiUrl,
+        model: opts.model,
+        timeoutMs: timeoutSec * 1000,
+      },
+    })
   })
 
   return cmd
@@ -592,16 +609,17 @@ git commit -m "feat(cli): unified chat command with provider flag and interactiv
 
 - [ ] **Step 1: Create `packages/cli/src/commands/inspect.tsx`**
 
-Note: `inspect` renders static output (JSON or error) then exits. It uses ink
-`render` directly (not `runInk`) so it can `unmount()` immediately — `runInk`
-calls `waitUntilExit()` which would hang since nothing calls `exit()`.
+Note: `inspect` renders static output (JSON or error) then exits, so it uses
+`renderStatic` (render + immediate unmount) rather than `runInk`, which would
+hang on `waitUntilExit()` since nothing calls `exit()`.
 
 ```tsx
 import { type HostedContext, spawnHostedContext } from '@mokei/host'
 import { StatusMessage } from '@inkjs/ui'
 import { Command } from 'commander'
-import { Box, Text, render } from 'ink'
-import React from 'react'
+import { Box, Text } from 'ink'
+
+import { renderStatic } from '../ink.js'
 
 function InspectResult({ data }: { data: string }) {
   return (
@@ -628,15 +646,9 @@ export function createInspectCommand(): Command {
     try {
       hosted = await spawnHostedContext({ command, args })
       const initialized = await hosted.client.initialize()
-      const { unmount } = render(React.createElement(InspectResult, {
-        data: JSON.stringify(initialized, null, 2),
-      }))
-      unmount()
+      renderStatic(InspectResult, { data: JSON.stringify(initialized, null, 2) })
     } catch (err) {
-      const { unmount } = render(React.createElement(InspectError, {
-        message: (err as Error).message,
-      }))
-      unmount()
+      renderStatic(InspectError, { message: (err as Error).message })
       process.exitCode = 1
     } finally {
       await hosted?.disposer.dispose()
@@ -687,36 +699,24 @@ git commit -m "feat(cli): add inspect command with Ink output"
 
 - [ ] **Step 1: Create `packages/cli/src/commands/monitor.tsx`**
 
+Note: `MonitorStatus` is a pure presentational component. It stays mounted (ink
+keeps the process alive on `waitUntilExit`) until the user presses Ctrl+C. We
+pass `{ exitOnCtrlC: true }` so ink's own lifecycle handles the exit — no manual
+`process.on('SIGINT')` inside React. Once `runInk` resolves, the handler disposes
+the monitor server. (Trade-off: this catches an interactive Ctrl+C, matching the
+common case; a raw `kill -INT` signal without a TTY would skip the dispose, same
+as relying on process teardown.)
+
 ```tsx
 import { runDaemon } from '@mokei/host'
 import { startMonitor } from '@mokei/host-monitor'
 import { Command } from 'commander'
-import { Box, Text, useApp } from 'ink'
-import React, { useEffect, useRef } from 'react'
+import { Box, Text } from 'ink'
 
 import { runInk } from '../ink.js'
 import { withSocketPath } from '../options.js'
 
-type MonitorStatusProps = {
-  url: string
-  onDispose: () => Promise<void>
-}
-
-function MonitorStatus({ url, onDispose }: MonitorStatusProps) {
-  const { exit } = useApp()
-  const disposeRef = useRef(onDispose)
-  disposeRef.current = onDispose
-
-  useEffect(() => {
-    const handler = () => {
-      void disposeRef.current().then(() => exit())
-    }
-    process.on('SIGINT', handler)
-    return () => {
-      process.off('SIGINT', handler)
-    }
-  }, [exit])
-
+function MonitorStatus({ url }: { url: string }) {
   return (
     <Box paddingX={1}>
       <Text color="green">monitor running on {url}</Text>
@@ -736,12 +736,8 @@ export function createMonitorCommand(): Command {
     await runDaemon({ socketPath })
     const monitor = await startMonitor({ port, socketPath })
     const url = `http://localhost:${monitor.port}/`
-    await runInk(
-      React.createElement(MonitorStatus, {
-        url,
-        onDispose: () => monitor.disposer.dispose(),
-      }),
-    )
+    await runInk(MonitorStatus, { url }, { exitOnCtrlC: true })
+    await monitor.disposer.dispose()
   })
 
   return cmd
@@ -1114,9 +1110,8 @@ git commit -m "test(cli): add program introspection tests for commander wiring"
 Create `packages/cli/test/chat/ProviderSelectCard.test.tsx`:
 
 ```tsx
-import { describe, expect, test, vi } from 'vitest'
-import React from 'react'
 import { render } from 'ink-testing-library'
+import { describe, expect, test, vi } from 'vitest'
 
 import { ProviderSelectCard } from '../../src/chat/components/ProviderSelectCard.js'
 
