@@ -1,6 +1,6 @@
 import { Command } from 'commander'
 
-import { ChatLauncher } from '../chat/ChatLauncher.js'
+import { ChatLauncher, type ChatLifecycle } from '../chat/ChatLauncher.js'
 import { runInk } from '../ink.js'
 import { withChatOptions } from '../options.js'
 
@@ -16,6 +16,7 @@ export function createChatCommand(): Command {
       process.exitCode = 1
       return
     }
+    const lifecycle: ChatLifecycle = { dispose: null }
     await runInk(ChatLauncher, {
       initialProvider: opts.provider,
       chatOptions: {
@@ -24,7 +25,13 @@ export function createChatCommand(): Command {
         model: opts.model,
         timeoutMs: timeoutSec * 1000,
       },
+      lifecycle,
     })
+    // The ink app has exited. Dispose the session for a clean daemon disconnect,
+    // then exit explicitly: the daemon client holds a persistent socket that
+    // keeps the event loop alive, so the process would otherwise hang on quit.
+    await lifecycle.dispose?.()
+    process.exit(process.exitCode ?? 0)
   })
 
   return cmd

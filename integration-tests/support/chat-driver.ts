@@ -49,9 +49,12 @@ export type ChatDriverOptions = {
   rows?: number
 }
 
+export type ChatExit = { exitCode: number; signal?: number }
+
 export class ChatDriver {
   #pty: IPty
   #buf = ''
+  #exit: ChatExit | null = null
 
   constructor({
     provider = 'ollama',
@@ -76,6 +79,24 @@ export class ChatDriver {
     this.#pty.onData((d) => {
       this.#buf += d
     })
+    this.#pty.onExit((e) => {
+      this.#exit = e
+    })
+  }
+
+  /** Send a single Ctrl+C (^C) without killing the pty, to drive the quit flow. */
+  interrupt(): void {
+    this.#pty.write(ETX)
+  }
+
+  /** Resolve with the process exit info once it exits, or null on timeout. */
+  async waitForExit(timeoutMs: number): Promise<ChatExit | null> {
+    const end = Date.now() + timeoutMs
+    while (Date.now() < end) {
+      if (this.#exit != null) return this.#exit
+      await delay(100)
+    }
+    return null
   }
 
   /** ANSI-stripped view of everything rendered so far. */

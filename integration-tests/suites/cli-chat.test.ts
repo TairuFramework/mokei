@@ -43,4 +43,23 @@ describe('CLI chat — core', () => {
       selectDriver.kill()
     }
   }, 60_000)
+
+  // Regression: quitting must actually terminate the process. The session holds a
+  // persistent daemon socket that keeps the event loop alive, so the command must
+  // exit explicitly — otherwise two Ctrl+C stop the app but the process hangs and
+  // needs a third (which pnpm reports as a command failure).
+  test('two Ctrl+C quits and the process exits cleanly', async () => {
+    const quitDriver = new ChatDriver()
+    try {
+      expect(await quitDriver.start()).toBe(true)
+      quitDriver.interrupt()
+      await new Promise((r) => setTimeout(r, 300))
+      quitDriver.interrupt()
+      const exit = await quitDriver.waitForExit(8_000)
+      expect(exit).not.toBeNull()
+      expect(exit?.exitCode).toBe(0)
+    } finally {
+      quitDriver.kill()
+    }
+  }, 30_000)
 })

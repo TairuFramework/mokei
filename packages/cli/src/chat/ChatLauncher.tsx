@@ -1,21 +1,27 @@
 import { Spinner } from '@inkjs/ui'
 import { Box, Text, useApp } from 'ink'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import { ProviderSelectCard } from './components/ProviderSelectCard.js'
 import { type BuiltChat, buildChat, type ChatOptions } from './providers.js'
 
+// Mutable handle the command holds so it can await session disposal AFTER the
+// ink app exits. The session owns a persistent daemon socket that keeps the
+// event loop alive; disposing it from the command (not fire-and-forget on
+// unmount) is what lets the process actually exit on quit.
+export type ChatLifecycle = { dispose: (() => Promise<void>) | null }
+
 export type ChatLauncherProps = {
   initialProvider?: string
   chatOptions: ChatOptions
+  lifecycle: ChatLifecycle
 }
 
-export function ChatLauncher({ initialProvider, chatOptions }: ChatLauncherProps) {
+export function ChatLauncher({ initialProvider, chatOptions, lifecycle }: ChatLauncherProps) {
   const { exit } = useApp()
   const [provider, setProvider] = useState<string | undefined>(initialProvider)
   const [chat, setChat] = useState<BuiltChat | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const disposeRef = useRef<(() => Promise<void>) | null>(null)
 
   useEffect(() => {
     if (provider == null) return
@@ -24,10 +30,11 @@ export function ChatLauncher({ initialProvider, chatOptions }: ChatLauncherProps
     buildChat(provider, chatOptions).then(
       (built) => {
         if (cancelled) {
+          // Quit happened while connecting — dispose the orphaned session.
           void built.dispose()
           return
         }
-        disposeRef.current = built.dispose
+        lifecycle.dispose = built.dispose
         setChat(built)
       },
       (err) => {
@@ -37,9 +44,8 @@ export function ChatLauncher({ initialProvider, chatOptions }: ChatLauncherProps
 
     return () => {
       cancelled = true
-      void disposeRef.current?.()
     }
-  }, [provider, chatOptions])
+  }, [provider, chatOptions, lifecycle])
 
   if (error != null) {
     return (
