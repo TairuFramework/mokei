@@ -7,7 +7,7 @@ import { ProviderSelectCard } from '../../src/chat/components/ProviderSelectCard
 describe('ProviderSelectCard', () => {
   test('renders three provider options', () => {
     const { lastFrame } = render(<ProviderSelectCard onSelect={() => {}} onCancel={() => {}} />)
-    const frame = lastFrame()!
+    const frame = lastFrame() ?? ''
     expect(frame).toContain('ollama')
     expect(frame).toContain('openai')
     expect(frame).toContain('anthropic')
