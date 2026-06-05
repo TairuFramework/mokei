@@ -10,6 +10,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { type IPty, spawn } from 'node-pty'
+import stripAnsi from 'strip-ansi'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 export const CLI_CWD = resolve(ROOT, 'packages/cli')
@@ -36,13 +37,6 @@ export const UI = {
 } as const
 
 const ESC = String.fromCharCode(27) // Escape key
-const BEL = String.fromCharCode(7)
-// ANSI/OSC escape-sequence stripper, built from the ESC/BEL constants so no raw
-// control character appears in the source.
-const ANSI = new RegExp(
-  `${ESC}\\[[0-9;?]*[a-zA-Z]|${ESC}[()][AB0]|${ESC}[=>]|${ESC}\\][\\s\\S]*?${BEL}`,
-  'g',
-)
 const ETX = String.fromCharCode(3) // ^C
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -72,7 +66,7 @@ export class ChatDriver {
 
   /** ANSI-stripped view of everything rendered so far. */
   screen(): string {
-    return this.#buf.replace(ANSI, '').replace(/\r/g, '')
+    return stripAnsi(this.#buf).replace(/\r/g, '')
   }
 
   write(data: string): void {

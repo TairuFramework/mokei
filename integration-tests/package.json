@@ -10,12 +10,12 @@
     "@enkaku/node-streams-transport": "catalog:",
     "@enkaku/transport": "catalog:",
     "@mokei/anthropic-provider": "workspace:^",
-    "@mokei/http-client": "workspace:^",
-    "@mokei/http-server": "workspace:^",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/host": "workspace:^",
+    "@mokei/http-client": "workspace:^",
+    "@mokei/http-server": "workspace:^",
     "@mokei/mcp-fetch": "workspace:^",
     "@mokei/model-provider": "workspace:^",
     "@mokei/ollama-provider": "workspace:^",
@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@enkaku/generator": "catalog:",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "strip-ansi": "^7.2.0"
   }
 }
