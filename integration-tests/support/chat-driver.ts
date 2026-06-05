@@ -24,6 +24,7 @@ export const FETCH_SERVER = resolve(ROOT, 'mcp-servers/fetch/lib/serve.js')
  */
 export const UI = {
   ready: 'type a message',
+  providerSelect: 'select a provider',
   contextAdded: 'context fetch added',
   thinking: 'thinking…',
   approval: 'approve tool call',
@@ -42,7 +43,8 @@ const ETX = String.fromCharCode(3) // ^C
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 export type ChatDriverOptions = {
-  model?: string
+  provider?: string | null
+  model?: string | null
   cols?: number
   rows?: number
 }
@@ -51,8 +53,20 @@ export class ChatDriver {
   #pty: IPty
   #buf = ''
 
-  constructor({ model = 'lfm2.5:latest', cols = 100, rows = 30 }: ChatDriverOptions = {}) {
-    this.#pty = spawn('node', [CLI_BINARY, 'chat', '--provider', 'ollama', '--model', model], {
+  constructor({
+    provider = 'ollama',
+    model = 'lfm2.5:latest',
+    cols = 100,
+    rows = 30,
+  }: ChatDriverOptions = {}) {
+    const args = [CLI_BINARY, 'chat']
+    if (provider != null) {
+      args.push('--provider', provider)
+    }
+    if (model != null) {
+      args.push('--model', model)
+    }
+    this.#pty = spawn('node', args, {
       name: 'xterm-color',
       cols,
       rows,

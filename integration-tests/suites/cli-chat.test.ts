@@ -30,4 +30,17 @@ describe('CLI chat — core', () => {
     expect(await driver.waitForIdle(10_000)).toBe(true)
     expect(driver.screen()).toContain(UI.aborted)
   }, 90_000)
+
+  test('interactive provider select starts chat after selection', async () => {
+    const selectDriver = new ChatDriver({ provider: null, model: null })
+    try {
+      expect(await selectDriver.waitFor(UI.providerSelect, 15_000)).toBe(true)
+      // Press enter to select the first option (ollama)
+      selectDriver.write('\r')
+      // After selection, the chat should start (shows the ready prompt once connected)
+      expect(await selectDriver.waitFor(UI.ready, 30_000)).toBe(true)
+    } finally {
+      selectDriver.kill()
+    }
+  }, 60_000)
 })
