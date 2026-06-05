@@ -255,6 +255,14 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
     }
   }, [pendingPrompt, model, modal, pushEntry, turn])
 
+  // If a turn ends (abort/timeout) while a tool approval is still pending, the
+  // approval promise's resolver is orphaned — deny it so useToolApproval clears.
+  useEffect(() => {
+    if (turn.state === 'idle' && pending != null) {
+      deny()
+    }
+  }, [turn.state, pending, deny])
+
   const handleSubmit = useCallback(
     async (raw: string) => {
       const parsed = parseSlash(raw)
