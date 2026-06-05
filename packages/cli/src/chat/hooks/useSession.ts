@@ -25,7 +25,10 @@ export function useSession(session: SessionLike) {
     (params: Parameters<Session['addContext']>[0]) => session.addContext(params),
     [session],
   )
-  const removeContext = useCallback((key: string): boolean => session.removeContext(key), [session])
+  const removeContext = useCallback(
+    (key: string): Promise<boolean> => session.removeContext(key),
+    [session],
+  )
 
   return { contexts, addContext, removeContext }
 }

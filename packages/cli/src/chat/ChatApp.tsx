@@ -512,15 +512,23 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
       {confirmRemove != null ? (
         <ConfirmCard
           message={`remove context ${confirmRemove}?`}
-          onConfirm={() => {
+          onConfirm={async () => {
             const key = confirmRemove
             setConfirmRemove(null)
-            const removed = removeContext(key)
-            pushEntry(
-              removed
-                ? { kind: 'notice', variant: 'success', text: `context ${key} removed` }
-                : { kind: 'notice', variant: 'error', text: `context ${key} not found` },
-            )
+            try {
+              const removed = await removeContext(key)
+              pushEntry(
+                removed
+                  ? { kind: 'notice', variant: 'success', text: `context ${key} removed` }
+                  : { kind: 'notice', variant: 'error', text: `context ${key} not found` },
+              )
+            } catch (err) {
+              pushEntry({
+                kind: 'notice',
+                variant: 'error',
+                text: `failed to remove ${key}: ${(err as Error).message}`,
+              })
+            }
           }}
           onCancel={() => {
             setConfirmRemove(null)

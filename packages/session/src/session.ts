@@ -180,10 +180,12 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       : this.#setupContext(params)
   }
 
-  removeContext(key: string): boolean {
+  async removeContext(key: string): Promise<boolean> {
     const exists = this.#contextHost.getContextKeys().includes(key)
-    if (!exists) return false
-    void this.#contextHost.remove(key)
+    if (!exists) {
+      return false
+    }
+    await this.#contextHost.remove(key)
     this.#events.emit('context-removed', { key })
     return true
   }
