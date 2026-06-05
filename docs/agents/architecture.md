@@ -118,12 +118,11 @@ packages/
 ## CLI Commands
 
 ```bash
-mokei context monitor    # Monitor MCP server contexts
-mokei context inspect    # Inspect available tools and prompts
-mokei chat openai        # Interactive chat with OpenAI
-mokei chat ollama        # Interactive chat with Ollama
-mokei chat anthropic     # Interactive chat with Anthropic
-mokei chat llama         # Interactive chat with local Llama (GGUF)
+mokei monitor                      # Monitor MCP server contexts
+mokei inspect <command> [args...]  # Inspect available tools and prompts
+mokei proxy <command> [args...]    # Proxy an MCP server through the daemon
+mokei chat --provider ollama       # Interactive chat (ollama, openai, anthropic)
+mokei chat                         # Interactive chat, pick a provider interactively
 ```
 
 ---
