@@ -22,6 +22,9 @@ export type HTTPTransportParams = {
   timeout?: number
 }
 
+/** Default HTTP request timeout in milliseconds. */
+export const DEFAULT_HTTP_TIMEOUT = 30_000
+
 /**
  * MCP Streamable HTTP client transport.
  *
@@ -51,7 +54,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#controller = controller
     this.#url = params.url
     this.#headers = buildHTTPHeaders(params.headers, params.auth)
-    this.#timeout = params.timeout ?? 30000
+    this.#timeout = params.timeout ?? DEFAULT_HTTP_TIMEOUT
   }
 
   /**

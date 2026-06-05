@@ -10,7 +10,12 @@
  * @module host
  */
 
-export { createHTTPClient, HTTPTransport, type HTTPTransportParams } from '@mokei/http-client'
+export {
+  createHTTPClient,
+  DEFAULT_HTTP_TIMEOUT,
+  HTTPTransport,
+  type HTTPTransportParams,
+} from '@mokei/http-client'
 export { createClient, type HostClient, runDaemon } from './daemon/controller.js'
 export {
   type AddDirectContextParams,
