@@ -2,7 +2,7 @@ import { Box, Text, useInput } from 'ink'
 
 export type ConfirmCardProps = {
   message: string
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
   onCancel: () => void
 }
 

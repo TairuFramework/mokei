@@ -381,18 +381,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           pushEntry({ kind: 'notice', variant: 'error', text: `unknown command: /${name}` })
       }
     },
-    [
-      addContext,
-      confirmRemove,
-      contexts,
-      exit,
-      model,
-      provider,
-      pushEntry,
-      removeContext,
-      showReasoning,
-      turn,
-    ],
+    [addContext, contexts, exit, model, provider, pushEntry, removeContext, showReasoning, turn],
   )
 
   useInput((input, key) => {

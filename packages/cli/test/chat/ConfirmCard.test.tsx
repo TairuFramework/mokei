@@ -25,6 +25,15 @@ describe('ConfirmCard', () => {
     expect(onConfirm).not.toHaveBeenCalled()
   })
 
+  test('enter confirms', () => {
+    const onConfirm = vi.fn()
+    const onCancel = vi.fn()
+    const { stdin } = render(<ConfirmCard message="x?" onConfirm={onConfirm} onCancel={onCancel} />)
+    stdin.write('\r')
+    expect(onConfirm).toHaveBeenCalledOnce()
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
   describe('esc cancels', () => {
     beforeEach(() => {
       vi.useFakeTimers()
