@@ -7,6 +7,7 @@ import { Command } from 'commander'
 import { createChatCommand } from './commands/chat.js'
 import { createInspectCommand } from './commands/inspect.js'
 import { createMonitorCommand } from './commands/monitor.js'
+import { createProxyCommand } from './commands/proxy.js'
 
 const pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), '../package.json')
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string; description: string }
@@ -21,6 +22,7 @@ export function buildProgram(): Command {
   program.addCommand(createChatCommand())
   program.addCommand(createInspectCommand())
   program.addCommand(createMonitorCommand())
+  program.addCommand(createProxyCommand())
 
   return program
 }
