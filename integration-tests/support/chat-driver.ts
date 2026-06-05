@@ -30,16 +30,19 @@ export const UI = {
   aborted: 'AbortError',
   assistant: '●',
   toolSelect: 'enable tools',
-  confirm: 'confirm',
+  confirm: 'remove context',
   denied: 'tool denied',
   removed: 'removed',
 } as const
 
-// Strips ANSI/OSC escape sequences. Matching the ESC/BEL control characters is
-// the whole point, so the control-char lint is intentionally disabled.
-// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI sequences requires matching ESC/BEL
-const ANSI = /\[[0-9;?]*[a-zA-Z]|[()][AB0]|[=>]|\][\s\S]*?/g
 const ESC = String.fromCharCode(27) // Escape key
+const BEL = String.fromCharCode(7)
+// ANSI/OSC escape-sequence stripper, built from the ESC/BEL constants so no raw
+// control character appears in the source.
+const ANSI = new RegExp(
+  `${ESC}\\[[0-9;?]*[a-zA-Z]|${ESC}[()][AB0]|${ESC}[=>]|${ESC}\\][\\s\\S]*?${BEL}`,
+  'g',
+)
 const ETX = String.fromCharCode(3) // ^C
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))

@@ -413,6 +413,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
       return
     }
     if (modal != null) return
+    if (confirmRemove != null) return
     if (key.escape) {
       if (turn.state === 'calling-tool') {
         pushEntry({ kind: 'notice', variant: 'info', text: 'cancelling tool…' })
