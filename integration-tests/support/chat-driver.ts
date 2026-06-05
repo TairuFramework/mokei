@@ -1,5 +1,5 @@
 /**
- * Drives the real `mokei chat ollama` binary over a PTY (node-pty) so the CLI
+ * Drives the real `mokei chat --provider ollama` binary over a PTY (node-pty) so the CLI
  * TUI can be exercised end-to-end in integration tests. ink needs a real TTY on
  * stdin (setRawMode), which a plain child_process pipe cannot provide.
  *
@@ -52,7 +52,7 @@ export class ChatDriver {
   #buf = ''
 
   constructor({ model = 'lfm2.5:latest', cols = 100, rows = 30 }: ChatDriverOptions = {}) {
-    this.#pty = spawn('node', [CLI_BINARY, 'chat', 'ollama', '--model', model], {
+    this.#pty = spawn('node', [CLI_BINARY, 'chat', '--provider', 'ollama', '--model', model], {
       name: 'xterm-color',
       cols,
       rows,
