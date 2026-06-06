@@ -1,6 +1,30 @@
-import { describe, expect, test } from 'vitest'
+import type { Command } from 'commander'
+import { describe, expect, test, vi } from 'vitest'
 
+import { run } from '../src/index.js'
 import { buildProgram } from '../src/program.js'
+
+/**
+ * Configure a program (and its subcommands) to throw on error/exit and capture
+ * output instead of writing to the real streams, so usage errors can be
+ * asserted without exiting the test process.
+ */
+function captureProgram(program: Command): { out: Array<string>; err: Array<string> } {
+  const out: Array<string> = []
+  const err: Array<string> = []
+  const configure = (command: Command): void => {
+    command.exitOverride()
+    command.configureOutput({
+      writeOut: (str) => out.push(str),
+      writeErr: (str) => err.push(str),
+    })
+    for (const child of command.commands) {
+      configure(child)
+    }
+  }
+  configure(program)
+  return { out, err }
+}
 
 describe('buildProgram', () => {
   const program = buildProgram()
@@ -81,5 +105,52 @@ describe('buildProgram', () => {
   test('program has --version flag', () => {
     const versionOpt = program.options.find((o) => o.long === '--version' || o.short === '-v')
     expect(versionOpt).toBeDefined()
+  })
+})
+
+describe('CLI usage behavior', () => {
+  test('no-arg invocation prints help to stdout and exits 0', async () => {
+    const writes: Array<string> = []
+    const spy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation((chunk: string | Uint8Array) => {
+        writes.push(String(chunk))
+        return true
+      })
+    try {
+      await expect(run(['node', 'mokei'])).resolves.toBeUndefined()
+    } finally {
+      spy.mockRestore()
+    }
+    const output = writes.join('')
+    expect(output).toContain('Usage: mokei')
+    expect(output).toContain('chat')
+  })
+
+  test('missing required argument prints the subcommand help after the error', () => {
+    const program = buildProgram()
+    const { err } = captureProgram(program)
+    expect(() => program.parse(['node', 'mokei', 'inspect'])).toThrow()
+    const output = err.join('')
+    expect(output).toContain("missing required argument 'command'")
+    expect(output).toContain('Usage: mokei inspect')
+  })
+
+  test('unknown option prints the subcommand help after the error', () => {
+    const program = buildProgram()
+    const { err } = captureProgram(program)
+    expect(() => program.parse(['node', 'mokei', 'chat', '--bogus'])).toThrow()
+    const output = err.join('')
+    expect(output).toContain("unknown option '--bogus'")
+    expect(output).toContain('Usage: mokei chat')
+  })
+
+  test('unknown command reports "unknown command" (not "too many arguments")', () => {
+    const program = buildProgram()
+    const { err } = captureProgram(program)
+    expect(() => program.parse(['node', 'mokei', 'bogus'])).toThrow()
+    const output = err.join('')
+    expect(output).toContain("unknown command 'bogus'")
+    expect(output).not.toContain('too many arguments')
   })
 })
