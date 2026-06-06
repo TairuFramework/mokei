@@ -18,11 +18,27 @@ export function buildProgram(): Command {
     .description(pkg.description)
     .version(pkg.version, '-v, --version')
     .enablePositionalOptions()
+    // On a usage error (missing argument, unknown option, ...) print the full
+    // help after the error message instead of a bare one-liner. Propagates to
+    // subcommands.
+    .showHelpAfterError()
+    // With subcommands but no action, commander prints help to stderr and exits
+    // 1 when invoked with no arguments. Treat the no-arg case as a success:
+    // print help to stdout and let the process exit 0.
+    .action(() => {
+      program.outputHelp()
+    })
 
   program.addCommand(createChatCommand())
   program.addCommand(createInspectCommand())
   program.addCommand(createMonitorCommand())
   program.addCommand(createProxyCommand())
+
+  // `addCommand` (unlike `.command()`) does not copy inherited settings, so
+  // propagate the error-help behaviour to each subcommand explicitly.
+  for (const command of program.commands) {
+    command.showHelpAfterError()
+  }
 
   return program
 }
