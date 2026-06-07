@@ -1,6 +1,5 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 
-// eslint-disable-next-line n/shebang
-import { execute } from '@oclif/core'
+import { run } from '../dist/index.js'
 
-await execute({ development: true, dir: import.meta.url })
+await run(process.argv)

@@ -20,8 +20,7 @@
   "main": "dist/index.js",
   "files": [
     "/bin",
-    "/dist",
-    "/oclif.manifest.json"
+    "/dist"
   ],
   "bin": {
     "mokei": "./bin/run.js"
@@ -29,27 +28,17 @@
   "scripts": {
     "mokei": "./bin/dev.js",
     "build:clean": "del dist",
-    "build:dist": "swc src -d ./dist --config-file ../../swc.json --strip-leading-paths",
+    "build:dist": "swc src -d ./dist --config-file ./swc.json --strip-leading-paths",
     "build": "pnpm run build:clean && pnpm run test:types && pnpm run build:dist",
-    "prepack": "oclif manifest && oclif readme",
     "test:types": "tsc --noEmit --skipLibCheck",
-    "test": "pnpm run test:types",
-    "version": "oclif readme && git add README.md"
-  },
-  "oclif": {
-    "bin": "mokei",
-    "dirname": "mokei",
-    "commands": "./dist/commands",
-    "plugins": [
-      "@oclif/plugin-help"
-    ],
-    "topicSeparator": " ",
-    "topics": {}
+    "test:unit": "vitest run",
+    "test": "pnpm run test:types && pnpm run test:unit"
   },
   "dependencies": {
     "@enkaku/async": "catalog:",
     "@enkaku/node-streams-transport": "catalog:",
     "@enkaku/stream": "catalog:",
+    "@inkjs/ui": "catalog:",
     "@mokei/anthropic-provider": "workspace:^",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
@@ -59,20 +48,19 @@
     "@mokei/model-provider": "workspace:^",
     "@mokei/ollama-provider": "workspace:^",
     "@mokei/openai-provider": "workspace:^",
-    "@oclif/core": "catalog:",
-    "@oclif/plugin-help": "catalog:",
-    "@oclif/plugin-plugins": "catalog:",
-    "ansi-colors": "catalog:",
-    "enquirer": "catalog:",
+    "@mokei/session": "workspace:^",
+    "commander": "catalog:",
     "eventsource-parser": "catalog:",
+    "ink": "catalog:",
     "ky": "catalog:",
     "nano-spawn": "catalog:",
-    "ora": "catalog:"
+    "react": "catalog:"
   },
   "devDependencies": {
-    "@oclif/test": "catalog:",
-    "@types/node": "catalog:",
-    "oclif": "catalog:",
-    "typescript": "catalog:"
+    "@types/react": "catalog:",
+    "ink-testing-library": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

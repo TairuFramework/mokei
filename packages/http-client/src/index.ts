@@ -11,4 +11,9 @@
  */
 
 export { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
-export { createHTTPClient, HTTPTransport, type HTTPTransportParams } from './transport.js'
+export {
+  createHTTPClient,
+  DEFAULT_HTTP_TIMEOUT,
+  HTTPTransport,
+  type HTTPTransportParams,
+} from './transport.js'

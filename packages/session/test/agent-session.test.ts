@@ -11,7 +11,13 @@ import type {
 } from '@mokei/model-provider'
 import { describe, expect, test, vi } from 'vitest'
 
-import { AGENT_DEFAULTS, type AgentEvent, AgentSession, Session } from '../src/index.js'
+import {
+  AGENT_DEFAULTS,
+  type AgentEvent,
+  AgentSession,
+  Session,
+  UnknownToolError,
+} from '../src/index.js'
 
 /**
  * Creates a mock StreamChatRequest that combines AbortController and Promise.
@@ -65,6 +71,7 @@ type MockProviderTypes = {
 function createMockProvider(
   responses: Array<{
     text?: string
+    reasoning?: string
     toolCalls?: Array<FunctionToolCall<unknown>>
     inputTokens?: number
     outputTokens?: number
@@ -82,6 +89,10 @@ function createMockProvider(
       callIndex++
 
       const parts: Array<MessagePart<unknown, unknown>> = []
+
+      if (response.reasoning) {
+        parts.push({ type: 'reasoning-delta', reasoning: response.reasoning, raw: {} })
+      }
 
       if (response.text) {
         parts.push({ type: 'text-delta', text: response.text, raw: {} })
@@ -143,7 +154,7 @@ function createMockProvider(
 
 // Create a Session with a mock context for testing
 async function createMockSessionWithTools(
-  tools: Array<{ name: string; description: string; result: CallToolResult }>,
+  tools: Array<{ name: string; description: string; result: CallToolResult; delayMs?: number }>,
   providers?: Record<string, ModelProvider<MockProviderTypes>>,
 ): Promise<Session<MockProviderTypes>> {
   const session = new Session<MockProviderTypes>({ providers })
@@ -195,11 +206,23 @@ async function createMockSessionWithTools(
         const request = req.value as { id: number; method: string; params?: { name: string } }
         if (request.method === 'tools/call') {
           const tool = tools.find((t) => t.name === request.params?.name)
-          transport.write({
-            jsonrpc: '2.0',
-            id: request.id,
-            result: tool?.result ?? { content: [{ type: 'text', text: 'Unknown tool' }] },
-          })
+          if (tool?.delayMs != null) {
+            const timer = setTimeout(() => {
+              transport.write({
+                jsonrpc: '2.0',
+                id: request.id,
+                result: tool.result,
+              })
+            }, tool.delayMs)
+            // Allow the process to exit even if a stalled response is still pending.
+            ;(timer as { unref?: () => void }).unref?.()
+          } else {
+            transport.write({
+              jsonrpc: '2.0',
+              id: request.id,
+              result: tool?.result ?? { content: [{ type: 'text', text: 'Unknown tool' }] },
+            })
+          }
         }
       }
     }
@@ -341,7 +364,7 @@ describe('AgentSession', () => {
         model: 'test-model',
       })
 
-      const result = await agent.run('Say hello', controller.signal)
+      const result = await agent.run('Say hello', { signal: controller.signal })
       expect(result.finishReason).toBe('aborted')
     })
   })
@@ -403,6 +426,39 @@ describe('AgentSession', () => {
 
       expect(onEvent).toHaveBeenCalled()
       expect(receivedEvents.length).toBe(events.length)
+    })
+
+    test('emits reasoning-delta and reasoning-complete when the model reasons', async () => {
+      const provider = createMockProvider([{ reasoning: 'Let me think.', text: 'Answer' }])
+      const session = new Session({ providers: { test: provider } })
+      const agent = new AgentSession({ session, provider, model: 'test-model' })
+
+      const events: Array<AgentEvent> = []
+      for await (const event of agent.stream('Hello')) {
+        events.push(event)
+      }
+
+      const reasoningDelta = events.find((e) => e.type === 'reasoning-delta')
+      const reasoningComplete = events.find((e) => e.type === 'reasoning-complete')
+      expect(reasoningDelta).toMatchObject({ reasoning: 'Let me think.' })
+      expect(reasoningComplete).toMatchObject({ reasoning: 'Let me think.' })
+      // reasoning-complete comes before text-complete
+      const types = events.map((e) => e.type)
+      expect(types.indexOf('reasoning-complete')).toBeLessThan(types.indexOf('text-complete'))
+    })
+
+    test('does not emit reasoning events when the model produces none', async () => {
+      const provider = createMockProvider([{ text: 'Answer' }])
+      const session = new Session({ providers: { test: provider } })
+      const agent = new AgentSession({ session, provider, model: 'test-model' })
+
+      const events: Array<AgentEvent> = []
+      for await (const event of agent.stream('Hello')) {
+        events.push(event)
+      }
+      const types = events.map((e) => e.type)
+      expect(types).not.toContain('reasoning-delta')
+      expect(types).not.toContain('reasoning-complete')
     })
   })
 
@@ -574,9 +630,55 @@ describe('AgentSession', () => {
         events.push(event)
       }
 
-      const deniedEvent = events.find((e) => e.type === 'tool-call-denied')
-      expect(deniedEvent).toBeDefined()
-      expect((deniedEvent as { reason?: string }).reason).toBe('Too dangerous')
+      const pendingIdx = events.findIndex((e) => e.type === 'tool-call-pending')
+      const deniedIdx = events.findIndex((e) => e.type === 'tool-call-denied')
+      expect(pendingIdx).toBeGreaterThanOrEqual(0)
+      expect(deniedIdx).toBeGreaterThan(pendingIdx)
+      expect((events[deniedIdx] as { reason?: string }).reason).toBe('Too dangerous')
+
+      await session.dispose()
+    })
+
+    test('custom function receives tool-call-pending before approval is invoked', async () => {
+      const toolCall: FunctionToolCall<unknown> = {
+        id: 'call-1',
+        name: 'mock:test',
+        arguments: '{}',
+        raw: {},
+      }
+
+      const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Done' }])
+
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'test',
+            description: 'Test',
+            result: { content: [{ type: 'text', text: 'OK' }] },
+          },
+        ],
+        { test: provider },
+      )
+
+      const seenBeforeFn: Array<string> = []
+      const eventsCollected: Array<AgentEvent> = []
+      const approvalFn = vi.fn(async () => {
+        for (const e of eventsCollected) seenBeforeFn.push(e.type)
+        return true
+      })
+
+      const agent = new AgentSession({
+        session,
+        provider,
+        model: 'test-model',
+        toolApproval: approvalFn,
+      })
+
+      agent.events.on('event', (e) => eventsCollected.push(e))
+
+      await agent.run('Test')
+
+      expect(seenBeforeFn).toContain('tool-call-pending')
 
       await session.dispose()
     })
@@ -833,6 +935,175 @@ describe('AgentSession', () => {
         const errorEvent = events.find((e) => e.type === 'tool-call-error')
         expect(errorEvent).toBeDefined()
 
+        await session.dispose()
+      })
+
+      test('captures a hallucinated tool name and feeds available tools back', async () => {
+        // The model drops the context namespace and calls a bare, unknown name
+        // (mirrors a weak model emitting `fetch` instead of `fetch:get_markdown`).
+        const toolCall: FunctionToolCall<unknown> = {
+          id: 'call-1',
+          name: 'other_tool', // missing the `mock:` namespace -> unknown tool
+          arguments: '{}',
+          raw: {},
+        }
+
+        const provider = createMockProvider([
+          { toolCalls: [toolCall] },
+          { text: 'Recovered with the right tool.' },
+        ])
+
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'other_tool',
+              description: 'Other',
+              result: { content: [{ type: 'text', text: 'OK' }] },
+            },
+          ],
+          { test: provider },
+        )
+
+        const agent = new AgentSession({
+          session,
+          provider,
+          model: 'test-model',
+          toolApproval: 'auto',
+        })
+
+        const events: Array<AgentEvent> = []
+        for await (const event of agent.stream('Call the tool')) {
+          events.push(event)
+        }
+
+        // The unknown call is captured as an error, never executed.
+        const errorEvent = events.find((e) => e.type === 'tool-call-error')
+        expect(errorEvent?.type).toBe('tool-call-error')
+        if (errorEvent?.type === 'tool-call-error') {
+          expect(errorEvent.error).toBeInstanceOf(UnknownToolError)
+          // The error lists the real callable name so the model can self-correct.
+          expect(errorEvent.error.message).toContain('mock:other_tool')
+        }
+        expect(events.some((e) => e.type === 'tool-call-start')).toBe(false)
+
+        // The turn recovers and completes rather than hanging or throwing.
+        const complete = events.find((e) => e.type === 'complete')
+        if (complete?.type !== 'complete') throw new Error('missing complete event')
+        expect(complete.result.finishReason).toBe('complete')
+        expect(complete.result.toolCalls[0]?.error).toBeInstanceOf(UnknownToolError)
+
+        await session.dispose()
+      })
+
+      test('emits tool-call-pending before the approval decision resolves', async () => {
+        // Regression: the pending event must reach consumers *before* the
+        // approval await settles, so an interactive UI can render a prompt and
+        // the turn can be cancelled. Previously every approval event was
+        // buffered until after the decision, leaving the UI stuck.
+        const toolCall: FunctionToolCall<unknown> = {
+          id: 'call-1',
+          name: 'mock:other_tool',
+          arguments: '{}',
+          raw: {},
+        }
+        const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'done' }])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'other_tool',
+              description: 'Other',
+              result: { content: [{ type: 'text', text: 'OK' }] },
+            },
+          ],
+          { test: provider },
+        )
+
+        let resolveApproval: (ok: boolean) => void = () => {}
+        const approvalFn = vi.fn(
+          () =>
+            new Promise<boolean>((resolve) => {
+              resolveApproval = resolve
+            }),
+        )
+
+        const agent = new AgentSession({
+          session,
+          provider,
+          model: 'test-model',
+          toolApproval: approvalFn,
+        })
+
+        const events: Array<AgentEvent> = []
+        const collecting = (async () => {
+          for await (const event of agent.stream('go')) events.push(event)
+        })()
+
+        // The pending event surfaces and the approval fn is invoked while the
+        // decision is still outstanding.
+        await vi.waitFor(() => {
+          expect(approvalFn).toHaveBeenCalled()
+          expect(events.some((e) => e.type === 'tool-call-pending')).toBe(true)
+        })
+        expect(events.some((e) => e.type === 'tool-call-approved')).toBe(false)
+        expect(events.some((e) => e.type === 'complete')).toBe(false)
+
+        resolveApproval(true)
+        await collecting
+
+        expect(events.some((e) => e.type === 'tool-call-approved')).toBe(true)
+        expect(events.some((e) => e.type === 'complete')).toBe(true)
+        await session.dispose()
+      })
+
+      test('aborting while awaiting approval ends the turn without executing', async () => {
+        const toolCall: FunctionToolCall<unknown> = {
+          id: 'call-1',
+          name: 'mock:other_tool',
+          arguments: '{}',
+          raw: {},
+        }
+        const provider = createMockProvider([{ toolCalls: [toolCall] }])
+        const session = await createMockSessionWithTools(
+          [
+            {
+              name: 'other_tool',
+              description: 'Other',
+              result: { content: [{ type: 'text', text: 'OK' }] },
+            },
+          ],
+          { test: provider },
+        )
+
+        // Approval that never resolves on its own — only the abort ends it.
+        const approvalFn = vi.fn(() => new Promise<boolean>(() => {}))
+        const controller = new AbortController()
+        const agent = new AgentSession({
+          session,
+          provider,
+          model: 'test-model',
+          toolApproval: approvalFn,
+        })
+
+        const events: Array<AgentEvent> = []
+        const run = (async () => {
+          try {
+            for await (const event of agent.stream('go', { signal: controller.signal })) {
+              events.push(event)
+            }
+          } catch {
+            // Abort rethrows after the error event.
+          }
+        })()
+
+        await vi.waitFor(() =>
+          expect(events.some((e) => e.type === 'tool-call-pending')).toBe(true),
+        )
+        controller.abort()
+        await run
+
+        expect(events.some((e) => e.type === 'tool-call-approved')).toBe(false)
+        expect(events.some((e) => e.type === 'tool-call-start')).toBe(false)
+        expect(events.some((e) => e.type === 'complete')).toBe(false)
         await session.dispose()
       })
     })
@@ -1157,7 +1428,7 @@ describe('AgentSession', () => {
         const abortController = new AbortController()
         abortController.abort('Pre-aborted')
 
-        const result = await agent.run('Test', abortController.signal)
+        const result = await agent.run('Test', { signal: abortController.signal })
 
         expect(result.finishReason).toBe('aborted')
         expect(result.iterations).toBe(0)
@@ -1389,5 +1660,337 @@ describe('AgentSession', () => {
         await session.dispose()
       })
     })
+  })
+
+  describe('per-tool timeout and cancellation', () => {
+    const toolCall: FunctionToolCall<unknown> = {
+      id: 'call-1',
+      name: 'mock:slow',
+      arguments: '{}',
+      raw: {},
+    }
+
+    test('a tool exceeding toolTimeout yields ToolCallTimeoutError and the turn survives', async () => {
+      const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Recovered' }])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'slow',
+            description: 'never returns in time',
+            result: { content: [{ type: 'text', text: 'late' }] },
+            delayMs: 1000,
+          },
+        ],
+        { mock: provider },
+      )
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        toolTimeout: 50,
+      })
+
+      const events: Array<AgentEvent> = []
+      for await (const event of agent.stream('go')) {
+        events.push(event)
+      }
+
+      const errorEvent = events.find((e) => e.type === 'tool-call-error')
+      expect(errorEvent).toBeDefined()
+      expect((errorEvent as { error: Error }).error.name).toBe('ToolCallTimeoutError')
+      expect(events.some((e) => e.type === 'complete')).toBe(true)
+
+      await session.dispose()
+    })
+
+    test('cancelToolCall during execution yields ToolCallCancelledError and the turn survives', async () => {
+      const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'After cancel' }])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'slow',
+            description: 'stalls until cancelled',
+            result: { content: [{ type: 'text', text: 'late' }] },
+            delayMs: 1000,
+          },
+        ],
+        { mock: provider },
+      )
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        toolTimeout: 5000,
+      })
+
+      // Cancel as soon as the tool-call-start event fires (synchronous emitter).
+      agent.events.on('event', (e) => {
+        if (e.type === 'tool-call-start') {
+          agent.cancelToolCall()
+        }
+      })
+
+      const events: Array<AgentEvent> = []
+      for await (const event of agent.stream('go')) {
+        events.push(event)
+      }
+
+      const errorEvent = events.find((e) => e.type === 'tool-call-error')
+      expect(errorEvent).toBeDefined()
+      expect((errorEvent as { error: Error }).error.name).toBe('ToolCallCancelledError')
+      expect(events.some((e) => e.type === 'complete')).toBe(true)
+
+      await session.dispose()
+    })
+
+    test('a turn-level abort during a tool call does not produce a timeout/cancel error', async () => {
+      const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'unreached' }])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'slow',
+            description: 'stalls',
+            result: { content: [{ type: 'text', text: 'late' }] },
+            delayMs: 1000,
+          },
+        ],
+        { mock: provider },
+      )
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        toolTimeout: 5000,
+      })
+
+      const controller = new AbortController()
+      // Abort the turn as soon as the tool-call-start event fires (synchronous emitter).
+      agent.events.on('event', (e) => {
+        if (e.type === 'tool-call-start') {
+          controller.abort()
+        }
+      })
+
+      const events: Array<AgentEvent> = []
+      for await (const event of agent.stream('go', { signal: controller.signal })) {
+        events.push(event)
+      }
+
+      const errorEvent = events.find((e) => e.type === 'tool-call-error')
+      expect(errorEvent).toBeDefined()
+      const name = (errorEvent as { error: Error }).error.name
+      expect(name).not.toBe('ToolCallTimeoutError')
+      expect(name).not.toBe('ToolCallCancelledError')
+
+      await session.dispose()
+    })
+  })
+
+  describe('multi-turn history', () => {
+    test('AgentResult.messages contains the user prompt and assistant reply', async () => {
+      const provider = createMockProvider([{ text: 'Hello!' }])
+      const session = new Session({ providers: { mock: provider } })
+      const agent = new AgentSession({ session, provider: 'mock', model: 'test-model' })
+
+      const result = await agent.run('Hi')
+
+      expect(result.messages).toEqual([
+        { source: 'client', role: 'user', text: 'Hi' },
+        expect.objectContaining({ source: 'aggregated', role: 'assistant', text: 'Hello!' }),
+      ])
+    })
+
+    test('stream({ messages }) prepends prior history before the new prompt', async () => {
+      const provider = createMockProvider([{ text: 'Second reply' }])
+      const session = new Session({ providers: { mock: provider } })
+      const agent = new AgentSession({ session, provider: 'mock', model: 'test-model' })
+
+      const prior = [
+        { source: 'client' as const, role: 'user' as const, text: 'First prompt' },
+        { source: 'server' as const, role: 'assistant' as const, text: 'First reply', raw: {} },
+      ]
+
+      const result = await agent.run('Second prompt', { messages: prior })
+
+      expect(result.messages.slice(0, 2)).toEqual(prior)
+      expect(result.messages[2]).toEqual({
+        source: 'client',
+        role: 'user',
+        text: 'Second prompt',
+      })
+      expect(result.messages[3]).toMatchObject({ source: 'aggregated', role: 'assistant' })
+    })
+
+    test('system prompt is not duplicated when prior messages include a system role', async () => {
+      const provider = createMockProvider([{ text: 'ok' }])
+      const session = new Session({ providers: { mock: provider } })
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        systemPrompt: 'You are helpful',
+      })
+
+      const prior = [
+        { source: 'client' as const, role: 'system' as const, text: 'You are helpful' },
+        { source: 'client' as const, role: 'user' as const, text: 'First' },
+        { source: 'server' as const, role: 'assistant' as const, text: 'First reply', raw: {} },
+      ]
+
+      const result = await agent.run('Second', { messages: prior })
+      const systemCount = result.messages.filter((m) => m.role === 'system').length
+      expect(systemCount).toBe(1)
+    })
+  })
+
+  describe('mid-stream abort (timeout while streaming)', () => {
+    // A provider whose stream keeps yielding chunks and never reacts to the
+    // abort signal — mirrors a model (e.g. an ollama reasoning model) that keeps
+    // streaming after the turn signal aborts. The agent loop must stop consuming
+    // on its own rather than wait for the stream to end.
+    function createIgnoringStreamProvider(
+      chunkCount: number,
+      delayMs: number,
+    ): ModelProvider<MockProviderTypes> {
+      return {
+        listModels: vi.fn(async () => [{ id: 'test-model', raw: { id: 'test-model' } }]),
+        embed: vi.fn(async () => ({ embeddings: [[0]] })),
+        streamChat: vi.fn(() => {
+          let i = 0
+          const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+            async pull(controller) {
+              await new Promise((resolve) => setTimeout(resolve, delayMs))
+              if (i < chunkCount) {
+                controller.enqueue({ type: 'text-delta', text: `${i} `, raw: {} })
+                i++
+              } else {
+                controller.enqueue({ type: 'done', inputTokens: 1, outputTokens: 1, raw: {} })
+                controller.close()
+              }
+            },
+          })
+          return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
+            unknown,
+            unknown
+          >
+        }),
+        aggregateMessage: vi.fn(
+          (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => ({
+            source: 'aggregated',
+            role: 'assistant',
+            text: parts
+              .filter((p) => p.text)
+              .map((p) => p.text)
+              .join(''),
+            toolCalls: parts.flatMap((p) => p.toolCalls ?? []),
+            inputTokens: 0,
+            outputTokens: 0,
+          }),
+        ),
+        toolFromMCP: vi.fn((tool: Tool) => ({
+          name: tool.name,
+          description: tool.description ?? '',
+        })),
+      }
+    }
+
+    test('turn timeout interrupts an actively-streaming response', async () => {
+      const provider = createIgnoringStreamProvider(100, 5)
+      const session = new Session({ providers: { mock: provider } })
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        timeout: 20,
+      })
+
+      const events: Array<AgentEvent> = []
+      try {
+        for await (const event of agent.stream('go')) {
+          events.push(event)
+        }
+      } catch {
+        // The agent rethrows the abort after emitting the timeout event.
+      }
+
+      const types = events.map((e) => e.type)
+      const deltas = types.filter((t) => t === 'text-delta').length
+
+      expect(types).toContain('timeout')
+      expect(types).not.toContain('complete')
+      // Must have stopped well before draining all 100 chunks.
+      expect(deltas).toBeLessThan(100)
+    })
+
+    // A provider that emits a few chunks then stops yielding entirely — the
+    // read parks forever (model hung mid-stream). Unlike the actively-streaming
+    // case above, the between-chunk abort check never runs because control never
+    // returns from `await chatTurn.next()`. The turn must race the pending read
+    // against the abort signal, otherwise aborting/timing out does nothing.
+    function createStallingStreamProvider(emitCount: number): ModelProvider<MockProviderTypes> {
+      return {
+        listModels: vi.fn(async () => [{ id: 'test-model', raw: { id: 'test-model' } }]),
+        embed: vi.fn(async () => ({ embeddings: [[0]] })),
+        streamChat: vi.fn(() => {
+          let i = 0
+          const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+            pull(controller) {
+              if (i < emitCount) {
+                controller.enqueue({ type: 'reasoning-delta', reasoning: `r${i} `, raw: {} })
+                i++
+                return
+              }
+              // Park forever: never enqueue, never close, never reject.
+              return new Promise<void>(() => {})
+            },
+          })
+          return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
+            unknown,
+            unknown
+          >
+        }),
+        aggregateMessage: vi.fn(
+          (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => ({
+            source: 'aggregated',
+            role: 'assistant',
+            text: parts
+              .filter((p) => p.text)
+              .map((p) => p.text)
+              .join(''),
+            toolCalls: parts.flatMap((p) => p.toolCalls ?? []),
+            inputTokens: 0,
+            outputTokens: 0,
+          }),
+        ),
+        toolFromMCP: vi.fn((tool: Tool) => ({
+          name: tool.name,
+          description: tool.description ?? '',
+        })),
+      }
+    }
+
+    test('turn timeout interrupts a stalled stream that stops yielding', async () => {
+      const provider = createStallingStreamProvider(2)
+      const session = new Session({ providers: { mock: provider } })
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        timeout: 30,
+      })
+
+      const events: Array<AgentEvent> = []
+      try {
+        for await (const event of agent.stream('go')) {
+          events.push(event)
+        }
+      } catch {
+        // The agent rethrows the abort after emitting the timeout event.
+      }
+
+      const types = events.map((e) => e.type)
+      expect(types).toContain('timeout')
+      expect(types).not.toContain('complete')
+    }, 2000)
   })
 })

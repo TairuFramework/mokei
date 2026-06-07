@@ -8,6 +8,8 @@
     "strict": true,
     "target": "es2022",
     "moduleResolution": "node16",
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
     "types": ["node"]
   },
   "include": ["./src/**/*"],

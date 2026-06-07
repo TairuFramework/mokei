@@ -9,6 +9,8 @@ type ProviderTypes = AnthropicTypes | OllamaTypes | OpenAITypes
 
 const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
 
+const model = 'lfm2.5:latest'
+
 // Ollama Anthropic and OpenAI compatibility endpoint
 const baseURL = 'http://localhost:11434/v1'
 const anthropicProvider = new AnthropicProvider({
@@ -39,7 +41,7 @@ describe('Session', () => {
     test('executes a tool call', async () => {
       const reply = await session.chat({
         provider: config.provider,
-        model: 'ministral-3:8b',
+        model,
         messages: [
           {
             source: 'client',

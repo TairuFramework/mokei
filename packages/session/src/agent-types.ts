@@ -1,6 +1,6 @@
 import type { CallToolResult } from '@mokei/context-protocol'
 import type { ContextTool } from '@mokei/host'
-import type { FunctionToolCall, ModelProvider, ProviderTypes } from '@mokei/model-provider'
+import type { FunctionToolCall, Message, ModelProvider, ProviderTypes } from '@mokei/model-provider'
 
 import type { Session } from './session.js'
 
@@ -64,6 +64,8 @@ export type AgentParams<T extends ProviderTypes = ProviderTypes> = {
   maxIterations?: number
   /** Timeout in milliseconds (default: 300000 = 5 minutes) */
   timeout?: number
+  /** Per-tool-call timeout in milliseconds (default: 120000 = 2 minutes) */
+  toolTimeout?: number
   /** Optional callback for each event during execution */
   onEvent?: (event: AgentEvent) => void
 }
@@ -79,17 +81,20 @@ export type ResolvedAgentParams<T extends ProviderTypes = ProviderTypes> = {
   toolApproval: ToolApprovalStrategy
   maxIterations: number
   timeout: number
+  toolTimeout: number
   onEvent: ((event: AgentEvent) => void) | undefined
 }
 
 /**
  * Union type of all events emitted during agent execution.
  */
-export type AgentEvent =
+export type AgentEvent<T extends ProviderTypes = ProviderTypes> =
   | AgentStartEvent
   | AgentIterationStartEvent
   | AgentTextDeltaEvent
   | AgentTextCompleteEvent
+  | AgentReasoningDeltaEvent
+  | AgentReasoningCompleteEvent
   | AgentToolCallPendingEvent
   | AgentToolCallApprovedEvent
   | AgentToolCallDeniedEvent
@@ -97,7 +102,7 @@ export type AgentEvent =
   | AgentToolCallCompleteEvent
   | AgentToolCallErrorEvent
   | AgentIterationCompleteEvent
-  | AgentCompleteEvent
+  | AgentCompleteEvent<T>
   | AgentErrorEvent
   | AgentTimeoutEvent
   | AgentMaxIterationsEvent
@@ -135,6 +140,26 @@ export type AgentTextDeltaEvent = {
 export type AgentTextCompleteEvent = {
   type: 'text-complete'
   text: string
+  timestamp: number
+}
+
+/**
+ * Emitted for each reasoning (thinking) chunk streamed from the model, for
+ * providers/models that expose a separate reasoning stream.
+ */
+export type AgentReasoningDeltaEvent = {
+  type: 'reasoning-delta'
+  reasoning: string
+  timestamp: number
+}
+
+/**
+ * Emitted when reasoning for an iteration completes (only when the model
+ * produced any reasoning).
+ */
+export type AgentReasoningCompleteEvent = {
+  type: 'reasoning-complete'
+  reasoning: string
   timestamp: number
 }
 
@@ -209,9 +234,9 @@ export type AgentIterationCompleteEvent = {
 /**
  * Emitted when the agent completes successfully.
  */
-export type AgentCompleteEvent = {
+export type AgentCompleteEvent<T extends ProviderTypes = ProviderTypes> = {
   type: 'complete'
-  result: AgentResult
+  result: AgentResult<T>
   timestamp: number
 }
 
@@ -244,9 +269,11 @@ export type AgentMaxIterationsEvent = {
 /**
  * Final result of agent execution.
  */
-export type AgentResult = {
+export type AgentResult<T extends ProviderTypes = ProviderTypes> = {
   /** Final text response from the agent */
   text: string
+  /** Full conversation history after this run: input messages + new user prompt + assistant + tool messages */
+  messages: Array<Message<T['MessagePart'], T['ToolCall']>>
   /** Total number of iterations executed */
   iterations: number
   /** All tool calls made during execution */
@@ -288,5 +315,6 @@ export type AgentFinishReason = 'complete' | 'max-iterations' | 'timeout' | 'abo
 export const AGENT_DEFAULTS = {
   maxIterations: 10,
   timeout: 5 * 60 * 1000, // 5 minutes
+  toolTimeout: 2 * 60 * 1000, // 2 minutes
   toolApproval: 'auto' as const,
 } as const
