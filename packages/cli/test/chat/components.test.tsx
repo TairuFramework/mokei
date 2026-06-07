@@ -2,7 +2,6 @@ import { render } from 'ink-testing-library'
 import { describe, expect, test } from 'vitest'
 
 import { AssistantMessage } from '../../src/chat/components/AssistantMessage.js'
-import { AssistantStreamingText } from '../../src/chat/components/AssistantStreamingText.js'
 import { Footer } from '../../src/chat/components/Footer.js'
 import { HelpCard } from '../../src/chat/components/HelpCard.js'
 import { ModelSelectCard } from '../../src/chat/components/ModelSelectCard.js'
@@ -46,11 +45,6 @@ describe('components', () => {
 })
 
 describe('streaming + approval', () => {
-  test('AssistantStreamingText shows the current delta', () => {
-    const { lastFrame } = render(<AssistantStreamingText text="partial" />)
-    expect(lastFrame()).toContain('partial')
-  })
-
   test('ToolApprovalCard shows the tool name and arguments', () => {
     const { lastFrame } = render(
       <ToolApprovalCard

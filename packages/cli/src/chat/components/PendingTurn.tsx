@@ -3,7 +3,7 @@ import { Box } from 'ink'
 import { useElapsed } from '../hooks/useElapsed.js'
 import type { PendingApproval } from '../hooks/useToolApproval.js'
 import type { TurnState } from '../turn-reducer.js'
-import { AssistantStreamingText } from './AssistantStreamingText.js'
+import { AssistantMessage } from './AssistantMessage.js'
 import { ReasoningView } from './ReasoningView.js'
 import { ToolApprovalCard } from './ToolApprovalCard.js'
 import { ToolCallStatus } from './ToolCallStatus.js'
@@ -36,7 +36,7 @@ export function PendingTurn({
 
   return (
     <Box flexDirection="column">
-      {turn.currentText !== '' ? <AssistantStreamingText text={turn.currentText} /> : null}
+      {turn.currentText !== '' ? <AssistantMessage text={turn.currentText} /> : null}
       {thinking ? (
         <ReasoningView
           reasoning={turn.currentReasoning}
