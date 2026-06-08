@@ -520,6 +520,24 @@ describe('ContextServer', () => {
     })
   })
 
+  describe('Cache hints on lists (G1 server)', () => {
+    test('tools/list includes configured ttlMs and cacheScope', async () => {
+      const { transports } = createTestContext({
+        cache: { ttlMs: 60000, cacheScope: 'public' },
+        tools: { a: createTool('a', { type: 'object' }, async () => ({ content: [] })) },
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/list',
+        params: {},
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({ result: { ttlMs: 60000, cacheScope: 'public' } })
+      await transports.dispose()
+    })
+  })
+
   describe('Deterministic list ordering (G6)', () => {
     test('tools/list returns tools sorted by name', async () => {
       const noop = async () => ({ content: [] as [] })
