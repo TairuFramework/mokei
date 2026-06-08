@@ -93,6 +93,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       'MCP-Protocol-Version': LATEST_PROTOCOL_VERSION,
     }
 
+    if ('method' in message && typeof message.method === 'string') {
+      headers['Mcp-Method'] = message.method
+      const name = (message as { params?: { name?: unknown } }).params?.name
+      if (typeof name === 'string') {
+        headers['Mcp-Name'] = name
+      }
+    }
+
     if (this.#sessionID) {
       headers['Mcp-Session-Id'] = this.#sessionID
     }

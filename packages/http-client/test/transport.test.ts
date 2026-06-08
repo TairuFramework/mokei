@@ -365,6 +365,25 @@ describe('HTTPTransport', () => {
     })
   })
 
+  // Task 10 (G2): Mcp-Method and Mcp-Name headers
+
+  test('POST includes Mcp-Method and Mcp-Name headers (G2)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ jsonrpc: '2.0', id: 1, result: { content: [] } }),
+    )
+    const transport = new HTTPTransport({ url: TEST_URL })
+    await transport.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'search' },
+    } as ClientMessage)
+    const [, init] = getCallByMethod(fetchMock.mock.calls, 'POST')
+    expect(init.headers['Mcp-Method']).toBe('tools/call')
+    expect(init.headers['Mcp-Name']).toBe('search')
+    await transport.dispose()
+  })
+
   // Task 6: GET stream for server-initiated messages
 
   describe('GET stream for server-initiated messages', () => {
