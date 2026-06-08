@@ -25,7 +25,37 @@ no `Ajv2020`. Re-running the probe against the installed `lib/index.js` threw
 2020-12 keyword as unknown), directly establishing the draft-07 finding.
 
 ## U3 — `@enkaku/otel` availability & `_meta` mapping
-_(filled by Task 3)_
+
+**Dependency status:** `@enkaku/otel` is **not currently a dependency** of any
+workspace package (no hits in `packages/*/package.json` or `pnpm-workspace.yaml`).
+It is **available at `@enkaku/otel@0.16.0`** in the pnpm store.
+
+**Exported trace-context helpers (`@enkaku/otel@0.16.0`):**
+
+- `injectTraceContext(header)` / `extractTraceContext(header)` — inject/extract trace
+  context into/from a header object. **Note:** these use Enkaku's own compact fields
+  `tid` (traceId) + `sid` (spanId), **not** W3C headers. No `tracestate`, no `baggage`.
+- `formatTraceparent(traceID, spanID, traceFlags)` / `parseTraceparent(header)` —
+  format/parse a **W3C `traceparent`** header value (version `00` only). Type
+  `TraceparentData = { traceID, spanID, traceFlags }`.
+- `setSpanOnContext`, `withActiveContext`, `getActiveSpan`, `getActiveTraceContext`,
+  `createTracer`, `withSpan`, `withSyncSpan` — span/context plumbing (not header codecs).
+- `AttributeKeys`, `SpanNames`, `ZERO_TRACE_ID` — semantic constants.
+
+A repo-wide grep of the installed lib for `tracestate`/`baggage` returned **none**.
+
+**Verdict for G5: INSUFFICIENT.** Only `traceparent` is covered. `@enkaku/otel@0.16.0`
+provides **no `tracestate` and no `baggage`** formatting/parsing, and its
+`inject`/`extractTraceContext` helpers emit non-W3C `tid`/`sid` fields rather than the
+standard `traceparent` header. The trio required by G5 is not fully supported.
+
+**Decision:** G5 (OTel `_meta` keys) requires ADDING `@enkaku/otel` as a dependency of
+the package that builds outgoing requests (`context-client` / `context-rpc`) — it is not
+wired today. Injection point: `_meta` of outgoing requests. Because the helpers cover
+**only `traceparent`** (and not `tracestate`/`baggage`), **G5 stays deferred** as a
+full-trio mapping: either implement G5 with `traceparent` only (using
+`formatTraceparent`/`parseTraceparent`) and explicitly document the `tracestate`/`baggage`
+gap, or file an upstream ask for `@enkaku/otel` to add `tracestate`/`baggage` codecs.
 
 ## U1 — Transport model vs stateless + MRTR
 _(filled by Task 4)_
