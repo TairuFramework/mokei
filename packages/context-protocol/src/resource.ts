@@ -2,6 +2,7 @@ import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { annotations, resourceContents } from './content.js'
 import {
+  cacheableResult,
   icon,
   metadata,
   notification,
@@ -123,6 +124,7 @@ export const listResourcesResult = {
   description: "The server's response to a resources/list request from the client.",
   allOf: [
     paginatedResult,
+    cacheableResult,
     {
       properties: {
         resources: {
@@ -161,6 +163,7 @@ export const listResourceTemplatesResult = {
   description: "The server's response to a resources/templates/list request from the client.",
   allOf: [
     paginatedResult,
+    cacheableResult,
     {
       properties: {
         resourceTemplates: {
@@ -230,6 +233,7 @@ export const readResourceResult = {
   description: "The server's response to a resources/read request from the client.",
   allOf: [
     result,
+    cacheableResult,
     {
       properties: {
         contents: {

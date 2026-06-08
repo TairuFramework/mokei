@@ -14,6 +14,7 @@ import { getPromptRequest, getPromptResult, prompt } from '../src/prompt.js'
 import { readResourceRequest, resource, resourceTemplate } from '../src/resource.js'
 import { listRootsRequest, root } from '../src/root.js'
 import {
+  cacheableResult,
   INTERNAL_ERROR,
   INVALID_PARAMS,
   INVALID_REQUEST,
@@ -28,7 +29,13 @@ import {
 } from '../src/rpc.js'
 import { createMessageRequest, modelPreferences } from '../src/sampling.js'
 import { serverMessage } from '../src/server.js'
-import { callToolRequest, callToolResult, listToolsRequest, tool } from '../src/tool.js'
+import {
+  callToolRequest,
+  callToolResult,
+  listToolsRequest,
+  listToolsResult,
+  tool,
+} from '../src/tool.js'
 
 describe('Protocol Version and Constants', () => {
   test('should use MCP protocol version 2025-11-25', async () => {
@@ -305,5 +312,20 @@ describe('Client and Server Message Types', () => {
       expect(methods).toContain('roots/list')
       expect(methods).toContain('sampling/createMessage')
     }
+  })
+})
+
+describe('Cacheable results (G1)', () => {
+  test('cacheableResult defines ttlMs and cacheScope', async () => {
+    expect(cacheableResult.properties.ttlMs.type).toBe('number')
+    expect(cacheableResult.properties.cacheScope.enum).toEqual(['public', 'private'])
+  })
+
+  test('listToolsResult composes cacheableResult', async () => {
+    const fragments = listToolsResult.allOf
+    const hasCache = fragments.some(
+      (f) => 'properties' in f && (f as { properties?: Record<string, unknown> }).properties?.ttlMs,
+    )
+    expect(hasCache).toBe(true)
   })
 })

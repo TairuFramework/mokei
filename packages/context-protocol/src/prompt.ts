@@ -1,7 +1,15 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { contentBlock, role } from './content.js'
-import { icon, notification, paginatedRequest, paginatedResult, request, result } from './rpc.js'
+import {
+  cacheableResult,
+  icon,
+  notification,
+  paginatedRequest,
+  paginatedResult,
+  request,
+  result,
+} from './rpc.js'
 
 // https://github.com/modelcontextprotocol/specification/blob/bb5fdd282a4d0793822a569f573ebc36804d38f8/schema/schema.json#L1296
 export const promptArgument = {
@@ -159,6 +167,7 @@ export const listPromptsResult = {
   description: "The server's response to a prompts/list request from the client.",
   allOf: [
     paginatedResult,
+    cacheableResult,
     {
       properties: {
         prompts: {

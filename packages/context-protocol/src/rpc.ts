@@ -221,6 +221,25 @@ export const paginatedResult = {
 } as const satisfies Schema
 export type PaginatedResult = FromSchema<typeof paginatedResult>
 
+// CacheableResult — MCP draft caching hints (additive on 2025-11-25).
+export const cacheableResult = {
+  properties: {
+    cacheScope: {
+      description:
+        'Controls whether shared intermediaries may cache the response. "public" allows shared caching; "private" restricts it to the requesting client.',
+      enum: ['public', 'private'],
+      type: 'string',
+    },
+    ttlMs: {
+      description:
+        'Freshness hint in milliseconds. Allows clients to cache the response and reduce polling. Complements listChanged notifications.',
+      type: 'number',
+    },
+  },
+  type: 'object',
+} as const satisfies Schema
+export type CacheableResult = FromSchema<typeof cacheableResult>
+
 export const response = {
   properties: {
     id: requestId,
