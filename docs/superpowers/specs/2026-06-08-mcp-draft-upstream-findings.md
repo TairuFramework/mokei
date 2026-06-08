@@ -58,4 +58,84 @@ full-trio mapping: either implement G5 with `traceparent` only (using
 gap, or file an upstream ask for `@enkaku/otel` to add `tracestate`/`baggage` codecs.
 
 ## U1 — Transport model vs stateless + MRTR
-_(filled by Task 4)_
+
+Current model (`packages/context-rpc/src/rpc.ts`): `ContextRPC` is a **symmetric
+bidirectional duplex** over `@enkaku/transport` `TransportType<In, Out>`. The transport
+is a single `ReadableWritablePair` — exactly one inbound read stream (`read()` /
+`[Symbol.asyncIterator]`) and one outbound write stream (`write()` / `getWritable()`).
+`request()` (lines ~201-228) allocates a monotonic numeric id (`#requestID++`), stores a
+`RequestController` (an `AbortController` merged with a `Deferred`) in `#sentRequests`,
+writes the request, and returns the deferred promise. The single `_handle()` read loop
+(`handleNext`) demuxes every inbound frame in `_handleMessage()`: responses are matched
+back to `#sentRequests[id]` and resolve/reject the deferred; requests get an entry in
+`#receivedRequests` and produce a single `Response`; notifications fan out to
+`_handleNotification()`. There is one id-space and one frame multiplex shared by both
+directions.
+
+**1. Can the duplex `TransportType<In, Out>` model (a) request-scoped response streams
+and (b) a single opt-in `subscriptions/listen` long-poll, without a persistent
+server→client channel?**
+
+**Yes — at the `context-rpc` layer, not at the `@enkaku/transport` layer.** The
+transport itself is direction-symmetric: every frame written by the peer arrives on the
+one shared read stream, and `TransportType` has no concept of per-request substreams. So
+"request-scoped response streams" is a *logical* construct that `context-rpc` must build
+on top of the flat frame multiplex, not something the transport provides natively.
+
+(a) Request-scoped streaming is achievable: tag each notification (e.g. progress)
+arriving on the read loop with the originating request id (the protocol already does this
+for `notifications/progress` via `progressToken`, and `notifications/cancelled` via
+`requestId`). `_handleMessage()` already routes by id; it would route stream-scoped
+notifications to the matching `#sentRequests[id]` controller (which would need to expose a
+stream/iterator sink instead of a one-shot `resolve`). No persistent server→client
+channel is required *as long as the request is in flight* — the frames simply ride the
+same duplex back to the requester while its read loop is running.
+
+(b) A single opt-in `subscriptions/listen` long-poll is just one more in-flight request
+whose response stream stays open: the client issues `subscriptions/listen`, keeps that one
+`#sentRequests` entry alive, and the server emits subsequent server-initiated messages as
+stream frames correlated to that request id. This gives server→client delivery without a
+*separate* always-on channel — it is the existing duplex carrying one long-lived logical
+stream. **Caveat:** the duplex is still physically bidirectional and long-lived; "no
+persistent server→client channel" holds only in the logical sense (no second transport,
+no out-of-band push) — the underlying duplex read stream must remain open for the
+long-poll to receive anything.
+
+**2. MRTR continuation — where does state live, and how must `#sentRequests` change on
+the server side?**
+
+In MRTR the *server* no longer calls `request()` to ask the client something; instead it
+returns `inputRequests` inside its result and **terminates its turn**. The continuation
+state therefore cannot live in `#sentRequests` on the server: today `#sentRequests` holds
+in-memory `Deferred`s that assume the asker keeps a live promise awaiting a correlated
+response on the same connection. With MRTR the server has already returned and unwound its
+call stack — there is no pending deferred to resolve, and on a stateless transport there
+may be no shared connection at all when the client comes back with the filled inputs.
+
+So for the server side the model inverts: the *client* drives correlation. The server
+emits `inputRequests` as plain result data carrying its own correlation token(s)
+(per-input ids the server minted), and the client later issues a fresh request
+(continuation) echoing those tokens. The server reconstructs continuation state from a
+**durable, connection-independent store keyed by those tokens** (session/turn id +
+input-request ids), not from `#sentRequests`. Concretely: `#sentRequests` on the *server*
+is no longer used for soliciting client input — it would either be removed for that path
+or repurposed only for genuine server-initiated requests (if any remain). The
+abort/cancel wiring tied to `#sentRequests` (lines ~209-216) likewise does not apply,
+since there is no outstanding server-side deferred to cancel; cancellation of an MRTR turn
+becomes a client-issued notification against the stored continuation token instead.
+
+**3. Recommendation.**
+
+**Reimplement correlation in `context-rpc` above the existing `@enkaku/transport`** — do
+not extend or fork the transport. The transport's single-duplex `read()/write()` +
+async-iterator surface is already sufficient to carry every frame; the gaps (request-
+scoped streaming, `subscriptions/listen` long-poll, and MRTR continuation tokens) are all
+*correlation and state-management* concerns that belong in `ContextRPC`, not in the
+byte/frame plumbing. Specifically: (i) generalize `#sentRequests` controllers so a request
+can resolve a *stream* of correlated frames rather than a single response; (ii) add a
+continuation-token store decoupled from `#sentRequests` for MRTR, keyed by server-minted
+input-request ids and survivable across (stateless) reconnects; (iii) keep
+`@enkaku/transport` untouched so all existing transports (stdio, HTTP, direct) work
+unchanged. Extending `@enkaku/transport` with a new contract or adding a new transport
+shape would push protocol-level correlation into the wrong layer and break the clean
+separation that lets mokei reuse every transport interchangeably.
