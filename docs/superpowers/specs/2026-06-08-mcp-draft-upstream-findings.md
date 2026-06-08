@@ -139,3 +139,72 @@ input-request ids and survivable across (stateless) reconnects; (iii) keep
 unchanged. Extending `@enkaku/transport` with a new contract or adding a new transport
 shape would push protocol-level correlation into the wrong layer and break the clean
 separation that lets mokei reuse every transport interchangeably.
+
+## G7 — x-mcp-header custom headers (SEP-2243)
+
+**Source:** Draft spec page `https://modelcontextprotocol.io/specification/draft/basic/transports/streamable-http`
+(SEP-2243 merged PR; spec fully reflects the merged semantics).
+
+### (a) Exact mapping — source of values, naming convention, client/server side
+
+The spec is fully specified. Key rules:
+
+- **Server side — annotation:** A server marks a tool parameter to be mirrored into
+  an HTTP header by adding `"x-mcp-header": "<Name>"` as an extension property on
+  that parameter's schema entry inside the tool's `inputSchema`. `<Name>` is the
+  name-portion only (not the full header name).
+- **Client side — construction:** The resulting header name is `Mcp-Param-{Name}`
+  (e.g. `"x-mcp-header": "Region"` → header `Mcp-Param-Region`). Clients **MUST**
+  support this feature; when a tool definition carries `x-mcp-header` annotations,
+  clients **MUST** mirror the designated argument values into the corresponding
+  `Mcp-Param-*` headers on every `tools/call` POST.
+- **Value encoding:** Values are converted to strings (integer → decimal, boolean →
+  `"true"`/`"false"`, string as-is). Non-ASCII, control characters, or
+  leading/trailing whitespace must be Base64-encoded with the sentinel wrapper
+  `=?base64?{value}?=`. Any plain-ASCII value that itself matches the sentinel
+  pattern must also be Base64-encoded.
+- **Constraints on `x-mcp-header` values:** must be non-empty; must match RFC 9110
+  field-name token syntax (`1*tchar`); must be case-insensitively unique within the
+  tool's `inputSchema`; only applicable to primitive types (integer, string,
+  boolean — not `number`); may appear at any nesting depth.
+- **Null / absent parameters:** client MUST omit the `Mcp-Param-*` header; server
+  MUST NOT expect it.
+- **Invalid tool rejection:** clients using Streamable HTTP MUST reject (exclude from
+  `tools/list` result) any tool definition where an `x-mcp-header` value violates the
+  constraints, logging a warning. Clients on other transports (e.g. stdio) MAY ignore
+  `x-mcp-header` entirely.
+- **Server validation:** servers MUST validate that each `Mcp-Param-{Name}` header
+  value matches the corresponding argument value in the request body; mismatch → HTTP
+  400 + JSON-RPC error `-32001` (`HeaderMismatch`). Servers MUST NOT reject a request
+  solely because a recognized `Mcp-Param-*` header is absent (omission means null/not
+  provided). Intermediaries MUST forward unrecognised `Mcp-Param-*` headers and
+  otherwise ignore them.
+- **Relationship to `Mcp-Method`/`Mcp-Name`:** `x-mcp-header` custom headers are
+  additive alongside the required standard headers (`Mcp-Method`, `Mcp-Name`,
+  `MCP-Protocol-Version`). They are set in the same step (client constructs the POST),
+  after the standard headers, per the client-behavior sequence in the spec.
+- **Transport scope:** Streamable HTTP only. Stdio transport clients MAY ignore.
+
+**Status: RESOLVED.** The draft spec page contains the complete normative rules.
+
+### (b) Implied change in `packages/http-client/src/transport.ts` (deferred code task)
+
+Deferred until draft semantics are confirmed stable. When implemented:
+
+1. **Cache the tool `inputSchema`** — after `tools/list` is called (or on demand),
+   store the `inputSchema` for each tool, keyed by tool name. The transport (or a
+   layer above it) needs access to this cache when constructing `tools/call` requests.
+2. **Header injection in `sendRequest` (or the POST construction path):** for every
+   `tools/call` request, iterate the cached `inputSchema` for the named tool, find
+   all properties at any depth whose schema entry contains `"x-mcp-header"`, validate
+   the `x-mcp-header` value against the constraints (non-empty, `1*tchar`, unique,
+   primitive type only), and for each valid annotation where the corresponding
+   argument is non-null/non-absent, append `Mcp-Param-{Name}: {encodedValue}` to the
+   outgoing request headers.
+3. **Value encoding helper:** implement the type-conversion + Base64-sentinel encoding
+   rules described above (pure function, easy to unit-test in isolation).
+4. **Tool-list filtering:** when processing the result of `tools/list`, validate all
+   `x-mcp-header` values; exclude any tool that fails validation and log a warning.
+5. **Stale-schema fallback:** if no cached `inputSchema` is available at call time,
+   send the request without `Mcp-Param-*` headers; if the server rejects with
+   `-32001`, refresh via `tools/list` and retry.
