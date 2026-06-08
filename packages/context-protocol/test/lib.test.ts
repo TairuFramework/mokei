@@ -2,7 +2,13 @@ import { describe, expect, test } from 'vitest'
 
 import { clientMessage } from '../src/client.js'
 import { imageContent, role, textContent } from '../src/content.js'
-import { initializedNotification, initializeRequest, initializeResult } from '../src/initialize.js'
+import {
+  clientCapabilities,
+  initializedNotification,
+  initializeRequest,
+  initializeResult,
+  serverCapabilities,
+} from '../src/initialize.js'
 import { loggingLevel, loggingMessageNotification, setLevelRequest } from '../src/logging.js'
 import { getPromptRequest, getPromptResult, prompt } from '../src/prompt.js'
 import { readResourceRequest, resource, resourceTemplate } from '../src/resource.js'
@@ -240,6 +246,15 @@ describe('Sampling Support', () => {
     expect(modelPreferences.properties.costPriority).toBeDefined()
     expect(modelPreferences.properties.speedPriority).toBeDefined()
     expect(modelPreferences.properties.intelligencePriority).toBeDefined()
+  })
+})
+
+describe('Extensions capability (G4)', () => {
+  test('client and server capabilities expose an extensions object', async () => {
+    expect(clientCapabilities.properties.extensions).toBeDefined()
+    expect(clientCapabilities.properties.extensions.type).toBe('object')
+    expect(serverCapabilities.properties.extensions).toBeDefined()
+    expect(serverCapabilities.properties.extensions.type).toBe('object')
   })
 })
 
