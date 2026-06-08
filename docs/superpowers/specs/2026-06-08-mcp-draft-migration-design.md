@@ -103,7 +103,7 @@ These are MUST-for-conformance at the cut, but additive today: extra fields/head
 | # | Change | mokei impact | Requirement |
 |---|---|---|---|
 | G4 | `extensions` field on `ClientCapabilities` + `ServerCapabilities` | Additive capability schema field; enables future extension support. | OPT |
-| G5 | OpenTelemetry `_meta` trace-context keys (`traceparent`, `tracestate`, `baggage`) (SEP-414) | Wire `@enkaku/otel` (already provides traceparent format + context propagation) into outgoing `_meta`. Low effort, additive. See upstream U3. | OPT |
+| G5 | OpenTelemetry `_meta` trace-context keys (`traceparent`, `tracestate`, `baggage`) (SEP-414) | Wire `@enkaku/otel` (already provides traceparent format + context propagation) into outgoing `_meta`. Low effort, additive. See upstream U3. DEFERRED — U3 found @enkaku/otel@0.16.0 covers traceparent only (no tracestate/baggage) and is not yet a dependency. Revisit when upstream adds the full trio. | OPT |
 | G6 | `tools/list` SHOULD return tools in deterministic order (cache-hit friendliness) | Sort the server tools list before returning. | OPT |
 | G7 | Custom headers from tool params via `x-mcp-header` (SEP-2243) | Additive header plumbing; pairs with G2. | OPT |
 | G8 | Loosen `inputSchema`/`outputSchema` to any JSON Schema 2020-12 keywords; `structuredContent` any JSON value; add `$ref` resolution + composition-keyword resource bounds (SEP-2106) | Relax validation in `context-protocol` schemas. A relaxation (accept more, reject less) → non-breaking. Depends on `@enkaku/schema` 2020-12 + `$ref` support, see upstream U2. DEFERRED — blocked by U2 (enkaku/schema is draft-07). Implement after upstream switches to Ajv2020. | OPT |
