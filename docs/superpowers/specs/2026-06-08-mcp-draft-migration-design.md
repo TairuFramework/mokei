@@ -96,7 +96,7 @@ These are MUST-for-conformance at the cut, but additive today: extra fields/head
 |---|---|---|---|
 | G1 | `CacheableResult`: require `ttlMs` + `cacheScope` (`"public"`/`"private"`) on results of `tools/list`, `prompts/list`, `resources/list`, `resources/read`, `resources/templates/list` (SEP-2549) | Additive result fields. Add to result schemas + populate server-side. Clients ignore unknown fields on `2025-11-25`. | MUST |
 | G2 | Require `Mcp-Method` and `Mcp-Name` headers on Streamable HTTP POST (SEP-2243) | Additive request headers in `http-client/src/transport.ts`. Harmless extras for current peers. (`x-mcp-header` custom-header support → OPT, see G7.) | MUST |
-| G3 | Resource-not-found error code `-32002` → `-32602` (Invalid Params) | One-line constant change where resource-not-found is raised. Low-risk. | MUST |
+| G3 | Resource-not-found error code `-32002` → `-32602` (Invalid Params) | One-line constant change where resource-not-found is raised. Low-risk. Verified: mokei core raises no -32002; no code change. Regression guard added. Guidance: resource handlers should use -32602 for not-found. | MUST |
 
 ### 3.3 Non-breaking groundwork — optional nice-to-haves
 

@@ -503,6 +503,23 @@ describe('ContextServer', () => {
     })
   })
 
+  describe('Error codes (MCP draft alignment)', () => {
+    test('unknown tool returns INVALID_PARAMS (-32602)', async () => {
+      const { transports } = createTestContext({
+        tools: { known: createTool('x', { type: 'object' }, async () => ({ content: [] })) },
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'missing' },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({ id: 1, error: { code: INVALID_PARAMS } })
+      await transports.dispose()
+    })
+  })
+
   describe('supports incoming tool requests', () => {
     test('lists available tools', async () => {
       await expectServerResult(
