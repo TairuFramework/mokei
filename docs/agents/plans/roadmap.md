@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-04-22
+**Last updated:** 2026-06-08
 
 ## Vision
 
@@ -11,8 +11,10 @@ runtime, provider abstraction across cloud + local models, and monitoring UI.
 
 17 packages. Providers: OpenAI, Anthropic, Ollama, Llama (local GGUF).
 Streamable HTTP transport shipped as standalone `@mokei/http-client` +
-`@mokei/http-server`. Host monitor UI in `host-monitor`. CLI (`mokei`) with
-`context` + `chat` commands backed by oclif + enquirer + ora.
+`@mokei/http-server`. Host monitor UI in `host-monitor`. CLI (`mokei`) with a
+flat command surface (`chat` / `inspect` / `monitor` / `proxy`): Ink chat UI on
+`@mokei/session` (multi-turn, inline tool-approval, per-tool timeout + cancel),
+commander routing. Replaced oclif + enquirer + ora.
 
 ## Competitive position
 
@@ -33,10 +35,9 @@ Streamable HTTP transport shipped as standalone `@mokei/http-client` +
 
 ## Now (next/)
 
-- **CLI chat UX on Ink** — migrate `chat-session.ts` to Ink (Option A:
-  Ink renderer behind existing oclif commands). Unlocks persistent
-  transcript, inline tool-approval, always-on input, Esc-to-abort.
-  Ship Anthropic first, then Ollama, OpenAI, Llama.
+Nothing in flight. CLI Ink + commander refactor shipped (PR #21, 2026-06-06);
+see `completed/2026-06-06-cli-refactoring.complete.md`. Pull the next item from
+backlog or P2 below.
 
 ## Near-term (backlog/)
 

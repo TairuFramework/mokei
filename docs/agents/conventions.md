@@ -28,7 +28,9 @@ interface ApiResponse<T> {
 ```
 
 ### Class Conventions
-- Use `#privateField` for private members (not `private privateField`)
+- **Use ES private fields (`#field`), never the TypeScript `private` modifier**
+- **Never use the TypeScript `readonly` modifier.** Use a `#field` for the value and expose a getter when external read access is needed -- this enforces immutability at runtime, not just at compile time
+- Avoid the `protected` modifier; prefer composition over inheritance that relies on it
 - Constructor params: single object parameter with a `ClassNameParams` type
 
 ```typescript
@@ -45,6 +47,19 @@ class ConnectionManager {
     this.#transport = params.transport
     this.#maxRetries = params.maxRetries
   }
+
+  // Expose read-only access via a getter instead of `readonly`
+  get maxRetries(): number {
+    return this.#maxRetries
+  }
+}
+```
+
+```typescript
+// Incorrect -- TS-only modifiers, no runtime enforcement
+class ConnectionManager {
+  private transport: Transport
+  readonly maxRetries: number
 }
 ```
 
@@ -59,6 +74,28 @@ class ConnectionManager {
 - Prefer template literals over string concatenation
 - Export types alongside implementation when needed
 - Use `type` keyword for type-only imports: `import type { Foo } from './foo.js'`
+
+### Comments
+- **Keep comments short.** No overly long comments -- include only the necessary context, minimal token count.
+- Comment the *why*, not the *what*. Self-explanatory code needs no comment.
+- No redundant comments that restate the code, no commented-out code, no decorative banners.
+
+### Placeholder Values
+- **NEVER use placeholder values to satisfy the type checker.** This is a MAJOR source of bugs that pass typecheck but fail at runtime.
+- If a type expects a real value (UUID, URL, ID, token, etc.), provide a real one or refactor so the value is not required at that call site
+- Do not write `{ id: '' }`, `{ url: 'TODO' }`, `{ token: 'xxx' }`, or similar just to make types compile
+- If you genuinely cannot supply a real value, make the field optional in the type, use `null`/`undefined` explicitly, or throw -- do not lie to the type system
+
+```typescript
+// Incorrect -- passes typecheck, breaks at runtime
+const user: User = { id: '', name: 'Alice' }
+
+// Correct -- generate or accept a real value
+const user: User = { id: crypto.randomUUID(), name: 'Alice' }
+
+// Correct -- make field optional if absence is meaningful
+type User = { id?: string; name: string }
+```
 
 ---
 

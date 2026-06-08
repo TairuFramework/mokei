@@ -71,12 +71,16 @@ export function validateWithSchema<S extends Schema, T = FromSchema<S>>(
  * Error thrown when structured output validation fails
  */
 export class StructuredOutputError extends Error {
-  readonly issues: Array<ValidationIssue>
+  #issues: Array<ValidationIssue>
 
   constructor(message: string, issues: Array<ValidationIssue>) {
     super(message)
     this.name = 'StructuredOutputError'
-    this.issues = issues
+    this.#issues = issues
+  }
+
+  get issues(): Array<ValidationIssue> {
+    return this.#issues
   }
 }
 

@@ -30,7 +30,7 @@ packages/
 +-- ollama-provider/      # Ollama integration
 +-- llama-provider/       # Local GGUF inference via node-llama-cpp
 +-- logger/               # Shared logger utility
-+-- cli/                  # mokei CLI (context + chat commands)
++-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
 ```
 
 ## Quick Commands

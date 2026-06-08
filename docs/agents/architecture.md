@@ -23,7 +23,7 @@ Mokei is a TypeScript toolkit for creating, interacting with, and monitoring cli
 |  (Manages multiple MCP server connections)                   |
 +----------------------------+---------------------------------+
 |   ContextClient            |          Model Providers         |
-|   (MCP client)             |   (OpenAI, Anthropic, Ollama)   |
+|   (MCP client)             | (OpenAI, Anthropic, Ollama, Llama)|
 +----------------------------+---------------------------------+
 |   ContextServer            |                                  |
 |   (MCP server)             |                                  |
@@ -94,7 +94,7 @@ packages/
 +-- ollama-provider/      # Ollama integration
 +-- llama-provider/       # Local GGUF inference via node-llama-cpp
 +-- logger/               # Shared logger utility
-+-- cli/                  # mokei CLI (context + chat commands)
++-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
 ```
 
 ---
