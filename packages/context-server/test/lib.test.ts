@@ -313,14 +313,14 @@ describe('ContextServer', () => {
         {
           prompts: [
             {
-              name: 'foo',
-              description: 'prompt foo',
-              argumentsSchema: { type: 'object' },
-            },
-            {
               name: 'bar',
               description: 'prompt bar',
               argumentsSchema: undefined,
+            },
+            {
+              name: 'foo',
+              description: 'prompt foo',
+              argumentsSchema: { type: 'object' },
             },
           ],
         },
@@ -520,6 +520,31 @@ describe('ContextServer', () => {
     })
   })
 
+  describe('Deterministic list ordering (G6)', () => {
+    test('tools/list returns tools sorted by name', async () => {
+      const noop = async () => ({ content: [] as [] })
+      const { transports } = createTestContext({
+        tools: {
+          charlie: createTool('c', { type: 'object' }, noop),
+          alpha: createTool('a', { type: 'object' }, noop),
+          bravo: createTool('b', { type: 'object' }, noop),
+        },
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/list',
+        params: {},
+      } as ClientRequest)
+      const res = await transports.client.read()
+      const names = (res.value as { result: { tools: Array<{ name: string }> } }).result.tools.map(
+        (t) => t.name,
+      )
+      expect(names).toEqual(['alpha', 'bravo', 'charlie'])
+      await transports.dispose()
+    })
+  })
+
   describe('supports incoming tool requests', () => {
     test('lists available tools', async () => {
       await expectServerResult(
@@ -553,20 +578,20 @@ describe('ContextServer', () => {
         {
           tools: [
             {
-              name: 'test',
-              description: 'test tool',
-              inputSchema: {
-                type: 'object',
-                properties: { bar: { type: 'string' } },
-                additionalProperties: false,
-              },
-            },
-            {
               name: 'other',
               description: 'another tool',
               inputSchema: {
                 type: 'object',
                 properties: { foo: { type: 'string' } },
+                additionalProperties: false,
+              },
+            },
+            {
+              name: 'test',
+              description: 'test tool',
+              inputSchema: {
+                type: 'object',
+                properties: { bar: { type: 'string' } },
                 additionalProperties: false,
               },
             },

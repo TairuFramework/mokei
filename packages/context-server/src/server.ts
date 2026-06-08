@@ -125,6 +125,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       this.#promptHandlers[name] = handler
       this.#promptsList.push({ name, ...info })
     }
+    this.#promptsList.sort((a, b) => a.name.localeCompare(b.name))
     if (this.#promptsList.length !== 0) {
       this.#capabilities.prompts = {}
     }
@@ -139,6 +140,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       this.#toolHandlers[name] = handler
       this.#toolsList.push({ name, ...info })
     }
+    this.#toolsList.sort((a, b) => a.name.localeCompare(b.name))
     if (this.#toolsList.length !== 0) {
       this.#capabilities.tools = {}
     }
