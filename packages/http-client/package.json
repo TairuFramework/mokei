@@ -43,6 +43,7 @@
     "@enkaku/stream": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
+    "@mokei/logger": "workspace:^",
     "parse-sse": "catalog:"
   },
   "devDependencies": {

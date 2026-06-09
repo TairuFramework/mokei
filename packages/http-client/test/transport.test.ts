@@ -136,8 +136,6 @@ describe('HTTPTransport', () => {
     vi.restoreAllMocks()
   })
 
-  // Task 3: Basic POST with JSON response
-
   describe('POST sends correct headers and body', () => {
     test('sends Content-Type, Accept, and MCP-Protocol-Version headers', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
@@ -219,8 +217,6 @@ describe('HTTPTransport', () => {
     })
   })
 
-  // Task 4: Session management
-
   describe('session ID management', () => {
     test('captures Mcp-Session-Id from response and sends on subsequent requests', async () => {
       fetchMock.mockResolvedValueOnce(
@@ -280,8 +276,6 @@ describe('HTTPTransport', () => {
       expect(deleteCall).toBeUndefined()
     })
   })
-
-  // Task 5: SSE response handling
 
   describe('SSE response parsing', () => {
     test('parses SSE events and enqueues messages', async () => {
@@ -365,7 +359,118 @@ describe('HTTPTransport', () => {
     })
   })
 
-  // Task 6: GET stream for server-initiated messages
+  test('POST includes Mcp-Method and Mcp-Name headers', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ jsonrpc: '2.0', id: 1, result: { content: [] } }),
+    )
+    const transport = new HTTPTransport({ url: TEST_URL })
+    await transport.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'search' },
+    } as ClientMessage)
+    const [, init] = getCallByMethod(fetchMock.mock.calls, 'POST')
+    expect(init.headers['Mcp-Method']).toBe('tools/call')
+    expect(init.headers['Mcp-Name']).toBe('search')
+    await transport.dispose()
+  })
+
+  describe('x-mcp-header param injection', () => {
+    const listRequest: ClientMessage = {
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'tools/list',
+      params: {},
+    } as ClientMessage
+
+    function listResult(tools: Array<unknown>): ServerMessage {
+      return { jsonrpc: '2.0', id: 5, result: { tools } } as ServerMessage
+    }
+
+    test('injects Mcp-Param-* headers on tools/call after caching the schema', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          listResult([
+            {
+              name: 'search',
+              inputSchema: {
+                type: 'object',
+                properties: { region: { type: 'string', 'x-mcp-header': 'Region' } },
+              },
+            },
+          ]),
+        ),
+      )
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ jsonrpc: '2.0', id: 6, result: { content: [] } }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+
+      await transport.write({
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'tools/call',
+        params: { name: 'search', arguments: { region: 'us-east-1' } },
+      } as ClientMessage)
+
+      const calls = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit).method === 'POST')
+      const callPost = calls[calls.length - 1]
+      expect(callPost[1].headers['Mcp-Param-Region']).toBe('us-east-1')
+
+      await transport.dispose()
+    })
+
+    test('omits Mcp-Param-* when no schema has been cached', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ jsonrpc: '2.0', id: 6, result: { content: [] } }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write({
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'tools/call',
+        params: { name: 'search', arguments: { region: 'us-east-1' } },
+      } as ClientMessage)
+
+      const [, init] = getCallByMethod(fetchMock.mock.calls, 'POST')
+      expect(init.headers['Mcp-Param-Region']).toBeUndefined()
+
+      await transport.dispose()
+    })
+
+    test('excludes tools with invalid x-mcp-header from the tools/list result', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          listResult([
+            { name: 'good', inputSchema: { type: 'object', properties: {} } },
+            {
+              name: 'bad',
+              inputSchema: {
+                type: 'object',
+                properties: { region: { type: 'string', 'x-mcp-header': 'bad space' } },
+              },
+            },
+          ]),
+        ),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      const { value } = await transport.read()
+
+      const names = (value as { result: { tools: Array<{ name: string }> } }).result.tools.map(
+        (t) => t.name,
+      )
+      expect(names).toEqual(['good'])
+
+      await transport.dispose()
+    })
+  })
 
   describe('GET stream for server-initiated messages', () => {
     test('opens GET stream after initialized notification when session exists', async () => {

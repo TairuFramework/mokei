@@ -64,6 +64,7 @@ export type {
 } from './root.js'
 export {
   type AnyMessage,
+  type CacheableResult,
   type CancelledNotification,
   type ErrorResponse,
   type Icon,

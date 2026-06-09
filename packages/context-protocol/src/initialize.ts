@@ -12,6 +12,16 @@ export const experimentalCapabilities = {
   type: 'object',
 } as const satisfies Schema
 
+export const extensionsCapabilities = {
+  additionalProperties: {
+    additionalProperties: true,
+    properties: {},
+    type: 'object',
+  },
+  description: 'Optional extensions beyond the core protocol that this party supports.',
+  type: 'object',
+} as const satisfies Schema
+
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L144
 export const clientCapabilities = {
   description:
@@ -24,6 +34,7 @@ export const clientCapabilities = {
       type: 'object',
     },
     experimental: experimentalCapabilities,
+    extensions: extensionsCapabilities,
     roots: {
       description: 'Present if the client supports listing roots.',
       properties: {
@@ -65,6 +76,7 @@ export const serverCapabilities = {
       type: 'object',
     },
     experimental: experimentalCapabilities,
+    extensions: extensionsCapabilities,
     logging: {
       additionalProperties: true,
       description: 'Present if the server supports sending log messages to the client.',

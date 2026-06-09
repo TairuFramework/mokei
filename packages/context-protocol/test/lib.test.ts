@@ -2,12 +2,19 @@ import { describe, expect, test } from 'vitest'
 
 import { clientMessage } from '../src/client.js'
 import { imageContent, role, textContent } from '../src/content.js'
-import { initializedNotification, initializeRequest, initializeResult } from '../src/initialize.js'
+import {
+  clientCapabilities,
+  initializedNotification,
+  initializeRequest,
+  initializeResult,
+  serverCapabilities,
+} from '../src/initialize.js'
 import { loggingLevel, loggingMessageNotification, setLevelRequest } from '../src/logging.js'
 import { getPromptRequest, getPromptResult, prompt } from '../src/prompt.js'
 import { readResourceRequest, resource, resourceTemplate } from '../src/resource.js'
 import { listRootsRequest, root } from '../src/root.js'
 import {
+  cacheableResult,
   INTERNAL_ERROR,
   INVALID_PARAMS,
   INVALID_REQUEST,
@@ -22,7 +29,13 @@ import {
 } from '../src/rpc.js'
 import { createMessageRequest, modelPreferences } from '../src/sampling.js'
 import { serverMessage } from '../src/server.js'
-import { callToolRequest, callToolResult, listToolsRequest, tool } from '../src/tool.js'
+import {
+  callToolRequest,
+  callToolResult,
+  listToolsRequest,
+  listToolsResult,
+  tool,
+} from '../src/tool.js'
 
 describe('Protocol Version and Constants', () => {
   test('should use MCP protocol version 2025-11-25', async () => {
@@ -243,6 +256,15 @@ describe('Sampling Support', () => {
   })
 })
 
+describe('Extensions capability (G4)', () => {
+  test('client and server capabilities expose an extensions object', async () => {
+    expect(clientCapabilities.properties.extensions).toBeDefined()
+    expect(clientCapabilities.properties.extensions.type).toBe('object')
+    expect(serverCapabilities.properties.extensions).toBeDefined()
+    expect(serverCapabilities.properties.extensions.type).toBe('object')
+  })
+})
+
 describe('Client and Server Message Types', () => {
   test('client messages should include all request types', async () => {
     expect(clientMessage.anyOf).toBeDefined()
@@ -290,5 +312,20 @@ describe('Client and Server Message Types', () => {
       expect(methods).toContain('roots/list')
       expect(methods).toContain('sampling/createMessage')
     }
+  })
+})
+
+describe('Cacheable results (G1)', () => {
+  test('cacheableResult defines ttlMs and cacheScope', async () => {
+    expect(cacheableResult.properties.ttlMs.type).toBe('number')
+    expect(cacheableResult.properties.cacheScope.enum).toEqual(['public', 'private'])
+  })
+
+  test('listToolsResult composes cacheableResult', async () => {
+    const fragments = listToolsResult.allOf
+    const hasCache = fragments.some(
+      (f) => 'properties' in f && (f as { properties?: Record<string, unknown> }).properties?.ttlMs,
+    )
+    expect(hasCache).toBe(true)
   })
 })

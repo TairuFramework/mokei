@@ -63,9 +63,15 @@ const LOGGING_LEVELS: Record<LoggingLevel, number> = {
 
 const validateClientMessage = createValidator(clientMessage)
 
+export type CacheHints = {
+  cacheScope?: 'public' | 'private'
+  ttlMs?: number
+}
+
 export type ServerConfig = {
   name: string
   version: string
+  cache?: CacheHints
   complete?: CompleteHandler
   prompts?: PromptDefinitions
   resources?: ResourceDefinitions
@@ -96,6 +102,7 @@ type ServerTypes = {
 }
 
 export class ContextServer extends ContextRPC<ServerTypes> {
+  #cache?: CacheHints
   #capabilities: ServerCapabilities = {}
   #client: ServerClient
   #clientInitialize?: ClientInitialize
@@ -117,6 +124,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       listRoots: this.listRoots.bind(this),
       log: this.log.bind(this),
     }
+    this.#cache = params.cache
     this.#completeHandler = params.complete
     this.#serverInfo = { name: params.name, version: params.version }
 
@@ -125,6 +133,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       this.#promptHandlers[name] = handler
       this.#promptsList.push({ name, ...info })
     }
+    this.#promptsList.sort((a, b) => a.name.localeCompare(b.name))
     if (this.#promptsList.length !== 0) {
       this.#capabilities.prompts = {}
     }
@@ -139,6 +148,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       this.#toolHandlers[name] = handler
       this.#toolsList.push({ name, ...info })
     }
+    this.#toolsList.sort((a, b) => a.name.localeCompare(b.name))
     if (this.#toolsList.length !== 0) {
       this.#capabilities.tools = {}
     }
@@ -208,7 +218,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       case 'prompts/get':
         return await this.#getPrompt(request, signal)
       case 'prompts/list':
-        return { prompts: this.#promptsList }
+        return { prompts: this.#promptsList, ...this.#cache }
       case 'resources/list':
         if (this.#resources == null) {
           break
@@ -231,7 +241,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       case 'tools/call':
         return await this.#callTool(request, signal)
       case 'tools/list':
-        return { tools: this.#toolsList }
+        return { tools: this.#toolsList, ...this.#cache }
     }
     throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
   }

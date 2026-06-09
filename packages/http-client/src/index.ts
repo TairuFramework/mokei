@@ -17,3 +17,11 @@ export {
   HTTPTransport,
   type HTTPTransportParams,
 } from './transport.js'
+export {
+  buildParamHeaders,
+  type CollectResult,
+  collectHeaderAnnotations,
+  encodeHeaderValue,
+  type HeaderAnnotation,
+  isValidHeaderParamName,
+} from './x-mcp-header.js'

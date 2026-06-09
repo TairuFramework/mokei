@@ -4,9 +4,11 @@ import type { ClientTransport } from '@mokei/context-client'
 import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
+import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { parseServerSentEvents } from 'parse-sse'
 
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
+import { buildParamHeaders, collectHeaderAnnotations } from './x-mcp-header.js'
 
 /**
  * Parameters for creating an MCP HTTP transport.
@@ -20,6 +22,8 @@ export type HTTPTransportParams = {
   auth?: HTTPAuthOptions
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number
+  /** Optional logger (defaults to the `mokei:http-client` logger) */
+  logger?: Logger
 }
 
 /** Default HTTP request timeout in milliseconds. */
@@ -44,6 +48,11 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #disposed = false
   #controller: ReadableStreamDefaultController<ServerMessage> | null = null
   #getStreamAbortController: AbortController | null = null
+  /** Method of each in-flight request, keyed by request id (for response correlation). */
+  #pendingMethods = new Map<string | number, string>()
+  /** Cached tool `inputSchema`s keyed by tool name, populated from `tools/list` results. */
+  #toolSchemas = new Map<string, unknown>()
+  #logger: Logger
 
   constructor(params: HTTPTransportParams) {
     const [readable, controller] = createReadable<ServerMessage>()
@@ -55,6 +64,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#url = params.url
     this.#headers = buildHTTPHeaders(params.headers, params.auth)
     this.#timeout = params.timeout ?? DEFAULT_HTTP_TIMEOUT
+    this.#logger = params.logger ?? getMokeiLogger('http-client')
   }
 
   /**
@@ -93,6 +103,38 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       'MCP-Protocol-Version': LATEST_PROTOCOL_VERSION,
     }
 
+    let requestID: string | number | null = null
+    if ('method' in message && typeof message.method === 'string') {
+      headers['Mcp-Method'] = message.method
+      const name = (message as { params?: { name?: unknown } }).params?.name
+      if (typeof name === 'string') {
+        headers['Mcp-Name'] = name
+      }
+      // Track in-flight requests so responses can be correlated back to their method.
+      const id = (message as { id?: unknown }).id
+      if (typeof id === 'string' || typeof id === 'number') {
+        requestID = id
+        this.#pendingMethods.set(id, message.method)
+      }
+      // Mirror x-mcp-header-annotated tools/call arguments into Mcp-Param-* headers.
+      if (message.method === 'tools/call' && typeof name === 'string') {
+        const schema = this.#toolSchemas.get(name)
+        if (schema != null) {
+          const { annotations } = collectHeaderAnnotations(schema)
+          const args = (message as { params?: { arguments?: unknown } }).params?.arguments
+          Object.assign(
+            headers,
+            buildParamHeaders(
+              annotations,
+              args != null && typeof args === 'object'
+                ? (args as Record<string, unknown>)
+                : undefined,
+            ),
+          )
+        }
+      }
+    }
+
     if (this.#sessionID) {
       headers['Mcp-Session-Id'] = this.#sessionID
     }
@@ -124,7 +166,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       if (contentType.includes('application/json')) {
         const data = await response.json()
         if (data && this.#controller) {
-          this.#controller.enqueue(data as ServerMessage)
+          this.#controller.enqueue(this.#handleIncoming(data as ServerMessage))
         }
       } else if (contentType.includes('text/event-stream')) {
         await this.#handleSSEResponse(response)
@@ -132,12 +174,64 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // 202 Accepted or other no-content responses: no-op
     } finally {
       clearTimeout(timeoutID)
+      // Drop the correlation entry. #handleIncoming already removes it when a response
+      // was correlated; this also reclaims it for 202/error/timeout responses that never
+      // produced a correlatable frame, preventing unbounded #pendingMethods growth.
+      if (requestID != null) {
+        this.#pendingMethods.delete(requestID)
+      }
     }
 
     // After sending notifications/initialized with a session, open GET stream
     if ('method' in message && message.method === 'notifications/initialized' && this.#sessionID) {
       this.#openGETStream()
     }
+  }
+
+  /**
+   * Correlate an incoming message to its originating request. For `tools/list` results,
+   * cache each tool's `inputSchema` and exclude any tool carrying invalid
+   * `x-mcp-header` annotations, per SEP-2243.
+   */
+  #handleIncoming(message: ServerMessage): ServerMessage {
+    const id = (message as { id?: unknown }).id
+    if (typeof id !== 'string' && typeof id !== 'number') {
+      return message
+    }
+    const method = this.#pendingMethods.get(id)
+    if (method == null) {
+      return message
+    }
+    this.#pendingMethods.delete(id)
+    if (method !== 'tools/list') {
+      return message
+    }
+    const result = (message as { result?: { tools?: unknown } }).result
+    const tools = result?.tools
+    if (!Array.isArray(tools)) {
+      return message
+    }
+    const kept: Array<unknown> = []
+    for (const entry of tools) {
+      const name = (entry as { name?: unknown })?.name
+      const inputSchema = (entry as { inputSchema?: unknown })?.inputSchema
+      const check = collectHeaderAnnotations(inputSchema)
+      if (!check.valid) {
+        this.#logger.warn('Excluding tool with invalid x-mcp-header annotation', {
+          tool: String(name),
+          errors: check.errors,
+        })
+        continue
+      }
+      if (typeof name === 'string') {
+        this.#toolSchemas.set(name, inputSchema)
+      }
+      kept.push(entry)
+    }
+    if (kept.length === tools.length) {
+      return message
+    }
+    return { ...message, result: { ...result, tools: kept } } as ServerMessage
   }
 
   /**
@@ -162,7 +256,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           try {
             const message = JSON.parse(event.data) as ServerMessage
             if (this.#controller) {
-              this.#controller.enqueue(message)
+              this.#controller.enqueue(this.#handleIncoming(message))
             }
           } catch {
             // Skip events with non-JSON data

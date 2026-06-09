@@ -79,6 +79,7 @@ class ConnectionManager {
 - **Keep comments short.** No overly long comments -- include only the necessary context, minimal token count.
 - Comment the *why*, not the *what*. Self-explanatory code needs no comment.
 - No redundant comments that restate the code, no commented-out code, no decorative banners.
+- **No plan/implementation-specific references** in code, comments, `describe`/`test` names, or identifiers -- no internal task numbers, plan item labels (e.g. `G7`, `Task 6`), or ticket IDs. Reference the durable concept or external spec (e.g. `SEP-2243`, `x-mcp-header`) instead; plan labels are ephemeral and meaningless once the plan is archived.
 
 ### Placeholder Values
 - **NEVER use placeholder values to satisfy the type checker.** This is a MAJOR source of bugs that pass typecheck but fail at runtime.
