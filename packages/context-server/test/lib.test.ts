@@ -563,6 +563,37 @@ describe('ContextServer', () => {
     })
   })
 
+  describe('JSON Schema 2020-12 tool input', () => {
+    test('validates a tool whose inputSchema declares the 2020-12 dialect', async () => {
+      await expectServerResult(
+        {
+          tools: {
+            coords: createTool(
+              'coords',
+              {
+                $schema: 'https://json-schema.org/draft/2020-12/schema',
+                type: 'object',
+                properties: {
+                  point: { type: 'array', prefixItems: [{ type: 'number' }, { type: 'number' }] },
+                },
+                required: ['point'],
+              } as const,
+              (req) => {
+                return {
+                  content: [
+                    { type: 'text' as const, text: `got ${JSON.stringify(req.arguments.point)}` },
+                  ],
+                }
+              },
+            ),
+          },
+        },
+        { method: 'tools/call', params: { name: 'coords', arguments: { point: [1, 2] } } },
+        { content: [{ type: 'text', text: 'got [1,2]' }] },
+      )
+    })
+  })
+
   describe('supports incoming tool requests', () => {
     test('lists available tools', async () => {
       await expectServerResult(
