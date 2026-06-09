@@ -162,3 +162,15 @@ export const primitiveSchemaDefinition = {
 } as const satisfies Schema
 
 export type PrimitiveSchemaDefinition = FromSchema<typeof primitiveSchemaDefinition>
+
+/**
+ * Infer the JSON Schema draft to validate a user-provided schema against, from its
+ * `$schema` dialect URI. Defaults to draft-07; a schema declaring the 2020-12 dialect
+ * opts into 2020-12 keywords (`$ref`, `prefixItems`, `unevaluatedProperties`, …).
+ * Detecting from `$schema` keeps existing draft-07 schemas (the implicit default)
+ * validating unchanged, so the relaxation is non-breaking.
+ */
+export function inferSchemaDraft(schema: Schema): '07' | '2020-12' {
+  const declared = (schema as { $schema?: unknown }).$schema
+  return typeof declared === 'string' && declared.includes('2020-12') ? '2020-12' : '07'
+}
