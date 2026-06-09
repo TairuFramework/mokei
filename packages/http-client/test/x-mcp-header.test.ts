@@ -7,7 +7,7 @@ import {
   isValidHeaderParamName,
 } from '../src/x-mcp-header.js'
 
-describe('encodeHeaderValue (G7)', () => {
+describe('encodeHeaderValue', () => {
   test('passes plain ASCII strings through unchanged', () => {
     expect(encodeHeaderValue('us-east-1')).toBe('us-east-1')
   })
@@ -46,7 +46,7 @@ describe('encodeHeaderValue (G7)', () => {
   })
 })
 
-describe('isValidHeaderParamName (G7)', () => {
+describe('isValidHeaderParamName', () => {
   test('accepts RFC 9110 token characters', () => {
     expect(isValidHeaderParamName('Region')).toBe(true)
     expect(isValidHeaderParamName('X-Tenant_id.v1')).toBe(true)
@@ -59,7 +59,7 @@ describe('isValidHeaderParamName (G7)', () => {
   })
 })
 
-describe('collectHeaderAnnotations (G7)', () => {
+describe('collectHeaderAnnotations', () => {
   test('collects annotations at top level and nested depth', () => {
     const schema = {
       type: 'object',
@@ -138,7 +138,7 @@ describe('collectHeaderAnnotations (G7)', () => {
   })
 })
 
-describe('buildParamHeaders (G7)', () => {
+describe('buildParamHeaders', () => {
   const annotations = [
     { headerName: 'Region', path: ['region'] },
     { headerName: 'Tenant', path: ['nested', 'tenant'] },

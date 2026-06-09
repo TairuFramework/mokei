@@ -136,8 +136,6 @@ describe('HTTPTransport', () => {
     vi.restoreAllMocks()
   })
 
-  // Task 3: Basic POST with JSON response
-
   describe('POST sends correct headers and body', () => {
     test('sends Content-Type, Accept, and MCP-Protocol-Version headers', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
@@ -219,8 +217,6 @@ describe('HTTPTransport', () => {
     })
   })
 
-  // Task 4: Session management
-
   describe('session ID management', () => {
     test('captures Mcp-Session-Id from response and sends on subsequent requests', async () => {
       fetchMock.mockResolvedValueOnce(
@@ -280,8 +276,6 @@ describe('HTTPTransport', () => {
       expect(deleteCall).toBeUndefined()
     })
   })
-
-  // Task 5: SSE response handling
 
   describe('SSE response parsing', () => {
     test('parses SSE events and enqueues messages', async () => {
@@ -365,9 +359,7 @@ describe('HTTPTransport', () => {
     })
   })
 
-  // Task 10 (G2): Mcp-Method and Mcp-Name headers
-
-  test('POST includes Mcp-Method and Mcp-Name headers (G2)', async () => {
+  test('POST includes Mcp-Method and Mcp-Name headers', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ jsonrpc: '2.0', id: 1, result: { content: [] } }),
     )
@@ -384,9 +376,7 @@ describe('HTTPTransport', () => {
     await transport.dispose()
   })
 
-  // G7: x-mcp-header -> Mcp-Param-* injection
-
-  describe('x-mcp-header param injection (G7)', () => {
+  describe('x-mcp-header param injection', () => {
     const listRequest: ClientMessage = {
       jsonrpc: '2.0',
       id: 5,
@@ -481,8 +471,6 @@ describe('HTTPTransport', () => {
       await transport.dispose()
     })
   })
-
-  // Task 6: GET stream for server-initiated messages
 
   describe('GET stream for server-initiated messages', () => {
     test('opens GET stream after initialized notification when session exists', async () => {

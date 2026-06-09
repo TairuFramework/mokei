@@ -22,6 +22,8 @@ export type HTTPTransportParams = {
   auth?: HTTPAuthOptions
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number
+  /** Optional logger (defaults to the `mokei:http-client` logger) */
+  logger?: Logger
 }
 
 /** Default HTTP request timeout in milliseconds. */
@@ -50,7 +52,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #pendingMethods = new Map<string | number, string>()
   /** Cached tool `inputSchema`s keyed by tool name, populated from `tools/list` results. */
   #toolSchemas = new Map<string, unknown>()
-  #logger: Logger = getMokeiLogger('http-client')
+  #logger: Logger
 
   constructor(params: HTTPTransportParams) {
     const [readable, controller] = createReadable<ServerMessage>()
@@ -62,6 +64,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#url = params.url
     this.#headers = buildHTTPHeaders(params.headers, params.auth)
     this.#timeout = params.timeout ?? DEFAULT_HTTP_TIMEOUT
+    this.#logger = params.logger ?? getMokeiLogger('http-client')
   }
 
   /**
@@ -113,7 +116,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         requestID = id
         this.#pendingMethods.set(id, message.method)
       }
-      // G7: mirror annotated tools/call arguments into Mcp-Param-* headers.
+      // Mirror x-mcp-header-annotated tools/call arguments into Mcp-Param-* headers.
       if (message.method === 'tools/call' && typeof name === 'string') {
         const schema = this.#toolSchemas.get(name)
         if (schema != null) {
@@ -187,7 +190,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
   /**
    * Correlate an incoming message to its originating request. For `tools/list` results,
-   * cache each tool's `inputSchema` (G7) and exclude any tool carrying invalid
+   * cache each tool's `inputSchema` and exclude any tool carrying invalid
    * `x-mcp-header` annotations, per SEP-2243.
    */
   #handleIncoming(message: ServerMessage): ServerMessage {
