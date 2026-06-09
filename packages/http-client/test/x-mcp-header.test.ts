@@ -111,6 +111,25 @@ describe('collectHeaderAnnotations (G7)', () => {
     expect(result.valid).toBe(false)
   })
 
+  test('accepts nullable primitive union types', () => {
+    const schema = {
+      type: 'object',
+      properties: { region: { type: ['string', 'null'], 'x-mcp-header': 'Region' } },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(true)
+    expect(result.annotations).toEqual([{ headerName: 'Region', path: ['region'] }])
+  })
+
+  test('flags union types containing a non-primitive member', () => {
+    const schema = {
+      type: 'object',
+      properties: { x: { type: ['string', 'object'], 'x-mcp-header': 'X' } },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+  })
+
   test('returns no annotations for plain schema', () => {
     const schema = { type: 'object', properties: { q: { type: 'string' } } }
     const result = collectHeaderAnnotations(schema)

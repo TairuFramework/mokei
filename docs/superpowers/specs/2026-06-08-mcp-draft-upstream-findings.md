@@ -207,6 +207,13 @@ injection/filtering paths are inert until a draft server uses them.
 4. **Tool-list filtering** — DONE. `#handleIncoming` excludes any tool whose `inputSchema`
    carries an invalid `x-mcp-header` annotation and logs a `console.warn`.
 
+**Scope limit (follow-up):** `collectHeaderAnnotations` traverses nested object
+`properties` at any depth, but not array `items`, `$ref` targets, or composition keywords
+(`allOf`/`anyOf`/`oneOf`). Annotations there are not collected. Those require a richer
+argument-path model than the current flat property path; tracked as follow-up. The spec's
+"any nesting depth" is met for property nesting only. Nullable primitive types
+(e.g. `["string","null"]`) ARE accepted.
+
 5. **Stale-schema fallback** — DEFERRED (follow-up). If no schema is cached at call time the
    request is sent without `Mcp-Param-*` headers (graceful no-op). The `-32001` HeaderMismatch
    detection + `tools/list` refresh + retry is a resilience nicety that only matters against a

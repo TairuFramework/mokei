@@ -98,6 +98,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       'MCP-Protocol-Version': LATEST_PROTOCOL_VERSION,
     }
 
+    let requestID: string | number | null = null
     if ('method' in message && typeof message.method === 'string') {
       headers['Mcp-Method'] = message.method
       const name = (message as { params?: { name?: unknown } }).params?.name
@@ -107,6 +108,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // Track in-flight requests so responses can be correlated back to their method.
       const id = (message as { id?: unknown }).id
       if (typeof id === 'string' || typeof id === 'number') {
+        requestID = id
         this.#pendingMethods.set(id, message.method)
       }
       // G7: mirror annotated tools/call arguments into Mcp-Param-* headers.
@@ -167,6 +169,12 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // 202 Accepted or other no-content responses: no-op
     } finally {
       clearTimeout(timeoutID)
+      // Drop the correlation entry. #handleIncoming already removes it when a response
+      // was correlated; this also reclaims it for 202/error/timeout responses that never
+      // produced a correlatable frame, preventing unbounded #pendingMethods growth.
+      if (requestID != null) {
+        this.#pendingMethods.delete(requestID)
+      }
     }
 
     // After sending notifications/initialized with a session, open GET stream

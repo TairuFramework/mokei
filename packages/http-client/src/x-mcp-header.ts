@@ -18,6 +18,22 @@ const SENTINEL = /^=\?base64\?.*\?=$/
 /** JSON Schema primitive types eligible for `x-mcp-header` (note: not `number`). */
 const PRIMITIVE_TYPES = new Set(['boolean', 'integer', 'string'])
 
+/**
+ * Whether a JSON Schema `type` keyword is eligible for `x-mcp-header`: a single primitive
+ * type, or a union (e.g. `["string", "null"]`) whose non-`null` members are all primitive
+ * — nullable primitives are common and their `null` value is simply omitted at call time.
+ */
+function isEligibleType(type: unknown): boolean {
+  if (typeof type === 'string') {
+    return PRIMITIVE_TYPES.has(type)
+  }
+  if (Array.isArray(type)) {
+    const nonNull = type.filter((entry) => entry !== 'null')
+    return nonNull.length > 0 && nonNull.every((entry) => PRIMITIVE_TYPES.has(entry as string))
+  }
+  return false
+}
+
 /** A validated `x-mcp-header` annotation and the argument path it maps to. */
 export type HeaderAnnotation = {
   /** Header name portion: produces the `Mcp-Param-{headerName}` header. */
@@ -94,7 +110,14 @@ export function encodeHeaderValue(value: string | number | boolean): string {
 /**
  * Walk a tool `inputSchema` and collect every `x-mcp-header` annotation, validating the
  * SEP-2243 constraints: header names must be valid tokens, case-insensitively unique
- * within the schema, and may annotate only primitive (boolean/integer/string) types.
+ * within the schema, and may annotate only primitive (boolean/integer/string, optionally
+ * nullable) types.
+ *
+ * Scope: traverses nested object `properties` at any depth — the shape MCP tool inputs use
+ * in practice. Annotations inside array `items`, `$ref` targets, or composition keywords
+ * (`allOf`/`anyOf`/`oneOf`) are NOT collected; those would need a richer argument-path
+ * model than the flat property path used here, and are tracked as a follow-up. The spec's
+ * "any nesting depth" wording is satisfied for property nesting only.
  */
 export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
   const annotations: Array<HeaderAnnotation> = []
@@ -122,7 +145,7 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
           errors.push(`Invalid x-mcp-header name at ${at}`)
         } else if (seen.has(annotation.toLowerCase())) {
           errors.push(`Duplicate x-mcp-header "${annotation}" at ${at}`)
-        } else if (typeof child.type !== 'string' || !PRIMITIVE_TYPES.has(child.type)) {
+        } else if (!isEligibleType(child.type)) {
           errors.push(`x-mcp-header "${annotation}" at ${at} must annotate boolean/integer/string`)
         } else {
           seen.add(annotation.toLowerCase())
