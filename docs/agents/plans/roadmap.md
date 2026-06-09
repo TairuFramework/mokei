@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-06-08
+**Last updated:** 2026-06-09
 
 ## Vision
 
@@ -39,10 +39,22 @@ Nothing in flight. CLI Ink + commander refactor shipped (PR #21, 2026-06-06);
 see `completed/2026-06-06-cli-refactoring.complete.md`. Pull the next item from
 backlog or P2 below.
 
+## Milestones (milestones/)
+
+- **MCP draft spec migration** (`milestones/2026-06-08-mcp-draft-migration.md`) —
+  in progress. Phase 0 groundwork (G1–G4, G6, G7) shipped on `2025-11-25`
+  (PR #23, `feat/mcp-spec-update`). Breaking hard-cut (B1–B7) deferred until the
+  draft finalizes + upstream U1 lands. See backlog entries below.
+
 ## Near-term (backlog/)
 
 - **Llama provider integration tests** — exercise real GGUF models end-to-end
   (promptWithMeta shape, function calling, streaming).
+- **MCP draft — deferred groundwork** (`backlog/2026-06-09-mcp-draft-deferred-groundwork.md`) —
+  G5/G8 blocked on `@enkaku/otel` + `@enkaku/schema` (upstream asks filed);
+  G7 follow-ups (part 5 retry, deeper schema walk) self-contained.
+- **MCP draft — breaking cut** (`backlog/2026-06-09-mcp-draft-breaking-cut.md`) —
+  B1–B7 hard-cut; blocked on draft release + U1 transport/RPC-core decision.
 
 ## Planned — P2
 
