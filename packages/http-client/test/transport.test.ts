@@ -384,6 +384,106 @@ describe('HTTPTransport', () => {
     await transport.dispose()
   })
 
+  // G7: x-mcp-header -> Mcp-Param-* injection
+
+  describe('x-mcp-header param injection (G7)', () => {
+    const listRequest: ClientMessage = {
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'tools/list',
+      params: {},
+    } as ClientMessage
+
+    function listResult(tools: Array<unknown>): ServerMessage {
+      return { jsonrpc: '2.0', id: 5, result: { tools } } as ServerMessage
+    }
+
+    test('injects Mcp-Param-* headers on tools/call after caching the schema', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          listResult([
+            {
+              name: 'search',
+              inputSchema: {
+                type: 'object',
+                properties: { region: { type: 'string', 'x-mcp-header': 'Region' } },
+              },
+            },
+          ]),
+        ),
+      )
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ jsonrpc: '2.0', id: 6, result: { content: [] } }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+
+      await transport.write({
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'tools/call',
+        params: { name: 'search', arguments: { region: 'us-east-1' } },
+      } as ClientMessage)
+
+      const calls = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit).method === 'POST')
+      const callPost = calls[calls.length - 1]
+      expect(callPost[1].headers['Mcp-Param-Region']).toBe('us-east-1')
+
+      await transport.dispose()
+    })
+
+    test('omits Mcp-Param-* when no schema has been cached', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ jsonrpc: '2.0', id: 6, result: { content: [] } }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write({
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'tools/call',
+        params: { name: 'search', arguments: { region: 'us-east-1' } },
+      } as ClientMessage)
+
+      const [, init] = getCallByMethod(fetchMock.mock.calls, 'POST')
+      expect(init.headers['Mcp-Param-Region']).toBeUndefined()
+
+      await transport.dispose()
+    })
+
+    test('excludes tools with invalid x-mcp-header from the tools/list result', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          listResult([
+            { name: 'good', inputSchema: { type: 'object', properties: {} } },
+            {
+              name: 'bad',
+              inputSchema: {
+                type: 'object',
+                properties: { region: { type: 'string', 'x-mcp-header': 'bad space' } },
+              },
+            },
+          ]),
+        ),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      const { value } = await transport.read()
+
+      const names = (value as { result: { tools: Array<{ name: string }> } }).result.tools.map(
+        (t) => t.name,
+      )
+      expect(names).toEqual(['good'])
+      expect(warn).toHaveBeenCalled()
+
+      await transport.dispose()
+    })
+  })
+
   // Task 6: GET stream for server-initiated messages
 
   describe('GET stream for server-initiated messages', () => {

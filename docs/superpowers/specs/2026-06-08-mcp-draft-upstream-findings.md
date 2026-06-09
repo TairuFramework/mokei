@@ -187,24 +187,27 @@ The spec is fully specified. Key rules:
 
 **Status: RESOLVED.** The draft spec page contains the complete normative rules.
 
-### (b) Implied change in `packages/http-client/src/transport.ts` (deferred code task)
+### (b) Implied change in `packages/http-client/src/transport.ts` — IMPLEMENTED (parts 1–4)
 
-Deferred until draft semantics are confirmed stable. When implemented:
+Parts 1–4 landed on `feat/mcp-spec-update` (G7 code task). Additive and dormant on the
+`2025-11-25` baseline: servers on that version emit no `x-mcp-header` annotations, so the
+injection/filtering paths are inert until a draft server uses them.
 
-1. **Cache the tool `inputSchema`** — after `tools/list` is called (or on demand),
-   store the `inputSchema` for each tool, keyed by tool name. The transport (or a
-   layer above it) needs access to this cache when constructing `tools/call` requests.
-2. **Header injection in `sendRequest` (or the POST construction path):** for every
-   `tools/call` request, iterate the cached `inputSchema` for the named tool, find
-   all properties at any depth whose schema entry contains `"x-mcp-header"`, validate
-   the `x-mcp-header` value against the constraints (non-empty, `1*tchar`, unique,
-   primitive type only), and for each valid annotation where the corresponding
-   argument is non-null/non-absent, append `Mcp-Param-{Name}: {encodedValue}` to the
-   outgoing request headers.
-3. **Value encoding helper:** implement the type-conversion + Base64-sentinel encoding
-   rules described above (pure function, easy to unit-test in isolation).
-4. **Tool-list filtering:** when processing the result of `tools/list`, validate all
-   `x-mcp-header` values; exclude any tool that fails validation and log a warning.
-5. **Stale-schema fallback:** if no cached `inputSchema` is available at call time,
-   send the request without `Mcp-Param-*` headers; if the server rejects with
-   `-32001`, refresh via `tools/list` and retry.
+1. **Cache the tool `inputSchema`** — DONE. `HTTPTransport.#handleIncoming` correlates
+   responses to their request method via `#pendingMethods` (id → method) and, for
+   `tools/list` results, stores each tool's `inputSchema` in `#toolSchemas` keyed by name.
+2. **Header injection on `tools/call`** — DONE. `#sendMessage` looks up the cached schema
+   for the named tool, collects valid `x-mcp-header` annotations, and appends
+   `Mcp-Param-{Name}: {encodedValue}` for each non-null argument.
+3. **Value encoding helper** — DONE. `encodeHeaderValue` in `src/x-mcp-header.ts` (pure,
+   unit-tested): integer→decimal, boolean→`true`/`false`, string passthrough, Base64
+   sentinel (`=?base64?…?=`) for non-ASCII / control / surrounding-whitespace / sentinel
+   collisions. `collectHeaderAnnotations` validates names (`1*tchar`), case-insensitive
+   uniqueness, and primitive-only types (boolean/integer/string, not `number`).
+4. **Tool-list filtering** — DONE. `#handleIncoming` excludes any tool whose `inputSchema`
+   carries an invalid `x-mcp-header` annotation and logs a `console.warn`.
+
+5. **Stale-schema fallback** — DEFERRED (follow-up). If no schema is cached at call time the
+   request is sent without `Mcp-Param-*` headers (graceful no-op). The `-32001` HeaderMismatch
+   detection + `tools/list` refresh + retry is a resilience nicety that only matters against a
+   live draft server; not implemented in this groundwork pass.
