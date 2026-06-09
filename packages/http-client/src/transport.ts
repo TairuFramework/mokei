@@ -4,6 +4,7 @@ import type { ClientTransport } from '@mokei/context-client'
 import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
+import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { parseServerSentEvents } from 'parse-sse'
 
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
@@ -49,6 +50,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #pendingMethods = new Map<string | number, string>()
   /** Cached tool `inputSchema`s keyed by tool name, populated from `tools/list` results. */
   #toolSchemas = new Map<string, unknown>()
+  #logger: Logger = getMokeiLogger('http-client')
 
   constructor(params: HTTPTransportParams) {
     const [readable, controller] = createReadable<ServerMessage>()
@@ -212,9 +214,10 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       const inputSchema = (entry as { inputSchema?: unknown })?.inputSchema
       const check = collectHeaderAnnotations(inputSchema)
       if (!check.valid) {
-        console.warn(
-          `Excluding tool "${String(name)}" with invalid x-mcp-header annotation: ${check.errors.join('; ')}`,
-        )
+        this.#logger.warn('Excluding tool with invalid x-mcp-header annotation', {
+          tool: String(name),
+          errors: check.errors,
+        })
         continue
       }
       if (typeof name === 'string') {

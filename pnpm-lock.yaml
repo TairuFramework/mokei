@@ -703,6 +703,9 @@ importers:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
+      '@mokei/logger':
+        specifier: workspace:^
+        version: link:../logger
       parse-sse:
         specifier: 'catalog:'
         version: 0.1.0

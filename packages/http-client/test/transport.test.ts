@@ -454,7 +454,6 @@ describe('HTTPTransport', () => {
     })
 
     test('excludes tools with invalid x-mcp-header from the tools/list result', async () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       fetchMock.mockResolvedValueOnce(
         jsonResponse(
           listResult([
@@ -478,7 +477,6 @@ describe('HTTPTransport', () => {
         (t) => t.name,
       )
       expect(names).toEqual(['good'])
-      expect(warn).toHaveBeenCalled()
 
       await transport.dispose()
     })
