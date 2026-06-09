@@ -16,16 +16,17 @@ catalog:
   '@enkaku/http-server-transport': ^0.16.0
   '@enkaku/log': ^0.16.0
   '@enkaku/node-streams-transport': ^0.16.0
+  '@enkaku/otel': ^0.16.1
   '@enkaku/protocol': ^0.16.0
-  '@enkaku/schema': ^0.16.0
+  '@enkaku/schema': ^0.16.1
   '@enkaku/server': ^0.16.0
   '@enkaku/socket-transport': ^0.16.2
   '@enkaku/stream': ^0.16.0
   '@enkaku/transport': ^0.16.0
   '@hono/node-server': ^2.0.4
   '@inkjs/ui': ^2.0.0
-  '@mantine/core': ^9.3.0
-  '@mantine/hooks': ^9.3.0
+  '@mantine/core': ^9.3.1
+  '@mantine/hooks': ^9.3.1
   '@swc/cli': ^0.8.1
   '@swc/core': ^1.15.40
   '@tabler/icons-react': ^3.44.0
@@ -45,7 +46,7 @@ catalog:
   eventsource-parser: ^3.1.0
   get-port: ^7.2.0
   globals: ^17.6.0
-  hono: ^4.12.23
+  hono: ^4.12.24
   ink: ^7.0.1
   commander: ^15.0.0
   ink-testing-library: ^4.0.0

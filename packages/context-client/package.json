@@ -42,6 +42,7 @@
   "dependencies": {
     "@enkaku/async": "catalog:",
     "@enkaku/node-streams-transport": "catalog:",
+    "@enkaku/otel": "catalog:",
     "@enkaku/schema": "catalog:",
     "@enkaku/stream": "catalog:",
     "@mokei/context-protocol": "workspace:^",
