@@ -25,17 +25,19 @@ Additive, backward-compatible; `2025-11-25` peers ignore the extras. Landed on
 | G2 | `Mcp-Method` + `Mcp-Name` headers on Streamable HTTP POST (SEP-2243) | done |
 | G3 | Resource-not-found `-32002` → `-32602`; verified mokei core raises no `-32002`, regression guard added | done |
 | G4 | `extensions` capability field on client + server capabilities | done |
+| G5 | Outbound W3C trace context in request `_meta` — `ContextClient.request()` injects `traceparent`/`tracestate` from the active OTel span (SEP-414) | done |
 | G6 | Deterministic `tools/list` / `prompts/list` ordering (sorted by name) | done |
 | G7 | Client `x-mcp-header` → `Mcp-Param-*` injection + codec + tool-list validation/filter (SEP-2243), parts 1–4 | done |
+| G8 | Infer JSON Schema draft from `$schema` dialect; validate tool/prompt schemas declaring 2020-12 against `Ajv2020` (SEP-2106) | done |
 
-## Deferred groundwork (blocked / follow-up)
+## Deferred groundwork (follow-up)
 
-- **G5** — OTel `_meta` trace context (`traceparent`/`tracestate`/`baggage`, SEP-414).
-  Blocked: `@enkaku/otel@0.16.0` covers `traceparent` only and is not yet a dependency.
-  Upstream ask filed in the enkaku repo. → backlog `2026-06-09-mcp-draft-deferred-groundwork.md`.
-- **G8** — loosen `inputSchema`/`outputSchema` to JSON Schema 2020-12 + `$ref` (SEP-2106).
-  Blocked: `@enkaku/schema@0.16.0` is draft-07 (single module-level AJV). Upstream ask
-  filed (switch to `Ajv2020`). → same backlog item.
+- **G5 baggage** — no `baggage` key emitted yet: `@enkaku/otel@0.16.1` ships
+  `formatBaggage`/`parseBaggage` codecs but no active-baggage accessor, so there is nothing
+  to format from. Needs an upstream `getActiveBaggage` (new Enkaku ask) or a direct
+  `@opentelemetry/api` read. → backlog `2026-06-09-mcp-draft-deferred-groundwork.md`.
+- **G5 inbound** — server-side extraction (parse `_meta.traceparent` → `withActiveContext`)
+  not wired; outbound propagation only. → same backlog item.
 - **G7 follow-ups** — part 5 (stale-schema → `-32001` HeaderMismatch → `tools/list`
   refresh + retry) deferred; schema walk currently covers object `properties` depth only
   (array `items` / `$ref` / `allOf`|`anyOf`|`oneOf` not traversed). → same backlog item.
@@ -62,8 +64,12 @@ Hard-cut; ordered by dependency. Blocked on the draft finalizing **and** on U1.
   `@enkaku/transport` duplex — generalize `#sentRequests` to resolve a *stream* of
   correlated frames, add a continuation-token store decoupled from `#sentRequests` for
   MRTR, keep `@enkaku/transport` untouched. Should begin in parallel with Phase 0.
-- **U2 → G8** — `@enkaku/schema` draft-07 → needs `Ajv2020` / configurable draft. Ask filed.
-- **U3 → G5** — `@enkaku/otel` lacks `tracestate`/`baggage` codecs. Ask filed.
+- **U2 → G8** — `@enkaku/schema` draft-07 → needs `Ajv2020` / configurable draft.
+  **Resolved** in `@enkaku/schema@0.16.1` (`createValidator(schema, { draft: '2020-12' })`,
+  new `ValidatorOptions` export). G8 unblocked.
+- **U3 → G5** — `@enkaku/otel` lacks `tracestate`/`baggage` codecs.
+  **Resolved** in `@enkaku/otel@0.16.1` (`format`/`parseTracestate`, `format`/`parseBaggage`).
+  G5 unblocked.
 
 ## Open questions (later phases)
 
