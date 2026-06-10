@@ -257,7 +257,7 @@ describe('Sampling Support', () => {
   })
 })
 
-describe('Extensions capability (G4)', () => {
+describe('Extensions capability', () => {
   test('client and server capabilities expose an extensions object', async () => {
     expect(clientCapabilities.properties.extensions).toBeDefined()
     expect(clientCapabilities.properties.extensions.type).toBe('object')
@@ -316,7 +316,7 @@ describe('Client and Server Message Types', () => {
   })
 })
 
-describe('Cacheable results (G1)', () => {
+describe('Cacheable results', () => {
   test('cacheableResult defines ttlMs and cacheScope', async () => {
     expect(cacheableResult.properties.ttlMs.type).toBe('number')
     expect(cacheableResult.properties.cacheScope.enum).toEqual(['public', 'private'])

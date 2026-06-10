@@ -520,7 +520,7 @@ describe('ContextServer', () => {
     })
   })
 
-  describe('Cache hints on lists (G1 server)', () => {
+  describe('Cache hints on lists', () => {
     test('tools/list includes configured ttlMs and cacheScope', async () => {
       const { transports } = createTestContext({
         cache: { ttlMs: 60000, cacheScope: 'public' },
@@ -538,7 +538,7 @@ describe('ContextServer', () => {
     })
   })
 
-  describe('Deterministic list ordering (G6)', () => {
+  describe('Deterministic list ordering', () => {
     test('tools/list returns tools sorted by name', async () => {
       const noop = async () => ({ content: [] as [] })
       const { transports } = createTestContext({
