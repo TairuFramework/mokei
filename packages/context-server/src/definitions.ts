@@ -1,5 +1,9 @@
 import { createValidator, type FromSchema, type Schema } from '@enkaku/schema'
-import { INVALID_PARAMS, type InputSchema as ToolInputSchema } from '@mokei/context-protocol'
+import {
+  INVALID_PARAMS,
+  inferSchemaDraft,
+  type InputSchema as ToolInputSchema,
+} from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
 
 import type {
@@ -22,7 +26,9 @@ export function createPrompt<
   argumentsSchema: ArgumentsSchema,
   handler: TypedPromptHandler<Arguments>,
 ): GenericPromptDefinition {
-  const validate = createValidator<ArgumentsSchema, Arguments>(argumentsSchema)
+  const validate = createValidator<ArgumentsSchema, Arguments>(argumentsSchema, {
+    draft: inferSchemaDraft(argumentsSchema),
+  })
 
   const wrappedHandler = (request: HandlerRequest<{ arguments: unknown }>): PromptHandlerReturn => {
     const validated = validate(request.arguments)
@@ -42,7 +48,9 @@ export function createTool<InputSchema extends Schema, Input = FromSchema<InputS
   inputSchema: InputSchema,
   handler: TypedToolHandler<Input>,
 ): GenericToolDefinition {
-  const validate = createValidator<InputSchema, Input>(inputSchema)
+  const validate = createValidator<InputSchema, Input>(inputSchema, {
+    draft: inferSchemaDraft(inputSchema),
+  })
 
   const wrappedHandler = (
     request: HandlerRequest<{ arguments: Record<string, unknown> }>,

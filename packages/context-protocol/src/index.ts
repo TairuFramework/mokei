@@ -84,6 +84,7 @@ export {
   type Result,
 } from './rpc.js'
 export type { CreateMessageRequest, CreateMessageResult } from './sampling.js'
+export { inferSchemaDraft } from './schema.js'
 export {
   type ServerMessage,
   type ServerNotification,

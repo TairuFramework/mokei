@@ -33,12 +33,15 @@ catalogs:
     '@enkaku/node-streams-transport':
       specifier: ^0.16.0
       version: 0.16.0
+    '@enkaku/otel':
+      specifier: ^0.16.1
+      version: 0.16.1
     '@enkaku/protocol':
       specifier: ^0.16.0
       version: 0.16.0
     '@enkaku/schema':
-      specifier: ^0.16.0
-      version: 0.16.0
+      specifier: ^0.16.1
+      version: 0.16.1
     '@enkaku/server':
       specifier: ^0.16.0
       version: 0.16.0
@@ -58,11 +61,11 @@ catalogs:
       specifier: ^2.0.0
       version: 2.0.0
     '@mantine/core':
-      specifier: ^9.3.0
-      version: 9.3.0
+      specifier: ^9.3.1
+      version: 9.3.1
     '@mantine/hooks':
-      specifier: ^9.3.0
-      version: 9.3.0
+      specifier: ^9.3.1
+      version: 9.3.1
     '@swc/cli':
       specifier: ^0.8.1
       version: 0.8.1
@@ -121,8 +124,8 @@ catalogs:
       specifier: ^17.6.0
       version: 17.6.0
     hono:
-      specifier: ^4.12.23
-      version: 4.12.23
+      specifier: ^4.12.24
+      version: 4.12.24
     ink:
       specifier: ^7.0.1
       version: 7.0.5
@@ -355,10 +358,10 @@ importers:
         version: 0.16.0
       '@mantine/core':
         specifier: 'catalog:'
-        version: 9.3.0(@mantine/hooks@9.3.0(react@19.2.7))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 9.3.1(@mantine/hooks@9.3.1(react@19.2.7))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@mantine/hooks':
         specifier: 'catalog:'
-        version: 9.3.0(react@19.2.7)
+        version: 9.3.1(react@19.2.7)
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../packages/host-protocol
@@ -389,7 +392,7 @@ importers:
         version: 0.16.0
       '@enkaku/schema':
         specifier: 'catalog:'
-        version: 0.16.0
+        version: 0.16.1
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../packages/context-protocol
@@ -440,7 +443,7 @@ importers:
     dependencies:
       '@enkaku/schema':
         specifier: 'catalog:'
-        version: 0.16.0
+        version: 0.16.1
       eventsource-parser:
         specifier: 'catalog:'
         version: 3.1.0
@@ -542,9 +545,12 @@ importers:
       '@enkaku/node-streams-transport':
         specifier: 'catalog:'
         version: 0.16.0
+      '@enkaku/otel':
+        specifier: 'catalog:'
+        version: 0.16.1
       '@enkaku/schema':
         specifier: 'catalog:'
-        version: 0.16.0
+        version: 0.16.1
       '@enkaku/stream':
         specifier: 'catalog:'
         version: 0.16.0
@@ -563,7 +569,7 @@ importers:
     devDependencies:
       '@enkaku/schema':
         specifier: 'catalog:'
-        version: 0.16.0
+        version: 0.16.1
 
   packages/context-rpc:
     dependencies:
@@ -579,7 +585,7 @@ importers:
     devDependencies:
       '@enkaku/schema':
         specifier: 'catalog:'
-        version: 0.16.0
+        version: 0.16.1
       '@enkaku/transport':
         specifier: 'catalog:'
         version: 0.16.0
@@ -591,7 +597,7 @@ importers:
         version: 0.16.0
       '@enkaku/schema':
         specifier: 'catalog:'
-        version: 0.16.0
+        version: 0.16.1
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -668,7 +674,7 @@ importers:
         version: 0.16.2
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.0.4(hono@4.12.23)
+        version: 2.0.4(hono@4.12.24)
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
@@ -677,7 +683,7 @@ importers:
         version: 7.2.0
       hono:
         specifier: 'catalog:'
-        version: 4.12.23
+        version: 4.12.24
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -690,7 +696,7 @@ importers:
         version: 0.16.0
       '@enkaku/schema':
         specifier: 'catalog:'
-        version: 0.16.0
+        version: 0.16.1
 
   packages/http-client:
     dependencies:
@@ -718,7 +724,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.0.4(hono@4.12.23)
+        version: 2.0.4(hono@4.12.24)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -727,7 +733,7 @@ importers:
         version: link:../context-server
       hono:
         specifier: 'catalog:'
-        version: 4.12.23
+        version: 4.12.24
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
@@ -743,7 +749,7 @@ importers:
         version: 0.16.0
       '@enkaku/schema':
         specifier: 'catalog:'
-        version: 0.16.0
+        version: 0.16.1
       node-llama-cpp:
         specifier: '>=3.0.0'
         version: 3.15.1(typescript@6.0.3)
@@ -768,7 +774,7 @@ importers:
     dependencies:
       '@enkaku/schema':
         specifier: 'catalog:'
-        version: 0.16.0
+        version: 0.16.1
     devDependencies:
       '@mokei/context-protocol':
         specifier: workspace:^
@@ -778,7 +784,7 @@ importers:
     dependencies:
       '@enkaku/schema':
         specifier: 'catalog:'
-        version: 0.16.0
+        version: 0.16.1
       '@enkaku/stream':
         specifier: 'catalog:'
         version: 0.16.0
@@ -797,7 +803,7 @@ importers:
     dependencies:
       '@enkaku/schema':
         specifier: 'catalog:'
-        version: 0.16.0
+        version: 0.16.1
       eventsource-parser:
         specifier: 'catalog:'
         version: 3.1.0
@@ -2228,6 +2234,9 @@ packages:
   '@enkaku/otel@0.16.0':
     resolution: {integrity: sha512-S6/tNOQbf2Xkj1yNJJ5tLi2ypCrUFPvTtuM8eSS4J2JVInn42/9AkqXsvWkRy+gGOWsyvelDaQZ/dqHD2diLZQ==}
 
+  '@enkaku/otel@0.16.1':
+    resolution: {integrity: sha512-embS39q3VzXwwjS9jf1yjcwm01NJ95bse4u2azxs/UtaWeM7ifJcis81R8/msOS6TYY2qzWQ1gf4oJ9XUwKPPw==}
+
   '@enkaku/protocol@0.16.0':
     resolution: {integrity: sha512-Jlpb5wBaeYxkqpItkL2Z8iOwFCrhcv0vUfZsKItzzru8R28WBWu5aoLBadPKSpb1MlxiSO0APApoIeUg0OpzAQ==}
 
@@ -2237,8 +2246,8 @@ packages:
   '@enkaku/runtime@0.16.0':
     resolution: {integrity: sha512-eo0HPSYMa0WX8+2ec4xgYb32unYwY/x0D2H/wKpkq75kYujebMDoVNnVPluYqMw2Qgy/tk1YFUf/rYRvIYUxlQ==}
 
-  '@enkaku/schema@0.16.0':
-    resolution: {integrity: sha512-N8WYlB6IOaDsCDtauvaghGVLWDw0CNqMwD3rO57FUpolbLpJlew1GM2BqEjVFBbGc/8SMo5eEd7zeTuaOkt9WQ==}
+  '@enkaku/schema@0.16.1':
+    resolution: {integrity: sha512-nh9Zpr5rV8pezKILcGoBFFpjEWbFX6JuGalsTi7M/g+DEvBDy/TQPWS52e4TNDmmiXnVBg8CcFcXWEIgQQ1lvQ==}
 
   '@enkaku/server@0.16.0':
     resolution: {integrity: sha512-Fawcla3Y2ntI8Qvds4/aw/AQH/73gJ52Dd5ANZa3SxfZiXRW/pCTaPwTWhVmL8WUwNrWUjHY6K6JybLvlq+SUA==}
@@ -2695,15 +2704,15 @@ packages:
   '@logtape/logtape@2.1.1':
     resolution: {integrity: sha512-aULbCqUQGerfOsZ3CMvcKtueKzmdchluXYUd3bIHKmOIS93fx1ko0+hyRQ4flloGZ8EiyRPydZXiy8n1J/eAQA==}
 
-  '@mantine/core@9.3.0':
-    resolution: {integrity: sha512-mHVCm61YVW9ipy9eHiKMqsRUm3TkOErbdw7zHs0HRw5g403nf7tSTqNGvaYE+aX1Py874qMkrUzeQfj4bjiiBA==}
+  '@mantine/core@9.3.1':
+    resolution: {integrity: sha512-4rBoHpggSohayE+Os7lKdbsHTw7m/uZRKYjk9DN6cKBhQIjdiULdcG+b4b5CMVZSqZDHPgT70uWGI7yqkn8Ufw==}
     peerDependencies:
-      '@mantine/hooks': 9.3.0
+      '@mantine/hooks': 9.3.1
       react: ^19.2.0
       react-dom: ^19.2.0
 
-  '@mantine/hooks@9.3.0':
-    resolution: {integrity: sha512-QoSr9WI4WsKWrM3qFYYizHUn3+n+CVcFMYe4sdlnmFPStvs6BacPODKJSbFlYl73Z20t82JIy0eKqt4noHQI2g==}
+  '@mantine/hooks@9.3.1':
+    resolution: {integrity: sha512-zAOlxV59j5CDgAnExN+ypaR6dVW1vwMKDvKUxIlUVd/e52qxYnPyYRD+shJmyOLaZRuQmVF0R/7mJAjt2jw9cA==}
     peerDependencies:
       react: ^19.2.0
 
@@ -6034,8 +6043,8 @@ packages:
   hoist-non-react-statics@3.3.2:
     resolution: {integrity: sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==}
 
-  hono@4.12.23:
-    resolution: {integrity: sha512-eIaZ9qDgu7XV0pxOCrg7/WhnQ6Ivm22UcxhXx/A3dcbqbbYgBEkc6e/J/s7j2tS96zoB0S9VBdLwQNCWwUo4LA==}
+  hono@4.12.24:
+    resolution: {integrity: sha512-I36D1s+HgQc55KbhEr4iybfxv/9o1zdpw+XEM6dJa91LqQD0HCoSGdxpRJCZE+aavs87j4V3Ls2OJzq8C/U4iw==}
     engines: {node: '>=16.9.0'}
 
   hpack.js@2.1.6:
@@ -12302,6 +12311,12 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/api-logs': 0.218.0
 
+  '@enkaku/otel@0.16.1':
+    dependencies:
+      '@enkaku/log': 0.16.0
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/api-logs': 0.218.0
+
   '@enkaku/protocol@0.16.0':
     dependencies:
       '@enkaku/token': 0.16.0
@@ -12312,7 +12327,7 @@ snapshots:
 
   '@enkaku/runtime@0.16.0': {}
 
-  '@enkaku/schema@0.16.0':
+  '@enkaku/schema@0.16.1':
     dependencies:
       '@standard-schema/spec': 1.1.0
       ajv: 8.20.0
@@ -12328,7 +12343,7 @@ snapshots:
       '@enkaku/otel': 0.16.0
       '@enkaku/protocol': 0.16.0
       '@enkaku/runtime': 0.16.0
-      '@enkaku/schema': 0.16.0
+      '@enkaku/schema': 0.16.1
       '@enkaku/stream': 0.16.0
       '@enkaku/token': 0.16.0
 
@@ -12346,7 +12361,7 @@ snapshots:
     dependencies:
       '@enkaku/codec': 0.16.0
       '@enkaku/otel': 0.16.0
-      '@enkaku/schema': 0.16.0
+      '@enkaku/schema': 0.16.1
       '@noble/ciphers': 2.2.0
       '@noble/curves': 2.2.0
       '@noble/hashes': 2.2.0
@@ -12479,9 +12494,9 @@ snapshots:
     dependencies:
       '@hapi/hoek': 9.3.0
 
-  '@hono/node-server@2.0.4(hono@4.12.23)':
+  '@hono/node-server@2.0.4(hono@4.12.24)':
     dependencies:
-      hono: 4.12.23
+      hono: 4.12.24
 
   '@huggingface/jinja@0.5.5': {}
 
@@ -12777,10 +12792,10 @@ snapshots:
 
   '@logtape/logtape@2.1.1': {}
 
-  '@mantine/core@9.3.0(@mantine/hooks@9.3.0(react@19.2.7))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@mantine/core@9.3.1(@mantine/hooks@9.3.1(react@19.2.7))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@floating-ui/react': 0.27.19(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@mantine/hooks': 9.3.0(react@19.2.7)
+      '@mantine/hooks': 9.3.1(react@19.2.7)
       clsx: 2.1.1
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
@@ -12790,7 +12805,7 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@mantine/hooks@9.3.0(react@19.2.7)':
+  '@mantine/hooks@9.3.1(react@19.2.7)':
     dependencies:
       react: 19.2.7
 
@@ -16452,7 +16467,7 @@ snapshots:
     dependencies:
       react-is: 16.13.1
 
-  hono@4.12.23: {}
+  hono@4.12.24: {}
 
   hpack.js@2.1.6:
     dependencies:

@@ -520,7 +520,7 @@ describe('ContextServer', () => {
     })
   })
 
-  describe('Cache hints on lists (G1 server)', () => {
+  describe('Cache hints on lists', () => {
     test('tools/list includes configured ttlMs and cacheScope', async () => {
       const { transports } = createTestContext({
         cache: { ttlMs: 60000, cacheScope: 'public' },
@@ -538,7 +538,7 @@ describe('ContextServer', () => {
     })
   })
 
-  describe('Deterministic list ordering (G6)', () => {
+  describe('Deterministic list ordering', () => {
     test('tools/list returns tools sorted by name', async () => {
       const noop = async () => ({ content: [] as [] })
       const { transports } = createTestContext({
@@ -560,6 +560,37 @@ describe('ContextServer', () => {
       )
       expect(names).toEqual(['alpha', 'bravo', 'charlie'])
       await transports.dispose()
+    })
+  })
+
+  describe('JSON Schema 2020-12 tool input', () => {
+    test('validates a tool whose inputSchema declares the 2020-12 dialect', async () => {
+      await expectServerResult(
+        {
+          tools: {
+            coords: createTool(
+              'coords',
+              {
+                $schema: 'https://json-schema.org/draft/2020-12/schema',
+                type: 'object',
+                properties: {
+                  point: { type: 'array', prefixItems: [{ type: 'number' }, { type: 'number' }] },
+                },
+                required: ['point'],
+              } as const,
+              (req) => {
+                return {
+                  content: [
+                    { type: 'text' as const, text: `got ${JSON.stringify(req.arguments.point)}` },
+                  ],
+                }
+              },
+            ),
+          },
+        },
+        { method: 'tools/call', params: { name: 'coords', arguments: { point: [1, 2] } } },
+        { content: [{ type: 'text', text: 'got [1,2]' }] },
+      )
     })
   })
 

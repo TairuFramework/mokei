@@ -42,6 +42,7 @@ import type {
 import { LATEST_PROTOCOL_VERSION, METHOD_NOT_FOUND, serverMessage } from '@mokei/context-protocol'
 import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
 
+import { currentTraceMeta } from './trace.js'
 import type { ClientTransport } from './types.js'
 
 const validateServerMessage = createValidator(serverMessage)
@@ -135,6 +136,26 @@ export class ContextClient<
     this.#listRoots = params.listRoots
     this.#notificationController = controller
     this.#notifications = stream
+  }
+
+  // Inject W3C trace context (SEP-414) into every outgoing request's `_meta`.
+  // No-op when no OpenTelemetry SDK is active.
+  request<Method extends keyof ClientTypes['SendRequests']>(
+    method: Method,
+    params: ClientTypes['SendRequests'][Method]['Params'],
+  ): SentRequest<ClientTypes['SendRequests'][Method]['Result']> {
+    const trace = currentTraceMeta()
+    if (trace.traceparent == null) {
+      return super.request(method, params)
+    }
+    const base =
+      params != null && typeof params === 'object' ? (params as Record<string, unknown>) : {}
+    const existingMeta =
+      base._meta != null && typeof base._meta === 'object'
+        ? (base._meta as Record<string, unknown>)
+        : {}
+    const merged = { ...base, _meta: { ...existingMeta, ...trace } }
+    return super.request(method, merged as typeof params)
   }
 
   async #initialize(): Promise<InitializeResult> {

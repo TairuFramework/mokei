@@ -28,6 +28,7 @@ import {
   response,
 } from '../src/rpc.js'
 import { createMessageRequest, modelPreferences } from '../src/sampling.js'
+import { inferSchemaDraft } from '../src/schema.js'
 import { serverMessage } from '../src/server.js'
 import {
   callToolRequest,
@@ -256,7 +257,7 @@ describe('Sampling Support', () => {
   })
 })
 
-describe('Extensions capability (G4)', () => {
+describe('Extensions capability', () => {
   test('client and server capabilities expose an extensions object', async () => {
     expect(clientCapabilities.properties.extensions).toBeDefined()
     expect(clientCapabilities.properties.extensions.type).toBe('object')
@@ -315,7 +316,7 @@ describe('Client and Server Message Types', () => {
   })
 })
 
-describe('Cacheable results (G1)', () => {
+describe('Cacheable results', () => {
   test('cacheableResult defines ttlMs and cacheScope', async () => {
     expect(cacheableResult.properties.ttlMs.type).toBe('number')
     expect(cacheableResult.properties.cacheScope.enum).toEqual(['public', 'private'])
@@ -327,5 +328,21 @@ describe('Cacheable results (G1)', () => {
       (f) => 'properties' in f && (f as { properties?: Record<string, unknown> }).properties?.ttlMs,
     )
     expect(hasCache).toBe(true)
+  })
+})
+
+describe('JSON Schema draft inference', () => {
+  test('defaults to draft-07 when no $schema is declared', () => {
+    expect(inferSchemaDraft({ type: 'object' })).toBe('07')
+  })
+
+  test('keeps draft-07 for an explicit draft-07 dialect', () => {
+    expect(inferSchemaDraft({ $schema: 'http://json-schema.org/draft-07/schema#' })).toBe('07')
+  })
+
+  test('selects 2020-12 when the dialect URI declares it', () => {
+    expect(inferSchemaDraft({ $schema: 'https://json-schema.org/draft/2020-12/schema' })).toBe(
+      '2020-12',
+    )
   })
 })
