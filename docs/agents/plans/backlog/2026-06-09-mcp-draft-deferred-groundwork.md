@@ -28,6 +28,10 @@ On `feat/mcp-draft-groundwork-g5-g8`:
 - **G7 walk depth** — `collectHeaderAnnotations` covers object `properties` depth only;
   extend to array `items` / `$ref` / `allOf`|`anyOf`|`oneOf` (needs a richer argument-path
   model than the current flat property path).
+- **G8 strict-mode warnings** — `Ajv2020` in default strict mode logs to stderr for valid
+  2020-12 constructs (e.g. `prefixItems` 2-tuple without `minItems`/`maxItems`). Harmless
+  (validator works) but leaks to user consoles. Needs an upstream `@enkaku/schema` ask for a
+  `strict: false` (or `strict: 'log'`) passthrough on `ValidatorOptions`.
 
 ## Notes
 
