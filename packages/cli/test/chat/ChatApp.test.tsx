@@ -10,6 +10,7 @@ describe('ChatApp', () => {
       addContext: vi.fn(),
       removeContext: vi.fn(),
       contextHost: {
+        events: { on: () => () => {} },
         getContextKeys: () => [],
         contexts: {},
         setContextTools: vi.fn(),

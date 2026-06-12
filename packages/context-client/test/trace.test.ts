@@ -63,7 +63,11 @@ describe('ContextClient.request trace injection', () => {
     })
     await transports.server.read()
 
-    client.callTool({ name: 'x', arguments: {}, _meta: { foo: 'bar' } })
+    // Fire-and-forget: we only inspect the outgoing frame. The transport
+    // dispose below rejects this still-pending request (TransportClosedError),
+    // so attach a catch to keep that expected rejection from going unhandled.
+    const pending = client.callTool({ name: 'x', arguments: {}, _meta: { foo: 'bar' } })
+    pending.catch(() => {})
     const incoming = await transports.server.read()
 
     const params = (incoming as { value: { params?: { _meta?: Record<string, unknown> } } }).value
