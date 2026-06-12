@@ -41,8 +41,10 @@ provider endpoint hard-crashes the TUI. Fix the library core first, then the CLI
    uses `fromJSONLines()` with no `maxBufferSize`/`maxMessageSize`/`onInvalidJSON`. A
    child printing non-JSON to stdout grows the buffer unboundedly; one stray line with
    an unbalanced `{`/`[` leaves `nestingDepth > 0` forever and all later frames hang
-   silently. Pass the limits and an `onInvalidJSON` handler when constructing the
-   transport in `spawnHostedContext`.
+   silently. **Deferred (upstream-first):** enkaku ask filed to add
+   `streamOptions?: FromJSONLinesOptions` to `NodeStreamsTransportParams`; wire in
+   `spawnHostedContext` once released. Design:
+   `docs/superpowers/specs/2026-06-12-hang-crash-core-design.md` §6.
 7. **CLI model-list crash path** — `packages/cli/src/chat/ChatApp.tsx:48-57` +
    `useSlashCommands.ts:55,128` + `components/Footer.tsx:36-39` (PTY-verified): first
    message with unreachable endpoint / bad key / Ollama down → raw ky stack dump, exit 1.
