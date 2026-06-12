@@ -14,7 +14,7 @@ import type {
 } from '@mokei/context-protocol'
 import { INTERNAL_ERROR, INVALID_REQUEST } from '@mokei/context-protocol'
 
-import { errorResponse, RPCError } from './error.js'
+import { errorResponse, RequestTimeoutError, RPCError, TransportClosedError } from './error.js'
 
 function isRequestID(id: unknown): id is RequestID {
   return typeof id === 'string' || typeof id === 'number'
@@ -49,6 +49,7 @@ export type RPCParams<T extends RPCTypes> = {
 }
 
 export class ContextRPC<T extends RPCTypes> extends Disposer {
+  #closed = false
   #events: EventEmitter<T['Events']>
   #receivedRequests: Record<RequestID, AbortController> = {}
   #requestID = 0
@@ -57,7 +58,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #validateMessageIn: Validator<T['MessageIn']>
 
   constructor(params: RPCParams<T>) {
-    super({ dispose: () => this.#transport.dispose() })
+    super({ dispose: () => this.#dispose() })
     this.#events = new EventEmitter<T['Events']>()
     this.#transport = params.transport
     this.#validateMessageIn = params.validateMessageIn
@@ -79,23 +80,66 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     await this.#transport.write(message)
   }
 
-  _handle() {
-    const handleNext = async () => {
-      const next = await this._read()
-      if (next.done) {
-        return
-      }
-
-      const response = await this._handleMessage(next.value)
-      if (response != null) {
-        this._write(response)
-      }
-
-      handleNext()
-    }
-
-    handleNext()
+  _handle(): void {
+    void this.#readLoop()
   }
+
+  async #readLoop(): Promise<void> {
+    try {
+      while (true) {
+        const next = await this._read()
+        if (next.done) {
+          break
+        }
+        let response: Response | null = null
+        try {
+          response = await this._handleMessage(next.value)
+        } catch {
+          // _handleMessage is defensive; never let a handler error kill the loop.
+          response = null
+        }
+        if (response != null) {
+          try {
+            await this._write(response)
+          } catch {
+            // A failed response write is not fatal; transport death surfaces on next read.
+          }
+        }
+      }
+      this.#close()
+    } catch (cause) {
+      this.#close(
+        cause instanceof Error
+          ? cause
+          : new TransportClosedError('Transport read failed', { cause }),
+      )
+    }
+  }
+
+  #close(reason?: Error): void {
+    if (this.#closed) {
+      return
+    }
+    this.#closed = true
+    this.#endPendingRequests(reason ?? new TransportClosedError())
+    this._onTransportClosed(reason)
+  }
+
+  #endPendingRequests(reason: Error): void {
+    const pending = Object.values(this.#sentRequests)
+    this.#sentRequests = {}
+    for (const controller of pending) {
+      controller.reject(reason)
+    }
+  }
+
+  async #dispose(): Promise<void> {
+    this.#close(new TransportClosedError('Transport disposed'))
+    await this.#transport.dispose()
+  }
+
+  /** @internal Called once when the read loop terminates. Subclasses may override to surface it. */
+  _onTransportClosed(_reason?: Error): void {}
 
   _handleMessage(message: T['MessageIn']): Response | null | Promise<Response | null> {
     const validated = this.#validateMessageIn(message)
@@ -135,15 +179,16 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       // Message is a response
       const response = validated.value as Response
       const controller = this.#sentRequests[id]
-      if (controller == null) {
-        // TODO: error unknown sent request
-      } else if ('error' in response) {
-        controller.reject(RPCError.fromResponse(response as ErrorResponse))
-      } else if ('result' in response) {
-        controller.resolve(response.result)
-      } else {
-        // TODO: error invalid response
+      if (controller != null) {
+        delete this.#sentRequests[id]
+        if ('error' in response) {
+          controller.reject(RPCError.fromResponse(response as ErrorResponse))
+        } else if ('result' in response) {
+          controller.resolve(response.result)
+        }
+        // TODO: error invalid response (neither error nor result)
       }
+      // TODO: error unknown sent request (controller == null)
       return null
     }
 
@@ -201,6 +246,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   request<Method extends keyof T['SendRequests']>(
     method: Method,
     params: T['SendRequests'][Method]['Params'],
+    options?: { timeout?: number },
   ): SentRequest<T['SendRequests'][Method]['Result']> {
     const id = this._getNextRequestID()
     const controller = Object.assign(new AbortController(), defer())
@@ -210,10 +256,25 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       if (this.#sentRequests[id] == null) {
         return
       }
-      controller.reject(new Error('Cancelled'))
-      this.notify('cancelled', { requestId: id })
       delete this.#sentRequests[id]
+      controller.reject(new Error('Cancelled'))
+      this.notify('cancelled', { requestId: id }).catch(() => {})
     })
+
+    if (options?.timeout != null) {
+      const timer = setTimeout(() => {
+        if (this.#sentRequests[id] == null) {
+          return
+        }
+        delete this.#sentRequests[id]
+        controller.reject(new RequestTimeoutError(`Request timed out after ${options.timeout}ms`))
+        this.notify('cancelled', { requestId: id }).catch(() => {})
+      }, options.timeout)
+      controller.promise.then(
+        () => clearTimeout(timer),
+        () => clearTimeout(timer),
+      )
+    }
 
     this._write({ jsonrpc: '2.0', id, method, params } as T['MessageOut']).catch((error) => {
       controller.reject(error)
