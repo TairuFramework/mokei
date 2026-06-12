@@ -47,6 +47,13 @@ export function ChatLauncher({ initialProvider, chatOptions, lifecycle }: ChatLa
     }
   }, [provider, chatOptions, lifecycle])
 
+  useEffect(() => {
+    if (error != null) {
+      process.exitCode = 1
+      exit()
+    }
+  }, [error, exit])
+
   if (error != null) {
     return (
       <Box paddingX={1}>
