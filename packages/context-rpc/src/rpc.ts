@@ -277,6 +277,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     }
 
     this._write({ jsonrpc: '2.0', id, method, params } as T['MessageOut']).catch((error) => {
+      if (this.#sentRequests[id] == null) {
+        return
+      }
+      delete this.#sentRequests[id]
       controller.reject(error)
     })
 

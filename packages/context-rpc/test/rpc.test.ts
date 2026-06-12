@@ -69,4 +69,19 @@ describe('ContextRPC transport lifecycle', () => {
     await rpc.dispose()
     await transports.dispose()
   })
+
+  test('cancel() on a pending request rejects it and notifies cancellation', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = makeRPC(transports.client)
+    rpc._handle()
+    const notifySpy = vi.spyOn(rpc, 'notify')
+
+    const pending = rpc.request('tools/list', {})
+    pending.cancel()
+    await expect(pending).rejects.toThrow('Cancelled')
+    expect(notifySpy).toHaveBeenCalledWith('cancelled', { requestId: 0 })
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
 })
