@@ -126,6 +126,31 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
     getLastErrorDetail,
   })
 
+  const onSubmit = useCallback(
+    (value: string) => {
+      void handleSubmit(value).catch((err) => {
+        pushEntry({ kind: 'notice', variant: 'error', text: `error: ${(err as Error).message}` })
+      })
+    },
+    [handleSubmit, pushEntry],
+  )
+
+  useEffect(() => {
+    const controller = new AbortController()
+    session.contextHost.events.on(
+      'context:failed',
+      ({ key, error }) => {
+        pushEntry({
+          kind: 'notice',
+          variant: 'error',
+          text: `context ${key} failed: ${error.message}`,
+        })
+      },
+      { signal: controller.signal },
+    )
+    return () => controller.abort()
+  }, [session, pushEntry])
+
   useInput((input, key) => {
     if (key.ctrl && input === 'c') {
       if (quitConfirmRef.current) {
@@ -279,7 +304,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         model={model ?? '(no model)'}
         state={turn.state}
         contexts={contexts}
-        onSubmit={handleSubmit}
+        onSubmit={onSubmit}
         disabled={modal != null || confirmRemove != null || turn.state !== 'idle'}
         defaultValue={pendingPrompt ?? undefined}
       />
