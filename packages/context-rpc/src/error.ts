@@ -77,7 +77,4 @@ export class TransportClosedError extends Error {
 
 export class RequestTimeoutError extends Error {
   name = 'RequestTimeoutError'
-  constructor(message: string) {
-    super(message)
-  }
 }
