@@ -67,3 +67,17 @@ export function errorResponse(id: RequestID, cause: unknown): ErrorResponse {
     error: { code: INTERNAL_ERROR, message },
   }
 }
+
+export class TransportClosedError extends Error {
+  name = 'TransportClosedError'
+  constructor(message = 'Transport closed', options?: { cause?: unknown }) {
+    super(message, options)
+  }
+}
+
+export class RequestTimeoutError extends Error {
+  name = 'RequestTimeoutError'
+  constructor(message: string) {
+    super(message)
+  }
+}
