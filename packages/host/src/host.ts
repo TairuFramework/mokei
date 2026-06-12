@@ -1,4 +1,5 @@
 import { Disposer } from '@enkaku/async'
+import { EventEmitter } from '@enkaku/event'
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 import { DirectTransports } from '@enkaku/transport'
 import {
@@ -29,7 +30,7 @@ import {
   type LocalTool,
   type LocalToolDefinition,
 } from './local-tools.js'
-import { type SpawnContextServerParams, spawnContextServer } from './spawn.js'
+import { isSubprocessExit, type SpawnContextServerParams, spawnContextServer } from './spawn.js'
 
 export type EnableTools = boolean | Array<string>
 export type EnableToolsFn = (tools: Array<Tool>) => EnableTools | Promise<EnableTools>
@@ -72,6 +73,12 @@ export type CreateContextParams = CreateHostedContextParams & {
   key: string
 }
 
+export type HostEvents = {
+  'context:added': { key: string }
+  'context:removed': { key: string }
+  'context:failed': { key: string; error: Error }
+}
+
 export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
   params: CreateHostedContextParams,
 ): HostedContext<T> {
@@ -86,10 +93,21 @@ export function createHostedContext<T extends ContextTypes = UnknownContextTypes
   return { client, disposer, tools }
 }
 
+export type SpawnHostedContextParams = SpawnContextServerParams & {
+  onExit?: (error: Error | null) => void
+}
+
 export async function spawnHostedContext<T extends ContextTypes = UnknownContextTypes>(
-  params: SpawnContextServerParams,
+  params: SpawnHostedContextParams,
 ): Promise<HostedContext<T>> {
-  const { childProcess, streams } = await spawnContextServer(params)
+  const { onExit, ...spawnParams } = params
+  const { childProcess, streams, subprocess } = await spawnContextServer(spawnParams)
+  if (onExit != null) {
+    subprocess.then(
+      () => onExit(null),
+      (error) => onExit(error as Error),
+    )
+  }
   const transport = new NodeStreamsTransport({ streams }) as ClientTransport
   return createHostedContext({
     transport,
@@ -127,6 +145,12 @@ export class ContextHost extends Disposer {
   _contexts: Record<string, HostedContext> = {}
   /** @internal */
   _localTools: Map<string, LocalTool> = new Map()
+  /** @internal */
+  _events: EventEmitter<HostEvents> = new EventEmitter<HostEvents>()
+
+  get events(): EventEmitter<HostEvents> {
+    return this._events
+  }
 
   constructor() {
     // Wire `_dispose()` into the Disposer lifecycle: the base only runs the
@@ -320,8 +344,17 @@ export class ContextHost extends Disposer {
       throw new Error(`Context ${key} already exists`)
     }
 
-    const context = await spawnHostedContext<T>(spawnParams)
+    const context = await spawnHostedContext<T>({
+      ...spawnParams,
+      onExit: (error) => {
+        if (error != null && !isSubprocessExit(error)) {
+          void this._events.emit('context:failed', { key, error }).catch(() => {})
+        }
+        void this.remove(key).catch(() => {})
+      },
+    })
     this._contexts[key] = context as unknown as HostedContext
+    void this._events.emit('context:added', { key }).catch(() => {})
     return context.client
   }
 
@@ -400,9 +433,12 @@ export class ContextHost extends Disposer {
     if (ctx == null) {
       return
     }
+    // Delete before the async dispose so a concurrent remove/dispose (e.g. an
+    // onExit reap racing a user remove) sees null and exits — no double removal.
+    delete this._contexts[key]
 
     await ctx.disposer.dispose()
-    delete this._contexts[key]
+    void this._events.emit('context:removed', { key }).catch(() => {})
   }
 
   getPrompt<T extends ContextTypes = UnknownContextTypes>(

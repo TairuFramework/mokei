@@ -42,6 +42,7 @@
   "dependencies": {
     "@enkaku/async": "catalog:",
     "@enkaku/client": "catalog:",
+    "@enkaku/event": "catalog:",
     "@enkaku/node-streams-transport": "catalog:",
     "@enkaku/server": "catalog:",
     "@enkaku/socket-transport": "catalog:",
