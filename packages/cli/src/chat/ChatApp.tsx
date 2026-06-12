@@ -47,11 +47,18 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
 
   const loadModels = useCallback(() => {
     if (modelsPromiseRef.current == null) {
-      modelsPromiseRef.current = provider.listModels().then((list) => {
-        const mapped = list.map((m) => ({ id: m.id }))
-        setModels(mapped)
-        return mapped
-      })
+      modelsPromiseRef.current = provider.listModels().then(
+        (list) => {
+          const mapped = list.map((m) => ({ id: m.id }))
+          setModels(mapped)
+          return mapped
+        },
+        (err) => {
+          // Don't cache the failure — a later attempt should re-fetch.
+          modelsPromiseRef.current = null
+          throw err
+        },
+      )
     }
     return modelsPromiseRef.current
   }, [provider])
