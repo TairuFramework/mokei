@@ -10,5 +10,5 @@
  * @module context-rpc
  */
 
-export { RPCError } from './error.js'
+export { RequestTimeoutError, RPCError, TransportClosedError } from './error.js'
 export { ContextRPC, type RPCParams, type RPCTypes, type SentRequest } from './rpc.js'

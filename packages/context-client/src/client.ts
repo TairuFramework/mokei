@@ -45,7 +45,7 @@ import {
   METHOD_NOT_FOUND,
   serverMessage,
 } from '@mokei/context-protocol'
-import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
+import { ContextRPC, RequestTimeoutError, RPCError, type SentRequest } from '@mokei/context-rpc'
 
 import { currentTraceMeta } from './trace.js'
 import type { ClientTransport } from './types.js'
@@ -154,10 +154,11 @@ export class ContextClient<
   request<Method extends keyof ClientTypes['SendRequests']>(
     method: Method,
     params: ClientTypes['SendRequests'][Method]['Params'],
+    options?: { timeout?: number },
   ): SentRequest<ClientTypes['SendRequests'][Method]['Result']> {
     const trace = currentTraceMeta()
     if (trace.traceparent == null) {
-      return super.request(method, params)
+      return super.request(method, params, options)
     }
     const base =
       params != null && typeof params === 'object' ? (params as Record<string, unknown>) : {}
@@ -166,7 +167,7 @@ export class ContextClient<
         ? (base._meta as Record<string, unknown>)
         : {}
     const merged = { ...base, _meta: { ...existingMeta, ...trace } }
-    return super.request(method, merged as typeof params)
+    return super.request(method, merged as typeof params, options)
   }
 
   async #initialize(): Promise<InitializeResult> {
@@ -196,7 +197,11 @@ export class ContextClient<
     const deadline = AbortSignal.timeout(timeoutMs)
     const timedOut = new Promise<never>((_resolve, reject) => {
       const fail = () =>
-        reject(new Error(`Server did not respond to initialize request within ${timeoutMs}ms`))
+        reject(
+          new RequestTimeoutError(
+            `Server did not respond to initialize request within ${timeoutMs}ms`,
+          ),
+        )
       if (deadline.aborted) {
         fail()
       } else {
