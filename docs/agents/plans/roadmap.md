@@ -42,7 +42,12 @@ From the 2026-06-12 full audit (security / stability / usability / MCP-spec):
   Origin/token checks, socket perms, daemon races.
 - **Hang/crash core** (`next/2026-06-12-hang-crash-core.md`) — child crash kills host
   (spawn rethrow), RPC read-loop/timeouts/`#sentRequests` leak, client initialize
-  hardening, stdio framing caps, CLI crash paths.
+  hardening, stdio framing caps, CLI crash paths. Items 1–5, 7–9 shipped on
+  `plans/2026-06-12-audit-clusters`; item 6 (framing) split out below.
+- **Stdio framing limits** (`next/2026-06-12-stdio-framing-limits.md`) — hang/crash
+  item 6, unblocked by enkaku 0.17.0 (flat `FromJSONLines` framing options). Bump
+  catalog 0.16→0.17, thread `maxBufferSize`/`maxMessageSize`/`onInvalidJSON` into the
+  host transport.
 
 ## Milestones (milestones/)
 
