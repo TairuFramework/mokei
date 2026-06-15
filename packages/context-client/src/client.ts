@@ -39,8 +39,13 @@ import type {
   ServerRequest,
   SetLevelRequest,
 } from '@mokei/context-protocol'
-import { LATEST_PROTOCOL_VERSION, METHOD_NOT_FOUND, serverMessage } from '@mokei/context-protocol'
-import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
+import {
+  type ErrorResponse,
+  LATEST_PROTOCOL_VERSION,
+  METHOD_NOT_FOUND,
+  serverMessage,
+} from '@mokei/context-protocol'
+import { ContextRPC, RequestTimeoutError, RPCError, type SentRequest } from '@mokei/context-rpc'
 
 import { currentTraceMeta } from './trace.js'
 import type { ClientTransport } from './types.js'
@@ -56,6 +61,8 @@ export const DEFAULT_INITIALIZE_PARAMS: InitializeRequest['params'] = {
   protocolVersion: LATEST_PROTOCOL_VERSION,
 }
 
+export const DEFAULT_INITIALIZE_TIMEOUT = 30_000
+
 export type ElicitHandler = (
   params: ElicitRequest['params'],
   signal: AbortSignal,
@@ -69,6 +76,7 @@ export type CreateMessageHandler = (
 export type ListRootsHandler = (signal: AbortSignal) => Array<Root> | Promise<Array<Root>>
 
 export type ClientEvents = {
+  closed: { error?: Error }
   initialized: InitializeResult
   log: Log
 }
@@ -113,6 +121,7 @@ export type ToolParams<T extends ContextTypes> = {
 export type ClientParams = {
   createMessage?: CreateMessageHandler
   elicit?: ElicitHandler
+  initializeTimeout?: number
   listRoots?: Array<Root> | ListRootsHandler
   transport: ClientTransport
 }
@@ -123,6 +132,7 @@ export class ContextClient<
   #createMessage?: CreateMessageHandler
   #elicit?: ElicitHandler
   #initialized: PromiseLike<InitializeResult>
+  #initializeTimeout: number
   #listRoots?: Array<Root> | ListRootsHandler
   #notificationController: ReadableStreamDefaultController<HandleNotification>
   #notifications: ReadableStream<HandleNotification>
@@ -133,6 +143,7 @@ export class ContextClient<
     this.#createMessage = params.createMessage
     this.#elicit = params.elicit
     this.#initialized = lazy(() => this.#initialize())
+    this.#initializeTimeout = params.initializeTimeout ?? DEFAULT_INITIALIZE_TIMEOUT
     this.#listRoots = params.listRoots
     this.#notificationController = controller
     this.#notifications = stream
@@ -143,10 +154,11 @@ export class ContextClient<
   request<Method extends keyof ClientTypes['SendRequests']>(
     method: Method,
     params: ClientTypes['SendRequests'][Method]['Params'],
+    options?: { timeout?: number },
   ): SentRequest<ClientTypes['SendRequests'][Method]['Result']> {
     const trace = currentTraceMeta()
     if (trace.traceparent == null) {
-      return super.request(method, params)
+      return super.request(method, params, options)
     }
     const base =
       params != null && typeof params === 'object' ? (params as Record<string, unknown>) : {}
@@ -155,7 +167,7 @@ export class ContextClient<
         ? (base._meta as Record<string, unknown>)
         : {}
     const merged = { ...base, _meta: { ...existingMeta, ...trace } }
-    return super.request(method, merged as typeof params)
+    return super.request(method, merged as typeof params, options)
   }
 
   async #initialize(): Promise<InitializeResult> {
@@ -178,23 +190,54 @@ export class ContextClient<
       method: 'initialize',
       params: { ...DEFAULT_INITIALIZE_PARAMS, capabilities },
     })
-    // Wait for initialize response
-    const next = await this._read()
-    if (next.done) {
-      throw new Error('Server did not respond to initialize request')
-    }
-    if (next.value.id !== id) {
-      throw new Error('Server did not correctly respond to initialize request')
+    // Wait for the matching response, bounded by the initialize timeout. The
+    // deadline promise is built once (not per iteration) so reading past stray
+    // pre-init messages doesn't accumulate abort listeners on the signal.
+    const timeoutMs = this.#initializeTimeout
+    const deadline = AbortSignal.timeout(timeoutMs)
+    const timedOut = new Promise<never>((_resolve, reject) => {
+      const fail = () =>
+        reject(
+          new RequestTimeoutError(
+            `Server did not respond to initialize request within ${timeoutMs}ms`,
+          ),
+        )
+      if (deadline.aborted) {
+        fail()
+      } else {
+        deadline.addEventListener('abort', fail, { once: true })
+      }
+    })
+    let result: InitializeResult | undefined
+    while (result == null) {
+      // The losing _read() stays pending and holds the reader lock; it resolves
+      // (done) when the transport is later disposed. Its result is ignored.
+      const next = await Promise.race([this._read(), timedOut])
+      if (next.done) {
+        throw new Error('Server closed the connection during initialize')
+      }
+      const message = next.value
+      // Drop anything that isn't the initialize response: pre-init notifications
+      // and server requests can't be handled before the session is established.
+      if (message.id !== id) {
+        continue
+      }
+      if ('error' in message) {
+        throw RPCError.fromResponse(message as ErrorResponse)
+      }
+      result = message.result as InitializeResult
     }
     // Start listening for incoming messages
     this._handle()
     // Notify server that client is initialized
     await super._write({ jsonrpc: '2.0', method: 'notifications/initialized' })
-    // TODO: check result
-    const result = next.value.result as InitializeResult
-    // Return result
+    // TODO: check result.protocolVersion (tracked in mcp-2025-11-25-conformance backlog)
     this.events.emit('initialized', result)
     return result
+  }
+
+  _onTransportClosed(reason?: Error): void {
+    this.events.emit('closed', { error: reason })
   }
 
   // Override _write method to ensure that client is initialized before sending messages

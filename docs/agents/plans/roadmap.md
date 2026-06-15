@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-06-09
+**Last updated:** 2026-06-15
 
 ## Vision
 
@@ -35,9 +35,21 @@ commander routing. Replaced oclif + enquirer + ora.
 
 ## Now (next/)
 
-Nothing in flight. CLI Ink + commander refactor shipped (PR #21, 2026-06-06);
-see `completed/2026-06-06-cli-refactoring.complete.md`. Pull the next item from
-backlog or P2 below.
+From the 2026-06-12 full audit (security / stability / usability / MCP-spec):
+
+- **Monitor + daemon security** (`next/2026-06-12-monitor-daemon-security.md`) —
+  critical: monitor binds all interfaces with unauthenticated spawn RPC (RCE);
+  Origin/token checks, socket perms, daemon races.
+- **Stdio framing limits** (`next/2026-06-12-stdio-framing-limits.md`) — hang/crash
+  item 6, unblocked by enkaku 0.17.0 (flat `FromJSONLines` framing options). Bump
+  catalog 0.16→0.17, thread `maxBufferSize`/`maxMessageSize`/`onInvalidJSON` into the
+  host transport.
+
+Shipped from this audit (see `completed/`):
+
+- **Hang/crash core** (`completed/2026-06-15-hang-crash-core.partial.md`) — items 1–5,
+  7–9 (spawn rethrow, RPC read-loop/timeouts/`#sentRequests` leak, client initialize
+  hardening, CLI crash paths) merged via PR #25. Item 6 remains above.
 
 ## Milestones (milestones/)
 
@@ -56,6 +68,20 @@ backlog or P2 below.
   schema walk).
 - **MCP draft — breaking cut** (`backlog/2026-06-09-mcp-draft-breaking-cut.md`) —
   B1–B7 hard-cut; blocked on draft release + U1 transport/RPC-core decision.
+- **MCP 2025-11-25 conformance** (`backlog/2026-06-12-mcp-2025-11-25-conformance.md`) —
+  audit: MUST-level gaps vs the targeted revision (protocolVersion check, capability
+  declarations, sampling/elicitation schemas, HTTP transport MUSTs).
+- **HTTP transport resilience** (`backlog/2026-06-12-http-transport-resilience.md`) —
+  audit: client error recovery, SSE serialization deadlock, reconnect, server leaks,
+  body limits.
+- **Provider robustness** (`backlog/2026-06-12-provider-robustness.md`) — audit:
+  stream-killing parses, broken abort, token accounting, per-request sampling params.
+- **Host + session lifecycle** (`backlog/2026-06-12-host-session-lifecycle.md`) —
+  audit: child reaping, abort races, notification buffering, state races.
+- **CLI UX polish** (`backlog/2026-06-12-cli-ux-polish.md`) — audit: API-key
+  fail-fast, inspect stderr, empty states.
+- **Docs + packaging sweep** (`backlog/2026-06-12-docs-packaging-sweep.md`) — audit:
+  broken examples, devDeps→deps for d.ts imports, missing READMEs.
 
 ## Planned — P2
 

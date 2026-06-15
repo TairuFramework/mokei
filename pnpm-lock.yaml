@@ -620,6 +620,9 @@ importers:
       '@enkaku/client':
         specifier: 'catalog:'
         version: 0.16.0
+      '@enkaku/event':
+        specifier: 'catalog:'
+        version: 0.16.0
       '@enkaku/node-streams-transport':
         specifier: 'catalog:'
         version: 0.16.0

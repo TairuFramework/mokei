@@ -12,5 +12,14 @@ export async function run(argv: Array<string>): Promise<void> {
     program.outputHelp()
     return
   }
-  await program.parseAsync(argv)
+  try {
+    await program.parseAsync(argv)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stderr.write(`✘ ${message}\n`)
+    if (process.env.MOKEI_DEBUG === '1' && error instanceof Error && error.stack != null) {
+      process.stderr.write(`${error.stack}\n`)
+    }
+    process.exitCode = 1
+  }
 }

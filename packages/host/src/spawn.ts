@@ -5,7 +5,7 @@ import spawn, { type Subprocess, SubprocessError } from 'nano-spawn'
 
 import { filterEnv } from './utils.js'
 
-function isSubprocessExit(reason: unknown): boolean {
+export function isSubprocessExit(reason: unknown): boolean {
   return (
     reason instanceof SubprocessError &&
     reason.signalName != null &&
@@ -35,11 +35,10 @@ export async function spawnContextServer(
     stdio: ['pipe', 'pipe', params.stderr ?? 'ignore'],
     env: filterEnv(params.env),
   })
-  subprocess.catch((err) => {
-    if (!isSubprocessExit(err)) {
-      throw err
-    }
-  })
+  // Guard the subprocess promise so an abnormal exit or spawn failure is never an
+  // unhandled rejection. Callers observe the real outcome via `subprocess` (see
+  // ContextHost.addLocalContext) or via the throw below on spawn failure.
+  subprocess.catch(() => {})
 
   const childProcess = await subprocess.nodeChildProcess
   const [stdin, stdout] = childProcess.stdio

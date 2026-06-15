@@ -47,11 +47,18 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
 
   const loadModels = useCallback(() => {
     if (modelsPromiseRef.current == null) {
-      modelsPromiseRef.current = provider.listModels().then((list) => {
-        const mapped = list.map((m) => ({ id: m.id }))
-        setModels(mapped)
-        return mapped
-      })
+      modelsPromiseRef.current = provider.listModels().then(
+        (list) => {
+          const mapped = list.map((m) => ({ id: m.id }))
+          setModels(mapped)
+          return mapped
+        },
+        (err) => {
+          // Don't cache the failure — a later attempt should re-fetch.
+          modelsPromiseRef.current = null
+          throw err
+        },
+      )
     }
     return modelsPromiseRef.current
   }, [provider])
@@ -118,6 +125,31 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
     getLastReasoning,
     getLastErrorDetail,
   })
+
+  const onSubmit = useCallback(
+    (value: string) => {
+      void handleSubmit(value).catch((err) => {
+        pushEntry({ kind: 'notice', variant: 'error', text: `error: ${(err as Error).message}` })
+      })
+    },
+    [handleSubmit, pushEntry],
+  )
+
+  useEffect(() => {
+    const controller = new AbortController()
+    session.contextHost.events.on(
+      'context:failed',
+      ({ key, error }) => {
+        pushEntry({
+          kind: 'notice',
+          variant: 'error',
+          text: `context ${key} failed: ${error.message}`,
+        })
+      },
+      { signal: controller.signal },
+    )
+    return () => controller.abort()
+  }, [session, pushEntry])
 
   useInput((input, key) => {
     if (key.ctrl && input === 'c') {
@@ -272,7 +304,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
         model={model ?? '(no model)'}
         state={turn.state}
         contexts={contexts}
-        onSubmit={handleSubmit}
+        onSubmit={onSubmit}
         disabled={modal != null || confirmRemove != null || turn.state !== 'idle'}
         defaultValue={pendingPrompt ?? undefined}
       />

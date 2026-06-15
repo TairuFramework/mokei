@@ -52,7 +52,17 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
         if (parsed.text === '') return
         if (model == null) {
           setPendingPrompt(parsed.text)
-          await loadModels()
+          try {
+            await loadModels()
+          } catch (err) {
+            setPendingPrompt(null)
+            pushEntry({
+              kind: 'notice',
+              variant: 'error',
+              text: `failed to list models: ${(err as Error).message} — check the endpoint/API key, then retry`,
+            })
+            return
+          }
           setModal('model')
           pushEntry({ kind: 'notice', variant: 'info', text: 'select a model to continue' })
           return
@@ -125,7 +135,17 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
         }
         case 'model': {
           const [id] = args
-          const list = await loadModels()
+          let list: Array<{ id: string }>
+          try {
+            list = await loadModels()
+          } catch (err) {
+            pushEntry({
+              kind: 'notice',
+              variant: 'error',
+              text: `failed to list models: ${(err as Error).message} — check the endpoint/API key, then retry`,
+            })
+            break
+          }
           if (id != null) {
             if (list.some((m) => m.id === id)) {
               setModel(id)

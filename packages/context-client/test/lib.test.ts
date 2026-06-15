@@ -332,3 +332,87 @@ describe('ContextClient', () => {
     })
   })
 })
+
+describe('initialize hardening', () => {
+  test('times out when the server never responds', async () => {
+    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const client = new ContextClient({
+      transport: transports.client as ClientParams['transport'],
+      initializeTimeout: 50,
+    })
+    // Drain the client's initialize request but never reply.
+    void transports.server.read()
+    await expect(client.initialize()).rejects.toThrow(/within 50ms/)
+    await transports.dispose()
+  })
+
+  test('throws an RPCError when the server returns an error response', async () => {
+    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const client = new ContextClient({
+      transport: transports.client as ClientParams['transport'],
+    })
+    void (async () => {
+      const req = await transports.server.read()
+      const id = (req.value as { id: number }).id
+      await transports.server.write({
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32603, message: 'boom' },
+      } as ServerMessage)
+    })()
+    await expect(client.initialize()).rejects.toMatchObject({ message: 'boom' })
+    await transports.dispose()
+  })
+
+  test('tolerates a notification arriving before the initialize response', async () => {
+    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const client = new ContextClient({
+      transport: transports.client as ClientParams['transport'],
+    })
+    void (async () => {
+      const req = await transports.server.read()
+      const id = (req.value as { id: number }).id
+      await transports.server.write({
+        jsonrpc: '2.0',
+        method: 'notifications/message',
+        params: { level: 'info', data: 'hi' },
+      } as ServerMessage)
+      await transports.server.write({
+        jsonrpc: '2.0',
+        id,
+        result: {
+          protocolVersion: '2025-11-25',
+          capabilities: {},
+          serverInfo: { name: 's', version: '1' },
+        },
+      } as ServerMessage)
+    })()
+    const result = await client.initialize()
+    expect(result.serverInfo.name).toBe('s')
+    await transports.dispose()
+  })
+
+  test('emits closed when the transport ends', async () => {
+    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const client = new ContextClient({
+      transport: transports.client as ClientParams['transport'],
+    })
+    void (async () => {
+      const req = await transports.server.read()
+      const id = (req.value as { id: number }).id
+      await transports.server.write({
+        jsonrpc: '2.0',
+        id,
+        result: {
+          protocolVersion: '2025-11-25',
+          capabilities: {},
+          serverInfo: { name: 's', version: '1' },
+        },
+      } as ServerMessage)
+    })()
+    await client.initialize()
+    const closed = client.events.once('closed')
+    await transports.dispose()
+    await expect(closed).resolves.toEqual({ error: undefined })
+  })
+})
