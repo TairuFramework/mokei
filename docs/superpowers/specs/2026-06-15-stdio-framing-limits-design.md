@@ -56,6 +56,36 @@ The base `Transport` (`@enkaku/transport`) exposes
 A buffer/message-size overflow errors the stream, which surfaces as `readFailed`.
 This is the single seam every fatal framing fault flows through.
 
+`Transport.read()` (compiled `@enkaku/transport` lib) emits `readFailed` then
+re-throws whenever the underlying reader rejects:
+
+```js
+async read() {
+  const reader = await this._getReader()
+  try { return await reader.read() }
+  catch (error) { await this.#events.emit('readFailed', { error }); throw error }
+}
+```
+
+### Read-loop timing (important)
+
+The client's read loop is **not** running the moment a context is spawned.
+`ContextClient` calls `_handle()` (which starts the RPC `#readLoop`) only **after**
+`#initialize()` resolves, and `#initialize` is `lazy(...)` — it fires on the
+**first request** (`host.setup(key)` → `listTools`). Before that, nothing pulls
+bytes through the framer, so no framing fault can surface.
+
+Two consequences:
+
+1. **No pre-registration orphan window.** A framing fault can only fire once the
+   host is reading, which is always after `addLocalContext` has returned and
+   stored the context. So `spawnHostedContext` does **not** need to kill the child
+   itself — the host's `remove()` (via `onStreamError`) disposes the transport and
+   kills the child.
+2. **`readFailed` also fires on benign disposal.** When `remove()` disposes the
+   transport, a pending `read()` may reject and emit `readFailed` too. The host
+   handler must distinguish a real framing fault from teardown — see §3.
+
 ## Decisions
 
 | Decision | Choice |
@@ -103,19 +133,27 @@ const transport = new NodeStreamsTransport({
 }) as ClientTransport
 
 transport.events.on('readFailed', ({ error }) => {
-  childProcess.kill()       // spawnHostedContext owns childProcess — guarantees no orphan
-  onStreamError?.(error)    // sync: lets host set its dedup flag before async onExit fires
+  onStreamError?.(error)
 })
 ```
 
 `truncate(value)` caps the echoed bad line (e.g. first 200 chars) so the error
-message itself can't be huge.
+message itself can't be huge. No `childProcess.kill()` here — there is no
+pre-registration orphan window (see Read-loop timing), and the host's `remove()`
+kills the child.
 
 ### 3. Host reap + dedup (`ContextHost.addLocalContext`)
 
 `AddLocalContextParams` gains optional `maxBufferSize?` / `maxMessageSize?`,
 passed straight through. `addLocalContext` wires `onStreamError` alongside the
-existing `onExit`, with a flag so `context:failed` emits exactly once:
+existing `onExit`. Two guards keep `context:failed` to exactly one emit:
+
+- **`this._contexts[key] == null` guard** — a `readFailed` that arrives *after*
+  the context entry is already gone is teardown noise (disposal, or the
+  re-rejection that follows our own `remove()`), not a fault. Skip it. This is
+  what prevents a clean `remove()` from emitting a bogus `context:failed`.
+- **`framingError` flag** — once a framing fault is handled, the subsequent
+  `onExit` (from the kill) must not emit a second `context:failed`.
 
 ```ts
 let framingError: Error | null = null
@@ -124,6 +162,8 @@ const context = await spawnHostedContext<T>({
   maxBufferSize,
   maxMessageSize,
   onStreamError: (error) => {
+    // A readFailed after the entry is gone is teardown noise, not a fault.
+    if (this._contexts[key] == null) return
     framingError = error
     void this._events.emit('context:failed', { key, error }).catch(() => {})
     void this.remove(key).catch(() => {})        // disposes transport, kills child
@@ -138,10 +178,11 @@ const context = await spawnHostedContext<T>({
 })
 ```
 
-**Flow:** framing fault → `readFailed` → `spawnHostedContext` kills child +
-calls `onStreamError` (sets `framingError` **synchronously**) → `context:failed`
-emitted with the real framing error + reap. The kill rejects the subprocess
-promise → `onExit` fires async, sees `framingError` set, skips — no double event.
+**Flow:** framing fault → `readFailed` → `onStreamError` (entry still present →
+sets `framingError` **synchronously**, emits `context:failed`, reaps). `remove()`
+deletes the entry then disposes the transport, which may emit `readFailed` again
+— now the entry is `null`, so the second `onStreamError` is skipped. Disposal
+kills the child → `onExit` fires async, sees `framingError` set, skips. One event.
 `remove()` is already idempotent (delete-before-dispose, from the prior hardening
 commit `57d104b`).
 
@@ -154,12 +195,24 @@ In-process pattern. Rebuild deps first — cross-package tests resolve `@mokei/*
 to built `lib/`. Child fixtures are small scripts spawned as real subprocesses;
 override `maxBufferSize` small (e.g. 64 KiB) so flood tests don't pump 8 MiB.
 
+**Every framing test must trigger a read** — call `host.setup(key)` (or otherwise
+make a request) so the lazy `initialize` runs and pulls bytes through the framer.
+Without a read the fault never surfaces (see Read-loop timing). For the flood /
+stray / dedup tests the child never speaks valid MCP, so `setup()` itself rejects
+— wrap it in `expect(...).rejects` (or `.catch(() => {})`) and assert on the
+`context:failed` event + reaping, not on `setup()`'s return.
+
 | Test | Child behavior | Assert |
 |------|---------------|--------|
-| flood | writes stdout past `maxBufferSize` (low override) | `context:failed` fires, context removed, no hang, no unhandled rejection |
-| stray line | emits one non-JSON line then exits | `onInvalidJSON` → `readFailed` → `context:failed` + reap |
-| happy path | normal JSONL, large-ish valid result under cap | tools work, no spurious failure |
-| dedup | trigger framing error | `context:failed` emitted exactly once (not also from `onExit`) |
+| flood | `node -e` writes stdout past `maxBufferSize` (low override) | `context:failed` fires, context removed, no hang, no unhandled rejection |
+| stray line | `node -e` prints one non-JSON line then exits | `onInvalidJSON` → `readFailed` → `context:failed` + reap |
+| happy path | real `serveProcess` echo-server fixture, valid large result under cap | `setup()` + `callTool` succeed, no `context:failed` |
+| dedup | trigger framing error (reuse flood child) | `context:failed` emitted exactly once (not also from `onExit`) |
+
+The happy-path fixture is a real stdio MCP server (`serveProcess` from
+`@mokei/context-server`) exposing one `echo` tool; it proves valid, large frames
+pass the framer untouched. The framing-fault tests need no MCP handshake — the
+first `_read()` during `initialize` hits the garbage and faults.
 
 ## Out of scope
 
