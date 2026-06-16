@@ -124,4 +124,40 @@ describe('ContextHost stdio framing', () => {
 
     await host.dispose()
   })
+
+  test('holds an idle flood under OS backpressure without faulting or reaping', async () => {
+    // A child that floods stdout but is never driven (no setup/callTool) must
+    // NOT be treated as a framing fault: with no consumer pulling the stream,
+    // the bytes sit in the OS pipe buffer (bounded by the kernel, not host
+    // memory), so the framer never overflows. The context stays registered and
+    // healthy — the cap only engages once the host actively reads.
+    const host = new ContextHost()
+    let failed = 0
+    let removed = 0
+    host.events.on('context:failed', () => {
+      failed += 1
+    })
+    host.events.on('context:removed', () => {
+      removed += 1
+    })
+
+    await host.addLocalContext({
+      key: 'idle',
+      command: process.execPath,
+      // Flood far past the cap, then stay alive so nothing triggers a clean
+      // exit — isolating the "idle, unread flood" path.
+      args: ['-e', 'process.stdout.write("x".repeat(1_000_000)); setInterval(() => {}, 1000)'],
+      maxBufferSize: 64 * 1024,
+    })
+
+    // Deliberately do NOT call setup(): leave the read loop idle. Wait long
+    // enough that an eager drain (if one existed) would have overflowed.
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    expect(failed).toBe(0)
+    expect(removed).toBe(0)
+    expect(host.getContextKeys()).toContain('idle')
+
+    await host.dispose()
+  })
 })

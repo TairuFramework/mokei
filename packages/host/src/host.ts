@@ -380,10 +380,18 @@ export class ContextHost extends Disposer {
     const context = await spawnHostedContext<T>({
       ...spawnParams,
       onStreamError: (error) => {
-        // A `readFailed` that arrives after the entry is already gone is
-        // teardown noise (disposal, or the re-rejection our own remove() causes)
-        // — not a fault. This is what keeps a clean remove() from emitting a
-        // bogus context:failed.
+        // A framing fault only occurs while the read loop is actively pulling
+        // the child's stdout — i.e. during a request the host drove (setup /
+        // callTool). At that point the entry is still registered, so a present
+        // entry is the normal case here. An idle context never reaches this:
+        // with no consumer, the child's output is held by OS pipe backpressure
+        // (bounded by the kernel pipe buffer, not host memory), so a flood from
+        // an unused server cannot overflow the framer or exhaust the host.
+        //
+        // The `null` check guards the remaining teardown case: a `readFailed`
+        // that lands after the entry is already gone (disposal, or the
+        // re-rejection our own remove() causes) is noise, not a fault — this is
+        // what keeps a clean remove() from emitting a bogus context:failed.
         if (this._contexts[key] == null) {
           return
         }
