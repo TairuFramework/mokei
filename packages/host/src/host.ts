@@ -151,6 +151,10 @@ export type AddDirectContextParams = {
 
 export type AddLocalContextParams = SpawnContextServerParams & {
   key: string
+  /** Override the default 8 MiB stdout framer memory cap. */
+  maxBufferSize?: number
+  /** Optional tighter per-message cap in bytes. */
+  maxMessageSize?: number
 }
 
 export type HTTPContextParams = {
@@ -370,9 +374,27 @@ export class ContextHost extends Disposer {
       throw new Error(`Context ${key} already exists`)
     }
 
+    // Set once when a framing fault is handled, so the follow-up `onExit` (from
+    // the kill during reap) doesn't emit a second `context:failed`.
+    let framingError: Error | null = null
     const context = await spawnHostedContext<T>({
       ...spawnParams,
+      onStreamError: (error) => {
+        // A `readFailed` that arrives after the entry is already gone is
+        // teardown noise (disposal, or the re-rejection our own remove() causes)
+        // — not a fault. This is what keeps a clean remove() from emitting a
+        // bogus context:failed.
+        if (this._contexts[key] == null) {
+          return
+        }
+        framingError = error
+        void this._events.emit('context:failed', { key, error }).catch(() => {})
+        void this.remove(key).catch(() => {})
+      },
       onExit: (error) => {
+        if (framingError != null) {
+          return
+        }
         if (error != null && !isSubprocessExit(error)) {
           void this._events.emit('context:failed', { key, error }).catch(() => {})
         }
