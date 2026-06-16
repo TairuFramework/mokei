@@ -24,13 +24,24 @@ if (await isSocketLive(socketPath)) {
 // Stale socket file (no listener): safe to remove before binding.
 safeRemove(socketPath)
 
-const { server, dispose } = await startServer({
-  socketPath,
-  shutdown: () => {
-    server.close()
-    safeRemove(socketPath)
-  },
-})
+let running: Awaited<ReturnType<typeof startServer>>
+try {
+  running = await startServer({
+    socketPath,
+    shutdown: () => {
+      running.server.close()
+      safeRemove(socketPath)
+    },
+  })
+} catch (err) {
+  // Lost the startup race: another daemon bound the socket between our liveness
+  // check and listen(). Exit cleanly — the client will connect to the winner.
+  if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+    process.exit(0)
+  }
+  throw err
+}
+const { dispose } = running
 
 // Run the shutdown path on termination so we never leak the socket file or
 // spawned MCP children.
