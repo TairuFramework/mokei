@@ -1,8 +1,8 @@
-import { existsSync, rmSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import { DEFAULT_SOCKET_PATH } from '@mokei/host-protocol'
 
 import { startServer } from '../server.js'
+import { isSocketLive, safeRemove } from './socket.js'
 
 const args = parseArgs({
   options: {
@@ -16,15 +16,26 @@ const args = parseArgs({
 })
 const socketPath = args.values.path as string
 
-if (existsSync(socketPath)) {
-  rmSync(socketPath)
+// Split-brain guard: if a live daemon already owns the socket, do not disturb it
+// (blindly removing the socket would orphan that daemon's children).
+if (await isSocketLive(socketPath)) {
+  process.exit(0)
 }
-const server = await startServer({
+// Stale socket file (no listener): safe to remove before binding.
+safeRemove(socketPath)
+
+const { server, dispose } = await startServer({
   socketPath,
   shutdown: () => {
     server.close()
-    if (existsSync(socketPath)) {
-      rmSync(socketPath)
-    }
+    safeRemove(socketPath)
   },
 })
+
+// Run the shutdown path on termination so we never leak the socket file or
+// spawned MCP children.
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    void dispose().finally(() => process.exit(0))
+  })
+}
