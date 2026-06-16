@@ -4,7 +4,7 @@
 **Status:** complete
 **Branch:** `fix/stdio-framing`
 **Spec:** `docs/superpowers/specs/2026-06-15-stdio-framing-limits-design.md` (removed on completion)
-**Supersedes:** `docs/agents/plans/archive/2026-06-12-stdio-framing-limits.md` (hang/crash-core audit, deferred item 6)
+**Supersedes:** hang/crash-core audit, deferred item 6 (2026-06-12 planning note)
 
 ## Goal
 
@@ -80,5 +80,4 @@ for a different reason, established empirically during code review:
 ## Follow-on
 
 - CLI / `Session` don't yet surface `maxBufferSize` / `maxMessageSize` overrides
-  to end users (every context uses the 8 MiB default). Low priority — see
-  `docs/agents/plans/backlog/`.
+  to end users (every context uses the 8 MiB default). Low priority, optional.
