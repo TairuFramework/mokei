@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-06-15
+**Last updated:** 2026-06-16
 
 ## Vision
 
@@ -35,21 +35,19 @@ commander routing. Replaced oclif + enquirer + ora.
 
 ## Now (next/)
 
-From the 2026-06-12 full audit (security / stability / usability / MCP-spec):
-
-- **Monitor + daemon security** (`next/2026-06-12-monitor-daemon-security.md`) —
-  critical: monitor binds all interfaces with unauthenticated spawn RPC (RCE);
-  Origin/token checks, socket perms, daemon races.
-- **Stdio framing limits** (`next/2026-06-12-stdio-framing-limits.md`) — hang/crash
-  item 6, unblocked by enkaku 0.17.0 (flat `FromJSONLines` framing options). Bump
-  catalog 0.16→0.17, thread `maxBufferSize`/`maxMessageSize`/`onInvalidJSON` into the
-  host transport.
+_Empty — all 2026-06-12 audit `next/` items shipped (see `completed/`)._
 
 Shipped from this audit (see `completed/`):
 
+- **Monitor + daemon security** (`completed/2026-06-16-monitor-daemon-security.md`) —
+  items 1–5: monitor localhost bind, `/api` Host-allowlist + bearer-token gate,
+  socket `0600`, daemon connect-before-remove + signal shutdown + child reaping,
+  socket-poll startup. Closed the unauthenticated RCE.
 - **Hang/crash core** (`completed/2026-06-15-hang-crash-core.partial.md`) — items 1–5,
   7–9 (spawn rethrow, RPC read-loop/timeouts/`#sentRequests` leak, client initialize
-  hardening, CLI crash paths) merged via PR #25. Item 6 remains above.
+  hardening, CLI crash paths) merged via PR #25.
+- **Stdio framing limits** (`completed/`) — hang/crash item 6, merged via PR #26
+  (bounded stdio framing, reap on framing fault).
 
 ## Milestones (milestones/)
 
