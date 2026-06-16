@@ -39,7 +39,7 @@ _Empty — all 2026-06-12 audit `next/` items shipped (see `completed/`)._
 
 Shipped from this audit (see `completed/`):
 
-- **Monitor + daemon security** (`completed/2026-06-16-monitor-daemon-security.md`) —
+- **Monitor + daemon security** (`completed/2026-06-16-monitor-daemon-security.complete.md`) —
   items 1–5: monitor localhost bind, `/api` Host-allowlist + bearer-token gate,
   socket `0600`, daemon connect-before-remove + signal shutdown + child reaping,
   socket-poll startup. Closed the unauthenticated RCE.
