@@ -1,4 +1,6 @@
+import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { chmodSync } from 'node:fs'
 import { createServer, type Server, type Socket } from 'node:net'
 import { createTransportStream } from '@enkaku/node-streams-transport'
 import { type ProcedureHandlers, serve } from '@enkaku/server'
@@ -17,6 +19,7 @@ import { spawnContextServer } from './spawn.js'
 
 type HandlersContext = {
   activeContexts: Record<string, ActiveContextInfo>
+  children: Map<string, ChildProcess>
   events: EventTarget
   startedTime: number
   shutdown?: () => void | Promise<void>
@@ -26,8 +29,21 @@ function createEventMeta(contextID: string): HostEventMeta {
   return { contextID, eventID: randomUUID(), time: Date.now() }
 }
 
+/** Kill every tracked child process and clear the map. */
+export function killChildren(children: Map<string, ChildProcess>): void {
+  for (const child of children.values()) {
+    try {
+      child.kill()
+    } catch {
+      // Child may already be gone; ignore.
+    }
+  }
+  children.clear()
+}
+
 function createHandlers({
   activeContexts,
+  children,
   events,
   startedTime,
   shutdown,
@@ -59,6 +75,7 @@ function createHandlers({
       const contextID = randomUUID()
       const spawned = await spawnContextServer(ctx.param)
       activeContexts[contextID] = { startedTime: Date.now() }
+      children.set(contextID, spawned.childProcess)
       events.dispatchEvent(
         new CustomEvent('context:start', {
           detail: {
@@ -73,6 +90,7 @@ function createHandlers({
       ctx.signal.addEventListener('abort', () => {
         spawned.childProcess.kill()
         delete activeContexts[contextID]
+        children.delete(contextID)
         events.dispatchEvent(
           new CustomEvent('context:stop', { detail: { meta: createEventMeta(contextID) } }),
         )
@@ -126,14 +144,32 @@ export type ServerParams = {
   shutdown?: () => void | Promise<void>
 }
 
-export function startServer(params: ServerParams = {}): Promise<Server> {
+export type RunningServer = {
+  server: Server
+  dispose: () => Promise<void>
+}
+
+export function startServer(params: ServerParams = {}): Promise<RunningServer> {
   const socketPath = params.socketPath ?? DEFAULT_SOCKET_PATH
+
+  const children = new Map<string, ChildProcess>()
+  let disposed = false
+  const dispose = async (): Promise<void> => {
+    if (disposed) {
+      return
+    }
+    disposed = true
+    killChildren(children)
+    await params.shutdown?.()
+  }
 
   const context: HandlersContext = {
     activeContexts: {},
+    children,
     events: new EventTarget(),
     startedTime: Date.now(),
-    shutdown: params.shutdown,
+    // The RPC `shutdown` channel runs the same path as a signal-driven dispose.
+    shutdown: dispose,
   }
   const server = createServer((socket) => {
     serveSocket(socket, context)
@@ -144,7 +180,15 @@ export function startServer(params: ServerParams = {}): Promise<Server> {
       reject(err)
     })
     server.listen(socketPath, () => {
-      resolve(server)
+      try {
+        // Same-OS-user trust boundary: only the owner may drive the spawn channel.
+        chmodSync(socketPath, 0o600)
+      } catch (err) {
+        server.close()
+        reject(err)
+        return
+      }
+      resolve({ server, dispose })
     })
   })
 }
