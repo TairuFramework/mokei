@@ -6,7 +6,7 @@
  * script block.
  */
 export function injectToken(html: string, token: string): string {
-  const safeJson = JSON.stringify(token).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
-  const tag = `<script>window.__MOKEI_TOKEN__=${safeJson}</script>`
+  const safeJSON = JSON.stringify(token).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
+  const tag = `<script>window.__MOKEI_TOKEN__=${safeJSON}</script>`
   return html.includes('</head>') ? html.replace('</head>', `${tag}</head>`) : `${tag}${html}`
 }

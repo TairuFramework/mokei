@@ -30,7 +30,7 @@ export function buildAllowedHosts(host: string, port: number): Set<string> {
  * Origin check defeats classic CSRF when present; the bearer token defeats a
  * blind cross-origin fetch that cannot read the token.
  */
-export function verifyApiRequest(request: Request, opts: GateOptions): boolean {
+export function verifyAPIRequest(request: Request, opts: GateOptions): boolean {
   const host = request.headers.get('host')
   if (host == null || !opts.allowedHosts.has(host)) {
     return false

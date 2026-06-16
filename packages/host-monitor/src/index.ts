@@ -22,7 +22,7 @@ import { DEFAULT_SOCKET_PATH, type Protocol } from '@mokei/host-protocol'
 import getPort from 'get-port'
 import { Hono } from 'hono'
 
-import { buildAllowedHosts, verifyApiRequest } from './auth.js'
+import { buildAllowedHosts, verifyAPIRequest } from './auth.js'
 import { injectToken } from './html.js'
 
 export type MonitorParams = {
@@ -54,7 +54,7 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
 
   const app = new Hono()
   app.all('/api', (ctx) => {
-    return verifyApiRequest(ctx.req.raw, { token, allowedHosts })
+    return verifyAPIRequest(ctx.req.raw, { token, allowedHosts })
       ? serverBridge.handleRequest(ctx.req.raw)
       : ctx.text('Forbidden', 403)
   })

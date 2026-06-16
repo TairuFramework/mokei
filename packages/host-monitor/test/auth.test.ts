@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { buildAllowedHosts, verifyApiRequest } from '../src/auth.js'
+import { buildAllowedHosts, verifyAPIRequest } from '../src/auth.js'
 
 const TOKEN = 'a'.repeat(64)
 
@@ -28,22 +28,22 @@ describe('buildAllowedHosts', () => {
   })
 })
 
-describe('verifyApiRequest', () => {
+describe('verifyAPIRequest', () => {
   const opts = { token: TOKEN, allowedHosts: buildAllowedHosts('127.0.0.1', 5000) }
 
   test('accepts a valid Host + token', () => {
     expect(
-      verifyApiRequest(req({ host: 'localhost:5000', authorization: `Bearer ${TOKEN}` }), opts),
+      verifyAPIRequest(req({ host: 'localhost:5000', authorization: `Bearer ${TOKEN}` }), opts),
     ).toBe(true)
   })
 
   test('rejects a missing token', () => {
-    expect(verifyApiRequest(req({ host: 'localhost:5000' }), opts)).toBe(false)
+    expect(verifyAPIRequest(req({ host: 'localhost:5000' }), opts)).toBe(false)
   })
 
   test('rejects a wrong token', () => {
     expect(
-      verifyApiRequest(
+      verifyAPIRequest(
         req({ host: 'localhost:5000', authorization: `Bearer ${'b'.repeat(64)}` }),
         opts,
       ),
@@ -52,13 +52,13 @@ describe('verifyApiRequest', () => {
 
   test('rejects a foreign Host (DNS-rebinding)', () => {
     expect(
-      verifyApiRequest(req({ host: 'evil.com:5000', authorization: `Bearer ${TOKEN}` }), opts),
+      verifyAPIRequest(req({ host: 'evil.com:5000', authorization: `Bearer ${TOKEN}` }), opts),
     ).toBe(false)
   })
 
   test('rejects a foreign Origin when present', () => {
     expect(
-      verifyApiRequest(
+      verifyAPIRequest(
         req({
           host: 'localhost:5000',
           origin: 'http://evil.com',
@@ -71,7 +71,7 @@ describe('verifyApiRequest', () => {
 
   test('accepts a matching Origin', () => {
     expect(
-      verifyApiRequest(
+      verifyAPIRequest(
         req({
           host: 'localhost:5000',
           origin: 'http://localhost:5000',
