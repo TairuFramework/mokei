@@ -1,5 +1,4 @@
-import { openSync, rmSync } from 'node:fs'
-import { setTimeout } from 'node:timers/promises'
+import { openSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { Client } from '@enkaku/client'
 import { connectSocket, SocketTransport } from '@enkaku/socket-transport'
@@ -10,6 +9,8 @@ import {
   type ServerMessage,
 } from '@mokei/host-protocol'
 import spawn from 'nano-spawn'
+
+import { safeRemove, waitForSocket } from './socket.js'
 
 export type HostClient = Client<Protocol>
 
@@ -37,8 +38,9 @@ export async function spawnDaemon(options: DaemonOptions = {}): Promise<void> {
   // Dereference child process so it can be garbage collected
   const childProcess = await subprocess.nodeChildProcess
   childProcess.unref()
-  // Wait for the socket to be created
-  await setTimeout(300)
+  // Wait for the socket to accept connections (poll with backoff instead of a
+  // fixed delay that spuriously fails on slow startup).
+  await waitForSocket(socketPath)
 }
 
 export async function runDaemon(options: DaemonOptions = {}): Promise<HostClient> {
@@ -49,7 +51,7 @@ export async function runDaemon(options: DaemonOptions = {}): Promise<HostClient
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'ECONNREFUSED' || code === 'ENOENT') {
       if (code === 'ECONNREFUSED') {
-        rmSync(socketPath)
+        safeRemove(socketPath)
       }
       await spawnDaemon(options)
       return await createClient(socketPath)
