@@ -9,10 +9,15 @@ function safeEqual(a: string, b: string): boolean {
   return ab.length === bb.length && timingSafeEqual(ab, bb)
 }
 
+// Loopback and wildcard binds are both reachable by the browser via localhost,
+// so their allowlist must include every loopback alias the browser might send
+// as the Host header.
+const LOOPBACK_BINDS = new Set(['127.0.0.1', 'localhost', '::1', '0.0.0.0', '::'])
+
 /** Host:port values we accept on the Host/Origin headers for a given bind. */
 export function buildAllowedHosts(host: string, port: number): Set<string> {
   const hosts = new Set<string>([`${host}:${port}`])
-  if (host === '127.0.0.1' || host === 'localhost' || host === '::1') {
+  if (LOOPBACK_BINDS.has(host)) {
     hosts.add(`127.0.0.1:${port}`)
     hosts.add(`localhost:${port}`)
     hosts.add(`[::1]:${port}`)

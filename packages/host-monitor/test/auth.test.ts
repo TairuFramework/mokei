@@ -20,6 +20,12 @@ describe('buildAllowedHosts', () => {
     expect(hosts.has('192.168.1.10:5000')).toBe(true)
     expect(hosts.has('localhost:5000')).toBe(false)
   })
+
+  test('includes loopback aliases for a wildcard bind (browser reaches it via localhost)', () => {
+    const hosts = buildAllowedHosts('0.0.0.0', 5000)
+    expect(hosts.has('localhost:5000')).toBe(true)
+    expect(hosts.has('127.0.0.1:5000')).toBe(true)
+  })
 })
 
 describe('verifyApiRequest', () => {

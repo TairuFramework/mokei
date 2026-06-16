@@ -79,7 +79,7 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
       server.close()
       serverBridge.stream.writable.close()
       socketStream.writable.close()
-      await Promise.all([serverClosed, decoupled])
+      await Promise.all([serverClosed.promise, decoupled])
     },
   })
 
