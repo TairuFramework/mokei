@@ -129,9 +129,9 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
     },
   })
   // Single seam: every fatal framing fault (invalid JSON or buffer overflow)
-  // surfaces here. No child kill — there is no pre-registration orphan window
-  // (the read loop starts only on first request), and the host's reap disposes
-  // the transport, which kills the child.
+  // surfaces here. No child kill — the host's reap disposes the transport (via
+  // the dispose below), which kills the child, so handling the fault here would
+  // only duplicate that teardown.
   transport.events.on('readFailed', ({ error }) => {
     onStreamError?.(error)
   })
