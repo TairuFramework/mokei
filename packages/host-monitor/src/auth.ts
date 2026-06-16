@@ -44,5 +44,8 @@ export function verifyApiRequest(request: Request, opts: GateOptions): boolean {
   }
   const auth = request.headers.get('authorization')
   const prefix = 'Bearer '
-  return auth != null && auth.startsWith(prefix) && safeEqual(auth.slice(prefix.length), opts.token)
+  if (auth == null || !auth.startsWith(prefix)) {
+    return false
+  }
+  return safeEqual(auth.slice(prefix.length), opts.token)
 }
