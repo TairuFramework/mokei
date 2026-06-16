@@ -36,6 +36,9 @@ export type EnableTools = boolean | Array<string>
 export type EnableToolsFn = (tools: Array<Tool>) => EnableTools | Promise<EnableTools>
 export type EnableToolsArg = EnableTools | EnableToolsFn
 
+/** Default cap on total live stdout framer memory per context (8 MiB). */
+const DEFAULT_MAX_BUFFER_SIZE = 8 * 1024 * 1024
+
 export function getContextToolID(contextKey: string, toolName: string): string {
   return `${contextKey}:${toolName}`
 }
@@ -95,12 +98,18 @@ export function createHostedContext<T extends ContextTypes = UnknownContextTypes
 
 export type SpawnHostedContextParams = SpawnContextServerParams & {
   onExit?: (error: Error | null) => void
+  /** Called when the stdout framing/read stream faults (invalid JSON or buffer overflow). */
+  onStreamError?: (error: Error) => void
+  /** Max total live framer memory in bytes. Default 8 MiB. */
+  maxBufferSize?: number
+  /** Optional tighter per-message cap in bytes. Default unset (= buffer cap). */
+  maxMessageSize?: number
 }
 
 export async function spawnHostedContext<T extends ContextTypes = UnknownContextTypes>(
   params: SpawnHostedContextParams,
 ): Promise<HostedContext<T>> {
-  const { onExit, ...spawnParams } = params
+  const { onExit, onStreamError, maxBufferSize, maxMessageSize, ...spawnParams } = params
   const { childProcess, streams, subprocess } = await spawnContextServer(spawnParams)
   if (onExit != null) {
     subprocess.then(
@@ -108,9 +117,26 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
       (error) => onExit(error as Error),
     )
   }
-  const transport = new NodeStreamsTransport({ streams }) as ClientTransport
+  const transport = new NodeStreamsTransport({
+    streams,
+    maxBufferSize: maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE,
+    maxMessageSize,
+    onInvalidJSON: (value, controller) => {
+      // Strict: a server that can't speak clean JSONL is broken. Turn the bad
+      // line into a stream error so it surfaces as `readFailed` and reaps the
+      // context, instead of silently vanishing.
+      controller.error(new Error(`Invalid JSON on context stdout: ${value.slice(0, 200)}`))
+    },
+  })
+  // Single seam: every fatal framing fault (invalid JSON or buffer overflow)
+  // surfaces here. No child kill — there is no pre-registration orphan window
+  // (the read loop starts only on first request), and the host's reap disposes
+  // the transport, which kills the child.
+  transport.events.on('readFailed', ({ error }) => {
+    onStreamError?.(error)
+  })
   return createHostedContext({
-    transport,
+    transport: transport as ClientTransport,
     dispose: () => {
       childProcess.kill()
     },
