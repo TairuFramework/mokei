@@ -8,21 +8,21 @@ packages:
 
 catalog:
   '@biomejs/biome': ^2.4.16
-  '@enkaku/async': ^0.16.0
-  '@enkaku/client': ^0.16.0
-  '@enkaku/event': ^0.16.0
-  '@enkaku/generator': ^0.16.0
-  '@enkaku/http-client-transport': ^0.16.0
-  '@enkaku/http-server-transport': ^0.16.0
-  '@enkaku/log': ^0.16.0
-  '@enkaku/node-streams-transport': ^0.16.0
-  '@enkaku/otel': ^0.16.1
-  '@enkaku/protocol': ^0.16.0
-  '@enkaku/schema': ^0.16.1
-  '@enkaku/server': ^0.16.0
-  '@enkaku/socket-transport': ^0.16.2
-  '@enkaku/stream': ^0.16.0
-  '@enkaku/transport': ^0.16.0
+  '@enkaku/async': ^0.17.0
+  '@enkaku/client': ^0.17.0
+  '@enkaku/event': ^0.17.0
+  '@enkaku/generator': ^0.17.0
+  '@enkaku/http-client-transport': ^0.17.0
+  '@enkaku/http-server-transport': ^0.17.0
+  '@enkaku/log': ^0.17.0
+  '@enkaku/node-streams-transport': ^0.17.0
+  '@enkaku/otel': ^0.17.0
+  '@enkaku/protocol': ^0.17.0
+  '@enkaku/schema': ^0.17.0
+  '@enkaku/server': ^0.17.0
+  '@enkaku/socket-transport': ^0.17.0
+  '@enkaku/stream': ^0.17.0
+  '@enkaku/transport': ^0.17.0
   '@hono/node-server': ^2.0.4
   '@inkjs/ui': ^2.0.0
   '@mantine/core': ^9.3.1
