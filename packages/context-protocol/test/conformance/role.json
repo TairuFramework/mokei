@@ -1,0 +1,8 @@
+{
+  "sep": "role",
+  "cases": [
+    { "name": "user", "message": "user", "valid": true },
+    { "name": "assistant", "message": "assistant", "valid": true },
+    { "name": "system not allowed", "message": "system", "valid": false }
+  ]
+}
