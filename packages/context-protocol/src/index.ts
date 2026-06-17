@@ -88,6 +88,12 @@ export {
   URL_ELICITATION_REQUIRED,
 } from './rpc.js'
 export type { CreateMessageRequest, CreateMessageResult } from './sampling.js'
+export {
+  samplingMessage,
+  toolChoice,
+  toolResultContent,
+  toolUseContent,
+} from './sampling.js'
 export { inferSchemaDraft } from './schema.js'
 export {
   type ServerMessage,
