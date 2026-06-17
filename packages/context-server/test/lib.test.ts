@@ -637,6 +637,42 @@ describe('ContextServer', () => {
     await transports.dispose()
   })
 
+  describe('Progress emitter', () => {
+    test('handler can emit progress when a progressToken is provided', async () => {
+      const { transports } = createTestContext({
+        tools: {
+          work: createTool('work', { type: 'object', properties: {} }, async ({ progress }) => {
+            progress?.({ progress: 0.5, total: 1 })
+            return { content: [{ type: 'text', text: 'done' }] }
+          }),
+        },
+      })
+
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'work', arguments: {}, _meta: { progressToken: 'p1' } },
+      } as ClientRequest)
+
+      // Progress notification arrives before the tools/call response
+      const notif = await transports.client.read()
+      expect(notif.value).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'notifications/progress',
+        params: expect.objectContaining({ progressToken: 'p1', progress: 0.5 }),
+      })
+
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({
+        id: 1,
+        result: { content: [{ type: 'text', text: 'done' }] },
+      })
+
+      await transports.dispose()
+    })
+  })
+
   describe('isError results (SEP-1303)', () => {
     test('tool handler exception becomes an isError result', async () => {
       const { transports } = createTestContext({

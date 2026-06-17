@@ -6,6 +6,7 @@ import type {
   ClientMessage,
   ClientNotification,
   ClientRequest,
+  CommonNotifications,
   CreateMessageRequest,
   CreateMessageResult,
   ElicitRequest,
@@ -96,7 +97,7 @@ type ServerTypes = {
   MessageOut: ServerMessage
   HandleNotification: HandleNotification
   HandleRequest: ClientRequest
-  SendNotifications: ServerNotifications
+  SendNotifications: ServerNotifications & Pick<CommonNotifications, 'progress'>
   SendRequests: ServerRequests
   SendResult: ServerResult
 }
@@ -259,10 +260,18 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       // "Errors in finding the tool" are MCP protocol errors, per the spec.
       throw new RPCError(INVALID_PARAMS, `Tool ${request.params.name} not found`)
     }
+    const progressToken = request.params._meta?.progressToken
+    const progress =
+      progressToken == null
+        ? undefined
+        : (params: { progress: number; total?: number; message?: string }) => {
+            void this.notify('progress', { ...params, progressToken }).catch(() => {})
+          }
     try {
       return await handler({
         arguments: request.params.arguments ?? {},
         client: this.#client,
+        progress,
         signal,
       })
     } catch (cause) {
