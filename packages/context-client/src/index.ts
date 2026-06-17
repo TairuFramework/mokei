@@ -20,6 +20,6 @@ export type {
   ToolParams,
   UnknownContextTypes,
 } from './client.js'
-export { ContextClient } from './client.js'
+export { ContextClient, UnsupportedProtocolVersionError } from './client.js'
 export { currentTraceMeta, type TraceMeta, traceMetaFromContext } from './trace.js'
 export type { ClientTransport } from './types.js'

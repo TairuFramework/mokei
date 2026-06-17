@@ -41,8 +41,10 @@ import type {
 } from '@mokei/context-protocol'
 import {
   type ErrorResponse,
+  isSupportedProtocolVersion,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
+  SUPPORTED_PROTOCOL_VERSIONS,
   serverMessage,
 } from '@mokei/context-protocol'
 import { ContextRPC, RequestTimeoutError, RPCError, type SentRequest } from '@mokei/context-rpc'
@@ -62,6 +64,15 @@ export const DEFAULT_INITIALIZE_PARAMS: InitializeRequest['params'] = {
 }
 
 export const DEFAULT_INITIALIZE_TIMEOUT = 30_000
+
+export class UnsupportedProtocolVersionError extends Error {
+  constructor(received: string) {
+    super(
+      `Server responded with unsupported protocolVersion "${received}"; supported: ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}`,
+    )
+    this.name = 'UnsupportedProtocolVersionError'
+  }
+}
 
 export type ElicitHandler = (
   params: ElicitRequest['params'],
@@ -136,6 +147,7 @@ export class ContextClient<
   #listRoots?: Array<Root> | ListRootsHandler
   #notificationController: ReadableStreamDefaultController<HandleNotification>
   #notifications: ReadableStream<HandleNotification>
+  #serverCapabilities: InitializeResult['capabilities'] = {}
 
   constructor(params: ClientParams) {
     super({ validateMessageIn: validateServerMessage, transport: params.transport })
@@ -227,11 +239,17 @@ export class ContextClient<
       }
       result = message.result as InitializeResult
     }
+    // Reject an unsupported negotiated version before establishing the session.
+    if (!isSupportedProtocolVersion(result.protocolVersion)) {
+      await this.dispose()
+      throw new UnsupportedProtocolVersionError(result.protocolVersion)
+    }
+    // Store server capabilities for client-side gating (Task 13).
+    this.#serverCapabilities = result.capabilities
     // Start listening for incoming messages
     this._handle()
     // Notify server that client is initialized
     await super._write({ jsonrpc: '2.0', method: 'notifications/initialized' })
-    // TODO: check result.protocolVersion (tracked in mcp-2025-11-25-conformance backlog)
     this.events.emit('initialized', result)
     return result
   }

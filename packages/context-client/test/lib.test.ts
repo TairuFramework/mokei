@@ -19,7 +19,7 @@ import type { SentRequest as Request } from '@mokei/context-rpc'
 import { describe, expect, test, vi } from 'vitest'
 
 import { DEFAULT_INITIALIZE_PARAMS } from '../src/client.js'
-import { type ClientParams, ContextClient } from '../src/index.js'
+import { type ClientParams, ContextClient, UnsupportedProtocolVersionError } from '../src/index.js'
 
 const DEFAULT_INITIALIZE_RESULT: InitializeResult = {
   capabilities: {},
@@ -414,5 +414,45 @@ describe('initialize hardening', () => {
     const closed = client.events.once('closed')
     await transports.dispose()
     await expect(closed).resolves.toEqual({ error: undefined })
+  })
+})
+
+describe('protocolVersion negotiation', () => {
+  test('rejects an unsupported server protocolVersion and disposes', async () => {
+    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const client = new ContextClient({
+      transport: transports.client as ClientParams['transport'],
+    })
+    void (async () => {
+      const req = await transports.server.read()
+      const id = (req.value as { id: number }).id
+      await transports.server.write({
+        jsonrpc: '2.0',
+        id,
+        result: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          serverInfo: { name: 's', version: '1' },
+        },
+      } as ServerMessage)
+    })()
+    await expect(client.initialize()).rejects.toBeInstanceOf(UnsupportedProtocolVersionError)
+  })
+
+  test('accepts 2025-11-25', async () => {
+    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const client = new ContextClient({
+      transport: transports.client as ClientParams['transport'],
+    })
+    void (async () => {
+      await handleServerInitialize(transports.server, {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        serverInfo: { name: 's', version: '1' },
+      })
+    })()
+    const result = await client.initialize()
+    expect(result.protocolVersion).toBe('2025-11-25')
+    await transports.dispose()
   })
 })
