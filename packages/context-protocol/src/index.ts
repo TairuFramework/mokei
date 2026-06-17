@@ -18,7 +18,12 @@ export {
   clientMessage,
 } from './client.js'
 export type { CompleteRequest, CompleteResult } from './completion.js'
-export type { ElicitRequest, ElicitResult } from './elicitation.js'
+export {
+  type ElicitationCompleteNotification,
+  type ElicitRequest,
+  type ElicitResult,
+  elicitationCompleteNotification,
+} from './elicitation.js'
 export type {
   ClientCapabilities,
   Implementation,

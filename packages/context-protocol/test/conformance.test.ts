@@ -1,7 +1,8 @@
 import { role } from '../src/content.js'
-import { elicitResult } from '../src/elicitation.js'
+import { elicitationCompleteNotification, elicitResult } from '../src/elicitation.js'
 import { samplingMessage, toolChoice } from '../src/sampling.js'
 import { enumSchema, multiSelectEnumSchema, primitiveSchemaDefinition } from '../src/schema.js'
+import elicitCompleteFixture from './conformance/elicitation-complete.json'
 import enumSchemaFixture from './conformance/elicitation-enum-schema.json'
 import elicitMultiFixture from './conformance/elicitation-multiselect.json'
 import elicitResultFixture from './conformance/elicitation-result.json'
@@ -18,3 +19,4 @@ runConformance(primitiveSchemaDefinition, elicitEnumFixture)
 runConformance(multiSelectEnumSchema, elicitMultiFixture)
 runConformance(elicitResult, elicitResultFixture)
 runConformance(enumSchema, enumSchemaFixture)
+runConformance(elicitationCompleteNotification, elicitCompleteFixture)

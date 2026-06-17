@@ -1,7 +1,7 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
 import { completeResult } from './completion.js'
-import { elicitRequest } from './elicitation.js'
+import { elicitationCompleteNotification, elicitRequest } from './elicitation.js'
 import { initializeResult } from './initialize.js'
 import { loggingMessageNotification } from './logging.js'
 import { getPromptResult, listPromptsResult, promptListChangedNotification } from './prompt.js'
@@ -34,6 +34,7 @@ export type ServerRequest = FromSchema<typeof serverRequest>
 export const serverNotification = {
   anyOf: [
     cancelledNotification,
+    elicitationCompleteNotification,
     loggingMessageNotification,
     progressNotification,
     resourceUpdatedNotification,
