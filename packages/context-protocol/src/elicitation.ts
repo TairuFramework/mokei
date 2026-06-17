@@ -106,7 +106,12 @@ export const elicitResult = {
         },
         content: {
           additionalProperties: {
-            anyOf: [{ type: 'string' }, { type: 'integer' }, { type: 'boolean' }],
+            anyOf: [
+              { type: 'string' },
+              { type: 'number' },
+              { type: 'boolean' },
+              { items: { type: 'string' }, type: 'array' },
+            ],
           },
           description:
             'The submitted form data, only present when action is "accept".\nContains values matching the requested schema.',

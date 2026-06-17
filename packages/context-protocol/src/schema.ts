@@ -38,6 +38,9 @@ export const stringSchema = {
     minLength: {
       type: 'integer',
     },
+    pattern: {
+      type: 'string',
+    },
     title: {
       type: 'string',
     },
@@ -59,10 +62,10 @@ export const numberSchema = {
       type: 'string',
     },
     maximum: {
-      type: 'integer',
+      type: 'number',
     },
     minimum: {
-      type: 'integer',
+      type: 'number',
     },
     title: {
       type: 'string',
@@ -79,33 +82,26 @@ export const numberSchema = {
 // Single-select enum with optional default
 export const enumSchema = {
   properties: {
-    default: {
-      type: 'string',
-    },
-    description: {
-      type: 'string',
-    },
-    enum: {
+    default: { type: 'string' },
+    description: { type: 'string' },
+    enum: { items: { type: 'string' }, type: 'array' },
+    enumNames: { items: { type: 'string' }, type: 'array' },
+    oneOf: {
       items: {
-        type: 'string',
+        properties: {
+          const: { type: 'string' },
+          description: { type: 'string' },
+          title: { type: 'string' },
+        },
+        required: ['const'],
+        type: 'object',
       },
       type: 'array',
     },
-    enumNames: {
-      items: {
-        type: 'string',
-      },
-      type: 'array',
-    },
-    title: {
-      type: 'string',
-    },
-    type: {
-      const: 'string',
-      type: 'string',
-    },
+    title: { type: 'string' },
+    type: { const: 'string', type: 'string' },
   },
-  required: ['enum', 'type'],
+  required: ['type'],
   type: 'object',
 } as const satisfies Schema
 
@@ -122,26 +118,34 @@ export const multiSelectEnumSchema = {
       type: 'string',
     },
     items: {
-      properties: {
-        enum: {
-          items: {
-            type: 'string',
+      anyOf: [
+        {
+          properties: {
+            enum: { items: { type: 'string' }, type: 'array' },
+            enumNames: { items: { type: 'string' }, type: 'array' },
+            type: { const: 'string', type: 'string' },
           },
-          type: 'array',
+          required: ['enum', 'type'],
+          type: 'object',
         },
-        enumNames: {
-          items: {
-            type: 'string',
+        {
+          properties: {
+            anyOf: {
+              items: {
+                properties: {
+                  const: { type: 'string' },
+                  title: { type: 'string' },
+                },
+                required: ['const'],
+                type: 'object',
+              },
+              type: 'array',
+            },
           },
-          type: 'array',
+          required: ['anyOf'],
+          type: 'object',
         },
-        type: {
-          const: 'string',
-          type: 'string',
-        },
-      },
-      required: ['enum', 'type'],
-      type: 'object',
+      ],
     },
     title: {
       type: 'string',

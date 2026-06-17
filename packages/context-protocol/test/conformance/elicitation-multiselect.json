@@ -1,0 +1,18 @@
+{
+  "sep": "elicitation-multiselect-sep1330",
+  "cases": [
+    {
+      "name": "anyOf const+title items",
+      "message": {
+        "type": "array",
+        "items": { "anyOf": [{ "const": "x", "title": "X" }, { "const": "y", "title": "Y" }] }
+      },
+      "valid": true
+    },
+    {
+      "name": "legacy items enum",
+      "message": { "type": "array", "items": { "type": "string", "enum": ["x", "y"] } },
+      "valid": true
+    }
+  ]
+}

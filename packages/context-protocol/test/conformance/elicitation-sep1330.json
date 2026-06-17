@@ -1,0 +1,28 @@
+{
+  "sep": "elicitation-sep1330",
+  "cases": [
+    {
+      "name": "legacy enum+enumNames",
+      "message": { "type": "string", "enum": ["a", "b"], "enumNames": ["A", "B"] },
+      "valid": true
+    },
+    {
+      "name": "titled oneOf const+title",
+      "message": {
+        "type": "string",
+        "oneOf": [{ "const": "a", "title": "A" }, { "const": "b", "title": "B" }]
+      },
+      "valid": true
+    },
+    {
+      "name": "string with pattern",
+      "message": { "type": "string", "pattern": "^[a-z]+$" },
+      "valid": true
+    },
+    {
+      "name": "number non-integer min",
+      "message": { "type": "number", "minimum": 0.5 },
+      "valid": true
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "sep": "elicitation-result-content",
+  "cases": [
+    {
+      "name": "string value",
+      "message": { "action": "accept", "content": { "a": "x" } },
+      "valid": true
+    },
+    {
+      "name": "integer value",
+      "message": { "action": "accept", "content": { "a": 3 } },
+      "valid": true
+    },
+    {
+      "name": "non-integer number",
+      "message": { "action": "accept", "content": { "a": 1.5 } },
+      "valid": true
+    },
+    {
+      "name": "boolean value",
+      "message": { "action": "accept", "content": { "a": true } },
+      "valid": true
+    },
+    {
+      "name": "string-array value",
+      "message": { "action": "accept", "content": { "a": ["x", "y"] } },
+      "valid": true
+    }
+  ]
+}
