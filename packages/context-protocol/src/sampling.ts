@@ -67,49 +67,19 @@ export const samplingMessage = {
   type: 'object',
 } as const satisfies Schema
 
-// Tool choice configuration for sampling
+// Tool choice configuration for sampling (SEP-1577).
 export const toolChoice = {
   description:
-    'Controls how the model should use the provided tools. Can be "auto" (model decides), "required" (must use a tool), or specify a particular tool.',
-  anyOf: [
-    {
-      properties: {
-        type: {
-          const: 'auto',
-          description: 'The model decides whether to call tools.',
-          type: 'string',
-        },
-      },
-      required: ['type'],
-      type: 'object',
+    'Controls how the model should use the provided tools. "auto" (model decides), "required" (must call a tool), or "none" (must not call a tool).',
+  properties: {
+    mode: {
+      description: 'How the model should use tools.',
+      enum: ['auto', 'required', 'none'],
+      type: 'string',
     },
-    {
-      properties: {
-        type: {
-          const: 'required',
-          description: 'The model must call at least one tool.',
-          type: 'string',
-        },
-      },
-      required: ['type'],
-      type: 'object',
-    },
-    {
-      properties: {
-        toolName: {
-          description: 'The name of the specific tool to use.',
-          type: 'string',
-        },
-        type: {
-          const: 'tool',
-          description: 'The model must call the specified tool.',
-          type: 'string',
-        },
-      },
-      required: ['toolName', 'type'],
-      type: 'object',
-    },
-  ],
+  },
+  required: ['mode'],
+  type: 'object',
 } as const satisfies Schema
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L332
