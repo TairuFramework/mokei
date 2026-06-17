@@ -256,13 +256,25 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   async #callTool(request: CallToolRequest, signal: AbortSignal): Promise<CallToolResult> {
     const handler = this.#toolHandlers[request.params.name]
     if (handler == null) {
+      // "Errors in finding the tool" are MCP protocol errors, per the spec.
       throw new RPCError(INVALID_PARAMS, `Tool ${request.params.name} not found`)
     }
-    return await handler({
-      arguments: request.params.arguments ?? {},
-      client: this.#client,
-      signal,
-    })
+    try {
+      return await handler({
+        arguments: request.params.arguments ?? {},
+        client: this.#client,
+        signal,
+      })
+    } catch (cause) {
+      // Tool-execution and input-validation failures (SEP-1303) are reported
+      // inside the result so the model can see and self-correct, not as
+      // protocol errors. Re-throw genuine cancellation.
+      if (signal.aborted) {
+        throw cause
+      }
+      const message = cause instanceof Error ? cause.message : String(cause)
+      return { content: [{ type: 'text', text: message }], isError: true }
+    }
   }
 
   async #getPrompt(request: GetPromptRequest, signal: AbortSignal): Promise<GetPromptResult> {

@@ -637,6 +637,64 @@ describe('ContextServer', () => {
     await transports.dispose()
   })
 
+  describe('isError results (SEP-1303)', () => {
+    test('tool handler exception becomes an isError result', async () => {
+      const { transports } = createTestContext({
+        tools: {
+          boom: createTool('boom', { type: 'object', properties: {} }, async () => {
+            throw new Error('kaboom')
+          }),
+        },
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'boom', arguments: {} },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({
+        id: 1,
+        result: { isError: true, content: [{ type: 'text' }] },
+      })
+      await transports.dispose()
+    })
+
+    test('input-validation error becomes an isError result', async () => {
+      const { transports } = createTestContext({
+        tools: {
+          strict: createTool(
+            'strict',
+            { type: 'object', properties: { n: { type: 'number' } }, required: ['n'] },
+            async () => ({ content: [] }),
+          ),
+        },
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'strict', arguments: {} },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({ id: 1, result: { isError: true } })
+      await transports.dispose()
+    })
+
+    test('unknown tool stays a JSON-RPC error', async () => {
+      const { transports } = createTestContext({ tools: {} })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'nope', arguments: {} },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({ id: 1, error: { code: INVALID_PARAMS } })
+      await transports.dispose()
+    })
+  })
+
   describe('JSON Schema 2020-12 tool input', () => {
     test('validates a tool whose inputSchema declares the 2020-12 dialect', async () => {
       await expectServerResult(
@@ -752,38 +810,35 @@ describe('ContextServer', () => {
     })
 
     test('validates tool call inputs', async () => {
-      await expectServerError(
-        {
-          tools: {
-            test: createTool(
-              'test',
-              {
-                type: 'object',
-                properties: { bar: { type: 'string' } },
-                additionalProperties: false,
-                required: ['bar'],
-              } as const,
-              (req) => {
-                return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
-              },
-            ),
-          },
+      // Input-validation errors are reported as isError results (SEP-1303), not JSON-RPC errors.
+      const { transports } = createTestContext({
+        tools: {
+          test: createTool(
+            'test',
+            {
+              type: 'object',
+              properties: { bar: { type: 'string' } },
+              additionalProperties: false,
+              required: ['bar'],
+            } as const,
+            (req) => {
+              return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
+            },
+          ),
         },
-        {
-          method: 'tools/call',
-          params: {
-            name: 'test',
-            arguments: {},
-          },
-        },
-        {
-          code: INVALID_PARAMS,
-          message: 'Invalid tool input',
-          data: {
-            issues: [{ message: "must have required property 'bar'", path: [] }],
-          },
-        },
-      )
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'test', arguments: {} },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({
+        id: 1,
+        result: { isError: true, content: [{ type: 'text' }] },
+      })
+      await transports.dispose()
     })
   })
 })
