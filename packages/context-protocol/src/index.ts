@@ -71,6 +71,7 @@ export {
   INTERNAL_ERROR,
   INVALID_PARAMS,
   INVALID_REQUEST,
+  isSupportedProtocolVersion,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
   type Metadata,
@@ -78,10 +79,13 @@ export {
   PARSE_ERROR,
   type PaginatedResult,
   type ProgressNotification,
+  RESOURCE_NOT_FOUND,
   type Request,
   type RequestID,
   type Response,
   type Result,
+  SUPPORTED_PROTOCOL_VERSIONS,
+  URL_ELICITATION_REQUIRED,
 } from './rpc.js'
 export type { CreateMessageRequest, CreateMessageResult } from './sampling.js'
 export { inferSchemaDraft } from './schema.js'
