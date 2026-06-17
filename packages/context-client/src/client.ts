@@ -74,6 +74,13 @@ export class UnsupportedProtocolVersionError extends Error {
   }
 }
 
+export class CapabilityNotDeclaredError extends Error {
+  constructor(capability: string) {
+    super(`Server did not declare the "${capability}" capability`)
+    this.name = 'CapabilityNotDeclaredError'
+  }
+}
+
 export type ElicitHandler = (
   params: ElicitRequest['params'],
   signal: AbortSignal,
@@ -280,12 +287,12 @@ export class ContextClient<
         break
       }
       case 'roots/list': {
-        const roots =
-          this.#listRoots == null
-            ? []
-            : Array.isArray(this.#listRoots)
-              ? this.#listRoots
-              : await this.#listRoots(signal)
+        if (this.#listRoots == null) {
+          throw new RPCError(METHOD_NOT_FOUND, 'roots capability not supported')
+        }
+        const roots = Array.isArray(this.#listRoots)
+          ? this.#listRoots
+          : await this.#listRoots(signal)
         return { roots }
       }
       case 'sampling/createMessage':
@@ -294,6 +301,14 @@ export class ContextClient<
         }
     }
     throw new RPCError(METHOD_NOT_FOUND, 'Method not implemented')
+  }
+
+  // Guard: throws synchronously when the server did not declare the given capability.
+  // Only meaningful after initialize() completes; #serverCapabilities is {} until then.
+  #requireServerCapability(capability: 'tools' | 'logging' | 'completions'): void {
+    if (this.#serverCapabilities[capability] == null) {
+      throw new CapabilityNotDeclaredError(capability)
+    }
   }
 
   get notifications(): ReadableStream<ServerNotification> {
@@ -305,10 +320,12 @@ export class ContextClient<
   }
 
   setLoggingLevel(params: SetLevelRequest['params']): SentRequest<Result> {
+    this.#requireServerCapability('logging')
     return this.request('logging/setLevel', params)
   }
 
   complete(params: CompleteRequest['params']): SentRequest<CompleteResult> {
+    this.#requireServerCapability('completions')
     return this.request('completion/complete', params)
   }
 
@@ -335,6 +352,7 @@ export class ContextClient<
   }
 
   listTools(params: ListToolsRequest['params'] = {}): SentRequest<ListToolsResult> {
+    this.#requireServerCapability('tools')
     return this.request('tools/list', params)
   }
 
