@@ -7,6 +7,13 @@ import { SSEWriter } from './sse-writer.js'
 
 export type HTTPHandlerParams = {
   createServer: (transport: ServerTransport) => ContextServer
+  /**
+   * Controls Origin header validation:
+   * - Unset (default): localhost-only. Requests without an Origin header (non-browser clients)
+   *   are allowed. Requests with a foreign Origin are rejected (DNS-rebinding protection).
+   * - `['*']`: Disable validation — all origins are accepted.
+   * - Any other array: Exact-match allowlist. A missing Origin header is rejected.
+   */
   allowedOrigins?: Array<string>
   sessionTimeoutMs?: number
   maxSessions?: number
@@ -109,14 +116,35 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     { requestID: string | number; resolve: (message: ServerMessage) => void }
   >()
 
+  const DEFAULT_LOCALHOST_ORIGINS = [
+    'http://localhost',
+    'http://127.0.0.1',
+    'http://[::1]',
+    'https://localhost',
+    'https://127.0.0.1',
+    'https://[::1]',
+  ]
+
+  function isLocalhostOrigin(origin: string): boolean {
+    // Match scheme+host with any port: e.g. http://localhost:3000.
+    return DEFAULT_LOCALHOST_ORIGINS.some(
+      (base) => origin === base || origin.startsWith(`${base}:`),
+    )
+  }
+
   function validateOrigin(request: Request): boolean {
-    if (allowedOrigins == null) {
+    // Explicit wildcard opts out entirely.
+    if (allowedOrigins?.includes('*')) {
       return true
     }
     const origin = request.headers.get('Origin')
+    if (allowedOrigins == null) {
+      // Secure default: localhost only. No Origin header (non-browser client) is allowed.
+      return origin == null || isLocalhostOrigin(origin)
+    }
+    // Allowlist configured: a missing Origin is not allowed.
     if (origin == null) {
-      // No Origin header present -- skip validation
-      return true
+      return false
     }
     return allowedOrigins.includes(origin)
   }

@@ -209,12 +209,12 @@ describe('createHTTPHandler', () => {
     }
   })
 
-  test('POST with no Origin header skips origin validation', async () => {
+  test('POST with no Origin header returns 403 when allowlist configured', async () => {
     const handler = createHandler({ allowedOrigins: ['https://allowed.example.com'] })
 
     try {
       const response = await handler.handleRequest(initializeRequest())
-      expect(response.status).toBe(200)
+      expect(response.status).toBe(403)
     } finally {
       handler.dispose()
     }
@@ -374,7 +374,44 @@ describe('createHTTPHandler', () => {
     const handler = createHandler({ allowedOrigins: ['https://allowed.example.com'] })
 
     try {
-      const sessionID = await initializeSession(handler)
+      // Initialize with the allowed origin so the session can be established.
+      const initRes = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            Origin: 'https://allowed.example.com',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'initialize',
+            params: {
+              protocolVersion: '2025-11-25',
+              capabilities: {},
+              clientInfo: { name: 'test-client', version: '1.0.0' },
+            },
+          }),
+        }),
+      )
+      const sessionID = initRes.headers.get('Mcp-Session-Id')
+      if (sessionID == null) {
+        throw new Error('No session ID in response')
+      }
+
+      // Send initialized notification with the allowed origin.
+      await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'https://allowed.example.com',
+            'Mcp-Session-Id': sessionID,
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+        }),
+      )
 
       const request = new Request('http://localhost/mcp', {
         method: 'DELETE',
@@ -460,6 +497,63 @@ describe('createHTTPHandler', () => {
 
       // The new stream should be valid
       expect(getResponse2.body).toBeTruthy()
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('default config allows localhost origins and rejects foreign origins', async () => {
+    const handler = createHandler()
+    try {
+      const ok = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: { Origin: 'http://localhost:3000', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+        }),
+      )
+      expect(ok.status).not.toBe(403)
+
+      const blocked = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: { Origin: 'https://evil.example', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+        }),
+      )
+      expect(blocked.status).toBe(403)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('missing Origin rejected when an allowlist is configured', async () => {
+    const handler = createHandler({ allowedOrigins: ['https://app.example'] })
+    try {
+      const res = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+        }),
+      )
+      expect(res.status).toBe(403)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('wildcard opts out of origin validation', async () => {
+    const handler = createHandler({ allowedOrigins: ['*'] })
+    try {
+      const res = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: { Origin: 'https://anything.example', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+        }),
+      )
+      expect(res.status).not.toBe(403)
     } finally {
       handler.dispose()
     }
