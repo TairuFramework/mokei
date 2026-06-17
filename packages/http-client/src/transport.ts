@@ -52,6 +52,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #pendingMethods = new Map<string | number, string>()
   /** Cached tool `inputSchema`s keyed by tool name, populated from `tools/list` results. */
   #toolSchemas = new Map<string, unknown>()
+  /** Protocol version to send in `MCP-Protocol-Version` header; updated after initialize. */
+  #protocolVersion: string = LATEST_PROTOCOL_VERSION
   #logger: Logger
 
   constructor(params: HTTPTransportParams) {
@@ -100,7 +102,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       ...this.#headers,
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
-      'MCP-Protocol-Version': LATEST_PROTOCOL_VERSION,
+      'MCP-Protocol-Version': this.#protocolVersion,
     }
 
     let requestID: string | number | null = null
@@ -203,6 +205,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       return message
     }
     this.#pendingMethods.delete(id)
+    if (method === 'initialize') {
+      const version = (message as { result?: { protocolVersion?: unknown } }).result
+        ?.protocolVersion
+      if (typeof version === 'string') {
+        this.#protocolVersion = version
+      }
+      return message
+    }
     if (method !== 'tools/list') {
       return message
     }
@@ -279,7 +289,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     const headers: Record<string, string> = {
       ...this.#headers,
       Accept: 'text/event-stream',
-      'MCP-Protocol-Version': LATEST_PROTOCOL_VERSION,
+      'MCP-Protocol-Version': this.#protocolVersion,
     }
 
     if (this.#sessionID) {
@@ -333,7 +343,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           method: 'DELETE',
           headers: {
             ...this.#headers,
-            'MCP-Protocol-Version': LATEST_PROTOCOL_VERSION,
+            'MCP-Protocol-Version': this.#protocolVersion,
             'Mcp-Session-Id': this.#sessionID,
           },
         })

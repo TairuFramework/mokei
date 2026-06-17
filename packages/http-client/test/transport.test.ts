@@ -156,6 +156,43 @@ describe('HTTPTransport', () => {
     })
   })
 
+  describe('negotiated MCP-Protocol-Version header', () => {
+    test('after initialize, requests send the negotiated MCP-Protocol-Version', async () => {
+      // Use an older protocol version to prove the value comes from the initialize response,
+      // not from LATEST_PROTOCOL_VERSION (which is '2025-11-25').
+      const negotiatedVersion = '2024-11-05'
+      const negotiatedInitResult: ServerMessage = {
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          protocolVersion: negotiatedVersion,
+          capabilities: {},
+          serverInfo: { name: 'test-server', version: '1.0' },
+        },
+      } as ServerMessage
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(negotiatedInitResult, { 'Mcp-Session-Id': 'session-neg' }),
+      )
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+
+      // The initialize POST must still use LATEST_PROTOCOL_VERSION (negotiation hasn't happened yet)
+      await transport.write(initializeRequest)
+      await transport.read()
+      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe(
+        LATEST_PROTOCOL_VERSION,
+      )
+
+      // A subsequent request must use the negotiated version captured from the initialize response
+      await transport.write(pingRequest)
+      expect(fetchMock.mock.calls[1][1].headers['MCP-Protocol-Version']).toBe(negotiatedVersion)
+
+      await transport.dispose()
+    })
+  })
+
   describe('JSON response handling', () => {
     test('enqueues parsed JSON response to readable stream', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
