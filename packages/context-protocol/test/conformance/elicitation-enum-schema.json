@@ -1,0 +1,18 @@
+{
+  "sep": "elicitation-enum-schema",
+  "cases": [
+    {
+      "name": "legacy enum+enumNames",
+      "message": { "type": "string", "enum": ["a", "b"], "enumNames": ["A", "B"] },
+      "valid": true
+    },
+    {
+      "name": "titled oneOf const+title",
+      "message": {
+        "type": "string",
+        "oneOf": [{ "const": "a", "title": "A" }, { "const": "b", "title": "B" }]
+      },
+      "valid": true
+    }
+  ]
+}
