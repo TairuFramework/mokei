@@ -603,6 +603,40 @@ describe('ContextServer', () => {
     await t2.dispose()
   })
 
+  test('declares listChanged:true for tools/prompts/resources it serves', async () => {
+    const { transports } = createTestContext({
+      tools: { a: createTool('a', { type: 'object' }, async () => ({ content: [] })) },
+      prompts: {
+        p: {
+          description: 'prompt p',
+          handler: () => ({
+            messages: [
+              { role: 'assistant' as const, content: { type: 'text' as const, text: 'p' } },
+            ],
+          }),
+        },
+      },
+      resources: { list: [], read: () => ({ contents: [] }) },
+    })
+    transports.client.write({
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'initialize',
+      params: {
+        capabilities: {},
+        clientInfo: { name: 'test-client', version: '0.0.0' },
+        protocolVersion: LATEST_PROTOCOL_VERSION,
+      },
+    } as ClientRequest)
+    const res = await transports.client.read()
+    const caps = (res.value as { result: { capabilities: Record<string, unknown> } }).result
+      .capabilities
+    expect(caps.tools).toEqual({ listChanged: true })
+    expect(caps.prompts).toEqual({ listChanged: true })
+    expect(caps.resources).toMatchObject({ listChanged: true })
+    await transports.dispose()
+  })
+
   describe('JSON Schema 2020-12 tool input', () => {
     test('validates a tool whose inputSchema declares the 2020-12 dialect', async () => {
       await expectServerResult(

@@ -142,11 +142,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     this.#promptsList.sort((a, b) => a.name.localeCompare(b.name))
     if (this.#promptsList.length !== 0) {
-      this.#capabilities.prompts = {}
+      this.#capabilities.prompts = { listChanged: true }
     }
 
     if (params.resources != null) {
-      this.#capabilities.resources = {}
+      this.#capabilities.resources = { listChanged: true }
       this.#resources = toResourceHandlers(params.resources)
     }
 
@@ -157,7 +157,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     this.#toolsList.sort((a, b) => a.name.localeCompare(b.name))
     if (this.#toolsList.length !== 0) {
-      this.#capabilities.tools = {}
+      this.#capabilities.tools = { listChanged: true }
     }
 
     this._handle()
