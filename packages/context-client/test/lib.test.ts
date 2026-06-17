@@ -15,7 +15,6 @@ import type {
   ServerRequest,
 } from '@mokei/context-protocol'
 import { LATEST_PROTOCOL_VERSION, METHOD_NOT_FOUND } from '@mokei/context-protocol'
-import type { SentRequest as Request } from '@mokei/context-rpc'
 import { describe, expect, test, vi } from 'vitest'
 
 import { DEFAULT_INITIALIZE_PARAMS } from '../src/client.js'
@@ -49,7 +48,7 @@ async function handleServerInitialize(
   return request.value
 }
 
-type RunClientRequest<T> = (client: ContextClient) => Request<T>
+type RunClientRequest<T> = (client: ContextClient) => Promise<T>
 
 async function executeClientRequest<T>(
   runRequest: RunClientRequest<T>,
@@ -435,7 +434,7 @@ describe('capability gating', () => {
     void handleServerInitialize(transports.server) // capabilities: {} by default
     await client.initialize()
 
-    expect(() => client.listTools()).toThrow(CapabilityNotDeclaredError)
+    await expect(client.listTools()).rejects.toThrow(CapabilityNotDeclaredError)
 
     await transports.dispose()
   })
@@ -469,6 +468,42 @@ describe('capability gating', () => {
       { method: 'roots/list' },
       { error: { code: METHOD_NOT_FOUND, message: 'roots capability not supported' } },
     )
+  })
+
+  test('listTools resolves via lazy init when server declares tools capability (no explicit initialize)', async () => {
+    const initResult: InitializeResult = {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { tools: {} },
+    }
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+
+    // Drive the server side: handle init then answer tools/list — no client.initialize() call
+    const serverTask = (async () => {
+      await handleServerInitialize(transports.server, initResult)
+      const incoming = await transports.server.read()
+      transports.server.write({
+        jsonrpc: '2.0',
+        id: (incoming.value as { id: number }).id,
+        result: { tools: [] },
+      } as ServerMessage)
+    })()
+
+    await expect(client.listTools()).resolves.toEqual({ tools: [] })
+    await serverTask
+    await transports.dispose()
+  })
+
+  test('listTools rejects with CapabilityNotDeclaredError via lazy init when server declares no tools capability (no explicit initialize)', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+
+    // Server declares no tools capability (default) — no client.initialize() call
+    void handleServerInitialize(transports.server)
+
+    await expect(client.listTools()).rejects.toThrow(CapabilityNotDeclaredError)
+
+    await transports.dispose()
   })
 })
 

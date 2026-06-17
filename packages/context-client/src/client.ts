@@ -319,14 +319,16 @@ export class ContextClient<
     return await this.#initialized
   }
 
-  setLoggingLevel(params: SetLevelRequest['params']): SentRequest<Result> {
+  async setLoggingLevel(params: SetLevelRequest['params']): Promise<Result> {
+    await this.initialize()
     this.#requireServerCapability('logging')
-    return this.request('logging/setLevel', params)
+    return await this.request('logging/setLevel', params)
   }
 
-  complete(params: CompleteRequest['params']): SentRequest<CompleteResult> {
+  async complete(params: CompleteRequest['params']): Promise<CompleteResult> {
+    await this.initialize()
     this.#requireServerCapability('completions')
-    return this.request('completion/complete', params)
+    return await this.request('completion/complete', params)
   }
 
   listPrompts(params: ListPromptsRequest['params'] = {}): SentRequest<ListPromptsResult> {
@@ -351,9 +353,10 @@ export class ContextClient<
     return this.request('resources/read', params)
   }
 
-  listTools(params: ListToolsRequest['params'] = {}): SentRequest<ListToolsResult> {
+  async listTools(params: ListToolsRequest['params'] = {}): Promise<ListToolsResult> {
+    await this.initialize()
     this.#requireServerCapability('tools')
-    return this.request('tools/list', params)
+    return await this.request('tools/list', params)
   }
 
   callTool(params: ToolParams<T>): SentRequest<CallToolResult> {
