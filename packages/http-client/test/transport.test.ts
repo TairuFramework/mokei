@@ -2,6 +2,7 @@ import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { SessionExpiredError } from '../src/index.js'
 import { HTTPTransport } from '../src/transport.js'
 
 // --- Test helpers ---
@@ -249,6 +250,26 @@ describe('HTTPTransport', () => {
 
       const transport = new HTTPTransport({ url: TEST_URL })
       await expect(transport.write(initializeRequest)).rejects.toThrow('HTTP 404')
+
+      await transport.dispose()
+    })
+
+    test('404 with an active session clears it and throws SessionExpiredError', async () => {
+      // Arrange: initialize so #sessionID is set
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(initializeResult, { 'Mcp-Session-Id': 'session-expired' }),
+      )
+      // Next POST returns 404 (session gone on server)
+      fetchMock.mockResolvedValueOnce(errorResponse(404, 'Session not found'))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+      expect(transport.sessionID).toBe('session-expired')
+
+      // Act + Assert: the post-init request rejects with SessionExpiredError
+      await expect(transport.write(pingRequest)).rejects.toBeInstanceOf(SessionExpiredError)
+      // And: transport.sessionID is now null
+      expect(transport.sessionID).toBeNull()
 
       await transport.dispose()
     })

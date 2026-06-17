@@ -8,6 +8,7 @@ import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { parseServerSentEvents } from 'parse-sse'
 
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
+import { SessionExpiredError } from './errors.js'
 import { buildParamHeaders, collectHeaderAnnotations } from './x-mcp-header.js'
 
 /**
@@ -156,6 +157,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       const newSessionID = response.headers.get('Mcp-Session-Id')
       if (newSessionID) {
         this.#sessionID = newSessionID
+      }
+
+      if (response.status === 404 && this.#sessionID != null) {
+        // Spec MUST: a 404 on an active session means it is gone. Clear it and
+        // surface a typed signal so the client can re-initialize.
+        this.#sessionID = null
+        throw new SessionExpiredError()
       }
 
       if (!response.ok) {

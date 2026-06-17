@@ -11,6 +11,7 @@
  */
 
 export { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
+export { SessionExpiredError } from './errors.js'
 export {
   createHTTPClient,
   DEFAULT_HTTP_TIMEOUT,
