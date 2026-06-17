@@ -100,7 +100,7 @@ describe('ContextServer', () => {
         jsonrpc: '2.0',
         id: 1,
         result: {
-          capabilities: {},
+          capabilities: { logging: {} },
           protocolVersion: LATEST_PROTOCOL_VERSION,
           serverInfo: { name: 'test', version: '0.0.0' },
         },
@@ -561,6 +561,46 @@ describe('ContextServer', () => {
       expect(names).toEqual(['alpha', 'bravo', 'charlie'])
       await transports.dispose()
     })
+  })
+
+  test('declares logging always and completions when complete handler set', async () => {
+    const initParams = {
+      capabilities: {},
+      clientInfo: { name: 'test-client', version: '0.0.0' },
+      protocolVersion: LATEST_PROTOCOL_VERSION,
+    }
+
+    // Server WITH a complete handler — logging and completions must both appear
+    const { transports: t1 } = createTestContext({
+      complete: async () => ({ completion: { values: [] } }),
+    })
+    t1.client.write({
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'initialize',
+      params: initParams,
+    } as ClientRequest)
+    const res1 = await t1.client.read()
+    const caps1 = (res1.value as { result: { capabilities: Record<string, unknown> } }).result
+      .capabilities
+    expect(caps1.logging).toEqual({})
+    expect(caps1.completions).toEqual({})
+    await t1.dispose()
+
+    // Server WITHOUT a complete handler — logging present, completions absent
+    const { transports: t2 } = createTestContext({})
+    t2.client.write({
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'initialize',
+      params: initParams,
+    } as ClientRequest)
+    const res2 = await t2.client.read()
+    const caps2 = (res2.value as { result: { capabilities: Record<string, unknown> } }).result
+      .capabilities
+    expect(caps2.logging).toEqual({})
+    expect(caps2.completions).toBeUndefined()
+    await t2.dispose()
   })
 
   describe('JSON Schema 2020-12 tool input', () => {

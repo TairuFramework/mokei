@@ -128,6 +128,13 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this.#completeHandler = params.complete
     this.#serverInfo = { name: params.name, version: params.version }
 
+    // Logging is always supported (the server can emit notifications/message).
+    this.#capabilities.logging = {}
+    // Completions only when a handler serves completion/complete.
+    if (params.complete != null) {
+      this.#capabilities.completions = {}
+    }
+
     for (const [name, prompt] of Object.entries(params.prompts ?? {})) {
       const { handler, ...info } = prompt
       this.#promptHandlers[name] = handler
