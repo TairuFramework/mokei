@@ -227,7 +227,9 @@ export type SamplingParams = {
   /**
    * Raw backend options merged last into the request body (escape hatch; overrides typed params).
    * Intended for sampling/tuning keys only — these keys are spread last into the request body, so
-   * structural fields (e.g. `model`, `messages`, `stream`) will be overridden if present here.
+   * structural fields (e.g. `model`, `messages`) will be overridden if present here.
+   * Note: `signal` and `stream` are automatically stripped before the bag reaches the provider;
+   * those keys are reserved for the transport/stream machinery and cannot be overridden here.
    */
   providerOptions?: Record<string, unknown>
 }
@@ -240,10 +242,28 @@ export type ResolvedSamplingParams = {
 }
 
 /**
+ * Strip transport-reserved keys (`signal`, `stream`) from a providerOptions bag.
+ * Allowing those keys through the escape hatch would break streaming/cancellation.
+ * All other keys are passed through unchanged.
+ */
+function stripTransportKeys(
+  options: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (options == null) {
+    return options
+  }
+  // These keys belong to the transport/stream machinery; allowing the raw
+  // providerOptions escape hatch to override them would break streaming/cancellation.
+  const { signal: _signal, stream: _stream, ...rest } = options
+  return rest
+}
+
+/**
  * Merge per-request sampling params over provider config defaults.
  * Precedence: config default -> typed per-request param. The raw `providerOptions`
- * bag is returned untouched; each provider spreads it LAST into its request body,
- * so it wins over the typed fields at the backend level.
+ * bag has transport-reserved keys (`signal`, `stream`) stripped before being returned;
+ * each provider spreads it LAST into its request body, so it wins over the typed fields
+ * at the backend level.
  */
 export function resolveSamplingParams(
   params: SamplingParams = {},
@@ -253,7 +273,7 @@ export function resolveSamplingParams(
     temperature: params.temperature ?? defaults.temperature,
     maxTokens: params.maxTokens ?? defaults.maxTokens,
     topP: params.topP ?? defaults.topP,
-    providerOptions: params.providerOptions,
+    providerOptions: stripTransportKeys(params.providerOptions),
   }
 }
 

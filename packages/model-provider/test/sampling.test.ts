@@ -30,4 +30,23 @@ describe('resolveSamplingParams', () => {
     })
     expect(result.providerOptions).toEqual({ seed: 42, temperature: 1 })
   })
+
+  test('strips signal and stream from providerOptions, leaves other keys intact', () => {
+    const result = resolveSamplingParams({
+      providerOptions: { signal: new AbortController().signal, stream: false, seed: 7 },
+    })
+    expect(result.providerOptions).toEqual({ seed: 7 })
+  })
+
+  test('providerOptions bag with no transport keys is returned unchanged', () => {
+    const result = resolveSamplingParams({
+      providerOptions: { top_k: 5 },
+    })
+    expect(result.providerOptions).toEqual({ top_k: 5 })
+  })
+
+  test('undefined providerOptions returns undefined', () => {
+    const result = resolveSamplingParams({ temperature: 0.5 })
+    expect(result.providerOptions).toBeUndefined()
+  })
 })
