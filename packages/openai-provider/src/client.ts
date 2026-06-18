@@ -17,6 +17,20 @@ import type {
   Tool,
 } from './types.js'
 
+export function parseEventData(data: string): unknown | undefined {
+  const trimmed = data.trim()
+  // End-of-run sentinel and keep-alive / empty lines carry no payload.
+  if (trimmed === '' || trimmed.startsWith('[DONE]')) {
+    return undefined
+  }
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    // Non-JSON SSE data (keep-alive comments, gateway noise) must not kill the stream.
+    return undefined
+  }
+}
+
 function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStream<T>> {
   return response.then((res) => {
     if (res.body == null) {
@@ -28,9 +42,9 @@ function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStre
       .pipeThrough(
         new TransformStream<EventSourceMessage, T>({
           transform(message, controller) {
-            // Check for end of run - https://platform.openai.com/docs/api-reference/runs/createRun#runs-createrun-stream
-            if (!message.data.startsWith('[DONE]')) {
-              controller.enqueue(JSON.parse(message.data.trim()))
+            const parsed = parseEventData(message.data)
+            if (parsed !== undefined) {
+              controller.enqueue(parsed as T)
             }
           },
         }),
