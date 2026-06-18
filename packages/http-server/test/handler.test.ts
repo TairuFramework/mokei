@@ -678,6 +678,8 @@ describe('createHTTPHandler', () => {
       const resultEvent = postEvents.find((e) => e.data !== '')
       expect(resultEvent).toBeDefined()
       const resultData = resultEvent?.data ?? ''
+      const resultEventID = resultEvent?.id ?? ''
+      expect(resultEventID).toMatch(/^post-/)
 
       // Open GET with Last-Event-ID set to the POST priming event id.
       // After implementing, session.replayLog has [primingEvent, resultEvent] so
@@ -728,6 +730,9 @@ describe('createHTTPHandler', () => {
       // The GET stream must contain an event whose data matches the POST-stream result
       const replayed = getEvents.find((e) => e.data === resultData)
       expect(replayed).toBeDefined()
+      // Replayed events preserve their original POST-stream id (not re-issued under
+      // the GET stream), so the client's resumption cursor stays consistent.
+      expect(replayed?.id).toBe(resultEventID)
     } finally {
       handler.dispose()
     }

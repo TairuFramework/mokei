@@ -46,13 +46,14 @@ export class SSEWriter {
       this.#buffer[this.#bufferStart] = event
       this.#bufferStart = (this.#bufferStart + 1) % this.#bufferSize
     }
-    this.#onEvent?.(event)
   }
 
   async writePrimingEvent(): Promise<void> {
     if (this.#closed) return
     const id = this.#nextID()
     const event: SSEEvent = { id, data: '' }
+    // Priming events carry no payload and are not recorded in the session
+    // replay index (no #onEvent) — they exist only to open the stream.
     this.#pushToBuffer(event)
     await this.#writer.write(`id: ${id}\ndata: \n\n`)
   }
@@ -62,7 +63,18 @@ export class SSEWriter {
     const id = this.#nextID()
     const event: SSEEvent = { id, data: params.data }
     this.#pushToBuffer(event)
+    this.#onEvent?.(event)
     await this.#writer.write(`id: ${id}\ndata: ${params.data}\n\n`)
+  }
+
+  /**
+   * Replay a previously-recorded event onto this stream, preserving its
+   * original id. Does not buffer it or record it in the session replay
+   * index — the event already lives there under its original id.
+   */
+  async writeRawEvent(event: SSEEvent): Promise<void> {
+    if (this.#closed) return
+    await this.#writer.write(`id: ${event.id}\ndata: ${event.data}\n\n`)
   }
 
   async writeRetry(ms: number): Promise<void> {

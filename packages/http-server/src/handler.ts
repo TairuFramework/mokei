@@ -399,9 +399,10 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     // Send priming event
     await sseWriter.writePrimingEvent()
 
-    // Replay buffered events from the previous stream
+    // Replay buffered events from across the session's streams, preserving
+    // their original ids so the client's resumption cursor stays consistent.
     for (const event of replayEvents) {
-      await sseWriter.writeEvent({ data: event.data })
+      await sseWriter.writeRawEvent(event)
     }
 
     return new Response(readable, {
