@@ -64,3 +64,28 @@ All 6 audit items landed (7 commits, `d0df124`..`698578c`):
 Plan: `docs/superpowers/plans/2026-06-18-provider-robustness.md`. Whole-branch review (opus): ready to merge, no Critical/Important.
 
 **Follow-up filed:** `backlog/2026-06-18-anthropic-test-known-models.md` (pre-existing red test, not from this branch).
+
+### Hardening (post-review)
+
+`6c0fe18` — `resolveSamplingParams` strips transport-reserved keys (`signal`, `stream`)
+from the `providerOptions` bag centrally, so the raw escape hatch cannot disable
+streaming or cancellation (notably llama's `promptOptions.signal`). Sampling/tuning keys
+still pass through.
+
+### Key design decisions (preserved from spec)
+
+- **One precedence helper.** `resolveSamplingParams` in `@mokei/model-provider` owns the
+  precedence (config default → typed per-request → `providerOptions` last). Providers
+  implement only the backend name table (`max_tokens`/`num_predict`/`maxTokens`,
+  `top_p`/`topP`), so they cannot diverge on precedence.
+- **Client owns the `providerOptions` spread.** Providers forward the bag as a field; each
+  client spreads it last into the actual request body (the wire), keeping the merge at the
+  layer that builds the request. Transport-reserved keys (`signal`/`stream`) are stripped
+  upstream in the helper.
+- **Errors never kill a turn.** Unparseable SSE / malformed streamed tool JSON are skipped
+  or surfaced as tool-level results, never thrown into the stream.
+- **30s default timeout across all four providers** (anthropic 60s → 30s, BREAKING).
+
+**Status:** complete — all 7 tasks implemented, per-task reviewed, two whole-branch opus
+reviews (ready to merge), gates green (build 18/18, lint 279, all new tests pass). Only
+remaining red is the pre-existing anthropic `KNOWN_MODELS` suite (filed as follow-up).
