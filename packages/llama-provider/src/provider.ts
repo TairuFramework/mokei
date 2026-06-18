@@ -16,6 +16,7 @@ import type {
   StreamChatParams,
   StreamChatRequest,
 } from '@mokei/model-provider'
+import { resolveSamplingParams } from '@mokei/model-provider'
 import type {
   ChatHistoryItem,
   ChatSessionModelFunctions,
@@ -317,6 +318,13 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
           streamController.enqueue({ type: 'text-delta', text: chunk, raw })
         }
 
+      const sampling = resolveSamplingParams(params)
+      const samplingOptions: Record<string, unknown> = {}
+      if (sampling.temperature !== undefined) samplingOptions.temperature = sampling.temperature
+      if (sampling.topP !== undefined) samplingOptions.topP = sampling.topP
+      if (sampling.maxTokens !== undefined) samplingOptions.maxTokens = sampling.maxTokens
+      Object.assign(samplingOptions, sampling.providerOptions)
+
       const promptOptions = params.output
         ? {
             signal,
@@ -324,11 +332,13 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
               params.output.schema as Parameters<Llama['createGrammarForJsonSchema']>[0],
             ),
             onTextChunk: undefined as ((chunk: string) => void) | undefined,
+            ...samplingOptions,
           }
         : {
             signal,
             functions: this.#buildFunctions(params.tools),
             onTextChunk: undefined as ((chunk: string) => void) | undefined,
+            ...samplingOptions,
           }
 
       return new ReadableStream<MessagePart<ChatResponseChunk, ToolCall>>({

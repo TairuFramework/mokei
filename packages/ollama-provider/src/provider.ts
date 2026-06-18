@@ -9,6 +9,7 @@ import type {
   ServerMessage,
   StreamChatParams,
 } from '@mokei/model-provider'
+import { resolveSamplingParams } from '@mokei/model-provider'
 
 import type { ChatResponse, ListModelParams, OllamaClientParams } from './client.js'
 import { OllamaClient } from './client.js'
@@ -53,6 +54,13 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
   }
 
   streamChat(params: StreamChatParams<Message, ToolCall, Tool>) {
+    const sampling = resolveSamplingParams(params)
+    const options: Record<string, unknown> = {}
+    if (sampling.temperature !== undefined) options.temperature = sampling.temperature
+    if (sampling.maxTokens !== undefined) options.num_predict = sampling.maxTokens
+    if (sampling.topP !== undefined) options.top_p = sampling.topP
+    Object.assign(options, sampling.providerOptions)
+
     const request = this.#client.chat({
       messages: params.messages.map((msg) => {
         switch (msg.source) {
@@ -74,6 +82,7 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
       signal: params.signal,
       stream: true,
       tools: params.tools,
+      options: Object.keys(options).length > 0 ? options : undefined,
       // Use format parameter for structured output (Ollama accepts JSON schema directly)
       format: params.output ? (params.output.schema as Record<string, unknown>) : undefined,
     })

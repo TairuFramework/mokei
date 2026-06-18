@@ -19,6 +19,11 @@ export const configurationSchema = {
       type: 'string',
       description: 'Anthropic API version header',
     },
+    maxTokens: {
+      type: 'integer',
+      minimum: 1,
+      description: 'Default max tokens for requests',
+    },
   },
   required: [],
   additionalProperties: false,

@@ -87,6 +87,7 @@ export type ChatParams = RequestParams & {
   presence_penalty?: number
   frequency_penalty?: number
   response_format?: ResponseFormat
+  providerOptions?: Record<string, unknown>
 }
 
 export type OpenAIClientParams = OpenAIConfiguration
@@ -145,6 +146,7 @@ export class OpenAIClient {
           presence_penalty: params.presence_penalty,
           frequency_penalty: params.frequency_penalty,
           response_format: params.response_format,
+          ...params.providerOptions,
         },
         signal: params.signal
           ? AbortSignal.any([params.signal, controller.signal])

@@ -60,6 +60,7 @@ export type MessagesParams = RequestParams & {
   metadata?: {
     user_id?: string
   }
+  providerOptions?: Record<string, unknown>
 }
 
 export type AnthropicClientParams = AnthropicConfiguration
@@ -99,13 +100,14 @@ export class AnthropicClient {
   messages(params: MessagesParams & { stream: true }): StreamReplyRequest<StreamEvent>
   messages(params: MessagesParams): StreamReplyRequest<StreamEvent> {
     const controller = new AbortController()
-    const { signal, system, ...restParams } = params
+    const { signal, system, providerOptions, ...restParams } = params
 
     const request = this.#api.post<StreamEvent>('messages', {
       json: {
         ...restParams,
         stream: true,
         system: system ? [{ type: 'text', text: system }] : undefined,
+        ...providerOptions,
       },
       signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
     })
