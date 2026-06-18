@@ -194,12 +194,12 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
     // Track state for assembling tool calls
     let currentToolUse: ToolUseBlock | null = null
     let currentToolJson = ''
+    let inputTokens = 0
 
     const response = request.then((stream: ReadableStream<StreamEvent>) => {
       return stream.pipeThrough(
         new TransformStream<StreamEvent, MessagePart<StreamEvent, ToolCall>>({
           transform(event, controller) {
-            let inputTokens = 0
             switch (event.type) {
               case 'message_start':
                 // Capture input tokens from message start
@@ -233,6 +233,16 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
 
               case 'content_block_stop':
                 if (currentToolUse != null) {
+                  let parsedInput: Record<string, unknown> = {}
+                  if (currentToolJson) {
+                    try {
+                      parsedInput = JSON.parse(currentToolJson) as Record<string, unknown>
+                    } catch {
+                      // Malformed streamed tool JSON: surface the call with the raw
+                      // arguments string and empty parsed input rather than killing the turn.
+                      parsedInput = {}
+                    }
+                  }
                   // Emit complete tool call
                   controller.enqueue({
                     type: 'tool-call',
@@ -244,7 +254,7 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
                         raw: {
                           id: currentToolUse.id,
                           name: currentToolUse.name,
-                          input: currentToolJson ? JSON.parse(currentToolJson) : {},
+                          input: parsedInput,
                         },
                       },
                     ],
