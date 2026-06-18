@@ -2,6 +2,7 @@ import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { SessionExpiredError } from '../src/index.js'
 import { HTTPTransport } from '../src/transport.js'
 
 // --- Test helpers ---
@@ -156,6 +157,43 @@ describe('HTTPTransport', () => {
     })
   })
 
+  describe('negotiated MCP-Protocol-Version header', () => {
+    test('after initialize, requests send the negotiated MCP-Protocol-Version', async () => {
+      // Use an older protocol version to prove the value comes from the initialize response,
+      // not from LATEST_PROTOCOL_VERSION (which is '2025-11-25').
+      const negotiatedVersion = '2024-11-05'
+      const negotiatedInitResult: ServerMessage = {
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          protocolVersion: negotiatedVersion,
+          capabilities: {},
+          serverInfo: { name: 'test-server', version: '1.0' },
+        },
+      } as ServerMessage
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(negotiatedInitResult, { 'Mcp-Session-Id': 'session-neg' }),
+      )
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+
+      // The initialize POST must still use LATEST_PROTOCOL_VERSION (negotiation hasn't happened yet)
+      await transport.write(initializeRequest)
+      await transport.read()
+      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe(
+        LATEST_PROTOCOL_VERSION,
+      )
+
+      // A subsequent request must use the negotiated version captured from the initialize response
+      await transport.write(pingRequest)
+      expect(fetchMock.mock.calls[1][1].headers['MCP-Protocol-Version']).toBe(negotiatedVersion)
+
+      await transport.dispose()
+    })
+  })
+
   describe('JSON response handling', () => {
     test('enqueues parsed JSON response to readable stream', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
@@ -212,6 +250,26 @@ describe('HTTPTransport', () => {
 
       const transport = new HTTPTransport({ url: TEST_URL })
       await expect(transport.write(initializeRequest)).rejects.toThrow('HTTP 404')
+
+      await transport.dispose()
+    })
+
+    test('404 with an active session clears it and throws SessionExpiredError', async () => {
+      // Arrange: initialize so #sessionID is set
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(initializeResult, { 'Mcp-Session-Id': 'session-expired' }),
+      )
+      // Next POST returns 404 (session gone on server)
+      fetchMock.mockResolvedValueOnce(errorResponse(404, 'Session not found'))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+      expect(transport.sessionID).toBe('session-expired')
+
+      // Act + Assert: the post-init request rejects with SessionExpiredError
+      await expect(transport.write(pingRequest)).rejects.toBeInstanceOf(SessionExpiredError)
+      // And: transport.sessionID is now null
+      expect(transport.sessionID).toBeNull()
 
       await transport.dispose()
     })

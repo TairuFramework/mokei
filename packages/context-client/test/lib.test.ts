@@ -14,12 +14,16 @@ import type {
   ServerMessage,
   ServerRequest,
 } from '@mokei/context-protocol'
-import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
-import type { SentRequest as Request } from '@mokei/context-rpc'
+import { LATEST_PROTOCOL_VERSION, METHOD_NOT_FOUND } from '@mokei/context-protocol'
 import { describe, expect, test, vi } from 'vitest'
 
 import { DEFAULT_INITIALIZE_PARAMS } from '../src/client.js'
-import { type ClientParams, ContextClient } from '../src/index.js'
+import {
+  CapabilityNotDeclaredError,
+  type ClientParams,
+  ContextClient,
+  UnsupportedProtocolVersionError,
+} from '../src/index.js'
 
 const DEFAULT_INITIALIZE_RESULT: InitializeResult = {
   capabilities: {},
@@ -44,19 +48,20 @@ async function handleServerInitialize(
   return request.value
 }
 
-type RunClientRequest<T> = (client: ContextClient) => Request<T>
+type RunClientRequest<T> = (client: ContextClient) => Promise<T>
 
 async function executeClientRequest<T>(
   runRequest: RunClientRequest<T>,
   expectedRequest: Omit<ClientRequest, 'jsonrpc' | 'id'>,
   result: unknown,
   expectedInitializeParams?: InitializeRequest['params'],
+  initializeResult?: InitializeResult,
 ): Promise<T> {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const client = new ContextClient({ transport: transports.client })
 
   client.initialize()
-  const initRequest = await handleServerInitialize(transports.server)
+  const initRequest = await handleServerInitialize(transports.server, initializeResult)
   if (expectedInitializeParams != null) {
     expect(initRequest.params).toEqual(expectedInitializeParams)
   }
@@ -224,6 +229,8 @@ describe('ContextClient', () => {
       (client) => client.complete(params),
       { method: 'completion/complete', params },
       { completion },
+      undefined,
+      { ...DEFAULT_INITIALIZE_RESULT, capabilities: { completions: {} } },
     )
     await expect(request).resolves.toEqual({ completion })
   })
@@ -309,6 +316,8 @@ describe('ContextClient', () => {
         (client) => client.listTools(),
         { method: 'tools/list', params: {} },
         { tools },
+        undefined,
+        { ...DEFAULT_INITIALIZE_RESULT, capabilities: { tools: {} } },
       )
       await expect(request).resolves.toEqual({ tools })
     })
@@ -414,5 +423,126 @@ describe('initialize hardening', () => {
     const closed = client.events.once('closed')
     await transports.dispose()
     await expect(closed).resolves.toEqual({ error: undefined })
+  })
+})
+
+describe('capability gating', () => {
+  test('listTools throws CapabilityNotDeclaredError when server declared no tools capability', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+
+    void handleServerInitialize(transports.server) // capabilities: {} by default
+    await client.initialize()
+
+    await expect(client.listTools()).rejects.toThrow(CapabilityNotDeclaredError)
+
+    await transports.dispose()
+  })
+
+  test('listTools succeeds when server declared tools capability', async () => {
+    const initResult: InitializeResult = {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { tools: {} },
+    }
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+
+    void handleServerInitialize(transports.server, initResult)
+    await client.initialize()
+
+    const request = client.listTools()
+    const incoming = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (incoming.value as { id: number }).id,
+      result: { tools: [] },
+    } as ServerMessage)
+
+    await expect(request).resolves.toEqual({ tools: [] })
+    await transports.dispose()
+  })
+
+  test('roots/list returns METHOD_NOT_FOUND when client has no listRoots', async () => {
+    await expectClientResponse(
+      {},
+      { method: 'roots/list' },
+      { error: { code: METHOD_NOT_FOUND, message: 'roots capability not supported' } },
+    )
+  })
+
+  test('listTools resolves via lazy init when server declares tools capability (no explicit initialize)', async () => {
+    const initResult: InitializeResult = {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { tools: {} },
+    }
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+
+    // Drive the server side: handle init then answer tools/list — no client.initialize() call
+    const serverTask = (async () => {
+      await handleServerInitialize(transports.server, initResult)
+      const incoming = await transports.server.read()
+      transports.server.write({
+        jsonrpc: '2.0',
+        id: (incoming.value as { id: number }).id,
+        result: { tools: [] },
+      } as ServerMessage)
+    })()
+
+    await expect(client.listTools()).resolves.toEqual({ tools: [] })
+    await serverTask
+    await transports.dispose()
+  })
+
+  test('listTools rejects with CapabilityNotDeclaredError via lazy init when server declares no tools capability (no explicit initialize)', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+
+    // Server declares no tools capability (default) — no client.initialize() call
+    void handleServerInitialize(transports.server)
+
+    await expect(client.listTools()).rejects.toThrow(CapabilityNotDeclaredError)
+
+    await transports.dispose()
+  })
+})
+
+describe('protocolVersion negotiation', () => {
+  test('rejects an unsupported server protocolVersion and disposes', async () => {
+    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const client = new ContextClient({
+      transport: transports.client as ClientParams['transport'],
+    })
+    void (async () => {
+      const req = await transports.server.read()
+      const id = (req.value as { id: number }).id
+      await transports.server.write({
+        jsonrpc: '2.0',
+        id,
+        result: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          serverInfo: { name: 's', version: '1' },
+        },
+      } as ServerMessage)
+    })()
+    await expect(client.initialize()).rejects.toBeInstanceOf(UnsupportedProtocolVersionError)
+  })
+
+  test('accepts 2025-11-25', async () => {
+    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const client = new ContextClient({
+      transport: transports.client as ClientParams['transport'],
+    })
+    void (async () => {
+      await handleServerInitialize(transports.server, {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        serverInfo: { name: 's', version: '1' },
+      })
+    })()
+    const result = await client.initialize()
+    expect(result.protocolVersion).toBe('2025-11-25')
+    await transports.dispose()
   })
 })

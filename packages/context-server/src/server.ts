@@ -6,6 +6,7 @@ import type {
   ClientMessage,
   ClientNotification,
   ClientRequest,
+  CommonNotifications,
   CreateMessageRequest,
   CreateMessageResult,
   ElicitRequest,
@@ -96,7 +97,7 @@ type ServerTypes = {
   MessageOut: ServerMessage
   HandleNotification: HandleNotification
   HandleRequest: ClientRequest
-  SendNotifications: ServerNotifications
+  SendNotifications: ServerNotifications & Pick<CommonNotifications, 'progress'>
   SendRequests: ServerRequests
   SendResult: ServerResult
 }
@@ -128,6 +129,13 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this.#completeHandler = params.complete
     this.#serverInfo = { name: params.name, version: params.version }
 
+    // Logging is always supported (the server can emit notifications/message).
+    this.#capabilities.logging = {}
+    // Completions only when a handler serves completion/complete.
+    if (params.complete != null) {
+      this.#capabilities.completions = {}
+    }
+
     for (const [name, prompt] of Object.entries(params.prompts ?? {})) {
       const { handler, ...info } = prompt
       this.#promptHandlers[name] = handler
@@ -135,11 +143,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     this.#promptsList.sort((a, b) => a.name.localeCompare(b.name))
     if (this.#promptsList.length !== 0) {
-      this.#capabilities.prompts = {}
+      this.#capabilities.prompts = { listChanged: true }
     }
 
     if (params.resources != null) {
-      this.#capabilities.resources = {}
+      this.#capabilities.resources = { listChanged: true }
       this.#resources = toResourceHandlers(params.resources)
     }
 
@@ -150,7 +158,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     this.#toolsList.sort((a, b) => a.name.localeCompare(b.name))
     if (this.#toolsList.length !== 0) {
-      this.#capabilities.tools = {}
+      this.#capabilities.tools = { listChanged: true }
     }
 
     this._handle()
@@ -249,13 +257,33 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   async #callTool(request: CallToolRequest, signal: AbortSignal): Promise<CallToolResult> {
     const handler = this.#toolHandlers[request.params.name]
     if (handler == null) {
+      // "Errors in finding the tool" are MCP protocol errors, per the spec.
       throw new RPCError(INVALID_PARAMS, `Tool ${request.params.name} not found`)
     }
-    return await handler({
-      arguments: request.params.arguments ?? {},
-      client: this.#client,
-      signal,
-    })
+    const progressToken = request.params._meta?.progressToken
+    const progress =
+      progressToken == null
+        ? undefined
+        : (params: { progress: number; total?: number; message?: string }) => {
+            void this.notify('progress', { ...params, progressToken }).catch(() => {})
+          }
+    try {
+      return await handler({
+        arguments: request.params.arguments ?? {},
+        client: this.#client,
+        progress,
+        signal,
+      })
+    } catch (cause) {
+      // Tool-execution and input-validation failures (SEP-1303) are reported
+      // inside the result so the model can see and self-correct, not as
+      // protocol errors. Re-throw genuine cancellation.
+      if (signal.aborted) {
+        throw cause
+      }
+      const message = cause instanceof Error ? cause.message : String(cause)
+      return { content: [{ type: 'text', text: message }], isError: true }
+    }
   }
 
   async #getPrompt(request: GetPromptRequest, signal: AbortSignal): Promise<GetPromptResult> {

@@ -1,6 +1,6 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
-import { request, result } from './rpc.js'
+import { notification, request, result } from './rpc.js'
 import { primitiveSchemaDefinition } from './schema.js'
 
 // Form-based elicitation (original mode)
@@ -106,7 +106,12 @@ export const elicitResult = {
         },
         content: {
           additionalProperties: {
-            anyOf: [{ type: 'string' }, { type: 'integer' }, { type: 'boolean' }],
+            anyOf: [
+              { type: 'string' },
+              { type: 'number' },
+              { type: 'boolean' },
+              { items: { type: 'string' }, type: 'array' },
+            ],
           },
           description:
             'The submitted form data, only present when action is "accept".\nContains values matching the requested schema.',
@@ -119,3 +124,32 @@ export const elicitResult = {
   ],
 } as const satisfies Schema
 export type ElicitResult = FromSchema<typeof elicitResult>
+
+export const elicitationCompleteNotification = {
+  description:
+    'Sent by the server to indicate a URL-based elicitation is complete and the client may stop showing the prompt.',
+  allOf: [
+    notification,
+    {
+      properties: {
+        method: {
+          const: 'notifications/elicitation/complete',
+          type: 'string',
+        },
+        params: {
+          properties: {
+            elicitationId: {
+              description: 'The identifier of the elicitation that completed.',
+              type: 'string',
+            },
+          },
+          required: ['elicitationId'],
+          type: 'object',
+        },
+      },
+      required: ['method', 'params'],
+      type: 'object',
+    },
+  ],
+} as const satisfies Schema
+export type ElicitationCompleteNotification = FromSchema<typeof elicitationCompleteNotification>

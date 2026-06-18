@@ -1,0 +1,62 @@
+{
+  "sep": "sampling-content-sep1577",
+  "cases": [
+    {
+      "name": "single text",
+      "message": { "role": "user", "content": { "type": "text", "text": "hi" } },
+      "valid": true
+    },
+    {
+      "name": "single audio",
+      "message": {
+        "role": "user",
+        "content": { "type": "audio", "data": "AA==", "mimeType": "audio/wav" }
+      },
+      "valid": true
+    },
+    {
+      "name": "array of blocks",
+      "message": {
+        "role": "user",
+        "content": [
+          { "type": "text", "text": "a" },
+          { "type": "image", "data": "AA==", "mimeType": "image/png" }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "missing role",
+      "message": { "content": { "type": "text", "text": "hi" } },
+      "valid": false
+    },
+    {
+      "name": "tool_use block",
+      "message": {
+        "role": "assistant",
+        "content": { "type": "tool_use", "id": "t1", "name": "search", "input": {} }
+      },
+      "valid": true
+    },
+    {
+      "name": "tool_result block",
+      "message": {
+        "role": "user",
+        "content": {
+          "type": "tool_result",
+          "toolUseId": "t1",
+          "content": [{ "type": "text", "text": "ok" }]
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "tool_use missing input",
+      "message": {
+        "role": "assistant",
+        "content": { "type": "tool_use", "id": "t1", "name": "x" }
+      },
+      "valid": false
+    }
+  ]
+}

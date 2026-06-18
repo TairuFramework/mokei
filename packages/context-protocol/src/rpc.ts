@@ -8,6 +8,16 @@ export const INVALID_REQUEST = -32600
 export const METHOD_NOT_FOUND = -32601
 export const INVALID_PARAMS = -32602
 export const INTERNAL_ERROR = -32603
+export const RESOURCE_NOT_FOUND = -32002
+export const URL_ELICITATION_REQUIRED = -32042
+
+// Protocol revisions mokei accepts when negotiating. Strict: the single
+// targeted revision. Widening this is the only change needed to support more.
+export const SUPPORTED_PROTOCOL_VERSIONS = [LATEST_PROTOCOL_VERSION] as const
+
+export function isSupportedProtocolVersion(version: string): boolean {
+  return (SUPPORTED_PROTOCOL_VERSIONS as ReadonlyArray<string>).includes(version)
+}
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1465
 export const requestId = {

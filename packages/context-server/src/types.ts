@@ -40,8 +40,15 @@ export type ServerClient = {
   log: LogFunction
 }
 
+export type ProgressEmitter = (params: {
+  progress: number
+  total?: number
+  message?: string
+}) => void
+
 export type HandlerRequest<C extends Record<string, unknown> = Record<string, never>> = C & {
   client: ServerClient
+  progress?: ProgressEmitter
   signal: AbortSignal
 }
 

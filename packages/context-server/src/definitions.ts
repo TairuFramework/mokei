@@ -57,7 +57,12 @@ export function createTool<InputSchema extends Schema, Input = FromSchema<InputS
   ): ToolHandlerReturn => {
     const validated = validate(request.arguments)
     if (validated.issues == null) {
-      return handler({ arguments: validated.value, client: request.client, signal: request.signal })
+      return handler({
+        arguments: validated.value,
+        client: request.client,
+        progress: request.progress,
+        signal: request.signal,
+      })
     }
     throw new RPCError(INVALID_PARAMS, 'Invalid tool input', {
       issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),

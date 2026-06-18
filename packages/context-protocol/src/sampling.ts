@@ -1,6 +1,6 @@
 import type { FromSchema, Schema } from '@enkaku/schema'
 
-import { audioContent, imageContent, role, textContent } from './content.js'
+import { audioContent, contentBlock, imageContent, role, textContent } from './content.js'
 import { request, result } from './rpc.js'
 import { tool } from './tool.js'
 
@@ -54,12 +54,42 @@ export const modelPreferences = {
   type: 'object',
 } as const satisfies Schema
 
+// SEP-1577 sampling tool-call content blocks.
+export const toolUseContent = {
+  description: 'A request from the assistant to call a tool.',
+  properties: {
+    id: { type: 'string' },
+    input: { additionalProperties: {}, type: 'object' },
+    name: { type: 'string' },
+    type: { const: 'tool_use', type: 'string' },
+  },
+  required: ['id', 'input', 'name', 'type'],
+  type: 'object',
+} as const satisfies Schema
+
+export const toolResultContent = {
+  description: 'The result of a tool use, provided by the user back to the assistant.',
+  properties: {
+    content: { items: contentBlock, type: 'array' },
+    isError: { type: 'boolean' },
+    structuredContent: { additionalProperties: {}, type: 'object' },
+    toolUseId: { type: 'string' },
+    type: { const: 'tool_result', type: 'string' },
+  },
+  required: ['content', 'toolUseId', 'type'],
+  type: 'object',
+} as const satisfies Schema
+
+const samplingContentBlock = {
+  anyOf: [textContent, imageContent, audioContent, toolUseContent, toolResultContent],
+} as const satisfies Schema
+
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1711
 export const samplingMessage = {
   description: 'Describes a message issued to or received from an LLM API.',
   properties: {
     content: {
-      anyOf: [textContent, imageContent],
+      anyOf: [samplingContentBlock, { items: samplingContentBlock, type: 'array' }],
     },
     role,
   },
@@ -67,49 +97,19 @@ export const samplingMessage = {
   type: 'object',
 } as const satisfies Schema
 
-// Tool choice configuration for sampling
+// Tool choice configuration for sampling (SEP-1577).
 export const toolChoice = {
   description:
-    'Controls how the model should use the provided tools. Can be "auto" (model decides), "required" (must use a tool), or specify a particular tool.',
-  anyOf: [
-    {
-      properties: {
-        type: {
-          const: 'auto',
-          description: 'The model decides whether to call tools.',
-          type: 'string',
-        },
-      },
-      required: ['type'],
-      type: 'object',
+    'Controls how the model should use the provided tools. "auto" (model decides), "required" (must call a tool), or "none" (must not call a tool).',
+  properties: {
+    mode: {
+      description: 'How the model should use tools.',
+      enum: ['auto', 'required', 'none'],
+      type: 'string',
     },
-    {
-      properties: {
-        type: {
-          const: 'required',
-          description: 'The model must call at least one tool.',
-          type: 'string',
-        },
-      },
-      required: ['type'],
-      type: 'object',
-    },
-    {
-      properties: {
-        toolName: {
-          description: 'The name of the specific tool to use.',
-          type: 'string',
-        },
-        type: {
-          const: 'tool',
-          description: 'The model must call the specified tool.',
-          type: 'string',
-        },
-      },
-      required: ['toolName', 'type'],
-      type: 'object',
-    },
-  ],
+  },
+  required: ['mode'],
+  type: 'object',
 } as const satisfies Schema
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L332

@@ -45,8 +45,9 @@ bridges on session expiry and buffers unbounded request bodies.
 ## Notes
 
 - Spec-conformance items in the same files (negotiated-version header, 404 re-init,
-  Origin default, SEP-1699 replay) live in
-  `2026-06-12-mcp-2025-11-25-conformance.md` — coordinate if doing both at once.
+  Origin default, SEP-1699 replay) already shipped — see
+  `completed/2026-06-18-mcp-2025-11-25-conformance.complete.md`. Build the retry
+  policy on top of the typed `SessionExpiredError` signal that work introduced.
 - Verified solid: initialize waiter (30s timeout + cleanup), SSE ring buffer bounds,
   `unref`'d session-manager interval, write-after-close guards, x-mcp-header
   CRLF-safety.

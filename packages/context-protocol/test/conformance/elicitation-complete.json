@@ -1,0 +1,19 @@
+{
+  "sep": "elicitation-complete",
+  "cases": [
+    {
+      "name": "valid complete",
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "notifications/elicitation/complete",
+        "params": { "elicitationId": "e1" }
+      },
+      "valid": true
+    },
+    {
+      "name": "missing elicitationId",
+      "message": { "jsonrpc": "2.0", "method": "notifications/elicitation/complete", "params": {} },
+      "valid": false
+    }
+  ]
+}

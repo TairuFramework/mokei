@@ -100,7 +100,7 @@ describe('ContextServer', () => {
         jsonrpc: '2.0',
         id: 1,
         result: {
-          capabilities: {},
+          capabilities: { logging: {} },
           protocolVersion: LATEST_PROTOCOL_VERSION,
           serverInfo: { name: 'test', version: '0.0.0' },
         },
@@ -563,6 +563,174 @@ describe('ContextServer', () => {
     })
   })
 
+  test('declares logging always and completions when complete handler set', async () => {
+    const initParams = {
+      capabilities: {},
+      clientInfo: { name: 'test-client', version: '0.0.0' },
+      protocolVersion: LATEST_PROTOCOL_VERSION,
+    }
+
+    // Server WITH a complete handler — logging and completions must both appear
+    const { transports: t1 } = createTestContext({
+      complete: async () => ({ completion: { values: [] } }),
+    })
+    t1.client.write({
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'initialize',
+      params: initParams,
+    } as ClientRequest)
+    const res1 = await t1.client.read()
+    const caps1 = (res1.value as { result: { capabilities: Record<string, unknown> } }).result
+      .capabilities
+    expect(caps1.logging).toEqual({})
+    expect(caps1.completions).toEqual({})
+    await t1.dispose()
+
+    // Server WITHOUT a complete handler — logging present, completions absent
+    const { transports: t2 } = createTestContext({})
+    t2.client.write({
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'initialize',
+      params: initParams,
+    } as ClientRequest)
+    const res2 = await t2.client.read()
+    const caps2 = (res2.value as { result: { capabilities: Record<string, unknown> } }).result
+      .capabilities
+    expect(caps2.logging).toEqual({})
+    expect(caps2.completions).toBeUndefined()
+    await t2.dispose()
+  })
+
+  test('declares listChanged:true for tools/prompts/resources it serves', async () => {
+    const { transports } = createTestContext({
+      tools: { a: createTool('a', { type: 'object' }, async () => ({ content: [] })) },
+      prompts: {
+        p: {
+          description: 'prompt p',
+          handler: () => ({
+            messages: [
+              { role: 'assistant' as const, content: { type: 'text' as const, text: 'p' } },
+            ],
+          }),
+        },
+      },
+      resources: { list: [], read: () => ({ contents: [] }) },
+    })
+    transports.client.write({
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'initialize',
+      params: {
+        capabilities: {},
+        clientInfo: { name: 'test-client', version: '0.0.0' },
+        protocolVersion: LATEST_PROTOCOL_VERSION,
+      },
+    } as ClientRequest)
+    const res = await transports.client.read()
+    const caps = (res.value as { result: { capabilities: Record<string, unknown> } }).result
+      .capabilities
+    expect(caps.tools).toEqual({ listChanged: true })
+    expect(caps.prompts).toEqual({ listChanged: true })
+    expect(caps.resources).toMatchObject({ listChanged: true })
+    await transports.dispose()
+  })
+
+  describe('Progress emitter', () => {
+    test('handler can emit progress when a progressToken is provided', async () => {
+      const { transports } = createTestContext({
+        tools: {
+          work: createTool('work', { type: 'object', properties: {} }, async ({ progress }) => {
+            progress?.({ progress: 0.5, total: 1 })
+            return { content: [{ type: 'text', text: 'done' }] }
+          }),
+        },
+      })
+
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'work', arguments: {}, _meta: { progressToken: 'p1' } },
+      } as ClientRequest)
+
+      // Progress notification arrives before the tools/call response
+      const notif = await transports.client.read()
+      expect(notif.value).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'notifications/progress',
+        params: expect.objectContaining({ progressToken: 'p1', progress: 0.5 }),
+      })
+
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({
+        id: 1,
+        result: { content: [{ type: 'text', text: 'done' }] },
+      })
+
+      await transports.dispose()
+    })
+  })
+
+  describe('isError results (SEP-1303)', () => {
+    test('tool handler exception becomes an isError result', async () => {
+      const { transports } = createTestContext({
+        tools: {
+          boom: createTool('boom', { type: 'object', properties: {} }, async () => {
+            throw new Error('kaboom')
+          }),
+        },
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'boom', arguments: {} },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({
+        id: 1,
+        result: { isError: true, content: [{ type: 'text' }] },
+      })
+      await transports.dispose()
+    })
+
+    test('input-validation error becomes an isError result', async () => {
+      const { transports } = createTestContext({
+        tools: {
+          strict: createTool(
+            'strict',
+            { type: 'object', properties: { n: { type: 'number' } }, required: ['n'] },
+            async () => ({ content: [] }),
+          ),
+        },
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'strict', arguments: {} },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({ id: 1, result: { isError: true } })
+      await transports.dispose()
+    })
+
+    test('unknown tool stays a JSON-RPC error', async () => {
+      const { transports } = createTestContext({ tools: {} })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'nope', arguments: {} },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({ id: 1, error: { code: INVALID_PARAMS } })
+      await transports.dispose()
+    })
+  })
+
   describe('JSON Schema 2020-12 tool input', () => {
     test('validates a tool whose inputSchema declares the 2020-12 dialect', async () => {
       await expectServerResult(
@@ -678,38 +846,35 @@ describe('ContextServer', () => {
     })
 
     test('validates tool call inputs', async () => {
-      await expectServerError(
-        {
-          tools: {
-            test: createTool(
-              'test',
-              {
-                type: 'object',
-                properties: { bar: { type: 'string' } },
-                additionalProperties: false,
-                required: ['bar'],
-              } as const,
-              (req) => {
-                return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
-              },
-            ),
-          },
+      // Input-validation errors are reported as isError results (SEP-1303), not JSON-RPC errors.
+      const { transports } = createTestContext({
+        tools: {
+          test: createTool(
+            'test',
+            {
+              type: 'object',
+              properties: { bar: { type: 'string' } },
+              additionalProperties: false,
+              required: ['bar'],
+            } as const,
+            (req) => {
+              return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
+            },
+          ),
         },
-        {
-          method: 'tools/call',
-          params: {
-            name: 'test',
-            arguments: {},
-          },
-        },
-        {
-          code: INVALID_PARAMS,
-          message: 'Invalid tool input',
-          data: {
-            issues: [{ message: "must have required property 'bar'", path: [] }],
-          },
-        },
-      )
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'test', arguments: {} },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({
+        id: 1,
+        result: { isError: true, content: [{ type: 'text' }] },
+      })
+      await transports.dispose()
     })
   })
 })

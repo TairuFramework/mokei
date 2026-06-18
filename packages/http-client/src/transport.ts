@@ -8,6 +8,7 @@ import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { parseServerSentEvents } from 'parse-sse'
 
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
+import { SessionExpiredError } from './errors.js'
 import { buildParamHeaders, collectHeaderAnnotations } from './x-mcp-header.js'
 
 /**
@@ -52,6 +53,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #pendingMethods = new Map<string | number, string>()
   /** Cached tool `inputSchema`s keyed by tool name, populated from `tools/list` results. */
   #toolSchemas = new Map<string, unknown>()
+  /** Protocol version to send in `MCP-Protocol-Version` header; updated after initialize. */
+  #protocolVersion: string = LATEST_PROTOCOL_VERSION
   #logger: Logger
 
   constructor(params: HTTPTransportParams) {
@@ -100,7 +103,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       ...this.#headers,
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
-      'MCP-Protocol-Version': LATEST_PROTOCOL_VERSION,
+      'MCP-Protocol-Version': this.#protocolVersion,
     }
 
     let requestID: string | number | null = null
@@ -156,6 +159,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         this.#sessionID = newSessionID
       }
 
+      if (response.status === 404 && this.#sessionID != null) {
+        // Spec MUST: a 404 on an active session means it is gone. Clear it and
+        // surface a typed signal so the client can re-initialize.
+        this.#sessionID = null
+        throw new SessionExpiredError()
+      }
+
       if (!response.ok) {
         const errorText = await response.text()
         throw new Error(`HTTP ${response.status}: ${errorText}`)
@@ -203,6 +213,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       return message
     }
     this.#pendingMethods.delete(id)
+    if (method === 'initialize') {
+      const version = (message as { result?: { protocolVersion?: unknown } }).result
+        ?.protocolVersion
+      if (typeof version === 'string') {
+        this.#protocolVersion = version
+      }
+      return message
+    }
     if (method !== 'tools/list') {
       return message
     }
@@ -279,7 +297,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     const headers: Record<string, string> = {
       ...this.#headers,
       Accept: 'text/event-stream',
-      'MCP-Protocol-Version': LATEST_PROTOCOL_VERSION,
+      'MCP-Protocol-Version': this.#protocolVersion,
     }
 
     if (this.#sessionID) {
@@ -333,7 +351,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           method: 'DELETE',
           headers: {
             ...this.#headers,
-            'MCP-Protocol-Version': LATEST_PROTOCOL_VERSION,
+            'MCP-Protocol-Version': this.#protocolVersion,
             'Mcp-Session-Id': this.#sessionID,
           },
         })

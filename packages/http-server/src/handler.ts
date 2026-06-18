@@ -1,12 +1,23 @@
 import { Transport } from '@enkaku/transport'
-import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
+import {
+  type ClientMessage,
+  isSupportedProtocolVersion,
+  type ServerMessage,
+} from '@mokei/context-protocol'
 import type { ContextServer, ServerTransport } from '@mokei/context-server'
 
-import { type Session, SessionManager } from './session.js'
-import { SSEWriter } from './sse-writer.js'
+import { appendReplay, eventsAfter, type Session, SessionManager } from './session.js'
+import { type SSEEvent, SSEWriter } from './sse-writer.js'
 
 export type HTTPHandlerParams = {
   createServer: (transport: ServerTransport) => ContextServer
+  /**
+   * Controls Origin header validation:
+   * - Unset (default): localhost-only. Requests without an Origin header (non-browser clients)
+   *   are allowed. Requests with a foreign Origin are rejected (DNS-rebinding protection).
+   * - `['*']`: Disable validation — all origins are accepted.
+   * - Any other array: Exact-match allowlist. A missing Origin header is rejected.
+   */
   allowedOrigins?: Array<string>
   sessionTimeoutMs?: number
   maxSessions?: number
@@ -109,16 +120,44 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     { requestID: string | number; resolve: (message: ServerMessage) => void }
   >()
 
+  const DEFAULT_LOCALHOST_ORIGINS = [
+    'http://localhost',
+    'http://127.0.0.1',
+    'http://[::1]',
+    'https://localhost',
+    'https://127.0.0.1',
+    'https://[::1]',
+  ]
+
+  function isLocalhostOrigin(origin: string): boolean {
+    // Match scheme+host with any port: e.g. http://localhost:3000.
+    return DEFAULT_LOCALHOST_ORIGINS.some(
+      (base) => origin === base || origin.startsWith(`${base}:`),
+    )
+  }
+
   function validateOrigin(request: Request): boolean {
-    if (allowedOrigins == null) {
+    // Explicit wildcard opts out entirely.
+    if (allowedOrigins?.includes('*')) {
       return true
     }
     const origin = request.headers.get('Origin')
+    if (allowedOrigins == null) {
+      // Secure default: localhost only. No Origin header (non-browser client) is allowed.
+      return origin == null || isLocalhostOrigin(origin)
+    }
+    // Allowlist configured: a missing Origin is not allowed.
     if (origin == null) {
-      // No Origin header present -- skip validation
-      return true
+      return false
     }
     return allowedOrigins.includes(origin)
+  }
+
+  function validateProtocolVersion(request: Request): boolean {
+    const header = request.headers.get('MCP-Protocol-Version')
+    // Absent header allowed for backward compatibility (treated as the version
+    // negotiated at initialize). A present header must be supported.
+    return header == null || isSupportedProtocolVersion(header)
   }
 
   function createTransportBridge(session: Session): TransportBridge {
@@ -178,6 +217,9 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     if (!validateOrigin(request)) {
       return new Response('Forbidden', { status: 403 })
     }
+    if (!validateProtocolVersion(request)) {
+      return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
+    }
 
     let body: Record<string, unknown>
     try {
@@ -228,6 +270,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
         writable,
         streamID: `post-${requestID}`,
         replayBufferSize,
+        onEvent: (event) => appendReplay(session, event, replayBufferSize),
       })
 
       session.postStreams.set(requestID, sseWriter)
@@ -315,6 +358,9 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     if (!validateOrigin(request)) {
       return new Response('Forbidden', { status: 403 })
     }
+    if (!validateProtocolVersion(request)) {
+      return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
+    }
 
     const sessionID = request.headers.get('Mcp-Session-Id')
     if (sessionID == null) {
@@ -328,12 +374,11 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
 
     sessions.touch(sessionID)
 
-    // Check for Last-Event-ID for resumability -- capture replay events before closing old stream
+    // Check for Last-Event-ID for resumability -- resolve replay events across all
+    // of the session's streams (POST and GET), not just the previous GET buffer.
     const lastEventID = request.headers.get('Last-Event-ID')
-    let replayEvents: Array<{ data: string }> = []
-    if (lastEventID != null && session.getStream != null) {
-      replayEvents = session.getStream.getEventsAfter(lastEventID)
-    }
+    const replayEvents: Array<SSEEvent> =
+      lastEventID != null ? eventsAfter(session, lastEventID) : []
 
     // Close any existing GET stream
     if (session.getStream != null) {
@@ -346,6 +391,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       writable,
       streamID: `get-${sessionID}`,
       replayBufferSize,
+      onEvent: (event) => appendReplay(session, event, replayBufferSize),
     })
 
     session.getStream = sseWriter
@@ -353,9 +399,10 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     // Send priming event
     await sseWriter.writePrimingEvent()
 
-    // Replay buffered events from the previous stream
+    // Replay buffered events from across the session's streams, preserving
+    // their original ids so the client's resumption cursor stays consistent.
     for (const event of replayEvents) {
-      await sseWriter.writeEvent({ data: event.data })
+      await sseWriter.writeRawEvent(event)
     }
 
     return new Response(readable, {
@@ -371,6 +418,9 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   function handleDELETE(request: Request): Response {
     if (!validateOrigin(request)) {
       return new Response('Forbidden', { status: 403 })
+    }
+    if (!validateProtocolVersion(request)) {
+      return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
     }
 
     const sessionID = request.headers.get('Mcp-Session-Id')

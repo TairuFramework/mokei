@@ -1,6 +1,6 @@
 import type { ContextServer } from '@mokei/context-server'
 
-import type { SSEWriter } from './sse-writer.js'
+import type { SSEEvent, SSEWriter } from './sse-writer.js'
 
 export type Session = {
   sessionID: string
@@ -8,6 +8,7 @@ export type Session = {
   postStreams: Map<string | number, SSEWriter>
   getStream: SSEWriter | null
   lastActivity: number
+  replayLog: Array<SSEEvent>
 }
 
 export type SessionManagerParams = {
@@ -39,6 +40,7 @@ export class SessionManager {
       postStreams: new Map(),
       getStream: null,
       lastActivity: Date.now(),
+      replayLog: [],
     }
 
     this.#sessions.set(session.sessionID, session)
@@ -92,4 +94,19 @@ export class SessionManager {
       }
     }
   }
+}
+
+export function appendReplay(session: Session, event: SSEEvent, cap: number): void {
+  session.replayLog.push(event)
+  if (session.replayLog.length > cap) {
+    session.replayLog.splice(0, session.replayLog.length - cap)
+  }
+}
+
+export function eventsAfter(session: Session, lastEventID: string): Array<SSEEvent> {
+  const index = session.replayLog.findIndex((e) => e.id === lastEventID)
+  // When the id is unknown (e.g. trimmed beyond the cap), fall back to replaying
+  // every buffered event rather than silently delivering nothing — the client
+  // can dedupe by id, but it cannot recover events it never receives.
+  return index === -1 ? session.replayLog.slice() : session.replayLog.slice(index + 1)
 }

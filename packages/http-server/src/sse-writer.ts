@@ -7,6 +7,7 @@ export type SSEWriterParams = {
   writable: WritableStream<string>
   streamID: string
   replayBufferSize: number
+  onEvent?: (event: SSEEvent) => void
 }
 
 export class SSEWriter {
@@ -18,12 +19,14 @@ export class SSEWriter {
   #bufferStart = 0
   #bufferCount = 0
   #closed = false
+  #onEvent: ((event: SSEEvent) => void) | undefined
 
   constructor(params: SSEWriterParams) {
     this.#writer = params.writable.getWriter()
     this.#streamID = params.streamID
     this.#bufferSize = params.replayBufferSize
     this.#buffer = new Array<SSEEvent>(params.replayBufferSize)
+    this.#onEvent = params.onEvent
   }
 
   get streamID(): string {
@@ -49,6 +52,8 @@ export class SSEWriter {
     if (this.#closed) return
     const id = this.#nextID()
     const event: SSEEvent = { id, data: '' }
+    // Priming events carry no payload and are not recorded in the session
+    // replay index (no #onEvent) — they exist only to open the stream.
     this.#pushToBuffer(event)
     await this.#writer.write(`id: ${id}\ndata: \n\n`)
   }
@@ -58,7 +63,18 @@ export class SSEWriter {
     const id = this.#nextID()
     const event: SSEEvent = { id, data: params.data }
     this.#pushToBuffer(event)
+    this.#onEvent?.(event)
     await this.#writer.write(`id: ${id}\ndata: ${params.data}\n\n`)
+  }
+
+  /**
+   * Replay a previously-recorded event onto this stream, preserving its
+   * original id. Does not buffer it or record it in the session replay
+   * index — the event already lives there under its original id.
+   */
+  async writeRawEvent(event: SSEEvent): Promise<void> {
+    if (this.#closed) return
+    await this.#writer.write(`id: ${event.id}\ndata: ${event.data}\n\n`)
   }
 
   async writeRetry(ms: number): Promise<void> {

@@ -209,12 +209,12 @@ describe('createHTTPHandler', () => {
     }
   })
 
-  test('POST with no Origin header skips origin validation', async () => {
+  test('POST with no Origin header returns 403 when allowlist configured', async () => {
     const handler = createHandler({ allowedOrigins: ['https://allowed.example.com'] })
 
     try {
       const response = await handler.handleRequest(initializeRequest())
-      expect(response.status).toBe(200)
+      expect(response.status).toBe(403)
     } finally {
       handler.dispose()
     }
@@ -374,7 +374,44 @@ describe('createHTTPHandler', () => {
     const handler = createHandler({ allowedOrigins: ['https://allowed.example.com'] })
 
     try {
-      const sessionID = await initializeSession(handler)
+      // Initialize with the allowed origin so the session can be established.
+      const initRes = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            Origin: 'https://allowed.example.com',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'initialize',
+            params: {
+              protocolVersion: '2025-11-25',
+              capabilities: {},
+              clientInfo: { name: 'test-client', version: '1.0.0' },
+            },
+          }),
+        }),
+      )
+      const sessionID = initRes.headers.get('Mcp-Session-Id')
+      if (sessionID == null) {
+        throw new Error('No session ID in response')
+      }
+
+      // Send initialized notification with the allowed origin.
+      await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'https://allowed.example.com',
+            'Mcp-Session-Id': sessionID,
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+        }),
+      )
 
       const request = new Request('http://localhost/mcp', {
         method: 'DELETE',
@@ -465,6 +502,138 @@ describe('createHTTPHandler', () => {
     }
   })
 
+  test('default config allows localhost origins and rejects foreign origins', async () => {
+    const handler = createHandler()
+    try {
+      const ok = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: { Origin: 'http://localhost:3000', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+        }),
+      )
+      expect(ok.status).not.toBe(403)
+
+      const blocked = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: { Origin: 'https://evil.example', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+        }),
+      )
+      expect(blocked.status).toBe(403)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('missing Origin rejected when an allowlist is configured', async () => {
+    const handler = createHandler({ allowedOrigins: ['https://app.example'] })
+    try {
+      const res = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+        }),
+      )
+      expect(res.status).toBe(403)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('wildcard opts out of origin validation', async () => {
+    const handler = createHandler({ allowedOrigins: ['*'] })
+    try {
+      const res = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: { Origin: 'https://anything.example', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+        }),
+      )
+      expect(res.status).not.toBe(403)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('rejects unsupported MCP-Protocol-Version header with 400', async () => {
+    const handler = createHandler()
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      const request = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'http://localhost',
+          'Mcp-Session-Id': sessionID,
+          'MCP-Protocol-Version': '1999-01-01',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'notifications/initialized',
+        }),
+      })
+
+      const response = await handler.handleRequest(request)
+      expect(response.status).toBe(400)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('absent MCP-Protocol-Version header is allowed', async () => {
+    const handler = createHandler()
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      const request = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Mcp-Session-Id': sessionID,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'notifications/initialized',
+        }),
+      })
+
+      const response = await handler.handleRequest(request)
+      expect(response.status).toBe(202)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('rejects unsupported MCP-Protocol-Version header on GET with 400', async () => {
+    const handler = createHandler()
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      const request = new Request('http://localhost/mcp', {
+        method: 'GET',
+        headers: {
+          Accept: 'text/event-stream',
+          Origin: 'http://localhost',
+          'Mcp-Session-Id': sessionID,
+          'MCP-Protocol-Version': '1999-01-01',
+        },
+      })
+
+      const response = await handler.handleRequest(request)
+      expect(response.status).toBe(400)
+    } finally {
+      handler.dispose()
+    }
+  })
+
   test('unsupported HTTP method returns 405', async () => {
     const handler = createHandler()
 
@@ -479,6 +648,146 @@ describe('createHTTPHandler', () => {
 
       const response = await handler.handleRequest(request)
       expect(response.status).toBe(405)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('GET resumption replays events emitted on a POST stream', async () => {
+    const handler = createHandler({ replayBufferSize: 100 })
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      // Make a tool call — the POST stream emits a priming event then the tool result
+      const postResponse = await handler.handleRequest(toolCallRequest(sessionID, 'cross-stream'))
+      expect(postResponse.status).toBe(200)
+
+      // Read the full POST stream body; it closes after the server writes the result
+      const postText = await postResponse.text()
+      const postEvents = parseSSEEvents(postText)
+
+      // Expect: priming event (empty data) + result event
+      expect(postEvents.length).toBeGreaterThanOrEqual(2)
+
+      // The priming event id (format post-<requestID>-1) is used as Last-Event-ID
+      const primingEventID = postEvents[0]?.id ?? ''
+      expect(primingEventID).toMatch(/^post-/)
+
+      // The result event — this is what we want to see replayed on the GET stream
+      const resultEvent = postEvents.find((e) => e.data !== '')
+      expect(resultEvent).toBeDefined()
+      const resultData = resultEvent?.data ?? ''
+      const resultEventID = resultEvent?.id ?? ''
+      expect(resultEventID).toMatch(/^post-/)
+
+      // Open GET with Last-Event-ID set to the POST priming event id.
+      // After implementing, session.replayLog has [primingEvent, resultEvent] so
+      // eventsAfter(primingEventID) returns [resultEvent], which is replayed into the GET stream.
+      const getResponse = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'GET',
+          headers: {
+            Accept: 'text/event-stream',
+            'Mcp-Session-Id': sessionID,
+            'Last-Event-ID': primingEventID,
+          },
+        }),
+      )
+      expect(getResponse.status).toBe(200)
+
+      // biome-ignore lint/style/noNonNullAssertion: asserted status above
+      const getReader = getResponse.body!.getReader()
+      const decoder = new TextDecoder()
+
+      // Read the GET stream's own priming event (always present, already enqueued)
+      const { value: primingChunk } = await getReader.read()
+
+      // Open a second GET stream to force-close the first one; the reader will then
+      // drain remaining buffered chunks and reach done:true without hanging.
+      await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'GET',
+          headers: {
+            Accept: 'text/event-stream',
+            'Mcp-Session-Id': sessionID,
+          },
+        }),
+      )
+
+      // Drain remaining chunks (replay events were already enqueued by handleGET before
+      // the Response was returned, so this loop completes as soon as the drain hits done)
+      const chunks: Array<Uint8Array> = [primingChunk ?? new Uint8Array()]
+      while (true) {
+        const { value, done } = await getReader.read()
+        if (done) break
+        chunks.push(value)
+      }
+
+      const allGetText = chunks.map((c) => decoder.decode(c)).join('')
+      const getEvents = parseSSEEvents(allGetText)
+
+      // The GET stream must contain an event whose data matches the POST-stream result
+      const replayed = getEvents.find((e) => e.data === resultData)
+      expect(replayed).toBeDefined()
+      // Replayed events preserve their original POST-stream id (not re-issued under
+      // the GET stream), so the client's resumption cursor stays consistent.
+      expect(replayed?.id).toBe(resultEventID)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('GET resumption with an unknown Last-Event-ID replays all buffered events', async () => {
+    const handler = createHandler({ replayBufferSize: 100 })
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      // Produce a POST stream event to populate the session replay log.
+      const postResponse = await handler.handleRequest(toolCallRequest(sessionID, 'fallback'))
+      expect(postResponse.status).toBe(200)
+      const postEvents = parseSSEEvents(await postResponse.text())
+      const resultData = postEvents.find((e) => e.data !== '')?.data ?? ''
+      expect(resultData).not.toBe('')
+
+      // Open GET with an id that was never emitted (e.g. trimmed beyond the cap).
+      // The server must fall back to replaying all buffered events rather than nothing.
+      const getResponse = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'GET',
+          headers: {
+            Accept: 'text/event-stream',
+            'Mcp-Session-Id': sessionID,
+            'Last-Event-ID': 'post-99999-1',
+          },
+        }),
+      )
+      expect(getResponse.status).toBe(200)
+
+      // biome-ignore lint/style/noNonNullAssertion: asserted status above
+      const getReader = getResponse.body!.getReader()
+      const decoder = new TextDecoder()
+      const { value: primingChunk } = await getReader.read()
+
+      // Force-close the first GET stream so the reader drains to completion.
+      await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'GET',
+          headers: { Accept: 'text/event-stream', 'Mcp-Session-Id': sessionID },
+        }),
+      )
+
+      const chunks: Array<Uint8Array> = [primingChunk ?? new Uint8Array()]
+      while (true) {
+        const { value, done } = await getReader.read()
+        if (done) break
+        chunks.push(value)
+      }
+
+      const getEvents = parseSSEEvents(chunks.map((c) => decoder.decode(c)).join(''))
+      const replayed = getEvents.find((e) => e.data === resultData)
+      expect(replayed).toBeDefined()
     } finally {
       handler.dispose()
     }

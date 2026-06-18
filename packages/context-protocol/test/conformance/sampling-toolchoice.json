@@ -1,0 +1,14 @@
+{
+  "sep": "sampling-toolchoice-sep1577",
+  "cases": [
+    { "name": "auto mode", "message": { "mode": "auto" }, "valid": true },
+    { "name": "required mode", "message": { "mode": "required" }, "valid": true },
+    { "name": "none mode", "message": { "mode": "none" }, "valid": true },
+    { "name": "legacy type rejected", "message": { "type": "auto" }, "valid": false },
+    {
+      "name": "tool variant removed",
+      "message": { "mode": "tool", "toolName": "x" },
+      "valid": false
+    }
+  ]
+}

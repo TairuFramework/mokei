@@ -70,5 +70,5 @@ allowlist, `serverClosed.promise` await, `EADDRINUSE` clean exit).
 - `serveStatic` root is CWD-relative (pre-existing); only real asset files are
   affected, masked by token-injected `/` + SPA fallback.
 - The MCP HTTP server's Origin-validation default (same attack class, different
-  package) remains tracked in
-  `backlog/2026-06-12-mcp-2025-11-25-conformance.md`.
+  package) shipped in
+  `completed/2026-06-18-mcp-2025-11-25-conformance.complete.md` (item 8).

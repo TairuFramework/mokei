@@ -41,8 +41,10 @@ import type {
 } from '@mokei/context-protocol'
 import {
   type ErrorResponse,
+  isSupportedProtocolVersion,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
+  SUPPORTED_PROTOCOL_VERSIONS,
   serverMessage,
 } from '@mokei/context-protocol'
 import { ContextRPC, RequestTimeoutError, RPCError, type SentRequest } from '@mokei/context-rpc'
@@ -62,6 +64,22 @@ export const DEFAULT_INITIALIZE_PARAMS: InitializeRequest['params'] = {
 }
 
 export const DEFAULT_INITIALIZE_TIMEOUT = 30_000
+
+export class UnsupportedProtocolVersionError extends Error {
+  constructor(received: string) {
+    super(
+      `Server responded with unsupported protocolVersion "${received}"; supported: ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}`,
+    )
+    this.name = 'UnsupportedProtocolVersionError'
+  }
+}
+
+export class CapabilityNotDeclaredError extends Error {
+  constructor(capability: string) {
+    super(`Server did not declare the "${capability}" capability`)
+    this.name = 'CapabilityNotDeclaredError'
+  }
+}
 
 export type ElicitHandler = (
   params: ElicitRequest['params'],
@@ -136,6 +154,7 @@ export class ContextClient<
   #listRoots?: Array<Root> | ListRootsHandler
   #notificationController: ReadableStreamDefaultController<HandleNotification>
   #notifications: ReadableStream<HandleNotification>
+  #serverCapabilities: InitializeResult['capabilities'] = {}
 
   constructor(params: ClientParams) {
     super({ validateMessageIn: validateServerMessage, transport: params.transport })
@@ -227,11 +246,17 @@ export class ContextClient<
       }
       result = message.result as InitializeResult
     }
+    // Reject an unsupported negotiated version before establishing the session.
+    if (!isSupportedProtocolVersion(result.protocolVersion)) {
+      await this.dispose()
+      throw new UnsupportedProtocolVersionError(result.protocolVersion)
+    }
+    // Store server capabilities for client-side gating (Task 13).
+    this.#serverCapabilities = result.capabilities
     // Start listening for incoming messages
     this._handle()
     // Notify server that client is initialized
     await super._write({ jsonrpc: '2.0', method: 'notifications/initialized' })
-    // TODO: check result.protocolVersion (tracked in mcp-2025-11-25-conformance backlog)
     this.events.emit('initialized', result)
     return result
   }
@@ -262,12 +287,12 @@ export class ContextClient<
         break
       }
       case 'roots/list': {
-        const roots =
-          this.#listRoots == null
-            ? []
-            : Array.isArray(this.#listRoots)
-              ? this.#listRoots
-              : await this.#listRoots(signal)
+        if (this.#listRoots == null) {
+          throw new RPCError(METHOD_NOT_FOUND, 'roots capability not supported')
+        }
+        const roots = Array.isArray(this.#listRoots)
+          ? this.#listRoots
+          : await this.#listRoots(signal)
         return { roots }
       }
       case 'sampling/createMessage':
@@ -278,6 +303,14 @@ export class ContextClient<
     throw new RPCError(METHOD_NOT_FOUND, 'Method not implemented')
   }
 
+  // Guard: throws synchronously when the server did not declare the given capability.
+  // Only meaningful after initialize() completes; #serverCapabilities is {} until then.
+  #requireServerCapability(capability: 'tools' | 'logging' | 'completions'): void {
+    if (this.#serverCapabilities[capability] == null) {
+      throw new CapabilityNotDeclaredError(capability)
+    }
+  }
+
   get notifications(): ReadableStream<ServerNotification> {
     return this.#notifications
   }
@@ -286,12 +319,16 @@ export class ContextClient<
     return await this.#initialized
   }
 
-  setLoggingLevel(params: SetLevelRequest['params']): SentRequest<Result> {
-    return this.request('logging/setLevel', params)
+  async setLoggingLevel(params: SetLevelRequest['params']): Promise<Result> {
+    await this.#initialized
+    this.#requireServerCapability('logging')
+    return await this.request('logging/setLevel', params)
   }
 
-  complete(params: CompleteRequest['params']): SentRequest<CompleteResult> {
-    return this.request('completion/complete', params)
+  async complete(params: CompleteRequest['params']): Promise<CompleteResult> {
+    await this.#initialized
+    this.#requireServerCapability('completions')
+    return await this.request('completion/complete', params)
   }
 
   listPrompts(params: ListPromptsRequest['params'] = {}): SentRequest<ListPromptsResult> {
@@ -316,8 +353,10 @@ export class ContextClient<
     return this.request('resources/read', params)
   }
 
-  listTools(params: ListToolsRequest['params'] = {}): SentRequest<ListToolsResult> {
-    return this.request('tools/list', params)
+  async listTools(params: ListToolsRequest['params'] = {}): Promise<ListToolsResult> {
+    await this.#initialized
+    this.#requireServerCapability('tools')
+    return await this.request('tools/list', params)
   }
 
   callTool(params: ToolParams<T>): SentRequest<CallToolResult> {

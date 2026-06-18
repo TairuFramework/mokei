@@ -18,14 +18,18 @@ import {
   INTERNAL_ERROR,
   INVALID_PARAMS,
   INVALID_REQUEST,
+  isSupportedProtocolVersion,
   JSONRPC_VERSION,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
   notification,
   PARSE_ERROR,
   progressNotification,
+  RESOURCE_NOT_FOUND,
   request,
   response,
+  SUPPORTED_PROTOCOL_VERSIONS,
+  URL_ELICITATION_REQUIRED,
 } from '../src/rpc.js'
 import { createMessageRequest, modelPreferences } from '../src/sampling.js'
 import { inferSchemaDraft } from '../src/schema.js'
@@ -344,5 +348,22 @@ describe('JSON Schema draft inference', () => {
     expect(inferSchemaDraft({ $schema: 'https://json-schema.org/draft/2020-12/schema' })).toBe(
       '2020-12',
     )
+  })
+})
+
+describe('protocol version support', () => {
+  test('SUPPORTED_PROTOCOL_VERSIONS contains the targeted revision', () => {
+    expect(SUPPORTED_PROTOCOL_VERSIONS).toContain('2025-11-25')
+  })
+
+  test('isSupportedProtocolVersion gates on the set', () => {
+    expect(isSupportedProtocolVersion('2025-11-25')).toBe(true)
+    expect(isSupportedProtocolVersion('2025-03-26')).toBe(false)
+    expect(isSupportedProtocolVersion('nonsense')).toBe(false)
+  })
+
+  test('reserved error-code constants', () => {
+    expect(RESOURCE_NOT_FOUND).toBe(-32002)
+    expect(URL_ELICITATION_REQUIRED).toBe(-32042)
   })
 })

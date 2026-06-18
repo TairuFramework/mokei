@@ -48,6 +48,14 @@ Shipped from this audit (see `completed/`):
   hardening, CLI crash paths) merged via PR #25.
 - **Stdio framing limits** (`completed/`) — hang/crash item 6, merged via PR #26
   (bounded stdio framing, reap on framing fault).
+- **MCP 2025-11-25 conformance** (`completed/2026-06-18-mcp-2025-11-25-conformance.complete.md`)
+  — shipped on `fix/mcp-spec-conformance` (PR #28): protocolVersion validation
+  (client + HTTP header, items 6/12), client/server capability declarations + gating
+  (item 12), sampling/elicitation/tool-result schemas (items 3–5, SEP-1577), tool
+  errors as results (SEP-1303, item 11), tool progress notifications, HTTP transport
+  MUSTs — negotiated `MCP-Protocol-Version` header, `SessionExpiredError` on 404
+  (item 7), secure-by-default Origin validation (item 8), and cross-stream replay
+  for GET resumption (SEP-1699, item 9).
 
 ## Milestones (milestones/)
 
@@ -66,9 +74,6 @@ Shipped from this audit (see `completed/`):
   schema walk).
 - **MCP draft — breaking cut** (`backlog/2026-06-09-mcp-draft-breaking-cut.md`) —
   B1–B7 hard-cut; blocked on draft release + U1 transport/RPC-core decision.
-- **MCP 2025-11-25 conformance** (`backlog/2026-06-12-mcp-2025-11-25-conformance.md`) —
-  audit: MUST-level gaps vs the targeted revision (protocolVersion check, capability
-  declarations, sampling/elicitation schemas, HTTP transport MUSTs).
 - **HTTP transport resilience** (`backlog/2026-06-12-http-transport-resilience.md`) —
   audit: client error recovery, SSE serialization deadlock, reconnect, server leaks,
   body limits.
