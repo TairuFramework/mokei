@@ -48,8 +48,8 @@ Shipped from this audit (see `completed/`):
   hardening, CLI crash paths) merged via PR #25.
 - **Stdio framing limits** (`completed/`) — hang/crash item 6, merged via PR #26
   (bounded stdio framing, reap on framing fault).
-- **MCP 2025-11-25 conformance** (`backlog/2026-06-12-mcp-2025-11-25-conformance.md`,
-  done) — shipped on `fix/mcp-spec-conformance`: protocolVersion validation
+- **MCP 2025-11-25 conformance** (`completed/2026-06-18-mcp-2025-11-25-conformance.complete.md`)
+  — shipped on `fix/mcp-spec-conformance` (PR #28): protocolVersion validation
   (client + HTTP header, items 6/12), client/server capability declarations + gating
   (item 12), sampling/elicitation/tool-result schemas (items 3–5, SEP-1577), tool
   errors as results (SEP-1303, item 11), tool progress notifications, HTTP transport
