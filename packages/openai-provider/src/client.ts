@@ -134,19 +134,21 @@ export class OpenAIClient {
       'chat/completions',
       {
         json: {
-          model: params.model,
-          messages: params.messages,
-          stream: params.stream,
-          stream_options: { include_usage: true }, // Ensure we get usage stats
-          tools: params.tools,
+          // sampling / tuning — overridable by providerOptions
           temperature: params.temperature,
           top_p: params.top_p,
           n: params.n,
           max_tokens: params.max_tokens,
           presence_penalty: params.presence_penalty,
           frequency_penalty: params.frequency_penalty,
-          response_format: params.response_format,
           ...params.providerOptions,
+          // structural / transport — asserted last so providerOptions cannot override them
+          model: params.model,
+          messages: params.messages,
+          stream: params.stream,
+          stream_options: { include_usage: true }, // Ensure we get usage stats
+          tools: params.tools,
+          response_format: params.response_format,
         },
         signal: params.signal
           ? AbortSignal.any([params.signal, controller.signal])

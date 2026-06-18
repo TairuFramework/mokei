@@ -31,4 +31,30 @@ describe('OllamaProvider sampling params', () => {
     expect(options.top_p).toBe(0.95) // providerOptions wins
     expect(options.seed).toBe(1)
   })
+
+  test('structural/transport top-level fields cannot be overridden by providerOptions', async () => {
+    const calls: Array<Record<string, unknown>> = []
+    const client = new OllamaClient({ baseURL: 'http://localhost:11434' })
+    ;(client as unknown as { chat: (p: Record<string, unknown>) => unknown }).chat = (p) => {
+      calls.push(p)
+      const controller = new AbortController()
+      return Object.assign(Promise.resolve(new ReadableStream({ start: (c) => c.close() })), {
+        abort: () => controller.abort(),
+        signal: controller.signal,
+      })
+    }
+    const provider = new OllamaProvider({ client })
+
+    await provider.streamChat({
+      model: 'llama3',
+      messages: [{ source: 'client', role: 'user', text: 'hi' }],
+      providerOptions: { model: 'evil', stream: false, top_p: 0.95 },
+    })
+
+    // top-level structural fields are safe — providerOptions go into options sub-object
+    expect(calls[0].model).toBe('llama3') // NOT 'evil'
+    expect(calls[0].stream).toBe(true) // NOT false
+    const options = calls[0].options as Record<string, unknown>
+    expect(options.top_p).toBe(0.95) // sampling key in options passes through
+  })
 })

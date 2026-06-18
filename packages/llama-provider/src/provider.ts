@@ -327,18 +327,18 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
 
       const promptOptions = params.output
         ? {
+            ...samplingOptions,
             signal,
             grammar: await (await this.#getLlama()).createGrammarForJsonSchema(
               params.output.schema as Parameters<Llama['createGrammarForJsonSchema']>[0],
             ),
             onTextChunk: undefined as ((chunk: string) => void) | undefined,
-            ...samplingOptions,
           }
         : {
+            ...samplingOptions,
             signal,
             functions: this.#buildFunctions(params.tools),
             onTextChunk: undefined as ((chunk: string) => void) | undefined,
-            ...samplingOptions,
           }
 
       return new ReadableStream<MessagePart<ChatResponseChunk, ToolCall>>({

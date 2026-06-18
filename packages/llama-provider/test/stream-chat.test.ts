@@ -548,3 +548,55 @@ describe('LlamaProvider.streamChat cancellation', () => {
     expect(request.signal.aborted).toBe(true)
   })
 })
+
+describe('LlamaProvider.streamChat providerOptions clobber protection', () => {
+  test('providerOptions cannot override structural fields (signal, functions)', async () => {
+    let capturedPromptOptions: Record<string, unknown> = {}
+
+    mockPromptWithMeta.mockImplementation(
+      async (_prompt: string, options: Record<string, unknown>) => {
+        capturedPromptOptions = options
+        // Invoke onTextChunk so the stream completes normally
+        const onTextChunk = options.onTextChunk as ((chunk: string) => void) | undefined
+        onTextChunk?.('hi')
+        return { responseText: 'hi', response: ['hi'], stopReason: 'eogToken' }
+      },
+    )
+
+    const provider = new LlamaProvider({
+      models: { 'test-model': { path: '/models/test.gguf' } },
+    })
+
+    const request = provider.streamChat({
+      model: 'test-model',
+      messages: [{ source: 'client', role: 'user', text: 'hi' }],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'get_weather',
+            description: 'Get weather',
+            parameters: { type: 'object', properties: {} },
+          },
+        },
+      ],
+      providerOptions: { signal: 'EVIL', functions: 'EVIL', temperature: 0.9 },
+    })
+
+    const stream = await request
+    const reader = stream.getReader()
+    let done = false
+    while (!done) {
+      const result = await reader.read()
+      done = result.done
+    }
+
+    // signal must be a real AbortSignal, not the string 'EVIL'
+    expect(capturedPromptOptions.signal).toBeInstanceOf(AbortSignal)
+    // functions must be the built functions object, not the string 'EVIL'
+    expect(capturedPromptOptions.functions).not.toBe('EVIL')
+    expect(typeof capturedPromptOptions.functions).toBe('object')
+    // sampling fields from providerOptions pass through
+    expect(capturedPromptOptions.temperature).toBe(0.9)
+  })
+})
