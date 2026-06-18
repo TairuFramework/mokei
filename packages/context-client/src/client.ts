@@ -320,13 +320,13 @@ export class ContextClient<
   }
 
   async setLoggingLevel(params: SetLevelRequest['params']): Promise<Result> {
-    await this.initialize()
+    await this.#initialized
     this.#requireServerCapability('logging')
     return await this.request('logging/setLevel', params)
   }
 
   async complete(params: CompleteRequest['params']): Promise<CompleteResult> {
-    await this.initialize()
+    await this.#initialized
     this.#requireServerCapability('completions')
     return await this.request('completion/complete', params)
   }
@@ -354,7 +354,7 @@ export class ContextClient<
   }
 
   async listTools(params: ListToolsRequest['params'] = {}): Promise<ListToolsResult> {
-    await this.initialize()
+    await this.#initialized
     this.#requireServerCapability('tools')
     return await this.request('tools/list', params)
   }
