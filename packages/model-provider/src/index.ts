@@ -217,13 +217,74 @@ export type SingleReplyRequest<T> = AbortController & Promise<T>
 export type StreamReplyRequest<T> = AbortController & Promise<ReadableStream<T>>
 export type AnyReplyRequest<T> = SingleReplyRequest<T> | StreamReplyRequest<T>
 
-export type StreamChatParams<RawMessage, RawToolCall, RawTool> = RequestParams & {
-  model: string
-  messages: Array<Message<RawMessage, RawToolCall>>
-  tools?: Array<RawTool>
-  /** Request structured output conforming to a JSON schema */
-  output?: StructuredOutputParams
+export type SamplingParams = {
+  /** Sampling temperature */
+  temperature?: number
+  /** Maximum tokens to generate */
+  maxTokens?: number
+  /** Nucleus sampling top-p */
+  topP?: number
+  /**
+   * Raw backend options merged last into the request body (escape hatch; overrides typed params).
+   * Intended for sampling/tuning keys only — these keys are spread last into the request body, so
+   * structural fields (e.g. `model`, `messages`) will be overridden if present here.
+   * Note: `signal` and `stream` are automatically stripped before the bag reaches the provider;
+   * those keys are reserved for the transport/stream machinery and cannot be overridden here.
+   */
+  providerOptions?: Record<string, unknown>
 }
+
+export type ResolvedSamplingParams = {
+  temperature?: number
+  maxTokens?: number
+  topP?: number
+  providerOptions?: Record<string, unknown>
+}
+
+/**
+ * Strip transport-reserved keys (`signal`, `stream`) from a providerOptions bag.
+ * Allowing those keys through the escape hatch would break streaming/cancellation.
+ * All other keys are passed through unchanged.
+ */
+function stripTransportKeys(
+  options: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (options == null) {
+    return options
+  }
+  // These keys belong to the transport/stream machinery; allowing the raw
+  // providerOptions escape hatch to override them would break streaming/cancellation.
+  const { signal: _signal, stream: _stream, ...rest } = options
+  return rest
+}
+
+/**
+ * Merge per-request sampling params over provider config defaults.
+ * Precedence: config default -> typed per-request param. The raw `providerOptions`
+ * bag has transport-reserved keys (`signal`, `stream`) stripped before being returned;
+ * each provider spreads it LAST into its request body, so it wins over the typed fields
+ * at the backend level.
+ */
+export function resolveSamplingParams(
+  params: SamplingParams = {},
+  defaults: Pick<SamplingParams, 'temperature' | 'maxTokens' | 'topP'> = {},
+): ResolvedSamplingParams {
+  return {
+    temperature: params.temperature ?? defaults.temperature,
+    maxTokens: params.maxTokens ?? defaults.maxTokens,
+    topP: params.topP ?? defaults.topP,
+    providerOptions: stripTransportKeys(params.providerOptions),
+  }
+}
+
+export type StreamChatParams<RawMessage, RawToolCall, RawTool> = RequestParams &
+  SamplingParams & {
+    model: string
+    messages: Array<Message<RawMessage, RawToolCall>>
+    tools?: Array<RawTool>
+    /** Request structured output conforming to a JSON schema */
+    output?: StructuredOutputParams
+  }
 
 export type StreamChatResponse<RawMessagePart, RawToolCall> = ReadableStream<
   MessagePart<RawMessagePart, RawToolCall>

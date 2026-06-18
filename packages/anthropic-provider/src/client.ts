@@ -60,6 +60,7 @@ export type MessagesParams = RequestParams & {
   metadata?: {
     user_id?: string
   }
+  providerOptions?: Record<string, unknown>
 }
 
 export type AnthropicClientParams = AnthropicConfiguration
@@ -99,11 +100,26 @@ export class AnthropicClient {
   messages(params: MessagesParams & { stream: true }): StreamReplyRequest<StreamEvent>
   messages(params: MessagesParams): StreamReplyRequest<StreamEvent> {
     const controller = new AbortController()
-    const { signal, system, ...restParams } = params
-
+    const {
+      signal,
+      system,
+      providerOptions,
+      model,
+      messages,
+      tools,
+      tool_choice,
+      ...samplingRest
+    } = params
     const request = this.#api.post<StreamEvent>('messages', {
       json: {
-        ...restParams,
+        // sampling / tuning (temperature, top_p, top_k, max_tokens, stop_sequences, metadata) — overridable
+        ...samplingRest,
+        ...providerOptions,
+        // structural / transport — asserted last so providerOptions cannot override them
+        model,
+        messages,
+        tools,
+        tool_choice,
         stream: true,
         system: system ? [{ type: 'text', text: system }] : undefined,
       },

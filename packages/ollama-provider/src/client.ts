@@ -133,7 +133,7 @@ export class OllamaClient {
         : controller.signal,
     })
     const response = params.stream ? toResponseStream(request) : request.json()
-    return Object.assign(response, controller)
+    return Object.assign(response, { abort: () => controller.abort(), signal: controller.signal })
   }
 
   chat(params: ChatParams & { stream?: false }): SingleReplyRequest<ChatResponseFinal>

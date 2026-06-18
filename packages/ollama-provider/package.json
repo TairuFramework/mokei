@@ -34,7 +34,8 @@
     "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
     "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
     "test:types": "tsc --noEmit --skipLibCheck",
-    "test": "pnpm run test:types",
+    "test:unit": "vitest run",
+    "test": "pnpm run test:types && pnpm run test:unit",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@mokei/context-protocol": "workspace:^",
-    "@mokei/model-provider": "workspace:^"
+    "@mokei/model-provider": "workspace:^",
+    "vitest": "catalog:"
   }
 }

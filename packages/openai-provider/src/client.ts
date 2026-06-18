@@ -17,6 +17,20 @@ import type {
   Tool,
 } from './types.js'
 
+export function parseEventData(data: string): unknown | undefined {
+  const trimmed = data.trim()
+  // End-of-run sentinel and keep-alive / empty lines carry no payload.
+  if (trimmed === '' || trimmed.startsWith('[DONE]')) {
+    return undefined
+  }
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    // Non-JSON SSE data (keep-alive comments, gateway noise) must not kill the stream.
+    return undefined
+  }
+}
+
 function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStream<T>> {
   return response.then((res) => {
     if (res.body == null) {
@@ -28,9 +42,9 @@ function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStre
       .pipeThrough(
         new TransformStream<EventSourceMessage, T>({
           transform(message, controller) {
-            // Check for end of run - https://platform.openai.com/docs/api-reference/runs/createRun#runs-createrun-stream
-            if (!message.data.startsWith('[DONE]')) {
-              controller.enqueue(JSON.parse(message.data.trim()))
+            const parsed = parseEventData(message.data)
+            if (parsed !== undefined) {
+              controller.enqueue(parsed as T)
             }
           },
         }),
@@ -73,6 +87,7 @@ export type ChatParams = RequestParams & {
   presence_penalty?: number
   frequency_penalty?: number
   response_format?: ResponseFormat
+  providerOptions?: Record<string, unknown>
 }
 
 export type OpenAIClientParams = OpenAIConfiguration
@@ -119,17 +134,20 @@ export class OpenAIClient {
       'chat/completions',
       {
         json: {
-          model: params.model,
-          messages: params.messages,
-          stream: params.stream,
-          stream_options: { include_usage: true }, // Ensure we get usage stats
-          tools: params.tools,
+          // sampling / tuning — overridable by providerOptions
           temperature: params.temperature,
           top_p: params.top_p,
           n: params.n,
           max_tokens: params.max_tokens,
           presence_penalty: params.presence_penalty,
           frequency_penalty: params.frequency_penalty,
+          ...params.providerOptions,
+          // structural / transport — asserted last so providerOptions cannot override them
+          model: params.model,
+          messages: params.messages,
+          stream: params.stream,
+          stream_options: { include_usage: true }, // Ensure we get usage stats
+          tools: params.tools,
           response_format: params.response_format,
         },
         signal: params.signal

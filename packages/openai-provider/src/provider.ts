@@ -11,6 +11,7 @@ import type {
   ServerMessage,
   StreamChatParams,
 } from '@mokei/model-provider'
+import { resolveSamplingParams } from '@mokei/model-provider'
 
 import type { ChatCompletionChunk, OpenAIClientParams } from './client.js'
 import { OpenAIClient } from './client.js'
@@ -37,7 +38,7 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
 
   #client: OpenAIClient
 
-  constructor(params: OpenAIProviderParams) {
+  constructor(params: OpenAIProviderParams = {}) {
     this.#client =
       params.client instanceof OpenAIClient ? params.client : new OpenAIClient(params.client)
   }
@@ -103,6 +104,7 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
   }
 
   streamChat(params: StreamChatParams<Message, ToolCall, Tool>) {
+    const sampling = resolveSamplingParams(params)
     const request = this.#client.chat({
       messages: params.messages.map(
         (msg: ClientMessage | ServerMessage<Message, ToolCall> | AggregatedMessage<ToolCall>) => {
@@ -126,6 +128,10 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
       signal: params.signal,
       stream: true,
       tools: params.tools,
+      temperature: sampling.temperature,
+      top_p: sampling.topP,
+      max_tokens: sampling.maxTokens,
+      providerOptions: sampling.providerOptions,
       // Add response_format for structured output
       response_format: params.output
         ? {

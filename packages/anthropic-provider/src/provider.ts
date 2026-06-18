@@ -10,6 +10,7 @@ import type {
   ServerMessage,
   StreamChatParams,
 } from '@mokei/model-provider'
+import { resolveSamplingParams } from '@mokei/model-provider'
 
 import { AnthropicClient, type AnthropicClientParams } from './client.js'
 import { type AnthropicConfiguration, validateConfiguration } from './config.js'
@@ -41,7 +42,10 @@ export type AnthropicProviderParams = {
 export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
   static fromConfig(config: AnthropicConfiguration): AnthropicProvider {
     assertType(validateConfiguration, config)
-    return new AnthropicProvider({ client: new AnthropicClient(config) })
+    return new AnthropicProvider({
+      client: new AnthropicClient(config),
+      defaultMaxTokens: config.maxTokens,
+    })
   }
 
   #client: AnthropicClient
@@ -180,6 +184,7 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
       toolChoice = { type: 'tool', name: outputTool.name }
     }
 
+    const sampling = resolveSamplingParams(params, { maxTokens: this.#defaultMaxTokens })
     const request = this.#client.messages({
       messages,
       model: params.model,
@@ -187,19 +192,22 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
       stream: true,
       tools,
       tool_choice: toolChoice,
-      max_tokens: this.#defaultMaxTokens,
+      max_tokens: sampling.maxTokens ?? this.#defaultMaxTokens,
+      temperature: sampling.temperature,
+      top_p: sampling.topP,
+      providerOptions: sampling.providerOptions,
       system: systemPrompt,
     })
 
     // Track state for assembling tool calls
     let currentToolUse: ToolUseBlock | null = null
     let currentToolJson = ''
+    let inputTokens = 0
 
     const response = request.then((stream: ReadableStream<StreamEvent>) => {
       return stream.pipeThrough(
         new TransformStream<StreamEvent, MessagePart<StreamEvent, ToolCall>>({
           transform(event, controller) {
-            let inputTokens = 0
             switch (event.type) {
               case 'message_start':
                 // Capture input tokens from message start
@@ -233,6 +241,16 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
 
               case 'content_block_stop':
                 if (currentToolUse != null) {
+                  let parsedInput: Record<string, unknown> = {}
+                  if (currentToolJson) {
+                    try {
+                      parsedInput = JSON.parse(currentToolJson) as Record<string, unknown>
+                    } catch {
+                      // Malformed streamed tool JSON: surface the call with the raw
+                      // arguments string and empty parsed input rather than killing the turn.
+                      parsedInput = {}
+                    }
+                  }
                   // Emit complete tool call
                   controller.enqueue({
                     type: 'tool-call',
@@ -244,7 +262,7 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
                         raw: {
                           id: currentToolUse.id,
                           name: currentToolUse.name,
-                          input: currentToolJson ? JSON.parse(currentToolJson) : {},
+                          input: parsedInput,
                         },
                       },
                     ],
