@@ -1,7 +1,7 @@
 import { createValidator, type FromSchema, type Schema } from '@enkaku/schema'
 
 export const DEFAULT_BASE_URL = 'https://api.anthropic.com/v1'
-export const DEFAULT_TIMEOUT = 60_000
+export const DEFAULT_TIMEOUT = 30_000
 export const DEFAULT_ANTHROPIC_VERSION = '2023-06-01'
 
 export const configurationSchema = {

@@ -37,7 +37,7 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
 
   #client: OpenAIClient
 
-  constructor(params: OpenAIProviderParams) {
+  constructor(params: OpenAIProviderParams = {}) {
     this.#client =
       params.client instanceof OpenAIClient ? params.client : new OpenAIClient(params.client)
   }
