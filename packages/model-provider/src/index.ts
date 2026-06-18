@@ -217,13 +217,50 @@ export type SingleReplyRequest<T> = AbortController & Promise<T>
 export type StreamReplyRequest<T> = AbortController & Promise<ReadableStream<T>>
 export type AnyReplyRequest<T> = SingleReplyRequest<T> | StreamReplyRequest<T>
 
-export type StreamChatParams<RawMessage, RawToolCall, RawTool> = RequestParams & {
-  model: string
-  messages: Array<Message<RawMessage, RawToolCall>>
-  tools?: Array<RawTool>
-  /** Request structured output conforming to a JSON schema */
-  output?: StructuredOutputParams
+export type SamplingParams = {
+  /** Sampling temperature */
+  temperature?: number
+  /** Maximum tokens to generate */
+  maxTokens?: number
+  /** Nucleus sampling top-p */
+  topP?: number
+  /** Raw backend options merged last into the request body (escape hatch; overrides typed params) */
+  providerOptions?: Record<string, unknown>
 }
+
+export type ResolvedSamplingParams = {
+  temperature?: number
+  maxTokens?: number
+  topP?: number
+  providerOptions?: Record<string, unknown>
+}
+
+/**
+ * Merge per-request sampling params over provider config defaults.
+ * Precedence: config default -> typed per-request param. The raw `providerOptions`
+ * bag is returned untouched; each provider spreads it LAST into its request body,
+ * so it wins over the typed fields at the backend level.
+ */
+export function resolveSamplingParams(
+  params: SamplingParams = {},
+  defaults: Pick<SamplingParams, 'temperature' | 'maxTokens' | 'topP'> = {},
+): ResolvedSamplingParams {
+  return {
+    temperature: params.temperature ?? defaults.temperature,
+    maxTokens: params.maxTokens ?? defaults.maxTokens,
+    topP: params.topP ?? defaults.topP,
+    providerOptions: params.providerOptions,
+  }
+}
+
+export type StreamChatParams<RawMessage, RawToolCall, RawTool> = RequestParams &
+  SamplingParams & {
+    model: string
+    messages: Array<Message<RawMessage, RawToolCall>>
+    tools?: Array<RawTool>
+    /** Request structured output conforming to a JSON schema */
+    output?: StructuredOutputParams
+  }
 
 export type StreamChatResponse<RawMessagePart, RawToolCall> = ReadableStream<
   MessagePart<RawMessagePart, RawToolCall>
