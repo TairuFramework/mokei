@@ -525,3 +525,26 @@ describe('LlamaProvider streamChat', () => {
     expect(mockPromptWithMeta).toHaveBeenCalledWith('Hello', expect.any(Object))
   })
 })
+
+describe('LlamaProvider.streamChat cancellation', () => {
+  test('cancelling the reader aborts the prompt signal', async () => {
+    // Use a never-resolving promptWithMeta so the stream stays open for cancellation
+    mockPromptWithMeta.mockImplementation(
+      () =>
+        new Promise(() => {
+          /* never resolves */
+        }),
+    )
+
+    const provider = new LlamaProvider({ models: { m: { path: '/m.gguf' } } })
+    const request = provider.streamChat({
+      model: 'm',
+      messages: [{ source: 'client', role: 'user', text: 'hi' }],
+    })
+    const stream = await request
+    const reader = stream.getReader()
+    expect(request.signal.aborted).toBe(false)
+    await reader.cancel()
+    expect(request.signal.aborted).toBe(true)
+  })
+})

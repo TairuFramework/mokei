@@ -92,16 +92,19 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
   }
 
   async #doLoadModel(name: string, config: LlamaModelConfig): Promise<LlamaModel> {
-    const llama = await this.#getLlama()
-    const gpuLayers =
-      config.gpu === true || config.gpu === 'auto' ? 'auto' : config.gpu === false ? 0 : undefined
-    const model = await llama.loadModel({
-      modelPath: config.path,
-      ...(gpuLayers != null ? { gpuLayers } : {}),
-    })
-    this.#loadedModels.set(name, model)
-    this.#loadingModels.delete(name)
-    return model
+    try {
+      const llama = await this.#getLlama()
+      const gpuLayers =
+        config.gpu === true || config.gpu === 'auto' ? 'auto' : config.gpu === false ? 0 : undefined
+      const model = await llama.loadModel({
+        modelPath: config.path,
+        ...(gpuLayers != null ? { gpuLayers } : {}),
+      })
+      this.#loadedModels.set(name, model)
+      return model
+    } finally {
+      this.#loadingModels.delete(name)
+    }
   }
 
   async #disposeAll(): Promise<void> {
@@ -271,11 +274,12 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     },
   ): StreamChatRequest<ChatResponseChunk, ToolCall> {
     const controller = new AbortController()
-    if (params.signal != null) {
-      params.signal.addEventListener('abort', () => controller.abort(), { once: true })
-    }
-    const { signal } = controller
+    const signal =
+      params.signal != null
+        ? AbortSignal.any([params.signal, controller.signal])
+        : controller.signal
     const abort = () => controller.abort()
+    let cancelled = false
 
     const response = (async () => {
       if (params.output != null && params.tools != null && params.tools.length > 0) {
@@ -308,6 +312,7 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
           >,
         ) =>
         (chunk: string) => {
+          if (cancelled) return
           const raw: ChatResponseChunk = { text: chunk, done: false }
           streamController.enqueue({ type: 'text-delta', text: chunk, raw })
         }
@@ -328,6 +333,12 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
 
       return new ReadableStream<MessagePart<ChatResponseChunk, ToolCall>>({
         start(streamController) {
+          const safeEnqueue = (part: MessagePart<ChatResponseChunk, ToolCall>) => {
+            if (!cancelled) streamController.enqueue(part)
+          }
+          const safeClose = () => {
+            if (!cancelled) streamController.close()
+          }
           promptOptions.onTextChunk = onTextChunk(streamController)
           session
             .promptWithMeta(prompt, promptOptions)
@@ -357,7 +368,7 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
                       toolCalls: [toolCall],
                       done: false,
                     }
-                    streamController.enqueue({
+                    safeEnqueue({
                       type: 'tool-call',
                       toolCalls: [
                         {
@@ -375,36 +386,40 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
 
               const tokensDiff = sequence.tokenMeter.diff(tokensBefore)
               const doneRaw: ChatResponseChunk = { done: true }
-              streamController.enqueue({
+              safeEnqueue({
                 type: 'done',
                 reason: stopReason === 'functionCalls' ? 'tool_calls' : 'stop',
                 inputTokens: tokensDiff.usedInputTokens,
                 outputTokens: tokensDiff.usedOutputTokens,
                 raw: doneRaw,
               })
-              streamController.close()
+              safeClose()
             })
             .catch((error: unknown) => {
               if (signal.aborted) {
                 const tokensDiff = sequence.tokenMeter.diff(tokensBefore)
                 const doneRaw: ChatResponseChunk = { done: true }
-                streamController.enqueue({
+                safeEnqueue({
                   type: 'done',
                   reason: 'abort',
                   inputTokens: tokensDiff.usedInputTokens,
                   outputTokens: tokensDiff.usedOutputTokens,
                   raw: doneRaw,
                 })
-                streamController.close()
+                safeClose()
               } else {
                 const errorRaw: ChatResponseChunk = { done: true }
-                streamController.enqueue({ type: 'error', error, raw: errorRaw })
-                streamController.close()
+                safeEnqueue({ type: 'error', error, raw: errorRaw })
+                safeClose()
               }
             })
             .finally(() => {
               session.dispose()
             })
+        },
+        cancel() {
+          cancelled = true
+          controller.abort()
         },
       })
     })()
