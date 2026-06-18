@@ -1,5 +1,9 @@
 import { Transport } from '@enkaku/transport'
-import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
+import {
+  type ClientMessage,
+  isSupportedProtocolVersion,
+  type ServerMessage,
+} from '@mokei/context-protocol'
 import type { ContextServer, ServerTransport } from '@mokei/context-server'
 
 import { type Session, SessionManager } from './session.js'
@@ -149,6 +153,13 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     return allowedOrigins.includes(origin)
   }
 
+  function validateProtocolVersion(request: Request): boolean {
+    const header = request.headers.get('MCP-Protocol-Version')
+    // Absent header allowed for backward compatibility (treated as the version
+    // negotiated at initialize). A present header must be supported.
+    return header == null || isSupportedProtocolVersion(header)
+  }
+
   function createTransportBridge(session: Session): TransportBridge {
     let controller!: ReadableStreamDefaultController<ClientMessage>
 
@@ -205,6 +216,9 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   async function handlePOST(request: Request): Promise<Response> {
     if (!validateOrigin(request)) {
       return new Response('Forbidden', { status: 403 })
+    }
+    if (!validateProtocolVersion(request)) {
+      return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
     }
 
     let body: Record<string, unknown>
@@ -343,6 +357,9 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     if (!validateOrigin(request)) {
       return new Response('Forbidden', { status: 403 })
     }
+    if (!validateProtocolVersion(request)) {
+      return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
+    }
 
     const sessionID = request.headers.get('Mcp-Session-Id')
     if (sessionID == null) {
@@ -399,6 +416,9 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   function handleDELETE(request: Request): Response {
     if (!validateOrigin(request)) {
       return new Response('Forbidden', { status: 403 })
+    }
+    if (!validateProtocolVersion(request)) {
+      return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
     }
 
     const sessionID = request.headers.get('Mcp-Session-Id')

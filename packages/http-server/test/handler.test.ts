@@ -559,6 +559,81 @@ describe('createHTTPHandler', () => {
     }
   })
 
+  test('rejects unsupported MCP-Protocol-Version header with 400', async () => {
+    const handler = createHandler()
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      const request = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'http://localhost',
+          'Mcp-Session-Id': sessionID,
+          'MCP-Protocol-Version': '1999-01-01',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'notifications/initialized',
+        }),
+      })
+
+      const response = await handler.handleRequest(request)
+      expect(response.status).toBe(400)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('absent MCP-Protocol-Version header is allowed', async () => {
+    const handler = createHandler()
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      const request = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Mcp-Session-Id': sessionID,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'notifications/initialized',
+        }),
+      })
+
+      const response = await handler.handleRequest(request)
+      expect(response.status).toBe(202)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('rejects unsupported MCP-Protocol-Version header on GET with 400', async () => {
+    const handler = createHandler()
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      const request = new Request('http://localhost/mcp', {
+        method: 'GET',
+        headers: {
+          Accept: 'text/event-stream',
+          Origin: 'http://localhost',
+          'Mcp-Session-Id': sessionID,
+          'MCP-Protocol-Version': '1999-01-01',
+        },
+      })
+
+      const response = await handler.handleRequest(request)
+      expect(response.status).toBe(400)
+    } finally {
+      handler.dispose()
+    }
+  })
+
   test('unsupported HTTP method returns 405', async () => {
     const handler = createHandler()
 
