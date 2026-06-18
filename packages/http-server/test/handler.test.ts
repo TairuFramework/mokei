@@ -652,4 +652,139 @@ describe('createHTTPHandler', () => {
       handler.dispose()
     }
   })
+
+  test('GET resumption replays events emitted on a POST stream', async () => {
+    const handler = createHandler({ replayBufferSize: 100 })
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      // Make a tool call — the POST stream emits a priming event then the tool result
+      const postResponse = await handler.handleRequest(toolCallRequest(sessionID, 'cross-stream'))
+      expect(postResponse.status).toBe(200)
+
+      // Read the full POST stream body; it closes after the server writes the result
+      const postText = await postResponse.text()
+      const postEvents = parseSSEEvents(postText)
+
+      // Expect: priming event (empty data) + result event
+      expect(postEvents.length).toBeGreaterThanOrEqual(2)
+
+      // The priming event id (format post-<requestID>-1) is used as Last-Event-ID
+      const primingEventID = postEvents[0]?.id ?? ''
+      expect(primingEventID).toMatch(/^post-/)
+
+      // The result event — this is what we want to see replayed on the GET stream
+      const resultEvent = postEvents.find((e) => e.data !== '')
+      expect(resultEvent).toBeDefined()
+      const resultData = resultEvent?.data ?? ''
+
+      // Open GET with Last-Event-ID set to the POST priming event id.
+      // After implementing, session.replayLog has [primingEvent, resultEvent] so
+      // eventsAfter(primingEventID) returns [resultEvent], which is replayed into the GET stream.
+      const getResponse = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'GET',
+          headers: {
+            Accept: 'text/event-stream',
+            'Mcp-Session-Id': sessionID,
+            'Last-Event-ID': primingEventID,
+          },
+        }),
+      )
+      expect(getResponse.status).toBe(200)
+
+      // biome-ignore lint/style/noNonNullAssertion: asserted status above
+      const getReader = getResponse.body!.getReader()
+      const decoder = new TextDecoder()
+
+      // Read the GET stream's own priming event (always present, already enqueued)
+      const { value: primingChunk } = await getReader.read()
+
+      // Open a second GET stream to force-close the first one; the reader will then
+      // drain remaining buffered chunks and reach done:true without hanging.
+      await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'GET',
+          headers: {
+            Accept: 'text/event-stream',
+            'Mcp-Session-Id': sessionID,
+          },
+        }),
+      )
+
+      // Drain remaining chunks (replay events were already enqueued by handleGET before
+      // the Response was returned, so this loop completes as soon as the drain hits done)
+      const chunks: Array<Uint8Array> = [primingChunk ?? new Uint8Array()]
+      while (true) {
+        const { value, done } = await getReader.read()
+        if (done) break
+        chunks.push(value)
+      }
+
+      const allGetText = chunks.map((c) => decoder.decode(c)).join('')
+      const getEvents = parseSSEEvents(allGetText)
+
+      // The GET stream must contain an event whose data matches the POST-stream result
+      const replayed = getEvents.find((e) => e.data === resultData)
+      expect(replayed).toBeDefined()
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('GET resumption with an unknown Last-Event-ID replays all buffered events', async () => {
+    const handler = createHandler({ replayBufferSize: 100 })
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      // Produce a POST stream event to populate the session replay log.
+      const postResponse = await handler.handleRequest(toolCallRequest(sessionID, 'fallback'))
+      expect(postResponse.status).toBe(200)
+      const postEvents = parseSSEEvents(await postResponse.text())
+      const resultData = postEvents.find((e) => e.data !== '')?.data ?? ''
+      expect(resultData).not.toBe('')
+
+      // Open GET with an id that was never emitted (e.g. trimmed beyond the cap).
+      // The server must fall back to replaying all buffered events rather than nothing.
+      const getResponse = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'GET',
+          headers: {
+            Accept: 'text/event-stream',
+            'Mcp-Session-Id': sessionID,
+            'Last-Event-ID': 'post-99999-1',
+          },
+        }),
+      )
+      expect(getResponse.status).toBe(200)
+
+      // biome-ignore lint/style/noNonNullAssertion: asserted status above
+      const getReader = getResponse.body!.getReader()
+      const decoder = new TextDecoder()
+      const { value: primingChunk } = await getReader.read()
+
+      // Force-close the first GET stream so the reader drains to completion.
+      await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'GET',
+          headers: { Accept: 'text/event-stream', 'Mcp-Session-Id': sessionID },
+        }),
+      )
+
+      const chunks: Array<Uint8Array> = [primingChunk ?? new Uint8Array()]
+      while (true) {
+        const { value, done } = await getReader.read()
+        if (done) break
+        chunks.push(value)
+      }
+
+      const getEvents = parseSSEEvents(chunks.map((c) => decoder.decode(c)).join(''))
+      const replayed = getEvents.find((e) => e.data === resultData)
+      expect(replayed).toBeDefined()
+    } finally {
+      handler.dispose()
+    }
+  })
 })

@@ -7,6 +7,7 @@ export type SSEWriterParams = {
   writable: WritableStream<string>
   streamID: string
   replayBufferSize: number
+  onEvent?: (event: SSEEvent) => void
 }
 
 export class SSEWriter {
@@ -18,12 +19,14 @@ export class SSEWriter {
   #bufferStart = 0
   #bufferCount = 0
   #closed = false
+  #onEvent: ((event: SSEEvent) => void) | undefined
 
   constructor(params: SSEWriterParams) {
     this.#writer = params.writable.getWriter()
     this.#streamID = params.streamID
     this.#bufferSize = params.replayBufferSize
     this.#buffer = new Array<SSEEvent>(params.replayBufferSize)
+    this.#onEvent = params.onEvent
   }
 
   get streamID(): string {
@@ -43,6 +46,7 @@ export class SSEWriter {
       this.#buffer[this.#bufferStart] = event
       this.#bufferStart = (this.#bufferStart + 1) % this.#bufferSize
     }
+    this.#onEvent?.(event)
   }
 
   async writePrimingEvent(): Promise<void> {

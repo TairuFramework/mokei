@@ -6,8 +6,8 @@ import {
 } from '@mokei/context-protocol'
 import type { ContextServer, ServerTransport } from '@mokei/context-server'
 
-import { type Session, SessionManager } from './session.js'
-import { SSEWriter } from './sse-writer.js'
+import { appendReplay, eventsAfter, type Session, SessionManager } from './session.js'
+import { type SSEEvent, SSEWriter } from './sse-writer.js'
 
 export type HTTPHandlerParams = {
   createServer: (transport: ServerTransport) => ContextServer
@@ -270,6 +270,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
         writable,
         streamID: `post-${requestID}`,
         replayBufferSize,
+        onEvent: (event) => appendReplay(session, event, replayBufferSize),
       })
 
       session.postStreams.set(requestID, sseWriter)
@@ -373,12 +374,11 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
 
     sessions.touch(sessionID)
 
-    // Check for Last-Event-ID for resumability -- capture replay events before closing old stream
+    // Check for Last-Event-ID for resumability -- resolve replay events across all
+    // of the session's streams (POST and GET), not just the previous GET buffer.
     const lastEventID = request.headers.get('Last-Event-ID')
-    let replayEvents: Array<{ data: string }> = []
-    if (lastEventID != null && session.getStream != null) {
-      replayEvents = session.getStream.getEventsAfter(lastEventID)
-    }
+    const replayEvents: Array<SSEEvent> =
+      lastEventID != null ? eventsAfter(session, lastEventID) : []
 
     // Close any existing GET stream
     if (session.getStream != null) {
@@ -391,6 +391,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       writable,
       streamID: `get-${sessionID}`,
       replayBufferSize,
+      onEvent: (event) => appendReplay(session, event, replayBufferSize),
     })
 
     session.getStream = sseWriter
