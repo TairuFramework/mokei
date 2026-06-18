@@ -47,3 +47,20 @@ abstraction offers no per-request generation options at all.
 - Item 5 is a small API addition (feature, not fix) — fine to split out if the rest
   ships as a pure bugfix PR.
 - Pairs with `2026-02-03-llama-provider-follow-ups.md` for deeper llama work.
+
+---
+
+## Shipped — 2026-06-18 (`fix/provider-robustness`)
+
+All 6 audit items landed (7 commits, `d0df124`..`698578c`):
+
+1. **openai SSE parse guard** (`3ff900a`) — `parseEventData` skips `[DONE]`/empty/non-JSON; a stray gateway line no longer kills the turn.
+2. **anthropic token accounting + tool-JSON guard** (`f0d19d0`) — `inputTokens` hoisted to stream scope (was always 0 at `done`); malformed streamed tool JSON surfaces a tool-level result instead of aborting the stream.
+3. **ollama `generate()` abort** (`46bb6d7`) — replaced `Object.assign(response, controller)` (copies no prototype accessors) with the explicit `{ abort, signal }` form.
+4. **llama lifecycle** (`29e9207`) — failed loads cleared in `finally` (no more cached rejection); `ReadableStream.cancel()` aborts the prompt with guarded enqueue/close; `AbortSignal.any` removes the caller-signal listener leak.
+6. **constructor + timeout** (`48eaa62`) — zero-arg `new OpenAIProvider()`; default request timeout standardized to 30s. **BREAKING: anthropic default timeout 60s → 30s.**
+5. **sampling params** (`698578c`) — `temperature`/`maxTokens`/`topP` + raw `providerOptions` passthrough via `resolveSamplingParams` (precedence: config default → typed → providerOptions spread last; the client owns the spread-last into the JSON body). anthropic config gains `maxTokens` (reachable via `fromConfig`) with required `max_tokens` fallback.
+
+Plan: `docs/superpowers/plans/2026-06-18-provider-robustness.md`. Whole-branch review (opus): ready to merge, no Critical/Important.
+
+**Follow-up filed:** `backlog/2026-06-18-anthropic-test-known-models.md` (pre-existing red test, not from this branch).

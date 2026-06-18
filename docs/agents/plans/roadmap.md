@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-06-16
+**Last updated:** 2026-06-18
 
 ## Vision
 
@@ -56,6 +56,12 @@ Shipped from this audit (see `completed/`):
   MUSTs — negotiated `MCP-Protocol-Version` header, `SessionExpiredError` on 404
   (item 7), secure-by-default Origin validation (item 8), and cross-stream replay
   for GET resumption (SEP-1699, item 9).
+- **Provider robustness + sampling params** (`completed/2026-06-18-provider-robustness.complete.md`)
+  — shipped on `fix/provider-robustness`: stream-killing parse guards (openai SSE,
+  anthropic tool JSON), anthropic input-token accounting fix, ollama `generate()` abort,
+  llama failed-load cache + stream-cancel + listener-leak fixes, zero-arg `OpenAIProvider`,
+  and per-request sampling params (`temperature`/`maxTokens`/`topP` + raw `providerOptions`)
+  across all four providers. **BREAKING: anthropic default request timeout 60s → 30s.**
 
 ## Milestones (milestones/)
 
@@ -77,8 +83,9 @@ Shipped from this audit (see `completed/`):
 - **HTTP transport resilience** (`backlog/2026-06-12-http-transport-resilience.md`) —
   audit: client error recovery, SSE serialization deadlock, reconnect, server leaks,
   body limits.
-- **Provider robustness** (`backlog/2026-06-12-provider-robustness.md`) — audit:
-  stream-killing parses, broken abort, token accounting, per-request sampling params.
+- **Anthropic test — KNOWN_MODELS** (`backlog/2026-06-18-anthropic-test-known-models.md`) —
+  pre-existing red suite: test imports a non-exported `KNOWN_MODELS`; 2 listModels tests
+  hit the live API (401). Surfaced (not caused) by the provider-robustness work.
 - **Host + session lifecycle** (`backlog/2026-06-12-host-session-lifecycle.md`) —
   audit: child reaping, abort races, notification buffering, state races.
 - **CLI UX polish** (`backlog/2026-06-12-cli-ux-polish.md`) — audit: API-key

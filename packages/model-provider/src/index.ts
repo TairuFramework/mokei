@@ -224,7 +224,11 @@ export type SamplingParams = {
   maxTokens?: number
   /** Nucleus sampling top-p */
   topP?: number
-  /** Raw backend options merged last into the request body (escape hatch; overrides typed params) */
+  /**
+   * Raw backend options merged last into the request body (escape hatch; overrides typed params).
+   * Intended for sampling/tuning keys only — these keys are spread last into the request body, so
+   * structural fields (e.g. `model`, `messages`, `stream`) will be overridden if present here.
+   */
   providerOptions?: Record<string, unknown>
 }
 
