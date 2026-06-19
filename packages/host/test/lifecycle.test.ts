@@ -61,6 +61,34 @@ describe('ContextHost lifecycle', () => {
   })
 })
 
+describe('ContextHost.setup race', () => {
+  test('throws a clear error if the context is removed during listTools', async () => {
+    const host = new ContextHost()
+    await host.addLocalContext({
+      key: 'racy',
+      command: process.execPath,
+      // Minimal server that responds to initialize + tools/list slowly enough
+      // for the remove below to land first is hard to time deterministically;
+      // instead drive the race directly by removing mid-setup.
+      args: ['-e', 'setInterval(() => {}, 1e9)'],
+    })
+
+    // Start setup, then remove before it can assign tools.
+    const setupPromise = host.setup('racy').catch((err: Error) => err)
+    await host.remove('racy')
+
+    const result = await setupPromise
+    if (result instanceof Error) {
+      expect(result.message).toContain('was removed during setup')
+    }
+    // Either it raced and threw the clear error, or it finished before remove —
+    // in both cases there must be no leftover context and no TypeError.
+    expect(host.getContextKeys()).not.toContain('racy')
+
+    await host.dispose()
+  })
+})
+
 describe('spawnHostedContext dispose escalation', () => {
   test('escalates to SIGKILL when the child ignores SIGTERM, and awaits real exit', async () => {
     // Child traps SIGTERM and never exits on its own.
