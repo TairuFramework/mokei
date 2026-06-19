@@ -231,6 +231,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
       {modal === 'model' ? (
         <ModelSelectCard
           models={models}
+          provider={providerKey}
           onSelect={(id) => {
             setModel(id)
             setModal(null)

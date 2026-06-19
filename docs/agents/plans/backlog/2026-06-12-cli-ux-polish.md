@@ -1,7 +1,24 @@
 # CLI UX polish
 
-**Status:** backlog
+**Status:** done (2026-06-19)
 **Origin:** 2026-06-12 full audit (security, stability, usability, MCP-spec).
+
+## Resolution (2026-06-19)
+
+- **Item 1** — `buildChat` (`providers.ts`) now fails fast for openai/anthropic when
+  no key resolves, *before* spawning the daemon proxy, with a message pointing at the
+  env var and warning that `-k` leaks via `ps`/shell history. `options.ts` `--api-key`
+  help mentions the env-var fallback + leak caveat. Tests: two fail-fast cases in
+  `test/chat/providers.test.ts`.
+- **Item 2** — `inspect` passes `stderr: 'inherit'` to `spawnHostedContext`, surfacing
+  the server's own diagnostics instead of swallowing them.
+- **Item 3** — `ModelSelectCard` takes a `provider` prop and renders an empty-state
+  ("no models available from <provider> — check the provider is reachable…") when the
+  list is empty. Test in `test/chat/components.test.tsx`.
+- **Item 4** — no-op (flag-consistency note only); left as documented.
+
+Suite green: 105 cli unit tests pass, typecheck + lint clean, fail-fast verified on
+the real binary (exit 1).
 
 ## Gap
 

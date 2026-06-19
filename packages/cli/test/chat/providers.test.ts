@@ -37,7 +37,28 @@ describe('resolveApiKey', () => {
 })
 
 describe('buildChat', () => {
+  let saved: NodeJS.ProcessEnv
+
+  beforeEach(() => {
+    saved = process.env
+    process.env = { ...saved }
+    delete process.env.OPENAI_API_KEY
+    delete process.env.ANTHROPIC_API_KEY
+  })
+
+  afterEach(() => {
+    process.env = saved
+  })
+
   test('rejects an unknown provider before touching the daemon', async () => {
     await expect(buildChat('bogus', {})).rejects.toThrow('unknown provider')
+  })
+
+  test('fails fast when openai has no API key', async () => {
+    await expect(buildChat('openai', {})).rejects.toThrow(/set OPENAI_API_KEY/)
+  })
+
+  test('fails fast when anthropic has no API key', async () => {
+    await expect(buildChat('anthropic', {})).rejects.toThrow(/set ANTHROPIC_API_KEY/)
   })
 })

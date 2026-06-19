@@ -187,12 +187,20 @@ describe('footer + selects + help', () => {
     const { lastFrame } = render(
       <ModelSelectCard
         models={[{ id: 'a' }, { id: 'b' }]}
+        provider="openai"
         onSelect={() => {}}
         onCancel={() => {}}
       />,
     )
     expect(lastFrame()).toContain('a')
     expect(lastFrame()).toContain('b')
+  })
+
+  test('ModelSelectCard shows an empty state naming the provider', () => {
+    const { lastFrame } = render(
+      <ModelSelectCard models={[]} provider="ollama" onSelect={() => {}} onCancel={() => {}} />,
+    )
+    expect(lastFrame()).toContain('no models available from ollama')
   })
 
   test('ToolSelectCard renders each tool option', () => {

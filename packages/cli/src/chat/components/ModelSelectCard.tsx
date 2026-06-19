@@ -5,21 +5,29 @@ export type ModelOption = { id: string }
 
 export type ModelSelectCardProps = {
   models: Array<ModelOption>
+  provider: string
   onSelect: (id: string) => void
   onCancel: () => void
 }
 
-export function ModelSelectCard({ models, onSelect, onCancel }: ModelSelectCardProps) {
+export function ModelSelectCard({ models, provider, onSelect, onCancel }: ModelSelectCardProps) {
   useInput((_, key) => {
     if (key.escape) onCancel()
   })
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="magenta">
       <Text color="magenta">select a model</Text>
-      <Select
-        options={models.map((m) => ({ label: m.id, value: m.id }))}
-        onChange={(value) => onSelect(value)}
-      />
+      {models.length === 0 ? (
+        <Text dimColor>
+          no models available from {provider} — check the provider is reachable (--api-url) and has
+          models
+        </Text>
+      ) : (
+        <Select
+          options={models.map((m) => ({ label: m.id, value: m.id }))}
+          onChange={(value) => onSelect(value)}
+        />
+      )}
       <Text dimColor>[esc] cancel</Text>
     </Box>
   )

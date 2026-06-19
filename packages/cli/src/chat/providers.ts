@@ -35,8 +35,14 @@ export async function buildChat(provider: string, opts: ChatOptions): Promise<Bu
   if (!PROVIDERS.some((p) => p === provider)) {
     throw new Error(`unknown provider: ${provider}`)
   }
-  const host = await ProxyHost.forDaemon()
   const apiKey = resolveApiKey(provider, opts.apiKey)
+  const envVar = API_KEY_ENV[provider]
+  if (envVar != null && apiKey == null) {
+    throw new Error(
+      `no API key for ${provider}: set ${envVar} or pass --api-key (env var preferred — argv keys leak via \`ps\` and shell history)`,
+    )
+  }
+  const host = await ProxyHost.forDaemon()
   const timeoutMs = opts.timeoutMs
 
   function build<T extends ProviderTypes>(

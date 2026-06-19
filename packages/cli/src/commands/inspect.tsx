@@ -28,7 +28,9 @@ export function createInspectCommand(): Command {
   cmd.action(async (command: string, args: Array<string>) => {
     let hosted: HostedContext | undefined
     try {
-      hosted = await spawnHostedContext({ command, args })
+      // inspect is the debugging tool: surface the server's own stderr diagnostics
+      // instead of swallowing them behind "did not respond to initialize".
+      hosted = await spawnHostedContext({ command, args, stderr: 'inherit' })
       const initialized = await hosted.client.initialize()
       renderStatic(InspectResult, { data: JSON.stringify(initialized, null, 2) })
     } catch (err) {

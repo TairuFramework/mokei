@@ -97,8 +97,6 @@ Shipped from this audit (see `completed/`):
   schema walk).
 - **MCP draft — breaking cut** (`backlog/2026-06-09-mcp-draft-breaking-cut.md`) —
   B1–B7 hard-cut; blocked on draft release + U1 transport/RPC-core decision.
-- **CLI UX polish** (`backlog/2026-06-12-cli-ux-polish.md`) — audit: API-key
-  fail-fast, inspect stderr, empty states.
 - **Docs + packaging sweep** (`backlog/2026-06-12-docs-packaging-sweep.md`) — audit:
   broken examples, devDeps→deps for d.ts imports, missing READMEs.
 
