@@ -172,12 +172,26 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   }
 
   addContext(params: AddContextParams): Promise<Array<ContextTool>> {
-    return params.signal
-      ? raceSignal(this.#setupContext(params), params.signal).catch((err) => {
-          this.#contextHost.remove(params.key)
-          throw err
-        })
-      : this.#setupContext(params)
+    if (!params.signal) {
+      return this.#setupContext(params)
+    }
+    const setupPromise = this.#setupContext(params)
+    return raceSignal(setupPromise, params.signal).catch(async (err) => {
+      // A late-registering spawn may complete after the abort wins the race.
+      // If the key is not yet registered, wait until it appears (context:added)
+      // or until setupPromise settles without registering — then remove either
+      // way so no orphaned child is left behind.
+      if (!this.#contextHost.getContextKeys().includes(params.key)) {
+        await Promise.race([
+          this.#contextHost.events.once('context:added', {
+            filter: (data) => data.key === params.key,
+          }),
+          setupPromise.catch(() => {}),
+        ])
+      }
+      await this.#contextHost.remove(params.key).catch(() => {})
+      throw err
+    })
   }
 
   async removeContext(key: string): Promise<boolean> {
