@@ -569,17 +569,14 @@ export class ContextHost extends Disposer {
       throw new Error(`Local tool "${name}" does not exist`)
     }
 
-    // Create a promise-based result that matches the SentRequest interface
-    let cancelled = false
+    const controller = new AbortController()
     const promise = Promise.resolve().then(async () => {
-      if (cancelled) {
+      if (controller.signal.aborted) {
         throw new Error('Request cancelled')
       }
       try {
-        const result = await localTool.execute(args)
-        return result
+        return await localTool.execute(args, controller.signal)
       } catch (error) {
-        // Convert errors to CallToolResult with isError flag
         const errorMessage = error instanceof Error ? error.message : String(error)
         return {
           content: [{ type: 'text' as const, text: errorMessage }],
@@ -588,10 +585,9 @@ export class ContextHost extends Disposer {
       }
     })
 
-    // Create a minimal SentRequest-compatible object
     const request = promise as SentRequest<CallToolResult>
     request.cancel = () => {
-      cancelled = true
+      controller.abort()
     }
     return request
   }

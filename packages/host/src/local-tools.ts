@@ -7,6 +7,7 @@ import type { GenericToolDefinition, ServerClient, ToolDefinitions } from '@moke
  */
 export type LocalToolExecute<TArgs = Record<string, unknown>> = (
   args: TArgs,
+  signal?: AbortSignal,
 ) => CallToolResult | Promise<CallToolResult>
 
 /**
