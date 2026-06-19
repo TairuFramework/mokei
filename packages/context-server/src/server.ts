@@ -255,10 +255,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   }
 
   async #callTool(request: CallToolRequest, signal: AbortSignal): Promise<CallToolResult> {
-    const handler = this.#toolHandlers[request.params.name]
+    const name = request.params.name
+    const handler = Object.hasOwn(this.#toolHandlers, name) ? this.#toolHandlers[name] : undefined
     if (handler == null) {
       // "Errors in finding the tool" are MCP protocol errors, per the spec.
-      throw new RPCError(INVALID_PARAMS, `Tool ${request.params.name} not found`)
+      throw new RPCError(INVALID_PARAMS, `Tool ${name} not found`)
     }
     const progressToken = request.params._meta?.progressToken
     const progress =
@@ -287,9 +288,12 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   }
 
   async #getPrompt(request: GetPromptRequest, signal: AbortSignal): Promise<GetPromptResult> {
-    const handler = this.#promptHandlers[request.params.name]
+    const name = request.params.name
+    const handler = Object.hasOwn(this.#promptHandlers, name)
+      ? this.#promptHandlers[name]
+      : undefined
     if (handler == null) {
-      throw new RPCError(INVALID_PARAMS, `Prompt ${request.params.name} not found`)
+      throw new RPCError(INVALID_PARAMS, `Prompt ${name} not found`)
     }
     return await handler({ arguments: request.params.arguments, client: this.#client, signal })
   }

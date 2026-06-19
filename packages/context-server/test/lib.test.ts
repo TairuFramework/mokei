@@ -673,6 +673,50 @@ describe('ContextServer', () => {
     })
   })
 
+  describe('inherited-prop tool/prompt lookup', () => {
+    test('tools/call with an inherited prop name returns not found', async () => {
+      const { transports } = createTestContext({
+        tools: { real: createTool('real', { type: 'object' }, async () => ({ content: [] })) },
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'constructor', arguments: {} },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({ id: 1, error: { code: INVALID_PARAMS } })
+      await transports.dispose()
+    })
+
+    test('prompts/get with an inherited prop name returns not found', async () => {
+      const { transports } = createTestContext({
+        prompts: {
+          real: {
+            description: 'real prompt',
+            handler: () => ({
+              messages: [
+                {
+                  role: 'assistant' as const,
+                  content: { type: 'text' as const, text: 'hello' },
+                },
+              ],
+            }),
+          },
+        },
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'prompts/get',
+        params: { name: 'constructor' },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({ id: 1, error: { code: INVALID_PARAMS } })
+      await transports.dispose()
+    })
+  })
+
   describe('isError results (SEP-1303)', () => {
     test('tool handler exception becomes an isError result', async () => {
       const { transports } = createTestContext({
