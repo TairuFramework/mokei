@@ -335,9 +335,10 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     const provider = this.resolveProvider(params.provider)
     const tools = params.tools ?? this.getToolsForProvider(provider)
 
+    const request = provider.streamChat({ ...params, tools })
+    this.#activeChatRequest = request
     try {
-      this.#activeChatRequest = provider.streamChat({ ...params, tools })
-      const stream = await this.#activeChatRequest
+      const stream = await request
 
       const messageParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
 
@@ -356,7 +357,10 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
 
       return provider.aggregateMessage(messageParts)
     } finally {
-      this.#activeChatRequest = null
+      // Only clear if a replacing chat has not already taken ownership.
+      if (this.#activeChatRequest === request) {
+        this.#activeChatRequest = null
+      }
     }
   }
 
