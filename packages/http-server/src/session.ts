@@ -14,17 +14,25 @@ export type Session = {
 export type SessionManagerParams = {
   maxSessions: number
   sessionTimeoutMs: number
+  /**
+   * Called whenever a session is removed — by the idle-cleanup timer, explicit
+   * deletion, or {@link SessionManager.dispose}. Lets the handler release the
+   * matching transport bridge so timed-out sessions don't leak it.
+   */
+  onDelete?: (sessionID: string) => void
 }
 
 export class SessionManager {
   #sessions: Map<string, Session> = new Map()
   #maxSessions: number
   #sessionTimeoutMs: number
+  #onDelete: ((sessionID: string) => void) | undefined
   #cleanupInterval: ReturnType<typeof setInterval>
 
   constructor(params: SessionManagerParams) {
     this.#maxSessions = params.maxSessions
     this.#sessionTimeoutMs = params.sessionTimeoutMs
+    this.#onDelete = params.onDelete
     this.#cleanupInterval = setInterval(() => this.#cleanup(), this.#sessionTimeoutMs)
     this.#cleanupInterval.unref()
   }
@@ -77,6 +85,10 @@ export class SessionManager {
     }
 
     this.#sessions.delete(sessionID)
+
+    // Notify the owner last, after the session's own resources are released, so
+    // the bridge is torn down for timer-driven cleanup as well as explicit deletes.
+    this.#onDelete?.(sessionID)
   }
 
   dispose(): void {

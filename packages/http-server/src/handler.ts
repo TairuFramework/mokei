@@ -22,7 +22,12 @@ export type HTTPHandlerParams = {
   sessionTimeoutMs?: number
   maxSessions?: number
   replayBufferSize?: number
+  /** Maximum accepted POST body size in bytes (default: 4 MiB). Oversized bodies get a 413. */
+  maxBodyBytes?: number
 }
+
+/** Default maximum accepted POST body size, in bytes (4 MiB). */
+export const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024
 
 export type HTTPHandler = {
   handleRequest: (request: Request) => Promise<Response>
@@ -99,6 +104,62 @@ function createSSEStream(): {
   return { readable, writable }
 }
 
+/**
+ * Read a request body as text, enforcing a maximum byte size. Returns `null` when
+ * the body exceeds `maxBytes` so the caller can respond 413 — without first
+ * buffering and parsing an unbounded payload (a cheap DoS otherwise). Checks the
+ * declared Content-Length for a fast reject, then counts actual streamed bytes
+ * (the header can be absent or wrong under chunked transfer).
+ */
+async function readBodyText(request: Request, maxBytes: number): Promise<string | null> {
+  const declared = request.headers.get('Content-Length')
+  if (declared != null) {
+    const length = Number(declared)
+    if (Number.isFinite(length) && length > maxBytes) {
+      return null
+    }
+  }
+
+  const body = request.body
+  if (body == null) {
+    // No readable stream available (some runtimes/mocks): fall back to text() and
+    // check the decoded size after the fact.
+    const text = await request.text()
+    if (new TextEncoder().encode(text).byteLength > maxBytes) {
+      return null
+    }
+    return text
+  }
+
+  const reader = body.getReader()
+  const chunks: Array<Uint8Array> = []
+  let total = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(merged)
+}
+
 export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   const {
     createServer,
@@ -106,9 +167,8 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     sessionTimeoutMs = 300_000,
     maxSessions = 1000,
     replayBufferSize = 100,
+    maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
   } = params
-
-  const sessions = new SessionManager({ maxSessions, sessionTimeoutMs })
 
   // Map session IDs to their transport bridges
   const bridges = new Map<string, TransportBridge>()
@@ -119,6 +179,29 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     string,
     { requestID: string | number; resolve: (message: ServerMessage) => void }
   >()
+
+  // Release the transport bridge (and any pending init waiter) for a session.
+  // Idempotent: safe to call from explicit DELETE, init failure, and the
+  // SessionManager's idle-cleanup timer (via onDelete) without double-closing.
+  function closeBridge(sessionID: string): void {
+    const bridge = bridges.get(sessionID)
+    if (bridge != null) {
+      bridges.delete(sessionID)
+      try {
+        bridge.controller.close()
+      } catch {
+        // Controller may already be closed.
+      }
+    }
+    initWaiters.delete(sessionID)
+  }
+
+  const sessions = new SessionManager({
+    maxSessions,
+    sessionTimeoutMs,
+    // Ensures a timed-out session's bridge is torn down, not leaked.
+    onDelete: closeBridge,
+  })
 
   const DEFAULT_LOCALHOST_ORIGINS = [
     'http://localhost',
@@ -221,9 +304,15 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
     }
 
+    // Enforce a body-size cap before buffering/parsing to avoid an unbounded-memory DoS.
+    const bodyText = await readBodyText(request, maxBodyBytes)
+    if (bodyText == null) {
+      return new Response('Payload Too Large', { status: 413 })
+    }
+
     let body: Record<string, unknown>
     try {
-      body = (await request.json()) as Record<string, unknown>
+      body = JSON.parse(bodyText) as Record<string, unknown>
     } catch {
       return new Response('Invalid JSON', { status: 400 })
     }
@@ -306,7 +395,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       const server = createServer(bridge.transport)
       session.server = server
     } catch {
-      bridges.delete(session.sessionID)
+      // Deleting the session fires onDelete, which tears down the bridge.
       sessions.delete(session.sessionID)
       return new Response('Server initialization failed', { status: 500 })
     }
@@ -340,7 +429,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     try {
       response = await responsePromise
     } catch {
-      bridges.delete(session.sessionID)
+      // Deleting the session fires onDelete, which tears down the bridge.
       sessions.delete(session.sessionID)
       return new Response('Initialize timed out', { status: 504 })
     }
@@ -433,14 +522,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       return new Response('Session not found', { status: 404 })
     }
 
-    // Clean up the transport bridge
-    const bridge = bridges.get(sessionID)
-    if (bridge != null) {
-      bridge.controller.close()
-      bridges.delete(sessionID)
-    }
-
-    // Delete session (disposes server, closes all streams)
+    // Delete session (disposes server, closes all streams); onDelete releases the bridge.
     sessions.delete(sessionID)
 
     return new Response(null, { status: 204 })
@@ -462,21 +544,15 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   }
 
   function dispose(): void {
-    // Close all transport bridges
-    for (const [sessionID, bridge] of bridges) {
-      try {
-        bridge.controller.close()
-      } catch {
-        // Ignore errors during cleanup
-      }
-      bridges.delete(sessionID)
-    }
-
-    // Clear all init waiters
-    initWaiters.clear()
-
-    // Dispose all sessions
+    // Disposing the manager deletes every session, firing onDelete (closeBridge)
+    // for each — which releases its bridge and init waiter.
     sessions.dispose()
+
+    // Backstop: release any bridge/waiter not tied to a live session.
+    for (const sessionID of bridges.keys()) {
+      closeBridge(sessionID)
+    }
+    initWaiters.clear()
   }
 
   return { handleRequest, dispose }

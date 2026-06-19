@@ -2,8 +2,10 @@ import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { SessionExpiredError } from '../src/index.js'
+import { isSessionExpiredCode, SESSION_EXPIRED_CODE } from '../src/errors.js'
 import { HTTPTransport } from '../src/transport.js'
+
+type ErrorFrame = { id?: string | number; error?: { code?: number; message?: string } }
 
 // --- Test helpers ---
 
@@ -236,25 +238,64 @@ describe('HTTPTransport', () => {
   })
 
   describe('HTTP error handling', () => {
-    test('throws on error status', async () => {
+    test('routes an HTTP error to an error frame without killing the transport', async () => {
+      // The failed POST must reject only its own request, not poison the writable
+      // stream — a subsequent request must still succeed.
       fetchMock.mockResolvedValueOnce(errorResponse(500, 'Internal Server Error'))
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
 
       const transport = new HTTPTransport({ url: TEST_URL })
-      await expect(transport.write(initializeRequest)).rejects.toThrow('HTTP 500')
+      // write() resolves now; the failure surfaces as a correlated error frame.
+      await transport.write(initializeRequest)
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.message).toContain('HTTP 500')
+
+      // Transport is still usable.
+      await transport.write(pingRequest)
+      const { value: value2 } = await transport.read()
+      expect(value2).toEqual(pingResult)
 
       await transport.dispose()
     })
 
-    test('throws on 404 with session expired indication', async () => {
+    test('a network failure surfaces as a correlated error frame', async () => {
+      fetchMock.mockRejectedValueOnce(new Error('ECONNREFUSED'))
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.message).toContain('ECONNREFUSED')
+
+      // Stream survived the rejected send.
+      await transport.write(pingRequest)
+      const { value: value2 } = await transport.read()
+      expect(value2).toEqual(pingResult)
+
+      await transport.dispose()
+    })
+
+    test('404 without an active session surfaces an HTTP 404 error frame', async () => {
       fetchMock.mockResolvedValueOnce(errorResponse(404, 'Session not found'))
 
       const transport = new HTTPTransport({ url: TEST_URL })
-      await expect(transport.write(initializeRequest)).rejects.toThrow('HTTP 404')
+      await transport.write(initializeRequest)
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.message).toContain('HTTP 404')
 
       await transport.dispose()
     })
 
-    test('404 with an active session clears it and throws SessionExpiredError', async () => {
+    test('404 with an active session clears it and emits a session-expired error frame', async () => {
       // Arrange: initialize so #sessionID is set
       fetchMock.mockResolvedValueOnce(
         jsonResponse(initializeResult, { 'Mcp-Session-Id': 'session-expired' }),
@@ -264,10 +305,16 @@ describe('HTTPTransport', () => {
 
       const transport = new HTTPTransport({ url: TEST_URL })
       await transport.write(initializeRequest)
+      await transport.read()
       expect(transport.sessionID).toBe('session-expired')
 
-      // Act + Assert: the post-init request rejects with SessionExpiredError
-      await expect(transport.write(pingRequest)).rejects.toBeInstanceOf(SessionExpiredError)
+      // The post-init request is rejected via a coded error frame, not a thrown write.
+      await transport.write(pingRequest)
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(2)
+      expect(frame.error?.code).toBe(SESSION_EXPIRED_CODE)
+      expect(isSessionExpiredCode(frame.error?.code)).toBe(true)
       // And: transport.sessionID is now null
       expect(transport.sessionID).toBeNull()
 
@@ -377,6 +424,79 @@ describe('HTTPTransport', () => {
     })
   })
 
+  describe('SSE response does not serialize outgoing traffic', () => {
+    test('a still-streaming SSE response does not block subsequent sends', async () => {
+      // First POST returns a long-lived SSE stream that never completes on its own.
+      let sseController!: ReadableStreamDefaultController<Uint8Array>
+      const sseBody = new ReadableStream<Uint8Array>({
+        start(c) {
+          sseController = c
+        },
+      })
+      fetchMock.mockResolvedValueOnce(
+        new Response(sseBody, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      )
+      // Second POST: a 202 for the follow-up cancellation notification.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+
+      // A streamed tools/call. With the old await-in-sink behavior this write would
+      // not resolve until the SSE stream closed.
+      await transport.write({
+        jsonrpc: '2.0',
+        id: 7,
+        method: 'tools/call',
+        params: { name: 'x' },
+      } as ClientMessage)
+
+      // The cancellation must go out even though the SSE stream is still open.
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 7 },
+      } as ClientMessage)
+
+      expect(fetchMock.mock.calls.length).toBe(2)
+
+      sseController.close()
+      await transport.dispose()
+    })
+  })
+
+  describe('connect timeout', () => {
+    test('a connection that never returns headers fails with a timeout error frame', async () => {
+      vi.useFakeTimers()
+      try {
+        // fetch rejects when the AbortController fires (mimicking a real abort).
+        fetchMock.mockImplementationOnce((_url, init: RequestInit) => {
+          return new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => {
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+            })
+          })
+        })
+
+        const transport = new HTTPTransport({ url: TEST_URL, timeout: 1000 })
+        const write = transport.write(initializeRequest)
+        await vi.advanceTimersByTimeAsync(1000)
+        await write
+
+        const { value } = await transport.read()
+        const frame = value as ErrorFrame
+        expect(frame.id).toBe(1)
+        expect(frame.error?.message).toContain('timed out')
+
+        await transport.dispose()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
   describe('SSE lastEventId tracking', () => {
     test('tracks lastEventId from SSE events', async () => {
       const msg: ServerMessage = { jsonrpc: '2.0', id: 10, result: {} } as ServerMessage
@@ -478,6 +598,50 @@ describe('HTTPTransport', () => {
       const calls = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit).method === 'POST')
       const callPost = calls[calls.length - 1]
       expect(callPost[1].headers['Mcp-Param-Region']).toBe('us-east-1')
+
+      await transport.dispose()
+    })
+
+    test('a header-encoding failure surfaces as an error frame without killing the transport', async () => {
+      // Cache a schema with an integer-annotated x-mcp-header param.
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          listResult([
+            {
+              name: 'counter',
+              inputSchema: {
+                type: 'object',
+                properties: { count: { type: 'integer', 'x-mcp-header': 'Count' } },
+              },
+            },
+          ]),
+        ),
+      )
+      // A subsequent good request proves the writable stream survived the throw.
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+
+      // A non-integer value for the integer param makes encodeHeaderValue throw — before
+      // fetch, in the header-building block. It must not escape the sink.
+      await transport.write({
+        jsonrpc: '2.0',
+        id: 8,
+        method: 'tools/call',
+        params: { name: 'counter', arguments: { count: 2.5 } },
+      } as ClientMessage)
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(8)
+      expect(frame.error?.message).toContain('headers')
+
+      // The failed call never reached fetch; the transport is still usable.
+      await transport.write(pingRequest)
+      const { value: value2 } = await transport.read()
+      expect(value2).toEqual(pingResult)
 
       await transport.dispose()
     })
@@ -658,6 +822,90 @@ describe('HTTPTransport', () => {
       await transport.dispose()
 
       expect(signal?.aborted).toBe(true)
+    })
+
+    test('reconnects the GET stream after it ends, resuming from Last-Event-ID', async () => {
+      const notif: ServerMessage = {
+        jsonrpc: '2.0',
+        method: 'notifications/tools/list_changed',
+      } as ServerMessage
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(initializeResult, { 'Mcp-Session-Id': 'session-rc' }),
+      )
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+      // First GET: a finite stream with a small retry hint, then it ends.
+      fetchMock.mockResolvedValueOnce(
+        sseResponse([{ data: JSON.stringify(notif), id: 'e1', retry: 5 }]),
+      )
+      // Second GET (after reconnect): ends as well.
+      fetchMock.mockResolvedValueOnce(sseResponse([{ data: JSON.stringify(notif), id: 'e2' }]))
+      // Any further GETs park on a never-ending stream so the loop stops spinning.
+      fetchMock.mockResolvedValue(
+        new Response(
+          new ReadableStream({
+            start() {},
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+      await transport.read()
+      await transport.write(initializedNotification)
+
+      // The loop should reconnect on its own after the first stream ends.
+      await vi.waitFor(() => {
+        const gets = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit).method === 'GET')
+        expect(gets.length).toBeGreaterThanOrEqual(2)
+      })
+
+      const gets = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit).method === 'GET')
+      expect(gets[1][1].headers['Last-Event-ID']).toBe('e1')
+
+      await transport.dispose()
+    })
+
+    test('does not reconnect when the server returns 405 (no GET stream support)', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(initializeResult, { 'Mcp-Session-Id': 'session-405' }),
+      )
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+      fetchMock.mockResolvedValueOnce(errorResponse(405, 'Method Not Allowed'))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+      await transport.read()
+      await transport.write(initializedNotification)
+
+      await vi.waitFor(() => {
+        expect(findCallByMethod(fetchMock.mock.calls, 'GET')).toBeDefined()
+      })
+
+      // Give the loop room to (not) reconnect, then assert it stopped at one GET.
+      await new Promise((r) => setTimeout(r, 50))
+      const gets = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit).method === 'GET')
+      expect(gets.length).toBe(1)
+
+      await transport.dispose()
+    })
+  })
+
+  describe('dispose DELETE is bounded', () => {
+    test('the session-termination DELETE carries an abort signal', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(initializeResult, { 'Mcp-Session-Id': 'session-del2' }),
+      )
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+      await transport.read()
+      await transport.dispose()
+
+      const del = getCallByMethod(fetchMock.mock.calls, 'DELETE')
+      expect(del[1].signal).toBeInstanceOf(AbortSignal)
     })
   })
 })

@@ -8,8 +8,11 @@ import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { parseServerSentEvents } from 'parse-sse'
 
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
-import { SessionExpiredError } from './errors.js'
+import { SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE } from './errors.js'
 import { buildParamHeaders, collectHeaderAnnotations } from './x-mcp-header.js'
+
+/** Standard JSON-RPC internal-error code, used for synthesized transport failures. */
+const INTERNAL_ERROR_CODE = -32603
 
 /**
  * Parameters for creating an MCP HTTP transport.
@@ -29,6 +32,18 @@ export type HTTPTransportParams = {
 
 /** Default HTTP request timeout in milliseconds. */
 export const DEFAULT_HTTP_TIMEOUT = 30_000
+
+/** Base delay before reconnecting the GET notification stream, when the server gives no `retry`. */
+export const DEFAULT_GET_RECONNECT_BASE_MS = 1_000
+
+/** Floor for the reconnect base, so a server `retry: 0` hint can't drive the loop into a hot spin. */
+export const MIN_GET_RECONNECT_MS = 100
+
+/** Maximum backoff delay between GET notification stream reconnect attempts. */
+export const MAX_GET_RECONNECT_MS = 30_000
+
+/** Timeout for the session-termination DELETE issued on dispose. */
+export const DEFAULT_DISPOSE_TIMEOUT = 5_000
 
 /**
  * MCP Streamable HTTP client transport.
@@ -92,11 +107,48 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
+   * Surface a send failure to its originating request as a JSON-RPC error response.
+   *
+   * Sink writes must never throw: the writable side caches a single writer, so a
+   * rejected sink permanently errors the stream and every later `request()` fails.
+   * Instead we enqueue an error frame correlated by request id — the RPC read loop
+   * rejects exactly that pending request, leaving the transport usable. Failed
+   * notifications (no id) have no originator to reject and are dropped with a log.
+   */
+  #failRequest(requestID: string | number | null, code: number, errorMessage: string): void {
+    if (requestID == null) {
+      this.#logger.warn('Outgoing notification failed', { error: errorMessage })
+      return
+    }
+    if (this.#controller == null) {
+      return
+    }
+    try {
+      this.#controller.enqueue({
+        jsonrpc: '2.0',
+        id: requestID,
+        error: { code, message: errorMessage },
+      } as unknown as ServerMessage)
+    } catch {
+      // Controller may already be closed by a concurrent dispose(); nothing to surface.
+    }
+  }
+
+  /**
    * Send a JSON-RPC message to the server via HTTP POST.
+   *
+   * Never throws: per-message failures are routed to {@link #failRequest} so a
+   * single failed send cannot poison the shared writable stream.
    */
   async #sendMessage(message: ClientMessage): Promise<void> {
+    // Determine the request id up front so any early failure can be correlated.
+    const rawID = (message as { id?: unknown }).id
+    const requestID: string | number | null =
+      typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
+
     if (this.#disposed) {
-      throw new Error('Transport is disposed')
+      this.#failRequest(requestID, INTERNAL_ERROR_CODE, 'Transport is disposed')
+      return
     }
 
     const headers: Record<string, string> = {
@@ -106,7 +158,6 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       'MCP-Protocol-Version': this.#protocolVersion,
     }
 
-    let requestID: string | number | null = null
     if ('method' in message && typeof message.method === 'string') {
       headers['Mcp-Method'] = message.method
       const name = (message as { params?: { name?: unknown } }).params?.name
@@ -114,26 +165,39 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         headers['Mcp-Name'] = name
       }
       // Track in-flight requests so responses can be correlated back to their method.
-      const id = (message as { id?: unknown }).id
-      if (typeof id === 'string' || typeof id === 'number') {
-        requestID = id
-        this.#pendingMethods.set(id, message.method)
+      if (requestID != null) {
+        this.#pendingMethods.set(requestID, message.method)
       }
       // Mirror x-mcp-header-annotated tools/call arguments into Mcp-Param-* headers.
+      // buildParamHeaders can throw (e.g. a non-integer value for an integer-annotated
+      // param); route that to the originating request rather than letting it escape the
+      // sink and poison the shared writable stream.
       if (message.method === 'tools/call' && typeof name === 'string') {
         const schema = this.#toolSchemas.get(name)
         if (schema != null) {
-          const { annotations } = collectHeaderAnnotations(schema)
-          const args = (message as { params?: { arguments?: unknown } }).params?.arguments
-          Object.assign(
-            headers,
-            buildParamHeaders(
-              annotations,
-              args != null && typeof args === 'object'
-                ? (args as Record<string, unknown>)
-                : undefined,
-            ),
-          )
+          try {
+            const { annotations } = collectHeaderAnnotations(schema)
+            const args = (message as { params?: { arguments?: unknown } }).params?.arguments
+            Object.assign(
+              headers,
+              buildParamHeaders(
+                annotations,
+                args != null && typeof args === 'object'
+                  ? (args as Record<string, unknown>)
+                  : undefined,
+              ),
+            )
+          } catch (error) {
+            if (requestID != null) {
+              this.#pendingMethods.delete(requestID)
+            }
+            this.#failRequest(
+              requestID,
+              INTERNAL_ERROR_CODE,
+              `Failed to encode request headers: ${error instanceof Error ? error.message : String(error)}`,
+            )
+            return
+          }
         }
       }
     }
@@ -142,54 +206,101 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       headers['Mcp-Session-Id'] = this.#sessionID
     }
 
+    // The timeout guards time-to-headers only. Once a response begins, a long
+    // streamed tool call must not be aborted — its own request-level timeout applies.
     const controller = new AbortController()
     const timeoutID = setTimeout(() => controller.abort(), this.#timeout)
 
+    let response: Response
     try {
-      const response = await fetch(this.#url, {
+      response = await fetch(this.#url, {
         method: 'POST',
         headers,
         body: JSON.stringify(message),
         signal: controller.signal,
       })
-
-      // Capture session ID from response
-      const newSessionID = response.headers.get('Mcp-Session-Id')
-      if (newSessionID) {
-        this.#sessionID = newSessionID
-      }
-
-      if (response.status === 404 && this.#sessionID != null) {
-        // Spec MUST: a 404 on an active session means it is gone. Clear it and
-        // surface a typed signal so the client can re-initialize.
-        this.#sessionID = null
-        throw new SessionExpiredError()
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
-      }
-
-      const contentType = response.headers.get('Content-Type') ?? ''
-
-      if (contentType.includes('application/json')) {
-        const data = await response.json()
-        if (data && this.#controller) {
-          this.#controller.enqueue(this.#handleIncoming(data as ServerMessage))
-        }
-      } else if (contentType.includes('text/event-stream')) {
-        await this.#handleSSEResponse(response)
-      }
-      // 202 Accepted or other no-content responses: no-op
-    } finally {
+    } catch (error) {
       clearTimeout(timeoutID)
-      // Drop the correlation entry. #handleIncoming already removes it when a response
-      // was correlated; this also reclaims it for 202/error/timeout responses that never
-      // produced a correlatable frame, preventing unbounded #pendingMethods growth.
       if (requestID != null) {
         this.#pendingMethods.delete(requestID)
       }
+      const reason = controller.signal.aborted
+        ? `Request timed out after ${this.#timeout}ms`
+        : `Request failed: ${error instanceof Error ? error.message : String(error)}`
+      this.#failRequest(requestID, INTERNAL_ERROR_CODE, reason)
+      return
+    }
+    clearTimeout(timeoutID)
+
+    // Capture session ID from response
+    const newSessionID = response.headers.get('Mcp-Session-Id')
+    if (newSessionID) {
+      this.#sessionID = newSessionID
+    }
+
+    if (response.status === 404 && this.#sessionID != null) {
+      // Spec MUST: a 404 on an active session means it is gone. Clear it and surface
+      // a coded error so the client can detect it (isSessionExpiredCode) and re-initialize.
+      this.#sessionID = null
+      if (requestID != null) {
+        this.#pendingMethods.delete(requestID)
+      }
+      this.#failRequest(requestID, SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE)
+      return
+    }
+
+    if (!response.ok) {
+      let errorText = ''
+      try {
+        errorText = await response.text()
+      } catch {
+        // Body may be unreadable; the status alone is enough to surface the failure.
+      }
+      if (requestID != null) {
+        this.#pendingMethods.delete(requestID)
+      }
+      this.#failRequest(requestID, INTERNAL_ERROR_CODE, `HTTP ${response.status}: ${errorText}`)
+      return
+    }
+
+    const contentType = response.headers.get('Content-Type') ?? ''
+
+    if (contentType.includes('application/json')) {
+      let data: unknown
+      try {
+        data = await response.json()
+      } catch {
+        if (requestID != null) {
+          this.#pendingMethods.delete(requestID)
+        }
+        this.#failRequest(requestID, INTERNAL_ERROR_CODE, 'Invalid JSON in response')
+        return
+      }
+      if (data && this.#controller) {
+        this.#controller.enqueue(this.#handleIncoming(data as ServerMessage))
+      }
+      if (requestID != null) {
+        this.#pendingMethods.delete(requestID)
+      }
+    } else if (contentType.includes('text/event-stream')) {
+      // Consume the SSE stream in the background so the sink unblocks as soon as the
+      // response headers arrive. Awaiting here would serialize all other outgoing
+      // traffic — including the notifications/cancelled meant to stop this very stream
+      // — behind it. The correlation entry is reclaimed once the stream ends.
+      void this.#handleSSEResponse(response)
+        .catch((error) => {
+          this.#logger.warn('SSE response stream failed', {
+            error: error instanceof Error ? error.message : String(error),
+          })
+        })
+        .finally(() => {
+          if (requestID != null) {
+            this.#pendingMethods.delete(requestID)
+          }
+        })
+    } else if (requestID != null) {
+      // 202 Accepted or other no-content responses: nothing to enqueue, reclaim the entry.
+      this.#pendingMethods.delete(requestID)
     }
 
     // After sending notifications/initialized with a session, open GET stream
@@ -292,43 +403,94 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #openGETStream(): void {
     if (this.#disposed) return
 
+    // Abort any prior loop (e.g. a duplicate notifications/initialized) so it can't
+    // outlive its controller and keep reconnecting in the background.
+    this.#getStreamAbortController?.abort()
     this.#getStreamAbortController = new AbortController()
 
-    const headers: Record<string, string> = {
-      ...this.#headers,
-      Accept: 'text/event-stream',
-      'MCP-Protocol-Version': this.#protocolVersion,
-    }
-
-    if (this.#sessionID) {
-      headers['Mcp-Session-Id'] = this.#sessionID
-    }
-
-    if (this.#lastEventID) {
-      headers['Last-Event-ID'] = this.#lastEventID
-    }
-
-    // Fire-and-forget: process SSE events in the background
-    this.#processGETStream(headers).catch(() => {
-      // Connection closed or aborted - don't reconnect automatically yet
-    })
+    // Fire-and-forget: the reconnect loop runs until the transport is disposed.
+    void this.#runGETStream(this.#getStreamAbortController.signal)
   }
 
   /**
-   * Process the GET SSE stream.
+   * Maintain the GET SSE stream for server-initiated messages, reconnecting with
+   * capped exponential backoff after any disconnect. A single network blip must
+   * not permanently silence server notifications. Resumes from {@link #lastEventID}
+   * on each attempt and stops only on dispose/abort or a server signal that the
+   * stream is unsupported (405) or the session is gone (404).
    */
-  async #processGETStream(headers: Record<string, string>): Promise<void> {
-    const response = await fetch(this.#url, {
-      method: 'GET',
-      headers,
-      signal: this.#getStreamAbortController?.signal,
-    })
+  async #runGETStream(signal: AbortSignal): Promise<void> {
+    let attempt = 0
+    while (!this.#disposed && !signal.aborted) {
+      try {
+        const headers: Record<string, string> = {
+          ...this.#headers,
+          Accept: 'text/event-stream',
+          'MCP-Protocol-Version': this.#protocolVersion,
+        }
+        if (this.#sessionID) {
+          headers['Mcp-Session-Id'] = this.#sessionID
+        }
+        // Resume from the last seen event so no server notifications are dropped.
+        if (this.#lastEventID) {
+          headers['Last-Event-ID'] = this.#lastEventID
+        }
 
-    if (!response.ok) {
-      return
+        const response = await fetch(this.#url, { method: 'GET', headers, signal })
+
+        if (response.status === 405 || response.status === 404) {
+          // 405: server does not offer a GET notification stream. 404: session gone.
+          // Either way reconnecting cannot help — stop quietly.
+          return
+        }
+        if (!response.ok) {
+          throw new Error(`GET stream HTTP ${response.status}`)
+        }
+
+        // Connected: a successful stream resets the backoff so a later blip starts fresh.
+        attempt = 0
+        await this.#handleSSEResponse(response)
+        // Clean end (server closed the stream): reconnect after the base delay.
+      } catch (error) {
+        if (this.#disposed || signal.aborted) {
+          return
+        }
+        this.#logger.warn('GET notification stream disconnected; will reconnect', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+
+      if (this.#disposed || signal.aborted) {
+        return
+      }
+
+      // Floor the server-supplied retry hint so retry: 0 can't drive a no-delay hot loop.
+      const base = Math.max(MIN_GET_RECONNECT_MS, this.#retryMs ?? DEFAULT_GET_RECONNECT_BASE_MS)
+      const delay = Math.min(MAX_GET_RECONNECT_MS, base * 2 ** attempt)
+      attempt += 1
+      await this.#sleep(delay, signal)
     }
+  }
 
-    await this.#handleSSEResponse(response)
+  /**
+   * Resolve after `ms`, or immediately if `signal` aborts first.
+   */
+  #sleep(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve) => {
+      if (signal.aborted) {
+        resolve()
+        return
+      }
+      const onAbort = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort)
+        resolve()
+      }, ms)
+      signal.addEventListener('abort', onAbort, { once: true })
+    })
   }
 
   /**
@@ -344,7 +506,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       this.#getStreamAbortController = null
     }
 
-    // Terminate session with DELETE
+    // Terminate session with DELETE, bounded so a hung server can't stall shutdown.
     if (this.#sessionID) {
       try {
         await fetch(this.#url, {
@@ -354,9 +516,10 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
             'MCP-Protocol-Version': this.#protocolVersion,
             'Mcp-Session-Id': this.#sessionID,
           },
+          signal: AbortSignal.timeout(DEFAULT_DISPOSE_TIMEOUT),
         })
       } catch {
-        // Ignore errors during cleanup
+        // Ignore errors (including the timeout abort) during cleanup.
       }
     }
 
