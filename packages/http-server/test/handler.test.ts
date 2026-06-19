@@ -150,6 +150,43 @@ describe('createHTTPHandler', () => {
     }
   })
 
+  test('POST body over maxBodyBytes returns 413', async () => {
+    const handler = createHandler({ maxBodyBytes: 200 })
+
+    try {
+      const request = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: { padding: 'x'.repeat(1000) },
+        }),
+      })
+
+      const response = await handler.handleRequest(request)
+      expect(response.status).toBe(413)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('POST body within maxBodyBytes is processed normally', async () => {
+    const handler = createHandler({ maxBodyBytes: 4096 })
+
+    try {
+      const response = await handler.handleRequest(initializeRequest())
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Mcp-Session-Id')).toBeTruthy()
+    } finally {
+      handler.dispose()
+    }
+  })
+
   test('POST with disallowed Origin returns 403', async () => {
     const handler = createHandler({ allowedOrigins: ['https://allowed.example.com'] })
 

@@ -79,6 +79,61 @@ describe('SessionManager', () => {
     manager.dispose()
   })
 
+  test('invokes onDelete when a session is explicitly removed', () => {
+    const deleted: Array<string> = []
+    const manager = new SessionManager({
+      maxSessions: 10,
+      sessionTimeoutMs: 60_000,
+      onDelete: (id) => deleted.push(id),
+    })
+
+    const session = manager.create()
+    manager.delete(session.sessionID)
+
+    expect(deleted).toEqual([session.sessionID])
+    // Idempotent: deleting an already-gone session does not fire onDelete again.
+    manager.delete(session.sessionID)
+    expect(deleted).toEqual([session.sessionID])
+
+    manager.dispose()
+  })
+
+  test('fires onDelete for idle sessions via the cleanup timer', async () => {
+    const deleted: Array<string> = []
+    const manager = new SessionManager({
+      maxSessions: 10,
+      sessionTimeoutMs: 20,
+      onDelete: (id) => deleted.push(id),
+    })
+
+    const session = manager.create()
+    // Backdate activity so the next cleanup tick treats it as idle.
+    session.lastActivity = Date.now() - 1000
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(deleted).toContain(session.sessionID)
+    expect(manager.get(session.sessionID)).toBeUndefined()
+
+    manager.dispose()
+  })
+
+  test('fires onDelete for every session on dispose', () => {
+    const deleted: Array<string> = []
+    const manager = new SessionManager({
+      maxSessions: 10,
+      sessionTimeoutMs: 60_000,
+      onDelete: (id) => deleted.push(id),
+    })
+
+    const a = manager.create()
+    const b = manager.create()
+    manager.dispose()
+
+    expect(deleted).toContain(a.sessionID)
+    expect(deleted).toContain(b.sessionID)
+  })
+
   test('updates lastActivity on touch', () => {
     const manager = new SessionManager({
       maxSessions: 10,

@@ -62,6 +62,15 @@ Shipped from this audit (see `completed/`):
   llama failed-load cache + stream-cancel + listener-leak fixes, zero-arg `OpenAIProvider`,
   and per-request sampling params (`temperature`/`maxTokens`/`topP` + raw `providerOptions`)
   across all four providers. **BREAKING: anthropic default request timeout 60s → 30s.**
+- **HTTP transport resilience** (`completed/2026-06-19-http-transport-resilience.complete.md`)
+  — shipped on `fix/http-transport-resilience`: all 6 audit items. Client — sink never
+  throws (failed POST → correlated JSON-RPC error frame, transport stays usable; **contract
+  change: `transport.write()` no longer rejects on HTTP error**; session-expiry now a coded
+  `SESSION_EXPIRED_CODE`/`isSessionExpiredCode` signal), SSE consumed in background (no
+  cancellation deadlock) with connect-only timeout, GET stream reconnect with capped
+  backoff + `Last-Event-ID` resume, bounded dispose DELETE. Server — `SessionManager.onDelete`
+  closes the transport bridge on idle-timeout/DELETE/dispose (fixes bridge leak), and a
+  4 MiB-default `maxBodyBytes` cap returns 413 before buffering (DoS).
 - **Host + session lifecycle robustness** (`completed/2026-06-19-host-session-lifecycle.complete.md`)
   — shipped on `fix/session-lifecycle`: all 11 live audit items — SIGTERM→SIGKILL child
   reaping with awaited exit, daemon child-exit cleanup + guarded event writes, setup/remove
@@ -88,9 +97,6 @@ Shipped from this audit (see `completed/`):
   schema walk).
 - **MCP draft — breaking cut** (`backlog/2026-06-09-mcp-draft-breaking-cut.md`) —
   B1–B7 hard-cut; blocked on draft release + U1 transport/RPC-core decision.
-- **HTTP transport resilience** (`backlog/2026-06-12-http-transport-resilience.md`) —
-  audit: client error recovery, SSE serialization deadlock, reconnect, server leaks,
-  body limits.
 - **Anthropic test — KNOWN_MODELS** (`backlog/2026-06-18-anthropic-test-known-models.md`) —
   pre-existing red suite: test imports a non-exported `KNOWN_MODELS`; 2 listModels tests
   hit the live API (401). Surfaced (not caused) by the provider-robustness work.
