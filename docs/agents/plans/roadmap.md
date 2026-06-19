@@ -97,9 +97,6 @@ Shipped from this audit (see `completed/`):
   schema walk).
 - **MCP draft — breaking cut** (`backlog/2026-06-09-mcp-draft-breaking-cut.md`) —
   B1–B7 hard-cut; blocked on draft release + U1 transport/RPC-core decision.
-- **Anthropic test — KNOWN_MODELS** (`backlog/2026-06-18-anthropic-test-known-models.md`) —
-  pre-existing red suite: test imports a non-exported `KNOWN_MODELS`; 2 listModels tests
-  hit the live API (401). Surfaced (not caused) by the provider-robustness work.
 - **CLI UX polish** (`backlog/2026-06-12-cli-ux-polish.md`) — audit: API-key
   fail-fast, inspect stderr, empty states.
 - **Docs + packaging sweep** (`backlog/2026-06-12-docs-packaging-sweep.md`) — audit:

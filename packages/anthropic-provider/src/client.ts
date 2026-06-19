@@ -88,7 +88,7 @@ export class AnthropicClient {
   }
 
   /**
-   * List available models (returns known models since Anthropic doesn't have a list endpoint)
+   * List available models via the Anthropic `GET /v1/models` endpoint
    */
   async listModels(_params: ListModelParams = {}): Promise<ListModelResult> {
     return await this.#api.get('models').json<ListModelResult>()

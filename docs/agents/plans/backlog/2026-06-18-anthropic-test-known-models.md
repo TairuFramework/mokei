@@ -1,7 +1,18 @@
 # Anthropic provider test — pre-existing red suite
 
-**Status:** backlog
+**Status:** done (2026-06-19)
 **Found:** 2026-06-18, during the provider-robustness work (not caused by it — confirmed present on `main`).
+
+## Resolution (2026-06-19)
+
+- Deleted the stale `KNOWN_MODELS` describe block + import — no such symbol ever
+  existed in `client.ts`; the source uses the real `GET /v1/models` endpoint.
+- Rewrote the two `listModels` tests to mock the transport via
+  `vi.spyOn(AnthropicClient.prototype, 'listModels')` — no network, no live 401.
+  One asserts the `{ id, raw }` mapping, one asserts request-param forwarding.
+- Fixed the stale "Anthropic doesn't have a list endpoint" comment in `client.ts`.
+
+Suite now green: 19 pass, 0 fail. Lint clean.
 
 ## Gap
 

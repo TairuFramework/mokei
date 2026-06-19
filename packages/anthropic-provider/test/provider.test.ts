@@ -1,8 +1,8 @@
 import type { Tool as ContextTool } from '@mokei/context-protocol'
 import type { ServerMessage } from '@mokei/model-provider'
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { AnthropicClient, KNOWN_MODELS } from '../src/client.js'
+import { AnthropicClient } from '../src/client.js'
 import { AnthropicProvider } from '../src/provider.js'
 import type { StreamEvent, ToolCall } from '../src/types.js'
 
@@ -48,17 +48,39 @@ describe('AnthropicProvider', () => {
   })
 
   describe('listModels', () => {
-    test('returns known Claude models', async () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    test('maps the API model list to { id, raw } entries', async () => {
+      const data = [
+        { id: 'claude-sonnet-4-20250514', type: 'model', display_name: 'Claude Sonnet 4' },
+        { id: 'claude-3-5-sonnet-20241022', type: 'model', display_name: 'Claude Sonnet 3.5' },
+      ]
+      const spy = vi
+        .spyOn(AnthropicClient.prototype, 'listModels')
+        .mockResolvedValue({ data, first_id: data[0].id, has_more: false, last_id: data[1].id })
+
       const provider = new AnthropicProvider({ client: { apiKey: 'test-key' } })
       const models = await provider.listModels()
 
-      expect(models.length).toBeGreaterThan(0)
-      expect(models.every((m) => m.id && m.raw)).toBe(true)
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(models).toEqual([
+        { id: 'claude-sonnet-4-20250514', raw: data[0] },
+        { id: 'claude-3-5-sonnet-20241022', raw: data[1] },
+      ])
+    })
 
-      // Check for expected models
-      const modelIds = models.map((m) => m.id)
-      expect(modelIds).toContain('claude-sonnet-4-20250514')
-      expect(modelIds).toContain('claude-3-5-sonnet-20241022')
+    test('forwards request params to the client', async () => {
+      const spy = vi
+        .spyOn(AnthropicClient.prototype, 'listModels')
+        .mockResolvedValue({ data: [], first_id: '', has_more: false, last_id: '' })
+
+      const signal = new AbortController().signal
+      const provider = new AnthropicProvider({ client: { apiKey: 'test-key' } })
+      await provider.listModels({ signal })
+
+      expect(spy).toHaveBeenCalledWith({ signal })
     })
   })
 
@@ -202,24 +224,6 @@ describe('AnthropicProvider', () => {
 
       expect(anthropicTool.name).toBe('simple_tool')
       expect(anthropicTool.description).toBe('')
-    })
-  })
-
-  describe('KNOWN_MODELS', () => {
-    test('contains expected models', () => {
-      expect(KNOWN_MODELS.length).toBeGreaterThan(0)
-
-      for (const model of KNOWN_MODELS) {
-        expect(model.id).toBeTruthy()
-        expect(model.type).toBe('model')
-        expect(model.display_name).toBeTruthy()
-      }
-    })
-
-    test('includes Claude Sonnet 4', () => {
-      const sonnet4 = KNOWN_MODELS.find((m) => m.id === 'claude-sonnet-4-20250514')
-      expect(sonnet4).toBeDefined()
-      expect(sonnet4?.display_name).toBe('Claude Sonnet 4')
     })
   })
 })
