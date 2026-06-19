@@ -59,9 +59,9 @@ For tasks requiring multiple tool calls, use `AgentSession`:
 import { AgentSession } from '@mokei/session'
 
 const agent = new AgentSession({
-  provider: openaiProvider,
+  session,
+  provider: 'openai',
   model: 'gpt-4',
-  host: session.host,
   toolApproval: 'auto',
   maxIterations: 10
 })

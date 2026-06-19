@@ -79,6 +79,17 @@ Shipped from this audit (see `completed/`):
   clobber guard, bounded+drop-when-no-reader notifications, `anySignal` via `AbortSignal.any`,
   abandoned agent generator closing the provider stream, and `Object.hasOwn` tool/prompt
   lookup hardening. Item 12 (floating cancel notify) was already fixed by the rpc work.
+- **Anthropic test — red suite fix** (`completed/2026-06-19-anthropic-test-known-models.complete.md`)
+  — commit `eb0f5b6`: deleted the stale `KNOWN_MODELS` import/block, mocked the
+  transport for the two `listModels` tests (no live 401). Suite green.
+- **CLI UX polish** (`completed/2026-06-19-cli-ux-polish.complete.md`) — commit `1654f8e`:
+  API-key fail-fast (before daemon spawn) + env-var/leak help, `inspect` inherits server
+  stderr, empty model-list state names the provider.
+- **Docs + packaging sweep** (`completed/2026-06-19-docs-packaging-sweep.complete.md`) —
+  all 6 items: type-imported `@mokei/*` devDeps→deps (session/providers/host), corrected
+  AgentSession/Session/Ollama/anthropic-stream doc examples, `'ask'` doc+code truth-up,
+  new READMEs (http-client/http-server/llama-provider), doc-index + root README CLI sync,
+  cli `repository` field.
 
 ## Milestones (milestones/)
 
@@ -97,8 +108,6 @@ Shipped from this audit (see `completed/`):
   schema walk).
 - **MCP draft — breaking cut** (`backlog/2026-06-09-mcp-draft-breaking-cut.md`) —
   B1–B7 hard-cut; blocked on draft release + U1 transport/RPC-core decision.
-- **Docs + packaging sweep** (`backlog/2026-06-12-docs-packaging-sweep.md`) — audit:
-  broken examples, devDeps→deps for d.ts imports, missing READMEs.
 
 ## Planned — P2
 

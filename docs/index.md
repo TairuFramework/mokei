@@ -18,11 +18,17 @@ Mokei provides a comprehensive framework for building MCP-based applications wit
 | `@mokei/context-server` | MCP server implementation |
 | `@mokei/context-client` | MCP client implementation |
 | `@mokei/host` | Host system for managing multiple MCP server connections |
+| `@mokei/host-protocol` | Host ↔ monitor protocol types |
+| `@mokei/host-monitor` | Monitor UI for host contexts |
+| `@mokei/http-client` | MCP Streamable HTTP client transport |
+| `@mokei/http-server` | MCP Streamable HTTP server transport |
 | `@mokei/session` | High-level session management combining hosts with model providers |
 | `@mokei/model-provider` | Model provider interface definitions |
 | `@mokei/openai-provider` | OpenAI model provider integration |
 | `@mokei/anthropic-provider` | Anthropic Claude model provider integration |
 | `@mokei/ollama-provider` | Ollama model provider integration |
+| `@mokei/llama-provider` | Local GGUF inference via node-llama-cpp |
+| `@mokei/logger` | Shared logger utility |
 | `mokei` | CLI for interacting with MCP servers and AI models |
 
 ## Guides

@@ -21,7 +21,7 @@ npm install @mokei/session
 ## Basic Usage
 
 ```typescript
-import { AgentSession } from '@mokei/session'
+import { AgentSession, Session } from '@mokei/session'
 import { ContextHost } from '@mokei/host'
 import { OpenAIProvider } from '@mokei/openai-provider'
 
@@ -39,11 +39,14 @@ const provider = OpenAIProvider.fromConfig({
   apiKey: process.env.OPENAI_API_KEY
 })
 
+// Wrap the host and providers in a Session
+const session = new Session({ contextHost: host, providers: { openai: provider } })
+
 // Create agent
 const agent = new AgentSession({
-  provider,
+  session,
+  provider: 'openai',
   model: 'gpt-4',
-  host,
 })
 
 // Run to completion
@@ -56,14 +59,16 @@ console.log('Tool calls:', result.toolCalls.length)
 
 ## Configuration
 
+The snippets below assume a configured `session` (see [Basic Usage](#basic-usage)).
+
 ```typescript
 import { AgentSession, type AgentParams } from '@mokei/session'
 
 const agent = new AgentSession({
   // Required
-  provider: openaiProvider,     // ModelProvider instance or key from providers map
+  session,                      // Session managing providers + MCP servers
+  provider: 'openai',           // provider key from the session's providers map (or a ModelProvider instance)
   model: 'gpt-4',               // Model identifier
-  host: contextHost,            // ContextHost with MCP servers
 
   // Optional
   systemPrompt: 'You are a helpful assistant.',  // Prepended to messages
@@ -86,9 +91,9 @@ Execute all tools automatically without prompting:
 
 ```typescript
 const agent = new AgentSession({
-  provider,
+  session,
+  provider: 'openai',
   model: 'gpt-4',
-  host,
   toolApproval: 'auto'
 })
 ```
@@ -99,22 +104,22 @@ Never execute tools (dry run mode):
 
 ```typescript
 const agent = new AgentSession({
-  provider,
+  session,
+  provider: 'openai',
   model: 'gpt-4',
-  host,
   toolApproval: 'never'
 })
 ```
 
 ### `'ask'`
 
-Emit a pending event before each tool call. Currently auto-approves after emitting:
+Emit a `tool-call-pending` event before each tool call, then **deny** the call — no async approval bridge is wired in, so the result is `{ approved: false, reason: 'Tool approval required but no handler configured' }`. To actually approve calls interactively, pass a `ToolApprovalFn` (see [Custom Function](#custom-function) below) instead of `'ask'`:
 
 ```typescript
 const agent = new AgentSession({
-  provider,
+  session,
+  provider: 'openai',
   model: 'gpt-4',
-  host,
   toolApproval: 'ask'
 })
 
@@ -132,9 +137,9 @@ Provide a function to decide approval:
 
 ```typescript
 const agent = new AgentSession({
-  provider,
+  session,
+  provider: 'openai',
   model: 'gpt-4',
-  host,
   toolApproval: async (toolCall, context) => {
     // Check the tool being called
     if (toolCall.name.includes('delete')) {
@@ -281,7 +286,7 @@ const controller = new AbortController()
 // Cancel after 10 seconds
 setTimeout(() => controller.abort(), 10000)
 
-const result = await agent.run('Complex task', controller.signal)
+const result = await agent.run('Complex task', { signal: controller.signal })
 
 if (result.finishReason === 'aborted') {
   console.log('Agent was cancelled')
@@ -292,9 +297,9 @@ if (result.finishReason === 'aborted') {
 
 ```typescript
 const agent = new AgentSession({
-  provider,
+  session,
+  provider: 'openai',
   model: 'gpt-4',
-  host,
   timeout: 60000  // 1 minute
 })
 
@@ -322,7 +327,7 @@ await agent.run('Do something')
 ## Complete Example
 
 ```typescript
-import { AgentSession } from '@mokei/session'
+import { AgentSession, Session } from '@mokei/session'
 import { ContextHost } from '@mokei/host'
 import { OpenAIProvider } from '@mokei/openai-provider'
 
@@ -340,11 +345,14 @@ async function main() {
     apiKey: process.env.OPENAI_API_KEY!
   })
 
+  // Wrap the host and providers in a Session
+  const session = new Session({ contextHost: host, providers: { openai: provider } })
+
   // Create agent with custom approval
   const agent = new AgentSession({
-    provider,
+    session,
+    provider: 'openai',
     model: 'gpt-4',
-    host,
     systemPrompt: 'You are a database assistant. Use the sqlite tools to help users.',
     maxIterations: 5,
     toolApproval: async (toolCall) => {

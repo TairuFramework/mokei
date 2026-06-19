@@ -153,7 +153,7 @@ import { OllamaProvider } from '@mokei/ollama-provider'
 
 // Add provider dynamically
 session.addProvider('ollama', OllamaProvider.fromConfig({
-  apiUrl: 'http://localhost:11434'
+  baseURL: 'http://localhost:11434/api'
 }))
 
 // Get provider

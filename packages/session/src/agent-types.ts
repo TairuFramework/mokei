@@ -8,7 +8,8 @@ import type { Session } from './session.js'
  * Tool approval strategy for agent execution.
  *
  * - `'auto'` - Execute all tools automatically without prompting
- * - `'ask'` - Emit a pending event and wait for external approval
+ * - `'ask'` - Emit a pending event, then deny: there is no async approval bridge,
+ *   so supply a `ToolApprovalFn` to actually approve interactively
  * - `'never'` - Never execute tools (dry run mode)
  * - `ToolApprovalFn` - Custom function to determine approval
  */
@@ -165,7 +166,7 @@ export type AgentReasoningCompleteEvent = {
 
 /**
  * Emitted when a tool call is pending approval.
- * Only emitted when toolApproval is 'ask'.
+ * Emitted when toolApproval is 'ask' or a ToolApprovalFn (not for 'auto'/'never').
  */
 export type AgentToolCallPendingEvent = {
   type: 'tool-call-pending'

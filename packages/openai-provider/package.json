@@ -40,11 +40,9 @@
   },
   "dependencies": {
     "@enkaku/schema": "catalog:",
+    "@mokei/context-protocol": "workspace:^",
+    "@mokei/model-provider": "workspace:^",
     "eventsource-parser": "catalog:",
     "ky": "catalog:"
-  },
-  "devDependencies": {
-    "@mokei/context-protocol": "workspace:^",
-    "@mokei/model-provider": "workspace:^"
   }
 }

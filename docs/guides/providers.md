@@ -5,6 +5,7 @@ Packages:
 - `@mokei/openai-provider` - OpenAI API integration
 - `@mokei/anthropic-provider` - Anthropic Claude API integration
 - `@mokei/ollama-provider` - Ollama local models integration
+- `@mokei/llama-provider` - Local GGUF inference via node-llama-cpp
 
 ## Installation
 
@@ -20,6 +21,9 @@ npm install @mokei/anthropic-provider
 
 # Ollama provider  
 npm install @mokei/ollama-provider
+
+# Llama provider (local GGUF via node-llama-cpp)
+npm install @mokei/llama-provider node-llama-cpp
 ```
 
 ## OpenAI Provider
@@ -288,6 +292,55 @@ const result = await provider.embed({
 
 console.log(result.embeddings[0])
 ```
+
+## Llama Provider
+
+Runs local GGUF models in-process via [node-llama-cpp](https://node-llama-cpp.withcat.ai/).
+`node-llama-cpp` is a peer dependency and must be installed alongside the provider.
+
+### Configuration
+
+Models are registered up front by name, each pointing at a `.gguf` file on disk:
+
+```typescript
+import { LlamaProvider } from '@mokei/llama-provider'
+
+const provider = LlamaProvider.fromConfig({
+  models: {
+    'llama-3.1-8b': {
+      path: '/models/Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf',  // Required
+      contextSize: 8192,  // Optional, default context size
+      gpu: 'auto',        // Optional: true | false | 'auto'
+    },
+  },
+})
+```
+
+### Streaming Chat
+
+```typescript
+const request = provider.streamChat({
+  model: 'llama-3.1-8b',
+  messages: [
+    { source: 'client', role: 'user', text: 'Hello!' }
+  ],
+})
+
+const stream = await request
+
+const reader = stream.getReader()
+while (true) {
+  const { done, value } = await reader.read()
+  if (done) break
+
+  if (value.type === 'text-delta') {
+    process.stdout.write(value.text)
+  }
+}
+```
+
+The provider loads models lazily on first use. Call `await provider.dispose()` to free
+loaded models and GPU resources when you're done.
 
 ## Structured Output
 

@@ -23,7 +23,8 @@ const provider = AnthropicProvider.fromConfig({
 const models = await provider.listModels()
 console.log(models)
 
-// Stream a chat completion
+// Stream a chat completion. `streamChat` returns a promise that resolves
+// to a `ReadableStream` of `MessagePart` chunks.
 const request = provider.streamChat({
   model: 'claude-sonnet-4-20250514',
   messages: [
@@ -31,14 +32,13 @@ const request = provider.streamChat({
   ],
 })
 
-for await (const stream of await request) {
-  const reader = stream.getReader()
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (value.type === 'text-delta') {
-      process.stdout.write(value.text)
-    }
+const stream = await request
+const reader = stream.getReader()
+while (true) {
+  const { done, value } = await reader.read()
+  if (done) break
+  if (value.type === 'text-delta') {
+    process.stdout.write(value.text)
   }
 }
 ```
@@ -48,7 +48,7 @@ for await (const stream of await request) {
 ```typescript
 import { AnthropicProvider } from '@mokei/anthropic-provider'
 import { ContextHost } from '@mokei/host'
-import { AgentSession } from '@mokei/session'
+import { AgentSession, Session } from '@mokei/session'
 
 const provider = AnthropicProvider.fromConfig({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -57,10 +57,12 @@ const provider = AnthropicProvider.fromConfig({
 const host = new ContextHost()
 // ... add MCP contexts
 
+const session = new Session({ contextHost: host, providers: { anthropic: provider } })
+
 const agent = new AgentSession({
-  provider,
+  session,
+  provider: 'anthropic',
   model: 'claude-sonnet-4-20250514',
-  host,
   systemPrompt: 'You are a helpful assistant.',
 })
 

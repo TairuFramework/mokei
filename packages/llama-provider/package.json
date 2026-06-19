@@ -42,11 +42,11 @@
   },
   "dependencies": {
     "@enkaku/async": "catalog:",
-    "@enkaku/schema": "catalog:"
+    "@enkaku/schema": "catalog:",
+    "@mokei/context-protocol": "workspace:^",
+    "@mokei/model-provider": "workspace:^"
   },
   "devDependencies": {
-    "@mokei/context-protocol": "workspace:^",
-    "@mokei/model-provider": "workspace:^",
     "@types/node": "catalog:"
   },
   "peerDependencies": {

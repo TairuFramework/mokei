@@ -43,12 +43,12 @@
     "@enkaku/async": "catalog:",
     "@enkaku/event": "catalog:",
     "@enkaku/generator": "catalog:",
-    "@mokei/host": "workspace:^"
-  },
-  "devDependencies": {
-    "@enkaku/transport": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^",
+    "@mokei/host": "workspace:^",
     "@mokei/model-provider": "workspace:^"
+  },
+  "devDependencies": {
+    "@enkaku/transport": "catalog:"
   }
 }

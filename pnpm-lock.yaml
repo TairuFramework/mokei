@@ -444,19 +444,18 @@ importers:
       '@enkaku/schema':
         specifier: 'catalog:'
         version: 0.17.0
-      eventsource-parser:
-        specifier: 'catalog:'
-        version: 3.1.0
-      ky:
-        specifier: 'catalog:'
-        version: 2.0.2
-    devDependencies:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
+      eventsource-parser:
+        specifier: 'catalog:'
+        version: 3.1.0
+      ky:
+        specifier: 'catalog:'
+        version: 2.0.2
 
   packages/cli:
     dependencies:
@@ -644,6 +643,9 @@ importers:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
+      '@mokei/context-rpc':
+        specifier: workspace:^
+        version: link:../context-rpc
       '@mokei/context-server':
         specifier: workspace:^
         version: link:../context-server
@@ -657,9 +659,6 @@ importers:
         specifier: 'catalog:'
         version: 2.1.0
     devDependencies:
-      '@mokei/context-rpc':
-        specifier: workspace:^
-        version: link:../context-rpc
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.3
@@ -753,16 +752,16 @@ importers:
       '@enkaku/schema':
         specifier: 'catalog:'
         version: 0.17.0
-      node-llama-cpp:
-        specifier: '>=3.0.0'
-        version: 3.15.1(typescript@6.0.3)
-    devDependencies:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
+      node-llama-cpp:
+        specifier: '>=3.0.0'
+        version: 3.15.1(typescript@6.0.3)
+    devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.3
@@ -791,16 +790,16 @@ importers:
       '@enkaku/stream':
         specifier: 'catalog:'
         version: 0.17.0
-      ky:
-        specifier: 'catalog:'
-        version: 2.0.2
-    devDependencies:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
+      ky:
+        specifier: 'catalog:'
+        version: 2.0.2
+    devDependencies:
       vitest:
         specifier: 'catalog:'
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(@vitest/ui@4.1.9)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@25.9.3)(esbuild@0.28.0)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.15))(terser@5.48.0)(tsx@4.22.4)(yaml@2.8.3))
@@ -810,19 +809,18 @@ importers:
       '@enkaku/schema':
         specifier: 'catalog:'
         version: 0.17.0
-      eventsource-parser:
-        specifier: 'catalog:'
-        version: 3.1.0
-      ky:
-        specifier: 'catalog:'
-        version: 2.0.2
-    devDependencies:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
+      eventsource-parser:
+        specifier: 'catalog:'
+        version: 3.1.0
+      ky:
+        specifier: 'catalog:'
+        version: 2.0.2
 
   packages/session:
     dependencies:
@@ -835,22 +833,22 @@ importers:
       '@enkaku/generator':
         specifier: 'catalog:'
         version: 0.17.2
-      '@mokei/host':
-        specifier: workspace:^
-        version: link:../host
-    devDependencies:
-      '@enkaku/transport':
-        specifier: 'catalog:'
-        version: 0.17.0
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../context-rpc
+      '@mokei/host':
+        specifier: workspace:^
+        version: link:../host
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
+    devDependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.17.0
 
   website:
     dependencies:
@@ -9605,18 +9603,6 @@ packages:
       utf-8-validate:
         optional: true
 
-  ws@8.19.0:
-    resolution: {integrity: sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
   ws@8.21.0:
     resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
     engines: {node: '>=10.0.0'}
@@ -16937,7 +16923,7 @@ snapshots:
       webidl-conversions: 8.0.1
       whatwg-mimetype: 4.0.0
       whatwg-url: 15.1.0
-      ws: 8.19.0
+      ws: 8.21.0
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - '@noble/hashes'
@@ -20811,8 +20797,6 @@ snapshots:
       typedarray-to-buffer: 3.1.5
 
   ws@7.5.11: {}
-
-  ws@8.19.0: {}
 
   ws@8.21.0: {}
 

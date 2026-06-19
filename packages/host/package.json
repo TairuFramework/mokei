@@ -51,13 +51,12 @@
     "@mokei/http-client": "workspace:^",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
+    "@mokei/context-rpc": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "nano-spawn": "catalog:"
   },
   "devDependencies": {
-    "@mokei/context-protocol": "workspace:^",
-    "@mokei/context-rpc": "workspace:^",
     "@types/node": "catalog:"
   }
 }
