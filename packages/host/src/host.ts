@@ -39,6 +39,9 @@ export type EnableToolsArg = EnableTools | EnableToolsFn
 /** Default cap on total live stdout framer memory per context (8 MiB). */
 const DEFAULT_MAX_BUFFER_SIZE = 8 * 1024 * 1024
 
+/** Grace period (ms) between SIGTERM and SIGKILL when disposing a child. */
+const DEFAULT_KILL_TIMEOUT = 5000
+
 export function getContextToolID(contextKey: string, toolName: string): string {
   return `${contextKey}:${toolName}`
 }
@@ -104,12 +107,15 @@ export type SpawnHostedContextParams = SpawnContextServerParams & {
   maxBufferSize?: number
   /** Optional tighter per-message cap in bytes. Default unset (= buffer cap). */
   maxMessageSize?: number
+  /** Grace period (ms) between SIGTERM and SIGKILL on dispose. Default 5000. */
+  killTimeout?: number
 }
 
 export async function spawnHostedContext<T extends ContextTypes = UnknownContextTypes>(
   params: SpawnHostedContextParams,
 ): Promise<HostedContext<T>> {
-  const { onExit, onStreamError, maxBufferSize, maxMessageSize, ...spawnParams } = params
+  const { onExit, onStreamError, maxBufferSize, maxMessageSize, killTimeout, ...spawnParams } =
+    params
   const { childProcess, streams, subprocess } = await spawnContextServer(spawnParams)
   if (onExit != null) {
     subprocess.then(
@@ -137,8 +143,24 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
   })
   return createHostedContext({
     transport: transport as ClientTransport,
-    dispose: () => {
-      childProcess.kill()
+    dispose: async () => {
+      // Already exited — nothing to reap.
+      if (childProcess.exitCode != null || childProcess.signalCode != null) {
+        return
+      }
+      await new Promise<void>((resolve) => {
+        let killTimer: ReturnType<typeof setTimeout>
+        childProcess.once('exit', () => {
+          clearTimeout(killTimer)
+          resolve()
+        })
+        childProcess.kill('SIGTERM')
+        killTimer = setTimeout(() => {
+          // Child ignored SIGTERM; force it. The `exit` listener above still
+          // resolves once the kill lands.
+          childProcess.kill('SIGKILL')
+        }, killTimeout ?? DEFAULT_KILL_TIMEOUT)
+      })
     },
   })
 }
@@ -473,13 +495,25 @@ export class ContextHost extends Disposer {
   }
 
   async setup(key: string, enableTools: EnableToolsArg = true): Promise<Array<ContextTool>> {
-    const { tools } = await this.getContext(key).client.listTools()
+    const { tools } = await this.getContext(key)
+      .client.listTools()
+      .catch((err: unknown) => {
+        // If the context was removed while listTools was in flight, surface a clear error.
+        if (this._contexts[key] == null) {
+          throw new Error(`Context ${key} was removed during setup`)
+        }
+        throw err
+      })
     const enabledTools = typeof enableTools === 'function' ? await enableTools(tools) : enableTools
     const contextTools = tools.map((tool: Tool) => {
       const enabled =
         typeof enabledTools === 'boolean' ? enabledTools : enabledTools.includes(tool.name)
       return { id: getContextToolID(key, tool.name), tool, enabled }
     })
+    // The context may have been removed while listTools / enableTools awaited.
+    if (this._contexts[key] == null) {
+      throw new Error(`Context ${key} was removed during setup`)
+    }
     this._contexts[key].tools = contextTools
     return contextTools
   }
@@ -535,17 +569,14 @@ export class ContextHost extends Disposer {
       throw new Error(`Local tool "${name}" does not exist`)
     }
 
-    // Create a promise-based result that matches the SentRequest interface
-    let cancelled = false
+    const controller = new AbortController()
     const promise = Promise.resolve().then(async () => {
-      if (cancelled) {
+      if (controller.signal.aborted) {
         throw new Error('Request cancelled')
       }
       try {
-        const result = await localTool.execute(args)
-        return result
+        return await localTool.execute(args, controller.signal)
       } catch (error) {
-        // Convert errors to CallToolResult with isError flag
         const errorMessage = error instanceof Error ? error.message : String(error)
         return {
           content: [{ type: 'text' as const, text: errorMessage }],
@@ -554,10 +585,9 @@ export class ContextHost extends Disposer {
       }
     })
 
-    // Create a minimal SentRequest-compatible object
     const request = promise as SentRequest<CallToolResult>
     request.cancel = () => {
-      cancelled = true
+      controller.abort()
     }
     return request
   }

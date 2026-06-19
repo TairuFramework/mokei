@@ -23,6 +23,7 @@ import {
   type ToolApprovalStrategy,
 } from './agent-types.js'
 import { ToolCallCancelledError, ToolCallTimeoutError, UnknownToolError } from './errors.js'
+import type { ChatTurn } from './session.js'
 
 /** Abort reason set when the per-tool timeout timer fires. */
 const TOOL_TIMEOUT_REASON = Symbol('mokei.tool-timeout')
@@ -159,10 +160,13 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     // Set up timeout
     const timeoutController = new AbortController()
     const timeoutId = setTimeout(() => timeoutController.abort(), timeout)
+    // Tracks the in-flight chat turn so the outer finally can return it if the
+    // consumer abandons this generator mid-stream.
+    let activeChatTurn: ChatTurn<T> | null = null
 
     // Combine signals
     const combinedSignal = signal
-      ? anySignal([signal, timeoutController.signal])
+      ? AbortSignal.any([signal, timeoutController.signal])
       : timeoutController.signal
 
     const emitEvent = (event: AgentEvent<T>): AgentEvent<T> => {
@@ -244,6 +248,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
           tools,
           signal: combinedSignal,
         })
+        activeChatTurn = chatTurn
 
         // Iterate through chunks, yielding text events in real-time.
         //
@@ -312,6 +317,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
             }
             result = await pull()
           }
+          activeChatTurn = null
         } catch (streamError) {
           // Best-effort close so the provider releases its reader / HTTP
           // connection. Fire-and-forget, never awaited: a generator parked on a
@@ -516,6 +522,9 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       throw err
     } finally {
       clearTimeout(timeoutId)
+      // A consumer that breaks out of this generator leaves the current turn's
+      // provider stream open; return it so the provider releases the reader.
+      void activeChatTurn?.return(undefined as never).catch(() => {})
     }
   }
 
@@ -670,23 +679,6 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       this.#activeToolController = null
     }
   }
-}
-
-/**
- * Combine multiple AbortSignals into one.
- */
-function anySignal(signals: Array<AbortSignal>): AbortSignal {
-  const controller = new AbortController()
-
-  for (const signal of signals) {
-    if (signal.aborted) {
-      controller.abort(signal.reason)
-      return controller.signal
-    }
-    signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
-  }
-
-  return controller.signal
 }
 
 /**

@@ -1,6 +1,5 @@
 import { lazy } from '@enkaku/async'
 import { createValidator } from '@enkaku/schema'
-import { createReadable } from '@enkaku/stream'
 import type {
   CallToolRequest,
   CallToolResult,
@@ -64,6 +63,9 @@ export const DEFAULT_INITIALIZE_PARAMS: InitializeRequest['params'] = {
 }
 
 export const DEFAULT_INITIALIZE_TIMEOUT = 30_000
+
+/** Max notifications buffered once a reader is attached; oldest dropped past this. */
+const NOTIFICATION_BUFFER_CAP = 256
 
 export class UnsupportedProtocolVersionError extends Error {
   constructor(received: string) {
@@ -152,20 +154,47 @@ export class ContextClient<
   #initialized: PromiseLike<InitializeResult>
   #initializeTimeout: number
   #listRoots?: Array<Root> | ListRootsHandler
-  #notificationController: ReadableStreamDefaultController<HandleNotification>
+  #notificationBuffer: Array<HandleNotification> = []
+  #notificationPull: (() => void) | null = null
+  #hasNotificationReader = false
   #notifications: ReadableStream<HandleNotification>
   #serverCapabilities: InitializeResult['capabilities'] = {}
 
   constructor(params: ClientParams) {
     super({ validateMessageIn: validateServerMessage, transport: params.transport })
-    const [stream, controller] = createReadable<HandleNotification>()
     this.#createMessage = params.createMessage
     this.#elicit = params.elicit
     this.#initialized = lazy(() => this.#initialize())
     this.#initializeTimeout = params.initializeTimeout ?? DEFAULT_INITIALIZE_TIMEOUT
     this.#listRoots = params.listRoots
-    this.#notificationController = controller
-    this.#notifications = stream
+    this.#notifications = new ReadableStream<HandleNotification>(
+      {
+        pull: (controller) => {
+          const next = this.#notificationBuffer.shift()
+          if (next != null) {
+            controller.enqueue(next)
+            return
+          }
+          // No buffered item: park until the next notification arrives.
+          return new Promise<void>((resolve) => {
+            this.#notificationPull = () => {
+              this.#notificationPull = null
+              const queued = this.#notificationBuffer.shift()
+              if (queued != null) {
+                controller.enqueue(queued)
+              }
+              resolve()
+            }
+          })
+        },
+        cancel: () => {
+          this.#hasNotificationReader = false
+          this.#notificationBuffer = []
+          this.#notificationPull = null
+        },
+      },
+      new CountQueuingStrategy({ highWaterMark: 0 }),
+    )
   }
 
   // Inject W3C trace context (SEP-414) into every outgoing request's `_meta`.
@@ -275,7 +304,15 @@ export class ContextClient<
     if (notification.method === 'notifications/message') {
       this.events.emit('log', notification.params)
     }
-    this.#notificationController.enqueue(notification)
+    // Drop until a reader attaches, then keep only the most recent CAP.
+    if (!this.#hasNotificationReader) {
+      return
+    }
+    this.#notificationBuffer.push(notification)
+    if (this.#notificationBuffer.length > NOTIFICATION_BUFFER_CAP) {
+      this.#notificationBuffer.shift()
+    }
+    this.#notificationPull?.()
   }
 
   async _handleRequest(request: ServerRequest, signal: AbortSignal): Promise<ClientResult> {
@@ -312,7 +349,8 @@ export class ContextClient<
   }
 
   get notifications(): ReadableStream<ServerNotification> {
-    return this.#notifications
+    this.#hasNotificationReader = true
+    return this.#notifications as ReadableStream<ServerNotification>
   }
 
   async initialize(): Promise<InitializeResult> {

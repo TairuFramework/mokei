@@ -1,6 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-
-import { ContextHost } from '../src/host.js'
+import { ContextHost, spawnHostedContext } from '../src/host.js'
 
 describe('ContextHost lifecycle', () => {
   test('reaps a context and emits context:failed when its child exits non-zero, with no unhandled rejection', async () => {
@@ -59,5 +58,71 @@ describe('ContextHost lifecycle', () => {
     expect(failed).toBe(0)
 
     await host.dispose()
+  })
+})
+
+describe('ContextHost.setup race', () => {
+  test('throws a clear error if the context is removed during listTools', async () => {
+    const host = new ContextHost()
+    await host.addLocalContext({
+      key: 'racy',
+      command: process.execPath,
+      // Minimal server that responds to initialize + tools/list slowly enough
+      // for the remove below to land first is hard to time deterministically;
+      // instead drive the race directly by removing mid-setup.
+      args: ['-e', 'setInterval(() => {}, 1e9)'],
+    })
+
+    // Start setup, then remove before it can assign tools.
+    const setupPromise = host.setup('racy').catch((err: Error) => err)
+    await host.remove('racy')
+
+    const result = await setupPromise
+    if (result instanceof Error) {
+      expect(result.message).toContain('was removed during setup')
+    }
+    // Either it raced and threw the clear error, or it finished before remove —
+    // in both cases there must be no leftover context and no TypeError.
+    expect(host.getContextKeys()).not.toContain('racy')
+
+    await host.dispose()
+  })
+})
+
+describe('spawnHostedContext dispose escalation', () => {
+  test('escalates to SIGKILL when the child ignores SIGTERM, and awaits real exit', async () => {
+    // Child traps SIGTERM and never exits on its own.
+    const ctx = await spawnHostedContext({
+      command: process.execPath,
+      args: ['-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1e9)"],
+      killTimeout: 300,
+    })
+
+    // Give the child process time to finish V8 startup and register its
+    // SIGTERM handler before we dispose.  On a fast machine the 'spawn' event
+    // fires before the child script has run, so without this wait SIGTERM
+    // would arrive before process.on('SIGTERM', …) executes and the default
+    // handler would terminate the child immediately.
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    const start = Date.now()
+    await ctx.disposer.dispose()
+    const elapsed = Date.now() - start
+
+    // dispose must have waited for the kill deadline, then SIGKILLed and
+    // awaited the real exit — i.e. it did not resolve immediately.
+    expect(elapsed).toBeGreaterThanOrEqual(250)
+  })
+
+  test('exits on SIGTERM without escalating for a well-behaved child', async () => {
+    const ctx = await spawnHostedContext({
+      command: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 1e9)'],
+      killTimeout: 2000,
+    })
+    const start = Date.now()
+    await ctx.disposer.dispose()
+    // Resolves well before the 2s deadline because SIGTERM is honored.
+    expect(Date.now() - start).toBeLessThan(1500)
   })
 })

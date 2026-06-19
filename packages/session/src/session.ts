@@ -38,6 +38,13 @@ export type ChatParams<T extends ProviderTypes = ProviderTypes> = {
   abortActiveRequest?: boolean
 }
 
+/** Async generator returned by {@link Session.streamChatTurn}. */
+export type ChatTurn<P extends ProviderTypes = ProviderTypes> = AsyncGenerator<
+  MessagePart<P['MessagePart'], P['ToolCall']>,
+  AggregatedMessage<P['ToolCall']>,
+  unknown
+>
+
 export type ContextAddedEvent = {
   key: string
   tools: Array<ContextTool>
@@ -172,12 +179,28 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   }
 
   addContext(params: AddContextParams): Promise<Array<ContextTool>> {
-    return params.signal
-      ? raceSignal(this.#setupContext(params), params.signal).catch((err) => {
-          this.#contextHost.remove(params.key)
-          throw err
-        })
-      : this.#setupContext(params)
+    if (!params.signal) {
+      return this.#setupContext(params)
+    }
+    const setupPromise = this.#setupContext(params)
+    return raceSignal(setupPromise, params.signal).catch(async (err) => {
+      // A late-registering spawn may complete after the abort wins the race.
+      // If the key is not yet registered, wait until it appears (context:added)
+      // or until setupPromise settles without registering — then remove either
+      // way so no orphaned child is left behind.
+      if (!this.#contextHost.getContextKeys().includes(params.key)) {
+        const ac = new AbortController()
+        await Promise.race([
+          this.#contextHost.events.once('context:added', {
+            filter: (data) => data.key === params.key,
+            signal: ac.signal,
+          }),
+          setupPromise.catch(() => {}),
+        ]).finally(() => ac.abort())
+      }
+      await this.#contextHost.remove(params.key).catch(() => {})
+      throw err
+    })
   }
 
   async removeContext(key: string): Promise<boolean> {
@@ -272,11 +295,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     messages: Array<Message<P['MessagePart'], P['ToolCall']>>
     tools?: Array<P['Tool']>
     signal?: AbortSignal
-  }): AsyncGenerator<
-    MessagePart<P['MessagePart'], P['ToolCall']>,
-    AggregatedMessage<P['ToolCall']>,
-    unknown
-  > {
+  }): ChatTurn<P> {
     const provider = this.resolveProvider(params.provider)
     const tools = params.tools ?? this.getToolsForProvider(provider)
 
@@ -285,6 +304,9 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
 
     const messageParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
 
+    // `fromStream` cancels the underlying stream when this generator is
+    // abandoned mid-iteration (consumer break / `.return()`), so an abandoned
+    // turn closes the provider's HTTP stream without a manual reader loop.
     for await (const chunk of fromStream(stream)) {
       this.#events.emit('message-part', chunk)
 
@@ -319,9 +341,10 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     const provider = this.resolveProvider(params.provider)
     const tools = params.tools ?? this.getToolsForProvider(provider)
 
+    const request = provider.streamChat({ ...params, tools })
+    this.#activeChatRequest = request
     try {
-      this.#activeChatRequest = provider.streamChat({ ...params, tools })
-      const stream = await this.#activeChatRequest
+      const stream = await request
 
       const messageParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
 
@@ -340,7 +363,10 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
 
       return provider.aggregateMessage(messageParts)
     } finally {
-      this.#activeChatRequest = null
+      // Only clear if a replacing chat has not already taken ownership.
+      if (this.#activeChatRequest === request) {
+        this.#activeChatRequest = null
+      }
     }
   }
 

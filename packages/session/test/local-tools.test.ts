@@ -150,7 +150,7 @@ describe('Session Local Tools', () => {
         raw: {},
       })
 
-      expect(executeFn).toHaveBeenCalledWith({ input: 'hello' })
+      expect(executeFn).toHaveBeenCalledWith({ input: 'hello' }, expect.any(AbortSignal))
       expect(result.content).toEqual([{ type: 'text', text: 'executed!' }])
     })
 

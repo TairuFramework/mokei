@@ -24,6 +24,7 @@ import { Hono } from 'hono'
 
 import { buildAllowedHosts, verifyAPIRequest } from './auth.js'
 import { injectToken } from './html.js'
+import { wireMonitorStreams } from './pipes.js'
 
 export type MonitorParams = {
   socketPath?: string
@@ -70,16 +71,16 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
     serverClosed.resolve()
   })
 
-  const decoupled = Promise.all([
-    socketStream.readable.pipeTo(serverBridge.stream.writable),
-    serverBridge.stream.readable.pipeTo(socketStream.writable),
-  ])
+  const pipes = wireMonitorStreams({
+    socketReadable: socketStream.readable,
+    socketWritable: socketStream.writable,
+    bridgeReadable: serverBridge.stream.readable,
+    bridgeWritable: serverBridge.stream.writable,
+  })
   const disposer = new Disposer({
     dispose: async () => {
       server.close()
-      serverBridge.stream.writable.close()
-      socketStream.writable.close()
-      await Promise.all([serverClosed.promise, decoupled])
+      await Promise.all([serverClosed.promise, pipes.dispose()])
     },
   })
 

@@ -2,8 +2,9 @@ import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
+import { createClient } from '../src/daemon/controller.js'
 import { safeRemove } from '../src/daemon/socket.js'
 import { killChildren, startServer } from '../src/server.js'
 
@@ -39,6 +40,43 @@ describe('startServer', () => {
     const socketPath = tmpSocket()
     const { dispose } = await startServer({ socketPath })
     expect(statSync(socketPath).mode & 0o777).toBe(0o600)
+    await dispose()
+  })
+})
+
+describe('spawn handler child-exit cleanup', () => {
+  test('dispatches context:stop and prunes maps when a spawned child self-exits', async () => {
+    const socketPath = tmpSocket()
+    const { dispose } = await startServer({ socketPath })
+    const client = await createClient(socketPath)
+
+    const stops: Array<{ type: string }> = []
+    const events = client.createStream('events')
+    // StreamCall is also a Promise; events.close() rejects it with 'Close'.
+    // Attach a no-op catch so the expected teardown rejection stays silent.
+    void events.catch(() => {})
+    void (async () => {
+      for await (const event of events.readable) {
+        if (event.type === 'context:stop') {
+          stops.push(event)
+        }
+      }
+    })()
+
+    // Spawn a child that exits immediately on its own. Discard the channel promise
+    // so the fire-and-forget close/dispose doesn't leave an unhandled rejection.
+    client
+      .createChannel('spawn', {
+        param: { command: process.execPath, args: ['-e', 'process.exit(0)'] },
+      })
+      .catch(() => {})
+
+    await vi.waitFor(() => {
+      expect(stops.length).toBeGreaterThan(0)
+    })
+
+    events.close()
+    await client.dispose()
     await dispose()
   })
 })

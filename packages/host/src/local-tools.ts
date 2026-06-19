@@ -7,6 +7,7 @@ import type { GenericToolDefinition, ServerClient, ToolDefinitions } from '@moke
  */
 export type LocalToolExecute<TArgs = Record<string, unknown>> = (
   args: TArgs,
+  signal?: AbortSignal,
 ) => CallToolResult | Promise<CallToolResult>
 
 /**
@@ -153,13 +154,13 @@ export function toolToLocalTool(
     name,
     description: definition.description,
     inputSchema: definition.inputSchema,
-    execute: async (args: Record<string, unknown>) => {
-      // Create a never-aborting signal for local execution
-      const controller = new AbortController()
+    execute: async (args: Record<string, unknown>, signal?: AbortSignal) => {
       return definition.handler({
         arguments: args,
         client: stubClient,
-        signal: controller.signal,
+        // Forward the caller's cancellation signal; fall back to a never-aborting
+        // one when invoked outside callLocalTool's cancellation plumbing.
+        signal: signal ?? new AbortController().signal,
       })
     },
   }
