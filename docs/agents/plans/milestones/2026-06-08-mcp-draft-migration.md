@@ -8,11 +8,17 @@
 
 ## Goal
 
-Migrate mokei from the `2025-11-25` MCP baseline to the next draft revision. The draft
-removes the `initialize` handshake, protocol-level sessions, and server-initiated requests
-— no clean way to speak both versions on one connection — so the breaking work is a
-**hard-cut to draft-only**, deferred until the draft finalizes. Until then, all
-non-breaking groundwork lands on `2025-11-25` without disruption.
+Add the next MCP draft revision **alongside** the `2025-11-25` baseline. The draft removes
+the `initialize` handshake, protocol-level sessions, and server-initiated requests, so the
+two cannot share one connection — but mokei is a library, so rather than a hard-cut it
+supports **both versions, selected per context at setup** (opt-in coexistence). Existing
+consumers are not broken. Until then, all non-breaking groundwork lands on `2025-11-25`
+without disruption.
+
+**Architecture decision (2026-06-20):** opt-in coexistence over hard-cut; U1 correlation
+model resolved. See `2026-06-20-u1-correlation-coexist-spike.md` (authoritative). The
+"hard-cut" framing below is superseded — the B-items become additive draft wiring behind a
+per-context version selector, not removals.
 
 ## Phase 0 — Groundwork (SHIPPED on 2025-11-25)
 
@@ -60,10 +66,11 @@ Hard-cut; ordered by dependency. Blocked on the draft finalizing **and** on U1.
 ## Upstream (Enkaku) dependencies
 
 - **U1** — transport / RPC-core model for stateless + MRTR. **Long pole; blocks B4 + B7.**
-  Recommendation (from spike): reimplement correlation in `context-rpc` above the existing
-  `@enkaku/transport` duplex — generalize `#sentRequests` to resolve a *stream* of
-  correlated frames, add a continuation-token store decoupled from `#sentRequests` for
-  MRTR, keep `@enkaku/transport` untouched. Should begin in parallel with Phase 0.
+  **Resolved (2026-06-20)** — design in `2026-06-20-u1-correlation-coexist-spike.md`:
+  generalize `#sentRequests` into a `PendingExchange` (resolve-once | streaming) abstraction
+  + a continuation-token store, `@enkaku/transport` untouched. Not an enkaku dependency —
+  fully local `context-rpc` work. The behavior-preserving `PendingExchange` refactor is
+  buildable now on `2025-11-25`; draft wiring plugs into its seam once the spec finalizes.
 - **U2 → G8** — `@enkaku/schema` draft-07 → needs `Ajv2020` / configurable draft.
   **Resolved** in `@enkaku/schema@0.16.1` (`createValidator(schema, { draft: '2020-12' })`,
   new `ValidatorOptions` export). G8 unblocked.

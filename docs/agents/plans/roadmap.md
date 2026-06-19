@@ -106,8 +106,12 @@ Shipped from this audit (see `completed/`):
   G8 + G5 outbound shipped on `feat/mcp-draft-groundwork-g5-g8`. Remaining: G5 baggage (needs
   upstream `getActiveBaggage`), G5 inbound extraction, G7 follow-ups (part 5 retry, deeper
   schema walk).
-- **MCP draft — breaking cut** (`backlog/2026-06-09-mcp-draft-breaking-cut.md`) —
-  B1–B7 hard-cut; blocked on draft release + U1 transport/RPC-core decision.
+- **MCP draft — U1 correlation refactor** (`milestones/2026-06-20-u1-correlation-coexist-spike.md`) —
+  **buildable now**, spec-independent: refactor `context-rpc`'s `#sentRequests` into the
+  `PendingExchange` (resolve-once | streaming) abstraction + continuation-token store,
+  behavior-preserving on `2025-11-25`. De-risks B7/B4; the seam the draft wiring plugs into.
+- **MCP draft — additive draft wiring** (`backlog/2026-06-09-mcp-draft-breaking-cut.md`) —
+  B1–B7 as opt-in coexistence (not a hard-cut); blocked on draft finalization only (U1 resolved).
 
 ## Planned — P2
 
