@@ -38,6 +38,13 @@ export type ChatParams<T extends ProviderTypes = ProviderTypes> = {
   abortActiveRequest?: boolean
 }
 
+/** Async generator returned by {@link Session.streamChatTurn}. */
+export type ChatTurn<P extends ProviderTypes = ProviderTypes> = AsyncGenerator<
+  MessagePart<P['MessagePart'], P['ToolCall']>,
+  AggregatedMessage<P['ToolCall']>,
+  unknown
+>
+
 export type ContextAddedEvent = {
   key: string
   tools: Array<ContextTool>
@@ -288,11 +295,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     messages: Array<Message<P['MessagePart'], P['ToolCall']>>
     tools?: Array<P['Tool']>
     signal?: AbortSignal
-  }): AsyncGenerator<
-    MessagePart<P['MessagePart'], P['ToolCall']>,
-    AggregatedMessage<P['ToolCall']>,
-    unknown
-  > {
+  }): ChatTurn<P> {
     const provider = this.resolveProvider(params.provider)
     const tools = params.tools ?? this.getToolsForProvider(provider)
 
@@ -304,7 +307,6 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     // `fromStream` cancels the underlying stream when this generator is
     // abandoned mid-iteration (consumer break / `.return()`), so an abandoned
     // turn closes the provider's HTTP stream without a manual reader loop.
-    // Requires @enkaku/generator >= 0.17.2.
     for await (const chunk of fromStream(stream)) {
       this.#events.emit('message-part', chunk)
 

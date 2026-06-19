@@ -23,6 +23,7 @@ import {
   type ToolApprovalStrategy,
 } from './agent-types.js'
 import { ToolCallCancelledError, ToolCallTimeoutError, UnknownToolError } from './errors.js'
+import type { ChatTurn } from './session.js'
 
 /** Abort reason set when the per-tool timeout timer fires. */
 const TOOL_TIMEOUT_REASON = Symbol('mokei.tool-timeout')
@@ -161,11 +162,11 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     const timeoutId = setTimeout(() => timeoutController.abort(), timeout)
     // Tracks the in-flight chat turn so the outer finally can return it if the
     // consumer abandons this generator mid-stream.
-    let activeChatTurn: ReturnType<typeof session.streamChatTurn> | null = null
+    let activeChatTurn: ChatTurn<T> | null = null
 
     // Combine signals
     const combinedSignal = signal
-      ? anySignal([signal, timeoutController.signal])
+      ? AbortSignal.any([signal, timeoutController.signal])
       : timeoutController.signal
 
     const emitEvent = (event: AgentEvent<T>): AgentEvent<T> => {
@@ -678,14 +679,6 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       this.#activeToolController = null
     }
   }
-}
-
-/**
- * Combine multiple AbortSignals into one. Delegates to `AbortSignal.any`, which
- * manages and releases its listeners internally — no manual cleanup needed.
- */
-export function anySignal(signals: Array<AbortSignal>): AbortSignal {
-  return AbortSignal.any(signals)
 }
 
 /**
