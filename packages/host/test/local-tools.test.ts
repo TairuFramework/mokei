@@ -532,6 +532,37 @@ describe('Server Tool to Local Tool Conversion', () => {
   })
 })
 
+describe('toolToLocalTool cancellation', () => {
+  test('forwards the cancellation signal through to the converted tool handler', async () => {
+    const host = new ContextHost()
+    let observedAbort = false
+
+    const serverTool = createTool(
+      'waiter-converted',
+      { type: 'object', properties: {} } as const,
+      async (req) => {
+        await new Promise<void>((resolve) => {
+          req.signal.addEventListener('abort', () => {
+            observedAbort = true
+            resolve()
+          })
+        })
+        return { content: [{ type: 'text', text: 'done' }] }
+      },
+    )
+
+    host.addLocalTool(toolToLocalTool('waiter', serverTool))
+
+    const request = host.callLocalTool('waiter', {})
+    // Let the handler start and subscribe to the signal.
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    request.cancel()
+    await request
+
+    expect(observedAbort).toBe(true)
+  })
+})
+
 describe('callLocalTool cancellation', () => {
   test('aborts the signal passed to a running execute when cancelled', async () => {
     const host = new ContextHost()
