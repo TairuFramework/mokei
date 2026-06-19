@@ -18,18 +18,19 @@ export type WireMonitorStreamsParams = {
  */
 export function wireMonitorStreams(params: WireMonitorStreamsParams): MonitorPipes {
   const controller = new AbortController()
+  // Daemon disconnect / abort must not crash the process.
   const done = Promise.all([
     params.socketReadable.pipeTo(params.bridgeWritable, { signal: controller.signal }),
     params.bridgeReadable.pipeTo(params.socketWritable, { signal: controller.signal }),
-  ]).then(() => {})
-  // Daemon disconnect / abort must not crash the process.
-  done.catch(() => {})
+  ])
+    .then(() => {})
+    .catch(() => {})
 
   return {
     done,
     dispose: async () => {
       controller.abort()
-      await done.catch(() => {})
+      await done
     },
   }
 }
