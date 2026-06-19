@@ -673,20 +673,11 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 }
 
 /**
- * Combine multiple AbortSignals into one.
+ * Combine multiple AbortSignals into one. Delegates to `AbortSignal.any`, which
+ * manages and releases its listeners internally — no manual cleanup needed.
  */
-function anySignal(signals: Array<AbortSignal>): AbortSignal {
-  const controller = new AbortController()
-
-  for (const signal of signals) {
-    if (signal.aborted) {
-      controller.abort(signal.reason)
-      return controller.signal
-    }
-    signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
-  }
-
-  return controller.signal
+export function anySignal(signals: Array<AbortSignal>): AbortSignal {
+  return AbortSignal.any(signals)
 }
 
 /**
