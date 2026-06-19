@@ -159,6 +159,9 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     // Set up timeout
     const timeoutController = new AbortController()
     const timeoutId = setTimeout(() => timeoutController.abort(), timeout)
+    // Tracks the in-flight chat turn so the outer finally can return it if the
+    // consumer abandons this generator mid-stream.
+    let activeChatTurn: ReturnType<typeof session.streamChatTurn> | null = null
 
     // Combine signals
     const combinedSignal = signal
@@ -244,6 +247,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
           tools,
           signal: combinedSignal,
         })
+        activeChatTurn = chatTurn
 
         // Iterate through chunks, yielding text events in real-time.
         //
@@ -312,6 +316,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
             }
             result = await pull()
           }
+          activeChatTurn = null
         } catch (streamError) {
           // Best-effort close so the provider releases its reader / HTTP
           // connection. Fire-and-forget, never awaited: a generator parked on a
@@ -516,6 +521,9 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       throw err
     } finally {
       clearTimeout(timeoutId)
+      // A consumer that breaks out of this generator leaves the current turn's
+      // provider stream open; return it so the provider releases the reader.
+      void activeChatTurn?.return(undefined as never).catch(() => {})
     }
   }
 

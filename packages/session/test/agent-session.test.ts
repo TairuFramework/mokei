@@ -1993,4 +1993,63 @@ describe('AgentSession', () => {
       expect(types).not.toContain('complete')
     }, 2000)
   })
+
+  describe('stream abandonment', () => {
+    test('breaking out of stream() cancels the in-flight provider stream', async () => {
+      let cancelled = false
+
+      const provider: ModelProvider<MockProviderTypes> = {
+        listModels: vi.fn(async () => [{ id: 'test-model', raw: { id: 'test-model' } }]),
+        embed: vi.fn(async () => ({ embeddings: [[0]] })),
+        streamChat: vi.fn(() => {
+          const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+            pull(controller) {
+              // Emit text-deltas forever until cancelled.
+              controller.enqueue({ type: 'text-delta', text: 'x', raw: {} })
+            },
+            cancel() {
+              cancelled = true
+            },
+          })
+          return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
+            unknown,
+            unknown
+          >
+        }),
+        aggregateMessage: vi.fn(
+          (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => ({
+            source: 'aggregated',
+            role: 'assistant',
+            text: parts
+              .filter((p) => p.text)
+              .map((p) => p.text)
+              .join(''),
+            toolCalls: [],
+            inputTokens: 0,
+            outputTokens: 0,
+          }),
+        ),
+        toolFromMCP: vi.fn((tool: Tool) => ({
+          name: tool.name,
+          description: tool.description ?? '',
+        })),
+      }
+
+      const session = new Session<MockProviderTypes>({ providers: { fake: provider } })
+      const agent = new AgentSession({
+        session,
+        provider: 'fake',
+        model: 'test-model',
+      })
+
+      for await (const event of agent.stream('hi')) {
+        if (event.type === 'text-delta') {
+          break // abandon the generator mid-stream
+        }
+      }
+
+      await new Promise((r) => setTimeout(r, 20))
+      expect(cancelled).toBe(true)
+    })
+  })
 })

@@ -301,19 +301,30 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
 
     const messageParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
 
-    for await (const chunk of fromStream(stream)) {
-      this.#events.emit('message-part', chunk)
+    const reader = stream.getReader()
+    try {
+      while (true) {
+        const { done, value: chunk } = await reader.read()
+        if (done) break
 
-      if (chunk.type === 'error') {
-        throw chunk.error
+        this.#events.emit('message-part', chunk)
+
+        if (chunk.type === 'error') {
+          throw chunk.error
+        }
+
+        const serverMessage = chunkToServerMessage(chunk)
+        if (serverMessage != null) {
+          messageParts.push(serverMessage)
+        }
+
+        yield chunk
       }
-
-      const serverMessage = chunkToServerMessage(chunk)
-      if (serverMessage != null) {
-        messageParts.push(serverMessage)
-      }
-
-      yield chunk
+    } finally {
+      // Cancel the underlying stream so the reader is released and the HTTP
+      // connection is closed — even when the generator is abandoned mid-stream.
+      // Calling cancel() is safe on an already-closed stream (returns immediately).
+      void reader.cancel().catch(() => {})
     }
 
     return provider.aggregateMessage(messageParts)
