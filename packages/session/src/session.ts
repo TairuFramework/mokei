@@ -182,12 +182,14 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       // or until setupPromise settles without registering — then remove either
       // way so no orphaned child is left behind.
       if (!this.#contextHost.getContextKeys().includes(params.key)) {
+        const ac = new AbortController()
         await Promise.race([
           this.#contextHost.events.once('context:added', {
             filter: (data) => data.key === params.key,
+            signal: ac.signal,
           }),
           setupPromise.catch(() => {}),
-        ])
+        ]).finally(() => ac.abort())
       }
       await this.#contextHost.remove(params.key).catch(() => {})
       throw err
