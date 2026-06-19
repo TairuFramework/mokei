@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-06-18
+**Last updated:** 2026-06-19
 
 ## Vision
 
@@ -62,6 +62,14 @@ Shipped from this audit (see `completed/`):
   llama failed-load cache + stream-cancel + listener-leak fixes, zero-arg `OpenAIProvider`,
   and per-request sampling params (`temperature`/`maxTokens`/`topP` + raw `providerOptions`)
   across all four providers. **BREAKING: anthropic default request timeout 60s → 30s.**
+- **Host + session lifecycle robustness** (`completed/2026-06-19-host-session-lifecycle.complete.md`)
+  — shipped on `fix/session-lifecycle`: all 11 live audit items — SIGTERM→SIGKILL child
+  reaping with awaited exit, daemon child-exit cleanup + guarded event writes, setup/remove
+  race guard, local-tool AbortSignal plumbing (incl. MCP-converted tools), monitor
+  abort-driven pipe teardown, addContext abort orphan (event-race) + `#activeChatRequest`
+  clobber guard, bounded+drop-when-no-reader notifications, `anySignal` via `AbortSignal.any`,
+  abandoned agent generator closing the provider stream, and `Object.hasOwn` tool/prompt
+  lookup hardening. Item 12 (floating cancel notify) was already fixed by the rpc work.
 
 ## Milestones (milestones/)
 
@@ -86,8 +94,6 @@ Shipped from this audit (see `completed/`):
 - **Anthropic test — KNOWN_MODELS** (`backlog/2026-06-18-anthropic-test-known-models.md`) —
   pre-existing red suite: test imports a non-exported `KNOWN_MODELS`; 2 listModels tests
   hit the live API (401). Surfaced (not caused) by the provider-robustness work.
-- **Host + session lifecycle** (`backlog/2026-06-12-host-session-lifecycle.md`) —
-  audit: child reaping, abort races, notification buffering, state races.
 - **CLI UX polish** (`backlog/2026-06-12-cli-ux-polish.md`) — audit: API-key
   fail-fast, inspect stderr, empty states.
 - **Docs + packaging sweep** (`backlog/2026-06-12-docs-packaging-sweep.md`) — audit:
