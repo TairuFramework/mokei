@@ -598,85 +598,17 @@ with:
     }
 ```
 
-- [ ] **Step 7: Route `request()` cancellation/timeout/write-failure through the registry**
+- [ ] **Step 7: Add the shared `#startExchange` private helper**
 
-Replace the body of `request()` (current lines 246–293) — keep the signature line as-is — so the local `#sentRequests[id]` reads/writes become registry calls:
-
-```ts
-  request<Method extends keyof T['SendRequests']>(
-    method: Method,
-    params: T['SendRequests'][Method]['Params'],
-    options?: { timeout?: number },
-  ): SentRequest<T['SendRequests'][Method]['Result']> {
-    const id = this._getNextRequestID()
-    const controller = Object.assign(new AbortController(), defer())
-    this.#exchanges.registerOnce(id, controller)
-
-    controller.signal.addEventListener('abort', () => {
-      if (!this.#exchanges.has(id)) {
-        return
-      }
-      this.#exchanges.cancel(id, new Error('Cancelled'))
-      this.notify('cancelled', { requestId: id }).catch(() => {})
-    })
-
-    if (options?.timeout != null) {
-      const timer = setTimeout(() => {
-        if (!this.#exchanges.has(id)) {
-          return
-        }
-        this.#exchanges.cancel(
-          id,
-          new RequestTimeoutError(`Request timed out after ${options.timeout}ms`),
-        )
-        this.notify('cancelled', { requestId: id }).catch(() => {})
-      }, options.timeout)
-      controller.promise.then(
-        () => clearTimeout(timer),
-        () => clearTimeout(timer),
-      )
-    }
-
-    this._write({ jsonrpc: '2.0', id, method, params } as T['MessageOut']).catch((error) => {
-      if (!this.#exchanges.has(id)) {
-        return
-      }
-      this.#exchanges.cancel(id, error)
-    })
-
-    return Object.assign(controller.promise, {
-      id,
-      cancel: () => {
-        controller.abort()
-      },
-    }) as SentRequest<T['SendRequests'][Method]['Result']>
-  }
-```
-
-- [ ] **Step 8: Add the package-internal `_registerStreamExchange` method**
-
-In `rpc.ts`, add this method immediately after `request()` and before `requestValue()` (the streaming seam; not exported from `index.ts`):
+`request()` and `_registerStreamExchange` share the abort-listener + write + return-handle logic. Extract it into one private method so neither duplicates it. Add this private method to `rpc.ts` immediately before `request()`. It assumes the caller has already created + registered the exchange (once or stream); it wires cancellation + write-failure through the registry and returns the `SentRequest` handle:
 
 ```ts
-  /**
-   * @internal Register a streaming exchange (MRTR, SEP-2322): a request answered by
-   * interleaved frames. No wire path produces stream frames yet; exercised by tests.
-   */
-  _registerStreamExchange(
+  #startExchange(
+    id: RequestID,
+    controller: ExchangeController,
     method: string,
     params: unknown,
-    handlers?: StreamHandlers,
   ): SentRequest<unknown> {
-    const id = this._getNextRequestID()
-    const controller = Object.assign(new AbortController(), defer())
-    this.#exchanges.registerStream(id, controller, {
-      ...handlers,
-      onSettle: () => {
-        this.#continuations.clearForExchange(id, new Error('Exchange settled'))
-        handlers?.onSettle?.()
-      },
-    })
-
     controller.signal.addEventListener('abort', () => {
       if (!this.#exchanges.has(id)) {
         return
@@ -701,32 +633,96 @@ In `rpc.ts`, add this method immediately after `request()` and before `requestVa
   }
 ```
 
-- [ ] **Step 9: Remove the now-unused `RequestController` type alias if unreferenced**
+This requires the `ExchangeController` type: extend the Step 4 import to `import { ExchangeRegistry, type ExchangeController, type StreamHandlers } from './exchange.js'`.
+
+- [ ] **Step 8: Route `request()` through `registerOnce` + the shared helper**
+
+Replace the body of `request()` (current lines 246–293) — keep the signature line as-is. It registers a `once` exchange, wires the optional timeout (request-only), then delegates the common abort/write/return to `#startExchange`:
+
+```ts
+  request<Method extends keyof T['SendRequests']>(
+    method: Method,
+    params: T['SendRequests'][Method]['Params'],
+    options?: { timeout?: number },
+  ): SentRequest<T['SendRequests'][Method]['Result']> {
+    const id = this._getNextRequestID()
+    const controller = Object.assign(new AbortController(), defer())
+    this.#exchanges.registerOnce(id, controller)
+
+    if (options?.timeout != null) {
+      const timer = setTimeout(() => {
+        if (!this.#exchanges.has(id)) {
+          return
+        }
+        this.#exchanges.cancel(
+          id,
+          new RequestTimeoutError(`Request timed out after ${options.timeout}ms`),
+        )
+        this.notify('cancelled', { requestId: id }).catch(() => {})
+      }, options.timeout)
+      controller.promise.then(
+        () => clearTimeout(timer),
+        () => clearTimeout(timer),
+      )
+    }
+
+    return this.#startExchange(id, controller, method as string, params) as SentRequest<
+      T['SendRequests'][Method]['Result']
+    >
+  }
+```
+
+Behavior note: the only ordering change versus the current code is that the timeout timer is now set up before the abort listener (both only register handlers/timers — neither fires during synchronous setup — so wire behavior is unchanged). The existing four `rpc.test.ts` tests are the gate.
+
+- [ ] **Step 9: Add the package-internal `_registerStreamExchange` method**
+
+In `rpc.ts`, add this method immediately after `request()` and before `requestValue()` (the streaming seam; not exported from `index.ts`). It registers a `stream` exchange — wiring continuation teardown into `onSettle` — then delegates to the shared `#startExchange`:
+
+```ts
+  /**
+   * @internal Register a streaming exchange (MRTR, SEP-2322): a request answered by
+   * interleaved frames. No wire path produces stream frames yet; exercised by tests.
+   */
+  _registerStreamExchange(
+    method: string,
+    params: unknown,
+    handlers?: StreamHandlers,
+  ): SentRequest<unknown> {
+    const id = this._getNextRequestID()
+    const controller = Object.assign(new AbortController(), defer())
+    this.#exchanges.registerStream(id, controller, {
+      ...handlers,
+      onSettle: () => {
+        this.#continuations.clearForExchange(id, new Error('Exchange settled'))
+        handlers?.onSettle?.()
+      },
+    })
+    return this.#startExchange(id, controller, method, params)
+  }
+```
+
+- [ ] **Step 10: Remove the now-unused `RequestController` type alias if unreferenced**
 
 The `type RequestController<Result> = AbortController & Deferred<Result>` (current line 23) is no longer referenced after Step 5. Delete that line. (Leave `SentRequest`, `RequestDefinition`, and all other types untouched.)
 
-- [ ] **Step 10: Run the context-rpc suite**
+- [ ] **Step 11: Run the context-rpc suite**
 
 Run: `pnpm --filter @mokei/context-rpc exec vitest run`
 Expected: PASS — existing 4 rpc tests + new stream test + Tasks 1–2 unit tests all green.
 
-- [ ] **Step 11: Run the dependent suites (behavior-preservation gate)**
+- [ ] **Step 12: Run the dependent suites (behavior-preservation gate)**
 
-Run: `pnpm --filter @mokei/context-client --filter @mokei/context-server --filter @mokei/host exec vitest run`
-Expected: PASS — no behavior change for any consumer.
+Run: `pnpm --filter @mokei/context-rpc run build` then `pnpm --filter @mokei/context-client --filter @mokei/context-server --filter @mokei/host exec vitest run`
+Expected: PASS — no behavior change for any consumer. (Cross-package suites resolve the built `lib/` of `@mokei/context-rpc`, so the rebuild must run first.)
 
-Note: cross-package suites resolve the built `lib/` of `@mokei/context-rpc`, so rebuild it first:
-Run: `pnpm --filter @mokei/context-rpc run build` then re-run the suites above.
-Expected: PASS.
-
-- [ ] **Step 12: Typecheck + lint**
+- [ ] **Step 13: Typecheck + lint**
 
 Run: `pnpm --filter @mokei/context-rpc run test:types`
 Expected: no errors (no output).
 Run: `rtk proxy pnpm run lint`
 Expected: `No fixes applied.`
 
-- [ ] **Step 13: Commit**
+- [ ] **Step 14: Commit**
 
 ```bash
 git add packages/context-rpc/src/rpc.ts packages/context-rpc/test/rpc.test.ts
@@ -746,12 +742,13 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Spec coverage:**
 - Two-unit architecture (`ExchangeRegistry` + `ContinuationStore`) → Tasks 1–2. ✓
-- ContextRPC integration, behavior-preserving `once` move → Task 3 (Steps 5–9). ✓
+- ContextRPC integration, behavior-preserving `once` move → Task 3 (Steps 4–10). ✓
 - Streaming arm + continuation store, internal/test-only, no `index.ts` export → Tasks 1–2 are relative-imported by tests only; `_registerStreamExchange` is `_`-internal. ✓
 - Token = opaque `string`; no draft method names/shapes → `StreamFrame` + token are mokei-internal. ✓
-- Behavior-preservation gate → Task 3 Steps 1, 11. ✓
+- Behavior-preservation gate → Task 3 Steps 1, 12. ✓
 - Conventions (ID casing, `type`, `Array`, `#` fields, no plan labels) → applied throughout; comments reference MRTR/SEP-2322. ✓
-- `onSettle` clears continuations on terminal → Task 2 (registry invokes `onSettle`) + Task 3 Step 8 (wires `clearForExchange`). ✓
+- `onSettle` clears continuations on terminal → Task 2 (registry invokes `onSettle`) + Task 3 Step 9 (wires `clearForExchange`). ✓
+- DRY: `request()` + `_registerStreamExchange` share the `#startExchange` private helper (Step 7) — no duplicated abort/write/return block. ✓
 
 **Placeholder scan:** No TBD/TODO introduced. The two `// TODO:` comments in the current response branch are intentionally REMOVED by Step 6 (the registry handles unknown-id as a no-op, matching prior behavior). ✓
 
