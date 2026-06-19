@@ -39,6 +39,9 @@ export type EnableToolsArg = EnableTools | EnableToolsFn
 /** Default cap on total live stdout framer memory per context (8 MiB). */
 const DEFAULT_MAX_BUFFER_SIZE = 8 * 1024 * 1024
 
+/** Grace period (ms) between SIGTERM and SIGKILL when disposing a child. */
+const DEFAULT_KILL_TIMEOUT = 5000
+
 export function getContextToolID(contextKey: string, toolName: string): string {
   return `${contextKey}:${toolName}`
 }
@@ -104,12 +107,15 @@ export type SpawnHostedContextParams = SpawnContextServerParams & {
   maxBufferSize?: number
   /** Optional tighter per-message cap in bytes. Default unset (= buffer cap). */
   maxMessageSize?: number
+  /** Grace period (ms) between SIGTERM and SIGKILL on dispose. Default 5000. */
+  killTimeout?: number
 }
 
 export async function spawnHostedContext<T extends ContextTypes = UnknownContextTypes>(
   params: SpawnHostedContextParams,
 ): Promise<HostedContext<T>> {
-  const { onExit, onStreamError, maxBufferSize, maxMessageSize, ...spawnParams } = params
+  const { onExit, onStreamError, maxBufferSize, maxMessageSize, killTimeout, ...spawnParams } =
+    params
   const { childProcess, streams, subprocess } = await spawnContextServer(spawnParams)
   if (onExit != null) {
     subprocess.then(
@@ -137,8 +143,24 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
   })
   return createHostedContext({
     transport: transport as ClientTransport,
-    dispose: () => {
-      childProcess.kill()
+    dispose: async () => {
+      // Already exited — nothing to reap.
+      if (childProcess.exitCode != null || childProcess.signalCode != null) {
+        return
+      }
+      await new Promise<void>((resolve) => {
+        let killTimer: ReturnType<typeof setTimeout>
+        childProcess.once('exit', () => {
+          clearTimeout(killTimer)
+          resolve()
+        })
+        childProcess.kill('SIGTERM')
+        killTimer = setTimeout(() => {
+          // Child ignored SIGTERM; force it. The `exit` listener above still
+          // resolves once the kill lands.
+          childProcess.kill('SIGKILL')
+        }, killTimeout ?? DEFAULT_KILL_TIMEOUT)
+      })
     },
   })
 }
