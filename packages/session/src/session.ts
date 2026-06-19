@@ -301,30 +301,23 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
 
     const messageParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
 
-    const reader = stream.getReader()
-    try {
-      while (true) {
-        const { done, value: chunk } = await reader.read()
-        if (done) break
+    // `fromStream` cancels the underlying stream when this generator is
+    // abandoned mid-iteration (consumer break / `.return()`), so an abandoned
+    // turn closes the provider's HTTP stream without a manual reader loop.
+    // Requires @enkaku/generator >= 0.17.2.
+    for await (const chunk of fromStream(stream)) {
+      this.#events.emit('message-part', chunk)
 
-        this.#events.emit('message-part', chunk)
-
-        if (chunk.type === 'error') {
-          throw chunk.error
-        }
-
-        const serverMessage = chunkToServerMessage(chunk)
-        if (serverMessage != null) {
-          messageParts.push(serverMessage)
-        }
-
-        yield chunk
+      if (chunk.type === 'error') {
+        throw chunk.error
       }
-    } finally {
-      // Cancel the underlying stream so the reader is released and the HTTP
-      // connection is closed — even when the generator is abandoned mid-stream.
-      // Calling cancel() is safe on an already-closed stream (returns immediately).
-      void reader.cancel().catch(() => {})
+
+      const serverMessage = chunkToServerMessage(chunk)
+      if (serverMessage != null) {
+        messageParts.push(serverMessage)
+      }
+
+      yield chunk
     }
 
     return provider.aggregateMessage(messageParts)
