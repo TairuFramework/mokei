@@ -51,20 +51,20 @@ function createHandlers({
   return {
     events: (ctx) => {
       const writer = ctx.writable.getWriter()
+      const sub = new AbortController()
+      ctx.signal.addEventListener('abort', () => sub.abort(), { once: true })
 
       const handleEvent = (event: Event) => {
         const e = event as CustomEvent<{ data?: unknown; meta: HostEventMeta }>
         const msg = { type: e.type, data: e.detail.data, meta: e.detail.meta }
-        writer.write(msg)
+        writer.write(msg).catch(() => sub.abort())
       }
-      events.addEventListener('context:message', handleEvent, { signal: ctx.signal })
-      events.addEventListener('context:start', handleEvent, { signal: ctx.signal })
-      events.addEventListener('context:stop', handleEvent, { signal: ctx.signal })
+      events.addEventListener('context:message', handleEvent, { signal: sub.signal })
+      events.addEventListener('context:start', handleEvent, { signal: sub.signal })
+      events.addEventListener('context:stop', handleEvent, { signal: sub.signal })
 
       return new Promise((resolve) => {
-        ctx.signal.addEventListener('abort', () => {
-          resolve()
-        })
+        ctx.signal.addEventListener('abort', () => resolve())
       })
     },
     info: () => ({ activeContexts, startedTime }),
@@ -87,14 +87,24 @@ function createHandlers({
 
       const stream = await createTransportStream(spawned.streams)
 
-      ctx.signal.addEventListener('abort', () => {
+      let stopped = false
+      const stopContext = () => {
+        if (stopped) {
+          return
+        }
+        stopped = true
         spawned.childProcess.kill()
         delete activeContexts[contextID]
         children.delete(contextID)
         events.dispatchEvent(
           new CustomEvent('context:stop', { detail: { meta: createEventMeta(contextID) } }),
         )
-      })
+      }
+
+      // A child that exits on its own must leave activeContexts and notify
+      // proxy clients, exactly as an explicit abort would.
+      spawned.childProcess.once('exit', stopContext)
+      ctx.signal.addEventListener('abort', stopContext)
 
       await Promise.all([
         ctx.readable
