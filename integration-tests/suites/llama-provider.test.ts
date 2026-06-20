@@ -4,16 +4,20 @@ import { describe, expect, test } from 'vitest'
 const GGUF = process.env.MOKEI_LLAMA_GGUF
 const MODEL = 'integration-model'
 
-async function drain(
-  request: ReturnType<LlamaProvider['streamChat']>,
-): Promise<Array<{ type: string; text?: string; name?: string }>> {
+type StreamPart = {
+  type: string
+  text?: string
+  toolCalls?: Array<{ name: string }>
+}
+
+async function drain(request: ReturnType<LlamaProvider['streamChat']>): Promise<Array<StreamPart>> {
   const stream = await request
   const reader = stream.getReader()
-  const parts: Array<{ type: string; text?: string; name?: string }> = []
+  const parts: Array<StreamPart> = []
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
-    parts.push(value as { type: string; text?: string; name?: string })
+    parts.push(value as StreamPart)
   }
   return parts
 }
@@ -77,8 +81,10 @@ describe.skipIf(!GGUF)('LlamaProvider (real GGUF)', () => {
       // The stream must terminate cleanly. Whether a small model actually emits a
       // tool call is model-dependent, so only assert the name when one appears.
       expect(parts.some((p) => p.type === 'done')).toBe(true)
-      for (const toolCall of parts.filter((p) => p.type === 'tool-call')) {
-        expect(toolCall.name).toBe('get_weather')
+      for (const part of parts.filter((p) => p.type === 'tool-call')) {
+        for (const toolCall of part.toolCalls ?? []) {
+          expect(toolCall.name).toBe('get_weather')
+        }
       }
     } finally {
       await provider.dispose()
