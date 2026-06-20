@@ -1,11 +1,10 @@
-import { type Deferred, Disposer, defer, toPromise } from '@enkaku/async'
+import { Disposer, defer, toPromise } from '@enkaku/async'
 import { EventEmitter } from '@enkaku/event'
 import type { Validator } from '@enkaku/schema'
 import type { TransportType } from '@enkaku/transport'
 import type {
   AnyMessage,
   CancelledNotification,
-  ErrorResponse,
   Notification,
   ProgressNotification,
   Request,
@@ -13,14 +12,13 @@ import type {
   Response,
 } from '@mokei/context-protocol'
 import { INTERNAL_ERROR, INVALID_REQUEST } from '@mokei/context-protocol'
-
+import { ContinuationStore } from './continuation.js'
 import { errorResponse, RequestTimeoutError, RPCError, TransportClosedError } from './error.js'
+import { type ExchangeController, ExchangeRegistry, type StreamHandlers } from './exchange.js'
 
 function isRequestID(id: unknown): id is RequestID {
   return typeof id === 'string' || typeof id === 'number'
 }
-
-type RequestController<Result> = AbortController & Deferred<Result>
 
 type RequestDefinition = {
   Params: unknown | undefined
@@ -53,7 +51,8 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #events: EventEmitter<T['Events']>
   #receivedRequests: Record<RequestID, AbortController> = {}
   #requestID = 0
-  #sentRequests: Record<RequestID, RequestController<unknown>> = {}
+  #exchanges: ExchangeRegistry = new ExchangeRegistry()
+  #continuations: ContinuationStore = new ContinuationStore()
   #transport: TransportType<T['MessageIn'], T['MessageOut']>
   #validateMessageIn: Validator<T['MessageIn']>
 
@@ -126,11 +125,8 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   }
 
   #endPendingRequests(reason: Error): void {
-    const pending = Object.values(this.#sentRequests)
-    this.#sentRequests = {}
-    for (const controller of pending) {
-      controller.reject(reason)
-    }
+    this.#exchanges.endAll(reason)
+    this.#continuations.clearAll(reason)
   }
 
   async #dispose(): Promise<void> {
@@ -176,19 +172,8 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     }
 
     if (validated.value.method == null) {
-      // Message is a response
-      const response = validated.value as Response
-      const controller = this.#sentRequests[id]
-      if (controller != null) {
-        delete this.#sentRequests[id]
-        if ('error' in response) {
-          controller.reject(RPCError.fromResponse(response as ErrorResponse))
-        } else if ('result' in response) {
-          controller.resolve(response.result)
-        }
-        // TODO: error invalid response (neither error nor result)
-      }
-      // TODO: error unknown sent request (controller == null)
+      // Message is a response — route to its pending exchange.
+      this.#exchanges.routeResponse(id, validated.value as Response)
       return null
     }
 
@@ -243,6 +228,35 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     await this._write({ jsonrpc: '2.0', method: `notifications/${event}`, params })
   }
 
+  #startExchange(
+    id: RequestID,
+    controller: ExchangeController,
+    method: string,
+    params: unknown,
+  ): SentRequest<unknown> {
+    controller.signal.addEventListener('abort', () => {
+      if (!this.#exchanges.has(id)) {
+        return
+      }
+      this.#exchanges.cancel(id, new Error('Cancelled'))
+      this.notify('cancelled', { requestId: id }).catch(() => {})
+    })
+
+    this._write({ jsonrpc: '2.0', id, method, params } as T['MessageOut']).catch((error) => {
+      if (!this.#exchanges.has(id)) {
+        return
+      }
+      this.#exchanges.cancel(id, error)
+    })
+
+    return Object.assign(controller.promise, {
+      id,
+      cancel: () => {
+        controller.abort()
+      },
+    }) as SentRequest<unknown>
+  }
+
   request<Method extends keyof T['SendRequests']>(
     method: Method,
     params: T['SendRequests'][Method]['Params'],
@@ -250,24 +264,17 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   ): SentRequest<T['SendRequests'][Method]['Result']> {
     const id = this._getNextRequestID()
     const controller = Object.assign(new AbortController(), defer())
-    this.#sentRequests[id] = controller
-
-    controller.signal.addEventListener('abort', () => {
-      if (this.#sentRequests[id] == null) {
-        return
-      }
-      delete this.#sentRequests[id]
-      controller.reject(new Error('Cancelled'))
-      this.notify('cancelled', { requestId: id }).catch(() => {})
-    })
+    this.#exchanges.registerOnce(id, controller)
 
     if (options?.timeout != null) {
       const timer = setTimeout(() => {
-        if (this.#sentRequests[id] == null) {
+        if (!this.#exchanges.has(id)) {
           return
         }
-        delete this.#sentRequests[id]
-        controller.reject(new RequestTimeoutError(`Request timed out after ${options.timeout}ms`))
+        this.#exchanges.cancel(
+          id,
+          new RequestTimeoutError(`Request timed out after ${options.timeout}ms`),
+        )
         this.notify('cancelled', { requestId: id }).catch(() => {})
       }, options.timeout)
       controller.promise.then(
@@ -276,20 +283,30 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       )
     }
 
-    this._write({ jsonrpc: '2.0', id, method, params } as T['MessageOut']).catch((error) => {
-      if (this.#sentRequests[id] == null) {
-        return
-      }
-      delete this.#sentRequests[id]
-      controller.reject(error)
-    })
+    return this.#startExchange(id, controller, method as string, params) as SentRequest<
+      T['SendRequests'][Method]['Result']
+    >
+  }
 
-    return Object.assign(controller.promise, {
-      id,
-      cancel: () => {
-        controller.abort()
+  /**
+   * @internal Register a streaming exchange (MRTR, SEP-2322): a request answered by
+   * interleaved frames. No wire path produces stream frames yet; exercised by tests.
+   */
+  _registerStreamExchange(
+    method: string,
+    params: unknown,
+    handlers?: StreamHandlers,
+  ): SentRequest<unknown> {
+    const id = this._getNextRequestID()
+    const controller = Object.assign(new AbortController(), defer())
+    this.#exchanges.registerStream(id, controller, {
+      ...handlers,
+      onSettle: () => {
+        this.#continuations.clearForExchange(id, new Error('Exchange settled'))
+        handlers?.onSettle?.()
       },
-    }) as SentRequest<T['SendRequests'][Method]['Result']>
+    })
+    return this.#startExchange(id, controller, method, params)
   }
 
   requestValue<Method extends keyof T['SendRequests'], Value>(
