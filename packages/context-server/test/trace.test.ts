@@ -106,9 +106,9 @@ describe('withRequestMeta', () => {
   })
 })
 
-// ─── Server-level: G5 inbound propagation ────────────────────────────────────
+// ─── Server-level: inbound trace propagation ─────────────────────────────────
 
-describe('ContextServer – G5 inbound trace propagation', () => {
+describe('ContextServer – inbound trace propagation', () => {
   test('tool handler observes active trace context from request _meta', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     let observedTraceID: string | undefined

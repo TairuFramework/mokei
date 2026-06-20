@@ -923,7 +923,7 @@ describe('ContextServer', () => {
   })
 })
 
-describe('G8 strict-mode suppression', () => {
+describe('strict-mode suppression on tool/prompt schemas', () => {
   test('a valid 2020-12 prefixItems schema logs no strict-mode warning', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
