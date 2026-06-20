@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 import { ContextClient } from '../src/index.js'
 import * as traceModule from '../src/trace.js'
-import { traceMetaFromContext } from '../src/trace.js'
+import { baggageMetaFromEntries, traceMetaFromContext } from '../src/trace.js'
 
 describe('traceMetaFromContext', () => {
   test('returns an empty object when there is no active context', () => {
@@ -37,6 +37,32 @@ describe('traceMetaFromContext', () => {
       '',
     )
     expect('tracestate' in meta).toBe(false)
+  })
+})
+
+describe('baggageMetaFromEntries', () => {
+  test('returns an empty object when there are no entries', () => {
+    expect(baggageMetaFromEntries(undefined)).toEqual({})
+    expect(baggageMetaFromEntries([])).toEqual({})
+  })
+
+  test('formats a single baggage entry under the `baggage` key', () => {
+    expect(baggageMetaFromEntries([{ key: 'userId', value: 'abc' }])).toEqual({
+      baggage: 'userId=abc',
+    })
+  })
+
+  test('formats multiple entries, including properties', () => {
+    const meta = baggageMetaFromEntries([
+      { key: 'a', value: '1' },
+      { key: 'b', value: '2', properties: [{ key: 'meta' }] },
+    ])
+    expect(meta.baggage).toBe('a=1,b=2;meta')
+  })
+
+  test('omits the key when every entry formats away to an empty string', () => {
+    // `formatBaggage` drops members with non-token keys; all-dropped → '' → omit.
+    expect('baggage' in baggageMetaFromEntries([{ key: 'bad key', value: 'x' }])).toBe(false)
   })
 })
 

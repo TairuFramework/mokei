@@ -84,4 +84,18 @@ describe('ContextRPC transport lifecycle', () => {
     await rpc.dispose()
     await transports.dispose()
   })
+
+  test('_registerStreamExchange resolves on an inbound response', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = makeRPC(transports.client)
+    rpc._handle()
+
+    const pending = rpc._registerStreamExchange('tools/call', {})
+    // Reply from the server side; request id starts at 0.
+    await transports.server.write({ jsonrpc: '2.0', id: 0, result: { done: true } } as AnyMessage)
+    await expect(pending).resolves.toEqual({ done: true })
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
 })
