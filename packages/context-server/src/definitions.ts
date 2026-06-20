@@ -28,6 +28,7 @@ export function createPrompt<
 ): GenericPromptDefinition {
   const validate = createValidator<ArgumentsSchema, Arguments>(argumentsSchema, {
     draft: inferSchemaDraft(argumentsSchema),
+    strict: false,
   })
 
   const wrappedHandler = (request: HandlerRequest<{ arguments: unknown }>): PromptHandlerReturn => {
@@ -50,6 +51,7 @@ export function createTool<InputSchema extends Schema, Input = FromSchema<InputS
 ): GenericToolDefinition {
   const validate = createValidator<InputSchema, Input>(inputSchema, {
     draft: inferSchemaDraft(inputSchema),
+    strict: false,
   })
 
   const wrappedHandler = (

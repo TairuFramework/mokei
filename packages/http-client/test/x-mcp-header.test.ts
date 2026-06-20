@@ -136,6 +136,90 @@ describe('collectHeaderAnnotations', () => {
     expect(result.valid).toBe(true)
     expect(result.annotations).toEqual([])
   })
+
+  test('collects an annotation behind a $ref', () => {
+    const schema = {
+      type: 'object',
+      properties: { region: { $ref: '#/$defs/Region' } },
+      $defs: { Region: { type: 'string', 'x-mcp-header': 'Region' } },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(true)
+    expect(result.annotations).toEqual([{ headerName: 'Region', path: ['region'] }])
+  })
+
+  test('collects an annotation inside an anyOf branch', () => {
+    const schema = {
+      type: 'object',
+      anyOf: [{ properties: { tenant: { type: 'string', 'x-mcp-header': 'Tenant' } } }],
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(true)
+    expect(result.annotations).toEqual([{ headerName: 'Tenant', path: ['tenant'] }])
+  })
+
+  test('flags the same annotation repeated across composite branches as duplicate', () => {
+    const schema = {
+      type: 'object',
+      allOf: [
+        { properties: { a: { type: 'string', 'x-mcp-header': 'Dup' } } },
+        { properties: { b: { type: 'string', 'x-mcp-header': 'Dup' } } },
+      ],
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('Duplicate'))).toBe(true)
+  })
+
+  test('errors on an annotation inside array items', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        tags: {
+          type: 'array',
+          items: { type: 'object', properties: { id: { type: 'string', 'x-mcp-header': 'Id' } } },
+        },
+      },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('array items'))).toBe(true)
+  })
+
+  test('errors on an annotation inside prefixItems', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        pair: {
+          type: 'array',
+          prefixItems: [
+            { type: 'object', properties: { k: { type: 'string', 'x-mcp-header': 'K' } } },
+          ],
+        },
+      },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('array items'))).toBe(true)
+  })
+
+  test('errors (no hang) on a circular $ref', () => {
+    const schema = {
+      type: 'object',
+      properties: { self: { $ref: '#/$defs/Node' } },
+      $defs: { Node: { type: 'object', properties: { next: { $ref: '#/$defs/Node' } } } },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('Circular'))).toBe(true)
+  })
+
+  test('errors on an unresolved $ref', () => {
+    const schema = { type: 'object', properties: { x: { $ref: '#/$defs/Missing' } } }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('Unresolved'))).toBe(true)
+  })
 })
 
 describe('buildParamHeaders', () => {

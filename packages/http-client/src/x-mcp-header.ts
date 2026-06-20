@@ -107,28 +107,124 @@ export function encodeHeaderValue(value: string | number | boolean): string {
   return needsEncoding(text) ? `=?base64?${base64Utf8(text)}?=` : text
 }
 
+/** Decode a single JSON Pointer reference token (`~1` → `/`, `~0` → `~`). */
+function decodePointerToken(token: string): string {
+  return token.replace(/~1/g, '/').replace(/~0/g, '~')
+}
+
+/**
+ * Resolve a local JSON Pointer `$ref` (e.g. `#/$defs/Region`) against the schema root.
+ * Returns `undefined` for non-local refs or pointers that do not resolve.
+ */
+function resolveLocalRef(root: unknown, ref: string): unknown {
+  if (!ref.startsWith('#/')) {
+    return undefined
+  }
+  const tokens = ref.slice(2).split('/').map(decodePointerToken)
+  let node: unknown = root
+  for (const token of tokens) {
+    if (node == null || typeof node !== 'object') {
+      return undefined
+    }
+    node = (node as Record<string, unknown>)[token]
+  }
+  return node
+}
+
 /**
  * Walk a tool `inputSchema` and collect every `x-mcp-header` annotation, validating the
  * SEP-2243 constraints: header names must be valid tokens, case-insensitively unique
  * within the schema, and may annotate only primitive (boolean/integer/string, optionally
  * nullable) types.
  *
- * Scope: traverses nested object `properties` at any depth — the shape MCP tool inputs use
- * in practice. Annotations inside array `items`, `$ref` targets, or composition keywords
- * (`allOf`/`anyOf`/`oneOf`) are NOT collected; those would need a richer argument-path
- * model than the flat property path used here, and are tracked as a follow-up. The spec's
- * "any nesting depth" wording is satisfied for property nesting only.
+ * Traverses nested object `properties`, local `$ref` targets (`#/$defs/*`,
+ * `#/definitions/*`, with circular-ref detection), and the `allOf`/`anyOf`/`oneOf`
+ * composition keywords (branches share the parent's argument path). An `x-mcp-header`
+ * found inside array element schemas (`items` / `prefixItems`) is an ERROR — a scalar
+ * header cannot carry a multi-element array value — rather than a silent miss. The
+ * argument-path model stays a flat `Array<string>` of object-property keys.
  */
 export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
   const annotations: Array<HeaderAnnotation> = []
   const errors: Array<string> = []
   const seen = new Set<string>()
+  const root = inputSchema
 
-  const walk = (schema: unknown, path: Array<string>): void => {
+  const walk = (
+    schema: unknown,
+    path: Array<string>,
+    refStack: Set<string>,
+    inArray: boolean,
+  ): void => {
     if (schema == null || typeof schema !== 'object') {
       return
     }
-    const properties = (schema as { properties?: unknown }).properties
+    const node = schema as Record<string, unknown>
+    const here = path.join('.') || '<root>'
+
+    // Self-annotation check: applies when this node is reached as a named property
+    // (path non-empty) — either directly or via a resolved $ref / composition branch.
+    // Checking here rather than in the parent properties loop means $ref targets that
+    // carry the annotation directly are processed correctly.
+    if (path.length > 0) {
+      const annotation = node['x-mcp-header']
+      if (annotation !== undefined) {
+        const at = path.join('.')
+        if (inArray) {
+          errors.push(`x-mcp-header at ${at} cannot be inside array items (scalar header)`)
+        } else if (typeof annotation !== 'string' || !isValidHeaderParamName(annotation)) {
+          errors.push(`Invalid x-mcp-header name at ${at}`)
+        } else if (seen.has(annotation.toLowerCase())) {
+          errors.push(`Duplicate x-mcp-header "${annotation}" at ${at}`)
+        } else if (!isEligibleType(node.type)) {
+          errors.push(`x-mcp-header "${annotation}" at ${at} must annotate boolean/integer/string`)
+        } else {
+          seen.add(annotation.toLowerCase())
+          annotations.push({ headerName: annotation, path })
+        }
+      }
+    }
+
+    // $ref: resolve against root, guard cycles, continue at the same path.
+    // 2020-12 allows sibling keywords next to $ref, so we still walk the rest of this node.
+    const ref = node['$ref']
+    if (typeof ref === 'string') {
+      if (refStack.has(ref)) {
+        errors.push(`Circular $ref "${ref}" at ${here}`)
+      } else {
+        const target = resolveLocalRef(root, ref)
+        if (target === undefined) {
+          errors.push(`Unresolved $ref "${ref}" at ${here}`)
+        } else {
+          walk(target, path, new Set(refStack).add(ref), inArray)
+        }
+      }
+    }
+
+    // Composition: descend each branch at the same object level / path.
+    for (const key of ['allOf', 'anyOf', 'oneOf'] as const) {
+      const branches = node[key]
+      if (Array.isArray(branches)) {
+        for (const branch of branches) {
+          walk(branch, path, refStack, inArray)
+        }
+      }
+    }
+
+    // Array element schemas: descend in error-detect mode (inArray = true).
+    for (const key of ['prefixItems', 'items'] as const) {
+      const sub = node[key]
+      if (Array.isArray(sub)) {
+        for (const entry of sub) {
+          walk(entry, path, refStack, true)
+        }
+      } else if (sub != null && typeof sub === 'object') {
+        walk(sub, path, refStack, true)
+      }
+    }
+
+    // Object properties: walk each child at its named path.
+    const properties = node['properties']
     if (properties == null || typeof properties !== 'object') {
       return
     }
@@ -138,25 +234,11 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
       }
       const child = rawChild as Record<string, unknown>
       const childPath = [...path, key]
-      const annotation = child['x-mcp-header']
-      if (annotation !== undefined) {
-        const at = childPath.join('.')
-        if (typeof annotation !== 'string' || !isValidHeaderParamName(annotation)) {
-          errors.push(`Invalid x-mcp-header name at ${at}`)
-        } else if (seen.has(annotation.toLowerCase())) {
-          errors.push(`Duplicate x-mcp-header "${annotation}" at ${at}`)
-        } else if (!isEligibleType(child.type)) {
-          errors.push(`x-mcp-header "${annotation}" at ${at} must annotate boolean/integer/string`)
-        } else {
-          seen.add(annotation.toLowerCase())
-          annotations.push({ headerName: annotation, path: childPath })
-        }
-      }
-      walk(child, childPath)
+      walk(child, childPath, refStack, inArray)
     }
   }
 
-  walk(inputSchema, [])
+  walk(inputSchema, [], new Set<string>(), false)
   const valid = errors.length === 0
   return { annotations: valid ? annotations : [], valid, errors }
 }

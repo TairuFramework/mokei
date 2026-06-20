@@ -922,3 +922,41 @@ describe('ContextServer', () => {
     })
   })
 })
+
+describe('strict-mode suppression on tool/prompt schemas', () => {
+  test('a valid 2020-12 prefixItems schema logs no strict-mode warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      createTool(
+        'tuple tool',
+        {
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          type: 'object',
+          properties: {
+            pair: {
+              type: 'array',
+              prefixItems: [{ type: 'string' }, { type: 'number' }],
+            },
+          },
+        } as const,
+        () => ({ content: [] }),
+      )
+      expect(warn).not.toHaveBeenCalled()
+      expect(error).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+      error.mockRestore()
+    }
+  })
+
+  test('a genuinely broken schema still throws (strict:false suppresses warnings, not compile errors)', () => {
+    expect(() =>
+      createTool(
+        'broken tool',
+        { type: 'not-a-real-type' } as unknown as Parameters<typeof createTool>[1],
+        () => ({ content: [] }),
+      ),
+    ).toThrow()
+  })
+})

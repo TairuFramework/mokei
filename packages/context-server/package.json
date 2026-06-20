@@ -41,12 +41,14 @@
   },
   "dependencies": {
     "@enkaku/node-streams-transport": "catalog:",
+    "@enkaku/otel": "catalog:",
     "@enkaku/schema": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^"
   },
   "devDependencies": {
     "@enkaku/transport": "catalog:",
+    "@opentelemetry/api": "^1.9.1",
     "@types/node": "catalog:"
   }
 }
