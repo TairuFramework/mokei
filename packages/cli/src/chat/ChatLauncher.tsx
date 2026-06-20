@@ -2,6 +2,7 @@ import { Spinner } from '@inkjs/ui'
 import { Box, Text, useApp } from 'ink'
 import { type ReactNode, useEffect, useState } from 'react'
 
+import { LlamaPathCard } from './components/LlamaPathCard.js'
 import { ProviderSelectCard } from './components/ProviderSelectCard.js'
 import { type BuiltChat, buildChat, type ChatOptions } from './providers.js'
 
@@ -20,14 +21,20 @@ export type ChatLauncherProps = {
 export function ChatLauncher({ initialProvider, chatOptions, lifecycle }: ChatLauncherProps) {
   const { exit } = useApp()
   const [provider, setProvider] = useState<string | undefined>(initialProvider)
+  const [modelPath, setModelPath] = useState<string | undefined>(undefined)
   const [chat, setChat] = useState<BuiltChat | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const llamaPath = chatOptions.model ?? modelPath
+  const needsLlamaPath = provider === 'llama' && (llamaPath == null || llamaPath === '')
+
   useEffect(() => {
     if (provider == null) return
+    if (needsLlamaPath) return
 
     let cancelled = false
-    buildChat(provider, chatOptions).then(
+    const opts = provider === 'llama' ? { ...chatOptions, model: llamaPath } : chatOptions
+    buildChat(provider, opts).then(
       (built) => {
         if (cancelled) {
           // Quit happened while connecting — dispose the orphaned session.
@@ -45,7 +52,7 @@ export function ChatLauncher({ initialProvider, chatOptions, lifecycle }: ChatLa
     return () => {
       cancelled = true
     }
-  }, [provider, chatOptions, lifecycle])
+  }, [provider, chatOptions, lifecycle, needsLlamaPath, llamaPath])
 
   useEffect(() => {
     if (error != null) {
@@ -64,6 +71,10 @@ export function ChatLauncher({ initialProvider, chatOptions, lifecycle }: ChatLa
 
   if (provider == null) {
     return <ProviderSelectCard onSelect={setProvider} onCancel={exit} />
+  }
+
+  if (needsLlamaPath) {
+    return <LlamaPathCard onSubmit={setModelPath} onCancel={exit} />
   }
 
   if (chat == null) {
