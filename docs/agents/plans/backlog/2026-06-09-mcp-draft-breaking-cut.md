@@ -37,11 +37,27 @@ section.
 
 ## Blockers
 
-- **U1 — RESOLVED (2026-06-20).** Correlation model decided in
-  `milestones/2026-06-20-u1-correlation-coexist-spike.md`: `PendingExchange`
-  (resolve-once | streaming) + continuation-token store in `context-rpc`, `@enkaku/transport`
-  untouched. The behavior-preserving refactor (U1 core) is buildable now on `2025-11-25`;
-  the draft wiring for B4/B7 plugs into the seam it creates.
+- **U1 — RESOLVED + CORE SHIPPED (2026-06-20).** Correlation model decided in
+  `milestones/2026-06-20-u1-correlation-coexist-spike.md` and the behavior-preserving core
+  landed via `completed/2026-06-20-pendingexchange-refactor.complete.md` (PR #32):
+  `ExchangeRegistry` (`exchange.ts`, resolve-once | streaming) + `ContinuationStore`
+  (`continuation.ts`), `@enkaku/transport` untouched. The streaming arm + continuation store
+  are built and unit-tested but have **no wire trigger yet** — B4/B7 wire into the
+  `_registerStreamExchange` seam they create.
+
+### B7 stream-arm follow-ons (do when wiring MRTR into the dormant streaming seam)
+
+  - Thread a settle **reason** through `onSettle` (currently arg-less) so continuation
+    teardown can distinguish result / error / cancel / transport-close.
+  - Decide the malformed-frame / malformed-response policy on the stream arm (the `once`
+    arm currently relies on `routeResponse` shape; a stream `result`/`error` frame has no
+    equivalent guard).
+  - Add stream `cancel` / `endAll` `onSettle` tests (only the terminal-frame settle path is
+    covered today).
+  - Add an `ErrorResponse` narrowing guard for the `as ErrorResponse` cast in
+    `routeResponse` (`exchange.ts`).
+  - Consider a `#settle(exchange)` helper in `ExchangeRegistry` to dedup the repeated
+    delete + resolve/reject + `onSettle?.()` blocks.
 - **Draft finalization (only remaining blocker)** — re-validate every item against the
   final spec before implementing the draft payloads.
 
