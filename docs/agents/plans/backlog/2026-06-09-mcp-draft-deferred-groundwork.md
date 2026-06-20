@@ -29,22 +29,24 @@ On `feat/mcp-draft-groundwork-g5-g8` (2026-06-20):
 - **G7 walk depth** — `collectHeaderAnnotations` in `http-client` now traverses local `$ref`
   + `allOf`/`anyOf`/`oneOf` composites; raises a schema-authoring error when `x-mcp-header`
   appears inside array `items`/`prefixItems` (unsupported path model). Flat path model kept.
+- **G5 inbound** — `context-server` now activates the request's W3C trace context + baggage
+  for the handler. New `context-server/src/trace.ts` (`activeContextFromMeta` /
+  `baggageEntriesFromMeta` / `withRequestMeta`); `_handleRequest` wraps dispatch once via
+  `withRequestMeta(request.params._meta, …)` (trace outer, baggage inner). Uses
+  `@enkaku/otel@0.17.1` `extractW3CTraceContext` + `withActiveBaggage` (the asks filed
+  2026-06-20 shipped in enkaku #42). Server spans now child the client trace.
 
 ## Remaining gap
 
-- **G5 inbound** — server-side extraction blocked on enkaku: needs a W3C
-  `traceparent` → OTel `Context` builder. enkaku's `extractTraceContext` reads
-  `tid`/`sid`, not W3C. Upstream ask filed 2026-06-20 (`extractW3CTraceContext` +
-  `withActiveBaggage`, `../enkaku/docs/agents/plans/backlog/2026-06-20-mokei-g5-inbound-otel.md`).
-  `context-server` wiring lands once it releases.
 - **G7 part 5** — stale-schema fallback: on `-32001` HeaderMismatch, refresh via `tools/list`
   and retry the `tools/call`. Resilience nicety; matters only against a live draft server.
+  Deferred: no live draft server emits it, and `-32001` already means `SESSION_EXPIRED_CODE`
+  in mokei (`http-client/src/errors.ts`).
 
 ## Notes
 
 - G5/G8 enkaku upstream asks landed in `@enkaku/{schema,otel}@0.16.1` (enkaku #33);
   the `getActiveBaggage` + `strict` passthrough follow-ups landed in `@enkaku/{otel,schema}@0.17.0`
-  (enkaku `chore/mokei-follow-ups`), both consumed by mokei's `^0.17.0` catalog pins.
-- G5 inbound is blocked on a new enkaku upstream ask (2026-06-20) for `extractW3CTraceContext`
-  + `withActiveBaggage`; all other items are self-contained mokei work.
-- G7 follow-ups are self-contained in `@mokei/http-client` and could land any time.
+  (enkaku `chore/mokei-follow-ups`); the G5-inbound `extractW3CTraceContext` + `withActiveBaggage`
+  asks landed in `@enkaku/otel@0.17.1` (enkaku #42). All consumed by mokei's `^0.17.1` catalog pins.
+- **No remaining enkaku blockers.** Only G7 part 5 remains, self-contained in `@mokei/http-client`.

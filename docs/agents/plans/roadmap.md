@@ -103,9 +103,9 @@ Shipped from this audit (see `completed/`):
 - **Llama provider integration tests** — exercise real GGUF models end-to-end
   (promptWithMeta shape, function calling, streaming).
 - **MCP draft — deferred groundwork** (`backlog/2026-06-09-mcp-draft-deferred-groundwork.md`) —
-  G8 + G5 outbound/baggage + **G8 strict-mode + G7 walk depth** shipped. Remaining:
-  G5 inbound (enkaku ask filed 2026-06-20: `extractW3CTraceContext` + `withActiveBaggage`),
-  G7 part 5 retry.
+  G8 + G5 outbound/baggage + **G8 strict-mode + G7 walk depth + G5 inbound** shipped
+  (G5 inbound via `@enkaku/otel@0.17.1` `extractW3CTraceContext`/`withActiveBaggage`, enkaku #42).
+  Remaining: G7 part 5 retry only. No enkaku blockers left.
 - **MCP draft — U1 correlation refactor** — **SHIPPED** (PR #32,
   `completed/2026-06-20-pendingexchange-refactor.complete.md`): `context-rpc`'s `#sentRequests`
   generalized into the `PendingExchange` (resolve-once | streaming) abstraction +

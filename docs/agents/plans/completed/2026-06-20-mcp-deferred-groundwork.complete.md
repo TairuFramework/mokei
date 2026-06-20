@@ -1,8 +1,8 @@
-# MCP draft — deferred groundwork (G8 strict / G7 walk depth / G5 inbound ask)
+# MCP draft — deferred groundwork (G8 strict / G7 walk depth / G5 inbound)
 
 **Status:** complete
 **Date:** 2026-06-20
-**Branch:** `feat/mcp-deferred-groundwork` (commits `2c078ba`..`682d05e`)
+**Branch:** `feat/mcp-deferred-groundwork` (commits `2c078ba`..`8cd605c`)
 **Origin:** `backlog/2026-06-09-mcp-draft-deferred-groundwork.md`,
 `milestones/2026-06-08-mcp-draft-migration.md`
 
@@ -25,12 +25,15 @@ Three self-contained slices of the MCP-draft deferred groundwork.
   a silent miss — the tool is excluded from the list with a logged reason. Flat
   `Array<string>` path model and the public signature unchanged; `buildParamHeaders`
   untouched.
-- **G5 inbound** — upstream ask filed (no code). enkaku's `extractTraceContext` reads
-  Enkaku's `tid`/`sid` token fields, not the SEP-414 W3C `traceparent` mokei emits,
-  and exposes no baggage activation. Rather than pull `@opentelemetry/api` into
-  `context-server`, an ask was written to the `../enkaku` checkout
-  (`docs/agents/plans/backlog/2026-06-20-mokei-g5-inbound-otel.md`, uncommitted)
-  requesting `@enkaku/otel` `extractW3CTraceContext(meta)` + `withActiveBaggage`.
+- **G5 inbound** — SHIPPED. Initially blocked (enkaku's `extractTraceContext` reads
+  `tid`/`sid`, not the SEP-414 W3C `traceparent` mokei emits, and had no baggage
+  activation), so an ask was filed to the `../enkaku` checkout for
+  `extractW3CTraceContext(meta)` + `withActiveBaggage`. enkaku shipped both in
+  `@enkaku/otel@0.17.1` (enkaku #42) within the same session, and the wiring landed:
+  new `context-server/src/trace.ts` (`activeContextFromMeta` / `baggageEntriesFromMeta` /
+  `withRequestMeta`); `_handleRequest` wraps dispatch once with `withRequestMeta` (trace
+  context outer, baggage inner). Server spans now child the client trace. One wrap covers
+  tools / prompts / resources.
 
 ## Key design decisions
 
@@ -47,27 +50,25 @@ Three self-contained slices of the MCP-draft deferred groundwork.
   seen. Confirmed no double-counting, intact dedup, correct `inArray` propagation.
 - **G5 builder home → upstream:** keep `@opentelemetry/api` out of mokei; the
   W3C→Context builder belongs in `@enkaku/otel` beside the existing `tid`/`sid`
-  variant. G5 inbound server wiring deferred until that release.
+  variant. enkaku shipped it (`extractW3CTraceContext` + `withActiveBaggage`,
+  `@enkaku/otel@0.17.1`, enkaku #42) same-session, so the wiring landed rather than
+  deferring. `withActiveBaggage` nests inside `withActiveContext` (it reads the active
+  context), so `withRequestMeta` applies trace context outer, baggage inner.
 
 ## Verification
 
-Full gate green: lint clean, `pnpm build` green, 563/563 tests pass. Per-task reviews
-(spec + quality) and a final whole-branch review (Ready to merge: Yes) — no
-Critical/Important findings. Three Minors logged, all conservative-by-design with no
-emitter; none block.
+Full gate green: lint clean, `pnpm build` green, all tests pass (G5-inbound adds 11
+context-server tests; suite 42/42 in that package). Per-task reviews (spec + quality)
+plus a final whole-branch review (Ready to merge: Yes) — no Critical/Important findings
+left open. The one Important on G5 inbound (a `useLiteralKeys` lint nit) was fixed.
 
 ## Remaining (tracked in backlog)
 
 `backlog/2026-06-09-mcp-draft-deferred-groundwork.md`:
 
-- **G5 inbound server wiring** — blocked on the filed enkaku ask
-  (`extractW3CTraceContext` + `withActiveBaggage`). Lands once enkaku releases: add
-  `@enkaku/otel` to `context-server`, new `trace.ts`
-  (`activeContextFromMeta → extractW3CTraceContext`), wrap `_handleRequest` dispatch
-  once with `withActiveContext`.
 - **G7 part 5** — HeaderMismatch `tools/list` refresh + `tools/call` retry. Deferred:
   no live draft server emits it, and the milestone's `-32001` code already means
-  `SESSION_EXPIRED_CODE` in mokei.
+  `SESSION_EXPIRED_CODE` in mokei. Only remaining item; no enkaku blockers left.
 
 Minor follow-ups (non-blocking, from final review): cache collected annotations in
 `#toolSchemas` to skip the per-`tools/call` walk recompute; clarify the
