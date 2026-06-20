@@ -5,6 +5,7 @@ const PROVIDERS = [
   { label: 'ollama', value: 'ollama' },
   { label: 'openai', value: 'openai' },
   { label: 'anthropic', value: 'anthropic' },
+  { label: 'llama', value: 'llama' },
 ] as const
 
 export type ProviderSelectCardProps = {
