@@ -37,6 +37,7 @@ import {
 import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
 
 import { toResourceHandlers } from './definitions.js'
+import { withRequestMeta } from './trace.js'
 import type {
   ClientInitialize,
   CompleteHandler,
@@ -206,6 +207,13 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   }
 
   async _handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
+    const meta = (request.params as Record<string, unknown> | undefined)?.['_meta'] as
+      | Record<string, unknown>
+      | undefined
+    return withRequestMeta(meta, () => this.#dispatchRequest(request, signal))
+  }
+
+  async #dispatchRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
     switch (request.method) {
       case 'completion/complete':
         if (this.#completeHandler == null) {

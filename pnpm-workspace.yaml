@@ -16,7 +16,7 @@ catalog:
   '@enkaku/http-server-transport': ^0.17.0
   '@enkaku/log': ^0.17.0
   '@enkaku/node-streams-transport': ^0.17.0
-  '@enkaku/otel': ^0.17.0
+  '@enkaku/otel': ^0.17.1
   '@enkaku/protocol': ^0.17.0
   '@enkaku/schema': ^0.17.0
   '@enkaku/server': ^0.17.0
@@ -35,7 +35,7 @@ catalog:
   '@tanstack/router-devtools': ^1.167.0
   '@tanstack/router-plugin': ^1.168.18
   '@types/luxon': ^3.7.1
-  '@types/node': ^25.9.3
+  '@types/node': ^26.0.0
   '@types/react': ^19.2.17
   '@types/react-dom': ^19.2.3
   '@types/turndown': ^5.0.6
