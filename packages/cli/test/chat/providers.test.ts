@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
-import { buildChat, resolveApiKey } from '../../src/chat/providers.js'
+import { buildChat, llamaModelName, resolveApiKey } from '../../src/chat/providers.js'
 
 describe('resolveApiKey', () => {
   let saved: NodeJS.ProcessEnv
@@ -60,5 +60,31 @@ describe('buildChat', () => {
 
   test('fails fast when anthropic has no API key', async () => {
     await expect(buildChat('anthropic', {})).rejects.toThrow(/set ANTHROPIC_API_KEY/)
+  })
+
+  test('llama needs no API key but rejects a missing model path', async () => {
+    await expect(buildChat('llama', {})).rejects.toThrow(/--model/)
+  })
+
+  test('llama rejects an empty model path', async () => {
+    await expect(buildChat('llama', { model: '' })).rejects.toThrow(/--model/)
+  })
+
+  test('llama rejects a whitespace-only model path', async () => {
+    await expect(buildChat('llama', { model: '   ' })).rejects.toThrow(/--model/)
+  })
+})
+
+describe('llamaModelName', () => {
+  test('strips the directory and .gguf extension', () => {
+    expect(llamaModelName('/models/qwen2.5-7b-instruct-q4.gguf')).toBe('qwen2.5-7b-instruct-q4')
+  })
+
+  test('keeps a name that has no .gguf extension', () => {
+    expect(llamaModelName('/models/plain-name')).toBe('plain-name')
+  })
+
+  test('handles a bare filename', () => {
+    expect(llamaModelName('model.gguf')).toBe('model')
   })
 })

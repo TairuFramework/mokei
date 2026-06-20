@@ -5,12 +5,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { ProviderSelectCard } from '../../src/chat/components/ProviderSelectCard.js'
 
 describe('ProviderSelectCard', () => {
-  test('renders three provider options', () => {
+  test('renders all provider options', () => {
     const { lastFrame } = render(<ProviderSelectCard onSelect={() => {}} onCancel={() => {}} />)
     const frame = lastFrame() ?? ''
     expect(frame).toContain('ollama')
     expect(frame).toContain('openai')
     expect(frame).toContain('anthropic')
+    expect(frame).toContain('llama')
     expect(frame).toContain('select a provider')
   })
 

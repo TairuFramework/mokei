@@ -25,6 +25,7 @@ export const FETCH_SERVER = resolve(ROOT, 'mcp-servers/fetch/lib/serve.js')
 export const UI = {
   ready: 'type a message',
   providerSelect: 'select a provider',
+  llamaPath: 'enter GGUF model path',
   contextAdded: 'context fetch added',
   thinking: 'thinking…',
   approval: 'approve tool call',
@@ -167,6 +168,15 @@ export class ChatDriver {
   /** Wait for the prompt, then add the fetch MCP context via the slash command. */
   async start(timeoutMs = 15_000): Promise<boolean> {
     return this.waitFor(UI.ready, timeoutMs)
+  }
+
+  /** Wait for the GGUF path card, type the path, and submit it. */
+  async enterLlamaPath(path: string, timeoutMs = 15_000): Promise<boolean> {
+    if (!(await this.waitFor(UI.llamaPath, timeoutMs))) return false
+    await this.type(path)
+    await delay(300)
+    this.write('\r')
+    return true
   }
 
   async addFetchContext(timeoutMs = 15_000): Promise<boolean> {

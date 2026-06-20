@@ -16,6 +16,7 @@
     "@mokei/host": "workspace:^",
     "@mokei/http-client": "workspace:^",
     "@mokei/http-server": "workspace:^",
+    "@mokei/llama-provider": "workspace:^",
     "@mokei/mcp-fetch": "workspace:^",
     "@mokei/model-provider": "workspace:^",
     "@mokei/ollama-provider": "workspace:^",

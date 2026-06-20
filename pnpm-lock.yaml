@@ -269,6 +269,9 @@ importers:
       '@mokei/http-server':
         specifier: workspace:^
         version: link:../packages/http-server
+      '@mokei/llama-provider':
+        specifier: workspace:^
+        version: link:../packages/llama-provider
       '@mokei/mcp-fetch':
         specifier: workspace:^
         version: link:../mcp-servers/fetch
@@ -489,6 +492,9 @@ importers:
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
+      '@mokei/llama-provider':
+        specifier: workspace:^
+        version: link:../llama-provider
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
