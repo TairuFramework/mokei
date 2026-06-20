@@ -2,10 +2,10 @@
 
 **Status:** backlog (blocked on draft finalization only — U1 resolved)
 **Origin:** `milestones/2026-06-08-mcp-draft-migration.md` — Phase 1.
-**Superseded framing:** no longer a "hard-cut to draft-only." Per
-`milestones/2026-06-20-u1-correlation-coexist-spike.md`, mokei supports `2025-11-25` and
-the draft **side by side**, selected per context. The B-items become additive draft wiring
-behind a version selector, not removals.
+**Superseded framing:** no longer a "hard-cut to draft-only." Per the Architecture decision
+in `milestones/2026-06-08-mcp-draft-migration.md`, mokei supports `2025-11-25` and the draft
+**side by side**, selected per context. The B-items become additive draft wiring behind a
+version selector, not removals.
 
 ## Gap
 
@@ -37,9 +37,10 @@ section.
 
 ## Blockers
 
-- **U1 — RESOLVED + CORE SHIPPED (2026-06-20).** Correlation model decided in
-  `milestones/2026-06-20-u1-correlation-coexist-spike.md` and the behavior-preserving core
-  landed via `completed/2026-06-20-pendingexchange-refactor.complete.md` (PR #32):
+- **U1 — RESOLVED + CORE SHIPPED (2026-06-20).** Correlation model decided in the
+  Architecture decision of `milestones/2026-06-08-mcp-draft-migration.md`; the
+  behavior-preserving core landed via
+  `completed/2026-06-20-pendingexchange-refactor.complete.md` (PR #32):
   `ExchangeRegistry` (`exchange.ts`, resolve-once | streaming) + `ContinuationStore`
   (`continuation.ts`), `@enkaku/transport` untouched. The streaming arm + continuation store
   are built and unit-tested but have **no wire trigger yet** — B4/B7 wire into the

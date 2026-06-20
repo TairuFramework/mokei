@@ -16,9 +16,94 @@ consumers are not broken. Until then, all non-breaking groundwork lands on `2025
 without disruption.
 
 **Architecture decision (2026-06-20):** opt-in coexistence over hard-cut; U1 correlation
-model resolved. See `2026-06-20-u1-correlation-coexist-spike.md` (authoritative). The
-"hard-cut" framing below is superseded — the B-items become additive draft wiring behind a
-per-context version selector, not removals.
+model resolved — see the **Architecture decision** section below (this milestone is the
+authoritative record). The "hard-cut" framing in Phase 1 is superseded — the B-items become
+additive draft wiring behind a per-context version selector, not removals.
+
+## Architecture decision — opt-in coexistence + U1 correlation (2026-06-20)
+
+> ADR. Decided (architecture); the version-agnostic core is shipped (see
+> `completed/2026-06-20-pendingexchange-refactor.complete.md`), draft-specific wiring gated
+> on draft finalization.
+
+### Decision
+
+1. **Opt-in version *coexistence*, not a hard-cut.** mokei keeps speaking `2025-11-25` and
+   adds the draft as a second supported version, selected **per context at setup**. Existing
+   consumers are not broken.
+2. **U1 correlation model:** generalize the single-deferred `#sentRequests` in
+   `@mokei/context-rpc` into a **pending-exchange** abstraction supporting both *resolve-once*
+   (today's request/response) and *streaming* (draft tool calls with interleaved input
+   sub-requests), plus a **continuation-token store** decoupled from `#sentRequests` for MRTR
+   input correlation. `@enkaku/transport` stays untouched.
+
+Rationale for coexistence: mokei is a **library**. The hard-cut was chosen only to avoid
+dual-path maintenance, not because coexistence is infeasible. mokei already has the version
+scaffolding (`SUPPORTED_PROTOCOL_VERSIONS`, `isSupportedVersion`, protocolVersion
+negotiation). Coexistence costs ~one extra wiring branch; dropping `2025-11-25` later becomes
+a config/branch deletion, **not** a rewrite. Coexistence-first strictly dominates.
+
+### The U1 problem (what the draft changes)
+
+- **B7 / MRTR (SEP-2322):** removes server-initiated top-level requests. A `tools/call` that
+  needs model input mid-execution emits **`inputRequests`** inside its own response lifecycle;
+  the client answers with **`inputResponses`** correlated to the outer tool-call id + an input
+  id. Sampling/elicitation become **input sub-exchanges nested in a tool-call stream**, not
+  independent reverse-direction calls. So `tools/call` goes from 1-request → 1-response to
+  **1-request → (progress\* · inputRequest\* · result)**, and `inputResponse` frames are a
+  *second* client→server correlation keyed by a continuation token, not the outer id's
+  resolve-once slot — the piece today's core has no equivalent for.
+- **B2:** no `initialize`; per-request `_meta` carries version/identity/caps.
+- **B3:** `server/discover` advertises versions/caps/identity. **B1:** no protocol sessions;
+  cross-call state → server-minted handles. **B4:** `subscriptions/listen` replaces the GET
+  stream + `resources/subscribe`.
+
+### Correlation abstraction (version-agnostic core — SHIPPED)
+
+`#sentRequests[id]: RequestController` → a tagged **PendingExchange**: `once`
+(`Deferred & AbortController`, legacy + draft non-streaming) | `stream` (a sink taking
+interleaved frames: `onProgress` / `onInputRequest` / terminal `onResult`|`onError`). A
+separate **continuation-token store** routes `inputResponse`/`inputRequest` by token,
+independent of any `#sentRequests` slot, torn down when the outer exchange settles/aborts.
+`_handleMessage`'s response branch routes by id: `once` settles-and-deletes (unchanged); a
+`stream` feeds the sink and deletes only on a terminal frame.
+
+**Public handler surface stays stable across versions.** `onSampling` / `onElicitation` keep
+their signatures; only the *wiring* differs — in `2025-11-25` driven by an inbound
+server→client request, in draft by an `inputRequest` nested in a tool-call stream. The version
+flag on the RPC core selects the wiring. This is the core coexistence win: one handler, both
+protocols.
+
+### Version selection (no `initialize` in draft)
+
+`SUPPORTED_PROTOCOL_VERSIONS` becomes `['2025-11-25', '<draft-id>']`. Selected at
+`addLocalContext` / `addHTTPContext`: **explicit** `protocolVersion` option (fast path,
+recommended for known peers) → else **probe** `server/discover` (draft answers
+versions/caps; a `2025-11-25` server returns method-not-found / an `initialize`-shaped world →
+fall back to the handshake). STDIO probe ordering + HTTP `MCP-Protocol-Version` header
+interaction must be pinned against the final spec (open question).
+
+### Buildable now vs blocked on the spec
+
+**Shipped (spec-independent, behavior-preserving):** the `PendingExchange` refactor with the
+`once` arm wired + the `stream` arm / `#continuations` store built and unit-tested with
+synthetic frames (no draft method names). Landed via PR #32.
+
+**Blocked on draft finalization (exact shapes still move):** concrete
+`inputRequest`/`inputResponse` schemas + method names (B7); `server/discover` result schema +
+probe semantics (B3); `subscriptions/listen` framing (B4); per-request `_meta`
+version/identity/caps + version-mismatch error (B2, SEP-2575).
+
+### Risks
+
+- **Dual-path test matrix** — every transport/handler path doubles. Mitigate: single public
+  handler surface; branch only at the wiring seam; table-test both versions against one handler.
+- **Probe ambiguity on STDIO** — `server/discover` to a legacy server has no standard
+  negative; until pinned, prefer explicit `protocolVersion`, treat probe as best-effort.
+- **MRTR continuation lifetime** vs `notifications/cancelled` + tool-call timeout — store torn
+  down on outer settle/abort (the shipped `onSettle → clearForExchange` hook).
+- **Streaming back-pressure** STDIO vs HTTP — the sink must not unbounded-buffer (mirror the
+  notification drop-when-no-reader policy).
 
 ## Phase 0 — Groundwork (SHIPPED on 2025-11-25)
 
@@ -66,11 +151,11 @@ Hard-cut; ordered by dependency. Blocked on the draft finalizing **and** on U1.
 ## Upstream (Enkaku) dependencies
 
 - **U1** — transport / RPC-core model for stateless + MRTR. **Long pole; blocks B4 + B7.**
-  **Resolved (2026-06-20)** — design in `2026-06-20-u1-correlation-coexist-spike.md`:
-  generalize `#sentRequests` into a `PendingExchange` (resolve-once | streaming) abstraction
-  + a continuation-token store, `@enkaku/transport` untouched. Not an enkaku dependency —
-  fully local `context-rpc` work. The behavior-preserving `PendingExchange` refactor is
-  buildable now on `2025-11-25`; draft wiring plugs into its seam once the spec finalizes.
+  **Resolved + core shipped (2026-06-20)** — design in the Architecture decision section
+  above; the behavior-preserving `PendingExchange` (resolve-once | streaming) + continuation
+  store landed via `completed/2026-06-20-pendingexchange-refactor.complete.md` (PR #32).
+  `@enkaku/transport` untouched — fully local `context-rpc` work, not an enkaku dependency.
+  Draft wiring plugs into the `_registerStreamExchange` seam once the spec finalizes.
 - **U2 → G8** — `@enkaku/schema` draft-07 → needs `Ajv2020` / configurable draft.
   **Resolved** in `@enkaku/schema@0.16.1` (`createValidator(schema, { draft: '2020-12' })`,
   new `ValidatorOptions` export). G8 unblocked.
