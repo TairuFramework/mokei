@@ -15,8 +15,21 @@ enkaku upstream blockers (`@enkaku/{otel,schema}@0.17.0` already pinned).
 - **G7 walk depth** — deeper `x-mcp-header` schema traversal (`$ref` + composites;
   error on array items).
 
+**Implementable now (this pass):** G8 strict, G7 walk depth, and the enkaku
+upstream ask doc for G5.
+
 **Explicitly deferred (not in this pass):**
 
+- **G5 inbound server wiring** — blocked on enkaku. Inbound extraction needs a W3C
+  `traceparent` → OTel `Context` builder. enkaku's existing `extractTraceContext`
+  reads Enkaku's own `tid`/`sid` token fields, **not** the SEP-414 W3C
+  `traceparent`/`tracestate` keys mokei emits, and exposes no W3C variant. Decision:
+  request an upstream `extractW3CTraceContext` rather than pull `@opentelemetry/api`
+  into `context-server`. This pass files the ask; the `server.ts` wiring lands in a
+  follow-up once enkaku releases it.
+- **G5 inbound baggage** — enkaku exposes `getActiveBaggage` (read) but no
+  `withActiveBaggage`/setter, so inbound baggage cannot be activated without reaching
+  into `@opentelemetry/api`. Deferred; bundled into the same enkaku ask.
 - **G7 part 5** (stale-schema `tools/list` refresh + `tools/call` retry on a
   HeaderMismatch error). Reasons: no server emits HeaderMismatch today (no live
   draft server), the milestone's proposed `-32001` code already means
@@ -27,6 +40,9 @@ enkaku upstream blockers (`@enkaku/{otel,schema}@0.17.0` already pinned).
 
 | # | Decision |
 |---|----------|
+| G5 builder home | Upstream — request enkaku `extractW3CTraceContext(meta)`; keep `@opentelemetry/api` out of mokei. G5 wiring deferred until it lands. |
+| G5 baggage | Defer inbound activation; request enkaku `withActiveBaggage`. |
+| G5 this pass | File the enkaku ask doc only (no enkaku commit — just the request file in the `../enkaku` checkout). |
 | G8 value | `strict: false` (suppress), not `'log'`. |
 | G8 scope | Tool/prompt validators only (`context-server/src/definitions.ts:29,51`). Internal validators (client-message, provider configs) untouched. |
 | G7 part 5 | Deferred. |
@@ -35,7 +51,7 @@ enkaku upstream blockers (`@enkaku/{otel,schema}@0.17.0` already pinned).
 
 ---
 
-## Unit 1 — G5 inbound (context-server)
+## Unit 1 — G5 inbound (enkaku upstream ask only this pass)
 
 ### Goal
 
@@ -44,26 +60,49 @@ request's `_meta`, so server spans child the client's trace. Today only the
 **outbound** side exists (`packages/context-client/src/trace.ts` →
 `ContextClient.request()` injects `traceparent`/`tracestate`/`baggage`).
 
-### Design
+### Blocker
 
-New file `packages/context-server/src/trace.ts` mirroring the client's. One helper:
+`context-server` depends on neither `@enkaku/otel` nor `@opentelemetry/api` (only
+transport / schema / context-protocol / context-rpc). The inbound build needs a
+W3C `traceparent` → OTel `Context` helper. enkaku's `extractTraceContext` is **not**
+it — its implementation reads `header.tid` / `header.sid` (Enkaku token convention)
+and ignores the SEP-414 W3C `traceparent` mokei emits. Building the remote context
+from W3C ourselves would require importing `@opentelemetry/api`
+(`trace.setSpanContext(ROOT_CONTEXT, { traceId, spanId, isRemote: true,
+traceFlags })`) into `context-server`. Decided against; request the helper upstream.
+
+### This pass — file the enkaku ask (no enkaku commit)
+
+Write a request file into the `../enkaku` checkout at
+`docs/agents/plans/backlog/2026-06-20-mokei-g5-inbound-otel.md` (do **not** commit
+to enkaku — just author the file). It asks for two `@enkaku/otel` additions:
+
+1. **`extractW3CTraceContext(meta: Record<string, unknown>): Context | undefined`**
+   — parse SEP-414 W3C `traceparent` (+ `tracestate`) from a `_meta`-shaped record
+   via the existing `parseTraceparent` / `parseTracestate`, build a remote
+   `SpanContext` (`isRemote: true`), return an OTel `Context`. Mirrors the existing
+   `extractTraceContext` but for the W3C trio rather than `tid`/`sid`. `undefined`
+   when no valid `traceparent` present.
+2. **`withActiveBaggage<T>(entries, fn)`** (or equivalent) — activate parsed
+   `baggage` entries so a server handler's `getActiveBaggage()` reflects the
+   client's. Pairs with the existing read-only `getActiveBaggage`.
+
+### Deferred — server wiring (follow-up, once enkaku ships the above)
+
+New file `packages/context-server/src/trace.ts`:
 
 ```ts
-import { extractTraceContext, type Context } from '@enkaku/otel'
+import { extractW3CTraceContext, type Context } from '@enkaku/otel'
 
 export function activeContextFromMeta(
   meta: Record<string, unknown> | undefined,
-): Context | undefined
+): Context | undefined {
+  return meta == null ? undefined : extractW3CTraceContext(meta)
+}
 ```
 
-It reads `traceparent` / `tracestate` / `baggage` string keys from `meta` and
-delegates to `@enkaku/otel`'s `extractTraceContext(header)`. Returns `undefined`
-when `meta` is absent or carries no `traceparent`.
-
-### Seam
-
-`packages/context-server/src/server.ts` — `_handleRequest()` (currently ~208–255).
-Wrap the dispatch body **once**:
+Seam: `packages/context-server/src/server.ts` — `_handleRequest()` (~208–255). Wrap
+the dispatch body **once**:
 
 ```ts
 const ctx = activeContextFromMeta(request.params._meta)
@@ -71,21 +110,10 @@ const run = () => /* existing method-dispatch switch */
 return ctx ? withActiveContext(ctx, run) : run()
 ```
 
-`withActiveContext` from `@enkaku/otel`. One wrap covers tools, prompts, and
-resources — no per-handler edits at lines 272 / 298 / 234 / 239 / 246.
-
-`@enkaku/otel` inbound exports confirmed available: `extractTraceContext(header:
-Record<string, unknown>) → Context | undefined`, `withActiveContext<T>(parent:
-Context | undefined, fn: () => T) → T`.
-
-### Tests
-
-- Valid `_meta.traceparent` → a probe handler observes `getActiveTraceContext()`
-  matching the injected trace/span ids.
-- `tracestate` + `baggage` propagate (probe reads active baggage).
-- Absent `_meta` → handler runs, no throw, no active trace context.
-- Malformed `traceparent` → no throw; runs without context (extract returns
-  `undefined`).
+One wrap covers tools / prompts / resources — no per-handler edits at lines
+272 / 298 / 234 / 239 / 246. Adds `@enkaku/otel` as a `context-server` dependency.
+Baggage activation folds in when `withActiveBaggage` lands. This wiring is **not**
+in the current plan — it cannot build or test until the upstream release.
 
 ---
 
@@ -184,14 +212,17 @@ introduce a new object key); only `properties` keys do, as today.
 
 ## Cross-cutting
 
-- **Isolation** — three units, three packages, three seams; no shared state, no
-  ordering dependency. Each independently testable.
+- **Isolation** — independent units, no shared state, no ordering dependency. Each
+  independently testable. Implementable now: G8 (`context-server`), G7 walk
+  (`http-client`), and the enkaku ask doc (`../enkaku`, uncommitted).
 - **Conventions** — `type` not `interface`; `Array<T>`; `HTTP`/`ID` casing; no
   `any`; `pnpm`. New files follow the existing `trace.ts` / `x-mcp-header.ts`
   patterns.
 - **Docs to update on completion**:
-  - `backlog/2026-06-09-mcp-draft-deferred-groundwork.md` — move G5 inbound, G8
-    strict, G7 walk to shipped; leave G7 part 5 as the remaining gap.
+  - `backlog/2026-06-09-mcp-draft-deferred-groundwork.md` — move G8 strict + G7 walk
+    to shipped; G5 inbound → blocked-on-enkaku-ask (filed); leave G7 part 5 as the
+    remaining gap.
   - `milestones/2026-06-08-mcp-draft-migration.md` — tick the same in the deferred
-    groundwork section.
+    groundwork section; note the enkaku `extractW3CTraceContext` / `withActiveBaggage`
+    asks.
   - `docs/agents/plans/roadmap.md` — update the deferred-groundwork backlog line.
