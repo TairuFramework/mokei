@@ -125,7 +125,7 @@ Additive, backward-compatible; `2025-11-25` peers ignore the extras. Landed on
 
 - **G5 baggage** — **SHIPPED** (`feat/mcp-draft-g5-baggage`, 2026-06-19): `currentTraceMeta()`
   emits the SEP-414 `baggage` `_meta` key via `getActiveBaggage()` + `formatBaggage()`
-  (`@enkaku/otel@0.17.0`). → backlog `2026-06-09-mcp-draft-deferred-groundwork.md`.
+  (`@enkaku/otel@0.17.0`). → backlog `2026-06-20-mcp-draft-remaining.md`.
 - **G8 strict-mode** — **SHIPPED** (2026-06-20): `strict: false` threaded into tool/prompt
   validators in `context-server/src/definitions.ts` (`@enkaku/schema@0.17.0`). → same
   backlog item.
