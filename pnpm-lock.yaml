@@ -489,6 +489,9 @@ importers:
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
+      '@mokei/llama-provider':
+        specifier: workspace:^
+        version: link:../llama-provider
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
