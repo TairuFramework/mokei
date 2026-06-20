@@ -21,25 +21,30 @@ On `feat/mcp-draft-g5-baggage` (2026-06-19):
   unit-tested `baggageMetaFromEntries` helper in `context-client/src/trace.ts` (omits the
   key when empty / all-dropped). The upstream `getActiveBaggage` blocker is resolved.
 
+On `feat/mcp-draft-groundwork-g5-g8` (2026-06-20):
+
+- **G8 strict-mode** — `strict: false` threaded into tool/prompt schema validators in
+  `context-server/src/definitions.ts`. Valid 2020-12 constructs (e.g. `prefixItems` 2-tuple)
+  no longer log to user stderr. (`@enkaku/schema@0.17.0` `ValidatorOptions.strict`.)
+- **G7 walk depth** — `collectHeaderAnnotations` in `http-client` now traverses local `$ref`
+  + `allOf`/`anyOf`/`oneOf` composites; raises a schema-authoring error when `x-mcp-header`
+  appears inside array `items`/`prefixItems` (unsupported path model). Flat path model kept.
+
 ## Remaining gap
 
-- **G5 inbound** — server-side extraction: parse incoming `_meta.traceparent` and run the
-  handler under `withActiveContext` so server spans link to the client trace. Outbound only
-  so far. **Self-contained mokei work — not blocked.**
+- **G5 inbound** — server-side extraction blocked on enkaku: needs a W3C
+  `traceparent` → OTel `Context` builder. enkaku's `extractTraceContext` reads
+  `tid`/`sid`, not W3C. Upstream ask filed 2026-06-20 (`extractW3CTraceContext` +
+  `withActiveBaggage`, `../enkaku/docs/agents/plans/backlog/2026-06-20-mokei-g5-inbound-otel.md`).
+  `context-server` wiring lands once it releases.
 - **G7 part 5** — stale-schema fallback: on `-32001` HeaderMismatch, refresh via `tools/list`
   and retry the `tools/call`. Resilience nicety; matters only against a live draft server.
-- **G7 walk depth** — `collectHeaderAnnotations` covers object `properties` depth only;
-  extend to array `items` / `$ref` / `allOf`|`anyOf`|`oneOf` (needs a richer argument-path
-  model than the current flat property path).
-- **G8 strict-mode opt-in** — upstream `ValidatorOptions.strict` (`boolean | 'log'`) landed
-  in `@enkaku/schema@0.17.0` (mokei already pins `^0.17.0`). Remaining mokei work: thread
-  `strict: false` (or `'log'`) where `Ajv2020` is constructed so valid 2020-12 constructs
-  (e.g. `prefixItems` 2-tuple) stop logging to user stderr. **Upstream unblocked.**
 
 ## Notes
 
 - G5/G8 enkaku upstream asks landed in `@enkaku/{schema,otel}@0.16.1` (enkaku #33);
   the `getActiveBaggage` + `strict` passthrough follow-ups landed in `@enkaku/{otel,schema}@0.17.0`
   (enkaku `chore/mokei-follow-ups`), both consumed by mokei's `^0.17.0` catalog pins.
-- **No remaining enkaku upstream blockers** — every item here is now self-contained mokei work.
+- G5 inbound is blocked on a new enkaku upstream ask (2026-06-20) for `extractW3CTraceContext`
+  + `withActiveBaggage`; all other items are self-contained mokei work.
 - G7 follow-ups are self-contained in `@mokei/http-client` and could land any time.

@@ -123,15 +123,20 @@ Additive, backward-compatible; `2025-11-25` peers ignore the extras. Landed on
 
 ## Deferred groundwork (follow-up)
 
-- **G5 baggage** — no `baggage` key emitted yet: `@enkaku/otel@0.16.1` ships
-  `formatBaggage`/`parseBaggage` codecs but no active-baggage accessor, so there is nothing
-  to format from. Needs an upstream `getActiveBaggage` (new Enkaku ask) or a direct
-  `@opentelemetry/api` read. → backlog `2026-06-09-mcp-draft-deferred-groundwork.md`.
+- **G5 baggage** — **SHIPPED** (`feat/mcp-draft-g5-baggage`, 2026-06-19): `currentTraceMeta()`
+  emits the SEP-414 `baggage` `_meta` key via `getActiveBaggage()` + `formatBaggage()`
+  (`@enkaku/otel@0.17.0`). → backlog `2026-06-09-mcp-draft-deferred-groundwork.md`.
+- **G8 strict-mode** — **SHIPPED** (2026-06-20): `strict: false` threaded into tool/prompt
+  validators in `context-server/src/definitions.ts` (`@enkaku/schema@0.17.0`). → same
+  backlog item.
+- **G7 walk depth** — **SHIPPED** (2026-06-20): `collectHeaderAnnotations` traverses local
+  `$ref` + `allOf`/`anyOf`/`oneOf`; errors on `x-mcp-header` in array `items`/`prefixItems`.
+  → same backlog item.
 - **G5 inbound** — server-side extraction (parse `_meta.traceparent` → `withActiveContext`)
-  not wired; outbound propagation only. → same backlog item.
-- **G7 follow-ups** — part 5 (stale-schema → `-32001` HeaderMismatch → `tools/list`
-  refresh + retry) deferred; schema walk currently covers object `properties` depth only
-  (array `items` / `$ref` / `allOf`|`anyOf`|`oneOf` not traversed). → same backlog item.
+  not wired; blocked on enkaku upstream ask filed 2026-06-20 (`extractW3CTraceContext` +
+  `withActiveBaggage`). → same backlog item.
+- **G7 part 5** — stale-schema → `-32001` HeaderMismatch → `tools/list` refresh + retry
+  deferred; no emitter yet, `-32001` collides with `SESSION_EXPIRED`. → same backlog item.
 
 ## Phase 1 — Breaking cut (draft-only, when draft finalized)
 
@@ -162,6 +167,11 @@ Hard-cut; ordered by dependency. Blocked on the draft finalizing **and** on U1.
 - **U3 → G5** — `@enkaku/otel` lacks `tracestate`/`baggage` codecs.
   **Resolved** in `@enkaku/otel@0.16.1` (`format`/`parseTracestate`, `format`/`parseBaggage`).
   G5 unblocked.
+- **U4 → G5 inbound** — `@enkaku/otel` needs W3C `traceparent` → OTel `Context` builder.
+  enkaku's `extractTraceContext` reads `tid`/`sid`, not W3C. Upstream ask filed 2026-06-20:
+  `extractW3CTraceContext` + `withActiveBaggage`
+  (`../enkaku/docs/agents/plans/backlog/2026-06-20-mokei-g5-inbound-otel.md`).
+  `context-server` wiring lands once it releases.
 
 ## Open questions (later phases)
 
