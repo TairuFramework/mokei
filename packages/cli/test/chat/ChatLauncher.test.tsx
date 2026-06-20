@@ -43,12 +43,11 @@ describe('ChatLauncher — llama path', () => {
     act(() => {
       stdin.write('\r')
     })
-    await act(async () => {
-      await Promise.resolve()
-    })
-    expect(buildChat).toHaveBeenCalledWith('llama', {
-      timeoutMs: 1000,
-      model: '/models/test.gguf',
+    await vi.waitFor(() => {
+      expect(buildChat).toHaveBeenCalledWith('llama', {
+        timeoutMs: 1000,
+        model: '/models/test.gguf',
+      })
     })
   })
 
@@ -61,12 +60,11 @@ describe('ChatLauncher — llama path', () => {
         lifecycle={noopLifecycle()}
       />,
     )
-    await act(async () => {
-      await Promise.resolve()
-    })
-    expect(buildChat).toHaveBeenCalledWith('llama', {
-      model: '/models/flag.gguf',
-      timeoutMs: 1000,
+    await vi.waitFor(() => {
+      expect(buildChat).toHaveBeenCalledWith('llama', {
+        model: '/models/flag.gguf',
+        timeoutMs: 1000,
+      })
     })
   })
 })
