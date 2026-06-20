@@ -207,7 +207,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   }
 
   async _handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
-    const meta = (request.params as Record<string, unknown> | undefined)?.['_meta'] as
+    const meta = (request.params as Record<string, unknown> | undefined)?._meta as
       | Record<string, unknown>
       | undefined
     return withRequestMeta(meta, () => this.#dispatchRequest(request, signal))
