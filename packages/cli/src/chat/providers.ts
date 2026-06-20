@@ -54,7 +54,7 @@ export async function buildChat(provider: string, opts: ChatOptions): Promise<Bu
       `no API key for ${provider}: set ${envVar} or pass --api-key (env var preferred — argv keys leak via \`ps\` and shell history)`,
     )
   }
-  if (provider === 'llama' && (opts.model == null || opts.model === '')) {
+  if (provider === 'llama' && (opts.model == null || opts.model.trim() === '')) {
     throw new Error('no model for llama: pass --model <path-to-gguf> (the local GGUF file path)')
   }
   const host = await ProxyHost.forDaemon()
@@ -102,7 +102,9 @@ export async function buildChat(provider: string, opts: ChatOptions): Promise<Bu
       return build(session, p, 'anthropic')
     }
     case 'llama': {
-      const path = opts.model as string
+      // Trim to match LlamaPathCard's interactive trimming — a stray-whitespace
+      // -m value should resolve to the same path either way.
+      const path = (opts.model as string).trim()
       const name = llamaModelName(path)
       const p = new LlamaProvider({ models: { [name]: { path } } })
       const session = new Session<LlamaTypes>({ contextHost: host, providers: { llama: p } })

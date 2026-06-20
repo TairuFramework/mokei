@@ -69,6 +69,10 @@ describe('buildChat', () => {
   test('llama rejects an empty model path', async () => {
     await expect(buildChat('llama', { model: '' })).rejects.toThrow(/--model/)
   })
+
+  test('llama rejects a whitespace-only model path', async () => {
+    await expect(buildChat('llama', { model: '   ' })).rejects.toThrow(/--model/)
+  })
 })
 
 describe('llamaModelName', () => {
