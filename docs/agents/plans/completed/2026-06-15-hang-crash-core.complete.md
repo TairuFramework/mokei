@@ -1,7 +1,8 @@
-# Hang/crash core — completed (partial)
+# Hang/crash core — completed
 
-**Status:** partial — 8 of 9 audit items shipped; item 6 (stdio framing limits)
-extracted to `next/2026-06-12-stdio-framing-limits.md`.
+**Status:** complete — 8 of 9 audit items shipped here; item 6 (stdio framing limits)
+was extracted and shipped separately
+(`completed/2026-06-16-stdio-framing-limits.complete.md`). All 9 items now landed.
 **Date completed:** 2026-06-15
 **Branch:** `plans/2026-06-12-audit-clusters` (commits `a9baed3..507a7c0`, +
 follow-up tracking `e4ef573`).

@@ -121,7 +121,7 @@ packages/
 mokei monitor                      # Monitor MCP server contexts
 mokei inspect <command> [args...]  # Inspect available tools and prompts
 mokei proxy <command> [args...]    # Proxy an MCP server through the daemon
-mokei chat --provider ollama       # Interactive chat (ollama, openai, anthropic)
+mokei chat --provider ollama       # Interactive chat (ollama, openai, anthropic, llama)
 mokei chat                         # Interactive chat, pick a provider interactively
 ```
 

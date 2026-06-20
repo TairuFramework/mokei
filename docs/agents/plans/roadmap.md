@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-06-19
+**Last updated:** 2026-06-20
 
 ## Vision
 
@@ -43,7 +43,7 @@ Shipped from this audit (see `completed/`):
   items 1–5: monitor localhost bind, `/api` Host-allowlist + bearer-token gate,
   socket `0600`, daemon connect-before-remove + signal shutdown + child reaping,
   socket-poll startup. Closed the unauthenticated RCE.
-- **Hang/crash core** (`completed/2026-06-15-hang-crash-core.partial.md`) — items 1–5,
+- **Hang/crash core** (`completed/2026-06-15-hang-crash-core.complete.md`) — items 1–5,
   7–9 (spawn rethrow, RPC read-loop/timeouts/`#sentRequests` leak, client initialize
   hardening, CLI crash paths) merged via PR #25.
 - **Stdio framing limits** (`completed/`) — hang/crash item 6, merged via PR #26
@@ -90,6 +90,13 @@ Shipped from this audit (see `completed/`):
   AgentSession/Session/Ollama/anthropic-stream doc examples, `'ask'` doc+code truth-up,
   new READMEs (http-client/http-server/llama-provider), doc-index + root README CLI sync,
   cli `repository` field.
+- **CLI `chat --provider llama` wiring + llama integration tests**
+  (`completed/2026-06-20-cli-chat-llama-wiring.complete.md`) — shipped via PR #34 (commit
+  `c3fa691`). `mokei chat --provider llama` end-to-end: `-m` carries the GGUF path with a
+  fail-fast guard + interactive `LlamaPathCard` fallback, basename-derived model identity so
+  `listModels`/`/model` work unchanged. Gated, out-of-CI `integration-tests/` (real GGUF):
+  provider-level (listModels/streaming/tool-call) + PTY-driven CLI e2e. Closed both paired
+  backlog items (`cli-chat-llama-wiring`, `llama-provider-follow-ups`).
 
 ## Milestones (milestones/)
 
@@ -100,8 +107,6 @@ Shipped from this audit (see `completed/`):
 
 ## Near-term (backlog/)
 
-- **Llama provider integration tests** — exercise real GGUF models end-to-end
-  (promptWithMeta shape, function calling, streaming).
 - **MCP draft — remaining work** (`backlog/2026-06-20-mcp-draft-remaining.md`) —
   consolidated tracker. Groundwork done: G1–G8 + G5 outbound/baggage/inbound + G7 walk depth
   (G5 inbound via `@enkaku/otel@0.17.1`, enkaku #42). Remaining: G7 part 5 retry (deferred);
