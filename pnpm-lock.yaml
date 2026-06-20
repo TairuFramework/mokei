@@ -269,6 +269,9 @@ importers:
       '@mokei/http-server':
         specifier: workspace:^
         version: link:../packages/http-server
+      '@mokei/llama-provider':
+        specifier: workspace:^
+        version: link:../packages/llama-provider
       '@mokei/mcp-fetch':
         specifier: workspace:^
         version: link:../mcp-servers/fetch
