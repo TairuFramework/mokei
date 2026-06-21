@@ -7,7 +7,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@enkaku/node-streams-transport": "catalog:",
+    "@enkaku/node-streams": "catalog:",
     "@enkaku/transport": "catalog:",
     "@mokei/anthropic-provider": "workspace:^",
     "@mokei/context-client": "workspace:^",
@@ -25,7 +25,7 @@
     "mokei": "workspace:^"
   },
   "devDependencies": {
-    "@enkaku/generator": "catalog:",
+    "@sozai/generator": "catalog:",
     "node-pty": "^1.1.0",
     "strip-ansi": "^7.2.0"
   }

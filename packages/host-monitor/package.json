@@ -41,9 +41,9 @@
     "prepublishOnly": "pnpm run app:copy && pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "catalog:",
-    "@enkaku/http-server-transport": "catalog:",
-    "@enkaku/socket-transport": "catalog:",
+    "@sozai/async": "catalog:",
+    "@enkaku/http-serve": "catalog:",
+    "@enkaku/socket": "catalog:",
     "@hono/node-server": "catalog:",
     "@mokei/host-protocol": "workspace:^",
     "get-port": "catalog:",

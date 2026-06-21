@@ -53,7 +53,7 @@
     "turndown-plugin-gfm": "catalog:"
   },
   "devDependencies": {
-    "@enkaku/node-streams-transport": "catalog:",
+    "@enkaku/node-streams": "catalog:",
     "@enkaku/transport": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",

@@ -1,4 +1,4 @@
-import type { FromSchema, Schema } from '@enkaku/schema'
+import type { FromSchema, Schema } from '@sozai/schema'
 
 import { request, result } from './rpc.js'
 

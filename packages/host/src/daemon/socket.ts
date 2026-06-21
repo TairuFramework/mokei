@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
-import { connectSocket } from '@enkaku/socket-transport'
+import { connectSocket } from '@enkaku/socket'
 
 /** True if something is actively listening on the socket (not just a stale file). */
 export async function isSocketLive(socketPath: string): Promise<boolean> {

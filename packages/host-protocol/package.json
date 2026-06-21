@@ -39,6 +39,6 @@
   },
   "dependencies": {
     "@enkaku/protocol": "catalog:",
-    "@enkaku/schema": "catalog:"
+    "@sozai/schema": "catalog:"
   }
 }

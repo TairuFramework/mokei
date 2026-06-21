@@ -6,51 +6,30 @@ settings:
 
 catalogs:
   default:
-    '@enkaku/async':
-      specifier: ^0.17.0
-      version: 0.17.0
     '@enkaku/client':
-      specifier: ^0.17.0
-      version: 0.17.1
-    '@enkaku/event':
-      specifier: ^0.17.0
-      version: 0.17.0
-    '@enkaku/generator':
-      specifier: ^0.17.2
-      version: 0.17.2
-    '@enkaku/http-client-transport':
-      specifier: ^0.17.0
-      version: 0.17.0
-    '@enkaku/http-server-transport':
-      specifier: ^0.17.0
-      version: 0.17.0
-    '@enkaku/log':
-      specifier: ^0.17.0
-      version: 0.17.0
-    '@enkaku/node-streams-transport':
-      specifier: ^0.17.0
-      version: 0.17.0
-    '@enkaku/otel':
-      specifier: ^0.17.1
-      version: 0.17.1
+      specifier: ^0.18.0
+      version: 0.18.0
+    '@enkaku/http-fetch':
+      specifier: ^0.18.0
+      version: 0.18.0
+    '@enkaku/http-serve':
+      specifier: ^0.18.0
+      version: 0.18.0
+    '@enkaku/node-streams':
+      specifier: ^0.18.0
+      version: 0.18.0
     '@enkaku/protocol':
-      specifier: ^0.17.0
-      version: 0.17.1
-    '@enkaku/schema':
-      specifier: ^0.17.0
-      version: 0.17.0
+      specifier: ^0.18.0
+      version: 0.18.0
     '@enkaku/server':
-      specifier: ^0.17.0
-      version: 0.17.1
-    '@enkaku/socket-transport':
-      specifier: ^0.17.0
-      version: 0.17.0
-    '@enkaku/stream':
-      specifier: ^0.17.0
-      version: 0.17.0
+      specifier: ^0.18.0
+      version: 0.18.0
+    '@enkaku/socket':
+      specifier: ^0.18.0
+      version: 0.18.0
     '@enkaku/transport':
-      specifier: ^0.17.0
-      version: 0.17.0
+      specifier: ^0.18.0
+      version: 0.18.0
     '@hono/node-server':
       specifier: ^2.0.5
       version: 2.0.5
@@ -63,6 +42,27 @@ catalogs:
     '@mantine/hooks':
       specifier: ^9.3.2
       version: 9.3.2
+    '@sozai/async':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@sozai/event':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@sozai/generator':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@sozai/log':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@sozai/otel':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@sozai/schema':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@sozai/stream':
+      specifier: ^0.1.0
+      version: 0.1.0
     '@tabler/icons-react':
       specifier: ^3.44.0
       version: 3.44.0
@@ -194,12 +194,12 @@ importers:
 
   integration-tests:
     dependencies:
-      '@enkaku/node-streams-transport':
+      '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@mokei/anthropic-provider':
         specifier: workspace:^
         version: link:../packages/anthropic-provider
@@ -243,9 +243,9 @@ importers:
         specifier: workspace:^
         version: link:../packages/cli
     devDependencies:
-      '@enkaku/generator':
+      '@sozai/generator':
         specifier: 'catalog:'
-        version: 0.17.2
+        version: 0.1.0
       node-pty:
         specifier: ^1.1.0
         version: 1.1.0
@@ -265,12 +265,12 @@ importers:
         specifier: 'catalog:'
         version: 1.0.2
     devDependencies:
-      '@enkaku/node-streams-transport':
+      '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../../packages/context-client
@@ -292,7 +292,7 @@ importers:
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../../packages/context-client
@@ -307,10 +307,10 @@ importers:
     dependencies:
       '@enkaku/client':
         specifier: 'catalog:'
-        version: 0.17.1
-      '@enkaku/http-client-transport':
+        version: 0.18.0
+      '@enkaku/http-fetch':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@mantine/core':
         specifier: 'catalog:'
         version: 9.3.2(@mantine/hooks@9.3.2(react@19.2.7))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -344,13 +344,13 @@ importers:
     devDependencies:
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.17.1
-      '@enkaku/schema':
-        specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../packages/context-protocol
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.0
       '@tanstack/router-devtools':
         specifier: 'catalog:'
         version: 1.167.0(@tanstack/react-router@1.170.16(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@tanstack/router-core@1.171.13)(csstype@3.2.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -396,15 +396,15 @@ importers:
 
   packages/anthropic-provider:
     dependencies:
-      '@enkaku/schema':
-        specifier: 'catalog:'
-        version: 0.17.0
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.0
       eventsource-parser:
         specifier: 'catalog:'
         version: 3.1.0
@@ -414,15 +414,9 @@ importers:
 
   packages/cli:
     dependencies:
-      '@enkaku/async':
+      '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/node-streams-transport':
-        specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/stream':
-        specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@inkjs/ui':
         specifier: 'catalog:'
         version: 2.0.0(ink@7.1.0(@types/react@19.2.17)(react@19.2.7))
@@ -459,6 +453,12 @@ importers:
       '@mokei/session':
         specifier: workspace:^
         version: link:../session
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@sozai/stream':
+        specifier: 'catalog:'
+        version: 0.1.0
       commander:
         specifier: 'catalog:'
         version: 15.0.0
@@ -496,78 +496,78 @@ importers:
 
   packages/context-client:
     dependencies:
-      '@enkaku/async':
+      '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/node-streams-transport':
-        specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/otel':
-        specifier: 'catalog:'
-        version: 0.17.1
-      '@enkaku/schema':
-        specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/stream':
-        specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../context-rpc
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@sozai/otel':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@sozai/stream':
+        specifier: 'catalog:'
+        version: 0.1.0
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
 
   packages/context-protocol:
     devDependencies:
-      '@enkaku/schema':
+      '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.1.0
 
   packages/context-rpc:
     dependencies:
-      '@enkaku/async':
-        specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/event':
-        specifier: 'catalog:'
-        version: 0.17.0
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
-    devDependencies:
-      '@enkaku/schema':
+      '@sozai/async':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.1.0
+      '@sozai/event':
+        specifier: 'catalog:'
+        version: 0.1.0
+    devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.0
 
   packages/context-server:
     dependencies:
-      '@enkaku/node-streams-transport':
+      '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/otel':
-        specifier: 'catalog:'
-        version: 0.17.1
-      '@enkaku/schema':
-        specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../context-rpc
+      '@sozai/otel':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.0
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -577,30 +577,21 @@ importers:
 
   packages/host:
     dependencies:
-      '@enkaku/async':
-        specifier: 'catalog:'
-        version: 0.17.0
       '@enkaku/client':
         specifier: 'catalog:'
-        version: 0.17.1
-      '@enkaku/event':
+        version: 0.18.0
+      '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/node-streams-transport':
-        specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@enkaku/server':
         specifier: 'catalog:'
-        version: 0.17.1
-      '@enkaku/socket-transport':
+        version: 0.18.0
+      '@enkaku/socket':
         specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/stream':
-        specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -619,6 +610,15 @@ importers:
       '@mokei/http-client':
         specifier: workspace:^
         version: link:../http-client
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@sozai/event':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@sozai/stream':
+        specifier: 'catalog:'
+        version: 0.1.0
       nano-spawn:
         specifier: 'catalog:'
         version: 2.1.0
@@ -629,21 +629,21 @@ importers:
 
   packages/host-monitor:
     dependencies:
-      '@enkaku/async':
+      '@enkaku/http-serve':
         specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/http-server-transport':
+        version: 0.18.0
+      '@enkaku/socket':
         specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/socket-transport':
-        specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.5(hono@4.12.26)
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.1.0
       get-port:
         specifier: 'catalog:'
         version: 7.2.0
@@ -659,16 +659,13 @@ importers:
     dependencies:
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.17.1
-      '@enkaku/schema':
+        version: 0.18.0
+      '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.1.0
 
   packages/http-client:
     dependencies:
-      '@enkaku/stream':
-        specifier: 'catalog:'
-        version: 0.17.0
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -678,13 +675,16 @@ importers:
       '@mokei/logger':
         specifier: workspace:^
         version: link:../logger
+      '@sozai/stream':
+        specifier: 'catalog:'
+        version: 0.1.0
       parse-sse:
         specifier: 'catalog:'
         version: 0.1.0
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
 
   packages/http-server:
     dependencies:
@@ -703,25 +703,25 @@ importers:
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
       '@types/node':
         specifier: 'catalog:'
         version: 26.0.0
 
   packages/llama-provider:
     dependencies:
-      '@enkaku/async':
-        specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/schema':
-        specifier: 'catalog:'
-        version: 0.17.0
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.0
       node-llama-cpp:
         specifier: '>=3.0.0'
         version: 3.15.1(typescript@6.0.3)
@@ -732,15 +732,15 @@ importers:
 
   packages/logger:
     dependencies:
-      '@enkaku/log':
+      '@sozai/log':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.1.0
 
   packages/model-provider:
     dependencies:
-      '@enkaku/schema':
+      '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.1.0
     devDependencies:
       '@mokei/context-protocol':
         specifier: workspace:^
@@ -748,18 +748,18 @@ importers:
 
   packages/ollama-provider:
     dependencies:
-      '@enkaku/schema':
-        specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/stream':
-        specifier: 'catalog:'
-        version: 0.17.0
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@sozai/stream':
+        specifier: 'catalog:'
+        version: 0.1.0
       ky:
         specifier: 'catalog:'
         version: 2.0.2
@@ -770,15 +770,15 @@ importers:
 
   packages/openai-provider:
     dependencies:
-      '@enkaku/schema':
-        specifier: 'catalog:'
-        version: 0.17.0
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.0
       eventsource-parser:
         specifier: 'catalog:'
         version: 3.1.0
@@ -788,15 +788,6 @@ importers:
 
   packages/session:
     dependencies:
-      '@enkaku/async':
-        specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/event':
-        specifier: 'catalog:'
-        version: 0.17.0
-      '@enkaku/generator':
-        specifier: 'catalog:'
-        version: 0.17.2
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -809,10 +800,19 @@ importers:
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@sozai/event':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@sozai/generator':
+        specifier: 'catalog:'
+        version: 0.1.0
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.17.0
+        version: 0.18.0
 
   website:
     dependencies:
@@ -2208,71 +2208,29 @@ packages:
   '@emnapi/wasi-threads@1.2.2':
     resolution: {integrity: sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA==}
 
-  '@enkaku/async@0.17.0':
-    resolution: {integrity: sha512-M+Yt9hUJDrjs9pHJi3mqDc5JndoCL5PVvpnw9ZyBcfaNmsHtc0RWw/CjG/m8nJ1fA0dxRlftL83qSv6gp4/QqA==}
+  '@enkaku/client@0.18.0':
+    resolution: {integrity: sha512-wXNkdSuYcBicP6WiZpbAtUamm7wgj5YvTkZdxquCHR+VWQ3UVMKz8pfHH4IiFHd2XguzDocT2GAQs3szcOJUTQ==}
 
-  '@enkaku/capability@0.17.0':
-    resolution: {integrity: sha512-MbV6Erk6X4EA0dsVwTsMuOhgfr23NDMHyRIYFos1T35XfISomGZUC7UNuLaekq7vklQyxt+VZhiDg83JY3qkiQ==}
+  '@enkaku/http-fetch@0.18.0':
+    resolution: {integrity: sha512-WGdiXQWYJqv0JMbzEWH1sCHIi8gSALjdBPGieA2YLKeveDgjFgZfduFg6u+2cVtQu9+FX+5kYJLDTVLFZDCeHg==}
 
-  '@enkaku/client@0.17.1':
-    resolution: {integrity: sha512-/BlTqTpV/lv97Xr70AD9l+Ei3GfG5qhAaxz8qM+3UKFAz2dnjfCivFBUmajuC7bJHb14Bsd4RFSU6jyr21BBbQ==}
+  '@enkaku/http-serve@0.18.0':
+    resolution: {integrity: sha512-xAgbE7o0cEkfR5IumKUMuN46Okc4R93LvF1tQDbHlkhLQaR+Igk3JsSqFQjMpzHoJmBMFMQ1I6NSU+7bEHwlUw==}
 
-  '@enkaku/codec@0.17.0':
-    resolution: {integrity: sha512-fS47yBWH4J+FbEWlSCtz0zbsmdZPdhwvpGXAQdyLo77KwXciZuZv/9cN6PeK/3uzYPf/kpotG+a2gllPbzJNvQ==}
+  '@enkaku/node-streams@0.18.0':
+    resolution: {integrity: sha512-uMsKz/+irHI2J8YKfehRqgM8MdTWWLSPDBItohEbZBGskHt0nU9yd82NEkgRF++ynwg70U2trQi89PibTS8t3w==}
 
-  '@enkaku/event@0.17.0':
-    resolution: {integrity: sha512-PlKa5cQHjVkqJKGnegHThMdX+N++cgZA6m8jFvlcO+Z5J7VrM6csdx2gVGZy93J1GdTGUH7YyNAY7/jIty5eYA==}
+  '@enkaku/protocol@0.18.0':
+    resolution: {integrity: sha512-CpvmyWikEAX+F7XD2r2uxji62tloEx9aACHm54ppX6rlFq2bLPD/1YiPoLJigt+UVZ29CeiGGnXxe1QojZiosw==}
 
-  '@enkaku/execution@0.17.0':
-    resolution: {integrity: sha512-Ek7IlUDzjNymsxdC4Ru3+x3i6rSo7qpsGIy0CGiy0Su6l2xA5SC8XRs95STHjNVZ35QtvXwEFamxZxWwqMx3Dw==}
+  '@enkaku/server@0.18.0':
+    resolution: {integrity: sha512-SjQYvMhI3V5zNeM54K07RVHRNbK596ZcvHMjp7tMKARoSx3hBfNRJSLd5u0c4sEph15iMEcqr0gKW2dyQhuHmA==}
 
-  '@enkaku/generator@0.17.2':
-    resolution: {integrity: sha512-UQnC8OOBYtS/CyYm4GjqCqt5Kt1TWMUFKbwyGh17KQ1wj0EFEq+SUmP+ad6f+jWLFXiD7E95PuNqovm35oyGjQ==}
+  '@enkaku/socket@0.18.0':
+    resolution: {integrity: sha512-yMSrsdkgRZbIm0eoKQJE0yVTwS4FNRy5ikCNsV6OmjTOWWIqdzhb5IswxQY149xfigbGzdw7oeiEj5S/4Y3LZw==}
 
-  '@enkaku/http-client-transport@0.17.0':
-    resolution: {integrity: sha512-+xwGQla3PcYbY3FWGA7U8dmyZhJs4NygikMzRDfsZpPEA+BzmRjhChX1aLTKOiTqXUotyG+AQ2ErzDhfGsJHUA==}
-
-  '@enkaku/http-server-transport@0.17.0':
-    resolution: {integrity: sha512-g27VRZqf3O4ovMPP3Bctt4X3bhK1iCRXf3hg73NaloNdfizI2cb129BD4kQwg7sCCySmBg9QbbA5oqL1zKUkaA==}
-
-  '@enkaku/log@0.17.0':
-    resolution: {integrity: sha512-gpSzOmrglQKgo37MW2f3BTT5ABFjiebFy80VZCIHbLBFS8pTSwOylUDLicC/p0U70lfM870a5Hi9GoWr7M9RgQ==}
-
-  '@enkaku/node-streams-transport@0.17.0':
-    resolution: {integrity: sha512-1pcmIGe6/McKmGDFD+WerTud4wDFAhIFSBJ6VH1c0xAjMajJJPdroLVFQ64Z6ppf/OAnWVaHodchFkLKMWTbog==}
-
-  '@enkaku/otel@0.17.0':
-    resolution: {integrity: sha512-T+Nq0H2Ry1n6+3JcRFwPu1rL1lO+QlhjItqQaKaHp90BZ8gIAKCqkc23padPMeNM9Tra+oFrYPwPbijvoINE/w==}
-
-  '@enkaku/otel@0.17.1':
-    resolution: {integrity: sha512-Za/2HClQXuKZ2cvTTDL5JK+Kkk9HyYbXDaY/nU0PfQetrTUixEPf+jSMg7GhiR1dGWcnDidLys9jkk/290URWQ==}
-
-  '@enkaku/protocol@0.17.1':
-    resolution: {integrity: sha512-Gr8B0LeP67onI9hevafxAmyFngwcwiSaxJ7usG97byjwqZjodOTLr3vsh3HAw1ilkarUBhCpEWi+Bz/eaGd+jQ==}
-
-  '@enkaku/result@0.17.0':
-    resolution: {integrity: sha512-PvHSs0H9dVpYWJvNLiC+4uDMSx+mtNwpOw/gxjIeYIES7rPXeM0xLy7dtK4Ta9MUCfQuaCq/fL3ab9qL6YvXVQ==}
-
-  '@enkaku/runtime@0.17.0':
-    resolution: {integrity: sha512-xdbaa48Ez05cB7zgqBBdjMRWHJWcoPJpqWpRD/VYdlRY+NPhBeKYuzXht4LkNFh0+cUpxUz5OGzgiZaN0o5vBA==}
-
-  '@enkaku/schema@0.17.0':
-    resolution: {integrity: sha512-n6EZym/jzbshvtg44FNoaC16U3Jav41O3pjUcqBk5kQJxIKTl82C6nvL7J9aTYkGhuGJIw7wKO7KFcGgXUTH1g==}
-
-  '@enkaku/server@0.17.1':
-    resolution: {integrity: sha512-XGLFZmyfXKxoF8leeC40dWHPOj8QhlWoaTpGHJgX3/2jusjAVstnFRh1IVO9d7VELIQEa15FThsXwVliFn/T5g==}
-
-  '@enkaku/socket-transport@0.17.0':
-    resolution: {integrity: sha512-zisVKHzdzWXi/HeMsRXGGqGdJIYmT5uhjAOCMSkCxYcjNL4dkoHaDYfhDPRqjUPaMRFqmxkZKMnbwz6bT2+3qA==}
-
-  '@enkaku/stream@0.17.0':
-    resolution: {integrity: sha512-d5/yvt76rS+KE3a83Hhn4S90oS76IiyKtRgQXGCig+Sjc6Q3+ej4Fn29PtBAdTIL0tez6KS+AZF5s6eAd24ShQ==}
-
-  '@enkaku/token@0.17.0':
-    resolution: {integrity: sha512-9pcNr6R9Bfr0bq8jOrghQSLv54SCE0v3AjitUtUzWC1wrk1JqLPKl6WvrZpoNBSPKFfYdwYNpnXD52s8iGXupA==}
-
-  '@enkaku/transport@0.17.0':
-    resolution: {integrity: sha512-zRwd5zS9N+OKvxA1CJZJzlSFFinS8TBpqxOT4GLfVsmOwfxqYU7B+rjmhsxkF2GawnuB7No680020nEVmU4Ivw==}
+  '@enkaku/transport@0.18.0':
+    resolution: {integrity: sha512-cwwcbW1zkbGF8Rh3el7vLR4TONhgFUggZjRWY4ozEE8mm7Afw8IB3c5wXu65t/U1dC5P2EP9EYpBBByiyF8BIA==}
 
   '@esbuild/aix-ppc64@0.28.0':
     resolution: {integrity: sha512-lhRUCeuOyJQURhTxl4WkpFTjIsbDayJHih5kZC1giwE+MhIzAb7mEsQMqMf18rHLsrb5qI1tafG20mLxEWcWlA==}
@@ -2694,6 +2652,12 @@ packages:
   '@kigu/dev@0.1.0':
     resolution: {integrity: sha512-OPZxcjUXf03B2QriQ5+3Tar1s8t0D1rg39TDGDpdKDlDpHmu/F15EJ6+nD7VbNhD6ZoV8ussA9sL0vRSudcaog==}
 
+  '@kokuin/capability@0.1.0':
+    resolution: {integrity: sha512-LFLn4ZpMqOeAi1P0D6QvIdZ44I+lo5jXgYMj6VwMLP3KhznVk6emYx40xXQXYlrN0hxVFnQbFq2MysmDUgPdsA==}
+
+  '@kokuin/token@0.1.0':
+    resolution: {integrity: sha512-sGVum8HULkU+Tk+bmWHbKN7ub6wEr/9PXKXf/aUxL6Vy81MCYk0cdFMmzep+WGcfRyo0/6HnF0PPHXhh30+dig==}
+
   '@kwsites/file-exists@1.1.1':
     resolution: {integrity: sha512-m9/5YGR18lIwxSFDwfE3oA7bWuq9kdau6ugN4H2rJeyhFQZcG9AgSHkQtSD15a8WvTgfz9aikZMrKPHvbpqFiw==}
 
@@ -2714,8 +2678,8 @@ packages:
   '@lit/reactive-element@2.1.2':
     resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
 
-  '@logtape/logtape@2.1.4':
-    resolution: {integrity: sha512-ZQbAeHSxAd/bZKWwAfRIb4phTNuoSiaZoeE5GgfNwKxhik6L1+XZXQr0r8x2Bsm4K98B/d5InORVy0jcmA4kCA==}
+  '@logtape/logtape@2.1.5':
+    resolution: {integrity: sha512-59fyskQ9hR5mYQP9YMznZDtwRS4gIN7VIJkoRe0SLTmU+BQGaSP1s+ve8r+Binj1m6jNpwlF7yu9fz2/asSFLw==}
 
   '@mantine/core@9.3.2':
     resolution: {integrity: sha512-Upy/Z9Sj2eW2dGrFgUy/2kISVsxMTBYTDfP2TFdsIA3PdPSBkdqfSOPX/ug3d3F3a4bnwQSqcO6+aPEpBIh8dg==}
@@ -3566,6 +3530,39 @@ packages:
 
   '@slorber/remark-comment@1.0.0':
     resolution: {integrity: sha512-RCE24n7jsOj1M0UPvIQCHTe7fI0sFL4S2nwKVWwHyVr/wI/H8GosgsJGyhnsZoGFnD/P2hLf1mSbrrgSLN93NA==}
+
+  '@sozai/async@0.1.0':
+    resolution: {integrity: sha512-ef3GFPfwHU4bZmAFz8oh53FtiuEMoUPse8SF7rjntSJ2jSoW+tQy8UCR4nvy8sNH3V8tDQbKrLuQh+gKZTPwLA==}
+
+  '@sozai/codec@0.1.0':
+    resolution: {integrity: sha512-J5D0yQuBdlTjzhVewR6E9EjcOyBBqpUUSOnFVPD+zv0M86jRT3RUDrqnQ5bNm+OMtfo42u6KP046VAAaZgUj+w==}
+
+  '@sozai/event@0.1.0':
+    resolution: {integrity: sha512-SPl4rx0cwW5EcMKTF2Ucq8gnMu++aMdpLnyM4AFrISwrE65xVACgUwIEQ9uRwVvhoJfD0uSr6XTh6wArGsH9jQ==}
+
+  '@sozai/execution@0.1.0':
+    resolution: {integrity: sha512-IGs/F+cv/Gkfw5QRn72qlwH7jIsJ/+VC+1Jyuf195a5r7w2QX/z6EL2WX7M4HqZ5SP3meOLLk+j0Dy2tcdimWw==}
+
+  '@sozai/generator@0.1.0':
+    resolution: {integrity: sha512-sW87dz5aMOeWgg6c+wRkWeM0YZRprgnOax72ZD29fYs1U921n/m9FL4CyGxm8ysYJ8SjLiKtUuyWK1yCQ6VvGA==}
+
+  '@sozai/log@0.1.0':
+    resolution: {integrity: sha512-vhCp3GK9UguYwopntaz6/juJSKFpB9GAAsKC9nxdakdQrD/Ix4r5fmZWIPArNtynbzsaUwdVoFYmDzbu90UNxg==}
+
+  '@sozai/otel@0.1.0':
+    resolution: {integrity: sha512-wvNoICqneZUiWPYAM4NrNCLiIjdwZAbzCYRvWBDRqknJD2Mwvwrtwz/l0T87HWZECmKOQmXXcHogQ9odlg/uGA==}
+
+  '@sozai/result@0.1.0':
+    resolution: {integrity: sha512-m+08FIMZxf1EzQVrZfKZmkM1bqXadM0mTeb8Rmk0qTxkzr9UQww2KjfRNdNjrE8DKqcqQJNOWoxBPUgcd2wUGQ==}
+
+  '@sozai/runtime@0.1.0':
+    resolution: {integrity: sha512-9WpqQ/UKDOlNWfiGCDjuW3hl9+sXrXuX2lbGE80ITbrhzueagwrEdboYkQhrHN8s8I/F8/ZM9hz+Fv3j7gUk2Q==}
+
+  '@sozai/schema@0.1.0':
+    resolution: {integrity: sha512-IOF0uYpYqNEXeihzJboNpLcKUkH8y5rqXo/aXapVeLqqpWwleD2vIyoZSIoDRAQqfCQXy17uM4PDlDkIVdbocg==}
+
+  '@sozai/stream@0.1.0':
+    resolution: {integrity: sha512-JNKZGeEUHYBgilKocCqiDSBgkftaqchJL832fIBIkegr18XjlSM9wKnut2ju/QSldGSJ8XKGDEEBRwQRJGyQig==}
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -12293,132 +12290,68 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@enkaku/async@0.17.0': {}
-
-  '@enkaku/capability@0.17.0':
+  '@enkaku/client@0.18.0':
     dependencies:
-      '@enkaku/token': 0.17.0
+      '@kokuin/token': 0.1.0
+      '@sozai/async': 0.1.0
+      '@sozai/event': 0.1.0
+      '@sozai/execution': 0.1.0
+      '@sozai/log': 0.1.0
+      '@sozai/otel': 0.1.0
+      '@sozai/runtime': 0.1.0
+      '@sozai/stream': 0.1.0
 
-  '@enkaku/client@0.17.1':
+  '@enkaku/http-fetch@0.18.0':
     dependencies:
-      '@enkaku/async': 0.17.0
-      '@enkaku/event': 0.17.0
-      '@enkaku/execution': 0.17.0
-      '@enkaku/log': 0.17.0
-      '@enkaku/otel': 0.17.0
-      '@enkaku/runtime': 0.17.0
-      '@enkaku/stream': 0.17.0
-      '@enkaku/token': 0.17.0
-
-  '@enkaku/codec@0.17.0':
-    dependencies:
-      canonicalize: 3.0.0
-
-  '@enkaku/event@0.17.0': {}
-
-  '@enkaku/execution@0.17.0':
-    dependencies:
-      '@enkaku/async': 0.17.0
-      '@enkaku/result': 0.17.0
-
-  '@enkaku/generator@0.17.2':
-    dependencies:
-      '@enkaku/async': 0.17.0
-
-  '@enkaku/http-client-transport@0.17.0':
-    dependencies:
-      '@enkaku/otel': 0.17.0
-      '@enkaku/protocol': 0.17.1
-      '@enkaku/runtime': 0.17.0
-      '@enkaku/stream': 0.17.0
-      '@enkaku/transport': 0.17.0
+      '@enkaku/protocol': 0.18.0
+      '@enkaku/transport': 0.18.0
+      '@sozai/otel': 0.1.0
+      '@sozai/runtime': 0.1.0
+      '@sozai/stream': 0.1.0
       eventsource-parser: 3.1.0
 
-  '@enkaku/http-server-transport@0.17.0':
+  '@enkaku/http-serve@0.18.0':
     dependencies:
-      '@enkaku/async': 0.17.0
-      '@enkaku/otel': 0.17.1
-      '@enkaku/protocol': 0.17.1
-      '@enkaku/runtime': 0.17.0
-      '@enkaku/stream': 0.17.0
-      '@enkaku/transport': 0.17.0
+      '@enkaku/protocol': 0.18.0
+      '@enkaku/transport': 0.18.0
+      '@sozai/async': 0.1.0
+      '@sozai/otel': 0.1.0
+      '@sozai/runtime': 0.1.0
+      '@sozai/stream': 0.1.0
 
-  '@enkaku/log@0.17.0':
+  '@enkaku/node-streams@0.18.0':
     dependencies:
-      '@logtape/logtape': 2.1.4
+      '@enkaku/transport': 0.18.0
+      '@sozai/stream': 0.1.0
 
-  '@enkaku/node-streams-transport@0.17.0':
+  '@enkaku/protocol@0.18.0':
     dependencies:
-      '@enkaku/stream': 0.17.0
-      '@enkaku/transport': 0.17.0
+      '@kokuin/token': 0.1.0
 
-  '@enkaku/otel@0.17.0':
+  '@enkaku/server@0.18.0':
     dependencies:
-      '@enkaku/log': 0.17.0
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/api-logs': 0.219.0
+      '@enkaku/protocol': 0.18.0
+      '@kokuin/capability': 0.1.0
+      '@kokuin/token': 0.1.0
+      '@sozai/async': 0.1.0
+      '@sozai/event': 0.1.0
+      '@sozai/log': 0.1.0
+      '@sozai/otel': 0.1.0
+      '@sozai/runtime': 0.1.0
+      '@sozai/schema': 0.1.0
+      '@sozai/stream': 0.1.0
 
-  '@enkaku/otel@0.17.1':
+  '@enkaku/socket@0.18.0':
     dependencies:
-      '@enkaku/log': 0.17.0
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/api-logs': 0.219.0
+      '@enkaku/transport': 0.18.0
+      '@sozai/otel': 0.1.0
+      '@sozai/stream': 0.1.0
 
-  '@enkaku/protocol@0.17.1':
+  '@enkaku/transport@0.18.0':
     dependencies:
-      '@enkaku/token': 0.17.0
-
-  '@enkaku/result@0.17.0':
-    dependencies:
-      '@enkaku/async': 0.17.0
-
-  '@enkaku/runtime@0.17.0': {}
-
-  '@enkaku/schema@0.17.0':
-    dependencies:
-      '@standard-schema/spec': 1.1.0
-      ajv: 8.20.0
-      ajv-formats: 3.0.1(ajv@8.20.0)
-      json-schema-to-ts: 3.1.1
-
-  '@enkaku/server@0.17.1':
-    dependencies:
-      '@enkaku/async': 0.17.0
-      '@enkaku/capability': 0.17.0
-      '@enkaku/event': 0.17.0
-      '@enkaku/log': 0.17.0
-      '@enkaku/otel': 0.17.1
-      '@enkaku/protocol': 0.17.1
-      '@enkaku/runtime': 0.17.0
-      '@enkaku/schema': 0.17.0
-      '@enkaku/stream': 0.17.0
-      '@enkaku/token': 0.17.0
-
-  '@enkaku/socket-transport@0.17.0':
-    dependencies:
-      '@enkaku/otel': 0.17.1
-      '@enkaku/stream': 0.17.0
-      '@enkaku/transport': 0.17.0
-
-  '@enkaku/stream@0.17.0':
-    dependencies:
-      '@enkaku/async': 0.17.0
-
-  '@enkaku/token@0.17.0':
-    dependencies:
-      '@enkaku/codec': 0.17.0
-      '@enkaku/otel': 0.17.1
-      '@enkaku/schema': 0.17.0
-      '@noble/ciphers': 2.2.0
-      '@noble/curves': 2.2.0
-      '@noble/hashes': 2.2.0
-      '@scure/base': 2.2.0
-
-  '@enkaku/transport@0.17.0':
-    dependencies:
-      '@enkaku/async': 0.17.0
-      '@enkaku/event': 0.17.0
-      '@enkaku/stream': 0.17.0
+      '@sozai/async': 0.1.0
+      '@sozai/event': 0.1.0
+      '@sozai/stream': 0.1.0
 
   '@esbuild/aix-ppc64@0.28.0':
     optional: true
@@ -12847,6 +12780,20 @@ snapshots:
       - supports-color
       - vite
 
+  '@kokuin/capability@0.1.0':
+    dependencies:
+      '@kokuin/token': 0.1.0
+
+  '@kokuin/token@0.1.0':
+    dependencies:
+      '@noble/ciphers': 2.2.0
+      '@noble/curves': 2.2.0
+      '@noble/hashes': 2.2.0
+      '@scure/base': 2.2.0
+      '@sozai/codec': 0.1.0
+      '@sozai/otel': 0.1.0
+      '@sozai/schema': 0.1.0
+
   '@kwsites/file-exists@1.1.1':
     dependencies:
       debug: 4.4.3
@@ -12867,7 +12814,7 @@ snapshots:
     dependencies:
       '@lit-labs/ssr-dom-shim': 1.5.1
 
-  '@logtape/logtape@2.1.4': {}
+  '@logtape/logtape@2.1.5': {}
 
   '@mantine/core@9.3.2(@mantine/hooks@9.3.2(react@19.2.7))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
@@ -13743,6 +13690,50 @@ snapshots:
       micromark-factory-space: 1.1.0
       micromark-util-character: 1.2.0
       micromark-util-symbol: 1.1.0
+
+  '@sozai/async@0.1.0': {}
+
+  '@sozai/codec@0.1.0':
+    dependencies:
+      canonicalize: 3.0.0
+
+  '@sozai/event@0.1.0': {}
+
+  '@sozai/execution@0.1.0':
+    dependencies:
+      '@sozai/async': 0.1.0
+      '@sozai/result': 0.1.0
+
+  '@sozai/generator@0.1.0':
+    dependencies:
+      '@sozai/async': 0.1.0
+
+  '@sozai/log@0.1.0':
+    dependencies:
+      '@logtape/logtape': 2.1.5
+
+  '@sozai/otel@0.1.0':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/api-logs': 0.219.0
+      '@sozai/log': 0.1.0
+
+  '@sozai/result@0.1.0':
+    dependencies:
+      '@sozai/async': 0.1.0
+
+  '@sozai/runtime@0.1.0': {}
+
+  '@sozai/schema@0.1.0':
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+      json-schema-to-ts: 3.1.1
+
+  '@sozai/stream@0.1.0':
+    dependencies:
+      '@sozai/async': 0.1.0
 
   '@standard-schema/spec@1.1.0': {}
 

@@ -40,11 +40,11 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "catalog:",
-    "@enkaku/node-streams-transport": "catalog:",
-    "@enkaku/otel": "catalog:",
-    "@enkaku/schema": "catalog:",
-    "@enkaku/stream": "catalog:",
+    "@sozai/async": "catalog:",
+    "@enkaku/node-streams": "catalog:",
+    "@sozai/otel": "catalog:",
+    "@sozai/schema": "catalog:",
+    "@sozai/stream": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^"
   },

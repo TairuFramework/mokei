@@ -1,4 +1,4 @@
-import type { FromSchema, Schema } from '@enkaku/schema'
+import type { FromSchema, Schema } from '@sozai/schema'
 
 import { completeResult } from './completion.js'
 import { elicitationCompleteNotification, elicitRequest } from './elicitation.js'

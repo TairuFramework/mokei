@@ -1,10 +1,10 @@
-import { fromJSONLines } from '@enkaku/stream'
 import type {
   AnyReplyRequest,
   RequestParams,
   SingleReplyRequest,
   StreamReplyRequest,
 } from '@mokei/model-provider'
+import { fromJSONLines } from '@sozai/stream'
 import ky, { type KyInstance, type ResponsePromise, type RetryOptions } from 'ky'
 
 import { DEFAULT_BASE_URL, DEFAULT_TIMEOUT, type OllamaConfiguration } from './config.js'

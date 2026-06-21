@@ -39,6 +39,6 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/log": "catalog:"
+    "@sozai/log": "catalog:"
   }
 }

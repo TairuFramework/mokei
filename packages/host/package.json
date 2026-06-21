@@ -40,13 +40,13 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "catalog:",
+    "@sozai/async": "catalog:",
     "@enkaku/client": "catalog:",
-    "@enkaku/event": "catalog:",
-    "@enkaku/node-streams-transport": "catalog:",
+    "@sozai/event": "catalog:",
+    "@enkaku/node-streams": "catalog:",
     "@enkaku/server": "catalog:",
-    "@enkaku/socket-transport": "catalog:",
-    "@enkaku/stream": "catalog:",
+    "@enkaku/socket": "catalog:",
+    "@sozai/stream": "catalog:",
     "@enkaku/transport": "catalog:",
     "@mokei/http-client": "workspace:^",
     "@mokei/context-client": "workspace:^",

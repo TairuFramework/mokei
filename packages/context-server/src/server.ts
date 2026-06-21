@@ -1,5 +1,4 @@
-import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
-import { createValidator } from '@enkaku/schema'
+import { NodeStreamsTransport } from '@enkaku/node-streams'
 import type {
   CallToolRequest,
   CallToolResult,
@@ -35,6 +34,7 @@ import {
   METHOD_NOT_FOUND,
 } from '@mokei/context-protocol'
 import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
+import { createValidator } from '@sozai/schema'
 
 import { toResourceHandlers } from './definitions.js'
 import { withRequestMeta } from './trace.js'

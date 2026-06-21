@@ -39,8 +39,8 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/schema": "catalog:",
-    "@enkaku/stream": "catalog:",
+    "@sozai/schema": "catalog:",
+    "@sozai/stream": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/model-provider": "workspace:^",
     "ky": "catalog:"

@@ -1,4 +1,4 @@
-import type { FromSchema, Schema } from '@enkaku/schema'
+import type { FromSchema, Schema } from '@sozai/schema'
 
 import { annotations, resourceContents } from './content.js'
 import {

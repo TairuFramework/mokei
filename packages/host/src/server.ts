@@ -2,10 +2,9 @@ import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { chmodSync } from 'node:fs'
 import { createServer, type Server, type Socket } from 'node:net'
-import { createTransportStream } from '@enkaku/node-streams-transport'
+import { createTransportStream } from '@enkaku/node-streams'
 import { type ProcedureHandlers, serve } from '@enkaku/server'
-import { SocketTransport } from '@enkaku/socket-transport'
-import { tap } from '@enkaku/stream'
+import { SocketTransport } from '@enkaku/socket'
 import {
   type ActiveContextInfo,
   DEFAULT_SOCKET_PATH,
@@ -14,6 +13,7 @@ import {
   type ServerMessage as HostServerMessage,
   type Protocol,
 } from '@mokei/host-protocol'
+import { tap } from '@sozai/stream'
 
 import { spawnContextServer } from './spawn.js'
 

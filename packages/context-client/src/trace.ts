@@ -6,7 +6,7 @@ import {
   getActiveSpan,
   getActiveTraceContext,
   type TraceContext,
-} from '@enkaku/otel'
+} from '@sozai/otel'
 
 /** W3C trace-context keys carried in MCP request `_meta` (SEP-414). */
 export type TraceMeta = {

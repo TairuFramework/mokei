@@ -1,6 +1,6 @@
 import type { ChildProcess, IOType } from 'node:child_process'
 import type { Writable } from 'node:stream'
-import type { Streams } from '@enkaku/node-streams-transport'
+import type { Streams } from '@enkaku/node-streams'
 import spawn, { type Subprocess, SubprocessError } from 'nano-spawn'
 
 import { filterEnv } from './utils.js'

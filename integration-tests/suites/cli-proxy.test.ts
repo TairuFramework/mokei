@@ -21,7 +21,7 @@ function proxyRoundTrip(
     const chunks: Array<Buffer> = []
     child.stdout.on('data', (d: Buffer) => chunks.push(d))
 
-    // The proxy transport (@enkaku/node-streams-transport) frames messages as
+    // The proxy transport (@enkaku/node-streams) frames messages as
     // newline-delimited JSON (JSON Lines), not Content-Length framing.
     child.stdin.write(`${JSON.stringify(request)}\n`)
 

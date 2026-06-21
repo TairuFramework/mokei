@@ -1,10 +1,10 @@
-import { createValidator, type FromSchema, type Schema } from '@enkaku/schema'
 import {
   INVALID_PARAMS,
   inferSchemaDraft,
   type InputSchema as ToolInputSchema,
 } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
+import { createValidator, type FromSchema, type Schema } from '@sozai/schema'
 
 import type {
   GenericPromptDefinition,

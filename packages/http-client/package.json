@@ -40,7 +40,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/stream": "catalog:",
+    "@sozai/stream": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/logger": "workspace:^",

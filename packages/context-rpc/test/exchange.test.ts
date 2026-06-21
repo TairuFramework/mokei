@@ -1,4 +1,4 @@
-import { defer } from '@enkaku/async'
+import { defer } from '@sozai/async'
 import { describe, expect, test, vi } from 'vitest'
 
 import { RPCError } from '../src/error.js'

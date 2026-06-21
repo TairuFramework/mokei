@@ -39,6 +39,6 @@
     "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
-    "@enkaku/schema": "catalog:"
+    "@sozai/schema": "catalog:"
   }
 }

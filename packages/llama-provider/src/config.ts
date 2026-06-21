@@ -1,4 +1,4 @@
-import { createValidator, type FromSchema, type Schema } from '@enkaku/schema'
+import { createValidator, type FromSchema, type Schema } from '@sozai/schema'
 
 const llamaModelConfigSchema = {
   type: 'object',

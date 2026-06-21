@@ -1,4 +1,3 @@
-import type { FromSchema, Schema } from '@enkaku/schema'
 import type { TransportType } from '@enkaku/transport'
 import type {
   CallToolResult,
@@ -26,6 +25,7 @@ import type {
   InputSchema as ToolInputSchema,
 } from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
+import type { FromSchema, Schema } from '@sozai/schema'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 

@@ -10,7 +10,7 @@
  * @module context-server
  */
 
-export type { Schema } from '@enkaku/schema'
+export type { Schema } from '@sozai/schema'
 
 export { createPrompt, createTool } from './definitions.js'
 export {

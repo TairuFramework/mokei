@@ -1,7 +1,7 @@
 import { openSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { Client } from '@enkaku/client'
-import { connectSocket, SocketTransport } from '@enkaku/socket-transport'
+import { connectSocket, SocketTransport } from '@enkaku/socket'
 import {
   type ClientMessage,
   DEFAULT_SOCKET_PATH,

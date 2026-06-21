@@ -40,7 +40,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/schema": "catalog:",
+    "@sozai/schema": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/model-provider": "workspace:^",
     "eventsource-parser": "catalog:",

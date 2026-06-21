@@ -1,5 +1,5 @@
 import { Client } from '@enkaku/client'
-import { ClientTransport } from '@enkaku/http-client-transport'
+import { ClientTransport } from '@enkaku/http-fetch'
 import type { Protocol } from '@mokei/host-protocol'
 
 export type HostClient = Client<Protocol>

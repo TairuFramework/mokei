@@ -1,4 +1,4 @@
-import { createTransportStream } from '@enkaku/node-streams-transport'
+import { createTransportStream } from '@enkaku/node-streams'
 import { runDaemon } from '@mokei/host'
 import { Command } from 'commander'
 

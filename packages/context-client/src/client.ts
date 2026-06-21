@@ -1,5 +1,3 @@
-import { lazy } from '@enkaku/async'
-import { createValidator } from '@enkaku/schema'
 import type {
   CallToolRequest,
   CallToolResult,
@@ -47,6 +45,8 @@ import {
   serverMessage,
 } from '@mokei/context-protocol'
 import { ContextRPC, RequestTimeoutError, RPCError, type SentRequest } from '@mokei/context-rpc'
+import { lazy } from '@sozai/async'
+import { createValidator } from '@sozai/schema'
 
 import { currentTraceMeta } from './trace.js'
 import type { ClientTransport } from './types.js'

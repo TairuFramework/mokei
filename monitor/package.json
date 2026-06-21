@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@enkaku/client": "catalog:",
-    "@enkaku/http-client-transport": "catalog:",
+    "@enkaku/http-fetch": "catalog:",
     "@mantine/core": "catalog:",
     "@mantine/hooks": "catalog:",
     "@mokei/host-protocol": "workspace:^",
@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@enkaku/protocol": "catalog:",
-    "@enkaku/schema": "catalog:",
+    "@sozai/schema": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@tanstack/router-devtools": "catalog:",
     "@tanstack/router-plugin": "catalog:",

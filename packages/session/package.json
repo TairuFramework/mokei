@@ -40,9 +40,9 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "catalog:",
-    "@enkaku/event": "catalog:",
-    "@enkaku/generator": "catalog:",
+    "@sozai/async": "catalog:",
+    "@sozai/event": "catalog:",
+    "@sozai/generator": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^",
     "@mokei/host": "workspace:^",

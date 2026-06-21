@@ -28,7 +28,7 @@ export function createChatCommand(): Command {
       lifecycle,
     })
     // The ink app has exited; dispose the session so the daemon socket is
-    // released (ContextHost._dispose → client.dispose, and @enkaku/socket-transport
+    // released (ContextHost._dispose → client.dispose, and @enkaku/socket
     // unref's the socket on dispose) and the process can exit cleanly.
     await lifecycle.dispose?.()
   })
