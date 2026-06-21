@@ -6,6 +6,8 @@ packages:
   - tests/*
   - website
 
+nodeLinker: hoisted
+
 catalog:
   '@biomejs/biome': ^2.5.0
   '@enkaku/async': ^0.17.0
@@ -79,6 +81,7 @@ overrides:
 
 minimumReleaseAgeExclude:
   - '@enkaku/*'
+  - '@kigu/dev@0.1.0'
 
 supportedArchitectures:
   cpu: [ current ]

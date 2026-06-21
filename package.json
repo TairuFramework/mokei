@@ -17,17 +17,8 @@
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
-    "@biomejs/biome": "catalog:",
-    "@swc/cli": "catalog:",
-    "@swc/core": "catalog:",
-    "@types/node": "catalog:",
-    "@vitest/ui": "catalog:",
-    "del-cli": "catalog:",
-    "tsx": "catalog:",
-    "turbo": "catalog:",
+    "@kigu/dev": "^0.1.0",
     "typedoc": "catalog:",
-    "typedoc-plugin-markdown": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
+    "typedoc-plugin-markdown": "catalog:"
   }
 }

@@ -6,9 +6,6 @@ settings:
 
 catalogs:
   default:
-    '@biomejs/biome':
-      specifier: ^2.5.0
-      version: 2.5.0
     '@enkaku/async':
       specifier: ^0.17.0
       version: 0.17.0
@@ -66,12 +63,6 @@ catalogs:
     '@mantine/hooks':
       specifier: ^9.3.2
       version: 9.3.2
-    '@swc/cli':
-      specifier: ^0.8.1
-      version: 0.8.1
-    '@swc/core':
-      specifier: ^1.15.41
-      version: 1.15.41
     '@tabler/icons-react':
       specifier: ^3.44.0
       version: 3.44.0
@@ -105,15 +96,9 @@ catalogs:
     '@vitejs/plugin-react':
       specifier: ^6.0.2
       version: 6.0.2
-    '@vitest/ui':
-      specifier: ^4.1.9
-      version: 4.1.9
     commander:
       specifier: ^15.0.0
       version: 15.0.0
-    del-cli:
-      specifier: ^7.0.0
-      version: 7.0.0
     eventsource-parser:
       specifier: ^3.1.0
       version: 3.1.0
@@ -162,12 +147,6 @@ catalogs:
     react-dom:
       specifier: ^19.2.7
       version: 19.2.7
-    tsx:
-      specifier: ^4.22.4
-      version: 4.22.4
-    turbo:
-      specifier: ^2.9.18
-      version: 2.9.18
     turndown:
       specifier: ^7.2.4
       version: 7.2.4
@@ -203,42 +182,15 @@ importers:
       '@anthropic-ai/mcpb':
         specifier: ^2.1.2
         version: 2.1.2
-      '@biomejs/biome':
-        specifier: 'catalog:'
-        version: 2.5.0
-      '@swc/cli':
-        specifier: 'catalog:'
-        version: 0.8.1(@swc/core@1.15.41)(chokidar@5.0.0)
-      '@swc/core':
-        specifier: 'catalog:'
-        version: 1.15.41
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.0.0
-      '@vitest/ui':
-        specifier: 'catalog:'
-        version: 4.1.9(vitest@4.1.9)
-      del-cli:
-        specifier: 'catalog:'
-        version: 7.0.0
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.4
-      turbo:
-        specifier: 'catalog:'
-        version: 2.9.18
+      '@kigu/dev':
+        specifier: ^0.1.0
+        version: 0.1.0(@opentelemetry/api@1.9.1)(chokidar@5.0.0)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@26.0.0)(esbuild@0.28.0)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.15))(terser@5.48.0)(tsx@4.22.4)(yaml@2.8.3))
       typedoc:
         specifier: 'catalog:'
         version: 0.28.19(typescript@6.0.3)
       typedoc-plugin-markdown:
         specifier: 'catalog:'
         version: 4.12.0(typedoc@0.28.19(typescript@6.0.3))
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(@vitest/ui@4.1.9)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@26.0.0)(esbuild@0.28.0)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.15))(terser@5.48.0)(tsx@4.22.4)(yaml@2.8.3))
 
   integration-tests:
     dependencies:
@@ -2738,6 +2690,9 @@ packages:
 
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
+
+  '@kigu/dev@0.1.0':
+    resolution: {integrity: sha512-OPZxcjUXf03B2QriQ5+3Tar1s8t0D1rg39TDGDpdKDlDpHmu/F15EJ6+nD7VbNhD6ZoV8ussA9sL0vRSudcaog==}
 
   '@kwsites/file-exists@1.1.1':
     resolution: {integrity: sha512-m9/5YGR18lIwxSFDwfE3oA7bWuq9kdau6ugN4H2rJeyhFQZcG9AgSHkQtSD15a8WvTgfz9aikZMrKPHvbpqFiw==}
@@ -9055,10 +9010,6 @@ packages:
     resolution: {integrity: sha512-SHf/r48b7vOrjve9PxJo3MN5v5yuyjHvdUcrQffT3WXMUfnGmHDVbC4k3sHJaJTgZCwpUplIaAo5ANtMyp3YHg==}
     engines: {node: '>=18'}
 
-  tinyglobby@0.2.16:
-    resolution: {integrity: sha512-pn99VhoACYR8nFHhxqix+uvsbXineAasWm5ojXoN8xEwK5Kd3/TrhNn1wByuD52UxWRLy8pu+kRMniEi6Eq9Zg==}
-    engines: {node: '>=12.0.0'}
-
   tinyglobby@0.2.17:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
@@ -12866,6 +12817,36 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
+  '@kigu/dev@0.1.0(@opentelemetry/api@1.9.1)(chokidar@5.0.0)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@26.0.0)(esbuild@0.28.0)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.15))(terser@5.48.0)(tsx@4.22.4)(yaml@2.8.3))':
+    dependencies:
+      '@biomejs/biome': 2.5.0
+      '@swc/cli': 0.8.1(@swc/core@1.15.41)(chokidar@5.0.0)
+      '@swc/core': 1.15.41
+      '@types/node': 26.0.0
+      '@vitest/ui': 4.1.9(vitest@4.1.9)
+      del-cli: 7.0.0
+      tsx: 4.22.4
+      turbo: 2.9.18
+      typescript: 6.0.3
+      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(@vitest/ui@4.1.9)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@26.0.0)(esbuild@0.28.0)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.15))(terser@5.48.0)(tsx@4.22.4)(yaml@2.8.3))
+    transitivePeerDependencies:
+      - '@edge-runtime/vm'
+      - '@opentelemetry/api'
+      - '@swc/helpers'
+      - '@vitest/browser-playwright'
+      - '@vitest/browser-preview'
+      - '@vitest/browser-webdriverio'
+      - '@vitest/coverage-istanbul'
+      - '@vitest/coverage-v8'
+      - bare-abort-controller
+      - chokidar
+      - happy-dom
+      - jsdom
+      - msw
+      - react-native-b4a
+      - supports-color
+      - vite
+
   '@kwsites/file-exists@1.1.1':
     dependencies:
       debug: 4.4.3
@@ -13896,7 +13877,7 @@ snapshots:
       semver: 7.8.1
       slash: 3.0.0
       source-map: 0.7.6
-      tinyglobby: 0.2.16
+      tinyglobby: 0.2.17
     optionalDependencies:
       chokidar: 5.0.0
     transitivePeerDependencies:
@@ -14338,7 +14319,7 @@ snapshots:
 
   '@types/sax@1.2.7':
     dependencies:
-      '@types/node': 17.0.45
+      '@types/node': 26.0.0
 
   '@types/send@0.17.6':
     dependencies:
@@ -20194,11 +20175,6 @@ snapshots:
   tinybench@2.9.0: {}
 
   tinyexec@1.2.4: {}
-
-  tinyglobby@0.2.16:
-    dependencies:
-      fdir: 6.5.0(picomatch@4.0.4)
-      picomatch: 4.0.4
 
   tinyglobby@0.2.17:
     dependencies:
