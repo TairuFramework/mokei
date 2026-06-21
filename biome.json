@@ -3,6 +3,13 @@
   "extends": ["@kigu/dev/biome.json"],
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "includes": ["**", "!**/lib", "!**/dist", "!**/routeTree.gen.ts", "!website/.docusaurus", "!website/build"]
+    "includes": [
+      "**",
+      "!**/lib",
+      "!**/dist",
+      "!**/routeTree.gen.ts",
+      "!website/.docusaurus",
+      "!website/build"
+    ]
   }
 }
