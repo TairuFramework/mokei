@@ -48,13 +48,9 @@ Remove these devDependencies (now pulled transitively by `@kigu/dev`): `@biomejs
 }
 ```
 
-- [ ] **Step 2: `pnpm-workspace.yaml` — add `nodeLinker: hoisted`**
+- [x] **Step 2: ~~`pnpm-workspace.yaml` — add `nodeLinker: hoisted`~~ — DO NOT ADD (reversed in Task 3)**
 
-Add directly under the `packages:` list (before `catalog:`):
-
-```yaml
-nodeLinker: hoisted
-```
+Keep the default isolated (symlinked) linker — do **not** add `nodeLinker: hoisted`. It breaks enkaku 0.18's nominal `Disposer` (`#private`, from `@sozai/async`) under the flat layout (`NodeStreamsTransport` not assignable to `ServerTransport`, TS2322). Isolated shares one symlinked copy and builds clean; `@kigu/dev`'s toolchain bins (tsc/swc/biome) still resolve via `node_modules/.bin`. (Task 1 originally added this line; Task 3 removed it.)
 
 - [ ] **Step 3: `biome.json` — extend the shared config**
 

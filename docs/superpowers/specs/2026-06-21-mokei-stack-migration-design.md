@@ -36,7 +36,7 @@ of scope** — keep Mokei's existing local `.claude/skills` as-is.
   transitively by `@kigu/dev` (`@biomejs/biome`, `@swc/cli`, `@swc/core`, `@types/node`,
   `@vitest/ui`, `del-cli`, `tsx`, `turbo`, `typescript`, `vitest`). Add
   `"@kigu/dev": "^0.1.0"`. Keep Mokei-only devDeps (`@anthropic-ai/mcpb`, `typedoc*`).
-- **`pnpm-workspace.yaml`:** add `nodeLinker: hoisted`.
+- **`pnpm-workspace.yaml`:** ~~add `nodeLinker: hoisted`~~ **REVERSED during execution — keep the default isolated (symlinked) linker.** enkaku 0.18's `Transport`/`Server` extend a nominal `Disposer` (`#private`) from `@sozai/async`; the hoisted flat layout breaks that brand identity (`NodeStreamsTransport` no longer assignable to `ServerTransport`), failing the type build. Isolated shares one symlinked copy → clean. `@kigu/dev`'s toolchain bins (tsc/swc/biome) remain resolvable via `node_modules/.bin` under isolated, so no functionality is lost. Do not add `nodeLinker: hoisted`.
 - **`biome.json`:** `"extends": ["@kigu/dev/biome.json"]`; keep Mokei-specific
   `files.includes` excludes (`!**/dist`→`!**/lib`, `!**/routeTree.gen.ts`,
   `!website/.docusaurus`, `!website/build`) and `vcs` block (mirror tejika's shape).
