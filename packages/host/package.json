@@ -54,6 +54,7 @@
     "@mokei/context-rpc": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
+    "@tejika/process": "catalog:",
     "nano-spawn": "catalog:"
   },
   "devDependencies": {

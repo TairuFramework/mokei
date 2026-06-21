@@ -24,6 +24,8 @@ catalog:
   '@sozai/otel': ^0.1.0
   '@sozai/schema': ^0.1.0
   '@sozai/stream': ^0.1.0
+  '@tejika/env': ^0.1.0
+  '@tejika/process': ^0.1.0
   '@hono/node-server': ^2.0.5
   '@inkjs/ui': ^2.0.0
   '@mantine/core': ^9.3.2
@@ -88,6 +90,8 @@ minimumReleaseAgeExclude:
   - '@sozai/otel@0.1.0'
   - '@sozai/schema@0.1.0'
   - '@sozai/stream@0.1.0'
+  - '@tejika/env@0.1.0'
+  - '@tejika/process@0.1.0'
   - '@kokuin/capability@0.1.0'
   - '@kokuin/token@0.1.0'
   - '@sozai/codec@0.1.0'

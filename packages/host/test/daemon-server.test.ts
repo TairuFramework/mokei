@@ -1,11 +1,10 @@
 import { spawn } from 'node:child_process'
-import { statSync } from 'node:fs'
+import { rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { createClient } from '../src/daemon/controller.js'
-import { safeRemove } from '../src/daemon/socket.js'
+import { createClient } from '../src/daemon.js'
 import { killChildren, startServer } from '../src/server.js'
 
 const sockets: Array<string> = []
@@ -18,7 +17,11 @@ function tmpSocket(): string {
 
 afterEach(() => {
   for (const path of sockets) {
-    safeRemove(path)
+    try {
+      rmSync(path)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+    }
   }
 })
 

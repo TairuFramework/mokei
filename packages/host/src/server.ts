@@ -2,6 +2,8 @@ import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { chmodSync } from 'node:fs'
 import { createServer, type Server, type Socket } from 'node:net'
+import { fileURLToPath } from 'node:url'
+import { parseArgs } from 'node:util'
 import { createTransportStream } from '@enkaku/node-streams'
 import { type ProcedureHandlers, serve } from '@enkaku/server'
 import { SocketTransport } from '@enkaku/socket'
@@ -14,6 +16,7 @@ import {
   type Protocol,
 } from '@mokei/host-protocol'
 import { tap } from '@sozai/stream'
+import { runDaemon as tejikaRunDaemon } from '@tejika/process'
 
 import { spawnContextServer } from './spawn.js'
 
@@ -200,5 +203,42 @@ export function startServer(params: ServerParams = {}): Promise<RunningServer> {
       }
       resolve({ server, dispose })
     })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Daemon entry — runs only when this module is the main process entry point.
+// Spawned by @tejika/process spawnDaemon with `--socket-path <path>`.
+// ---------------------------------------------------------------------------
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const { values } = parseArgs({
+    options: { 'socket-path': { type: 'string', short: 'p' } },
+    strict: false,
+  })
+  const socketPath = typeof values['socket-path'] === 'string' ? values['socket-path'] : undefined
+
+  const children = new Map<string, ChildProcess>()
+
+  await tejikaRunDaemon<Protocol>({
+    app: 'mokei',
+    socketPath,
+    serve: (transport) => {
+      const context: HandlersContext = {
+        activeContexts: {},
+        children,
+        events: new EventTarget(),
+        startedTime: Date.now(),
+        shutdown: () => {
+          // RPC-triggered shutdown: kill children and let SIGTERM clean up the rest.
+          killChildren(children)
+          process.kill(process.pid, 'SIGTERM')
+        },
+      }
+      const handlers = createHandlers(context)
+      return serve<Protocol>({ handlers, transport, requireAuth: false })
+    },
+    onShutdown: async () => {
+      killChildren(children)
+    },
   })
 }
