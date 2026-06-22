@@ -1,29 +1,20 @@
 import { spawn } from 'node:child_process'
-import { rmSync, statSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { Client } from '@enkaku/client'
+import { serve } from '@enkaku/server'
+import { DirectTransports } from '@enkaku/transport'
+import type {
+  ClientMessage as HostClientMessage,
+  ServerMessage as HostServerMessage,
+  Protocol,
+} from '@mokei/host-protocol'
+import { describe, expect, test, vi } from 'vitest'
 
-import { createClient } from '../src/daemon.js'
-import { killChildren, startServer } from '../src/server.js'
+import { createHandlers, killChildren } from '../src/server.js'
 
-const sockets: Array<string> = []
-
-function tmpSocket(): string {
-  const path = join(tmpdir(), `mokei-srv-${process.pid}-${sockets.length}.sock`)
-  sockets.push(path)
-  return path
-}
-
-afterEach(() => {
-  for (const path of sockets) {
-    try {
-      rmSync(path)
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-    }
-  }
-})
+// The socket bind / chmod 0600 / pidfile lifecycle now belongs to
+// @tejika/process (covered by its own tests + the integration PTY suite). These
+// tests exercise the host's own request handlers directly over an in-process
+// transport pair, with no socket server.
 
 describe('killChildren', () => {
   test('kills every tracked child and empties the map', async () => {
@@ -38,20 +29,18 @@ describe('killChildren', () => {
   })
 })
 
-describe('startServer', () => {
-  test('chmods the socket to 0600', async () => {
-    const socketPath = tmpSocket()
-    const { dispose } = await startServer({ socketPath })
-    expect(statSync(socketPath).mode & 0o777).toBe(0o600)
-    await dispose()
-  })
-})
-
 describe('spawn handler child-exit cleanup', () => {
   test('dispatches context:stop and prunes maps when a spawned child self-exits', async () => {
-    const socketPath = tmpSocket()
-    const { dispose } = await startServer({ socketPath })
-    const client = await createClient(socketPath)
+    const children = new Map<string, ReturnType<typeof spawn>>()
+    const handlers = createHandlers({
+      activeContexts: {},
+      children,
+      events: new EventTarget(),
+      startedTime: Date.now(),
+    })
+    const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
+    const server = serve<Protocol>({ handlers, transport: transports.server, requireAuth: false })
+    const client = new Client<Protocol>({ transport: transports.client })
 
     const stops: Array<{ type: string }> = []
     const events = client.createStream('events')
@@ -80,6 +69,7 @@ describe('spawn handler child-exit cleanup', () => {
 
     events.close()
     await client.dispose()
-    await dispose()
+    await server.dispose()
+    await transports.dispose()
   })
 })

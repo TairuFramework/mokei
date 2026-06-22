@@ -45,7 +45,6 @@
     "@sozai/event": "catalog:",
     "@enkaku/node-streams": "catalog:",
     "@enkaku/server": "catalog:",
-    "@enkaku/socket": "catalog:",
     "@sozai/stream": "catalog:",
     "@enkaku/transport": "catalog:",
     "@mokei/http-client": "workspace:^",

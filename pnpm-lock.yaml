@@ -177,9 +177,6 @@ catalogs:
     vite:
       specifier: ^8.0.16
       version: 8.0.16
-    vite-bundle-analyzer:
-      specifier: ^1.3.8
-      version: 1.3.8
     vitest:
       specifier: ^4.1.9
       version: 4.1.9
@@ -402,9 +399,6 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.0.16(@types/node@26.0.0)(esbuild@0.28.0)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.15))(terser@5.48.0)(tsx@4.22.4)(yaml@2.8.3)
-      vite-bundle-analyzer:
-        specifier: 'catalog:'
-        version: 1.3.8
 
   packages/anthropic-provider:
     dependencies:
@@ -596,9 +590,6 @@ importers:
         specifier: 'catalog:'
         version: 0.18.0
       '@enkaku/server':
-        specifier: 'catalog:'
-        version: 0.18.0
-      '@enkaku/socket':
         specifier: 'catalog:'
         version: 0.18.0
       '@enkaku/transport':
@@ -9402,10 +9393,6 @@ packages:
 
   vfile@6.0.3:
     resolution: {integrity: sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q==}
-
-  vite-bundle-analyzer@1.3.8:
-    resolution: {integrity: sha512-IIk7WPhoYs7pyo75jwI+dFt7yykgjK7NY+dqnJtiZnyqP2k6NgPb3TY80FLFjtgnfk/o+OjI18+anKyeviCbRA==}
-    hasBin: true
 
   vite@8.0.16:
     resolution: {integrity: sha512-h9bXPmJichP5fLmVQo3PyaGSDE2n3aPuomeAlVRm0JLmt4rY6zmPKd59HYI4LNW8oTK7tlTsuC7l/m7awx9Jcw==}
@@ -20617,8 +20604,6 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
-
-  vite-bundle-analyzer@1.3.8: {}
 
   vite@8.0.16(@types/node@26.0.0)(esbuild@0.28.0)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.15))(terser@5.48.0)(tsx@4.22.4)(yaml@2.8.3):
     dependencies:

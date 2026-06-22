@@ -38,7 +38,6 @@
     "postcss-preset-mantine": "catalog:",
     "postcss-simple-vars": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:",
-    "vite-bundle-analyzer": "catalog:"
+    "vite": "catalog:"
   }
 }
