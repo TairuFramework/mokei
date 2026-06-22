@@ -85,9 +85,9 @@ describe('buildProgram', () => {
     expect(args[1]?.variadic).toBe(true)
   })
 
-  test('monitor has --path with short -s and --port with short -p', () => {
+  test('monitor has --socket-path with short -s and --port with short -p', () => {
     const monitor = program.commands.find((c) => c.name() === 'monitor')
-    const pathOpt = monitor?.options.find((o) => o.long === '--path')
+    const pathOpt = monitor?.options.find((o) => o.long === '--socket-path')
     expect(pathOpt).toBeDefined()
     expect(pathOpt?.short).toBe('-s')
     const portOpt = monitor?.options.find((o) => o.long === '--port')
@@ -95,9 +95,9 @@ describe('buildProgram', () => {
     expect(portOpt?.short).toBe('-p')
   })
 
-  test('proxy has --path with short -s', () => {
+  test('proxy has --socket-path with short -s', () => {
     const proxy = program.commands.find((c) => c.name() === 'proxy')
-    const pathOpt = proxy?.options.find((o) => o.long === '--path')
+    const pathOpt = proxy?.options.find((o) => o.long === '--socket-path')
     expect(pathOpt).toBeDefined()
     expect(pathOpt?.short).toBe('-s')
   })

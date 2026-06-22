@@ -21,7 +21,7 @@ export function createMonitorCommand(): Command {
   cmd.option('-p, --port <number>', 'port for the monitor UI server')
 
   cmd.action(async (opts: Record<string, string | undefined>) => {
-    const socketPath = opts.path
+    const socketPath = opts.socketPath
     const port = opts.port != null ? Number.parseInt(opts.port, 10) : undefined
     await runDaemon({ socketPath })
     const monitor = await startMonitor({ port, socketPath })
@@ -30,7 +30,7 @@ export function createMonitorCommand(): Command {
     // handler: when the user quits, waitUntilExit() resolves and we dispose below.
     // A non-TTY signal (e.g. `kill -INT`) bypasses this — acceptable for an
     // interactive monitor.
-    await runInk(MonitorStatus, { url }, { exitOnCtrlC: true })
+    await runInk(<MonitorStatus url={url} />, { exitOnCtrlC: true })
     await monitor.disposer.dispose()
   })
 

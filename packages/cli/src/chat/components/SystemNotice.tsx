@@ -1,30 +1,7 @@
-import { IconLine } from './IconLine.js'
-
-export type SystemNoticeVariant = 'info' | 'warning' | 'error' | 'success'
-
-export type SystemNoticeProps = {
-  variant?: SystemNoticeVariant
-  text: string
-}
-
-const COLOR: Record<SystemNoticeVariant, string> = {
-  info: 'blue',
-  warning: 'yellow',
-  error: 'red',
-  success: 'green',
-}
-
-const ICON: Record<SystemNoticeVariant, string> = {
-  info: 'ℹ',
-  warning: '!',
-  error: '✗',
-  success: '✓',
-}
-
-export function SystemNotice({ variant = 'info', text }: SystemNoticeProps) {
-  return (
-    <IconLine icon={ICON[variant]} color={COLOR[variant]}>
-      {text}
-    </IconLine>
-  )
-}
+// Generic notice line — provided by @tejika/ui. Re-exported here (with its
+// variant type, consumed by the transcript) so the import path stays stable.
+export {
+  SystemNotice,
+  type SystemNoticeProps,
+  type SystemNoticeVariant,
+} from '@tejika/ui'

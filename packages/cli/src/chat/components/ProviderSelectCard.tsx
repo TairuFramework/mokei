@@ -1,12 +1,11 @@
-import { Select } from '@inkjs/ui'
-import { Box, Text, useInput } from 'ink'
+import { SelectCard, type SelectItem } from '@tejika/ui'
 
-const PROVIDERS = [
+const PROVIDERS: Array<SelectItem> = [
   { label: 'ollama', value: 'ollama' },
   { label: 'openai', value: 'openai' },
   { label: 'anthropic', value: 'anthropic' },
   { label: 'llama', value: 'llama' },
-] as const
+]
 
 export type ProviderSelectCardProps = {
   onSelect: (provider: string) => void
@@ -14,16 +13,12 @@ export type ProviderSelectCardProps = {
 }
 
 export function ProviderSelectCard({ onSelect, onCancel }: ProviderSelectCardProps) {
-  useInput((_, key) => {
-    if (key.escape) {
-      onCancel()
-    }
-  })
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan">
-      <Text color="cyan">select a provider</Text>
-      <Select options={[...PROVIDERS]} onChange={(value) => onSelect(value)} />
-      <Text dimColor>[esc] quit</Text>
-    </Box>
+    <SelectCard
+      title="select a provider"
+      items={PROVIDERS}
+      onSelect={onSelect}
+      onCancel={onCancel}
+    />
   )
 }

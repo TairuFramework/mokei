@@ -78,10 +78,19 @@ catalogs:
     '@tanstack/router-plugin':
       specifier: ^1.168.18
       version: 1.168.18
+    '@tejika/cli':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@tejika/env':
+      specifier: ^0.1.0
+      version: 0.1.0
     '@tejika/process':
       specifier: ^0.1.0
       version: 0.1.0
     '@tejika/server':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@tejika/ui':
       specifier: ^0.1.0
       version: 0.1.0
     '@types/luxon':
@@ -456,12 +465,12 @@ importers:
       '@mokei/session':
         specifier: workspace:^
         version: link:../session
-      '@sozai/async':
+      '@tejika/cli':
         specifier: 'catalog:'
-        version: 0.1.0
-      '@sozai/stream':
+        version: 0.1.0(@types/react@19.2.17)
+      '@tejika/ui':
         specifier: 'catalog:'
-        version: 0.1.0
+        version: 0.1.0(@types/react@19.2.17)
       commander:
         specifier: 'catalog:'
         version: 15.0.0
@@ -645,6 +654,9 @@ importers:
         specifier: workspace:^
         version: link:../host-protocol
       '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@tejika/env':
         specifier: 'catalog:'
         version: 0.1.0
       '@tejika/server':
@@ -3961,6 +3973,9 @@ packages:
     resolution: {integrity: sha512-uhOeFyxLcU41HzvrxsGpiWdcMbScY1EDgbZ5K7DVRMYInbLYWAC0EA/kx9wXAoSM8q82bUG2hRl8+EAjE6XAbA==}
     engines: {node: '>=20.19'}
 
+  '@tejika/cli@0.1.0':
+    resolution: {integrity: sha512-oS0t7YpYJSR/fjaCGHPlw4SbzWxRAeXb01EnwH/mmbd0yq5Lb1+iLkVz5DMUsIY2wa/BFh9SNu85F5961nJglA==}
+
   '@tejika/env@0.1.0':
     resolution: {integrity: sha512-aKLFz2EqEYoMR55ArM4nMN6aSTFTchAHVNp0Eg53VHU509wTwHz5i1v6G0vtdy8Gvte/RQ7l+vZzULXjpGeG8w==}
 
@@ -3969,6 +3984,9 @@ packages:
 
   '@tejika/server@0.1.0':
     resolution: {integrity: sha512-URiTLH63xRDVGH9GrXUw1kgyT22teBk7zC97CQ54ELuyh20ei4xslqdePBOEu9dDybkBT15XBU8gCZv1UM0Qaw==}
+
+  '@tejika/ui@0.1.0':
+    resolution: {integrity: sha512-Xkm1f3LS8cXUqIoBk8ni25M8B6lHTo7wbCQRHEJqXV4wU7wJJwQ7wK5OF2ynzDEYPngDJmhbZ1yWcgehwbY8Uw==}
 
   '@tinyhttp/content-disposition@2.2.4':
     resolution: {integrity: sha512-5Kc5CM2Ysn3vTTArBs2vESUt0AQiWZA86yc1TI3B+lxXmtEq133C1nxXNOgnzhrivdPZIh3zLj5gDnZjoLL5GA==}
@@ -14130,6 +14148,18 @@ snapshots:
 
   '@tanstack/virtual-file-routes@1.162.0': {}
 
+  '@tejika/cli@0.1.0(@types/react@19.2.17)':
+    dependencies:
+      '@tejika/env': 0.1.0
+      commander: 15.0.0
+      ink: 7.1.0(@types/react@19.2.17)(react@19.2.7)
+      react: 19.2.7
+    transitivePeerDependencies:
+      - '@types/react'
+      - bufferutil
+      - react-devtools-core
+      - utf-8-validate
+
   '@tejika/env@0.1.0':
     dependencies:
       env-paths: 4.0.0
@@ -14151,6 +14181,17 @@ snapshots:
       '@hono/node-server': 2.0.5(hono@4.12.26)
       '@tejika/env': 0.1.0
       hono: 4.12.26
+
+  '@tejika/ui@0.1.0(@types/react@19.2.17)':
+    dependencies:
+      '@inkjs/ui': 2.0.0(ink@7.1.0(@types/react@19.2.17)(react@19.2.7))
+      ink: 7.1.0(@types/react@19.2.17)(react@19.2.7)
+      react: 19.2.7
+    transitivePeerDependencies:
+      - '@types/react'
+      - bufferutil
+      - react-devtools-core
+      - utf-8-validate
 
   '@tinyhttp/content-disposition@2.2.4': {}
 

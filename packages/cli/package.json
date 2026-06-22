@@ -42,9 +42,7 @@
     "test": "pnpm run test:types && pnpm run test:unit"
   },
   "dependencies": {
-    "@sozai/async": "catalog:",
     "@enkaku/node-streams": "catalog:",
-    "@sozai/stream": "catalog:",
     "@inkjs/ui": "catalog:",
     "@mokei/anthropic-provider": "workspace:^",
     "@mokei/context-client": "workspace:^",
@@ -57,6 +55,8 @@
     "@mokei/ollama-provider": "workspace:^",
     "@mokei/openai-provider": "workspace:^",
     "@mokei/session": "workspace:^",
+    "@tejika/cli": "catalog:",
+    "@tejika/ui": "catalog:",
     "commander": "catalog:",
     "eventsource-parser": "catalog:",
     "ink": "catalog:",

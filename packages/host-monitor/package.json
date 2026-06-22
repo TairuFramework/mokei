@@ -45,6 +45,7 @@
     "@enkaku/http-serve": "catalog:",
     "@enkaku/socket": "catalog:",
     "@mokei/host-protocol": "workspace:^",
+    "@tejika/env": "catalog:",
     "@tejika/server": "catalog:"
   },
   "devDependencies": {

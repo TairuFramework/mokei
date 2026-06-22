@@ -15,7 +15,7 @@ export function createProxyCommand(): Command {
 
   cmd.action(
     async (command: string, args: Array<string>, opts: Record<string, string | undefined>) => {
-      const client = await runDaemon({ socketPath: opts.path })
+      const client = await runDaemon({ socketPath: opts.socketPath })
       const channel = client.createChannel('spawn', {
         param: { command, args },
       })

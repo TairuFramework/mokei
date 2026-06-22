@@ -17,16 +17,18 @@ export function createChatCommand(): Command {
       return
     }
     const lifecycle: ChatLifecycle = { dispose: null }
-    await runInk(ChatLauncher, {
-      initialProvider: opts.provider,
-      chatOptions: {
-        apiKey: opts.apiKey,
-        apiUrl: opts.apiUrl,
-        model: opts.model,
-        timeoutMs: timeoutSec * 1000,
-      },
-      lifecycle,
-    })
+    await runInk(
+      <ChatLauncher
+        initialProvider={opts.provider}
+        chatOptions={{
+          apiKey: opts.apiKey,
+          apiUrl: opts.apiUrl,
+          model: opts.model,
+          timeoutMs: timeoutSec * 1000,
+        }}
+        lifecycle={lifecycle}
+      />,
+    )
     // The ink app has exited; dispose the session so the daemon socket is
     // released (ContextHost._dispose → client.dispose, and @enkaku/socket
     // unref's the socket on dispose) and the process can exit cleanly.

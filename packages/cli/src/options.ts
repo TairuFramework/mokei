@@ -1,4 +1,4 @@
-import { DEFAULT_SOCKET_PATH } from '@mokei/host-protocol'
+import { withSocketPath as tejikaWithSocketPath } from '@tejika/cli'
 import type { Command } from 'commander'
 
 export function withChatOptions(cmd: Command): Command {
@@ -13,6 +13,11 @@ export function withChatOptions(cmd: Command): Command {
     .option('-t, --timeout <seconds>', 'agent turn timeout in seconds', '300')
 }
 
+/**
+ * Add `-s, --socket-path <path>`, defaulting (lazily, at action time) to
+ * `@tejika/env`'s socket path for app "mokei" — the same path the host daemon
+ * binds by default. Delegates to `@tejika/cli`.
+ */
 export function withSocketPath(cmd: Command): Command {
-  return cmd.option('-s, --path <path>', 'socket path', DEFAULT_SOCKET_PATH)
+  return tejikaWithSocketPath(cmd, 'mokei')
 }

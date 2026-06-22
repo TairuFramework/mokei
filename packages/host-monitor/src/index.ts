@@ -13,8 +13,9 @@
 import { join } from 'node:path'
 import { createServerBridge } from '@enkaku/http-serve'
 import { connectSocket, createTransportStream } from '@enkaku/socket'
-import { DEFAULT_SOCKET_PATH, type Protocol } from '@mokei/host-protocol'
+import type { Protocol } from '@mokei/host-protocol'
 import { Disposer } from '@sozai/async'
+import { getSocketPath } from '@tejika/env'
 import { createLocalServer, serveStaticSPA } from '@tejika/server'
 
 import { wireMonitorStreams } from './pipes.js'
@@ -32,7 +33,7 @@ export type Monitor = {
 }
 
 export async function startMonitor(params: MonitorParams = {}): Promise<Monitor> {
-  const socketPath = params.socketPath ?? DEFAULT_SOCKET_PATH
+  const socketPath = params.socketPath ?? getSocketPath('mokei')
   const socketStream = await createTransportStream(connectSocket(socketPath))
   const serverBridge = createServerBridge<Protocol>()
 
