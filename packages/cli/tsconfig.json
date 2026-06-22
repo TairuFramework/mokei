@@ -1,19 +1,13 @@
 {
+  "extends": "../../tsconfig.build.json",
   "compilerOptions": {
-    "skipLibCheck": true,
-    "declaration": false,
-    "module": "Node16",
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "target": "es2022",
-    "moduleResolution": "node16",
     "jsx": "react-jsx",
-    "jsxImportSource": "react",
-    "types": ["node"]
+    "lib": ["es2025", "dom"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./lib",
+    "rootDir": "./src",
+    "types": ["node", "react"]
   },
-  "include": ["./src/**/*"],
-  "ts-node": {
-    "esm": true
-  }
+  "include": ["./src/**/*"]
 }

@@ -1,4 +1,4 @@
-import { createTransportStream } from '@enkaku/node-streams-transport'
+import { createTransportStream } from '@enkaku/node-streams'
 import { runDaemon } from '@mokei/host'
 import { Command } from 'commander'
 
@@ -15,7 +15,7 @@ export function createProxyCommand(): Command {
 
   cmd.action(
     async (command: string, args: Array<string>, opts: Record<string, string | undefined>) => {
-      const client = await runDaemon({ socketPath: opts.path })
+      const client = await runDaemon({ socketPath: opts.socketPath })
       const channel = client.createChannel('spawn', {
         param: { command, args },
       })

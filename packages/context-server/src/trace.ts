@@ -5,7 +5,7 @@ import {
   parseBaggage,
   withActiveBaggage,
   withActiveContext,
-} from '@enkaku/otel'
+} from '@sozai/otel'
 
 /** Build the active OTel context from a request's SEP-414 `_meta` trace keys. */
 export function activeContextFromMeta(

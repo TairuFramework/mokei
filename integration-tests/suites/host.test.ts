@@ -1,8 +1,8 @@
-import { fromStream } from '@enkaku/generator'
 import { ContextHost } from '@mokei/host'
 import { createFetchConfig } from '@mokei/mcp-fetch'
 import type { ServerMessage } from '@mokei/model-provider'
 import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
+import { fromStream } from '@sozai/generator'
 import { expect, test } from 'vitest'
 
 const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'

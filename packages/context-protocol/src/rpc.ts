@@ -1,4 +1,4 @@
-import type { FromSchema, Schema } from '@enkaku/schema'
+import type { FromSchema, Schema } from '@sozai/schema'
 
 export const LATEST_PROTOCOL_VERSION = '2025-11-25'
 export const JSONRPC_VERSION = '2.0'

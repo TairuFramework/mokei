@@ -1,5 +1,3 @@
-import { Disposer } from '@enkaku/async'
-import { EventEmitter } from '@enkaku/event'
 import type { CallToolResult } from '@mokei/context-protocol'
 import { getContextToolInfo } from '@mokei/host'
 import type {
@@ -8,6 +6,8 @@ import type {
   Message,
   ProviderTypes,
 } from '@mokei/model-provider'
+import { Disposer } from '@sozai/async'
+import { EventEmitter } from '@sozai/event'
 
 import {
   AGENT_DEFAULTS,

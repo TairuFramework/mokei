@@ -1,4 +1,4 @@
-import type { Schema } from '@enkaku/schema'
+import type { Schema } from '@sozai/schema'
 
 import { metadata } from './rpc.js'
 

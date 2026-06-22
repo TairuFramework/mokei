@@ -31,7 +31,7 @@
   "scripts": {
     "app:copy": "del dist && cp -r ../../monitor/dist ./dist",
     "build:clean": "del lib",
-    "build:js": "swc src -d ./lib --config-file ../../swc.json --strip-leading-paths",
+    "build:js": "swc src -d ./lib --config-file ../../node_modules/@kigu/dev/swc.json --strip-leading-paths",
     "build:types": "tsc --emitDeclarationOnly --skipLibCheck",
     "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
     "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
@@ -41,13 +41,12 @@
     "prepublishOnly": "pnpm run app:copy && pnpm run build"
   },
   "dependencies": {
-    "@enkaku/async": "catalog:",
-    "@enkaku/http-server-transport": "catalog:",
-    "@enkaku/socket-transport": "catalog:",
-    "@hono/node-server": "catalog:",
+    "@sozai/async": "catalog:",
+    "@enkaku/http-serve": "catalog:",
+    "@enkaku/socket": "catalog:",
     "@mokei/host-protocol": "workspace:^",
-    "get-port": "catalog:",
-    "hono": "catalog:"
+    "@tejika/env": "catalog:",
+    "@tejika/server": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:"

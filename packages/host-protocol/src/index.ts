@@ -10,12 +10,8 @@
  * @module host-protocol
  */
 
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import type { AnyClientMessageOf, AnyServerMessageOf, ProtocolDefinition } from '@enkaku/protocol'
-import type { FromSchema, Schema } from '@enkaku/schema'
-
-export const DEFAULT_SOCKET_PATH = join(homedir(), '.mokei-daemon.sock')
+import type { FromSchema, Schema } from '@sozai/schema'
 
 export const hostEventMetaSchema = {
   type: 'object',

@@ -1,6 +1,5 @@
+import type { SystemNoticeVariant } from '@tejika/ui'
 import { useCallback, useMemo, useState } from 'react'
-
-import type { SystemNoticeVariant } from './components/SystemNotice.js'
 
 export type TranscriptEntry =
   | { kind: 'user'; id: number; text: string }

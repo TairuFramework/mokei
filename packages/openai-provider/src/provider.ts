@@ -1,4 +1,3 @@
-import { assertType } from '@enkaku/schema'
 import type { Tool as ContextTool } from '@mokei/context-protocol'
 import type {
   AggregatedMessage,
@@ -12,6 +11,7 @@ import type {
   StreamChatParams,
 } from '@mokei/model-provider'
 import { resolveSamplingParams } from '@mokei/model-provider'
+import { assertType } from '@sozai/schema'
 
 import type { ChatCompletionChunk, OpenAIClientParams } from './client.js'
 import { OpenAIClient } from './client.js'

@@ -38,7 +38,7 @@
   "sideEffects": false,
   "scripts": {
     "build:clean": "del lib",
-    "build:js": "swc src -d ./lib --config-file ../../swc.json --strip-leading-paths",
+    "build:js": "swc src -d ./lib --config-file ../../node_modules/@kigu/dev/swc.json --strip-leading-paths",
     "build:types": "tsc --emitDeclarationOnly --skipLibCheck",
     "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
     "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
@@ -53,7 +53,7 @@
     "turndown-plugin-gfm": "catalog:"
   },
   "devDependencies": {
-    "@enkaku/node-streams-transport": "catalog:",
+    "@enkaku/node-streams": "catalog:",
     "@enkaku/transport": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",

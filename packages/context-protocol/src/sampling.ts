@@ -1,4 +1,4 @@
-import type { FromSchema, Schema } from '@enkaku/schema'
+import type { FromSchema, Schema } from '@sozai/schema'
 
 import { audioContent, contentBlock, imageContent, role, textContent } from './content.js'
 import { request, result } from './rpc.js'

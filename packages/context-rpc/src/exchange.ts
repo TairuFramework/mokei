@@ -1,5 +1,5 @@
-import type { Deferred } from '@enkaku/async'
 import type { ErrorResponse, RequestID, Response } from '@mokei/context-protocol'
+import type { Deferred } from '@sozai/async'
 
 import { RPCError } from './error.js'
 

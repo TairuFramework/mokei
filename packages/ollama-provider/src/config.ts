@@ -1,4 +1,4 @@
-import { createValidator, type FromSchema, type Schema } from '@enkaku/schema'
+import { createValidator, type FromSchema, type Schema } from '@sozai/schema'
 
 export const DEFAULT_BASE_URL = 'http://localhost:11434/api'
 export const DEFAULT_TIMEOUT = 30_000

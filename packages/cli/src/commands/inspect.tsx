@@ -1,9 +1,8 @@
 import { StatusMessage } from '@inkjs/ui'
 import { type HostedContext, spawnHostedContext } from '@mokei/host'
+import { renderStatic } from '@tejika/cli'
 import { Command } from 'commander'
 import { Box, Text } from 'ink'
-
-import { renderStatic } from '../ink.js'
 
 function InspectResult({ data }: { data: string }) {
   return (
@@ -32,9 +31,9 @@ export function createInspectCommand(): Command {
       // instead of swallowing them behind "did not respond to initialize".
       hosted = await spawnHostedContext({ command, args, stderr: 'inherit' })
       const initialized = await hosted.client.initialize()
-      renderStatic(InspectResult, { data: JSON.stringify(initialized, null, 2) })
+      renderStatic(<InspectResult data={JSON.stringify(initialized, null, 2)} />)
     } catch (err) {
-      renderStatic(InspectError, { message: (err as Error).message })
+      renderStatic(<InspectError message={(err as Error).message} />)
       process.exitCode = 1
     } finally {
       await hosted?.disposer.dispose()

@@ -1,23 +1,16 @@
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { chmodSync } from 'node:fs'
-import { createServer, type Server, type Socket } from 'node:net'
-import { createTransportStream } from '@enkaku/node-streams-transport'
+import { fileURLToPath } from 'node:url'
+import { parseArgs } from 'node:util'
+import { createTransportStream } from '@enkaku/node-streams'
 import { type ProcedureHandlers, serve } from '@enkaku/server'
-import { SocketTransport } from '@enkaku/socket-transport'
-import { tap } from '@enkaku/stream'
-import {
-  type ActiveContextInfo,
-  DEFAULT_SOCKET_PATH,
-  type ClientMessage as HostClientMessage,
-  type HostEventMeta,
-  type ServerMessage as HostServerMessage,
-  type Protocol,
-} from '@mokei/host-protocol'
+import type { ActiveContextInfo, HostEventMeta, Protocol } from '@mokei/host-protocol'
+import { tap } from '@sozai/stream'
+import { runDaemon as tejikaRunDaemon } from '@tejika/process'
 
 import { spawnContextServer } from './spawn.js'
 
-type HandlersContext = {
+export type HandlersContext = {
   activeContexts: Record<string, ActiveContextInfo>
   children: Map<string, ChildProcess>
   events: EventTarget
@@ -41,7 +34,7 @@ export function killChildren(children: Map<string, ChildProcess>): void {
   children.clear()
 }
 
-function createHandlers({
+export function createHandlers({
   activeContexts,
   children,
   events,
@@ -140,65 +133,41 @@ function createHandlers({
   }
 }
 
-function serveSocket(socket: Socket, context: HandlersContext): void {
-  const handlers = createHandlers(context)
-  const transport = new SocketTransport<HostClientMessage, HostServerMessage>({ socket })
-  const socketServer = serve<Protocol>({ handlers, transport, requireAuth: false })
-  socket.once('close', () => {
-    socketServer.dispose()
+// ---------------------------------------------------------------------------
+// Daemon entry — runs only when this module is the main process entry point.
+// Spawned by @tejika/process spawnDaemon with `--socket-path <path>`.
+// The socket bind, chmod 0600, pidfile, and lifecycle are owned by
+// @tejika/process; this module only supplies the request handlers.
+// ---------------------------------------------------------------------------
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const { values } = parseArgs({
+    options: { 'socket-path': { type: 'string', short: 'p' } },
+    strict: false,
   })
-}
-
-export type ServerParams = {
-  socketPath?: string
-  shutdown?: () => void | Promise<void>
-}
-
-export type RunningServer = {
-  server: Server
-  dispose: () => Promise<void>
-}
-
-export function startServer(params: ServerParams = {}): Promise<RunningServer> {
-  const socketPath = params.socketPath ?? DEFAULT_SOCKET_PATH
+  const socketPath = typeof values['socket-path'] === 'string' ? values['socket-path'] : undefined
 
   const children = new Map<string, ChildProcess>()
-  let disposed = false
-  const dispose = async (): Promise<void> => {
-    if (disposed) {
-      return
-    }
-    disposed = true
-    killChildren(children)
-    await params.shutdown?.()
-  }
 
-  const context: HandlersContext = {
-    activeContexts: {},
-    children,
-    events: new EventTarget(),
-    startedTime: Date.now(),
-    // The RPC `shutdown` channel runs the same path as a signal-driven dispose.
-    shutdown: dispose,
-  }
-  const server = createServer((socket) => {
-    serveSocket(socket, context)
-  })
-
-  return new Promise((resolve, reject) => {
-    server.on('error', (err) => {
-      reject(err)
-    })
-    server.listen(socketPath, () => {
-      try {
-        // Same-OS-user trust boundary: only the owner may drive the spawn channel.
-        chmodSync(socketPath, 0o600)
-      } catch (err) {
-        server.close()
-        reject(err)
-        return
+  await tejikaRunDaemon<Protocol>({
+    app: 'mokei',
+    socketPath,
+    serve: (transport) => {
+      const context: HandlersContext = {
+        activeContexts: {},
+        children,
+        events: new EventTarget(),
+        startedTime: Date.now(),
+        shutdown: () => {
+          // RPC-triggered shutdown: kill children and let SIGTERM clean up the rest.
+          killChildren(children)
+          process.kill(process.pid, 'SIGTERM')
+        },
       }
-      resolve({ server, dispose })
-    })
+      const handlers = createHandlers(context)
+      return serve<Protocol>({ handlers, transport, requireAuth: false })
+    },
+    onShutdown: async () => {
+      killChildren(children)
+    },
   })
 }

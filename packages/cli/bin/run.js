@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { run } from '../dist/index.js'
+import { run } from '../lib/index.js'
 
 process.on('unhandledRejection', (reason) => {
   const message = reason instanceof Error ? reason.message : String(reason)

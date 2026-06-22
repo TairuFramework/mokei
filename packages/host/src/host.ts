@@ -1,6 +1,4 @@
-import { Disposer } from '@enkaku/async'
-import { EventEmitter } from '@enkaku/event'
-import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
+import { NodeStreamsTransport } from '@enkaku/node-streams'
 import { DirectTransports } from '@enkaku/transport'
 import {
   type ClientTransport,
@@ -21,6 +19,8 @@ import type {
 import type { SentRequest } from '@mokei/context-rpc'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
 import { type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
+import { Disposer } from '@sozai/async'
+import { EventEmitter } from '@sozai/event'
 
 import {
   createLocalToolID,

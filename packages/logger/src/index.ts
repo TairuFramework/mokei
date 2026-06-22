@@ -1,4 +1,4 @@
-import { getLogger, type Logger } from '@enkaku/log'
+import { getLogger, type Logger } from '@sozai/log'
 
 export type { Logger }
 

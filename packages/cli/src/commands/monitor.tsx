@@ -1,9 +1,8 @@
 import { runDaemon } from '@mokei/host'
 import { startMonitor } from '@mokei/host-monitor'
+import { runInk } from '@tejika/cli'
 import { Command } from 'commander'
 import { Box, Text } from 'ink'
-
-import { runInk } from '../ink.js'
 import { withSocketPath } from '../options.js'
 
 function MonitorStatus({ url }: { url: string }) {
@@ -19,20 +18,18 @@ export function createMonitorCommand(): Command {
 
   withSocketPath(cmd)
   cmd.option('-p, --port <number>', 'port for the monitor UI server')
-  cmd.option('--host <host>', 'host to bind the monitor UI server', '127.0.0.1')
 
   cmd.action(async (opts: Record<string, string | undefined>) => {
-    const socketPath = opts.path
+    const socketPath = opts.socketPath
     const port = opts.port != null ? Number.parseInt(opts.port, 10) : undefined
-    const host = opts.host ?? '127.0.0.1'
     await runDaemon({ socketPath })
-    const monitor = await startMonitor({ port, socketPath, host })
-    const url = `http://${host === '0.0.0.0' ? 'localhost' : host}:${monitor.port}/`
+    const monitor = await startMonitor({ port, socketPath })
+    const url = `${monitor.url}/`
     // Rely on ink's own Ctrl+C handling (exitOnCtrlC) instead of a manual SIGINT
     // handler: when the user quits, waitUntilExit() resolves and we dispose below.
     // A non-TTY signal (e.g. `kill -INT`) bypasses this — acceptable for an
     // interactive monitor.
-    await runInk(MonitorStatus, { url }, { exitOnCtrlC: true })
+    await runInk(<MonitorStatus url={url} />, { exitOnCtrlC: true })
     await monitor.disposer.dispose()
   })
 

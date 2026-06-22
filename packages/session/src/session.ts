@@ -1,6 +1,3 @@
-import { Disposer, raceSignal } from '@enkaku/async'
-import { EventEmitter } from '@enkaku/event'
-import { fromStream } from '@enkaku/generator'
 import type { CallToolResult } from '@mokei/context-protocol'
 import type { SentRequest } from '@mokei/context-rpc'
 import {
@@ -19,6 +16,9 @@ import type {
   ServerMessage,
   StreamChatRequest,
 } from '@mokei/model-provider'
+import { Disposer, raceSignal } from '@sozai/async'
+import { EventEmitter } from '@sozai/event'
+import { fromStream } from '@sozai/generator'
 
 export type AddContextParams = {
   key: string

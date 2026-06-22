@@ -10,14 +10,14 @@
  * @module model-provider
  */
 
+import type { Tool } from '@mokei/context-protocol'
 import {
   asType,
   createValidator,
   type FromSchema,
   type Schema,
   type Validator,
-} from '@enkaku/schema'
-import type { Tool } from '@mokei/context-protocol'
+} from '@sozai/schema'
 
 const objectValidator = createValidator({ type: 'object' })
 

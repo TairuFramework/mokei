@@ -22,27 +22,27 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "main": "dist/index.js",
+  "main": "lib/index.js",
   "files": [
     "/bin",
-    "/dist"
+    "/lib"
   ],
   "bin": {
     "mokei": "./bin/run.js"
   },
   "scripts": {
     "mokei": "./bin/dev.js",
-    "build:clean": "del dist",
-    "build:dist": "swc src -d ./dist --config-file ./swc.json --strip-leading-paths",
-    "build": "pnpm run build:clean && pnpm run test:types && pnpm run build:dist",
+    "build:clean": "del lib",
+    "build:js": "swc src -d ./lib --config-file ../../node_modules/@kigu/dev/swc.json --strip-leading-paths",
+    "build:types": "tsc --emitDeclarationOnly --skipLibCheck",
+    "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
+    "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
     "test:types": "tsc --noEmit --skipLibCheck",
     "test:unit": "vitest run",
     "test": "pnpm run test:types && pnpm run test:unit"
   },
   "dependencies": {
-    "@enkaku/async": "catalog:",
-    "@enkaku/node-streams-transport": "catalog:",
-    "@enkaku/stream": "catalog:",
+    "@enkaku/node-streams": "catalog:",
     "@inkjs/ui": "catalog:",
     "@mokei/anthropic-provider": "workspace:^",
     "@mokei/context-client": "workspace:^",
@@ -55,6 +55,8 @@
     "@mokei/ollama-provider": "workspace:^",
     "@mokei/openai-provider": "workspace:^",
     "@mokei/session": "workspace:^",
+    "@tejika/cli": "catalog:",
+    "@tejika/ui": "catalog:",
     "commander": "catalog:",
     "eventsource-parser": "catalog:",
     "ink": "catalog:",
