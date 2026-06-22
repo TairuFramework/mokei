@@ -5,7 +5,7 @@ import type { Protocol } from '@mokei/host-protocol'
 export type HostClient = Client<Protocol>
 
 export function createHostClient(url: string): HostClient {
-  const token = (globalThis as { __MOKEI_TOKEN__?: string }).__MOKEI_TOKEN__
+  const token = (globalThis as { __APP_TOKEN__?: string }).__APP_TOKEN__
   const authFetch: typeof fetch = (input, init) => {
     const headers = new Headers(init?.headers)
     if (token != null) {

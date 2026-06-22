@@ -81,6 +81,9 @@ catalogs:
     '@tejika/process':
       specifier: ^0.1.0
       version: 0.1.0
+    '@tejika/server':
+      specifier: ^0.1.0
+      version: 0.1.0
     '@types/luxon':
       specifier: ^3.7.1
       version: 3.7.1
@@ -105,9 +108,6 @@ catalogs:
     eventsource-parser:
       specifier: ^3.1.0
       version: 3.1.0
-    get-port:
-      specifier: ^7.2.0
-      version: 7.2.0
     globals:
       specifier: ^17.6.0
       version: 17.6.0
@@ -641,21 +641,15 @@ importers:
       '@enkaku/socket':
         specifier: 'catalog:'
         version: 0.18.0
-      '@hono/node-server':
-        specifier: 'catalog:'
-        version: 2.0.5(hono@4.12.26)
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.1.0
-      get-port:
+      '@tejika/server':
         specifier: 'catalog:'
-        version: 7.2.0
-      hono:
-        specifier: 'catalog:'
-        version: 4.12.26
+        version: 0.1.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -3972,6 +3966,9 @@ packages:
 
   '@tejika/process@0.1.0':
     resolution: {integrity: sha512-FTyWskNdkpilJK+kugwJZhXqD7hMh0uY81oQ6R5sDT4Zy9eNvvgRlP0u54mdwGI/4kTj9s6HJwd1CyDTqnm+WA==}
+
+  '@tejika/server@0.1.0':
+    resolution: {integrity: sha512-URiTLH63xRDVGH9GrXUw1kgyT22teBk7zC97CQ54ELuyh20ei4xslqdePBOEu9dDybkBT15XBU8gCZv1UM0Qaw==}
 
   '@tinyhttp/content-disposition@2.2.4':
     resolution: {integrity: sha512-5Kc5CM2Ysn3vTTArBs2vESUt0AQiWZA86yc1TI3B+lxXmtEq133C1nxXNOgnzhrivdPZIh3zLj5gDnZjoLL5GA==}
@@ -14146,6 +14143,14 @@ snapshots:
       '@enkaku/socket': 0.18.0
       '@tejika/env': 0.1.0
       nano-spawn: 2.1.0
+
+  '@tejika/server@0.1.0':
+    dependencies:
+      '@enkaku/http-serve': 0.18.0
+      '@enkaku/protocol': 0.18.0
+      '@hono/node-server': 2.0.5(hono@4.12.26)
+      '@tejika/env': 0.1.0
+      hono: 4.12.26
 
   '@tinyhttp/content-disposition@2.2.4': {}
 

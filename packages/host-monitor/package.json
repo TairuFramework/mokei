@@ -44,10 +44,8 @@
     "@sozai/async": "catalog:",
     "@enkaku/http-serve": "catalog:",
     "@enkaku/socket": "catalog:",
-    "@hono/node-server": "catalog:",
     "@mokei/host-protocol": "workspace:^",
-    "get-port": "catalog:",
-    "hono": "catalog:"
+    "@tejika/server": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:"
