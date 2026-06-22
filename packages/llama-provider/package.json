@@ -1,6 +1,6 @@
 {
   "name": "@mokei/llama-provider",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei node-llama-cpp provider",
