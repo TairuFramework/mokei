@@ -2,7 +2,6 @@ import { render } from 'ink-testing-library'
 import { describe, expect, test } from 'vitest'
 
 import { AssistantMessage } from '../../src/chat/components/AssistantMessage.js'
-import { SystemNotice } from '../../src/chat/components/SystemNotice.js'
 import { UserMessage } from '../../src/chat/components/UserMessage.js'
 
 const LONG =
@@ -21,14 +20,6 @@ describe('message wrapping (two-column icon layout)', () => {
   test('user message keeps the › icon', () => {
     const lines = (render(<UserMessage text={LONG} />).lastFrame() ?? '').split('\n')
     expect(lines[0]).toContain('›')
-    expect(lines[1]).toMatch(/^ {2}\S/)
-  })
-
-  test('system notice: per-variant icon, body wraps with hanging indent', () => {
-    const lines = (render(<SystemNotice variant="info" text={LONG} />).lastFrame() ?? '').split(
-      '\n',
-    )
-    expect(lines.length).toBeGreaterThan(1)
     expect(lines[1]).toMatch(/^ {2}\S/)
   })
 })

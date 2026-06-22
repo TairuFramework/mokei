@@ -1,4 +1,4 @@
-import { IconLine } from './IconLine.js'
+import { IconLine } from '@tejika/ui'
 
 export type AssistantMessageProps = { text: string }
 

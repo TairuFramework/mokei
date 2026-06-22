@@ -1,9 +1,8 @@
 import { runDaemon } from '@mokei/host'
 import { startMonitor } from '@mokei/host-monitor'
+import { runInk } from '@tejika/cli'
 import { Command } from 'commander'
 import { Box, Text } from 'ink'
-
-import { runInk } from '../ink.js'
 import { withSocketPath } from '../options.js'
 
 function MonitorStatus({ url }: { url: string }) {

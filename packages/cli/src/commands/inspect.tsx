@@ -1,9 +1,8 @@
 import { StatusMessage } from '@inkjs/ui'
 import { type HostedContext, spawnHostedContext } from '@mokei/host'
+import { renderStatic } from '@tejika/cli'
 import { Command } from 'commander'
 import { Box, Text } from 'ink'
-
-import { renderStatic } from '../ink.js'
 
 function InspectResult({ data }: { data: string }) {
   return (
