@@ -4,7 +4,7 @@
   "author": "Paul Le Cam",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@11.8.0",
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "prepare": "git config core.hooksPath .githooks",
     "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
-    "@kigu/dev": "^0.1.0",
+    "@kigu/dev": "^0.1.1",
     "typedoc": "catalog:",
     "typedoc-plugin-markdown": "catalog:"
   }

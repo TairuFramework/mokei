@@ -2,6 +2,15 @@
 
 > TypeScript toolkit for creating, interacting with, and monitoring clients and servers using the Model Context Protocol (MCP).
 
+## Stack
+
+mokei (模型) is the MCP toolkit layer of the TairuFramework stack.
+
+- **Stack overview:** https://github.com/TairuFramework/kigu/blob/main/docs/stack.md
+- **Conventions & development:** the kigu `conventions` and `development` skills (auto-loaded via the kigu plugin)
+- **Architecture:** [agents/architecture.md](./agents/architecture.md)
+- **Planning:** [agents/plans/](./agents/plans/)
+
 ## Overview
 
 Mokei provides a comprehensive framework for building MCP-based applications with AI model integration. It includes libraries for creating MCP servers and clients, a host system for managing multiple server connections, session management for chat with tool calling, and model provider integrations.
@@ -75,4 +84,4 @@ Start here to learn Mokei:
 
 ## Project Planning
 
-- [Roadmap](plans/roadmap.md) - Project vision, completed work, and planned features
+- [Roadmap](agents/plans/roadmap.md) - Project vision, completed work, and planned features
