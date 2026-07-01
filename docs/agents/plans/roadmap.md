@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-06-20
+**Last updated:** 2026-07-01
 
 ## Vision
 
@@ -15,6 +15,10 @@ Streamable HTTP transport shipped as standalone `@mokei/http-client` +
 flat command surface (`chat` / `inspect` / `monitor` / `proxy`): Ink chat UI on
 `@mokei/session` (multi-turn, inline tool-approval, per-tool timeout + cancel),
 commander routing. Replaced oclif + enquirer + ora.
+
+Stack: migrated to the post-split toolchain (PR #35) — `@kigu/dev` build/test
+tooling, the enkaku split (general utilities → `@sozai/*`, RPC/transport core
+stays `@enkaku/*`), and `@tejika/*` CLI/server/UI. ISOLATED pnpm linker.
 
 ## Competitive position
 
@@ -97,6 +101,11 @@ Shipped from this audit (see `completed/`):
   `listModels`/`/model` work unchanged. Gated, out-of-CI `integration-tests/` (real GGUF):
   provider-level (listModels/streaming/tool-call) + PTY-driven CLI e2e. Closed both paired
   backlog items (`cli-chat-llama-wiring`, `llama-provider-follow-ups`).
+- **Stack migration** (`completed/2026-06-22-mokei-stack-migration.complete.md`) — shipped
+  via PR #35 (commit `0a0ea88`). Post-split toolchain: `@kigu/dev`, enkaku split
+  (`@sozai/*` utilities + `@enkaku/*` RPC core), `@tejika/*`. User-facing: CLI socket flag
+  `-s, --path` → `-s, --socket-path`; daemon socket default → `getSocketPath('mokei')`;
+  monitor `--host` dropped (loopback-only); frontend token global `__APP_TOKEN__`.
 
 ## Milestones (milestones/)
 
@@ -109,9 +118,12 @@ Shipped from this audit (see `completed/`):
 
 - **MCP draft — remaining work** (`backlog/2026-06-20-mcp-draft-remaining.md`) —
   consolidated tracker. Groundwork done: G1–G8 + G5 outbound/baggage/inbound + G7 walk depth
-  (G5 inbound via `@enkaku/otel@0.17.1`, enkaku #42). Remaining: G7 part 5 retry (deferred);
+  (G5 inbound via `@sozai/otel`, enkaku #42). Remaining: G7 part 5 retry (deferred);
   additive draft wiring B1–B7 as opt-in coexistence, blocked on draft finalization only.
   No enkaku blockers left.
+- **Stack migration follow-ups** (`backlog/2026-06-22-stack-migration-follow-ups.md`) —
+  two non-blocking tooling gaps: node-pty `spawn-helper` `+x` postinstall (PTY suites fail
+  `posix_spawnp failed` otherwise), and gate the live OpenAI `session.test.ts` on a key.
 - **MCP draft — U1 correlation refactor** — **SHIPPED** (PR #32,
   `completed/2026-06-20-pendingexchange-refactor.complete.md`): `context-rpc`'s `#sentRequests`
   generalized into the `PendingExchange` (resolve-once | streaming) abstraction +
@@ -139,6 +151,6 @@ Shipped from this audit (see `completed/`):
 
 - UI-agnostic core — React/Vue adapters left to consumers (CLI Ink work is
   CLI-local, not a core dependency).
-- `@enkaku/schema` for JSON Schema validation over Zod.
+- `@sozai/schema` for JSON Schema validation over Zod.
 - Provider pattern: `client.ts` + `provider.ts` + `config.ts` + `types.ts`.
 - Streaming via `TransformStream` → `MessagePart<>`.

@@ -58,6 +58,6 @@ Load these files based on your current task:
 
 | Task | Files to read |
 |------|---------------|
-| Planning | `docs/agents/architecture.md`, `docs/agents/enkaku.md` |
-| Implementation | the `conventions` and `development` skills, `docs/agents/enkaku.md` |
+| Planning | `docs/agents/architecture.md`, the `stack-packages` skill |
+| Implementation | the `conventions`, `development`, and `stack-packages` skills |
 | Review | the `conventions` skill, `docs/agents/architecture.md`, the `development` skill |
