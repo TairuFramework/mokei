@@ -4,7 +4,10 @@
 **Opened:** 2026-06-08
 **Branch / PR:** `feat/mcp-spec-update` → PR #23
 **Baseline:** `2025-11-25` (`LATEST_PROTOCOL_VERSION`)
-**Target:** [MCP draft](https://modelcontextprotocol.io/specification/draft/changelog) (post-`2025-11-25`, unreleased)
+**Target:** MCP `2026-07-28` — the former draft, now at **release-candidate** stage with a
+named revision and a release date (July 28, 2026). Schemas still publish under
+`schema/draft/` in the spec repo until finalized. See
+[RC announcement](https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/).
 
 ## Goal
 
@@ -19,6 +22,36 @@ without disruption.
 model resolved — see the **Architecture decision** section below (this milestone is the
 authoritative record). The "hard-cut" framing in Phase 1 is superseded — the B-items become
 additive draft wiring behind a per-context version selector, not removals.
+
+## Status update — SDK v2 evaluation findings (2026-07-02)
+
+The official TypeScript SDK v2 (`2.0.0-beta.2`, the `main` branch) implements the
+`2026-07-28` revision and was evaluated against mokei (decision: keep custom core — see
+`backlog/2026-07-02-mcp-sdk-v2-adoption.md`). Findings that bear on this milestone:
+
+- **The draft has a name and a date.** `2026-07-28`, RC stage, spec release expected
+  July 28, 2026, with SDK v2 stable shipping alongside. "Blocked on draft finalization"
+  is now a ~4-week window, not open-ended.
+- **B-item shapes are now pinnable against a reference implementation.** SDK v2's
+  `core-internal` ships wire codecs for both revisions (`wire/rev2025-11-25/`,
+  `wire/rev2026-07-28/`), the modern-era negotiation (`server/discover`, no `initialize`,
+  per-request `_meta` envelopes — confirms B2/B3 direction), and the MRTR machinery
+  (`InputRequiredResult`, `withInputRequired`, plus a legacy shim — B7). Re-validate
+  B-item payloads against SDK source + final spec before wiring.
+- **Version probe design confirmed.** SDK v2 client uses
+  `versionNegotiation: { mode: 'auto' }` (probe `server/discover`, fall back to
+  `initialize`) or `{ pin: '2026-07-28' }` — same explicit-else-probe shape as this
+  milestone's version-selection design.
+- **Modern-era cancellation** is per-request stream close / `requestSignal`, not
+  `notifications/cancelled` — direct input to the "MRTR continuation lifetime vs
+  cancellation" open question.
+- **Tasks removed from the spec** (SEP-2663) — mokei never implemented them; the SDK
+  keeps the 2025-11-25 task vocabulary as deprecated interop-only types. Nothing to do.
+- **Roots / sampling / logging deprecated** (SEP-2577) — annotation-only, ≥12-month
+  window. Confirms D1–D3 pacing; also a session-layer concern (sampling is load-bearing
+  there) tracked in the adoption backlog item.
+- **Interop test peer available.** SDK v2 can serve as the "live draft peer" that G7
+  part 5 and B-wiring validation have been waiting on.
 
 ## Architecture decision — opt-in coexistence + U1 correlation (2026-06-20)
 
@@ -92,7 +125,9 @@ synthetic frames (no draft method names). Landed via PR #32.
 **Blocked on draft finalization (exact shapes still move):** concrete
 `inputRequest`/`inputResponse` schemas + method names (B7); `server/discover` result schema +
 probe semantics (B3); `subscriptions/listen` framing (B4); per-request `_meta`
-version/identity/caps + version-mismatch error (B2, SEP-2575).
+version/identity/caps + version-mismatch error (B2, SEP-2575). *Update 2026-07-02:* all of
+these now have a reference implementation in SDK v2's `wire/rev2026-07-28/` codecs — shapes
+can be pinned early; finalization expected July 28, 2026 (see the status-update section).
 
 ### Risks
 

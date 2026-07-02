@@ -13,7 +13,9 @@ here.
   `tools/list` and retry the `tools/call`. **Deferred:** no server emits HeaderMismatch
   today (no live draft server), and `-32001` already means `SESSION_EXPIRED_CODE` in mokei
   (`http-client/src/errors.ts`). Revisit only against a live draft peer; pick a
-  non-colliding code then. Self-contained in `@mokei/http-client`.
+  non-colliding code then. Self-contained in `@mokei/http-client`. *Update 2026-07-02:*
+  SDK v2 beta can now serve as the live draft peer (see
+  `2026-07-02-mcp-sdk-v2-adoption.md`, interop tests item).
 
 ### Non-blocking polish (from final review — optional, not gating)
 
@@ -31,6 +33,12 @@ no mokei-side blocker. Not a hard-cut: mokei keeps `2025-11-25` and adds the dra
 second version selected per context (see the milestone's Architecture decision). The
 B-items are additive wiring behind a version selector, not removals. Implementing draft
 payloads before the spec freezes risks rework.
+
+*Update 2026-07-02:* the draft is now the **`2026-07-28` revision at RC stage** —
+finalization expected July 28, 2026, with SDK v2 stable alongside. SDK v2 beta ships wire
+codecs for the revision (`wire/rev2026-07-28/`), so B-item shapes can be pinned against a
+reference implementation ahead of the freeze. Details in the milestone's status-update
+section and `2026-07-02-mcp-sdk-v2-adoption.md`.
 
 Scope, ordered by dependency:
 

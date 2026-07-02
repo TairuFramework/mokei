@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-07-01
+**Last updated:** 2026-07-02
 
 ## Vision
 
@@ -111,16 +111,36 @@ Shipped from this audit (see `completed/`):
 
 - **MCP draft spec migration** (`milestones/2026-06-08-mcp-draft-migration.md`) —
   in progress. Phase 0 groundwork (G1–G4, G6, G7) shipped on `2025-11-25`
-  (PR #23, `feat/mcp-spec-update`). Breaking hard-cut (B1–B7) deferred until the
-  draft finalizes + upstream U1 lands. See backlog entries below.
+  (PR #23, `feat/mcp-spec-update`). Draft wiring (B1–B7, opt-in coexistence) waits on
+  finalization — now dated: the draft is the **`2026-07-28` revision at RC stage**,
+  spec release expected July 28, 2026 (SDK v2 stable alongside). U1 resolved + shipped.
+  See backlog entries below.
 
 ## Near-term (backlog/)
 
 - **MCP draft — remaining work** (`backlog/2026-06-20-mcp-draft-remaining.md`) —
   consolidated tracker. Groundwork done: G1–G8 + G5 outbound/baggage/inbound + G7 walk depth
   (G5 inbound via `@sozai/otel`, enkaku #42). Remaining: G7 part 5 retry (deferred);
-  additive draft wiring B1–B7 as opt-in coexistence, blocked on draft finalization only.
+  additive draft wiring B1–B7 as opt-in coexistence, blocked on draft finalization only —
+  now dated (`2026-07-28` RC; shapes pinnable against SDK v2's wire codecs early).
   No enkaku blockers left.
+- **MCP SDK v2 — selective adoption** (`backlog/2026-07-02-mcp-sdk-v2-adoption.md`) —
+  outcome of the 2026-07-02 SDK v2 evaluation. Decision: keep the custom MCP core
+  (SDK's engine is private/unimportable; Zod hard dep; bespoke typed-client value).
+  Follow-ups: SDK v2 interop tests in `integration-tests/` (doubles as the live draft
+  peer), Standard Schema bridge (consider), sampling-deprecation watch (SEP-2577).
+  OAuth/JWT split out below.
+- **HTTP transport auth — OAuth + JWT** (`backlog/2026-07-02-http-auth-oauth.md`) —
+  client OAuth 2.1 + PKCE for remote MCP servers (wrap SDK v2 `withOAuth` fetch
+  middleware first, native `@kokuin/token` port later), server-side bearer verification +
+  protected-resource metadata for `@mokei/http-server` (hono middleware, not SDK's
+  Express-only helpers), JWT machine auth (SEP-991 grants / `@kokuin/token` DID tokens).
+  Replaces the former P3 "OAuth / auth helpers" line.
+- **MCP 2025-11-25 feature gaps** (`backlog/2026-07-02-mcp-feature-gaps.md`) — from the
+  SDK v2 comparison: client list methods don't follow `nextCursor` (silent first-page
+  truncation against paginating servers — interop bug, highest priority), tool
+  `outputSchema`/`structuredContent` unimplemented (typed but not wired), and
+  `resources/subscribe` types-only (low priority; superseded by B4 in `2026-07-28`).
 - **Stack migration follow-ups** (`backlog/2026-06-22-stack-migration-follow-ups.md`) —
   two non-blocking tooling gaps: node-pty `spawn-helper` `+x` postinstall (PTY suites fail
   `posix_spawnp failed` otherwise), and gate the live OpenAI `session.test.ts` on a key.
@@ -133,7 +153,10 @@ Shipped from this audit (see `completed/`):
 ## Planned — P2
 
 - **Framework middleware** — `@mokei/express`, `@mokei/hono`, `@mokei/fastify`
-  adapters wrapping `@mokei/http-server`.
+  adapters wrapping `@mokei/http-server`. Prior art: SDK v2 ships exactly this trio
+  (`@modelcontextprotocol/express`/`hono`/`fastify`) as "intentionally thin adapters —
+  no new MCP functionality"; same design principle applies. `@mokei/http-server` is
+  already hono-based, so `@mokei/hono` is nearly free.
 - **Tree-shakeable provider exports** — `@mokei/openai-provider/chat`,
   `/embed`, etc.
 - **Enhanced error handling** — retry strategies, circuit breaker for
@@ -141,8 +164,9 @@ Shipped from this audit (see `completed/`):
 
 ## Planned — P3
 
-- OAuth / auth helpers for remote MCP servers.
-- Tool-result caching (deterministic tools).
+- Tool-result caching (deterministic tools) — mokei already emits SEP-2549 cache hints
+  server-side (G1); the client-side consumption half can follow SDK v2's response-cache
+  design (`InMemoryResponseCacheStore` + pluggable store).
 - Context persistence (save/load host config).
 - Google (Gemini) provider.
 - Metrics / telemetry hooks.
@@ -152,5 +176,9 @@ Shipped from this audit (see `completed/`):
 - UI-agnostic core — React/Vue adapters left to consumers (CLI Ink work is
   CLI-local, not a core dependency).
 - `@sozai/schema` for JSON Schema validation over Zod.
+- Custom MCP core over official SDK v2 (2026-07-02 evaluation) — SDK's protocol engine
+  is unimportable (`core-internal` private), Zod is a hard dep, and mokei's typed-client
+  generics + Enkaku transports have no SDK equivalent. Adopt narrowly instead
+  (`backlog/2026-07-02-mcp-sdk-v2-adoption.md`).
 - Provider pattern: `client.ts` + `provider.ts` + `config.ts` + `types.ts`.
 - Streaming via `TransformStream` → `MessagePart<>`.
