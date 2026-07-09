@@ -115,8 +115,8 @@ createPrompt({
 types as `Record<string, unknown>`.
 
 Both are breaking. Roughly 40 `createTool` and 6 `createPrompt` call sites exist,
-all in tests, READMEs, and doc comments; no production source outside
-`definitions.ts` calls them.
+mostly in tests, READMEs, and doc comments. Four are production source:
+`mcp-servers/sqlite/src/index.ts` and `mcp-servers/fetch/src/config.ts`.
 
 ### Typing
 
@@ -257,9 +257,12 @@ structured tool together.
 
 ### Migration
 
-The existing `createTool` / `createPrompt` call sites across `context-server`
-and `host` tests migrate to the object form. Their assertions are unchanged; a
-green suite after migration is the regression signal.
+The existing `createTool` / `createPrompt` call sites across `context-server` and
+`host` tests, plus the four in `mcp-servers/sqlite` and `mcp-servers/fetch`,
+migrate to the object form. Assertions are unchanged; a green suite after
+migration is the regression signal. The two `mcp-servers` packages are the only
+production consumers, so they double as a check that the new signature reads well
+in real code.
 
 ## Release
 
