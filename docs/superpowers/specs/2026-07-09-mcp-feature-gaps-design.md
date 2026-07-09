@@ -2,8 +2,9 @@
 
 **Date:** 2026-07-09
 **Source:** `docs/agents/plans/backlog/2026-07-02-mcp-feature-gaps.md`
-**Scope:** gaps 1 and 2, plus the incidental `resource.ts` typo. Gap 3
-(`resources/subscribe`) stays in the backlog, folded into B4.
+**Scope:** gaps 1 and 2, plus the incidental `resource.ts` typo, plus the
+`SentRequest` → `AbortSignal` refactor the pagination work forced into view. Gap
+3 (`resources/subscribe`) stays in the backlog, folded into B4.
 
 ## Problem
 
@@ -24,6 +25,74 @@ features that `context-protocol` types but no package implements:
    no capability declaration. Deferred — the `2026-07-28` revision replaces this
    surface with `subscriptions/listen` (B4), and no known peer needs the legacy
    form.
+
+## Gap 0 — `SentRequest` → `AbortSignal` (`context-rpc` and consumers)
+
+Not in the original backlog item. The pagination work surfaced it: a walk spans
+N requests, so a `cancel()` that kills one of them is meaningless, and the four
+list methods need an `AbortSignal` instead. Introducing signals alongside
+`SentRequest` would leave `ContextClient` with two cancellation idioms, so the
+old one goes.
+
+### What `SentRequest` is
+
+```ts
+export type SentRequest<Result> = Promise<Result> & { id: number; cancel: () => void }
+```
+
+Both extras are load-bearing only in appearance:
+
+- **`.id`** is read nowhere outside `context-rpc`. Worse, `ContextHost.callLocalTool`
+  (`host/src/host.ts:588`) casts a bare promise to `SentRequest` and attaches only
+  `cancel`, so `.id` is `undefined` there. `callNamespacedTool` returns that for
+  local tools and a genuine `SentRequest` for context tools — the type already lies.
+- **`.cancel()`** is an adapter over a signal. Every layer beneath is already
+  signal-based: `localTool.execute(args, signal)`, `HandlerRequest.signal`, the
+  providers' `AbortSignal.any`. `Session.executeToolCall(toolCall, signal?)`
+  (`session/src/session.ts:387`) converts the signal straight back with
+  `signal.addEventListener('abort', () => request.cancel())`.
+
+`SentRequest` also does not survive `.then()` — the returned promise loses
+`cancel` — which is why `ContextRPC.requestValue` re-attaches it by hand with
+`Object.assign`. That method is dead code: nothing calls it.
+
+### The change
+
+`ContextRPC.request` takes `options.signal` and returns a plain `Promise`:
+
+```ts
+request<Method>(
+  method: Method,
+  params: Params,
+  options?: { signal?: AbortSignal; timeout?: number },
+): Promise<Result>
+```
+
+`SentRequest` is deleted, along with `requestValue`. `_registerStreamExchange`
+returns a `Promise` and takes the same options. Every request-issuing method
+across `context-client`, `context-server`, `host`, and `session` gains an
+optional `signal` and returns `Promise`.
+
+Semantics to preserve, each pinned by an existing test:
+
+- A signal already aborted at call time rejects with `signal.reason` and sends
+  nothing on the wire.
+- Aborting a pending request rejects it and emits `notifications/cancelled`.
+- Aborting an already-settled request emits nothing.
+
+One hazard the old design did not have: an external signal can outlive the
+request it was passed to — a session-scoped signal reused across many tool
+calls. The abort listener must be removed when the request settles, or listeners
+accumulate on that signal for the life of the session.
+
+### Consequences
+
+- `ContextHost.callLocalTool` drops its `SentRequest` cast and its hand-rolled
+  `AbortController`, taking the caller's signal and handing it to
+  `localTool.execute`.
+- `Session.executeToolCall` collapses to a passthrough.
+- `ContextClient.callTool` becomes `async` and can validate `structuredContent`
+  (below) without re-wrapping a promise to preserve `cancel`.
 
 ## Gap 1 — pagination walk (`context-client`)
 
@@ -78,11 +147,10 @@ behaviour change, out of scope here.
 
 ### Breaking change
 
-`listPrompts` / `listResources` / `listResourceTemplates` return `Promise<T>`
-instead of `SentRequest<T>`. `SentRequest` adds `.id` and `.cancel()`, neither of
-which any caller in the repo uses on these methods. `cancel()` could only ever
-have cancelled a single request, which is meaningless once one call spans N
-requests; `options.signal` replaces it and covers the whole walk.
+Subsumed by Gap 0: every request method returns `Promise`. For the list methods
+specifically, `cancel()` could only ever have cancelled a single request, which
+is meaningless once one call spans N requests; `options.signal` covers the whole
+walk, aborting between pages and cancelling the one in flight.
 
 `ContextHost.setup()` needs no change and stops silently truncating.
 
@@ -172,11 +240,15 @@ from every `tools/list` response the client receives — including each page of 
 walk — and cleared on `notifications/tools/list_changed`.
 
 `callTool` validates `structuredContent` against the cached validator for that
-tool name when one exists, throwing
+tool name when one exists, rejecting with
 `StructuredContentValidationError { toolName, issues }` on mismatch. When no
 schema is cached — because `listTools` was never called, or the tool declared
 none — no validation runs and no error is raised. The client never blocks a call
 on knowledge it does not have.
+
+With Gap 0 landed first, `callTool` is a plain `async` method taking
+`options.signal`, so validation is a straight `await` on the response — no
+promise re-wrapping to keep a `cancel` property alive.
 
 ## Typo
 
@@ -198,14 +270,19 @@ Fixing it now removes a trap for whoever implements B4.
 | `StructuredContentValidationError` | `context-client` | received `structuredContent` violates the tool's advertised `outputSchema` |
 | `RPCError(INTERNAL_ERROR)` | `context-server` | a handler's `structuredContent` violates, or is missing against, its declared `outputSchema` |
 
+Cancellation keeps its current behaviour: an aborted request rejects with
+`Error('Cancelled')` from the exchange registry, or with `signal.reason` when the
+signal was already aborted before the call.
+
 The first two are exported from `@mokei/context-client` alongside
 `CapabilityNotDeclaredError` and `UnsupportedProtocolVersionError`. The server
 case reuses `RPCError`, as it must cross the wire as a protocol error.
 
 ## Out of scope
 
-- `host` and `session` are unchanged. `structuredContent` passes through them
-  untouched; surfacing it to the model is a separate design question.
+- Surfacing `structuredContent` to the model. It passes through `host` and
+  `session` untouched; how a provider should render it is a separate question.
+  Those two packages change only for the Gap 0 signature.
 - `resources/subscribe` (gap 3) — folded into B4, per the backlog note.
 - Server-side pagination, i.e. mokei servers cursoring their own lists. Full
   lists are spec-conformant; this is a confirmed non-gap.
@@ -213,6 +290,16 @@ case reuses `RPCError`, as it must cross the wire as a protocol error.
   `docs/agents/plans/backlog/2026-07-02-mcp-sdk-v2-adoption.md`.
 
 ## Testing
+
+### Cancellation via signal
+
+The three existing `context-rpc` cancellation tests convert from `.cancel()` to
+signal aborts, keeping their assertions: an aborted pending request rejects and
+emits `notifications/cancelled`; aborting after settle emits nothing; the opt-in
+`timeout` still rejects with `RequestTimeoutError` and notifies. Two new cases:
+a signal aborted before the call rejects with `signal.reason` and writes nothing
+to the transport, and a settled request removes its abort listener from the
+caller's signal.
 
 ### Client pagination
 
@@ -252,8 +339,15 @@ cannot catch it.
 
 ### End to end
 
-One pass through the real server/client pair exercising a paginating server and a
-structured tool together.
+`ContextServer` never paginates, so a real mokei server cannot exercise the walk.
+Two stdio fixture servers under `packages/host/test/fixtures/` cover the two
+halves through `ContextHost`:
+
+- a `ContextServer` exposing a tool with an `outputSchema`, proving
+  `structuredContent` survives spawn → setup → `callTool` → validation
+- a hand-written raw JSON-RPC server (no `ContextServer`) that paginates
+  `tools/list` across three pages, proving `ContextHost.setup()` now aggregates
+  rather than truncating — the original bug, verified end to end
 
 ### Migration
 
@@ -268,10 +362,15 @@ in real code.
 
 Breaking changes, all in one minor (pre-1.0):
 
-- `@mokei/context-client` — `listPrompts` / `listResources` /
-  `listResourceTemplates` return `Promise` instead of `SentRequest`; all four
-  list methods now aggregate pages by default
+- `@mokei/context-rpc` — `SentRequest` and `requestValue` are removed;
+  `request()` returns `Promise` and takes `options.signal`
+- `@mokei/context-client` / `@mokei/context-server` / `@mokei/host` /
+  `@mokei/session` — every request method returns `Promise` and accepts an
+  optional `signal`, replacing `.cancel()`
+- `@mokei/context-client` — all four list methods aggregate pages by default
 - `@mokei/context-server` — `createTool` and `createPrompt` take a single
   parameters object
 
-A changeset accompanies the branch.
+The repo has no `.changeset/` directory; versions are bumped manually. The
+breaking changes are recorded in the affected packages' READMEs and doc
+comments, and in the completion document at the end of the cycle.
