@@ -9,13 +9,14 @@ import type {
   Log,
   ServerMessage,
 } from '@mokei/context-protocol'
-import { INVALID_PARAMS, LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
+import { INTERNAL_ERROR, INVALID_PARAMS, LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
   ContextServer,
   createPrompt,
   createTool,
+  type GenericToolDefinition,
   type Schema,
   type ServerParams,
 } from '../src/index.js'

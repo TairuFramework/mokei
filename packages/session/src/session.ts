@@ -1,5 +1,4 @@
 import type { CallToolResult } from '@mokei/context-protocol'
-import type { SentRequest } from '@mokei/context-rpc'
 import {
   ContextHost,
   type ContextTool,
@@ -373,18 +372,12 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   executeToolCall<P extends T = T>(
     toolCall: FunctionToolCall<P['ToolCall']>,
     signal?: AbortSignal,
-  ): SentRequest<CallToolResult> {
-    if (signal == null) {
-      return this.#contextHost.callNamespacedTool(toolCall.name, JSON.parse(toolCall.arguments))
-    }
-    if (signal.aborted) {
-      throw signal.reason
-    }
-    const request = this.#contextHost.callNamespacedTool(
+  ): Promise<CallToolResult> {
+    return this.#contextHost.callNamespacedTool(
       toolCall.name,
       JSON.parse(toolCall.arguments),
+      undefined,
+      { signal },
     )
-    signal.addEventListener('abort', () => request.cancel())
-    return request
   }
 }

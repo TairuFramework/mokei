@@ -33,7 +33,7 @@ import {
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
 } from '@mokei/context-protocol'
-import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
+import { ContextRPC, type RequestOptions, RPCError } from '@mokei/context-rpc'
 import { createValidator } from '@sozai/schema'
 
 import { toResourceHandlers } from './definitions.js'
@@ -173,16 +173,22 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this.events.emit('log', { level, data, logger })
   }
 
-  elicit(params: ElicitRequest['params']): SentRequest<ElicitResult> {
-    return this.request('elicitation/create', params)
+  elicit(params: ElicitRequest['params'], options?: RequestOptions): Promise<ElicitResult> {
+    return this.request('elicitation/create', params, options)
   }
 
-  listRoots(params: ListRootsRequest['params'] = {}): SentRequest<ListRootsResult> {
-    return this.request('roots/list', params)
+  listRoots(
+    params: ListRootsRequest['params'] = {},
+    options?: RequestOptions,
+  ): Promise<ListRootsResult> {
+    return this.request('roots/list', params, options)
   }
 
-  createMessage(params: CreateMessageRequest['params']): SentRequest<CreateMessageResult> {
-    return this.request('sampling/createMessage', params)
+  createMessage(
+    params: CreateMessageRequest['params'],
+    options?: RequestOptions,
+  ): Promise<CreateMessageResult> {
+    return this.request('sampling/createMessage', params, options)
   }
 
   _handle() {

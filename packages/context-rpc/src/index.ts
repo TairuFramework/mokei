@@ -11,4 +11,4 @@
  */
 
 export { RequestTimeoutError, RPCError, TransportClosedError } from './error.js'
-export { ContextRPC, type RPCParams, type RPCTypes, type SentRequest } from './rpc.js'
+export { ContextRPC, type RPCParams, type RequestOptions, type RPCTypes } from './rpc.js'

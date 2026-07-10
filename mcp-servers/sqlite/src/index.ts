@@ -40,30 +40,30 @@ export const toolInputSchema = {
  */
 export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
   return {
-    sqlite_all: createTool(
-      'This method executes a prepared statement and returns all results as an array of objects',
-      toolInputSchema,
-      (req) => {
+    sqlite_all: createTool({
+      description: "This method executes a prepared statement and returns all results as an array of objects",
+      inputSchema: toolInputSchema,
+      handler: (req: any) => {
         const results = db.prepare(req.arguments.sql).all(req.arguments.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
       },
-    ),
-    sqlite_get: createTool(
-      'This method executes a prepared statement and returns the first result as an object',
-      toolInputSchema,
-      (req) => {
+    }),
+    sqlite_get: createTool({
+      description: "This method executes a prepared statement and returns the first result as an object",
+      inputSchema: toolInputSchema,
+      handler: (req: any) => {
         const result = db.prepare(req.arguments.sql).get(req.arguments.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
       },
-    ),
-    sqlite_run: createTool(
-      'This method executes a prepared statement and returns an object summarizing the resulting changes',
-      toolInputSchema,
-      (req) => {
+    }),
+    sqlite_run: createTool({
+      description: "This method executes a prepared statement and returns an object summarizing the resulting changes",
+      inputSchema: toolInputSchema,
+      handler: (req: any) => {
         const changes = db.prepare(req.arguments.sql).run(req.arguments.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
       },
-    ),
+    }),
   }
 }
 

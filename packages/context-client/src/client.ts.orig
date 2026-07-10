@@ -45,7 +45,7 @@ import {
   SUPPORTED_PROTOCOL_VERSIONS,
   serverMessage,
 } from '@mokei/context-protocol'
-import { ContextRPC, RequestTimeoutError, type RequestOptions, RPCError } from '@mokei/context-rpc'
+import { ContextRPC, RequestTimeoutError, RPCError, type SentRequest } from '@mokei/context-rpc'
 import { lazy } from '@sozai/async'
 import { createValidator, type Schema, type Validator } from '@sozai/schema'
 
@@ -214,8 +214,8 @@ export class ContextClient<
   request<Method extends keyof ClientTypes['SendRequests']>(
     method: Method,
     params: ClientTypes['SendRequests'][Method]['Params'],
-    options?: RequestOptions,
-  ): Promise<ClientTypes['SendRequests'][Method]['Result']> {
+    options?: { timeout?: number },
+  ): SentRequest<ClientTypes['SendRequests'][Method]['Result']> {
     const trace = currentTraceMeta()
     if (trace.traceparent == null) {
       return super.request(method, params, options)
@@ -385,41 +385,45 @@ export class ContextClient<
     return await this.request('completion/complete', params)
   }
 
-  listPrompts(params: ListPromptsRequest['params'] = {}): Promise<ListPromptsResult> {
+  listPrompts(params: ListPromptsRequest['params'] = {}): SentRequest<ListPromptsResult> {
     return this.request('prompts/list', params)
   }
 
-  getPrompt(
-    params: PromptParams<T>,
-    options?: RequestOptions,
-  ): Promise<GetPromptResult> {
-    return this.request('prompts/get', params as GetPromptRequest['params'], options)
+  getPrompt(params: PromptParams<T>): SentRequest<GetPromptResult> {
+    return this.request('prompts/get', params as GetPromptRequest['params'])
   }
 
-  listResources(params: ListResourcesRequest['params'] = {}): Promise<ListResourcesResult> {
+  listResources(params: ListResourcesRequest['params'] = {}): SentRequest<ListResourcesResult> {
     return this.request('resources/list', params)
   }
 
   listResourceTemplates(
     params: ListResourceTemplatesRequest['params'] = {},
-  ): Promise<ListResourceTemplatesResult> {
+  ): SentRequest<ListResourceTemplatesResult> {
     return this.request('resources/templates/list', params)
   }
 
-  readResource(
-    params: ReadResourceRequest['params'],
-    options?: RequestOptions,
-  ): Promise<ReadResourceResult> {
-    return this.request('resources/read', params, options)
+  readResource(params: ReadResourceRequest['params']): SentRequest<ReadResourceResult> {
+    return this.request('resources/read', params)
   }
 
   async listTools(params: ListToolsRequest['params'] = {}): Promise<ListToolsResult> {
     await this.#initialized
     this.#requireServerCapability('tools')
-    return await this.request('tools/list', params)
-  }
+    
+    // Cache validators for tools with output schemas
+    for (const tool of result.tools) {
+      if (tool.outputSchema != null) {
+        const validator = createValidator(tool.outputSchema as Schema, {
+          draft: inferSchemaDraft(tool.outputSchema as Schema),
+          strict: false,
+        })
+        this.#toolOutputSchemas.set(tool.name, validator)
+      }
+    }
+    return result  }
 
-  callTool(params: ToolParams<T>, options?: RequestOptions): Promise<CallToolResult> {
-    return this.request('tools/call', params as CallToolRequest['params'], options)
+  callTool(params: ToolParams<T>): SentRequest<CallToolResult> {
+    return this.request('tools/call', params as CallToolRequest['params'])
   }
 }

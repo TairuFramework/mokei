@@ -23,8 +23,9 @@ import type {
   ResourceTemplate,
   ServerMessage,
   InputSchema as ToolInputSchema,
+  OutputSchema as ToolOutputSchema,
 } from '@mokei/context-protocol'
-import type { SentRequest } from '@mokei/context-rpc'
+import type { RequestOptions } from '@mokei/context-rpc'
 import type { FromSchema, Schema } from '@sozai/schema'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
@@ -34,9 +35,15 @@ export type ClientInitialize = InitializeRequest['params']
 export type LogFunction = (level: LoggingLevel, data: unknown, logger?: string) => void
 
 export type ServerClient = {
-  createMessage: (params: CreateMessageRequest['params']) => SentRequest<CreateMessageResult>
-  elicit: (params: ElicitRequest['params']) => SentRequest<ElicitResult>
-  listRoots: (params?: ListRootsRequest['params']) => SentRequest<ListRootsResult>
+  createMessage: (
+    params: CreateMessageRequest['params'],
+    options?: RequestOptions,
+  ) => Promise<CreateMessageResult>
+  elicit: (params: ElicitRequest['params'], options?: RequestOptions) => Promise<ElicitResult>
+  listRoots: (
+    params?: ListRootsRequest['params'],
+    options?: RequestOptions,
+  ) => Promise<ListRootsResult>
   log: LogFunction
 }
 
@@ -106,23 +113,30 @@ export type ResourceHandlers = {
 
 export type ToolHandlerReturn = CallToolResult | Promise<CallToolResult>
 
+export type StructuredToolHandlerReturn<Output> = Omit<CallToolResult, 'content'> & {
+  content?: CallToolResult['content']
+  structuredContent: Output
+}
+
 export type GenericToolHandler = (
   request: HandlerRequest<{ arguments: Record<string, unknown> }>,
 ) => ToolHandlerReturn
 
-export type TypedToolHandler<Arguments> = (
+export type TypedToolHandler<Arguments, Output = unknown> = (
   request: HandlerRequest<{ arguments: Arguments }>,
 ) => ToolHandlerReturn
 
 export type GenericToolDefinition = {
   description: string
   inputSchema: ToolInputSchema
+  outputSchema?: ToolOutputSchema
   handler: GenericToolHandler
 }
 
 export type TypedToolDefinition<InputSchema extends Schema & ToolInputSchema> = {
   description: string
   inputSchema: InputSchema
+  outputSchema?: ToolOutputSchema
   handler: TypedToolHandler<FromSchema<InputSchema>>
 }
 

@@ -16,7 +16,7 @@ import type {
   ServerMessage,
   Tool,
 } from '@mokei/context-protocol'
-import type { SentRequest } from '@mokei/context-rpc'
+import type { RequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
 import { type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
 import { Disposer } from '@sozai/async'
@@ -534,61 +534,56 @@ export class ContextHost extends Disposer {
   getPrompt<T extends ContextTypes = UnknownContextTypes>(
     key: string,
     params: PromptParams<T>,
-  ): SentRequest<GetPromptResult> {
-    return this.getContext<T>(key).client.getPrompt(params)
+    options?: RequestOptions,
+  ): Promise<GetPromptResult> {
+    return this.getContext<T>(key).client.getPrompt(params, options)
   }
 
   callTool<T extends ContextTypes = UnknownContextTypes>(
     key: string,
     params: ToolParams<T>,
-  ): SentRequest<CallToolResult> {
-    return this.getContext<T>(key).client.callTool(params)
+    options?: RequestOptions,
+  ): Promise<CallToolResult> {
+    return this.getContext<T>(key).client.callTool(params, options)
   }
 
   callNamespacedTool(
     id: string,
     args: Record<string, unknown> = {},
     metadata?: Metadata,
-  ): SentRequest<CallToolResult> {
+    options?: RequestOptions,
+  ): Promise<CallToolResult> {
     // Check if this is a local tool
     if (isLocalToolID(id)) {
-      return this.callLocalTool(getLocalToolName(id), args)
+      return this.callLocalTool(getLocalToolName(id), args, options)
     }
 
     const [key, name] = getContextToolInfo(id)
-    return this.callTool(key, { name, arguments: args, _meta: metadata })
+    return this.callTool(key, { name, arguments: args, _meta: metadata }, options)
   }
 
-  /**
-   * Call a local tool by name.
-   * Returns a SentRequest-like object for consistency with context tool calls.
-   */
-  callLocalTool(name: string, args: Record<string, unknown> = {}): SentRequest<CallToolResult> {
+  /** Call a local tool by name. */
+  async callLocalTool(
+    name: string,
+    args: Record<string, unknown> = {},
+    options?: RequestOptions,
+  ): Promise<CallToolResult> {
     const localTool = this._localTools.get(name)
     if (localTool == null) {
       throw new Error(`Local tool "${name}" does not exist`)
     }
-
-    const controller = new AbortController()
-    const promise = Promise.resolve().then(async () => {
-      if (controller.signal.aborted) {
-        throw new Error('Request cancelled')
-      }
-      try {
-        return await localTool.execute(args, controller.signal)
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        return {
-          content: [{ type: 'text' as const, text: errorMessage }],
-          isError: true,
-        }
-      }
-    })
-
-    const request = promise as SentRequest<CallToolResult>
-    request.cancel = () => {
-      controller.abort()
+    if (options?.signal?.aborted) {
+      throw options.signal.reason
     }
-    return request
+
+    try {
+      return await localTool.execute(args, options?.signal)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      return {
+        content: [{ type: 'text' as const, text: errorMessage }],
+        isError: true,
+      }
+    }
   }
 }

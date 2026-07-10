@@ -36,19 +36,18 @@ describe('ContextRPC transport lifecycle', () => {
     await transports.dispose()
   })
 
-  test('resolves a request on response and sends no cancel afterwards', async () => {
+  test('aborting an already-settled request does not notify cancellation', async () => {
     const transports = new DirectTransports<AnyMessage, AnyMessage>()
     const rpc = makeRPC(transports.client)
     rpc._handle()
     const notifySpy = vi.spyOn(rpc, 'notify')
+    const controller = new AbortController()
 
-    const pending = rpc.request('tools/list', {})
-    // Reply from the server side; request id starts at 0.
+    const pending = rpc.request('tools/list', {}, { signal: controller.signal })
     await transports.server.write({ jsonrpc: '2.0', id: 0, result: { tools: [] } } as AnyMessage)
     await expect(pending).resolves.toEqual({ tools: [] })
 
-    // Cancelling an already-settled request must NOT emit notifications/cancelled.
-    pending.cancel()
+    controller.abort()
     await Promise.resolve()
     expect(notifySpy).not.toHaveBeenCalled()
 
@@ -70,16 +69,52 @@ describe('ContextRPC transport lifecycle', () => {
     await transports.dispose()
   })
 
-  test('cancel() on a pending request rejects it and notifies cancellation', async () => {
+  test('aborting a pending request rejects it and notifies cancellation', async () => {
     const transports = new DirectTransports<AnyMessage, AnyMessage>()
     const rpc = makeRPC(transports.client)
     rpc._handle()
     const notifySpy = vi.spyOn(rpc, 'notify')
+    const controller = new AbortController()
 
-    const pending = rpc.request('tools/list', {})
-    pending.cancel()
+    const pending = rpc.request('tools/list', {}, { signal: controller.signal })
+    controller.abort()
     await expect(pending).rejects.toThrow('Cancelled')
     expect(notifySpy).toHaveBeenCalledWith('cancelled', { requestId: 0 })
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('a signal aborted before the call rejects and writes nothing', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = makeRPC(transports.client)
+    rpc._handle()
+    const writeSpy = vi.spyOn(rpc, '_write')
+
+    const reason = new Error('too late')
+    const pending = rpc.request('tools/list', {}, { signal: AbortSignal.abort(reason) })
+
+    await expect(pending).rejects.toBe(reason)
+    expect(writeSpy).not.toHaveBeenCalled()
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('a settled request removes its abort listener from the caller signal', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = makeRPC(transports.client)
+    rpc._handle()
+    const controller = new AbortController()
+    const removeSpy = vi.spyOn(controller.signal, 'removeEventListener')
+
+    const pending = rpc.request('tools/list', {}, { signal: controller.signal })
+    await transports.server.write({ jsonrpc: '2.0', id: 0, result: { tools: [] } } as AnyMessage)
+    await pending
+    // Give the settle callback a turn.
+    await Promise.resolve()
+
+    expect(removeSpy).toHaveBeenCalled()
 
     await rpc.dispose()
     await transports.dispose()

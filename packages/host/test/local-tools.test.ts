@@ -553,10 +553,11 @@ describe('toolToLocalTool cancellation', () => {
 
     host.addLocalTool(toolToLocalTool('waiter', serverTool))
 
-    const request = host.callLocalTool('waiter', {})
+    const controller = new AbortController()
+    const request = host.callLocalTool('waiter', {}, { signal: controller.signal })
     // Let the handler start and subscribe to the signal.
     await new Promise((resolve) => setTimeout(resolve, 10))
-    request.cancel()
+    controller.abort()
     await request
 
     expect(observedAbort).toBe(true)
@@ -583,10 +584,11 @@ describe('callLocalTool cancellation', () => {
       },
     })
 
-    const request = host.callLocalTool('waiter', {})
+    const controller = new AbortController()
+    const request = host.callLocalTool('waiter', {}, { signal: controller.signal })
     // Let execute start and subscribe to the signal.
     await new Promise((resolve) => setTimeout(resolve, 10))
-    request.cancel()
+    controller.abort()
     await request
 
     expect(observedAbort).toBe(true)

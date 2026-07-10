@@ -12,7 +12,7 @@
 
 export type { Schema } from '@sozai/schema'
 
-export { createPrompt, createTool } from './definitions.js'
+export { createPrompt, createTool, type CreateToolParams } from './definitions.js'
 export {
   ContextServer,
   type ServerConfig,
@@ -24,5 +24,6 @@ export type {
   ExtractPromptTypes,
   ExtractServerTypes,
   ExtractToolTypes,
+  StructuredToolHandlerReturn,
 } from './types.js'
 export * from './types.js'
