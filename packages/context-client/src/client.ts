@@ -45,7 +45,7 @@ import {
   SUPPORTED_PROTOCOL_VERSIONS,
   serverMessage,
 } from '@mokei/context-protocol'
-import { ContextRPC, RequestTimeoutError, type RequestOptions, RPCError } from '@mokei/context-rpc'
+import { ContextRPC, type RequestOptions, RequestTimeoutError, RPCError } from '@mokei/context-rpc'
 import { lazy } from '@sozai/async'
 import { createValidator, type Schema, type Validator } from '@sozai/schema'
 
@@ -389,10 +389,7 @@ export class ContextClient<
     return this.request('prompts/list', params)
   }
 
-  getPrompt(
-    params: PromptParams<T>,
-    options?: RequestOptions,
-  ): Promise<GetPromptResult> {
+  getPrompt(params: PromptParams<T>, options?: RequestOptions): Promise<GetPromptResult> {
     return this.request('prompts/get', params as GetPromptRequest['params'], options)
   }
 

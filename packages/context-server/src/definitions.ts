@@ -1,8 +1,8 @@
 import {
+  type CallToolResult,
   INTERNAL_ERROR,
   INVALID_PARAMS,
   inferSchemaDraft,
-  type CallToolResult,
   type InputSchema as ToolInputSchema,
   type OutputSchema as ToolOutputSchema,
 } from '@mokei/context-protocol'
@@ -57,14 +57,21 @@ export type CreateToolParams<
   handler: any
 }
 
-export function createTool<InputSchema extends Schema, OutputSchema extends Schema | undefined = undefined>(params: CreateToolParams<InputSchema, OutputSchema> | string, inputSchema?: InputSchema, handler?: any): GenericToolDefinition {
+export function createTool<
+  InputSchema extends Schema,
+  OutputSchema extends Schema | undefined = undefined,
+>(
+  params: CreateToolParams<InputSchema, OutputSchema> | string,
+  inputSchema?: InputSchema,
+  handler?: any,
+): GenericToolDefinition {
   let description: string
   let inputSch: InputSchema
   let handlerFn: any
   let outputSchema: Schema | undefined
 
   // Support both calling conventions
-  if (typeof params === "string") {
+  if (typeof params === 'string') {
     description = params
     inputSch = inputSchema!
     handlerFn = handler

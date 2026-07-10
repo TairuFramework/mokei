@@ -271,11 +271,12 @@ describe('ContextHost Local Tools', () => {
       expect(result.content[0]).toEqual({ type: 'text', text: 'Something went wrong' })
     })
 
-    test('throws for non-existent tool', () => {
+    test('throws for non-existent tool', async () => {
       const host = new ContextHost()
 
-      // The error is thrown synchronously before the promise is created
-      expect(() => host.callLocalTool('nonexistent', {})).toThrow(
+      // callLocalTool is now async: the missing-tool error rejects the promise
+      // rather than throwing synchronously.
+      await expect(host.callLocalTool('nonexistent', {})).rejects.toThrow(
         'Local tool "nonexistent" does not exist',
       )
     })

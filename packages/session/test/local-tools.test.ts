@@ -150,7 +150,8 @@ describe('Session Local Tools', () => {
         raw: {},
       })
 
-      expect(executeFn).toHaveBeenCalledWith({ input: 'hello' }, expect.any(AbortSignal))
+      // No signal was passed to executeToolCall, so none is forwarded to execute.
+      expect(executeFn).toHaveBeenCalledWith({ input: 'hello' }, undefined)
       expect(result.content).toEqual([{ type: 'text', text: 'executed!' }])
     })
 

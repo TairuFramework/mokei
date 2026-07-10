@@ -12,7 +12,7 @@
 
 export type { Schema } from '@sozai/schema'
 
-export { createPrompt, createTool, type CreateToolParams } from './definitions.js'
+export { type CreateToolParams, createPrompt, createTool } from './definitions.js'
 export {
   ContextServer,
   type ServerConfig,
