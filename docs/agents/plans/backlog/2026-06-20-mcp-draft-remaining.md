@@ -54,6 +54,13 @@ Scope, ordered by dependency:
    `context-rpc`. Depends on U1 + B2.
 7. **B4** `subscriptions/listen` replaces GET endpoint + `resources/subscribe` (SEP-2575).
    Rewrite HTTP server/client streaming. Depends on U1; parallel with B7.
+   **Legacy-side `resources/subscribe` (folded from the retired `2026-07-02-mcp-feature-gaps.md`,
+   gap 3):** the `2025-11-25` protocol types exist (`subscribeRequest` / `unsubscribeRequest` /
+   `resourceUpdatedNotification` in `context-protocol/src/resource.ts`) but there are no client
+   methods, no server dispatch, and no `resources.subscribe` capability declaration. Since mokei
+   keeps `2025-11-25` per the coexistence decision, a legacy peer may still expect this surface.
+   Implement it as the legacy-side branch of B4 only if a real peer needs it. (The
+   `UnsubscribeRequest` alias typo that item flagged is already fixed, `d82dc9c`.)
 8. **D1–D3** apply deprecation handling (Roots/Sampling/Logging; HTTP+SSE transport;
    `includeContext`) as the above land.
 

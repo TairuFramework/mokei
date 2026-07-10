@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Stage:** executing
+**Stage:** reviewing
 
 **Goal:** Replace `SentRequest` with `AbortSignal` injection, make `ContextClient` follow `nextCursor` when listing, give tools an `outputSchema` with validated `structuredContent` on both sides, and fix the `UnsubscribeRequest` type alias.
 
