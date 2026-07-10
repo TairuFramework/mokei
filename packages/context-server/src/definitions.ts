@@ -9,6 +9,14 @@ import {
 import { RPCError } from '@mokei/context-rpc'
 import { createValidator, type FromSchema, type Schema } from '@sozai/schema'
 
+/**
+ * A tool handler's `structuredContent` violated (or was absent against) its
+ * declared `outputSchema`. This is the server author's own contract breach, not
+ * a tool telling the model it failed, so `ContextServer` lets it cross the wire
+ * as a JSON-RPC error rather than converting it to an `isError` result.
+ */
+export class ToolOutputValidationError extends RPCError {}
+
 import type {
   GenericPromptDefinition,
   GenericToolDefinition,
@@ -101,13 +109,13 @@ export function createTool<
       return result
     }
     if (result.structuredContent == null) {
-      throw new RPCError(INTERNAL_ERROR, 'Invalid tool output', {
+      throw new ToolOutputValidationError(INTERNAL_ERROR, 'Invalid tool output', {
         issues: [{ message: 'Tool declares an outputSchema but returned no structuredContent' }],
       })
     }
     const validated = validateOutput(result.structuredContent)
     if (validated.issues != null) {
-      throw new RPCError(INTERNAL_ERROR, 'Invalid tool output', {
+      throw new ToolOutputValidationError(INTERNAL_ERROR, 'Invalid tool output', {
         issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
       })
     }

@@ -36,7 +36,7 @@ import {
 import { ContextRPC, type RequestOptions, RPCError } from '@mokei/context-rpc'
 import { createValidator } from '@sozai/schema'
 
-import { toResourceHandlers } from './definitions.js'
+import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
 import { withRequestMeta } from './trace.js'
 import type {
   ClientInitialize,
@@ -294,6 +294,12 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       // inside the result so the model can see and self-correct, not as
       // protocol errors. Re-throw genuine cancellation.
       if (signal.aborted) {
+        throw cause
+      }
+      // An outputSchema violation is the server author's own contract breach,
+      // not a tool failure, so it must cross the wire as a JSON-RPC error
+      // rather than be hidden in an isError result.
+      if (cause instanceof ToolOutputValidationError) {
         throw cause
       }
       const message = cause instanceof Error ? cause.message : String(cause)

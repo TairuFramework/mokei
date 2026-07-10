@@ -810,6 +810,63 @@ describe('ContextServer', () => {
       expect(res.value).toMatchObject({ id: 1, error: { code: INVALID_PARAMS } })
       await transports.dispose()
     })
+
+    // An outputSchema violation is the server author's own contract breach, not a
+    // tool telling the model it failed, so it must cross the wire as a JSON-RPC
+    // INTERNAL_ERROR rather than be swallowed into an isError result.
+    const countSchema = {
+      type: 'object',
+      properties: { count: { type: 'number' } },
+      required: ['count'],
+    } as const
+
+    test('a structuredContent violation crosses the wire as INTERNAL_ERROR', async () => {
+      const { transports } = createTestContext({
+        tools: {
+          counter: createTool({
+            description: 'counts',
+            inputSchema: { type: 'object' } as const,
+            outputSchema: countSchema,
+            handler: () => ({ structuredContent: { count: 'three' } }) as never,
+          }),
+        },
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'counter', arguments: {} },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({
+        id: 1,
+        error: { code: INTERNAL_ERROR, message: 'Invalid tool output' },
+      })
+      expect((res.value as { result?: unknown }).result).toBeUndefined()
+      await transports.dispose()
+    })
+
+    test('a missing structuredContent crosses the wire as INTERNAL_ERROR', async () => {
+      const { transports } = createTestContext({
+        tools: {
+          counter: createTool({
+            description: 'counts',
+            inputSchema: { type: 'object' } as const,
+            outputSchema: countSchema,
+            handler: () => ({ content: [] }) as never,
+          }),
+        },
+      })
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'counter', arguments: {} },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      expect(res.value).toMatchObject({ id: 1, error: { code: INTERNAL_ERROR } })
+      await transports.dispose()
+    })
   })
 
   describe('JSON Schema 2020-12 tool input', () => {

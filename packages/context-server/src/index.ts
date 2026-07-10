@@ -17,6 +17,7 @@ export {
   type CreateToolParams,
   createPrompt,
   createTool,
+  ToolOutputValidationError,
 } from './definitions.js'
 export {
   ContextServer,
