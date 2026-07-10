@@ -9,13 +9,14 @@ import type {
   Log,
   ServerMessage,
 } from '@mokei/context-protocol'
-import { INVALID_PARAMS, LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
+import { INTERNAL_ERROR, INVALID_PARAMS, LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
   ContextServer,
   createPrompt,
   createTool,
+  type GenericToolDefinition,
   type Schema,
   type ServerParams,
 } from '../src/index.js'
@@ -1078,5 +1079,121 @@ describe('factory parameters object', () => {
       signal: new AbortController().signal,
     })
     expect(result).toEqual({ messages: [] })
+  })
+})
+
+describe('tool outputSchema', () => {
+  const countSchema = {
+    type: 'object',
+    properties: { count: { type: 'number' } },
+    required: ['count'],
+  } as const
+
+  function callHandler(definition: GenericToolDefinition, args: Record<string, unknown> = {}) {
+    return definition.handler({
+      arguments: args,
+      client: {} as never,
+      signal: new AbortController().signal,
+    })
+  }
+
+  test('outputSchema is advertised in tools/list', async () => {
+    const { transports } = createTestContext({
+      tools: {
+        counter: createTool({
+          description: 'counts',
+          inputSchema: { type: 'object' } as const,
+          outputSchema: countSchema,
+          handler: () => ({ structuredContent: { count: 1 } }),
+        }),
+      },
+    })
+    transports.client.write({ jsonrpc: '2.0', id: 1, method: 'tools/list' } as ClientRequest)
+    const response = await transports.client.read()
+    expect(response.value).toMatchObject({
+      id: 1,
+      result: { tools: [{ name: 'counter', outputSchema: countSchema }] },
+    })
+    await transports.dispose()
+  })
+
+  test('a conforming structuredContent passes through', async () => {
+    const definition = createTool({
+      description: 'counts',
+      inputSchema: { type: 'object' } as const,
+      outputSchema: countSchema,
+      handler: () => ({
+        content: [{ type: 'text', text: 'three' }],
+        structuredContent: { count: 3 },
+      }),
+    })
+    await expect(callHandler(definition)).resolves.toEqual({
+      content: [{ type: 'text', text: 'three' }],
+      structuredContent: { count: 3 },
+    })
+  })
+
+  test('a violating structuredContent raises INTERNAL_ERROR with issues', async () => {
+    const definition = createTool({
+      description: 'counts',
+      inputSchema: { type: 'object' } as const,
+      outputSchema: countSchema,
+      handler: () => ({ structuredContent: { count: 'three' } }) as never,
+    })
+    await expect(callHandler(definition)).rejects.toMatchObject({
+      code: INTERNAL_ERROR,
+      message: 'Invalid tool output',
+    })
+  })
+
+  test('a missing structuredContent against a declared schema raises INTERNAL_ERROR', async () => {
+    const definition = createTool({
+      description: 'counts',
+      inputSchema: { type: 'object' } as const,
+      outputSchema: countSchema,
+      handler: () => ({ content: [] }) as never,
+    })
+    await expect(callHandler(definition)).rejects.toMatchObject({ code: INTERNAL_ERROR })
+  })
+
+  test('content is auto-filled from structuredContent when omitted', async () => {
+    const definition = createTool({
+      description: 'counts',
+      inputSchema: { type: 'object' } as const,
+      outputSchema: countSchema,
+      handler: () => ({ structuredContent: { count: 3 } }),
+    })
+    await expect(callHandler(definition)).resolves.toEqual({
+      content: [{ type: 'text', text: '{"count":3}' }],
+      structuredContent: { count: 3 },
+    })
+  })
+
+  test('a handler-supplied content is preserved', async () => {
+    const definition = createTool({
+      description: 'counts',
+      inputSchema: { type: 'object' } as const,
+      outputSchema: countSchema,
+      handler: () => ({
+        content: [{ type: 'text', text: 'three things' }],
+        structuredContent: { count: 3 },
+      }),
+    })
+    await expect(callHandler(definition)).resolves.toEqual({
+      content: [{ type: 'text', text: 'three things' }],
+      structuredContent: { count: 3 },
+    })
+  })
+
+  test('a tool without an outputSchema is unaffected', async () => {
+    const definition = createTool({
+      description: 'plain',
+      inputSchema: { type: 'object' } as const,
+      handler: () => ({ content: [{ type: 'text', text: 'ok' }] }),
+    })
+    expect(definition.outputSchema).toBeUndefined()
+    await expect(callHandler(definition)).resolves.toEqual({
+      content: [{ type: 'text', text: 'ok' }],
+    })
   })
 })

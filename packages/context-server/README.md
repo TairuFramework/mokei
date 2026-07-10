@@ -34,6 +34,30 @@ serveProcess({
 })
 ```
 
+### Structured tool output
+
+Declare an `outputSchema` and the tool advertises it in `tools/list`, validates
+its own `structuredContent`, and serializes that into a text `content` block for
+clients that don't read structured results:
+
+```ts
+const tools = {
+  count: createTool({
+    description: 'Count the matching rows',
+    inputSchema: { type: 'object', properties: { table: { type: 'string' } } } as const,
+    outputSchema: {
+      type: 'object',
+      properties: { count: { type: 'number' } },
+      required: ['count'],
+    } as const,
+    handler: ({ arguments: { table } }) => ({ structuredContent: { count: rowsIn(table) } }),
+  }),
+}
+```
+
+A handler that returns `structuredContent` violating its `outputSchema` — or
+omits it entirely — raises an `INTERNAL_ERROR` back to the client.
+
 ## Type-Safe Client Integration
 
 The `@mokei/context-server` package provides utilities to extract TypeScript types from your server configuration, enabling type-safe client usage.
