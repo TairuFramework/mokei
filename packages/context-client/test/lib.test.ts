@@ -22,6 +22,7 @@ import {
   CapabilityNotDeclaredError,
   type ClientParams,
   ContextClient,
+  ListMaxPagesError,
   UnsupportedProtocolVersionError,
 } from '../src/index.js'
 
@@ -75,6 +76,43 @@ async function executeClientRequest<T>(
   transports.server.write({ jsonrpc: '2.0', id: 1, result } as ServerMessage)
 
   return request
+}
+
+type Page = { result: Record<string, unknown> }
+
+/**
+ * Drives a client list call against a server that answers `pages` in order.
+ * Returns the pending result plus the params of every request the server saw,
+ * so a test can assert the cursor was threaded through.
+ */
+async function runListWalk<T>(
+  runRequest: (client: ContextClient) => Promise<T>,
+  pages: Array<Page>,
+  clientParams: Omit<ClientParams, 'transport'> = {},
+): Promise<{ result: Promise<T>; requests: Array<Record<string, unknown>> }> {
+  const transports = new DirectTransports<ServerMessage, ClientMessage>()
+  const client = new ContextClient({ ...clientParams, transport: transports.client })
+
+  client.initialize()
+  await handleServerInitialize(transports.server, {
+    ...DEFAULT_INITIALIZE_RESULT,
+    capabilities: { tools: {} },
+  })
+
+  const result = runRequest(client)
+  const requests: Array<Record<string, unknown>> = []
+
+  for (const page of pages) {
+    const incoming = await transports.server.read()
+    if (incoming.done) {
+      break
+    }
+    const request = incoming.value as { id: number; params: Record<string, unknown> }
+    requests.push(request.params)
+    transports.server.write({ jsonrpc: '2.0', id: request.id, result: page.result } as ServerMessage)
+  }
+
+  return { result, requests }
 }
 
 async function expectClientResponse(
@@ -504,6 +542,115 @@ describe('capability gating', () => {
     await expect(client.listTools()).rejects.toThrow(CapabilityNotDeclaredError)
 
     await transports.dispose()
+  })
+})
+
+describe('list pagination', () => {
+  const toolA = { name: 'a', inputSchema: { type: 'object' } }
+  const toolB = { name: 'b', inputSchema: { type: 'object' } }
+  const toolC = { name: 'c', inputSchema: { type: 'object' } }
+
+  test('walks every page and returns one aggregate without nextCursor', async () => {
+    const { result, requests } = await runListWalk((client) => client.listTools(), [
+      { result: { tools: [toolA], nextCursor: 'c1' } },
+      { result: { tools: [toolB], nextCursor: 'c2' } },
+      { result: { tools: [toolC] } },
+    ])
+
+    await expect(result).resolves.toEqual({ tools: [toolA, toolB, toolC] })
+    expect(requests).toEqual([{}, { cursor: 'c1' }, { cursor: 'c2' }])
+  })
+
+  test('an explicit cursor issues one request and preserves nextCursor', async () => {
+    const { result, requests } = await runListWalk((client) => client.listTools({ cursor: 'c1' }), [
+      { result: { tools: [toolB], nextCursor: 'c2' } },
+    ])
+
+    await expect(result).resolves.toEqual({ tools: [toolB], nextCursor: 'c2' })
+    expect(requests).toEqual([{ cursor: 'c1' }])
+  })
+
+  test('throws ListMaxPagesError with partial results when the cap is exceeded', async () => {
+    const { result } = await runListWalk((client) => client.listTools({}, { maxPages: 2 }), [
+      { result: { tools: [toolA], nextCursor: 'c1' } },
+      { result: { tools: [toolB], nextCursor: 'c2' } },
+    ])
+
+    await expect(result).rejects.toThrow(ListMaxPagesError)
+    await result.catch((error: unknown) => {
+      const listError = error as ListMaxPagesError
+      expect(listError.method).toBe('tools/list')
+      expect(listError.pages).toBe(2)
+      expect(listError.cursor).toBe('c2')
+      expect(listError.results).toEqual([toolA, toolB])
+    })
+  })
+
+  test('a server echoing an unchanging cursor terminates at the cap', async () => {
+    const page = { result: { tools: [toolA], nextCursor: 'same' } }
+    const { result } = await runListWalk((client) => client.listTools({}, { maxPages: 3 }), [
+      page,
+      page,
+      page,
+    ])
+    await expect(result).rejects.toThrow(ListMaxPagesError)
+  })
+
+  test('listMaxPages on ClientParams supplies the default cap', async () => {
+    const page = { result: { tools: [toolA], nextCursor: 'same' } }
+    const { result } = await runListWalk((client) => client.listTools(), [page], {
+      listMaxPages: 1,
+    })
+    await expect(result).rejects.toThrow(ListMaxPagesError)
+  })
+
+  test('an aborted signal rejects the walk in progress', async () => {
+    const controller = new AbortController()
+    const { result } = await runListWalk(
+      (client) => client.listTools({}, { signal: controller.signal }),
+      [{ result: { tools: [], nextCursor: 'c1' } }],
+    )
+    controller.abort()
+    await expect(result).rejects.toThrow()
+  })
+
+  test('listPrompts walks pages', async () => {
+    const { result } = await runListWalk((client) => client.listPrompts(), [
+      { result: { prompts: [{ name: 'a' }], nextCursor: 'c1' } },
+      { result: { prompts: [{ name: 'b' }] } },
+    ])
+    await expect(result).resolves.toEqual({ prompts: [{ name: 'a' }, { name: 'b' }] })
+  })
+
+  test('listResources walks pages', async () => {
+    const { result } = await runListWalk((client) => client.listResources(), [
+      { result: { resources: [{ name: 'a', uri: 'test://a' }], nextCursor: 'c1' } },
+      { result: { resources: [{ name: 'b', uri: 'test://b' }] } },
+    ])
+    await expect(result).resolves.toEqual({
+      resources: [
+        { name: 'a', uri: 'test://a' },
+        { name: 'b', uri: 'test://b' },
+      ],
+    })
+  })
+
+  test('listResourceTemplates walks pages', async () => {
+    const { result } = await runListWalk((client) => client.listResourceTemplates(), [
+      {
+        result: {
+          resourceTemplates: [{ name: 'a', uriTemplate: 'test://a/{x}' }],
+          nextCursor: 'c1',
+        },
+      },
+      { result: { resourceTemplates: [{ name: 'b', uriTemplate: 'test://b/{x}' }] } },
+    ])
+    await expect(result).resolves.toEqual({
+      resourceTemplates: [
+        { name: 'a', uriTemplate: 'test://a/{x}' },
+        { name: 'b', uriTemplate: 'test://b/{x}' },
+      ],
+    })
   })
 })
 

@@ -15,6 +15,7 @@ export type {
   ContextTypes,
   CreateMessageHandler,
   ElicitHandler,
+  ListOptions,
   ListRootsHandler,
   PromptParams,
   ToolParams,
@@ -23,6 +24,8 @@ export type {
 export {
   CapabilityNotDeclaredError,
   ContextClient,
+  DEFAULT_LIST_MAX_PAGES,
+  ListMaxPagesError,
   UnsupportedProtocolVersionError,
 } from './client.js'
 export { currentTraceMeta, type TraceMeta, traceMetaFromContext } from './trace.js'
