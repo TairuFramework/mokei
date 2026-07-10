@@ -135,11 +135,11 @@ function createStubClient(): ServerClient {
  * import { createTool } from '@mokei/context-server'
  * import { toolToLocalTool } from '@mokei/host'
  *
- * const serverTool = createTool(
- *   'Calculate math expression',
- *   { type: 'object', properties: { expr: { type: 'string' } } } as const,
- *   (req) => ({ content: [{ type: 'text', text: String(eval(req.arguments.expr)) }] })
- * )
+ * const serverTool = createTool({
+ *   description: 'Calculate math expression',
+ *   inputSchema: { type: 'object', properties: { expr: { type: 'string' } } } as const,
+ *   handler: (req) => ({ content: [{ type: 'text', text: String(eval(req.arguments.expr)) }] }),
+ * })
  *
  * const localTool = toolToLocalTool('calculate', serverTool)
  * ```

@@ -118,11 +118,15 @@ describe('ContextServer – inbound trace propagation', () => {
       version: '0.0.0',
       transport: transports.server,
       tools: {
-        probe: createTool('probe context', { type: 'object' }, async () => {
-          // Reads the OTel active context — will only be defined if withRequestMeta
-          // correctly activated the remote span context on the way in.
-          observedTraceID = getActiveTraceContext()?.traceID
-          return { content: [{ type: 'text', text: 'ok' }] }
+        probe: createTool({
+          description: 'probe context',
+          inputSchema: { type: 'object' },
+          handler: async () => {
+            // Reads the OTel active context — will only be defined if withRequestMeta
+            // correctly activated the remote span context on the way in.
+            observedTraceID = getActiveTraceContext()?.traceID
+            return { content: [{ type: 'text', text: 'ok' }] }
+          },
         }),
       },
     })

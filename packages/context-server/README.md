@@ -15,21 +15,21 @@ serveProcess({
   name: 'my-server',
   version: '1.0.0',
   tools: {
-    greet: createTool(
-      'Greet a user by name',
-      {
+    greet: createTool({
+      description: 'Greet a user by name',
+      inputSchema: {
         type: 'object',
         properties: {
           name: { type: 'string' }
         },
         required: ['name']
       } as const,
-      async (req) => {
+      handler: async (req) => {
         return {
           content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }]
         }
       }
-    )
+    })
   }
 })
 ```
@@ -51,9 +51,9 @@ import {
 } from '@mokei/context-server'
 
 const tools = {
-  greet: createTool(
-    'Greet a user by name',
-    {
+  greet: createTool({
+    description: 'Greet a user by name',
+    inputSchema: {
       type: 'object',
       properties: {
         name: { type: 'string', description: 'User name' }
@@ -61,12 +61,12 @@ const tools = {
       required: ['name'],
       additionalProperties: false
     } as const,
-    async (req) => {
+    handler: async (req) => {
       return {
         content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }]
       }
     }
-  )
+  })
 } satisfies ToolDefinitions
 
 export const config = {

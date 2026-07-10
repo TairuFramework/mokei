@@ -148,7 +148,11 @@ export type ToolDefinitions = Record<string, GenericToolDefinition>
  * @example
  * ```typescript
  * const tools = {
- *   myTool: createTool('Description', { type: 'object', properties: { foo: { type: 'string' } } } as const, handler)
+ *   myTool: createTool({
+ *     description: 'Description',
+ *     inputSchema: { type: 'object', properties: { foo: { type: 'string' } } } as const,
+ *     handler,
+ *   })
  * } satisfies ToolDefinitions
  *
  * type MyTools = ExtractToolTypes<typeof tools>
@@ -169,7 +173,11 @@ export type ExtractToolTypes<T extends ToolDefinitions> = {
  * @example
  * ```typescript
  * const prompts = {
- *   myPrompt: createPrompt('Description', { type: 'object', properties: { name: { type: 'string' } } } as const, handler)
+ *   myPrompt: createPrompt({
+ *     description: 'Description',
+ *     argumentsSchema: { type: 'object', properties: { name: { type: 'string' } } } as const,
+ *     handler,
+ *   })
  * } satisfies PromptDefinitions
  *
  * type MyPrompts = ExtractPromptTypes<typeof prompts>

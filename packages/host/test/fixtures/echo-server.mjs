@@ -7,9 +7,9 @@ const config = {
   name: 'echo',
   version: '0.0.0',
   tools: {
-    echo: createTool(
-      'Echo the given text back, optionally repeated',
-      {
+    echo: createTool({
+      description: 'Echo the given text back, optionally repeated',
+      inputSchema: {
         type: 'object',
         properties: {
           text: { type: 'string' },
@@ -18,11 +18,11 @@ const config = {
         required: ['text'],
         additionalProperties: false,
       },
-      (req) => {
+      handler: (req) => {
         const { text, repeat = 1 } = req.arguments
         return { content: [{ type: 'text', text: text.repeat(repeat) }] }
       },
-    ),
+    }),
   },
 }
 

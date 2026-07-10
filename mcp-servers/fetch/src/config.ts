@@ -76,7 +76,7 @@ export function createFetchTools(options: FetchToolsOptions = {}): ToolDefinitio
             isError: true,
           }
         }
-      }
+      },
     }),
   }
 }

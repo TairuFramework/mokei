@@ -9,14 +9,13 @@ import type {
   Log,
   ServerMessage,
 } from '@mokei/context-protocol'
-import { INTERNAL_ERROR, INVALID_PARAMS, LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
+import { INVALID_PARAMS, LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
   ContextServer,
   createPrompt,
   createTool,
-  type GenericToolDefinition,
   type Schema,
   type ServerParams,
 } from '../src/index.js'
@@ -291,12 +290,16 @@ describe('ContextServer', () => {
       await expectServerResult(
         {
           prompts: {
-            foo: createPrompt('prompt foo', { type: 'object' }, () => {
-              return {
-                messages: [
-                  { role: 'assistant' as const, content: { type: 'text' as const, text: 'foo' } },
-                ],
-              }
+            foo: createPrompt({
+              description: 'prompt foo',
+              argumentsSchema: { type: 'object' },
+              handler: () => {
+                return {
+                  messages: [
+                    { role: 'assistant' as const, content: { type: 'text' as const, text: 'foo' } },
+                  ],
+                }
+              },
             }),
             bar: {
               description: 'prompt bar',
@@ -332,13 +335,13 @@ describe('ContextServer', () => {
       await expectServerResult(
         {
           prompts: {
-            hello: createPrompt(
-              'Hello prompt',
-              {
+            hello: createPrompt({
+              description: 'Hello prompt',
+              argumentsSchema: {
                 type: 'object',
                 properties: { name: { type: 'string' } },
               } as const satisfies Schema,
-              (req) => {
+              handler: (req) => {
                 return {
                   messages: [
                     {
@@ -353,7 +356,7 @@ describe('ContextServer', () => {
                   ],
                 }
               },
-            ),
+            }),
           },
         },
         {
@@ -378,14 +381,14 @@ describe('ContextServer', () => {
       await expectServerError(
         {
           prompts: {
-            hello: createPrompt(
-              'Hello prompt',
-              {
+            hello: createPrompt({
+              description: 'Hello prompt',
+              argumentsSchema: {
                 type: 'object',
                 properties: { name: { type: 'string' } },
                 required: ['name'],
               },
-              () => {
+              handler: () => {
                 return {
                   messages: [
                     {
@@ -395,7 +398,7 @@ describe('ContextServer', () => {
                   ],
                 }
               },
-            ),
+            }),
           },
         },
         {
@@ -507,7 +510,13 @@ describe('ContextServer', () => {
   describe('Error codes (MCP draft alignment)', () => {
     test('unknown tool returns INVALID_PARAMS (-32602)', async () => {
       const { transports } = createTestContext({
-        tools: { known: createTool('x', { type: 'object' }, async () => ({ content: [] })) },
+        tools: {
+          known: createTool({
+            description: 'x',
+            inputSchema: { type: 'object' },
+            handler: async () => ({ content: [] }),
+          }),
+        },
       })
       transports.client.write({
         jsonrpc: '2.0',
@@ -525,7 +534,13 @@ describe('ContextServer', () => {
     test('tools/list includes configured ttlMs and cacheScope', async () => {
       const { transports } = createTestContext({
         cache: { ttlMs: 60000, cacheScope: 'public' },
-        tools: { a: createTool('a', { type: 'object' }, async () => ({ content: [] })) },
+        tools: {
+          a: createTool({
+            description: 'a',
+            inputSchema: { type: 'object' },
+            handler: async () => ({ content: [] }),
+          }),
+        },
       })
       transports.client.write({
         jsonrpc: '2.0',
@@ -544,9 +559,9 @@ describe('ContextServer', () => {
       const noop = async () => ({ content: [] as [] })
       const { transports } = createTestContext({
         tools: {
-          charlie: createTool('c', { type: 'object' }, noop),
-          alpha: createTool('a', { type: 'object' }, noop),
-          bravo: createTool('b', { type: 'object' }, noop),
+          charlie: createTool({ description: 'c', inputSchema: { type: 'object' }, handler: noop }),
+          alpha: createTool({ description: 'a', inputSchema: { type: 'object' }, handler: noop }),
+          bravo: createTool({ description: 'b', inputSchema: { type: 'object' }, handler: noop }),
         },
       })
       transports.client.write({
@@ -606,7 +621,13 @@ describe('ContextServer', () => {
 
   test('declares listChanged:true for tools/prompts/resources it serves', async () => {
     const { transports } = createTestContext({
-      tools: { a: createTool('a', { type: 'object' }, async () => ({ content: [] })) },
+      tools: {
+        a: createTool({
+          description: 'a',
+          inputSchema: { type: 'object' },
+          handler: async () => ({ content: [] }),
+        }),
+      },
       prompts: {
         p: {
           description: 'prompt p',
@@ -642,9 +663,13 @@ describe('ContextServer', () => {
     test('handler can emit progress when a progressToken is provided', async () => {
       const { transports } = createTestContext({
         tools: {
-          work: createTool('work', { type: 'object', properties: {} }, async ({ progress }) => {
-            progress?.({ progress: 0.5, total: 1 })
-            return { content: [{ type: 'text', text: 'done' }] }
+          work: createTool({
+            description: 'work',
+            inputSchema: { type: 'object', properties: {} },
+            handler: async ({ progress }) => {
+              progress?.({ progress: 0.5, total: 1 })
+              return { content: [{ type: 'text', text: 'done' }] }
+            },
           }),
         },
       })
@@ -677,7 +702,13 @@ describe('ContextServer', () => {
   describe('inherited-prop tool/prompt lookup', () => {
     test('tools/call with an inherited prop name returns not found', async () => {
       const { transports } = createTestContext({
-        tools: { real: createTool('real', { type: 'object' }, async () => ({ content: [] })) },
+        tools: {
+          real: createTool({
+            description: 'real',
+            inputSchema: { type: 'object' },
+            handler: async () => ({ content: [] }),
+          }),
+        },
       })
       transports.client.write({
         jsonrpc: '2.0',
@@ -722,8 +753,12 @@ describe('ContextServer', () => {
     test('tool handler exception becomes an isError result', async () => {
       const { transports } = createTestContext({
         tools: {
-          boom: createTool('boom', { type: 'object', properties: {} }, async () => {
-            throw new Error('kaboom')
+          boom: createTool({
+            description: 'boom',
+            inputSchema: { type: 'object', properties: {} },
+            handler: async () => {
+              throw new Error('kaboom')
+            },
           }),
         },
       })
@@ -744,11 +779,11 @@ describe('ContextServer', () => {
     test('input-validation error becomes an isError result', async () => {
       const { transports } = createTestContext({
         tools: {
-          strict: createTool(
-            'strict',
-            { type: 'object', properties: { n: { type: 'number' } }, required: ['n'] },
-            async () => ({ content: [] }),
-          ),
+          strict: createTool({
+            description: 'strict',
+            inputSchema: { type: 'object', properties: { n: { type: 'number' } }, required: ['n'] },
+            handler: async () => ({ content: [] }),
+          }),
         },
       })
       transports.client.write({
@@ -781,9 +816,9 @@ describe('ContextServer', () => {
       await expectServerResult(
         {
           tools: {
-            coords: createTool(
-              'coords',
-              {
+            coords: createTool({
+              description: 'coords',
+              inputSchema: {
                 $schema: 'https://json-schema.org/draft/2020-12/schema',
                 type: 'object',
                 properties: {
@@ -791,14 +826,14 @@ describe('ContextServer', () => {
                 },
                 required: ['point'],
               } as const,
-              (req) => {
+              handler: (req) => {
                 return {
                   content: [
                     { type: 'text' as const, text: `got ${JSON.stringify(req.arguments.point)}` },
                   ],
                 }
               },
-            ),
+            }),
           },
         },
         { method: 'tools/call', params: { name: 'coords', arguments: { point: [1, 2] } } },
@@ -812,28 +847,28 @@ describe('ContextServer', () => {
       await expectServerResult(
         {
           tools: {
-            test: createTool(
-              'test tool',
-              {
+            test: createTool({
+              description: 'test tool',
+              inputSchema: {
                 type: 'object',
                 properties: { bar: { type: 'string' } },
                 additionalProperties: false,
               },
-              (req) => {
+              handler: (req) => {
                 return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
               },
-            ),
-            other: createTool(
-              'another tool',
-              {
+            }),
+            other: createTool({
+              description: 'another tool',
+              inputSchema: {
                 type: 'object',
                 properties: { foo: { type: 'string' } },
                 additionalProperties: false,
               },
-              () => {
+              handler: () => {
                 return { content: [{ type: 'text' as const, text: 'test' }] }
               },
-            ),
+            }),
           },
         },
         { method: 'tools/list' },
@@ -866,17 +901,17 @@ describe('ContextServer', () => {
       await expectServerResult(
         {
           tools: {
-            test: createTool(
-              'test',
-              {
+            test: createTool({
+              description: 'test',
+              inputSchema: {
                 type: 'object',
                 properties: { bar: { type: 'string' } },
                 additionalProperties: false,
               },
-              (req) => {
+              handler: (req) => {
                 return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
               },
-            ),
+            }),
           },
         },
         {
@@ -894,18 +929,18 @@ describe('ContextServer', () => {
       // Input-validation errors are reported as isError results (SEP-1303), not JSON-RPC errors.
       const { transports } = createTestContext({
         tools: {
-          test: createTool(
-            'test',
-            {
+          test: createTool({
+            description: 'test',
+            inputSchema: {
               type: 'object',
               properties: { bar: { type: 'string' } },
               additionalProperties: false,
               required: ['bar'],
             } as const,
-            (req) => {
+            handler: (req) => {
               return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
             },
-          ),
+          }),
         },
       })
       transports.client.write({
@@ -929,9 +964,9 @@ describe('strict-mode suppression on tool/prompt schemas', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
-      createTool(
-        'tuple tool',
-        {
+      createTool({
+        description: 'tuple tool',
+        inputSchema: {
           $schema: 'https://json-schema.org/draft/2020-12/schema',
           type: 'object',
           properties: {
@@ -941,8 +976,8 @@ describe('strict-mode suppression on tool/prompt schemas', () => {
             },
           },
         } as const,
-        () => ({ content: [] }),
-      )
+        handler: () => ({ content: [] }),
+      })
       expect(warn).not.toHaveBeenCalled()
       expect(error).not.toHaveBeenCalled()
     } finally {
@@ -953,11 +988,95 @@ describe('strict-mode suppression on tool/prompt schemas', () => {
 
   test('a genuinely broken schema still throws (strict:false suppresses warnings, not compile errors)', () => {
     expect(() =>
-      createTool(
-        'broken tool',
-        { type: 'not-a-real-type' } as unknown as Parameters<typeof createTool>[1],
-        () => ({ content: [] }),
-      ),
+      createTool({
+        description: 'broken tool',
+        inputSchema: { type: 'not-a-real-type' } as unknown as Schema,
+        handler: () => ({ content: [] }),
+      }),
     ).toThrow()
+  })
+})
+
+describe('factory parameters object', () => {
+  const valueSchema = {
+    type: 'object',
+    properties: { value: { type: 'number' } },
+    required: ['value'],
+    additionalProperties: false,
+  } as const
+
+  test('createTool accepts a parameters object', async () => {
+    const definition = createTool({
+      description: 'adds one',
+      inputSchema: valueSchema,
+      handler: ({ arguments: { value } }) => ({
+        content: [{ type: 'text', text: String(value + 1) }],
+      }),
+    })
+
+    expect(definition.description).toBe('adds one')
+    expect(definition.inputSchema).toMatchObject({ type: 'object' })
+
+    const result = await definition.handler({
+      arguments: { value: 1 },
+      client: {} as never,
+      signal: new AbortController().signal,
+    })
+    expect(result).toEqual({ content: [{ type: 'text', text: '2' }] })
+  })
+
+  test('createTool still rejects invalid input', async () => {
+    const definition = createTool({
+      description: 'adds one',
+      inputSchema: valueSchema,
+      handler: () => ({ content: [] }),
+    })
+
+    await expect(
+      definition.handler({
+        arguments: { value: 'not a number' },
+        client: {} as never,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ code: INVALID_PARAMS })
+  })
+
+  test('createPrompt accepts a parameters object', async () => {
+    const definition = createPrompt({
+      description: 'greets',
+      argumentsSchema: {
+        type: 'object',
+        properties: { name: { type: 'string' } },
+        required: ['name'],
+        additionalProperties: false,
+      } as const,
+      handler: ({ arguments: { name } }) => ({
+        messages: [{ role: 'assistant', content: { type: 'text', text: `Hello ${name}` } }],
+      }),
+    })
+
+    const result = await definition.handler({
+      arguments: { name: 'World' },
+      client: {} as never,
+      signal: new AbortController().signal,
+    })
+    expect(result).toEqual({
+      messages: [{ role: 'assistant', content: { type: 'text', text: 'Hello World' } }],
+    })
+  })
+
+  test('createPrompt without an argumentsSchema skips validation', async () => {
+    const definition = createPrompt({
+      description: 'no args',
+      handler: () => ({ messages: [] }),
+    })
+
+    expect(definition.argumentsSchema).toBeUndefined()
+    const result = await definition.handler({
+      arguments: { anything: true },
+      client: {} as never,
+      signal: new AbortController().signal,
+    })
+    expect(result).toEqual({ messages: [] })
   })
 })

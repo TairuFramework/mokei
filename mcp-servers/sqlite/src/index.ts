@@ -41,7 +41,8 @@ export const toolInputSchema = {
 export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
   return {
     sqlite_all: createTool({
-      description: "This method executes a prepared statement and returns all results as an array of objects",
+      description:
+        'This method executes a prepared statement and returns all results as an array of objects',
       inputSchema: toolInputSchema,
       handler: (req: any) => {
         const results = db.prepare(req.arguments.sql).all(req.arguments.parameters ?? {})
@@ -49,7 +50,8 @@ export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
       },
     }),
     sqlite_get: createTool({
-      description: "This method executes a prepared statement and returns the first result as an object",
+      description:
+        'This method executes a prepared statement and returns the first result as an object',
       inputSchema: toolInputSchema,
       handler: (req: any) => {
         const result = db.prepare(req.arguments.sql).get(req.arguments.parameters ?? {})
@@ -57,7 +59,8 @@ export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
       },
     }),
     sqlite_run: createTool({
-      description: "This method executes a prepared statement and returns an object summarizing the resulting changes",
+      description:
+        'This method executes a prepared statement and returns an object summarizing the resulting changes',
       inputSchema: toolInputSchema,
       handler: (req: any) => {
         const changes = db.prepare(req.arguments.sql).run(req.arguments.parameters ?? {})
