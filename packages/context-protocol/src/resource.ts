@@ -309,7 +309,7 @@ export const unsubscribeRequest = {
     },
   ],
 } as const satisfies Schema
-export type UnsubscribeRequest = FromSchema<typeof subscribeRequest>
+export type UnsubscribeRequest = FromSchema<typeof unsubscribeRequest>
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1623
 export const resourceUpdatedNotification = {

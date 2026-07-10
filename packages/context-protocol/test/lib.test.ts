@@ -11,7 +11,12 @@ import {
 } from '../src/initialize.js'
 import { loggingLevel, loggingMessageNotification, setLevelRequest } from '../src/logging.js'
 import { getPromptRequest, getPromptResult, prompt } from '../src/prompt.js'
-import { readResourceRequest, resource, resourceTemplate } from '../src/resource.js'
+import {
+  readResourceRequest,
+  resource,
+  resourceTemplate,
+  unsubscribeRequest,
+} from '../src/resource.js'
 import { listRootsRequest, root } from '../src/root.js'
 import {
   cacheableResult,
@@ -39,6 +44,7 @@ import {
   callToolResult,
   listToolsRequest,
   listToolsResult,
+  outputSchema,
   tool,
 } from '../src/tool.js'
 
@@ -161,6 +167,15 @@ describe('Tool Capabilities', () => {
     // Should extend paginatedRequest
     expect(listToolsRequest.allOf).toBeDefined()
     expect(listToolsRequest.allOf[1].properties.method.const).toBe('tools/list')
+  })
+
+  test('unsubscribeRequest declares the resources/unsubscribe method', () => {
+    expect(unsubscribeRequest.allOf[1].properties.method.const).toBe('resources/unsubscribe')
+  })
+
+  test('outputSchema requires an object type', () => {
+    expect(outputSchema.properties.type.const).toBe('object')
+    expect(outputSchema.required).toEqual(['type'])
   })
 })
 
