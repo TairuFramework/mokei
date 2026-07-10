@@ -9,7 +9,7 @@ const PAGES = {
 }
 
 function send(message) {
-  process.stdout.write(JSON.stringify(message) + '\n')
+  process.stdout.write(`${JSON.stringify(message)}\n`)
 }
 
 function handle(message) {
@@ -37,7 +37,7 @@ function handle(message) {
     send({
       jsonrpc: '2.0',
       id: message.id,
-      error: { code: -32601, message: 'Unsupported method: ' + message.method },
+      error: { code: -32601, message: `Unsupported method: ${message.method}` },
     })
   }
 }
@@ -53,7 +53,7 @@ process.stdin.on('data', (chunk) => {
       try {
         handle(JSON.parse(line))
       } catch (e) {
-        process.stderr.write('Error: ' + String(e) + '\n')
+        process.stderr.write(`Error: ${String(e)}\n`)
       }
     }
     index = buffer.indexOf('\n')
