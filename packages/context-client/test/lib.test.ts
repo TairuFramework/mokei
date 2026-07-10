@@ -23,6 +23,7 @@ import {
   type ClientParams,
   ContextClient,
   ListMaxPagesError,
+  StructuredContentValidationError,
   UnsupportedProtocolVersionError,
 } from '../src/index.js'
 
@@ -651,6 +652,144 @@ describe('list pagination', () => {
         { name: 'b', uriTemplate: 'test://b/{x}' },
       ],
     })
+  })
+})
+
+describe('structuredContent validation', () => {
+  const countSchema = {
+    type: 'object',
+    properties: { count: { type: 'number' } },
+    required: ['count'],
+  } as const
+
+  async function listThenCall(
+    toolResult: Record<string, unknown>,
+    outputSchema: Record<string, unknown> | null | undefined = countSchema,
+  ): Promise<{ call: Promise<CallToolResult> }> {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+
+    client.initialize()
+    await handleServerInitialize(transports.server, {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { tools: {} },
+    })
+
+    const listed = client.listTools()
+    const listRequest = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (listRequest.value as { id: number }).id,
+      result: {
+        tools: [
+          {
+            name: 'counter',
+            inputSchema: { type: 'object' },
+            ...(outputSchema == null ? {} : { outputSchema }),
+          },
+        ],
+      },
+    } as ServerMessage)
+    await listed
+
+    const call = client.callTool({ name: 'counter', arguments: {} })
+    const callRequest = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (callRequest.value as { id: number }).id,
+      result: toolResult,
+    } as ServerMessage)
+    return { call }
+  }
+
+  test('passes a conforming structuredContent through', async () => {
+    const { call } = await listThenCall({
+      content: [{ type: 'text', text: '{"count":3}' }],
+      structuredContent: { count: 3 },
+    })
+    await expect(call).resolves.toEqual({
+      content: [{ type: 'text', text: '{"count":3}' }],
+      structuredContent: { count: 3 },
+    })
+  })
+
+  test('rejects a structuredContent that violates the advertised schema', async () => {
+    const { call } = await listThenCall({ content: [], structuredContent: { count: 'three' } })
+    await expect(call).rejects.toThrow(StructuredContentValidationError)
+    await call.catch((error: unknown) => {
+      const validationError = error as StructuredContentValidationError
+      expect(validationError.toolName).toBe('counter')
+      expect(validationError.issues.length).toBeGreaterThan(0)
+    })
+  })
+
+  test('does not validate when the tool advertised no outputSchema', async () => {
+    const { call } = await listThenCall(
+      { content: [], structuredContent: { count: 'three' } },
+      null,
+    )
+    await expect(call).resolves.toEqual({ content: [], structuredContent: { count: 'three' } })
+  })
+
+  test('does not validate when listTools was never called', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+    client.initialize()
+    await handleServerInitialize(transports.server, {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { tools: {} },
+    })
+
+    const call = client.callTool({ name: 'counter', arguments: {} })
+    const request = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (request.value as { id: number }).id,
+      result: { content: [], structuredContent: { count: 'three' } },
+    } as ServerMessage)
+
+    await expect(call).resolves.toEqual({ content: [], structuredContent: { count: 'three' } })
+    await transports.dispose()
+  })
+
+  test('tools/list_changed clears the cache so a re-listed tool uses its new schema', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+    client.initialize()
+    await handleServerInitialize(transports.server, {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { tools: {} },
+    })
+
+    const listed = client.listTools()
+    const listRequest = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (listRequest.value as { id: number }).id,
+      result: {
+        tools: [{ name: 'counter', inputSchema: { type: 'object' }, outputSchema: countSchema }],
+      },
+    } as ServerMessage)
+    await listed
+
+    transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/tools/list_changed',
+    } as ServerMessage)
+    // Give the notification a turn to be handled before calling.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const call = client.callTool({ name: 'counter', arguments: {} })
+    const callRequest = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (callRequest.value as { id: number }).id,
+      result: { content: [], structuredContent: { count: 'three' } },
+    } as ServerMessage)
+
+    // Cache cleared: the bad structuredContent passes because no schema is known.
+    await expect(call).resolves.toEqual({ content: [], structuredContent: { count: 'three' } })
+    await transports.dispose()
   })
 })
 

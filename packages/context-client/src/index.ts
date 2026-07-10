@@ -20,12 +20,14 @@ export type {
   PromptParams,
   ToolParams,
   UnknownContextTypes,
+  ValidationIssue,
 } from './client.js'
 export {
   CapabilityNotDeclaredError,
   ContextClient,
   DEFAULT_LIST_MAX_PAGES,
   ListMaxPagesError,
+  StructuredContentValidationError,
   UnsupportedProtocolVersionError,
 } from './client.js'
 export { currentTraceMeta, type TraceMeta, traceMetaFromContext } from './trace.js'

@@ -118,13 +118,22 @@ export type ListOptions = {
   timeout?: number
 }
 
+/** A validation issue, matching the shape `createTool` produces for input errors. */
+export type ValidationIssue = {
+  message: string
+  path?: ReadonlyArray<PropertyKey>
+}
+
+/** Thrown when a tool result's structuredContent violates the tool's advertised outputSchema. */
 export class StructuredContentValidationError extends Error {
-  name = 'StructuredContentValidationError'
-  constructor(
-    public toolName: string,
-    public issues: Array<{ message: string; path: Array<string | number> }>,
-  ) {
-    super(`Validation failed for tool "${toolName}"`)
+  toolName: string
+  issues: Array<ValidationIssue>
+
+  constructor(toolName: string, issues: Array<ValidationIssue>) {
+    super(`Invalid structuredContent returned by tool ${toolName}`)
+    this.name = 'StructuredContentValidationError'
+    this.toolName = toolName
+    this.issues = issues
   }
 }
 
@@ -555,10 +564,39 @@ export class ContextClient<
     return result
   }
 
-  /** @internal Overridden in Task 4 to memoise tool output schemas. */
-  _cacheToolOutputSchemas(_tools: ListToolsResult['tools']): void {}
+  /** @internal Memoises validators for tools that advertise an outputSchema. */
+  _cacheToolOutputSchemas(tools: ListToolsResult['tools']): void {
+    for (const tool of tools) {
+      if (tool.outputSchema == null) {
+        this.#toolOutputSchemas.delete(tool.name)
+        continue
+      }
+      const schema = tool.outputSchema as Schema
+      this.#toolOutputSchemas.set(
+        tool.name,
+        createValidator(schema, { draft: inferSchemaDraft(schema), strict: false }),
+      )
+    }
+  }
 
-  callTool(params: ToolParams<T>, options?: RequestOptions): Promise<CallToolResult> {
-    return this.request('tools/call', params as CallToolRequest['params'], options)
+  async callTool(params: ToolParams<T>, options?: RequestOptions): Promise<CallToolResult> {
+    const result = await this.request('tools/call', params as CallToolRequest['params'], options)
+    const validate = this.#toolOutputSchemas.get(params.name)
+    if (validate == null || result.structuredContent == null) {
+      return result
+    }
+    const outcome = validate(result.structuredContent)
+    if (outcome.issues != null) {
+      throw new StructuredContentValidationError(
+        params.name,
+        outcome.issues.map((issue) => ({
+          message: issue.message,
+          path: issue.path?.map((segment) =>
+            typeof segment === 'object' && segment != null ? segment.key : segment,
+          ),
+        })),
+      )
+    }
+    return result
   }
 }
