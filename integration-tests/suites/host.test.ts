@@ -55,7 +55,10 @@ test('executes a tool call after adding a local context', async () => {
       arguments: expect.stringContaining('https://mokei.dev'),
     })
 
-    const toolResult = await host.callNamespacedTool(toolCall.name, JSON.parse(toolCall.arguments))
+    const toolResult = await host.callNamespacedTool({
+      id: toolCall.name,
+      arguments: JSON.parse(toolCall.arguments),
+    })
     expect(toolResult).toMatchObject({
       content: [{ type: 'text', text: expect.stringContaining('Mokei') }],
       isError: false,
@@ -106,7 +109,10 @@ test('executes a tool call after adding a direct context', async () => {
       arguments: expect.stringContaining('https://mokei.dev'),
     })
 
-    const toolResult = await host.callNamespacedTool(toolCall.name, JSON.parse(toolCall.arguments))
+    const toolResult = await host.callNamespacedTool({
+      id: toolCall.name,
+      arguments: JSON.parse(toolCall.arguments),
+    })
     expect(toolResult).toMatchObject({
       content: [{ type: 'text', text: expect.stringContaining('Mokei') }],
       isError: false,

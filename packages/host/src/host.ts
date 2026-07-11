@@ -54,6 +54,13 @@ export function getContextToolInfo(id: string): [string, string] {
   return [id.slice(0, index), id.slice(index + 1)]
 }
 
+/** Parameters for calling a tool by its namespaced ID (`contextKey:toolName` or `local:toolName`). */
+export type NamespacedToolParams = {
+  id: string
+  arguments?: Record<string, unknown>
+  _meta?: Metadata
+}
+
 export type AllowToolCalls = 'always' | 'ask' | 'never'
 
 export type ContextTool = {
@@ -548,18 +555,18 @@ export class ContextHost extends Disposer {
   }
 
   callNamespacedTool(
-    id: string,
-    args: Record<string, unknown> = {},
-    metadata?: Metadata,
+    params: NamespacedToolParams,
     options?: RequestOptions,
   ): Promise<CallToolResult> {
+    const { id, arguments: args = {}, _meta } = params
+
     // Check if this is a local tool
     if (isLocalToolID(id)) {
       return this.callLocalTool(getLocalToolName(id), args, options)
     }
 
     const [key, name] = getContextToolInfo(id)
-    return this.callTool(key, { name, arguments: args, _meta: metadata }, options)
+    return this.callTool(key, { name, arguments: args, _meta }, options)
   }
 
   /** Call a local tool by name. */

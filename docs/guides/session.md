@@ -480,7 +480,10 @@ const tools = host.getEnabledTools()
 host.disableContextTools('db', ['drop_table'])
 
 // Call tool directly (bypassing provider)
-const result = await host.callNamespacedTool('db:query', { sql: 'SELECT 1' })
+const result = await host.callNamespacedTool({
+  id: 'db:query',
+  arguments: { sql: 'SELECT 1' },
+})
 ```
 
 ## Complete Example

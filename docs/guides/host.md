@@ -114,7 +114,10 @@ const tools = host.getCallableTools()
 
 ```typescript
 // Using namespaced tool ID
-const result = await host.callNamespacedTool('db:query', { sql: 'SELECT *' })
+const result = await host.callNamespacedTool({
+  id: 'db:query',
+  arguments: { sql: 'SELECT *' },
+})
 
 // Or specify context and tool separately
 const result = await host.callTool('db', { 
@@ -256,8 +259,9 @@ async function main() {
     }
     
     // Call a tool
-    const result = await host.callNamespacedTool('sqlite:sqlite_all', {
-      sql: 'SELECT * FROM users LIMIT 5'
+    const result = await host.callNamespacedTool({
+      id: 'sqlite:sqlite_all',
+      arguments: { sql: 'SELECT * FROM users LIMIT 5' },
     })
     console.log('Query result:', result.content)
     

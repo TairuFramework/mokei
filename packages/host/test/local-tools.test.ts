@@ -297,7 +297,10 @@ describe('ContextHost Local Tools', () => {
         }),
       })
 
-      const result = await host.callNamespacedTool('local:echo', { message: 'test' })
+      const result = await host.callNamespacedTool({
+        id: 'local:echo',
+        arguments: { message: 'test' },
+      })
 
       expect(result.content).toHaveLength(1)
       expect(result.content[0]).toEqual({ type: 'text', text: 'test' })

@@ -96,6 +96,13 @@ types. It was kept by decision, audited, and every facade properly replaced by t
 commits that follow. If the branch is squash-merged this is moot; if merged as-is, that
 commit's message misrepresents the history.
 
+Its `any`s reached further than the audit first credited: PR review found four
+`handler: (req: any)` annotations in `mcp-servers/{sqlite,fetch}` that it had added while
+migrating those call sites to the parameters object. They were not needed — `createTool`
+infers `req.arguments` from `inputSchema` in the object form exactly as it did positionally
+— so they were pure suppression, and the audit had misfiled them as pre-existing lint.
+Removed; inference verified by probe.
+
 ## Status
 
 All four gaps closed. Full workspace green (19 packages): context-protocol 73,
@@ -103,12 +110,14 @@ context-rpc 22, context-client 49, context-server 55, host 62, session 59.
 
 **Breaking:** `SentRequest` and `requestValue` removed (every request method returns
 `Promise` and takes an optional `signal`); `createTool`/`createPrompt` take a parameters
-object; list methods aggregate by default.
+object; `ContextHost.callNamespacedTool` takes a parameters object
+(`{ id, arguments?, _meta? }`, plus the usual separate `options`); list methods aggregate
+by default.
+
+**Pre-existing lint, left as-is (predates this cycle):** `http-client/src/x-mcp-header.ts`
+`useLiteralKeys`.
 
 **Deferred:** `resources/subscribe` (gap 3 of the retired backlog item) — the protocol
 types exist but there are no client methods, server dispatch, or capability declaration.
 Folded into **B4** of `backlog/2026-06-20-mcp-draft-remaining.md`, to be done as the
 legacy-side branch of that item only if a real peer needs it.
-
-**Pre-existing lint, left as-is (predates this cycle):** `mcp-servers/{sqlite,fetch}`
-`noExplicitAny` in product code; `http-client/src/x-mcp-header.ts` `useLiteralKeys`.

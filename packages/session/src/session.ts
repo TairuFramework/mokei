@@ -374,9 +374,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     signal?: AbortSignal,
   ): Promise<CallToolResult> {
     return this.#contextHost.callNamespacedTool(
-      toolCall.name,
-      JSON.parse(toolCall.arguments),
-      undefined,
+      { id: toolCall.name, arguments: JSON.parse(toolCall.arguments) },
       { signal },
     )
   }
