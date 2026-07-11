@@ -3,7 +3,6 @@
 **Date:** 2026-06-16
 **Status:** complete
 **Branch:** `fix/stdio-framing`
-**Spec:** `docs/superpowers/specs/2026-06-15-stdio-framing-limits-design.md` (removed on completion)
 **Supersedes:** hang/crash-core audit, deferred item 6 (2026-06-12 planning note)
 
 ## Goal

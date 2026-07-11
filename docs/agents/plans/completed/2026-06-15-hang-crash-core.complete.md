@@ -6,9 +6,7 @@ was extracted and shipped separately
 **Date completed:** 2026-06-15
 **Branch:** `plans/2026-06-12-audit-clusters` (commits `a9baed3..507a7c0`, +
 follow-up tracking `e4ef573`).
-**Source:** plan `superpowers/plans/2026-06-12-hang-crash-core.md`, design
-`superpowers/specs/2026-06-12-hang-crash-core-design.md`, audit cluster
-`next/2026-06-12-hang-crash-core.md`.
+**Source:** the 2026-06-12 hang/crash-core audit cluster.
 
 ## Goal
 
@@ -64,7 +62,8 @@ no stack dumps, TUI survives.
 
 ## Remaining work (extracted)
 
-- **Item 6 — stdio framing limits** → `next/2026-06-12-stdio-framing-limits.md`.
+- **Item 6 — stdio framing limits** → shipped separately, see
+  `completed/2026-06-16-stdio-framing-limits.complete.md`.
   Was deferred upstream-first; now unblocked by enkaku 0.17.0, which shipped the
   framing options **flat** on `NodeStreamsTransportParams` (correcting the
   design's nested-`streamOptions` assumption). Needs catalog bump 0.16→0.17 plus

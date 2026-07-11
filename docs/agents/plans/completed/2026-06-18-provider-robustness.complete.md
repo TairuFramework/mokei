@@ -61,7 +61,7 @@ All 6 audit items landed (7 commits, `d0df124`..`698578c`):
 6. **constructor + timeout** (`48eaa62`) — zero-arg `new OpenAIProvider()`; default request timeout standardized to 30s. **BREAKING: anthropic default timeout 60s → 30s.**
 5. **sampling params** (`698578c`) — `temperature`/`maxTokens`/`topP` + raw `providerOptions` passthrough via `resolveSamplingParams` (precedence: config default → typed → providerOptions spread last; the client owns the spread-last into the JSON body). anthropic config gains `maxTokens` (reachable via `fromConfig`) with required `max_tokens` fallback.
 
-Plan: `docs/superpowers/plans/2026-06-18-provider-robustness.md`. Whole-branch review (opus): ready to merge, no Critical/Important.
+Whole-branch review (opus): ready to merge, no Critical/Important.
 
 **Follow-up filed:** `backlog/2026-06-18-anthropic-test-known-models.md` (pre-existing red test, not from this branch).
 
