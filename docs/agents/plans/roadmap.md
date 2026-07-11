@@ -43,7 +43,7 @@ _Empty — all 2026-06-12 audit `next/` items shipped (see `completed/`)._
 
 Shipped from this audit (see `completed/`):
 
-- **MCP 2025-11-25 feature gaps** (`completed/2026-07-09-mcp-feature-gaps.complete.md`)
+- **MCP 2025-11-25 feature gaps** (`completed/2026-07-11-mcp-feature-gaps.complete.md`)
   — shipped on `feat/mcp-feature-gaps`: client-side cursor walk in all four list
   methods (fixes silent first-page truncation of `ContextHost`'s tool set), tool
   `outputSchema` + validated `structuredContent` on both sides, `SentRequest`
