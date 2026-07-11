@@ -26,7 +26,7 @@ import type {
   OutputSchema as ToolOutputSchema,
 } from '@mokei/context-protocol'
 import type { WithRequestOptions } from '@mokei/context-rpc'
-import type { FromSchema, Schema } from '@sozai/schema'
+import type { Schema } from '@sozai/schema'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
