@@ -1,9 +1,14 @@
+import type { FunctionToolCall } from '@mokei/model-provider'
 import { describe, expect, test } from 'vitest'
 
 import { initialTurnState, type TurnState, turnReducer } from '../../src/chat/turn-reducer.js'
 
 function apply(events: Array<Parameters<typeof turnReducer>[1]>): TurnState {
   return events.reduce((s, e) => turnReducer(s, e), initialTurnState())
+}
+
+function toolCall(id = '1'): FunctionToolCall<unknown> {
+  return { id, name: 'ns:tool', arguments: '{}', raw: {} }
 }
 
 describe('turnReducer', () => {
@@ -63,7 +68,7 @@ describe('turnReducer', () => {
       { type: 'start', prompt: 'hi', timestamp: 0 },
       {
         type: 'tool-call-pending',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 1,
       },
     ])
@@ -76,12 +81,12 @@ describe('turnReducer', () => {
       { type: 'start', prompt: 'hi', timestamp: 0 },
       {
         type: 'tool-call-pending',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 1,
       },
       {
         type: 'tool-call-approved',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 2,
       },
     ])
@@ -94,12 +99,12 @@ describe('turnReducer', () => {
       { type: 'start', prompt: 'hi', timestamp: 0 },
       {
         type: 'tool-call-approved',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 1,
       },
       {
         type: 'tool-call-start',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 2,
       },
     ])
@@ -112,17 +117,17 @@ describe('turnReducer', () => {
       { type: 'start', prompt: 'hi', timestamp: 0 },
       {
         type: 'tool-call-approved',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 1,
       },
       {
         type: 'tool-call-start',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 2,
       },
       {
         type: 'tool-call-complete',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         result: { content: [{ type: 'text', text: 'ok' }] },
         timestamp: 3,
       },
@@ -136,17 +141,17 @@ describe('turnReducer', () => {
       { type: 'start', prompt: 'hi', timestamp: 0 },
       {
         type: 'tool-call-approved',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 1,
       },
       {
         type: 'tool-call-start',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 2,
       },
       {
         type: 'tool-call-error',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         error: new Error('boom'),
         timestamp: 3,
       },
@@ -160,12 +165,12 @@ describe('turnReducer', () => {
       { type: 'start', prompt: 'hi', timestamp: 0 },
       {
         type: 'tool-call-pending',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 1,
       },
       {
         type: 'tool-call-denied',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         reason: 'user',
         timestamp: 2,
       },
@@ -210,13 +215,13 @@ describe('turnReducer', () => {
       { type: 'start', prompt: 'hi', timestamp: 0 },
       {
         type: 'tool-call-start',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 42,
       },
     ])
     expect(s.state).toBe('calling-tool')
     expect(s.activeToolCall).toEqual({
-      call: { id: '1', name: 'ns:tool', arguments: '{}' },
+      call: toolCall('1'),
       startedAt: 42,
     })
   })
@@ -226,12 +231,12 @@ describe('turnReducer', () => {
       { type: 'start', prompt: 'hi', timestamp: 0 },
       {
         type: 'tool-call-start',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 1,
       },
       {
         type: 'tool-call-complete',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         result: { content: [] },
         timestamp: 2,
       },
@@ -245,12 +250,12 @@ describe('turnReducer', () => {
       { type: 'start', prompt: 'hi', timestamp: 0 },
       {
         type: 'tool-call-start',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         timestamp: 1,
       },
       {
         type: 'tool-call-error',
-        toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+        toolCall: toolCall('1'),
         error: new Error('boom'),
         timestamp: 2,
       },

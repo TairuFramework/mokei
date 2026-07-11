@@ -1,24 +1,44 @@
-import type { ModelProvider } from '@mokei/model-provider'
+import { execPath } from 'node:process'
+import type {
+  AggregatedMessage,
+  MessagePart,
+  ModelProvider,
+  ProviderTypes,
+  StreamChatRequest,
+} from '@mokei/model-provider'
 import { describe, expect, test } from 'vitest'
 
 import { Session } from '../src/session.js'
 
-function hangingProvider(): ModelProvider {
+type FakeProviderTypes = ProviderTypes
+
+function hangingProvider(): ModelProvider<FakeProviderTypes> {
   // Minimal provider: streamChat returns a StreamChatRequest (a Promise with
   // .abort) that resolves to an empty stream only after abort.
-  const makeRequest = () => {
+  const makeRequest = (): StreamChatRequest<unknown, unknown> => {
     let abortFn: () => void = () => {}
-    const promise = new Promise((resolve) => {
+    const promise = new Promise<ReadableStream<MessagePart<unknown, unknown>>>((resolve) => {
       abortFn = () => resolve(new ReadableStream({ start: (c) => c.close() }))
-    }) as ReturnType<ModelProvider['streamChat']>
+    })
     ;(promise as unknown as { abort: () => void }).abort = abortFn
-    return promise
+    // Partial mock: `Session.chat()` only ever calls `abort()` on the request, so the
+    // rest of the AbortController surface (`signal`) is deliberately not implemented.
+    return promise as unknown as StreamChatRequest<unknown, unknown>
   }
   return {
     streamChat: makeRequest,
-    aggregateMessage: () => ({ role: 'assistant', text: '', toolCalls: [] }),
-    toolFromMCP: (t: unknown) => t,
-  } as unknown as ModelProvider
+    aggregateMessage: (): AggregatedMessage<unknown> => ({
+      source: 'aggregated',
+      role: 'assistant',
+      text: '',
+      toolCalls: [],
+      inputTokens: 0,
+      outputTokens: 0,
+    }),
+    embed: async () => ({ embeddings: [] }),
+    listModels: async () => [],
+    toolFromMCP: (tool: unknown) => tool,
+  }
 }
 
 describe('Session.chat active-request guard', () => {
@@ -50,7 +70,7 @@ describe('Session.addContext abort', () => {
     const promise = session
       .addContext({
         key: 'aborted',
-        command: process.execPath,
+        command: execPath,
         args: ['-e', 'setInterval(() => {}, 1e9)'],
         signal: controller.signal,
       })

@@ -7,6 +7,7 @@ import type {
   MessagePart,
   ModelProvider,
   ServerMessage as ProviderServerMessage,
+  StreamChatParams,
   StreamChatRequest,
 } from '@mokei/model-provider'
 import { describe, expect, test, vi } from 'vitest'
@@ -60,20 +61,27 @@ class MockStreamChatRequest<T> implements PromiseLike<T> {
 }
 
 // Mock provider types
+/** Raw tool call payload of the mock provider */
+type MockToolCall = { id: string; name: string }
+/** Raw tool payload of the mock provider, as returned by `toolFromMCP()` */
+type MockTool = { name: string; description: string }
+
 type MockProviderTypes = {
   Message: unknown
   MessagePart: unknown
   Model: { id: string }
-  Tool: { name: string; description: string }
-  ToolCall: { id: string; name: string }
+  Tool: MockTool
+  ToolCall: MockToolCall
 }
+
+type MockStreamChatParams = StreamChatParams<unknown, MockToolCall, MockTool>
 
 // Create a mock provider that returns specified responses
 function createMockProvider(
   responses: Array<{
     text?: string
     reasoning?: string
-    toolCalls?: Array<FunctionToolCall<unknown>>
+    toolCalls?: Array<FunctionToolCall<MockToolCall>>
     inputTokens?: number
     outputTokens?: number
   }>,
@@ -85,11 +93,11 @@ function createMockProvider(
 
     embed: vi.fn(async () => ({ embeddings: [[0.1, 0.2, 0.3]] })),
 
-    streamChat: vi.fn((_params) => {
+    streamChat: vi.fn((_params: MockStreamChatParams) => {
       const response = responses[callIndex] ?? { text: 'Done', inputTokens: 10, outputTokens: 5 }
       callIndex++
 
-      const parts: Array<MessagePart<unknown, unknown>> = []
+      const parts: Array<MessagePart<unknown, MockToolCall>> = []
 
       if (response.reasoning) {
         parts.push({ type: 'reasoning-delta', reasoning: response.reasoning, raw: {} })
@@ -110,7 +118,7 @@ function createMockProvider(
         raw: {},
       })
 
-      const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+      const stream = new ReadableStream<MessagePart<unknown, MockToolCall>>({
         start(controller) {
           for (const part of parts) {
             controller.enqueue(part)
@@ -121,12 +129,14 @@ function createMockProvider(
 
       return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
         unknown,
-        unknown
+        MockToolCall
       >
     }),
 
     aggregateMessage: vi.fn(
-      (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => {
+      (
+        parts: Array<ProviderServerMessage<unknown, MockToolCall>>,
+      ): AggregatedMessage<MockToolCall> => {
         const text = parts
           .filter((p) => p.text)
           .map((p) => p.text)
@@ -311,11 +321,11 @@ describe('AgentSession', () => {
 
     test('respects maxIterations limit', async () => {
       // Provider always returns tool calls
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:test-tool',
         arguments: '{}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:test-tool' },
       }
 
       const provider = createMockProvider([
@@ -465,11 +475,11 @@ describe('AgentSession', () => {
 
   describe('tool approval strategies', () => {
     test("'auto' executes all tools without prompting", async () => {
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:greet',
         arguments: '{"name":"World"}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:greet' },
       }
 
       const provider = createMockProvider([
@@ -511,11 +521,11 @@ describe('AgentSession', () => {
     })
 
     test("'never' skips all tool execution", async () => {
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:greet',
         arguments: '{}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:greet' },
       }
 
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'OK then' }])
@@ -552,11 +562,11 @@ describe('AgentSession', () => {
     })
 
     test('custom function is called with correct context', async () => {
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:test',
         arguments: '{}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:test' },
       }
 
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Done' }])
@@ -595,11 +605,11 @@ describe('AgentSession', () => {
     })
 
     test('custom function can deny with reason', async () => {
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:dangerous',
         arguments: '{}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:dangerous' },
       }
 
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Understood' }])
@@ -642,11 +652,11 @@ describe('AgentSession', () => {
     })
 
     test('custom function receives tool-call-pending before approval is invoked', async () => {
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:test',
         arguments: '{}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:test' },
       }
 
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Done' }])
@@ -676,7 +686,9 @@ describe('AgentSession', () => {
         toolApproval: approvalFn,
       })
 
-      agent.events.on('event', (e) => eventsCollected.push(e))
+      agent.events.on('event', (e) => {
+        eventsCollected.push(e)
+      })
 
       await agent.run({ prompt: 'Test' })
 
@@ -721,23 +733,23 @@ describe('AgentSession', () => {
     describe('multi-step task execution', () => {
       test('executes sequence of tool calls across iterations', async () => {
         // Simulates: "Create a table, insert data, then query it"
-        const createTableCall: FunctionToolCall<unknown> = {
+        const createTableCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:create_table',
           arguments: '{"name":"users"}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:create_table' },
         }
-        const insertCall: FunctionToolCall<unknown> = {
+        const insertCall: FunctionToolCall<MockToolCall> = {
           id: 'call-2',
           name: 'mock:insert',
           arguments: '{"table":"users","data":{"name":"Alice"}}',
-          raw: {},
+          raw: { id: 'call-2', name: 'mock:insert' },
         }
-        const queryCall: FunctionToolCall<unknown> = {
+        const queryCall: FunctionToolCall<MockToolCall> = {
           id: 'call-3',
           name: 'mock:query',
           arguments: '{"sql":"SELECT * FROM users"}',
-          raw: {},
+          raw: { id: 'call-3', name: 'mock:query' },
         }
 
         const provider = createMockProvider([
@@ -799,23 +811,23 @@ describe('AgentSession', () => {
 
       test('handles multiple tool calls in single response', async () => {
         // Model requests multiple tools at once (parallel tool calls)
-        const tool1: FunctionToolCall<unknown> = {
+        const tool1: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:get_weather',
           arguments: '{"city":"London"}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:get_weather' },
         }
-        const tool2: FunctionToolCall<unknown> = {
+        const tool2: FunctionToolCall<MockToolCall> = {
           id: 'call-2',
           name: 'mock:get_weather',
           arguments: '{"city":"Paris"}',
-          raw: {},
+          raw: { id: 'call-2', name: 'mock:get_weather' },
         }
-        const tool3: FunctionToolCall<unknown> = {
+        const tool3: FunctionToolCall<MockToolCall> = {
           id: 'call-3',
           name: 'mock:get_weather',
           arguments: '{"city":"Tokyo"}',
-          raw: {},
+          raw: { id: 'call-3', name: 'mock:get_weather' },
         }
 
         const provider = createMockProvider([
@@ -856,11 +868,11 @@ describe('AgentSession', () => {
 
     describe('error handling', () => {
       test('continues execution when tool call fails', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:failing_tool',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:failing_tool' },
         }
 
         const provider = createMockProvider([
@@ -902,11 +914,11 @@ describe('AgentSession', () => {
 
       test('records tool execution errors', async () => {
         // Use a tool call with invalid context key to trigger an error
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'invalid_context:some_tool', // Invalid context key
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'invalid_context:some_tool' },
         }
 
         const provider = createMockProvider([
@@ -947,11 +959,11 @@ describe('AgentSession', () => {
       test('captures a hallucinated tool name and feeds available tools back', async () => {
         // The model drops the context namespace and calls a bare, unknown name
         // (mirrors a weak model emitting `fetch` instead of `fetch:get_markdown`).
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'other_tool', // missing the `mock:` namespace -> unknown tool
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'other_tool' },
         }
 
         const provider = createMockProvider([
@@ -1006,11 +1018,11 @@ describe('AgentSession', () => {
         // approval await settles, so an interactive UI can render a prompt and
         // the turn can be cancelled. Previously every approval event was
         // buffered until after the decision, leaving the UI stuck.
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:other_tool',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:other_tool' },
         }
         const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'done' }])
         const session = await createMockSessionWithTools(
@@ -1062,11 +1074,11 @@ describe('AgentSession', () => {
       })
 
       test('aborting while awaiting approval ends the turn without executing', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:other_tool',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:other_tool' },
         }
         const provider = createMockProvider([{ toolCalls: [toolCall] }])
         const session = await createMockSessionWithTools(
@@ -1172,11 +1184,11 @@ describe('AgentSession', () => {
 
     describe('token tracking', () => {
       test('accumulates tokens across all iterations', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:search',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:search' },
         }
 
         const provider = createMockProvider([
@@ -1213,17 +1225,17 @@ describe('AgentSession', () => {
 
     describe('mixed approval scenarios', () => {
       test('approves safe tools and denies dangerous ones', async () => {
-        const safeCall: FunctionToolCall<unknown> = {
+        const safeCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:read_file',
           arguments: '{"path":"data.txt"}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:read_file' },
         }
-        const dangerousCall: FunctionToolCall<unknown> = {
+        const dangerousCall: FunctionToolCall<MockToolCall> = {
           id: 'call-2',
           name: 'mock:delete_file',
           arguments: '{"path":"important.txt"}',
-          raw: {},
+          raw: { id: 'call-2', name: 'mock:delete_file' },
         }
 
         const provider = createMockProvider([
@@ -1277,17 +1289,17 @@ describe('AgentSession', () => {
       })
 
       test('approval function receives event history', async () => {
-        const tool1: FunctionToolCall<unknown> = {
+        const tool1: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:first_tool',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:first_tool' },
         }
-        const tool2: FunctionToolCall<unknown> = {
+        const tool2: FunctionToolCall<MockToolCall> = {
           id: 'call-2',
           name: 'mock:second_tool',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-2', name: 'mock:second_tool' },
         }
 
         const provider = createMockProvider([
@@ -1442,11 +1454,11 @@ describe('AgentSession', () => {
 
       test('handles very long tool arguments', async () => {
         const longData = 'x'.repeat(10000)
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:process_data',
           arguments: JSON.stringify({ data: longData }),
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:process_data' },
         }
 
         const provider = createMockProvider([
@@ -1483,11 +1495,11 @@ describe('AgentSession', () => {
 
     describe('conversation context', () => {
       test('maintains message history across iterations', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:get_info',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:get_info' },
         }
 
         let messageCount = 0
@@ -1498,12 +1510,9 @@ describe('AgentSession', () => {
 
         // Override streamChat to track message count
         const originalStreamChat = provider.streamChat
-        provider.streamChat = vi.fn((params) => {
+        provider.streamChat = vi.fn((params: MockStreamChatParams) => {
           messageCount = params.messages.length
-          return (originalStreamChat as (p: unknown) => unknown)(params) as StreamChatRequest<
-            unknown,
-            unknown
-          >
+          return originalStreamChat(params)
         })
 
         const session = await createMockSessionWithTools(
@@ -1535,11 +1544,11 @@ describe('AgentSession', () => {
 
     describe('tool result content types', () => {
       test('handles tool result with image content', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:generate_image',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:generate_image' },
         }
 
         const provider = createMockProvider([
@@ -1576,11 +1585,11 @@ describe('AgentSession', () => {
       })
 
       test('handles tool result with multiple content items', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:analyze',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:analyze' },
         }
 
         const provider = createMockProvider([
@@ -1621,11 +1630,11 @@ describe('AgentSession', () => {
 
     describe('iteration behavior', () => {
       test('iteration-complete event indicates if more tool calls pending', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:step',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:step' },
         }
 
         const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Done' }])
@@ -1669,11 +1678,11 @@ describe('AgentSession', () => {
   })
 
   describe('per-tool timeout and cancellation', () => {
-    const toolCall: FunctionToolCall<unknown> = {
+    const toolCall: FunctionToolCall<MockToolCall> = {
       id: 'call-1',
       name: 'mock:slow',
       arguments: '{}',
-      raw: {},
+      raw: { id: 'call-1', name: 'mock:slow' },
     }
 
     test('a tool exceeding toolTimeout yields ToolCallTimeoutError and the turn survives', async () => {
@@ -1863,7 +1872,7 @@ describe('AgentSession', () => {
         embed: vi.fn(async () => ({ embeddings: [[0]] })),
         streamChat: vi.fn(() => {
           let i = 0
-          const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+          const stream = new ReadableStream<MessagePart<unknown, MockToolCall>>({
             async pull(controller) {
               await new Promise((resolve) => setTimeout(resolve, delayMs))
               if (i < chunkCount) {
@@ -1877,11 +1886,13 @@ describe('AgentSession', () => {
           })
           return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
             unknown,
-            unknown
+            MockToolCall
           >
         }),
         aggregateMessage: vi.fn(
-          (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => ({
+          (
+            parts: Array<ProviderServerMessage<unknown, MockToolCall>>,
+          ): AggregatedMessage<MockToolCall> => ({
             source: 'aggregated',
             role: 'assistant',
             text: parts
@@ -1939,7 +1950,7 @@ describe('AgentSession', () => {
         embed: vi.fn(async () => ({ embeddings: [[0]] })),
         streamChat: vi.fn(() => {
           let i = 0
-          const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+          const stream = new ReadableStream<MessagePart<unknown, MockToolCall>>({
             pull(controller) {
               if (i < emitCount) {
                 controller.enqueue({ type: 'reasoning-delta', reasoning: `r${i} `, raw: {} })
@@ -1952,11 +1963,13 @@ describe('AgentSession', () => {
           })
           return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
             unknown,
-            unknown
+            MockToolCall
           >
         }),
         aggregateMessage: vi.fn(
-          (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => ({
+          (
+            parts: Array<ProviderServerMessage<unknown, MockToolCall>>,
+          ): AggregatedMessage<MockToolCall> => ({
             source: 'aggregated',
             role: 'assistant',
             text: parts
@@ -2008,7 +2021,7 @@ describe('AgentSession', () => {
         listModels: vi.fn(async () => [{ id: 'test-model', raw: { id: 'test-model' } }]),
         embed: vi.fn(async () => ({ embeddings: [[0]] })),
         streamChat: vi.fn(() => {
-          const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+          const stream = new ReadableStream<MessagePart<unknown, MockToolCall>>({
             pull(controller) {
               // Emit text-deltas forever until cancelled.
               controller.enqueue({ type: 'text-delta', text: 'x', raw: {} })
@@ -2019,11 +2032,13 @@ describe('AgentSession', () => {
           })
           return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
             unknown,
-            unknown
+            MockToolCall
           >
         }),
         aggregateMessage: vi.fn(
-          (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => ({
+          (
+            parts: Array<ProviderServerMessage<unknown, MockToolCall>>,
+          ): AggregatedMessage<MockToolCall> => ({
             source: 'aggregated',
             role: 'assistant',
             text: parts

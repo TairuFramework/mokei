@@ -35,9 +35,10 @@
     "build:types": "tsc --emitDeclarationOnly --skipLibCheck",
     "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
     "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
-    "test:types": "tsc --noEmit --skipLibCheck",
-    "test": "pnpm run test:types",
-    "prepublishOnly": "pnpm run build"
+    "test:types": "tsc --noEmit --skipLibCheck -p tsconfig.test.json",
+    "test": "pnpm run test:types && pnpm run test:unit",
+    "prepublishOnly": "pnpm run build",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@sozai/schema": "catalog:",
@@ -45,5 +46,8 @@
     "@mokei/model-provider": "workspace:^",
     "eventsource-parser": "catalog:",
     "ky": "catalog:"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
   }
 }

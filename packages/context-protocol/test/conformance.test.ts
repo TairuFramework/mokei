@@ -2,15 +2,15 @@ import { role } from '../src/content.js'
 import { elicitationCompleteNotification, elicitResult } from '../src/elicitation.js'
 import { samplingMessage, toolChoice } from '../src/sampling.js'
 import { enumSchema, multiSelectEnumSchema, primitiveSchemaDefinition } from '../src/schema.js'
-import elicitCompleteFixture from './conformance/elicitation-complete.json'
-import enumSchemaFixture from './conformance/elicitation-enum-schema.json'
-import elicitMultiFixture from './conformance/elicitation-multiselect.json'
-import elicitResultFixture from './conformance/elicitation-result.json'
-import elicitEnumFixture from './conformance/elicitation-sep1330.json'
+import elicitCompleteFixture from './conformance/elicitation-complete.json' with { type: 'json' }
+import enumSchemaFixture from './conformance/elicitation-enum-schema.json' with { type: 'json' }
+import elicitMultiFixture from './conformance/elicitation-multiselect.json' with { type: 'json' }
+import elicitResultFixture from './conformance/elicitation-result.json' with { type: 'json' }
+import elicitEnumFixture from './conformance/elicitation-sep1330.json' with { type: 'json' }
 import { runConformance } from './conformance/harness.js'
-import roleFixture from './conformance/role.json'
-import samplingContentFixture from './conformance/sampling-content.json'
-import toolChoiceFixture from './conformance/sampling-toolchoice.json'
+import roleFixture from './conformance/role.json' with { type: 'json' }
+import samplingContentFixture from './conformance/sampling-content.json' with { type: 'json' }
+import toolChoiceFixture from './conformance/sampling-toolchoice.json' with { type: 'json' }
 
 runConformance(role, roleFixture)
 runConformance(toolChoice, toolChoiceFixture)

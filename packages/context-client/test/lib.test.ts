@@ -387,9 +387,9 @@ describe('ContextClient', () => {
 
 describe('initialize hardening', () => {
   test('times out when the server never responds', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
       initializeTimeout: 50,
     })
     // Drain the client's initialize request but never reply.
@@ -399,9 +399,9 @@ describe('initialize hardening', () => {
   })
 
   test('throws an RPCError when the server returns an error response', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
     })
     void (async () => {
       const req = await transports.server.read()
@@ -417,9 +417,9 @@ describe('initialize hardening', () => {
   })
 
   test('tolerates a notification arriving before the initialize response', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
     })
     void (async () => {
       const req = await transports.server.read()
@@ -445,9 +445,9 @@ describe('initialize hardening', () => {
   })
 
   test('emits closed when the transport ends', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
     })
     void (async () => {
       const req = await transports.server.read()
@@ -826,9 +826,9 @@ describe('structuredContent validation', () => {
   })
 
   test('callTool transport options never reach the wire', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
     })
     client.initialize()
     await handleServerInitialize(transports.server, {
@@ -857,9 +857,9 @@ describe('structuredContent validation', () => {
 
 describe('protocolVersion negotiation', () => {
   test('rejects an unsupported server protocolVersion and disposes', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
     })
     void (async () => {
       const req = await transports.server.read()
@@ -878,9 +878,9 @@ describe('protocolVersion negotiation', () => {
   })
 
   test('accepts 2025-11-25', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
     })
     void (async () => {
       await handleServerInitialize(transports.server, {

@@ -38,8 +38,12 @@ describe('ContextHost lifecycle', () => {
     const added: Array<string> = []
     const removed: Array<string> = []
     let failed = 0
-    host.events.on('context:added', ({ key }) => added.push(key))
-    host.events.on('context:removed', ({ key }) => removed.push(key))
+    host.events.on('context:added', ({ key }) => {
+      added.push(key)
+    })
+    host.events.on('context:removed', ({ key }) => {
+      removed.push(key)
+    })
     host.events.on('context:failed', () => {
       failed += 1
     })

@@ -17,12 +17,12 @@ const storage = new AsyncLocalStorage<Context>()
 beforeAll(() => {
   context.setGlobalContextManager({
     active: () => storage.getStore() ?? ROOT_CONTEXT,
-    with: (
+    with: <A extends Array<unknown>, F extends (...args: A) => ReturnType<F>>(
       ctx: Context,
-      fn: (...args: Array<unknown>) => unknown,
-      thisArg?: unknown,
-      ...args: Array<unknown>
-    ) => storage.run(ctx, () => fn.call(thisArg, ...args)),
+      fn: F,
+      thisArg?: ThisParameterType<F>,
+      ...args: A
+    ): ReturnType<F> => storage.run(ctx, () => fn.call(thisArg, ...args)),
     bind: <T>(_ctx: Context, target: T): T => target,
     enable() {
       return this

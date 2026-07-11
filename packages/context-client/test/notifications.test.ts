@@ -47,7 +47,9 @@ describe('ContextClient notifications buffering', () => {
     const received: Array<number> = []
     for (let i = 0; i < 256; i++) {
       const { value } = await reader.read()
-      received.push((value as { params: { n: number } }).params.n)
+      // The test emits its own numbered progress notifications above, so `params.n` is known
+      // to be present even though the declared union does not carry it.
+      received.push((value as unknown as { params: { n: number } }).params.n)
     }
     expect(received.length).toBe(256)
     // Oldest dropped: the last received must be the newest emitted (999).

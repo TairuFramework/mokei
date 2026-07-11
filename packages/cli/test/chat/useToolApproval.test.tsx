@@ -60,7 +60,7 @@ describe('useToolApproval', () => {
     handles.push(handle)
 
     const promise = handle.api.toolApprovalFn({
-      toolCall: { id: '1', name: 'ns:tool', arguments: '{}' },
+      toolCall: { id: '1', name: 'ns:tool', arguments: '{}', raw: {} },
       iteration: 1,
       history: [],
       signal: new AbortController().signal,
@@ -86,7 +86,7 @@ describe('useToolApproval', () => {
     handles.push(handle)
 
     const promise = handle.api.toolApprovalFn({
-      toolCall: { id: '2', name: 'ns:tool', arguments: '{}' },
+      toolCall: { id: '2', name: 'ns:tool', arguments: '{}', raw: {} },
       iteration: 1,
       history: [],
       signal: new AbortController().signal,
