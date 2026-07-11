@@ -581,7 +581,7 @@ describe('list pagination', () => {
 
   test('throws ListMaxPagesError with partial results when the cap is exceeded', async () => {
     const { result } = await runListWalk(
-      (client) => client.listTools({}, { maxPages: 2 }),
+      (client) => client.listTools({ maxPages: 2 }),
       [
         { result: { tools: [toolA], nextCursor: 'c1' } },
         { result: { tools: [toolB], nextCursor: 'c2' } },
@@ -601,7 +601,7 @@ describe('list pagination', () => {
   test('a server echoing an unchanging cursor terminates at the cap', async () => {
     const page = { result: { tools: [toolA], nextCursor: 'same' } }
     const { result } = await runListWalk(
-      (client) => client.listTools({}, { maxPages: 3 }),
+      (client) => client.listTools({ maxPages: 3 }),
       [page, page, page],
     )
     await expect(result).rejects.toThrow(ListMaxPagesError)
@@ -618,11 +618,25 @@ describe('list pagination', () => {
   test('an aborted signal rejects the walk in progress', async () => {
     const controller = new AbortController()
     const { result } = await runListWalk(
-      (client) => client.listTools({}, { signal: controller.signal }),
+      (client) => client.listTools({ signal: controller.signal }),
       [{ result: { tools: [], nextCursor: 'c1' } }],
     )
     controller.abort()
     await expect(result).rejects.toThrow()
+  })
+
+  test('pagination and transport options never reach the wire', async () => {
+    // maxPages/signal/timeout share one object with the request's params, so they must be
+    // stripped before the params are sent: the peer sees the cursor and nothing else.
+    const controller = new AbortController()
+    const { result, requests } = await runListWalk(
+      (client) =>
+        client.listTools({ cursor: 'c1', maxPages: 5, signal: controller.signal, timeout: 30_000 }),
+      [{ result: { tools: [toolA] } }],
+    )
+
+    await expect(result).resolves.toEqual({ tools: [toolA] })
+    expect(requests).toEqual([{ cursor: 'c1' }])
   })
 
   test('listPrompts walks pages', async () => {
@@ -808,6 +822,35 @@ describe('structuredContent validation', () => {
 
     // Cache cleared: the bad structuredContent passes because no schema is known.
     await expect(call).resolves.toEqual({ content: [], structuredContent: { count: 'three' } })
+    await transports.dispose()
+  })
+
+  test('callTool transport options never reach the wire', async () => {
+    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const client = new ContextClient({
+      transport: transports.client as ClientParams['transport'],
+    })
+    client.initialize()
+    await handleServerInitialize(transports.server, {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { tools: {} },
+    })
+
+    const controller = new AbortController()
+    const call = client.callTool({
+      name: 'counter',
+      arguments: { n: 1 },
+      signal: controller.signal,
+      timeout: 30_000,
+    })
+    const request = await transports.server.read()
+    const { id, params } = request.value as { id: number; params: unknown }
+
+    // An AbortSignal left in the params would be serialized as a request param.
+    expect(params).toEqual({ name: 'counter', arguments: { n: 1 } })
+
+    transports.server.write({ jsonrpc: '2.0', id, result: { content: [] } } as ServerMessage)
+    await expect(call).resolves.toEqual({ content: [] })
     await transports.dispose()
   })
 })

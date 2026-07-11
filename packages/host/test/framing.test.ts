@@ -83,7 +83,8 @@ describe('ContextHost stdio framing', () => {
 
     // ~500 KiB result: well under the 8 MiB default cap, comfortably larger
     // than a single OS pipe buffer, so it exercises multi-chunk framing.
-    const result = await host.callTool('echo', {
+    const result = await host.callTool({
+      key: 'echo',
       name: 'echo',
       arguments: { text: 'abcd', repeat: 128 * 1024 },
     })

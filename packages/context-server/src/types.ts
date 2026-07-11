@@ -25,7 +25,7 @@ import type {
   InputSchema as ToolInputSchema,
   OutputSchema as ToolOutputSchema,
 } from '@mokei/context-protocol'
-import type { RequestOptions } from '@mokei/context-rpc'
+import type { WithRequestOptions } from '@mokei/context-rpc'
 import type { FromSchema, Schema } from '@sozai/schema'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
@@ -36,14 +36,10 @@ export type LogFunction = (level: LoggingLevel, data: unknown, logger?: string) 
 
 export type ServerClient = {
   createMessage: (
-    params: CreateMessageRequest['params'],
-    options?: RequestOptions,
+    params: WithRequestOptions<CreateMessageRequest['params']>,
   ) => Promise<CreateMessageResult>
-  elicit: (params: ElicitRequest['params'], options?: RequestOptions) => Promise<ElicitResult>
-  listRoots: (
-    params?: ListRootsRequest['params'],
-    options?: RequestOptions,
-  ) => Promise<ListRootsResult>
+  elicit: (params: WithRequestOptions<ElicitRequest['params']>) => Promise<ElicitResult>
+  listRoots: (params?: WithRequestOptions<ListRootsRequest['params']>) => Promise<ListRootsResult>
   log: LogFunction
 }
 

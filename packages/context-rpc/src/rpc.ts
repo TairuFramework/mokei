@@ -32,6 +32,31 @@ export type RequestOptions = {
   timeout?: number
 }
 
+/**
+ * A public request method's parameters: the request's wire params, plus the transport
+ * options that drive the exchange carrying them.
+ *
+ * The two are one object at the API surface and must be separated before the params
+ * reach the wire — see {@link splitRequestOptions}. No MCP request declares a `signal`
+ * or `timeout` param, so the merge is unambiguous.
+ */
+export type WithRequestOptions<Params> = Params & RequestOptions
+
+/**
+ * Splits a public parameters object into the params sent on the wire and the transport
+ * options kept local to this process.
+ *
+ * `ContextRPC.request` passes its `params` straight to the peer, so an `AbortSignal` or
+ * timeout left in that object would be serialized as a request param. Every public
+ * method that accepts {@link WithRequestOptions} must split here first.
+ */
+export function splitRequestOptions<Params>(
+  params: WithRequestOptions<Params>,
+): [Params, RequestOptions] {
+  const { signal, timeout, ...wireParams } = params as WithRequestOptions<Record<string, unknown>>
+  return [wireParams as Params, { signal, timeout }]
+}
+
 export type RPCTypes = {
   Events: Record<string, unknown>
   MessageIn: AnyMessage

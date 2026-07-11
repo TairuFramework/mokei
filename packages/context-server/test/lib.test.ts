@@ -266,6 +266,36 @@ describe('ContextServer', () => {
     await transports.dispose()
   })
 
+  test('outgoing request transport options never reach the wire', async () => {
+    const { server, transports } = createTestContext()
+
+    const params: ElicitRequest['params'] = {
+      message: 'Run this test?',
+      requestedSchema: { type: 'object', properties: { run: { type: 'string' } } },
+    }
+    const controller = new AbortController()
+
+    // signal/timeout share one object with the request's params, so they must be stripped
+    // before the params are sent: the peer sees the elicitation and nothing else.
+    const responsePromise = server.elicit({ ...params, signal: controller.signal, timeout: 30_000 })
+    await expect(transports.client.read()).resolves.toEqual({
+      done: false,
+      value: { jsonrpc: '2.0', id: 0, method: 'elicitation/create', params },
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 0,
+      result: { action: 'accept', content: { run: 'once' } },
+    })
+    await expect(responsePromise).resolves.toEqual({
+      action: 'accept',
+      content: { run: 'once' },
+    })
+
+    await transports.dispose()
+  })
+
   test('supports incoming completion requests', async () => {
     const params = {
       ref: { type: 'ref/prompt', name: 'test' },

@@ -16,7 +16,7 @@ import type {
   ServerMessage,
   Tool,
 } from '@mokei/context-protocol'
-import type { RequestOptions } from '@mokei/context-rpc'
+import type { WithRequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
 import { type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
 import { Disposer } from '@sozai/async'
@@ -54,11 +54,28 @@ export function getContextToolInfo(id: string): [string, string] {
   return [id.slice(0, index), id.slice(index + 1)]
 }
 
+/** Parameters for getting a prompt from a context, keyed by context. */
+export type ContextPromptParams<T extends ContextTypes = UnknownContextTypes> = WithRequestOptions<
+  PromptParams<T>
+> & { key: string }
+
+/** Parameters for calling a tool on a context, keyed by context. */
+export type ContextToolParams<T extends ContextTypes = UnknownContextTypes> = WithRequestOptions<
+  ToolParams<T>
+> & { key: string }
+
 /** Parameters for calling a tool by its namespaced ID (`contextKey:toolName` or `local:toolName`). */
-export type NamespacedToolParams = {
+export type NamespacedToolParams = WithRequestOptions<{
   id: string
   arguments?: Record<string, unknown>
   _meta?: Metadata
+}>
+
+/** Parameters for calling a local tool. Local tools run in-process, so they take no `timeout`. */
+export type LocalToolParams = {
+  name: string
+  arguments?: Record<string, unknown>
+  signal?: AbortSignal
 }
 
 export type AllowToolCalls = 'always' | 'ask' | 'never'
@@ -539,52 +556,45 @@ export class ContextHost extends Disposer {
   }
 
   getPrompt<T extends ContextTypes = UnknownContextTypes>(
-    key: string,
-    params: PromptParams<T>,
-    options?: RequestOptions,
+    params: ContextPromptParams<T>,
   ): Promise<GetPromptResult> {
-    return this.getContext<T>(key).client.getPrompt(params, options)
+    const { key, ...promptParams } = params
+    return this.getContext<T>(key).client.getPrompt(promptParams as PromptParams<T>)
   }
 
   callTool<T extends ContextTypes = UnknownContextTypes>(
-    key: string,
-    params: ToolParams<T>,
-    options?: RequestOptions,
+    params: ContextToolParams<T>,
   ): Promise<CallToolResult> {
-    return this.getContext<T>(key).client.callTool(params, options)
+    const { key, ...toolParams } = params
+    return this.getContext<T>(key).client.callTool(toolParams as ToolParams<T>)
   }
 
-  callNamespacedTool(
-    params: NamespacedToolParams,
-    options?: RequestOptions,
-  ): Promise<CallToolResult> {
-    const { id, arguments: args = {}, _meta } = params
+  callNamespacedTool(params: NamespacedToolParams): Promise<CallToolResult> {
+    const { id, arguments: args = {}, _meta, signal, timeout } = params
 
     // Check if this is a local tool
     if (isLocalToolID(id)) {
-      return this.callLocalTool(getLocalToolName(id), args, options)
+      return this.callLocalTool({ name: getLocalToolName(id), arguments: args, signal })
     }
 
     const [key, name] = getContextToolInfo(id)
-    return this.callTool(key, { name, arguments: args, _meta }, options)
+    return this.callTool({ key, name, arguments: args, _meta, signal, timeout })
   }
 
-  /** Call a local tool by name. */
-  async callLocalTool(
-    name: string,
-    args: Record<string, unknown> = {},
-    options?: RequestOptions,
-  ): Promise<CallToolResult> {
+  /** Call a local tool by name. Local tools run in-process, so there is no request to time out. */
+  async callLocalTool(params: LocalToolParams): Promise<CallToolResult> {
+    const { name, arguments: args = {}, signal } = params
+
     const localTool = this._localTools.get(name)
     if (localTool == null) {
       throw new Error(`Local tool "${name}" does not exist`)
     }
-    if (options?.signal?.aborted) {
-      throw options.signal.reason
+    if (signal?.aborted) {
+      throw signal.reason
     }
 
     try {
-      return await localTool.execute(args, options?.signal)
+      return await localTool.execute(args, signal)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       return {

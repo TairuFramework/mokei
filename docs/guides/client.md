@@ -220,16 +220,20 @@ const result = await client.callTool({
 
 ## Request Cancellation
 
-All requests return a `SentRequest` that can be cancelled:
+Every request method takes an optional `signal` and `timeout` alongside its params. Both
+cancel the request in flight and notify the server.
 
 ```typescript
+const controller = new AbortController()
+
 const request = client.callTool({
   name: 'long_operation',
-  arguments: { data: '...' }
+  arguments: { data: '...' },
+  signal: controller.signal,
 })
 
-// Cancel after timeout
-setTimeout(() => request.cancel(), 5000)
+// Cancel after 5 seconds
+setTimeout(() => controller.abort(), 5000)
 
 try {
   const result = await request
@@ -238,6 +242,16 @@ try {
     console.log('Request was cancelled')
   }
 }
+```
+
+A `timeout` rejects the request with a `RequestTimeoutError` on its own:
+
+```typescript
+const result = await client.callTool({
+  name: 'long_operation',
+  arguments: { data: '...' },
+  timeout: 5000,
+})
 ```
 
 ## Events

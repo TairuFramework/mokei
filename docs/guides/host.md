@@ -119,10 +119,11 @@ const result = await host.callNamespacedTool({
   arguments: { sql: 'SELECT *' },
 })
 
-// Or specify context and tool separately
-const result = await host.callTool('db', { 
-  name: 'query', 
-  arguments: { sql: 'SELECT *' } 
+// Or address the context and tool separately
+const result = await host.callTool({
+  key: 'db',
+  name: 'query',
+  arguments: { sql: 'SELECT *' },
 })
 ```
 
@@ -203,9 +204,10 @@ const keys = host.getContextKeys()
 ## Getting Prompts
 
 ```typescript
-const result = await host.getPrompt('db', {
+const result = await host.getPrompt({
+  key: 'db',
   name: 'sql_helper',
-  arguments: { table: 'users' }
+  arguments: { table: 'users' },
 })
 
 console.log('Prompt messages:', result.messages)

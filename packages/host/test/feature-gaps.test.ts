@@ -30,7 +30,8 @@ describe('MCP feature gaps, end to end', () => {
     })
     await host.setup('structured')
 
-    const result = await host.callTool('structured', {
+    const result = await host.callTool({
+      key: 'structured',
       name: 'count',
       arguments: { text: 'hello' },
     })

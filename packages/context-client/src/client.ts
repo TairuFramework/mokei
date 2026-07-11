@@ -45,7 +45,14 @@ import {
   SUPPORTED_PROTOCOL_VERSIONS,
   serverMessage,
 } from '@mokei/context-protocol'
-import { ContextRPC, type RequestOptions, RequestTimeoutError, RPCError } from '@mokei/context-rpc'
+import {
+  ContextRPC,
+  type RequestOptions,
+  RequestTimeoutError,
+  RPCError,
+  splitRequestOptions,
+  type WithRequestOptions,
+} from '@mokei/context-rpc'
 import { lazy } from '@sozai/async'
 import { createValidator, type Schema, type Validator } from '@sozai/schema'
 
@@ -108,15 +115,20 @@ export class ListMaxPagesError extends Error {
   }
 }
 
-/** Options accepted by the paginated list methods. */
-export type ListOptions = {
+/**
+ * Pagination and transport options accepted by the paginated list methods, alongside the
+ * request's own params.
+ *
+ * `signal` aborts the walk, cancelling the request in flight; `timeout` applies to each
+ * page request, not to the walk as a whole.
+ */
+export type ListOptions = RequestOptions & {
   /** Overrides `ClientParams.listMaxPages` for this call. */
   maxPages?: number
-  /** Aborts the walk, cancelling the request in flight. */
-  signal?: AbortSignal
-  /** Timeout applied to each page request, not to the walk as a whole. */
-  timeout?: number
 }
+
+/** Params of a paginated list method: its wire params plus {@link ListOptions}. */
+export type ListParams<Params> = Params & ListOptions
 
 /** A validation issue, matching the shape `createTool` produces for input errors. */
 export type ValidationIssue = {
@@ -421,44 +433,51 @@ export class ContextClient<
     return await this.#initialized
   }
 
-  async setLoggingLevel(params: SetLevelRequest['params']): Promise<Result> {
+  async setLoggingLevel(params: WithRequestOptions<SetLevelRequest['params']>): Promise<Result> {
     await this.#initialized
     this.#requireServerCapability('logging')
-    return await this.request('logging/setLevel', params)
+    const [wireParams, options] = splitRequestOptions(params)
+    return await this.request('logging/setLevel', wireParams, options)
   }
 
-  async complete(params: CompleteRequest['params']): Promise<CompleteResult> {
+  async complete(params: WithRequestOptions<CompleteRequest['params']>): Promise<CompleteResult> {
     await this.#initialized
     this.#requireServerCapability('completions')
-    return await this.request('completion/complete', params)
+    const [wireParams, options] = splitRequestOptions(params)
+    return await this.request('completion/complete', wireParams, options)
   }
 
   /**
    * Walks a paginated list method until the server stops returning a cursor.
    *
-   * When `params.cursor` is set the caller is driving pagination: a single
-   * request is issued and its page returned verbatim, `nextCursor` intact.
+   * Takes the caller's merged params and separates the wire params from the pagination
+   * and transport options, so the list methods never hand the latter to `request`.
+   *
+   * When `cursor` is set the caller is driving pagination: a single request is issued and
+   * its page returned verbatim, `nextCursor` intact.
    */
   async #listPaged(
     method: string,
     key: string,
-    send: (params: Record<string, unknown>) => Promise<PagedResult>,
-    params: Record<string, unknown>,
-    options: ListOptions,
+    send: (params: Record<string, unknown>, options: RequestOptions) => Promise<PagedResult>,
+    listParams: ListParams<Record<string, unknown>>,
   ): Promise<PagedResult> {
     await this.#initialized
 
+    const { maxPages: maxPagesParam, ...rest } = listParams
+    const [params, options] = splitRequestOptions(rest)
+
     if (params.cursor != null) {
-      return await send(params)
+      return await send(params, options)
     }
 
-    const maxPages = options.maxPages ?? this.#listMaxPages
+    const maxPages = maxPagesParam ?? this.#listMaxPages
     const items: Array<unknown> = []
     let cursor: string | undefined
     let pages = 0
 
     while (true) {
-      const page = await send(cursor == null ? params : { ...params, cursor })
+      const page = await send(cursor == null ? params : { ...params, cursor }, options)
       pages += 1
 
       const pageItems = page[key]
@@ -478,87 +497,81 @@ export class ContextClient<
   }
 
   async listPrompts(
-    params: ListPromptsRequest['params'] = {},
-    options: ListOptions = {},
+    params: ListParams<ListPromptsRequest['params']> = {},
   ): Promise<ListPromptsResult> {
     const result = await this.#listPaged(
       'prompts/list',
       'prompts',
-      (pageParams) =>
-        this.request('prompts/list', pageParams as ListPromptsRequest['params'], {
-          signal: options.signal,
-          timeout: options.timeout,
-        }) as Promise<PagedResult>,
+      (pageParams, options) =>
+        this.request(
+          'prompts/list',
+          pageParams as ListPromptsRequest['params'],
+          options,
+        ) as Promise<PagedResult>,
       params,
-      options,
     )
     return result as ListPromptsResult
   }
 
-  getPrompt(params: PromptParams<T>, options?: RequestOptions): Promise<GetPromptResult> {
-    return this.request('prompts/get', params as GetPromptRequest['params'], options)
+  getPrompt(params: WithRequestOptions<PromptParams<T>>): Promise<GetPromptResult> {
+    const [wireParams, options] = splitRequestOptions(params)
+    return this.request('prompts/get', wireParams as GetPromptRequest['params'], options)
   }
 
   async listResources(
-    params: ListResourcesRequest['params'] = {},
-    options: ListOptions = {},
+    params: ListParams<ListResourcesRequest['params']> = {},
   ): Promise<ListResourcesResult> {
     const result = await this.#listPaged(
       'resources/list',
       'resources',
-      (pageParams) =>
-        this.request('resources/list', pageParams as ListResourcesRequest['params'], {
-          signal: options.signal,
-          timeout: options.timeout,
-        }) as Promise<PagedResult>,
+      (pageParams, options) =>
+        this.request(
+          'resources/list',
+          pageParams as ListResourcesRequest['params'],
+          options,
+        ) as Promise<PagedResult>,
       params,
-      options,
     )
     return result as ListResourcesResult
   }
 
   async listResourceTemplates(
-    params: ListResourceTemplatesRequest['params'] = {},
-    options: ListOptions = {},
+    params: ListParams<ListResourceTemplatesRequest['params']> = {},
   ): Promise<ListResourceTemplatesResult> {
     const result = await this.#listPaged(
       'resources/templates/list',
       'resourceTemplates',
-      (pageParams) =>
+      (pageParams, options) =>
         this.request(
           'resources/templates/list',
           pageParams as ListResourceTemplatesRequest['params'],
-          { signal: options.signal, timeout: options.timeout },
+          options,
         ) as Promise<PagedResult>,
       params,
-      options,
     )
     return result as ListResourceTemplatesResult
   }
 
   readResource(
-    params: ReadResourceRequest['params'],
-    options?: RequestOptions,
+    params: WithRequestOptions<ReadResourceRequest['params']>,
   ): Promise<ReadResourceResult> {
-    return this.request('resources/read', params, options)
+    const [wireParams, options] = splitRequestOptions(params)
+    return this.request('resources/read', wireParams, options)
   }
 
-  async listTools(
-    params: ListToolsRequest['params'] = {},
-    options: ListOptions = {},
-  ): Promise<ListToolsResult> {
+  async listTools(params: ListParams<ListToolsRequest['params']> = {}): Promise<ListToolsResult> {
     await this.#initialized
     this.#requireServerCapability('tools')
     const result = (await this.#listPaged(
       'tools/list',
       'tools',
-      (pageParams) =>
-        this.request('tools/list', pageParams as ListToolsRequest['params'], {
-          signal: options.signal,
-          timeout: options.timeout,
-        }) as Promise<PagedResult>,
+      (pageParams, options) =>
+        this.request(
+          'tools/list',
+          pageParams as ListToolsRequest['params'],
+          options,
+        ) as Promise<PagedResult>,
       params,
-      options,
     )) as ListToolsResult
     this._cacheToolOutputSchemas(result.tools)
     return result
@@ -579,8 +592,13 @@ export class ContextClient<
     }
   }
 
-  async callTool(params: ToolParams<T>, options?: RequestOptions): Promise<CallToolResult> {
-    const result = await this.request('tools/call', params as CallToolRequest['params'], options)
+  async callTool(params: WithRequestOptions<ToolParams<T>>): Promise<CallToolResult> {
+    const [wireParams, options] = splitRequestOptions(params)
+    const result = await this.request(
+      'tools/call',
+      wireParams as CallToolRequest['params'],
+      options,
+    )
     const validate = this.#toolOutputSchemas.get(params.name)
     if (validate == null || result.structuredContent == null) {
       return result

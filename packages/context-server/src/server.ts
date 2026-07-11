@@ -33,7 +33,12 @@ import {
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
 } from '@mokei/context-protocol'
-import { ContextRPC, type RequestOptions, RPCError } from '@mokei/context-rpc'
+import {
+  ContextRPC,
+  RPCError,
+  splitRequestOptions,
+  type WithRequestOptions,
+} from '@mokei/context-rpc'
 import { createValidator } from '@sozai/schema'
 
 import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
@@ -173,22 +178,21 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this.events.emit('log', { level, data, logger })
   }
 
-  elicit(params: ElicitRequest['params'], options?: RequestOptions): Promise<ElicitResult> {
-    return this.request('elicitation/create', params, options)
+  elicit(params: WithRequestOptions<ElicitRequest['params']>): Promise<ElicitResult> {
+    const [wireParams, options] = splitRequestOptions(params)
+    return this.request('elicitation/create', wireParams, options)
   }
 
-  listRoots(
-    params: ListRootsRequest['params'] = {},
-    options?: RequestOptions,
-  ): Promise<ListRootsResult> {
-    return this.request('roots/list', params, options)
+  listRoots(params: WithRequestOptions<ListRootsRequest['params']> = {}): Promise<ListRootsResult> {
+    const [wireParams, options] = splitRequestOptions(params)
+    return this.request('roots/list', wireParams, options)
   }
 
   createMessage(
-    params: CreateMessageRequest['params'],
-    options?: RequestOptions,
+    params: WithRequestOptions<CreateMessageRequest['params']>,
   ): Promise<CreateMessageResult> {
-    return this.request('sampling/createMessage', params, options)
+    const [wireParams, options] = splitRequestOptions(params)
+    return this.request('sampling/createMessage', wireParams, options)
   }
 
   _handle() {

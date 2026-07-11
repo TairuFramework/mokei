@@ -248,7 +248,7 @@ describe('ContextHost Local Tools', () => {
         }),
       })
 
-      const result = await host.callLocalTool('greet', { name: 'World' })
+      const result = await host.callLocalTool({ name: 'greet', arguments: { name: 'World' } })
 
       expect(result.content).toHaveLength(1)
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello, World!' })
@@ -265,7 +265,7 @@ describe('ContextHost Local Tools', () => {
         },
       })
 
-      const result = await host.callLocalTool('failing_tool', {})
+      const result = await host.callLocalTool({ name: 'failing_tool' })
 
       expect(result.isError).toBe(true)
       expect(result.content[0]).toEqual({ type: 'text', text: 'Something went wrong' })
@@ -276,7 +276,7 @@ describe('ContextHost Local Tools', () => {
 
       // callLocalTool is now async: the missing-tool error rejects the promise
       // rather than throwing synchronously.
-      await expect(host.callLocalTool('nonexistent', {})).rejects.toThrow(
+      await expect(host.callLocalTool({ name: 'nonexistent' })).rejects.toThrow(
         'Local tool "nonexistent" does not exist',
       )
     })
@@ -527,7 +527,7 @@ describe('Server Tool to Local Tool Conversion', () => {
 
       expect(host.hasLocalTool('multiply')).toBe(true)
 
-      const result = await host.callLocalTool('multiply', { a: 6, b: 7 })
+      const result = await host.callLocalTool({ name: 'multiply', arguments: { a: 6, b: 7 } })
       expect(result.content[0]).toEqual({ type: 'text', text: '42' })
     })
 
@@ -572,7 +572,7 @@ describe('toolToLocalTool cancellation', () => {
     host.addLocalTool(toolToLocalTool('waiter', serverTool))
 
     const controller = new AbortController()
-    const request = host.callLocalTool('waiter', {}, { signal: controller.signal })
+    const request = host.callLocalTool({ name: 'waiter', signal: controller.signal })
     // Let the handler start and subscribe to the signal.
     await new Promise((resolve) => setTimeout(resolve, 10))
     controller.abort()
@@ -603,7 +603,7 @@ describe('callLocalTool cancellation', () => {
     })
 
     const controller = new AbortController()
-    const request = host.callLocalTool('waiter', {}, { signal: controller.signal })
+    const request = host.callLocalTool({ name: 'waiter', signal: controller.signal })
     // Let execute start and subscribe to the signal.
     await new Promise((resolve) => setTimeout(resolve, 10))
     controller.abort()
