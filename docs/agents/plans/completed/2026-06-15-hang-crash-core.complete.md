@@ -27,8 +27,8 @@ hanging callers, and stop the CLI from crash-dumping on those failures.
 - **Full host lifecycle events** — `ContextHost` emits
   `context:added`/`removed`/`failed`; a context whose child exits abnormally is
   reaped. (Downstream lifecycle items — SIGTERM escalation, session races,
-  notification buffering — deliberately left to
-  `backlog/2026-06-12-host-session-lifecycle.md`.)
+  notification buffering — deliberately left out here; since shipped, see
+  `completed/2026-06-19-host-session-lifecycle.complete.md`.)
 - **Spawn never rethrows into an unowned promise** — the child-exit promise is
   consumed, so a crash can't surface as an unhandled rejection.
 - **CLI** — consume rejected promises through existing error UX

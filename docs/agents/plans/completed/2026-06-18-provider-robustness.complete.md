@@ -63,7 +63,7 @@ All 6 audit items landed (7 commits, `d0df124`..`698578c`):
 
 Whole-branch review (opus): ready to merge, no Critical/Important.
 
-**Follow-up filed:** `backlog/2026-06-18-anthropic-test-known-models.md` (pre-existing red test, not from this branch).
+**Follow-up filed** (pre-existing red test, not from this branch) — since shipped, see `completed/2026-06-19-anthropic-test-known-models.complete.md`.
 
 ### Hardening (post-review)
 

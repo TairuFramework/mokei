@@ -3,7 +3,7 @@
 **Status:** complete
 **Date:** 2026-07-11
 **Branch:** `feat/mcp-feature-gaps` (commits `d82dc9c`..`fef1fa2`, PR #36)
-**Origin:** `backlog/2026-07-02-mcp-feature-gaps.md` (retired by this work)
+**Origin:** the 2026-07-02 MCP feature-gaps backlog item (retired by this work)
 
 ## What shipped
 
