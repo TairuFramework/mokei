@@ -38,7 +38,7 @@ export const toolInputSchema = {
  * const tools = createSQLiteTools(db)
  * ```
  */
-export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
+export function createSQLiteTools(db: DatabaseSync) {
   return {
     sqlite_all: createTool({
       description:
@@ -67,7 +67,7 @@ export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
         return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
       },
     }),
-  }
+  } satisfies ToolDefinitions
 }
 
 /**
@@ -84,12 +84,16 @@ export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
  * const server = new ContextServer({ ...config, transport })
  * ```
  */
-export function createSQLiteConfig(db: DatabaseSync): ServerConfig {
+export function createSQLiteConfig(db: DatabaseSync) {
+  // `satisfies`, not a `: ServerConfig` annotation. The annotation widens `tools` to the
+  // optional `ToolDefinitions | undefined`, which fails the `extends ToolDefinitions` check in
+  // ExtractServerTypes — collapsing SQLiteServerTypes to `Record<string, never>` and typing
+  // every tool's arguments as `never`, so the typed client could not be called at all.
   return {
     name: 'sqlite',
     version: '0.1.0',
     tools: createSQLiteTools(db),
-  }
+  } satisfies ServerConfig
 }
 
 /**

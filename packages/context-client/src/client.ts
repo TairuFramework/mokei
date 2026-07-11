@@ -217,19 +217,25 @@ export type UnknownContextTypes = {
   Tools: Record<string, Record<string, unknown>>
 }
 
-export type PromptParams<T extends ContextTypes> = {
-  name: keyof T['Prompts'] & string
-  arguments: T['Prompts'][keyof T['Prompts']] extends undefined
-    ? never
-    : T['Prompts'][keyof T['Prompts']]
-  _meta?: Metadata
-}
+/**
+ * Params of a named call, as a union of one member per name — so `arguments` is the type of
+ * *that* name's arguments.
+ *
+ * The obvious shape, `{ name: keyof M & string; arguments: M[keyof M] }`, is wrong: it takes
+ * the union of every entry's arguments and correlates it with nothing, so calling tool `a`
+ * with tool `b`'s arguments type-checks. Distributing over the keys keeps the two tied.
+ */
+type NamedParams<M> = {
+  [K in keyof M & string]: {
+    name: K
+    arguments: M[K] extends undefined ? never : M[K]
+    _meta?: Metadata
+  }
+}[keyof M & string]
 
-export type ToolParams<T extends ContextTypes> = {
-  name: keyof T['Tools'] & string
-  arguments: T['Tools'][keyof T['Tools']] extends undefined ? never : T['Tools'][keyof T['Tools']]
-  _meta?: Metadata
-}
+export type PromptParams<T extends ContextTypes> = NamedParams<T['Prompts']>
+
+export type ToolParams<T extends ContextTypes> = NamedParams<T['Tools']>
 
 export type ClientParams = {
   createMessage?: CreateMessageHandler

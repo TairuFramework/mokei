@@ -96,6 +96,40 @@ Four gaps against the `2025-11-25` revision, plus one refactor the first two for
   the peer sees the wire params and nothing else; all three fail if the split is removed,
   which was verified by removing it.
 
+- **The typed client works by carrying a phantom witness, not by matching the definition.**
+  `ExtractServerTypes<typeof config>` — the advertised way to get a type-safe
+  `ContextClient` — was broken in both directions, and each shipped server demonstrated one
+  half. Annotate the config (`createSQLiteConfig(db): ServerConfig`) and `tools` widens to
+  the *optional* `ToolDefinitions | undefined`, which fails `ExtractServerTypes`'s `extends
+  ToolDefinitions` check, collapses `Tools` to `Record<string, never>`, and types every
+  tool's `arguments` as **`never`** — the client could not be called at all. Omit the
+  annotation and the concrete definitions survive, but instantiating the client blew up with
+  `TS2589: excessively deep` / `TS2590: union too complex`.
+
+  Both traced to one cause: `ExtractToolTypes` recovered the argument type by matching
+  `T[K] extends TypedToolDefinition<infer S>`, and `TypedToolDefinition` embeds
+  `handler: TypedToolHandler<FromSchema<S>>`. Matching it therefore forces TypeScript to
+  compare *handler* types — dragging the large `CallToolResult` union into the comparison,
+  once per tool. That is the explosion. And it could never succeed anyway, because
+  `createTool` returned `GenericToolDefinition`: the typed branch was dead code, so the
+  fallback (`Record<string, unknown>`) was the *best* case, `never` the actual one.
+
+  Now `createTool` returns `ToolDefinition<Arguments>` — the same runtime object, carrying a
+  phantom `_arguments?: Arguments` witness that exists only in the type system. Extraction
+  reads that one optional property instead of structurally matching the definition, so the
+  handler never enters the comparison and the depth stays bounded. `TypedToolDefinition` /
+  `TypedPromptDefinition` are deleted; nothing could produce them.
+
+  Second, independent bug in the same feature: `ToolParams` was
+  `{ name: keyof Tools; arguments: Tools[keyof Tools] }` — the union of *every* tool's
+  arguments, correlated with nothing, so calling tool `a` with tool `b`'s arguments
+  type-checked. It is now a union distributed over the keys, one member per tool name, which
+  ties `arguments` to the `name` beside it.
+
+  Guarded by `mcp-servers/sqlite/test/types.ts`: a type-level test (no runtime assertions,
+  compiled by `tsc`) whose `@ts-expect-error` lines fail the build if an unknown tool name, a
+  wrong argument type, or a missing required argument ever starts compiling.
+
 - **A call carries `arguments`; a handler receives `input`.** The first version of the
   params-object refactor named the handler's field `arguments`, mirroring MCP's wire field.
   That was a mistake: **`arguments` is a reserved binding name in strict mode, and ES

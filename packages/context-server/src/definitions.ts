@@ -18,12 +18,13 @@ import { createValidator, type FromSchema, type Schema } from '@sozai/schema'
 export class ToolOutputValidationError extends RPCError {}
 
 import type {
-  GenericPromptDefinition,
   GenericToolDefinition,
   HandlerRequest,
+  PromptDefinition,
   PromptHandlerReturn,
   ResourceDefinitions,
   ResourceHandlers,
+  ToolDefinition,
   TypedPromptHandler,
   TypedToolHandler,
 } from './types.js'
@@ -40,7 +41,7 @@ export type CreatePromptParams<
 export function createPrompt<
   ArgumentsSchema extends Schema,
   Arguments = FromSchema<ArgumentsSchema>,
->(params: CreatePromptParams<ArgumentsSchema, Arguments>): GenericPromptDefinition {
+>(params: CreatePromptParams<ArgumentsSchema, Arguments>): PromptDefinition<Arguments> {
   const { description, argumentsSchema, handler } = params
 
   if (argumentsSchema == null) {
@@ -51,7 +52,7 @@ export function createPrompt<
         signal: request.signal,
       })
     }
-    return { description, handler: passthrough }
+    return { description, handler: passthrough } as PromptDefinition<Arguments>
   }
 
   const validate = createValidator<ArgumentsSchema, Arguments>(argumentsSchema, {
@@ -69,7 +70,7 @@ export function createPrompt<
     })
   }
 
-  return { description, argumentsSchema, handler: wrappedHandler }
+  return { description, argumentsSchema, handler: wrappedHandler } as PromptDefinition<Arguments>
 }
 
 export type CreateToolParams<
@@ -89,7 +90,9 @@ export function createTool<
   OutputSchema extends Schema | undefined = undefined,
   Arguments = FromSchema<InputSchema>,
   Output = OutputSchema extends Schema ? FromSchema<OutputSchema> : unknown,
->(params: CreateToolParams<InputSchema, OutputSchema, Arguments, Output>): GenericToolDefinition {
+>(
+  params: CreateToolParams<InputSchema, OutputSchema, Arguments, Output>,
+): ToolDefinition<Arguments> {
   const { description, inputSchema, outputSchema, handler } = params
 
   const validateInput = createValidator<InputSchema, Arguments>(inputSchema, {
@@ -154,7 +157,8 @@ export function createTool<
   if (outputSchema != null) {
     definition.outputSchema = outputSchema as ToolOutputSchema
   }
-  return definition
+  // The phantom `_arguments` witness is type-level only; nothing writes it at runtime.
+  return definition as ToolDefinition<Arguments>
 }
 
 export function toResourceHandlers(definitions: ResourceDefinitions): ResourceHandlers {

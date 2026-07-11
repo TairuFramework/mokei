@@ -37,7 +37,7 @@ export function createTurndownService(): Turndown {
  * const tools = createFetchTools()
  * ```
  */
-export function createFetchTools(options: FetchToolsOptions = {}): ToolDefinitions {
+export function createFetchTools(options: FetchToolsOptions = {}) {
   const turndownService = options.turndownService ?? createTurndownService()
 
   return {
@@ -78,7 +78,7 @@ export function createFetchTools(options: FetchToolsOptions = {}): ToolDefinitio
         }
       },
     }),
-  }
+  } satisfies ToolDefinitions
 }
 
 /**

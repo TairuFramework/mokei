@@ -5,12 +5,7 @@ import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { ContextServer } from '@mokei/context-server'
 import { describe, expect, test } from 'vitest'
 
-// Deliberately the untyped ContextClient: ExtractServerTypes cannot currently produce usable tool
-// types -- it yields `never` arguments when the server config is annotated, and exceeds the
-// instantiation depth when it is not. See backlog/2026-07-11-typed-client-extraction.md. These
-// tests cover the server, not that feature.
-
-import { createSQLiteConfig } from '../src/index.js'
+import { createSQLiteConfig, type SQLiteServerTypes } from '../src/index.js'
 
 describe('SQLite MCP server', () => {
   test('sqlite_run creates table', async () => {
@@ -19,7 +14,7 @@ describe('SQLite MCP server', () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const server = new ContextServer({ ...config, transport: transports.server })
 
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient<SQLiteServerTypes>({ transport: transports.client })
 
     const result = await client.callTool({
       name: 'sqlite_run',
@@ -42,7 +37,7 @@ describe('SQLite MCP server', () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const server = new ContextServer({ ...config, transport: transports.server })
 
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient<SQLiteServerTypes>({ transport: transports.client })
 
     const result = await client.callTool({
       name: 'sqlite_run',
@@ -68,7 +63,7 @@ describe('SQLite MCP server', () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const server = new ContextServer({ ...config, transport: transports.server })
 
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient<SQLiteServerTypes>({ transport: transports.client })
 
     const result = await client.callTool({
       name: 'sqlite_get',
@@ -94,7 +89,7 @@ describe('SQLite MCP server', () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const server = new ContextServer({ ...config, transport: transports.server })
 
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient<SQLiteServerTypes>({ transport: transports.client })
 
     const result = await client.callTool({
       name: 'sqlite_all',

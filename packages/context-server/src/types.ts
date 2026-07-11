@@ -81,10 +81,13 @@ export type GenericPromptDefinition = {
   handler: GenericPromptHandler
 }
 
-export type TypedPromptDefinition<ArgumentsSchema extends Schema> = {
-  description: string
-  argumentsSchema: Schema
-  handler: TypedPromptHandler<FromSchema<ArgumentsSchema>>
+/**
+ * What `createPrompt` returns: a runtime `GenericPromptDefinition` carrying a phantom witness
+ * of the argument type its `argumentsSchema` describes. See {@link ToolDefinition}.
+ */
+export type PromptDefinition<Arguments = Record<string, unknown>> = GenericPromptDefinition & {
+  /** @internal Phantom type witness. Never present at runtime; do not read it. */
+  readonly _arguments?: Arguments
 }
 
 export type PromptDefinitions = Record<string, GenericPromptDefinition>
@@ -137,11 +140,19 @@ export type GenericToolDefinition = {
   handler: GenericToolHandler
 }
 
-export type TypedToolDefinition<InputSchema extends Schema & ToolInputSchema> = {
-  description: string
-  inputSchema: InputSchema
-  outputSchema?: ToolOutputSchema
-  handler: TypedToolHandler<FromSchema<InputSchema>>
+/**
+ * What `createTool` returns: a runtime `GenericToolDefinition` carrying a phantom witness of
+ * the argument type its `inputSchema` describes.
+ *
+ * The witness is type-level only — never present at runtime. It exists so
+ * {@link ExtractToolTypes} can recover a tool's argument type by reading one optional
+ * property. The alternative — structurally matching the whole definition against a typed
+ * one — forces TypeScript to compare `handler` types, which carry the large `CallToolResult`
+ * union, and that exceeds the instantiation depth (TS2589/TS2590).
+ */
+export type ToolDefinition<Arguments = Record<string, unknown>> = GenericToolDefinition & {
+  /** @internal Phantom type witness. Never present at runtime; do not read it. */
+  readonly _arguments?: Arguments
 }
 
 export type ToolDefinitions = Record<string, GenericToolDefinition>
@@ -164,12 +175,22 @@ export type ToolDefinitions = Record<string, GenericToolDefinition>
  * ```
  */
 export type ExtractToolTypes<T extends ToolDefinitions> = {
-  [K in keyof T]: T[K] extends TypedToolDefinition<infer S>
-    ? FromSchema<S>
-    : T[K] extends GenericToolDefinition
-      ? Record<string, unknown>
-      : never
+  [K in keyof T]: ExtractArguments<T[K]>
 }
+
+/**
+ * Read a definition's phantom argument witness, falling back to an open record for a
+ * definition that carries none (a hand-written `GenericToolDefinition`, or a tool whose
+ * schema TypeScript could not narrow).
+ *
+ * Reading one optional property is deliberate: matching the definition structurally would
+ * drag its `handler` — and the `CallToolResult` union inside it — into the comparison.
+ */
+type ExtractArguments<Definition> = Definition extends { readonly _arguments?: infer Arguments }
+  ? unknown extends Arguments
+    ? Record<string, unknown>
+    : Arguments
+  : Record<string, unknown>
 
 /**
  * Extract TypeScript types from prompt definitions for type-safe client usage.
@@ -189,11 +210,7 @@ export type ExtractToolTypes<T extends ToolDefinitions> = {
  * ```
  */
 export type ExtractPromptTypes<T extends PromptDefinitions> = {
-  [K in keyof T]: T[K] extends TypedPromptDefinition<infer S>
-    ? FromSchema<S>
-    : T[K] extends GenericPromptDefinition
-      ? Record<string, unknown>
-      : never
+  [K in keyof T]: ExtractArguments<T[K]>
 }
 
 /**
