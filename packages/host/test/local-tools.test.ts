@@ -105,7 +105,7 @@ describe('ContextHost Local Tools', () => {
         name: 'calculate',
         description: 'Calculate expression',
         inputSchema: { type: 'object', properties: { expr: { type: 'string' } } },
-        execute: async ({ arguments: { expr } }) => ({
+        execute: async ({ input: { expr } }) => ({
           content: [{ type: 'text', text: `calculated: ${expr}` }],
         }),
       })
@@ -243,7 +243,7 @@ describe('ContextHost Local Tools', () => {
           type: 'object',
           properties: { name: { type: 'string' } },
         },
-        execute: async ({ arguments: { name } }) => ({
+        execute: async ({ input: { name } }) => ({
           content: [{ type: 'text', text: `Hello, ${name}!` }],
         }),
       })
@@ -292,7 +292,7 @@ describe('ContextHost Local Tools', () => {
           type: 'object',
           properties: { message: { type: 'string' } },
         },
-        execute: async ({ arguments: { message } }) => ({
+        execute: async ({ input: { message } }) => ({
           content: [{ type: 'text', text: message as string }],
         }),
       })
@@ -342,7 +342,7 @@ describe('Server Tool to Local Tool Conversion', () => {
           required: ['a', 'b'],
         } as const,
         handler: (req) => ({
-          content: [{ type: 'text', text: String(req.arguments.a + req.arguments.b) }],
+          content: [{ type: 'text', text: String(req.input.a + req.input.b) }],
         }),
       })
 
@@ -365,12 +365,12 @@ describe('Server Tool to Local Tool Conversion', () => {
           required: ['message'],
         } as const,
         handler: (req) => ({
-          content: [{ type: 'text', text: `Echo: ${req.arguments.message}` }],
+          content: [{ type: 'text', text: `Echo: ${req.input.message}` }],
         }),
       })
 
       const localTool = toolToLocalTool({ name: 'echo', definition: serverTool })
-      const result = await localTool.execute({ arguments: { message: 'hello' } })
+      const result = await localTool.execute({ input: { message: 'hello' } })
 
       expect(result.content).toHaveLength(1)
       expect(result.content[0]).toEqual({ type: 'text', text: 'Echo: hello' })
@@ -389,7 +389,7 @@ describe('Server Tool to Local Tool Conversion', () => {
 
       const localTool = toolToLocalTool({ name: 'needsClient', definition: serverTool })
 
-      await expect(localTool.execute({ arguments: {} })).rejects.toThrow(
+      await expect(localTool.execute({ input: {} })).rejects.toThrow(
         'createMessage() is not available for local tools',
       )
     })
@@ -406,7 +406,7 @@ describe('Server Tool to Local Tool Conversion', () => {
       })
 
       const localTool = toolToLocalTool({ name: 'logger', definition: serverTool })
-      const result = await localTool.execute({ arguments: {} })
+      const result = await localTool.execute({ input: {} })
 
       expect(result.content[0]).toEqual({ type: 'text', text: 'logged' })
     })
@@ -424,7 +424,7 @@ describe('Server Tool to Local Tool Conversion', () => {
       })
 
       const localTool = toolToLocalTool({ name: 'signalChecker', definition: serverTool })
-      await localTool.execute({ arguments: {} })
+      await localTool.execute({ input: {} })
 
       expect(receivedSignal).toBeDefined()
       expect(receivedSignal?.aborted).toBe(false)
@@ -465,13 +465,13 @@ describe('Server Tool to Local Tool Conversion', () => {
             required: ['name'],
           } as const,
           handler: (req) => ({
-            content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }],
+            content: [{ type: 'text', text: `Hello, ${req.input.name}!` }],
           }),
         }),
       } satisfies ToolDefinitions
 
       const localTools = toolsToLocalTools(tools)
-      const result = await localTools[0].execute({ arguments: { name: 'World' } })
+      const result = await localTools[0].execute({ input: { name: 'World' } })
 
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello, World!' })
     })
@@ -517,7 +517,7 @@ describe('Server Tool to Local Tool Conversion', () => {
             required: ['a', 'b'],
           } as const,
           handler: (req) => ({
-            content: [{ type: 'text', text: String(req.arguments.a * req.arguments.b) }],
+            content: [{ type: 'text', text: String(req.input.a * req.input.b) }],
           }),
         }),
       } satisfies ToolDefinitions

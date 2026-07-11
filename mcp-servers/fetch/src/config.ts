@@ -53,7 +53,7 @@ export function createFetchTools(options: FetchToolsOptions = {}): ToolDefinitio
       } as const satisfies Schema,
       handler: async (req) => {
         try {
-          const res = await fetch(req.arguments.url)
+          const res = await fetch(req.input.url)
           if (!res.ok) {
             return {
               content: [

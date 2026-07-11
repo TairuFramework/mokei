@@ -172,8 +172,9 @@ Register tools directly without setting up an MCP server. Local tools are namesp
 
 ### Defining Local Tools
 
-`execute` receives a single request object: the parsed `arguments`, plus an optional `signal`.
-Destructure the tool's own arguments out of `arguments`:
+`execute` receives a single request object: the validated `input` — the thing the tool's
+`inputSchema` describes — plus an optional `signal`. Destructure the tool's own arguments out
+of `input`:
 
 ```typescript
 import { Session, type LocalToolDefinition } from '@mokei/session'
@@ -188,7 +189,7 @@ const calculateTool: LocalToolDefinition = {
     },
     required: ['expression']
   },
-  execute: async ({ arguments: { expression } }) => {
+  execute: async ({ input: { expression } }) => {
     try {
       const result = Function(`"use strict"; return (${expression})`)()
       return { content: [{ type: 'text', text: String(result) }] }
@@ -216,7 +217,7 @@ const session = new Session({
         type: 'object',
         properties: { message: { type: 'string' } }
       },
-      execute: async ({ arguments: { message } }) => ({
+      execute: async ({ input: { message } }) => ({
         content: [{ type: 'text', text: message as string }]
       })
     }

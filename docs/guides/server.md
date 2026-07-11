@@ -46,9 +46,9 @@ const tools = {
       additionalProperties: false
     } as const,  // as const for type inference
     handler: (req) => {
-      const greeting = req.arguments.formal
-        ? `Good day, ${req.arguments.name}.`
-        : `Hello, ${req.arguments.name}!`
+      const greeting = req.input.formal
+        ? `Good day, ${req.input.name}.`
+        : `Hello, ${req.input.name}!`
       return {
         content: [{ type: 'text', text: greeting }],
         isError: false
@@ -169,13 +169,13 @@ const prompts = {
       required: ['language', 'code']
     } as const,
     handler: (req) => ({
-      description: `Code review for ${req.arguments.language}`,
+      description: `Code review for ${req.input.language}`,
       messages: [
         {
           role: 'user',
           content: {
             type: 'text',
-            text: `Review this ${req.arguments.language} code:\n\n${req.arguments.code}`
+            text: `Review this ${req.input.language} code:\n\n${req.input.code}`
           }
         }
       ]
@@ -365,7 +365,7 @@ const tools = {
     description: 'Execute SQL and return all results as array',
     inputSchema: sqlSchema,
     handler: (req) => {
-      const results = db.prepare(req.arguments.sql).all(req.arguments.parameters ?? {})
+      const results = db.prepare(req.input.sql).all(req.input.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
     }
   }),
@@ -373,7 +373,7 @@ const tools = {
     description: 'Execute SQL and return change summary',
     inputSchema: sqlSchema,
     handler: (req) => {
-      const changes = db.prepare(req.arguments.sql).run(req.arguments.parameters ?? {})
+      const changes = db.prepare(req.input.sql).run(req.input.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
     }
   })

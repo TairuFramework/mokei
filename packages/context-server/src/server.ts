@@ -289,7 +289,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           }
     try {
       return await handler({
-        arguments: request.params.arguments ?? {},
+        // The wire calls it `arguments` (MCP `tools/call`); handlers receive it as `input`,
+        // the thing the tool's `inputSchema` describes.
+        input: request.params.arguments ?? {},
         client: this.#client,
         progress,
         signal,
@@ -320,7 +322,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (handler == null) {
       throw new RPCError(INVALID_PARAMS, `Prompt ${name} not found`)
     }
-    return await handler({ arguments: request.params.arguments, client: this.#client, signal })
+    return await handler({ input: request.params.arguments, client: this.#client, signal })
   }
 }
 

@@ -90,7 +90,7 @@ const tools = {
       required: ['name']
     } as const,
     handler: (req) => ({
-      content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }],
+      content: [{ type: 'text', text: `Hello, ${req.input.name}!` }],
       isError: false
     })
   })
@@ -114,7 +114,7 @@ const session = new Session({
       properties: { expression: { type: 'string' } },
       required: ['expression']
     },
-    execute: async ({ arguments: { expression } }) => ({
+    execute: async ({ input: { expression } }) => ({
       content: [{ type: 'text', text: String(eval(expression)) }]
     })
   }]

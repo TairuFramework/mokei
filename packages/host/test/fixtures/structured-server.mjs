@@ -17,7 +17,7 @@ const config = {
         properties: { count: { type: 'number' } },
         required: ['count'],
       },
-      handler: (req) => ({ structuredContent: { count: req.arguments.text.length } }),
+      handler: (req) => ({ structuredContent: { count: req.input.text.length } }),
     }),
   },
 }

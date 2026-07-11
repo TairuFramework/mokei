@@ -96,6 +96,21 @@ Four gaps against the `2025-11-25` revision, plus one refactor the first two for
   the peer sees the wire params and nothing else; all three fail if the split is removed,
   which was verified by removing it.
 
+- **A call carries `arguments`; a handler receives `input`.** The first version of the
+  params-object refactor named the handler's field `arguments`, mirroring MCP's wire field.
+  That was a mistake: **`arguments` is a reserved binding name in strict mode, and ES
+  modules are always strict**, so `({ arguments, signal }) => ...` is a *SyntaxError* — the
+  field could only ever be reached by rename-destructure (`{ arguments: { expr } }`) or
+  property access. For a local tool's `execute`, whose whole ergonomic point had been
+  `execute: async ({ expression }) => ...`, that was a regression over the API it replaced.
+
+  So the wire keeps `arguments` (it is MCP's, on `tools/call` and `prompts/get`) and every
+  *call* keeps it too — `callTool({ name, arguments })`. What a *handler* receives is named
+  `input`, which pairs with the `inputSchema` that describes it (as `structuredContent`
+  pairs with `outputSchema`), and which can actually be destructured. `ContextServer`
+  converts at the dispatch seam. The rule is short enough to hold onto: **calls use wire
+  vocabulary, handlers use schema vocabulary.**
+
 - **Type-level narrowing keys off `[unknown] extends [Output]`.** Declaring an
   `outputSchema` makes `structuredContent` mandatory in the handler's return type;
   tools without one are typed exactly as before. The direction matters: the reverse

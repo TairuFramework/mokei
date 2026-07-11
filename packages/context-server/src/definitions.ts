@@ -44,9 +44,9 @@ export function createPrompt<
   const { description, argumentsSchema, handler } = params
 
   if (argumentsSchema == null) {
-    const passthrough = (request: HandlerRequest<{ arguments: unknown }>): PromptHandlerReturn => {
+    const passthrough = (request: HandlerRequest<{ input: unknown }>): PromptHandlerReturn => {
       return handler({
-        arguments: request.arguments as Arguments,
+        input: request.input as Arguments,
         client: request.client,
         signal: request.signal,
       })
@@ -59,10 +59,10 @@ export function createPrompt<
     strict: false,
   })
 
-  const wrappedHandler = (request: HandlerRequest<{ arguments: unknown }>): PromptHandlerReturn => {
-    const validated = validate(request.arguments)
+  const wrappedHandler = (request: HandlerRequest<{ input: unknown }>): PromptHandlerReturn => {
+    const validated = validate(request.input)
     if (validated.issues == null) {
-      return handler({ arguments: validated.value, client: request.client, signal: request.signal })
+      return handler({ input: validated.value, client: request.client, signal: request.signal })
     }
     throw new RPCError(INVALID_PARAMS, 'Invalid prompt arguments', {
       issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
@@ -129,16 +129,16 @@ export function createTool<
   }
 
   const wrappedHandler = async (
-    request: HandlerRequest<{ arguments: Record<string, unknown> }>,
+    request: HandlerRequest<{ input: Record<string, unknown> }>,
   ): Promise<CallToolResult> => {
-    const validated = validateInput(request.arguments)
+    const validated = validateInput(request.input)
     if (validated.issues != null) {
       throw new RPCError(INVALID_PARAMS, 'Invalid tool input', {
         issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
       })
     }
     const result = await handler({
-      arguments: validated.value,
+      input: validated.value,
       client: request.client,
       progress: request.progress,
       signal: request.signal,

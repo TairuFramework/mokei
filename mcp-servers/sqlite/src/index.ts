@@ -45,7 +45,7 @@ export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
         'This method executes a prepared statement and returns all results as an array of objects',
       inputSchema: toolInputSchema,
       handler: (req) => {
-        const results = db.prepare(req.arguments.sql).all(req.arguments.parameters ?? {})
+        const results = db.prepare(req.input.sql).all(req.input.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
       },
     }),
@@ -54,7 +54,7 @@ export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
         'This method executes a prepared statement and returns the first result as an object',
       inputSchema: toolInputSchema,
       handler: (req) => {
-        const result = db.prepare(req.arguments.sql).get(req.arguments.parameters ?? {})
+        const result = db.prepare(req.input.sql).get(req.input.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
       },
     }),
@@ -63,7 +63,7 @@ export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
         'This method executes a prepared statement and returns an object summarizing the resulting changes',
       inputSchema: toolInputSchema,
       handler: (req) => {
-        const changes = db.prepare(req.arguments.sql).run(req.arguments.parameters ?? {})
+        const changes = db.prepare(req.input.sql).run(req.input.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
       },
     }),

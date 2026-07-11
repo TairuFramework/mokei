@@ -68,11 +68,11 @@ export type CompleteHandler = (
 export type PromptHandlerReturn = GetPromptResult | Promise<GetPromptResult>
 
 export type GenericPromptHandler = (
-  request: HandlerRequest<{ arguments: unknown }>,
+  request: HandlerRequest<{ input: unknown }>,
 ) => PromptHandlerReturn
 
 export type TypedPromptHandler<Arguments> = (
-  request: HandlerRequest<{ arguments: Arguments }>,
+  request: HandlerRequest<{ input: Arguments }>,
 ) => PromptHandlerReturn
 
 export type GenericPromptDefinition = {
@@ -121,11 +121,11 @@ export type StructuredToolHandlerReturn<Output> = Omit<CallToolResult, 'content'
 }
 
 export type GenericToolHandler = (
-  request: HandlerRequest<{ arguments: Record<string, unknown> }>,
+  request: HandlerRequest<{ input: Record<string, unknown> }>,
 ) => ToolHandlerReturn
 
 export type TypedToolHandler<Arguments, Output = unknown> = (
-  request: HandlerRequest<{ arguments: Arguments }>,
+  request: HandlerRequest<{ input: Arguments }>,
 ) => [unknown] extends [Output]
   ? ToolHandlerReturn
   : StructuredToolHandlerReturn<Output> | Promise<StructuredToolHandlerReturn<Output>>

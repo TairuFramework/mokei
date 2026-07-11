@@ -25,7 +25,7 @@ describe('Session Local Tools', () => {
         {
           name: 'echo',
           inputSchema: { type: 'object', properties: { msg: { type: 'string' } } },
-          execute: async ({ arguments: { msg } }) => ({
+          execute: async ({ input: { msg } }) => ({
             content: [{ type: 'text', text: msg as string }],
           }),
         },
@@ -155,7 +155,7 @@ describe('Session Local Tools', () => {
       })
 
       // No signal was passed to executeToolCall, so none is forwarded to execute.
-      expect(executeFn).toHaveBeenCalledWith({ arguments: { input: 'hello' }, signal: undefined })
+      expect(executeFn).toHaveBeenCalledWith({ input: { input: 'hello' }, signal: undefined })
       expect(result.content).toEqual([{ type: 'text', text: 'executed!' }])
     })
 

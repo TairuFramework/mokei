@@ -19,7 +19,7 @@ const config = {
         additionalProperties: false,
       },
       handler: (req) => {
-        const { text, repeat = 1 } = req.arguments
+        const { text, repeat = 1 } = req.input
         return { content: [{ type: 'text', text: text.repeat(repeat) }] }
       },
     }),

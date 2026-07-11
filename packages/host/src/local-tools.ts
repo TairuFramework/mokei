@@ -2,20 +2,22 @@ import type { CallToolResult, InputSchema, Tool, ToolAnnotations } from '@mokei/
 import type { GenericToolDefinition, ServerClient, ToolDefinitions } from '@mokei/context-server'
 
 /**
- * Request handed to a local tool's execute function: the parsed arguments, plus the signal
- * that aborts if the caller cancels.
+ * Request handed to a local tool's execute function: the validated `input` — the thing the
+ * tool's `inputSchema` describes — plus the signal that aborts if the caller cancels.
  *
  * Mirrors the `HandlerRequest` a `createTool` handler receives, so a tool is written the
- * same way whether it runs locally or behind an MCP server.
+ * same way whether it runs locally or behind an MCP server. The wire calls this field
+ * `arguments`; handlers see `input`, which (unlike `arguments`) can be destructured — the
+ * latter is a reserved binding name in strict mode.
  */
 export type LocalToolRequest<TArgs = Record<string, unknown>> = {
-  arguments: TArgs
+  input: TArgs
   signal?: AbortSignal
 }
 
 /**
  * Execute function for a local tool.
- * Receives the parsed arguments and returns a CallToolResult.
+ * Receives the validated input and returns a CallToolResult.
  */
 export type LocalToolExecute<TArgs = Record<string, unknown>> = (
   request: LocalToolRequest<TArgs>,
@@ -37,7 +39,7 @@ export type LocalToolExecute<TArgs = Record<string, unknown>> = (
  *     },
  *     required: ['expression']
  *   },
- *   execute: async ({ arguments: { expression } }) => {
+ *   execute: async ({ input: { expression } }) => {
  *     const result = eval(expression)
  *     return { content: [{ type: 'text', text: String(result) }] }
  *   }
@@ -154,7 +156,7 @@ export type ToolToLocalToolParams = {
  * const serverTool = createTool({
  *   description: 'Calculate math expression',
  *   inputSchema: { type: 'object', properties: { expr: { type: 'string' } } } as const,
- *   handler: (req) => ({ content: [{ type: 'text', text: String(eval(req.arguments.expr)) }] }),
+ *   handler: (req) => ({ content: [{ type: 'text', text: String(eval(req.input.expr)) }] }),
  * })
  *
  * const localTool = toolToLocalTool({ name: 'calculate', definition: serverTool })
@@ -170,7 +172,7 @@ export function toolToLocalTool(params: ToolToLocalToolParams): LocalToolDefinit
     inputSchema: definition.inputSchema,
     execute: async (request: LocalToolRequest) => {
       return definition.handler({
-        arguments: request.arguments,
+        input: request.input,
         client: stubClient,
         // Forward the caller's cancellation signal; fall back to a never-aborting
         // one when invoked outside callLocalTool's cancellation plumbing.

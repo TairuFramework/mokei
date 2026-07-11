@@ -620,7 +620,8 @@ export class ContextHost extends Disposer {
     }
 
     try {
-      return await localTool.execute({ arguments: args, signal })
+      // The call carries `arguments` (wire vocabulary); the handler receives `input`.
+      return await localTool.execute({ input: args, signal })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       return {

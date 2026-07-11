@@ -379,9 +379,7 @@ describe('ContextServer', () => {
                       role: 'assistant',
                       content: {
                         type: 'text',
-                        text: req.arguments.name
-                          ? `Hello, my name is ${req.arguments.name}`
-                          : 'Hello',
+                        text: req.input.name ? `Hello, my name is ${req.input.name}` : 'Hello',
                       },
                     },
                   ],
@@ -917,7 +915,7 @@ describe('ContextServer', () => {
               handler: (req) => {
                 return {
                   content: [
-                    { type: 'text' as const, text: `got ${JSON.stringify(req.arguments.point)}` },
+                    { type: 'text' as const, text: `got ${JSON.stringify(req.input.point)}` },
                   ],
                 }
               },
@@ -943,7 +941,7 @@ describe('ContextServer', () => {
                 additionalProperties: false,
               },
               handler: (req) => {
-                return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
+                return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
               },
             }),
             other: createTool({
@@ -997,7 +995,7 @@ describe('ContextServer', () => {
                 additionalProperties: false,
               },
               handler: (req) => {
-                return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
+                return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
               },
             }),
           },
@@ -1026,7 +1024,7 @@ describe('ContextServer', () => {
               required: ['bar'],
             } as const,
             handler: (req) => {
-              return { content: [{ type: 'text', text: `bar is ${req.arguments.bar}` }] }
+              return { content: [{ type: 'text', text: `bar is ${req.input.bar}` }] }
             },
           }),
         },
@@ -1097,7 +1095,7 @@ describe('factory parameters object', () => {
     const definition = createTool({
       description: 'adds one',
       inputSchema: valueSchema,
-      handler: ({ arguments: { value } }) => ({
+      handler: ({ input: { value } }) => ({
         content: [{ type: 'text', text: String(value + 1) }],
       }),
     })
@@ -1106,7 +1104,7 @@ describe('factory parameters object', () => {
     expect(definition.inputSchema).toMatchObject({ type: 'object' })
 
     const result = await definition.handler({
-      arguments: { value: 1 },
+      input: { value: 1 },
       client: {} as never,
       signal: new AbortController().signal,
     })
@@ -1122,7 +1120,7 @@ describe('factory parameters object', () => {
 
     await expect(
       definition.handler({
-        arguments: { value: 'not a number' },
+        input: { value: 'not a number' },
         client: {} as never,
         signal: new AbortController().signal,
       }),
@@ -1138,13 +1136,13 @@ describe('factory parameters object', () => {
         required: ['name'],
         additionalProperties: false,
       } as const,
-      handler: ({ arguments: { name } }) => ({
+      handler: ({ input: { name } }) => ({
         messages: [{ role: 'assistant', content: { type: 'text', text: `Hello ${name}` } }],
       }),
     })
 
     const result = await definition.handler({
-      arguments: { name: 'World' },
+      input: { name: 'World' },
       client: {} as never,
       signal: new AbortController().signal,
     })
@@ -1161,7 +1159,7 @@ describe('factory parameters object', () => {
 
     expect(definition.argumentsSchema).toBeUndefined()
     const result = await definition.handler({
-      arguments: { anything: true },
+      input: { anything: true },
       client: {} as never,
       signal: new AbortController().signal,
     })
@@ -1178,7 +1176,7 @@ describe('tool outputSchema', () => {
 
   function callHandler(definition: GenericToolDefinition, args: Record<string, unknown> = {}) {
     return definition.handler({
-      arguments: args,
+      input: args,
       client: {} as never,
       signal: new AbortController().signal,
     })
