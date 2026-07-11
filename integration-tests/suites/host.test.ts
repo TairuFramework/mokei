@@ -19,7 +19,7 @@ test('executes a tool call after adding a local context', async () => {
       command: 'node',
       args: [FETCH_MCP_SERVER_PATH],
     })
-    await host.setup('fetch')
+    await host.setup({ key: 'fetch' })
 
     const tools = host.getCallableTools().map(provider.toolFromMCP)
     expect(tools).toHaveLength(1)
@@ -73,7 +73,7 @@ test('executes a tool call after adding a direct context', async () => {
 
   try {
     host.addDirectContext({ key: 'fetch', config: createFetchConfig() })
-    await host.setup('fetch')
+    await host.setup({ key: 'fetch' })
 
     const tools = host.getCallableTools().map(provider.toolFromMCP)
     expect(tools).toHaveLength(1)

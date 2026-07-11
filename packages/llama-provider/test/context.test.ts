@@ -75,8 +75,8 @@ describe('LlamaProvider context management', () => {
       models: { 'test-model': { path: '/models/test.gguf' } },
     })
 
-    const _ctx1 = await provider.createContext('test-model')
-    const _ctx2 = await provider.createContext('test-model')
+    const _ctx1 = await provider.createContext({ model: 'test-model' })
+    const _ctx2 = await provider.createContext({ model: 'test-model' })
     // Two separate createContext calls
     expect(mockCreateContext).toHaveBeenCalledTimes(2)
   })
@@ -95,7 +95,7 @@ describe('LlamaProvider context management', () => {
       models: { 'test-model': { path: '/models/test.gguf' } },
     })
 
-    const ctx = await provider.createContext('test-model')
+    const ctx = await provider.createContext({ model: 'test-model' })
     await provider.disposeContext(ctx)
     expect(disposeFn).toHaveBeenCalledTimes(1)
   })

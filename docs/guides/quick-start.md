@@ -67,7 +67,9 @@ const agent = new AgentSession({
 })
 
 // Run to completion
-const result = await agent.run('Create a users table and insert 3 records')
+const result = await agent.run({
+  prompt: 'Create a users table and insert 3 records'
+})
 console.log(result.text)
 console.log(`Completed in ${result.iterations} iterations`)
 ```
@@ -78,20 +80,20 @@ console.log(`Completed in ${result.iterations} iterations`)
 import { createTool, serveProcess } from '@mokei/context-server'
 
 const tools = {
-  greet: createTool(
-    'Greets a user by name',
-    {
+  greet: createTool({
+    description: 'Greets a user by name',
+    inputSchema: {
       type: 'object',
       properties: {
         name: { type: 'string', description: 'Name to greet' }
       },
       required: ['name']
-    },
-    (req) => ({
+    } as const,
+    handler: (req) => ({
       content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }],
       isError: false
     })
-  )
+  })
 }
 
 serveProcess({ name: 'my-server', version: '1.0.0', tools })
@@ -112,7 +114,7 @@ const session = new Session({
       properties: { expression: { type: 'string' } },
       required: ['expression']
     },
-    execute: async ({ expression }) => ({
+    execute: async ({ arguments: { expression } }) => ({
       content: [{ type: 'text', text: String(eval(expression)) }]
     })
   }]

@@ -18,9 +18,9 @@ export type ToolApprovalAPI = {
 export function useToolApproval(): ToolApprovalAPI {
   const [pending, setPending] = useState<PendingApproval | null>(null)
 
-  const toolApprovalFn = useCallback<ToolApprovalFn>((call, context) => {
+  const toolApprovalFn = useCallback<ToolApprovalFn>(({ toolCall, ...context }) => {
     return new Promise<boolean>((resolve) => {
-      setPending({ call, context, resolve })
+      setPending({ call: toolCall, context, resolve })
     })
   }, [])
 

@@ -42,6 +42,19 @@ Mokei is a TypeScript toolkit for creating, interacting with, and monitoring cli
 
 ## Architecture Patterns
 
+### Single Parameters Object
+- Every public method takes exactly one parameters object -- no positional arguments
+- Transport options are folded into that object: `signal` (abort) and `timeout` (reject with
+  `RequestTimeoutError`), plus `maxPages` on the paginated `list*` methods
+- Handler callbacks follow the same rule: client `elicit`/`createMessage` receive
+  `{ params, signal }`, `listRoots` receives `{ signal }`, a local tool's `execute` receives
+  `{ arguments, signal }`, and `ToolApprovalFn` receives
+  `{ toolCall, iteration, history, tool, signal }`
+- Local tools run in-process, so `callLocalTool` takes `signal` but no `timeout`
+- `ContextRPC.request(method, params, options)` and `.notify(method, params)` stay positional:
+  they are the wire boundary, and `splitRequestOptions` separates wire params from local
+  transport options before reaching them
+
 ### MCP Server Creation
 - Use `createTool` and `createPrompt` factory functions
 - Implement proper schema validation for all tools

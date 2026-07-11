@@ -48,6 +48,7 @@ import type {
   CompleteHandler,
   GenericPromptHandler,
   GenericToolHandler,
+  LogParams,
   PromptDefinitions,
   ResourceDefinitions,
   ResourceHandlers,
@@ -174,8 +175,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return this.#clientInitialize
   }
 
-  log(level: LoggingLevel, data: unknown, logger?: string) {
-    this.events.emit('log', { level, data, logger })
+  log(params: LogParams) {
+    this.events.emit('log', params)
   }
 
   elicit(params: WithRequestOptions<ElicitRequest['params']>): Promise<ElicitResult> {

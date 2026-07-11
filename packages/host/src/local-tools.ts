@@ -2,12 +2,23 @@ import type { CallToolResult, InputSchema, Tool, ToolAnnotations } from '@mokei/
 import type { GenericToolDefinition, ServerClient, ToolDefinitions } from '@mokei/context-server'
 
 /**
+ * Request handed to a local tool's execute function: the parsed arguments, plus the signal
+ * that aborts if the caller cancels.
+ *
+ * Mirrors the `HandlerRequest` a `createTool` handler receives, so a tool is written the
+ * same way whether it runs locally or behind an MCP server.
+ */
+export type LocalToolRequest<TArgs = Record<string, unknown>> = {
+  arguments: TArgs
+  signal?: AbortSignal
+}
+
+/**
  * Execute function for a local tool.
- * Receives parsed arguments and returns a CallToolResult.
+ * Receives the parsed arguments and returns a CallToolResult.
  */
 export type LocalToolExecute<TArgs = Record<string, unknown>> = (
-  args: TArgs,
-  signal?: AbortSignal,
+  request: LocalToolRequest<TArgs>,
 ) => CallToolResult | Promise<CallToolResult>
 
 /**
@@ -26,7 +37,7 @@ export type LocalToolExecute<TArgs = Record<string, unknown>> = (
  *     },
  *     required: ['expression']
  *   },
- *   execute: async ({ expression }) => {
+ *   execute: async ({ arguments: { expression } }) => {
  *     const result = eval(expression)
  *     return { content: [{ type: 'text', text: String(result) }] }
  *   }
@@ -121,6 +132,11 @@ function createStubClient(): ServerClient {
   } as ServerClient
 }
 
+export type ToolToLocalToolParams = {
+  name: string
+  definition: GenericToolDefinition
+}
+
 /**
  * Convert a server tool definition (created with `createTool()`) to a LocalToolDefinition.
  *
@@ -141,26 +157,24 @@ function createStubClient(): ServerClient {
  *   handler: (req) => ({ content: [{ type: 'text', text: String(eval(req.arguments.expr)) }] }),
  * })
  *
- * const localTool = toolToLocalTool('calculate', serverTool)
+ * const localTool = toolToLocalTool({ name: 'calculate', definition: serverTool })
  * ```
  */
-export function toolToLocalTool(
-  name: string,
-  definition: GenericToolDefinition,
-): LocalToolDefinition {
+export function toolToLocalTool(params: ToolToLocalToolParams): LocalToolDefinition {
+  const { name, definition } = params
   const stubClient = createStubClient()
 
   return {
     name,
     description: definition.description,
     inputSchema: definition.inputSchema,
-    execute: async (args: Record<string, unknown>, signal?: AbortSignal) => {
+    execute: async (request: LocalToolRequest) => {
       return definition.handler({
-        arguments: args,
+        arguments: request.arguments,
         client: stubClient,
         // Forward the caller's cancellation signal; fall back to a never-aborting
         // one when invoked outside callLocalTool's cancellation plumbing.
-        signal: signal ?? new AbortController().signal,
+        signal: request.signal ?? new AbortController().signal,
       })
     },
   }
@@ -184,5 +198,5 @@ export function toolToLocalTool(
  * ```
  */
 export function toolsToLocalTools(tools: ToolDefinitions): Array<LocalToolDefinition> {
-  return Object.entries(tools).map(([name, definition]) => toolToLocalTool(name, definition))
+  return Object.entries(tools).map(([name, definition]) => toolToLocalTool({ name, definition }))
 }

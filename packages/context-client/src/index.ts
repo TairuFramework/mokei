@@ -16,6 +16,7 @@ export type {
   CreateMessageHandler,
   ElicitHandler,
   ListOptions,
+  ListParams,
   ListRootsHandler,
   PromptParams,
   ToolParams,
@@ -28,6 +29,7 @@ export {
   DEFAULT_LIST_MAX_PAGES,
   ListMaxPagesError,
   StructuredContentValidationError,
+  splitListOptions,
   UnsupportedProtocolVersionError,
 } from './client.js'
 export { currentTraceMeta, type TraceMeta, traceMetaFromContext } from './trace.js'

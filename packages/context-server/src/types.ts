@@ -32,7 +32,13 @@ export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
 export type ClientInitialize = InitializeRequest['params']
 
-export type LogFunction = (level: LoggingLevel, data: unknown, logger?: string) => void
+export type LogParams = {
+  level: LoggingLevel
+  data: unknown
+  logger?: string
+}
+
+export type LogFunction = (params: LogParams) => void
 
 export type ServerClient = {
   createMessage: (

@@ -4,6 +4,7 @@ import {
   type ClientTransport,
   ContextClient,
   type ContextTypes,
+  type ListParams,
   type PromptParams,
   type ToolParams,
   type UnknownContextTypes,
@@ -52,6 +53,28 @@ export function getContextToolInfo(id: string): [string, string] {
     throw new Error(`Invalid context tool ID: ${id}`)
   }
   return [id.slice(0, index), id.slice(index + 1)]
+}
+
+/**
+ * Parameters for setting up a context: which tools to enable, plus the options for the
+ * `tools/list` request the setup issues.
+ */
+export type SetupParams = ListParams<{
+  key: string
+  /** Which of the context's tools to enable. Defaults to all of them. */
+  enableTools?: EnableToolsArg
+}>
+
+/** Parameters for replacing a context's tools wholesale. */
+export type SetContextToolsParams = {
+  key: string
+  tools: Array<ContextTool>
+}
+
+/** Parameters for the tool-enablement methods, which act on a context's tools by name. */
+export type ContextToolNamesParams = {
+  key: string
+  toolNames: Array<string>
 }
 
 /** Parameters for getting a prompt from a context, keyed by context. */
@@ -264,31 +287,33 @@ export class ContextHost extends Disposer {
     return ctx as unknown as HostedContext<T>
   }
 
-  setContextTools(key: string, tools: Array<ContextTool>): void {
-    this.getContext(key).tools = tools
+  setContextTools(params: SetContextToolsParams): void {
+    this.getContext(params.key).tools = params.tools
   }
 
   #mapContextTools(key: string, fn: (tool: ContextTool) => ContextTool): Array<ContextTool> {
-    const newTools = this.getContext(key).tools.map(fn)
-    this.setContextTools(key, newTools)
-    return newTools
+    const tools = this.getContext(key).tools.map(fn)
+    this.setContextTools({ key, tools })
+    return tools
   }
 
-  disableContextTools(key: string, toolNames: Array<string>): Array<ContextTool> {
-    return this.#mapContextTools(key, (ct) => {
-      return toolNames.includes(ct.tool.name) ? { ...ct, enabled: false } : ct
+  disableContextTools(params: ContextToolNamesParams): Array<ContextTool> {
+    return this.#mapContextTools(params.key, (ct) => {
+      return params.toolNames.includes(ct.tool.name) ? { ...ct, enabled: false } : ct
     })
   }
 
-  enableContextTools(key: string, toolNames: Array<string>): Array<ContextTool> {
-    return this.#mapContextTools(key, (ct) => {
-      return toolNames.includes(ct.tool.name) ? { ...ct, enabled: true } : ct
+  enableContextTools(params: ContextToolNamesParams): Array<ContextTool> {
+    return this.#mapContextTools(params.key, (ct) => {
+      return params.toolNames.includes(ct.tool.name) ? { ...ct, enabled: true } : ct
     })
   }
 
-  setEnabledContextTools(key: string, toolNames: Array<string>): Array<ContextTool> {
-    return this.#mapContextTools(key, (ct) => {
-      return toolNames.includes(ct.tool.name) ? { ...ct, enabled: true } : { ...ct, enabled: false }
+  setEnabledContextTools(params: ContextToolNamesParams): Array<ContextTool> {
+    return this.#mapContextTools(params.key, (ct) => {
+      return params.toolNames.includes(ct.tool.name)
+        ? { ...ct, enabled: true }
+        : { ...ct, enabled: false }
     })
   }
 
@@ -332,7 +357,7 @@ export class ContextHost extends Disposer {
    *     properties: { expression: { type: 'string' } },
    *     required: ['expression']
    *   },
-   *   execute: async ({ expression }) => {
+   *   execute: async ({ arguments: { expression } }) => {
    *     const result = eval(expression)
    *     return { content: [{ type: 'text', text: String(result) }] }
    *   }
@@ -483,7 +508,7 @@ export class ContextHost extends Disposer {
    * })
    *
    * // Setup tools after connecting
-   * const tools = await host.setup('remote-api')
+   * const tools = await host.setup({ key: 'remote-api' })
    * ```
    */
   async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
@@ -518,9 +543,10 @@ export class ContextHost extends Disposer {
     return client
   }
 
-  async setup(key: string, enableTools: EnableToolsArg = true): Promise<Array<ContextTool>> {
+  async setup(params: SetupParams): Promise<Array<ContextTool>> {
+    const { key, enableTools = true, ...listOptions } = params
     const { tools } = await this.getContext(key)
-      .client.listTools()
+      .client.listTools(listOptions)
       .catch((err: unknown) => {
         // If the context was removed while listTools was in flight, surface a clear error.
         if (this._contexts[key] == null) {
@@ -594,7 +620,7 @@ export class ContextHost extends Disposer {
     }
 
     try {
-      return await localTool.execute(args, signal)
+      return await localTool.execute({ arguments: args, signal })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       return {

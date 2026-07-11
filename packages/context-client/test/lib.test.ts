@@ -235,7 +235,7 @@ describe('ContextClient', () => {
       { result },
       { capabilities: { sampling: {} } },
     )
-    expect(createMessage).toHaveBeenCalledWith(params, expect.any(AbortSignal))
+    expect(createMessage).toHaveBeenCalledWith({ params, signal: expect.any(AbortSignal) })
   })
 
   test('supports incoming elicit requests', async () => {
@@ -258,7 +258,7 @@ describe('ContextClient', () => {
       { result },
       { capabilities: { elicitation: {} } },
     )
-    expect(elicit).toHaveBeenCalledWith(params, expect.any(AbortSignal))
+    expect(elicit).toHaveBeenCalledWith({ params, signal: expect.any(AbortSignal) })
   })
 
   test('supports outgoing completion requests', async () => {

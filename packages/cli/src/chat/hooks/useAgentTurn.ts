@@ -6,10 +6,11 @@ import { useCallback, useMemo, useReducer, useRef } from 'react'
 import { initialTurnState, type TurnState, turnReducer } from '../turn-reducer.js'
 
 export type AgentSessionLike<T extends ProviderTypes = ProviderTypes> = {
-  stream(
-    prompt: string,
-    opts?: { messages?: Array<Message<T['MessagePart'], T['ToolCall']>>; signal?: AbortSignal },
-  ): AsyncGenerator<AgentEvent<T>>
+  stream(params: {
+    prompt: string
+    messages?: Array<Message<T['MessagePart'], T['ToolCall']>>
+    signal?: AbortSignal
+  }): AsyncGenerator<AgentEvent<T>>
   cancelToolCall?(): void
 }
 
@@ -46,7 +47,8 @@ export function useAgentTurn<T extends ProviderTypes = ProviderTypes>(
       const agent = createAgent()
       agentRef.current = agent
       try {
-        for await (const event of agent.stream(text, {
+        for await (const event of agent.stream({
+          prompt: text,
           messages: messagesRef.current,
           signal: controller.signal,
         })) {

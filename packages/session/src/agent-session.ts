@@ -16,6 +16,7 @@ import {
   type AgentFinishReason,
   type AgentParams,
   type AgentResult,
+  type AgentRunParams,
   type AgentToolCallRecord,
   type ResolvedAgentParams,
   type ToolApprovalContext,
@@ -54,10 +55,10 @@ export type AgentSessionEvents<T extends ProviderTypes = ProviderTypes> = {
  * })
  *
  * // Run to completion
- * const result = await agent.run('Create a users table')
+ * const result = await agent.run({ prompt: 'Create a users table' })
  *
  * // Or stream events
- * for await (const event of agent.stream('Create a users table')) {
+ * for await (const event of agent.stream({ prompt: 'Create a users table' })) {
  *   console.log(event.type, event)
  * }
  * ```
@@ -110,17 +111,13 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   /**
    * Run the agent to completion with the given prompt.
    *
-   * @param prompt - The user prompt to process
-   * @param opts - Optional prior messages and AbortSignal for cancellation
+   * @param params - The prompt, optional prior messages, and AbortSignal for cancellation
    * @returns The final result of agent execution
    */
-  async run(
-    prompt: string,
-    opts: { messages?: Array<Message<T['MessagePart'], T['ToolCall']>>; signal?: AbortSignal } = {},
-  ): Promise<AgentResult<T>> {
+  async run(params: AgentRunParams<T>): Promise<AgentResult<T>> {
     let result: AgentResult<T> | undefined
 
-    for await (const event of this.stream(prompt, opts)) {
+    for await (const event of this.stream(params)) {
       if (event.type === 'complete') {
         result = event.result
       }
@@ -136,15 +133,11 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   /**
    * Stream agent execution events.
    *
-   * @param prompt - The user prompt to process
-   * @param opts - Optional prior messages and AbortSignal for cancellation
+   * @param params - The prompt, optional prior messages, and AbortSignal for cancellation
    * @yields AgentEvent for each stage of execution
    */
-  async *stream(
-    prompt: string,
-    opts: { messages?: Array<Message<T['MessagePart'], T['ToolCall']>>; signal?: AbortSignal } = {},
-  ): AsyncGenerator<AgentEvent<T>> {
-    const { messages: priorMessages, signal } = opts
+  async *stream(params: AgentRunParams<T>): AsyncGenerator<AgentEvent<T>> {
+    const { prompt, messages: priorMessages, signal } = params
     const startTime = Date.now()
     const {
       session,
@@ -577,7 +570,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     // letting the turn signal (user cancel / timeout) interrupt the wait.
     const fn = strategy as ToolApprovalFn
     yield emitEvent({ type: 'tool-call-pending', toolCall, timestamp: Date.now() })
-    const result = await raceAbort(Promise.resolve(fn(toolCall, context)), signal)
+    const result = await raceAbort(Promise.resolve(fn({ ...context, toolCall, signal })), signal)
 
     let approved: boolean
     let reason: string | undefined
@@ -637,7 +630,10 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       }
 
       // Execute via session (handles namespaced tool parsing internally)
-      const result = await this.#params.session.executeToolCall(toolCall, callController.signal)
+      const result = await this.#params.session.executeToolCall({
+        toolCall,
+        signal: callController.signal,
+      })
 
       // Emit complete event
       const completeEvent = emitEvent({

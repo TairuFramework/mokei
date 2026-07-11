@@ -130,6 +130,22 @@ export type ListOptions = RequestOptions & {
 /** Params of a paginated list method: its wire params plus {@link ListOptions}. */
 export type ListParams<Params> = Params & ListOptions
 
+/**
+ * Splits a list method's parameters into the params sent on the wire and the options kept
+ * local to this process.
+ *
+ * The counterpart to `splitRequestOptions` for the paginated methods, which carry one
+ * local-only option it does not know about: `maxPages`. Any paginated method must split
+ * here rather than there, or the cap is serialized into the request sent to the peer.
+ */
+export function splitListOptions<Params>(
+  params: ListParams<Params>,
+): [Params, ListOptions & RequestOptions] {
+  const { maxPages, ...rest } = params as ListParams<Record<string, unknown>>
+  const [wireParams, options] = splitRequestOptions(rest)
+  return [wireParams as Params, { ...options, maxPages }]
+}
+
 /** A validation issue, matching the shape `createTool` produces for input errors. */
 export type ValidationIssue = {
   message: string
@@ -149,17 +165,28 @@ export class StructuredContentValidationError extends Error {
   }
 }
 
+/**
+ * A server-initiated request handed to a client handler: the request's params, plus the
+ * signal that aborts if the server cancels it.
+ *
+ * Mirrors `HandlerRequest` on the server side, so a handler is one object either way.
+ */
+export type ClientHandlerRequest<Params = Record<string, never>> = {
+  params: Params
+  signal: AbortSignal
+}
+
 export type ElicitHandler = (
-  params: ElicitRequest['params'],
-  signal: AbortSignal,
+  request: ClientHandlerRequest<ElicitRequest['params']>,
 ) => ElicitResult | Promise<ElicitResult>
 
 export type CreateMessageHandler = (
-  params: CreateMessageRequest['params'],
-  signal: AbortSignal,
+  request: ClientHandlerRequest<CreateMessageRequest['params']>,
 ) => CreateMessageResult | Promise<CreateMessageResult>
 
-export type ListRootsHandler = (signal: AbortSignal) => Array<Root> | Promise<Array<Root>>
+export type ListRootsHandler = (
+  request: Omit<ClientHandlerRequest, 'params'>,
+) => Array<Root> | Promise<Array<Root>>
 
 export type ClientEvents = {
   closed: { error?: Error }
@@ -395,7 +422,7 @@ export class ContextClient<
     switch (request.method) {
       case 'elicitation/create': {
         if (this.#elicit != null) {
-          return await this.#elicit(request.params, signal)
+          return await this.#elicit({ params: request.params, signal })
         }
         break
       }
@@ -405,12 +432,12 @@ export class ContextClient<
         }
         const roots = Array.isArray(this.#listRoots)
           ? this.#listRoots
-          : await this.#listRoots(signal)
+          : await this.#listRoots({ signal })
         return { roots }
       }
       case 'sampling/createMessage':
         if (this.#createMessage != null) {
-          return await this.#createMessage(request.params, signal)
+          return await this.#createMessage({ params: request.params, signal })
         }
     }
     throw new RPCError(METHOD_NOT_FOUND, 'Method not implemented')
@@ -464,8 +491,7 @@ export class ContextClient<
   ): Promise<PagedResult> {
     await this.#initialized
 
-    const { maxPages: maxPagesParam, ...rest } = listParams
-    const [params, options] = splitRequestOptions(rest)
+    const [params, { maxPages: maxPagesParam, ...options }] = splitListOptions(listParams)
 
     if (params.cursor != null) {
       return await send(params, options)

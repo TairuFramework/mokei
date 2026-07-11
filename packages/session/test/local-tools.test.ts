@@ -25,7 +25,9 @@ describe('Session Local Tools', () => {
         {
           name: 'echo',
           inputSchema: { type: 'object', properties: { msg: { type: 'string' } } },
-          execute: async ({ msg }) => ({ content: [{ type: 'text', text: msg as string }] }),
+          execute: async ({ arguments: { msg } }) => ({
+            content: [{ type: 'text', text: msg as string }],
+          }),
         },
       ]
 
@@ -144,14 +146,16 @@ describe('Session Local Tools', () => {
       })
 
       const result = await session.executeToolCall({
-        id: 'call-1',
-        name: 'local:testTool',
-        arguments: JSON.stringify({ input: 'hello' }),
-        raw: {},
+        toolCall: {
+          id: 'call-1',
+          name: 'local:testTool',
+          arguments: JSON.stringify({ input: 'hello' }),
+          raw: {},
+        },
       })
 
       // No signal was passed to executeToolCall, so none is forwarded to execute.
-      expect(executeFn).toHaveBeenCalledWith({ input: 'hello' }, undefined)
+      expect(executeFn).toHaveBeenCalledWith({ arguments: { input: 'hello' }, signal: undefined })
       expect(result.content).toEqual([{ type: 'text', text: 'executed!' }])
     })
 
@@ -169,10 +173,7 @@ describe('Session Local Tools', () => {
       })
 
       const result = await session.executeToolCall({
-        id: 'call-2',
-        name: 'local:failingTool',
-        arguments: '{}',
-        raw: {},
+        toolCall: { id: 'call-2', name: 'local:failingTool', arguments: '{}', raw: {} },
       })
 
       expect(result.isError).toBe(true)

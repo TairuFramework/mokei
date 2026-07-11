@@ -123,7 +123,7 @@ describe('ContextServer', () => {
       serverLogs.push(log)
     })
 
-    server.log('info', { test: 0 })
+    server.log({ level: 'info', data: { test: 0 } })
 
     transports.client.write({
       jsonrpc: '2.0',
@@ -136,9 +136,9 @@ describe('ContextServer', () => {
       value: { jsonrpc: '2.0', id: 1, result: {} },
     })
 
-    server.log('info', { test: 1 })
-    server.log('notice', { test: 2 })
-    server.log('warning', { test: 3 })
+    server.log({ level: 'info', data: { test: 1 } })
+    server.log({ level: 'notice', data: { test: 2 } })
+    server.log({ level: 'warning', data: { test: 3 } })
 
     await expect(transports.client.read()).resolves.toEqual({
       done: false,
@@ -168,8 +168,8 @@ describe('ContextServer', () => {
       value: { jsonrpc: '2.0', id: 2, result: {} },
     })
 
-    server.log('info', { test: 4 })
-    server.log('notice', { test: 5 })
+    server.log({ level: 'info', data: { test: 4 } })
+    server.log({ level: 'notice', data: { test: 5 } })
     await expect(transports.client.read()).resolves.toEqual({
       done: false,
       value: {

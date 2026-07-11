@@ -105,7 +105,7 @@ const client = await session.contextHost.addHTTPContext({
 })
 
 // Setup tools after connecting
-const tools = await session.contextHost.setup('remote-api')
+const tools = await session.contextHost.setup({ key: 'remote-api' })
 
 // With authentication
 const client = await session.contextHost.addHTTPContext({
@@ -172,6 +172,9 @@ Register tools directly without setting up an MCP server. Local tools are namesp
 
 ### Defining Local Tools
 
+`execute` receives a single request object: the parsed `arguments`, plus an optional `signal`.
+Destructure the tool's own arguments out of `arguments`:
+
 ```typescript
 import { Session, type LocalToolDefinition } from '@mokei/session'
 
@@ -185,14 +188,14 @@ const calculateTool: LocalToolDefinition = {
     },
     required: ['expression']
   },
-  execute: async ({ expression }) => {
+  execute: async ({ arguments: { expression } }) => {
     try {
       const result = Function(`"use strict"; return (${expression})`)()
       return { content: [{ type: 'text', text: String(result) }] }
     } catch (error) {
-      return { 
+      return {
         content: [{ type: 'text', text: `Error: ${error.message}` }],
-        isError: true 
+        isError: true
       }
     }
   }
@@ -213,7 +216,7 @@ const session = new Session({
         type: 'object',
         properties: { message: { type: 'string' } }
       },
-      execute: async ({ message }) => ({
+      execute: async ({ arguments: { message } }) => ({
         content: [{ type: 'text', text: message as string }]
       })
     }
@@ -265,14 +268,17 @@ const tools = session.contextHost.getCallableTools()
 
 ### Executing Local Tools
 
-Local tools are executed the same way as MCP tools:
+Local tools are executed the same way as MCP tools. `executeToolCall()` takes the `toolCall`
+itself, plus an optional `signal` and `timeout`:
 
 ```typescript
 const result = await session.executeToolCall({
-  id: 'call-1',
-  name: 'local:calculate',
-  arguments: JSON.stringify({ expression: '2 + 2' }),
-  raw: {}
+  toolCall: {
+    id: 'call-1',
+    name: 'local:calculate',
+    arguments: JSON.stringify({ expression: '2 + 2' }),
+    raw: {}
+  }
 })
 
 console.log(result.content[0].text)  // "4"
@@ -346,9 +352,9 @@ if (response.toolCalls.length > 0) {
   // Execute each tool call
   for (const toolCall of response.toolCalls) {
     console.log(`Executing ${toolCall.name}...`)
-    
-    const result = await session.executeToolCall(toolCall)
-    
+
+    const result = await session.executeToolCall({ toolCall })
+
     if (result.isError) {
       console.error('Tool error:', result.content)
     } else {
@@ -388,7 +394,7 @@ async function conversationLoop(session: Session, userMessage: string) {
     
     // Execute tool calls and add results
     for (const toolCall of response.toolCalls) {
-      const result = await session.executeToolCall(toolCall)
+      const result = await session.executeToolCall({ toolCall })
       messages.push({
         source: 'client',
         role: 'user',
@@ -477,7 +483,7 @@ const keys = host.getContextKeys()
 const tools = host.getEnabledTools()
 
 // Disable specific tools
-host.disableContextTools('db', ['drop_table'])
+host.disableContextTools({ key: 'db', toolNames: ['drop_table'] })
 
 // Call tool directly (bypassing provider)
 const result = await host.callNamespacedTool({
@@ -553,7 +559,7 @@ async function main() {
       // Handle tool calls
       for (const toolCall of response.toolCalls) {
         console.log(`\n[Calling ${toolCall.name}...]`)
-        const result = await session.executeToolCall(toolCall)
+        const result = await session.executeToolCall({ toolCall })
         console.log('[Result]:', JSON.stringify(result.content))
         
         messages.push({

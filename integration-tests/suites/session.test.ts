@@ -57,7 +57,7 @@ describe('Session', () => {
         arguments: expect.stringContaining('https://mokei.dev'),
       })
 
-      const toolResult = await session.executeToolCall(toolCall)
+      const toolResult = await session.executeToolCall({ toolCall })
       expect(toolResult).toMatchObject({
         content: [{ type: 'text', text: expect.stringContaining('Mokei') }],
         isError: false,

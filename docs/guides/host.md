@@ -27,7 +27,7 @@ await host.addLocalContext({
 })
 
 // Setup the context (initialize and discover tools)
-const tools = await host.setup('sqlite')
+const tools = await host.setup({ key: 'sqlite' })
 console.log('Available tools:', tools.map(t => t.tool.name))
 
 // Cleanup when done
@@ -49,7 +49,7 @@ const client = await host.addLocalContext({
 })
 
 // Initialize and get tools
-const tools = await host.setup('myserver')
+const tools = await host.setup({ key: 'myserver' })
 ```
 
 ### Direct Context
@@ -70,7 +70,7 @@ const client = host.addDirectContext({
   config
 })
 
-const tools = await host.setup('embedded')
+const tools = await host.setup({ key: 'embedded' })
 ```
 
 ### Custom Transport Context
@@ -90,7 +90,7 @@ const client = host.createContext({
   }
 })
 
-const tools = await host.setup('custom')
+const tools = await host.setup({ key: 'custom' })
 ```
 
 ## Tool Namespacing
@@ -100,7 +100,7 @@ Tools are namespaced with `contextKey:toolName` format to avoid conflicts:
 ```typescript
 // Server exposes: 'query', 'insert'
 await host.addLocalContext({ key: 'db', command: 'db-server' })
-await host.setup('db')
+await host.setup({ key: 'db' })
 
 // Tools are accessible as:
 // - 'db:query'
@@ -137,19 +137,22 @@ const context = host.getContext('db')
 console.log('Tools:', context.tools)
 
 // Disable specific tools
-host.disableContextTools('db', ['dangerous_operation'])
+host.disableContextTools({ key: 'db', toolNames: ['dangerous_operation'] })
 
 // Enable specific tools
-host.enableContextTools('db', ['dangerous_operation'])
+host.enableContextTools({ key: 'db', toolNames: ['dangerous_operation'] })
 
 // Set exact enabled tools (disables all others)
-host.setEnabledContextTools('db', ['query', 'insert'])
+host.setEnabledContextTools({ key: 'db', toolNames: ['query', 'insert'] })
 
 // Replace all context tools
-host.setContextTools('db', [
-  { id: 'db:query', tool: queryTool, enabled: true },
-  { id: 'db:insert', tool: insertTool, enabled: false }
-])
+host.setContextTools({
+  key: 'db',
+  tools: [
+    { id: 'db:query', tool: queryTool, enabled: true },
+    { id: 'db:insert', tool: insertTool, enabled: false }
+  ]
+})
 ```
 
 ### Query Tools
@@ -168,23 +171,32 @@ const callableTools = host.getCallableTools()
 
 ### Setup with Tool Selection
 
+`setup()` takes the context `key` plus an optional `enableTools` selector. It also accepts
+`signal`, `timeout` and `maxPages`, which are forwarded to the underlying `listTools` call.
+
 ```typescript
-// Enable all tools
-const tools = await host.setup('db', true)
+// Enable all tools (the default)
+const tools = await host.setup({ key: 'db', enableTools: true })
 
 // Disable all tools
-const tools = await host.setup('db', false)
+const tools = await host.setup({ key: 'db', enableTools: false })
 
 // Enable specific tools by name
-const tools = await host.setup('db', ['query', 'insert'])
+const tools = await host.setup({ key: 'db', enableTools: ['query', 'insert'] })
 
 // Dynamic selection based on available tools
-const tools = await host.setup('db', async (availableTools) => {
-  // Filter out dangerous tools
-  return availableTools
-    .filter(t => !t.name.includes('delete'))
-    .map(t => t.name)
+const tools = await host.setup({
+  key: 'db',
+  enableTools: async (availableTools) => {
+    // Filter out dangerous tools
+    return availableTools
+      .filter(t => !t.name.includes('delete'))
+      .map(t => t.name)
+  },
 })
+
+// With a timeout on tool discovery
+const tools = await host.setup({ key: 'db', timeout: 10_000 })
 ```
 
 ### Remove Context
@@ -250,8 +262,9 @@ async function main() {
     })
     
     // Setup both contexts
-    await host.setup('sqlite', true)
-    await host.setup('fs', ['read_file', 'list_directory'])  // Only enable safe tools
+    await host.setup({ key: 'sqlite', enableTools: true })
+    // Only enable safe tools
+    await host.setup({ key: 'fs', enableTools: ['read_file', 'list_directory'] })
     
     // List all enabled tools
     const tools = host.getCallableTools()

@@ -16,6 +16,7 @@ import {
   type AgentEvent,
   AgentSession,
   Session,
+  type ToolApprovalFn,
   UnknownToolError,
 } from '../src/index.js'
 
@@ -238,7 +239,7 @@ async function createMockSessionWithTools(
   })
 
   // Initialize and setup
-  await session.contextHost.setup('mock')
+  await session.contextHost.setup({ key: 'mock' })
 
   return session
 }
@@ -298,7 +299,7 @@ describe('AgentSession', () => {
         model: 'test-model',
       })
 
-      const result = await agent.run('Say hello')
+      const result = await agent.run({ prompt: 'Say hello' })
 
       expect(result.text).toBe('Hello, world!')
       expect(result.iterations).toBe(1)
@@ -343,7 +344,7 @@ describe('AgentSession', () => {
         toolApproval: 'auto',
       })
 
-      const result = await agent.run('Do something')
+      const result = await agent.run({ prompt: 'Do something' })
 
       expect(result.iterations).toBe(2)
       expect(result.finishReason).toBe('max-iterations')
@@ -364,7 +365,7 @@ describe('AgentSession', () => {
         model: 'test-model',
       })
 
-      const result = await agent.run('Say hello', { signal: controller.signal })
+      const result = await agent.run({ prompt: 'Say hello', signal: controller.signal })
       expect(result.finishReason).toBe('aborted')
     })
   })
@@ -381,7 +382,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Hello')) {
+      for await (const event of agent.stream({ prompt: 'Hello' })) {
         events.push(event)
       }
 
@@ -420,7 +421,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Test')) {
+      for await (const event of agent.stream({ prompt: 'Test' })) {
         events.push(event)
       }
 
@@ -434,7 +435,7 @@ describe('AgentSession', () => {
       const agent = new AgentSession({ session, provider, model: 'test-model' })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Hello')) {
+      for await (const event of agent.stream({ prompt: 'Hello' })) {
         events.push(event)
       }
 
@@ -453,7 +454,7 @@ describe('AgentSession', () => {
       const agent = new AgentSession({ session, provider, model: 'test-model' })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Hello')) {
+      for await (const event of agent.stream({ prompt: 'Hello' })) {
         events.push(event)
       }
       const types = events.map((e) => e.type)
@@ -495,7 +496,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Greet World')) {
+      for await (const event of agent.stream({ prompt: 'Greet World' })) {
         events.push(event)
       }
 
@@ -538,7 +539,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Greet')) {
+      for await (const event of agent.stream({ prompt: 'Greet' })) {
         events.push(event)
       }
 
@@ -571,10 +572,11 @@ describe('AgentSession', () => {
         { test: provider },
       )
 
-      const approvalFn = vi.fn(async (call, context) => {
-        expect(call.name).toBe('mock:test')
-        expect(context.iteration).toBe(1)
-        expect(Array.isArray(context.history)).toBe(true)
+      const approvalFn = vi.fn<ToolApprovalFn>(async ({ toolCall, iteration, history, signal }) => {
+        expect(toolCall.name).toBe('mock:test')
+        expect(iteration).toBe(1)
+        expect(Array.isArray(history)).toBe(true)
+        expect(signal).toBeInstanceOf(AbortSignal)
         return true
       })
 
@@ -585,7 +587,7 @@ describe('AgentSession', () => {
         toolApproval: approvalFn,
       })
 
-      await agent.run('Test')
+      await agent.run({ prompt: 'Test' })
 
       expect(approvalFn).toHaveBeenCalled()
 
@@ -626,7 +628,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Do dangerous thing')) {
+      for await (const event of agent.stream({ prompt: 'Do dangerous thing' })) {
         events.push(event)
       }
 
@@ -676,7 +678,7 @@ describe('AgentSession', () => {
 
       agent.events.on('event', (e) => eventsCollected.push(e))
 
-      await agent.run('Test')
+      await agent.run({ prompt: 'Test' })
 
       expect(seenBeforeFn).toContain('tool-call-pending')
 
@@ -700,7 +702,7 @@ describe('AgentSession', () => {
         receivedEvents.push(event)
       })
 
-      await agent.run('Hi')
+      await agent.run({ prompt: 'Hi' })
 
       expect(receivedEvents.length).toBeGreaterThan(0)
       expect(receivedEvents.some((e) => e.type === 'complete')).toBe(true)
@@ -778,7 +780,9 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Create users table, insert Alice, then show all users')
+        const result = await agent.run({
+          prompt: 'Create users table, insert Alice, then show all users',
+        })
 
         expect(result.iterations).toBe(4)
         expect(result.toolCalls).toHaveLength(3)
@@ -837,7 +841,9 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('What is the weather in London, Paris, and Tokyo?')
+        const result = await agent.run({
+          prompt: 'What is the weather in London, Paris, and Tokyo?',
+        })
 
         expect(result.iterations).toBe(2)
         expect(result.toolCalls).toHaveLength(3)
@@ -881,7 +887,7 @@ describe('AgentSession', () => {
         })
 
         const events: Array<AgentEvent> = []
-        for await (const event of agent.stream('Try the failing tool')) {
+        for await (const event of agent.stream({ prompt: 'Try the failing tool' })) {
           events.push(event)
         }
 
@@ -927,7 +933,7 @@ describe('AgentSession', () => {
         })
 
         const events: Array<AgentEvent> = []
-        for await (const event of agent.stream('Call nonexistent tool')) {
+        for await (const event of agent.stream({ prompt: 'Call nonexistent tool' })) {
           events.push(event)
         }
 
@@ -972,7 +978,7 @@ describe('AgentSession', () => {
         })
 
         const events: Array<AgentEvent> = []
-        for await (const event of agent.stream('Call the tool')) {
+        for await (const event of agent.stream({ prompt: 'Call the tool' })) {
           events.push(event)
         }
 
@@ -1035,7 +1041,7 @@ describe('AgentSession', () => {
 
         const events: Array<AgentEvent> = []
         const collecting = (async () => {
-          for await (const event of agent.stream('go')) events.push(event)
+          for await (const event of agent.stream({ prompt: 'go' })) events.push(event)
         })()
 
         // The pending event surfaces and the approval fn is invoked while the
@@ -1087,7 +1093,7 @@ describe('AgentSession', () => {
         const events: Array<AgentEvent> = []
         const run = (async () => {
           try {
-            for await (const event of agent.stream('go', { signal: controller.signal })) {
+            for await (const event of agent.stream({ prompt: 'go', signal: controller.signal })) {
               events.push(event)
             }
           } catch {
@@ -1120,7 +1126,7 @@ describe('AgentSession', () => {
           systemPrompt: 'You are a helpful database assistant. Always explain your actions.',
         })
 
-        await agent.run('Who are you?')
+        await agent.run({ prompt: 'Who are you?' })
 
         // Verify streamChat was called with system message
         expect(provider.streamChat).toHaveBeenCalled()
@@ -1151,7 +1157,7 @@ describe('AgentSession', () => {
           // No systemPrompt
         })
 
-        await agent.run('Hello')
+        await agent.run({ prompt: 'Hello' })
 
         const callArgs = (provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0][0]
 
@@ -1196,7 +1202,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Search for something')
+        const result = await agent.run({ prompt: 'Search for something' })
 
         expect(result.inputTokens).toBe(250) // 100 + 150
         expect(result.outputTokens).toBe(125) // 50 + 75
@@ -1245,7 +1251,7 @@ describe('AgentSession', () => {
           session,
           provider,
           model: 'test-model',
-          toolApproval: async (toolCall) => {
+          toolApproval: async ({ toolCall }) => {
             if (toolCall.name.includes('delete')) {
               return { approved: false, reason: 'Deletion not allowed' }
             }
@@ -1253,7 +1259,7 @@ describe('AgentSession', () => {
           },
         })
 
-        const result = await agent.run('Read and delete files')
+        const result = await agent.run({ prompt: 'Read and delete files' })
 
         expect(result.toolCalls).toHaveLength(2)
 
@@ -1313,14 +1319,14 @@ describe('AgentSession', () => {
           session,
           provider,
           model: 'test-model',
-          toolApproval: async (_toolCall, context) => {
-            historyLengths.push(context.history.length)
-            iterations.push(context.iteration)
+          toolApproval: async ({ history, iteration }) => {
+            historyLengths.push(history.length)
+            iterations.push(iteration)
             return true
           },
         })
 
-        await agent.run('Use both tools')
+        await agent.run({ prompt: 'Use both tools' })
 
         // First call should have fewer history events than second
         expect(iterations).toEqual([1, 2])
@@ -1342,7 +1348,7 @@ describe('AgentSession', () => {
         })
 
         const startTime = Date.now()
-        const result = await agent.run('Test')
+        const result = await agent.run({ prompt: 'Test' })
         const endTime = Date.now()
 
         expect(result.duration).toBeGreaterThanOrEqual(0)
@@ -1363,7 +1369,7 @@ describe('AgentSession', () => {
 
         const startTime = Date.now()
         const events: Array<AgentEvent> = []
-        for await (const event of agent.stream('Test')) {
+        for await (const event of agent.stream({ prompt: 'Test' })) {
           events.push(event)
         }
         const endTime = Date.now()
@@ -1391,7 +1397,7 @@ describe('AgentSession', () => {
           model: 'test-model',
         })
 
-        const result = await agent.run('Generate empty response')
+        const result = await agent.run({ prompt: 'Generate empty response' })
 
         expect(result.text).toBe('')
         expect(result.finishReason).toBe('complete')
@@ -1408,7 +1414,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Use a tool')
+        const result = await agent.run({ prompt: 'Use a tool' })
 
         // Should still complete successfully
         expect(result.finishReason).toBe('complete')
@@ -1428,7 +1434,7 @@ describe('AgentSession', () => {
         const abortController = new AbortController()
         abortController.abort('Pre-aborted')
 
-        const result = await agent.run('Test', { signal: abortController.signal })
+        const result = await agent.run({ prompt: 'Test', signal: abortController.signal })
 
         expect(result.finishReason).toBe('aborted')
         expect(result.iterations).toBe(0)
@@ -1466,7 +1472,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Process large data')
+        const result = await agent.run({ prompt: 'Process large data' })
 
         expect(result.finishReason).toBe('complete')
         expect(result.toolCalls[0].approved).toBe(true)
@@ -1518,7 +1524,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        await agent.run('Get some info')
+        await agent.run({ prompt: 'Get some info' })
 
         // On second call, should have: user message, assistant (with tool call), tool result
         expect(messageCount).toBeGreaterThan(1)
@@ -1561,7 +1567,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Generate an image')
+        const result = await agent.run({ prompt: 'Generate an image' })
 
         expect(result.finishReason).toBe('complete')
         expect(result.toolCalls[0].result?.content[0].type).toBe('image')
@@ -1605,7 +1611,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Analyze data')
+        const result = await agent.run({ prompt: 'Analyze data' })
 
         expect(result.toolCalls[0].result?.content).toHaveLength(2)
 
@@ -1643,7 +1649,7 @@ describe('AgentSession', () => {
         })
 
         const events: Array<AgentEvent> = []
-        for await (const event of agent.stream('Do steps')) {
+        for await (const event of agent.stream({ prompt: 'Do steps' })) {
           events.push(event)
         }
 
@@ -1691,7 +1697,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('go')) {
+      for await (const event of agent.stream({ prompt: 'go' })) {
         events.push(event)
       }
 
@@ -1731,7 +1737,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('go')) {
+      for await (const event of agent.stream({ prompt: 'go' })) {
         events.push(event)
       }
 
@@ -1772,7 +1778,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('go', { signal: controller.signal })) {
+      for await (const event of agent.stream({ prompt: 'go', signal: controller.signal })) {
         events.push(event)
       }
 
@@ -1792,7 +1798,7 @@ describe('AgentSession', () => {
       const session = new Session({ providers: { mock: provider } })
       const agent = new AgentSession({ session, provider: 'mock', model: 'test-model' })
 
-      const result = await agent.run('Hi')
+      const result = await agent.run({ prompt: 'Hi' })
 
       expect(result.messages).toEqual([
         { source: 'client', role: 'user', text: 'Hi' },
@@ -1810,7 +1816,7 @@ describe('AgentSession', () => {
         { source: 'server' as const, role: 'assistant' as const, text: 'First reply', raw: {} },
       ]
 
-      const result = await agent.run('Second prompt', { messages: prior })
+      const result = await agent.run({ prompt: 'Second prompt', messages: prior })
 
       expect(result.messages.slice(0, 2)).toEqual(prior)
       expect(result.messages[2]).toEqual({
@@ -1837,7 +1843,7 @@ describe('AgentSession', () => {
         { source: 'server' as const, role: 'assistant' as const, text: 'First reply', raw: {} },
       ]
 
-      const result = await agent.run('Second', { messages: prior })
+      const result = await agent.run({ prompt: 'Second', messages: prior })
       const systemCount = result.messages.filter((m) => m.role === 'system').length
       expect(systemCount).toBe(1)
     })
@@ -1906,7 +1912,7 @@ describe('AgentSession', () => {
 
       const events: Array<AgentEvent> = []
       try {
-        for await (const event of agent.stream('go')) {
+        for await (const event of agent.stream({ prompt: 'go' })) {
           events.push(event)
         }
       } catch {
@@ -1981,7 +1987,7 @@ describe('AgentSession', () => {
 
       const events: Array<AgentEvent> = []
       try {
-        for await (const event of agent.stream('go')) {
+        for await (const event of agent.stream({ prompt: 'go' })) {
           events.push(event)
         }
       } catch {
@@ -2042,7 +2048,7 @@ describe('AgentSession', () => {
         model: 'test-model',
       })
 
-      for await (const event of agent.stream('hi')) {
+      for await (const event of agent.stream({ prompt: 'hi' })) {
         if (event.type === 'text-delta') {
           break // abandon the generator mid-stream
         }

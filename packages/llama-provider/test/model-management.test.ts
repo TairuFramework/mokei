@@ -42,10 +42,10 @@ describe('LlamaProvider model management', () => {
     test('downloads model and registers it', async () => {
       const provider = new LlamaProvider()
 
-      const config = await provider.downloadModel(
-        'my-llama',
-        'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M',
-      )
+      const config = await provider.downloadModel({
+        name: 'my-llama',
+        uri: 'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M',
+      })
 
       expect(config.path).toBe('/models/downloaded.gguf')
       expect(mockCreateModelDownloader).toHaveBeenCalled()
@@ -58,7 +58,10 @@ describe('LlamaProvider model management', () => {
     test('passes model URI to downloader', async () => {
       const provider = new LlamaProvider()
 
-      await provider.downloadModel('my-llama', 'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M')
+      await provider.downloadModel({
+        name: 'my-llama',
+        uri: 'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M',
+      })
 
       expect(mockCreateModelDownloader).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -82,7 +85,9 @@ describe('LlamaProvider model management', () => {
       const provider = new LlamaProvider()
       const updates: Array<{ downloaded: number; total: number; percent: number }> = []
 
-      await provider.downloadModel('my-llama', 'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M', {
+      await provider.downloadModel({
+        name: 'my-llama',
+        uri: 'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M',
         onProgress: (progress) => updates.push(progress),
       })
 
@@ -94,11 +99,12 @@ describe('LlamaProvider model management', () => {
     test('stores optional config values', async () => {
       const provider = new LlamaProvider()
 
-      const config = await provider.downloadModel(
-        'my-llama',
-        'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M',
-        { contextSize: 8192, gpu: true },
-      )
+      const config = await provider.downloadModel({
+        name: 'my-llama',
+        uri: 'hf:meta-llama/Llama-3.2-3B-GGUF:Q4_K_M',
+        contextSize: 8192,
+        gpu: true,
+      })
 
       expect(config.contextSize).toBe(8192)
       expect(config.gpu).toBe(true)

@@ -19,6 +19,16 @@ import { Disposer, raceSignal } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 import { fromStream } from '@sozai/generator'
 
+/** Parameters for executing a tool call the model requested. */
+export type ExecuteToolCallParams<T extends ProviderTypes = ProviderTypes> = {
+  /** The tool call to execute, as returned by the provider */
+  toolCall: FunctionToolCall<T['ToolCall']>
+  /** Aborts the tool call in flight */
+  signal?: AbortSignal
+  /** Rejects the tool call with a RequestTimeoutError after this many ms */
+  timeout?: number
+}
+
 export type AddContextParams = {
   key: string
   command: string
@@ -79,7 +89,7 @@ export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
    *       properties: { expression: { type: 'string' } },
    *       required: ['expression']
    *     },
-   *     execute: async ({ expression }) => {
+   *     execute: async ({ arguments: { expression } }) => {
    *       const result = eval(expression)
    *       return { content: [{ type: 'text', text: String(result) }] }
    *     }
@@ -172,7 +182,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   async #setupContext(params: AddContextParams): Promise<Array<ContextTool>> {
     const { key, command, args, env, enableTools } = params
     await this.#contextHost.addLocalContext({ key, command, args, env })
-    const tools = await this.#contextHost.setup(key, enableTools ?? true)
+    const tools = await this.#contextHost.setup({ key, enableTools, signal: params.signal })
     this.#events.emit('context-added', { key, tools })
     return tools
   }
@@ -369,14 +379,13 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     }
   }
 
-  executeToolCall<P extends T = T>(
-    toolCall: FunctionToolCall<P['ToolCall']>,
-    signal?: AbortSignal,
-  ): Promise<CallToolResult> {
+  executeToolCall<P extends T = T>(params: ExecuteToolCallParams<P>): Promise<CallToolResult> {
+    const { toolCall, signal, timeout } = params
     return this.#contextHost.callNamespacedTool({
       id: toolCall.name,
       arguments: JSON.parse(toolCall.arguments),
       signal,
+      timeout,
     })
   }
 }

@@ -252,10 +252,10 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           }))}
           onConfirm={(enabled) => {
             for (const [key, ctx] of Object.entries(session.contextHost.contexts)) {
-              session.contextHost.setContextTools(
+              session.contextHost.setContextTools({
                 key,
-                ctx.tools.map((t) => ({ ...t, enabled: enabled.includes(t.id) })),
-              )
+                tools: ctx.tools.map((t) => ({ ...t, enabled: enabled.includes(t.id) })),
+              })
             }
             setModal(null)
           }}

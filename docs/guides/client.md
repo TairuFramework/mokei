@@ -35,13 +35,13 @@ const client = new ContextClient({
   transport,
   
   // Handle elicitation requests from server
-  elicit: async (params, signal) => {
+  elicit: async ({ params, signal }) => {
     const userResponse = await promptUser(params.message)
     return { action: 'accept', content: userResponse }
   },
-  
+
   // Handle sampling requests from server
-  createMessage: async (params, signal) => {
+  createMessage: async ({ params, signal }) => {
     const result = await myLLM.chat(params.messages)
     return {
       role: 'assistant',
@@ -49,13 +49,13 @@ const client = new ContextClient({
       model: 'my-model'
     }
   },
-  
+
   // Provide workspace roots
   listRoots: [
     { uri: 'file:///path/to/workspace', name: 'Project Root' }
   ]
   // Or as async function:
-  // listRoots: async (signal) => [{ uri: '...', name: '...' }]
+  // listRoots: async ({ signal }) => [{ uri: '...', name: '...' }]
 })
 ```
 
@@ -69,6 +69,14 @@ for (const tool of tools) {
   console.log(`  Description: ${tool.description}`)
   console.log(`  Input Schema:`, tool.inputSchema)
 }
+```
+
+The list methods (`listTools`, `listPrompts`, `listResources`, `listResourceTemplates`)
+follow pagination automatically. Alongside `signal` and `timeout`, they accept `maxPages`
+to cap how many pages are fetched, overriding the client's `listMaxPages` for that call:
+
+```typescript
+const { tools } = await client.listTools({ maxPages: 5, timeout: 10_000 })
 ```
 
 ## Calling Tools

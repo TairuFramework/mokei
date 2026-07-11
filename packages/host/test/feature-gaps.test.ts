@@ -15,7 +15,7 @@ describe('MCP feature gaps, end to end', () => {
       args: [fixture('paginating-server.mjs')],
     })
 
-    const tools = await host.setup('paged')
+    const tools = await host.setup({ key: 'paged' })
     expect(tools.map((contextTool) => contextTool.tool.name)).toEqual(['alpha', 'beta', 'gamma'])
 
     await host.dispose()
@@ -28,7 +28,7 @@ describe('MCP feature gaps, end to end', () => {
       command: process.execPath,
       args: [fixture('structured-server.mjs')],
     })
-    await host.setup('structured')
+    await host.setup({ key: 'structured' })
 
     const result = await host.callTool({
       key: 'structured',

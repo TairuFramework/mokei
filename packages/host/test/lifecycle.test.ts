@@ -74,7 +74,7 @@ describe('ContextHost.setup race', () => {
     })
 
     // Start setup, then remove before it can assign tools.
-    const setupPromise = host.setup('racy').catch((err: Error) => err)
+    const setupPromise = host.setup({ key: 'racy' }).catch((err: Error) => err)
     await host.remove('racy')
 
     const result = await setupPromise

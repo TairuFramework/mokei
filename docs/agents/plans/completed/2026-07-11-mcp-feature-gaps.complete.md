@@ -61,23 +61,40 @@ Four gaps against the `2025-11-25` revision, plus one refactor the first two for
   returning `structuredContent` SHOULD also return the serialized JSON as a text block;
   a handler that supplies its own `content` has said something more useful than
   `JSON.stringify` would, so it is preserved.
-- **One parameters object per request method, transport options folded in.** Every public
-  request method across `ContextClient` (9), `ContextServer`'s server→client requests (3)
-  and `ContextHost` (4) now takes a single object: the request's own params, plus `signal`
-  / `timeout` (plus `maxPages` on the list walks), plus the routing key where there was
-  one (`ContextHost.callTool({ key, name, ... })`). The old `(key, params, options)` shape
+- **One parameters object, everywhere, with transport options folded in.** Every public
+  method now takes a single object: its own params, plus `signal`/`timeout` (plus
+  `maxPages` on the list walks), plus the routing key where there was one
+  (`ContextHost.callTool({ key, name, ... })`). The old `(key, params, options)` shape
   forced callers to pass a positional `undefined` to skip an argument and reach `options`
   — `Session.executeToolCall` did exactly that to pass an abort signal.
 
+  Applied across `ContextClient` (9 request methods + the 3 handler callbacks),
+  `ContextServer` (3 server→client requests + `log`), `ContextHost` (4 request methods,
+  `setup`, the 4 tool-enablement setters, `toolToLocalTool`, and `LocalToolDefinition`'s
+  `execute`), `Session`/`AgentSession` (`executeToolCall`, `run`, `stream`,
+  `ToolApprovalFn`), `LlamaProvider` (`createContext`, `downloadModel`) and
+  `buildHTTPHeaders`. Handlers now mirror requests: a `createTool` handler and a local
+  tool's `execute` both receive one object, so the same tool reads the same either way.
+
+  Two methods gained capability from the conversion rather than just changing shape:
+  `ContextHost.setup` issues `tools/list` but accepted no `signal`/`timeout` — it now
+  takes the full `ListOptions`, so `Session.addContext` cancels the request in flight
+  instead of merely losing a race against it. `ToolApprovalFn` is raced against the turn
+  signal but could not see it, so an approval handler awaiting user input had no way to
+  stop prompting on a dead turn; it now receives `signal`.
+
   The invariant this creates: **`ContextRPC.request` sends its `params` straight to the
-  peer, so an `AbortSignal` left in that object is serialized as a request param.** The
-  split therefore happens in exactly one place, `splitRequestOptions` in `context-rpc`,
-  which every public method calls before handing params to `request`. `ContextRPC.request`
-  itself keeps `(method, params, options)` — it *is* the wire boundary, and folding there
-  would conflate the payload with the options that carry it. The merge is unambiguous
-  because no MCP request declares a `signal` or `timeout` param. Guarded by three tests
-  (client list walk, client `callTool`, server `elicit`) that assert the peer sees the
-  wire params and nothing else; all three fail if the split is removed.
+  peer, so an `AbortSignal` left in that object is serialized as a request param.** An
+  `AbortSignal` serializes to `{}` — no throw, no warning — so a leak would be silent.
+  The split therefore happens in exactly one place, `splitRequestOptions` in `context-rpc`
+  (with `splitListOptions` in `context-client` layered on it for the walks' `maxPages`,
+  which `context-rpc` does not know about). `ContextRPC.request`/`notify` deliberately
+  keep `(method, params)` — they *are* the wire boundary, and folding there would conflate
+  the payload with the options that carry it. The merge is unambiguous because no MCP
+  request declares a `signal` or `timeout` param. Guarded by three tests (client list
+  walk, client `callTool`, server `elicit` — three distinct paths to the wire) that assert
+  the peer sees the wire params and nothing else; all three fail if the split is removed,
+  which was verified by removing it.
 
 - **Type-level narrowing keys off `[unknown] extends [Output]`.** Declaring an
   `outputSchema` makes `structuredContent` mandatory in the handler's return type;
@@ -126,9 +143,10 @@ Removed; inference verified by probe.
 All four gaps closed. Full workspace green (19 packages): context-protocol 73,
 context-rpc 22, context-client 49, context-server 55, host 62, session 59.
 
-**Breaking:** `SentRequest` and `requestValue` removed; `createTool`/`createPrompt` take a
-parameters object; list methods aggregate by default; **every public request method now
-takes a single parameters object with the transport options folded in** (see below).
+**Breaking:** `SentRequest` and `requestValue` removed; list methods aggregate by default;
+**every public method across the workspace now takes a single parameters object, with the
+transport options folded in** (see the design decision above for the full surface). This is
+the largest breaking change on the branch and touches every package a consumer imports.
 
 **Pre-existing lint, left as-is (predates this cycle):** `http-client/src/x-mcp-header.ts`
 `useLiteralKeys`.

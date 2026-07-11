@@ -80,7 +80,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     super({ stream: { readable, writable } })
     this.#controller = controller
     this.#url = params.url
-    this.#headers = buildHTTPHeaders(params.headers, params.auth)
+    this.#headers = buildHTTPHeaders({ headers: params.headers, auth: params.auth })
     this.#timeout = params.timeout ?? DEFAULT_HTTP_TIMEOUT
     this.#logger = params.logger ?? getMokeiLogger('http-client')
   }

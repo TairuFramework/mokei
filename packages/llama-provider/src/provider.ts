@@ -41,6 +41,28 @@ export type LlamaProviderParams = {
   models?: Record<string, LlamaModelConfig>
 }
 
+/** Parameters for creating an inference context for a model. */
+export type CreateContextParams = {
+  model: string
+  contextSize?: number
+}
+
+/** Progress of a model download, as a fraction of its total size. */
+export type DownloadProgress = {
+  downloaded: number
+  total: number
+  percent: number
+}
+
+/** Parameters for downloading a model and registering it under a name. */
+export type DownloadModelParams = {
+  name: string
+  uri: string
+  contextSize?: number
+  gpu?: boolean | 'auto'
+  onProgress?: (progress: DownloadProgress) => void
+}
+
 export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes> {
   static fromConfig(config: LlamaConfiguration): LlamaProvider {
     assertType(validateConfiguration, config)
@@ -146,10 +168,10 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     return context
   }
 
-  async createContext(model: string, options?: { contextSize?: number }): Promise<LlamaContext> {
-    const loadedModel = await this.#loadModel(model)
+  async createContext(params: CreateContextParams): Promise<LlamaContext> {
+    const loadedModel = await this.#loadModel(params.model)
     const context = await loadedModel.createContext({
-      contextSize: options?.contextSize,
+      contextSize: params.contextSize,
     })
     this.#managedContexts.add(context)
     return context
@@ -172,17 +194,9 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     await context.dispose()
   }
 
-  async downloadModel(
-    name: string,
-    uri: string,
-    options?: {
-      contextSize?: number
-      gpu?: boolean | 'auto'
-      onProgress?: (progress: { downloaded: number; total: number; percent: number }) => void
-    },
-  ): Promise<LlamaModelConfig> {
+  async downloadModel(params: DownloadModelParams): Promise<LlamaModelConfig> {
+    const { name, uri, onProgress } = params
     const { createModelDownloader } = await import('node-llama-cpp')
-    const onProgress = options?.onProgress
     const downloader = await createModelDownloader({
       modelUri: uri,
       onProgress: onProgress
@@ -199,8 +213,8 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
 
     const config: LlamaModelConfig = {
       path: modelPath,
-      ...(options?.contextSize != null ? { contextSize: options.contextSize } : {}),
-      ...(options?.gpu != null ? { gpu: options.gpu } : {}),
+      ...(params.contextSize != null ? { contextSize: params.contextSize } : {}),
+      ...(params.gpu != null ? { gpu: params.gpu } : {}),
     }
     this.#registry.set(name, config)
     return config
@@ -292,7 +306,7 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
       const context =
         params.context ??
         (params.newContext
-          ? await this.createContext(params.model)
+          ? await this.createContext({ model: params.model })
           : await this.getContext(params.model))
 
       const { history, prompt } = this.#convertMessages(params.messages)
