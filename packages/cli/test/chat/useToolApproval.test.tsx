@@ -59,10 +59,12 @@ describe('useToolApproval', () => {
     const handle = renderHook()
     handles.push(handle)
 
-    const promise = handle.api.toolApprovalFn(
-      { id: '1', name: 'ns:tool', arguments: '{}' },
-      { iteration: 1, history: [] },
-    )
+    const promise = handle.api.toolApprovalFn({
+      toolCall: { id: '1', name: 'ns:tool', arguments: '{}', raw: {} },
+      iteration: 1,
+      history: [],
+      signal: new AbortController().signal,
+    })
 
     // Let React process the setState from toolApprovalFn
     await act(async () => {
@@ -83,10 +85,12 @@ describe('useToolApproval', () => {
     const handle = renderHook()
     handles.push(handle)
 
-    const promise = handle.api.toolApprovalFn(
-      { id: '2', name: 'ns:tool', arguments: '{}' },
-      { iteration: 1, history: [] },
-    )
+    const promise = handle.api.toolApprovalFn({
+      toolCall: { id: '2', name: 'ns:tool', arguments: '{}', raw: {} },
+      iteration: 1,
+      history: [],
+      signal: new AbortController().signal,
+    })
 
     await act(async () => {
       await Promise.resolve()

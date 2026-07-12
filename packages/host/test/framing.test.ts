@@ -24,7 +24,7 @@ describe('ContextHost stdio framing', () => {
 
     // Trigger the lazy initialize read so the framer pulls the flood. The child
     // never speaks MCP, so setup() rejects — we assert on the event, not this.
-    await host.setup('flood').catch(() => {})
+    await host.setup({ key: 'flood' }).catch(() => {})
 
     await vi.waitFor(() => {
       expect(failures).toHaveLength(1)
@@ -53,7 +53,7 @@ describe('ContextHost stdio framing', () => {
       args: ['-e', 'process.stdout.write("not json at all\\n")'],
     })
 
-    await host.setup('stray').catch(() => {})
+    await host.setup({ key: 'stray' }).catch(() => {})
 
     await vi.waitFor(() => {
       expect(failures).toHaveLength(1)
@@ -78,12 +78,13 @@ describe('ContextHost stdio framing', () => {
       args: [new URL('./fixtures/echo-server.mjs', import.meta.url).pathname],
     })
 
-    const tools = await host.setup('echo')
+    const tools = await host.setup({ key: 'echo' })
     expect(tools.map((t) => t.tool.name)).toContain('echo')
 
     // ~500 KiB result: well under the 8 MiB default cap, comfortably larger
     // than a single OS pipe buffer, so it exercises multi-chunk framing.
-    const result = await host.callTool('echo', {
+    const result = await host.callTool({
+      key: 'echo',
       name: 'echo',
       arguments: { text: 'abcd', repeat: 128 * 1024 },
     })
@@ -112,7 +113,7 @@ describe('ContextHost stdio framing', () => {
       maxBufferSize: 64 * 1024,
     })
 
-    await host.setup('dedup').catch(() => {})
+    await host.setup({ key: 'dedup' }).catch(() => {})
 
     await vi.waitFor(() => {
       expect(removed).toBeGreaterThanOrEqual(1)

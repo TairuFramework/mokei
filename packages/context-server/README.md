@@ -15,24 +15,48 @@ serveProcess({
   name: 'my-server',
   version: '1.0.0',
   tools: {
-    greet: createTool(
-      'Greet a user by name',
-      {
+    greet: createTool({
+      description: 'Greet a user by name',
+      inputSchema: {
         type: 'object',
         properties: {
           name: { type: 'string' }
         },
         required: ['name']
       } as const,
-      async (req) => {
+      handler: async (req) => {
         return {
           content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }]
         }
       }
-    )
+    })
   }
 })
 ```
+
+### Structured tool output
+
+Declare an `outputSchema` and the tool advertises it in `tools/list`, validates
+its own `structuredContent`, and serializes that into a text `content` block for
+clients that don't read structured results:
+
+```ts
+const tools = {
+  count: createTool({
+    description: 'Count the matching rows',
+    inputSchema: { type: 'object', properties: { table: { type: 'string' } } } as const,
+    outputSchema: {
+      type: 'object',
+      properties: { count: { type: 'number' } },
+      required: ['count'],
+    } as const,
+    handler: ({ arguments: { table } }) => ({ structuredContent: { count: rowsIn(table) } }),
+  }),
+}
+```
+
+A handler that returns `structuredContent` violating its `outputSchema` — or
+omits it entirely — raises an `INTERNAL_ERROR` back to the client.
 
 ## Type-Safe Client Integration
 
@@ -51,9 +75,9 @@ import {
 } from '@mokei/context-server'
 
 const tools = {
-  greet: createTool(
-    'Greet a user by name',
-    {
+  greet: createTool({
+    description: 'Greet a user by name',
+    inputSchema: {
       type: 'object',
       properties: {
         name: { type: 'string', description: 'User name' }
@@ -61,12 +85,12 @@ const tools = {
       required: ['name'],
       additionalProperties: false
     } as const,
-    async (req) => {
+    handler: async (req) => {
       return {
         content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }]
       }
     }
-  )
+  })
 } satisfies ToolDefinitions
 
 export const config = {

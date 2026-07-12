@@ -99,8 +99,9 @@ describe('useAgentTurn', () => {
 
   test('submit carries messages across turns', async () => {
     let turnIndex = 0
+    const secondTurnMessages: Array<unknown> = []
     const createAgent = (): AgentSessionLike => ({
-      async *stream(_prompt, opts) {
+      async *stream(params) {
         if (turnIndex === 0) {
           yield { type: 'start', prompt: 'hi', timestamp: 0 } as never
           yield {
@@ -121,10 +122,9 @@ describe('useAgentTurn', () => {
             timestamp: 1,
           } as never
         } else {
-          expect(opts?.messages).toEqual([
-            { source: 'client', role: 'user', text: 'hi' },
-            { source: 'server', role: 'assistant', text: 'a' },
-          ])
+          // `useAgentTurn` swallows errors thrown from the stream, so record the
+          // messages it passed in and assert on them once the turn has settled.
+          secondTurnMessages.push(...(params.messages ?? []))
           yield { type: 'start', prompt: 'hi2', timestamp: 2 } as never
           yield {
             type: 'complete',
@@ -154,6 +154,10 @@ describe('useAgentTurn', () => {
       await hook.current().submit('hi2')
     })
 
+    expect(secondTurnMessages).toEqual([
+      { source: 'client', role: 'user', text: 'hi' },
+      { source: 'server', role: 'assistant', text: 'a' },
+    ])
     hook.unmount()
   })
 

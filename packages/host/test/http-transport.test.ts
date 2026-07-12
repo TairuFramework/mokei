@@ -15,26 +15,26 @@ describe('HTTP Context Utilities', () => {
     })
 
     test('merges custom headers', () => {
-      const headers = buildHTTPHeaders({ 'X-Custom': 'value' })
+      const headers = buildHTTPHeaders({ headers: { 'X-Custom': 'value' } })
       expect(headers['X-Custom']).toBe('value')
     })
 
     test('adds bearer auth header', () => {
       const auth: HTTPAuthOptions = { type: 'bearer', token: 'my-token' }
-      const headers = buildHTTPHeaders(undefined, auth)
+      const headers = buildHTTPHeaders({ auth })
       expect(headers.Authorization).toBe('Bearer my-token')
     })
 
     test('adds basic auth header', () => {
       const auth: HTTPAuthOptions = { type: 'basic', username: 'user', password: 'pass' }
-      const headers = buildHTTPHeaders(undefined, auth)
+      const headers = buildHTTPHeaders({ auth })
       // btoa('user:pass') = 'dXNlcjpwYXNz'
       expect(headers.Authorization).toBe('Basic dXNlcjpwYXNz')
     })
 
     test('adds custom header auth', () => {
       const auth: HTTPAuthOptions = { type: 'header', name: 'X-API-Key', value: 'secret' }
-      const headers = buildHTTPHeaders(undefined, auth)
+      const headers = buildHTTPHeaders({ auth })
       expect(headers['X-API-Key']).toBe('secret')
     })
   })

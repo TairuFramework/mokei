@@ -32,7 +32,7 @@ await host.addLocalContext({
   command: 'npx',
   args: ['-y', '@mokei/mcp-sqlite']
 })
-await host.setup('sqlite')
+await host.setup({ key: 'sqlite' })
 
 // Create provider
 const provider = OpenAIProvider.fromConfig({
@@ -50,12 +50,17 @@ const agent = new AgentSession({
 })
 
 // Run to completion
-const result = await agent.run('Create a users table and insert 3 sample records')
+const result = await agent.run({
+  prompt: 'Create a users table and insert 3 sample records',
+})
 
 console.log('Final response:', result.text)
 console.log('Iterations:', result.iterations)
 console.log('Tool calls:', result.toolCalls.length)
 ```
+
+`run()` and `stream()` both take a single parameters object: the `prompt`, optional prior
+`messages` to seed the conversation, and an optional `signal` to abort the run.
 
 ## Configuration
 
@@ -133,31 +138,40 @@ agent.events.on('event', (event) => {
 
 ### Custom Function
 
-Provide a function to decide approval:
+Provide a function to decide approval. It receives a single request object holding the
+`toolCall`, the current `iteration`, the event `history` so far, the resolved `tool`
+definition, and a `signal` that aborts if the turn is cancelled or times out while the
+decision is pending:
 
 ```typescript
 const agent = new AgentSession({
   session,
   provider: 'openai',
   model: 'gpt-4',
-  toolApproval: async (toolCall, context) => {
+  toolApproval: async ({ toolCall, iteration, history, tool, signal }) => {
     // Check the tool being called
     if (toolCall.name.includes('delete')) {
       return { approved: false, reason: 'Deletion not allowed' }
     }
 
     // Check iteration count
-    if (context.iteration > 5) {
+    if (iteration > 5) {
       return false  // Deny after 5 iterations
     }
 
     // Access tool definition
-    console.log('Tool description:', context.tool?.tool.description)
+    console.log('Tool description:', tool?.tool.description)
 
     // Review history
-    const errorCount = context.history.filter(e => e.type === 'tool-call-error').length
+    const errorCount = history.filter(e => e.type === 'tool-call-error').length
     if (errorCount > 2) {
       return { approved: false, reason: 'Too many errors' }
+    }
+
+    // Long-running decisions can watch `signal`, which aborts if the turn is
+    // cancelled or times out while the approval is still pending
+    if (signal.aborted) {
+      return { approved: false, reason: 'Turn cancelled' }
     }
 
     return true  // Approve
@@ -170,7 +184,7 @@ const agent = new AgentSession({
 Use `stream()` to receive events as they occur:
 
 ```typescript
-for await (const event of agent.stream('Create a users table')) {
+for await (const event of agent.stream({ prompt: 'Create a users table' })) {
   switch (event.type) {
     case 'start':
       console.log('Starting with prompt:', event.prompt)
@@ -286,7 +300,10 @@ const controller = new AbortController()
 // Cancel after 10 seconds
 setTimeout(() => controller.abort(), 10000)
 
-const result = await agent.run('Complex task', { signal: controller.signal })
+const result = await agent.run({
+  prompt: 'Complex task',
+  signal: controller.signal,
+})
 
 if (result.finishReason === 'aborted') {
   console.log('Agent was cancelled')
@@ -303,7 +320,7 @@ const agent = new AgentSession({
   timeout: 60000  // 1 minute
 })
 
-const result = await agent.run('Task')
+const result = await agent.run({ prompt: 'Task' })
 
 if (result.finishReason === 'timeout') {
   console.log('Agent timed out')
@@ -321,7 +338,7 @@ agent.events.on('event', (event) => {
 })
 
 // Run agent
-await agent.run('Do something')
+await agent.run({ prompt: 'Do something' })
 ```
 
 ## Complete Example
@@ -339,7 +356,7 @@ async function main() {
     command: 'npx',
     args: ['-y', '@mokei/mcp-sqlite', '--db', ':memory:']
   })
-  await host.setup('sqlite')
+  await host.setup({ key: 'sqlite' })
 
   const provider = OpenAIProvider.fromConfig({
     apiKey: process.env.OPENAI_API_KEY!
@@ -355,7 +372,7 @@ async function main() {
     model: 'gpt-4',
     systemPrompt: 'You are a database assistant. Use the sqlite tools to help users.',
     maxIterations: 5,
-    toolApproval: async (toolCall) => {
+    toolApproval: async ({ toolCall }) => {
       // Only allow SELECT queries
       const args = JSON.parse(toolCall.arguments)
       if (args.sql && !args.sql.trim().toUpperCase().startsWith('SELECT')) {
@@ -368,7 +385,9 @@ async function main() {
   // Stream execution
   console.log('Starting agent...\n')
 
-  for await (const event of agent.stream('Show me all tables in the database')) {
+  for await (const event of agent.stream({
+    prompt: 'Show me all tables in the database',
+  })) {
     if (event.type === 'text-delta') {
       process.stdout.write(event.text)
     } else if (event.type === 'tool-call-approved') {

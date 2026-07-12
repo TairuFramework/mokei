@@ -23,20 +23,29 @@ import type {
   ResourceTemplate,
   ServerMessage,
   InputSchema as ToolInputSchema,
+  OutputSchema as ToolOutputSchema,
 } from '@mokei/context-protocol'
-import type { SentRequest } from '@mokei/context-rpc'
-import type { FromSchema, Schema } from '@sozai/schema'
+import type { WithRequestOptions } from '@mokei/context-rpc'
+import type { Schema } from '@sozai/schema'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
 export type ClientInitialize = InitializeRequest['params']
 
-export type LogFunction = (level: LoggingLevel, data: unknown, logger?: string) => void
+export type LogParams = {
+  level: LoggingLevel
+  data: unknown
+  logger?: string
+}
+
+export type LogFunction = (params: LogParams) => void
 
 export type ServerClient = {
-  createMessage: (params: CreateMessageRequest['params']) => SentRequest<CreateMessageResult>
-  elicit: (params: ElicitRequest['params']) => SentRequest<ElicitResult>
-  listRoots: (params?: ListRootsRequest['params']) => SentRequest<ListRootsResult>
+  createMessage: (
+    params: WithRequestOptions<CreateMessageRequest['params']>,
+  ) => Promise<CreateMessageResult>
+  elicit: (params: WithRequestOptions<ElicitRequest['params']>) => Promise<ElicitResult>
+  listRoots: (params?: WithRequestOptions<ListRootsRequest['params']>) => Promise<ListRootsResult>
   log: LogFunction
 }
 
@@ -59,11 +68,11 @@ export type CompleteHandler = (
 export type PromptHandlerReturn = GetPromptResult | Promise<GetPromptResult>
 
 export type GenericPromptHandler = (
-  request: HandlerRequest<{ arguments: unknown }>,
+  request: HandlerRequest<{ input: unknown }>,
 ) => PromptHandlerReturn
 
 export type TypedPromptHandler<Arguments> = (
-  request: HandlerRequest<{ arguments: Arguments }>,
+  request: HandlerRequest<{ input: Arguments }>,
 ) => PromptHandlerReturn
 
 export type GenericPromptDefinition = {
@@ -72,10 +81,13 @@ export type GenericPromptDefinition = {
   handler: GenericPromptHandler
 }
 
-export type TypedPromptDefinition<ArgumentsSchema extends Schema> = {
-  description: string
-  argumentsSchema: Schema
-  handler: TypedPromptHandler<FromSchema<ArgumentsSchema>>
+/**
+ * What `createPrompt` returns: a runtime `GenericPromptDefinition` carrying a phantom witness
+ * of the argument type its `argumentsSchema` describes. See {@link ToolDefinition}.
+ */
+export type PromptDefinition<Arguments = Record<string, unknown>> = GenericPromptDefinition & {
+  /** @internal Phantom type witness. Never present at runtime; do not read it. */
+  readonly _arguments?: Arguments
 }
 
 export type PromptDefinitions = Record<string, GenericPromptDefinition>
@@ -106,24 +118,41 @@ export type ResourceHandlers = {
 
 export type ToolHandlerReturn = CallToolResult | Promise<CallToolResult>
 
+export type StructuredToolHandlerReturn<Output> = Omit<CallToolResult, 'content'> & {
+  content?: CallToolResult['content']
+  structuredContent: Output
+}
+
 export type GenericToolHandler = (
-  request: HandlerRequest<{ arguments: Record<string, unknown> }>,
+  request: HandlerRequest<{ input: Record<string, unknown> }>,
 ) => ToolHandlerReturn
 
-export type TypedToolHandler<Arguments> = (
-  request: HandlerRequest<{ arguments: Arguments }>,
-) => ToolHandlerReturn
+export type TypedToolHandler<Arguments, Output = unknown> = (
+  request: HandlerRequest<{ input: Arguments }>,
+) => [unknown] extends [Output]
+  ? ToolHandlerReturn
+  : StructuredToolHandlerReturn<Output> | Promise<StructuredToolHandlerReturn<Output>>
 
 export type GenericToolDefinition = {
   description: string
   inputSchema: ToolInputSchema
+  outputSchema?: ToolOutputSchema
   handler: GenericToolHandler
 }
 
-export type TypedToolDefinition<InputSchema extends Schema & ToolInputSchema> = {
-  description: string
-  inputSchema: InputSchema
-  handler: TypedToolHandler<FromSchema<InputSchema>>
+/**
+ * What `createTool` returns: a runtime `GenericToolDefinition` carrying a phantom witness of
+ * the argument type its `inputSchema` describes.
+ *
+ * The witness is type-level only — never present at runtime. It exists so
+ * {@link ExtractToolTypes} can recover a tool's argument type by reading one optional
+ * property. The alternative — structurally matching the whole definition against a typed
+ * one — forces TypeScript to compare `handler` types, which carry the large `CallToolResult`
+ * union, and that exceeds the instantiation depth (TS2589/TS2590).
+ */
+export type ToolDefinition<Arguments = Record<string, unknown>> = GenericToolDefinition & {
+  /** @internal Phantom type witness. Never present at runtime; do not read it. */
+  readonly _arguments?: Arguments
 }
 
 export type ToolDefinitions = Record<string, GenericToolDefinition>
@@ -134,7 +163,11 @@ export type ToolDefinitions = Record<string, GenericToolDefinition>
  * @example
  * ```typescript
  * const tools = {
- *   myTool: createTool('Description', { type: 'object', properties: { foo: { type: 'string' } } } as const, handler)
+ *   myTool: createTool({
+ *     description: 'Description',
+ *     inputSchema: { type: 'object', properties: { foo: { type: 'string' } } } as const,
+ *     handler,
+ *   })
  * } satisfies ToolDefinitions
  *
  * type MyTools = ExtractToolTypes<typeof tools>
@@ -142,12 +175,22 @@ export type ToolDefinitions = Record<string, GenericToolDefinition>
  * ```
  */
 export type ExtractToolTypes<T extends ToolDefinitions> = {
-  [K in keyof T]: T[K] extends TypedToolDefinition<infer S>
-    ? FromSchema<S>
-    : T[K] extends GenericToolDefinition
-      ? Record<string, unknown>
-      : never
+  [K in keyof T]: ExtractArguments<T[K]>
 }
+
+/**
+ * Read a definition's phantom argument witness, falling back to an open record for a
+ * definition that carries none (a hand-written `GenericToolDefinition`, or a tool whose
+ * schema TypeScript could not narrow).
+ *
+ * Reading one optional property is deliberate: matching the definition structurally would
+ * drag its `handler` — and the `CallToolResult` union inside it — into the comparison.
+ */
+type ExtractArguments<Definition> = Definition extends { readonly _arguments?: infer Arguments }
+  ? unknown extends Arguments
+    ? Record<string, unknown>
+    : Arguments
+  : Record<string, unknown>
 
 /**
  * Extract TypeScript types from prompt definitions for type-safe client usage.
@@ -155,7 +198,11 @@ export type ExtractToolTypes<T extends ToolDefinitions> = {
  * @example
  * ```typescript
  * const prompts = {
- *   myPrompt: createPrompt('Description', { type: 'object', properties: { name: { type: 'string' } } } as const, handler)
+ *   myPrompt: createPrompt({
+ *     description: 'Description',
+ *     argumentsSchema: { type: 'object', properties: { name: { type: 'string' } } } as const,
+ *     handler,
+ *   })
  * } satisfies PromptDefinitions
  *
  * type MyPrompts = ExtractPromptTypes<typeof prompts>
@@ -163,11 +210,7 @@ export type ExtractToolTypes<T extends ToolDefinitions> = {
  * ```
  */
 export type ExtractPromptTypes<T extends PromptDefinitions> = {
-  [K in keyof T]: T[K] extends TypedPromptDefinition<infer S>
-    ? FromSchema<S>
-    : T[K] extends GenericPromptDefinition
-      ? Record<string, unknown>
-      : never
+  [K in keyof T]: ExtractArguments<T[K]>
 }
 
 /**

@@ -187,7 +187,7 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
 
     // $ref: resolve against root, guard cycles, continue at the same path.
     // 2020-12 allows sibling keywords next to $ref, so we still walk the rest of this node.
-    const ref = node['$ref']
+    const ref = node.$ref
     if (typeof ref === 'string') {
       if (refStack.has(ref)) {
         errors.push(`Circular $ref "${ref}" at ${here}`)
@@ -224,7 +224,7 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
     }
 
     // Object properties: walk each child at its named path.
-    const properties = node['properties']
+    const properties = node.properties
     if (properties == null || typeof properties !== 'object') {
       return
     }

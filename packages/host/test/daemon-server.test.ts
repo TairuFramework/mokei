@@ -42,7 +42,7 @@ describe('spawn handler child-exit cleanup', () => {
     const server = serve<Protocol>({ handlers, transport: transports.server, requireAuth: false })
     const client = new Client<Protocol>({ transport: transports.client })
 
-    const stops: Array<{ type: string }> = []
+    const stops: Array<Record<string, unknown>> = []
     const events = client.createStream('events')
     // StreamCall is also a Promise; events.close() rejects it with 'Close'.
     // Attach a no-op catch so the expected teardown rejection stays silent.

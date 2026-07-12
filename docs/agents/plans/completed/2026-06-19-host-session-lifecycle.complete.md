@@ -5,8 +5,8 @@
 
 ## Gap
 
-Medium-severity lifecycle gaps below the crash/hang class (which is in
-`next/2026-06-12-hang-crash-core.md`): children not reliably reaped, abort races that
+Medium-severity lifecycle gaps below the crash/hang class (shipped separately, see
+`completed/2026-06-15-hang-crash-core.complete.md`): children not reliably reaped, abort races that
 orphan processes or let concurrent chats slip guards, unbounded notification buffering,
 and a handful of state races between async setup and removal.
 
@@ -71,7 +71,8 @@ and a handful of state races between async setup and removal.
 
 ## Notes
 
-- Item 12 may already land with the rpc work in `next/2026-06-12-hang-crash-core.md` —
+- Item 12 may already land with the rpc work in
+  `completed/2026-06-15-hang-crash-core.complete.md` —
   check before starting.
 - Verified solid: agent-loop guards, tool-approval flow, received-request cancellation,
   CLI turn state (`useAgentTurn` single-turn enforcement, `finally` cleanup).
@@ -160,9 +161,6 @@ is the catch-all.)
   the one worrying cross-cutting path (the brief's claimed `streamChatTurn`/`chat`
   sharing) does not exist, the addContext event-race is rejection-safe, and no fix
   introduces a new unhandled-rejection or listener-leak surface.
-
-Plan: `docs/superpowers/plans/2026-06-18-host-session-lifecycle.md`.
-Spec: `docs/superpowers/specs/2026-06-18-host-session-lifecycle-design.md`.
 
 ### Follow-ups (minor, non-blocking)
 

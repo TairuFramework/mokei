@@ -43,6 +43,14 @@ _Empty — all 2026-06-12 audit `next/` items shipped (see `completed/`)._
 
 Shipped from this audit (see `completed/`):
 
+- **MCP 2025-11-25 feature gaps** (`completed/2026-07-11-mcp-feature-gaps.complete.md`)
+  — shipped on `feat/mcp-feature-gaps`: client-side cursor walk in all four list
+  methods (fixes silent first-page truncation of `ContextHost`'s tool set), tool
+  `outputSchema` + validated `structuredContent` on both sides, `SentRequest`
+  replaced by `AbortSignal` injection across the request path, and the
+  `UnsubscribeRequest` alias typo. **BREAKING:** `SentRequest`/`requestValue` removed
+  and every request method takes an optional `signal`; `createTool`/`createPrompt`
+  take a parameters object. `resources/subscribe` (gap 3) deferred into B4.
 - **Monitor + daemon security** (`completed/2026-06-16-monitor-daemon-security.complete.md`) —
   items 1–5: monitor localhost bind, `/api` Host-allowlist + bearer-token gate,
   socket `0600`, daemon connect-before-remove + signal shutdown + child reaping,
@@ -136,11 +144,6 @@ Shipped from this audit (see `completed/`):
   protected-resource metadata for `@mokei/http-server` (hono middleware, not SDK's
   Express-only helpers), JWT machine auth (SEP-991 grants / `@kokuin/token` DID tokens).
   Replaces the former P3 "OAuth / auth helpers" line.
-- **MCP 2025-11-25 feature gaps** (`backlog/2026-07-02-mcp-feature-gaps.md`) — from the
-  SDK v2 comparison: client list methods don't follow `nextCursor` (silent first-page
-  truncation against paginating servers — interop bug, highest priority), tool
-  `outputSchema`/`structuredContent` unimplemented (typed but not wired), and
-  `resources/subscribe` types-only (low priority; superseded by B4 in `2026-07-28`).
 - **Stack migration follow-ups** (`backlog/2026-06-22-stack-migration-follow-ups.md`) —
   two non-blocking tooling gaps: node-pty `spawn-helper` `+x` postinstall (PTY suites fail
   `posix_spawnp failed` otherwise), and gate the live OpenAI `session.test.ts` on a key.

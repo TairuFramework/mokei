@@ -25,9 +25,36 @@ type RequestDefinition = {
   Result: unknown | undefined
 }
 
-export type SentRequest<Result> = Promise<Result> & {
-  id: number
-  cancel: () => void
+export type RequestOptions = {
+  /** Aborts the request, rejecting its promise and notifying the peer. */
+  signal?: AbortSignal
+  /** Rejects the request with a RequestTimeoutError after this many ms. */
+  timeout?: number
+}
+
+/**
+ * A public request method's parameters: the request's wire params, plus the transport
+ * options that drive the exchange carrying them.
+ *
+ * The two are one object at the API surface and must be separated before the params
+ * reach the wire — see {@link splitRequestOptions}. No MCP request declares a `signal`
+ * or `timeout` param, so the merge is unambiguous.
+ */
+export type WithRequestOptions<Params> = Params & RequestOptions
+
+/**
+ * Splits a public parameters object into the params sent on the wire and the transport
+ * options kept local to this process.
+ *
+ * `ContextRPC.request` passes its `params` straight to the peer, so an `AbortSignal` or
+ * timeout left in that object would be serialized as a request param. Every public
+ * method that accepts {@link WithRequestOptions} must split here first.
+ */
+export function splitRequestOptions<Params>(
+  params: WithRequestOptions<Params>,
+): [Params, RequestOptions] {
+  const { signal, timeout, ...wireParams } = params as WithRequestOptions<Record<string, unknown>>
+  return [wireParams as Params, { signal, timeout }]
 }
 
 export type RPCTypes = {
@@ -233,7 +260,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     controller: ExchangeController,
     method: string,
     params: unknown,
-  ): SentRequest<unknown> {
+  ): Promise<unknown> {
     controller.signal.addEventListener('abort', () => {
       if (!this.#exchanges.has(id)) {
         return
@@ -249,19 +276,31 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       this.#exchanges.cancel(id, error)
     })
 
-    return Object.assign(controller.promise, {
-      id,
-      cancel: () => {
-        controller.abort()
-      },
-    }) as SentRequest<unknown>
+    return controller.promise
+  }
+
+  /** Aborts `controller` when `signal` fires, detaching once the exchange settles. */
+  #linkSignal(controller: ExchangeController, signal: AbortSignal): void {
+    const onAbort = () => {
+      controller.abort()
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    const detach = () => {
+      signal.removeEventListener('abort', onAbort)
+    }
+    controller.promise.then(detach, detach)
   }
 
   request<Method extends keyof T['SendRequests']>(
     method: Method,
     params: T['SendRequests'][Method]['Params'],
-    options?: { timeout?: number },
-  ): SentRequest<T['SendRequests'][Method]['Result']> {
+    options?: RequestOptions,
+  ): Promise<T['SendRequests'][Method]['Result']> {
+    // A signal already aborted at call time sends nothing on the wire.
+    if (options?.signal?.aborted) {
+      return Promise.reject(options.signal.reason as Error)
+    }
+
     const id = this._getNextRequestID()
     const controller = Object.assign(new AbortController(), defer())
     this.#exchanges.registerOnce(id, controller)
@@ -283,7 +322,11 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       )
     }
 
-    return this.#startExchange(id, controller, method as string, params) as SentRequest<
+    if (options?.signal != null) {
+      this.#linkSignal(controller, options.signal)
+    }
+
+    return this.#startExchange(id, controller, method as string, params) as Promise<
       T['SendRequests'][Method]['Result']
     >
   }
@@ -296,7 +339,11 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     method: string,
     params: unknown,
     handlers?: StreamHandlers,
-  ): SentRequest<unknown> {
+    options?: RequestOptions,
+  ): Promise<unknown> {
+    if (options?.signal?.aborted) {
+      return Promise.reject(options.signal.reason as Error)
+    }
     const id = this._getNextRequestID()
     const controller = Object.assign(new AbortController(), defer())
     this.#exchanges.registerStream(id, controller, {
@@ -306,15 +353,9 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         handlers?.onSettle?.()
       },
     })
+    if (options?.signal != null) {
+      this.#linkSignal(controller, options.signal)
+    }
     return this.#startExchange(id, controller, method, params)
-  }
-
-  requestValue<Method extends keyof T['SendRequests'], Value>(
-    method: Method,
-    params: T['SendRequests'][Method]['Params'],
-    getValue: (result: T['SendRequests'][Method]['Result']) => Value,
-  ): SentRequest<Value> {
-    const request = this.request(method, params)
-    return Object.assign(request.then(getValue), { id: request.id, cancel: request.cancel })
   }
 }

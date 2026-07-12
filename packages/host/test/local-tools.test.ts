@@ -105,7 +105,7 @@ describe('ContextHost Local Tools', () => {
         name: 'calculate',
         description: 'Calculate expression',
         inputSchema: { type: 'object', properties: { expr: { type: 'string' } } },
-        execute: async ({ expr }) => ({
+        execute: async ({ input: { expr } }) => ({
           content: [{ type: 'text', text: `calculated: ${expr}` }],
         }),
       })
@@ -243,12 +243,12 @@ describe('ContextHost Local Tools', () => {
           type: 'object',
           properties: { name: { type: 'string' } },
         },
-        execute: async ({ name }) => ({
+        execute: async ({ input: { name } }) => ({
           content: [{ type: 'text', text: `Hello, ${name}!` }],
         }),
       })
 
-      const result = await host.callLocalTool('greet', { name: 'World' })
+      const result = await host.callLocalTool({ name: 'greet', arguments: { name: 'World' } })
 
       expect(result.content).toHaveLength(1)
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello, World!' })
@@ -265,17 +265,18 @@ describe('ContextHost Local Tools', () => {
         },
       })
 
-      const result = await host.callLocalTool('failing_tool', {})
+      const result = await host.callLocalTool({ name: 'failing_tool' })
 
       expect(result.isError).toBe(true)
       expect(result.content[0]).toEqual({ type: 'text', text: 'Something went wrong' })
     })
 
-    test('throws for non-existent tool', () => {
+    test('throws for non-existent tool', async () => {
       const host = new ContextHost()
 
-      // The error is thrown synchronously before the promise is created
-      expect(() => host.callLocalTool('nonexistent', {})).toThrow(
+      // callLocalTool is now async: the missing-tool error rejects the promise
+      // rather than throwing synchronously.
+      await expect(host.callLocalTool({ name: 'nonexistent' })).rejects.toThrow(
         'Local tool "nonexistent" does not exist',
       )
     })
@@ -291,12 +292,15 @@ describe('ContextHost Local Tools', () => {
           type: 'object',
           properties: { message: { type: 'string' } },
         },
-        execute: async ({ message }) => ({
+        execute: async ({ input: { message } }) => ({
           content: [{ type: 'text', text: message as string }],
         }),
       })
 
-      const result = await host.callNamespacedTool('local:echo', { message: 'test' })
+      const result = await host.callNamespacedTool({
+        id: 'local:echo',
+        arguments: { message: 'test' },
+      })
 
       expect(result.content).toHaveLength(1)
       expect(result.content[0]).toEqual({ type: 'text', text: 'test' })
@@ -327,9 +331,9 @@ describe('ContextHost Local Tools', () => {
 describe('Server Tool to Local Tool Conversion', () => {
   describe('toolToLocalTool', () => {
     test('converts a server tool definition to a local tool definition', async () => {
-      const serverTool = createTool(
-        'Calculate math expression',
-        {
+      const serverTool = createTool({
+        description: 'Calculate math expression',
+        inputSchema: {
           type: 'object',
           properties: {
             a: { type: 'number' },
@@ -337,12 +341,12 @@ describe('Server Tool to Local Tool Conversion', () => {
           },
           required: ['a', 'b'],
         } as const,
-        (req) => ({
-          content: [{ type: 'text', text: String(req.arguments.a + req.arguments.b) }],
+        handler: (req) => ({
+          content: [{ type: 'text', text: String(req.input.a + req.input.b) }],
         }),
-      )
+      })
 
-      const localTool = toolToLocalTool('add', serverTool)
+      const localTool = toolToLocalTool({ name: 'add', definition: serverTool })
 
       expect(localTool.name).toBe('add')
       expect(localTool.description).toBe('Calculate math expression')
@@ -351,54 +355,58 @@ describe('Server Tool to Local Tool Conversion', () => {
     })
 
     test('execute function works correctly', async () => {
-      const serverTool = createTool(
-        'Echo tool',
-        {
+      const serverTool = createTool({
+        description: 'Echo tool',
+        inputSchema: {
           type: 'object',
           properties: {
             message: { type: 'string' },
           },
           required: ['message'],
         } as const,
-        (req) => ({
-          content: [{ type: 'text', text: `Echo: ${req.arguments.message}` }],
+        handler: (req) => ({
+          content: [{ type: 'text', text: `Echo: ${req.input.message}` }],
         }),
-      )
+      })
 
-      const localTool = toolToLocalTool('echo', serverTool)
-      const result = await localTool.execute({ message: 'hello' })
+      const localTool = toolToLocalTool({ name: 'echo', definition: serverTool })
+      const result = await localTool.execute({ input: { message: 'hello' } })
 
       expect(result.content).toHaveLength(1)
       expect(result.content[0]).toEqual({ type: 'text', text: 'Echo: hello' })
     })
 
     test('provides stub client that throws for createMessage', async () => {
-      const serverTool = createTool(
-        'Tool that needs client',
-        { type: 'object' } as const,
-        (req) => {
+      const serverTool = createTool({
+        description: 'Tool that needs client',
+        inputSchema: { type: 'object' } as const,
+        handler: (req) => {
           // This should throw when called
           req.client.createMessage({ messages: [], maxTokens: 100 })
           return { content: [] }
         },
-      )
+      })
 
-      const localTool = toolToLocalTool('needsClient', serverTool)
+      const localTool = toolToLocalTool({ name: 'needsClient', definition: serverTool })
 
-      await expect(localTool.execute({})).rejects.toThrow(
+      await expect(localTool.execute({ input: {} })).rejects.toThrow(
         'createMessage() is not available for local tools',
       )
     })
 
     test('provides stub client that allows log calls (no-op)', async () => {
-      const serverTool = createTool('Tool that logs', { type: 'object' } as const, (req) => {
-        // Logging should be a no-op, not throw
-        req.client.log('info', { message: 'test log' })
-        return { content: [{ type: 'text', text: 'logged' }] }
+      const serverTool = createTool({
+        description: 'Tool that logs',
+        inputSchema: { type: 'object' } as const,
+        handler: (req) => {
+          // Logging should be a no-op, not throw
+          req.client.log({ level: 'info', data: { message: 'test log' } })
+          return { content: [{ type: 'text', text: 'logged' }] }
+        },
       })
 
-      const localTool = toolToLocalTool('logger', serverTool)
-      const result = await localTool.execute({})
+      const localTool = toolToLocalTool({ name: 'logger', definition: serverTool })
+      const result = await localTool.execute({ input: {} })
 
       expect(result.content[0]).toEqual({ type: 'text', text: 'logged' })
     })
@@ -406,17 +414,17 @@ describe('Server Tool to Local Tool Conversion', () => {
     test('provides signal to the handler', async () => {
       let receivedSignal: AbortSignal | undefined
 
-      const serverTool = createTool(
-        'Tool that checks signal',
-        { type: 'object' } as const,
-        (req) => {
+      const serverTool = createTool({
+        description: 'Tool that checks signal',
+        inputSchema: { type: 'object' } as const,
+        handler: (req) => {
           receivedSignal = req.signal
           return { content: [{ type: 'text', text: 'done' }] }
         },
-      )
+      })
 
-      const localTool = toolToLocalTool('signalChecker', serverTool)
-      await localTool.execute({})
+      const localTool = toolToLocalTool({ name: 'signalChecker', definition: serverTool })
+      await localTool.execute({ input: {} })
 
       expect(receivedSignal).toBeDefined()
       expect(receivedSignal?.aborted).toBe(false)
@@ -426,16 +434,16 @@ describe('Server Tool to Local Tool Conversion', () => {
   describe('toolsToLocalTools', () => {
     test('converts a ToolDefinitions record to array of LocalToolDefinitions', () => {
       const tools = {
-        tool_one: createTool(
-          'First tool',
-          { type: 'object', properties: { x: { type: 'string' } } } as const,
-          () => ({ content: [{ type: 'text', text: 'one' }] }),
-        ),
-        tool_two: createTool(
-          'Second tool',
-          { type: 'object', properties: { y: { type: 'number' } } } as const,
-          () => ({ content: [{ type: 'text', text: 'two' }] }),
-        ),
+        tool_one: createTool({
+          description: 'First tool',
+          inputSchema: { type: 'object', properties: { x: { type: 'string' } } } as const,
+          handler: () => ({ content: [{ type: 'text', text: 'one' }] }),
+        }),
+        tool_two: createTool({
+          description: 'Second tool',
+          inputSchema: { type: 'object', properties: { y: { type: 'number' } } } as const,
+          handler: () => ({ content: [{ type: 'text', text: 'two' }] }),
+        }),
       } satisfies ToolDefinitions
 
       const localTools = toolsToLocalTools(tools)
@@ -449,19 +457,21 @@ describe('Server Tool to Local Tool Conversion', () => {
 
     test('converted tools execute correctly', async () => {
       const tools = {
-        greet: createTool(
-          'Greet someone',
-          {
+        greet: createTool({
+          description: 'Greet someone',
+          inputSchema: {
             type: 'object',
             properties: { name: { type: 'string' } },
             required: ['name'],
           } as const,
-          (req) => ({ content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }] }),
-        ),
+          handler: (req) => ({
+            content: [{ type: 'text', text: `Hello, ${req.input.name}!` }],
+          }),
+        }),
       } satisfies ToolDefinitions
 
       const localTools = toolsToLocalTools(tools)
-      const result = await localTools[0].execute({ name: 'World' })
+      const result = await localTools[0].execute({ input: { name: 'World' } })
 
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello, World!' })
     })
@@ -469,9 +479,13 @@ describe('Server Tool to Local Tool Conversion', () => {
     test('works with Session localTools parameter', () => {
       // This test verifies the type compatibility
       const tools = {
-        example: createTool('Example tool', { type: 'object' } as const, () => ({
-          content: [{ type: 'text', text: 'ok' }],
-        })),
+        example: createTool({
+          description: 'Example tool',
+          inputSchema: { type: 'object' } as const,
+          handler: () => ({
+            content: [{ type: 'text', text: 'ok' }],
+          }),
+        }),
       } satisfies ToolDefinitions
 
       const localTools = toolsToLocalTools(tools)
@@ -492,9 +506,9 @@ describe('Server Tool to Local Tool Conversion', () => {
       const host = new ContextHost()
 
       const tools = {
-        multiply: createTool(
-          'Multiply two numbers',
-          {
+        multiply: createTool({
+          description: 'Multiply two numbers',
+          inputSchema: {
             type: 'object',
             properties: {
               a: { type: 'number' },
@@ -502,10 +516,10 @@ describe('Server Tool to Local Tool Conversion', () => {
             },
             required: ['a', 'b'],
           } as const,
-          (req) => ({
-            content: [{ type: 'text', text: String(req.arguments.a * req.arguments.b) }],
+          handler: (req) => ({
+            content: [{ type: 'text', text: String(req.input.a * req.input.b) }],
           }),
-        ),
+        }),
       } satisfies ToolDefinitions
 
       const localTools = toolsToLocalTools(tools)
@@ -513,7 +527,7 @@ describe('Server Tool to Local Tool Conversion', () => {
 
       expect(host.hasLocalTool('multiply')).toBe(true)
 
-      const result = await host.callLocalTool('multiply', { a: 6, b: 7 })
+      const result = await host.callLocalTool({ name: 'multiply', arguments: { a: 6, b: 7 } })
       expect(result.content[0]).toEqual({ type: 'text', text: '42' })
     })
 
@@ -521,7 +535,11 @@ describe('Server Tool to Local Tool Conversion', () => {
       const host = new ContextHost()
 
       const tools = {
-        my_tool: createTool('My tool', { type: 'object' } as const, () => ({ content: [] })),
+        my_tool: createTool({
+          description: 'My tool',
+          inputSchema: { type: 'object' } as const,
+          handler: () => ({ content: [] }),
+        }),
       } satisfies ToolDefinitions
 
       host.addLocalTools(toolsToLocalTools(tools))
@@ -537,10 +555,10 @@ describe('toolToLocalTool cancellation', () => {
     const host = new ContextHost()
     let observedAbort = false
 
-    const serverTool = createTool(
-      'waiter-converted',
-      { type: 'object', properties: {} } as const,
-      async (req) => {
+    const serverTool = createTool({
+      description: 'waiter-converted',
+      inputSchema: { type: 'object', properties: {} } as const,
+      handler: async (req) => {
         await new Promise<void>((resolve) => {
           req.signal.addEventListener('abort', () => {
             observedAbort = true
@@ -549,14 +567,15 @@ describe('toolToLocalTool cancellation', () => {
         })
         return { content: [{ type: 'text', text: 'done' }] }
       },
-    )
+    })
 
-    host.addLocalTool(toolToLocalTool('waiter', serverTool))
+    host.addLocalTool(toolToLocalTool({ name: 'waiter', definition: serverTool }))
 
-    const request = host.callLocalTool('waiter', {})
+    const controller = new AbortController()
+    const request = host.callLocalTool({ name: 'waiter', signal: controller.signal })
     // Let the handler start and subscribe to the signal.
     await new Promise((resolve) => setTimeout(resolve, 10))
-    request.cancel()
+    controller.abort()
     await request
 
     expect(observedAbort).toBe(true)
@@ -572,7 +591,7 @@ describe('callLocalTool cancellation', () => {
       name: 'waiter',
       description: 'waits until aborted',
       inputSchema: { type: 'object', properties: {} },
-      execute: async (_args, signal) => {
+      execute: async ({ signal }) => {
         await new Promise<void>((resolve) => {
           signal?.addEventListener('abort', () => {
             observedAbort = true
@@ -583,10 +602,11 @@ describe('callLocalTool cancellation', () => {
       },
     })
 
-    const request = host.callLocalTool('waiter', {})
+    const controller = new AbortController()
+    const request = host.callLocalTool({ name: 'waiter', signal: controller.signal })
     // Let execute start and subscribe to the signal.
     await new Promise((resolve) => setTimeout(resolve, 10))
-    request.cancel()
+    controller.abort()
     await request
 
     expect(observedAbort).toBe(true)

@@ -4,6 +4,7 @@ import {
   type ClientTransport,
   ContextClient,
   type ContextTypes,
+  type ListParams,
   type PromptParams,
   type ToolParams,
   type UnknownContextTypes,
@@ -16,7 +17,7 @@ import type {
   ServerMessage,
   Tool,
 } from '@mokei/context-protocol'
-import type { SentRequest } from '@mokei/context-rpc'
+import type { WithRequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
 import { type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
 import { Disposer } from '@sozai/async'
@@ -52,6 +53,52 @@ export function getContextToolInfo(id: string): [string, string] {
     throw new Error(`Invalid context tool ID: ${id}`)
   }
   return [id.slice(0, index), id.slice(index + 1)]
+}
+
+/**
+ * Parameters for setting up a context: which tools to enable, plus the options for the
+ * `tools/list` request the setup issues.
+ */
+export type SetupParams = ListParams<{
+  key: string
+  /** Which of the context's tools to enable. Defaults to all of them. */
+  enableTools?: EnableToolsArg
+}>
+
+/** Parameters for replacing a context's tools wholesale. */
+export type SetContextToolsParams = {
+  key: string
+  tools: Array<ContextTool>
+}
+
+/** Parameters for the tool-enablement methods, which act on a context's tools by name. */
+export type ContextToolNamesParams = {
+  key: string
+  toolNames: Array<string>
+}
+
+/** Parameters for getting a prompt from a context, keyed by context. */
+export type ContextPromptParams<T extends ContextTypes = UnknownContextTypes> = WithRequestOptions<
+  PromptParams<T>
+> & { key: string }
+
+/** Parameters for calling a tool on a context, keyed by context. */
+export type ContextToolParams<T extends ContextTypes = UnknownContextTypes> = WithRequestOptions<
+  ToolParams<T>
+> & { key: string }
+
+/** Parameters for calling a tool by its namespaced ID (`contextKey:toolName` or `local:toolName`). */
+export type NamespacedToolParams = WithRequestOptions<{
+  id: string
+  arguments?: Record<string, unknown>
+  _meta?: Metadata
+}>
+
+/** Parameters for calling a local tool. Local tools run in-process, so they take no `timeout`. */
+export type LocalToolParams = {
+  name: string
+  arguments?: Record<string, unknown>
+  signal?: AbortSignal
 }
 
 export type AllowToolCalls = 'always' | 'ask' | 'never'
@@ -240,31 +287,33 @@ export class ContextHost extends Disposer {
     return ctx as unknown as HostedContext<T>
   }
 
-  setContextTools(key: string, tools: Array<ContextTool>): void {
-    this.getContext(key).tools = tools
+  setContextTools(params: SetContextToolsParams): void {
+    this.getContext(params.key).tools = params.tools
   }
 
   #mapContextTools(key: string, fn: (tool: ContextTool) => ContextTool): Array<ContextTool> {
-    const newTools = this.getContext(key).tools.map(fn)
-    this.setContextTools(key, newTools)
-    return newTools
+    const tools = this.getContext(key).tools.map(fn)
+    this.setContextTools({ key, tools })
+    return tools
   }
 
-  disableContextTools(key: string, toolNames: Array<string>): Array<ContextTool> {
-    return this.#mapContextTools(key, (ct) => {
-      return toolNames.includes(ct.tool.name) ? { ...ct, enabled: false } : ct
+  disableContextTools(params: ContextToolNamesParams): Array<ContextTool> {
+    return this.#mapContextTools(params.key, (ct) => {
+      return params.toolNames.includes(ct.tool.name) ? { ...ct, enabled: false } : ct
     })
   }
 
-  enableContextTools(key: string, toolNames: Array<string>): Array<ContextTool> {
-    return this.#mapContextTools(key, (ct) => {
-      return toolNames.includes(ct.tool.name) ? { ...ct, enabled: true } : ct
+  enableContextTools(params: ContextToolNamesParams): Array<ContextTool> {
+    return this.#mapContextTools(params.key, (ct) => {
+      return params.toolNames.includes(ct.tool.name) ? { ...ct, enabled: true } : ct
     })
   }
 
-  setEnabledContextTools(key: string, toolNames: Array<string>): Array<ContextTool> {
-    return this.#mapContextTools(key, (ct) => {
-      return toolNames.includes(ct.tool.name) ? { ...ct, enabled: true } : { ...ct, enabled: false }
+  setEnabledContextTools(params: ContextToolNamesParams): Array<ContextTool> {
+    return this.#mapContextTools(params.key, (ct) => {
+      return params.toolNames.includes(ct.tool.name)
+        ? { ...ct, enabled: true }
+        : { ...ct, enabled: false }
     })
   }
 
@@ -308,7 +357,7 @@ export class ContextHost extends Disposer {
    *     properties: { expression: { type: 'string' } },
    *     required: ['expression']
    *   },
-   *   execute: async ({ expression }) => {
+   *   execute: async ({ arguments: { expression } }) => {
    *     const result = eval(expression)
    *     return { content: [{ type: 'text', text: String(result) }] }
    *   }
@@ -459,7 +508,7 @@ export class ContextHost extends Disposer {
    * })
    *
    * // Setup tools after connecting
-   * const tools = await host.setup('remote-api')
+   * const tools = await host.setup({ key: 'remote-api' })
    * ```
    */
   async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
@@ -494,9 +543,10 @@ export class ContextHost extends Disposer {
     return client
   }
 
-  async setup(key: string, enableTools: EnableToolsArg = true): Promise<Array<ContextTool>> {
+  async setup(params: SetupParams): Promise<Array<ContextTool>> {
+    const { key, enableTools = true, ...listOptions } = params
     const { tools } = await this.getContext(key)
-      .client.listTools()
+      .client.listTools(listOptions)
       .catch((err: unknown) => {
         // If the context was removed while listTools was in flight, surface a clear error.
         if (this._contexts[key] == null) {
@@ -532,63 +582,52 @@ export class ContextHost extends Disposer {
   }
 
   getPrompt<T extends ContextTypes = UnknownContextTypes>(
-    key: string,
-    params: PromptParams<T>,
-  ): SentRequest<GetPromptResult> {
-    return this.getContext<T>(key).client.getPrompt(params)
+    params: ContextPromptParams<T>,
+  ): Promise<GetPromptResult> {
+    const { key, ...promptParams } = params
+    return this.getContext<T>(key).client.getPrompt(promptParams as PromptParams<T>)
   }
 
   callTool<T extends ContextTypes = UnknownContextTypes>(
-    key: string,
-    params: ToolParams<T>,
-  ): SentRequest<CallToolResult> {
-    return this.getContext<T>(key).client.callTool(params)
+    params: ContextToolParams<T>,
+  ): Promise<CallToolResult> {
+    const { key, ...toolParams } = params
+    return this.getContext<T>(key).client.callTool(toolParams as ToolParams<T>)
   }
 
-  callNamespacedTool(
-    id: string,
-    args: Record<string, unknown> = {},
-    metadata?: Metadata,
-  ): SentRequest<CallToolResult> {
+  callNamespacedTool(params: NamespacedToolParams): Promise<CallToolResult> {
+    const { id, arguments: args = {}, _meta, signal, timeout } = params
+
     // Check if this is a local tool
     if (isLocalToolID(id)) {
-      return this.callLocalTool(getLocalToolName(id), args)
+      return this.callLocalTool({ name: getLocalToolName(id), arguments: args, signal })
     }
 
     const [key, name] = getContextToolInfo(id)
-    return this.callTool(key, { name, arguments: args, _meta: metadata })
+    return this.callTool({ key, name, arguments: args, _meta, signal, timeout })
   }
 
-  /**
-   * Call a local tool by name.
-   * Returns a SentRequest-like object for consistency with context tool calls.
-   */
-  callLocalTool(name: string, args: Record<string, unknown> = {}): SentRequest<CallToolResult> {
+  /** Call a local tool by name. Local tools run in-process, so there is no request to time out. */
+  async callLocalTool(params: LocalToolParams): Promise<CallToolResult> {
+    const { name, arguments: args = {}, signal } = params
+
     const localTool = this._localTools.get(name)
     if (localTool == null) {
       throw new Error(`Local tool "${name}" does not exist`)
     }
-
-    const controller = new AbortController()
-    const promise = Promise.resolve().then(async () => {
-      if (controller.signal.aborted) {
-        throw new Error('Request cancelled')
-      }
-      try {
-        return await localTool.execute(args, controller.signal)
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        return {
-          content: [{ type: 'text' as const, text: errorMessage }],
-          isError: true,
-        }
-      }
-    })
-
-    const request = promise as SentRequest<CallToolResult>
-    request.cancel = () => {
-      controller.abort()
+    if (signal?.aborted) {
+      throw signal.reason
     }
-    return request
+
+    try {
+      // The call carries `arguments` (wire vocabulary); the handler receives `input`.
+      return await localTool.execute({ input: args, signal })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      return {
+        content: [{ type: 'text' as const, text: errorMessage }],
+        isError: true,
+      }
+    }
   }
 }

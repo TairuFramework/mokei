@@ -1,6 +1,6 @@
 {
   "name": "@mokei/llama-provider",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "license": "MIT",
   "homepage": "https://mokei.dev",
   "description": "Mokei node-llama-cpp provider",
@@ -35,7 +35,7 @@
     "build:types": "tsc --emitDeclarationOnly --skipLibCheck",
     "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
     "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
-    "test:types": "tsc --noEmit --skipLibCheck",
+    "test:types": "tsc --noEmit --skipLibCheck -p tsconfig.test.json",
     "test:unit": "vitest run",
     "test": "pnpm run test:types && pnpm run test:unit",
     "prepublishOnly": "pnpm run build"

@@ -16,15 +16,27 @@ import type { Session } from './session.js'
 export type ToolApprovalStrategy = 'auto' | 'ask' | 'never' | ToolApprovalFn
 
 /**
+ * Request handed to a custom tool approval function: the tool call to decide on, the
+ * context it was made in, and the signal that aborts if the turn is cancelled.
+ *
+ * The agent races the decision against `signal`, so a handler that awaits user input
+ * should watch it and stop prompting rather than be left hanging on a dead turn.
+ */
+export type ToolApprovalRequest = ToolApprovalContext & {
+  /** The tool call to approve or deny */
+  toolCall: FunctionToolCall<unknown>
+  /** Aborts when the turn is cancelled or times out while the decision is pending */
+  signal: AbortSignal
+}
+
+/**
  * Custom function for tool approval decisions.
  *
- * @param toolCall - The tool call to approve or deny
- * @param context - Context about the current agent execution
+ * @param request - The tool call, its context, and the turn's AbortSignal
  * @returns Promise resolving to approval decision
  */
 export type ToolApprovalFn = (
-  toolCall: FunctionToolCall<unknown>,
-  context: ToolApprovalContext,
+  request: ToolApprovalRequest,
 ) => Promise<boolean | ToolApprovalDecision>
 
 /**
@@ -45,6 +57,18 @@ export type ToolApprovalContext = {
 export type ToolApprovalDecision = {
   approved: boolean
   reason?: string
+}
+
+/**
+ * Parameters for a single agent execution (`run` or `stream`).
+ */
+export type AgentRunParams<T extends ProviderTypes = ProviderTypes> = {
+  /** The user prompt to process */
+  prompt: string
+  /** Prior messages to seed the conversation with */
+  messages?: Array<Message<T['MessagePart'], T['ToolCall']>>
+  /** Aborts the run, cancelling the model request and any tool call in flight */
+  signal?: AbortSignal
 }
 
 /**

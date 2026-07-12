@@ -38,33 +38,36 @@ export const toolInputSchema = {
  * const tools = createSQLiteTools(db)
  * ```
  */
-export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
+export function createSQLiteTools(db: DatabaseSync) {
   return {
-    sqlite_all: createTool(
-      'This method executes a prepared statement and returns all results as an array of objects',
-      toolInputSchema,
-      (req) => {
-        const results = db.prepare(req.arguments.sql).all(req.arguments.parameters ?? {})
+    sqlite_all: createTool({
+      description:
+        'This method executes a prepared statement and returns all results as an array of objects',
+      inputSchema: toolInputSchema,
+      handler: (req) => {
+        const results = db.prepare(req.input.sql).all(req.input.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
       },
-    ),
-    sqlite_get: createTool(
-      'This method executes a prepared statement and returns the first result as an object',
-      toolInputSchema,
-      (req) => {
-        const result = db.prepare(req.arguments.sql).get(req.arguments.parameters ?? {})
+    }),
+    sqlite_get: createTool({
+      description:
+        'This method executes a prepared statement and returns the first result as an object',
+      inputSchema: toolInputSchema,
+      handler: (req) => {
+        const result = db.prepare(req.input.sql).get(req.input.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
       },
-    ),
-    sqlite_run: createTool(
-      'This method executes a prepared statement and returns an object summarizing the resulting changes',
-      toolInputSchema,
-      (req) => {
-        const changes = db.prepare(req.arguments.sql).run(req.arguments.parameters ?? {})
+    }),
+    sqlite_run: createTool({
+      description:
+        'This method executes a prepared statement and returns an object summarizing the resulting changes',
+      inputSchema: toolInputSchema,
+      handler: (req) => {
+        const changes = db.prepare(req.input.sql).run(req.input.parameters ?? {})
         return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
       },
-    ),
-  }
+    }),
+  } satisfies ToolDefinitions
 }
 
 /**
@@ -81,12 +84,16 @@ export function createSQLiteTools(db: DatabaseSync): ToolDefinitions {
  * const server = new ContextServer({ ...config, transport })
  * ```
  */
-export function createSQLiteConfig(db: DatabaseSync): ServerConfig {
+export function createSQLiteConfig(db: DatabaseSync) {
+  // `satisfies`, not a `: ServerConfig` annotation. The annotation widens `tools` to the
+  // optional `ToolDefinitions | undefined`, which fails the `extends ToolDefinitions` check in
+  // ExtractServerTypes — collapsing SQLiteServerTypes to `Record<string, never>` and typing
+  // every tool's arguments as `never`, so the typed client could not be called at all.
   return {
     name: 'sqlite',
     version: '0.1.0',
     tools: createSQLiteTools(db),
-  }
+  } satisfies ServerConfig
 }
 
 /**

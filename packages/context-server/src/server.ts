@@ -33,16 +33,22 @@ import {
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
 } from '@mokei/context-protocol'
-import { ContextRPC, RPCError, type SentRequest } from '@mokei/context-rpc'
+import {
+  ContextRPC,
+  RPCError,
+  splitRequestOptions,
+  type WithRequestOptions,
+} from '@mokei/context-rpc'
 import { createValidator } from '@sozai/schema'
 
-import { toResourceHandlers } from './definitions.js'
+import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
 import { withRequestMeta } from './trace.js'
 import type {
   ClientInitialize,
   CompleteHandler,
   GenericPromptHandler,
   GenericToolHandler,
+  LogParams,
   PromptDefinitions,
   ResourceDefinitions,
   ResourceHandlers,
@@ -169,20 +175,25 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return this.#clientInitialize
   }
 
-  log(level: LoggingLevel, data: unknown, logger?: string) {
-    this.events.emit('log', { level, data, logger })
+  log(params: LogParams) {
+    this.events.emit('log', params)
   }
 
-  elicit(params: ElicitRequest['params']): SentRequest<ElicitResult> {
-    return this.request('elicitation/create', params)
+  elicit(params: WithRequestOptions<ElicitRequest['params']>): Promise<ElicitResult> {
+    const [wireParams, options] = splitRequestOptions(params)
+    return this.request('elicitation/create', wireParams, options)
   }
 
-  listRoots(params: ListRootsRequest['params'] = {}): SentRequest<ListRootsResult> {
-    return this.request('roots/list', params)
+  listRoots(params: WithRequestOptions<ListRootsRequest['params']> = {}): Promise<ListRootsResult> {
+    const [wireParams, options] = splitRequestOptions(params)
+    return this.request('roots/list', wireParams, options)
   }
 
-  createMessage(params: CreateMessageRequest['params']): SentRequest<CreateMessageResult> {
-    return this.request('sampling/createMessage', params)
+  createMessage(
+    params: WithRequestOptions<CreateMessageRequest['params']>,
+  ): Promise<CreateMessageResult> {
+    const [wireParams, options] = splitRequestOptions(params)
+    return this.request('sampling/createMessage', wireParams, options)
   }
 
   _handle() {
@@ -278,7 +289,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           }
     try {
       return await handler({
-        arguments: request.params.arguments ?? {},
+        // The wire calls it `arguments` (MCP `tools/call`); handlers receive it as `input`,
+        // the thing the tool's `inputSchema` describes.
+        input: request.params.arguments ?? {},
         client: this.#client,
         progress,
         signal,
@@ -288,6 +301,12 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       // inside the result so the model can see and self-correct, not as
       // protocol errors. Re-throw genuine cancellation.
       if (signal.aborted) {
+        throw cause
+      }
+      // An outputSchema violation is the server author's own contract breach,
+      // not a tool failure, so it must cross the wire as a JSON-RPC error
+      // rather than be hidden in an isError result.
+      if (cause instanceof ToolOutputValidationError) {
         throw cause
       }
       const message = cause instanceof Error ? cause.message : String(cause)
@@ -303,7 +322,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (handler == null) {
       throw new RPCError(INVALID_PARAMS, `Prompt ${name} not found`)
     }
-    return await handler({ arguments: request.params.arguments, client: this.#client, signal })
+    return await handler({ input: request.params.arguments, client: this.#client, signal })
   }
 }
 

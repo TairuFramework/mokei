@@ -38,15 +38,23 @@ import type {
 } from '@mokei/context-protocol'
 import {
   type ErrorResponse,
+  inferSchemaDraft,
   isSupportedProtocolVersion,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
   SUPPORTED_PROTOCOL_VERSIONS,
   serverMessage,
 } from '@mokei/context-protocol'
-import { ContextRPC, RequestTimeoutError, RPCError, type SentRequest } from '@mokei/context-rpc'
+import {
+  ContextRPC,
+  type RequestOptions,
+  RequestTimeoutError,
+  RPCError,
+  splitRequestOptions,
+  type WithRequestOptions,
+} from '@mokei/context-rpc'
 import { lazy } from '@sozai/async'
-import { createValidator } from '@sozai/schema'
+import { createValidator, type Schema, type Validator } from '@sozai/schema'
 
 import { currentTraceMeta } from './trace.js'
 import type { ClientTransport } from './types.js'
@@ -63,6 +71,9 @@ export const DEFAULT_INITIALIZE_PARAMS: InitializeRequest['params'] = {
 }
 
 export const DEFAULT_INITIALIZE_TIMEOUT = 30_000
+
+/** Default cap on pages fetched by a single list walk. */
+export const DEFAULT_LIST_MAX_PAGES = 100
 
 /** Max notifications buffered once a reader is attached; oldest dropped past this. */
 const NOTIFICATION_BUFFER_CAP = 256
@@ -83,17 +94,99 @@ export class CapabilityNotDeclaredError extends Error {
   }
 }
 
+/** Thrown when a paginated list walk fetches more pages than its cap allows. */
+export class ListMaxPagesError extends Error {
+  /** The list method that exceeded the cap, e.g. `tools/list`. */
+  method: string
+  /** Number of pages fetched before giving up. */
+  pages: number
+  /** Cursor of the page that would have been fetched next. */
+  cursor: string
+  /** Items collected across the pages that were fetched. */
+  results: Array<unknown>
+
+  constructor(method: string, pages: number, cursor: string, results: Array<unknown>) {
+    super(`Listing ${method} exceeded the maximum of ${pages} pages`)
+    this.name = 'ListMaxPagesError'
+    this.method = method
+    this.pages = pages
+    this.cursor = cursor
+    this.results = results
+  }
+}
+
+/**
+ * Pagination and transport options accepted by the paginated list methods, alongside the
+ * request's own params.
+ *
+ * `signal` aborts the walk, cancelling the request in flight; `timeout` applies to each
+ * page request, not to the walk as a whole.
+ */
+export type ListOptions = RequestOptions & {
+  /** Overrides `ClientParams.listMaxPages` for this call. */
+  maxPages?: number
+}
+
+/** Params of a paginated list method: its wire params plus {@link ListOptions}. */
+export type ListParams<Params> = Params & ListOptions
+
+/**
+ * Splits a list method's parameters into the params sent on the wire and the options kept
+ * local to this process.
+ *
+ * The counterpart to `splitRequestOptions` for the paginated methods, which carry one
+ * local-only option it does not know about: `maxPages`. Any paginated method must split
+ * here rather than there, or the cap is serialized into the request sent to the peer.
+ */
+export function splitListOptions<Params>(
+  params: ListParams<Params>,
+): [Params, ListOptions & RequestOptions] {
+  const { maxPages, ...rest } = params as ListParams<Record<string, unknown>>
+  const [wireParams, options] = splitRequestOptions(rest)
+  return [wireParams as Params, { ...options, maxPages }]
+}
+
+/** A validation issue, matching the shape `createTool` produces for input errors. */
+export type ValidationIssue = {
+  message: string
+  path?: ReadonlyArray<PropertyKey>
+}
+
+/** Thrown when a tool result's structuredContent violates the tool's advertised outputSchema. */
+export class StructuredContentValidationError extends Error {
+  toolName: string
+  issues: Array<ValidationIssue>
+
+  constructor(toolName: string, issues: Array<ValidationIssue>) {
+    super(`Invalid structuredContent returned by tool ${toolName}`)
+    this.name = 'StructuredContentValidationError'
+    this.toolName = toolName
+    this.issues = issues
+  }
+}
+
+/**
+ * A server-initiated request handed to a client handler: the request's params, plus the
+ * signal that aborts if the server cancels it.
+ *
+ * Mirrors `HandlerRequest` on the server side, so a handler is one object either way.
+ */
+export type ClientHandlerRequest<Params = Record<string, never>> = {
+  params: Params
+  signal: AbortSignal
+}
+
 export type ElicitHandler = (
-  params: ElicitRequest['params'],
-  signal: AbortSignal,
+  request: ClientHandlerRequest<ElicitRequest['params']>,
 ) => ElicitResult | Promise<ElicitResult>
 
 export type CreateMessageHandler = (
-  params: CreateMessageRequest['params'],
-  signal: AbortSignal,
+  request: ClientHandlerRequest<CreateMessageRequest['params']>,
 ) => CreateMessageResult | Promise<CreateMessageResult>
 
-export type ListRootsHandler = (signal: AbortSignal) => Array<Root> | Promise<Array<Root>>
+export type ListRootsHandler = (
+  request: Omit<ClientHandlerRequest, 'params'>,
+) => Array<Root> | Promise<Array<Root>>
 
 export type ClientEvents = {
   closed: { error?: Error }
@@ -124,27 +217,36 @@ export type UnknownContextTypes = {
   Tools: Record<string, Record<string, unknown>>
 }
 
-export type PromptParams<T extends ContextTypes> = {
-  name: keyof T['Prompts'] & string
-  arguments: T['Prompts'][keyof T['Prompts']] extends undefined
-    ? never
-    : T['Prompts'][keyof T['Prompts']]
-  _meta?: Metadata
-}
+/**
+ * Params of a named call, as a union of one member per name — so `arguments` is the type of
+ * *that* name's arguments.
+ *
+ * The obvious shape, `{ name: keyof M & string; arguments: M[keyof M] }`, is wrong: it takes
+ * the union of every entry's arguments and correlates it with nothing, so calling tool `a`
+ * with tool `b`'s arguments type-checks. Distributing over the keys keeps the two tied.
+ */
+type NamedParams<M> = {
+  [K in keyof M & string]: {
+    name: K
+    arguments: M[K] extends undefined ? never : M[K]
+    _meta?: Metadata
+  }
+}[keyof M & string]
 
-export type ToolParams<T extends ContextTypes> = {
-  name: keyof T['Tools'] & string
-  arguments: T['Tools'][keyof T['Tools']] extends undefined ? never : T['Tools'][keyof T['Tools']]
-  _meta?: Metadata
-}
+export type PromptParams<T extends ContextTypes> = NamedParams<T['Prompts']>
+
+export type ToolParams<T extends ContextTypes> = NamedParams<T['Tools']>
 
 export type ClientParams = {
   createMessage?: CreateMessageHandler
   elicit?: ElicitHandler
   initializeTimeout?: number
+  listMaxPages?: number
   listRoots?: Array<Root> | ListRootsHandler
   transport: ClientTransport
 }
+
+type PagedResult = { nextCursor?: string } & Record<string, unknown>
 
 export class ContextClient<
   T extends ContextTypes = UnknownContextTypes,
@@ -153,12 +255,14 @@ export class ContextClient<
   #elicit?: ElicitHandler
   #initialized: PromiseLike<InitializeResult>
   #initializeTimeout: number
+  #listMaxPages: number
   #listRoots?: Array<Root> | ListRootsHandler
   #notificationBuffer: Array<HandleNotification> = []
   #notificationPull: (() => void) | null = null
   #hasNotificationReader = false
   #notifications: ReadableStream<HandleNotification>
   #serverCapabilities: InitializeResult['capabilities'] = {}
+  #toolOutputSchemas = new Map<string, Validator<unknown>>()
 
   constructor(params: ClientParams) {
     super({ validateMessageIn: validateServerMessage, transport: params.transport })
@@ -166,6 +270,7 @@ export class ContextClient<
     this.#elicit = params.elicit
     this.#initialized = lazy(() => this.#initialize())
     this.#initializeTimeout = params.initializeTimeout ?? DEFAULT_INITIALIZE_TIMEOUT
+    this.#listMaxPages = params.listMaxPages ?? DEFAULT_LIST_MAX_PAGES
     this.#listRoots = params.listRoots
     this.#notifications = new ReadableStream<HandleNotification>(
       {
@@ -202,8 +307,8 @@ export class ContextClient<
   request<Method extends keyof ClientTypes['SendRequests']>(
     method: Method,
     params: ClientTypes['SendRequests'][Method]['Params'],
-    options?: { timeout?: number },
-  ): SentRequest<ClientTypes['SendRequests'][Method]['Result']> {
+    options?: RequestOptions,
+  ): Promise<ClientTypes['SendRequests'][Method]['Result']> {
     const trace = currentTraceMeta()
     if (trace.traceparent == null) {
       return super.request(method, params, options)
@@ -304,6 +409,10 @@ export class ContextClient<
     if (notification.method === 'notifications/message') {
       this.events.emit('log', notification.params)
     }
+    // Clear tool output schemas cache on tools/list_changed notification
+    if (notification.method === 'notifications/tools/list_changed') {
+      this.#toolOutputSchemas.clear()
+    }
     // Drop until a reader attaches, then keep only the most recent CAP.
     if (!this.#hasNotificationReader) {
       return
@@ -319,7 +428,7 @@ export class ContextClient<
     switch (request.method) {
       case 'elicitation/create': {
         if (this.#elicit != null) {
-          return await this.#elicit(request.params, signal)
+          return await this.#elicit({ params: request.params, signal })
         }
         break
       }
@@ -329,12 +438,12 @@ export class ContextClient<
         }
         const roots = Array.isArray(this.#listRoots)
           ? this.#listRoots
-          : await this.#listRoots(signal)
+          : await this.#listRoots({ signal })
         return { roots }
       }
       case 'sampling/createMessage':
         if (this.#createMessage != null) {
-          return await this.#createMessage(request.params, signal)
+          return await this.#createMessage({ params: request.params, signal })
         }
     }
     throw new RPCError(METHOD_NOT_FOUND, 'Method not implemented')
@@ -357,47 +466,187 @@ export class ContextClient<
     return await this.#initialized
   }
 
-  async setLoggingLevel(params: SetLevelRequest['params']): Promise<Result> {
+  async setLoggingLevel(params: WithRequestOptions<SetLevelRequest['params']>): Promise<Result> {
     await this.#initialized
     this.#requireServerCapability('logging')
-    return await this.request('logging/setLevel', params)
+    const [wireParams, options] = splitRequestOptions(params)
+    return await this.request('logging/setLevel', wireParams, options)
   }
 
-  async complete(params: CompleteRequest['params']): Promise<CompleteResult> {
+  async complete(params: WithRequestOptions<CompleteRequest['params']>): Promise<CompleteResult> {
     await this.#initialized
     this.#requireServerCapability('completions')
-    return await this.request('completion/complete', params)
+    const [wireParams, options] = splitRequestOptions(params)
+    return await this.request('completion/complete', wireParams, options)
   }
 
-  listPrompts(params: ListPromptsRequest['params'] = {}): SentRequest<ListPromptsResult> {
-    return this.request('prompts/list', params)
+  /**
+   * Walks a paginated list method until the server stops returning a cursor.
+   *
+   * Takes the caller's merged params and separates the wire params from the pagination
+   * and transport options, so the list methods never hand the latter to `request`.
+   *
+   * When `cursor` is set the caller is driving pagination: a single request is issued and
+   * its page returned verbatim, `nextCursor` intact.
+   */
+  async #listPaged(
+    method: string,
+    key: string,
+    send: (params: Record<string, unknown>, options: RequestOptions) => Promise<PagedResult>,
+    listParams: ListParams<Record<string, unknown>>,
+  ): Promise<PagedResult> {
+    await this.#initialized
+
+    const [params, { maxPages: maxPagesParam, ...options }] = splitListOptions(listParams)
+
+    if (params.cursor != null) {
+      return await send(params, options)
+    }
+
+    const maxPages = maxPagesParam ?? this.#listMaxPages
+    const items: Array<unknown> = []
+    let cursor: string | undefined
+    let pages = 0
+
+    while (true) {
+      const page = await send(cursor == null ? params : { ...params, cursor }, options)
+      pages += 1
+
+      const pageItems = page[key]
+      if (Array.isArray(pageItems)) {
+        items.push(...pageItems)
+      }
+
+      if (page.nextCursor == null) {
+        const { nextCursor: _nextCursor, ...rest } = page
+        return { ...rest, [key]: items }
+      }
+      if (pages >= maxPages) {
+        throw new ListMaxPagesError(method, pages, page.nextCursor, items)
+      }
+      cursor = page.nextCursor
+    }
   }
 
-  getPrompt(params: PromptParams<T>): SentRequest<GetPromptResult> {
-    return this.request('prompts/get', params as GetPromptRequest['params'])
+  async listPrompts(
+    params: ListParams<ListPromptsRequest['params']> = {},
+  ): Promise<ListPromptsResult> {
+    const result = await this.#listPaged(
+      'prompts/list',
+      'prompts',
+      (pageParams, options) =>
+        this.request(
+          'prompts/list',
+          pageParams as ListPromptsRequest['params'],
+          options,
+        ) as Promise<PagedResult>,
+      params,
+    )
+    return result as ListPromptsResult
   }
 
-  listResources(params: ListResourcesRequest['params'] = {}): SentRequest<ListResourcesResult> {
-    return this.request('resources/list', params)
+  getPrompt(params: WithRequestOptions<PromptParams<T>>): Promise<GetPromptResult> {
+    const [wireParams, options] = splitRequestOptions(params)
+    return this.request('prompts/get', wireParams as GetPromptRequest['params'], options)
   }
 
-  listResourceTemplates(
-    params: ListResourceTemplatesRequest['params'] = {},
-  ): SentRequest<ListResourceTemplatesResult> {
-    return this.request('resources/templates/list', params)
+  async listResources(
+    params: ListParams<ListResourcesRequest['params']> = {},
+  ): Promise<ListResourcesResult> {
+    const result = await this.#listPaged(
+      'resources/list',
+      'resources',
+      (pageParams, options) =>
+        this.request(
+          'resources/list',
+          pageParams as ListResourcesRequest['params'],
+          options,
+        ) as Promise<PagedResult>,
+      params,
+    )
+    return result as ListResourcesResult
   }
 
-  readResource(params: ReadResourceRequest['params']): SentRequest<ReadResourceResult> {
-    return this.request('resources/read', params)
+  async listResourceTemplates(
+    params: ListParams<ListResourceTemplatesRequest['params']> = {},
+  ): Promise<ListResourceTemplatesResult> {
+    const result = await this.#listPaged(
+      'resources/templates/list',
+      'resourceTemplates',
+      (pageParams, options) =>
+        this.request(
+          'resources/templates/list',
+          pageParams as ListResourceTemplatesRequest['params'],
+          options,
+        ) as Promise<PagedResult>,
+      params,
+    )
+    return result as ListResourceTemplatesResult
   }
 
-  async listTools(params: ListToolsRequest['params'] = {}): Promise<ListToolsResult> {
+  readResource(
+    params: WithRequestOptions<ReadResourceRequest['params']>,
+  ): Promise<ReadResourceResult> {
+    const [wireParams, options] = splitRequestOptions(params)
+    return this.request('resources/read', wireParams, options)
+  }
+
+  async listTools(params: ListParams<ListToolsRequest['params']> = {}): Promise<ListToolsResult> {
     await this.#initialized
     this.#requireServerCapability('tools')
-    return await this.request('tools/list', params)
+    const result = (await this.#listPaged(
+      'tools/list',
+      'tools',
+      (pageParams, options) =>
+        this.request(
+          'tools/list',
+          pageParams as ListToolsRequest['params'],
+          options,
+        ) as Promise<PagedResult>,
+      params,
+    )) as ListToolsResult
+    this._cacheToolOutputSchemas(result.tools)
+    return result
   }
 
-  callTool(params: ToolParams<T>): SentRequest<CallToolResult> {
-    return this.request('tools/call', params as CallToolRequest['params'])
+  /** @internal Memoises validators for tools that advertise an outputSchema. */
+  _cacheToolOutputSchemas(tools: ListToolsResult['tools']): void {
+    for (const tool of tools) {
+      if (tool.outputSchema == null) {
+        this.#toolOutputSchemas.delete(tool.name)
+        continue
+      }
+      const schema = tool.outputSchema as Schema
+      this.#toolOutputSchemas.set(
+        tool.name,
+        createValidator(schema, { draft: inferSchemaDraft(schema), strict: false }),
+      )
+    }
+  }
+
+  async callTool(params: WithRequestOptions<ToolParams<T>>): Promise<CallToolResult> {
+    const [wireParams, options] = splitRequestOptions(params)
+    const result = await this.request(
+      'tools/call',
+      wireParams as CallToolRequest['params'],
+      options,
+    )
+    const validate = this.#toolOutputSchemas.get(params.name)
+    if (validate == null || result.structuredContent == null) {
+      return result
+    }
+    const outcome = validate(result.structuredContent)
+    if (outcome.issues != null) {
+      throw new StructuredContentValidationError(
+        params.name,
+        outcome.issues.map((issue) => ({
+          message: issue.message,
+          path: issue.path?.map((segment) =>
+            typeof segment === 'object' && segment != null ? segment.key : segment,
+          ),
+        })),
+      )
+    }
+    return result
   }
 }

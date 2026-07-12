@@ -22,6 +22,8 @@ import {
   CapabilityNotDeclaredError,
   type ClientParams,
   ContextClient,
+  ListMaxPagesError,
+  StructuredContentValidationError,
   UnsupportedProtocolVersionError,
 } from '../src/index.js'
 
@@ -75,6 +77,47 @@ async function executeClientRequest<T>(
   transports.server.write({ jsonrpc: '2.0', id: 1, result } as ServerMessage)
 
   return request
+}
+
+type Page = { result: Record<string, unknown> }
+
+/**
+ * Drives a client list call against a server that answers `pages` in order.
+ * Returns the pending result plus the params of every request the server saw,
+ * so a test can assert the cursor was threaded through.
+ */
+async function runListWalk<T>(
+  runRequest: (client: ContextClient) => Promise<T>,
+  pages: Array<Page>,
+  clientParams: Omit<ClientParams, 'transport'> = {},
+): Promise<{ result: Promise<T>; requests: Array<Record<string, unknown>> }> {
+  const transports = new DirectTransports<ServerMessage, ClientMessage>()
+  const client = new ContextClient({ ...clientParams, transport: transports.client })
+
+  client.initialize()
+  await handleServerInitialize(transports.server, {
+    ...DEFAULT_INITIALIZE_RESULT,
+    capabilities: { tools: {} },
+  })
+
+  const result = runRequest(client)
+  const requests: Array<Record<string, unknown>> = []
+
+  for (const page of pages) {
+    const incoming = await transports.server.read()
+    if (incoming.done) {
+      break
+    }
+    const request = incoming.value as { id: number; params: Record<string, unknown> }
+    requests.push(request.params)
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: request.id,
+      result: page.result,
+    } as ServerMessage)
+  }
+
+  return { result, requests }
 }
 
 async function expectClientResponse(
@@ -192,7 +235,7 @@ describe('ContextClient', () => {
       { result },
       { capabilities: { sampling: {} } },
     )
-    expect(createMessage).toHaveBeenCalledWith(params, expect.any(AbortSignal))
+    expect(createMessage).toHaveBeenCalledWith({ params, signal: expect.any(AbortSignal) })
   })
 
   test('supports incoming elicit requests', async () => {
@@ -215,7 +258,7 @@ describe('ContextClient', () => {
       { result },
       { capabilities: { elicitation: {} } },
     )
-    expect(elicit).toHaveBeenCalledWith(params, expect.any(AbortSignal))
+    expect(elicit).toHaveBeenCalledWith({ params, signal: expect.any(AbortSignal) })
   })
 
   test('supports outgoing completion requests', async () => {
@@ -344,9 +387,9 @@ describe('ContextClient', () => {
 
 describe('initialize hardening', () => {
   test('times out when the server never responds', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
       initializeTimeout: 50,
     })
     // Drain the client's initialize request but never reply.
@@ -356,9 +399,9 @@ describe('initialize hardening', () => {
   })
 
   test('throws an RPCError when the server returns an error response', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
     })
     void (async () => {
       const req = await transports.server.read()
@@ -374,9 +417,9 @@ describe('initialize hardening', () => {
   })
 
   test('tolerates a notification arriving before the initialize response', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
     })
     void (async () => {
       const req = await transports.server.read()
@@ -402,9 +445,9 @@ describe('initialize hardening', () => {
   })
 
   test('emits closed when the transport ends', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
     })
     void (async () => {
       const req = await transports.server.read()
@@ -507,11 +550,316 @@ describe('capability gating', () => {
   })
 })
 
+describe('list pagination', () => {
+  const toolA = { name: 'a', inputSchema: { type: 'object' } }
+  const toolB = { name: 'b', inputSchema: { type: 'object' } }
+  const toolC = { name: 'c', inputSchema: { type: 'object' } }
+
+  test('walks every page and returns one aggregate without nextCursor', async () => {
+    const { result, requests } = await runListWalk(
+      (client) => client.listTools(),
+      [
+        { result: { tools: [toolA], nextCursor: 'c1' } },
+        { result: { tools: [toolB], nextCursor: 'c2' } },
+        { result: { tools: [toolC] } },
+      ],
+    )
+
+    await expect(result).resolves.toEqual({ tools: [toolA, toolB, toolC] })
+    expect(requests).toEqual([{}, { cursor: 'c1' }, { cursor: 'c2' }])
+  })
+
+  test('an explicit cursor issues one request and preserves nextCursor', async () => {
+    const { result, requests } = await runListWalk(
+      (client) => client.listTools({ cursor: 'c1' }),
+      [{ result: { tools: [toolB], nextCursor: 'c2' } }],
+    )
+
+    await expect(result).resolves.toEqual({ tools: [toolB], nextCursor: 'c2' })
+    expect(requests).toEqual([{ cursor: 'c1' }])
+  })
+
+  test('throws ListMaxPagesError with partial results when the cap is exceeded', async () => {
+    const { result } = await runListWalk(
+      (client) => client.listTools({ maxPages: 2 }),
+      [
+        { result: { tools: [toolA], nextCursor: 'c1' } },
+        { result: { tools: [toolB], nextCursor: 'c2' } },
+      ],
+    )
+
+    await expect(result).rejects.toThrow(ListMaxPagesError)
+    await result.catch((error: unknown) => {
+      const listError = error as ListMaxPagesError
+      expect(listError.method).toBe('tools/list')
+      expect(listError.pages).toBe(2)
+      expect(listError.cursor).toBe('c2')
+      expect(listError.results).toEqual([toolA, toolB])
+    })
+  })
+
+  test('a server echoing an unchanging cursor terminates at the cap', async () => {
+    const page = { result: { tools: [toolA], nextCursor: 'same' } }
+    const { result } = await runListWalk(
+      (client) => client.listTools({ maxPages: 3 }),
+      [page, page, page],
+    )
+    await expect(result).rejects.toThrow(ListMaxPagesError)
+  })
+
+  test('listMaxPages on ClientParams supplies the default cap', async () => {
+    const page = { result: { tools: [toolA], nextCursor: 'same' } }
+    const { result } = await runListWalk((client) => client.listTools(), [page], {
+      listMaxPages: 1,
+    })
+    await expect(result).rejects.toThrow(ListMaxPagesError)
+  })
+
+  test('an aborted signal rejects the walk in progress', async () => {
+    const controller = new AbortController()
+    const { result } = await runListWalk(
+      (client) => client.listTools({ signal: controller.signal }),
+      [{ result: { tools: [], nextCursor: 'c1' } }],
+    )
+    controller.abort()
+    await expect(result).rejects.toThrow()
+  })
+
+  test('pagination and transport options never reach the wire', async () => {
+    // maxPages/signal/timeout share one object with the request's params, so they must be
+    // stripped before the params are sent: the peer sees the cursor and nothing else.
+    const controller = new AbortController()
+    const { result, requests } = await runListWalk(
+      (client) =>
+        client.listTools({ cursor: 'c1', maxPages: 5, signal: controller.signal, timeout: 30_000 }),
+      [{ result: { tools: [toolA] } }],
+    )
+
+    await expect(result).resolves.toEqual({ tools: [toolA] })
+    expect(requests).toEqual([{ cursor: 'c1' }])
+  })
+
+  test('listPrompts walks pages', async () => {
+    const { result } = await runListWalk(
+      (client) => client.listPrompts(),
+      [
+        { result: { prompts: [{ name: 'a' }], nextCursor: 'c1' } },
+        { result: { prompts: [{ name: 'b' }] } },
+      ],
+    )
+    await expect(result).resolves.toEqual({ prompts: [{ name: 'a' }, { name: 'b' }] })
+  })
+
+  test('listResources walks pages', async () => {
+    const { result } = await runListWalk(
+      (client) => client.listResources(),
+      [
+        { result: { resources: [{ name: 'a', uri: 'test://a' }], nextCursor: 'c1' } },
+        { result: { resources: [{ name: 'b', uri: 'test://b' }] } },
+      ],
+    )
+    await expect(result).resolves.toEqual({
+      resources: [
+        { name: 'a', uri: 'test://a' },
+        { name: 'b', uri: 'test://b' },
+      ],
+    })
+  })
+
+  test('listResourceTemplates walks pages', async () => {
+    const { result } = await runListWalk(
+      (client) => client.listResourceTemplates(),
+      [
+        {
+          result: {
+            resourceTemplates: [{ name: 'a', uriTemplate: 'test://a/{x}' }],
+            nextCursor: 'c1',
+          },
+        },
+        { result: { resourceTemplates: [{ name: 'b', uriTemplate: 'test://b/{x}' }] } },
+      ],
+    )
+    await expect(result).resolves.toEqual({
+      resourceTemplates: [
+        { name: 'a', uriTemplate: 'test://a/{x}' },
+        { name: 'b', uriTemplate: 'test://b/{x}' },
+      ],
+    })
+  })
+})
+
+describe('structuredContent validation', () => {
+  const countSchema = {
+    type: 'object',
+    properties: { count: { type: 'number' } },
+    required: ['count'],
+  } as const
+
+  async function listThenCall(
+    toolResult: Record<string, unknown>,
+    outputSchema: Record<string, unknown> | null | undefined = countSchema,
+  ): Promise<{ call: Promise<CallToolResult> }> {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+
+    client.initialize()
+    await handleServerInitialize(transports.server, {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { tools: {} },
+    })
+
+    const listed = client.listTools()
+    const listRequest = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (listRequest.value as { id: number }).id,
+      result: {
+        tools: [
+          {
+            name: 'counter',
+            inputSchema: { type: 'object' },
+            ...(outputSchema == null ? {} : { outputSchema }),
+          },
+        ],
+      },
+    } as ServerMessage)
+    await listed
+
+    const call = client.callTool({ name: 'counter', arguments: {} })
+    const callRequest = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (callRequest.value as { id: number }).id,
+      result: toolResult,
+    } as ServerMessage)
+    return { call }
+  }
+
+  test('passes a conforming structuredContent through', async () => {
+    const { call } = await listThenCall({
+      content: [{ type: 'text', text: '{"count":3}' }],
+      structuredContent: { count: 3 },
+    })
+    await expect(call).resolves.toEqual({
+      content: [{ type: 'text', text: '{"count":3}' }],
+      structuredContent: { count: 3 },
+    })
+  })
+
+  test('rejects a structuredContent that violates the advertised schema', async () => {
+    const { call } = await listThenCall({ content: [], structuredContent: { count: 'three' } })
+    await expect(call).rejects.toThrow(StructuredContentValidationError)
+    await call.catch((error: unknown) => {
+      const validationError = error as StructuredContentValidationError
+      expect(validationError.toolName).toBe('counter')
+      expect(validationError.issues.length).toBeGreaterThan(0)
+    })
+  })
+
+  test('does not validate when the tool advertised no outputSchema', async () => {
+    const { call } = await listThenCall(
+      { content: [], structuredContent: { count: 'three' } },
+      null,
+    )
+    await expect(call).resolves.toEqual({ content: [], structuredContent: { count: 'three' } })
+  })
+
+  test('does not validate when listTools was never called', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+    client.initialize()
+    await handleServerInitialize(transports.server, {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { tools: {} },
+    })
+
+    const call = client.callTool({ name: 'counter', arguments: {} })
+    const request = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (request.value as { id: number }).id,
+      result: { content: [], structuredContent: { count: 'three' } },
+    } as ServerMessage)
+
+    await expect(call).resolves.toEqual({ content: [], structuredContent: { count: 'three' } })
+    await transports.dispose()
+  })
+
+  test('tools/list_changed clears the cache so a re-listed tool uses its new schema', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ transport: transports.client })
+    client.initialize()
+    await handleServerInitialize(transports.server, {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { tools: {} },
+    })
+
+    const listed = client.listTools()
+    const listRequest = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (listRequest.value as { id: number }).id,
+      result: {
+        tools: [{ name: 'counter', inputSchema: { type: 'object' }, outputSchema: countSchema }],
+      },
+    } as ServerMessage)
+    await listed
+
+    transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/tools/list_changed',
+    } as ServerMessage)
+    // Give the notification a turn to be handled before calling.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const call = client.callTool({ name: 'counter', arguments: {} })
+    const callRequest = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (callRequest.value as { id: number }).id,
+      result: { content: [], structuredContent: { count: 'three' } },
+    } as ServerMessage)
+
+    // Cache cleared: the bad structuredContent passes because no schema is known.
+    await expect(call).resolves.toEqual({ content: [], structuredContent: { count: 'three' } })
+    await transports.dispose()
+  })
+
+  test('callTool transport options never reach the wire', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      transport: transports.client,
+    })
+    client.initialize()
+    await handleServerInitialize(transports.server, {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { tools: {} },
+    })
+
+    const controller = new AbortController()
+    const call = client.callTool({
+      name: 'counter',
+      arguments: { n: 1 },
+      signal: controller.signal,
+      timeout: 30_000,
+    })
+    const request = await transports.server.read()
+    const { id, params } = request.value as { id: number; params: unknown }
+
+    // An AbortSignal left in the params would be serialized as a request param.
+    expect(params).toEqual({ name: 'counter', arguments: { n: 1 } })
+
+    transports.server.write({ jsonrpc: '2.0', id, result: { content: [] } } as ServerMessage)
+    await expect(call).resolves.toEqual({ content: [] })
+    await transports.dispose()
+  })
+})
+
 describe('protocolVersion negotiation', () => {
   test('rejects an unsupported server protocolVersion and disposes', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
     })
     void (async () => {
       const req = await transports.server.read()
@@ -530,9 +878,9 @@ describe('protocolVersion negotiation', () => {
   })
 
   test('accepts 2025-11-25', async () => {
-    const transports = new DirectTransports<ClientMessage, ServerMessage>()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
-      transport: transports.client as ClientParams['transport'],
+      transport: transports.client,
     })
     void (async () => {
       await handleServerInitialize(transports.server, {

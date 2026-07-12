@@ -37,13 +37,13 @@ export function createTurndownService(): Turndown {
  * const tools = createFetchTools()
  * ```
  */
-export function createFetchTools(options: FetchToolsOptions = {}): ToolDefinitions {
+export function createFetchTools(options: FetchToolsOptions = {}) {
   const turndownService = options.turndownService ?? createTurndownService()
 
   return {
-    get_markdown: createTool(
-      'Fetch a URL and return its contents as markdown',
-      {
+    get_markdown: createTool({
+      description: 'Fetch a URL and return its contents as markdown',
+      inputSchema: {
         type: 'object',
         properties: {
           url: { type: 'string', format: 'uri', description: 'HTTP URL to fetch contents from' },
@@ -51,9 +51,9 @@ export function createFetchTools(options: FetchToolsOptions = {}): ToolDefinitio
         required: ['url'],
         additionalProperties: false,
       } as const satisfies Schema,
-      async (req) => {
+      handler: async (req) => {
         try {
-          const res = await fetch(req.arguments.url)
+          const res = await fetch(req.input.url)
           if (!res.ok) {
             return {
               content: [
@@ -77,8 +77,8 @@ export function createFetchTools(options: FetchToolsOptions = {}): ToolDefinitio
           }
         }
       },
-    ),
-  }
+    }),
+  } satisfies ToolDefinitions
 }
 
 /**

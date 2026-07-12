@@ -3,8 +3,8 @@
 **Status:** complete
 **Date:** 2026-06-20
 **Branch:** `feat/mcp-deferred-groundwork` (commits `2c078ba`..`8cd605c`)
-**Origin:** `backlog/2026-06-09-mcp-draft-deferred-groundwork.md`,
-`milestones/2026-06-08-mcp-draft-migration.md`
+**Origin:** the 2026-06-09 MCP-draft deferred-groundwork backlog item (retired by this
+work), `milestones/2026-06-08-mcp-draft-migration.md`
 
 ## What shipped
 
@@ -62,9 +62,7 @@ context-server tests; suite 42/42 in that package). Per-task reviews (spec + qua
 plus a final whole-branch review (Ready to merge: Yes) — no Critical/Important findings
 left open. The one Important on G5 inbound (a `useLiteralKeys` lint nit) was fixed.
 
-## Remaining (tracked in backlog)
-
-`backlog/2026-06-09-mcp-draft-deferred-groundwork.md`:
+## Remaining (tracked in `backlog/2026-06-20-mcp-draft-remaining.md`)
 
 - **G7 part 5** — HeaderMismatch `tools/list` refresh + `tools/call` retry. Deferred:
   no live draft server emits it, and the milestone's `-32001` code already means

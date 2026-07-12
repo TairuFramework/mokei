@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { AnthropicClient } from '../src/client.js'
 import { AnthropicProvider } from '../src/provider.js'
-import type { StreamEvent, ToolCall } from '../src/types.js'
+import type { Model, StreamEvent, ToolCall } from '../src/types.js'
 
 describe('AnthropicProvider', () => {
   describe('fromConfig', () => {
@@ -53,9 +53,19 @@ describe('AnthropicProvider', () => {
     })
 
     test('maps the API model list to { id, raw } entries', async () => {
-      const data = [
-        { id: 'claude-sonnet-4-20250514', type: 'model', display_name: 'Claude Sonnet 4' },
-        { id: 'claude-3-5-sonnet-20241022', type: 'model', display_name: 'Claude Sonnet 3.5' },
+      const data: Array<Model> = [
+        {
+          id: 'claude-sonnet-4-20250514',
+          type: 'model',
+          display_name: 'Claude Sonnet 4',
+          created_at: '2025-05-14T00:00:00Z',
+        },
+        {
+          id: 'claude-3-5-sonnet-20241022',
+          type: 'model',
+          display_name: 'Claude Sonnet 3.5',
+          created_at: '2024-10-22T00:00:00Z',
+        },
       ]
       const spy = vi
         .spyOn(AnthropicClient.prototype, 'listModels')

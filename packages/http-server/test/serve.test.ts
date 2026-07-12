@@ -13,7 +13,7 @@ const SERVER_CONFIG: ServerConfig = {
         type: 'object',
         properties: { text: { type: 'string' } },
       },
-      handler: async ({ arguments: args }) => ({
+      handler: async ({ input: args }) => ({
         content: [{ type: 'text', text: (args as { text: string }).text }],
       }),
     },

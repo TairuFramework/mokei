@@ -38,8 +38,12 @@ describe('ContextHost lifecycle', () => {
     const added: Array<string> = []
     const removed: Array<string> = []
     let failed = 0
-    host.events.on('context:added', ({ key }) => added.push(key))
-    host.events.on('context:removed', ({ key }) => removed.push(key))
+    host.events.on('context:added', ({ key }) => {
+      added.push(key)
+    })
+    host.events.on('context:removed', ({ key }) => {
+      removed.push(key)
+    })
     host.events.on('context:failed', () => {
       failed += 1
     })
@@ -74,7 +78,7 @@ describe('ContextHost.setup race', () => {
     })
 
     // Start setup, then remove before it can assign tools.
-    const setupPromise = host.setup('racy').catch((err: Error) => err)
+    const setupPromise = host.setup({ key: 'racy' }).catch((err: Error) => err)
     await host.remove('racy')
 
     const result = await setupPromise

@@ -54,10 +54,10 @@ changes implemented.
 
 ## Follow-on (extracted to backlog)
 
-- `backlog/2026-06-09-mcp-draft-deferred-groundwork.md` — G5, G8 (blocked upstream), G7
-  follow-ups (part 5 retry, deeper schema walk).
-- `backlog/2026-06-09-mcp-draft-breaking-cut.md` — B1–B7 hard-cut, blocked on draft release
-  + U1.
+- G5, G8 (blocked upstream), G7 follow-ups (part 5 retry, deeper schema walk) — since
+  shipped, see `completed/2026-06-20-mcp-deferred-groundwork.complete.md`.
+- B1–B7 hard-cut, blocked on draft release + U1 — still open, tracked in
+  `backlog/2026-06-20-mcp-draft-remaining.md`.
 
 ## Verification
 

@@ -19,7 +19,7 @@ test('executes a tool call after adding a local context', async () => {
       command: 'node',
       args: [FETCH_MCP_SERVER_PATH],
     })
-    await host.setup('fetch')
+    await host.setup({ key: 'fetch' })
 
     const tools = host.getCallableTools().map(provider.toolFromMCP)
     expect(tools).toHaveLength(1)
@@ -55,7 +55,10 @@ test('executes a tool call after adding a local context', async () => {
       arguments: expect.stringContaining('https://mokei.dev'),
     })
 
-    const toolResult = await host.callNamespacedTool(toolCall.name, JSON.parse(toolCall.arguments))
+    const toolResult = await host.callNamespacedTool({
+      id: toolCall.name,
+      arguments: JSON.parse(toolCall.arguments),
+    })
     expect(toolResult).toMatchObject({
       content: [{ type: 'text', text: expect.stringContaining('Mokei') }],
       isError: false,
@@ -70,7 +73,7 @@ test('executes a tool call after adding a direct context', async () => {
 
   try {
     host.addDirectContext({ key: 'fetch', config: createFetchConfig() })
-    await host.setup('fetch')
+    await host.setup({ key: 'fetch' })
 
     const tools = host.getCallableTools().map(provider.toolFromMCP)
     expect(tools).toHaveLength(1)
@@ -106,7 +109,10 @@ test('executes a tool call after adding a direct context', async () => {
       arguments: expect.stringContaining('https://mokei.dev'),
     })
 
-    const toolResult = await host.callNamespacedTool(toolCall.name, JSON.parse(toolCall.arguments))
+    const toolResult = await host.callNamespacedTool({
+      id: toolCall.name,
+      arguments: JSON.parse(toolCall.arguments),
+    })
     expect(toolResult).toMatchObject({
       content: [{ type: 'text', text: expect.stringContaining('Mokei') }],
       isError: false,

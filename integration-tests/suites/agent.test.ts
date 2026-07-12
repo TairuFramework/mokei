@@ -26,9 +26,9 @@ describe('AgentSession', () => {
     const agent = new AgentSession({ session, provider: 'ollama', model })
 
     const events: Array<AgentEvent<OllamaTypes>> = []
-    for await (const event of agent.stream(
-      'Provide a short summary of what https://mokei.dev does',
-    )) {
+    for await (const event of agent.stream({
+      prompt: 'Provide a short summary of what https://mokei.dev does',
+    })) {
       events.push(event)
     }
 
@@ -67,9 +67,9 @@ describe('AgentSession', () => {
 
     const events: Array<AgentEvent<OllamaTypes>> = []
     try {
-      for await (const event of agent.stream(
-        'Provide a short summary of what https://mokei.dev does',
-      )) {
+      for await (const event of agent.stream({
+        prompt: 'Provide a short summary of what https://mokei.dev does',
+      })) {
         events.push(event)
       }
     } catch {

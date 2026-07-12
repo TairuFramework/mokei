@@ -7,6 +7,7 @@ import type {
   MessagePart,
   ModelProvider,
   ServerMessage as ProviderServerMessage,
+  StreamChatParams,
   StreamChatRequest,
 } from '@mokei/model-provider'
 import { describe, expect, test, vi } from 'vitest'
@@ -16,6 +17,7 @@ import {
   type AgentEvent,
   AgentSession,
   Session,
+  type ToolApprovalFn,
   UnknownToolError,
 } from '../src/index.js'
 
@@ -59,20 +61,27 @@ class MockStreamChatRequest<T> implements PromiseLike<T> {
 }
 
 // Mock provider types
+/** Raw tool call payload of the mock provider */
+type MockToolCall = { id: string; name: string }
+/** Raw tool payload of the mock provider, as returned by `toolFromMCP()` */
+type MockTool = { name: string; description: string }
+
 type MockProviderTypes = {
   Message: unknown
   MessagePart: unknown
   Model: { id: string }
-  Tool: { name: string; description: string }
-  ToolCall: { id: string; name: string }
+  Tool: MockTool
+  ToolCall: MockToolCall
 }
+
+type MockStreamChatParams = StreamChatParams<unknown, MockToolCall, MockTool>
 
 // Create a mock provider that returns specified responses
 function createMockProvider(
   responses: Array<{
     text?: string
     reasoning?: string
-    toolCalls?: Array<FunctionToolCall<unknown>>
+    toolCalls?: Array<FunctionToolCall<MockToolCall>>
     inputTokens?: number
     outputTokens?: number
   }>,
@@ -84,11 +93,11 @@ function createMockProvider(
 
     embed: vi.fn(async () => ({ embeddings: [[0.1, 0.2, 0.3]] })),
 
-    streamChat: vi.fn((_params) => {
+    streamChat: vi.fn((_params: MockStreamChatParams) => {
       const response = responses[callIndex] ?? { text: 'Done', inputTokens: 10, outputTokens: 5 }
       callIndex++
 
-      const parts: Array<MessagePart<unknown, unknown>> = []
+      const parts: Array<MessagePart<unknown, MockToolCall>> = []
 
       if (response.reasoning) {
         parts.push({ type: 'reasoning-delta', reasoning: response.reasoning, raw: {} })
@@ -109,7 +118,7 @@ function createMockProvider(
         raw: {},
       })
 
-      const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+      const stream = new ReadableStream<MessagePart<unknown, MockToolCall>>({
         start(controller) {
           for (const part of parts) {
             controller.enqueue(part)
@@ -120,12 +129,14 @@ function createMockProvider(
 
       return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
         unknown,
-        unknown
+        MockToolCall
       >
     }),
 
     aggregateMessage: vi.fn(
-      (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => {
+      (
+        parts: Array<ProviderServerMessage<unknown, MockToolCall>>,
+      ): AggregatedMessage<MockToolCall> => {
         const text = parts
           .filter((p) => p.text)
           .map((p) => p.text)
@@ -238,7 +249,7 @@ async function createMockSessionWithTools(
   })
 
   // Initialize and setup
-  await session.contextHost.setup('mock')
+  await session.contextHost.setup({ key: 'mock' })
 
   return session
 }
@@ -298,7 +309,7 @@ describe('AgentSession', () => {
         model: 'test-model',
       })
 
-      const result = await agent.run('Say hello')
+      const result = await agent.run({ prompt: 'Say hello' })
 
       expect(result.text).toBe('Hello, world!')
       expect(result.iterations).toBe(1)
@@ -310,11 +321,11 @@ describe('AgentSession', () => {
 
     test('respects maxIterations limit', async () => {
       // Provider always returns tool calls
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:test-tool',
         arguments: '{}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:test-tool' },
       }
 
       const provider = createMockProvider([
@@ -343,7 +354,7 @@ describe('AgentSession', () => {
         toolApproval: 'auto',
       })
 
-      const result = await agent.run('Do something')
+      const result = await agent.run({ prompt: 'Do something' })
 
       expect(result.iterations).toBe(2)
       expect(result.finishReason).toBe('max-iterations')
@@ -364,7 +375,7 @@ describe('AgentSession', () => {
         model: 'test-model',
       })
 
-      const result = await agent.run('Say hello', { signal: controller.signal })
+      const result = await agent.run({ prompt: 'Say hello', signal: controller.signal })
       expect(result.finishReason).toBe('aborted')
     })
   })
@@ -381,7 +392,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Hello')) {
+      for await (const event of agent.stream({ prompt: 'Hello' })) {
         events.push(event)
       }
 
@@ -420,7 +431,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Test')) {
+      for await (const event of agent.stream({ prompt: 'Test' })) {
         events.push(event)
       }
 
@@ -434,7 +445,7 @@ describe('AgentSession', () => {
       const agent = new AgentSession({ session, provider, model: 'test-model' })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Hello')) {
+      for await (const event of agent.stream({ prompt: 'Hello' })) {
         events.push(event)
       }
 
@@ -453,7 +464,7 @@ describe('AgentSession', () => {
       const agent = new AgentSession({ session, provider, model: 'test-model' })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Hello')) {
+      for await (const event of agent.stream({ prompt: 'Hello' })) {
         events.push(event)
       }
       const types = events.map((e) => e.type)
@@ -464,11 +475,11 @@ describe('AgentSession', () => {
 
   describe('tool approval strategies', () => {
     test("'auto' executes all tools without prompting", async () => {
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:greet',
         arguments: '{"name":"World"}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:greet' },
       }
 
       const provider = createMockProvider([
@@ -495,7 +506,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Greet World')) {
+      for await (const event of agent.stream({ prompt: 'Greet World' })) {
         events.push(event)
       }
 
@@ -510,11 +521,11 @@ describe('AgentSession', () => {
     })
 
     test("'never' skips all tool execution", async () => {
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:greet',
         arguments: '{}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:greet' },
       }
 
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'OK then' }])
@@ -538,7 +549,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Greet')) {
+      for await (const event of agent.stream({ prompt: 'Greet' })) {
         events.push(event)
       }
 
@@ -551,11 +562,11 @@ describe('AgentSession', () => {
     })
 
     test('custom function is called with correct context', async () => {
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:test',
         arguments: '{}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:test' },
       }
 
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Done' }])
@@ -571,10 +582,11 @@ describe('AgentSession', () => {
         { test: provider },
       )
 
-      const approvalFn = vi.fn(async (call, context) => {
-        expect(call.name).toBe('mock:test')
-        expect(context.iteration).toBe(1)
-        expect(Array.isArray(context.history)).toBe(true)
+      const approvalFn = vi.fn<ToolApprovalFn>(async ({ toolCall, iteration, history, signal }) => {
+        expect(toolCall.name).toBe('mock:test')
+        expect(iteration).toBe(1)
+        expect(Array.isArray(history)).toBe(true)
+        expect(signal).toBeInstanceOf(AbortSignal)
         return true
       })
 
@@ -585,7 +597,7 @@ describe('AgentSession', () => {
         toolApproval: approvalFn,
       })
 
-      await agent.run('Test')
+      await agent.run({ prompt: 'Test' })
 
       expect(approvalFn).toHaveBeenCalled()
 
@@ -593,11 +605,11 @@ describe('AgentSession', () => {
     })
 
     test('custom function can deny with reason', async () => {
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:dangerous',
         arguments: '{}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:dangerous' },
       }
 
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Understood' }])
@@ -626,7 +638,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('Do dangerous thing')) {
+      for await (const event of agent.stream({ prompt: 'Do dangerous thing' })) {
         events.push(event)
       }
 
@@ -640,11 +652,11 @@ describe('AgentSession', () => {
     })
 
     test('custom function receives tool-call-pending before approval is invoked', async () => {
-      const toolCall: FunctionToolCall<unknown> = {
+      const toolCall: FunctionToolCall<MockToolCall> = {
         id: 'call-1',
         name: 'mock:test',
         arguments: '{}',
-        raw: {},
+        raw: { id: 'call-1', name: 'mock:test' },
       }
 
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Done' }])
@@ -674,9 +686,11 @@ describe('AgentSession', () => {
         toolApproval: approvalFn,
       })
 
-      agent.events.on('event', (e) => eventsCollected.push(e))
+      agent.events.on('event', (e) => {
+        eventsCollected.push(e)
+      })
 
-      await agent.run('Test')
+      await agent.run({ prompt: 'Test' })
 
       expect(seenBeforeFn).toContain('tool-call-pending')
 
@@ -700,7 +714,7 @@ describe('AgentSession', () => {
         receivedEvents.push(event)
       })
 
-      await agent.run('Hi')
+      await agent.run({ prompt: 'Hi' })
 
       expect(receivedEvents.length).toBeGreaterThan(0)
       expect(receivedEvents.some((e) => e.type === 'complete')).toBe(true)
@@ -719,23 +733,23 @@ describe('AgentSession', () => {
     describe('multi-step task execution', () => {
       test('executes sequence of tool calls across iterations', async () => {
         // Simulates: "Create a table, insert data, then query it"
-        const createTableCall: FunctionToolCall<unknown> = {
+        const createTableCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:create_table',
           arguments: '{"name":"users"}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:create_table' },
         }
-        const insertCall: FunctionToolCall<unknown> = {
+        const insertCall: FunctionToolCall<MockToolCall> = {
           id: 'call-2',
           name: 'mock:insert',
           arguments: '{"table":"users","data":{"name":"Alice"}}',
-          raw: {},
+          raw: { id: 'call-2', name: 'mock:insert' },
         }
-        const queryCall: FunctionToolCall<unknown> = {
+        const queryCall: FunctionToolCall<MockToolCall> = {
           id: 'call-3',
           name: 'mock:query',
           arguments: '{"sql":"SELECT * FROM users"}',
-          raw: {},
+          raw: { id: 'call-3', name: 'mock:query' },
         }
 
         const provider = createMockProvider([
@@ -778,7 +792,9 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Create users table, insert Alice, then show all users')
+        const result = await agent.run({
+          prompt: 'Create users table, insert Alice, then show all users',
+        })
 
         expect(result.iterations).toBe(4)
         expect(result.toolCalls).toHaveLength(3)
@@ -795,23 +811,23 @@ describe('AgentSession', () => {
 
       test('handles multiple tool calls in single response', async () => {
         // Model requests multiple tools at once (parallel tool calls)
-        const tool1: FunctionToolCall<unknown> = {
+        const tool1: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:get_weather',
           arguments: '{"city":"London"}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:get_weather' },
         }
-        const tool2: FunctionToolCall<unknown> = {
+        const tool2: FunctionToolCall<MockToolCall> = {
           id: 'call-2',
           name: 'mock:get_weather',
           arguments: '{"city":"Paris"}',
-          raw: {},
+          raw: { id: 'call-2', name: 'mock:get_weather' },
         }
-        const tool3: FunctionToolCall<unknown> = {
+        const tool3: FunctionToolCall<MockToolCall> = {
           id: 'call-3',
           name: 'mock:get_weather',
           arguments: '{"city":"Tokyo"}',
-          raw: {},
+          raw: { id: 'call-3', name: 'mock:get_weather' },
         }
 
         const provider = createMockProvider([
@@ -837,7 +853,9 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('What is the weather in London, Paris, and Tokyo?')
+        const result = await agent.run({
+          prompt: 'What is the weather in London, Paris, and Tokyo?',
+        })
 
         expect(result.iterations).toBe(2)
         expect(result.toolCalls).toHaveLength(3)
@@ -850,11 +868,11 @@ describe('AgentSession', () => {
 
     describe('error handling', () => {
       test('continues execution when tool call fails', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:failing_tool',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:failing_tool' },
         }
 
         const provider = createMockProvider([
@@ -881,7 +899,7 @@ describe('AgentSession', () => {
         })
 
         const events: Array<AgentEvent> = []
-        for await (const event of agent.stream('Try the failing tool')) {
+        for await (const event of agent.stream({ prompt: 'Try the failing tool' })) {
           events.push(event)
         }
 
@@ -896,11 +914,11 @@ describe('AgentSession', () => {
 
       test('records tool execution errors', async () => {
         // Use a tool call with invalid context key to trigger an error
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'invalid_context:some_tool', // Invalid context key
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'invalid_context:some_tool' },
         }
 
         const provider = createMockProvider([
@@ -927,7 +945,7 @@ describe('AgentSession', () => {
         })
 
         const events: Array<AgentEvent> = []
-        for await (const event of agent.stream('Call nonexistent tool')) {
+        for await (const event of agent.stream({ prompt: 'Call nonexistent tool' })) {
           events.push(event)
         }
 
@@ -941,11 +959,11 @@ describe('AgentSession', () => {
       test('captures a hallucinated tool name and feeds available tools back', async () => {
         // The model drops the context namespace and calls a bare, unknown name
         // (mirrors a weak model emitting `fetch` instead of `fetch:get_markdown`).
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'other_tool', // missing the `mock:` namespace -> unknown tool
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'other_tool' },
         }
 
         const provider = createMockProvider([
@@ -972,7 +990,7 @@ describe('AgentSession', () => {
         })
 
         const events: Array<AgentEvent> = []
-        for await (const event of agent.stream('Call the tool')) {
+        for await (const event of agent.stream({ prompt: 'Call the tool' })) {
           events.push(event)
         }
 
@@ -1000,11 +1018,11 @@ describe('AgentSession', () => {
         // approval await settles, so an interactive UI can render a prompt and
         // the turn can be cancelled. Previously every approval event was
         // buffered until after the decision, leaving the UI stuck.
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:other_tool',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:other_tool' },
         }
         const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'done' }])
         const session = await createMockSessionWithTools(
@@ -1035,7 +1053,7 @@ describe('AgentSession', () => {
 
         const events: Array<AgentEvent> = []
         const collecting = (async () => {
-          for await (const event of agent.stream('go')) events.push(event)
+          for await (const event of agent.stream({ prompt: 'go' })) events.push(event)
         })()
 
         // The pending event surfaces and the approval fn is invoked while the
@@ -1056,11 +1074,11 @@ describe('AgentSession', () => {
       })
 
       test('aborting while awaiting approval ends the turn without executing', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:other_tool',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:other_tool' },
         }
         const provider = createMockProvider([{ toolCalls: [toolCall] }])
         const session = await createMockSessionWithTools(
@@ -1087,7 +1105,7 @@ describe('AgentSession', () => {
         const events: Array<AgentEvent> = []
         const run = (async () => {
           try {
-            for await (const event of agent.stream('go', { signal: controller.signal })) {
+            for await (const event of agent.stream({ prompt: 'go', signal: controller.signal })) {
               events.push(event)
             }
           } catch {
@@ -1120,7 +1138,7 @@ describe('AgentSession', () => {
           systemPrompt: 'You are a helpful database assistant. Always explain your actions.',
         })
 
-        await agent.run('Who are you?')
+        await agent.run({ prompt: 'Who are you?' })
 
         // Verify streamChat was called with system message
         expect(provider.streamChat).toHaveBeenCalled()
@@ -1151,7 +1169,7 @@ describe('AgentSession', () => {
           // No systemPrompt
         })
 
-        await agent.run('Hello')
+        await agent.run({ prompt: 'Hello' })
 
         const callArgs = (provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0][0]
 
@@ -1166,11 +1184,11 @@ describe('AgentSession', () => {
 
     describe('token tracking', () => {
       test('accumulates tokens across all iterations', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:search',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:search' },
         }
 
         const provider = createMockProvider([
@@ -1196,7 +1214,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Search for something')
+        const result = await agent.run({ prompt: 'Search for something' })
 
         expect(result.inputTokens).toBe(250) // 100 + 150
         expect(result.outputTokens).toBe(125) // 50 + 75
@@ -1207,17 +1225,17 @@ describe('AgentSession', () => {
 
     describe('mixed approval scenarios', () => {
       test('approves safe tools and denies dangerous ones', async () => {
-        const safeCall: FunctionToolCall<unknown> = {
+        const safeCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:read_file',
           arguments: '{"path":"data.txt"}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:read_file' },
         }
-        const dangerousCall: FunctionToolCall<unknown> = {
+        const dangerousCall: FunctionToolCall<MockToolCall> = {
           id: 'call-2',
           name: 'mock:delete_file',
           arguments: '{"path":"important.txt"}',
-          raw: {},
+          raw: { id: 'call-2', name: 'mock:delete_file' },
         }
 
         const provider = createMockProvider([
@@ -1245,7 +1263,7 @@ describe('AgentSession', () => {
           session,
           provider,
           model: 'test-model',
-          toolApproval: async (toolCall) => {
+          toolApproval: async ({ toolCall }) => {
             if (toolCall.name.includes('delete')) {
               return { approved: false, reason: 'Deletion not allowed' }
             }
@@ -1253,7 +1271,7 @@ describe('AgentSession', () => {
           },
         })
 
-        const result = await agent.run('Read and delete files')
+        const result = await agent.run({ prompt: 'Read and delete files' })
 
         expect(result.toolCalls).toHaveLength(2)
 
@@ -1271,17 +1289,17 @@ describe('AgentSession', () => {
       })
 
       test('approval function receives event history', async () => {
-        const tool1: FunctionToolCall<unknown> = {
+        const tool1: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:first_tool',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:first_tool' },
         }
-        const tool2: FunctionToolCall<unknown> = {
+        const tool2: FunctionToolCall<MockToolCall> = {
           id: 'call-2',
           name: 'mock:second_tool',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-2', name: 'mock:second_tool' },
         }
 
         const provider = createMockProvider([
@@ -1313,14 +1331,14 @@ describe('AgentSession', () => {
           session,
           provider,
           model: 'test-model',
-          toolApproval: async (_toolCall, context) => {
-            historyLengths.push(context.history.length)
-            iterations.push(context.iteration)
+          toolApproval: async ({ history, iteration }) => {
+            historyLengths.push(history.length)
+            iterations.push(iteration)
             return true
           },
         })
 
-        await agent.run('Use both tools')
+        await agent.run({ prompt: 'Use both tools' })
 
         // First call should have fewer history events than second
         expect(iterations).toEqual([1, 2])
@@ -1342,7 +1360,7 @@ describe('AgentSession', () => {
         })
 
         const startTime = Date.now()
-        const result = await agent.run('Test')
+        const result = await agent.run({ prompt: 'Test' })
         const endTime = Date.now()
 
         expect(result.duration).toBeGreaterThanOrEqual(0)
@@ -1363,7 +1381,7 @@ describe('AgentSession', () => {
 
         const startTime = Date.now()
         const events: Array<AgentEvent> = []
-        for await (const event of agent.stream('Test')) {
+        for await (const event of agent.stream({ prompt: 'Test' })) {
           events.push(event)
         }
         const endTime = Date.now()
@@ -1391,7 +1409,7 @@ describe('AgentSession', () => {
           model: 'test-model',
         })
 
-        const result = await agent.run('Generate empty response')
+        const result = await agent.run({ prompt: 'Generate empty response' })
 
         expect(result.text).toBe('')
         expect(result.finishReason).toBe('complete')
@@ -1408,7 +1426,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Use a tool')
+        const result = await agent.run({ prompt: 'Use a tool' })
 
         // Should still complete successfully
         expect(result.finishReason).toBe('complete')
@@ -1428,7 +1446,7 @@ describe('AgentSession', () => {
         const abortController = new AbortController()
         abortController.abort('Pre-aborted')
 
-        const result = await agent.run('Test', { signal: abortController.signal })
+        const result = await agent.run({ prompt: 'Test', signal: abortController.signal })
 
         expect(result.finishReason).toBe('aborted')
         expect(result.iterations).toBe(0)
@@ -1436,11 +1454,11 @@ describe('AgentSession', () => {
 
       test('handles very long tool arguments', async () => {
         const longData = 'x'.repeat(10000)
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:process_data',
           arguments: JSON.stringify({ data: longData }),
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:process_data' },
         }
 
         const provider = createMockProvider([
@@ -1466,7 +1484,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Process large data')
+        const result = await agent.run({ prompt: 'Process large data' })
 
         expect(result.finishReason).toBe('complete')
         expect(result.toolCalls[0].approved).toBe(true)
@@ -1477,11 +1495,11 @@ describe('AgentSession', () => {
 
     describe('conversation context', () => {
       test('maintains message history across iterations', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:get_info',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:get_info' },
         }
 
         let messageCount = 0
@@ -1492,12 +1510,9 @@ describe('AgentSession', () => {
 
         // Override streamChat to track message count
         const originalStreamChat = provider.streamChat
-        provider.streamChat = vi.fn((params) => {
+        provider.streamChat = vi.fn((params: MockStreamChatParams) => {
           messageCount = params.messages.length
-          return (originalStreamChat as (p: unknown) => unknown)(params) as StreamChatRequest<
-            unknown,
-            unknown
-          >
+          return originalStreamChat(params)
         })
 
         const session = await createMockSessionWithTools(
@@ -1518,7 +1533,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        await agent.run('Get some info')
+        await agent.run({ prompt: 'Get some info' })
 
         // On second call, should have: user message, assistant (with tool call), tool result
         expect(messageCount).toBeGreaterThan(1)
@@ -1529,11 +1544,11 @@ describe('AgentSession', () => {
 
     describe('tool result content types', () => {
       test('handles tool result with image content', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:generate_image',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:generate_image' },
         }
 
         const provider = createMockProvider([
@@ -1561,7 +1576,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Generate an image')
+        const result = await agent.run({ prompt: 'Generate an image' })
 
         expect(result.finishReason).toBe('complete')
         expect(result.toolCalls[0].result?.content[0].type).toBe('image')
@@ -1570,11 +1585,11 @@ describe('AgentSession', () => {
       })
 
       test('handles tool result with multiple content items', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:analyze',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:analyze' },
         }
 
         const provider = createMockProvider([
@@ -1605,7 +1620,7 @@ describe('AgentSession', () => {
           toolApproval: 'auto',
         })
 
-        const result = await agent.run('Analyze data')
+        const result = await agent.run({ prompt: 'Analyze data' })
 
         expect(result.toolCalls[0].result?.content).toHaveLength(2)
 
@@ -1615,11 +1630,11 @@ describe('AgentSession', () => {
 
     describe('iteration behavior', () => {
       test('iteration-complete event indicates if more tool calls pending', async () => {
-        const toolCall: FunctionToolCall<unknown> = {
+        const toolCall: FunctionToolCall<MockToolCall> = {
           id: 'call-1',
           name: 'mock:step',
           arguments: '{}',
-          raw: {},
+          raw: { id: 'call-1', name: 'mock:step' },
         }
 
         const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Done' }])
@@ -1643,7 +1658,7 @@ describe('AgentSession', () => {
         })
 
         const events: Array<AgentEvent> = []
-        for await (const event of agent.stream('Do steps')) {
+        for await (const event of agent.stream({ prompt: 'Do steps' })) {
           events.push(event)
         }
 
@@ -1663,11 +1678,11 @@ describe('AgentSession', () => {
   })
 
   describe('per-tool timeout and cancellation', () => {
-    const toolCall: FunctionToolCall<unknown> = {
+    const toolCall: FunctionToolCall<MockToolCall> = {
       id: 'call-1',
       name: 'mock:slow',
       arguments: '{}',
-      raw: {},
+      raw: { id: 'call-1', name: 'mock:slow' },
     }
 
     test('a tool exceeding toolTimeout yields ToolCallTimeoutError and the turn survives', async () => {
@@ -1691,7 +1706,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('go')) {
+      for await (const event of agent.stream({ prompt: 'go' })) {
         events.push(event)
       }
 
@@ -1731,7 +1746,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('go')) {
+      for await (const event of agent.stream({ prompt: 'go' })) {
         events.push(event)
       }
 
@@ -1772,7 +1787,7 @@ describe('AgentSession', () => {
       })
 
       const events: Array<AgentEvent> = []
-      for await (const event of agent.stream('go', { signal: controller.signal })) {
+      for await (const event of agent.stream({ prompt: 'go', signal: controller.signal })) {
         events.push(event)
       }
 
@@ -1792,7 +1807,7 @@ describe('AgentSession', () => {
       const session = new Session({ providers: { mock: provider } })
       const agent = new AgentSession({ session, provider: 'mock', model: 'test-model' })
 
-      const result = await agent.run('Hi')
+      const result = await agent.run({ prompt: 'Hi' })
 
       expect(result.messages).toEqual([
         { source: 'client', role: 'user', text: 'Hi' },
@@ -1810,7 +1825,7 @@ describe('AgentSession', () => {
         { source: 'server' as const, role: 'assistant' as const, text: 'First reply', raw: {} },
       ]
 
-      const result = await agent.run('Second prompt', { messages: prior })
+      const result = await agent.run({ prompt: 'Second prompt', messages: prior })
 
       expect(result.messages.slice(0, 2)).toEqual(prior)
       expect(result.messages[2]).toEqual({
@@ -1837,7 +1852,7 @@ describe('AgentSession', () => {
         { source: 'server' as const, role: 'assistant' as const, text: 'First reply', raw: {} },
       ]
 
-      const result = await agent.run('Second', { messages: prior })
+      const result = await agent.run({ prompt: 'Second', messages: prior })
       const systemCount = result.messages.filter((m) => m.role === 'system').length
       expect(systemCount).toBe(1)
     })
@@ -1857,7 +1872,7 @@ describe('AgentSession', () => {
         embed: vi.fn(async () => ({ embeddings: [[0]] })),
         streamChat: vi.fn(() => {
           let i = 0
-          const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+          const stream = new ReadableStream<MessagePart<unknown, MockToolCall>>({
             async pull(controller) {
               await new Promise((resolve) => setTimeout(resolve, delayMs))
               if (i < chunkCount) {
@@ -1871,11 +1886,13 @@ describe('AgentSession', () => {
           })
           return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
             unknown,
-            unknown
+            MockToolCall
           >
         }),
         aggregateMessage: vi.fn(
-          (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => ({
+          (
+            parts: Array<ProviderServerMessage<unknown, MockToolCall>>,
+          ): AggregatedMessage<MockToolCall> => ({
             source: 'aggregated',
             role: 'assistant',
             text: parts
@@ -1906,7 +1923,7 @@ describe('AgentSession', () => {
 
       const events: Array<AgentEvent> = []
       try {
-        for await (const event of agent.stream('go')) {
+        for await (const event of agent.stream({ prompt: 'go' })) {
           events.push(event)
         }
       } catch {
@@ -1933,7 +1950,7 @@ describe('AgentSession', () => {
         embed: vi.fn(async () => ({ embeddings: [[0]] })),
         streamChat: vi.fn(() => {
           let i = 0
-          const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+          const stream = new ReadableStream<MessagePart<unknown, MockToolCall>>({
             pull(controller) {
               if (i < emitCount) {
                 controller.enqueue({ type: 'reasoning-delta', reasoning: `r${i} `, raw: {} })
@@ -1946,11 +1963,13 @@ describe('AgentSession', () => {
           })
           return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
             unknown,
-            unknown
+            MockToolCall
           >
         }),
         aggregateMessage: vi.fn(
-          (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => ({
+          (
+            parts: Array<ProviderServerMessage<unknown, MockToolCall>>,
+          ): AggregatedMessage<MockToolCall> => ({
             source: 'aggregated',
             role: 'assistant',
             text: parts
@@ -1981,7 +2000,7 @@ describe('AgentSession', () => {
 
       const events: Array<AgentEvent> = []
       try {
-        for await (const event of agent.stream('go')) {
+        for await (const event of agent.stream({ prompt: 'go' })) {
           events.push(event)
         }
       } catch {
@@ -2002,7 +2021,7 @@ describe('AgentSession', () => {
         listModels: vi.fn(async () => [{ id: 'test-model', raw: { id: 'test-model' } }]),
         embed: vi.fn(async () => ({ embeddings: [[0]] })),
         streamChat: vi.fn(() => {
-          const stream = new ReadableStream<MessagePart<unknown, unknown>>({
+          const stream = new ReadableStream<MessagePart<unknown, MockToolCall>>({
             pull(controller) {
               // Emit text-deltas forever until cancelled.
               controller.enqueue({ type: 'text-delta', text: 'x', raw: {} })
@@ -2013,11 +2032,13 @@ describe('AgentSession', () => {
           })
           return new MockStreamChatRequest(Promise.resolve(stream)) as unknown as StreamChatRequest<
             unknown,
-            unknown
+            MockToolCall
           >
         }),
         aggregateMessage: vi.fn(
-          (parts: Array<ProviderServerMessage<unknown, unknown>>): AggregatedMessage<unknown> => ({
+          (
+            parts: Array<ProviderServerMessage<unknown, MockToolCall>>,
+          ): AggregatedMessage<MockToolCall> => ({
             source: 'aggregated',
             role: 'assistant',
             text: parts
@@ -2042,7 +2063,7 @@ describe('AgentSession', () => {
         model: 'test-model',
       })
 
-      for await (const event of agent.stream('hi')) {
+      for await (const event of agent.stream({ prompt: 'hi' })) {
         if (event.type === 'text-delta') {
           break // abandon the generator mid-stream
         }

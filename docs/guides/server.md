@@ -26,15 +26,17 @@ serveProcess({
 
 ## Creating Tools
 
-Tools are functions that LLMs can call. Use `createTool()` for type-safe tool definitions:
+Tools are functions that LLMs can call. Use `createTool()` for type-safe tool definitions. It
+takes a single parameters object: `description`, `inputSchema`, an optional `outputSchema`, and
+the `handler`.
 
 ```typescript
 import { createTool, serveProcess, type ToolDefinitions } from '@mokei/context-server'
 
 const tools = {
-  greet: createTool(
-    'Greets a user by name',  // description
-    {
+  greet: createTool({
+    description: 'Greets a user by name',
+    inputSchema: {
       type: 'object',
       properties: {
         name: { type: 'string', description: 'Name to greet' },
@@ -43,16 +45,16 @@ const tools = {
       required: ['name'],
       additionalProperties: false
     } as const,  // as const for type inference
-    (req) => {
-      const greeting = req.arguments.formal 
-        ? `Good day, ${req.arguments.name}.`
-        : `Hello, ${req.arguments.name}!`
+    handler: (req) => {
+      const greeting = req.input.formal
+        ? `Good day, ${req.input.name}.`
+        : `Hello, ${req.input.name}!`
       return {
         content: [{ type: 'text', text: greeting }],
         isError: false
       }
     }
-  )
+  })
 } satisfies ToolDefinitions
 
 serveProcess({ name: 'greeter', version: '1.0.0', tools })
@@ -94,7 +96,22 @@ const message = await req.client.createMessage({
 const roots = await req.client.listRoots()
 
 // Log messages to client
-req.client.log('info', 'Processing request...')
+req.client.log({ level: 'info', data: 'Processing request...' })
+```
+
+Each of these request methods takes a single parameters object, and `elicit`, `createMessage`
+and `listRoots` also accept `signal` and `timeout` alongside their params:
+
+```typescript
+const result = await req.client.elicit({
+  message: 'Please confirm',
+  requestedSchema: {
+    type: 'object',
+    properties: { confirm: { type: 'boolean' } }
+  },
+  signal: req.signal,
+  timeout: 30_000,
+})
 ```
 
 ### Tool Return Types
@@ -134,15 +151,16 @@ return {
 
 ## Creating Prompts
 
-Prompts are templates that return messages:
+Prompts are templates that return messages. `createPrompt()` also takes a single parameters
+object: `description`, an optional `argumentsSchema`, and the `handler`.
 
 ```typescript
 import { createPrompt, serveProcess, type PromptDefinitions } from '@mokei/context-server'
 
 const prompts = {
-  code_review: createPrompt(
-    'Generate a code review prompt',
-    {
+  code_review: createPrompt({
+    description: 'Generate a code review prompt',
+    argumentsSchema: {
       type: 'object',
       properties: {
         language: { type: 'string', description: 'Programming language' },
@@ -150,19 +168,19 @@ const prompts = {
       },
       required: ['language', 'code']
     } as const,
-    (req) => ({
-      description: `Code review for ${req.arguments.language}`,
+    handler: (req) => ({
+      description: `Code review for ${req.input.language}`,
       messages: [
         {
           role: 'user',
           content: {
             type: 'text',
-            text: `Review this ${req.arguments.language} code:\n\n${req.arguments.code}`
+            text: `Review this ${req.input.language} code:\n\n${req.input.code}`
           }
         }
       ]
     })
-  )
+  })
 } satisfies PromptDefinitions
 
 serveProcess({ name: 'prompts-server', version: '1.0.0', prompts })
@@ -284,7 +302,7 @@ import {
 } from '@mokei/context-server'
 
 const tools = {
-  myTool: createTool(/* ... */)
+  myTool: createTool({ /* description, inputSchema, handler */ })
 } satisfies ToolDefinitions
 
 const config = {
@@ -343,22 +361,22 @@ const sqlSchema = {
 } as const satisfies Schema
 
 const tools = {
-  sqlite_all: createTool(
-    'Execute SQL and return all results as array',
-    sqlSchema,
-    (req) => {
-      const results = db.prepare(req.arguments.sql).all(req.arguments.parameters ?? {})
+  sqlite_all: createTool({
+    description: 'Execute SQL and return all results as array',
+    inputSchema: sqlSchema,
+    handler: (req) => {
+      const results = db.prepare(req.input.sql).all(req.input.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
     }
-  ),
-  sqlite_run: createTool(
-    'Execute SQL and return change summary',
-    sqlSchema,
-    (req) => {
-      const changes = db.prepare(req.arguments.sql).run(req.arguments.parameters ?? {})
+  }),
+  sqlite_run: createTool({
+    description: 'Execute SQL and return change summary',
+    inputSchema: sqlSchema,
+    handler: (req) => {
+      const changes = db.prepare(req.input.sql).run(req.input.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
     }
-  )
+  })
 } satisfies ToolDefinitions
 
 const config = { name: 'sqlite', version: '0.1.0', tools } satisfies ServerConfig

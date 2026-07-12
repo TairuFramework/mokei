@@ -3,7 +3,7 @@
 **Status:** complete
 **Date:** 2026-06-20
 **Branch / PR:** `refactor/context-rpc-pending-exchange` → [PR #32](https://github.com/TairuFramework/mokei/pull/32) (bundled with G5 baggage + the U1/coexistence ADR)
-**Relates to:** `milestones/2026-06-08-mcp-draft-migration.md` (Architecture decision / ADR) · `backlog/2026-06-09-mcp-draft-breaking-cut.md` (B7 plugs into this seam)
+**Relates to:** `milestones/2026-06-08-mcp-draft-migration.md` (Architecture decision / ADR) · `backlog/2026-06-20-mcp-draft-remaining.md` (B7 plugs into this seam)
 
 ## Goal
 
@@ -52,4 +52,4 @@ core (U1) the future MCP-draft tool-call path (MRTR / SEP-2322) plugs into.
 Shipped via 3 subagent-driven TDD tasks (`9f96935`, `a3481be`, `bb78c55`), two clean opus
 whole-branch reviews. Green: context-rpc 20/20, context-client 29, context-server 35,
 host 64; typecheck + lint clean. Follow-on work for the dormant streaming arm is logged
-under B7 in `backlog/2026-06-09-mcp-draft-breaking-cut.md`.
+under B7 in `backlog/2026-06-20-mcp-draft-remaining.md`.
