@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-
 import { describe, expect, test } from 'vitest'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')

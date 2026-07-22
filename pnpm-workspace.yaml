@@ -25,37 +25,37 @@ publicHoistPattern:
 
 catalog:
   '@biomejs/biome': ^2.5.0
-  '@enkaku/client': ^0.19.0
-  '@enkaku/http-fetch': ^0.19.0
-  '@enkaku/http-serve': ^0.19.0
-  '@enkaku/node-streams': ^0.19.0
-  '@enkaku/protocol': ^0.19.0
-  '@enkaku/server': ^0.19.0
-  '@enkaku/socket': ^0.19.1
-  '@enkaku/transport': ^0.19.1
-  '@sozai/async': ^0.2.0
+  '@enkaku/client': ^0.20.0
+  '@enkaku/http-fetch': ^0.20.0
+  '@enkaku/http-serve': ^0.20.0
+  '@enkaku/node-streams': ^0.20.0
+  '@enkaku/protocol': ^0.20.0
+  '@enkaku/server': ^0.20.0
+  '@enkaku/socket': ^0.20.0
+  '@enkaku/transport': ^0.20.0
+  '@sozai/async': ^0.2.1
   '@sozai/event': ^0.1.1
   '@sozai/generator': ^0.2.0
-  '@sozai/log': ^0.1.0
-  '@sozai/otel': ^0.2.0
+  '@sozai/log': ^0.2.0
+  '@sozai/otel': ^0.3.0
   '@sozai/schema': ^0.1.1
   '@sozai/stream': ^0.2.0
-  '@tejika/cli': ^0.2.0
-  '@tejika/env': ^0.2.0
-  '@tejika/process': ^0.2.0
-  '@tejika/server': ^0.2.0
-  '@tejika/ui': ^0.2.0
-  '@hono/node-server': ^2.0.8
+  '@tejika/cli': ^0.4.0
+  '@tejika/env': ^0.4.0
+  '@tejika/process': ^0.4.0
+  '@tejika/server': ^0.4.0
+  '@tejika/ui': ^0.4.0
+  '@hono/node-server': ^2.0.11
   '@inkjs/ui': ^2.0.0
   '@mantine/core': ^9.4.1
   '@mantine/hooks': ^9.4.1
   '@swc/cli': ^0.8.1
   '@swc/core': ^1.15.41
-  '@tabler/icons-react': ^3.44.0
-  '@tanstack/react-router': ^1.170.17
-  '@tanstack/react-virtual': ^3.14.5
+  '@tabler/icons-react': ^3.45.0
+  '@tanstack/react-router': ^1.170.18
+  '@tanstack/react-virtual': ^3.14.7
   '@tanstack/router-devtools': ^1.167.0
-  '@tanstack/router-plugin': ^1.168.19
+  '@tanstack/router-plugin': ^1.168.23
   '@types/luxon': ^3.7.2
   '@types/node': ^26.1.1
   '@types/react': ^19.2.17
@@ -67,16 +67,16 @@ catalog:
   del-cli: ^7.0.0
   eventsource-parser: ^3.1.0
   globals: ^17.7.0
-  hono: ^4.12.29
-  ink: ^7.1.0
+  hono: ^4.12.31
+  ink: ^7.1.1
   commander: ^15.0.0
   ink-testing-library: ^4.0.0
-  jotai: ^2.20.1
+  jotai: ^2.20.2
   ky: ^2.0.2
   luxon: ^3.7.2
   nano-spawn: ^2.1.0
   parse-sse: ^0.1.0
-  postcss: ^8.5.16
+  postcss: ^8.5.20
   postcss-preset-mantine: ^1.18.0
   postcss-simple-vars: ^7.0.1
   prism-react-renderer: ^2.3.0
@@ -89,7 +89,7 @@ catalog:
   typedoc: ^0.28.20
   typedoc-plugin-markdown: ^4.12.0
   typescript: ^6.0.3
-  vite: ^8.1.4
+  vite: ^8.1.5
   vitest: ^4.1.10
 
 catalogMode: manual

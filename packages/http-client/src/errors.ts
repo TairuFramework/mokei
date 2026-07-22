@@ -22,11 +22,15 @@ export const SESSION_EXPIRED_MESSAGE = 'MCP session expired; re-initialize to st
  */
 export class SessionExpiredError extends Error {
   /** JSON-RPC error code, matching {@link SESSION_EXPIRED_CODE}. */
-  readonly code = SESSION_EXPIRED_CODE
+  #code = SESSION_EXPIRED_CODE
 
   constructor() {
     super(SESSION_EXPIRED_MESSAGE)
     this.name = 'SessionExpiredError'
+  }
+
+  get code(): number {
+    return this.#code
   }
 }
 

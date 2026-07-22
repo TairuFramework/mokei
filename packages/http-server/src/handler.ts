@@ -160,6 +160,15 @@ async function readBodyText(request: Request, maxBytes: number): Promise<string 
   return new TextDecoder().decode(merged)
 }
 
+const DEFAULT_LOCALHOST_ORIGINS = [
+  'http://localhost',
+  'http://127.0.0.1',
+  'http://[::1]',
+  'https://localhost',
+  'https://127.0.0.1',
+  'https://[::1]',
+]
+
 export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   const {
     createServer,
@@ -202,15 +211,6 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     // Ensures a timed-out session's bridge is torn down, not leaked.
     onDelete: closeBridge,
   })
-
-  const DEFAULT_LOCALHOST_ORIGINS = [
-    'http://localhost',
-    'http://127.0.0.1',
-    'http://[::1]',
-    'https://localhost',
-    'https://127.0.0.1',
-    'https://[::1]',
-  ]
 
   function isLocalhostOrigin(origin: string): boolean {
     // Match scheme+host with any port: e.g. http://localhost:3000.

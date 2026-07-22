@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:types": "tsc --noEmit --skipLibCheck",
-    "test": "vitest run",
     "build:types": "pnpm run test:types",
-    "build:types:ci": "pnpm run test:types"
+    "build:types:ci": "pnpm run test:types",
+    "test": "vitest run",
+    "test:types": "tsc --noEmit --skipLibCheck"
   },
   "dependencies": {
     "@enkaku/node-streams": "catalog:",

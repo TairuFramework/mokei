@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+
 import { DEFAULT_TIMEOUT as ANTHROPIC_DEFAULT_TIMEOUT } from '../../anthropic-provider/src/config.js'
 import { DEFAULT_TIMEOUT } from '../src/config.js'
 import { OpenAIProvider } from '../src/provider.js'

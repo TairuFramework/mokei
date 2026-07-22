@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
+
 import { ContextHost, spawnHostedContext } from '../src/host.js'
 
 describe('ContextHost lifecycle', () => {

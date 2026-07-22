@@ -1,5 +1,6 @@
 import { runInk } from '@tejika/cli'
 import { Command } from 'commander'
+
 import { ChatLauncher, type ChatLifecycle } from '../chat/ChatLauncher.js'
 import { withChatOptions } from '../options.js'
 

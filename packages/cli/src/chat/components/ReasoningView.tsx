@@ -1,6 +1,7 @@
 import { Spinner } from '@inkjs/ui'
 import { IconLine } from '@tejika/ui'
 import { Box, Text } from 'ink'
+
 import { HANG_WARN_MS } from './ToolCallStatus.js'
 
 /** Number of trailing reasoning lines kept visible (bounds the live height). */

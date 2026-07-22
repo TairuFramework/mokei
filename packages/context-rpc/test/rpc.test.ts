@@ -2,6 +2,7 @@ import { DirectTransports, type TransportType } from '@enkaku/transport'
 import type { AnyMessage } from '@mokei/context-protocol'
 import type { Validator } from '@sozai/schema'
 import { describe, expect, test, vi } from 'vitest'
+
 import { RequestTimeoutError, TransportClosedError } from '../src/error.js'
 import { ContextRPC, type RPCTypes } from '../src/rpc.js'
 

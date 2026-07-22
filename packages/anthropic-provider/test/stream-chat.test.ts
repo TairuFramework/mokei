@@ -1,5 +1,6 @@
 import type { MessagePart } from '@mokei/model-provider'
 import { describe, expect, test } from 'vitest'
+
 import { AnthropicClient } from '../src/client.js'
 import { AnthropicProvider } from '../src/provider.js'
 import type { StreamEvent, ToolCall } from '../src/types.js'

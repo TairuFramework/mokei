@@ -8,7 +8,6 @@
  */
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-
 import { type IPty, spawn } from 'node-pty'
 import stripAnsi from 'strip-ansi'
 

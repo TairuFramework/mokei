@@ -1,11 +1,11 @@
 {
   "name": "monitor",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
     "build": "tsc -b && vite build",
+    "dev": "vite",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -24,8 +24,8 @@
   },
   "devDependencies": {
     "@enkaku/protocol": "catalog:",
-    "@sozai/schema": "catalog:",
     "@mokei/context-protocol": "workspace:^",
+    "@sozai/schema": "catalog:",
     "@tanstack/router-devtools": "catalog:",
     "@tanstack/router-plugin": "catalog:",
     "@types/luxon": "catalog:",

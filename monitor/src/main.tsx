@@ -7,6 +7,7 @@ import { routeTree } from './routeTree.gen'
 const router = createRouter({ routeTree })
 
 declare module '@tanstack/react-router' {
+  // biome-ignore lint/style/useConsistentTypeDefinitions: extend interface
   interface Register {
     router: typeof router
   }

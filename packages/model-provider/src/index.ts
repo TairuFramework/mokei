@@ -29,8 +29,8 @@ export function tryParseJSON<T = Record<string, unknown>>(
   if (typeof value === 'string') {
     try {
       parsedValue = JSON.parse(value)
-    } catch {
-      throw new Error(`Failed to parse JSON string: ${value}`)
+    } catch (cause) {
+      throw new Error(`Failed to parse JSON string: ${value}`, { cause })
     }
   } else {
     parsedValue = value

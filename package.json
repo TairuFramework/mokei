@@ -1,24 +1,24 @@
 {
   "name": "mokei-repo",
   "version": "0.0.0",
+  "private": true,
   "author": "Paul Le Cam",
   "type": "module",
-  "private": true,
-  "packageManager": "pnpm@11.11.0",
   "scripts": {
-    "prepare": "git config core.hooksPath .githooks",
-    "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
-    "test": "pnpm run --filter './packages/**' --filter './mcp-servers/**' test",
+    "build": "pnpm run build:types && pnpm run build:js",
+    "build:ci": "pnpm run build:types:ci && pnpm run build:js",
     "build:js": "turbo run build:js",
     "build:types": "pnpm run -r build:types",
     "build:types:ci": "pnpm run -r build:types:ci",
-    "build": "pnpm run build:types && pnpm run build:js",
-    "build:ci": "pnpm run build:types:ci && pnpm run build:js"
+    "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
+    "prepare": "git config core.hooksPath .githooks",
+    "test": "pnpm run --filter './packages/**' --filter './mcp-servers/**' test"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
-    "@kigu/dev": "^0.1.2",
+    "@kigu/dev": "^0.1.4",
     "typedoc": "catalog:",
     "typedoc-plugin-markdown": "catalog:"
-  }
+  },
+  "packageManager": "pnpm@11.15.1"
 }

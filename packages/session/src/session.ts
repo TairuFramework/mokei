@@ -104,7 +104,7 @@ export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
  * Convert a message part chunk to a ServerMessage for aggregation.
  * Returns null for error chunks which should be handled separately.
  */
-function chunkToServerMessage<M, TC>(chunk: MessagePart<M, TC>): ServerMessage<M, TC> | null {
+function chunkToServerMessage<M, C>(chunk: MessagePart<M, C>): ServerMessage<M, C> | null {
   switch (chunk.type) {
     case 'tool-call':
       return {

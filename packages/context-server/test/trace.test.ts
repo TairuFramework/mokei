@@ -5,6 +5,7 @@ import type { Context } from '@opentelemetry/api'
 import { context, ROOT_CONTEXT } from '@opentelemetry/api'
 import { formatTraceparent, getActiveBaggage, getActiveTraceContext } from '@sozai/otel'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+
 import { ContextServer, createTool } from '../src/index.js'
 import { activeContextFromMeta, baggageEntriesFromMeta, withRequestMeta } from '../src/trace.js'
 

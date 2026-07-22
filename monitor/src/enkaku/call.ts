@@ -1,6 +1,5 @@
 import type { Client, RequestCall } from '@enkaku/client'
 import type { ProtocolDefinition } from '@enkaku/protocol'
-
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useEnvironment } from './context.js'
