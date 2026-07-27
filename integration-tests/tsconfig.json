@@ -1,8 +1,6 @@
 {
   "extends": "../tsconfig.build.json",
   "compilerOptions": {
-    // The stdio interop fixtures are executed directly by `node` (native type stripping),
-    // which resolves the on-disk `.ts` path rather than rewriting a `.js` specifier.
     "allowImportingTsExtensions": true,
     "lib": ["es2025", "dom"],
     "module": "NodeNext",
