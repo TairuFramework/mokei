@@ -2,8 +2,8 @@
 
 **Status:** complete
 **Date:** 2026-07-27
-**Branch / PR:** `fix/stack-migration-follow-ups` (uncommitted at time of writing)
-**Relates to:** `backlog/2026-06-22-stack-migration-follow-ups.md` (both items, now marked done) · `backlog/2026-07-27-cli-reasoning-coverage.md` (follow-on)
+**Branch / PR:** `fix/stack-migration-follow-ups` → [PR #39](https://github.com/TairuFramework/mokei/pull/39)
+**Relates to:** `completed/2026-06-22-mokei-stack-migration.complete.md` (the migration these were deferred from, PR #35) · `backlog/2026-07-27-cli-reasoning-coverage.md` (follow-on)
 
 ## Goal
 
@@ -79,5 +79,7 @@ skip/run gate were each verified against fake servers.
 The reasoning change is **unverified against ollama** (none available here) but that
 provider's own mapping was not touched.
 
-No ephemeral spec/plan existed for this work — it was scoped from the two items in
-`backlog/2026-06-22-stack-migration-follow-ups.md`, both rewritten in place as done.
+No ephemeral spec/plan existed for this work. It was scoped from the two items in the
+stack-migration follow-ups backlog entry — persist the node-pty `spawn-helper` executable
+bit, and gate the model-backed suites — both of which shipped here, so that entry was
+removed and this summary is the record.
