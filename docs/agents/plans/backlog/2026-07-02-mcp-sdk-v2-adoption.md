@@ -34,10 +34,21 @@ Keep `context-protocol` / `context-rpc` / `context-client` / `context-server` /
 
 ## Adopt / follow-up items
 
-1. **Interop tests (cheap, high value).** Add SDK v2 to `integration-tests/`: mokei
-   client ↔ SDK v2 server and SDK v2 client ↔ mokei server, over stdio + Streamable
-   HTTP. Doubles as the "live draft peer" for `2026-07-28` wiring validation and the
-   G7 part 5 HeaderMismatch story (see `2026-06-20-mcp-draft-remaining.md`).
+1. **Interop tests (cheap, high value).** **SHIPPED (2026-07-27, `feat/mcp-sdk-v2-interop`)**
+   for the `2025-11-25` era: `integration-tests/support/interop/` defines one fixture
+   surface twice (mokei `createTool`/`createPrompt` + SDK `registerTool`/`registerPrompt`
+   over `fromJsonSchema` + the Ajv validator, so no Zod in the tests), served over stdio
+   (`node` runs the `.ts` entries directly via native type stripping) and Streamable HTTP
+   (`serveHTTP` on the mokei side, `NodeStreamableHTTPServerTransport` stateless on the SDK
+   side). `suites/interop-sdk-server.test.ts` + `suites/interop-sdk-client.test.ts` run all
+   four combinations against shared expectations: negotiated protocol version, `serverInfo`,
+   `tools/list` (incl. `outputSchema`), `tools/call` text + `structuredContent`,
+   `prompts/list` + `prompts/get`, `resources/list` + `resources/read`.
+   SDK pinned at `2.0.0-beta.5` as devDependencies of the private `mokei-integration-tests`
+   package. **Follow-ups:** multi-page cursor-walk interop (needs a paginating fixture);
+   the modern-era (`2026-07-28`) half once B-wiring exists — this harness is the live draft
+   peer it validates against, and the G7 part 5 HeaderMismatch story
+   (see `2026-06-20-mcp-draft-remaining.md`).
 2. **Client OAuth + JWT** — promoted to a dedicated backlog item:
    `2026-07-02-http-auth-oauth.md` (client OAuth via SDK `withOAuth` fetch-middleware
    wrap vs native `@kokuin/token` port, server-side bearer verification for

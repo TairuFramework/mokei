@@ -15,7 +15,10 @@ here.
   (`http-client/src/errors.ts`). Revisit only against a live draft peer; pick a
   non-colliding code then. Self-contained in `@mokei/http-client`. *Update 2026-07-02:*
   SDK v2 beta can now serve as the live draft peer (see
-  `2026-07-02-mcp-sdk-v2-adoption.md`, interop tests item).
+  `2026-07-02-mcp-sdk-v2-adoption.md`, interop tests item). *Update 2026-07-27:* the peer
+  harness is in place (`integration-tests/support/interop/`, SDK `2.0.0-beta.5`), covering
+  the `2025-11-25` era in all four client/server × stdio/HTTP combinations; the draft-era
+  half lands with the B-wiring.
 
 ### Non-blocking polish (from final review — optional, not gating)
 
