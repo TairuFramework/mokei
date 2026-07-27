@@ -1,6 +1,7 @@
 {
   "extends": "../tsconfig.build.json",
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "lib": ["es2025", "dom"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
