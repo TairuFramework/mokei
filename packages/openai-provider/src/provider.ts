@@ -57,6 +57,7 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
     parts: Array<ServerMessage<ChatCompletionChunk, ToolCall>>,
   ): AggregatedMessage<ToolCall> {
     let text = ''
+    let reasoning = ''
     const toolCalls: Array<FunctionToolCall<ToolCall>> = []
     let currentToolCall: FunctionToolCall<ToolCall> | null = null
     let doneReason: string | undefined
@@ -66,6 +67,9 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
     for (const part of parts) {
       if (part.text != null) {
         text += part.text
+      }
+      if (part.reasoning != null) {
+        reasoning += part.reasoning
       }
       if (part.toolCalls != null) {
         for (const toolCall of part.toolCalls) {
@@ -96,6 +100,7 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
       source: 'aggregated',
       role: 'assistant',
       text,
+      reasoning,
       toolCalls,
       doneReason,
       inputTokens,
@@ -154,6 +159,10 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
             const delta = part.choices[0]?.delta
             if (delta?.content) {
               controller.enqueue({ type: 'text-delta', text: delta.content, raw: part })
+            }
+            const reasoning = delta?.reasoning_content ?? delta?.reasoning
+            if (reasoning) {
+              controller.enqueue({ type: 'reasoning-delta', reasoning, raw: part })
             }
             if (delta?.tool_calls) {
               controller.enqueue({
