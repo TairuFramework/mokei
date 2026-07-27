@@ -67,21 +67,31 @@ Scope, ordered by dependency:
 8. **D1–D3** apply deprecation handling (Roots/Sampling/Logging; HTTP+SSE transport;
    `includeContext`) as the above land.
 
-### B7 stream-arm follow-ons (do when wiring MRTR into the dormant streaming seam)
+### B7 stream-arm follow-ons — **done 2026-07-27**
 
 The U1 streaming arm + continuation store are built and unit-tested but have **no wire
 trigger yet**; B4/B7 wire into the `_registerStreamExchange` seam they create
-(`context-rpc` `exchange.ts` / `continuation.ts`).
+(`context-rpc` `exchange.ts` / `continuation.ts`). All five hardening items listed here
+shipped ahead of that wiring, so the seam is ready to consume:
 
-- Thread a settle **reason** through `onSettle` (currently arg-less) so continuation
-  teardown can distinguish result / error / cancel / transport-close.
-- Decide the malformed-frame / malformed-response policy on the stream arm (the `once` arm
-  relies on `routeResponse` shape; a stream `result`/`error` frame has no equivalent guard).
-- Add stream `cancel` / `endAll` `onSettle` tests (only the terminal-frame settle path is
-  covered today).
-- Add an `ErrorResponse` narrowing guard for the `as ErrorResponse` cast in `routeResponse`.
-- Consider a `#settle(exchange)` helper in `ExchangeRegistry` to dedup the repeated
-  delete + resolve/reject + `onSettle?.()` blocks.
+- `onSettle` now receives a `SettleReason` (`'result' | 'error' | 'cancel' | 'closed'`), so
+  continuation teardown can tell a terminal frame from a local cancel or a transport close.
+  `ContextRPC` folds it into the `clearForExchange` reason message.
+- Malformed-response policy: `routeResponse` settles an exchange carrying neither a usable
+  `result` nor a well-formed `error` as an internal `RPCError('Malformed response')` instead
+  of deleting it while leaving the promise pending forever (the old `once`-arm leak). An
+  `error` stream frame carrying a non-`Error` value is coerced; a frame of an unknown type is
+  dropped **without** settling — only `result` and `error` frames are terminal.
+- `isErrorResponse` in `error.ts` replaces the `as ErrorResponse` cast, so an `error: null` or
+  a `code`/`message`-less error object is no longer read as an error response.
+- Stream `cancel` / `endAll` / error-response / malformed-response `onSettle` paths are
+  covered, plus settle-once-only under trailing frames.
+- `ExchangeRegistry.#settle(id, exchange, reason, outcome)` dedups the delete +
+  resolve/reject + `onSettle` blocks across all four settle sites.
+
+Open when the wiring lands: nothing on the registry itself — the remaining decisions
+(continuation state across reconnects, server-minted handles) live in the milestone's open
+questions.
 
 ## Notes
 
