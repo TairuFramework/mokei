@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import { ChatDriver, UI } from '../support/chat-driver.js'
-import { hasChatBackend } from '../support/requirements.js'
-
-const PROMPT = 'fetch info about https://mokei.dev and provide a summary'
+import { hasChatBackend, TOOL_CALL_PROMPT, TOOL_CALL_RETRY } from '../support/requirements.js'
 
 describe.skipIf(!hasChatBackend)('CLI chat — tools', () => {
   let driver: ChatDriver
@@ -16,23 +14,29 @@ describe.skipIf(!hasChatBackend)('CLI chat — tools', () => {
 
   afterEach(() => driver.kill())
 
-  test('approval card shows the namespaced tool and arguments', async () => {
-    await driver.submit(PROMPT)
+  test('approval card shows the namespaced tool and arguments', {
+    retry: TOOL_CALL_RETRY,
+    timeout: 150_000,
+  }, async () => {
+    await driver.submit(TOOL_CALL_PROMPT)
     expect(await driver.waitForApproval()).toBe(true)
     expect(driver.screen()).toContain('fetch:get_markdown')
     expect(driver.screen()).toContain('https://mokei.dev')
     driver.approve()
     expect(await driver.waitForIdle(90_000)).toBe(true)
-  }, 150_000)
+  })
 
-  test('denying a tool call returns to idle without aborting', async () => {
-    await driver.submit(PROMPT)
+  test('denying a tool call returns to idle without aborting', {
+    retry: TOOL_CALL_RETRY,
+    timeout: 150_000,
+  }, async () => {
+    await driver.submit(TOOL_CALL_PROMPT)
     expect(await driver.waitForApproval()).toBe(true)
     driver.deny() // n
     expect(await driver.waitFor(UI.denied, 10_000)).toBe(true)
     expect(await driver.waitForIdle(90_000)).toBe(true)
     expect(driver.screen()).not.toContain(UI.aborted)
-  }, 150_000)
+  })
 
   test('/tools lists the context tools', async () => {
     await driver.type('/tools')

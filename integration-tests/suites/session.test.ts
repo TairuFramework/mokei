@@ -9,8 +9,9 @@ import {
   CHAT_MODEL,
   type ChatProviderTypes,
   chatBackend,
-  createChatProvider,
   hasChatBackend,
+  TOOL_CALL_PROMPT,
+  TOOL_CALL_RETRY,
 } from '../support/requirements.js'
 
 const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
@@ -18,35 +19,34 @@ const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
 const model = CHAT_MODEL
 
 /**
- * Against ollama this is one local server reached three ways: its native API plus its
- * OpenAI and Anthropic compatibility endpoints. llama-server serves the OpenAI-compatible
- * API only, so it contributes a single entry.
+ * One local server reached several ways. Both backends serve OpenAI- (`/v1/chat/completions`)
+ * and Anthropic-compatible (`/v1/messages`) endpoints; ollama adds its own native API, which
+ * llama-server has no equivalent of.
  */
-const providers: Array<[string, ModelProvider<ChatProviderTypes>]> =
-  chatBackend.kind === 'ollama'
-    ? [
-        [
-          'Ollama',
-          new OllamaProvider({
-            client: { baseURL: chatBackend.baseURL },
-          }) as ModelProvider<ChatProviderTypes>,
-        ],
-        [
-          'Anthropic-compatible',
-          new AnthropicProvider({
-            client: { baseURL: chatBackend.openaiBaseURL },
-          }) as ModelProvider<ChatProviderTypes>,
-        ],
-        [
-          'OpenAI-compatible',
-          new OpenAIProvider({
-            client: { baseURL: chatBackend.openaiBaseURL },
-          }) as ModelProvider<ChatProviderTypes>,
-        ],
-      ]
-    : [['OpenAI-compatible', createChatProvider()]]
+const providers: Array<[string, ModelProvider<ChatProviderTypes>]> = [
+  [
+    'OpenAI-compatible',
+    new OpenAIProvider({
+      client: { baseURL: chatBackend.openaiBaseURL },
+    }) as ModelProvider<ChatProviderTypes>,
+  ],
+  [
+    'Anthropic-compatible',
+    new AnthropicProvider({
+      client: { baseURL: chatBackend.openaiBaseURL },
+    }) as ModelProvider<ChatProviderTypes>,
+  ],
+]
+if (chatBackend.kind === 'ollama') {
+  providers.unshift([
+    'Ollama native',
+    new OllamaProvider({
+      client: { baseURL: chatBackend.baseURL },
+    }) as ModelProvider<ChatProviderTypes>,
+  ])
+}
 
-describe.skipIf(!hasChatBackend)('Session', () => {
+describe.skipIf(!hasChatBackend)('Session', { retry: TOOL_CALL_RETRY }, () => {
   const session = new Session<ChatProviderTypes>()
 
   beforeAll(async () => {
@@ -70,7 +70,7 @@ describe.skipIf(!hasChatBackend)('Session', () => {
           {
             source: 'client',
             role: 'user',
-            text: 'Provide a short summary of what https://mokei.dev does',
+            text: TOOL_CALL_PROMPT,
           },
         ],
       })

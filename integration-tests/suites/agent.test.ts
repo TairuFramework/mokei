@@ -7,6 +7,8 @@ import {
   type ChatProviderTypes,
   createChatProvider,
   hasChatBackend,
+  TOOL_CALL_PROMPT,
+  TOOL_CALL_RETRY,
 } from '../support/requirements.js'
 
 const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
@@ -14,7 +16,7 @@ const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
 const model = CHAT_MODEL
 const provider = createChatProvider()
 
-describe.skipIf(!hasChatBackend)('AgentSession', () => {
+describe.skipIf(!hasChatBackend)('AgentSession', { retry: TOOL_CALL_RETRY }, () => {
   const session = new Session<ChatProviderTypes>({ providers: { [CHAT_PROVIDER_KEY]: provider } })
 
   beforeAll(async () => {
@@ -34,7 +36,7 @@ describe.skipIf(!hasChatBackend)('AgentSession', () => {
 
     const events: Array<AgentEvent<ChatProviderTypes>> = []
     for await (const event of agent.stream({
-      prompt: 'Provide a short summary of what https://mokei.dev does',
+      prompt: TOOL_CALL_PROMPT,
     })) {
       events.push(event)
     }
@@ -75,7 +77,7 @@ describe.skipIf(!hasChatBackend)('AgentSession', () => {
     const events: Array<AgentEvent<ChatProviderTypes>> = []
     try {
       for await (const event of agent.stream({
-        prompt: 'Provide a short summary of what https://mokei.dev does',
+        prompt: TOOL_CALL_PROMPT,
       })) {
         events.push(event)
       }
