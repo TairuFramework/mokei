@@ -144,9 +144,13 @@ Shipped from this audit (see `completed/`):
   protected-resource metadata for `@mokei/http-server` (hono middleware, not SDK's
   Express-only helpers), JWT machine auth (SEP-991 grants / `@kokuin/token` DID tokens).
   Replaces the former P3 "OAuth / auth helpers" line.
-- **Stack migration follow-ups** (`backlog/2026-06-22-stack-migration-follow-ups.md`) —
-  two non-blocking tooling gaps: node-pty `spawn-helper` `+x` postinstall (PTY suites fail
-  `posix_spawnp failed` otherwise), and gate the live OpenAI `session.test.ts` on a key.
+- **Stack migration follow-ups** — **SHIPPED** (PR #39,
+  `completed/2026-07-27-integration-test-environment.complete.md`): node-pty `spawn-helper`
+  `+x` postinstall, and the model-backed integration suites now skip instead of failing when
+  no inference server is running. Added llama.cpp (`LLAMA_SERVER_URL`) as a second chat
+  backend alongside ollama, which exposed and fixed a real defect — `@mokei/openai-provider`
+  dropped reasoning deltas entirely. Remaining coverage gaps:
+  `backlog/2026-07-27-cli-reasoning-coverage.md`.
 - **MCP draft — U1 correlation refactor** — **SHIPPED** (PR #32,
   `completed/2026-06-20-pendingexchange-refactor.complete.md`): `context-rpc`'s `#sentRequests`
   generalized into the `PendingExchange` (resolve-once | streaming) abstraction +
