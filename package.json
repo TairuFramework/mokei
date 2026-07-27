@@ -10,6 +10,7 @@
     "build:js": "turbo run build:js",
     "build:types": "pnpm run -r build:types",
     "build:types:ci": "pnpm run -r build:types:ci",
+    "postinstall": "node scripts/fix-node-pty-permissions.mjs",
     "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
     "prepare": "git config core.hooksPath .githooks",
     "test": "pnpm run --filter './packages/**' --filter './mcp-servers/**' test"

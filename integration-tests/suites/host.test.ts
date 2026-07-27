@@ -1,16 +1,22 @@
 import { ContextHost } from '@mokei/host'
 import { createFetchConfig } from '@mokei/mcp-fetch'
 import type { ServerMessage } from '@mokei/model-provider'
-import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
 import { fromStream } from '@sozai/generator'
 import { expect, test } from 'vitest'
 
+import {
+  CHAT_MODEL,
+  type ChatProviderTypes,
+  createChatProvider,
+  hasChatBackend,
+} from '../support/requirements.js'
+
 const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
 
-const model = 'lfm2.5:latest'
-const provider = new OllamaProvider()
+const model = CHAT_MODEL
+const provider = createChatProvider()
 
-test('executes a tool call after adding a local context', async () => {
+test.skipIf(!hasChatBackend)('executes a tool call after adding a local context', async () => {
   const host = new ContextHost()
 
   try {
@@ -36,7 +42,9 @@ test('executes a tool call after adding a local context', async () => {
       tools,
     })
 
-    const toolChunks: Array<ServerMessage<OllamaTypes['MessagePart'], OllamaTypes['ToolCall']>> = []
+    const toolChunks: Array<
+      ServerMessage<ChatProviderTypes['MessagePart'], ChatProviderTypes['ToolCall']>
+    > = []
     for await (const chunk of fromStream(result)) {
       if (chunk.type === 'tool-call') {
         toolChunks.push({
@@ -68,7 +76,7 @@ test('executes a tool call after adding a local context', async () => {
   }
 })
 
-test('executes a tool call after adding a direct context', async () => {
+test.skipIf(!hasChatBackend)('executes a tool call after adding a direct context', async () => {
   const host = new ContextHost()
 
   try {
@@ -90,7 +98,9 @@ test('executes a tool call after adding a direct context', async () => {
       tools,
     })
 
-    const toolChunks: Array<ServerMessage<OllamaTypes['MessagePart'], OllamaTypes['ToolCall']>> = []
+    const toolChunks: Array<
+      ServerMessage<ChatProviderTypes['MessagePart'], ChatProviderTypes['ToolCall']>
+    > = []
     for await (const chunk of fromStream(result)) {
       if (chunk.type === 'tool-call') {
         toolChunks.push({

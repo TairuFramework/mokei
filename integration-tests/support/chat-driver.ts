@@ -1,15 +1,18 @@
 /**
- * Drives the real `mokei chat --provider ollama` binary over a PTY (node-pty) so the CLI
- * TUI can be exercised end-to-end in integration tests. ink needs a real TTY on
- * stdin (setRawMode), which a plain child_process pipe cannot provide.
+ * Drives the real `mokei chat` binary over a PTY (node-pty) so the CLI TUI can be
+ * exercised end-to-end in integration tests. ink needs a real TTY on stdin (setRawMode),
+ * which a plain child_process pipe cannot provide.
  *
- * Requires the cli `dist` to be built (the dev binary loads commands from
- * dist/commands) plus a running ollama and the built fetch MCP server.
+ * Requires the cli `dist` to be built (the dev binary loads commands from dist/commands),
+ * the built fetch MCP server, and a chat backend — ollama by default, or llama-server via
+ * `LLAMA_SERVER_URL`, which the suites gate on with `hasChatBackend`.
  */
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { type IPty, spawn } from 'node-pty'
 import stripAnsi from 'strip-ansi'
+
+import { chatBackend } from './requirements.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 export const CLI_CWD = resolve(ROOT, 'packages/cli')
@@ -27,6 +30,7 @@ export const UI = {
   llamaPath: 'enter GGUF model path',
   contextAdded: 'context fetch added',
   thinking: 'thinking…',
+  streaming: '· streaming',
   approval: 'approve tool call',
   idle: '· idle',
   aborted: 'AbortError',
@@ -56,25 +60,36 @@ export class ChatDriver {
   #buf = ''
   #exit: ChatExit | null = null
 
-  constructor({
-    provider = 'ollama',
-    model = 'lfm2.5:latest',
-    cols = 100,
-    rows = 30,
-  }: ChatDriverOptions = {}) {
+  constructor({ provider, model, cols = 100, rows = 30 }: ChatDriverOptions = {}) {
+    // An explicit provider (the llama GGUF suite) opts out of the resolved backend, so its
+    // API URL and key are not applied to a provider they do not belong to.
+    const usesBackend = provider === undefined
+    const resolvedProvider = usesBackend ? chatBackend.cliProvider : provider
+    const resolvedModel = model === undefined ? chatBackend.model : model
+
     const args = [CLI_BINARY, 'chat']
-    if (provider != null) {
-      args.push('--provider', provider)
+    if (resolvedProvider != null) {
+      args.push('--provider', resolvedProvider)
     }
-    if (model != null) {
-      args.push('--model', model)
+    if (resolvedModel != null) {
+      args.push('--model', resolvedModel)
     }
+    if (usesBackend && chatBackend.cliAPIURL != null) {
+      args.push('--api-url', chatBackend.cliAPIURL)
+    }
+
+    const env = { ...process.env } as Record<string, string>
+    if (usesBackend && resolvedProvider === 'openai' && env.OPENAI_API_KEY == null) {
+      // A local llama-server needs no credential, but the CLI requires the key to be set.
+      env.OPENAI_API_KEY = 'llama.cpp'
+    }
+
     this.#pty = spawn('node', args, {
       name: 'xterm-color',
       cols,
       rows,
       cwd: CLI_CWD,
-      env: process.env as Record<string, string>,
+      env,
     })
     this.#pty.onData((d) => {
       this.#buf += d
@@ -152,6 +167,23 @@ export class ChatDriver {
       s.lastIndexOf('· calling-tool'),
     )
     return idle > active
+  }
+
+  /**
+   * Wait until a turn is in flight, whichever way it presents. `thinking…` only renders
+   * when the backend streams reasoning as a separate channel — ollama does, and so does any
+   * OpenAI-compatible server sending `reasoning_content`, but llama.cpp leaves `<think>`
+   * tags inline in the content for templates it does not parse, so the turn goes straight
+   * to `streaming`. Tests that just need an in-flight turn should wait on this.
+   */
+  async waitForActive(timeoutMs: number): Promise<boolean> {
+    const end = Date.now() + timeoutMs
+    while (Date.now() < end) {
+      const screen = this.screen()
+      if (screen.includes(UI.thinking) || screen.includes(UI.streaming)) return true
+      await delay(100)
+    }
+    return false
   }
 
   /** Wait until the turn settles back to idle. */

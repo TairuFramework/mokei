@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import { ChatDriver, UI } from '../support/chat-driver.js'
+import { hasChatBackend } from '../support/requirements.js'
 
 const PROMPT = 'fetch info about https://mokei.dev and provide a summary'
 
-describe('CLI chat — core', () => {
+describe.skipIf(!hasChatBackend)('CLI chat — core', () => {
   let driver: ChatDriver
 
   beforeEach(async () => {
@@ -23,9 +24,9 @@ describe('CLI chat — core', () => {
     expect(driver.screen()).toContain(UI.assistant)
   }, 150_000)
 
-  test('esc cancels while the model is thinking', async () => {
+  test('esc cancels a turn in flight', async () => {
     await driver.submit(PROMPT)
-    expect(await driver.waitFor(UI.thinking, 30_000)).toBe(true)
+    expect(await driver.waitForActive(30_000)).toBe(true)
     driver.esc()
     expect(await driver.waitForIdle(10_000)).toBe(true)
     expect(driver.screen()).toContain(UI.aborted)

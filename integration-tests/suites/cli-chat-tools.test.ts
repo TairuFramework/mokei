@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import { ChatDriver, UI } from '../support/chat-driver.js'
+import { hasChatBackend } from '../support/requirements.js'
 
 const PROMPT = 'fetch info about https://mokei.dev and provide a summary'
 
-describe('CLI chat — tools', () => {
+describe.skipIf(!hasChatBackend)('CLI chat — tools', () => {
   let driver: ChatDriver
 
   beforeEach(async () => {

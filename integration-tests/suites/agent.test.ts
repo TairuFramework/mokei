@@ -1,14 +1,21 @@
-import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
 import { type AgentEvent, AgentSession, Session } from '@mokei/session'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
+import {
+  CHAT_MODEL,
+  CHAT_PROVIDER_KEY,
+  type ChatProviderTypes,
+  createChatProvider,
+  hasChatBackend,
+} from '../support/requirements.js'
+
 const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
 
-const model = 'lfm2.5:latest'
-const provider = new OllamaProvider()
+const model = CHAT_MODEL
+const provider = createChatProvider()
 
-describe('AgentSession', () => {
-  const session = new Session<OllamaTypes>({ providers: { ollama: provider } })
+describe.skipIf(!hasChatBackend)('AgentSession', () => {
+  const session = new Session<ChatProviderTypes>({ providers: { [CHAT_PROVIDER_KEY]: provider } })
 
   beforeAll(async () => {
     await session.addContext({
@@ -23,9 +30,9 @@ describe('AgentSession', () => {
   })
 
   test('runs the agent loop end-to-end and executes the fetch tool', async () => {
-    const agent = new AgentSession({ session, provider: 'ollama', model })
+    const agent = new AgentSession({ session, provider: CHAT_PROVIDER_KEY, model })
 
-    const events: Array<AgentEvent<OllamaTypes>> = []
+    const events: Array<AgentEvent<ChatProviderTypes>> = []
     for await (const event of agent.stream({
       prompt: 'Provide a short summary of what https://mokei.dev does',
     })) {
@@ -63,9 +70,9 @@ describe('AgentSession', () => {
     // rather than blocking until generation ends on its own. Regression guard
     // for the parked-stream hang — if it regressed, this would block until the
     // suite timeout instead of resolving promptly.
-    const agent = new AgentSession({ session, provider: 'ollama', model, timeout: 250 })
+    const agent = new AgentSession({ session, provider: CHAT_PROVIDER_KEY, model, timeout: 250 })
 
-    const events: Array<AgentEvent<OllamaTypes>> = []
+    const events: Array<AgentEvent<ChatProviderTypes>> = []
     try {
       for await (const event of agent.stream({
         prompt: 'Provide a short summary of what https://mokei.dev does',

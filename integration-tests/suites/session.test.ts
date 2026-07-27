@@ -1,25 +1,53 @@
-import { AnthropicProvider, type AnthropicTypes } from '@mokei/anthropic-provider'
+import { AnthropicProvider } from '@mokei/anthropic-provider'
 import type { ModelProvider } from '@mokei/model-provider'
-import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
-import { OpenAIProvider, type OpenAITypes } from '@mokei/openai-provider'
+import { OllamaProvider } from '@mokei/ollama-provider'
+import { OpenAIProvider } from '@mokei/openai-provider'
 import { Session } from '@mokei/session'
 import { beforeAll, describe, expect, test } from 'vitest'
 
-type ProviderTypes = AnthropicTypes | OllamaTypes | OpenAITypes
+import {
+  CHAT_MODEL,
+  type ChatProviderTypes,
+  chatBackend,
+  createChatProvider,
+  hasChatBackend,
+} from '../support/requirements.js'
 
 const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
 
-const model = 'lfm2.5:latest'
+const model = CHAT_MODEL
 
-// Ollama Anthropic and OpenAI compatibility endpoint
-const baseURL = 'http://localhost:11434/v1'
-const anthropicProvider = new AnthropicProvider({
-  client: { baseURL },
-}) as ModelProvider<ProviderTypes>
-const openaiProvider = new OpenAIProvider({ client: { baseURL } }) as ModelProvider<ProviderTypes>
+/**
+ * Against ollama this is one local server reached three ways: its native API plus its
+ * OpenAI and Anthropic compatibility endpoints. llama-server serves the OpenAI-compatible
+ * API only, so it contributes a single entry.
+ */
+const providers: Array<[string, ModelProvider<ChatProviderTypes>]> =
+  chatBackend.kind === 'ollama'
+    ? [
+        [
+          'Ollama',
+          new OllamaProvider({
+            client: { baseURL: chatBackend.baseURL },
+          }) as ModelProvider<ChatProviderTypes>,
+        ],
+        [
+          'Anthropic-compatible',
+          new AnthropicProvider({
+            client: { baseURL: chatBackend.openaiBaseURL },
+          }) as ModelProvider<ChatProviderTypes>,
+        ],
+        [
+          'OpenAI-compatible',
+          new OpenAIProvider({
+            client: { baseURL: chatBackend.openaiBaseURL },
+          }) as ModelProvider<ChatProviderTypes>,
+        ],
+      ]
+    : [['OpenAI-compatible', createChatProvider()]]
 
-describe('Session', () => {
-  const session = new Session<ProviderTypes>()
+describe.skipIf(!hasChatBackend)('Session', () => {
+  const session = new Session<ChatProviderTypes>()
 
   beforeAll(async () => {
     await session.addContext({
@@ -33,14 +61,10 @@ describe('Session', () => {
     }
   })
 
-  describe.each([
-    ['Ollama', { provider: new OllamaProvider() as ModelProvider<ProviderTypes> }],
-    ['Anthropic', { provider: anthropicProvider }],
-    ['OpenAI', { provider: openaiProvider }],
-  ])('using the %s provider', (_name, config) => {
+  describe.each(providers)('using the %s provider', (_name, provider) => {
     test('executes a tool call', async () => {
       const reply = await session.chat({
-        provider: config.provider,
+        provider,
         model,
         messages: [
           {

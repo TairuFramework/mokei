@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import { ChatDriver, FETCH_SERVER, UI } from '../support/chat-driver.js'
+import { hasChatBackend } from '../support/requirements.js'
 
-describe('CLI chat — context lifecycle', () => {
+describe.skipIf(!hasChatBackend)('CLI chat — context lifecycle', () => {
   let driver: ChatDriver
 
   beforeEach(async () => {
