@@ -5,7 +5,25 @@ import {
   INVALID_REQUEST,
   METHOD_NOT_FOUND,
   type RequestID,
+  type Response,
 } from '@mokei/context-protocol'
+
+/**
+ * Checks a response carries a well-formed JSON-RPC error object, so a peer sending
+ * `error: null` or an error missing its `code`/`message` is not read as one.
+ */
+export function isErrorResponse(response: Response): response is ErrorResponse {
+  if (!('error' in response)) {
+    return false
+  }
+  const error = response.error as Record<string, unknown> | null | undefined
+  return (
+    typeof error === 'object' &&
+    error != null &&
+    typeof error.code === 'number' &&
+    typeof error.message === 'string'
+  )
+}
 
 export class RPCError extends Error {
   static fromResponse(response: ErrorResponse): RPCError {

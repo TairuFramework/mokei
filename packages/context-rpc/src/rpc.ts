@@ -349,9 +349,9 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     const controller = Object.assign(new AbortController(), defer())
     this.#exchanges.registerStream(id, controller, {
       ...handlers,
-      onSettle: () => {
-        this.#continuations.clearForExchange(id, new Error('Exchange settled'))
-        handlers?.onSettle?.()
+      onSettle: (reason) => {
+        this.#continuations.clearForExchange(id, new Error(`Exchange settled (${reason})`))
+        handlers?.onSettle?.(reason)
       },
     })
     if (options?.signal != null) {
