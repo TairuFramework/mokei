@@ -13,6 +13,14 @@ export type Embedding = {
 export type Message = {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string | null
+  /**
+   * Reasoning (thinking) separated from the answer. Not part of the OpenAI API, but the
+   * de-facto convention across OpenAI-compatible servers: DeepSeek, vLLM and llama.cpp
+   * (`--reasoning-format deepseek`) use `reasoning_content`, OpenRouter uses `reasoning`.
+   * Servers that do not extract it leave the thought tags inline in `content`.
+   */
+  reasoning_content?: string | null
+  reasoning?: string | null
   tool_calls?: Array<ToolCall>
   tool_call_id?: string
 }

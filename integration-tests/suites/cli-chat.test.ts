@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import { ChatDriver, UI } from '../support/chat-driver.js'
+import { hasChatBackend, TOOL_CALL_PROMPT, TOOL_CALL_RETRY } from '../support/requirements.js'
 
-const PROMPT = 'fetch info about https://mokei.dev and provide a summary'
-
-describe('CLI chat — core', () => {
+describe.skipIf(!hasChatBackend)('CLI chat — core', () => {
   let driver: ChatDriver
 
   beforeEach(async () => {
@@ -15,17 +14,20 @@ describe('CLI chat — core', () => {
 
   afterEach(() => driver.kill())
 
-  test('approve a tool call through to a final answer', async () => {
-    await driver.submit(PROMPT)
+  test('approve a tool call through to a final answer', {
+    retry: TOOL_CALL_RETRY,
+    timeout: 150_000,
+  }, async () => {
+    await driver.submit(TOOL_CALL_PROMPT)
     expect(await driver.waitForApproval()).toBe(true)
     driver.approve()
     expect(await driver.waitForIdle(90_000)).toBe(true)
     expect(driver.screen()).toContain(UI.assistant)
-  }, 150_000)
+  })
 
-  test('esc cancels while the model is thinking', async () => {
-    await driver.submit(PROMPT)
-    expect(await driver.waitFor(UI.thinking, 30_000)).toBe(true)
+  test('esc cancels a turn in flight', async () => {
+    await driver.submit(TOOL_CALL_PROMPT)
+    expect(await driver.waitForActive(30_000)).toBe(true)
     driver.esc()
     expect(await driver.waitForIdle(10_000)).toBe(true)
     expect(driver.screen()).toContain(UI.aborted)
