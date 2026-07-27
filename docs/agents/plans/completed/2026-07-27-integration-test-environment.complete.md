@@ -19,10 +19,12 @@ read. Clearing that exposed a real provider bug, fixed here too.
 - **Backend gating.** `integration-tests/support/requirements.ts` resolves a chat backend at
   module scope and exposes `hasChatBackend`; `session`, `agent`, `host` and `cli-chat*` skip
   instead of failing when nothing is running.
-- **llama.cpp as a second backend.** `LLAMA_SERVER_URL` points the suites at a running
-  `llama-server`, taking precedence over ollama. It serves an OpenAI-compatible API only, so
-  the suites reach it via `OpenAIProvider` and the CLI via `--provider openai --api-url`.
-  Model comes from `/v1/models`, defaulting to `LiquidAI/LFM2.5-1.2B-Thinking-GGUF`.
+- **llama.cpp as the default backend, ollama as the alternative.** Resolution order is
+  `LLAMA_SERVER_URL` → `OLLAMA_HOST` → a llama-server on `127.0.0.1:8080` → ollama. Suites
+  reach llama.cpp via `OpenAIProvider` / `AnthropicProvider` and the CLI via
+  `--provider openai --api-url`. Model comes from `/v1/models`, preferring an LFM2.5 entry
+  when several are served (`llama serve` routes to many), then the first listed, then
+  `LiquidAI/LFM2.5-1.2B-Thinking-GGUF`.
 - **`@mokei/openai-provider` reasoning support.** `delta.reasoning_content` (DeepSeek, vLLM,
   llama.cpp) and `delta.reasoning` (OpenRouter) now stream as `reasoning-delta`, and
   `aggregateMessage` accumulates it — previously dropped entirely, so the CLI's reasoning
@@ -44,9 +46,20 @@ read. Clearing that exposed a real provider bug, fixed here too.
   CLI provider and CLI API URL, so a suite never re-derives them and `ChatDriver` can apply
   them as defaults. An explicitly-passed `provider` opts out, so the GGUF suite does not
   inherit an API URL and key that do not belong to it.
-- **Under llama-server the `session` provider matrix collapses to one entry.** Against
-  ollama the suite exercises three providers against a single server (native + OpenAI- and
-  Anthropic-compatible endpoints); llama-server offers only the OpenAI-compatible one.
+- **Both backends serve both compatibility endpoints.** llama.cpp implements a real
+  Anthropic Messages API at `/v1/messages`, not just `/v1/chat/completions`, so the
+  `session` matrix runs `OpenAIProvider` and `AnthropicProvider` against either backend;
+  ollama adds a third entry for its native API, which llama-server has no equivalent of.
+- **`--jinja` is required for llama.cpp.** Without it llama.cpp parses no tool calls, so
+  every suite asserting one fails while the rest pass — a failure easily misread as a mokei
+  bug. Documented prominently rather than detected, since probing for it means issuing a
+  tool-carrying completion at startup.
+- **Tool-choice flakiness is handled with retries, not weaker assertions.** The prompt now
+  names the tool outright (these suites test the tool-call plumbing, not the model's
+  judgement), and the assertions that still depend on the model choosing to call it retry
+  twice. A 1.2B model answers from memory now and then; dropping the assertion would stop
+  testing the tool path. Applied per-test rather than in the vitest config so a
+  deterministic suite cannot quietly become flaky.
 - **`thinking…` is a backend artifact, so the ESC test no longer asserts it.** The CLI shows
   that state only when reasoning arrives as a *separate channel*. llama.cpp streams `<think>`
   tags inline in `content` for the LFM2.5 template no matter what `--reasoning-format`,
@@ -69,12 +82,15 @@ read. Clearing that exposed a real provider bug, fixed here too.
 
 ## Status / verification
 
-Full integration suite against a real `llama-server`: 26 passed, 5 skipped (the two
-GGUF-gated suites), including the tool-call approval path. With no backend running: 0
-failed, 22 skipped — down from 17 failures. Workspace `pnpm test` clean, `tsc` clean, lint
-clean. The reasoning mapping has five unit tests, checked non-vacuous by disabling the
-mapping (2 fail). Backend resolution, model discovery, the default fallback and the
-skip/run gate were each verified against fake servers.
+Full integration suite against a real `llama-server` (`--jinja`): 27 passed, 5 skipped (the
+two GGUF-gated suites), including the tool-call approval path and both compatibility
+providers. Three of the last four consecutive full runs were clean, the fourth losing a
+single tool-choice assertion that passed on re-run — the retries above absorb that. With no
+backend running: 0 failed, 21 skipped — down from 17 failures. Workspace `pnpm test` clean,
+`tsc` clean, lint clean. The reasoning mapping has five unit tests, checked non-vacuous by
+disabling the mapping (2 fail). Backend resolution, the LFM2.5-preferring model selection,
+the first-listed and hardcoded fallbacks, and the skip/run gate were each verified against
+fake servers.
 
 The reasoning change is **unverified against ollama** (none available here) but that
 provider's own mapping was not touched.
