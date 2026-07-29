@@ -76,14 +76,15 @@ export {
   type CacheableResult,
   type CancelledNotification,
   type ErrorResponse,
+  HEADER_MISMATCH,
   type Icon,
   INTERNAL_ERROR,
   INVALID_PARAMS,
   INVALID_REQUEST,
-  isSupportedProtocolVersion,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
   type Metadata,
+  MISSING_REQUIRED_CLIENT_CAPABILITY,
   type Notification,
   PARSE_ERROR,
   type PaginatedResult,
@@ -93,7 +94,7 @@ export {
   type RequestID,
   type Response,
   type Result,
-  SUPPORTED_PROTOCOL_VERSIONS,
+  UNSUPPORTED_PROTOCOL_VERSION,
   URL_ELICITATION_REQUIRED,
 } from './rpc.js'
 export type { CreateMessageRequest, CreateMessageResult } from './sampling.js'
@@ -124,3 +125,13 @@ export {
   type ToolAnnotations,
   type ToolListChangedNotification,
 } from './tool.js'
+export {
+  type ClientRequestContext,
+  isSupportedProtocolVersion,
+  PROTOCOL_VERSIONS,
+  PROTOCOLS,
+  type ProtocolDefinition,
+  type ProtocolVersion,
+  type RequestMetaInfo,
+  type ServerResultContext,
+} from './versions/index.js'

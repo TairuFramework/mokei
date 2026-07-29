@@ -23,7 +23,6 @@ import {
   INTERNAL_ERROR,
   INVALID_PARAMS,
   INVALID_REQUEST,
-  isSupportedProtocolVersion,
   JSONRPC_VERSION,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
@@ -33,7 +32,6 @@ import {
   RESOURCE_NOT_FOUND,
   request,
   response,
-  SUPPORTED_PROTOCOL_VERSIONS,
   URL_ELICITATION_REQUIRED,
 } from '../src/rpc.js'
 import { createMessageRequest, modelPreferences } from '../src/sampling.js'
@@ -49,8 +47,8 @@ import {
 } from '../src/tool.js'
 
 describe('Protocol Version and Constants', () => {
-  test('should use MCP protocol version 2025-11-25', async () => {
-    expect(LATEST_PROTOCOL_VERSION).toBe('2025-11-25')
+  test('should use MCP protocol version 2026-07-28', async () => {
+    expect(LATEST_PROTOCOL_VERSION).toBe('2026-07-28')
   })
 
   test('should use JSON-RPC version 2.0', async () => {
@@ -367,16 +365,6 @@ describe('JSON Schema draft inference', () => {
 })
 
 describe('protocol version support', () => {
-  test('SUPPORTED_PROTOCOL_VERSIONS contains the targeted revision', () => {
-    expect(SUPPORTED_PROTOCOL_VERSIONS).toContain('2025-11-25')
-  })
-
-  test('isSupportedProtocolVersion gates on the set', () => {
-    expect(isSupportedProtocolVersion('2025-11-25')).toBe(true)
-    expect(isSupportedProtocolVersion('2025-03-26')).toBe(false)
-    expect(isSupportedProtocolVersion('nonsense')).toBe(false)
-  })
-
   test('reserved error-code constants', () => {
     expect(RESOURCE_NOT_FOUND).toBe(-32002)
     expect(URL_ELICITATION_REQUIRED).toBe(-32042)

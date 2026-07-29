@@ -42,7 +42,7 @@ import {
   isSupportedProtocolVersion,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
-  SUPPORTED_PROTOCOL_VERSIONS,
+  PROTOCOL_VERSIONS,
   serverMessage,
 } from '@mokei/context-protocol'
 import {
@@ -81,7 +81,7 @@ const NOTIFICATION_BUFFER_CAP = 256
 export class UnsupportedProtocolVersionError extends Error {
   constructor(received: string) {
     super(
-      `Server responded with unsupported protocolVersion "${received}"; supported: ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}`,
+      `Server responded with unsupported protocolVersion "${received}"; supported: ${PROTOCOL_VERSIONS.join(', ')}`,
     )
     this.name = 'UnsupportedProtocolVersionError'
   }

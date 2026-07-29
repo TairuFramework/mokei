@@ -1,6 +1,6 @@
 import type { FromSchema, Schema } from '@sozai/schema'
 
-export const LATEST_PROTOCOL_VERSION = '2025-11-25'
+export const LATEST_PROTOCOL_VERSION = '2026-07-28'
 export const JSONRPC_VERSION = '2.0'
 
 export const PARSE_ERROR = -32700
@@ -11,13 +11,12 @@ export const INTERNAL_ERROR = -32603
 export const RESOURCE_NOT_FOUND = -32002
 export const URL_ELICITATION_REQUIRED = -32042
 
-// Protocol revisions mokei accepts when negotiating. Strict: the single
-// targeted revision. Widening this is the only change needed to support more.
-export const SUPPORTED_PROTOCOL_VERSIONS = [LATEST_PROTOCOL_VERSION] as const
-
-export function isSupportedProtocolVersion(version: string): boolean {
-  return (SUPPORTED_PROTOCOL_VERSIONS as ReadonlyArray<string>).includes(version)
-}
+// Error codes -32020..-32099 are reserved for the MCP specification
+// (specification/2026-07-28/basic/index#error-codes). -32002 and -32042 are
+// accepted from 2025-11-25 peers but never emitted on 2026-07-28.
+export const HEADER_MISMATCH = -32020
+export const MISSING_REQUIRED_CLIENT_CAPABILITY = -32021
+export const UNSUPPORTED_PROTOCOL_VERSION = -32022
 
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1465
 export const requestId = {
