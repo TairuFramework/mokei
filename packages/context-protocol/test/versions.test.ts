@@ -1,3 +1,4 @@
+import { createValidator } from '@sozai/schema'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -6,6 +7,7 @@ import {
   LATEST_PROTOCOL_VERSION,
   MISSING_REQUIRED_CLIENT_CAPABILITY,
   PROTOCOL_VERSIONS,
+  PROTOCOLS,
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '../src/index.js'
 import { PROTOCOL as PROTOCOL_2026_07_28 } from '../src/versions/2026-07-28.js'
@@ -83,5 +85,74 @@ describe('2026-07-28 envelope', () => {
       version: '1.0.0',
     })
     expect(result.tools).toEqual([])
+  })
+})
+
+describe('protocol records', () => {
+  test('2025-11-25 keeps ping, initialize and logging/setLevel', () => {
+    const protocol = PROTOCOLS['2025-11-25']
+    expect(protocol.requiresHandshake).toBe(true)
+    expect(protocol.requiresRequestMeta).toBe(false)
+    expect(protocol.clientMethods.has('ping')).toBe(true)
+    expect(protocol.clientMethods.has('initialize')).toBe(true)
+    expect(protocol.clientMethods.has('logging/setLevel')).toBe(true)
+    expect(protocol.clientMethods.has('server/discover')).toBe(false)
+    expect(protocol.serverMethods.has('sampling/createMessage')).toBe(true)
+  })
+
+  test('2026-07-28 drops ping, initialize and logging/setLevel, adds server/discover', () => {
+    const protocol = PROTOCOLS['2026-07-28']
+    expect(protocol.requiresHandshake).toBe(false)
+    expect(protocol.requiresRequestMeta).toBe(true)
+    expect(protocol.clientMethods.has('ping')).toBe(false)
+    expect(protocol.clientMethods.has('initialize')).toBe(false)
+    expect(protocol.clientMethods.has('logging/setLevel')).toBe(false)
+    expect(protocol.clientMethods.has('server/discover')).toBe(true)
+    expect(protocol.clientMethods.has('tools/call')).toBe(true)
+    expect(protocol.serverMethods.size).toBe(0)
+  })
+
+  test('2025-11-25 leaves requests and results untouched', () => {
+    const protocol = PROTOCOLS['2025-11-25']
+    const params = { name: 'echo' }
+    expect(protocol.decorateRequest(params, { capabilities: {} })).toEqual(params)
+    expect(protocol.wrapResult({ tools: [] }, { serverInfo: { name: 't', version: '1' } })).toEqual(
+      { tools: [] },
+    )
+    expect(
+      protocol.readRequestMeta({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    ).toEqual({})
+  })
+})
+
+describe('per-version message validation', () => {
+  test('2026-07-28 rejects a request without protocol _meta', () => {
+    const validate = createValidator(PROTOCOLS['2026-07-28'].clientMessage)
+    expect(
+      validate({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }).issues,
+    ).toBeDefined()
+  })
+
+  test('2026-07-28 accepts a request carrying protocol _meta', () => {
+    const validate = createValidator(PROTOCOLS['2026-07-28'].clientMessage)
+    const outcome = validate({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+      params: {
+        _meta: {
+          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
+      },
+    })
+    expect(outcome.issues).toBeUndefined()
+  })
+
+  test('2025-11-25 accepts a request with no protocol _meta', () => {
+    const validate = createValidator(PROTOCOLS['2025-11-25'].clientMessage)
+    expect(
+      validate({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }).issues,
+    ).toBeUndefined()
   })
 })

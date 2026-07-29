@@ -1,3 +1,5 @@
+import { PROTOCOL as PROTOCOL_2025_11_25 } from './2025-11-25.js'
+import { PROTOCOL as PROTOCOL_2026_07_28 } from './2026-07-28.js'
 import type { ProtocolDefinition, ProtocolVersion } from './types.js'
 
 /** Supported revisions, newest first. */
@@ -10,8 +12,10 @@ export function isSupportedProtocolVersion(version: string): version is Protocol
   return (PROTOCOL_VERSIONS as ReadonlyArray<string>).includes(version)
 }
 
-// PROTOCOLS is populated in Task 3, once both version files exist.
-export const PROTOCOLS = {} as Record<ProtocolVersion, ProtocolDefinition>
+export const PROTOCOLS: Record<ProtocolVersion, ProtocolDefinition> = {
+  '2025-11-25': PROTOCOL_2025_11_25,
+  '2026-07-28': PROTOCOL_2026_07_28,
+}
 
 export type {
   ClientRequestContext,

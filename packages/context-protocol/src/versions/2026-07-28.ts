@@ -1,9 +1,19 @@
 import type { FromSchema, Schema } from '@sozai/schema'
 
+import { clientNotification, clientResponse } from '../client.js'
+import { completeRequest } from '../completion.js'
 import { clientCapabilities, implementation, serverCapabilities } from '../initialize.js'
 import { loggingLevel } from '../logging.js'
+import { getPromptRequest, listPromptsRequest } from '../prompt.js'
+import {
+  listResourcesRequest,
+  listResourceTemplatesRequest,
+  readResourceRequest,
+} from '../resource.js'
 import type { Request } from '../rpc.js'
 import { cacheableResult, request, result } from '../rpc.js'
+import { serverNotification, serverResponse } from '../server.js'
+import { callToolRequest, listToolsRequest } from '../tool.js'
 import type {
   ClientRequestContext,
   ProtocolDefinition,
@@ -91,6 +101,30 @@ export const discoverResult = {
 } as const satisfies Schema
 export type DiscoverResult = FromSchema<typeof discoverResult>
 
+/** Requests a client may send in this revision, each carrying the required `_meta`. */
+export const clientRequest = {
+  anyOf: [
+    withProtocolMeta(discoverRequest),
+    withProtocolMeta(completeRequest),
+    withProtocolMeta(getPromptRequest),
+    withProtocolMeta(listPromptsRequest),
+    withProtocolMeta(listResourcesRequest),
+    withProtocolMeta(listResourceTemplatesRequest),
+    withProtocolMeta(readResourceRequest),
+    withProtocolMeta(listToolsRequest),
+    withProtocolMeta(callToolRequest),
+  ],
+} as const satisfies Schema
+
+export const clientMessage = {
+  anyOf: [clientRequest, clientNotification, clientResponse],
+} as const satisfies Schema
+
+/** A server sends no requests in this revision — only notifications and responses. */
+export const serverMessage = {
+  anyOf: [serverNotification, serverResponse],
+} as const satisfies Schema
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value != null && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 }
@@ -99,11 +133,20 @@ export const PROTOCOL = {
   version: PROTOCOL_VERSION,
   requiresHandshake: false,
   requiresRequestMeta: true,
-  // Filled in Task 3, once the per-revision method tables and unions exist.
-  clientMethods: new Set<string>(),
+  clientMethods: new Set([
+    'server/discover',
+    'completion/complete',
+    'prompts/get',
+    'prompts/list',
+    'resources/list',
+    'resources/read',
+    'resources/templates/list',
+    'tools/call',
+    'tools/list',
+  ]),
   serverMethods: new Set<string>(),
-  clientMessage: {} as Schema,
-  serverMessage: {} as Schema,
+  clientMessage,
+  serverMessage,
   decorateRequest: (params: unknown, context: ClientRequestContext): unknown => {
     const base = asRecord(params)
     const meta: Record<string, unknown> = {

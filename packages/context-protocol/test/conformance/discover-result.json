@@ -1,0 +1,39 @@
+{
+  "sep": "SEP-2575 DiscoverResult",
+  "cases": [
+    {
+      "name": "minimal result",
+      "message": {
+        "resultType": "complete",
+        "supportedVersions": ["2026-07-28"],
+        "capabilities": {}
+      },
+      "valid": true
+    },
+    {
+      "name": "full result with identity and caching hints",
+      "message": {
+        "resultType": "complete",
+        "supportedVersions": ["2026-07-28", "2025-11-25"],
+        "capabilities": { "tools": {} },
+        "instructions": "Use the echo tool.",
+        "ttlMs": 3600000,
+        "cacheScope": "public",
+        "_meta": {
+          "io.modelcontextprotocol/serverInfo": { "name": "example", "version": "1.0.0" }
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "missing resultType",
+      "message": { "supportedVersions": [], "capabilities": {} },
+      "valid": false
+    },
+    {
+      "name": "missing supportedVersions",
+      "message": { "resultType": "complete", "capabilities": {} },
+      "valid": false
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "sep": "SEP-2575 request _meta",
+  "cases": [
+    {
+      "name": "protocol version and capabilities present",
+      "message": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {}
+      },
+      "valid": true
+    },
+    {
+      "name": "clientInfo and logLevel are optional extras",
+      "message": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": { "sampling": {} },
+        "io.modelcontextprotocol/clientInfo": { "name": "Mokei", "version": "0.4.0" },
+        "io.modelcontextprotocol/logLevel": "debug"
+      },
+      "valid": true
+    },
+    {
+      "name": "missing protocol version",
+      "message": { "io.modelcontextprotocol/clientCapabilities": {} },
+      "valid": false
+    },
+    {
+      "name": "missing client capabilities",
+      "message": { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+      "valid": false
+    }
+  ]
+}
