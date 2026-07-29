@@ -45,6 +45,7 @@ import {
   outputSchema,
   tool,
 } from '../src/tool.js'
+import { isSupportedProtocolVersion, PROTOCOL_VERSIONS } from '../src/versions/index.js'
 
 describe('Protocol Version and Constants', () => {
   test('should use MCP protocol version 2026-07-28', async () => {
@@ -365,6 +366,16 @@ describe('JSON Schema draft inference', () => {
 })
 
 describe('protocol version support', () => {
+  test('PROTOCOL_VERSIONS contains the targeted revision', () => {
+    expect(PROTOCOL_VERSIONS).toContain('2025-11-25')
+  })
+
+  test('isSupportedProtocolVersion gates on the set', () => {
+    expect(isSupportedProtocolVersion('2025-11-25')).toBe(true)
+    expect(isSupportedProtocolVersion('2025-03-26')).toBe(false)
+    expect(isSupportedProtocolVersion('nonsense')).toBe(false)
+  })
+
   test('reserved error-code constants', () => {
     expect(RESOURCE_NOT_FOUND).toBe(-32002)
     expect(URL_ELICITATION_REQUIRED).toBe(-32042)
