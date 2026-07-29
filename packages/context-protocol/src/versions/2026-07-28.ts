@@ -1,19 +1,27 @@
 import type { FromSchema, Schema } from '@sozai/schema'
 
-import { clientNotification, clientResponse } from '../client.js'
+import { clientResponse } from '../client.js'
 import { completeRequest } from '../completion.js'
 import { clientCapabilities, implementation, serverCapabilities } from '../initialize.js'
-import { loggingLevel } from '../logging.js'
-import { getPromptRequest, listPromptsRequest } from '../prompt.js'
+import { loggingLevel, loggingMessageNotification } from '../logging.js'
+import { getPromptRequest, listPromptsRequest, promptListChangedNotification } from '../prompt.js'
 import {
   listResourcesRequest,
   listResourceTemplatesRequest,
   readResourceRequest,
+  resourceListChangedNotification,
+  resourceUpdatedNotification,
 } from '../resource.js'
 import type { Request } from '../rpc.js'
-import { cacheableResult, request, result } from '../rpc.js'
-import { serverNotification, serverResponse } from '../server.js'
-import { callToolRequest, listToolsRequest } from '../tool.js'
+import {
+  cacheableResult,
+  cancelledNotification,
+  progressNotification,
+  request,
+  result,
+} from '../rpc.js'
+import { serverResponse } from '../server.js'
+import { callToolRequest, listToolsRequest, toolListChangedNotification } from '../tool.js'
 import type {
   ClientRequestContext,
   ProtocolDefinition,
@@ -116,8 +124,37 @@ export const clientRequest = {
   ],
 } as const satisfies Schema
 
+/**
+ * Notifications a client may send in this revision. `2025-11-25`'s `initialized` and
+ * `roots/list_changed` are excluded: the former only means something as part of the
+ * handshake this revision drops (`requiresHandshake: false`), and the latter only means
+ * something if a server can ask for the roots list back, which no `2026-07-28` server can
+ * (`serverMethods` carries no `roots/list`).
+ */
+export const clientNotification = {
+  anyOf: [cancelledNotification, progressNotification],
+} as const satisfies Schema
+
 export const clientMessage = {
   anyOf: [clientRequest, clientNotification, clientResponse],
+} as const satisfies Schema
+
+/**
+ * Notifications a server may send in this revision. `2025-11-25`'s
+ * `elicitation/complete` is excluded: it only means something as the tail end of an
+ * `elicitation/create` request, which no `2026-07-28` server can send (`serverMethods` is
+ * empty).
+ */
+export const serverNotification = {
+  anyOf: [
+    cancelledNotification,
+    loggingMessageNotification,
+    progressNotification,
+    resourceUpdatedNotification,
+    resourceListChangedNotification,
+    toolListChangedNotification,
+    promptListChangedNotification,
+  ],
 } as const satisfies Schema
 
 /** A server sends no requests in this revision — only notifications and responses. */

@@ -155,4 +155,65 @@ describe('per-version message validation', () => {
       validate({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }).issues,
     ).toBeUndefined()
   })
+
+  test('2026-07-28 rejects notifications/initialized', () => {
+    const validate = createValidator(PROTOCOLS['2026-07-28'].clientMessage)
+    expect(validate({ jsonrpc: '2.0', method: 'notifications/initialized' }).issues).toBeDefined()
+  })
+
+  test('2026-07-28 rejects notifications/roots/list_changed', () => {
+    const validate = createValidator(PROTOCOLS['2026-07-28'].clientMessage)
+    expect(
+      validate({ jsonrpc: '2.0', method: 'notifications/roots/list_changed' }).issues,
+    ).toBeDefined()
+  })
+
+  test('2026-07-28 still accepts notifications/cancelled', () => {
+    const validate = createValidator(PROTOCOLS['2026-07-28'].clientMessage)
+    expect(
+      validate({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } })
+        .issues,
+    ).toBeUndefined()
+  })
+
+  test('2025-11-25 still accepts notifications/initialized and notifications/roots/list_changed', () => {
+    const validate = createValidator(PROTOCOLS['2025-11-25'].clientMessage)
+    expect(validate({ jsonrpc: '2.0', method: 'notifications/initialized' }).issues).toBeUndefined()
+    expect(
+      validate({ jsonrpc: '2.0', method: 'notifications/roots/list_changed' }).issues,
+    ).toBeUndefined()
+  })
+
+  test('2026-07-28 rejects notifications/elicitation/complete', () => {
+    const validate = createValidator(PROTOCOLS['2026-07-28'].serverMessage)
+    expect(
+      validate({
+        jsonrpc: '2.0',
+        method: 'notifications/elicitation/complete',
+        params: { elicitationId: 'abc' },
+      }).issues,
+    ).toBeDefined()
+  })
+
+  test('2026-07-28 still accepts notifications/message', () => {
+    const validate = createValidator(PROTOCOLS['2026-07-28'].serverMessage)
+    expect(
+      validate({
+        jsonrpc: '2.0',
+        method: 'notifications/message',
+        params: { level: 'info', data: 'hi' },
+      }).issues,
+    ).toBeUndefined()
+  })
+
+  test('2025-11-25 still accepts notifications/elicitation/complete', () => {
+    const validate = createValidator(PROTOCOLS['2025-11-25'].serverMessage)
+    expect(
+      validate({
+        jsonrpc: '2.0',
+        method: 'notifications/elicitation/complete',
+        params: { elicitationId: 'abc' },
+      }).issues,
+    ).toBeUndefined()
+  })
 })
