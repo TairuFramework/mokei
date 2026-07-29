@@ -205,11 +205,6 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       return null
     }
 
-    if (validated.value.method === 'ping') {
-      // Handle ping request
-      return { jsonrpc: '2.0', id, result: {} }
-    }
-
     // Message is a request
     const controller = new AbortController()
     this.#receivedRequests[id] = controller
