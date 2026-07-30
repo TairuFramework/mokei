@@ -1085,6 +1085,14 @@ const echoToolInfo = {
   inputSchema: { type: 'object' },
 }
 
+const greetPrompt = createPrompt({
+  description: 'Greets the caller',
+  argumentsSchema: { type: 'object' },
+  handler: () => ({
+    messages: [{ role: 'assistant', content: { type: 'text', text: 'hi' } }],
+  }),
+})
+
 describe('protocol version resolution', () => {
   test('answers ping on 2025-11-25 and rejects it on 2026-07-28', async () => {
     await expectServerResult({ protocolVersions: ['2025-11-25'] }, { method: 'ping' }, {})
@@ -1171,6 +1179,8 @@ describe('server/discover', () => {
         resultType: 'complete',
         supportedVersions: ['2026-07-28', '2025-11-25'],
         capabilities: { logging: {}, tools: { listChanged: true } },
+        ttlMs: 0,
+        cacheScope: 'private',
         _meta: {
           'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' },
         },
@@ -1184,6 +1194,88 @@ describe('server/discover', () => {
       { method: 'tools/list' },
       { tools: [{ name: 'echo', ...echoToolInfo }] },
     )
+  })
+})
+
+describe('mandatory caching hints (2026-07-28)', () => {
+  const cacheableConfig: TestContextParams = {
+    protocolVersions: ['2026-07-28'],
+    tools: { echo: echoTool },
+    prompts: { greet: greetPrompt },
+    resources: {
+      list: [{ uri: 'test://greeting', name: 'greeting' }],
+      read: () => ({ contents: [{ uri: 'test://greeting', text: 'hi' }] }),
+    },
+  }
+
+  test('2026-07-28 emits caching hints on every cacheable list-shaped method', async () => {
+    for (const method of [
+      'server/discover',
+      'tools/list',
+      'prompts/list',
+      'resources/list',
+      'resources/templates/list',
+    ]) {
+      const { transports } = createTestContext(cacheableConfig)
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method,
+        params: { _meta: NEW_META },
+      } as ClientRequest)
+      const response = await transports.client.read()
+      const result = (response.value as { result: Record<string, unknown> }).result
+      expect(result.ttlMs, method).toBe(0)
+      expect(result.cacheScope, method).toBe('private')
+      await transports.dispose()
+    }
+  })
+
+  test('2026-07-28 emits caching hints on resources/read', async () => {
+    const { transports } = createTestContext(cacheableConfig)
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'resources/read',
+      params: { uri: 'test://greeting', _meta: NEW_META },
+    } as ClientRequest)
+    const response = await transports.client.read()
+    const result = (response.value as { result: Record<string, unknown> }).result
+    expect(result.ttlMs).toBe(0)
+    expect(result.cacheScope).toBe('private')
+    expect(result.contents).toEqual([{ uri: 'test://greeting', text: 'hi' }])
+    await transports.dispose()
+  })
+
+  test('2026-07-28 honors configured cache hints', async () => {
+    const { transports } = createTestContext({
+      ...cacheableConfig,
+      cache: { ttlMs: 300_000, cacheScope: 'public' },
+    })
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+      params: { _meta: NEW_META },
+    } as ClientRequest)
+    const response = await transports.client.read()
+    const result = (response.value as { result: Record<string, unknown> }).result
+    expect(result.ttlMs).toBe(300_000)
+    expect(result.cacheScope).toBe('public')
+    await transports.dispose()
+  })
+
+  test('2025-11-25 emits caching hints only when configured', async () => {
+    const { transports } = createTestContext({
+      ...cacheableConfig,
+      protocolVersions: ['2025-11-25'],
+    })
+    transports.client.write({ jsonrpc: '2.0', id: 1, method: 'resources/list' } as ClientRequest)
+    const response = await transports.client.read()
+    const result = (response.value as { result: Record<string, unknown> }).result
+    expect(result.ttlMs).toBeUndefined()
+    expect(result.cacheScope).toBeUndefined()
+    await transports.dispose()
   })
 })
 

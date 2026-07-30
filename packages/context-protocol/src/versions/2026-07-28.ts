@@ -173,6 +173,7 @@ export const PROTOCOL = {
   version: PROTOCOL_VERSION,
   requiresHandshake: false,
   requiresRequestMeta: true,
+  requiresCacheHints: true,
   clientMethods: new Set([
     'server/discover',
     'completion/complete',

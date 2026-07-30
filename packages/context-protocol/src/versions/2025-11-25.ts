@@ -78,6 +78,7 @@ export const PROTOCOL = {
   version: PROTOCOL_VERSION,
   requiresHandshake: true,
   requiresRequestMeta: false,
+  requiresCacheHints: false,
   clientMethods: new Set([
     'ping',
     'initialize',

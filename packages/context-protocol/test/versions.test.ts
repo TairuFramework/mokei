@@ -93,6 +93,7 @@ describe('protocol records', () => {
     const protocol = PROTOCOLS['2025-11-25']
     expect(protocol.requiresHandshake).toBe(true)
     expect(protocol.requiresRequestMeta).toBe(false)
+    expect(protocol.requiresCacheHints).toBe(false)
     expect(protocol.clientMethods.has('ping')).toBe(true)
     expect(protocol.clientMethods.has('initialize')).toBe(true)
     expect(protocol.clientMethods.has('logging/setLevel')).toBe(true)
@@ -104,6 +105,7 @@ describe('protocol records', () => {
     const protocol = PROTOCOLS['2026-07-28']
     expect(protocol.requiresHandshake).toBe(false)
     expect(protocol.requiresRequestMeta).toBe(true)
+    expect(protocol.requiresCacheHints).toBe(true)
     expect(protocol.clientMethods.has('ping')).toBe(false)
     expect(protocol.clientMethods.has('initialize')).toBe(false)
     expect(protocol.clientMethods.has('logging/setLevel')).toBe(false)

@@ -46,6 +46,7 @@ import {
 } from '@mokei/context-rpc'
 import { createValidator, type Schema } from '@sozai/schema'
 
+import { applyCacheHints } from './cache.js'
 import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
 import { buildDiscoverResult } from './discover.js'
 import { withRequestMeta } from './trace.js'
@@ -303,9 +304,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const result = await withRequestMeta(meta, () =>
       this.#dispatchRequest(request, protocol, signal),
     )
-    return protocol.wrapResult(result as Record<string, unknown>, {
-      serverInfo: this.#serverInfo,
-    }) as ServerResult
+    const body = protocol.requiresCacheHints
+      ? applyCacheHints(request.method, result as Record<string, unknown>, this.#cache)
+      : (result as Record<string, unknown>)
+    return protocol.wrapResult(body, { serverInfo: this.#serverInfo }) as ServerResult
   }
 
   async #dispatchRequest(

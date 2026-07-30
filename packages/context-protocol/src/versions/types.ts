@@ -32,6 +32,8 @@ export type ProtocolDefinition = {
   requiresHandshake: boolean
   /** True when every request must carry protocol version and client capabilities in `_meta`. */
   requiresRequestMeta: boolean
+  /** True when `complete` results of cacheable methods must carry `ttlMs`/`cacheScope`. */
+  requiresCacheHints: boolean
   /** Methods a client may send in this revision. */
   clientMethods: ReadonlySet<string>
   /** Methods a server may send in this revision. */
