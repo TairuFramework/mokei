@@ -50,6 +50,7 @@ export function createMokeiConfig(): ServerConfig {
   return {
     name: SERVER_NAME,
     version: SERVER_VERSION,
+    protocolVersions: ['2025-11-25'],
     tools: {
       echo: createTool({
         description: 'Echo the provided text',

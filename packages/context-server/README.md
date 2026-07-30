@@ -14,6 +14,7 @@ import { createTool, serveProcess } from '@mokei/context-server'
 serveProcess({
   name: 'my-server',
   version: '1.0.0',
+  protocolVersions: ['2025-11-25'],
   tools: {
     greet: createTool({
       description: 'Greet a user by name',
@@ -96,6 +97,7 @@ const tools = {
 export const config = {
   name: 'my-server',
   version: '1.0.0',
+  protocolVersions: ['2025-11-25'],
   tools
 } satisfies ServerConfig
 

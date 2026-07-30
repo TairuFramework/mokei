@@ -4,7 +4,6 @@
  */
 import type { Client } from '@modelcontextprotocol/client'
 import type { ContextClient } from '@mokei/context-client'
-import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { expect } from 'vitest'
 
 import {
@@ -19,7 +18,7 @@ import {
 export async function checkMokeiClient(client: ContextClient): Promise<void> {
   const initResult = await client.initialize()
   expect(initResult.serverInfo).toMatchObject({ name: SERVER_NAME, version: SERVER_VERSION })
-  expect(initResult.protocolVersion).toBe(LATEST_PROTOCOL_VERSION)
+  expect(initResult.protocolVersion).toBe('2025-11-25')
 
   const { tools } = await client.listTools()
   expect(tools.map((tool) => tool.name).sort()).toEqual(['echo', 'sum'])
@@ -55,7 +54,7 @@ export async function checkSDKClient(client: Client): Promise<void> {
     name: SERVER_NAME,
     version: SERVER_VERSION,
   })
-  expect(client.getNegotiatedProtocolVersion()).toBe(LATEST_PROTOCOL_VERSION)
+  expect(client.getNegotiatedProtocolVersion()).toBe('2025-11-25')
 
   const { tools } = await client.listTools()
   expect(tools.map((tool) => tool.name).sort()).toEqual(['echo', 'sum'])

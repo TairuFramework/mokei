@@ -92,6 +92,7 @@ export function createSQLiteConfig(db: DatabaseSync) {
   return {
     name: 'sqlite',
     version: '0.1.0',
+    protocolVersions: ['2025-11-25'],
     tools: createSQLiteTools(db),
   } satisfies ServerConfig
 }

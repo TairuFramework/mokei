@@ -118,6 +118,7 @@ describe('ContextServer – inbound trace propagation', () => {
       name: 'test',
       version: '0.0.0',
       transport: transports.server,
+      protocolVersions: ['2025-11-25'],
       tools: {
         probe: createTool({
           description: 'probe context',

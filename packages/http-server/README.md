@@ -26,7 +26,13 @@ const { server, dispose } = serveHTTP({
   hostname: '127.0.0.1',
   path: '/mcp',
   createServer: (transport) =>
-    new ContextServer({ transport, name: 'my-server', version: '1.0.0', tools }),
+    new ContextServer({
+      transport,
+      name: 'my-server',
+      version: '1.0.0',
+      protocolVersions: ['2025-11-25'],
+      tools,
+    }),
 })
 
 // Later, to shut down:
@@ -41,7 +47,13 @@ import { createHTTPHandler } from '@mokei/http-server'
 
 const handler = createHTTPHandler({
   createServer: (transport) =>
-    new ContextServer({ transport, name: 'my-server', version: '1.0.0', tools }),
+    new ContextServer({
+      transport,
+      name: 'my-server',
+      version: '1.0.0',
+      protocolVersions: ['2025-11-25'],
+      tools,
+    }),
   allowedOrigins: ['https://app.example.com'],
 })
 

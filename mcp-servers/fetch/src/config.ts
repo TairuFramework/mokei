@@ -97,6 +97,7 @@ export function createFetchConfig(options: FetchToolsOptions = {}) {
   return {
     name: 'fetch',
     version: '0.1.0',
+    protocolVersions: ['2025-11-25'],
     tools: createFetchTools(options),
   } as const satisfies ServerConfig
 }

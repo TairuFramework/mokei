@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 const SERVER_CONFIG: ServerConfig = {
   name: 'integration-test',
   version: '1.0.0',
+  protocolVersions: ['2025-11-25'],
   tools: {
     echo: {
       description: 'Echo input',

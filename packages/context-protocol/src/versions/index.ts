@@ -1,6 +1,12 @@
 import { PROTOCOL as PROTOCOL_2025_11_25 } from './2025-11-25.js'
-import { PROTOCOL as PROTOCOL_2026_07_28 } from './2026-07-28.js'
+import {
+  META_CLIENT_CAPABILITIES,
+  META_PROTOCOL_VERSION,
+  PROTOCOL as PROTOCOL_2026_07_28,
+} from './2026-07-28.js'
 import type { ProtocolDefinition, ProtocolVersion } from './types.js'
+
+export { META_CLIENT_CAPABILITIES, META_PROTOCOL_VERSION }
 
 /** Supported revisions, newest first. */
 export const PROTOCOL_VERSIONS = [

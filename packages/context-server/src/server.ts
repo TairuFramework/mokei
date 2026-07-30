@@ -20,6 +20,8 @@ import type {
   LoggingLevel,
   ProgressNotification,
   Prompt,
+  ProtocolDefinition,
+  ProtocolVersion,
   ServerCapabilities,
   ServerMessage,
   ServerNotifications,
@@ -28,10 +30,13 @@ import type {
   Tool,
 } from '@mokei/context-protocol'
 import {
-  clientMessage,
   INVALID_PARAMS,
-  LATEST_PROTOCOL_VERSION,
+  META_CLIENT_CAPABILITIES,
+  META_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
+  PROTOCOL_VERSIONS,
+  PROTOCOLS,
+  UNSUPPORTED_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
 import {
   ContextRPC,
@@ -39,7 +44,7 @@ import {
   splitRequestOptions,
   type WithRequestOptions,
 } from '@mokei/context-rpc'
-import { createValidator } from '@sozai/schema'
+import { createValidator, type Schema } from '@sozai/schema'
 
 import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
 import { withRequestMeta } from './trace.js'
@@ -69,7 +74,16 @@ const LOGGING_LEVELS: Record<LoggingLevel, number> = {
   debug: 7,
 } as const
 
-const validateClientMessage = createValidator(clientMessage)
+/**
+ * Accepts any message shape known to any registered revision, not just the revisions this
+ * instance is configured to serve: an unsupported-but-well-formed request (e.g. a `ping` on a
+ * `2026-07-28`-only server) must fail with `METHOD_NOT_FOUND`/`UNSUPPORTED_PROTOCOL_VERSION`
+ * from `#resolveProtocol` — a semantic decision — rather than `INVALID_REQUEST` from the wire
+ * parser, which cannot tell "malformed" from "not what this server was configured to speak."
+ */
+const validateClientMessage = createValidator<Schema, ClientMessage>({
+  anyOf: PROTOCOL_VERSIONS.map((version) => PROTOCOLS[version].clientMessage),
+} as Schema)
 
 export type CacheHints = {
   cacheScope?: 'public' | 'private'
@@ -79,6 +93,8 @@ export type CacheHints = {
 export type ServerConfig = {
   name: string
   version: string
+  /** Revisions this server serves. Listing both makes it serve both. */
+  protocolVersions: Array<ProtocolVersion>
   cache?: CacheHints
   complete?: CompleteHandler
   prompts?: PromptDefinitions
@@ -116,6 +132,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #clientInitialize?: ClientInitialize
   #clientLoggingLevel?: LoggingLevel
   #completeHandler?: CompleteHandler
+  #protocolVersions: Array<ProtocolVersion>
   #serverInfo: Implementation
   #promptHandlers: Record<string, GenericPromptHandler> = {}
   #promptsList: Array<Prompt> = []
@@ -134,6 +151,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     this.#cache = params.cache
     this.#completeHandler = params.complete
+    this.#protocolVersions = params.protocolVersions
     this.#serverInfo = { name: params.name, version: params.version }
 
     // Logging is always supported (the server can emit notifications/message).
@@ -217,14 +235,83 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
   }
 
-  async _handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
+  /**
+   * Resolves the protocol revision that applies to an inbound request.
+   *
+   * An `initialize` request selects the handshake revision configured on this server;
+   * anything else is resolved from the request's own `_meta`
+   * (specification/2026-07-28/basic/versioning). When `_meta` carries no protocol version,
+   * resolution falls back to the one configured revision that does not require it
+   * (`2025-11-25`) — a revision that requires `_meta` can never be inferred silently.
+   */
+  #resolveProtocol(request: ClientRequest): ProtocolDefinition {
+    if (request.method === 'initialize') {
+      const handshake = this.#protocolVersions.find(
+        (version) => PROTOCOLS[version].requiresHandshake,
+      )
+      if (handshake == null) {
+        throw new RPCError(
+          UNSUPPORTED_PROTOCOL_VERSION,
+          `This server supports ${this.#protocolVersions.join(', ')}`,
+          { supported: this.#protocolVersions, requested: 'initialize' },
+        )
+      }
+      return PROTOCOLS[handshake]
+    }
+
     const meta = (request.params as Record<string, unknown> | undefined)?._meta as
       | Record<string, unknown>
       | undefined
-    return withRequestMeta(meta, () => this.#dispatchRequest(request, signal))
+    const requested = meta?.[META_PROTOCOL_VERSION] as string | undefined
+
+    let protocol: ProtocolDefinition
+    if (requested == null) {
+      const fallback = this.#protocolVersions.find(
+        (version) => !PROTOCOLS[version].requiresRequestMeta,
+      )
+      if (fallback == null) {
+        throw new RPCError(INVALID_PARAMS, `Missing "${META_PROTOCOL_VERSION}" in request _meta`)
+      }
+      protocol = PROTOCOLS[fallback]
+    } else if (!this.#protocolVersions.includes(requested as ProtocolVersion)) {
+      throw new RPCError(UNSUPPORTED_PROTOCOL_VERSION, 'Unsupported protocol version', {
+        supported: this.#protocolVersions,
+        requested,
+      })
+    } else {
+      protocol = PROTOCOLS[requested as ProtocolVersion]
+    }
+
+    if (protocol.requiresRequestMeta && meta?.[META_CLIENT_CAPABILITIES] == null) {
+      throw new RPCError(INVALID_PARAMS, `Missing "${META_CLIENT_CAPABILITIES}" in request _meta`)
+    }
+    return protocol
   }
 
-  async #dispatchRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
+  async _handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
+    const protocol = this.#resolveProtocol(request)
+    if (!protocol.clientMethods.has(request.method)) {
+      throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
+    }
+    if (request.method === 'ping') {
+      return {}
+    }
+    const meta = (request.params as Record<string, unknown> | undefined)?._meta as
+      | Record<string, unknown>
+      | undefined
+    const result = await withRequestMeta(meta, () =>
+      this.#dispatchRequest(request, protocol, signal),
+    )
+    return protocol.wrapResult(result as Record<string, unknown>, {
+      serverInfo: this.#serverInfo,
+    }) as ServerResult
+  }
+
+  async #dispatchRequest(
+    request: ClientRequest,
+    protocol: ProtocolDefinition,
+    signal: AbortSignal,
+  ): Promise<ServerResult> {
     switch (request.method) {
       case 'completion/complete':
         if (this.#completeHandler == null) {
@@ -236,7 +323,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         this.events.emit('initialize', request.params)
         return {
           capabilities: this.#capabilities,
-          protocolVersion: LATEST_PROTOCOL_VERSION,
+          protocolVersion: protocol.version,
           serverInfo: this.#serverInfo,
         } satisfies InitializeResult
       case 'logging/setLevel':

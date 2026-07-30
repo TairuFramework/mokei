@@ -128,6 +128,8 @@ export {
 export {
   type ClientRequestContext,
   isSupportedProtocolVersion,
+  META_CLIENT_CAPABILITIES,
+  META_PROTOCOL_VERSION,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
   type ProtocolDefinition,
