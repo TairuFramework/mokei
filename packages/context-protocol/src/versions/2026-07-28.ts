@@ -174,10 +174,6 @@ export const PROTOCOL = {
   requiresHandshake: false,
   requiresRequestMeta: true,
   requiresCacheHints: true,
-  // `serverMethods` below is empty: no server-initiated request survives in this revision, so
-  // client-capability calls (`createMessage`/`elicit`/`listRoots`) have nothing to send over —
-  // they are replaced by MRTR (SEP-2322), which mokei does not implement yet.
-  requiresMRTR: true,
   // `logging/setLevel` is absent from `clientMethods` below: there is no session-level opt-in
   // left, so log level travels per request in `_meta` instead (`readRequestMeta().logLevel`).
   requiresPerRequestLogLevel: true,

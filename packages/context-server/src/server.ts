@@ -294,32 +294,43 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   /**
    * Builds the `ServerClient` a request's handlers see.
    *
-   * `2025-11-25` gets the constructor-built, session-scoped `#client` back unchanged: its
-   * `createMessage`/`elicit`/`listRoots` really send server-initiated requests, and its `log`
-   * goes through the `events.on('log')` bridge gated by `#clientLoggingLevel`
-   * (`logging/setLevel`).
+   * `createMessage`/`elicit`/`listRoots` are gated individually on whether their own method
+   * (`sampling/createMessage`/`elicitation/create`/`roots/list`) is in `protocol.serverMethods`
+   * — the method the call would actually need to send. A revision missing one rejects it with
+   * `MRTRNotSupportedError`: there is nothing on the wire to send it as, since server-initiated
+   * requests are replaced by multi round-trip requests (MRTR, SEP-2322) in that revision, which
+   * mokei does not implement yet. `log` is gated on the independent
+   * `requiresPerRequestLogLevel`: when true it scopes emission to the level this request opted
+   * into via `_meta`, instead of a standing session level.
    *
-   * A revision that sets `requiresMRTR` or `requiresPerRequestLogLevel` gets a fresh client
-   * instead, built per request so it can close over that request's resolved `logLevel`. The two
-   * traits are independent: `requiresMRTR` alone swaps out `createMessage`/`elicit`/`listRoots`
-   * for rejections (there is nothing to send them as — no server-initiated request survives in
-   * such a revision); `requiresPerRequestLogLevel` alone changes what `log` does, scoping
-   * emission to the level this request opted into instead of a standing session level.
+   * `2025-11-25` has all three methods in `serverMethods` and `requiresPerRequestLogLevel:
+   * false`, so this returns the constructor-built, session-scoped `#client` unchanged — its
+   * `log` still goes through the `events.on('log')` bridge gated by `#clientLoggingLevel`
+   * (`logging/setLevel`). Any other combination builds a fresh client per request, so it can
+   * close over the request's resolved `logLevel`.
    */
   #createClient(protocol: ProtocolDefinition, logLevel?: LoggingLevel): ServerClient {
-    if (!protocol.requiresMRTR && !protocol.requiresPerRequestLogLevel) {
+    const supportsCreateMessage = protocol.serverMethods.has('sampling/createMessage')
+    const supportsElicit = protocol.serverMethods.has('elicitation/create')
+    const supportsListRoots = protocol.serverMethods.has('roots/list')
+    if (
+      supportsCreateMessage &&
+      supportsElicit &&
+      supportsListRoots &&
+      !protocol.requiresPerRequestLogLevel
+    ) {
       return this.#client
     }
     return {
-      createMessage: protocol.requiresMRTR
-        ? () => Promise.reject(new MRTRNotSupportedError('createMessage'))
-        : this.createMessage.bind(this),
-      elicit: protocol.requiresMRTR
-        ? () => Promise.reject(new MRTRNotSupportedError('elicit'))
-        : this.elicit.bind(this),
-      listRoots: protocol.requiresMRTR
-        ? () => Promise.reject(new MRTRNotSupportedError('listRoots'))
-        : this.listRoots.bind(this),
+      createMessage: supportsCreateMessage
+        ? this.createMessage.bind(this)
+        : () => Promise.reject(new MRTRNotSupportedError('createMessage')),
+      elicit: supportsElicit
+        ? this.elicit.bind(this)
+        : () => Promise.reject(new MRTRNotSupportedError('elicit')),
+      listRoots: supportsListRoots
+        ? this.listRoots.bind(this)
+        : () => Promise.reject(new MRTRNotSupportedError('listRoots')),
       log: protocol.requiresPerRequestLogLevel
         ? (params: LogParams) => {
             // Emit only when this request opted in via `_meta`, at or above its level.

@@ -1246,6 +1246,13 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
     const notified = await transports.client.read()
     expect((notified.value as { method: string }).method).toBe('notifications/message')
 
+    // The tool call itself still completes normally after the notification.
+    const completed = await transports.client.read()
+    expect(completed.value).toMatchObject({
+      id: 2,
+      result: { content: [{ type: 'text', text: 'ok' }] },
+    })
+
     await transports.dispose()
   })
 
