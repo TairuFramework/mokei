@@ -334,7 +334,8 @@ export class ContextClient<
   // notification, so a connection-lifetime snapshot is sound for gating even though it ignores
   // `discover()`'s own `ttlMs`. Distinct from `#discovered`, which still honors `ttlMs` for
   // callers who explicitly want a fresh answer from `discover()` itself. Do not merge these two
-  // caches back together — that reintroduces the bug this split fixes (see `#resetDiscovery`).
+  // caches back together — that reintroduces the bug this split fixes. Whatever clears one must
+  // clear the other, so neither outlives the connection state that produced it.
   #serverCapabilitySnapshot: ServerCapabilities | null = null
   #setupTimeout: number
   #toolOutputSchemas = new Map<string, Validator<unknown>>()
@@ -605,16 +606,6 @@ export class ContextClient<
     if (this.#serverCapabilities[capability] == null) {
       throw new CapabilityNotDeclaredError(capability)
     }
-  }
-
-  // Clears both discovery caches together so neither can outlive the connection state that
-  // produced it. No call site yet in this task: Task 11's 'auto' probe fallback (falling back
-  // from 2026-07-28 to 2025-11-25) must call this, or a capability snapshot taken from the
-  // failed 2026-07-28 probe could survive into the 2025-11-25 connection.
-  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: wired up by Task 11's probe fallback
-  #resetDiscovery(): void {
-    this.#discovered = null
-    this.#serverCapabilitySnapshot = null
   }
 
   // Guard: throws when the server did not declare the given capability, reading from whichever
