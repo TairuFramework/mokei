@@ -36,6 +36,7 @@ import type {
   ReadResourceResult,
   Result,
   Root,
+  ServerCapabilities,
   ServerMessage,
   ServerNotification,
   ServerRequest,
@@ -103,17 +104,18 @@ export class CapabilityNotDeclaredError extends Error {
 }
 
 /**
- * Thrown by `setLoggingLevel()` on a protocol revision whose `clientMethods` carries no
- * `logging/setLevel` — derived from that table, not a version literal, so this fires exactly
- * when the method itself is gone. `2026-07-28` removes the session-level opt-in: the log
- * level travels per request instead, via `_meta` (see `ClientParams.logLevel`).
+ * Thrown when a method is absent from a protocol revision's method table — derived from that
+ * table, not a version literal, so this fires exactly when the method itself is gone (as
+ * opposed to, say, a rejected parameter value). Currently only `setLoggingLevel()` uses this,
+ * for `logging/setLevel` on `2026-07-28`: that revision removes the session-level opt-in, and
+ * the log level travels per request instead, via `_meta` (see `ClientParams.logLevel`).
  */
-export class LoggingLevelNotSupportedError extends Error {
-  constructor(version: ProtocolVersion) {
+export class MethodNotInRevisionError extends Error {
+  constructor(method: string, version: ProtocolVersion) {
     super(
-      `logging/setLevel does not exist in protocol version ${version}: the log level travels per request via _meta instead (see ClientParams.logLevel)`,
+      `${method} does not exist in protocol version ${version}: the log level travels per request via _meta instead (see ClientParams.logLevel)`,
     )
-    this.name = 'LoggingLevelNotSupportedError'
+    this.name = 'MethodNotInRevisionError'
   }
 }
 
@@ -325,6 +327,15 @@ export class ContextClient<
   #reading = false
   #ready: PromiseLike<void>
   #serverCapabilities: InitializeResult['capabilities'] = {}
+  // Session-lifetime snapshot of the discovered server capabilities, used only for gating on a
+  // revision without a handshake (`requiresHandshake: false`). Populated once by
+  // `#requireServerCapabilityAsync` and never re-fetched afterward: without a handshake, a live
+  // connection's *declared* capabilities cannot change except via a `*_list_changed`
+  // notification, so a connection-lifetime snapshot is sound for gating even though it ignores
+  // `discover()`'s own `ttlMs`. Distinct from `#discovered`, which still honors `ttlMs` for
+  // callers who explicitly want a fresh answer from `discover()` itself. Do not merge these two
+  // caches back together — that reintroduces the bug this split fixes (see `#resetDiscovery`).
+  #serverCapabilitySnapshot: ServerCapabilities | null = null
   #setupTimeout: number
   #toolOutputSchemas = new Map<string, Validator<unknown>>()
 
@@ -587,23 +598,50 @@ export class ContextClient<
 
   // Guard: throws synchronously when the server did not declare the given capability.
   // Only meaningful after initialize() completes; #serverCapabilities is {} until then.
-  #requireServerCapability(capability: 'tools' | 'logging' | 'completions'): void {
+  // Narrowed to 'logging': the handshake-only gate, still reading #serverCapabilities directly.
+  // 'tools' and 'completions' route through #requireServerCapabilityAsync instead, which reads
+  // the discover-backed snapshot on a revision without a handshake.
+  #requireServerCapability(capability: 'logging'): void {
     if (this.#serverCapabilities[capability] == null) {
       throw new CapabilityNotDeclaredError(capability)
     }
   }
 
+  // Clears both discovery caches together so neither can outlive the connection state that
+  // produced it. No call site yet in this task: Task 11's 'auto' probe fallback (falling back
+  // from 2026-07-28 to 2025-11-25) must call this, or a capability snapshot taken from the
+  // failed 2026-07-28 probe could survive into the 2025-11-25 connection.
+  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: wired up by Task 11's probe fallback
+  #resetDiscovery(): void {
+    this.#discovered = null
+    this.#serverCapabilitySnapshot = null
+  }
+
   // Guard: throws when the server did not declare the given capability, reading from whichever
   // source this revision actually populates. `2025-11-25` has a handshake, so `#serverCapabilities`
-  // is authoritative; `2026-07-28` has none, so the only way to learn what the server supports is
-  // `discover()`, which this awaits (and which caches per its own `ttlMs`).
+  // is authoritative. `2026-07-28` has none, so the only way to learn what the server supports is
+  // `discover()` — but calling `discover()` on every gated call would mean sending
+  // `server/discover` before every `tools/list`/`completion/complete` forever (an unconfigured
+  // server's `ttlMs` defaults to 0, so `discover()`'s own cache never hits). Since a revision
+  // without a handshake also has no way for a live connection's declared capabilities to change
+  // except via a `*_list_changed` notification, it's sound to call `discover()` at most once per
+  // connection here and snapshot the result for the connection's lifetime, independent of
+  // `discover()`'s `ttlMs`-governed cache.
   async #requireServerCapabilityAsync(
-    capability: 'tools' | 'logging' | 'completions',
+    capability: 'tools' | 'completions',
+    options?: RequestOptions,
   ): Promise<void> {
     const protocol = this.#requireProtocol()
-    const capabilities = protocol.requiresHandshake
-      ? this.#serverCapabilities
-      : (await this.discover()).capabilities
+    let capabilities: ServerCapabilities
+    if (protocol.requiresHandshake) {
+      capabilities = this.#serverCapabilities
+    } else {
+      if (this.#serverCapabilitySnapshot == null) {
+        const result = await this.discover(options)
+        this.#serverCapabilitySnapshot = result.capabilities
+      }
+      capabilities = this.#serverCapabilitySnapshot
+    }
     if (capabilities[capability] == null) {
       throw new CapabilityNotDeclaredError(capability)
     }
@@ -633,10 +671,16 @@ export class ContextClient<
    * Queries a server's supported protocol versions, capabilities and identity — the
    * `2026-07-28` replacement for the `initialize` handshake. Result is cached per the
    * server's own `ttlMs`; concurrent callers while a request is in flight collapse onto it.
+   * `cacheScope` is read implicitly, not explicitly: this cache lives on one client instance,
+   * so it is inherently private, and `'private'` is honored by construction regardless of what
+   * the server sends.
    *
    * Awaits `#ready` like every other public method here (`setLoggingLevel`, `complete`,
    * `listTools`, `#listPaged`), so a first call under `protocolVersion: 'auto'` probes rather
    * than throwing "not resolved yet".
+   *
+   * This is the `ttlMs`-governed cache for direct callers. `#requireServerCapabilityAsync`
+   * does not use it for gating — see `#serverCapabilitySnapshot`.
    */
   async discover(options?: RequestOptions): Promise<DiscoverResult> {
     await this.#ready
@@ -649,7 +693,10 @@ export class ContextClient<
     if (this.#discovered != null && Date.now() < this.#discovered.expiresAt) {
       return this.#discovered.result
     }
-    // Collapse concurrent callers onto one in-flight request.
+    // Collapse concurrent callers onto one in-flight request. Note the coupling this creates:
+    // whichever caller's invocation wins this `??=` imposes its own `options` (signal, timeout)
+    // on every other concurrent awaiter, so one caller's abort/timeout rejects another caller's
+    // `discover()` too, even though that caller passed different (or no) options.
     this.#discovering ??= this.request('server/discover', {}, options)
       .then((result) => {
         const ttlMs = typeof result.ttlMs === 'number' && result.ttlMs > 0 ? result.ttlMs : 0
@@ -671,7 +718,7 @@ export class ContextClient<
     // though the method itself is gone, so gating on capabilities would let this through and
     // earn a METHOD_NOT_FOUND from the server instead of this clearer, client-side refusal.
     if (!protocol.clientMethods.has('logging/setLevel')) {
-      throw new LoggingLevelNotSupportedError(protocol.version)
+      throw new MethodNotInRevisionError('logging/setLevel', protocol.version)
     }
     this.#requireServerCapability('logging')
     const [wireParams, options] = splitRequestOptions(params)
@@ -680,8 +727,8 @@ export class ContextClient<
 
   async complete(params: WithRequestOptions<CompleteRequest['params']>): Promise<CompleteResult> {
     await this.#ready
-    await this.#requireServerCapabilityAsync('completions')
     const [wireParams, options] = splitRequestOptions(params)
+    await this.#requireServerCapabilityAsync('completions', options)
     return await this.request('completion/complete', wireParams, options)
   }
 
@@ -798,7 +845,8 @@ export class ContextClient<
 
   async listTools(params: ListParams<ListToolsRequest['params']> = {}): Promise<ListToolsResult> {
     await this.#ready
-    await this.#requireServerCapabilityAsync('tools')
+    const [, gateOptions] = splitRequestOptions(params)
+    await this.#requireServerCapabilityAsync('tools', gateOptions)
     const result = (await this.#listPaged(
       'tools/list',
       'tools',

@@ -24,7 +24,7 @@ import {
   ContextClient,
   InputRequiredNotSupportedError,
   ListMaxPagesError,
-  LoggingLevelNotSupportedError,
+  MethodNotInRevisionError,
   MRTRNotSupportedError,
   StructuredContentValidationError,
   UnsupportedProtocolVersionError,
@@ -1075,7 +1075,7 @@ describe('discover()', () => {
 
   test('is rejected on 2025-11-25', async () => {
     const { client } = createTestClient({ protocolVersion: '2025-11-25' })
-    await expect(client.discover()).rejects.toThrow(/2025-11-25/)
+    await expect(client.discover()).rejects.toThrow(/use initialize\(\)/)
   })
 
   test('listTools rejects with CapabilityNotDeclaredError when the discovered capabilities omit tools', async () => {
@@ -1134,8 +1134,141 @@ describe('discover()', () => {
           : undefined,
     })
     await expect(client.setLoggingLevel({ level: 'info' })).rejects.toThrow(
-      LoggingLevelNotSupportedError,
+      MethodNotInRevisionError,
     )
     expect(sent.some((message) => message.method === 'server/discover')).toBe(false)
+  })
+
+  // Regression test for the bug that blocked Task 10's review: an unconfigured server
+  // returns `ttlMs: 0`, which used to make the capability *gate* re-issue `server/discover`
+  // before every gated call, forever. The gate must snapshot the discovered capabilities for
+  // the connection's lifetime instead, independent of `discover()`'s own `ttlMs` cache.
+  test('the capability gate sends server/discover exactly once across two gated calls, even when ttlMs is 0', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: { tools: {} },
+              ttlMs: 0,
+              cacheScope: 'private',
+            }
+          : { resultType: 'complete', tools: [] },
+    })
+    await client.listTools()
+    await client.listTools()
+    expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(1)
+  })
+
+  test('re-requests when its own ttlMs has expired', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => ({
+        resultType: 'complete',
+        supportedVersions: ['2026-07-28'],
+        capabilities: { tools: {} },
+        ttlMs: 0,
+        cacheScope: 'private',
+      }),
+    })
+    await client.discover()
+    await client.discover()
+    expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(2)
+  })
+
+  test('a rejected discover clears #discovering so a retry re-requests', async () => {
+    let calls = 0
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: (message) => {
+        if (message.method !== 'server/discover') {
+          return undefined
+        }
+        calls += 1
+        return calls === 1
+          ? { error: { code: -32000, message: 'discover failed' } }
+          : {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: { tools: {} },
+              ttlMs: 60_000,
+              cacheScope: 'public',
+            }
+      },
+    })
+    await expect(client.discover()).rejects.toThrow(/discover failed/)
+    await expect(client.discover()).resolves.toMatchObject({ capabilities: { tools: {} } })
+    expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(2)
+  })
+
+  test('concurrent callers collapse onto one in-flight request', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => ({
+        resultType: 'complete',
+        supportedVersions: ['2026-07-28'],
+        capabilities: { tools: {} },
+        ttlMs: 60_000,
+        cacheScope: 'public',
+      }),
+    })
+    const [first, second] = await Promise.all([client.discover(), client.discover()])
+    expect(second).toEqual(first)
+    expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(1)
+  })
+
+  test('complete succeeds on 2026-07-28 when the discovered capabilities declare completions', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: { completions: {} },
+              ttlMs: 0,
+              cacheScope: 'private',
+            }
+          : {
+              resultType: 'complete',
+              completion: { values: [], total: 0, hasMore: false },
+            },
+    })
+    await expect(
+      client.complete({
+        ref: { type: 'ref/prompt', name: 'test' },
+        argument: { name: 'arg', value: '' },
+      }),
+    ).resolves.toEqual({
+      resultType: 'complete',
+      completion: { values: [], total: 0, hasMore: false },
+    })
+  })
+
+  test('complete rejects with CapabilityNotDeclaredError when the discovered capabilities omit completions', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: {},
+              ttlMs: 0,
+              cacheScope: 'private',
+            }
+          : {
+              resultType: 'complete',
+              completion: { values: [], total: 0, hasMore: false },
+            },
+    })
+    await expect(
+      client.complete({
+        ref: { type: 'ref/prompt', name: 'test' },
+        argument: { name: 'arg', value: '' },
+      }),
+    ).rejects.toThrow(CapabilityNotDeclaredError)
   })
 })
