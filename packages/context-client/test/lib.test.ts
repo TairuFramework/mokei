@@ -271,7 +271,7 @@ describe('ContextClient', () => {
       { protocolVersion: '2025-11-25', listRoots: roots },
       { method: 'roots/list' },
       { result: { roots } },
-      { protocolVersion: '2025-11-25', capabilities: { roots: {} } },
+      { capabilities: { roots: {} } },
     )
   })
 
@@ -291,7 +291,7 @@ describe('ContextClient', () => {
       { protocolVersion: '2025-11-25', createMessage },
       { method: 'sampling/createMessage', params },
       { result },
-      { protocolVersion: '2025-11-25', capabilities: { sampling: {} } },
+      { capabilities: { sampling: {} } },
     )
     expect(createMessage).toHaveBeenCalledWith({ params, signal: expect.any(AbortSignal) })
   })
@@ -314,7 +314,7 @@ describe('ContextClient', () => {
       { protocolVersion: '2025-11-25', elicit },
       { method: 'elicitation/create', params },
       { result },
-      { protocolVersion: '2025-11-25', capabilities: { elicitation: {} } },
+      { capabilities: { elicitation: {} } },
     )
     expect(elicit).toHaveBeenCalledWith({ params, signal: expect.any(AbortSignal) })
   })

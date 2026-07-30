@@ -43,7 +43,6 @@ import type {
 import {
   type ErrorResponse,
   inferSchemaDraft,
-  LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
   PROTOCOLS,
   serverMessage,
@@ -69,10 +68,15 @@ export const DEFAULT_CLIENT_INFO: Implementation = {
   version: '0.4.0',
 }
 
+// '2025-11-25' rather than the latest protocol version: it is the only supported revision
+// that has an `initialize` handshake at all. '2026-07-28' has no `initialize` request
+// (`requiresHandshake: false`), so declaring it here would describe a handshake no revision
+// can legitimately send. `#initialize()` always overrides this with the resolved protocol's
+// own version before sending, so this default is never sent as-is.
 export const DEFAULT_INITIALIZE_PARAMS: InitializeRequest['params'] = {
   capabilities: {},
   clientInfo: DEFAULT_CLIENT_INFO,
-  protocolVersion: LATEST_PROTOCOL_VERSION,
+  protocolVersion: '2025-11-25',
 }
 
 export const DEFAULT_INITIALIZE_TIMEOUT = 30_000
