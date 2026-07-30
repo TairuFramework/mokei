@@ -1,7 +1,31 @@
 /**
  * A single MCP surface, defined twice: once with mokei's server API and once with the
- * official SDK v2 API. Both sides expose identical tools, prompts and resources, so every
- * interop test can assert the same expectations regardless of which implementation serves.
+ * official SDK v2 API. Both sides expose identical tools and prompts, so every interop test can
+ * assert the same tool/prompt expectations regardless of which implementation serves.
+ *
+ * Resources are asymmetric, deliberately: `createMokeiConfig()` also serves a resource template
+ * (`ITEM_TEMPLATE_URI`) and a `complete` handler, but `createSDKServer()` has neither. Both were
+ * added to exercise schemas that only the `2026-07-28` conformance suite
+ * (`interop-2026-07-28-stdio.test.ts`) checks — `ListResourceTemplatesResultSchema` and
+ * `CompleteResultSchema` — and no `2025-11-25` suite (SDK-client-against-mokei,
+ * mokei-client-against-SDK, or either HTTP combo) calls `listResourceTemplates` or `complete`,
+ * so the extra surface is inert there. `createSDKServer()` was intentionally left without a
+ * matching template/`complete` handler: no suite exercises it on that side either, and adding it
+ * would be unused surface for its own sake.
+ *
+ * They live in the *shared* `createMokeiConfig()` rather than a `2026-07-28`-only fixture
+ * because `createMokeiConfig` is already parameterized by `protocolVersions` and reused
+ * verbatim by every `2025-11-25` mokei-server suite; a second config function would duplicate
+ * every tool/prompt/resource definition in this file for the sake of two extra fields. The one
+ * side effect worth knowing about: enabling `complete` flips on the `completions` server
+ * capability for *both* revisions (`packages/context-server/src/server.ts:162-165` — the
+ * capability is set whenever `params.complete != null`, unconditional on protocol version).
+ * That's harmless today because no `2025-11-25` suite asserts the capability set, but the next
+ * person adding one should know why `completions` shows up.
+ *
+ * If a future change needs the SDK side to expose a template or `complete` too (e.g. a shared
+ * "both sides have identical resources" assertion), extend `createSDKServer()` explicitly rather
+ * than assuming this asymmetry is accidental — it isn't.
  */
 import { fromJsonSchema, McpServer } from '@modelcontextprotocol/server'
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv'
@@ -17,8 +41,10 @@ export const GREETING_TEXT = 'Hello from the interop fixture'
 export const ITEM_TEMPLATE_URI = 'test://items/{id}'
 export const ITEM_TEMPLATE_NAME = 'item'
 
+const ITEM_URI_PREFIX = 'test://items/'
+
 export function itemURI(id: string): string {
-  return `test://items/${id}`
+  return `${ITEM_URI_PREFIX}${id}`
 }
 
 export function itemText(id: string): string {
@@ -105,7 +131,10 @@ export function createMokeiConfig(
         if (params.uri === GREETING_URI) {
           return { contents: [{ uri: params.uri, mimeType: 'text/plain', text: GREETING_TEXT }] }
         }
-        const id = params.uri.replace('test://items/', '')
+        if (!params.uri.startsWith(ITEM_URI_PREFIX)) {
+          throw new Error(`Unknown resource URI: ${params.uri}`)
+        }
+        const id = params.uri.slice(ITEM_URI_PREFIX.length)
         return { contents: [{ uri: params.uri, mimeType: 'text/plain', text: itemText(id) }] }
       },
     },

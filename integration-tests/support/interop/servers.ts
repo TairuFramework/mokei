@@ -58,11 +58,18 @@ async function listening(server: ListeningServer, hostname: string): Promise<num
 /** Grace period (ms) between SIGTERM and SIGKILL when tearing down a spawned client's child. */
 const KILL_TIMEOUT = 5000
 
-/** Splits a byte stream into JSON lines, pushing each parsed line onto `sink`. */
+/**
+ * Splits a byte stream into JSON lines, pushing each parsed line onto `sink`. A line that fails
+ * to parse is reported via `onError` instead of thrown: throwing out of a stream's `data`
+ * handler raises an uncaught exception that crashes the whole test-runner process, not just the
+ * current test (see `spawnMokeiStdioClient`, which mirrors `packages/host/src/host.ts`'s
+ * `onInvalidJSON`/`readFailed` intent at test-fixture scale for exactly this reason).
+ */
 function recordJSONLines(
   state: { text: string },
   chunk: Buffer | string,
   sink: Array<Record<string, unknown>>,
+  onError: (error: Error) => void,
 ): void {
   state.text += chunk.toString('utf8')
   let index = state.text.indexOf('\n')
@@ -70,13 +77,19 @@ function recordJSONLines(
     const line = state.text.slice(0, index).trim()
     state.text = state.text.slice(index + 1)
     if (line.length > 0) {
-      sink.push(JSON.parse(line) as Record<string, unknown>)
+      try {
+        sink.push(JSON.parse(line) as Record<string, unknown>)
+      } catch (cause) {
+        onError(
+          new Error(`Invalid JSON on the tapped stdin line: ${line.slice(0, 200)}`, { cause }),
+        )
+      }
     }
     index = state.text.indexOf('\n')
   }
 }
 
-type SpawnedChildProcess = ChildProcessByStdio<Writable, Readable, null>
+type SpawnedChildProcess = ChildProcessByStdio<Writable, Readable, Readable>
 
 async function killChild(childProcess: SpawnedChildProcess): Promise<void> {
   if (childProcess.exitCode != null || childProcess.signalCode != null) {
@@ -122,13 +135,31 @@ export async function spawnMokeiStdioClient(
   protocolVersion: ProtocolVersion,
 ): Promise<SpawnedMokeiClient> {
   const childProcess = spawn(process.execPath, [serverPath], {
-    stdio: ['pipe', 'pipe', 'ignore'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   }) as SpawnedChildProcess
+  // Without this, a fixture that crashes on startup produces an opaque hang (the client waits
+  // forever for a response that will never come) instead of the server's own error.
+  childProcess.stderr.pipe(process.stderr)
+
   const sent: Array<Record<string, unknown>> = []
   const state = { text: '' }
   const tap = new PassThrough()
+  const reportStreamError = (context: string, error: Error): void => {
+    console.error(`[interop fixture] ${serverPath} — ${context}:`, error)
+  }
+  // Neither `tap` nor `childProcess.stdin` has an `error` listener by default; a dead child
+  // turns a write into an unhandled EPIPE that crashes the whole test-runner process rather
+  // than failing just this test. Reporting (not swallowing) keeps the failure diagnosable.
+  tap.on('error', (error: Error) => {
+    reportStreamError('tapped stdin stream error', error)
+  })
+  childProcess.stdin.on('error', (error: Error) => {
+    reportStreamError('child stdin write error', error)
+  })
   tap.on('data', (chunk: Buffer) => {
-    recordJSONLines(state, chunk, sent)
+    recordJSONLines(state, chunk, sent, (error) => {
+      reportStreamError('malformed tapped stdin line', error)
+    })
   })
   tap.pipe(childProcess.stdin)
 
