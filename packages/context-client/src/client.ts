@@ -10,6 +10,7 @@ import type {
   CompleteResult,
   CreateMessageRequest,
   CreateMessageResult,
+  DiscoverResult,
   ElicitRequest,
   ElicitResult,
   GetPromptRequest,
@@ -98,6 +99,21 @@ export class CapabilityNotDeclaredError extends Error {
   constructor(capability: string) {
     super(`Server did not declare the "${capability}" capability`)
     this.name = 'CapabilityNotDeclaredError'
+  }
+}
+
+/**
+ * Thrown by `setLoggingLevel()` on a protocol revision whose `clientMethods` carries no
+ * `logging/setLevel` — derived from that table, not a version literal, so this fires exactly
+ * when the method itself is gone. `2026-07-28` removes the session-level opt-in: the log
+ * level travels per request instead, via `_meta` (see `ClientParams.logLevel`).
+ */
+export class LoggingLevelNotSupportedError extends Error {
+  constructor(version: ProtocolVersion) {
+    super(
+      `logging/setLevel does not exist in protocol version ${version}: the log level travels per request via _meta instead (see ClientParams.logLevel)`,
+    )
+    this.name = 'LoggingLevelNotSupportedError'
   }
 }
 
@@ -294,6 +310,8 @@ export class ContextClient<
   #capabilities: ClientCapabilities
   #clientInfo: Implementation
   #createMessage?: CreateMessageHandler
+  #discovered: { result: DiscoverResult; expiresAt: number } | null = null
+  #discovering: Promise<DiscoverResult> | null = null
   #elicit?: ElicitHandler
   #initialized: PromiseLike<InitializeResult>
   #listMaxPages: number
@@ -575,6 +593,22 @@ export class ContextClient<
     }
   }
 
+  // Guard: throws when the server did not declare the given capability, reading from whichever
+  // source this revision actually populates. `2025-11-25` has a handshake, so `#serverCapabilities`
+  // is authoritative; `2026-07-28` has none, so the only way to learn what the server supports is
+  // `discover()`, which this awaits (and which caches per its own `ttlMs`).
+  async #requireServerCapabilityAsync(
+    capability: 'tools' | 'logging' | 'completions',
+  ): Promise<void> {
+    const protocol = this.#requireProtocol()
+    const capabilities = protocol.requiresHandshake
+      ? this.#serverCapabilities
+      : (await this.discover()).capabilities
+    if (capabilities[capability] == null) {
+      throw new CapabilityNotDeclaredError(capability)
+    }
+  }
+
   get notifications(): ReadableStream<ServerNotification> {
     this.#hasNotificationReader = true
     return this.#notifications as ReadableStream<ServerNotification>
@@ -595,8 +629,50 @@ export class ContextClient<
     return await this.#initialized
   }
 
+  /**
+   * Queries a server's supported protocol versions, capabilities and identity — the
+   * `2026-07-28` replacement for the `initialize` handshake. Result is cached per the
+   * server's own `ttlMs`; concurrent callers while a request is in flight collapse onto it.
+   *
+   * Awaits `#ready` like every other public method here (`setLoggingLevel`, `complete`,
+   * `listTools`, `#listPaged`), so a first call under `protocolVersion: 'auto'` probes rather
+   * than throwing "not resolved yet".
+   */
+  async discover(options?: RequestOptions): Promise<DiscoverResult> {
+    await this.#ready
+    const protocol = this.#requireProtocol()
+    if (protocol.requiresHandshake) {
+      throw new Error(
+        `server/discover does not exist in protocol version ${protocol.version}; use initialize()`,
+      )
+    }
+    if (this.#discovered != null && Date.now() < this.#discovered.expiresAt) {
+      return this.#discovered.result
+    }
+    // Collapse concurrent callers onto one in-flight request.
+    this.#discovering ??= this.request('server/discover', {}, options)
+      .then((result) => {
+        const ttlMs = typeof result.ttlMs === 'number' && result.ttlMs > 0 ? result.ttlMs : 0
+        this.#discovered = { result, expiresAt: Date.now() + ttlMs }
+        return result
+      })
+      .finally(() => {
+        this.#discovering = null
+      })
+    return await this.#discovering
+  }
+
   async setLoggingLevel(params: WithRequestOptions<SetLevelRequest['params']>): Promise<Result> {
     await this.#ready
+    const protocol = this.#requireProtocol()
+    // Derived from `clientMethods`, not a version literal: refuses exactly when this
+    // revision's method table has no `logging/setLevel` to send. Deliberately does not route
+    // through `discover()`'s capabilities — `2026-07-28` still advertises `logging: {}` even
+    // though the method itself is gone, so gating on capabilities would let this through and
+    // earn a METHOD_NOT_FOUND from the server instead of this clearer, client-side refusal.
+    if (!protocol.clientMethods.has('logging/setLevel')) {
+      throw new LoggingLevelNotSupportedError(protocol.version)
+    }
     this.#requireServerCapability('logging')
     const [wireParams, options] = splitRequestOptions(params)
     return await this.request('logging/setLevel', wireParams, options)
@@ -604,7 +680,7 @@ export class ContextClient<
 
   async complete(params: WithRequestOptions<CompleteRequest['params']>): Promise<CompleteResult> {
     await this.#ready
-    this.#requireServerCapability('completions')
+    await this.#requireServerCapabilityAsync('completions')
     const [wireParams, options] = splitRequestOptions(params)
     return await this.request('completion/complete', wireParams, options)
   }
@@ -722,7 +798,7 @@ export class ContextClient<
 
   async listTools(params: ListParams<ListToolsRequest['params']> = {}): Promise<ListToolsResult> {
     await this.#ready
-    this.#requireServerCapability('tools')
+    await this.#requireServerCapabilityAsync('tools')
     const result = (await this.#listPaged(
       'tools/list',
       'tools',

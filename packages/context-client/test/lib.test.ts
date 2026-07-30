@@ -24,6 +24,7 @@ import {
   ContextClient,
   InputRequiredNotSupportedError,
   ListMaxPagesError,
+  LoggingLevelNotSupportedError,
   MRTRNotSupportedError,
   StructuredContentValidationError,
   UnsupportedProtocolVersionError,
@@ -1051,5 +1052,90 @@ describe('protocol version selection', () => {
   test('initialize() throws when the configured revision has no handshake', async () => {
     const { client } = createTestClient({ protocolVersion: '2026-07-28' })
     await expect(client.initialize()).rejects.toThrow(/does not require a handshake/)
+  })
+})
+
+describe('discover()', () => {
+  test('caches its result for ttlMs', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => ({
+        resultType: 'complete',
+        supportedVersions: ['2026-07-28'],
+        capabilities: { tools: {} },
+        ttlMs: 60_000,
+        cacheScope: 'public',
+      }),
+    })
+    const first = await client.discover()
+    const second = await client.discover()
+    expect(second).toEqual(first)
+    expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(1)
+  })
+
+  test('is rejected on 2025-11-25', async () => {
+    const { client } = createTestClient({ protocolVersion: '2025-11-25' })
+    await expect(client.discover()).rejects.toThrow(/2025-11-25/)
+  })
+
+  test('listTools rejects with CapabilityNotDeclaredError when the discovered capabilities omit tools', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: {},
+              ttlMs: 0,
+              cacheScope: 'private',
+            }
+          : { resultType: 'complete', tools: [] },
+    })
+    await expect(client.listTools()).rejects.toThrow(CapabilityNotDeclaredError)
+  })
+
+  // Closes the gap Task 9's review flagged: on 2026-07-28, `#serverCapabilities` never
+  // populates (there is no handshake), so before this task `listTools()` could not
+  // succeed on this revision at all. This proves the positive case, not just the rejection.
+  test('listTools succeeds on 2026-07-28 when the discovered capabilities declare tools', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: { tools: {} },
+              ttlMs: 0,
+              cacheScope: 'private',
+            }
+          : { resultType: 'complete', tools: [] },
+    })
+    await expect(client.listTools()).resolves.toEqual({ resultType: 'complete', tools: [] })
+  })
+
+  // `2026-07-28` still advertises `logging: {}` in its capabilities even though
+  // `logging/setLevel` is gone from `clientMethods` — gating this on the discovered
+  // capabilities would pass and send a method the server would answer with
+  // METHOD_NOT_FOUND. It must refuse client-side instead, without ever calling discover().
+  test('setLoggingLevel refuses client-side on 2026-07-28 without consulting discovered capabilities', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: { logging: {} },
+              ttlMs: 60_000,
+              cacheScope: 'public',
+            }
+          : undefined,
+    })
+    await expect(client.setLoggingLevel({ level: 'info' })).rejects.toThrow(
+      LoggingLevelNotSupportedError,
+    )
+    expect(sent.some((message) => message.method === 'server/discover')).toBe(false)
   })
 })

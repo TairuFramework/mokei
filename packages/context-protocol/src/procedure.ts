@@ -28,6 +28,7 @@ import type {
   ListToolsResult,
   ToolListChangedNotification,
 } from './tool.js'
+import type { DiscoverRequest, DiscoverResult } from './versions/2026-07-28.js'
 
 export type CommonNotifications = {
   cancelled: CancelledNotification
@@ -79,6 +80,10 @@ export type ClientRequests = {
   'resources/templates/list': {
     Params: ListResourceTemplatesRequest['params']
     Result: ListResourceTemplatesResult
+  }
+  'server/discover': {
+    Params: DiscoverRequest['params']
+    Result: DiscoverResult
   }
   'tools/call': {
     Params: CallToolRequest['params']

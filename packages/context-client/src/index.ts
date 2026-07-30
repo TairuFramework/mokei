@@ -29,6 +29,7 @@ export {
   DEFAULT_LIST_MAX_PAGES,
   InputRequiredNotSupportedError,
   ListMaxPagesError,
+  LoggingLevelNotSupportedError,
   MRTRNotSupportedError,
   StructuredContentValidationError,
   splitListOptions,
