@@ -22,6 +22,10 @@ export const SDK_STDIO_SERVER_PATH = fileURLToPath(
 export const MOKEI_STDIO_SERVER_2026_07_28_PATH = fileURLToPath(
   new URL('./mokei-stdio-server-2026-07-28.ts', import.meta.url),
 )
+/** Serves the fixture on both `2026-07-28` and `2025-11-25`, via `@mokei/context-server`. */
+export const MOKEI_STDIO_SERVER_BOTH_PATH = fileURLToPath(
+  new URL('./mokei-stdio-server-both.ts', import.meta.url),
+)
 
 export type RunningHTTPServer = {
   url: string
@@ -124,11 +128,11 @@ export type SpawnedMokeiClient = {
  * Spawns `serverPath` and connects a mokei `ContextClient` to it directly over stdio, at
  * `protocolVersion`.
  *
- * Deliberately does not go through `@mokei/host`'s `spawnHostedContext`: `createHostedContext`
- * (`packages/host/src/host.ts`) hardcodes `protocolVersion: '2025-11-25'` (`@todo plan 2 makes
- * this a host parameter`), and threading a revision through `@mokei/host` is out of this task's
- * scope (a second plan covers `host`). Spawning here directly is self-contained and doesn't
- * touch `@mokei/host` at all.
+ * Deliberately does not go through `@mokei/host`'s `spawnHostedContext` (which does support a
+ * `protocolVersion` parameter): this helper also taps the raw stdin bytes to capture every
+ * JSON-RPC request the client wrote to the wire (`sent`), used to assert on `_meta` that
+ * `ContextClient`'s public API never surfaces back to the caller. `spawnHostedContext` has no
+ * hook for that tap, so tests that need `sent` spawn directly here instead.
  */
 export async function spawnMokeiStdioClient(
   serverPath: string,

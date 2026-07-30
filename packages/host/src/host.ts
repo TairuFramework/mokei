@@ -14,6 +14,7 @@ import type {
   ClientMessage,
   GetPromptResult,
   Metadata,
+  ProtocolVersion,
   ServerMessage,
   Tool,
 } from '@mokei/context-protocol'
@@ -120,6 +121,8 @@ export type CreateHostedContextParams = {
   transport: ClientTransport
   tools?: Array<ContextTool>
   dispose?: () => void | Promise<void>
+  /** Revision the client speaks. Defaults to `'2025-11-25'`. */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export type CreateContextParams = CreateHostedContextParams & {
@@ -135,9 +138,8 @@ export type HostEvents = {
 export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
   params: CreateHostedContextParams,
 ): HostedContext<T> {
-  const { transport, tools = [], dispose } = params
-  // @todo plan 2 makes this a host parameter.
-  const client = new ContextClient<T>({ protocolVersion: '2025-11-25', transport })
+  const { transport, tools = [], dispose, protocolVersion = '2025-11-25' } = params
+  const client = new ContextClient<T>({ protocolVersion, transport })
   const disposer = new Disposer({
     dispose: async () => {
       await transport.dispose()
@@ -157,13 +159,22 @@ export type SpawnHostedContextParams = SpawnContextServerParams & {
   maxMessageSize?: number
   /** Grace period (ms) between SIGTERM and SIGKILL on dispose. Default 5000. */
   killTimeout?: number
+  /** Revision the client speaks. Defaults to `'2025-11-25'`. */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export async function spawnHostedContext<T extends ContextTypes = UnknownContextTypes>(
   params: SpawnHostedContextParams,
 ): Promise<HostedContext<T>> {
-  const { onExit, onStreamError, maxBufferSize, maxMessageSize, killTimeout, ...spawnParams } =
-    params
+  const {
+    onExit,
+    onStreamError,
+    maxBufferSize,
+    maxMessageSize,
+    killTimeout,
+    protocolVersion,
+    ...spawnParams
+  } = params
   const { childProcess, streams, subprocess } = await spawnContextServer(spawnParams)
   if (onExit != null) {
     subprocess.then(
@@ -191,6 +202,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
   })
   return createHostedContext({
     transport: transport as ClientTransport,
+    protocolVersion,
     dispose: async () => {
       // Already exited — nothing to reap.
       if (childProcess.exitCode != null || childProcess.signalCode != null) {
