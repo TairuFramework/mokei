@@ -46,8 +46,10 @@ import {
   type ErrorResponse,
   inferSchemaDraft,
   METHOD_NOT_FOUND,
+  PROTOCOL_VERSIONS,
   PROTOCOLS,
   serverMessage,
+  UNSUPPORTED_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
 import {
   ContextRPC,
@@ -323,6 +325,10 @@ export class ContextClient<
   #notificationPull: (() => void) | null = null
   #hasNotificationReader = false
   #notifications: ReadableStream<HandleNotification>
+  // The one outstanding low-level read shared by `#probeDiscover()` and `#initialize()` via
+  // `#readUntil()`. See `#readUntil()`'s own comment for why this must not become two
+  // independent `reader.read()` calls.
+  #pendingSetupRead: Promise<ReadableStreamReadResult<ServerMessage>> | null = null
   #protocol: ProtocolDefinition | null
   #reading = false
   #ready: PromiseLike<void>
@@ -335,29 +341,35 @@ export class ContextClient<
   // `discover()`'s own `ttlMs`. Distinct from `#discovered`, which still honors `ttlMs` for
   // callers who explicitly want a fresh answer from `discover()` itself. Do not merge these two
   // caches back together — that reintroduces the bug this split fixes. Whatever clears one must
-  // clear the other, so neither outlives the connection state that produced it.
+  // clear the other, so neither outlives the connection state that produced it — see
+  // `#resetDiscovery()`, called from `#probe()`'s fallback path.
   #serverCapabilitySnapshot: ServerCapabilities | null = null
   #setupTimeout: number
+  // Messages read during setup (probe and/or handshake) that didn't match the waiter that read
+  // them — buffered here rather than dropped, so a later waiter with a different predicate
+  // (e.g. the handshake reading past a message the probe already consumed) can still claim
+  // them. See `#readUntil()`.
+  #setupBuffer: Array<ServerMessage> = []
   #toolOutputSchemas = new Map<string, Validator<unknown>>()
 
   constructor(params: ClientParams) {
     super({ validateMessageIn: validateServerMessage, transport: params.transport })
 
+    this.#createMessage = params.createMessage
+    this.#elicit = params.elicit
+    this.#listRoots = params.listRoots
+
     // Derived from `serverMethods`, not a hardcoded version check: a handler is refused
     // exactly when its own method (`sampling/createMessage`/`elicitation/create`/`roots/list`)
     // is absent from the configured revision — the client-side mirror of what
-    // `@mokei/context-server` does per capability on the server side.
+    // `@mokei/context-server` does per capability on the server side. Skipped here when the
+    // revision is still `'auto'`: the revision isn't known yet, so `#setup()` re-runs this same
+    // check (`#refuseUnsupportedHandlers`) once the probe resolves it — a handler accepted here
+    // because the revision was unknown must still be refused if the probe lands on
+    // `2026-07-28`, whose `serverMethods` is always empty.
     const protocol = params.protocolVersion === 'auto' ? null : PROTOCOLS[params.protocolVersion]
     if (protocol != null) {
-      if (params.createMessage != null && !protocol.serverMethods.has('sampling/createMessage')) {
-        throw new MRTRNotSupportedError('createMessage')
-      }
-      if (params.elicit != null && !protocol.serverMethods.has('elicitation/create')) {
-        throw new MRTRNotSupportedError('elicit')
-      }
-      if (params.listRoots != null && !protocol.serverMethods.has('roots/list')) {
-        throw new MRTRNotSupportedError('listRoots')
-      }
+      this.#refuseUnsupportedHandlers(protocol)
     }
 
     const capabilities: ClientCapabilities = {}
@@ -373,11 +385,8 @@ export class ContextClient<
 
     this.#capabilities = capabilities
     this.#clientInfo = params.clientInfo ?? DEFAULT_CLIENT_INFO
-    this.#createMessage = params.createMessage
-    this.#elicit = params.elicit
     this.#initialized = lazy(() => this.#initialize())
     this.#listMaxPages = params.listMaxPages ?? DEFAULT_LIST_MAX_PAGES
-    this.#listRoots = params.listRoots
     this.#logLevel = params.logLevel
     this.#protocol = protocol
     this.#ready = lazy(() => this.#setup())
@@ -413,14 +422,42 @@ export class ContextClient<
     )
   }
 
+  /**
+   * Throws when a handler is configured (`createMessage`/`elicit`/`listRoots`) whose method
+   * (`sampling/createMessage`/`elicitation/create`/`roots/list`) is absent from `protocol`'s
+   * `serverMethods` — derived from the method table, never a version literal. Called once at
+   * construction for a fixed `protocolVersion`, and again from `#setup()` once an `'auto'`
+   * probe resolves the revision, so a handler that was accepted only because the revision
+   * wasn't known yet is still refused if the probe lands on `2026-07-28`.
+   */
+  #refuseUnsupportedHandlers(protocol: ProtocolDefinition): void {
+    if (this.#createMessage != null && !protocol.serverMethods.has('sampling/createMessage')) {
+      throw new MRTRNotSupportedError('createMessage')
+    }
+    if (this.#elicit != null && !protocol.serverMethods.has('elicitation/create')) {
+      throw new MRTRNotSupportedError('elicit')
+    }
+    if (this.#listRoots != null && !protocol.serverMethods.has('roots/list')) {
+      throw new MRTRNotSupportedError('listRoots')
+    }
+  }
+
   // Decorate every outgoing request with this revision's protocol envelope (`decorateRequest`)
   // and inject W3C trace context (SEP-414) into `_meta`; the latter is a no-op when no
   // OpenTelemetry SDK is active. Reject an `input_required` result until MRTR (SEP-2322) lands.
-  request<Method extends keyof ClientTypes['SendRequests']>(
+  //
+  // Awaits `#ready` first (not just `#requireProtocol()`): `getPrompt`, `readResource` and
+  // `callTool` call `request()` directly with no `#ready` await of their own, so under
+  // `protocolVersion: 'auto'` this is the only thing that runs the probe before they'd
+  // otherwise throw "not resolved yet". Safe against `#initialize()`, which never calls
+  // `request()` — it writes/reads the transport directly via `super._write`/`#readUntil` — so
+  // awaiting `#ready` here cannot deadlock against the handshake `#ready` itself is waiting on.
+  async request<Method extends keyof ClientTypes['SendRequests']>(
     method: Method,
     params: ClientTypes['SendRequests'][Method]['Params'],
     options?: RequestOptions,
   ): Promise<ClientTypes['SendRequests'][Method]['Result']> {
+    await this.#ready
     const trace = currentTraceMeta()
     const base =
       params != null && typeof params === 'object' ? { ...(params as Record<string, unknown>) } : {}
@@ -432,11 +469,80 @@ export class ContextClient<
       clientInfo: this.#clientInfo,
       logLevel: this.#logLevel,
     })
-    return super.request(method, decorated as typeof params, options).then((result) => {
-      if ((result as { resultType?: string } | undefined)?.resultType === 'input_required') {
-        throw new InputRequiredNotSupportedError()
+    const result = await super.request(method, decorated as typeof params, options)
+    if ((result as { resultType?: string } | undefined)?.resultType === 'input_required') {
+      throw new InputRequiredNotSupportedError()
+    }
+    return result
+  }
+
+  /**
+   * Reads messages off the transport until one satisfies `matches`, bounded by `deadline`.
+   *
+   * Shared by `#probeDiscover()` and `#initialize()` so both funnel through one outstanding
+   * low-level read (`#pendingSetupRead`) instead of each issuing its own. `@enkaku/transport`'s
+   * `Transport#read()` obtains the stream's reader once (`_getReader()`) and shares it, and per
+   * the Streams spec, concurrent `reader.read()` calls on one reader are served FIFO — the
+   * first pending read gets the next chunk, regardless of which caller issued it.
+   *
+   * That matters here because a probe can time out with its own `_read()` still pending (a
+   * timed-out `Promise.race` doesn't cancel the loser). If the handshake that follows then
+   * issued a *second*, independent `_read()`, the two would queue FIFO behind the reader: the
+   * handshake's response would resolve the abandoned probe read first — silently discarded —
+   * while the handshake's own read waits for a message that will never come, and dies with
+   * `RequestTimeoutError`. Routing every setup-phase read through this one method avoids ever
+   * having two outstanding low-level reads: a timed-out waiter leaves `#pendingSetupRead` in
+   * place, and the next waiter (its own deadline, its own `matches`) awaits that *same* promise
+   * instead of starting a new one — so whatever answers it, answers whichever waiter is
+   * currently asking, in order. Messages that don't satisfy the current waiter's `matches` are
+   * buffered (`#setupBuffer`), not dropped, so a later waiter with a different predicate can
+   * still claim them.
+   */
+  async #readUntil(
+    matches: (message: ServerMessage) => boolean,
+    deadline: Promise<never>,
+  ): Promise<ServerMessage> {
+    while (true) {
+      const index = this.#setupBuffer.findIndex(matches)
+      if (index !== -1) {
+        const [message] = this.#setupBuffer.splice(index, 1)
+        return message
       }
-      return result
+      // Reuse a still-pending read left behind by an earlier, timed-out waiter rather than
+      // issuing a fresh one — see the method comment above for why a second concurrent read
+      // here would risk stealing the message this or a later waiter needs.
+      this.#pendingSetupRead ??= this._read().finally(() => {
+        this.#pendingSetupRead = null
+      })
+      const next = await Promise.race([this.#pendingSetupRead, deadline])
+      if (next.done) {
+        throw new Error('Server closed the connection during setup')
+      }
+      this.#setupBuffer.push(next.value)
+    }
+  }
+
+  /**
+   * A deadline rejecting with `RequestTimeoutError` once `#setupTimeout` elapses, for a request
+   * named `method` (used only in the error message). Built once per bounded read, not per
+   * iteration of `#readUntil`'s loop, so reading past stray messages doesn't accumulate abort
+   * listeners on the underlying signal.
+   */
+  #setupDeadline(method: string): Promise<never> {
+    const timeoutMs = this.#setupTimeout
+    const deadline = AbortSignal.timeout(timeoutMs)
+    return new Promise<never>((_resolve, reject) => {
+      const fail = () =>
+        reject(
+          new RequestTimeoutError(
+            `Server did not respond to ${method} request within ${timeoutMs}ms`,
+          ),
+        )
+      if (deadline.aborted) {
+        fail()
+      } else {
+        deadline.addEventListener('abort', fail, { once: true })
+      }
     })
   }
 
@@ -458,43 +564,15 @@ export class ContextClient<
         protocolVersion: protocol.version,
       },
     })
-    // Wait for the matching response, bounded by the setup timeout. The
-    // deadline promise is built once (not per iteration) so reading past stray
-    // pre-init messages doesn't accumulate abort listeners on the signal.
-    const timeoutMs = this.#setupTimeout
-    const deadline = AbortSignal.timeout(timeoutMs)
-    const timedOut = new Promise<never>((_resolve, reject) => {
-      const fail = () =>
-        reject(
-          new RequestTimeoutError(
-            `Server did not respond to initialize request within ${timeoutMs}ms`,
-          ),
-        )
-      if (deadline.aborted) {
-        fail()
-      } else {
-        deadline.addEventListener('abort', fail, { once: true })
-      }
-    })
-    let result: InitializeResult | undefined
-    while (result == null) {
-      // The losing _read() stays pending and holds the reader lock; it resolves
-      // (done) when the transport is later disposed. Its result is ignored.
-      const next = await Promise.race([this._read(), timedOut])
-      if (next.done) {
-        throw new Error('Server closed the connection during initialize')
-      }
-      const message = next.value
-      // Drop anything that isn't the initialize response: pre-init notifications
-      // and server requests can't be handled before the session is established.
-      if (message.id !== id) {
-        continue
-      }
-      if ('error' in message) {
-        throw RPCError.fromResponse(message as ErrorResponse)
-      }
-      result = message.result as InitializeResult
+    const deadline = this.#setupDeadline('initialize')
+    // Drops anything that isn't the initialize response by construction: `matches` only
+    // accepts this request's own id, so pre-init notifications and server requests are left in
+    // `#setupBuffer` rather than handled here — they can't be, before the session exists.
+    const message = await this.#readUntil((candidate) => candidate.id === id, deadline)
+    if ('error' in message) {
+      throw RPCError.fromResponse(message as ErrorResponse)
     }
+    const result = message.result as InitializeResult
     // Reject a negotiated version other than the one this client is configured to speak.
     if (result.protocolVersion !== protocol.version) {
       await this.dispose()
@@ -513,6 +591,13 @@ export class ContextClient<
   async #setup(): Promise<void> {
     const protocol = this.#protocol ?? (await this.#probe())
     this.#protocol = protocol
+    // Re-run the handler refusal now that the revision is settled: under `protocolVersion:
+    // 'auto'` the constructor couldn't check this (the revision wasn't known yet), so a handler
+    // configured against a server that turns out to speak `2026-07-28` — whose `serverMethods`
+    // is always empty — must still be refused here instead of going live with capabilities
+    // (`sampling`/`elicitation`/`roots`) that revision cannot honor. A no-op re-check for a
+    // fixed `protocolVersion`, already validated at construction.
+    this.#refuseUnsupportedHandlers(protocol)
     if (protocol.requiresHandshake) {
       await this.#initialized
       return
@@ -520,9 +605,84 @@ export class ContextClient<
     this.#startReadLoop()
   }
 
-  /** @todo Task 11: probe the server for the protocol version it speaks. */
+  /**
+   * Probes the server with `server/discover` to resolve `protocolVersion: 'auto'`, per
+   * `specification/2026-07-28/basic/transports/stdio#backward-compatibility`: a `DiscoverResult`
+   * identifies a `2026-07-28` server; anything else — an unrecognized-method error, a timeout,
+   * or any other failure — falls back to the `2025-11-25` handshake. A `-32022`
+   * (`UNSUPPORTED_PROTOCOL_VERSION`) response is the one exception that still carries useful
+   * information on the way down: its `data.supported` names the versions the server does speak,
+   * so the fallback negotiates the newest one both sides support instead of assuming
+   * `2025-11-25` outright.
+   */
   async #probe(): Promise<ProtocolDefinition> {
-    throw new Error("protocolVersion: 'auto' is not implemented yet")
+    const candidate = PROTOCOLS['2026-07-28']
+    this.#protocol = candidate
+    try {
+      await this.#probeDiscover()
+      return candidate
+    } catch (cause) {
+      const supported =
+        cause instanceof RPCError && cause.code === UNSUPPORTED_PROTOCOL_VERSION
+          ? ((cause.data as { supported?: Array<string> } | undefined)?.supported ?? [])
+          : []
+      const agreed = PROTOCOL_VERSIONS.find((version) => supported.includes(version))
+      this.#protocol = agreed == null ? PROTOCOLS['2025-11-25'] : PROTOCOLS[agreed]
+      // A capability snapshot or cached discover() result taken from the failed 2026-07-28
+      // probe must not survive into the connection that replaces it.
+      this.#resetDiscovery()
+      return this.#protocol
+    }
+  }
+
+  /**
+   * Sends `server/discover` directly on the transport (`super._write`), bypassing
+   * `ContextRPC`'s request/exchange machinery: `#startReadLoop()` hasn't run yet — resolving
+   * whether it should is the point of this probe — so there is no read loop to route a response
+   * through yet. Reads the response via `#readUntil()`, sharing its bounded-read state with
+   * `#initialize()` so a probe timeout can't cause the handshake that follows to lose its
+   * response (see `#readUntil()`'s comment).
+   *
+   * Sends the same `clientInfo`/`logLevel` context `request()` sends with every other request:
+   * the spec says a client SHOULD send `clientInfo`, and there's no reason for the one-off probe
+   * to look different to the server than any request that follows it once the revision is
+   * resolved — a server keying logs or metrics off `clientInfo` shouldn't see a gap for the
+   * request that established the connection.
+   */
+  async #probeDiscover(): Promise<DiscoverResult> {
+    const id = this._getNextRequestID()
+    const protocol = PROTOCOLS['2026-07-28']
+    await super._write({
+      jsonrpc: '2.0',
+      id,
+      method: 'server/discover',
+      params: protocol.decorateRequest(
+        {},
+        {
+          capabilities: this.#capabilities,
+          clientInfo: this.#clientInfo,
+          logLevel: this.#logLevel,
+        },
+      ),
+    } as ClientMessage)
+    const deadline = this.#setupDeadline('server/discover')
+    const message = await this.#readUntil((candidate) => candidate.id === id, deadline)
+    if ('error' in message) {
+      throw RPCError.fromResponse(message as ErrorResponse)
+    }
+    return message.result as DiscoverResult
+  }
+
+  /**
+   * Clears both discover-derived caches together: `#discovered` (`discover()`'s own
+   * `ttlMs`-governed cache) and `#serverCapabilitySnapshot` (the connection-lifetime gating
+   * snapshot). The only caller today is `#probe()`'s fallback path, so that a result cached
+   * from the failed `2026-07-28` probe attempt cannot leak into the `2025-11-25` connection
+   * that replaces it — see the field comment on `#serverCapabilitySnapshot`.
+   */
+  #resetDiscovery(): void {
+    this.#discovered = null
+    this.#serverCapabilitySnapshot = null
   }
 
   /** The resolved protocol record. Throws while an `'auto'` probe is still pending. */

@@ -153,12 +153,20 @@ async function expectClientResponse(
   await transports.dispose()
 }
 
-type Respond = (message: ClientRequest) => Record<string, unknown> | undefined
+/**
+ * Sentinel a `respond` function returns to withhold a response entirely: the harness still
+ * records the request in `sent`, but writes nothing back, so a bounded read waiting on it hits
+ * its own timeout instead of resolving. Used to exercise the `'auto'` probe-timeout fallback
+ * without blocking inside `respond` itself.
+ */
+const WITHHOLD = Symbol('WITHHOLD')
+
+type Respond = (message: ClientRequest) => Record<string, unknown> | typeof WITHHOLD | undefined
 
 /**
  * Drives a client against a scripted server: `respond` returns the result for each request
- * the server receives, or `undefined` to answer with `{}`. `sent` records every outbound
- * message in order.
+ * the server receives, `undefined` to answer with `{}`, or `WITHHOLD` to record the request
+ * and never answer it. `sent` records every outbound message in order.
  */
 function createTestClient(params: Omit<ClientParams, 'transport'> & { respond?: Respond }): {
   client: ContextClient
@@ -188,6 +196,9 @@ function createTestClient(params: Omit<ClientParams, 'transport'> & { respond?: 
         continue
       }
       const answer = respond?.(message)
+      if (answer === WITHHOLD) {
+        continue
+      }
       if (answer === undefined) {
         transports.server.write({ jsonrpc: '2.0', id: message.id, result: {} } as ServerMessage)
       } else if ('error' in answer) {
@@ -1270,5 +1281,199 @@ describe('discover()', () => {
         argument: { name: 'arg', value: '' },
       }),
     ).rejects.toThrow(CapabilityNotDeclaredError)
+  })
+})
+
+describe("'auto' probe", () => {
+  test("'auto' resolves to 2026-07-28 when discover answers", async () => {
+    const { client } = createTestClient({
+      protocolVersion: 'auto',
+      respond: () => ({
+        resultType: 'complete',
+        supportedVersions: ['2026-07-28'],
+        capabilities: { tools: {} },
+        ttlMs: 0,
+        cacheScope: 'private',
+      }),
+    })
+    await client.listPrompts()
+    expect(client.protocolVersion).toBe('2026-07-28')
+  })
+
+  test("'auto' falls back to 2025-11-25 when discover is not a known method", async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: 'auto',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? { error: { code: -32601, message: 'Method not found' } }
+          : undefined,
+    })
+    await client.listPrompts()
+    expect(client.protocolVersion).toBe('2025-11-25')
+    expect(sent.map((message) => message.method)).toEqual([
+      'server/discover',
+      'initialize',
+      'notifications/initialized',
+      'prompts/list',
+    ])
+  })
+
+  // Correction 1: the brief's own probe design mirrors #initialize()'s bounded-read shape with
+  // an independent `_read()`, and that loses this race. The transport's reader is shared and
+  // reads are served FIFO (@enkaku/transport's Transport#read() calls reader.read() on one
+  // ReadableStreamDefaultReader obtained once via _getReader()): a probe that times out leaves
+  // its own `_read()` pending — a losing `Promise.race` branch doesn't cancel it — and a fresh,
+  // independent `_read()` issued by #initialize() afterward would queue FIFO behind it. The
+  // initialize response would then resolve the *abandoned* probe read instead of #initialize()'s
+  // own read, which would wait forever for a message that already arrived and silently went
+  // to the wrong waiter, eventually dying with its own RequestTimeoutError.
+  //
+  // This test proves the fix rather than papering over the symptom: it asserts the handshake
+  // actually *succeeds* (a real listPrompts() round trip resolves, and `sent` shows the full,
+  // correctly-ordered frame sequence), not merely that `protocolVersion` reads '2025-11-25'
+  // after the client failed some other way.
+  test("'auto' falls back when the probe times out, and the handshake that follows succeeds", async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: 'auto',
+      setupTimeout: 50,
+      respond: (message) => (message.method === 'server/discover' ? WITHHOLD : undefined),
+    })
+    await expect(client.listPrompts()).resolves.toEqual({ prompts: [] })
+    expect(client.protocolVersion).toBe('2025-11-25')
+    expect(sent.map((message) => message.method)).toEqual([
+      'server/discover',
+      'initialize',
+      'notifications/initialized',
+      'prompts/list',
+    ])
+  })
+
+  test("'auto' retries with a mutually supported version on -32022", async () => {
+    const { client } = createTestClient({
+      protocolVersion: 'auto',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              error: {
+                code: -32022,
+                message: 'Unsupported protocol version',
+                data: { supported: ['2025-11-25'], requested: '2026-07-28' },
+              },
+            }
+          : undefined,
+    })
+    await client.listPrompts()
+    expect(client.protocolVersion).toBe('2025-11-25')
+  })
+
+  // Correction 3, gap 1: `getPrompt`, `readResource` and `callTool` call `request()` directly
+  // with no `#ready` await of their own (unlike `setLoggingLevel`/`complete`/`listTools`/
+  // `#listPaged`). Before this task, calling any of them *first* under `protocolVersion: 'auto'`
+  // threw "not resolved yet" synchronously instead of running the probe. Each of the next three
+  // tests calls one of them as the very first thing done with a fresh client, so it actually
+  // exercises the gap rather than riding on a probe some earlier call already triggered.
+  test("'auto' resolves via getPrompt when it is the first call made", async () => {
+    const { client } = createTestClient({
+      protocolVersion: 'auto',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: {},
+              ttlMs: 0,
+              cacheScope: 'private',
+            }
+          : { resultType: 'complete', description: 'd', messages: [] },
+    })
+    await expect(client.getPrompt({ name: 'test', arguments: {} })).resolves.toEqual({
+      resultType: 'complete',
+      description: 'd',
+      messages: [],
+    })
+    expect(client.protocolVersion).toBe('2026-07-28')
+  })
+
+  test("'auto' resolves via readResource when it is the first call made", async () => {
+    const { client } = createTestClient({
+      protocolVersion: 'auto',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: {},
+              ttlMs: 0,
+              cacheScope: 'private',
+            }
+          : { resultType: 'complete', contents: [] },
+    })
+    await expect(client.readResource({ uri: 'file:///test' })).resolves.toEqual({
+      resultType: 'complete',
+      contents: [],
+    })
+    expect(client.protocolVersion).toBe('2026-07-28')
+  })
+
+  test("'auto' resolves via callTool when it is the first call made", async () => {
+    const { client } = createTestClient({
+      protocolVersion: 'auto',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: {},
+              ttlMs: 0,
+              cacheScope: 'private',
+            }
+          : { resultType: 'complete', content: [] },
+    })
+    await expect(client.callTool({ name: 'echo', arguments: {} })).resolves.toEqual({
+      resultType: 'complete',
+      content: [],
+    })
+    expect(client.protocolVersion).toBe('2026-07-28')
+  })
+
+  // Correction 3, gap 2: the constructor only refuses a createMessage/elicit/listRoots handler
+  // when the revision is known synchronously (a fixed protocolVersion). Under 'auto' it was
+  // accepted at construction and never re-checked, so a handler configured against a server
+  // that turns out to speak 2026-07-28 — whose serverMethods is always empty — went live
+  // anyway, and #capabilities kept advertising it in every request's _meta.
+  test("'auto' refuses a createMessage handler once the probe resolves to 2026-07-28", async () => {
+    const { client } = createTestClient({
+      protocolVersion: 'auto',
+      createMessage: () => ({
+        content: { type: 'text', text: '' },
+        model: 'test',
+        role: 'assistant',
+      }),
+      respond: () => ({
+        resultType: 'complete',
+        supportedVersions: ['2026-07-28'],
+        capabilities: {},
+        ttlMs: 0,
+        cacheScope: 'private',
+      }),
+    })
+    await expect(client.listPrompts()).rejects.toThrow(MRTRNotSupportedError)
+  })
+
+  test("'auto' still allows a createMessage handler when the probe falls back to 2025-11-25", async () => {
+    const { client } = createTestClient({
+      protocolVersion: 'auto',
+      createMessage: () => ({
+        content: { type: 'text', text: '' },
+        model: 'test',
+        role: 'assistant',
+      }),
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? { error: { code: -32601, message: 'Method not found' } }
+          : undefined,
+    })
+    await expect(client.listPrompts()).resolves.toEqual({ prompts: [] })
+    expect(client.protocolVersion).toBe('2025-11-25')
   })
 })
