@@ -1197,6 +1197,80 @@ describe('server/discover', () => {
   })
 })
 
+const noisyTool = createTool({
+  description: 'Logs while running',
+  inputSchema: { type: 'object', properties: {} },
+  handler: ({ client }) => {
+    client.log({ level: 'warning', data: 'from the tool' })
+    return { content: [{ type: 'text', text: 'ok' }] }
+  },
+})
+
+const asksTool = createTool({
+  description: 'Needs the client',
+  inputSchema: { type: 'object', properties: {} },
+  handler: async ({ client }) => {
+    await client.createMessage({ messages: [], maxTokens: 1 })
+    return { content: [] }
+  },
+})
+
+describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', () => {
+  test('2026-07-28 emits log notifications only for requests carrying logLevel', async () => {
+    const { transports } = createTestContext({
+      protocolVersions: ['2026-07-28'],
+      tools: { noisy: noisyTool },
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'noisy', arguments: {}, _meta: NEW_META },
+    } as ClientRequest)
+    // With no logLevel opted in, the first message back is the result itself.
+    const silent = await transports.client.read()
+    expect((silent.value as { id: number }).id).toBe(1)
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'noisy',
+        arguments: {},
+        _meta: { ...NEW_META, 'io.modelcontextprotocol/logLevel': 'warning' },
+      },
+    } as ClientRequest)
+    // With logLevel opted in, the notification precedes the result.
+    const notified = await transports.client.read()
+    expect((notified.value as { method: string }).method).toBe('notifications/message')
+
+    await transports.dispose()
+  })
+
+  test('2026-07-28 tool handlers cannot reach the client until MRTR lands', async () => {
+    const { transports } = createTestContext({
+      protocolVersions: ['2026-07-28'],
+      tools: { asks: asksTool },
+    })
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'asks', arguments: {}, _meta: NEW_META },
+    } as ClientRequest)
+    const response = await transports.client.read()
+    // A tool-execution failure is reported inside the result, not as a protocol error.
+    const result = (
+      response.value as { result: { isError: boolean; content: Array<{ text: string }> } }
+    ).result
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('2026-07-28')
+    await transports.dispose()
+  })
+})
+
 describe('mandatory caching hints (2026-07-28)', () => {
   const cacheableConfig: TestContextParams = {
     protocolVersions: ['2026-07-28'],

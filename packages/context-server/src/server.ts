@@ -63,6 +63,7 @@ import type {
   ServerTransport,
   ToolDefinitions,
 } from './types.js'
+import { MRTRNotSupportedError } from './types.js'
 
 // cf https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1
 const LOGGING_LEVELS: Record<LoggingLevel, number> = {
@@ -290,6 +291,46 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return protocol
   }
 
+  /**
+   * Builds the `ServerClient` a request's handlers see.
+   *
+   * `2025-11-25` gets the constructor-built, session-scoped `#client` back unchanged: its
+   * `createMessage`/`elicit`/`listRoots` really send server-initiated requests, and its `log`
+   * goes through the `events.on('log')` bridge gated by `#clientLoggingLevel`
+   * (`logging/setLevel`).
+   *
+   * A revision that sets `requiresMRTR` or `requiresPerRequestLogLevel` gets a fresh client
+   * instead, built per request so it can close over that request's resolved `logLevel`. The two
+   * traits are independent: `requiresMRTR` alone swaps out `createMessage`/`elicit`/`listRoots`
+   * for rejections (there is nothing to send them as — no server-initiated request survives in
+   * such a revision); `requiresPerRequestLogLevel` alone changes what `log` does, scoping
+   * emission to the level this request opted into instead of a standing session level.
+   */
+  #createClient(protocol: ProtocolDefinition, logLevel?: LoggingLevel): ServerClient {
+    if (!protocol.requiresMRTR && !protocol.requiresPerRequestLogLevel) {
+      return this.#client
+    }
+    return {
+      createMessage: protocol.requiresMRTR
+        ? () => Promise.reject(new MRTRNotSupportedError('createMessage'))
+        : this.createMessage.bind(this),
+      elicit: protocol.requiresMRTR
+        ? () => Promise.reject(new MRTRNotSupportedError('elicit'))
+        : this.elicit.bind(this),
+      listRoots: protocol.requiresMRTR
+        ? () => Promise.reject(new MRTRNotSupportedError('listRoots'))
+        : this.listRoots.bind(this),
+      log: protocol.requiresPerRequestLogLevel
+        ? (params: LogParams) => {
+            // Emit only when this request opted in via `_meta`, at or above its level.
+            if (logLevel != null && LOGGING_LEVELS[params.level] <= LOGGING_LEVELS[logLevel]) {
+              void this._write({ jsonrpc: '2.0', method: 'notifications/message', params })
+            }
+          }
+        : this.log.bind(this),
+    }
+  }
+
   async _handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
     const protocol = this.#resolveProtocol(request)
     if (!protocol.clientMethods.has(request.method)) {
@@ -301,8 +342,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const meta = (request.params as Record<string, unknown> | undefined)?._meta as
       | Record<string, unknown>
       | undefined
+    const client = this.#createClient(protocol, protocol.readRequestMeta(request).logLevel)
     const result = await withRequestMeta(meta, () =>
-      this.#dispatchRequest(request, protocol, signal),
+      this.#dispatchRequest(request, protocol, client, signal),
     )
     const body = protocol.requiresCacheHints
       ? applyCacheHints(request.method, result as Record<string, unknown>, this.#cache)
@@ -313,6 +355,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   async #dispatchRequest(
     request: ClientRequest,
     protocol: ProtocolDefinition,
+    client: ServerClient,
     signal: AbortSignal,
   ): Promise<ServerResult> {
     switch (request.method) {
@@ -320,7 +363,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         if (this.#completeHandler == null) {
           break
         }
-        return await this.#completeHandler({ client: this.#client, params: request.params, signal })
+        return await this.#completeHandler({ client, params: request.params, signal })
       case 'initialize':
         this.#clientInitialize = request.params
         this.events.emit('initialize', request.params)
@@ -333,25 +376,25 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         this.#clientLoggingLevel = request.params.level
         return {}
       case 'prompts/get':
-        return await this.#getPrompt(request, signal)
+        return await this.#getPrompt(request, client, signal)
       case 'prompts/list':
         return { prompts: this.#promptsList, ...this.#cache }
       case 'resources/list':
         if (this.#resources == null) {
           break
         }
-        return this.#resources.list({ client: this.#client, params: request.params, signal })
+        return this.#resources.list({ client, params: request.params, signal })
       case 'resources/read':
         if (this.#resources == null) {
           break
         }
-        return this.#resources.read({ client: this.#client, params: request.params, signal })
+        return this.#resources.read({ client, params: request.params, signal })
       case 'resources/templates/list':
         if (this.#resources == null) {
           break
         }
         return this.#resources.listTemplates({
-          client: this.#client,
+          client,
           params: request.params,
           signal,
         })
@@ -362,14 +405,18 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           serverInfo: this.#serverInfo,
         })
       case 'tools/call':
-        return await this.#callTool(request, signal)
+        return await this.#callTool(request, client, signal)
       case 'tools/list':
         return { tools: this.#toolsList, ...this.#cache }
     }
     throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
   }
 
-  async #callTool(request: CallToolRequest, signal: AbortSignal): Promise<CallToolResult> {
+  async #callTool(
+    request: CallToolRequest,
+    client: ServerClient,
+    signal: AbortSignal,
+  ): Promise<CallToolResult> {
     const name = request.params.name
     const handler = Object.hasOwn(this.#toolHandlers, name) ? this.#toolHandlers[name] : undefined
     if (handler == null) {
@@ -388,7 +435,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         // The wire calls it `arguments` (MCP `tools/call`); handlers receive it as `input`,
         // the thing the tool's `inputSchema` describes.
         input: request.params.arguments ?? {},
-        client: this.#client,
+        client,
         progress,
         signal,
       })
@@ -410,7 +457,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
   }
 
-  async #getPrompt(request: GetPromptRequest, signal: AbortSignal): Promise<GetPromptResult> {
+  async #getPrompt(
+    request: GetPromptRequest,
+    client: ServerClient,
+    signal: AbortSignal,
+  ): Promise<GetPromptResult> {
     const name = request.params.name
     const handler = Object.hasOwn(this.#promptHandlers, name)
       ? this.#promptHandlers[name]
@@ -418,7 +469,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (handler == null) {
       throw new RPCError(INVALID_PARAMS, `Prompt ${name} not found`)
     }
-    return await handler({ input: request.params.arguments, client: this.#client, signal })
+    return await handler({ input: request.params.arguments, client, signal })
   }
 }
 

@@ -34,6 +34,20 @@ export type ProtocolDefinition = {
   requiresRequestMeta: boolean
   /** True when `complete` results of cacheable methods must carry `ttlMs`/`cacheScope`. */
   requiresCacheHints: boolean
+  /**
+   * True when server-initiated requests (`sampling/createMessage`, `elicitation/create`,
+   * `roots/list`) are replaced by multi round-trip requests (MRTR, SEP-2322): a server must
+   * reject a handler's attempt to call a client capability rather than send it, since there is
+   * nothing on the wire to send it as. Always mirrors whether `serverMethods` is empty.
+   */
+  requiresMRTR: boolean
+  /**
+   * True when log level is scoped to the individual request — read via `readRequestMeta` off
+   * each request's own `_meta` — rather than session-scoped through a standing
+   * `logging/setLevel` call. Always mirrors whether `logging/setLevel` is absent from
+   * `clientMethods`.
+   */
+  requiresPerRequestLogLevel: boolean
   /** Methods a client may send in this revision. */
   clientMethods: ReadonlySet<string>
   /** Methods a server may send in this revision. */

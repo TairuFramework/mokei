@@ -79,6 +79,8 @@ export const PROTOCOL = {
   requiresHandshake: true,
   requiresRequestMeta: false,
   requiresCacheHints: false,
+  requiresMRTR: false,
+  requiresPerRequestLogLevel: false,
   clientMethods: new Set([
     'ping',
     'initialize',

@@ -40,6 +40,16 @@ export type LogParams = {
 
 export type LogFunction = (params: LogParams) => void
 
+/** Thrown when a handler reaches for a client capability that 2026-07-28 routes through MRTR. */
+export class MRTRNotSupportedError extends Error {
+  constructor(method: string) {
+    super(
+      `${method} is not available on protocol version 2026-07-28: server-initiated requests are replaced by multi round-trip requests (SEP-2322), which mokei does not implement yet`,
+    )
+    this.name = 'MRTRNotSupportedError'
+  }
+}
+
 export type ServerClient = {
   createMessage: (
     params: WithRequestOptions<CreateMessageRequest['params']>,
