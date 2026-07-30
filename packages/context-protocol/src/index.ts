@@ -10,13 +10,7 @@
  * @module context-protocol
  */
 
-export {
-  type ClientMessage,
-  type ClientNotification,
-  type ClientRequest,
-  type ClientResult,
-  clientMessage,
-} from './client.js'
+export type { ClientResult } from './client.js'
 export type { CompleteRequest, CompleteResult } from './completion.js'
 export {
   type ElicitationCompleteNotification,
@@ -126,7 +120,11 @@ export {
   type ToolListChangedNotification,
 } from './tool.js'
 export {
+  type ClientMessage,
+  type ClientNotification,
+  type ClientRequest,
   type ClientRequestContext,
+  clientMessage,
   type DiscoverRequest,
   type DiscoverResult,
   isSupportedProtocolVersion,

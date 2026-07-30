@@ -123,6 +123,7 @@ export const clientRequest = {
     withProtocolMeta(callToolRequest),
   ],
 } as const satisfies Schema
+export type ClientRequest = FromSchema<typeof clientRequest>
 
 /**
  * Notifications a client may send in this revision. `2025-11-25`'s `initialized` and
@@ -134,10 +135,12 @@ export const clientRequest = {
 export const clientNotification = {
   anyOf: [cancelledNotification, progressNotification],
 } as const satisfies Schema
+export type ClientNotification = FromSchema<typeof clientNotification>
 
 export const clientMessage = {
   anyOf: [clientRequest, clientNotification, clientResponse],
 } as const satisfies Schema
+export type ClientMessage = FromSchema<typeof clientMessage>
 
 /**
  * Notifications a server may send in this revision. `2025-11-25`'s

@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest'
 
-import { clientMessage } from '../src/client.js'
 import { imageContent, role, textContent } from '../src/content.js'
 import {
   clientCapabilities,
@@ -45,6 +44,7 @@ import {
   outputSchema,
   tool,
 } from '../src/tool.js'
+import { clientMessage } from '../src/versions/2025-11-25.js'
 import { isSupportedProtocolVersion, PROTOCOL_VERSIONS } from '../src/versions/index.js'
 
 describe('Protocol Version and Constants', () => {

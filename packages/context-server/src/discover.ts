@@ -8,14 +8,12 @@ import type {
 export type DiscoverParams = {
   capabilities: ServerCapabilities
   protocolVersions: Array<ProtocolVersion>
+  // Unused here — kept because it's part of the documented `DiscoverParams` interface.
   serverInfo: Implementation
   instructions?: string
 }
 
-/**
- * Assembles the `server/discover` result. `resultType` and the `serverInfo` `_meta` key are
- * added by the protocol record's `wrapResult`, so this returns the body only.
- */
+/** Assembles the `server/discover` result body (`resultType` and `_meta` are added by `wrapResult`). */
 export function buildDiscoverResult(
   params: DiscoverParams,
 ): Omit<DiscoverResult, 'resultType' | '_meta'> {

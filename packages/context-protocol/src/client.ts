@@ -1,59 +1,15 @@
 import type { FromSchema, Schema } from '@sozai/schema'
 
-import { completeRequest } from './completion.js'
 import { elicitResult } from './elicitation.js'
-import { initializedNotification, initializeRequest } from './initialize.js'
-import { setLevelRequest } from './logging.js'
-import { getPromptRequest, listPromptsRequest } from './prompt.js'
-import {
-  listResourcesRequest,
-  listResourceTemplatesRequest,
-  readResourceRequest,
-  subscribeRequest,
-  unsubscribeRequest,
-} from './resource.js'
-import { listRootsResult, rootsListChangedNotification } from './root.js'
-import {
-  cancelledNotification,
-  errorResponse,
-  pingRequest,
-  progressNotification,
-  response,
-  result,
-} from './rpc.js'
+import { listRootsResult } from './root.js'
+import { errorResponse, response, result } from './rpc.js'
 import { createMessageResult } from './sampling.js'
-import { callToolRequest, listToolsRequest } from './tool.js'
 
-// Client messages from https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.ts#L1066
-
-export const clientRequest = {
-  anyOf: [
-    pingRequest,
-    initializeRequest,
-    completeRequest,
-    setLevelRequest,
-    getPromptRequest,
-    listPromptsRequest,
-    listResourcesRequest,
-    listResourceTemplatesRequest,
-    readResourceRequest,
-    subscribeRequest,
-    unsubscribeRequest,
-    listToolsRequest,
-    callToolRequest,
-  ],
-} as const satisfies Schema
-export type ClientRequest = FromSchema<typeof clientRequest>
-
-export const clientNotification = {
-  anyOf: [
-    cancelledNotification,
-    progressNotification,
-    initializedNotification,
-    rootsListChangedNotification,
-  ],
-} as const satisfies Schema
-export type ClientNotification = FromSchema<typeof clientNotification>
+// The result and response envelopes below are version-invariant: every revision's client
+// carries the same result/response shape back to a server-initiated request
+// (`sampling/createMessage`, `roots/list`, `elicitation/create`). A revision's own *request*
+// and *notification* unions vary by method set and live in `./versions/<revision>.ts` instead
+// (e.g. `./versions/2025-11-25.ts`, `./versions/2026-07-28.ts`).
 
 export const clientResult = {
   anyOf: [result, createMessageResult, listRootsResult, elicitResult],
@@ -76,29 +32,3 @@ export const clientResponse = {
   ],
 } as const satisfies Schema
 export type ClientResponse = FromSchema<typeof clientResponse>
-
-// Generic messages
-
-/**
- * Any MCP client message.
- */
-export const clientMessage = {
-  anyOf: [
-    pingRequest,
-    initializeRequest,
-    completeRequest,
-    setLevelRequest,
-    getPromptRequest,
-    listPromptsRequest,
-    listResourcesRequest,
-    listResourceTemplatesRequest,
-    readResourceRequest,
-    subscribeRequest,
-    unsubscribeRequest,
-    listToolsRequest,
-    callToolRequest,
-    clientNotification,
-    clientResponse,
-  ],
-} as const satisfies Schema
-export type ClientMessage = FromSchema<typeof clientMessage>
