@@ -5,6 +5,7 @@
  */
 import { fromJsonSchema, McpServer } from '@modelcontextprotocol/server'
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv'
+import type { ProtocolVersion } from '@mokei/context-protocol'
 import { createPrompt, createTool, type ServerConfig } from '@mokei/context-server'
 
 export const SERVER_NAME = 'interop-fixture'
@@ -12,6 +13,19 @@ export const SERVER_VERSION = '1.0.0'
 
 export const GREETING_URI = 'test://greeting'
 export const GREETING_TEXT = 'Hello from the interop fixture'
+
+export const ITEM_TEMPLATE_URI = 'test://items/{id}'
+export const ITEM_TEMPLATE_NAME = 'item'
+
+export function itemURI(id: string): string {
+  return `test://items/${id}`
+}
+
+export function itemText(id: string): string {
+  return `Item ${id}`
+}
+
+export const COMPLETION_VALUES = ['Ada', 'Alan', 'Grace']
 
 export const ECHO_INPUT_SCHEMA = {
   type: 'object',
@@ -45,12 +59,19 @@ export function greetingMessage(name: string): string {
   return `Greetings, ${name}!`
 }
 
-/** The fixture served by `@mokei/context-server`. */
-export function createMokeiConfig(): ServerConfig {
+/**
+ * The fixture served by `@mokei/context-server`.
+ *
+ * `protocolVersions` defaults to `['2025-11-25']` so existing callers (the `2025-11-25`
+ * interop suites) are unaffected; the `2026-07-28` stdio fixture passes `['2026-07-28']`.
+ */
+export function createMokeiConfig(
+  protocolVersions: Array<ProtocolVersion> = ['2025-11-25'],
+): ServerConfig {
   return {
     name: SERVER_NAME,
     version: SERVER_VERSION,
-    protocolVersions: ['2025-11-25'],
+    protocolVersions,
     tools: {
       echo: createTool({
         description: 'Echo the provided text',
@@ -77,10 +98,25 @@ export function createMokeiConfig(): ServerConfig {
     },
     resources: {
       list: [{ uri: GREETING_URI, name: 'greeting', mimeType: 'text/plain' }],
-      read: ({ params }) => ({
-        contents: [{ uri: params.uri, mimeType: 'text/plain', text: GREETING_TEXT }],
-      }),
+      listTemplates: [
+        { uriTemplate: ITEM_TEMPLATE_URI, name: ITEM_TEMPLATE_NAME, mimeType: 'text/plain' },
+      ],
+      read: ({ params }) => {
+        if (params.uri === GREETING_URI) {
+          return { contents: [{ uri: params.uri, mimeType: 'text/plain', text: GREETING_TEXT }] }
+        }
+        const id = params.uri.replace('test://items/', '')
+        return { contents: [{ uri: params.uri, mimeType: 'text/plain', text: itemText(id) }] }
+      },
     },
+    complete: ({ params }) => ({
+      completion: {
+        values: COMPLETION_VALUES.filter((value) =>
+          value.toLowerCase().startsWith(params.argument.value.toLowerCase()),
+        ),
+        hasMore: false,
+      },
+    }),
   }
 }
 
