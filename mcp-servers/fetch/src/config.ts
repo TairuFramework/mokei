@@ -110,7 +110,7 @@ export function createFetchConfig(options: FetchToolsOptions = {}) {
  * import type { FetchServerTypes } from '@mokei/mcp-fetch'
  * import { ContextClient } from '@mokei/context-client'
  *
- * const client = new ContextClient<FetchServerTypes>({ transport })
+ * const client = new ContextClient<FetchServerTypes>({ protocolVersion: '2025-11-25', transport })
  * ```
  */
 export type FetchServerTypes = ExtractServerTypes<ReturnType<typeof createFetchConfig>>

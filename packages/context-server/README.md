@@ -113,7 +113,7 @@ Import the exported types to get full type safety in your client:
 import type { MyServerTypes } from './my-server'
 import { ContextClient } from '@mokei/context-client'
 
-const client = new ContextClient<MyServerTypes>({ transport })
+const client = new ContextClient<MyServerTypes>({ protocolVersion: '2025-11-25', transport })
 await client.initialize()
 
 // TypeScript knows the exact shape of arguments!

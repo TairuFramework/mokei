@@ -1,6 +1,5 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
-import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { describe, expect, test, vi } from 'vitest'
 
 import { ContextClient } from '../src/index.js'
@@ -72,7 +71,10 @@ describe('ContextClient.request trace injection', () => {
       traceparent: '00-0af7651916cd43dd8448eb211c80319c-00f067aa0ba902b7-01',
     })
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
 
     // Calling any request lazily initializes the client, so drive the
     // initialize handshake before the tools/call frame can be read.
@@ -83,7 +85,7 @@ describe('ContextClient.request trace injection', () => {
       id: 0,
       result: {
         capabilities: {},
-        protocolVersion: LATEST_PROTOCOL_VERSION,
+        protocolVersion: '2025-11-25',
         serverInfo: { name: 'Mokei', version: '0.1.0' },
       },
     })

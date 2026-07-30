@@ -13,7 +13,7 @@ import { ContextClient } from '@mokei/context-client'
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 
 const transport = new NodeStreamsTransport({ streams })
-const client = new ContextClient({ transport })
+const client = new ContextClient({ protocolVersion: '2025-11-25', transport })
 
 await client.initialize()
 
@@ -40,7 +40,7 @@ import type { FetchServerTypes } from '@mokei/mcp-fetch'
 import { ContextClient } from '@mokei/context-client'
 
 // Create a typed client
-const client = new ContextClient<FetchServerTypes>({ transport })
+const client = new ContextClient<FetchServerTypes>({ protocolVersion: '2025-11-25', transport })
 await client.initialize()
 
 // Now all tool calls are type-checked!
@@ -70,7 +70,7 @@ type MyContextTypes = {
   }
 }
 
-const client = new ContextClient<MyContextTypes>({ transport })
+const client = new ContextClient<MyContextTypes>({ protocolVersion: '2025-11-25', transport })
 await client.initialize()
 
 // Typed tool calls

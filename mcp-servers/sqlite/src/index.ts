@@ -107,7 +107,7 @@ export function createSQLiteConfig(db: DatabaseSync) {
  * import type { SQLiteServerTypes } from '@mokei/mcp-sqlite'
  * import { ContextClient } from '@mokei/context-client'
  *
- * const client = new ContextClient<SqliteServerTypes>({ transport })
+ * const client = new ContextClient<SqliteServerTypes>({ protocolVersion: '2025-11-25', transport })
  * await client.initialize()
  *
  * // Now tool calls are fully typed:

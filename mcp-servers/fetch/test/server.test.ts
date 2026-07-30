@@ -11,7 +11,10 @@ test('run server', async () => {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const server = new ContextServer({ ...config, transport: transports.server })
 
-  const client = new ContextClient<FetchServerTypes>({ transport: transports.client })
+  const client = new ContextClient<FetchServerTypes>({
+    protocolVersion: '2025-11-25',
+    transport: transports.client,
+  })
 
   await expect(
     client.callTool({ name: 'get_markdown', arguments: { url: 'https://mokei.dev' } }),

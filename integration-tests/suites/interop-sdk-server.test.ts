@@ -41,7 +41,10 @@ describe('mokei client against the SDK v2 server', () => {
   test('over Streamable HTTP', async () => {
     httpServer = await startSDKHTTPServer()
     const transport = new HTTPTransport({ url: httpServer.url })
-    client = new ContextClient({ transport: transport as ClientTransport })
+    client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transport as ClientTransport,
+    })
     await checkMokeiClient(client)
   })
 })

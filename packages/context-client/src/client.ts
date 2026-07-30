@@ -14,6 +14,7 @@ import type {
   ElicitResult,
   GetPromptRequest,
   GetPromptResult,
+  Implementation,
   InitializeRequest,
   InitializeResult,
   ListPromptsRequest,
@@ -25,8 +26,11 @@ import type {
   ListToolsRequest,
   ListToolsResult,
   Log,
+  LoggingLevel,
   Metadata,
   ProgressNotification,
+  ProtocolDefinition,
+  ProtocolVersion,
   ReadResourceRequest,
   ReadResourceResult,
   Result,
@@ -39,10 +43,9 @@ import type {
 import {
   type ErrorResponse,
   inferSchemaDraft,
-  isSupportedProtocolVersion,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
-  PROTOCOL_VERSIONS,
+  PROTOCOLS,
   serverMessage,
 } from '@mokei/context-protocol'
 import {
@@ -61,12 +64,14 @@ import type { ClientTransport } from './types.js'
 
 const validateServerMessage = createValidator(serverMessage)
 
+export const DEFAULT_CLIENT_INFO: Implementation = {
+  name: 'Mokei',
+  version: '0.4.0',
+}
+
 export const DEFAULT_INITIALIZE_PARAMS: InitializeRequest['params'] = {
   capabilities: {},
-  clientInfo: {
-    name: 'Mokei',
-    version: '0.4.0',
-  },
+  clientInfo: DEFAULT_CLIENT_INFO,
   protocolVersion: LATEST_PROTOCOL_VERSION,
 }
 
@@ -79,10 +84,8 @@ export const DEFAULT_LIST_MAX_PAGES = 100
 const NOTIFICATION_BUFFER_CAP = 256
 
 export class UnsupportedProtocolVersionError extends Error {
-  constructor(received: string) {
-    super(
-      `Server responded with unsupported protocolVersion "${received}"; supported: ${PROTOCOL_VERSIONS.join(', ')}`,
-    )
+  constructor(received: string, expected: ProtocolVersion) {
+    super(`Server responded with unsupported protocolVersion "${received}"; expected "${expected}"`)
     this.name = 'UnsupportedProtocolVersionError'
   }
 }
@@ -91,6 +94,32 @@ export class CapabilityNotDeclaredError extends Error {
   constructor(capability: string) {
     super(`Server did not declare the "${capability}" capability`)
     this.name = 'CapabilityNotDeclaredError'
+  }
+}
+
+/**
+ * Thrown when a client is configured with a `createMessage`/`elicit`/`listRoots` handler on a
+ * protocol revision whose `serverMethods` carries no way to invoke it — the client-side mirror
+ * of `@mokei/context-server`'s `MRTRNotSupportedError`. `2026-07-28` has no server-initiated
+ * requests: `sampling/createMessage`, `elicitation/create` and `roots/list` are replaced by
+ * multi round-trip requests (MRTR, SEP-2322), which mokei does not implement yet.
+ */
+export class MRTRNotSupportedError extends Error {
+  constructor(handler: string) {
+    super(
+      `The "${handler}" handler is not supported on protocol version 2026-07-28: sampling, elicitation and roots are replaced by multi round-trip requests (MRTR, SEP-2322), which mokei does not implement yet`,
+    )
+    this.name = 'MRTRNotSupportedError'
+  }
+}
+
+/** Thrown when a server returns an `input_required` result: MRTR (SEP-2322) is not implemented yet. */
+export class InputRequiredNotSupportedError extends Error {
+  constructor() {
+    super(
+      'The server returned an "input_required" result: multi round-trip requests (MRTR, SEP-2322) are not implemented yet',
+    )
+    this.name = 'InputRequiredNotSupportedError'
   }
 }
 
@@ -238,11 +267,18 @@ export type PromptParams<T extends ContextTypes> = NamedParams<T['Prompts']>
 export type ToolParams<T extends ContextTypes> = NamedParams<T['Tools']>
 
 export type ClientParams = {
+  /** Revision to speak. `'auto'` probes the server, then caches the result. */
+  protocolVersion: ProtocolVersion | 'auto'
+  clientInfo?: Implementation
   createMessage?: CreateMessageHandler
   elicit?: ElicitHandler
-  initializeTimeout?: number
   listMaxPages?: number
   listRoots?: Array<Root> | ListRootsHandler
+  logLevel?: LoggingLevel
+  /** Bounds both the 2025-11-25 handshake and the `'auto'` probe. */
+  setupTimeout?: number
+  /** @deprecated Renamed to `setupTimeout`. */
+  initializeTimeout?: number
   transport: ClientTransport
 }
 
@@ -251,27 +287,68 @@ type PagedResult = { nextCursor?: string } & Record<string, unknown>
 export class ContextClient<
   T extends ContextTypes = UnknownContextTypes,
 > extends ContextRPC<ClientTypes> {
+  #capabilities: ClientCapabilities
+  #clientInfo: Implementation
   #createMessage?: CreateMessageHandler
   #elicit?: ElicitHandler
   #initialized: PromiseLike<InitializeResult>
-  #initializeTimeout: number
   #listMaxPages: number
   #listRoots?: Array<Root> | ListRootsHandler
+  #logLevel?: LoggingLevel
   #notificationBuffer: Array<HandleNotification> = []
   #notificationPull: (() => void) | null = null
   #hasNotificationReader = false
   #notifications: ReadableStream<HandleNotification>
+  #protocol: ProtocolDefinition | null
+  #reading = false
+  #ready: PromiseLike<void>
   #serverCapabilities: InitializeResult['capabilities'] = {}
+  #setupTimeout: number
   #toolOutputSchemas = new Map<string, Validator<unknown>>()
 
   constructor(params: ClientParams) {
     super({ validateMessageIn: validateServerMessage, transport: params.transport })
+
+    // Derived from `serverMethods`, not a hardcoded version check: a handler is refused
+    // exactly when its own method (`sampling/createMessage`/`elicitation/create`/`roots/list`)
+    // is absent from the configured revision — the client-side mirror of what
+    // `@mokei/context-server` does per capability on the server side.
+    const protocol = params.protocolVersion === 'auto' ? null : PROTOCOLS[params.protocolVersion]
+    if (protocol != null) {
+      if (params.createMessage != null && !protocol.serverMethods.has('sampling/createMessage')) {
+        throw new MRTRNotSupportedError('createMessage')
+      }
+      if (params.elicit != null && !protocol.serverMethods.has('elicitation/create')) {
+        throw new MRTRNotSupportedError('elicit')
+      }
+      if (params.listRoots != null && !protocol.serverMethods.has('roots/list')) {
+        throw new MRTRNotSupportedError('listRoots')
+      }
+    }
+
+    const capabilities: ClientCapabilities = {}
+    if (params.elicit != null) {
+      capabilities.elicitation = {}
+    }
+    if (params.createMessage != null) {
+      capabilities.sampling = {}
+    }
+    if (params.listRoots != null) {
+      capabilities.roots = {}
+    }
+
+    this.#capabilities = capabilities
+    this.#clientInfo = params.clientInfo ?? DEFAULT_CLIENT_INFO
     this.#createMessage = params.createMessage
     this.#elicit = params.elicit
     this.#initialized = lazy(() => this.#initialize())
-    this.#initializeTimeout = params.initializeTimeout ?? DEFAULT_INITIALIZE_TIMEOUT
     this.#listMaxPages = params.listMaxPages ?? DEFAULT_LIST_MAX_PAGES
     this.#listRoots = params.listRoots
+    this.#logLevel = params.logLevel
+    this.#protocol = protocol
+    this.#ready = lazy(() => this.#setup())
+    this.#setupTimeout =
+      params.setupTimeout ?? params.initializeTimeout ?? DEFAULT_INITIALIZE_TIMEOUT
     this.#notifications = new ReadableStream<HandleNotification>(
       {
         pull: (controller) => {
@@ -302,51 +379,55 @@ export class ContextClient<
     )
   }
 
-  // Inject W3C trace context (SEP-414) into every outgoing request's `_meta`.
-  // No-op when no OpenTelemetry SDK is active.
+  // Decorate every outgoing request with this revision's protocol envelope (`decorateRequest`)
+  // and inject W3C trace context (SEP-414) into `_meta`; the latter is a no-op when no
+  // OpenTelemetry SDK is active. Reject an `input_required` result until MRTR (SEP-2322) lands.
   request<Method extends keyof ClientTypes['SendRequests']>(
     method: Method,
     params: ClientTypes['SendRequests'][Method]['Params'],
     options?: RequestOptions,
   ): Promise<ClientTypes['SendRequests'][Method]['Result']> {
     const trace = currentTraceMeta()
-    if (trace.traceparent == null) {
-      return super.request(method, params, options)
-    }
     const base =
-      params != null && typeof params === 'object' ? (params as Record<string, unknown>) : {}
-    const existingMeta =
-      base._meta != null && typeof base._meta === 'object'
-        ? (base._meta as Record<string, unknown>)
-        : {}
-    const merged = { ...base, _meta: { ...existingMeta, ...trace } }
-    return super.request(method, merged as typeof params, options)
+      params != null && typeof params === 'object' ? { ...(params as Record<string, unknown>) } : {}
+    if (trace.traceparent != null) {
+      base._meta = { ...(base._meta as Record<string, unknown> | undefined), ...trace }
+    }
+    const decorated = this.#requireProtocol().decorateRequest(base, {
+      capabilities: this.#capabilities,
+      clientInfo: this.#clientInfo,
+      logLevel: this.#logLevel,
+    })
+    return super.request(method, decorated as typeof params, options).then((result) => {
+      if ((result as { resultType?: string } | undefined)?.resultType === 'input_required') {
+        throw new InputRequiredNotSupportedError()
+      }
+      return result
+    })
   }
 
   async #initialize(): Promise<InitializeResult> {
     const id = this._getNextRequestID()
-    // Build capabilities
-    const capabilities: ClientCapabilities = {}
-    if (this.#elicit != null) {
-      capabilities.elicitation = {}
-    }
-    if (this.#createMessage != null) {
-      capabilities.sampling = {}
-    }
-    if (this.#listRoots != null) {
-      capabilities.roots = {}
-    }
+    // The revision this client is configured to speak — not `LATEST_PROTOCOL_VERSION`: this
+    // client implements exactly one revision's wire behavior, so declaring anything else in
+    // the handshake would misrepresent what it can actually speak.
+    const protocol = this.#requireProtocol()
     // Send initialize request
     await super._write({
       jsonrpc: '2.0',
       id,
       method: 'initialize',
-      params: { ...DEFAULT_INITIALIZE_PARAMS, capabilities },
+      params: {
+        ...DEFAULT_INITIALIZE_PARAMS,
+        clientInfo: this.#clientInfo,
+        capabilities: this.#capabilities,
+        protocolVersion: protocol.version,
+      },
     })
-    // Wait for the matching response, bounded by the initialize timeout. The
+    // Wait for the matching response, bounded by the setup timeout. The
     // deadline promise is built once (not per iteration) so reading past stray
     // pre-init messages doesn't accumulate abort listeners on the signal.
-    const timeoutMs = this.#initializeTimeout
+    const timeoutMs = this.#setupTimeout
     const deadline = AbortSignal.timeout(timeoutMs)
     const timedOut = new Promise<never>((_resolve, reject) => {
       const fail = () =>
@@ -380,28 +461,61 @@ export class ContextClient<
       }
       result = message.result as InitializeResult
     }
-    // Reject an unsupported negotiated version before establishing the session.
-    if (!isSupportedProtocolVersion(result.protocolVersion)) {
+    // Reject a negotiated version other than the one this client is configured to speak.
+    if (result.protocolVersion !== protocol.version) {
       await this.dispose()
-      throw new UnsupportedProtocolVersionError(result.protocolVersion)
+      throw new UnsupportedProtocolVersionError(result.protocolVersion, protocol.version)
     }
-    // Store server capabilities for client-side gating (Task 13).
+    // Store server capabilities for client-side gating.
     this.#serverCapabilities = result.capabilities
     // Start listening for incoming messages
-    this._handle()
+    this.#startReadLoop()
     // Notify server that client is initialized
     await super._write({ jsonrpc: '2.0', method: 'notifications/initialized' })
     this.events.emit('initialized', result)
     return result
   }
 
+  async #setup(): Promise<void> {
+    const protocol = this.#protocol ?? (await this.#probe())
+    this.#protocol = protocol
+    if (protocol.requiresHandshake) {
+      await this.#initialized
+      return
+    }
+    this.#startReadLoop()
+  }
+
+  /** @todo Task 11: probe the server for the protocol version it speaks. */
+  async #probe(): Promise<ProtocolDefinition> {
+    throw new Error("protocolVersion: 'auto' is not implemented yet")
+  }
+
+  /** The resolved protocol record. Throws while an `'auto'` probe is still pending. */
+  #requireProtocol(): ProtocolDefinition {
+    if (this.#protocol == null) {
+      throw new Error("The 'auto' protocol version has not been resolved yet")
+    }
+    return this.#protocol
+  }
+
+  /** Starts `ContextRPC`'s read loop exactly once, across probe and handshake. */
+  #startReadLoop(): void {
+    if (this.#reading) {
+      return
+    }
+    this.#reading = true
+    this._handle()
+  }
+
   _onTransportClosed(reason?: Error): void {
     this.events.emit('closed', { error: reason })
   }
 
-  // Override _write method to ensure that client is initialized before sending messages
+  // Override _write to ensure the client is set up (handshake or read loop start) before
+  // sending messages.
   async _write(message: ClientMessage): Promise<void> {
-    await this.#initialized
+    await this.#ready
     await super._write(message)
   }
 
@@ -462,19 +576,30 @@ export class ContextClient<
     return this.#notifications as ReadableStream<ServerNotification>
   }
 
+  /** The resolved protocol revision. Throws while an `'auto'` probe is still pending. */
+  get protocolVersion(): ProtocolVersion {
+    return this.#requireProtocol().version
+  }
+
   async initialize(): Promise<InitializeResult> {
+    const protocol = this.#requireProtocol()
+    if (!protocol.requiresHandshake) {
+      throw new Error(
+        `initialize() is not applicable to protocol version ${protocol.version}: it does not require a handshake`,
+      )
+    }
     return await this.#initialized
   }
 
   async setLoggingLevel(params: WithRequestOptions<SetLevelRequest['params']>): Promise<Result> {
-    await this.#initialized
+    await this.#ready
     this.#requireServerCapability('logging')
     const [wireParams, options] = splitRequestOptions(params)
     return await this.request('logging/setLevel', wireParams, options)
   }
 
   async complete(params: WithRequestOptions<CompleteRequest['params']>): Promise<CompleteResult> {
-    await this.#initialized
+    await this.#ready
     this.#requireServerCapability('completions')
     const [wireParams, options] = splitRequestOptions(params)
     return await this.request('completion/complete', wireParams, options)
@@ -495,7 +620,7 @@ export class ContextClient<
     send: (params: Record<string, unknown>, options: RequestOptions) => Promise<PagedResult>,
     listParams: ListParams<Record<string, unknown>>,
   ): Promise<PagedResult> {
-    await this.#initialized
+    await this.#ready
 
     const [params, { maxPages: maxPagesParam, ...options }] = splitListOptions(listParams)
 
@@ -592,7 +717,7 @@ export class ContextClient<
   }
 
   async listTools(params: ListParams<ListToolsRequest['params']> = {}): Promise<ListToolsResult> {
-    await this.#initialized
+    await this.#ready
     this.#requireServerCapability('tools')
     const result = (await this.#listPaged(
       'tools/list',

@@ -20,7 +20,7 @@ function makeNotification(n: number) {
 
 describe('ContextClient notifications buffering', () => {
   test('drops notifications when no reader is attached', async () => {
-    const client = new ContextClient({ transport: noopTransport() })
+    const client = new ContextClient({ protocolVersion: '2025-11-25', transport: noopTransport() })
     for (let i = 0; i < 1000; i++) {
       client._handleNotification(makeNotification(i) as never)
     }
@@ -35,7 +35,7 @@ describe('ContextClient notifications buffering', () => {
   })
 
   test('buffers at most the cap once a reader is attached, dropping oldest', async () => {
-    const client = new ContextClient({ transport: noopTransport() })
+    const client = new ContextClient({ protocolVersion: '2025-11-25', transport: noopTransport() })
     const reader = client.notifications.getReader()
 
     // Emit more than the cap without reading.

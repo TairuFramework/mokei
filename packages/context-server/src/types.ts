@@ -236,7 +236,7 @@ export type ExtractPromptTypes<T extends PromptDefinitions> = {
  * } satisfies ServerConfig
  *
  * type MyServerTypes = ExtractServerTypes<typeof config>
- * const client = new ContextClient<MyServerTypes>({ transport })
+ * const client = new ContextClient<MyServerTypes>({ protocolVersion: '2025-11-25', transport })
  * ```
  */
 export type ExtractServerTypes<T extends { tools?: ToolDefinitions; prompts?: PromptDefinitions }> =

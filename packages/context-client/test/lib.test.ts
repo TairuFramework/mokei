@@ -14,7 +14,7 @@ import type {
   ServerMessage,
   ServerRequest,
 } from '@mokei/context-protocol'
-import { LATEST_PROTOCOL_VERSION, METHOD_NOT_FOUND } from '@mokei/context-protocol'
+import { METHOD_NOT_FOUND } from '@mokei/context-protocol'
 import { describe, expect, test, vi } from 'vitest'
 
 import { DEFAULT_INITIALIZE_PARAMS } from '../src/client.js'
@@ -22,14 +22,19 @@ import {
   CapabilityNotDeclaredError,
   type ClientParams,
   ContextClient,
+  InputRequiredNotSupportedError,
   ListMaxPagesError,
+  MRTRNotSupportedError,
   StructuredContentValidationError,
   UnsupportedProtocolVersionError,
 } from '../src/index.js'
 
+// The mocked server's negotiated version in this handshake: every client built in this file
+// is configured with `protocolVersion: '2025-11-25'`, and the client now declares exactly
+// that (not `LATEST_PROTOCOL_VERSION`) in its initialize request, so the response must match.
 const DEFAULT_INITIALIZE_RESULT: InitializeResult = {
   capabilities: {},
-  protocolVersion: LATEST_PROTOCOL_VERSION,
+  protocolVersion: '2025-11-25',
   serverInfo: { name: 'Mokei', version: '0.1.0' },
 }
 
@@ -60,7 +65,7 @@ async function executeClientRequest<T>(
   initializeResult?: InitializeResult,
 ): Promise<T> {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
-  const client = new ContextClient({ transport: transports.client })
+  const client = new ContextClient({ protocolVersion: '2025-11-25', transport: transports.client })
 
   client.initialize()
   const initRequest = await handleServerInitialize(transports.server, initializeResult)
@@ -89,7 +94,7 @@ type Page = { result: Record<string, unknown> }
 async function runListWalk<T>(
   runRequest: (client: ContextClient) => Promise<T>,
   pages: Array<Page>,
-  clientParams: Omit<ClientParams, 'transport'> = {},
+  clientParams: Omit<ClientParams, 'transport'> = { protocolVersion: '2025-11-25' },
 ): Promise<{ result: Promise<T>; requests: Array<Record<string, unknown>> }> {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const client = new ContextClient({ ...clientParams, transport: transports.client })
@@ -147,11 +152,61 @@ async function expectClientResponse(
   await transports.dispose()
 }
 
+type Respond = (message: ClientRequest) => Record<string, unknown> | undefined
+
+/**
+ * Drives a client against a scripted server: `respond` returns the result for each request
+ * the server receives, or `undefined` to answer with `{}`. `sent` records every outbound
+ * message in order.
+ */
+function createTestClient(params: Omit<ClientParams, 'transport'> & { respond?: Respond }): {
+  client: ContextClient
+  sent: Array<ClientRequest>
+} {
+  const { respond, ...clientParams } = params
+  const transports = new DirectTransports<ServerMessage, ClientMessage>()
+  const client = new ContextClient({ ...clientParams, transport: transports.client })
+  const sent: Array<ClientRequest> = []
+  void (async () => {
+    while (true) {
+      const incoming = await transports.server.read()
+      if (incoming.done) {
+        return
+      }
+      const message = incoming.value as ClientRequest
+      sent.push(message)
+      if (message.id == null) {
+        continue
+      }
+      if (message.method === 'initialize') {
+        transports.server.write({
+          jsonrpc: '2.0',
+          id: message.id,
+          result: DEFAULT_INITIALIZE_RESULT,
+        } as ServerMessage)
+        continue
+      }
+      const answer = respond?.(message)
+      if (answer === undefined) {
+        transports.server.write({ jsonrpc: '2.0', id: message.id, result: {} } as ServerMessage)
+      } else if ('error' in answer) {
+        transports.server.write({ jsonrpc: '2.0', id: message.id, ...answer } as ServerMessage)
+      } else {
+        transports.server.write({ jsonrpc: '2.0', id: message.id, result: answer } as ServerMessage)
+      }
+    }
+  })()
+  return { client, sent }
+}
+
 describe('ContextClient', () => {
   test('supports initialization lifecycle', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
 
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
     const initializedPromise = client.initialize()
 
     const initializedEvent = client.events.once('initialized')
@@ -166,7 +221,7 @@ describe('ContextClient', () => {
           name: 'Mokei',
           version: '0.4.0',
         },
-        protocolVersion: LATEST_PROTOCOL_VERSION,
+        protocolVersion: '2025-11-25',
       },
     })
 
@@ -176,7 +231,10 @@ describe('ContextClient', () => {
 
   test('supports logs notifications', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
 
     const logs: Array<Log> = []
     client.events.on('log', (log) => {
@@ -210,10 +268,10 @@ describe('ContextClient', () => {
   test('supports incoming roots list requests', async () => {
     const roots: Array<Root> = [{ name: 'test', uri: 'test://test' }]
     await expectClientResponse(
-      { listRoots: roots },
+      { protocolVersion: '2025-11-25', listRoots: roots },
       { method: 'roots/list' },
       { result: { roots } },
-      { capabilities: { roots: {} } },
+      { protocolVersion: '2025-11-25', capabilities: { roots: {} } },
     )
   })
 
@@ -230,10 +288,10 @@ describe('ContextClient', () => {
     const createMessage = vi.fn(() => result)
 
     await expectClientResponse(
-      { createMessage },
+      { protocolVersion: '2025-11-25', createMessage },
       { method: 'sampling/createMessage', params },
       { result },
-      { capabilities: { sampling: {} } },
+      { protocolVersion: '2025-11-25', capabilities: { sampling: {} } },
     )
     expect(createMessage).toHaveBeenCalledWith({ params, signal: expect.any(AbortSignal) })
   })
@@ -253,10 +311,10 @@ describe('ContextClient', () => {
     const elicit = vi.fn(() => result)
 
     await expectClientResponse(
-      { elicit },
+      { protocolVersion: '2025-11-25', elicit },
       { method: 'elicitation/create', params },
       { result },
-      { capabilities: { elicitation: {} } },
+      { protocolVersion: '2025-11-25', capabilities: { elicitation: {} } },
     )
     expect(elicit).toHaveBeenCalledWith({ params, signal: expect.any(AbortSignal) })
   })
@@ -389,6 +447,7 @@ describe('initialize hardening', () => {
   test('times out when the server never responds', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
+      protocolVersion: '2025-11-25',
       transport: transports.client,
       initializeTimeout: 50,
     })
@@ -401,6 +460,7 @@ describe('initialize hardening', () => {
   test('throws an RPCError when the server returns an error response', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
+      protocolVersion: '2025-11-25',
       transport: transports.client,
     })
     void (async () => {
@@ -419,6 +479,7 @@ describe('initialize hardening', () => {
   test('tolerates a notification arriving before the initialize response', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
+      protocolVersion: '2025-11-25',
       transport: transports.client,
     })
     void (async () => {
@@ -447,6 +508,7 @@ describe('initialize hardening', () => {
   test('emits closed when the transport ends', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
+      protocolVersion: '2025-11-25',
       transport: transports.client,
     })
     void (async () => {
@@ -472,7 +534,10 @@ describe('initialize hardening', () => {
 describe('capability gating', () => {
   test('listTools throws CapabilityNotDeclaredError when server declared no tools capability', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
 
     void handleServerInitialize(transports.server) // capabilities: {} by default
     await client.initialize()
@@ -488,7 +553,10 @@ describe('capability gating', () => {
       capabilities: { tools: {} },
     }
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
 
     void handleServerInitialize(transports.server, initResult)
     await client.initialize()
@@ -507,7 +575,7 @@ describe('capability gating', () => {
 
   test('roots/list returns METHOD_NOT_FOUND when client has no listRoots', async () => {
     await expectClientResponse(
-      {},
+      { protocolVersion: '2025-11-25' },
       { method: 'roots/list' },
       { error: { code: METHOD_NOT_FOUND, message: 'roots capability not supported' } },
     )
@@ -519,7 +587,10 @@ describe('capability gating', () => {
       capabilities: { tools: {} },
     }
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
 
     // Drive the server side: handle init then answer tools/list — no client.initialize() call
     const serverTask = (async () => {
@@ -539,7 +610,10 @@ describe('capability gating', () => {
 
   test('listTools rejects with CapabilityNotDeclaredError via lazy init when server declares no tools capability (no explicit initialize)', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
 
     // Server declares no tools capability (default) — no client.initialize() call
     void handleServerInitialize(transports.server)
@@ -610,6 +684,7 @@ describe('list pagination', () => {
   test('listMaxPages on ClientParams supplies the default cap', async () => {
     const page = { result: { tools: [toolA], nextCursor: 'same' } }
     const { result } = await runListWalk((client) => client.listTools(), [page], {
+      protocolVersion: '2025-11-25',
       listMaxPages: 1,
     })
     await expect(result).rejects.toThrow(ListMaxPagesError)
@@ -700,7 +775,10 @@ describe('structuredContent validation', () => {
     outputSchema: Record<string, unknown> | null | undefined = countSchema,
   ): Promise<{ call: Promise<CallToolResult> }> {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
 
     client.initialize()
     await handleServerInitialize(transports.server, {
@@ -766,7 +844,10 @@ describe('structuredContent validation', () => {
 
   test('does not validate when listTools was never called', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
     client.initialize()
     await handleServerInitialize(transports.server, {
       ...DEFAULT_INITIALIZE_RESULT,
@@ -787,7 +868,10 @@ describe('structuredContent validation', () => {
 
   test('tools/list_changed clears the cache so a re-listed tool uses its new schema', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const client = new ContextClient({ transport: transports.client })
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
     client.initialize()
     await handleServerInitialize(transports.server, {
       ...DEFAULT_INITIALIZE_RESULT,
@@ -828,6 +912,7 @@ describe('structuredContent validation', () => {
   test('callTool transport options never reach the wire', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
+      protocolVersion: '2025-11-25',
       transport: transports.client,
     })
     client.initialize()
@@ -859,6 +944,7 @@ describe('protocolVersion negotiation', () => {
   test('rejects an unsupported server protocolVersion and disposes', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
+      protocolVersion: '2025-11-25',
       transport: transports.client,
     })
     void (async () => {
@@ -880,6 +966,7 @@ describe('protocolVersion negotiation', () => {
   test('accepts 2025-11-25', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
+      protocolVersion: '2025-11-25',
       transport: transports.client,
     })
     void (async () => {
@@ -892,5 +979,77 @@ describe('protocolVersion negotiation', () => {
     const result = await client.initialize()
     expect(result.protocolVersion).toBe('2025-11-25')
     await transports.dispose()
+  })
+})
+
+describe('protocol version selection', () => {
+  // `listPrompts` is deliberate: it is not capability-gated, so these tests exercise
+  // decoration and handshake behavior without depending on Task 10's discover-backed gating.
+  test('2026-07-28 sends no initialize and decorates every request', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => ({ resultType: 'complete', prompts: [] }),
+    })
+    await client.listPrompts()
+    expect(sent.map((message) => message.method)).toEqual(['prompts/list'])
+    const params = sent[0].params as { _meta: Record<string, unknown> }
+    expect(params._meta['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
+    expect(params._meta['io.modelcontextprotocol/clientCapabilities']).toEqual({})
+  })
+
+  test('2025-11-25 still runs the handshake and sends no protocol _meta', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2025-11-25',
+      respond: () => ({ prompts: [] }),
+    })
+    await client.listPrompts()
+    expect(sent.map((message) => message.method)).toEqual([
+      'initialize',
+      'notifications/initialized',
+      'prompts/list',
+    ])
+    const params = sent[2].params as { _meta?: Record<string, unknown> } | undefined
+    expect(params?._meta?.['io.modelcontextprotocol/protocolVersion']).toBeUndefined()
+  })
+
+  test('refuses sampling handlers on 2026-07-28 at construction', () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    expect(
+      () =>
+        new ContextClient({
+          transport: transports.client,
+          protocolVersion: '2026-07-28',
+          createMessage: () => ({
+            content: { type: 'text', text: '' },
+            model: 'test',
+            role: 'assistant',
+          }),
+        }),
+    ).toThrow(MRTRNotSupportedError)
+  })
+
+  test('rejects an input_required result until MRTR lands', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => ({ resultType: 'input_required', inputRequests: [] }),
+    })
+    await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow(
+      InputRequiredNotSupportedError,
+    )
+  })
+
+  test('protocolVersion getter returns the configured revision', () => {
+    const { client } = createTestClient({ protocolVersion: '2026-07-28' })
+    expect(client.protocolVersion).toBe('2026-07-28')
+  })
+
+  test('protocolVersion getter throws before an auto probe resolves', () => {
+    const { client } = createTestClient({ protocolVersion: 'auto' })
+    expect(() => client.protocolVersion).toThrow()
+  })
+
+  test('initialize() throws when the configured revision has no handshake', async () => {
+    const { client } = createTestClient({ protocolVersion: '2026-07-28' })
+    await expect(client.initialize()).rejects.toThrow(/does not require a handshake/)
   })
 })

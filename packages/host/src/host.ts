@@ -136,7 +136,8 @@ export function createHostedContext<T extends ContextTypes = UnknownContextTypes
   params: CreateHostedContextParams,
 ): HostedContext<T> {
   const { transport, tools = [], dispose } = params
-  const client = new ContextClient<T>({ transport })
+  // @todo plan 2 makes this a host parameter.
+  const client = new ContextClient<T>({ protocolVersion: '2025-11-25', transport })
   const disposer = new Disposer({
     dispose: async () => {
       await transport.dispose()
@@ -524,7 +525,11 @@ export class ContextHost extends Disposer {
     const transport = new HTTPTransport({ url, headers, auth, timeout })
 
     // Create the context client
-    const client = new ContextClient<T>({ transport: transport as ClientTransport })
+    // @todo plan 2 makes this a host parameter.
+    const client = new ContextClient<T>({
+      protocolVersion: '2025-11-25',
+      transport: transport as ClientTransport,
+    })
 
     // Create disposer for cleanup
     const disposer = new Disposer({

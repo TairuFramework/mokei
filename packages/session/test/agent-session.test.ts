@@ -1,6 +1,5 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { CallToolResult, ClientMessage, ServerMessage, Tool } from '@mokei/context-protocol'
-import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import type {
   AggregatedMessage,
   FunctionToolCall,
@@ -185,7 +184,10 @@ async function createMockSessionWithTools(
         id: (initReq.value as { id: number }).id,
         result: {
           capabilities: { tools: {} },
-          protocolVersion: LATEST_PROTOCOL_VERSION,
+          // `session.contextHost` currently constructs its `ContextClient` with
+          // `protocolVersion: '2025-11-25'` (see `@mokei/host`), so the mocked server must
+          // negotiate the same version, not `LATEST_PROTOCOL_VERSION`.
+          protocolVersion: '2025-11-25',
           serverInfo: { name: 'MockServer', version: '1.0.0' },
         },
       })
