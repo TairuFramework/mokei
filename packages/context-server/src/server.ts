@@ -8,6 +8,7 @@ import type {
   CommonNotifications,
   CreateMessageRequest,
   CreateMessageResult,
+  DiscoverRequest,
   ElicitRequest,
   ElicitResult,
   GetPromptRequest,
@@ -47,6 +48,7 @@ import {
 import { createValidator, type Schema } from '@sozai/schema'
 
 import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
+import { buildDiscoverResult } from './discover.js'
 import { withRequestMeta } from './trace.js'
 import type {
   ClientInitialize,
@@ -119,7 +121,7 @@ type ServerTypes = {
   MessageIn: ClientMessage
   MessageOut: ServerMessage
   HandleNotification: HandleNotification
-  HandleRequest: ClientRequest
+  HandleRequest: ClientRequest | DiscoverRequest
   SendNotifications: ServerNotifications & Pick<CommonNotifications, 'progress'>
   SendRequests: ServerRequests
   SendResult: ServerResult
@@ -244,7 +246,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
    * resolution falls back to the one configured revision that does not require it
    * (`2025-11-25`) — a revision that requires `_meta` can never be inferred silently.
    */
-  #resolveProtocol(request: ClientRequest): ProtocolDefinition {
+  #resolveProtocol(request: ClientRequest | DiscoverRequest): ProtocolDefinition {
     if (request.method === 'initialize') {
       const handshake = this.#protocolVersions.find(
         (version) => PROTOCOLS[version].requiresHandshake,
@@ -288,7 +290,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return protocol
   }
 
-  async _handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
+  async _handleRequest(
+    request: ClientRequest | DiscoverRequest,
+    signal: AbortSignal,
+  ): Promise<ServerResult> {
     const protocol = this.#resolveProtocol(request)
     if (!protocol.clientMethods.has(request.method)) {
       throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
@@ -308,7 +313,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   }
 
   async #dispatchRequest(
-    request: ClientRequest,
+    request: ClientRequest | DiscoverRequest,
     protocol: ProtocolDefinition,
     signal: AbortSignal,
   ): Promise<ServerResult> {
@@ -351,6 +356,12 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           client: this.#client,
           params: request.params,
           signal,
+        })
+      case 'server/discover':
+        return buildDiscoverResult({
+          capabilities: this.#capabilities,
+          protocolVersions: this.#protocolVersions,
+          serverInfo: this.#serverInfo,
         })
       case 'tools/call':
         return await this.#callTool(request, signal)

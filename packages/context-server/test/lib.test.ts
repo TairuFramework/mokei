@@ -1080,6 +1080,11 @@ const echoTool = createTool({
   handler: async () => ({ content: [{ type: 'text', text: 'echo' }] }),
 })
 
+const echoToolInfo = {
+  description: 'Echo the input back',
+  inputSchema: { type: 'object' },
+}
+
 describe('protocol version resolution', () => {
   test('answers ping on 2025-11-25 and rejects it on 2026-07-28', async () => {
     await expectServerResult({ protocolVersions: ['2025-11-25'] }, { method: 'ping' }, {})
@@ -1154,6 +1159,31 @@ describe('protocol version resolution', () => {
     )
 
     await transports.dispose()
+  })
+})
+
+describe('server/discover', () => {
+  test('server/discover advertises the configured versions, capabilities and identity', async () => {
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28', '2025-11-25'], tools: { echo: echoTool } },
+      { method: 'server/discover', params: { _meta: NEW_META } },
+      {
+        resultType: 'complete',
+        supportedVersions: ['2026-07-28', '2025-11-25'],
+        capabilities: { logging: {}, tools: { listChanged: true } },
+        _meta: {
+          'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' },
+        },
+      },
+    )
+  })
+
+  test('a 2025-11-25 result carries no resultType and no serverInfo _meta', async () => {
+    await expectServerResult(
+      { protocolVersions: ['2025-11-25'], tools: { echo: echoTool } },
+      { method: 'tools/list' },
+      { tools: [{ name: 'echo', ...echoToolInfo }] },
+    )
   })
 })
 

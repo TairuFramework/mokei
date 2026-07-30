@@ -127,6 +127,8 @@ export {
 } from './tool.js'
 export {
   type ClientRequestContext,
+  type DiscoverRequest,
+  type DiscoverResult,
   isSupportedProtocolVersion,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
