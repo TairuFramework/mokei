@@ -517,6 +517,52 @@ describe('initialize hardening', () => {
     await transports.dispose()
   })
 
+  // Task 11 fix round 1, Fix 1: `#setupBuffer` used to have only one reader — `#readUntil()`'s
+  // own loop, called at most twice per connection (probe, handshake) and never again once setup
+  // finishes. A notification that arrives during that window and doesn't match either setup
+  // read's predicate (as here: it has no `id` at all) used to sit in `#setupBuffer` forever,
+  // never reaching `_handleMessage`/the notification stream. This asserts the opposite: once the
+  // client is ready, a reader attached to `client.notifications` still receives it.
+  test('delivers a notification that arrives during setup to the notification stream once ready', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
+    void (async () => {
+      const req = await transports.server.read()
+      const id = (req.value as { id: number }).id
+      await transports.server.write({
+        jsonrpc: '2.0',
+        method: 'notifications/message',
+        params: { level: 'info', data: 'buffered during setup' },
+      } as ServerMessage)
+      await transports.server.write({
+        jsonrpc: '2.0',
+        id,
+        result: {
+          protocolVersion: '2025-11-25',
+          capabilities: {},
+          serverInfo: { name: 's', version: '1' },
+        },
+      } as ServerMessage)
+    })()
+    // Attach the reader before the handshake even starts, so `#hasNotificationReader` is true
+    // by the time the buffered notification is drained — this test is about delivery through
+    // the buffer, not about the separate reader-attach-timing behavior of `#notificationBuffer`.
+    const reader = client.notifications.getReader()
+    await client.initialize()
+    const { done, value } = await reader.read()
+    expect(done).toBe(false)
+    expect(value).toEqual({
+      jsonrpc: '2.0',
+      method: 'notifications/message',
+      params: { level: 'info', data: 'buffered during setup' },
+    })
+    await reader.cancel()
+    await transports.dispose()
+  })
+
   test('emits closed when the transport ends', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
