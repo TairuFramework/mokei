@@ -333,13 +333,13 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return {
       createMessage: supportsCreateMessage
         ? this.createMessage.bind(this)
-        : () => Promise.reject(new MRTRNotSupportedError('createMessage')),
+        : () => Promise.reject(new MRTRNotSupportedError('createMessage', protocol.version)),
       elicit: supportsElicit
         ? this.elicit.bind(this)
-        : () => Promise.reject(new MRTRNotSupportedError('elicit')),
+        : () => Promise.reject(new MRTRNotSupportedError('elicit', protocol.version)),
       listRoots: supportsListRoots
         ? this.listRoots.bind(this)
-        : () => Promise.reject(new MRTRNotSupportedError('listRoots')),
+        : () => Promise.reject(new MRTRNotSupportedError('listRoots', protocol.version)),
       // Delivered only when this request opted in via `_meta`, at or above its level — but the
       // `log` event is raised either way, so `server.events.on('log')` sees handler logs on
       // every revision.

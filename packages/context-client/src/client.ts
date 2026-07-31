@@ -160,9 +160,9 @@ export class MethodNotInRevisionError extends Error {
  * multi round-trip requests (MRTR, SEP-2322), which mokei does not implement yet.
  */
 export class MRTRNotSupportedError extends Error {
-  constructor(handler: string) {
+  constructor(handler: string, version: ProtocolVersion) {
     super(
-      `The "${handler}" handler is not supported on protocol version 2026-07-28: sampling, elicitation and roots are replaced by multi round-trip requests (MRTR, SEP-2322), which mokei does not implement yet`,
+      `The "${handler}" handler is not supported on protocol version ${version}: sampling, elicitation and roots are replaced by multi round-trip requests (MRTR, SEP-2322), which mokei does not implement yet`,
     )
     this.name = 'MRTRNotSupportedError'
   }
@@ -479,13 +479,13 @@ export class ContextClient<
    */
   #refuseUnsupportedHandlers(protocol: ProtocolDefinition): void {
     if (this.#createMessage != null && !protocol.serverMethods.has('sampling/createMessage')) {
-      throw new MRTRNotSupportedError('createMessage')
+      throw new MRTRNotSupportedError('createMessage', protocol.version)
     }
     if (this.#elicit != null && !protocol.serverMethods.has('elicitation/create')) {
-      throw new MRTRNotSupportedError('elicit')
+      throw new MRTRNotSupportedError('elicit', protocol.version)
     }
     if (this.#listRoots != null && !protocol.serverMethods.has('roots/list')) {
-      throw new MRTRNotSupportedError('listRoots')
+      throw new MRTRNotSupportedError('listRoots', protocol.version)
     }
   }
 

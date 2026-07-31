@@ -1148,6 +1148,13 @@ describe('protocol version selection', () => {
     ).toThrow(MRTRNotSupportedError)
   })
 
+  // The refusal is derived from `serverMethods`, so it will fire for any future revision that
+  // also drops the server-initiated requests. The message has to name that revision rather than
+  // the one that happened to introduce the restriction.
+  test('MRTRNotSupportedError names the revision it was raised for', () => {
+    expect(new MRTRNotSupportedError('createMessage', '2025-11-25').message).toContain('2025-11-25')
+  })
+
   test('rejects an input_required result until MRTR lands', async () => {
     const { client } = createTestClient({
       protocolVersion: '2026-07-28',
