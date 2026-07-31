@@ -12,9 +12,9 @@ npm install @mokei/context-server
 
 The simplest way to create an MCP server is using `serveProcess()`:
 
-`protocolVersions` is the set of revisions the server serves, newest first. Add `'2025-11-25'`
-to reach clients that do not speak `2026-07-28` yet — including the mokei host and CLI, and
-the current `@modelcontextprotocol/sdk` release.
+`protocolVersions` is the set of revisions the server serves (order is not significant). Add
+`'2025-11-25'` to reach clients that do not speak `2026-07-28` yet — including the mokei host
+and CLI, and the current `@modelcontextprotocol/{core,client,server,node}` release.
 
 ```typescript
 import { serveProcess } from '@mokei/context-server'
@@ -71,9 +71,10 @@ The handler receives a request object with:
 
 ```typescript
 type HandlerRequest = {
-  arguments: T        // Validated input matching your schema
-  client: ServerClient // Access to client capabilities
-  signal: AbortSignal  // For cancellation
+  input: T                    // Validated input matching your schema
+  client: ServerClient        // Access to client capabilities
+  progress?: ProgressEmitter  // Report progress on long-running calls
+  signal: AbortSignal         // For cancellation
 }
 ```
 
@@ -273,8 +274,8 @@ serveProcess({ name: 'server', version: '1.0.0', protocolVersions: ['2026-07-28'
 For more control, use the `ContextServer` class directly:
 
 ```typescript
-import { ContextServer, type ServerConfig } from '@mokei/context-server'
-import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
+import { ContextServer, type ServerConfig, type ServerTransport } from '@mokei/context-server'
+import { NodeStreamsTransport } from '@enkaku/node-streams'
 
 const config: ServerConfig = {
   name: 'my-server',
@@ -285,7 +286,7 @@ const config: ServerConfig = {
 
 const transport = new NodeStreamsTransport({
   streams: { readable: process.stdin, writable: process.stdout }
-})
+}) as ServerTransport
 
 const server = new ContextServer({ ...config, transport })
 

@@ -27,7 +27,7 @@ serveProcess({
       } as const,
       handler: async (req) => {
         return {
-          content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }]
+          content: [{ type: 'text', text: `Hello, ${req.input.name}!` }]
         }
       }
     })
@@ -51,7 +51,7 @@ const tools = {
       properties: { count: { type: 'number' } },
       required: ['count'],
     } as const,
-    handler: ({ arguments: { table } }) => ({ structuredContent: { count: rowsIn(table) } }),
+    handler: ({ input: { table } }) => ({ structuredContent: { count: rowsIn(table) } }),
   }),
 }
 ```
@@ -88,7 +88,7 @@ const tools = {
     } as const,
     handler: async (req) => {
       return {
-        content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }]
+        content: [{ type: 'text', text: `Hello, ${req.input.name}!` }]
       }
     }
   })

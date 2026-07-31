@@ -11,13 +11,13 @@ npm install @mokei/context-client
 ## Basic Client
 
 ```typescript
-import { ContextClient } from '@mokei/context-client'
-import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
+import { ContextClient, type ClientTransport } from '@mokei/context-client'
+import { NodeStreamsTransport } from '@enkaku/node-streams'
 
 // Create transport (e.g., from spawned process)
 const transport = new NodeStreamsTransport({
   streams: { readable: childProcess.stdout, writable: childProcess.stdin }
-})
+}) as ClientTransport
 
 const client = new ContextClient({ transport, protocolVersion: '2026-07-28' })
 
@@ -216,11 +216,13 @@ while (true) {
 
 When the server exports types, use them for full type safety:
 
+`@mokei/mcp-sqlite` currently serves `2025-11-25` only — connect at that revision to reach it.
+
 ```typescript
-import type { SqliteServerTypes } from '@mokei/mcp-sqlite'
+import type { SQLiteServerTypes } from '@mokei/mcp-sqlite'
 import { ContextClient } from '@mokei/context-client'
 
-const client = new ContextClient<SqliteServerTypes>({ transport, protocolVersion: '2026-07-28' })
+const client = new ContextClient<SQLiteServerTypes>({ transport, protocolVersion: '2025-11-25' })
 
 // Fully typed tool call
 const result = await client.callTool({
@@ -289,9 +291,9 @@ client.events.on('log', (log) => {
 ## Complete Example
 
 ```typescript
-import { ContextClient } from '@mokei/context-client'
+import { ContextClient, type ClientTransport } from '@mokei/context-client'
 import { spawn } from 'node:child_process'
-import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
+import { NodeStreamsTransport } from '@enkaku/node-streams'
 
 async function main() {
   // Spawn MCP server
@@ -305,7 +307,7 @@ async function main() {
       readable: serverProcess.stdout!, 
       writable: serverProcess.stdin! 
     }
-  })
+  }) as ClientTransport
   
   // Create the client — no handshake on 2026-07-28, setup happens lazily on first call
   const client = new ContextClient({ transport, protocolVersion: '2026-07-28' })

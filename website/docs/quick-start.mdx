@@ -187,10 +187,15 @@ Finally, we'll start the server to handle connections from MCP clients using `se
 
 The Mokei server and client libraries currently only support the Standard I/O transport.
 
+`protocolVersions` declares both revisions, because the Mokei CLI and the chat session used
+later in this guide connect at `2025-11-25` — a server declaring only `2026-07-28` would
+reject them with an unsupported-protocol-version error.
+
 ```js title="index.js (continued)"
 serveProcess({
   name: 'sqlite',
   version: '0.1.0',
+  protocolVersions: ['2026-07-28', '2025-11-25'],
   tools,
 })
 ```
@@ -260,6 +265,7 @@ const tools = {
 serveProcess({
   name: 'sqlite',
   version: '0.1.0',
+  protocolVersions: ['2026-07-28', '2025-11-25'],
   tools,
 })
 ```

@@ -31,11 +31,11 @@ here.
 
 ## 2. Additive draft wiring (B1–B7, opt-in coexistence)
 
-**Blocked on draft finalization only** (external). U1 resolved + core shipped (PR #32) —
-no mokei-side blocker. Not a hard-cut: mokei keeps `2025-11-25` and adds the draft as a
+**Draft finalized; most items shipped for stdio.** U1 resolved + core shipped (PR #32).
+Not a hard-cut: mokei keeps `2025-11-25` and adds the finalized `2026-07-28` revision as a
 second version selected per context (see the milestone's Architecture decision). The
-B-items are additive wiring behind a version selector, not removals. Implementing draft
-payloads before the spec freezes risks rework.
+B-items are additive wiring behind a version selector, not removals. B5, B2, B3 and B6 are
+shipped for stdio; B1 (HTTP) and B7 (MRTR) remain, per the per-item notes below.
 
 *Update 2026-07-02:* the draft is now the **`2026-07-28` revision at RC stage** —
 finalization expected July 28, 2026, with SDK v2 stable alongside. SDK v2 beta ships wire

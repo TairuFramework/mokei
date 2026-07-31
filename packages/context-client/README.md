@@ -9,10 +9,10 @@ npm install @mokei/context-client
 ## Basic Usage
 
 ```typescript
-import { ContextClient } from '@mokei/context-client'
-import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
+import { ContextClient, type ClientTransport } from '@mokei/context-client'
+import { NodeStreamsTransport } from '@enkaku/node-streams'
 
-const transport = new NodeStreamsTransport({ streams })
+const transport = new NodeStreamsTransport({ streams }) as ClientTransport
 const client = new ContextClient({ protocolVersion: '2026-07-28', transport })
 
 // No handshake on 2026-07-28 — the client sets itself up lazily on its first call.
@@ -35,12 +35,14 @@ For the best developer experience, use type-safe clients by importing server typ
 
 If your server exports types using `ExtractServerTypes` from `@mokei/context-server`:
 
+`@mokei/mcp-fetch` currently serves `2025-11-25` only — connect at that revision to reach it.
+
 ```typescript
 import type { FetchServerTypes } from '@mokei/mcp-fetch'
 import { ContextClient } from '@mokei/context-client'
 
 // Create a typed client
-const client = new ContextClient<FetchServerTypes>({ protocolVersion: '2026-07-28', transport })
+const client = new ContextClient<FetchServerTypes>({ protocolVersion: '2025-11-25', transport })
 
 // Now all tool calls are type-checked!
 const result = await client.callTool({
@@ -95,7 +97,8 @@ await client.getPrompt({
 
 ### Client Methods
 
-- `initialize()` - Initialize the client connection
+- `initialize()` - Initialize the client connection (`2025-11-25` only — `2026-07-28` has no
+  handshake and throws if called; setup happens lazily on the first request)
 - `listTools()` - List available tools from the server
 - `callTool(params)` - Call a tool with arguments
 - `listPrompts()` - List available prompts from the server

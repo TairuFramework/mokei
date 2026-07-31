@@ -119,8 +119,13 @@ mokei inspect npx -y @mokei/mcp-sqlite --db ./data.db
 ```
 initialized
 {
-  "capabilities": {},
-  "protocolVersion": "2024-11-05",
+  "capabilities": {
+    "logging": {},
+    "tools": {
+      "listChanged": true
+    }
+  },
+  "protocolVersion": "2025-11-25",
   "serverInfo": {
     "name": "sqlite",
     "version": "0.1.0"

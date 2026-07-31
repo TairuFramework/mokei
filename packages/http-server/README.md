@@ -14,6 +14,9 @@ pnpm add @mokei/http-server
 
 ## Usage
 
+The Streamable HTTP transport does not yet support the `2026-07-28` protocol revision; the
+`ContextServer` you hand to `createServer` must include `'2025-11-25'` in `protocolVersions`.
+
 `serveHTTP` starts an HTTP server (via `@hono/node-server`) that bridges each session
 to a `ContextServer` you create per connection:
 
@@ -30,7 +33,7 @@ const { server, dispose } = serveHTTP({
       transport,
       name: 'my-server',
       version: '1.0.0',
-      protocolVersions: ['2026-07-28'],
+      protocolVersions: ['2025-11-25'],
       tools,
     }),
 })
@@ -51,7 +54,7 @@ const handler = createHTTPHandler({
       transport,
       name: 'my-server',
       version: '1.0.0',
-      protocolVersions: ['2026-07-28'],
+      protocolVersions: ['2025-11-25'],
       tools,
     }),
   allowedOrigins: ['https://app.example.com'],
