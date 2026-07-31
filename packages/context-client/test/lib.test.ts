@@ -166,11 +166,13 @@ type Respond = (message: ClientRequest) => Record<string, unknown> | typeof WITH
 /**
  * Drives a client against a scripted server: `respond` returns the result for each request
  * the server receives, `undefined` to answer with `{}`, or `WITHHOLD` to record the request
- * and never answer it. `sent` records every outbound message in order.
+ * and never answer it. `sent` records every outbound message in order, and `transports` is
+ * exposed so a test can also push server-initiated frames the scripted loop never sends.
  */
 function createTestClient(params: Omit<ClientParams, 'transport'> & { respond?: Respond }): {
   client: ContextClient
   sent: Array<ClientRequest>
+  transports: DirectTransports<ServerMessage, ClientMessage>
 } {
   const { respond, ...clientParams } = params
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
@@ -208,7 +210,7 @@ function createTestClient(params: Omit<ClientParams, 'transport'> & { respond?: 
       }
     }
   })()
-  return { client, sent }
+  return { client, sent, transports }
 }
 
 describe('ContextClient', () => {
@@ -1295,6 +1297,40 @@ describe('discover()', () => {
     await client.listTools()
     await client.listTools()
     expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(1)
+  })
+
+  // The gating snapshot is justified by "a live connection's declared capabilities cannot change
+  // except via a `*_list_changed` notification" — so that notification has to clear it, or
+  // `discover()` and the gate disagree permanently and `listTools()` never recovers.
+  test('a tools/list_changed notification reopens the capability gate', async () => {
+    let declaresTools = false
+    const { client, transports } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: declaresTools ? { tools: {} } : {},
+              ttlMs: 0,
+              cacheScope: 'private',
+            }
+          : { resultType: 'complete', tools: [] },
+    })
+    await expect(client.listTools()).rejects.toThrow(CapabilityNotDeclaredError)
+
+    declaresTools = true
+    // Reading the notification back is what makes this deterministic: `_handleNotification`
+    // clears the caches before the frame reaches the stream.
+    const reader = client.notifications.getReader()
+    transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/tools/list_changed',
+    } as ServerMessage)
+    await reader.read()
+    reader.releaseLock()
+
+    await expect(client.listTools()).resolves.toEqual({ resultType: 'complete', tools: [] })
   })
 
   test('re-requests when its own ttlMs has expired', async () => {

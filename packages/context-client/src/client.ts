@@ -115,6 +115,13 @@ export const DEFAULT_LIST_MAX_PAGES = 100
 /** Max notifications buffered once a reader is attached; oldest dropped past this. */
 const NOTIFICATION_BUFFER_CAP = 256
 
+/** Notifications that invalidate whatever the client learned from `server/discover`. */
+const LIST_CHANGED_NOTIFICATIONS: ReadonlySet<string> = new Set([
+  'notifications/prompts/list_changed',
+  'notifications/resources/list_changed',
+  'notifications/tools/list_changed',
+])
+
 export class UnsupportedProtocolVersionError extends Error {
   constructor(received: string, expected: ProtocolVersion) {
     super(`Server responded with unsupported protocolVersion "${received}"; expected "${expected}"`)
@@ -361,12 +368,13 @@ export class ContextClient<
   // revision without a handshake (`requiresHandshake: false`). Populated once by
   // `#requireServerCapabilityAsync` and never re-fetched afterward: without a handshake, a live
   // connection's *declared* capabilities cannot change except via a `*_list_changed`
-  // notification, so a connection-lifetime snapshot is sound for gating even though it ignores
-  // `discover()`'s own `ttlMs`. Distinct from `#discovered`, which still honors `ttlMs` for
-  // callers who explicitly want a fresh answer from `discover()` itself. Do not merge these two
-  // caches back together — that reintroduces the bug this split fixes. Whatever clears one must
-  // clear the other, so neither outlives the connection state that produced it — see
-  // `#resetDiscovery()`, called from `#probe()`'s fallback path.
+  // notification — which `_handleNotification` acts on, so the exception is enforced rather
+  // than merely documented. That makes a connection-lifetime snapshot sound for gating even
+  // though it ignores `discover()`'s own `ttlMs`. Distinct from `#discovered`, which still
+  // honors `ttlMs` for callers who explicitly want a fresh answer from `discover()` itself. Do
+  // not merge these two caches back together — that reintroduces the bug this split fixes.
+  // Whatever clears one must clear the other, so neither outlives the connection state that
+  // produced it — see `#resetDiscovery()`.
   #serverCapabilitySnapshot: ServerCapabilities | null = null
   #setupTimeout: number
   // Messages read during setup (probe and/or handshake) that didn't match the waiter that read
@@ -794,9 +802,11 @@ export class ContextClient<
   /**
    * Clears both discover-derived caches together: `#discovered` (`discover()`'s own
    * `ttlMs`-governed cache) and `#serverCapabilitySnapshot` (the connection-lifetime gating
-   * snapshot). The only caller today is `#probe()`'s fallback path, so that a result cached
-   * from the failed `2026-07-28` probe attempt cannot leak into the `2025-11-25` connection
-   * that replaces it — see the field comment on `#serverCapabilitySnapshot`.
+   * snapshot). Two callers: `#probe()`'s fallback path, so a result cached from the failed
+   * `2026-07-28` probe attempt cannot leak into the `2025-11-25` connection that replaces it,
+   * and `_handleNotification` on a `*_list_changed` notification, the one way a live
+   * connection's declared capabilities change — see the field comment on
+   * `#serverCapabilitySnapshot`.
    */
   #resetDiscovery(): void {
     this.#discovered = null
@@ -873,6 +883,13 @@ export class ContextClient<
     // Clear tool output schemas cache on tools/list_changed notification
     if (notification.method === 'notifications/tools/list_changed') {
       this.#toolOutputSchemas.clear()
+    }
+    // The one thing that can change a live connection's declared capabilities without a
+    // handshake — the exception `#serverCapabilitySnapshot`'s soundness argument rests on. Both
+    // discover-derived caches go, or the gate and `discover()` disagree for the rest of the
+    // connection.
+    if (LIST_CHANGED_NOTIFICATIONS.has(notification.method)) {
+      this.#resetDiscovery()
     }
     // Drop until a reader attaches, then keep only the most recent CAP.
     if (!this.#hasNotificationReader) {
