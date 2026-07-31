@@ -56,7 +56,16 @@ export function withProtocolMeta<S extends Schema>(schema: S) {
     allOf: [
       schema,
       {
-        properties: { params: { properties: { _meta: requestMeta }, required: ['_meta'] } },
+        // `type: 'object'` on the inner `params` is required, not decorative: without it Ajv's
+        // `strictTypes` warns for every `properties`/`required` here, and those warnings go to
+        // stderr — the log channel of every stdio MCP server that loads this package.
+        properties: {
+          params: {
+            properties: { _meta: requestMeta },
+            required: ['_meta'],
+            type: 'object',
+          },
+        },
         required: ['params'],
         type: 'object',
       },

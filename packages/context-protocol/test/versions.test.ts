@@ -1,5 +1,5 @@
 import { createValidator } from '@sozai/schema'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import {
   HEADER_MISMATCH,
@@ -130,6 +130,26 @@ describe('protocol records', () => {
 })
 
 describe('per-version message validation', () => {
+  // Ajv reports strict-mode violations through `console.warn`, which on a stdio MCP server is
+  // the log channel the host captures — so a schema that trips `strictTypes` prints protocol
+  // internals over every server's own logs at startup.
+  test('building the validators emits no strict-mode warnings', () => {
+    // Reached through `globalThis` rather than the bare `console` global: this package's tests
+    // compile without DOM or Node type libs.
+    const logger = (globalThis as unknown as { console: { warn: (...args: Array<unknown>) => void } })
+      .console
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    try {
+      for (const version of PROTOCOL_VERSIONS) {
+        createValidator(PROTOCOLS[version].clientMessage)
+        createValidator(PROTOCOLS[version].serverMessage)
+      }
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   test('2026-07-28 rejects a request without protocol _meta', () => {
     const validate = createValidator(PROTOCOLS['2026-07-28'].clientMessage)
     expect(
