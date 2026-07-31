@@ -76,6 +76,10 @@ console.log(`Completed in ${result.iterations} iterations`)
 
 ## Creating an MCP Server
 
+A server declares the set of protocol revisions it serves. This one declares both, because
+`session.addContext` above connects at `2025-11-25` — a server declaring only `2026-07-28`
+would reject it with `-32022`.
+
 ```typescript
 import { createTool, serveProcess } from '@mokei/context-server'
 
@@ -96,7 +100,12 @@ const tools = {
   })
 }
 
-serveProcess({ name: 'my-server', version: '1.0.0', protocolVersions: ['2026-07-28'], tools })
+serveProcess({
+  name: 'my-server',
+  version: '1.0.0',
+  protocolVersions: ['2026-07-28', '2025-11-25'],
+  tools,
+})
 ```
 
 ## Using Local Tools
