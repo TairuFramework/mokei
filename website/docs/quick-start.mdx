@@ -276,7 +276,7 @@ serveProcess({
 
 Now that we have implemented a MCP server, let's see if we can interact with it!
 
-As a sanity check, we will use the Mokei CLI to simply run the [`initialize` request](https://spec.modelcontextprotocol.io/specification/2024-11-05/basic/lifecycle/#initialization) on the server to ensure the server can initialize as expected:
+As a sanity check, we will use the Mokei CLI to simply run the [`initialize` request](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle#initialization) on the server to ensure the server can initialize as expected:
 
 ```sh
 mokei context inspect node -- index.js
@@ -287,8 +287,13 @@ The terminal should display the following output:
 ```sh
 ✔ Initialized
 {
-  "capabilities": {},
-  "protocolVersion": "2024-11-05",
+  "capabilities": {
+    "logging": {},
+    "tools": {
+      "listChanged": true
+    }
+  },
+  "protocolVersion": "2025-11-25",
   "serverInfo": {
     "name": "sqlite",
     "version": "0.1.0"
