@@ -34,8 +34,9 @@ describe('protocol version detection over stdio', () => {
       stderr: 'inherit',
     })
     try {
-      await context.client.listTools()
+      const tools = await context.client.listTools()
       expect(context.client.protocolVersion).toBe('2026-07-28')
+      expect(tools.tools.map((tool) => tool.name)).toEqual(['echo', 'sum'])
     } finally {
       await context.disposer.dispose()
     }
@@ -50,6 +51,23 @@ describe('protocol version detection over stdio', () => {
     })
     try {
       const tools = await context.client.listTools()
+      expect(context.client.protocolVersion).toBe('2025-11-25')
+      expect(tools.tools.map((tool) => tool.name)).toEqual(['echo', 'sum'])
+    } finally {
+      await context.disposer.dispose()
+    }
+  })
+
+  test('a 2026-07-28-pinned client works against a server serving both revisions', async () => {
+    const context = await spawnHostedContext({
+      command: process.execPath,
+      args: [MOKEI_STDIO_SERVER_BOTH_PATH],
+      protocolVersion: '2026-07-28',
+      stderr: 'inherit',
+    })
+    try {
+      const tools = await context.client.listTools()
+      expect(context.client.protocolVersion).toBe('2026-07-28')
       expect(tools.tools.map((tool) => tool.name)).toEqual(['echo', 'sum'])
     } finally {
       await context.disposer.dispose()
