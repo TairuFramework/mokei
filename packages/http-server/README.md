@@ -30,7 +30,7 @@ const { server, dispose } = serveHTTP({
       transport,
       name: 'my-server',
       version: '1.0.0',
-      protocolVersions: ['2025-11-25'],
+      protocolVersions: ['2026-07-28'],
       tools,
     }),
 })
@@ -51,7 +51,7 @@ const handler = createHTTPHandler({
       transport,
       name: 'my-server',
       version: '1.0.0',
-      protocolVersions: ['2025-11-25'],
+      protocolVersions: ['2026-07-28'],
       tools,
     }),
   allowedOrigins: ['https://app.example.com'],

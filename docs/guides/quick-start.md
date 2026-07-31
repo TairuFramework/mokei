@@ -96,7 +96,7 @@ const tools = {
   })
 }
 
-serveProcess({ name: 'my-server', version: '1.0.0', tools })
+serveProcess({ name: 'my-server', version: '1.0.0', protocolVersions: ['2026-07-28'], tools })
 ```
 
 ## Using Local Tools

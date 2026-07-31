@@ -45,16 +45,31 @@ section and `2026-07-02-mcp-sdk-v2-adoption.md`.
 
 Scope, ordered by dependency:
 
-1. **B5** remove `ping` — smallest; decouples the RPC core early.
+1. **B5** remove `ping` — smallest; decouples the RPC core early. **Shipped for stdio,
+   plan 1 (`feat/mcp-2026-07-28-core`):** `ContextRPC` no longer auto-answers `ping`; each
+   protocol record's method table decides, and `2026-07-28` has no `ping`.
 2. **B2** remove `initialize`/`initialized`; stateless `_meta` (version/identity/caps per
-   request); version-mismatch error (SEP-2575). Foundational.
-3. **B3** add `server/discover` RPC (MUST) — advertises versions/caps/identity (SEP-2575).
+   request); version-mismatch error (SEP-2575). Foundational. **Shipped for stdio, plan 1:**
+   `2026-07-28` has `requiresHandshake: false`; every request carries protocol version and
+   client capabilities in `_meta` instead.
+3. ~~**B3** add `server/discover` RPC (MUST) — advertises versions/caps/identity
+   (SEP-2575).~~ **Shipped for stdio, plan 1.** Correction: the spec makes `server/discover`
+   mandatory for the *server* to implement, not mandatory for a *client* to call — a client
+   may still reach a `2026-07-28` server via the version it already knows. mokei's client
+   uses it only to probe under `protocolVersion: 'auto'`.
 4. **B1** remove protocol sessions + `Mcp-Session-Id` (SEP-2567); cross-call state →
-   server-minted handles as tool args.
+   server-minted handles as tool args. **stdio never had a session concept, so nothing to
+   remove there; the HTTP half (dropping `Mcp-Session-Id`) and the transport wiring land in
+   plan 2.**
 5. **B6** remove `logging/setLevel` + roots list-changed; per-request `_meta` log level.
+   **Shipped for stdio, plan 1:** `2026-07-28`'s client method table has no
+   `logging/setLevel`; log level travels in request `_meta` instead and log emission is
+   scoped to the handling request.
 6. **B7** MRTR — `inputRequests`/`inputResponses` replace server-initiated requests
    (SEP-2322). Deepest; dismantles bidirectional `request()`/`#sentRequests` in
-   `context-rpc`. Depends on U1 + B2.
+   `context-rpc`. Depends on U1 + B2. **Not shipped:** plan 1 refuses
+   `sampling/createMessage`, `elicitation/create` and `roots/list` at client/server setup on
+   `2026-07-28` (`MRTRNotSupportedError`) rather than implementing MRTR itself.
 7. **B4** `subscriptions/listen` replaces GET endpoint + `resources/subscribe` (SEP-2575).
    Rewrite HTTP server/client streaming. Depends on U1; parallel with B7.
    **Legacy-side `resources/subscribe` (folded from the retired `2026-07-02-mcp-feature-gaps.md`,

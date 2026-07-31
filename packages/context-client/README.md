@@ -13,9 +13,9 @@ import { ContextClient } from '@mokei/context-client'
 import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
 
 const transport = new NodeStreamsTransport({ streams })
-const client = new ContextClient({ protocolVersion: '2025-11-25', transport })
+const client = new ContextClient({ protocolVersion: '2026-07-28', transport })
 
-await client.initialize()
+// No handshake on 2026-07-28 — the client sets itself up lazily on its first call.
 
 // List available tools
 const { tools } = await client.listTools()
@@ -40,8 +40,7 @@ import type { FetchServerTypes } from '@mokei/mcp-fetch'
 import { ContextClient } from '@mokei/context-client'
 
 // Create a typed client
-const client = new ContextClient<FetchServerTypes>({ protocolVersion: '2025-11-25', transport })
-await client.initialize()
+const client = new ContextClient<FetchServerTypes>({ protocolVersion: '2026-07-28', transport })
 
 // Now all tool calls are type-checked!
 const result = await client.callTool({
@@ -70,8 +69,7 @@ type MyContextTypes = {
   }
 }
 
-const client = new ContextClient<MyContextTypes>({ protocolVersion: '2025-11-25', transport })
-await client.initialize()
+const client = new ContextClient<MyContextTypes>({ protocolVersion: '2026-07-28', transport })
 
 // Typed tool calls
 await client.callTool({
