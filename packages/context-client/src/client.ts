@@ -665,7 +665,9 @@ export class ContextClient<
       throw RPCError.fromResponse(message as ErrorResponse)
     }
     const result = message.result as InitializeResult
-    // Reject a negotiated version other than the one this client is configured to speak.
+    // Reject a negotiated version other than the one this client is configured to speak. The
+    // `dispose()` here is not covered by `#setup()`'s blanket catch: the public `initialize()`
+    // awaits `#initialized` directly, without ever going through `#setup()`.
     if (result.protocolVersion !== protocol.version) {
       await this.dispose()
       throw new UnsupportedProtocolVersionError(result.protocolVersion, protocol.version)
@@ -680,32 +682,36 @@ export class ContextClient<
     return result
   }
 
+  /**
+   * One rule for every setup failure: dispose the transport, then rethrow.
+   *
+   * `#ready` is `lazy()`, so a rejection here is cached for the client's lifetime — every later
+   * `request()`/`_write()`/`discover()` gets the same error, the read loop never starts, and
+   * nothing else will ever call `dispose()` on the caller's behalf. By this point a stdio
+   * client's server process is already spawned, so leaving the transport open leaks that
+   * process. The blanket catch covers the handshake's own RPC error, the bounded-read deadline,
+   * a connection closed mid-setup, `#refuseUnsupportedHandlers` and `#startReadLoop()`'s
+   * invariant assertion, rather than leaving each to decide independently.
+   *
+   * The `#refuseUnsupportedHandlers` re-check inside is not redundant with the constructor's:
+   * under `protocolVersion: 'auto'` the revision wasn't known yet there, so a handler accepted
+   * then must still be refused if the probe lands on `2026-07-28`, whose `serverMethods` is
+   * always empty.
+   */
   async #setup(): Promise<void> {
-    const protocol = this.#protocol ?? (await this.#probe())
-    this.#protocol = protocol
-    // Re-run the handler refusal now that the revision is settled: under `protocolVersion:
-    // 'auto'` the constructor couldn't check this (the revision wasn't known yet), so a handler
-    // configured against a server that turns out to speak `2026-07-28` — whose `serverMethods`
-    // is always empty — must still be refused here instead of going live with capabilities
-    // (`sampling`/`elicitation`/`roots`) that revision cannot honor. A no-op re-check for a
-    // fixed `protocolVersion`, already validated at construction.
-    //
-    // Disposes before throwing, matching the version-mismatch path in `#initialize()`: by this
-    // point a stdio client's server process is already spawned, so rejecting `#ready` without
-    // disposing would leak that process — the constructor's own call to
-    // `#refuseUnsupportedHandlers` throws before any transport work happens, so it has nothing
-    // to dispose, but this one, mid-setup, does.
     try {
+      const protocol = this.#protocol ?? (await this.#probe())
+      this.#protocol = protocol
       this.#refuseUnsupportedHandlers(protocol)
+      if (protocol.requiresHandshake) {
+        await this.#initialized
+        return
+      }
+      this.#startReadLoop()
     } catch (cause) {
       await this.dispose()
       throw cause
     }
-    if (protocol.requiresHandshake) {
-      await this.#initialized
-      return
-    }
-    this.#startReadLoop()
   }
 
   /**

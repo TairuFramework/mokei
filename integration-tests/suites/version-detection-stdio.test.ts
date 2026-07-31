@@ -7,6 +7,7 @@ import {
   MOKEI_STDIO_SERVER_2026_07_28_PATH,
   MOKEI_STDIO_SERVER_BOTH_PATH,
   MOKEI_STDIO_SERVER_PATH,
+  REFUSING_STDIO_SERVER_PATH,
 } from '../support/interop/servers.ts'
 
 describe('protocol version detection over stdio', () => {
@@ -92,6 +93,37 @@ describe('protocol version detection over stdio', () => {
         code: UNSUPPORTED_PROTOCOL_VERSION,
         data: { supported: ['2025-11-25'] },
       })
+    } finally {
+      await context.disposer.dispose()
+    }
+  })
+
+  // A failed setup rejects `#ready`, which is `lazy()` — the client is unusable from that point
+  // on and nothing will call `dispose()` for the caller. If the client does not dispose itself,
+  // the spawned server process outlives it. Note the test never disposes before asserting: the
+  // exit has to come from the client's own teardown.
+  test('a client whose setup fails reaps the server process', async () => {
+    let onExited: () => void = () => {}
+    const exited = new Promise<void>((resolve) => {
+      onExited = resolve
+    })
+    const context = await spawnHostedContext({
+      command: process.execPath,
+      args: [REFUSING_STDIO_SERVER_PATH],
+      protocolVersion: 'auto',
+      stderr: 'inherit',
+      onExit: onExited,
+    })
+    try {
+      await expect(context.client.listTools()).rejects.toMatchObject({
+        message: 'Unsupported method: initialize',
+      })
+      await expect(
+        Promise.race([
+          exited.then(() => 'exited'),
+          new Promise((resolve) => setTimeout(() => resolve('still running'), 3000)),
+        ]),
+      ).resolves.toBe('exited')
     } finally {
       await context.disposer.dispose()
     }

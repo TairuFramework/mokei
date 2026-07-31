@@ -565,6 +565,42 @@ describe('initialize hardening', () => {
     await transports.dispose()
   })
 
+  // `#ready` is `lazy()`, so a setup rejection is cached for the client's lifetime: every later
+  // call gets the same error and no read loop ever starts. Leaving the transport open there
+  // strands it — for stdio, that is the server child process.
+  test('disposes the transport when setup fails after the probe falls back', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({ protocolVersion: 'auto', transport: transports.client })
+    // Errors on `server/discover` (so the probe falls back) and on `initialize` too.
+    void (async () => {
+      while (true) {
+        const incoming = await transports.server.read()
+        if (incoming.done) {
+          return
+        }
+        const message = incoming.value as ClientRequest
+        if (message.id == null) {
+          continue
+        }
+        transports.server.write({
+          jsonrpc: '2.0',
+          id: message.id,
+          error: { code: METHOD_NOT_FOUND, message: `no ${message.method}` },
+        } as ServerMessage)
+      }
+    })()
+
+    await expect(client.listPrompts()).rejects.toMatchObject({ message: 'no initialize' })
+    await expect(
+      Promise.race([
+        client.disposed.then(() => 'disposed'),
+        new Promise((resolve) => setTimeout(() => resolve('still open'), 100)),
+      ]),
+    ).resolves.toBe('disposed')
+
+    await transports.dispose()
+  })
+
   test('emits closed when the transport ends', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({

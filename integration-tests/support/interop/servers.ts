@@ -26,6 +26,10 @@ export const MOKEI_STDIO_SERVER_2026_07_28_PATH = fileURLToPath(
 export const MOKEI_STDIO_SERVER_BOTH_PATH = fileURLToPath(
   new URL('./mokei-stdio-server-both.ts', import.meta.url),
 )
+/** Refuses every request, including `server/discover` and `initialize`. */
+export const REFUSING_STDIO_SERVER_PATH = fileURLToPath(
+  new URL('./refusing-stdio-server.ts', import.meta.url),
+)
 
 export type RunningHTTPServer = {
   url: string
