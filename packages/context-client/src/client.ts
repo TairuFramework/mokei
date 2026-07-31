@@ -849,6 +849,13 @@ export class ContextClient<
   }
 
   async _handleRequest(request: ServerRequest, signal: AbortSignal): Promise<ClientResult> {
+    // Answered here rather than in `ContextRPC`, which stays MCP-version-agnostic: `ping` exists
+    // only in the revisions whose `serverMethods` carries it, and the spec makes answering it a
+    // MUST there. Gated on the method table, not a version literal, and mirroring
+    // `ContextServer._handleRequest`'s own `ping` case.
+    if (request.method === 'ping' && this.#requireProtocol().serverMethods.has('ping')) {
+      return {}
+    }
     switch (request.method) {
       case 'elicitation/create': {
         if (this.#elicit != null) {

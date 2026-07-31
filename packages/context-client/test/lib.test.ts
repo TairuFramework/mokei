@@ -1110,6 +1110,42 @@ describe('protocol version selection', () => {
     const { client } = createTestClient({ protocolVersion: '2026-07-28' })
     await expect(client.initialize()).rejects.toThrow(/does not require a handshake/)
   })
+
+  // `ping` is in `2025-11-25`'s `serverMethods` and the spec makes answering it a MUST, so the
+  // client must reply `{}`. `2026-07-28` removes the method, so the same frame must not be
+  // answered there — the counterpart of `@mokei/context-server`'s own ping pair.
+  test('answers ping on 2025-11-25', async () => {
+    await expectClientResponse(
+      { protocolVersion: '2025-11-25' },
+      { method: 'ping' },
+      { result: {} },
+    )
+  })
+
+  test('does not answer ping on 2026-07-28, which removed the method', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      protocolVersion: '2026-07-28',
+      transport: transports.client,
+    })
+    // Any request settles `#ready`, which is what starts the read loop the ping below needs.
+    const listing = client.listPrompts()
+    const incoming = await transports.server.read()
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: (incoming.value as ClientRequest).id,
+      result: { resultType: 'complete', prompts: [] },
+    } as ServerMessage)
+    await listing
+
+    transports.server.write({ jsonrpc: '2.0', id: 99, method: 'ping' } as ServerMessage)
+    const response = await transports.server.read()
+    expect(response.value).toMatchObject({ jsonrpc: '2.0', id: 99 })
+    expect((response.value as Record<string, unknown>).error).toBeDefined()
+    expect((response.value as Record<string, unknown>).result).toBeUndefined()
+
+    await transports.dispose()
+  })
 })
 
 describe('discover()', () => {
