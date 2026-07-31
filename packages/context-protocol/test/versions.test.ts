@@ -116,6 +116,21 @@ describe('protocol records', () => {
     expect(protocol.serverMethods.size).toBe(0)
   })
 
+  // `requiresHandshake` and `requiresPerRequestLogLevel` are both strict functions of
+  // `clientMethods`, and drift between them fails silently: a revision that drops
+  // `logging/setLevel` while leaving `requiresPerRequestLogLevel: false` makes `ContextServer`
+  // discard every `notifications/message` for the lifetime of the connection, with no error
+  // anywhere. Asserted over every registered revision so a new one cannot land inconsistent.
+  test('the derivable flags match their method table on every revision', () => {
+    for (const version of PROTOCOL_VERSIONS) {
+      const protocol = PROTOCOLS[version]
+      expect(protocol.requiresHandshake, version).toBe(protocol.clientMethods.has('initialize'))
+      expect(protocol.requiresPerRequestLogLevel, version).toBe(
+        !protocol.clientMethods.has('logging/setLevel'),
+      )
+    }
+  })
+
   test('2025-11-25 leaves requests and results untouched', () => {
     const protocol = PROTOCOLS['2025-11-25']
     const params = { name: 'echo' }
