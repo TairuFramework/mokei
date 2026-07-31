@@ -519,9 +519,8 @@ describe('initialize hardening', () => {
     await transports.dispose()
   })
 
-  // Task 11 fix round 1, Fix 1: `#setupBuffer` used to have only one reader — `#readUntil()`'s
-  // own loop, called at most twice per connection (probe, handshake) and never again once setup
-  // finishes. A notification that arrives during that window and doesn't match either setup
+  // `#setupBuffer` used to have only one reader — `#readUntil()`'s own loop, called at most
+  // twice per connection (probe, handshake) and never again once setup finishes. A notification that arrives during that window and doesn't match either setup
   // read's predicate (as here: it has no `id` at all) used to sit in `#setupBuffer` forever,
   // never reaching `_handleMessage`/the notification stream. This asserts the opposite: once the
   // client is ready, a reader attached to `client.notifications` still receives it.
@@ -1104,7 +1103,7 @@ async function createReady20260728Transports(): Promise<
 
 describe('protocol version selection', () => {
   // `listPrompts` is deliberate: it is not capability-gated, so these tests exercise
-  // decoration and handshake behavior without depending on Task 10's discover-backed gating.
+  // decoration and handshake behavior without depending on the discover-backed capability gate.
   test('2026-07-28 sends no initialize and decorates every request', async () => {
     const { client, sent } = createTestClient({
       protocolVersion: '2026-07-28',
@@ -1298,9 +1297,9 @@ describe('discover()', () => {
     await expect(client.listTools()).rejects.toThrow(CapabilityNotDeclaredError)
   })
 
-  // Closes the gap Task 9's review flagged: on 2026-07-28, `#serverCapabilities` never
-  // populates (there is no handshake), so before this task `listTools()` could not
-  // succeed on this revision at all. This proves the positive case, not just the rejection.
+  // On 2026-07-28 `#serverCapabilities` never populates (there is no handshake), so until the
+  // gate learned to read the discovered capabilities, `listTools()` could not succeed on this
+  // revision at all. This proves the positive case, not just the rejection.
   test('listTools succeeds on 2026-07-28 when the discovered capabilities declare tools', async () => {
     const { client } = createTestClient({
       protocolVersion: '2026-07-28',
@@ -1342,10 +1341,10 @@ describe('discover()', () => {
     expect(sent.some((message) => message.method === 'server/discover')).toBe(false)
   })
 
-  // Regression test for the bug that blocked Task 10's review: an unconfigured server
-  // returns `ttlMs: 0`, which used to make the capability *gate* re-issue `server/discover`
-  // before every gated call, forever. The gate must snapshot the discovered capabilities for
-  // the connection's lifetime instead, independent of `discover()`'s own `ttlMs` cache.
+  // An unconfigured server returns `ttlMs: 0`, which used to make the capability *gate* re-issue
+  // `server/discover` before every gated call, forever. The gate must snapshot the discovered
+  // capabilities for the connection's lifetime instead, independent of `discover()`'s own
+  // `ttlMs` cache.
   test('the capability gate sends server/discover exactly once across two gated calls, even when ttlMs is 0', async () => {
     const { client, sent } = createTestClient({
       protocolVersion: '2026-07-28',
@@ -1544,9 +1543,9 @@ describe("'auto' probe", () => {
     ])
   })
 
-  // Correction 1: the brief's own probe design mirrors #initialize()'s bounded-read shape with
-  // an independent `_read()`, and that loses this race. The transport's reader is shared and
-  // reads are served FIFO (@enkaku/transport's Transport#read() calls reader.read() on one
+  // The obvious probe design mirrors #initialize()'s bounded-read shape with an independent
+  // `_read()`, and that loses this race. The transport's reader is shared and reads are served
+  // FIFO (@enkaku/transport's Transport#read() calls reader.read() on one
   // ReadableStreamDefaultReader obtained once via _getReader()): a probe that times out leaves
   // its own `_read()` pending — a losing `Promise.race` branch doesn't cancel it — and a fresh,
   // independent `_read()` issued by #initialize() afterward would queue FIFO behind it. The
@@ -1592,12 +1591,12 @@ describe("'auto' probe", () => {
     expect(client.protocolVersion).toBe('2025-11-25')
   })
 
-  // Correction 3, gap 1: `getPrompt`, `readResource` and `callTool` call `request()` directly
-  // with no `#ready` await of their own (unlike `setLoggingLevel`/`complete`/`listTools`/
-  // `#listPaged`). Before this task, calling any of them *first* under `protocolVersion: 'auto'`
-  // threw "not resolved yet" synchronously instead of running the probe. Each of the next three
-  // tests calls one of them as the very first thing done with a fresh client, so it actually
-  // exercises the gap rather than riding on a probe some earlier call already triggered.
+  // `getPrompt`, `readResource` and `callTool` call `request()` directly with no `#ready` await
+  // of their own (unlike `setLoggingLevel`/`complete`/`listTools`/`#listPaged`). Calling any of
+  // them *first* under `protocolVersion: 'auto'` used to throw "not resolved yet" synchronously
+  // instead of running the probe. Each of the next three tests calls one of them as the very
+  // first thing done with a fresh client, so it actually exercises the gap rather than riding on
+  // a probe some earlier call already triggered.
   test("'auto' resolves via getPrompt when it is the first call made", async () => {
     const { client } = createTestClient({
       protocolVersion: 'auto',
@@ -1662,8 +1661,8 @@ describe("'auto' probe", () => {
     expect(client.protocolVersion).toBe('2026-07-28')
   })
 
-  // Correction 3, gap 2: the constructor only refuses a createMessage/elicit/listRoots handler
-  // when the revision is known synchronously (a fixed protocolVersion). Under 'auto' it was
+  // The constructor only refuses a createMessage/elicit/listRoots handler when the revision is
+  // known synchronously (a fixed protocolVersion). Under 'auto' it was
   // accepted at construction and never re-checked, so a handler configured against a server
   // that turns out to speak 2026-07-28 — whose serverMethods is always empty — went live
   // anyway, and #capabilities kept advertising it in every request's _meta.

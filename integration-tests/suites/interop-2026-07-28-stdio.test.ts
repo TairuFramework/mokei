@@ -141,8 +141,8 @@ function expectRequestMeta(message: Record<string, unknown>): void {
 
 /**
  * Runs one independent section of the suite and, if it throws, converts that into a soft
- * failure so the remaining sections still run and report (Fix 7 — see the module header's
- * "Test structure" note). Every regular `expect` inside `fn` should be `expect.soft` too, so a
+ * failure so the remaining sections still run and report (see the module header's "Test
+ * structure" note). Every regular `expect` inside `fn` should be `expect.soft` too, so a
  * failure inside one section doesn't hide the other assertions in *that* section either; this
  * wrapper's job is specifically to catch what `expect.soft` can't: an uncaught throw from
  * `await` or `Schema.parse()`, which would otherwise abort the whole `test()`.

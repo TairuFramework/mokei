@@ -544,7 +544,7 @@ export function createHTTPClient<T extends ContextTypes = UnknownContextTypes>(
   params: HTTPTransportParams,
 ): ContextClient<T> {
   const transport = new HTTPTransport(params)
-  // @todo plan 2 makes this a caller-supplied parameter.
+  // @todo Pinned until this entry point accepts the revision from the caller.
   return new ContextClient<T>({
     protocolVersion: '2025-11-25',
     transport: transport as ClientTransport,

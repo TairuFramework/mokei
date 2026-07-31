@@ -537,7 +537,7 @@ export class ContextHost extends Disposer {
     const transport = new HTTPTransport({ url, headers, auth, timeout })
 
     // Create the context client
-    // @todo plan 2 makes this a host parameter.
+    // @todo Pinned until the HTTP entry points accept the revision from the caller.
     const client = new ContextClient<T>({
       protocolVersion: '2025-11-25',
       transport: transport as ClientTransport,
