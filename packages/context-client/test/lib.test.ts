@@ -14,7 +14,7 @@ import type {
   ServerMessage,
   ServerRequest,
 } from '@mokei/context-protocol'
-import { METHOD_NOT_FOUND } from '@mokei/context-protocol'
+import { INVALID_REQUEST, METHOD_NOT_FOUND } from '@mokei/context-protocol'
 import { describe, expect, test, vi } from 'vitest'
 
 import { DEFAULT_INITIALIZE_PARAMS } from '../src/client.js'
@@ -1040,6 +1040,30 @@ describe('protocolVersion negotiation', () => {
   })
 })
 
+/**
+ * A `2026-07-28` client whose read loop is running, with the transports it runs on. That
+ * revision has no handshake, so the only way to settle `#ready` — and therefore start the read
+ * loop a server-initiated frame needs — is to make a request first.
+ */
+async function createReady20260728Transports(): Promise<
+  DirectTransports<ServerMessage, ClientMessage>
+> {
+  const transports = new DirectTransports<ServerMessage, ClientMessage>()
+  const client = new ContextClient({
+    protocolVersion: '2026-07-28',
+    transport: transports.client,
+  })
+  const listing = client.listPrompts()
+  const incoming = await transports.server.read()
+  transports.server.write({
+    jsonrpc: '2.0',
+    id: (incoming.value as ClientRequest).id,
+    result: { resultType: 'complete', prompts: [] },
+  } as ServerMessage)
+  await listing
+  return transports
+}
+
 describe('protocol version selection', () => {
   // `listPrompts` is deliberate: it is not capability-gated, so these tests exercise
   // decoration and handshake behavior without depending on Task 10's discover-backed gating.
@@ -1123,20 +1147,7 @@ describe('protocol version selection', () => {
   })
 
   test('does not answer ping on 2026-07-28, which removed the method', async () => {
-    const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const client = new ContextClient({
-      protocolVersion: '2026-07-28',
-      transport: transports.client,
-    })
-    // Any request settles `#ready`, which is what starts the read loop the ping below needs.
-    const listing = client.listPrompts()
-    const incoming = await transports.server.read()
-    transports.server.write({
-      jsonrpc: '2.0',
-      id: (incoming.value as ClientRequest).id,
-      result: { resultType: 'complete', prompts: [] },
-    } as ServerMessage)
-    await listing
+    const transports = await createReady20260728Transports()
 
     transports.server.write({ jsonrpc: '2.0', id: 99, method: 'ping' } as ServerMessage)
     const response = await transports.server.read()
@@ -1145,6 +1156,37 @@ describe('protocol version selection', () => {
     expect((response.value as Record<string, unknown>).result).toBeUndefined()
 
     await transports.dispose()
+  })
+
+  // The wire parser, not the handler switch, is where a peer sending something its own revision
+  // cannot produce must be refused: `2026-07-28` has an empty `serverMethods`, so
+  // `sampling/createMessage` is not a request that revision admits at all.
+  test('2026-07-28 rejects a server request its revision cannot produce', async () => {
+    const transports = await createReady20260728Transports()
+
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: 99,
+      method: 'sampling/createMessage',
+      params: { maxTokens: 1, messages: [] },
+    } as ServerMessage)
+    await expect(transports.server.read()).resolves.toMatchObject({
+      done: false,
+      value: { jsonrpc: '2.0', id: 99, error: { code: INVALID_REQUEST } },
+    })
+
+    await transports.dispose()
+  })
+
+  test('2025-11-25 still accepts a server request its revision does produce', async () => {
+    await expectClientResponse(
+      {
+        protocolVersion: '2025-11-25',
+        listRoots: [{ name: 'root', uri: 'file:///root' }],
+      },
+      { method: 'roots/list' },
+      { result: { roots: [{ name: 'root', uri: 'file:///root' }] } },
+    )
   })
 })
 

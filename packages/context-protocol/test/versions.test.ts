@@ -136,8 +136,9 @@ describe('per-version message validation', () => {
   test('building the validators emits no strict-mode warnings', () => {
     // Reached through `globalThis` rather than the bare `console` global: this package's tests
     // compile without DOM or Node type libs.
-    const logger = (globalThis as unknown as { console: { warn: (...args: Array<unknown>) => void } })
-      .console
+    const logger = (
+      globalThis as unknown as { console: { warn: (...args: Array<unknown>) => void } }
+    ).console
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     try {
       for (const version of PROTOCOL_VERSIONS) {

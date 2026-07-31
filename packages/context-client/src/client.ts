@@ -65,7 +65,31 @@ import { createValidator, type Schema, type Validator } from '@sozai/schema'
 import { currentTraceMeta } from './trace.js'
 import type { ClientTransport } from './types.js'
 
-const validateServerMessage = createValidator(serverMessage)
+/**
+ * Inbound wire validators, one per revision. Which one applies is decided per connection by
+ * `#validateServerMessage` once the revision is resolved — a `2026-07-28` server cannot legally
+ * send `ping`, `sampling/createMessage`, `elicitation/create` or
+ * `notifications/elicitation/complete`, and the wire parser is where a peer producing something
+ * its own revision forbids has to be refused.
+ *
+ * `2025-11-25`'s entry is built from the package's unqualified `serverMessage`, which is that
+ * revision's own union and still lives outside `versions/`. Moving it in is a wider change than
+ * this validator wiring — the package exports it as the unqualified `ServerMessage` /
+ * `ServerRequest` / `ServerResult` types that both peers are typed against — so it stays put and
+ * is referenced here by the revision it belongs to.
+ */
+const SERVER_MESSAGE_VALIDATORS: Record<ProtocolVersion, Validator<ServerMessage>> = {
+  '2025-11-25': createValidator<Schema, ServerMessage>(PROTOCOLS['2025-11-25'].serverMessage),
+  '2026-07-28': createValidator<Schema, ServerMessage>(PROTOCOLS['2026-07-28'].serverMessage),
+}
+
+/**
+ * The cross-revision union, used only while `protocolVersion: 'auto'` is still unresolved: with
+ * no revision there is no per-revision union to apply. Unreachable in practice — the read loop
+ * only starts once `#setup()` has settled `#protocol` — but the fallback keeps the validator
+ * total rather than making the read loop depend on that ordering.
+ */
+const validateAnyServerMessage = createValidator(serverMessage)
 
 export const DEFAULT_CLIENT_INFO: Implementation = {
   name: 'Mokei',
@@ -355,7 +379,12 @@ export class ContextClient<
   #toolOutputSchemas = new Map<string, Validator<unknown>>()
 
   constructor(params: ClientParams) {
-    super({ validateMessageIn: validateServerMessage, transport: params.transport })
+    // Indirected through a method so the validator tracks the resolved revision rather than
+    // being frozen at construction, which `protocolVersion: 'auto'` requires.
+    super({
+      validateMessageIn: (message) => this.#validateServerMessage(message),
+      transport: params.transport,
+    })
 
     this.#createMessage = params.createMessage
     this.#elicit = params.elicit
@@ -422,6 +451,14 @@ export class ContextClient<
       },
       new CountQueuingStrategy({ highWaterMark: 0 }),
     )
+  }
+
+  /** Validates an inbound frame against the resolved revision's own server-message union. */
+  #validateServerMessage(message: unknown): ReturnType<Validator<ServerMessage>> {
+    const protocol = this.#protocol
+    return protocol == null
+      ? validateAnyServerMessage(message)
+      : SERVER_MESSAGE_VALIDATORS[protocol.version](message)
   }
 
   /**
