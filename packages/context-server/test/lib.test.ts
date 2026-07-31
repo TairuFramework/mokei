@@ -1256,6 +1256,69 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
     await transports.dispose()
   })
 
+  // `ServerEvents.log` is an exported observability surface: a handler's log has to reach it on
+  // every revision, whether or not the request opted into wire delivery.
+  test('2026-07-28 still emits the log event for handler logs', async () => {
+    const { server, transports } = createTestContext({
+      protocolVersions: ['2026-07-28'],
+      tools: { noisy: noisyTool },
+    })
+    const observed: Array<Log> = []
+    server.events.on('log', (log) => {
+      observed.push(log)
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'noisy', arguments: {}, _meta: NEW_META },
+    } as ClientRequest)
+    await transports.client.read()
+
+    expect(observed).toEqual([{ level: 'warning', data: 'from the tool' }])
+
+    await transports.dispose()
+  })
+
+  // The hazard the event emission opens up: on a server serving both revisions, a `2025-11-25`
+  // peer can have set a standing `#clientLoggingLevel`, so a per-request log that both emits the
+  // event and relies on a session-scoped bridge to write would put two identical
+  // `notifications/message` frames on the wire for one `client.log()` call.
+  test('a dual-revision server writes one notification per handler log', async () => {
+    const { transports } = createTestContext({
+      protocolVersions: ['2026-07-28', '2025-11-25'],
+      tools: { noisy: noisyTool },
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'logging/setLevel',
+      params: { level: 'debug' },
+    } as ClientRequest)
+    await expect(transports.client.read()).resolves.toMatchObject({ value: { id: 1, result: {} } })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'noisy',
+        arguments: {},
+        _meta: { ...NEW_META, 'io.modelcontextprotocol/logLevel': 'warning' },
+      },
+    } as ClientRequest)
+
+    const notified = await transports.client.read()
+    expect(notified.value).toMatchObject({ method: 'notifications/message' })
+    // The next frame must be the result, not a second copy of the same log.
+    const completed = await transports.client.read()
+    expect(completed.value).toMatchObject({ id: 2 })
+
+    await transports.dispose()
+  })
+
   test('2026-07-28 tool handlers cannot reach the client until MRTR lands', async () => {
     const { transports } = createTestContext({
       protocolVersions: ['2026-07-28'],

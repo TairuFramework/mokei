@@ -196,8 +196,30 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return this.#clientInitialize
   }
 
+  /**
+   * Session-scoped log: delivered when the client opted in through `logging/setLevel`
+   * (`2025-11-25`). Also the `log` a handler gets on any revision without
+   * `requiresPerRequestLogLevel`.
+   */
   log(params: LogParams) {
+    this.#emitLog(params, this.#clientLoggingLevel)
+  }
+
+  /**
+   * Raises the `log` event, and writes `notifications/message` when `level` admits it.
+   *
+   * Emission and transmission are one call rather than an `events.on('log')` bridge because the
+   * two revisions decide delivery from different sources — a standing `logging/setLevel` on
+   * `2025-11-25`, the request's own `_meta` on `2026-07-28`. With a bridge, the per-request
+   * writer would have to emit the event to stay observable and would then get a *second*,
+   * session-scoped write on a server serving both revisions. Here every `client.log()` produces
+   * exactly one event and at most one frame, whichever revision the request came in on.
+   */
+  #emitLog(params: LogParams, level?: LoggingLevel): void {
     this.events.emit('log', params)
+    if (level != null && LOGGING_LEVELS[params.level] <= LOGGING_LEVELS[level]) {
+      void this._write({ jsonrpc: '2.0', method: 'notifications/message', params }).catch(() => {})
+    }
   }
 
   elicit(params: WithRequestOptions<ElicitRequest['params']>): Promise<ElicitResult> {
@@ -215,19 +237,6 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   ): Promise<CreateMessageResult> {
     const [wireParams, options] = splitRequestOptions(params)
     return this.request('sampling/createMessage', wireParams, options)
-  }
-
-  _handle() {
-    this.events.on('log', (log) => {
-      // Only send log if client has opted-in and it's at least as verbose as the client has requested
-      if (
-        this.#clientLoggingLevel != null &&
-        LOGGING_LEVELS[log.level] <= LOGGING_LEVELS[this.#clientLoggingLevel]
-      ) {
-        this._write({ jsonrpc: '2.0', method: 'notifications/message', params: log })
-      }
-    })
-    super._handle()
   }
 
   _handleNotification(notification: HandleNotification) {
@@ -305,9 +314,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
    *
    * `2025-11-25` has all three methods in `serverMethods` and `requiresPerRequestLogLevel:
    * false`, so this returns the constructor-built, session-scoped `#client` unchanged — its
-   * `log` still goes through the `events.on('log')` bridge gated by `#clientLoggingLevel`
-   * (`logging/setLevel`). Any other combination builds a fresh client per request, so it can
-   * close over the request's resolved `logLevel`.
+   * `log` is `ContextServer.log`, gated by `#clientLoggingLevel` (`logging/setLevel`). Any other
+   * combination builds a fresh client per request, so it can close over the request's resolved
+   * `logLevel`.
    */
   #createClient(protocol: ProtocolDefinition, logLevel?: LoggingLevel): ServerClient {
     const supportsCreateMessage = protocol.serverMethods.has('sampling/createMessage')
@@ -331,13 +340,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       listRoots: supportsListRoots
         ? this.listRoots.bind(this)
         : () => Promise.reject(new MRTRNotSupportedError('listRoots')),
+      // Delivered only when this request opted in via `_meta`, at or above its level — but the
+      // `log` event is raised either way, so `server.events.on('log')` sees handler logs on
+      // every revision.
       log: protocol.requiresPerRequestLogLevel
-        ? (params: LogParams) => {
-            // Emit only when this request opted in via `_meta`, at or above its level.
-            if (logLevel != null && LOGGING_LEVELS[params.level] <= LOGGING_LEVELS[logLevel]) {
-              void this._write({ jsonrpc: '2.0', method: 'notifications/message', params })
-            }
-          }
+        ? (params: LogParams) => this.#emitLog(params, logLevel)
         : this.log.bind(this),
     }
   }
