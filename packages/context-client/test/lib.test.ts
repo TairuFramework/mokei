@@ -1117,6 +1117,29 @@ describe('protocol version selection', () => {
     expect(params._meta['io.modelcontextprotocol/clientCapabilities']).toEqual({})
   })
 
+  // `2026-07-28` removes `logging/setLevel`, so `ClientParams.logLevel` is the only way to ask
+  // for logs — it has to reach the request `_meta` the server reads it from.
+  test('2026-07-28 carries a configured logLevel in every request _meta', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      logLevel: 'debug',
+      respond: () => ({ resultType: 'complete', prompts: [] }),
+    })
+    await client.listPrompts()
+    const params = sent[0].params as { _meta: Record<string, unknown> }
+    expect(params._meta['io.modelcontextprotocol/logLevel']).toBe('debug')
+  })
+
+  test('2026-07-28 omits the logLevel _meta key when none is configured', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => ({ resultType: 'complete', prompts: [] }),
+    })
+    await client.listPrompts()
+    const params = sent[0].params as { _meta: Record<string, unknown> }
+    expect(params._meta).not.toHaveProperty('io.modelcontextprotocol/logLevel')
+  })
+
   test('2025-11-25 still runs the handshake and sends no protocol _meta', async () => {
     const { client, sent } = createTestClient({
       protocolVersion: '2025-11-25',
