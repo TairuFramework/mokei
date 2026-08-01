@@ -151,6 +151,12 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   // Map session IDs to their transport bridges
   const bridges = new Map<string, TransportBridge>()
 
+  // Teardown handles for the stateless exchanges currently in flight, so shutting the
+  // handler down ends them instead of leaving their throwaway servers un-disposed and
+  // their callers waiting on the timeout. A keyless set on purpose: these handles are
+  // shutdown bookkeeping, never addressable by anything a client sends.
+  const statelessTeardowns = new Set<() => void>()
+
   // Map session IDs to promises that resolve when a specific request ID gets a response
   // Used for the initialize flow where we need to capture the response synchronously
   const initWaiters = new Map<
@@ -376,6 +382,12 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       timeoutMs: statelessTimeoutMs,
       // The client hanging up is a stateless exchange's only cancellation channel.
       signal: request.signal,
+      onStart: (teardown) => {
+        statelessTeardowns.add(teardown)
+      },
+      onEnd: (teardown) => {
+        statelessTeardowns.delete(teardown)
+      },
     })
   }
 
@@ -548,6 +560,12 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       closeBridge(sessionID)
     }
     initWaiters.clear()
+
+    // Iterate a copy: each teardown removes its own handle from the set as it runs.
+    for (const teardown of [...statelessTeardowns]) {
+      teardown()
+    }
+    statelessTeardowns.clear()
   }
 
   return { handleRequest, dispose }

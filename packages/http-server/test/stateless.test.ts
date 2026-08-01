@@ -1,7 +1,7 @@
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
 import { describe, expect, test } from 'vitest'
 
-import { createHTTPHandler, type HTTPHandlerParams } from '../src/handler.js'
+import { createHTTPHandler, type HTTPHandler, type HTTPHandlerParams } from '../src/handler.js'
 
 const SERVER_CONFIG: ServerConfig = {
   name: 'stateless-test-server',
@@ -36,9 +36,11 @@ function statelessRequest(
   params: Record<string, unknown> = {},
   requestID: string | number = 1,
   version = '2026-07-28',
+  signal?: AbortSignal,
 ): Request {
   return new Request('http://localhost/mcp', {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
@@ -75,6 +77,82 @@ async function readSSEData(response: Response): Promise<Array<Record<string, unk
     }
   }
   return out
+}
+
+type BlockingHarness = {
+  handler: HTTPHandler
+  /** Every throwaway server the handler built, in construction order. */
+  servers: Array<ContextServer>
+  /** Resolves once the first server has been constructed. */
+  created: Promise<void>
+  releaseTool: () => void
+}
+
+/**
+ * A handler whose only tool blocks until the test releases it, so an exchange can be
+ * inspected while it is unambiguously still in flight with nothing written back yet.
+ */
+function createBlockingHandler(overrides?: Partial<HTTPHandlerParams>): BlockingHarness {
+  let releaseTool!: () => void
+  const toolGate = new Promise<void>((resolve) => {
+    releaseTool = resolve
+  })
+  const servers: Array<ContextServer> = []
+  let serverCreated!: () => void
+  const created = new Promise<void>((resolve) => {
+    serverCreated = resolve
+  })
+
+  const handler = createHTTPHandler({
+    createServer: (transport) => {
+      const server = new ContextServer({
+        ...SERVER_CONFIG,
+        tools: {
+          block: {
+            description: 'Block until released',
+            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+            handler: async () => {
+              await toolGate
+              return { content: [{ type: 'text', text: 'released' }] }
+            },
+          },
+        },
+        transport,
+      })
+      servers.push(server)
+      serverCreated()
+      return server
+    },
+    ...overrides,
+  })
+
+  return { handler, servers, created, releaseTool }
+}
+
+/** A `2026-07-28` `tools/call` against the blocking tool. */
+function blockingRequest(signal?: AbortSignal): Request {
+  return new Request('http://localhost/mcp', {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      'MCP-Protocol-Version': '2026-07-28',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'block',
+        arguments: {},
+        _meta: {
+          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
+      },
+    }),
+  })
 }
 
 describe('stateless 2026-07-28 POST path', () => {
@@ -141,73 +219,17 @@ describe('stateless 2026-07-28 POST path', () => {
   })
 
   test('a client disconnect tears the exchange down', async () => {
-    // The tool blocks until the test releases it, so the exchange is unambiguously still in
-    // flight — nothing has been written back — when the client hangs up.
-    let releaseTool!: () => void
-    const toolGate = new Promise<void>((resolve) => {
-      releaseTool = resolve
-    })
-    const servers: Array<ContextServer> = []
-    let serverCreated!: () => void
-    const created = new Promise<void>((resolve) => {
-      serverCreated = resolve
-    })
-
-    const handler = createHTTPHandler({
-      createServer: (transport) => {
-        const server = new ContextServer({
-          ...SERVER_CONFIG,
-          tools: {
-            block: {
-              description: 'Block until released',
-              inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-              handler: async () => {
-                await toolGate
-                return { content: [{ type: 'text', text: 'released' }] }
-              },
-            },
-          },
-          transport,
-        })
-        servers.push(server)
-        serverCreated()
-        return server
-      },
-    })
-
+    const { handler, servers, created, releaseTool } = createBlockingHandler()
     try {
       const abort = new AbortController()
-      const request = new Request('http://localhost/mcp', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json, text/event-stream',
-          'MCP-Protocol-Version': '2026-07-28',
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'tools/call',
-          params: {
-            name: 'block',
-            arguments: {},
-            _meta: {
-              'io.modelcontextprotocol/protocolVersion': '2026-07-28',
-              'io.modelcontextprotocol/clientCapabilities': {},
-            },
-          },
-        }),
-        signal: abort.signal,
-      })
-
-      const responsePromise = handler.handleRequest(request)
+      const responsePromise = handler.handleRequest(blockingRequest(abort.signal))
       // Only hang up once the exchange has really started, so the abort cannot race the
       // body read.
       await created
       abort.abort()
 
       // Without the disconnect wiring this promise stays pending until the 30s timeout, so
-      // both assertions below hang rather than fail.
+      // the assertions below hang rather than fail.
       const response = await responsePromise
       expect(response.status).toBe(503)
       expect(servers).toHaveLength(1)
@@ -215,6 +237,56 @@ describe('stateless 2026-07-28 POST path', () => {
       expect(servers[0].signal.aborted).toBe(true)
     } finally {
       releaseTool()
+      handler.dispose()
+    }
+  })
+
+  test('disposing the handler ends an in-flight exchange', async () => {
+    // A short stateless timeout keeps the failure fast if the shutdown drain is missing:
+    // the exchange then settles 504 on its own instead of leaving the assertion to hang
+    // out to the 30s default.
+    const { handler, servers, created, releaseTool } = createBlockingHandler({
+      statelessTimeoutMs: 200,
+    })
+    try {
+      const responsePromise = handler.handleRequest(blockingRequest())
+      await created
+
+      handler.dispose()
+
+      const response = await responsePromise
+      expect(response.status).toBe(503)
+      expect(servers).toHaveLength(1)
+      // The throwaway server must go down with the handler, not linger until its client
+      // disconnects or its timer expires.
+      await servers[0].disposed
+      expect(servers[0].signal.aborted).toBe(true)
+    } finally {
+      releaseTool()
+    }
+  })
+
+  test('an already-aborted request short-circuits before anything is built', async () => {
+    let serversCreated = 0
+    const handler = createHTTPHandler({
+      createServer: (transport) => {
+        serversCreated++
+        return new ContextServer({ ...SERVER_CONFIG, transport })
+      },
+    })
+    try {
+      const abort = new AbortController()
+      abort.abort()
+
+      const response = await handler.handleRequest(
+        statelessRequest('tools/list', {}, 1, '2026-07-28', abort.signal),
+      )
+
+      expect(response.status).toBe(499)
+      // Load-bearing: the point of the short-circuit is that no server, transport or timer
+      // is stood up for a client that has already gone.
+      expect(serversCreated).toBe(0)
+    } finally {
       handler.dispose()
     }
   })

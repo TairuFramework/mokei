@@ -62,6 +62,14 @@ export type StatelessExchangeParams = {
    * hanging up is the only cancellation signal this transport genuinely provides.
    */
   signal?: AbortSignal
+  /**
+   * Called with this exchange's teardown function once it is running, and again with the
+   * same function when it ends, so the handler can track what is in flight and end it on
+   * shutdown. The handle is deliberately opaque and unkeyed: nothing a client sends can
+   * name it, so it cannot become a channel for cancelling somebody else's exchange.
+   */
+  onStart?: (teardown: () => void) => void
+  onEnd?: (teardown: () => void) => void
 }
 
 /**
@@ -76,7 +84,8 @@ export type StatelessExchangeParams = {
  * instead of being buffered until it finishes.
  */
 export function runStatelessExchange(params: StatelessExchangeParams): Promise<Response> {
-  const { message, requestID, createServer, replayBufferSize, timeoutMs, signal } = params
+  const { message, requestID, createServer, replayBufferSize, timeoutMs, signal, onStart, onEnd } =
+    params
 
   if (signal?.aborted) {
     // The client is already gone: standing a server up for it would only create work to
@@ -135,8 +144,13 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
     })
     // Settle unconditionally. When the exchange ends before the server has written anything
     // — the client hung up, or the handler was disposed — whoever awaits this promise would
-    // otherwise hang until the timeout fires. A no-op once a response is already settled.
+    // otherwise hang until the timeout fires. A no-op once a response is already settled,
+    // which is every path that produced a real answer: `200` once the SSE stream opened,
+    // `400` for a bad request, `504` on timeout. So `503` is only ever seen by a caller
+    // whose exchange ended with nothing written, and in both of those cases — disconnect
+    // and shutdown — there is no client left to read it.
     settle(new Response(null, { status: 503 }))
+    onEnd?.(finish)
   }
 
   function onAbort(): void {
@@ -207,6 +221,7 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
   }
 
   signal?.addEventListener('abort', onAbort, { once: true })
+  onStart?.(finish)
 
   timer = setTimeout(() => {
     settle(new Response('Request timed out', { status: 504 }))
