@@ -7,10 +7,11 @@ import { NodeStreamsTransport } from '@enkaku/node-streams'
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node'
 import { type ClientTransport, ContextClient } from '@mokei/context-client'
 import type { ProtocolVersion } from '@mokei/context-protocol'
-import { ContextServer } from '@mokei/context-server'
+import { ContextServer, createTool, type ServerConfig } from '@mokei/context-server'
+import { createHTTPClient } from '@mokei/http-client'
 import { serveHTTP } from '@mokei/http-server'
 
-import { createMokeiConfig, createSDKServer } from './fixture.ts'
+import { createMokeiConfig, createSDKServer, SERVER_NAME, SERVER_VERSION } from './fixture.ts'
 
 export const MOKEI_STDIO_SERVER_PATH = fileURLToPath(
   new URL('./mokei-stdio-server.ts', import.meta.url),
@@ -195,9 +196,17 @@ export async function spawnMokeiStdioClient(
   }
 }
 
-/** Serves the fixture over Streamable HTTP using `@mokei/http-server`. */
-export async function startMokeiHTTPServer(): Promise<RunningHTTPServer> {
-  const config = createMokeiConfig()
+/**
+ * Serves the fixture over Streamable HTTP using `@mokei/http-server`.
+ *
+ * `protocolVersions` is passed straight through to `createMokeiConfig`, whose own default
+ * (both revisions) applies when it is omitted. Suites needing a server that genuinely refuses
+ * one of the two revisions pass an explicit one-element list.
+ */
+export async function startMokeiHTTPServer(
+  protocolVersions?: Array<ProtocolVersion>,
+): Promise<RunningHTTPServer> {
+  const config = createMokeiConfig(protocolVersions)
   const result = serveHTTP({
     createServer: (transport) => new ContextServer({ ...config, transport }),
     port: 0,
@@ -207,6 +216,87 @@ export async function startMokeiHTTPServer(): Promise<RunningHTTPServer> {
   return {
     url: `http://127.0.0.1:${port}/mcp`,
     dispose: async () => {
+      result.dispose()
+    },
+  }
+}
+
+/** Connects a mokei `ContextClient` to `url` over Streamable HTTP at `protocolVersion`. */
+export function connectMokeiHTTPClient(
+  url: string,
+  protocolVersion: ProtocolVersion | 'auto',
+): ContextClient {
+  return createHTTPClient({ url, protocolVersion })
+}
+
+export type BlockingHTTPServer = RunningHTTPServer & {
+  /** Name of the tool that blocks until `dispose()` releases it. */
+  toolName: string
+  /** Resolves once the blocking tool's handler has been entered. */
+  toolCalled: Promise<void>
+  /** Resolves once the throwaway `ContextServer` of a stateless exchange has been disposed. */
+  serverDisposed: Promise<void>
+}
+
+/**
+ * Serves a single tool that never returns on its own, over Streamable HTTP on `2026-07-28`.
+ *
+ * Used to observe what a stateless exchange does while a request is genuinely in flight —
+ * principally whether the throwaway `ContextServer` is torn down when the caller hangs up.
+ * `dispose()` releases the blocked handler so the exchange cannot outlive the test.
+ */
+export async function startBlockingHTTPServer(): Promise<BlockingHTTPServer> {
+  let onCalled: () => void = () => {}
+  const toolCalled = new Promise<void>((resolve) => {
+    onCalled = resolve
+  })
+  let onDisposed: () => void = () => {}
+  const serverDisposed = new Promise<void>((resolve) => {
+    onDisposed = resolve
+  })
+  let release: () => void = () => {}
+  const released = new Promise<void>((resolve) => {
+    release = resolve
+  })
+
+  const config: ServerConfig = {
+    name: SERVER_NAME,
+    version: SERVER_VERSION,
+    protocolVersions: ['2026-07-28'],
+    tools: {
+      block: createTool({
+        description: 'Blocks until the test releases it',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        handler: async () => {
+          onCalled()
+          await released
+          return { content: [{ type: 'text', text: 'released' }] }
+        },
+      }),
+    },
+  }
+
+  const result = serveHTTP({
+    createServer: (transport) => {
+      const server = new ContextServer({ ...config, transport })
+      const dispose = server.dispose.bind(server)
+      server.dispose = async () => {
+        onDisposed()
+        await dispose()
+      }
+      return server
+    },
+    port: 0,
+    hostname: '127.0.0.1',
+  })
+  const port = await listening(result.server, '127.0.0.1')
+  return {
+    url: `http://127.0.0.1:${port}/mcp`,
+    toolName: 'block',
+    toolCalled,
+    serverDisposed,
+    dispose: async () => {
+      release()
       result.dispose()
     },
   }
