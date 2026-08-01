@@ -2,7 +2,11 @@ import { Transport } from '@enkaku/transport'
 import type { ClientTransport } from '@mokei/context-client'
 import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
-import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
+import {
+  isSupportedProtocolVersion,
+  META_PROTOCOL_VERSION,
+  PROTOCOLS,
+} from '@mokei/context-protocol'
 import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { createReadable, writeTo } from '@sozai/stream'
 import { parseServerSentEvents } from 'parse-sse'
@@ -28,6 +32,29 @@ export type HTTPTransportParams = {
   timeout?: number
   /** Optional logger (defaults to the `mokei:http-client` logger) */
   logger?: Logger
+  /**
+   * Seeds the `MCP-Protocol-Version` header before any revision is known. Rarely needed:
+   * a `2026-07-28` request declares its revision in its own `_meta`, and a `2025-11-25`
+   * connection learns it from the `initialize` result. Left unset, the header is omitted
+   * until one of those two supplies a value — which is what the specification asks for on
+   * the `initialize` request itself.
+   */
+  protocolVersion?: string
+}
+
+/**
+ * Whether a revision has protocol sessions to name in an `Mcp-Session-Id` header.
+ *
+ * A session is established by the `initialize`/`initialized` handshake, so a revision that
+ * does not require the handshake has no session at all. Unknown revisions are treated as
+ * session-bearing: suppressing the header on a revision this build does not recognise would
+ * break a connection that a pass-through server might otherwise handle.
+ */
+function hasSession(version: string | null): boolean {
+  if (version == null || !isSupportedProtocolVersion(version)) {
+    return true
+  }
+  return PROTOCOLS[version].requiresHandshake
 }
 
 /** Default HTTP request timeout in milliseconds. */
@@ -68,8 +95,12 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #pendingMethods = new Map<string | number, string>()
   /** Cached tool `inputSchema`s keyed by tool name, populated from `tools/list` results. */
   #toolSchemas = new Map<string, unknown>()
-  /** Protocol version to send in `MCP-Protocol-Version` header; updated after initialize. */
-  #protocolVersion: string = LATEST_PROTOCOL_VERSION
+  /**
+   * Version for the `MCP-Protocol-Version` header when the outgoing message does not
+   * declare one itself. `null` until an `initialize` result or a constructor seed supplies
+   * it, in which case the header is omitted.
+   */
+  #protocolVersion: string | null
   #logger: Logger
 
   constructor(params: HTTPTransportParams) {
@@ -82,6 +113,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#url = params.url
     this.#headers = buildHTTPHeaders({ headers: params.headers, auth: params.auth })
     this.#timeout = params.timeout ?? DEFAULT_HTTP_TIMEOUT
+    this.#protocolVersion = params.protocolVersion ?? null
     this.#logger = params.logger ?? getMokeiLogger('http-client')
   }
 
@@ -135,6 +167,25 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
+   * The revision an outgoing message declares in its own `_meta`, if any. Revisions with
+   * `requiresRequestMeta` put it there on every request, which makes the header derivable
+   * rather than tracked: transport and payload can never disagree about which revision a
+   * message belongs to.
+   */
+  #declaredVersion(message: ClientMessage): string | null {
+    const params = (message as { params?: unknown }).params
+    if (params == null || typeof params !== 'object') {
+      return null
+    }
+    const meta = (params as Record<string, unknown>)._meta
+    if (meta == null || typeof meta !== 'object') {
+      return null
+    }
+    const version = (meta as Record<string, unknown>)[META_PROTOCOL_VERSION]
+    return typeof version === 'string' ? version : null
+  }
+
+  /**
    * Send a JSON-RPC message to the server via HTTP POST.
    *
    * Never throws: per-message failures are routed to {@link #failRequest} so a
@@ -151,11 +202,16 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       return
     }
 
+    const declaredVersion = this.#declaredVersion(message)
+    const headerVersion = declaredVersion ?? this.#protocolVersion
+
     const headers: Record<string, string> = {
       ...this.#headers,
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
-      'MCP-Protocol-Version': this.#protocolVersion,
+    }
+    if (headerVersion != null) {
+      headers['MCP-Protocol-Version'] = headerVersion
     }
 
     if ('method' in message && typeof message.method === 'string') {
@@ -202,7 +258,11 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       }
     }
 
-    if (this.#sessionID) {
+    // A revision without the handshake has no protocol session. Sending a session id on
+    // such a request would ask a multi-revision server to route it into session state it
+    // must ignore, so the header is suppressed for exactly the requests that declare such
+    // a revision — a `2025-11-25` connection on the same transport keeps its session.
+    if (this.#sessionID && hasSession(declaredVersion)) {
       headers['Mcp-Session-Id'] = this.#sessionID
     }
 
@@ -426,7 +486,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         const headers: Record<string, string> = {
           ...this.#headers,
           Accept: 'text/event-stream',
-          'MCP-Protocol-Version': this.#protocolVersion,
+        }
+        if (this.#protocolVersion != null) {
+          headers['MCP-Protocol-Version'] = this.#protocolVersion
         }
         if (this.#sessionID) {
           headers['Mcp-Session-Id'] = this.#sessionID
@@ -509,13 +571,16 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     // Terminate session with DELETE, bounded so a hung server can't stall shutdown.
     if (this.#sessionID) {
       try {
+        const headers: Record<string, string> = {
+          ...this.#headers,
+          'Mcp-Session-Id': this.#sessionID,
+        }
+        if (this.#protocolVersion != null) {
+          headers['MCP-Protocol-Version'] = this.#protocolVersion
+        }
         await fetch(this.#url, {
           method: 'DELETE',
-          headers: {
-            ...this.#headers,
-            'MCP-Protocol-Version': this.#protocolVersion,
-            'Mcp-Session-Id': this.#sessionID,
-          },
+          headers,
           signal: AbortSignal.timeout(DEFAULT_DISPOSE_TIMEOUT),
         })
       } catch {

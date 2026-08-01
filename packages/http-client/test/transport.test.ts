@@ -96,6 +96,21 @@ const pingResult: ServerMessage = {
   result: {},
 } as ServerMessage
 
+/** Protocol `_meta` a `2026-07-28` client puts on every request. */
+const requestMeta20260728 = {
+  'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+  'io.modelcontextprotocol/clientCapabilities': {},
+}
+
+function request20260728(id: number): ClientMessage {
+  return {
+    jsonrpc: '2.0',
+    id,
+    method: 'tools/list',
+    params: { _meta: { ...requestMeta20260728 } },
+  } as ClientMessage
+}
+
 const progressNotification: ClientMessage = {
   jsonrpc: '2.0',
   method: 'notifications/progress',
@@ -140,7 +155,7 @@ describe('HTTPTransport', () => {
   })
 
   describe('POST sends correct headers and body', () => {
-    test('sends Content-Type, Accept, and MCP-Protocol-Version headers', async () => {
+    test('sends Content-Type and Accept headers', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
 
       const transport = new HTTPTransport({ url: TEST_URL })
@@ -152,7 +167,6 @@ describe('HTTPTransport', () => {
       expect(options.method).toBe('POST')
       expect(options.headers['Content-Type']).toBe('application/json')
       expect(options.headers.Accept).toBe('application/json, text/event-stream')
-      expect(options.headers['MCP-Protocol-Version']).toBe(LATEST_PROTOCOL_VERSION)
       expect(JSON.parse(options.body)).toEqual(initializeRequest)
 
       await transport.dispose()
@@ -181,16 +195,140 @@ describe('HTTPTransport', () => {
 
       const transport = new HTTPTransport({ url: TEST_URL })
 
-      // The initialize POST must still use LATEST_PROTOCOL_VERSION (negotiation hasn't happened yet)
+      // The initialize POST carries no version: nothing has told the transport which
+      // revision it speaks yet, and the request itself does not declare one.
       await transport.write(initializeRequest)
       await transport.read()
-      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe(
-        LATEST_PROTOCOL_VERSION,
-      )
+      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBeUndefined()
 
       // A subsequent request must use the negotiated version captured from the initialize response
       await transport.write(pingRequest)
       expect(fetchMock.mock.calls[1][1].headers['MCP-Protocol-Version']).toBe(negotiatedVersion)
+
+      await transport.dispose()
+    })
+  })
+
+  describe('MCP-Protocol-Version header', () => {
+    test('is omitted before any revision is known', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+
+      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBeUndefined()
+
+      await transport.dispose()
+    })
+
+    test('uses the constructor seed before any revision is known', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL, protocolVersion: '2024-11-05' })
+      await transport.write(initializeRequest)
+
+      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe('2024-11-05')
+
+      await transport.dispose()
+    })
+
+    test('is taken from the request _meta on 2026-07-28', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe('2026-07-28')
+
+      await transport.dispose()
+    })
+
+    test('the request _meta wins over the negotiated version', async () => {
+      // A single transport may carry both revisions. The version a message declares must
+      // describe that message, never the last handshake the transport happened to see.
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            protocolVersion: '2025-11-25',
+            capabilities: {},
+            serverInfo: { name: 'test-server', version: '1.0' },
+          },
+        }),
+      )
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+      await transport.read()
+      await transport.write(request20260728(2))
+
+      expect(fetchMock.mock.calls[1][1].headers['MCP-Protocol-Version']).toBe('2026-07-28')
+
+      await transport.dispose()
+    })
+
+    test('no session header is sent on a 2026-07-28 request', async () => {
+      // The server hands back a session id anyway; the transport must not echo it on a
+      // request that declares a revision without sessions.
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(pingResult, { 'Mcp-Session-Id': 'leaked-session' }),
+      )
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+      await transport.write(request20260728(2))
+
+      expect(fetchMock.mock.calls[1][1].headers['Mcp-Session-Id']).toBeUndefined()
+
+      await transport.dispose()
+    })
+
+    test('a 2025-11-25 request on the same transport keeps its session header', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          {
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              protocolVersion: '2025-11-25',
+              capabilities: {},
+              serverInfo: { name: 'test-server', version: '1.0' },
+            },
+          },
+          { 'Mcp-Session-Id': 'session-kept' },
+        ),
+      )
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+      await transport.read()
+      await transport.write(request20260728(3))
+      await transport.write(pingRequest)
+
+      expect(fetchMock.mock.calls[1][1].headers['Mcp-Session-Id']).toBeUndefined()
+      expect(fetchMock.mock.calls[2][1].headers['Mcp-Session-Id']).toBe('session-kept')
+
+      await transport.dispose()
+    })
+
+    test('never opens a GET stream or sends Last-Event-ID on 2026-07-28', async () => {
+      fetchMock.mockImplementation(async () => jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      for (const id of [1, 2, 3]) {
+        await transport.write(request20260728(id))
+      }
+
+      // The GET reconnect loop and `Last-Event-ID` resumption belong to a session, which
+      // this revision never has. Nothing should have opened one.
+      const calls = fetchMock.mock.calls as Array<FetchCall>
+      expect(calls.every((call) => call[1].method === 'POST')).toBe(true)
+      expect(calls.every((call) => call[1].headers['Last-Event-ID'] == null)).toBe(true)
 
       await transport.dispose()
     })
