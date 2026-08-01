@@ -57,15 +57,13 @@ describe('createHTTPClient', () => {
     await client.dispose()
   })
 
-  test('a 2026-07-28 cancellation is not sent at all', async () => {
-    // `decorateRequest` runs on requests only, so a notification carries no protocol `_meta`
-    // and therefore names no revision — neither in the body a stateless server routes on nor
-    // in the header derived from it, which earns a `400` rather than a cancellation. The
-    // client drops it instead: `2026-07-28`'s `clientNotifications` is empty, because a
-    // cancellation cannot prove it owns the request ID it names once it travels as an exchange
-    // of its own. The second request is the sentinel that makes the absence observable —
-    // requests go out in order, so once it has been posted, a cancellation that was going to
-    // be posted already would be.
+  test('a 2026-07-28 cancellation is sent carrying its protocol version', async () => {
+    // The POST that carries a cancellation has no session to be placed by, so the only thing
+    // that tells a stateless server which revision it belongs to is the version in its own
+    // `_meta` — the same key the routing gate reads off a request. Without it the POST is
+    // answered `400` instead of being routed; with it the server acknowledges it `202`.
+    // Asserting the key here, rather than only that the POST happened, is the point: the send
+    // existing proves nothing if it cannot be placed.
     fetchMock.mockResolvedValue(new Response(null, { status: 202 }))
 
     const client = createHTTPClient({ url: TEST_URL, protocolVersion: '2026-07-28' })
@@ -78,16 +76,26 @@ describe('createHTTPClient', () => {
     await expect(pending).rejects.toThrow()
 
     type Call = [string, { headers: Record<string, string>; body?: string }]
-    const methodsPosted = (): Array<string | undefined> =>
-      (fetchMock.mock.calls as Array<Call>)
-        .filter((call) => call[1].body != null)
-        .map((call) => (JSON.parse(call[1].body as string) as { method?: string }).method)
+    const findCancelled = (): Call | undefined =>
+      (fetchMock.mock.calls as Array<Call>).find((call) => {
+        const body = call[1].body
+        return (
+          body != null &&
+          (JSON.parse(body) as { method?: string }).method === 'notifications/cancelled'
+        )
+      })
 
-    void client.request('prompts/list', {}).catch(() => {})
     await vi.waitFor(() => {
-      expect(methodsPosted()).toContain('prompts/list')
+      expect(findCancelled()).toBeDefined()
     })
-    expect(methodsPosted()).toEqual(['tools/list', 'prompts/list'])
+    const call = findCancelled() as Call
+    const body = JSON.parse(call[1].body as string) as { params?: Record<string, unknown> }
+    const meta = body.params?._meta as Record<string, unknown> | undefined
+    expect(meta?.['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
+    // The request envelope stays off it — only what the routing gate needs is stamped.
+    expect(meta).not.toHaveProperty('io.modelcontextprotocol/clientCapabilities')
+    // The header is derived from that same key, so it now agrees rather than being absent.
+    expect(call[1].headers['MCP-Protocol-Version']).toBe('2026-07-28')
 
     await client.dispose()
   })

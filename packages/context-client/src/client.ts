@@ -557,34 +557,33 @@ export class ContextClient<
   }
 
   /**
-   * Drops a notification the resolved revision's `clientNotifications` does not carry, instead
-   * of writing it to the peer — the notification half of `request()`'s gate above, derived from
-   * the same kind of table rather than a version literal.
+   * Stamps this revision's protocol `_meta` on an outgoing notification, the way `request()`
+   * above does for requests. `ContextRPC.notify()` writes straight to the transport, so without
+   * this a notification would name no revision at all.
    *
-   * Dropped rather than thrown, because the caller is usually not the application: `cancelled`
-   * is emitted by `ContextRPC` itself when an exchange is aborted or times out, on a path that
-   * discards the result. There is nothing to report to and nothing that would be retried.
+   * That matters most for `notifications/cancelled`, which `ContextRPC` emits itself when an
+   * exchange is aborted or times out. A peer that routes each exchange on the version in its
+   * body cannot place an unstamped one, and answers it with an error rather than acting on it —
+   * so on a revision without a handshake, an undecorated cancellation silently leaves the peer
+   * running a handler nobody is waiting for any more. Stamped, it routes, and a peer that has
+   * no session to cancel within still acknowledges it and falls back to disconnect as its
+   * cancellation signal.
    *
-   * This is also the only place that can suppress it. `decorateRequest` runs on requests alone,
-   * so a notification carries no protocol `_meta` and therefore names no revision — over a
-   * transport that reads the revision off each exchange, one sent on `2026-07-28` cannot be
-   * routed and is answered with an error rather than being acted on. On `2025-11-25` every
-   * notification a client sends is in the table, so nothing there changes.
+   * `decorateNotification` is the revision's own hook, not a version check here, and is identity
+   * on `2025-11-25` — which needs no stamp, having agreed its version in the handshake.
    *
-   * Awaits `#ready` for the same reason `request()` does: under `protocolVersion: 'auto'` there
-   * is no revision to gate on until the probe settles. Safe against setup, which sends
-   * `notifications/initialized` through `super._write` rather than through here, so this await
-   * cannot be waiting on a handshake that is waiting on it.
+   * Awaits `#ready` to resolve the revision to decorate with. Not a change in when anything is
+   * written: `_write` below already awaits `#ready`, so every notification already went out
+   * behind it. Safe against setup, which sends `notifications/initialized` through `super._write`
+   * rather than through here, so this await cannot be waiting on a handshake that waits on it.
    */
   async notify<Event extends keyof ClientTypes['SendNotifications'] & string>(
     event: Event,
     params: ClientTypes['SendNotifications'][Event]['params'],
   ): Promise<void> {
     await this.#ready
-    if (!this.#requireProtocol().clientNotifications.has(`notifications/${event}`)) {
-      return
-    }
-    await super.notify(event, params)
+    const decorated = this.#requireProtocol().decorateNotification(params)
+    await super.notify(event, decorated as typeof params)
   }
 
   /**

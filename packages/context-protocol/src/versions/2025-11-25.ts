@@ -93,16 +93,11 @@ export const PROTOCOL = {
     'tools/call',
     'tools/list',
   ]),
-  clientNotifications: new Set([
-    'notifications/cancelled',
-    'notifications/initialized',
-    'notifications/progress',
-    'notifications/roots/list_changed',
-  ]),
   serverMethods: new Set(['ping', 'sampling/createMessage', 'roots/list', 'elicitation/create']),
   clientMessage,
   serverMessage,
   decorateRequest: (params: unknown): unknown => params,
+  decorateNotification: (params: unknown): unknown => params,
   readRequestMeta: (): RequestMetaInfo => ({}),
   wrapResult: (value: Record<string, unknown>): Record<string, unknown> => value,
 } satisfies ProtocolDefinition

@@ -80,7 +80,7 @@ import {
   PROTOCOL_VERSION_META_KEY,
   SERVER_INFO_META_KEY,
 } from '@modelcontextprotocol/core/internal'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { checkMokeiClient } from '../support/interop/expectations.ts'
 import {
@@ -95,6 +95,7 @@ import {
 } from '../support/interop/fixture.ts'
 import {
   MOKEI_STDIO_SERVER_2026_07_28_PATH,
+  MOKEI_STDIO_SERVER_CANCELLATION_PATH,
   type SpawnedMokeiClient,
   spawnMokeiStdioClient,
 } from '../support/interop/servers.ts'
@@ -167,6 +168,71 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
       await spawned.dispose()
       spawned = null
     }
+  })
+
+  /** Runs `name` with no arguments and returns the text of its first content block. */
+  async function callText(client: SpawnedMokeiClient['client'], name: string): Promise<string> {
+    const result = await client.callTool({ name, arguments: {} } as never)
+    return (result.content[0] as { text: string }).text
+  }
+
+  /**
+   * Cancellation is the one thing a client sends on this revision outside the request/response
+   * path, and the reason a notification has to carry a protocol version at all: nothing else
+   * tells a peer which revision an out-of-band frame belongs to. This drives it through a real
+   * process boundary — the stamp has to survive serialization, not just unit-level decoration.
+   *
+   * What this does **not** cover, deliberately, is the server-side handler actually aborting.
+   * `ContextRPC`'s read loop awaits each message's handler before reading the next
+   * (`packages/context-rpc/src/rpc.ts`, `#readLoop`), so while a tool handler is pending the
+   * server reads nothing at all — the cancellation is only read once the handler has already
+   * settled, by which point `#receivedRequests[id]` has been deleted and the abort is a no-op.
+   * That is independent of anything here, and measured rather than inferred: a second tool call
+   * issued while `hang` was pending was answered only after `hang`'s own 500ms deadline expired.
+   * Asserting the abort would therefore pin the read loop, not the cancellation, and asserting
+   * its absence would pin a bug as expected behavior — so this asserts neither.
+   */
+  test('a cancelled tool call sends a stamped cancellation the server can place', async () => {
+    spawned = await spawnMokeiStdioClient(MOKEI_STDIO_SERVER_CANCELLATION_PATH, PROTOCOL_VERSION)
+    const { client, sent } = spawned
+
+    const controller = new AbortController()
+    const pending = client.callTool({
+      name: 'hang',
+      arguments: {},
+      signal: controller.signal,
+    } as never)
+    pending.catch(() => {})
+
+    // Cancelling before the call is on the wire would cancel nothing and pass for the wrong
+    // reason: `request()` rejects a pre-aborted signal without writing anything at all.
+    await vi.waitFor(() => {
+      expect(sent.some((message) => message.method === 'tools/call')).toBe(true)
+    })
+    controller.abort()
+    await expect(pending).rejects.toThrow()
+
+    // The rejection settles as soon as the exchange is cancelled; the notification is written
+    // after it, on a path whose result nothing awaits, so it has to be waited for separately.
+    const findCancelled = () => sent.find((message) => message.method === 'notifications/cancelled')
+    await vi.waitFor(() => {
+      expect(findCancelled()).toBeDefined()
+    })
+    const cancellation = findCancelled()
+    // The stamp a peer places the frame's revision by. It has no other source: there is no
+    // handshake to have agreed it and no session to have recorded it.
+    expect(requestMeta(cancellation as Record<string, unknown>)[PROTOCOL_VERSION_META_KEY]).toBe(
+      PROTOCOL_VERSION,
+    )
+    // ...and only that key. The request envelope does not belong on a notification.
+    expect(Object.keys(requestMeta(cancellation as Record<string, unknown>))).toEqual([
+      PROTOCOL_VERSION_META_KEY,
+    ])
+
+    // The server read the frame and carried on: a notification its validator rejected would be
+    // dropped, and one that killed the read loop would leave this call unanswered forever. It
+    // also confirms the cancelled call was genuinely in flight when it was cancelled.
+    expect(await callText(client, 'started')).toBe('true')
   })
 
   test('mokei client against the mokei server', async () => {

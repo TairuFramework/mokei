@@ -14,7 +14,8 @@ import type {
   ServerMessage,
   ServerRequest,
 } from '@mokei/context-protocol'
-import { INVALID_REQUEST, METHOD_NOT_FOUND } from '@mokei/context-protocol'
+import { INVALID_REQUEST, METHOD_NOT_FOUND, PROTOCOLS } from '@mokei/context-protocol'
+import { createValidator } from '@sozai/schema'
 import { describe, expect, test, vi } from 'vitest'
 
 import { DEFAULT_INITIALIZE_PARAMS } from '../src/client.js'
@@ -1257,7 +1258,7 @@ describe('protocol version selection', () => {
   })
 })
 
-describe('outbound gating on the resolved revision', () => {
+describe('outbound requests and notifications on the resolved revision', () => {
   // `sent` is typed as requests, but the harness records notifications too — this is how these
   // tests assert on the notification frames it captured.
   const methodsSent = (sent: Array<ClientRequest>): Array<string> =>
@@ -1299,14 +1300,11 @@ describe('outbound gating on the resolved revision', () => {
     ])
   })
 
-  // `2025-11-25` carries `notifications/cancelled`, so an aborted exchange still tells the peer.
-  // This also proves the harness records cancellations at all, which is what keeps the
-  // `2026-07-28` case below from passing vacuously.
-  test('2025-11-25 still sends a cancellation when a request is aborted', async () => {
-    const { client, sent } = createTestClient({
-      protocolVersion: '2025-11-25',
-      respond: () => WITHHOLD,
-    })
+  /** Aborts an in-flight, never-answered request and resolves with the cancellation frame. */
+  async function cancelInFlight(
+    protocolVersion: ClientParams['protocolVersion'],
+  ): Promise<ClientRequest> {
+    const { client, sent } = createTestClient({ protocolVersion, respond: () => WITHHOLD })
     const controller = new AbortController()
     const pending = client.request('prompts/list', {}, { signal: controller.signal })
     await vi.waitFor(() => {
@@ -1317,29 +1315,38 @@ describe('outbound gating on the resolved revision', () => {
     await vi.waitFor(() => {
       expect(methodsSent(sent)).toContain('notifications/cancelled')
     })
+    return sent[sent.length - 1]
+  }
+
+  // The cancellation has to reach the peer on *every* transport, not just the ones that can read
+  // a revision off a session: `ContextRPC._handleMessage` acts on it directly, aborting the
+  // handler signal of the request it names, and that is the only thing that stops a server
+  // working on a call nobody is waiting for any more.
+  test('2026-07-28 sends a cancellation stamped with its protocol version', async () => {
+    const cancelled = await cancelInFlight('2026-07-28')
+    const meta = (cancelled.params as { _meta?: Record<string, unknown> })._meta
+    // The key a peer routes the notification on when there is no session to place it in.
+    expect(meta?.['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
+    // The request envelope is not copied onto it: a notification is not a request.
+    expect(meta).not.toHaveProperty('io.modelcontextprotocol/clientCapabilities')
+    expect(meta).not.toHaveProperty('io.modelcontextprotocol/clientInfo')
+    // The notification's own params survive decoration.
+    expect((cancelled.params as { requestId?: unknown }).requestId).toBeDefined()
   })
 
-  // `2026-07-28`'s `clientNotifications` is empty, so the same abort must send nothing. The
-  // second request is a sentinel: transport writes are ordered, so once it lands in `sent`, a
-  // cancellation that was going to be written would already be there too.
-  test('2026-07-28 sends no cancellation when a request is aborted', async () => {
-    const { client, sent } = createTestClient({
-      protocolVersion: '2026-07-28',
-      respond: () => WITHHOLD,
-    })
-    const controller = new AbortController()
-    const pending = client.request('prompts/list', {}, { signal: controller.signal })
-    await vi.waitFor(() => {
-      expect(sent).toHaveLength(1)
-    })
-    controller.abort()
-    await expect(pending).rejects.toThrow()
+  // `2025-11-25` agreed its version in the handshake, so its hook is identity and its frames
+  // must stay byte-identical — the guard on "this revision's behavior does not change".
+  test('2025-11-25 sends a cancellation with no protocol _meta', async () => {
+    const cancelled = await cancelInFlight('2025-11-25')
+    expect(cancelled.params).toEqual({ requestId: expect.anything() })
+  })
 
-    void client.request('tools/list', {}).catch(() => {})
-    await vi.waitFor(() => {
-      expect(methodsSent(sent)).toContain('tools/list')
-    })
-    expect(methodsSent(sent)).toEqual(['prompts/list', 'tools/list'])
+  // The decorated frame has to still satisfy the schema the peer validates it against, or the
+  // stamp buys routing at the cost of the notification being dropped as invalid.
+  test('a decorated cancellation still validates against the revision it names', async () => {
+    const cancelled = await cancelInFlight('2026-07-28')
+    const validate = createValidator(PROTOCOLS['2026-07-28'].clientMessage)
+    expect(validate(cancelled).issues).toBeUndefined()
   })
 })
 

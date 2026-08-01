@@ -135,14 +135,14 @@ export const clientRequest = {
 export type ClientRequest = FromSchema<typeof clientRequest>
 
 /**
- * Notifications a server accepts from a client in this revision. `2025-11-25`'s `initialized`
- * and `roots/list_changed` are excluded: the former only means something as part of the
+ * Notifications a client may send in this revision. `2025-11-25`'s `initialized` and
+ * `roots/list_changed` are excluded: the former only means something as part of the
  * handshake this revision drops (`requiresHandshake: false`), and the latter only means
  * something if a server can ask for the roots list back, which no `2026-07-28` server can
  * (`serverMethods` carries no `roots/list`).
  *
- * This is the inbound-validation surface, so it is deliberately wider than what a client of
- * this revision sends — that is `clientNotifications` below, which is empty.
+ * Both members that remain build on `notification`, whose `params` already admits the `_meta`
+ * that `decorateNotification` stamps below.
  */
 export const clientNotification = {
   anyOf: [cancelledNotification, progressNotification],
@@ -200,19 +200,6 @@ export const PROTOCOL = {
     'tools/call',
     'tools/list',
   ]),
-  // Empty, so a client on this revision sends no notification at all. Each of the four a client
-  // can otherwise send has lost its meaning here:
-  // - `notifications/initialized` and `notifications/roots/list_changed` are already absent from
-  //   `clientNotification` above, for the reasons given there.
-  // - `notifications/progress` reports progress on a *server-initiated* request, and
-  //   `serverMethods` is empty, so there is never one to report on.
-  // - `notifications/cancelled` names a request ID it cannot prove it owns once it travels as an
-  //   exchange of its own rather than inside a session — which is why a stateless exchange
-  //   honors client disconnect as its only cancellation signal instead.
-  // `clientNotification` above stays wider on purpose: it validates what a peer sends *in*, and
-  // a peer that does send either of the last two over a connection-oriented transport is still
-  // understood.
-  clientNotifications: new Set<string>(),
   serverMethods: new Set<string>(),
   clientMessage,
   serverMessage,
@@ -230,6 +217,21 @@ export const PROTOCOL = {
       meta[META_LOG_LEVEL] = context.logLevel
     }
     return { ...base, _meta: meta }
+  },
+  // Only the version key, never the `clientInfo`/`clientCapabilities`/`logLevel` that
+  // `decorateRequest` adds: those describe a request, and a notification is not one. The version
+  // is what a peer needs and the one thing it cannot infer — there is no handshake to have
+  // agreed it and, on a transport that carries each exchange separately, no session to have
+  // recorded it, so an unstamped notification is unroutable and cannot cancel anything.
+  // `clientNotification` above admits this: both members build on `notification`, whose
+  // `params` declares `_meta: metadata` (open) and `additionalProperties: {}` — unlike a
+  // request's `withProtocolMeta`, which would additionally *require* the request envelope.
+  decorateNotification: (params: unknown): unknown => {
+    const base = asRecord(params)
+    return {
+      ...base,
+      _meta: { ...asRecord(base._meta), [META_PROTOCOL_VERSION]: PROTOCOL_VERSION },
+    }
   },
   readRequestMeta: (incoming: Request): RequestMetaInfo => {
     const meta = asRecord(asRecord(incoming.params)._meta)

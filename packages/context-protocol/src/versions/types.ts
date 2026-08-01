@@ -43,16 +43,6 @@ export type ProtocolDefinition = {
   requiresPerRequestLogLevel: boolean
   /** Methods a client may send in this revision. */
   clientMethods: ReadonlySet<string>
-  /**
-   * Fully qualified notification methods (`notifications/*`) a client may send in this
-   * revision — the notification mirror of `clientMethods`, and read by the same kind of gate,
-   * so neither side needs a version literal to decide what may go out.
-   *
-   * Like `clientMethods`, this is the *outbound* table and is allowed to be narrower than the
-   * `clientNotification` schema, which is the peer's inbound-validation surface and stays
-   * tolerant of what other implementations send.
-   */
-  clientNotifications: ReadonlySet<string>
   /** Methods a server may send in this revision. */
   serverMethods: ReadonlySet<string>
   /** Inbound-message validators, used by the server and client read loops. */
@@ -60,6 +50,14 @@ export type ProtocolDefinition = {
   serverMessage: Schema
   /** Adds this revision's protocol `_meta` to an outgoing request's params. */
   decorateRequest: (params: unknown, context: ClientRequestContext) => unknown
+  /**
+   * Adds this revision's protocol `_meta` to an outgoing notification's params.
+   *
+   * Separate from `decorateRequest` and deliberately context-free: a notification is not a
+   * request, so it carries only what a peer needs to route it to the right revision — never the
+   * `clientInfo`/`clientCapabilities`/`logLevel` envelope, which describes a request.
+   */
+  decorateNotification: (params: unknown) => unknown
   /** Reads this revision's protocol `_meta` off an inbound request. */
   readRequestMeta: (request: Request) => RequestMetaInfo
   /** Adds this revision's result envelope to an outgoing result. */

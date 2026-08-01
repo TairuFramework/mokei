@@ -128,6 +128,14 @@ describe('protocol records', () => {
       expect(protocol.requiresPerRequestLogLevel, version).toBe(
         !protocol.clientMethods.has('logging/setLevel'),
       )
+      // A revision whose peer routes on per-request `_meta` routes notifications on it too, so
+      // `decorateNotification` must stamp the version exactly when `requiresRequestMeta` is set —
+      // and stamp nothing else, since the request envelope does not belong on a notification.
+      expect(protocol.decorateNotification({ requestId: 1 }), version).toEqual(
+        protocol.requiresRequestMeta
+          ? { requestId: 1, _meta: { 'io.modelcontextprotocol/protocolVersion': version } }
+          : { requestId: 1 },
+      )
     }
   })
 
@@ -135,6 +143,7 @@ describe('protocol records', () => {
     const protocol = PROTOCOLS['2025-11-25']
     const params = { name: 'echo' }
     expect(protocol.decorateRequest(params, { capabilities: {} })).toEqual(params)
+    expect(protocol.decorateNotification({ requestId: 7 })).toEqual({ requestId: 7 })
     expect(protocol.wrapResult({ tools: [] }, { serverInfo: { name: 't', version: '1' } })).toEqual(
       { tools: [] },
     )
