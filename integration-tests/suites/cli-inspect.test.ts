@@ -56,13 +56,32 @@ describe('CLI inspect', () => {
   }, 30_000)
 
   test('a pinned 2026-07-28 inspect fails against a 2025-11-25-only server', async () => {
-    const { code } = await runInspect([
+    const { stdout, code } = await runInspect([
       '--protocol',
       '2026-07-28',
       'node',
       MOKEI_STDIO_SERVER_2025_11_25_PATH,
     ])
     expect(code).not.toBe(0)
+    // Asserting the reason, not just the exit code: a pinned revision must report the
+    // server's own refusal rather than fall back to a handshake it was told not to speak.
+    // Every wrong behavior here — falling back, or swallowing the error and reporting
+    // success — still exits non-zero or prints a different message, so the exit code alone
+    // would prove nothing.
+    expect(stdout).toMatch(/unsupported protocol version/i)
+    expect(stdout).not.toContain('discovered')
+    expect(stdout).not.toContain('initialized')
+  }, 30_000)
+
+  test('inspect rejects an unsupported --protocol value before spawning', async () => {
+    const { stdout, code } = await runInspect([
+      '--protocol',
+      '2024-11-05',
+      'node',
+      MOKEI_STDIO_SERVER_2026_07_28_PATH,
+    ])
+    expect(code).not.toBe(0)
+    expect(stdout).toContain('2024-11-05')
   }, 30_000)
 
   test('a pinned 2025-11-25 inspect uses the handshake against a both-revision server', async () => {

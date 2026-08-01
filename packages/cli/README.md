@@ -42,7 +42,7 @@ Arguments:
   args                      arguments for the server command
 
 Options:
-  -p, --protocol <version>  protocol revision to speak: 2026-07-28, 2025-11-25,
+  -p, --protocol <version>  protocol revision to speak: 2026-07-28, 2025-11-25
                             or auto (default: "auto")
 ```
 

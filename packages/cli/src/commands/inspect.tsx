@@ -1,12 +1,12 @@
 import { StatusMessage } from '@inkjs/ui'
 import type { ContextClient } from '@mokei/context-client'
-import type { ProtocolVersion } from '@mokei/context-protocol'
+import { PROTOCOLS, type ProtocolVersion } from '@mokei/context-protocol'
 import { type HostedContext, spawnHostedContext } from '@mokei/host'
 import { renderStatic } from '@tejika/cli'
 import { Command } from 'commander'
 import { Box, Text } from 'ink'
 
-import { parseProtocolOption } from '../options.js'
+import { PROTOCOL_OPTION_DESCRIPTION, parseProtocolOption } from '../options.js'
 
 function InspectResult({ title, data }: { title: string; data: string }) {
   return (
@@ -22,15 +22,19 @@ function InspectError({ message }: { message: string }) {
 }
 
 /**
- * Asks the server to describe itself using whichever call its revision provides:
- * `server/discover` on `2026-07-28`, the `initialize` handshake on `2025-11-25`.
+ * Asks the server to describe itself using whichever call its revision provides: the
+ * `initialize` handshake on a revision that requires one, `server/discover` on a revision that
+ * replaced it.
  *
  * Under `'auto'` the revision is not known until the client's probe settles, and the probe only
  * runs when a request is made — so `discover()` is tried first and, if it fails, the resolved
  * revision (readable by then, because the failed call ran the probe) decides whether to fall
  * back or to report the failure. The catch is narrowed by that check rather than swallowing
- * every error. A failure early enough that the probe never settled leaves `protocolVersion`
- * itself throwing; that case reports the original error, which is the informative one.
+ * every error.
+ *
+ * Reading `protocolVersion` is itself wrapped only defensively: the getter throws while an
+ * `'auto'` probe is unresolved, and treating that as "no fallback" reports the original error,
+ * which is the informative one.
  */
 async function describeContext(client: ContextClient): Promise<{ title: string; data: unknown }> {
   try {
@@ -42,7 +46,10 @@ async function describeContext(client: ContextClient): Promise<{ title: string; 
     } catch {
       resolved = undefined
     }
-    if (resolved === '2025-11-25') {
+    // Derived from the revision's own definition rather than a version literal, matching how
+    // the client and both transports gate: every revision with a handshake answers
+    // `initialize`, and one added later inherits the fallback instead of silently losing it.
+    if (resolved != null && PROTOCOLS[resolved].requiresHandshake) {
       return { title: 'initialized', data: await client.initialize() }
     }
     throw cause
@@ -54,11 +61,7 @@ export function createInspectCommand(): Command {
     .description('Inspect an MCP context server')
     .argument('<command>', 'command to run the MCP server')
     .argument('[args...]', 'arguments for the server command')
-    .option(
-      '-p, --protocol <version>',
-      'protocol revision to speak: 2026-07-28, 2025-11-25, or auto',
-      'auto',
-    )
+    .option('-p, --protocol <version>', PROTOCOL_OPTION_DESCRIPTION, 'auto')
     .passThroughOptions()
 
   cmd.action(async (command: string, args: Array<string>, opts: { protocol: string }) => {

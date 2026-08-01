@@ -72,6 +72,7 @@ catalog:
   commander: ^15.0.0
   ink-testing-library: ^4.0.0
   jotai: ^2.20.2
+  jsdom: ^27.4.0
   ky: ^2.0.2
   luxon: ^3.7.2
   nano-spawn: ^2.1.0
