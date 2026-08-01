@@ -18,6 +18,11 @@ import { SSEWriter } from './sse-writer.js'
  * inspects the body of a `400` to tell a `2026-07-28` server from a `2025-11-25` one, so
  * these must arrive as a real `400` carrying the JSON-RPC error object — not tunnelled
  * inside a `200` SSE stream, which is where every other server-side error still goes.
+ *
+ * Not the whole rule: `isEnvelopeFailure` is the predicate the transport actually applies,
+ * and it recognises one condition this set deliberately cannot express — see there. In
+ * practice that condition is the one `ContextServer` raises, so nothing currently reaching a
+ * client is classified by this set alone.
  */
 export const BAD_REQUEST_CODES: ReadonlySet<number> = new Set([
   MISSING_REQUIRED_CLIENT_CAPABILITY,
@@ -30,11 +35,19 @@ export const BAD_REQUEST_CODES: ReadonlySet<number> = new Set([
  * an ordinary application error (an unknown tool name, invalid tool arguments — an HTTP
  * `200` carrying a JSON-RPC error, same as every other revision). Only the first is a
  * transport-level failure, and the two are told apart by the message the server's protocol
- * resolution itself writes, which always names the `_meta` key it could not find.
+ * resolution itself writes, which always reports the `_meta` key it could not find.
+ *
+ * Matched as a prefix, not a substring: a tool or prompt *name* reaches the message of an
+ * application error verbatim (`Tool <name> not found`), so a client could otherwise pick its
+ * own HTTP status by naming a tool `io.modelcontextprotocol/…`. Only the leading `Missing "`
+ * is beyond a caller's reach.
  */
 function isEnvelopeFailure(error: { code?: unknown; message?: unknown }): boolean {
   if (error.code === INVALID_PARAMS) {
-    return typeof error.message === 'string' && error.message.includes('io.modelcontextprotocol/')
+    return (
+      typeof error.message === 'string' &&
+      error.message.startsWith('Missing "io.modelcontextprotocol/')
+    )
   }
   return typeof error.code === 'number' && BAD_REQUEST_CODES.has(error.code)
 }

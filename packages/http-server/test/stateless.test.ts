@@ -374,7 +374,10 @@ describe('stateless 2026-07-28 POST path', () => {
         }),
       )
       expect(response.status).toBe(400)
-      expect(await response.text()).toContain('MCP-Protocol-Version')
+      // Asserted on the mismatch wording, not on the header name: the neighbouring
+      // `Unsupported MCP-Protocol-Version` rejection is also a `400` naming the header, so a
+      // looser assertion would pass even if the wrong one of the two answered.
+      expect(await response.text()).toContain('does not match')
     } finally {
       handler.dispose()
     }
@@ -460,6 +463,26 @@ describe('stateless 2026-07-28 POST path', () => {
       )
       // Only the specification's `400` codes get an HTTP status; everything else is a
       // normal JSON-RPC error inside a normal response.
+      expect(response.status).toBe(200)
+      const messages = await readSSEData(response)
+      expect((messages[0].error as { code: number }).code).toBe(-32602)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('a tool named like a _meta key does not buy itself a 400', async () => {
+    const handler = createHandler()
+    try {
+      const response = await handler.handleRequest(
+        statelessRequest(
+          'tools/call',
+          // The unknown tool's name is echoed into the error message verbatim. Classifying
+          // on a substring would let this request choose its own HTTP status.
+          { name: 'io.modelcontextprotocol/x', arguments: {} },
+          11,
+        ),
+      )
       expect(response.status).toBe(200)
       const messages = await readSSEData(response)
       expect((messages[0].error as { code: number }).code).toBe(-32602)

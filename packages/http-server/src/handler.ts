@@ -472,10 +472,13 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     if (!validateProtocolVersion(request)) {
       return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
     }
-    // `2026-07-28` has no server-initiated messages (its `serverMethods` table is empty)
-    // and no session to attach a stream to. Notifications for a request travel on that
-    // request's own POST response, so there is nothing a GET stream could carry.
-    if (request.headers.get('MCP-Protocol-Version') === '2026-07-28') {
+    // A revision with no handshake has no session to attach a stream to, and its
+    // request-scoped notifications travel on that request's own POST response, so there is
+    // nothing a GET stream could carry. Keyed on the header because a GET has no body; an
+    // unrecognised or absent header leaves `protocol` nullish and falls through to the
+    // session lookup below, which is what keeps a header-less `2025-11-25` GET working.
+    const protocol = PROTOCOLS[request.headers.get('MCP-Protocol-Version') as ProtocolVersion]
+    if (protocol != null && !protocol.requiresHandshake) {
       return new Response('Method not allowed', { status: 405 })
     }
 
@@ -535,9 +538,11 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     if (!validateProtocolVersion(request)) {
       return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
     }
-    // DELETE exists only to terminate a session. `2026-07-28` never creates one, so there
-    // is nothing to terminate.
-    if (request.headers.get('MCP-Protocol-Version') === '2026-07-28') {
+    // DELETE exists only to terminate a session, and a session is what a handshake
+    // establishes: a revision without one never creates anything to terminate. Nullish for
+    // an unrecognised or absent header, which falls through to the session lookup below.
+    const protocol = PROTOCOLS[request.headers.get('MCP-Protocol-Version') as ProtocolVersion]
+    if (protocol != null && !protocol.requiresHandshake) {
       return new Response('Method not allowed', { status: 405 })
     }
 
