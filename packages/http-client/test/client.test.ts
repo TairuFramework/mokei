@@ -57,13 +57,15 @@ describe('createHTTPClient', () => {
     await client.dispose()
   })
 
-  test('a 2026-07-28 cancellation is still sent, undecorated', async () => {
-    // Pins current behaviour, not desired behaviour. `decorateRequest` runs on requests only,
-    // so a notification carries no protocol `_meta` and therefore no revision at all — neither
-    // in the body a stateless server routes on nor in the derived header. A server answers
-    // such a POST with `400`. Nothing here should be read as an endorsement: the assertions
-    // exist so that suppressing these sends is a visible change to this file rather than a
-    // silent one.
+  test('a 2026-07-28 cancellation is not sent at all', async () => {
+    // `decorateRequest` runs on requests only, so a notification carries no protocol `_meta`
+    // and therefore names no revision — neither in the body a stateless server routes on nor
+    // in the header derived from it, which earns a `400` rather than a cancellation. The
+    // client drops it instead: `2026-07-28`'s `clientNotifications` is empty, because a
+    // cancellation cannot prove it owns the request ID it names once it travels as an exchange
+    // of its own. The second request is the sentinel that makes the absence observable —
+    // requests go out in order, so once it has been posted, a cancellation that was going to
+    // be posted already would be.
     fetchMock.mockResolvedValue(new Response(null, { status: 202 }))
 
     const client = createHTTPClient({ url: TEST_URL, protocolVersion: '2026-07-28' })
@@ -76,22 +78,16 @@ describe('createHTTPClient', () => {
     await expect(pending).rejects.toThrow()
 
     type Call = [string, { headers: Record<string, string>; body?: string }]
-    const findCancelled = (): Call | undefined =>
-      (fetchMock.mock.calls as Array<Call>).find((call) => {
-        const body = call[1].body
-        return (
-          body != null &&
-          (JSON.parse(body) as { method?: string }).method === 'notifications/cancelled'
-        )
-      })
+    const methodsPosted = (): Array<string | undefined> =>
+      (fetchMock.mock.calls as Array<Call>)
+        .filter((call) => call[1].body != null)
+        .map((call) => (JSON.parse(call[1].body as string) as { method?: string }).method)
 
+    void client.request('prompts/list', {}).catch(() => {})
     await vi.waitFor(() => {
-      expect(findCancelled()).toBeDefined()
+      expect(methodsPosted()).toContain('prompts/list')
     })
-    const call = findCancelled() as Call
-    const body = JSON.parse(call[1].body as string) as { params?: Record<string, unknown> }
-    expect(body.params?._meta).toBeUndefined()
-    expect(call[1].headers['MCP-Protocol-Version']).toBeUndefined()
+    expect(methodsPosted()).toEqual(['tools/list', 'prompts/list'])
 
     await client.dispose()
   })

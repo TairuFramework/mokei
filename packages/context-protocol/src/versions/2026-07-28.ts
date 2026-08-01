@@ -135,11 +135,14 @@ export const clientRequest = {
 export type ClientRequest = FromSchema<typeof clientRequest>
 
 /**
- * Notifications a client may send in this revision. `2025-11-25`'s `initialized` and
- * `roots/list_changed` are excluded: the former only means something as part of the
+ * Notifications a server accepts from a client in this revision. `2025-11-25`'s `initialized`
+ * and `roots/list_changed` are excluded: the former only means something as part of the
  * handshake this revision drops (`requiresHandshake: false`), and the latter only means
  * something if a server can ask for the roots list back, which no `2026-07-28` server can
  * (`serverMethods` carries no `roots/list`).
+ *
+ * This is the inbound-validation surface, so it is deliberately wider than what a client of
+ * this revision sends — that is `clientNotifications` below, which is empty.
  */
 export const clientNotification = {
   anyOf: [cancelledNotification, progressNotification],
@@ -197,6 +200,19 @@ export const PROTOCOL = {
     'tools/call',
     'tools/list',
   ]),
+  // Empty, so a client on this revision sends no notification at all. Each of the four a client
+  // can otherwise send has lost its meaning here:
+  // - `notifications/initialized` and `notifications/roots/list_changed` are already absent from
+  //   `clientNotification` above, for the reasons given there.
+  // - `notifications/progress` reports progress on a *server-initiated* request, and
+  //   `serverMethods` is empty, so there is never one to report on.
+  // - `notifications/cancelled` names a request ID it cannot prove it owns once it travels as an
+  //   exchange of its own rather than inside a session — which is why a stateless exchange
+  //   honors client disconnect as its only cancellation signal instead.
+  // `clientNotification` above stays wider on purpose: it validates what a peer sends *in*, and
+  // a peer that does send either of the last two over a connection-oriented transport is still
+  // understood.
+  clientNotifications: new Set<string>(),
   serverMethods: new Set<string>(),
   clientMessage,
   serverMessage,

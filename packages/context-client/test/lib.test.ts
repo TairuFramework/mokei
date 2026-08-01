@@ -1257,6 +1257,92 @@ describe('protocol version selection', () => {
   })
 })
 
+describe('outbound gating on the resolved revision', () => {
+  // `sent` is typed as requests, but the harness records notifications too — this is how these
+  // tests assert on the notification frames it captured.
+  const methodsSent = (sent: Array<ClientRequest>): Array<string> =>
+    sent.map((message) => message.method as string)
+
+  // `setLoggingLevel()` and `initialize()` refuse the wrong revision in their own bodies, so
+  // they prove nothing about `request()`. These call `request()` directly, which is exactly the
+  // surface a caller reaches past those wrappers on — and where the send would otherwise happen.
+  test('request() refuses a method absent from the resolved revision', async () => {
+    const { client, sent } = createTestClient({ protocolVersion: '2026-07-28' })
+    await expect(client.request('logging/setLevel', { level: 'debug' })).rejects.toThrow(
+      MethodNotInRevisionError,
+    )
+    await expect(client.request('initialize', DEFAULT_INITIALIZE_PARAMS)).rejects.toThrow(
+      /initialize does not exist in protocol version 2026-07-28/,
+    )
+    // Nothing reached the wire: the refusal is local, not a `-32601` round-trip.
+    expect(sent).toEqual([])
+  })
+
+  test('request() still allows a method the resolved revision does have', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => ({ resultType: 'complete', prompts: [] }),
+    })
+    await expect(client.request('prompts/list', {})).resolves.toBeDefined()
+  })
+
+  // Guards the revision the gate must not start refusing anything on. `logging/setLevel` is in
+  // `2025-11-25`'s `clientMethods`; going through `request()` rather than `setLoggingLevel()`
+  // keeps the server-capability gate out of the result, so only the method gate is under test.
+  test('a 2025-11-25 client keeps every method its revision has', async () => {
+    const { client, sent } = createTestClient({ protocolVersion: '2025-11-25' })
+    await expect(client.request('logging/setLevel', { level: 'debug' })).resolves.toBeDefined()
+    expect(methodsSent(sent)).toEqual([
+      'initialize',
+      'notifications/initialized',
+      'logging/setLevel',
+    ])
+  })
+
+  // `2025-11-25` carries `notifications/cancelled`, so an aborted exchange still tells the peer.
+  // This also proves the harness records cancellations at all, which is what keeps the
+  // `2026-07-28` case below from passing vacuously.
+  test('2025-11-25 still sends a cancellation when a request is aborted', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2025-11-25',
+      respond: () => WITHHOLD,
+    })
+    const controller = new AbortController()
+    const pending = client.request('prompts/list', {}, { signal: controller.signal })
+    await vi.waitFor(() => {
+      expect(methodsSent(sent)).toContain('prompts/list')
+    })
+    controller.abort()
+    await expect(pending).rejects.toThrow()
+    await vi.waitFor(() => {
+      expect(methodsSent(sent)).toContain('notifications/cancelled')
+    })
+  })
+
+  // `2026-07-28`'s `clientNotifications` is empty, so the same abort must send nothing. The
+  // second request is a sentinel: transport writes are ordered, so once it lands in `sent`, a
+  // cancellation that was going to be written would already be there too.
+  test('2026-07-28 sends no cancellation when a request is aborted', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => WITHHOLD,
+    })
+    const controller = new AbortController()
+    const pending = client.request('prompts/list', {}, { signal: controller.signal })
+    await vi.waitFor(() => {
+      expect(sent).toHaveLength(1)
+    })
+    controller.abort()
+    await expect(pending).rejects.toThrow()
+
+    void client.request('tools/list', {}).catch(() => {})
+    await vi.waitFor(() => {
+      expect(methodsSent(sent)).toContain('tools/list')
+    })
+    expect(methodsSent(sent)).toEqual(['prompts/list', 'tools/list'])
+  })
+})
+
 describe('discover()', () => {
   test('caches its result for ttlMs', async () => {
     const { client, sent } = createTestClient({

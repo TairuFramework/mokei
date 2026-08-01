@@ -137,16 +137,18 @@ export class CapabilityNotDeclaredError extends Error {
 }
 
 /**
- * Thrown when a method is absent from a protocol revision's method table — derived from that
+ * Thrown when a method is absent from a protocol revision's `clientMethods` — derived from that
  * table, not a version literal, so this fires exactly when the method itself is gone (as
- * opposed to, say, a rejected parameter value). Currently only `setLoggingLevel()` uses this,
- * for `logging/setLevel` on `2026-07-28`: that revision removes the session-level opt-in, and
- * the log level travels per request instead, via `_meta` (see `ClientParams.logLevel`).
+ * opposed to, say, a rejected parameter value).
+ *
+ * `request()` throws it for any method at all, which is what covers a caller reaching past the
+ * typed wrappers. `setLoggingLevel()` throws it earlier, before its capability check, and passes
+ * `hint` to say where the log level went on `2026-07-28`.
  */
 export class MethodNotInRevisionError extends Error {
-  constructor(method: string, version: ProtocolVersion) {
+  constructor(method: string, version: ProtocolVersion, hint?: string) {
     super(
-      `${method} does not exist in protocol version ${version}: the log level travels per request via _meta instead (see ClientParams.logLevel)`,
+      `${method} does not exist in protocol version ${version}${hint == null ? '' : `: ${hint}`}`,
     )
     this.name = 'MethodNotInRevisionError'
   }
@@ -521,13 +523,28 @@ export class ContextClient<
     options?: RequestOptions,
   ): Promise<ClientTypes['SendRequests'][Method]['Result']> {
     await this.#ready
+    const protocol = this.#requireProtocol()
+    // A method absent from the resolved revision's table is a local error, not a round-trip.
+    // `ClientRequests` spans both revisions, so `request()` accepts `initialize`,
+    // `logging/setLevel` and `server/discover` whatever revision is in play; the typed wrappers
+    // for those three refuse the wrong revision themselves, but nothing stops a caller from
+    // reaching past them to `request()`, and letting one through turns a clear "this revision
+    // does not have that" into an opaque `-32601` from the peer.
+    //
+    // Placed after the `#ready` await so an `'auto'` client is gated on the revision it
+    // resolved, never on an unresolved one. That cannot starve the probe that resolves it:
+    // `#probeDiscover()` writes `server/discover` through `super._write` rather than through
+    // this method.
+    if (!protocol.clientMethods.has(method as string)) {
+      throw new MethodNotInRevisionError(method as string, protocol.version)
+    }
     const trace = currentTraceMeta()
     const base =
       params != null && typeof params === 'object' ? { ...(params as Record<string, unknown>) } : {}
     if (trace.traceparent != null) {
       base._meta = { ...(base._meta as Record<string, unknown> | undefined), ...trace }
     }
-    const decorated = this.#requireProtocol().decorateRequest(base, {
+    const decorated = protocol.decorateRequest(base, {
       capabilities: this.#capabilities,
       clientInfo: this.#clientInfo,
       logLevel: this.#logLevel,
@@ -537,6 +554,37 @@ export class ContextClient<
       throw new InputRequiredNotSupportedError()
     }
     return result
+  }
+
+  /**
+   * Drops a notification the resolved revision's `clientNotifications` does not carry, instead
+   * of writing it to the peer — the notification half of `request()`'s gate above, derived from
+   * the same kind of table rather than a version literal.
+   *
+   * Dropped rather than thrown, because the caller is usually not the application: `cancelled`
+   * is emitted by `ContextRPC` itself when an exchange is aborted or times out, on a path that
+   * discards the result. There is nothing to report to and nothing that would be retried.
+   *
+   * This is also the only place that can suppress it. `decorateRequest` runs on requests alone,
+   * so a notification carries no protocol `_meta` and therefore names no revision — over a
+   * transport that reads the revision off each exchange, one sent on `2026-07-28` cannot be
+   * routed and is answered with an error rather than being acted on. On `2025-11-25` every
+   * notification a client sends is in the table, so nothing there changes.
+   *
+   * Awaits `#ready` for the same reason `request()` does: under `protocolVersion: 'auto'` there
+   * is no revision to gate on until the probe settles. Safe against setup, which sends
+   * `notifications/initialized` through `super._write` rather than through here, so this await
+   * cannot be waiting on a handshake that is waiting on it.
+   */
+  async notify<Event extends keyof ClientTypes['SendNotifications'] & string>(
+    event: Event,
+    params: ClientTypes['SendNotifications'][Event]['params'],
+  ): Promise<void> {
+    await this.#ready
+    if (!this.#requireProtocol().clientNotifications.has(`notifications/${event}`)) {
+      return
+    }
+    await super.notify(event, params)
   }
 
   /**
@@ -1052,7 +1100,11 @@ export class ContextClient<
     // though the method itself is gone, so gating on capabilities would let this through and
     // earn a METHOD_NOT_FOUND from the server instead of this clearer, client-side refusal.
     if (!protocol.clientMethods.has('logging/setLevel')) {
-      throw new MethodNotInRevisionError('logging/setLevel', protocol.version)
+      throw new MethodNotInRevisionError(
+        'logging/setLevel',
+        protocol.version,
+        'the log level travels per request via _meta instead (see ClientParams.logLevel)',
+      )
     }
     this.#requireServerCapability('logging')
     const [wireParams, options] = splitRequestOptions(params)
