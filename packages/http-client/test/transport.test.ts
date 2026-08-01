@@ -1,5 +1,4 @@
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
-import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { isSessionExpiredCode, SESSION_EXPIRED_CODE } from '../src/errors.js'
@@ -58,12 +57,17 @@ function errorResponse(status: number, text: string): Response {
 
 const TEST_URL = 'http://localhost:3000/mcp'
 
+// The shared handshake fixtures name `2025-11-25` explicitly rather than tracking
+// `LATEST_PROTOCOL_VERSION`. Sessions, the GET notification stream and the terminating DELETE
+// all belong to the revision that keeps the `initialize`/`initialized` handshake, so a suite
+// that negotiates the latest revision and then exercises them would encode a connection no
+// server can serve.
 const initializeRequest: ClientMessage = {
   jsonrpc: '2.0',
   id: 1,
   method: 'initialize',
   params: {
-    protocolVersion: LATEST_PROTOCOL_VERSION,
+    protocolVersion: '2025-11-25',
     capabilities: {},
     clientInfo: { name: 'test', version: '1.0' },
   },
@@ -73,7 +77,7 @@ const initializeResult: ServerMessage = {
   jsonrpc: '2.0',
   id: 1,
   result: {
-    protocolVersion: LATEST_PROTOCOL_VERSION,
+    protocolVersion: '2025-11-25',
     capabilities: {},
     serverInfo: { name: 'test-server', version: '1.0' },
   },
@@ -175,8 +179,8 @@ describe('HTTPTransport', () => {
 
   describe('negotiated MCP-Protocol-Version header', () => {
     test('after initialize, requests send the negotiated MCP-Protocol-Version', async () => {
-      // Use an older protocol version to prove the value comes from the initialize response,
-      // not from LATEST_PROTOCOL_VERSION (which is '2025-11-25').
+      // A version no fixture and no constant in this file mentions, so the header can only
+      // have come from the initialize response.
       const negotiatedVersion = '2024-11-05'
       const negotiatedInitResult: ServerMessage = {
         jsonrpc: '2.0',
@@ -317,16 +321,31 @@ describe('HTTPTransport', () => {
     })
 
     test('never opens a GET stream or sends Last-Event-ID on 2026-07-28', async () => {
+      // The first response is an SSE stream carrying an event id, so the transport really
+      // does hold a `#lastEventID` by the time the later requests go out. Without it the
+      // `Last-Event-ID` assertion below would be vacuous: there would be nothing to resume
+      // from, and any resumption code added to the POST path would still find nothing to send.
+      fetchMock.mockImplementationOnce(async () =>
+        sseResponse([{ data: JSON.stringify(pingResult), id: 'evt-1' }]),
+      )
       fetchMock.mockImplementation(async () => jsonResponse(pingResult))
 
       const transport = new HTTPTransport({ url: TEST_URL })
-      for (const id of [1, 2, 3]) {
+      await transport.write(request20260728(1))
+      // Reading the streamed message proves the SSE handler ran, which is what records the
+      // event id — it does so before enqueuing.
+      await transport.read()
+      expect(transport.lastEventID).toBe('evt-1')
+      for (const id of [2, 3]) {
         await transport.write(request20260728(id))
       }
 
       // The GET reconnect loop and `Last-Event-ID` resumption belong to a session, which
       // this revision never has. Nothing should have opened one.
       const calls = fetchMock.mock.calls as Array<FetchCall>
+      // `every` is vacuously true over an empty list; pin the count so a transport that
+      // stopped sending altogether cannot pass.
+      expect(calls.length).toBe(3)
       expect(calls.every((call) => call[1].method === 'POST')).toBe(true)
       expect(calls.every((call) => call[1].headers['Last-Event-ID'] == null)).toBe(true)
 
@@ -887,7 +906,7 @@ describe('HTTPTransport', () => {
 
       const getCall = getCallByMethod(fetchMock.mock.calls, 'GET')
       expect(getCall[1].headers.Accept).toBe('text/event-stream')
-      expect(getCall[1].headers['MCP-Protocol-Version']).toBe(LATEST_PROTOCOL_VERSION)
+      expect(getCall[1].headers['MCP-Protocol-Version']).toBe('2025-11-25')
       expect(getCall[1].headers['Mcp-Session-Id']).toBe('session-hdr')
 
       await transport.dispose()

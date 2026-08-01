@@ -97,8 +97,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #toolSchemas = new Map<string, unknown>()
   /**
    * Version for the `MCP-Protocol-Version` header when the outgoing message does not
-   * declare one itself. `null` until an `initialize` result or a constructor seed supplies
-   * it, in which case the header is omitted.
+   * declare one itself. Stays `null` until an `initialize` result or a constructor seed
+   * supplies a value; while it is `null` and the message declares nothing, the header is
+   * omitted.
    */
   #protocolVersion: string | null
   #logger: Logger
