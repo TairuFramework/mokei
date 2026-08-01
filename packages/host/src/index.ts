@@ -11,6 +11,7 @@
  */
 
 export {
+  type CreateHTTPClientParams,
   createHTTPClient,
   DEFAULT_HTTP_TIMEOUT,
   HTTPTransport,
@@ -32,6 +33,7 @@ export {
   getContextToolID,
   getContextToolInfo,
   type HostedContext,
+  type HTTPContextParams,
   spawnHostedContext,
 } from './host.js'
 export {

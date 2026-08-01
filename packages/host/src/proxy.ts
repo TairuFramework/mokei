@@ -5,6 +5,7 @@ import type {
   ContextTypes,
   UnknownContextTypes,
 } from '@mokei/context-client'
+import type { ProtocolVersion } from '@mokei/context-protocol'
 
 import { type DaemonOptions, type HostClient, runDaemon } from './daemon.js'
 import { ContextHost } from './host.js'
@@ -15,6 +16,11 @@ export type ProxySpawnParams = {
   command: string
   args?: Array<string>
   env?: Record<string, string | null | undefined>
+  /**
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
+   * `'2026-07-28'`.
+   */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export class ProxyHost extends ContextHost {
@@ -43,7 +49,9 @@ export class ProxyHost extends ContextHost {
   async spawn<T extends ContextTypes = UnknownContextTypes>(
     params: ProxySpawnParams,
   ): Promise<ContextClient<T>> {
-    const { key, env, ...spawnParam } = params
+    // `spawnParam` is forwarded verbatim to the daemon channel, so `protocolVersion` is
+    // destructured out here: it belongs to the local client, not to the daemon's spawn param.
+    const { key, env, protocolVersion, ...spawnParam } = params
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
@@ -56,6 +64,7 @@ export class ProxyHost extends ContextHost {
     return this.createContext({
       key,
       transport,
+      protocolVersion,
       dispose: () => {
         channel.close()
       },

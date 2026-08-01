@@ -121,7 +121,11 @@ export type CreateHostedContextParams = {
   transport: ClientTransport
   tools?: Array<ContextTool>
   dispose?: () => void | Promise<void>
-  /** Revision the client speaks. Defaults to `'2025-11-25'`. */
+  /**
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
+   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
+   * `'auto'`.
+   */
   protocolVersion?: ProtocolVersion | 'auto'
 }
 
@@ -138,7 +142,7 @@ export type HostEvents = {
 export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
   params: CreateHostedContextParams,
 ): HostedContext<T> {
-  const { transport, tools = [], dispose, protocolVersion = '2025-11-25' } = params
+  const { transport, tools = [], dispose, protocolVersion = '2026-07-28' } = params
   const client = new ContextClient<T>({ protocolVersion, transport })
   const disposer = new Disposer({
     dispose: async () => {
@@ -159,7 +163,11 @@ export type SpawnHostedContextParams = SpawnContextServerParams & {
   maxMessageSize?: number
   /** Grace period (ms) between SIGTERM and SIGKILL on dispose. Default 5000. */
   killTimeout?: number
-  /** Revision the client speaks. Defaults to `'2025-11-25'`. */
+  /**
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
+   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
+   * `'auto'`.
+   */
   protocolVersion?: ProtocolVersion | 'auto'
 }
 
@@ -229,6 +237,11 @@ export type AddDirectContextParams = {
   key: string
   config: ServerConfig
   tools?: Array<ContextTool>
+  /**
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
+   * `'2026-07-28'`.
+   */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export type AddLocalContextParams = SpawnContextServerParams & {
@@ -237,6 +250,11 @@ export type AddLocalContextParams = SpawnContextServerParams & {
   maxBufferSize?: number
   /** Optional tighter per-message cap in bytes. */
   maxMessageSize?: number
+  /**
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
+   * `'2026-07-28'`.
+   */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export type HTTPContextParams = {
@@ -250,6 +268,11 @@ export type HTTPContextParams = {
   auth?: HTTPAuthOptions
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number
+  /**
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
+   * `'2026-07-28'`.
+   */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export class ContextHost extends Disposer {
@@ -433,7 +456,7 @@ export class ContextHost extends Disposer {
   addDirectContext<T extends ContextTypes = UnknownContextTypes>(
     params: AddDirectContextParams,
   ): ContextClient<T> {
-    const { key, config, tools } = params
+    const { key, config, tools, protocolVersion } = params
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
@@ -444,6 +467,7 @@ export class ContextHost extends Disposer {
       key,
       transport: transports.client,
       tools,
+      protocolVersion,
       dispose: async () => {
         await Promise.all([server.dispose(), transports.client.dispose()])
       },
@@ -527,7 +551,7 @@ export class ContextHost extends Disposer {
   async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
     params: HTTPContextParams,
   ): Promise<ContextClient<T>> {
-    const { key, url, headers, auth, timeout } = params
+    const { key, url, headers, auth, timeout, protocolVersion = '2026-07-28' } = params
 
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
@@ -537,9 +561,8 @@ export class ContextHost extends Disposer {
     const transport = new HTTPTransport({ url, headers, auth, timeout })
 
     // Create the context client
-    // @todo Pinned until the HTTP entry points accept the revision from the caller.
     const client = new ContextClient<T>({
-      protocolVersion: '2025-11-25',
+      protocolVersion,
       transport: transport as ClientTransport,
     })
 

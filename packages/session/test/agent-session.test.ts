@@ -172,52 +172,54 @@ async function createMockSessionWithTools(
   // Create a mock server transport pair
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
 
-  // Set up a simple server that handles initialize and tool calls
+  // A mock server that dispatches on method rather than on message order, so it serves both
+  // `2025-11-25` (`initialize` handshake) and `2026-07-28` (`server/discover` probe, no
+  // handshake) and stays correct whatever revision the host's client speaks.
   const serverLoop = async () => {
     const transport = transports.server
+    const serverInfo = { name: 'MockServer', version: '1.0.0' }
+    const toolsList = tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: { type: 'object' },
+    }))
 
-    // Handle initialize
-    const initReq = await transport.read()
-    if (!initReq.done) {
-      transport.write({
-        jsonrpc: '2.0',
-        id: (initReq.value as { id: number }).id,
-        result: {
-          capabilities: { tools: {} },
-          // `session.contextHost` currently constructs its `ContextClient` with
-          // `protocolVersion: '2025-11-25'` (see `@mokei/host`), so the mocked server must
-          // negotiate the same version, not `LATEST_PROTOCOL_VERSION`.
-          protocolVersion: '2025-11-25',
-          serverInfo: { name: 'MockServer', version: '1.0.0' },
-        },
-      })
+    while (true) {
+      const req = await transport.read()
+      if (req.done) break
 
-      // Wait for initialized notification
-      await transport.read()
-
-      // Handle tools/list
-      const toolsReq = await transport.read()
-      if (!toolsReq.done) {
-        transport.write({
-          jsonrpc: '2.0',
-          id: (toolsReq.value as { id: number }).id,
-          result: {
-            tools: tools.map((t) => ({
-              name: t.name,
-              description: t.description,
-              inputSchema: { type: 'object' },
-            })),
-          },
-        })
-      }
-
-      // Handle tool calls
-      while (true) {
-        const req = await transport.read()
-        if (req.done) break
-
-        const request = req.value as { id: number; method: string; params?: { name: string } }
-        if (request.method === 'tools/call') {
+      const request = req.value as { id: number; method: string; params?: { name: string } }
+      switch (request.method) {
+        case 'initialize':
+          transport.write({
+            jsonrpc: '2.0',
+            id: request.id,
+            result: {
+              capabilities: { tools: {} },
+              protocolVersion: '2025-11-25',
+              serverInfo,
+            },
+          })
+          break
+        case 'server/discover':
+          transport.write({
+            jsonrpc: '2.0',
+            id: request.id,
+            result: {
+              resultType: 'complete',
+              capabilities: { tools: {} },
+              supportedVersions: ['2026-07-28', '2025-11-25'],
+              _meta: { 'io.modelcontextprotocol/serverInfo': serverInfo },
+            },
+          })
+          break
+        // Sent only under `2025-11-25`; it carries no id and expects no reply.
+        case 'notifications/initialized':
+          break
+        case 'tools/list':
+          transport.write({ jsonrpc: '2.0', id: request.id, result: { tools: toolsList } })
+          break
+        case 'tools/call': {
           const tool = tools.find((t) => t.name === request.params?.name)
           if (tool?.delayMs != null) {
             const timer = setTimeout(() => {
@@ -236,6 +238,7 @@ async function createMockSessionWithTools(
               result: tool?.result ?? { content: [{ type: 'text', text: 'Unknown tool' }] },
             })
           }
+          break
         }
       }
     }

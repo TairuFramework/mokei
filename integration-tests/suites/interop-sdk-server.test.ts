@@ -30,6 +30,9 @@ describe('mokei client against the SDK v2 server', () => {
     const context = await spawnHostedContext({
       command: process.execPath,
       args: [SDK_STDIO_SERVER_PATH],
+      // The official SDK v2 server serves `2025-11-25` only, so the revision is pinned here
+      // rather than left to the host default — same as the Streamable HTTP case below.
+      protocolVersion: '2025-11-25',
     })
     try {
       await checkMokeiClient(context.client)
