@@ -1,10 +1,14 @@
 /**
- * mokei client ↔ mokei server on `2026-07-28`, over Streamable HTTP.
+ * `2026-07-28` over Streamable HTTP, against both peers: mokei's own server, and the official
+ * SDK.
  *
- * Not an SDK interop suite, deliberately: SDK `2.0.0`'s `LATEST_PROTOCOL_VERSION` is
- * `2025-11-25` and every `2026-07-28` string in its distribution is JSDoc, so there is no
- * peer to test against on this revision. The `2025-11-25` HTTP combinations in
- * `interop-sdk-client.test.ts` and `interop-sdk-server.test.ts` remain the SDK evidence.
+ * SDK `2.0.0`'s `LATEST_PROTOCOL_VERSION` is `2025-11-25`, but that constant only names the
+ * revision its *handshake* negotiates. `2026-07-28` needs no handshake, and the SDK serves it
+ * from a separate entry — `createMcpHandler`, a public export backed by runtime code
+ * (`SUPPORTED_MODERN_PROTOCOL_VERSIONS`, a wire codec for the revision, envelope-meta
+ * validation and a `server/discover` handler), not by documentation. So a real cross-stack peer
+ * does exist on this revision, and the second block below is genuine conformance evidence
+ * rather than mokei confirming its own behaviour.
  */
 import type { ContextClient } from '@mokei/context-client'
 import { META_CLIENT_CAPABILITIES, META_PROTOCOL_VERSION } from '@mokei/context-protocol'
@@ -17,6 +21,7 @@ import {
   type RunningHTTPServer,
   startBlockingHTTPServer,
   startMokeiHTTPServer,
+  startSDK20260728HTTPServer,
 } from '../support/interop/servers.ts'
 
 describe('mokei over Streamable HTTP on 2026-07-28', () => {
@@ -58,9 +63,23 @@ describe('mokei over Streamable HTTP on 2026-07-28', () => {
     expect(listed.cacheScope).toBe('private')
   })
 
-  test('never mints a session', async () => {
+  // Tripwire, not proof. Read the name literally: it asserts that nothing on this exchange
+  // came back carrying `Mcp-Session-Id`, and no more than that.
+  //
+  // The only code that ever writes that response header is the handler's `initialize` branch,
+  // and a `2026-07-28` `ContextClient` never sends `initialize` (`ContextClient#initialize`
+  // throws when the revision needs no handshake), so the branch is not reachable from here at
+  // all. The invariant that a stateless exchange's response has no session header is carried
+  // at the unit level by `packages/http-server/test/stateless.test.ts`, which can construct the
+  // response directly; this test cannot fail unless something starts inventing the header out
+  // of a path nothing currently takes. Keep it for that, do not read it as evidence that
+  // sessionless operation is enforced, and do not "strengthen" it — the public API offers
+  // nothing here that the unit test does not already cover better.
+  test('no response on the exchange carries Mcp-Session-Id', async () => {
     server = await startMokeiHTTPServer(['2026-07-28'])
     const responses: Array<Response> = []
+    // Patching a global is safe only because vitest runs the tests within a file serially;
+    // under `test.concurrent` this would capture (and restore under) its neighbours.
     const original = globalThis.fetch
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const response = await original(input, init)
@@ -84,7 +103,11 @@ describe('mokei over Streamable HTTP on 2026-07-28', () => {
     // carries it — `@hono/node-server` closing the socket, `serveHTTP` passing `ctx.req.raw`
     // through, `runStatelessExchange` listening on `request.signal` — has no other coverage.
     // Driven with a raw `fetch` rather than a `ContextClient` so the abort is a genuine client
-    // disconnect and nothing else is sent on the way out.
+    // disconnect and nothing else is sent on the way out. A `ContextClient` cannot stand in
+    // here: aborting one makes it emit `notifications/cancelled`, and on this revision an
+    // outgoing notification carries no protocol version in its `_meta` (only requests are
+    // decorated), so that POST misses the sessionless route and comes back `400`. The failure
+    // would look like a bug in this test rather than what it is. Leave the raw `fetch`.
     //
     // What is observed is the throwaway `ContextServer` being disposed. The in-flight tool
     // handler's own `signal` is *not* aborted by that disposal, so a handler that ignores its
@@ -130,5 +153,35 @@ describe('mokei over Streamable HTTP on 2026-07-28', () => {
     } finally {
       await blocking?.dispose()
     }
+  })
+})
+
+describe('mokei client against an SDK server over Streamable HTTP on 2026-07-28', () => {
+  let server: RunningHTTPServer | null = null
+  let client: ContextClient | null = null
+
+  afterEach(async () => {
+    await client?.dispose()
+    client = null
+    await server?.dispose()
+    server = null
+  })
+
+  test('discovers, lists and calls across the two stacks', async () => {
+    server = await startSDK20260728HTTPServer()
+    client = connectMokeiHTTPClient(server.url, '2026-07-28')
+
+    const discovered = await client.discover()
+    expect(discovered.supportedVersions).toEqual(['2026-07-28'])
+    expect(discovered.capabilities.tools).toBeDefined()
+
+    const { tools } = await client.listTools()
+    expect(tools.map((tool) => tool.name).sort()).toEqual(['echo', 'sum'])
+
+    const echoed = await client.callTool({ name: 'echo', arguments: { text: 'hello interop' } })
+    expect(echoed.content).toEqual([{ type: 'text', text: 'hello interop' }])
+
+    const summed = await client.callTool({ name: 'sum', arguments: { a: 2, b: 3 } })
+    expect(summed.structuredContent).toEqual({ total: 5 })
   })
 })

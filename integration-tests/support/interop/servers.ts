@@ -4,7 +4,8 @@ import { createServer } from 'node:http'
 import { PassThrough, type Readable, type Writable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { NodeStreamsTransport } from '@enkaku/node-streams'
-import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node'
+import { NodeStreamableHTTPServerTransport, toNodeHandler } from '@modelcontextprotocol/node'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import { type ClientTransport, ContextClient } from '@mokei/context-client'
 import type { ProtocolVersion } from '@mokei/context-protocol'
 import { ContextServer, createTool, type ServerConfig } from '@mokei/context-server'
@@ -303,8 +304,37 @@ export async function startBlockingHTTPServer(): Promise<BlockingHTTPServer> {
 }
 
 /**
- * Serves the fixture over Streamable HTTP using the SDK v2 Node transport, in stateless
- * mode: every POST is handled by a transport bound to a fresh server instance.
+ * Serves the fixture over Streamable HTTP on `2026-07-28`, using the SDK v2 `createMcpHandler`
+ * entry mounted on `node:http` through `toNodeHandler`.
+ *
+ * `legacy: 'reject'` makes the endpoint serve `2026-07-28` and nothing else, so a request that
+ * failed to declare the revision cannot quietly succeed on the SDK's `2025-11-25` fallback and
+ * be mistaken for evidence about this revision. The factory runs per request, as that entry
+ * requires — `createSDKServer()` builds a fresh instance each time.
+ */
+export async function startSDK20260728HTTPServer(): Promise<RunningHTTPServer> {
+  const handler = createMcpHandler(() => createSDKServer(), { legacy: 'reject' })
+  const nodeHandler = toNodeHandler(handler)
+  const server = createServer((request, response) => {
+    void nodeHandler(request, response)
+  })
+  server.listen(0, '127.0.0.1')
+  const port = await listening(server, '127.0.0.1')
+  return {
+    url: `http://127.0.0.1:${port}/mcp`,
+    dispose: async () => {
+      await handler.close()
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error == null ? resolve() : reject(error)))
+        server.closeAllConnections()
+      })
+    },
+  }
+}
+
+/**
+ * Serves the fixture over Streamable HTTP on `2025-11-25`, using the SDK v2 Node transport in
+ * stateless mode: every POST is handled by a transport bound to a fresh server instance.
  */
 export async function startSDKHTTPServer(): Promise<RunningHTTPServer> {
   const server = createServer((request, response) => {
