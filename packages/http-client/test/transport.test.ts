@@ -479,6 +479,115 @@ describe('HTTPTransport', () => {
     })
   })
 
+  describe('non-OK responses carrying a JSON-RPC error', () => {
+    test('a 400 with a matching JSON-RPC error is surfaced with its own code and data', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            error: {
+              code: -32022,
+              message: 'Unsupported protocol version',
+              data: { supported: ['2025-11-25'], requested: '2026-07-28' },
+            },
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as {
+        id?: number
+        error?: { code?: number; message?: string; data?: { supported?: Array<string> } }
+      }
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32022)
+      expect(frame.error?.message).toBe('Unsupported protocol version')
+      expect(frame.error?.data?.supported).toEqual(['2025-11-25'])
+
+      // The carried error rejects only its own request; the transport stays usable.
+      await transport.write(pingRequest)
+      const { value: value2 } = await transport.read()
+      expect(value2).toEqual(pingResult)
+
+      await transport.dispose()
+    })
+
+    test('a 400 with an unparseable body still fails the request', async () => {
+      // Several of a server's `400` bodies are plain text, not JSON. Parsing must not throw
+      // and must not leave the request hanging.
+      fetchMock.mockResolvedValueOnce(errorResponse(400, 'Mcp-Session-Id header required'))
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
+      expect(frame.error?.message).toContain('Mcp-Session-Id header required')
+
+      await transport.write(pingRequest)
+      const { value: value2 } = await transport.read()
+      expect(value2).toEqual(pingResult)
+
+      await transport.dispose()
+    })
+
+    test('a 400 naming a different request is not routed to this one', async () => {
+      // Passing through an error frame whose id belongs to another request would reject the
+      // wrong caller and leave this one waiting forever.
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 99,
+            error: { code: -32022, message: 'Unsupported protocol version' },
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
+
+      await transport.dispose()
+    })
+
+    test('a 400 whose JSON body carries no error member falls back', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
+
+      await transport.dispose()
+    })
+  })
+
   describe('session ID management', () => {
     test('captures Mcp-Session-Id from response and sends on subsequent requests', async () => {
       fetchMock.mockResolvedValueOnce(

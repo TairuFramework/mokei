@@ -1,7 +1,7 @@
 import { Transport } from '@enkaku/transport'
 import type { ClientTransport } from '@mokei/context-client'
 import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
-import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
+import type { ClientMessage, ProtocolVersion, ServerMessage } from '@mokei/context-protocol'
 import {
   isSupportedProtocolVersion,
   META_PROTOCOL_VERSION,
@@ -17,6 +17,34 @@ import { buildParamHeaders, collectHeaderAnnotations } from './x-mcp-header.js'
 
 /** Standard JSON-RPC internal-error code, used for synthesized transport failures. */
 const INTERNAL_ERROR_CODE = -32603
+
+/**
+ * A JSON-RPC error response carried in a non-OK HTTP body, or `null` if the body is not one
+ * — or names a different request, which would mean routing an error to the wrong caller.
+ */
+function parseJSONRPCError(
+  body: string,
+  requestID: string | number | null,
+): Record<string, unknown> | null {
+  if (requestID == null || body === '') {
+    return null
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return null
+  }
+  if (parsed == null || typeof parsed !== 'object') {
+    return null
+  }
+  const record = parsed as Record<string, unknown>
+  const error = record.error
+  if (record.id !== requestID || error == null || typeof error !== 'object') {
+    return null
+  }
+  return typeof (error as Record<string, unknown>).code === 'number' ? record : null
+}
 
 /**
  * Parameters for creating an MCP HTTP transport.
@@ -320,6 +348,21 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       if (requestID != null) {
         this.#pendingMethods.delete(requestID)
       }
+      // A `2026-07-28` server answers an envelope failure with a real HTTP `400` whose body
+      // is the JSON-RPC error itself (unsupported revision, missing required `_meta`). That
+      // body is the whole signal an `'auto'` client uses to tell a current server from an
+      // older one, and the only actionable message a pinned client can show — so pass it
+      // through verbatim rather than flattening it into an internal error.
+      const carried = parseJSONRPCError(errorText, requestID)
+      if (carried != null) {
+        try {
+          this.#controller?.enqueue(carried as unknown as ServerMessage)
+        } catch {
+          // Controller may already be closed by a concurrent dispose(); nothing to surface.
+          // Throwing here would reject the sink and permanently error the writable stream.
+        }
+        return
+      }
       this.#failRequest(requestID, INTERNAL_ERROR_CODE, `HTTP ${response.status}: ${errorText}`)
       return
     }
@@ -601,18 +644,24 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 }
 
+/** Parameters for {@link createHTTPClient}. */
+export type CreateHTTPClientParams = HTTPTransportParams & {
+  /** Revision to speak. `'auto'` probes the server, then caches the result. */
+  protocolVersion: ProtocolVersion | 'auto'
+}
+
 /**
  * Create an MCP HTTP client with a single call.
  *
  * Instantiates an {@link HTTPTransport} and wires it to a {@link ContextClient}.
  */
 export function createHTTPClient<T extends ContextTypes = UnknownContextTypes>(
-  params: HTTPTransportParams,
+  params: CreateHTTPClientParams,
 ): ContextClient<T> {
-  const transport = new HTTPTransport(params)
-  // @todo Pinned until this entry point accepts the revision from the caller.
+  const { protocolVersion, ...transportParams } = params
+  const transport = new HTTPTransport(transportParams)
   return new ContextClient<T>({
-    protocolVersion: '2025-11-25',
+    protocolVersion,
     transport: transport as ClientTransport,
   })
 }
