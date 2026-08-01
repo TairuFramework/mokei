@@ -1,4 +1,4 @@
-import type { CallToolResult } from '@mokei/context-protocol'
+import type { CallToolResult, ProtocolVersion } from '@mokei/context-protocol'
 import {
   ContextHost,
   type ContextTool,
@@ -36,6 +36,11 @@ export type AddContextParams = {
   env?: Record<string, string>
   signal?: AbortSignal
   enableTools?: EnableToolsArg
+  /**
+   * Revision the context's client speaks, or `'auto'` to probe the server. Left unset,
+   * `ContextHost` picks its default.
+   */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export type ChatParams<T extends ProviderTypes = ProviderTypes> = {
@@ -180,8 +185,8 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   }
 
   async #setupContext(params: AddContextParams): Promise<Array<ContextTool>> {
-    const { key, command, args, env, enableTools } = params
-    await this.#contextHost.addLocalContext({ key, command, args, env })
+    const { key, command, args, env, enableTools, protocolVersion } = params
+    await this.#contextHost.addLocalContext({ key, command, args, env, protocolVersion })
     const tools = await this.#contextHost.setup({ key, enableTools, signal: params.signal })
     this.#events.emit('context-added', { key, tools })
     return tools
