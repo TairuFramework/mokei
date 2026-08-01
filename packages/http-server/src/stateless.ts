@@ -15,9 +15,9 @@ import { SSEWriter } from './sse-writer.js'
 /**
  * JSON-RPC error codes the specification maps to HTTP `400` on the Streamable HTTP
  * transport (specification/2026-07-28/basic/transports). A `2026-07-28` `'auto'` client
- * inspects the body of a `400` to tell a current server from an older one, so these must
- * arrive as a real `400` carrying the JSON-RPC error object — not tunnelled inside a `200`
- * SSE stream, which is where every other server-side error still goes.
+ * inspects the body of a `400` to tell a `2026-07-28` server from a `2025-11-25` one, so
+ * these must arrive as a real `400` carrying the JSON-RPC error object — not tunnelled
+ * inside a `200` SSE stream, which is where every other server-side error still goes.
  */
 export const BAD_REQUEST_CODES: ReadonlySet<number> = new Set([
   INVALID_PARAMS,
@@ -47,14 +47,6 @@ export function readRequestProtocolVersion(body: Record<string, unknown>): strin
   return typeof version === 'string' ? version : null
 }
 
-/** A stateless exchange still in flight, addressable so a later POST can cancel it. */
-export type StatelessExchange = {
-  requestID: string | number
-  /** Feed a follow-up client message (a `notifications/cancelled`) into this exchange. */
-  deliver: (message: ClientMessage) => void
-  close: () => void
-}
-
 export type StatelessExchangeParams = {
   message: ClientMessage
   /** `null` for a notification or a response, which expect no reply. */
@@ -62,15 +54,14 @@ export type StatelessExchangeParams = {
   createServer: (transport: ServerTransport) => ContextServer
   replayBufferSize: number
   timeoutMs: number
-  /** Called once the exchange is live, so the handler can register it for cancellation. */
-  onOpen?: (exchange: StatelessExchange) => void
   /**
-   * Called exactly once when the exchange ends, however it ends — response written, timeout,
-   * or handler disposal. The registry `onOpen` populates is unbounded otherwise: wrapping
-   * `exchange.close` at the call site would not do it, because the internal paths that end an
-   * exchange call the *captured* `finish`, not the wrapper.
+   * The incoming request's abort signal, honoured as the exchange's cancellation channel.
+   * A stateless exchange has no session, so a `notifications/cancelled` arriving on a
+   * separate POST cannot prove it owns the request it names: JSON-RPC request ids are
+   * per-client, not global, and two concurrent callers routinely both use `1`. The client
+   * hanging up is the only cancellation signal this transport genuinely provides.
    */
-  onClose?: (requestID: string | number) => void
+  signal?: AbortSignal
 }
 
 /**
@@ -85,7 +76,13 @@ export type StatelessExchangeParams = {
  * instead of being buffered until it finishes.
  */
 export function runStatelessExchange(params: StatelessExchangeParams): Promise<Response> {
-  const { message, requestID, createServer, replayBufferSize, timeoutMs, onOpen, onClose } = params
+  const { message, requestID, createServer, replayBufferSize, timeoutMs, signal } = params
+
+  if (signal?.aborted) {
+    // The client is already gone: standing a server up for it would only create work to
+    // tear straight back down.
+    return Promise.resolve(new Response(null, { status: 499 }))
+  }
 
   let controller!: ReadableStreamDefaultController<ClientMessage>
   const readable = new ReadableStream<ClientMessage>({
@@ -122,6 +119,11 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
       return
     }
     finished = true
+    if (timer != null) {
+      clearTimeout(timer)
+      timer = null
+    }
+    signal?.removeEventListener('abort', onAbort)
     sse?.close()
     try {
       controller.close()
@@ -131,9 +133,14 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
     void server?.dispose().catch(() => {
       // The exchange is over either way; a dispose failure has nobody to report to.
     })
-    if (requestID != null) {
-      onClose?.(requestID)
-    }
+    // Settle unconditionally. When the exchange ends before the server has written anything
+    // — the client hung up, or the handler was disposed — whoever awaits this promise would
+    // otherwise hang until the timeout fires. A no-op once a response is already settled.
+    settle(new Response(null, { status: 503 }))
+  }
+
+  function onAbort(): void {
+    finish()
   }
 
   const writable = new WritableStream<ServerMessage>({
@@ -190,34 +197,27 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
     return Promise.resolve(new Response('Server initialization failed', { status: 500 }))
   }
 
-  if (requestID != null) {
-    onOpen?.({
-      requestID,
-      deliver: (incoming) => {
-        if (!finished) {
-          controller.enqueue(incoming)
-        }
-      },
-      close: finish,
-    })
-
-    timer = setTimeout(() => {
-      settle(new Response('Request timed out', { status: 504 }))
-      finish()
-    }, timeoutMs)
-    // A pending exchange must not hold the process open.
-    if (typeof timer === 'object' && 'unref' in timer) {
-      timer.unref()
-    }
-  }
-
-  controller.enqueue(message)
-
   if (requestID == null) {
-    // A notification or a response: nothing will be written back for it.
+    // A notification or a response on a sessionless POST. It is acknowledged but never
+    // dispatched: the server that would receive it exists for this POST alone and is
+    // discarded with it, so no state it could mutate outlives the exchange, and with no
+    // request in flight there is nothing for it to correlate against either.
     finish()
     return Promise.resolve(new Response(null, { status: 202 }))
   }
+
+  signal?.addEventListener('abort', onAbort, { once: true })
+
+  timer = setTimeout(() => {
+    settle(new Response('Request timed out', { status: 504 }))
+    finish()
+  }, timeoutMs)
+  // A pending exchange must not hold the process open.
+  if (typeof timer === 'object' && 'unref' in timer) {
+    timer.unref()
+  }
+
+  controller.enqueue(message)
 
   return response
 }

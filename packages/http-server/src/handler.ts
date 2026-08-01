@@ -2,6 +2,8 @@ import { Transport } from '@enkaku/transport'
 import {
   type ClientMessage,
   isSupportedProtocolVersion,
+  PROTOCOLS,
+  type ProtocolVersion,
   type ServerMessage,
 } from '@mokei/context-protocol'
 import type { ContextServer, ServerTransport } from '@mokei/context-server'
@@ -13,7 +15,6 @@ import {
   DEFAULT_STATELESS_TIMEOUT_MS,
   readRequestProtocolVersion,
   runStatelessExchange,
-  type StatelessExchange,
 } from './stateless.js'
 
 export type HTTPHandlerParams = {
@@ -44,12 +45,6 @@ export const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024
 export type HTTPHandler = {
   handleRequest: (request: Request) => Promise<Response>
   dispose: () => void
-  /**
-   * How many stateless `2026-07-28` exchanges are currently in flight. Exposed because a
-   * registry entry that is never evicted has no other observable effect — a cancellation
-   * naming a finished exchange is a no-op either way — so without this a leak is untestable.
-   */
-  activeStatelessExchanges: () => number
 }
 
 type TransportBridge = {
@@ -155,11 +150,6 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
 
   // Map session IDs to their transport bridges
   const bridges = new Map<string, TransportBridge>()
-
-  // Stateless `2026-07-28` exchanges still in flight, keyed by request id, so a later
-  // `notifications/cancelled` POST can reach the exchange it names. Sessionless requests
-  // have no other channel back to an in-flight call.
-  const statelessExchanges = new Map<string | number, StatelessExchange>()
 
   // Map session IDs to promises that resolve when a specific request ID gets a response
   // Used for the initialize flow where we need to capture the response synchronously
@@ -296,11 +286,18 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       return new Response('Invalid JSON', { status: 400 })
     }
 
-    // `2026-07-28` carries its revision in the request's own `_meta` and has no session.
-    // Any `Mcp-Session-Id` on such a request is ignored, per the specification.
+    // Revisions that require per-request `_meta` carry their version in the request itself
+    // and have no session, so they are served statelessly and any `Mcp-Session-Id` on them
+    // is ignored, per the specification. The gate is `requiresRequestMeta` rather than the
+    // mere presence of the `_meta` key: a session-based request is free to stamp that key
+    // too, and pulling it off its session onto a throwaway server would silently discard
+    // all of its session state.
     const requestVersion = readRequestProtocolVersion(body)
-    if (requestVersion != null) {
-      return await handleStateless(body, requestVersion)
+    if (
+      requestVersion != null &&
+      PROTOCOLS[requestVersion as ProtocolVersion]?.requiresRequestMeta
+    ) {
+      return await handleStateless(request, body, requestVersion)
     }
 
     const sessionID = request.headers.get('Mcp-Session-Id')
@@ -363,6 +360,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   }
 
   async function handleStateless(
+    request: Request,
     body: Record<string, unknown>,
     _requestVersion: string,
   ): Promise<Response> {
@@ -370,28 +368,14 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     const requestID: string | number | null =
       typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
 
-    // A cancellation for an exchange we are still running: hand it to that exchange's
-    // server rather than spinning up a new one that knows nothing about the call.
-    if (requestID == null && body.method === 'notifications/cancelled') {
-      const target = (body.params as { requestId?: unknown } | undefined)?.requestId
-      if (typeof target === 'string' || typeof target === 'number') {
-        statelessExchanges.get(target)?.deliver(body as unknown as ClientMessage)
-      }
-      return new Response(null, { status: 202 })
-    }
-
     return await runStatelessExchange({
       message: body as unknown as ClientMessage,
       requestID,
       createServer,
       replayBufferSize,
       timeoutMs: statelessTimeoutMs,
-      onOpen: (exchange) => {
-        statelessExchanges.set(exchange.requestID, exchange)
-      },
-      onClose: (id) => {
-        statelessExchanges.delete(id)
-      },
+      // The client hanging up is a stateless exchange's only cancellation channel.
+      signal: request.signal,
     })
   }
 
@@ -564,17 +548,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       closeBridge(sessionID)
     }
     initWaiters.clear()
-
-    // Iterate a copy: each close() fires onClose, which mutates the map being walked.
-    for (const exchange of [...statelessExchanges.values()]) {
-      exchange.close()
-    }
-    statelessExchanges.clear()
   }
 
-  return {
-    handleRequest,
-    dispose,
-    activeStatelessExchanges: () => statelessExchanges.size,
-  }
+  return { handleRequest, dispose }
 }

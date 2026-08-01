@@ -140,40 +140,147 @@ describe('stateless 2026-07-28 POST path', () => {
     }
   })
 
-  test('does not leak finished exchanges into the cancellation registry', async () => {
-    const handler = createHandler()
+  test('a client disconnect tears the exchange down', async () => {
+    // The tool blocks until the test releases it, so the exchange is unambiguously still in
+    // flight — nothing has been written back — when the client hangs up.
+    let releaseTool!: () => void
+    const toolGate = new Promise<void>((resolve) => {
+      releaseTool = resolve
+    })
+    const servers: Array<ContextServer> = []
+    let serverCreated!: () => void
+    const created = new Promise<void>((resolve) => {
+      serverCreated = resolve
+    })
+
+    const handler = createHTTPHandler({
+      createServer: (transport) => {
+        const server = new ContextServer({
+          ...SERVER_CONFIG,
+          tools: {
+            block: {
+              description: 'Block until released',
+              inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+              handler: async () => {
+                await toolGate
+                return { content: [{ type: 'text', text: 'released' }] }
+              },
+            },
+          },
+          transport,
+        })
+        servers.push(server)
+        serverCreated()
+        return server
+      },
+    })
+
     try {
-      for (let id = 1; id <= 5; id++) {
-        const response = await handler.handleRequest(
-          statelessRequest('tools/call', { name: 'echo', arguments: { text: 'x' } }, id),
-        )
-        // Drain the body so the exchange completes rather than being left half-read.
-        await readSSEData(response)
-      }
-      // A cancellation naming a finished exchange must be a no-op, not a delivery into a
-      // disposed server — which is what a registry that never evicts would attempt.
-      const cancel = await handler.handleRequest(
+      const abort = new AbortController()
+      const request = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          'MCP-Protocol-Version': '2026-07-28',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'block',
+            arguments: {},
+            _meta: {
+              'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+              'io.modelcontextprotocol/clientCapabilities': {},
+            },
+          },
+        }),
+        signal: abort.signal,
+      })
+
+      const responsePromise = handler.handleRequest(request)
+      // Only hang up once the exchange has really started, so the abort cannot race the
+      // body read.
+      await created
+      abort.abort()
+
+      // Without the disconnect wiring this promise stays pending until the 30s timeout, so
+      // both assertions below hang rather than fail.
+      const response = await responsePromise
+      expect(response.status).toBe(503)
+      expect(servers).toHaveLength(1)
+      await servers[0].disposed
+      expect(servers[0].signal.aborted).toBe(true)
+    } finally {
+      releaseTool()
+      handler.dispose()
+    }
+  })
+
+  test('a 2025-11-25 request stamped with protocol _meta stays on its session', async () => {
+    // Counting server constructions is what makes this test decisive: the session path
+    // builds exactly one server, at initialize, and reuses it. The stateless path builds a
+    // throwaway one per request, so routing this request statelessly would make it two.
+    let serversCreated = 0
+    const handler = createHTTPHandler({
+      createServer: (transport) => {
+        serversCreated++
+        return new ContextServer({ ...SERVER_CONFIG, transport })
+      },
+    })
+    try {
+      const initialize = await handler.handleRequest(
         new Request('http://localhost/mcp', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'MCP-Protocol-Version': '2026-07-28',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             jsonrpc: '2.0',
-            method: 'notifications/cancelled',
+            id: 1,
+            method: 'initialize',
             params: {
-              requestId: 3,
-              _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' },
+              protocolVersion: '2025-11-25',
+              capabilities: {},
+              clientInfo: { name: 'test-client', version: '1.0.0' },
             },
           }),
         }),
       )
-      expect(cancel.status).toBe(202)
-      // The decisive assertion: every finished exchange was evicted. Without it the
-      // registry grows for the lifetime of the process, and the `202` above would still
-      // pass, because delivering into a disposed exchange is already a no-op.
-      expect(handler.activeStatelessExchanges()).toBe(0)
+      const sessionID = initialize.headers.get('Mcp-Session-Id')
+      expect(sessionID).not.toBeNull()
+
+      // `2025-11-25` does not require per-request `_meta`, but nothing stops a client from
+      // stamping the key. Such a request must keep being served by its session rather than
+      // being pulled onto a throwaway server that knows nothing about it.
+      const response = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'Mcp-Session-Id': sessionID as string,
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'tools/call',
+            params: {
+              name: 'echo',
+              arguments: { text: 'session' },
+              _meta: { 'io.modelcontextprotocol/protocolVersion': '2025-11-25' },
+            },
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const messages = await readSSEData(response)
+      expect(messages).toHaveLength(1)
+      expect(messages[0].id).toBe(2)
+      const result = messages[0].result as Record<string, unknown>
+      expect(result.content).toEqual([{ type: 'text', text: 'session' }])
+      expect(serversCreated).toBe(1)
     } finally {
       handler.dispose()
     }
