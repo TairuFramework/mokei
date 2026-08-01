@@ -884,6 +884,43 @@ describe('HTTPTransport', () => {
     await transport.dispose()
   })
 
+  test('POST derives Mcp-Name from each method’s own source field', async () => {
+    // `resources/read` names its subject in `uri`, not `name`. A client reading `params.name`
+    // for every method sends no header at all here, which a conformant peer rejects outright.
+    const cases: Array<{ method: string; params: Record<string, unknown>; expected: string }> = [
+      { method: 'prompts/get', params: { name: 'greet' }, expected: 'greet' },
+      { method: 'resources/read', params: { uri: 'test://greeting' }, expected: 'test://greeting' },
+    ]
+    for (const [index, { method, params, expected }] of cases.entries()) {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ jsonrpc: '2.0', id: index, result: {} }))
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write({ jsonrpc: '2.0', id: index, method, params } as ClientMessage)
+      const [, init] = getCallByMethod(fetchMock.mock.calls, 'POST')
+      expect(init.headers['Mcp-Method']).toBe(method)
+      expect(init.headers['Mcp-Name']).toBe(expected)
+      await transport.dispose()
+      fetchMock.mockClear()
+    }
+  })
+
+  test('POST omits Mcp-Name for a method that does not require it', async () => {
+    // Only the three methods the specification lists carry the header. A `name` in the params
+    // of any other method is an ordinary argument and must not be mirrored into a header a
+    // peer would then cross-check.
+    fetchMock.mockResolvedValueOnce(jsonResponse({ jsonrpc: '2.0', id: 1, result: { tools: [] } }))
+    const transport = new HTTPTransport({ url: TEST_URL })
+    await transport.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+      params: { name: 'search' },
+    } as ClientMessage)
+    const [, init] = getCallByMethod(fetchMock.mock.calls, 'POST')
+    expect(init.headers['Mcp-Method']).toBe('tools/list')
+    expect(init.headers['Mcp-Name']).toBeUndefined()
+    await transport.dispose()
+  })
+
   describe('x-mcp-header param injection', () => {
     const listRequest: ClientMessage = {
       jsonrpc: '2.0',

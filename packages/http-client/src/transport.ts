@@ -61,6 +61,22 @@ function parseJSONRPCError(
 }
 
 /**
+ * The methods whose `Mcp-Name` request header mirrors a field of the request body, and which
+ * field supplies it (specification/2026-07-28/basic/transports, standard request headers).
+ *
+ * Keyed by method rather than read off whatever `name` a body happens to carry: the source
+ * field is not the same for all three — `resources/read` names its subject in `uri` — and a
+ * method outside this table must not acquire the header just because its params carry a `name`.
+ * A method the specification adds later then arrives here as a missing entry, which a
+ * conformant peer rejects visibly, rather than as a header quietly built from the wrong field.
+ */
+const MCP_NAME_HEADER_SOURCE: Readonly<Record<string, string | undefined>> = {
+  'tools/call': 'name',
+  'prompts/get': 'name',
+  'resources/read': 'uri',
+}
+
+/**
  * Parameters for creating an MCP HTTP transport.
  */
 export type HTTPTransportParams = {
@@ -259,9 +275,11 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
     if ('method' in message && typeof message.method === 'string') {
       headers['Mcp-Method'] = message.method
-      const name = (message as { params?: { name?: unknown } }).params?.name
-      if (typeof name === 'string') {
-        headers['Mcp-Name'] = name
+      const nameSourceField = MCP_NAME_HEADER_SOURCE[message.method]
+      const params = (message as { params?: Record<string, unknown> }).params
+      const nameValue = nameSourceField == null ? undefined : params?.[nameSourceField]
+      if (typeof nameValue === 'string') {
+        headers['Mcp-Name'] = nameValue
       }
       // Track in-flight requests so responses can be correlated back to their method.
       if (requestID != null) {
@@ -271,8 +289,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // buildParamHeaders can throw (e.g. a non-integer value for an integer-annotated
       // param); route that to the originating request rather than letting it escape the
       // sink and poison the shared writable stream.
-      if (message.method === 'tools/call' && typeof name === 'string') {
-        const schema = this.#toolSchemas.get(name)
+      if (message.method === 'tools/call' && typeof nameValue === 'string') {
+        const schema = this.#toolSchemas.get(nameValue)
         if (schema != null) {
           try {
             const { annotations } = collectHeaderAnnotations(schema)

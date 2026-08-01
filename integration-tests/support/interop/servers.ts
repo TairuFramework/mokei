@@ -307,10 +307,13 @@ export async function startBlockingHTTPServer(): Promise<BlockingHTTPServer> {
  * Serves the fixture over Streamable HTTP on `2026-07-28`, using the SDK v2 `createMcpHandler`
  * entry mounted on `node:http` through `toNodeHandler`.
  *
- * `legacy: 'reject'` makes the endpoint serve `2026-07-28` and nothing else, so a request that
- * failed to declare the revision cannot quietly succeed on the SDK's `2025-11-25` fallback and
- * be mistaken for evidence about this revision. The factory runs per request, as that entry
- * requires — `createSDKServer()` builds a fresh instance each time.
+ * `legacy: 'reject'` makes the endpoint serve `2026-07-28` and nothing else. It changes nothing
+ * about today's result — mokei declares the revision on every request either way — so it is
+ * there against a *partial* regression: were mokei to stop declaring it on, say, `tools/call`
+ * but not `server/discover`, the default fallback would answer those calls from the SDK's
+ * `2025-11-25` path and every assertion here would still pass, silently testing the wrong
+ * revision. The factory runs per request, as that entry requires — `createSDKServer()` builds a
+ * fresh instance each time.
  */
 export async function startSDK20260728HTTPServer(): Promise<RunningHTTPServer> {
   const handler = createMcpHandler(() => createSDKServer(), { legacy: 'reject' })

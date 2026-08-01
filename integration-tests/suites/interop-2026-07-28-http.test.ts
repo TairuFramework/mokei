@@ -15,6 +15,7 @@ import { META_CLIENT_CAPABILITIES, META_PROTOCOL_VERSION } from '@mokei/context-
 import { afterEach, describe, expect, test } from 'vitest'
 
 import { checkMokeiClient } from '../support/interop/expectations.ts'
+import { GREETING_TEXT, GREETING_URI, greetingMessage } from '../support/interop/fixture.ts'
 import {
   type BlockingHTTPServer,
   connectMokeiHTTPClient,
@@ -183,5 +184,27 @@ describe('mokei client against an SDK server over Streamable HTTP on 2026-07-28'
 
     const summed = await client.callTool({ name: 'sum', arguments: { a: 2, b: 3 } })
     expect(summed.structuredContent).toEqual({ total: 5 })
+  })
+
+  // Every method the specification's standard request headers require an `Mcp-Name` on, and
+  // the peer that actually enforces them. The three are not interchangeable: the header mirrors
+  // `params.name` for `tools/call` and `prompts/get` but `params.uri` for `resources/read`, so
+  // a client deriving the header from one field alone passes two of these and fails the third.
+  test('sends Mcp-Name for every method that requires it', async () => {
+    server = await startSDK20260728HTTPServer()
+    client = connectMokeiHTTPClient(server.url, '2026-07-28')
+
+    const called = await client.callTool({ name: 'echo', arguments: { text: 'hello interop' } })
+    expect(called.content).toEqual([{ type: 'text', text: 'hello interop' }])
+
+    const prompt = await client.getPrompt({ name: 'greet', arguments: { name: 'Ada' } })
+    expect(prompt.messages).toEqual([
+      { role: 'user', content: { type: 'text', text: greetingMessage('Ada') } },
+    ])
+
+    const read = await client.readResource({ uri: GREETING_URI })
+    expect(read.contents).toEqual([
+      { uri: GREETING_URI, mimeType: 'text/plain', text: GREETING_TEXT },
+    ])
   })
 })
