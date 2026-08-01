@@ -184,6 +184,25 @@ async function createMockSessionWithTools(
       inputSchema: { type: 'object' },
     }))
 
+    // Mirrors `PROTOCOL.wrapResult` for whichever revision the client turns out to speak:
+    // identity on `2025-11-25`, and on `2026-07-28` a `resultType` plus `_meta` serverInfo
+    // stamped onto *every* result, not just the `server/discover` one. The first message the
+    // client sends settles it — `initialize` means `2025-11-25`, `server/discover` means
+    // `2026-07-28` — exactly as a real server's per-connection protocol does.
+    let wrapResult = (value: Record<string, unknown>): Record<string, unknown> => value
+    const wrapForCurrentRevision = (value: Record<string, unknown>): Record<string, unknown> => ({
+      ...value,
+      resultType: 'complete',
+      _meta: {
+        ...((value._meta as Record<string, unknown> | undefined) ?? {}),
+        'io.modelcontextprotocol/serverInfo': serverInfo,
+      },
+    })
+
+    const respond = (id: number, result: Record<string, unknown>) => {
+      transport.write({ jsonrpc: '2.0', id, result: wrapResult(result) })
+    }
+
     while (true) {
       const req = await transport.read()
       if (req.done) break
@@ -191,55 +210,56 @@ async function createMockSessionWithTools(
       const request = req.value as { id: number; method: string; params?: { name: string } }
       switch (request.method) {
         case 'initialize':
-          transport.write({
-            jsonrpc: '2.0',
-            id: request.id,
-            result: {
-              capabilities: { tools: {} },
-              protocolVersion: '2025-11-25',
-              serverInfo,
-            },
+          // `2025-11-25` wraps nothing, so `wrapResult` stays the identity it starts as.
+          respond(request.id, {
+            capabilities: { tools: {} },
+            protocolVersion: '2025-11-25',
+            serverInfo,
           })
           break
         case 'server/discover':
-          transport.write({
-            jsonrpc: '2.0',
-            id: request.id,
-            result: {
-              resultType: 'complete',
-              capabilities: { tools: {} },
-              supportedVersions: ['2026-07-28', '2025-11-25'],
-              _meta: { 'io.modelcontextprotocol/serverInfo': serverInfo },
-            },
+          wrapResult = wrapForCurrentRevision
+          respond(request.id, {
+            capabilities: { tools: {} },
+            supportedVersions: ['2026-07-28', '2025-11-25'],
           })
           break
         // Sent only under `2025-11-25`; it carries no id and expects no reply.
         case 'notifications/initialized':
           break
         case 'tools/list':
-          transport.write({ jsonrpc: '2.0', id: request.id, result: { tools: toolsList } })
+          respond(request.id, { tools: toolsList })
           break
         case 'tools/call': {
           const tool = tools.find((t) => t.name === request.params?.name)
+          const unknownToolResult: CallToolResult = {
+            content: [{ type: 'text', text: 'Unknown tool' }],
+          }
+          const toolResult = (tool?.result ?? unknownToolResult) as unknown as Record<
+            string,
+            unknown
+          >
           if (tool?.delayMs != null) {
             const timer = setTimeout(() => {
-              transport.write({
-                jsonrpc: '2.0',
-                id: request.id,
-                result: tool.result,
-              })
+              respond(request.id, toolResult)
             }, tool.delayMs)
             // Allow the process to exit even if a stalled response is still pending.
             ;(timer as { unref?: () => void }).unref?.()
           } else {
-            transport.write({
-              jsonrpc: '2.0',
-              id: request.id,
-              result: tool?.result ?? { content: [{ type: 'text', text: 'Unknown tool' }] },
-            })
+            respond(request.id, toolResult)
           }
           break
         }
+        // Without this, an unhandled method gets no reply at all and the client hangs to the
+        // suite timeout. A real JSON-RPC error turns any future desync — a revision that adds
+        // a method, say — into an immediate, legible failure instead of a mystery timeout.
+        default:
+          transport.write({
+            jsonrpc: '2.0',
+            id: request.id,
+            error: { code: -32601, message: `Unsupported method: ${request.method}` },
+          })
+          break
       }
     }
   }

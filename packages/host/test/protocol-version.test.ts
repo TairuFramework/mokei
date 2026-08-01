@@ -129,6 +129,9 @@ describe('ProxyHost protocol version', () => {
     })
 
     expect(client.protocolVersion).toBe('2025-11-25')
+    // Assert the capture happened before asserting what it lacks: `spawnParam` starts as `{}`,
+    // so the `not.toHaveProperty` below would pass vacuously had `createChannel` never run.
+    expect(getSpawnParam()).toMatchObject({ command: 'server' })
     expect(getSpawnParam()).not.toHaveProperty('protocolVersion')
 
     await proxy.dispose()

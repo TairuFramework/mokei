@@ -48,5 +48,5 @@ export {
   toolsToLocalTools,
   toolToLocalTool,
 } from './local-tools.js'
-export { ProxyHost } from './proxy.js'
+export { ProxyHost, type ProxySpawnParams } from './proxy.js'
 export type { SpawnContextServerParams, StderrOption } from './spawn.js'
