@@ -21,6 +21,12 @@ const INTERNAL_ERROR_CODE = -32603
 /**
  * A JSON-RPC error response carried in a non-OK HTTP body, or `null` if the body is not one
  * — or names a different request, which would mean routing an error to the wrong caller.
+ *
+ * The accepted shape is deliberately no looser than what the RPC layer's inbound validator
+ * admits: a response failing that validation is dropped there rather than rejected, and no
+ * timeout covers an ordinary request, so an under-checked frame would leave its caller waiting
+ * forever. Anything this returns `null` for still reaches the caller as a synthesized internal
+ * error carrying the raw body, which is strictly better than silence.
  */
 function parseJSONRPCError(
   body: string,
@@ -40,10 +46,18 @@ function parseJSONRPCError(
   }
   const record = parsed as Record<string, unknown>
   const error = record.error
-  if (record.id !== requestID || error == null || typeof error !== 'object') {
+  if (
+    record.jsonrpc !== '2.0' ||
+    record.id !== requestID ||
+    error == null ||
+    typeof error !== 'object'
+  ) {
     return null
   }
-  return typeof (error as Record<string, unknown>).code === 'number' ? record : null
+  const errorRecord = error as Record<string, unknown>
+  return typeof errorRecord.code === 'number' && typeof errorRecord.message === 'string'
+    ? record
+    : null
 }
 
 /**

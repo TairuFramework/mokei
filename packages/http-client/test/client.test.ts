@@ -39,6 +39,24 @@ describe('createHTTPClient', () => {
     await client.dispose()
   })
 
+  test('a 400 carrying a malformed error frame still settles the caller', async () => {
+    // End-to-end counterpart to the transport-level fallback tests. The RPC layer drops an
+    // inbound response its validator rejects and nothing times an ordinary request out, so a
+    // frame passed through too permissively strands this `await` forever rather than failing
+    // it. The body below is a plausible error frame missing only `error.message`.
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ jsonrpc: '2.0', id: 0, error: { code: -32022 } }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+
+    const client = createHTTPClient({ url: TEST_URL, protocolVersion: '2026-07-28' })
+    await expect(client.request('tools/list', {})).rejects.toThrow(/HTTP 400/)
+
+    await client.dispose()
+  })
+
   test('a 2026-07-28 cancellation is still sent, undecorated', async () => {
     // Pins current behaviour, not desired behaviour. `decorateRequest` runs on requests only,
     // so a notification carries no protocol `_meta` and therefore no revision at all — neither

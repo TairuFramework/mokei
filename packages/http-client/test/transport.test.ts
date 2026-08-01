@@ -567,6 +567,70 @@ describe('HTTPTransport', () => {
       await transport.dispose()
     })
 
+    // A frame the RPC layer's inbound validator would reject is dropped there, not rejected,
+    // and no timeout covers an ordinary request — so enqueuing one strands its caller. Each of
+    // these bodies is a valid-looking error frame missing exactly one member that validator
+    // requires, and each must come back as the synthesized fallback instead.
+    test('a 400 whose error carries no code falls back', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { message: 'x' } }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
+
+      await transport.dispose()
+    })
+
+    test('a 400 whose error carries no message falls back', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32022 } }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
+
+      await transport.dispose()
+    })
+
+    test('a 400 whose body omits jsonrpc falls back', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 1, error: { code: -32022, message: 'x' } }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
+
+      await transport.dispose()
+    })
+
     test('a 400 whose JSON body carries no error member falls back', async () => {
       fetchMock.mockResolvedValueOnce(
         new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), {
