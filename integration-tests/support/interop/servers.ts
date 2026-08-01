@@ -18,6 +18,15 @@ export const MOKEI_STDIO_SERVER_PATH = fileURLToPath(
 export const SDK_STDIO_SERVER_PATH = fileURLToPath(
   new URL('./sdk-stdio-server.ts', import.meta.url),
 )
+/**
+ * Serves the fixture on protocol version `2025-11-25` only, via `@mokei/context-server`. Distinct
+ * from `MOKEI_STDIO_SERVER_PATH`, which now serves both revisions (matching mokei's own bundled
+ * servers): the version-detection suite needs a server that genuinely refuses `2026-07-28` to
+ * exercise the handshake-only fallback and rejection cases.
+ */
+export const MOKEI_STDIO_SERVER_2025_11_25_PATH = fileURLToPath(
+  new URL('./mokei-stdio-server-2025-11-25.ts', import.meta.url),
+)
 /** Serves the fixture on protocol version `2026-07-28` only, via `@mokei/context-server`. */
 export const MOKEI_STDIO_SERVER_2026_07_28_PATH = fileURLToPath(
   new URL('./mokei-stdio-server-2026-07-28.ts', import.meta.url),

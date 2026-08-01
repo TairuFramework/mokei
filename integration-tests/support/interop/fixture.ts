@@ -88,11 +88,12 @@ export function greetingMessage(name: string): string {
 /**
  * The fixture served by `@mokei/context-server`.
  *
- * `protocolVersions` defaults to `['2025-11-25']` so existing callers (the `2025-11-25`
- * interop suites) are unaffected; the `2026-07-28` stdio fixture passes `['2026-07-28']`.
+ * `protocolVersions` defaults to both revisions, matching what mokei's own bundled servers
+ * declare. Suites that need a single-revision server — the version-detection cases — pass
+ * an explicit one-element list.
  */
 export function createMokeiConfig(
-  protocolVersions: Array<ProtocolVersion> = ['2025-11-25'],
+  protocolVersions: Array<ProtocolVersion> = ['2026-07-28', '2025-11-25'],
 ): ServerConfig {
   return {
     name: SERVER_NAME,

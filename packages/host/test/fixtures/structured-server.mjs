@@ -3,7 +3,7 @@ import { createTool, serveProcess } from '@mokei/context-server'
 const config = {
   name: 'structured',
   version: '0.0.0',
-  protocolVersions: ['2025-11-25'],
+  protocolVersions: ['2026-07-28', '2025-11-25'],
   tools: {
     count: createTool({
       description: 'Count the characters in the given text',

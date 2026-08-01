@@ -92,7 +92,10 @@ export function createSQLiteConfig(db: DatabaseSync) {
   return {
     name: 'sqlite',
     version: '0.1.0',
-    protocolVersions: ['2025-11-25'],
+    // Both revisions: these ship with mokei and are what its host and CLI point at by
+    // default, so they must answer a `2026-07-28` client — while still reaching every
+    // client that only speaks `2025-11-25`, including the current SDK release.
+    protocolVersions: ['2026-07-28', '2025-11-25'],
     tools: createSQLiteTools(db),
   } satisfies ServerConfig
 }

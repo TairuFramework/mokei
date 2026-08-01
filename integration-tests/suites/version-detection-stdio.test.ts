@@ -4,9 +4,9 @@ import { spawnHostedContext } from '@mokei/host'
 import { describe, expect, test } from 'vitest'
 
 import {
+  MOKEI_STDIO_SERVER_2025_11_25_PATH,
   MOKEI_STDIO_SERVER_2026_07_28_PATH,
   MOKEI_STDIO_SERVER_BOTH_PATH,
-  MOKEI_STDIO_SERVER_PATH,
   REFUSING_STDIO_SERVER_PATH,
 } from '../support/interop/servers.ts'
 
@@ -14,7 +14,7 @@ describe('protocol version detection over stdio', () => {
   test("'auto' falls back to 2025-11-25 against a handshake-only server", async () => {
     const context = await spawnHostedContext({
       command: process.execPath,
-      args: [MOKEI_STDIO_SERVER_PATH],
+      args: [MOKEI_STDIO_SERVER_2025_11_25_PATH],
       protocolVersion: 'auto',
       stderr: 'inherit',
     })
@@ -84,7 +84,7 @@ describe('protocol version detection over stdio', () => {
   test('a 2026-07-28-pinned client fails actionably against a handshake-only server', async () => {
     const context = await spawnHostedContext({
       command: process.execPath,
-      args: [MOKEI_STDIO_SERVER_PATH],
+      args: [MOKEI_STDIO_SERVER_2025_11_25_PATH],
       protocolVersion: '2026-07-28',
       stderr: 'inherit',
     })
