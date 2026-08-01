@@ -7,7 +7,14 @@ import {
 import type { ContextServer, ServerTransport } from '@mokei/context-server'
 
 import { appendReplay, eventsAfter, type Session, SessionManager } from './session.js'
+import { createSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.js'
 import { type SSEEvent, SSEWriter } from './sse-writer.js'
+import {
+  DEFAULT_STATELESS_TIMEOUT_MS,
+  readRequestProtocolVersion,
+  runStatelessExchange,
+  type StatelessExchange,
+} from './stateless.js'
 
 export type HTTPHandlerParams = {
   createServer: (transport: ServerTransport) => ContextServer
@@ -24,6 +31,11 @@ export type HTTPHandlerParams = {
   replayBufferSize?: number
   /** Maximum accepted POST body size in bytes (default: 4 MiB). Oversized bodies get a 413. */
   maxBodyBytes?: number
+  /**
+   * How long a stateless `2026-07-28` exchange waits for its server to respond
+   * (default: 30000).
+   */
+  statelessTimeoutMs?: number
 }
 
 /** Default maximum accepted POST body size, in bytes (4 MiB). */
@@ -32,6 +44,12 @@ export const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024
 export type HTTPHandler = {
   handleRequest: (request: Request) => Promise<Response>
   dispose: () => void
+  /**
+   * How many stateless `2026-07-28` exchanges are currently in flight. Exposed because a
+   * registry entry that is never evicted has no other observable effect — a cancellation
+   * naming a finished exchange is a no-op either way — so without this a leak is untestable.
+   */
+  activeStatelessExchanges: () => number
 }
 
 type TransportBridge = {
@@ -57,51 +75,6 @@ function isServerResponse(message: Record<string, unknown>): boolean {
 
 function isServerRequestOrNotification(message: Record<string, unknown>): boolean {
   return 'method' in message
-}
-
-/**
- * Create a stream pair for SSE output. The writable side accepts strings
- * (SSE-formatted text), and the readable side produces Uint8Array chunks
- * suitable for use as a Response body.
- */
-function createSSEStream(): {
-  readable: ReadableStream<Uint8Array>
-  writable: WritableStream<string>
-} {
-  const encoder = new TextEncoder()
-  let controller!: ReadableStreamDefaultController<Uint8Array>
-  let closed = false
-
-  const readable = new ReadableStream<Uint8Array>({
-    start(c) {
-      controller = c
-    },
-    cancel() {
-      closed = true
-    },
-  })
-
-  const writable = new WritableStream<string>({
-    write(chunk) {
-      if (!closed) {
-        controller.enqueue(encoder.encode(chunk))
-      }
-    },
-    close() {
-      if (!closed) {
-        closed = true
-        controller.close()
-      }
-    },
-    abort(reason) {
-      if (!closed) {
-        closed = true
-        controller.error(reason)
-      }
-    },
-  })
-
-  return { readable, writable }
 }
 
 /**
@@ -177,10 +150,16 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     maxSessions = 1000,
     replayBufferSize = 100,
     maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
+    statelessTimeoutMs = DEFAULT_STATELESS_TIMEOUT_MS,
   } = params
 
   // Map session IDs to their transport bridges
   const bridges = new Map<string, TransportBridge>()
+
+  // Stateless `2026-07-28` exchanges still in flight, keyed by request id, so a later
+  // `notifications/cancelled` POST can reach the exchange it names. Sessionless requests
+  // have no other channel back to an in-flight call.
+  const statelessExchanges = new Map<string | number, StatelessExchange>()
 
   // Map session IDs to promises that resolve when a specific request ID gets a response
   // Used for the initialize flow where we need to capture the response synchronously
@@ -317,6 +296,13 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       return new Response('Invalid JSON', { status: 400 })
     }
 
+    // `2026-07-28` carries its revision in the request's own `_meta` and has no session.
+    // Any `Mcp-Session-Id` on such a request is ignored, per the specification.
+    const requestVersion = readRequestProtocolVersion(body)
+    if (requestVersion != null) {
+      return await handleStateless(body, requestVersion)
+    }
+
     const sessionID = request.headers.get('Mcp-Session-Id')
 
     // Initialize request: no session ID and message is 'initialize'
@@ -369,15 +355,44 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
 
       return new Response(readable, {
         status: 200,
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-        },
+        headers: SSE_RESPONSE_HEADERS,
       })
     }
 
     return new Response('Invalid message', { status: 400 })
+  }
+
+  async function handleStateless(
+    body: Record<string, unknown>,
+    _requestVersion: string,
+  ): Promise<Response> {
+    const rawID = body.id
+    const requestID: string | number | null =
+      typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
+
+    // A cancellation for an exchange we are still running: hand it to that exchange's
+    // server rather than spinning up a new one that knows nothing about the call.
+    if (requestID == null && body.method === 'notifications/cancelled') {
+      const target = (body.params as { requestId?: unknown } | undefined)?.requestId
+      if (typeof target === 'string' || typeof target === 'number') {
+        statelessExchanges.get(target)?.deliver(body as unknown as ClientMessage)
+      }
+      return new Response(null, { status: 202 })
+    }
+
+    return await runStatelessExchange({
+      message: body as unknown as ClientMessage,
+      requestID,
+      createServer,
+      replayBufferSize,
+      timeoutMs: statelessTimeoutMs,
+      onOpen: (exchange) => {
+        statelessExchanges.set(exchange.requestID, exchange)
+      },
+      onClose: (id) => {
+        statelessExchanges.delete(id)
+      },
+    })
   }
 
   async function handleInitialize(message: ClientMessage): Promise<Response> {
@@ -496,11 +511,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
 
     return new Response(readable, {
       status: 200,
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
+      headers: SSE_RESPONSE_HEADERS,
     })
   }
 
@@ -553,7 +564,17 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       closeBridge(sessionID)
     }
     initWaiters.clear()
+
+    // Iterate a copy: each close() fires onClose, which mutates the map being walked.
+    for (const exchange of [...statelessExchanges.values()]) {
+      exchange.close()
+    }
+    statelessExchanges.clear()
   }
 
-  return { handleRequest, dispose }
+  return {
+    handleRequest,
+    dispose,
+    activeStatelessExchanges: () => statelessExchanges.size,
+  }
 }

@@ -1,0 +1,223 @@
+import { Transport } from '@enkaku/transport'
+import {
+  type ClientMessage,
+  INVALID_PARAMS,
+  META_PROTOCOL_VERSION,
+  MISSING_REQUIRED_CLIENT_CAPABILITY,
+  type ServerMessage,
+  UNSUPPORTED_PROTOCOL_VERSION,
+} from '@mokei/context-protocol'
+import type { ContextServer, ServerTransport } from '@mokei/context-server'
+
+import { createSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.js'
+import { SSEWriter } from './sse-writer.js'
+
+/**
+ * JSON-RPC error codes the specification maps to HTTP `400` on the Streamable HTTP
+ * transport (specification/2026-07-28/basic/transports). A `2026-07-28` `'auto'` client
+ * inspects the body of a `400` to tell a current server from an older one, so these must
+ * arrive as a real `400` carrying the JSON-RPC error object — not tunnelled inside a `200`
+ * SSE stream, which is where every other server-side error still goes.
+ */
+export const BAD_REQUEST_CODES: ReadonlySet<number> = new Set([
+  INVALID_PARAMS,
+  MISSING_REQUIRED_CLIENT_CAPABILITY,
+  UNSUPPORTED_PROTOCOL_VERSION,
+])
+
+/** How long a stateless exchange waits for its server to write anything at all. */
+export const DEFAULT_STATELESS_TIMEOUT_MS = 30_000
+
+/**
+ * Reads the revision a request declares in its own `_meta`. This — not the
+ * `MCP-Protocol-Version` header — is what selects the stateless path, because it is what
+ * `ContextServer` itself resolves the revision from, so the transport and the server can
+ * never disagree about which revision a message belongs to.
+ */
+export function readRequestProtocolVersion(body: Record<string, unknown>): string | null {
+  const params = body.params
+  if (params == null || typeof params !== 'object') {
+    return null
+  }
+  const meta = (params as Record<string, unknown>)._meta
+  if (meta == null || typeof meta !== 'object') {
+    return null
+  }
+  const version = (meta as Record<string, unknown>)[META_PROTOCOL_VERSION]
+  return typeof version === 'string' ? version : null
+}
+
+/** A stateless exchange still in flight, addressable so a later POST can cancel it. */
+export type StatelessExchange = {
+  requestID: string | number
+  /** Feed a follow-up client message (a `notifications/cancelled`) into this exchange. */
+  deliver: (message: ClientMessage) => void
+  close: () => void
+}
+
+export type StatelessExchangeParams = {
+  message: ClientMessage
+  /** `null` for a notification or a response, which expect no reply. */
+  requestID: string | number | null
+  createServer: (transport: ServerTransport) => ContextServer
+  replayBufferSize: number
+  timeoutMs: number
+  /** Called once the exchange is live, so the handler can register it for cancellation. */
+  onOpen?: (exchange: StatelessExchange) => void
+  /**
+   * Called exactly once when the exchange ends, however it ends — response written, timeout,
+   * or handler disposal. The registry `onOpen` populates is unbounded otherwise: wrapping
+   * `exchange.close` at the call site would not do it, because the internal paths that end an
+   * exchange call the *captured* `finish`, not the wrapper.
+   */
+  onClose?: (requestID: string | number) => void
+}
+
+/**
+ * Runs one `2026-07-28` request against a throwaway `ContextServer` and returns its HTTP
+ * response.
+ *
+ * The response shape is decided by the *first* thing the server writes, not by waiting for
+ * the whole exchange: every `400`-worthy condition (missing `_meta`, unsupported revision,
+ * undeclared capability) is raised by `ContextServer` before any handler runs, so it is
+ * always the first write. Anything else opens the SSE stream immediately, which is what
+ * keeps request-scoped progress and log notifications streaming during a long tool call
+ * instead of being buffered until it finishes.
+ */
+export function runStatelessExchange(params: StatelessExchangeParams): Promise<Response> {
+  const { message, requestID, createServer, replayBufferSize, timeoutMs, onOpen, onClose } = params
+
+  let controller!: ReadableStreamDefaultController<ClientMessage>
+  const readable = new ReadableStream<ClientMessage>({
+    start(c) {
+      controller = c
+    },
+  })
+
+  let sse: SSEWriter | null = null
+  let settled = false
+  let finished = false
+  let server: ContextServer | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  let resolveResponse!: (response: Response) => void
+  const response = new Promise<Response>((resolve) => {
+    resolveResponse = resolve
+  })
+
+  function settle(value: Response): void {
+    if (settled) {
+      return
+    }
+    settled = true
+    if (timer != null) {
+      clearTimeout(timer)
+      timer = null
+    }
+    resolveResponse(value)
+  }
+
+  function finish(): void {
+    if (finished) {
+      return
+    }
+    finished = true
+    sse?.close()
+    try {
+      controller.close()
+    } catch {
+      // Already closed by a concurrent finish(); nothing to release.
+    }
+    void server?.dispose().catch(() => {
+      // The exchange is over either way; a dispose failure has nobody to report to.
+    })
+    if (requestID != null) {
+      onClose?.(requestID)
+    }
+  }
+
+  const writable = new WritableStream<ServerMessage>({
+    async write(outgoing) {
+      const record = outgoing as unknown as Record<string, unknown>
+      const isOwnResponse = requestID != null && record.id === requestID && !('method' in record)
+
+      // Held in a local: `sse` is a closure variable from an enclosing scope, which
+      // TypeScript will not keep narrowed across the assignment below.
+      let writer = sse
+      if (writer == null) {
+        if (isOwnResponse) {
+          const code = (record.error as { code?: unknown } | undefined)?.code
+          if (typeof code === 'number' && BAD_REQUEST_CODES.has(code)) {
+            settle(
+              new Response(JSON.stringify(outgoing), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' },
+              }),
+            )
+            finish()
+            return
+          }
+        }
+        const stream = createSSEStream()
+        // `replayBufferSize` is passed through rather than zeroed: `SSEWriter`'s ring
+        // buffer indexes modulo its size, so 0 would produce a NaN index. Nothing replays
+        // a stateless exchange — the buffer is simply unused.
+        writer = new SSEWriter({
+          writable: stream.writable,
+          streamID: `stateless-${requestID ?? 'notification'}`,
+          replayBufferSize,
+        })
+        sse = writer
+        settle(new Response(stream.readable, { status: 200, headers: SSE_RESPONSE_HEADERS }))
+        await writer.writePrimingEvent()
+      }
+
+      await writer.writeEvent({ data: JSON.stringify(outgoing) })
+      if (isOwnResponse) {
+        finish()
+      }
+    },
+  })
+
+  const transport = new Transport<ClientMessage, ServerMessage>({
+    stream: { readable, writable },
+  })
+
+  try {
+    server = createServer(transport as ServerTransport)
+  } catch {
+    finish()
+    return Promise.resolve(new Response('Server initialization failed', { status: 500 }))
+  }
+
+  if (requestID != null) {
+    onOpen?.({
+      requestID,
+      deliver: (incoming) => {
+        if (!finished) {
+          controller.enqueue(incoming)
+        }
+      },
+      close: finish,
+    })
+
+    timer = setTimeout(() => {
+      settle(new Response('Request timed out', { status: 504 }))
+      finish()
+    }, timeoutMs)
+    // A pending exchange must not hold the process open.
+    if (typeof timer === 'object' && 'unref' in timer) {
+      timer.unref()
+    }
+  }
+
+  controller.enqueue(message)
+
+  if (requestID == null) {
+    // A notification or a response: nothing will be written back for it.
+    finish()
+    return Promise.resolve(new Response(null, { status: 202 }))
+  }
+
+  return response
+}
