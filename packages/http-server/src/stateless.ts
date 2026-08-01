@@ -20,10 +20,24 @@ import { SSEWriter } from './sse-writer.js'
  * inside a `200` SSE stream, which is where every other server-side error still goes.
  */
 export const BAD_REQUEST_CODES: ReadonlySet<number> = new Set([
-  INVALID_PARAMS,
   MISSING_REQUIRED_CLIENT_CAPABILITY,
   UNSUPPORTED_PROTOCOL_VERSION,
 ])
+
+/**
+ * `INVALID_PARAMS` is deliberately not in {@link BAD_REQUEST_CODES}: `ContextServer` raises
+ * it both for an envelope violation (a missing required `_meta` key — an HTTP `400`) and for
+ * an ordinary application error (an unknown tool name, invalid tool arguments — an HTTP
+ * `200` carrying a JSON-RPC error, same as every other revision). Only the first is a
+ * transport-level failure, and the two are told apart by the message the server's protocol
+ * resolution itself writes, which always names the `_meta` key it could not find.
+ */
+function isEnvelopeFailure(error: { code?: unknown; message?: unknown }): boolean {
+  if (error.code === INVALID_PARAMS) {
+    return typeof error.message === 'string' && error.message.includes('io.modelcontextprotocol/')
+  }
+  return typeof error.code === 'number' && BAD_REQUEST_CODES.has(error.code)
+}
 
 /** How long a stateless exchange waits for its server to write anything at all. */
 export const DEFAULT_STATELESS_TIMEOUT_MS = 30_000
@@ -167,8 +181,8 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
       let writer = sse
       if (writer == null) {
         if (isOwnResponse) {
-          const code = (record.error as { code?: unknown } | undefined)?.code
-          if (typeof code === 'number' && BAD_REQUEST_CODES.has(code)) {
+          const error = record.error as { code?: unknown; message?: unknown } | undefined
+          if (error != null && isEnvelopeFailure(error)) {
             settle(
               new Response(JSON.stringify(outgoing), {
                 status: 400,

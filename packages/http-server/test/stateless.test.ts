@@ -358,6 +358,149 @@ describe('stateless 2026-07-28 POST path', () => {
     }
   })
 
+  test('rejects a header that contradicts the request _meta', async () => {
+    const handler = createHandler()
+    try {
+      const body = await statelessRequest('tools/list').json()
+      const response = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            // The body's `_meta` says 2026-07-28; the header says otherwise.
+            'MCP-Protocol-Version': '2025-11-25',
+          },
+          body: JSON.stringify(body),
+        }),
+      )
+      expect(response.status).toBe(400)
+      expect(await response.text()).toContain('MCP-Protocol-Version')
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('accepts a request whose _meta version is present and header absent', async () => {
+    const handler = createHandler()
+    try {
+      const body = await statelessRequest('tools/list').json()
+      const response = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      )
+      expect(response.status).toBe(200)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('surfaces an unsupported revision as 400 with the JSON-RPC error body', async () => {
+    // A server that serves only 2025-11-25, asked for 2026-07-28.
+    const handler = createHTTPHandler({
+      createServer: (transport) =>
+        new ContextServer({ ...SERVER_CONFIG, protocolVersions: ['2025-11-25'], transport }),
+    })
+    try {
+      const response = await handler.handleRequest(statelessRequest('tools/list'))
+
+      expect(response.status).toBe(400)
+      expect(response.headers.get('Content-Type')).toContain('application/json')
+      const body = (await response.json()) as {
+        id: number
+        error: { code: number; data: { supported: Array<string>; requested: string } }
+      }
+      expect(body.id).toBe(1)
+      expect(body.error.code).toBe(-32022)
+      expect(body.error.data.supported).toEqual(['2025-11-25'])
+      expect(body.error.data.requested).toBe('2026-07-28')
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('surfaces missing required _meta as 400 with the JSON-RPC error body', async () => {
+    const handler = createHandler()
+    try {
+      const response = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'MCP-Protocol-Version': '2026-07-28',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 4,
+            method: 'tools/list',
+            params: {
+              // Declares the revision but omits the required client capabilities.
+              _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' },
+            },
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      const body = (await response.json()) as { error: { code: number; message: string } }
+      expect(body.error.code).toBe(-32602)
+      expect(body.error.message).toContain('clientCapabilities')
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('a tool error still comes back as 200 on the SSE stream', async () => {
+    const handler = createHandler()
+    try {
+      const response = await handler.handleRequest(
+        statelessRequest('tools/call', { name: 'nope', arguments: {} }, 9),
+      )
+      // Only the specification's `400` codes get an HTTP status; everything else is a
+      // normal JSON-RPC error inside a normal response.
+      expect(response.status).toBe(200)
+      const messages = await readSSEData(response)
+      expect((messages[0].error as { code: number }).code).toBe(-32602)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('GET is 405 for 2026-07-28', async () => {
+    const handler = createHandler()
+    try {
+      const response = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'GET',
+          headers: {
+            Accept: 'text/event-stream',
+            'MCP-Protocol-Version': '2026-07-28',
+          },
+        }),
+      )
+      expect(response.status).toBe(405)
+    } finally {
+      handler.dispose()
+    }
+  })
+
+  test('DELETE is 405 for 2026-07-28', async () => {
+    const handler = createHandler()
+    try {
+      const response = await handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'DELETE',
+          headers: { 'MCP-Protocol-Version': '2026-07-28' },
+        }),
+      )
+      expect(response.status).toBe(405)
+    } finally {
+      handler.dispose()
+    }
+  })
+
   test('leaves the 2025-11-25 session path alone', async () => {
     const handler = createHandler()
     try {

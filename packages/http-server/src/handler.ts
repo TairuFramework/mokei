@@ -303,6 +303,17 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       requestVersion != null &&
       PROTOCOLS[requestVersion as ProtocolVersion]?.requiresRequestMeta
     ) {
+      const headerVersion = request.headers.get('MCP-Protocol-Version')
+      // An absent header is accepted: the body's `_meta` is what `ContextServer` resolves
+      // the revision from, so the header is redundant confirmation for intermediaries. A
+      // header that *contradicts* the body is rejected — one of the two is wrong, and
+      // guessing which would let a stale proxy silently reroute a request.
+      if (headerVersion != null && headerVersion !== requestVersion) {
+        return new Response(
+          `MCP-Protocol-Version header "${headerVersion}" does not match request _meta "${requestVersion}"`,
+          { status: 400 },
+        )
+      }
       return await handleStateless(request, body, requestVersion)
     }
 
@@ -461,6 +472,12 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     if (!validateProtocolVersion(request)) {
       return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
     }
+    // `2026-07-28` has no server-initiated messages (its `serverMethods` table is empty)
+    // and no session to attach a stream to. Notifications for a request travel on that
+    // request's own POST response, so there is nothing a GET stream could carry.
+    if (request.headers.get('MCP-Protocol-Version') === '2026-07-28') {
+      return new Response('Method not allowed', { status: 405 })
+    }
 
     const sessionID = request.headers.get('Mcp-Session-Id')
     if (sessionID == null) {
@@ -517,6 +534,11 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     }
     if (!validateProtocolVersion(request)) {
       return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
+    }
+    // DELETE exists only to terminate a session. `2026-07-28` never creates one, so there
+    // is nothing to terminate.
+    if (request.headers.get('MCP-Protocol-Version') === '2026-07-28') {
+      return new Response('Method not allowed', { status: 405 })
     }
 
     const sessionID = request.headers.get('Mcp-Session-Id')
