@@ -1,5 +1,19 @@
+import { isSupportedProtocolVersion, type ProtocolVersion } from '@mokei/context-protocol'
 import { withSocketPath as tejikaWithSocketPath } from '@tejika/cli'
 import type { Command } from 'commander'
+
+/**
+ * Validates a user-supplied protocol revision. Without this the value would reach the client as
+ * an unchecked cast and surface as an obscure internal failure rather than a usage error.
+ */
+export function parseProtocolOption(value: string): ProtocolVersion | 'auto' {
+  if (value === 'auto' || isSupportedProtocolVersion(value)) {
+    return value
+  }
+  throw new Error(
+    `Unsupported protocol revision "${value}": expected 2026-07-28, 2025-11-25 or auto`,
+  )
+}
 
 export function withChatOptions(cmd: Command): Command {
   return cmd
