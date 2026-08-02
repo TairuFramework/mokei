@@ -477,6 +477,19 @@ its own task.
 - `packages/host/README.md`'s new protocol-version section omits `createHostedContext`,
   `spawnHostedContext` and `ProxyHost.spawn`, all of which take the same parameter.
 
+#### 3.5.8 `SSEWriter.close()` discards a teardown failure silently
+
+`close()` swallows the rejection from `#writer.close()` rather than logging it. The `catch` is
+needed — every route into that method is a teardown path with nothing left to await on, so
+without it a faulted stream raises an unhandled rejection in the server process, which is a
+crash under Node's default `--unhandled-rejections=throw`. But `SSEWriter` has no logger, so a
+diagnosable stream fault now vanishes. Giving it one is a wider change than the fix that
+introduced the guard.
+
+Note the hazard is latent rather than live: `createSSEStream`'s sink guards every write with
+`if (!closed)` and never throws, so its writable does not error and `close()` resolves. A
+faulted writer is constructible at the `SSEWriter` boundary, which is where the guard is tested.
+
 ## Notes
 
 - Re-read the milestone's "Open questions" (MRTR continuation state, `server/discover` STDIO
