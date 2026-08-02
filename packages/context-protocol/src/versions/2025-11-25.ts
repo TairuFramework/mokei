@@ -93,6 +93,12 @@ export const PROTOCOL = {
     'tools/call',
     'tools/list',
   ]),
+  clientNotifications: new Set([
+    'notifications/cancelled',
+    'notifications/progress',
+    'notifications/initialized',
+    'notifications/roots/list_changed',
+  ]),
   serverMethods: new Set(['ping', 'sampling/createMessage', 'roots/list', 'elicitation/create']),
   clientMessage,
   serverMessage,

@@ -186,6 +186,11 @@ export const PROTOCOL = {
     'tools/call',
     'tools/list',
   ]),
+  // Mirrors `clientNotification` above: `notifications/initialized` and
+  // `notifications/roots/list_changed` are gone with the handshake and with server-initiated
+  // `roots/list`, so sending either would put a frame on the wire this revision's own
+  // `clientMessage` union rejects.
+  clientNotifications: new Set(['notifications/cancelled', 'notifications/progress']),
   serverMethods: new Set<string>(),
   clientMessage,
   serverMessage,

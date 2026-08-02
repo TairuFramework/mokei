@@ -1306,8 +1306,31 @@ describe('outbound requests and notifications on the resolved revision', () => {
     await expect(client.request('initialize', DEFAULT_INITIALIZE_PARAMS)).rejects.toThrow(
       /initialize does not exist in protocol version 2026-07-28/,
     )
-    // Nothing reached the wire: the refusal is local, not a `-32601` round-trip.
-    expect(sent).toEqual([])
+    // Neither refused method reached the wire: the refusal is local, not a `-32601` round-trip.
+    // Setup's own `server/discover` is all that was sent, and only once for the two calls.
+    expect(methodsSent(sent)).toEqual(['server/discover'])
+  })
+
+  // The notification counterpart. `ClientNotifications` spans both revisions, so both of these
+  // type-check on a `2026-07-28` client even though that revision's own `clientMessage` union
+  // rejects the frames they produce — they would go out stamped and be refused by the peer.
+  test('notify() refuses a notification absent from the resolved revision', async () => {
+    const { client, sent } = createTestClient({ protocolVersion: '2026-07-28' })
+    await expect(client.notify('roots/list_changed', {})).rejects.toThrow(MethodNotInRevisionError)
+    await expect(client.notify('initialized', {})).rejects.toThrow(
+      /notifications\/initialized does not exist in protocol version 2026-07-28/,
+    )
+    // Nothing reached the wire past setup's own request.
+    expect(methodsSent(sent)).toEqual(['server/discover'])
+  })
+
+  // The gate must not start refusing the revision that still has these, and must not refuse the
+  // one notification `ContextRPC` emits by itself — `notifications/cancelled`, which both
+  // revisions keep and which routes through this same override.
+  test('2025-11-25 keeps every notification its revision has', async () => {
+    const { client, sent } = createTestClient({ protocolVersion: '2025-11-25' })
+    await client.notify('roots/list_changed', {})
+    expect(methodsSent(sent)).toContain('notifications/roots/list_changed')
   })
 
   test('request() still allows a method the resolved revision does have', async () => {

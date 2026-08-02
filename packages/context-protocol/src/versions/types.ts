@@ -41,8 +41,19 @@ export type ProtocolDefinition = {
    * `clientMethods`.
    */
   requiresPerRequestLogLevel: boolean
-  /** Methods a client may send in this revision. */
+  /** Request methods a client may send in this revision. */
   clientMethods: ReadonlySet<string>
+  /**
+   * Notification methods a client may send in this revision — the notification counterpart of
+   * {@link ProtocolDefinition.clientMethods}, and kept separate from it so that gating requests
+   * on the method table cannot accidentally admit a notification as a request.
+   *
+   * Must name exactly the members of this revision's `clientNotification` union: a name here
+   * that the union rejects produces a frame the peer's own validator refuses, and a member of
+   * the union missing here is refused locally though the peer would accept it. Guarded by a
+   * test in `packages/context-protocol/test/versions.test.ts`.
+   */
+  clientNotifications: ReadonlySet<string>
   /** Methods a server may send in this revision. */
   serverMethods: ReadonlySet<string>
   /** Inbound-message validators, used by the server and client read loops. */

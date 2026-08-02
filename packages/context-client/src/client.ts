@@ -586,7 +586,21 @@ export class ContextClient<
     params: ClientTypes['SendNotifications'][Event]['params'],
   ): Promise<void> {
     await this.#ready
-    const decorated = this.#requireProtocol().decorateNotification(params)
+    const protocol = this.#requireProtocol()
+    // The notification counterpart of `request()`'s `clientMethods` gate, and refused for the
+    // same reason: `ClientNotifications` spans both revisions, so `initialized` and
+    // `roots/list_changed` type-check on a `2026-07-28` client even though that revision's own
+    // `clientMessage` union rejects the frames they produce. Stamping such a frame and putting
+    // it on the wire buys nothing — a conformant peer refuses it — where a local error names the
+    // actual problem. Derived from the revision's notification table, never a version literal.
+    //
+    // Compared against the *wire* method: `ContextRPC.notify` takes the suffix and prefixes
+    // `notifications/` itself, and the protocol tables name methods as they appear on the wire.
+    const method = `notifications/${event}`
+    if (!protocol.clientNotifications.has(method)) {
+      throw new MethodNotInRevisionError(method, protocol.version)
+    }
+    const decorated = protocol.decorateNotification(params)
     await super.notify(event, decorated as typeof params)
   }
 

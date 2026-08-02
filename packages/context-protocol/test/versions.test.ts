@@ -139,6 +139,41 @@ describe('protocol records', () => {
     }
   })
 
+  // `clientNotifications` is what `ContextClient.notify()` gates on, and the `clientMessage`
+  // union is what the peer validates the resulting frame against. Drift either way is silent:
+  // a name in the set the union rejects sends a frame a conformant peer refuses, and a union
+  // member missing from the set is refused locally though the peer would have taken it. Driven
+  // off the union rather than a hand-copied list, so a revision that changes one and not the
+  // other fails here.
+  test('every declared client notification validates, and nothing else does', () => {
+    const others = ['notifications/initialized', 'notifications/roots/list_changed']
+    for (const version of PROTOCOL_VERSIONS) {
+      const protocol = PROTOCOLS[version]
+      const validate = createValidator(protocol.clientMessage)
+      // The minimum params each notification's own schema requires; anything not listed has
+      // none.
+      const required: Record<string, Record<string, unknown>> = {
+        'notifications/cancelled': { requestId: 1 },
+        'notifications/progress': { progressToken: 1, progress: 0 },
+      }
+      for (const method of protocol.clientNotifications) {
+        const frame = {
+          jsonrpc: '2.0',
+          method,
+          params: protocol.decorateNotification(required[method] ?? {}),
+        }
+        expect(validate(frame).issues, `${version} rejects declared ${method}`).toBeUndefined()
+      }
+      for (const method of others) {
+        if (protocol.clientNotifications.has(method)) {
+          continue
+        }
+        const frame = { jsonrpc: '2.0', method, params: protocol.decorateNotification({}) }
+        expect(validate(frame).issues, `${version} admits undeclared ${method}`).toBeDefined()
+      }
+    }
+  })
+
   test('2025-11-25 leaves requests and results untouched', () => {
     const protocol = PROTOCOLS['2025-11-25']
     const params = { name: 'echo' }
