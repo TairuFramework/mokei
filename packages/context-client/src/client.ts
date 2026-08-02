@@ -127,16 +127,20 @@ const NOTIFICATION_BUFFER_CAP = 256
  * which is precisely the signal `#probe()` falls back on. This is the one place in this file
  * where stamping a revision the peer may not speak is correct — every other outgoing frame
  * stamps the revision that was actually resolved.
+ *
+ * `null` when no registered revision qualifies, rather than a throw. This is module-level, so
+ * throwing here would crash the *import* of this package for every consumer — including one
+ * pinned to a handshake revision that never probes — the moment the registry stopped carrying a
+ * handshake-less revision. `#probe()` treats `null` as "nothing to probe with" and falls through
+ * to the handshake, which is the same place a refused probe lands and is always a live option:
+ * `'auto'` degrades to the behaviour of a pinned older client instead of taking the package down.
  */
-const PROBE_PROTOCOL: ProtocolDefinition = (() => {
+const PROBE_PROTOCOL: ProtocolDefinition | null = (() => {
   const version = PROTOCOL_VERSIONS.find((candidate) => {
     const protocol = PROTOCOLS[candidate]
     return !protocol.requiresHandshake && protocol.clientMethods.has('server/discover')
   })
-  if (version == null) {
-    throw new Error('No registered protocol revision can send server/discover without a handshake')
-  }
-  return PROTOCOLS[version]
+  return version == null ? null : PROTOCOLS[version]
 })()
 
 /** Notifications that invalidate whatever the client learned from `server/discover`. */
@@ -884,6 +888,14 @@ export class ContextClient<
    */
   async #probe(): Promise<ProtocolDefinition> {
     const candidate = PROBE_PROTOCOL
+    if (candidate == null) {
+      // No registered revision is both handshake-less and able to send `server/discover`, so
+      // there is nothing to probe *with*. Not reachable with today's registry; the branch exists
+      // so that a registry which stops carrying such a revision degrades `'auto'` to the
+      // handshake rather than failing the connection — or, if this were computed eagerly at
+      // module scope, crashing the import for every consumer including those that never probe.
+      return this.#fallBackFromProbe([], null)
+    }
     try {
       // Seeded, not discarded: the probe's answer is a full `DiscoverResult`, and throwing it
       // away made every `'auto'` connection send `server/discover` a second time on its first
@@ -895,20 +907,32 @@ export class ContextClient<
         cause instanceof RPCError && cause.code === UNSUPPORTED_PROTOCOL_VERSION
           ? ((cause.data as { supported?: Array<string> } | undefined)?.supported ?? [])
           : []
-      // Excludes `candidate.version` even if the server's own `data.supported` erroneously
-      // lists it: this catch block only runs because the server just rejected that exact
-      // version, so re-selecting it here would hand back a revision with no handshake
-      // (`requiresHandshake: false`) that the server has already refused to speak — leaving
-      // every gated call re-issuing `server/discover` forever with no way to make progress.
-      const agreed = PROTOCOL_VERSIONS.find(
-        (version) => version !== candidate.version && supported.includes(version),
-      )
-      this.#protocol = agreed == null ? PROTOCOLS['2025-11-25'] : PROTOCOLS[agreed]
-      // A capability snapshot or cached discover() result taken from the failed 2026-07-28
-      // probe must not survive into the connection that replaces it.
-      this.#resetDiscovery()
-      return this.#protocol
+      return this.#fallBackFromProbe(supported, candidate.version)
     }
+  }
+
+  /**
+   * Settles on a handshake revision when the probe cannot resolve one, and returns it.
+   *
+   * `supported` is whatever the server named in a `-32022` (empty for any other failure);
+   * `refused` is the revision the probe just tried, excluded from the result even if the
+   * server's own `data.supported` erroneously lists it — the caller only reaches here because
+   * the server rejected that exact version, so re-selecting it would hand back a revision with
+   * no handshake that the server has already refused to speak, leaving every gated call
+   * re-issuing `server/discover` forever with no way to make progress.
+   */
+  #fallBackFromProbe(
+    supported: Array<string>,
+    refused: ProtocolVersion | null,
+  ): ProtocolDefinition {
+    const agreed = PROTOCOL_VERSIONS.find(
+      (version) => version !== refused && supported.includes(version),
+    )
+    this.#protocol = agreed == null ? PROTOCOLS['2025-11-25'] : PROTOCOLS[agreed]
+    // A capability snapshot or cached discover() result taken from the failed probe must not
+    // survive into the connection that replaces it.
+    this.#resetDiscovery()
+    return this.#protocol
   }
 
   /**
