@@ -220,6 +220,22 @@ export const result = {
 } as const satisfies Schema
 export type Result = FromSchema<typeof result>
 
+/**
+ * An otherwise-empty result — `ping`, `logging/setLevel`, `resources/subscribe`.
+ *
+ * Closed on purpose. {@link result} is the open *base* every concrete result builds on, so
+ * using it as a member of a result union makes that union match any object at all and the
+ * other members are never consulted.
+ */
+export const emptyResult = {
+  additionalProperties: false,
+  properties: {
+    _meta: metadata,
+  },
+  type: 'object',
+} as const satisfies Schema
+export type EmptyResult = FromSchema<typeof emptyResult>
+
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1188
 export const paginatedResult = {
   properties: {

@@ -373,7 +373,7 @@ describe('ContextClient', () => {
   describe('supports outgoing prompt requests', () => {
     test('lists available prompts', async () => {
       const prompts = [
-        { name: 'first', description: 'test', arguments: { type: 'object' } },
+        { name: 'first', description: 'test', arguments: [{ name: 'topic' }] },
         { name: 'second', description: 'test' },
       ]
       const request = executeClientRequest(

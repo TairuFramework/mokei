@@ -15,11 +15,11 @@ import {
 import { listRootsRequest } from './root.js'
 import {
   cancelledNotification,
+  emptyResult,
   errorResponse,
   pingRequest,
   progressNotification,
   response,
-  result,
 } from './rpc.js'
 import { createMessageRequest } from './sampling.js'
 import { callToolResult, listToolsResult, toolListChangedNotification } from './tool.js'
@@ -47,7 +47,7 @@ export type ServerNotification = FromSchema<typeof serverNotification>
 
 export const serverResult = {
   anyOf: [
-    result, // empty result
+    emptyResult,
     initializeResult,
     completeResult,
     getPromptResult,

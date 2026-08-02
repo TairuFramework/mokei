@@ -201,7 +201,7 @@ describe('ContextServer', () => {
 
   test('supports outgoing roots list requests', async () => {
     const { server, transports } = createTestContext({ protocolVersions: ['2025-11-25'] })
-    const roots = [{ name: 'test', url: 'test://test' }]
+    const roots = [{ name: 'test', uri: 'file:///test' }]
 
     const responsePromise = server.listRoots()
     await expect(transports.client.read()).resolves.toEqual({
