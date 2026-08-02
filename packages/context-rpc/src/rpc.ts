@@ -77,8 +77,8 @@ export type RPCParams<T extends RPCTypes> = {
   maxQueuedRequests?: number
   /**
    * Called for an inbound frame that could neither be validated nor routed to anything —
-   * an invalid notification, or a response for an id nobody is waiting on. Without it such
-   * frames vanish silently.
+   * an invalid notification, or a response for an id nobody is waiting on — and for request
+   * handlers that failed. Without it such frames vanish silently.
    */
   onError?: (error: Error) => void
   transport: TransportType<T['MessageIn'], T['MessageOut']>
@@ -113,6 +113,18 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     this.#transport = params.transport
     this.#validateMessageIn = params.validateMessageIn
     this.#onError = params.onError
+  }
+
+  /**
+   * Reports an error to the consumer's handler without letting it back into the RPC layer:
+   * a callback that throws must not suppress the response this request still owes its peer.
+   */
+  #reportError(error: Error): void {
+    try {
+      this.#onError?.(error)
+    } catch {
+      // A consumer's error handler is not allowed to break message handling.
+    }
   }
 
   get events(): EventEmitter<T['Events']> {
@@ -231,10 +243,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       if (isRequestID(id) && this.#exchanges.has(id)) {
         // A frame carrying an id and no method is a response. Dropping it left its caller's
         // promise pending forever, with nothing to time it out.
-        this.#exchanges.cancel(id, new RPCError(INTERNAL_ERROR, 'Invalid response'))
+        this.#exchanges.fail(id, new RPCError(INTERNAL_ERROR, 'Invalid response'))
         return null
       }
-      this.#onError?.(new RPCError(INVALID_REQUEST, 'Invalid message'))
+      this.#reportError(new RPCError(INVALID_REQUEST, 'Invalid message'))
       return null
     }
 
@@ -275,8 +287,13 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
             : { jsonrpc: '2.0' as const, id, result }
         },
         (cause) => {
-          this.#onError?.(cause instanceof Error ? cause : new Error(String(cause)))
-          return signal.aborted ? null : errorResponse(id, cause)
+          if (signal.aborted) {
+            // A cancelled request answers nothing, and its handler's abort rejection is the
+            // expected outcome rather than an error the consumer needs to hear about.
+            return null
+          }
+          this.#reportError(cause instanceof Error ? cause : new Error(String(cause)))
+          return errorResponse(id, cause)
         },
       )
     })

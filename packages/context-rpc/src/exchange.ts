@@ -129,6 +129,18 @@ export class ExchangeRegistry {
     this.#settle(id, exchange, 'cancel', { ok: false, error: reason })
   }
 
+  /**
+   * Settles an exchange with a protocol-level failure — the peer sent something unusable.
+   * Distinct from {@link ExchangeRegistry.cancel}, which means the local side gave up.
+   */
+  fail(id: RequestID, reason: Error): void {
+    const exchange = this.#exchanges.get(id)
+    if (exchange == null) {
+      return
+    }
+    this.#settle(id, exchange, 'error', { ok: false, error: reason })
+  }
+
   endAll(reason: Error): void {
     for (const [id, exchange] of Array.from(this.#exchanges.entries())) {
       this.#settle(id, exchange, 'closed', { ok: false, error: reason })

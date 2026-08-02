@@ -346,4 +346,98 @@ describe('ContextRPC invalid inbound messages', () => {
     await rpc.dispose()
     await transports.dispose()
   })
+
+  test('onError callback that throws does not prevent the error response reaching the peer', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const onError = vi.fn(() => {
+      throw new Error('onError threw')
+    })
+    class TestRPC extends ContextRPC<TestTypes> {
+      _handleRequest(): Record<string, never> {
+        throw new Error('handler failed')
+      }
+    }
+    const rpc = new TestRPC({
+      onError,
+      transport: transports.client,
+      validateMessageIn: passthrough,
+    })
+    rpc._handle()
+
+    const responses: Array<AnyMessage> = []
+    void (async () => {
+      for await (const message of transports.server) {
+        responses.push(message)
+      }
+    })()
+
+    await transports.server.write({ jsonrpc: '2.0', id: 1, method: 'test' } as AnyMessage)
+    await vi.waitFor(() => expect(responses.length).toBe(1))
+
+    const response = responses[0] as { error?: { code: number } }
+    expect(response.error).toBeDefined()
+    expect(response.error?.code).toBeDefined()
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('an invalid inbound response settles its exchange with SettleReason "error"', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const settleReasons: Array<string> = []
+    const rpc = new ContextRPC<TestTypes>({
+      transport: transports.client,
+      validateMessageIn: rejectResponses,
+    })
+    rpc._handle()
+
+    const pending = rpc._registerStreamExchange(
+      'tools/list',
+      {},
+      {
+        onSettle: (reason) => {
+          settleReasons.push(reason)
+        },
+      },
+    )
+    await transports.server.write({ jsonrpc: '2.0', id: 0, result: { tools: [] } } as AnyMessage)
+
+    await expect(pending).rejects.toThrow('Invalid response')
+    expect(settleReasons).toEqual(['error'])
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('a cancelled request whose handler rejects on abort does not call onError', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const onError = vi.fn()
+    class TestRPC extends ContextRPC<TestTypes> {
+      async _handleRequest(
+        _request: TestTypes['HandleRequest'],
+        signal: AbortSignal,
+      ): Promise<Record<string, unknown>> {
+        signal.throwIfAborted()
+        return {}
+      }
+    }
+    const rpc = new TestRPC({
+      onError,
+      transport: transports.client,
+      validateMessageIn: passthrough,
+    })
+    rpc._handle()
+
+    const controller = new AbortController()
+    const pending = rpc.request('tools/list', {}, { signal: controller.signal })
+    controller.abort()
+    await expect(pending).rejects.toThrow()
+
+    // onError should not be called for a cancelled request's abort rejection
+    expect(onError).not.toHaveBeenCalled()
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
 })
