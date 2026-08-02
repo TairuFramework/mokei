@@ -245,4 +245,59 @@ describe('ContextRPC transport lifecycle', () => {
     await rpc.dispose()
     await transports.dispose()
   })
+
+  test('dispose aborts an in-flight handler signal', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const started = defer<AbortSignal>()
+    const never = defer<void>()
+    class TestRPC extends ContextRPC<TestTypes> {
+      async _handleRequest(
+        _request: TestTypes['HandleRequest'],
+        signal: AbortSignal,
+      ): Promise<Record<string, unknown>> {
+        started.resolve(signal)
+        await never.promise
+        return {}
+      }
+    }
+    const rpc = new TestRPC({ transport: transports.client, validateMessageIn: passthrough })
+    rpc._handle()
+
+    await transports.server.write({ jsonrpc: '2.0', id: 1, method: 'slow' } as AnyMessage)
+    const signal = await started.promise
+    await rpc.dispose()
+
+    expect(signal.aborted).toBe(true)
+
+    never.resolve()
+    await transports.dispose()
+  })
+
+  test('a peer hanging up aborts an in-flight handler signal', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const started = defer<AbortSignal>()
+    const never = defer<void>()
+    class TestRPC extends ContextRPC<TestTypes> {
+      async _handleRequest(
+        _request: TestTypes['HandleRequest'],
+        signal: AbortSignal,
+      ): Promise<Record<string, unknown>> {
+        started.resolve(signal)
+        await never.promise
+        return {}
+      }
+    }
+    const rpc = new TestRPC({ transport: transports.client, validateMessageIn: passthrough })
+    rpc._handle()
+
+    await transports.server.write({ jsonrpc: '2.0', id: 1, method: 'slow' } as AnyMessage)
+    const signal = await started.promise
+    await transports.server.dispose()
+
+    await vi.waitFor(() => expect(signal.aborted).toBe(true))
+
+    never.resolve()
+    await rpc.dispose()
+    await transports.dispose()
+  })
 })

@@ -197,6 +197,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #endPendingRequests(reason: Error): void {
     this.#exchanges.endAll(reason)
     this.#continuations.clearAll(reason)
+    // Outbound exchanges are not the only thing a closed transport strands: a handler still
+    // running has nobody left to answer, so it is told the connection is gone. Covers both
+    // `#dispose()` and a peer EOF, which both funnel through `#close()`.
+    this.#scheduler.abortAll(reason)
   }
 
   async #dispose(): Promise<void> {
