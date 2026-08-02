@@ -94,9 +94,12 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
             })
           } else if (sub === 'add') {
             // `--protocol <version>` may lead the positional arguments, so a user can pin a
-            // server that would otherwise be probed.
+            // server that would otherwise be probed. Defaults to `'auto'` to match
+            // `mokei inspect`: both point at arbitrary third-party servers, most of which
+            // serve `2025-11-25` only, and the host's own `'2026-07-28'` default would reject
+            // those with `-32022`.
             let positional = rest
-            let protocolVersion: ProtocolVersion | 'auto' | undefined
+            let protocolVersion: ProtocolVersion | 'auto' = 'auto'
             if (positional[0] === '--protocol' || positional[0] === '-p') {
               try {
                 protocolVersion = parseProtocolOption(positional[1] ?? '')

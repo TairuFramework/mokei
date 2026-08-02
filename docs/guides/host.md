@@ -89,6 +89,26 @@ const client = host.addDirectContext({
 const tools = await host.setup({ key: 'embedded' })
 ```
 
+### Custom Transport Context
+
+For custom transports (WebSocket, HTTP, etc.):
+
+```typescript
+import { type ClientTransport } from '@mokei/context-client'
+
+const transport: ClientTransport = /* your transport */
+
+const client = host.createContext({
+  key: 'custom',
+  transport,
+  dispose: async () => {
+    // Custom cleanup
+  }
+})
+
+const tools = await host.setup({ key: 'custom' })
+```
+
 ## Protocol Revisions
 
 `addLocalContext`, `addHTTPContext` and `addDirectContext` each take an optional
@@ -114,26 +134,6 @@ await host.addHTTPContext({
 
 `'auto'` is resolved per context: the host does not share a resolution between contexts, so
 each `'auto'` context probes its own server.
-
-### Custom Transport Context
-
-For custom transports (WebSocket, HTTP, etc.):
-
-```typescript
-import { type ClientTransport } from '@mokei/context-client'
-
-const transport: ClientTransport = /* your transport */
-
-const client = host.createContext({
-  key: 'custom',
-  transport,
-  dispose: async () => {
-    // Custom cleanup
-  }
-})
-
-const tools = await host.setup({ key: 'custom' })
-```
 
 ## Tool Namespacing
 

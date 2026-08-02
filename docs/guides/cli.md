@@ -91,11 +91,10 @@ This spawns the server, registers its tools, and opens a card to enable/disable 
 /context add --protocol 2025-11-25 sqlite npx -y @mokei/mcp-sqlite
 ```
 
-Accepted values are `2026-07-28`, `2025-11-25` and `auto`. Unlike `mokei inspect`, the
-default here is `2026-07-28` — the host's default, not `auto`. Pass `--protocol auto` to
-probe a server whose revision you do not know, or `--protocol 2025-11-25` to pin the older
-one; a server that serves neither `2026-07-28` nor the pinned revision fails with
-`Unsupported protocol version`.
+Accepted values are `2026-07-28`, `2025-11-25` and `auto`. The default is `auto`, matching
+`mokei inspect`: it probes the server and speaks whichever revision it serves. Pin a
+revision to speak exactly that one — a server that does not serve the pinned revision fails
+with `Unsupported protocol version`.
 
 ## `mokei inspect`
 

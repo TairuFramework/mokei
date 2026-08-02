@@ -23,9 +23,9 @@ assumption that the environment has one.
 
 | Suites | Needs |
 |---|---|
-| `interop-sdk-*`, `interop-2026-07-28-stdio`, `version-detection-stdio`, `http-transport` | nothing beyond a build |
+| `interop-sdk-*`, `interop-2026-07-28-stdio`, `interop-2026-07-28-http`, `version-detection-stdio`, `version-detection-http`, `http-transport` | nothing beyond a build |
 | `session`, `agent`, `host`, `cli-chat*` | a chat backend (below) |
-| `cli-*` | the CLI `dist` built (`pnpm build` — the dev binary loads from `dist/`) and a working PTY |
+| `cli-*` | the CLI built (`pnpm build` — the dev binary loads from `lib/`) and a working PTY |
 | `llama-provider`, `cli-chat-llama` | `MOKEI_LLAMA_GGUF` |
 
 ## Chat backend

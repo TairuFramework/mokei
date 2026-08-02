@@ -239,10 +239,22 @@ server. The SDK `2026-07-28` peer already exists in the harness
 expectations.
 
 So this is one call-site edit on a pattern already proven twice — and it would have caught the
-`Mcp-Name` defect in 3.2.1 with no bespoke test at all. An SDK stdio peer on this revision is
-reachable too, via the existing `support/interop/sdk-stdio-server.ts` (verified: `server/discover`
-answers `supportedVersions: ['2026-07-28']`, `tools/list` and `tools/call` round-trip), so the
-same edit applies on both transports.
+`Mcp-Name` defect in 3.2.1 with no bespoke test at all.
+
+**All four peer directions are reachable**, verified against mokei with zero mokei changes, so
+the same approach extends past `checkMokeiClient`:
+
+| Direction | Transport | How |
+|---|---|---|
+| mokei client → SDK server | stdio | existing `support/interop/sdk-stdio-server.ts` |
+| mokei client → SDK server | HTTP | existing `startSDK20260728HTTPServer` |
+| SDK client → mokei server | stdio | `new Client(info, { versionNegotiation: { mode: { pin: '2026-07-28' } } })` + `StdioClientTransport` from `@modelcontextprotocol/client/stdio` |
+| SDK client → mokei server | HTTP | same `Client` options + `StreamableHTTPClientTransport` |
+
+The SDK-client direction has no harness helper yet; adding one is the counterpart to
+`checkSDKClient`-style expectations and would close the matrix the spec originally planned.
+Note `serveStdio(factory, { legacy: 'reject' })` if a `2026-07-28`-only SDK stdio server is
+wanted (`server/dist/stdio.d.mts:20,61`).
 
 #### 3.2.4 Still unexercised against mokei after this branch
 
@@ -328,14 +340,15 @@ proposal.
   thing a host-level cache would add is reuse *across* contexts sharing a config — which needs a
   registry keyed by structural config identity, invalidated on a signal nobody has specified.
   Speculative work for one saved round trip.
-- **The website's `createTool(` rot.** `website/docs/quick-start.mdx` calls it positionally
-  (`createTool(description, schema, handler)`) at six sites; the real signature takes a single
-  options object (`packages/context-server/src/definitions.ts:88-95`). The same examples also use
-  `req.arguments`, where the real handler receives `req.input`. **The page's primary code example
-  therefore does not run at all**, which is worse than the "7 sites of rot" framing suggests. The
-  seventh site, `website/docs/api/context-server/index.md:500`, is stale typedoc output — the
-  source docstring it was generated from is already correct
-  (`packages/context-server/src/types.ts:177`), so it fixes itself on the next docs build.
+- ~~**The website's `createTool(` rot.**~~ **Fixed 2026-08-02, not deferred.**
+  `website/docs/quick-start.mdx` called `createTool` positionally at six sites and used
+  `req.arguments` where the real handler receives `req.input`, so the page's primary example did
+  not run at all. All six sites converted to the object form, and the example was then executed
+  verbatim end to end: `mokei inspect` against it reproduces the page's own documented
+  `discovered` output, and all three tools (`sqlite_run`, `sqlite_all`, `sqlite_get`) round-trip
+  through a real host. The 7th site, `website/docs/api/context-server/index.md:500`, is stale
+  typedoc output — the source docstring is already correct
+  (`packages/context-server/src/types.ts:177`), so it self-heals on the next docs build.
 - **The website quick-start's chat walkthrough is obsolete**, found during the same sweep and
   unrelated to protocol revisions: it documents an inquirer-style `? Select an action …` menu
   (`Add a context` / `Send a message` / `Select tools to enable`) and a `mokei chat ollama`

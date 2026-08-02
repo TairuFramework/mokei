@@ -113,14 +113,19 @@ describe('useSlashCommands — /context add', () => {
     })
   })
 
-  test('leaves the revision unset when no flag is given, so the host default applies', async () => {
+  // Killing mutation: dropping the `= 'auto'` initializer in `useSlashCommands.ts`, which
+  // leaves `protocolVersion` `undefined` and lets the host's `'2026-07-28'` default leak
+  // through. That default rejects a `2025-11-25`-only server with `-32022`, and `/context add`
+  // is the primary attach path for exactly those servers. `mokei inspect` passes `'auto'` to
+  // `.option()` for the same reason; this keeps the two defaults in step.
+  test("defaults to 'auto' when no flag is given, rather than falling through to the host", async () => {
     const { dispatch, addContext } = harness()
     await dispatch('/context add db sqlite-server')
     expect(addContext).toHaveBeenCalledWith({
       key: 'db',
       command: 'sqlite-server',
       args: [],
-      protocolVersion: undefined,
+      protocolVersion: 'auto',
     })
   })
 
