@@ -191,9 +191,11 @@ Finally, we'll start the server to handle connections from MCP clients using `se
 `serveProcess()` serves over the Standard I/O transport. Mokei also ships a Streamable HTTP
 transport — `@mokei/http-server` and `@mokei/http-client` — which is not used in this guide.
 
-`protocolVersions` declares the revisions this server serves. The chat session used later in
-this guide connects at `2026-07-28` by default, so that revision has to be listed; declaring
-`2025-11-25` alongside it also serves clients that do not speak `2026-07-28` yet.
+`protocolVersions` declares the revisions this server serves. The Mokei CLI — both
+`mokei inspect` and the chat session's `/context add` — defaults to `auto`, which probes the
+server and speaks whichever revision it serves, so either revision alone would work for this
+guide. We declare both so the server reaches clients pinned to either one, and so the
+`--protocol` examples below have something to select between.
 
 ```js title="index.js (continued)"
 serveProcess({

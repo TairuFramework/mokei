@@ -150,9 +150,13 @@ const client = await session.contextHost.addHTTPContext({
 
 The HTTP transport:
 - Implements MCP Streamable HTTP specification
-- Manages session IDs automatically via `Mcp-Session-Id` header
+- Manages session IDs automatically via the `Mcp-Session-Id` header — on `2025-11-25` only.
+  A session is established by the `initialize`/`initialized` handshake, and `2026-07-28` has
+  no handshake, so it is stateless: no session is minted and no `Mcp-Session-Id` is sent
 - Supports JSON and SSE responses
-- Includes protocol version header on all requests
+- Includes the `MCP-Protocol-Version` header once the revision is known. On `2026-07-28`
+  that is every request; on `2025-11-25` the opening `initialize` carries no version header,
+  since the revision is not negotiated until it returns
 
 ## Managing Providers
 

@@ -93,8 +93,11 @@ This spawns the server, registers its tools, and opens a card to enable/disable 
 
 Accepted values are `2026-07-28`, `2025-11-25` and `auto`. The default is `auto`, matching
 `mokei inspect`: it probes the server and speaks whichever revision it serves. Pin a
-revision to speak exactly that one — a server that does not serve the pinned revision fails
-with `Unsupported protocol version`.
+revision to speak exactly that one — a server that does not serve the pinned revision is
+refused with a `-32022` unsupported-protocol-version error. The message differs by
+direction: pinning `2026-07-28` against a `2025-11-25`-only server reports
+`Unsupported protocol version`, while pinning `2025-11-25` against a `2026-07-28`-only
+server takes the handshake path and reports `This server supports 2026-07-28`.
 
 ## `mokei inspect`
 
@@ -190,7 +193,11 @@ initialized
 }
 ```
 
-Pinning a revision the server does not serve fails with `✘ Unsupported protocol version`.
+Pinning a revision the server does not serve is refused with a `-32022`
+unsupported-protocol-version error — `✘ Unsupported protocol version` when pinning
+`2026-07-28` against a `2025-11-25`-only server, or `✘ This server supports 2026-07-28` when
+pinning `2025-11-25` against a `2026-07-28`-only one, since that direction goes through the
+`initialize` handshake.
 
 ## `mokei monitor`
 
