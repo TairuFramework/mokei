@@ -188,6 +188,13 @@ timeout only when one was passed (`if (options?.timeout != null)`), and nothing 
 `ContextClient` layer defaults one for a normal request. `DEFAULT_INITIALIZE_TIMEOUT`
 (`client.ts:434-435`) covers `#setup` only. A second `TODO` sits at `rpc.ts:225`.
 
+> **Still open, but one reachable instance closed 2026-08-02.** The path that actually produced
+> a hang was a peer sending a non-object `error.data` — legal per JSON-RPC, typed `unknown` by
+> the SDK — against a wire schema that admitted objects only. `error.data` is now unconstrained
+> (`packages/context-protocol/src/rpc.ts`), so that frame routes instead of being dropped. The
+> underlying defect is unchanged: *any* frame the validator rejects still strands its caller,
+> and only a default request timeout or an error handler on the drop path fixes that.
+
 #### 3.1.5 `ContextServer#dispose()` does not abort in-flight handler signals
 
 Handler controllers live in `#receivedRequests` and are aborted only from the
@@ -216,7 +223,7 @@ mokei-against-mokei coverage that preceded it. `Mcp-Param-*` is the same shape, 
 same code, and still has unit coverage only. The fix is not more unit tests; it is a peer that
 reads the headers (see 3.2.3).
 
-#### 3.2.2 mokei never emits the Base64 sentinel form of `Mcp-Name`
+#### 3.2.2 ~~mokei never emits the Base64 sentinel form of `Mcp-Name`~~ — **fixed 2026-08-02**
 
 A genuine conformance gap, not an unexercised option. `packages/http-client/src/transport.ts:282`
 emits the raw value: `headers['Mcp-Name'] = nameValue`, with no fallback. The sentinel encoder
@@ -226,6 +233,13 @@ form) exists but is called only from `buildParamHeaders` (`:271`), for `Mcp-Para
 The sentinel exists precisely so a name or URI that cannot survive as a raw HTTP field-value —
 non-ASCII, control characters, anything needing folding — can still be sent. A tool, prompt or
 resource URI in that class is silently mis-sent today.
+
+> **Fixed.** Worse than "mis-sent", as it turned out: `new Headers()` throws a `TypeError` on any
+> character above U+00FF, and `fetch` builds one internally, so `readResource` on such a URI came
+> back as an opaque `Request failed: Cannot convert argument to a ByteString…`. `Mcp-Name` now
+> goes through `encodeHeaderValue`. Covered by a unit test that constructs a real `Headers` (a
+> mocked `fetch` never does) and by an SDK-peer interop read of a non-ASCII resource URI, which
+> is the only place a conformant `decodeMcpParamValue` sees the sentinel.
 
 #### 3.2.3 Near-term cleanup — point `checkMokeiClient` at the SDK peer for `2026-07-28`
 
@@ -355,6 +369,113 @@ proposal.
   invocation. The CLI is now an Ink TUI driven by slash commands, and the command is
   `mokei chat --provider ollama`. Rewriting it needs a real PTY run to capture accurate output,
   which is why it was not attempted during a documentation sweep.
+
+### 3.5 Findings from the whole-plan review (filed 2026-08-02)
+
+Everything below was verified against source on `feat/mcp-2026-07-28-core` after the blocking
+fixes from that review landed. Nothing here is speculative.
+
+#### 3.5.1 `2026-07-28` over HTTP has no cancellation channel from the client
+
+The server implemented its half: `runStatelessExchange` takes the incoming `request.signal`,
+wires `onAbort` to `finish()`, and tears the throwaway `ContextServer` down when the caller hangs
+up (`packages/http-server/src/stateless.ts`). The client never hangs up. `HTTPTransport`'s
+`AbortController` (`packages/http-client/src/transport.ts`, in `#sendMessage`) is armed only for
+time-to-headers and is discarded before `#handleSSEResponse` reads the body — deliberately, so a
+long streamed tool call is not cut off mid-flight. The consequence is that an aborted `callTool`
+rejects locally while the server runs the tool to completion, and the exchange's `ContextServer`
+lives until the tool returns or the 30s timer fires.
+
+`notifications/cancelled` does not close it: on a stateless exchange it arrives as a separate
+POST, which stands up its own throwaway server and is acknowledged `202` without dispatch —
+correctly, since a sessionless POST cannot prove it owns the id it names (see
+`StatelessExchangeParams.signal`'s own comment).
+
+Design to implement: key the fetch/stream `AbortController` by outgoing request id inside
+`HTTPTransport`, and abort that entry when an outgoing `notifications/cancelled` names the id
+**and** the in-flight request's revision has `requiresHandshake === false` — derived from
+`PROTOCOLS[version]`, never a version literal. Aborting the fetch is what the server observes as
+the disconnect it already handles. Two interactions to keep in view: the read-loop serialization
+in 3.1.1 (a cancellation is not read until the handler it names has settled, so the abort is a
+no-op until that is fixed), and 3.1.5 (`dispose()` does not abort handler signals, so tearing the
+server down does not by itself stop the tool).
+
+#### 3.5.2 ~~Concurrent stateless exchanges are uncapped~~ — **fixed 2026-08-02**
+
+The session path has `maxSessions` and answers `503` past it. The stateless path had no
+analogue: every POST that declares a revision with `requiresRequestMeta` built a throwaway
+`ContextServer` with nothing counting them, and `statelessTimeoutMs` is no backstop — `settle()`
+clears the timer on the *first* write, so a tool that emits one progress notification and then
+blocks holds its server, transport and connection for as long as the client keeps reading.
+
+> **Fixed.** `HTTPHandlerParams.maxStatelessExchanges`, default
+> `DEFAULT_MAX_STATELESS_EXCHANGES` (100 — an order of magnitude below `maxSessions`, because a
+> session is one client whereas a stateless exchange is one in-flight request). Counted over the
+> `statelessTeardowns` set the handler already maintained; past the cap a POST is refused with
+> `503` and `Retry-After: 1` **before** anything is built for it. Scoped to the stateless path
+> only; the `2025-11-25` session path is untouched.
+
+#### 3.5.3 ~~`notify()` is decorated but not gated~~ — **fixed 2026-08-02**
+
+`ContextClient.notify` stamped the revision via `decorateNotification` but checked nothing
+against the revision's own notification set — `ProtocolDefinition` had lost that set when the
+notification suppression was reversed. So `client.notify('roots/list_changed', {})` type-checked
+on a `2026-07-28` client and put a frame on the wire that `PROTOCOLS['2026-07-28'].clientMessage`
+itself rejects.
+
+> **Fixed.** `ProtocolDefinition.clientNotifications` restored as the notification counterpart of
+> `clientMethods` — kept a separate set so gating requests cannot accidentally admit a
+> notification as a request — and `notify()` now refuses with `MethodNotInRevisionError`,
+> comparing the wire method (`notifications/${event}`, since `ContextRPC.notify` takes the
+> suffix). A drift guard in `packages/context-protocol/test/versions.test.ts` drives every
+> declared name through the revision's own `clientMessage` validator, so the set and the union
+> cannot diverge silently.
+
+#### 3.5.4 ~~`addHTTPContext` spells the `'2026-07-28'` default a second time~~ — **fixed 2026-08-02**
+
+`ContextHost.addHTTPContext` wrote the default revision itself instead of delegating to
+`createHostedContext`, which already applies it.
+
+> **Fixed.** It now builds its context through `createHostedContext`, leaving exactly one place
+> in `packages/host/src/host.ts` that names the default. Verified by mutation: changing that one
+> default now fails all four `defaults to 2026-07-28` tests, where before it left
+> `addHTTPContext`'s passing.
+
+#### 3.5.5 No default timeout on an ordinary request
+
+The follow-up to 3.1.4, and the general form of the bound that `setupTimeout` now restores for
+connection setup.
+`ContextRPC.request` arms a timer only when the caller passes `options.timeout`
+(`packages/context-rpc/src/rpc.ts`), and no layer above it supplies a default. Combined with the
+drop path in 3.1.4 — a frame the inbound validator rejects is discarded, not rejected — any peer
+that answers unparseably strands its caller for the lifetime of the process. `setupTimeout` now
+bounds connection setup on both revisions, so the remaining exposure is every request after it.
+Wanted: a `ClientParams`-level default request timeout, and an error handler on the drop path so
+a rejected frame fails its exchange instead of vanishing. Deliberately not built during the
+2026-08-02 fix wave — it changes the failure mode of every request on both revisions and wants
+its own task.
+
+#### 3.5.6 Transport minors
+
+- `SSEWriter`-building in `runStatelessExchange`'s `write()` has no `finished` guard, so a write
+  arriving after teardown builds a fresh SSE writer nobody will ever consume.
+- `handleStateless`'s `_requestVersion` parameter is dead.
+- `StatelessExchangeParams` is exported while `runStatelessExchange` is not.
+- `CreateHTTPClientParams.protocolVersion` shadows `HTTPTransportParams.protocolVersion` with a
+  different meaning (the revision to speak vs. the header seed), which makes the documented
+  header seed unreachable through `createHTTPClient`.
+- `MCP_NAME_HEADER_SOURCE` is a plain object literal where the lookup would be safer as a `Map`
+  or a frozen record — a body carrying `constructor` or `__proto__` as a method name cannot
+  reach it today (methods come from a fixed table), but the shape invites it.
+
+#### 3.5.7 Doc minors
+
+- Three of the six `protocolVersion` doc comments omit the "a `2025-11-25`-only server needs an
+  explicit value or `'auto'`" sentence the other three carry. `addDirectContext` is the one most
+  likely to bite, since its callers supply their own `ServerConfig` and may well be pinning the
+  older revision.
+- `packages/host/README.md`'s new protocol-version section omits `createHostedContext`,
+  `spawnHostedContext` and `ProxyHost.spawn`, all of which take the same parameter.
 
 ## Notes
 

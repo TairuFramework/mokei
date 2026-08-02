@@ -67,6 +67,23 @@ function statelessRequest(
   })
 }
 
+/** The same, for a notification: stamped `_meta`, no `id`, so no reply is expected. */
+function statelessNotification(method: string, params: Record<string, unknown> = {}): Request {
+  return new Request('http://localhost/mcp', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      'MCP-Protocol-Version': '2026-07-28',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      method,
+      params: { ...params, _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } },
+    }),
+  })
+}
+
 /** Collect the `data:` payloads of an SSE response body, ignoring priming events. */
 async function readSSEData(response: Response): Promise<Array<Record<string, unknown>>> {
   const text = await response.text()

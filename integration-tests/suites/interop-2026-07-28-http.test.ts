@@ -112,10 +112,10 @@ describe('mokei over Streamable HTTP on 2026-07-28', () => {
     // through, `runStatelessExchange` listening on `request.signal` — has no other coverage.
     // Driven with a raw `fetch` rather than a `ContextClient` so the abort is a genuine client
     // disconnect and nothing else is sent on the way out. A `ContextClient` cannot stand in
-    // here: aborting one makes it emit `notifications/cancelled`, and on this revision an
-    // outgoing notification carries no protocol version in its `_meta` (only requests are
-    // decorated), so that POST misses the sessionless route and comes back `400`. The failure
-    // would look like a bug in this test rather than what it is. Leave the raw `fetch`.
+    // here: aborting one does not hang up on the exchange at all — the transport's own
+    // `AbortController` covers time-to-headers and is discarded before the SSE body is read —
+    // so there would be no disconnect to observe, only the `notifications/cancelled` the client
+    // emits instead, which this revision has no channel to act on. Leave the raw `fetch`.
     //
     // What is observed is the throwaway `ContextServer` being disposed. The in-flight tool
     // handler's own `signal` is *not* aborted by that disposal, so a handler that ignores its
