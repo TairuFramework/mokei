@@ -14,6 +14,7 @@ import { createTool, serveProcess } from '@mokei/context-server'
 serveProcess({
   name: 'my-server',
   version: '1.0.0',
+  protocolVersions: ['2026-07-28'],
   tools: {
     greet: createTool({
       description: 'Greet a user by name',
@@ -26,7 +27,7 @@ serveProcess({
       } as const,
       handler: async (req) => {
         return {
-          content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }]
+          content: [{ type: 'text', text: `Hello, ${req.input.name}!` }]
         }
       }
     })
@@ -50,7 +51,7 @@ const tools = {
       properties: { count: { type: 'number' } },
       required: ['count'],
     } as const,
-    handler: ({ arguments: { table } }) => ({ structuredContent: { count: rowsIn(table) } }),
+    handler: ({ input: { table } }) => ({ structuredContent: { count: rowsIn(table) } }),
   }),
 }
 ```
@@ -87,7 +88,7 @@ const tools = {
     } as const,
     handler: async (req) => {
       return {
-        content: [{ type: 'text', text: `Hello, ${req.arguments.name}!` }]
+        content: [{ type: 'text', text: `Hello, ${req.input.name}!` }]
       }
     }
   })
@@ -96,6 +97,7 @@ const tools = {
 export const config = {
   name: 'my-server',
   version: '1.0.0',
+  protocolVersions: ['2026-07-28'],
   tools
 } satisfies ServerConfig
 
@@ -111,8 +113,7 @@ Import the exported types to get full type safety in your client:
 import type { MyServerTypes } from './my-server'
 import { ContextClient } from '@mokei/context-client'
 
-const client = new ContextClient<MyServerTypes>({ transport })
-await client.initialize()
+const client = new ContextClient<MyServerTypes>({ protocolVersion: '2026-07-28', transport })
 
 // TypeScript knows the exact shape of arguments!
 const result = await client.callTool({

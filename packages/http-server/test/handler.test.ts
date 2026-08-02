@@ -6,6 +6,7 @@ import { createHTTPHandler, type HTTPHandlerParams } from '../src/handler.js'
 const SERVER_CONFIG: ServerConfig = {
   name: 'test-server',
   version: '1.0.0',
+  protocolVersions: ['2025-11-25'],
   tools: {
     echo: {
       description: 'Echo input',

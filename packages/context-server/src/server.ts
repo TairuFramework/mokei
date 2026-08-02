@@ -20,6 +20,8 @@ import type {
   LoggingLevel,
   ProgressNotification,
   Prompt,
+  ProtocolDefinition,
+  ProtocolVersion,
   ServerCapabilities,
   ServerMessage,
   ServerNotifications,
@@ -28,10 +30,13 @@ import type {
   Tool,
 } from '@mokei/context-protocol'
 import {
-  clientMessage,
   INVALID_PARAMS,
-  LATEST_PROTOCOL_VERSION,
+  META_CLIENT_CAPABILITIES,
+  META_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
+  PROTOCOL_VERSIONS,
+  PROTOCOLS,
+  UNSUPPORTED_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
 import {
   ContextRPC,
@@ -39,9 +44,11 @@ import {
   splitRequestOptions,
   type WithRequestOptions,
 } from '@mokei/context-rpc'
-import { createValidator } from '@sozai/schema'
+import { createValidator, type Schema } from '@sozai/schema'
 
+import { applyCacheHints } from './cache.js'
 import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
+import { buildDiscoverResult } from './discover.js'
 import { withRequestMeta } from './trace.js'
 import type {
   ClientInitialize,
@@ -56,6 +63,7 @@ import type {
   ServerTransport,
   ToolDefinitions,
 } from './types.js'
+import { MRTRNotSupportedError } from './types.js'
 
 // cf https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1
 const LOGGING_LEVELS: Record<LoggingLevel, number> = {
@@ -69,7 +77,16 @@ const LOGGING_LEVELS: Record<LoggingLevel, number> = {
   debug: 7,
 } as const
 
-const validateClientMessage = createValidator(clientMessage)
+/**
+ * Accepts any message shape known to any registered revision, not just the revisions this
+ * instance is configured to serve: an unsupported-but-well-formed request (e.g. a `ping` on a
+ * `2026-07-28`-only server) must fail with `METHOD_NOT_FOUND`/`UNSUPPORTED_PROTOCOL_VERSION`
+ * from `#resolveProtocol` — a semantic decision — rather than `INVALID_REQUEST` from the wire
+ * parser, which cannot tell "malformed" from "not what this server was configured to speak."
+ */
+const validateClientMessage = createValidator<Schema, ClientMessage>({
+  anyOf: PROTOCOL_VERSIONS.map((version) => PROTOCOLS[version].clientMessage),
+} as Schema)
 
 export type CacheHints = {
   cacheScope?: 'public' | 'private'
@@ -79,6 +96,8 @@ export type CacheHints = {
 export type ServerConfig = {
   name: string
   version: string
+  /** Revisions this server serves. Listing both makes it serve both. */
+  protocolVersions: Array<ProtocolVersion>
   cache?: CacheHints
   complete?: CompleteHandler
   prompts?: PromptDefinitions
@@ -116,6 +135,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #clientInitialize?: ClientInitialize
   #clientLoggingLevel?: LoggingLevel
   #completeHandler?: CompleteHandler
+  #protocolVersions: Array<ProtocolVersion>
   #serverInfo: Implementation
   #promptHandlers: Record<string, GenericPromptHandler> = {}
   #promptsList: Array<Prompt> = []
@@ -134,6 +154,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     this.#cache = params.cache
     this.#completeHandler = params.complete
+    this.#protocolVersions = params.protocolVersions
     this.#serverInfo = { name: params.name, version: params.version }
 
     // Logging is always supported (the server can emit notifications/message).
@@ -175,8 +196,30 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return this.#clientInitialize
   }
 
+  /**
+   * Session-scoped log: delivered when the client opted in through `logging/setLevel`
+   * (`2025-11-25`). Also the `log` a handler gets on any revision without
+   * `requiresPerRequestLogLevel`.
+   */
   log(params: LogParams) {
+    this.#emitLog(params, this.#clientLoggingLevel)
+  }
+
+  /**
+   * Raises the `log` event, and writes `notifications/message` when `level` admits it.
+   *
+   * Emission and transmission are one call rather than an `events.on('log')` bridge because the
+   * two revisions decide delivery from different sources — a standing `logging/setLevel` on
+   * `2025-11-25`, the request's own `_meta` on `2026-07-28`. With a bridge, the per-request
+   * writer would have to emit the event to stay observable and would then get a *second*,
+   * session-scoped write on a server serving both revisions. Here every `client.log()` produces
+   * exactly one event and at most one frame, whichever revision the request came in on.
+   */
+  #emitLog(params: LogParams, level?: LoggingLevel): void {
     this.events.emit('log', params)
+    if (level != null && LOGGING_LEVELS[params.level] <= LOGGING_LEVELS[level]) {
+      void this._write({ jsonrpc: '2.0', method: 'notifications/message', params }).catch(() => {})
+    }
   }
 
   elicit(params: WithRequestOptions<ElicitRequest['params']>): Promise<ElicitResult> {
@@ -196,19 +239,6 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return this.request('sampling/createMessage', wireParams, options)
   }
 
-  _handle() {
-    this.events.on('log', (log) => {
-      // Only send log if client has opted-in and it's at least as verbose as the client has requested
-      if (
-        this.#clientLoggingLevel != null &&
-        LOGGING_LEVELS[log.level] <= LOGGING_LEVELS[this.#clientLoggingLevel]
-      ) {
-        this._write({ jsonrpc: '2.0', method: 'notifications/message', params: log })
-      }
-    })
-    super._handle()
-  }
-
   _handleNotification(notification: HandleNotification) {
     switch (notification.method) {
       case 'notifications/initialized':
@@ -217,63 +247,193 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
   }
 
-  async _handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
+  /**
+   * Resolves the protocol revision that applies to an inbound request.
+   *
+   * An `initialize` request selects the handshake revision configured on this server;
+   * anything else is resolved from the request's own `_meta`
+   * (specification/2026-07-28/basic/versioning). When `_meta` carries no protocol version,
+   * resolution falls back to the one configured revision that does not require it
+   * (`2025-11-25`) — a revision that requires `_meta` can never be inferred silently.
+   */
+  #resolveProtocol(request: ClientRequest): ProtocolDefinition {
+    if (request.method === 'initialize') {
+      const handshake = this.#protocolVersions.find(
+        (version) => PROTOCOLS[version].requiresHandshake,
+      )
+      if (handshake == null) {
+        throw new RPCError(
+          UNSUPPORTED_PROTOCOL_VERSION,
+          `This server supports ${this.#protocolVersions.join(', ')}`,
+          { supported: this.#protocolVersions, requested: 'initialize' },
+        )
+      }
+      return PROTOCOLS[handshake]
+    }
+
     const meta = (request.params as Record<string, unknown> | undefined)?._meta as
       | Record<string, unknown>
       | undefined
-    return withRequestMeta(meta, () => this.#dispatchRequest(request, signal))
+    const requested = meta?.[META_PROTOCOL_VERSION] as string | undefined
+
+    let protocol: ProtocolDefinition
+    if (requested == null) {
+      const fallback = this.#protocolVersions.find(
+        (version) => !PROTOCOLS[version].requiresRequestMeta,
+      )
+      if (fallback == null) {
+        throw new RPCError(INVALID_PARAMS, `Missing "${META_PROTOCOL_VERSION}" in request _meta`)
+      }
+      protocol = PROTOCOLS[fallback]
+    } else if (!this.#protocolVersions.includes(requested as ProtocolVersion)) {
+      throw new RPCError(UNSUPPORTED_PROTOCOL_VERSION, 'Unsupported protocol version', {
+        supported: this.#protocolVersions,
+        requested,
+      })
+    } else {
+      protocol = PROTOCOLS[requested as ProtocolVersion]
+    }
+
+    if (protocol.requiresRequestMeta && meta?.[META_CLIENT_CAPABILITIES] == null) {
+      throw new RPCError(INVALID_PARAMS, `Missing "${META_CLIENT_CAPABILITIES}" in request _meta`)
+    }
+    return protocol
   }
 
-  async #dispatchRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
+  /**
+   * Builds the `ServerClient` a request's handlers see.
+   *
+   * `createMessage`/`elicit`/`listRoots` are gated individually on whether their own method
+   * (`sampling/createMessage`/`elicitation/create`/`roots/list`) is in `protocol.serverMethods`
+   * — the method the call would actually need to send. A revision missing one rejects it with
+   * `MRTRNotSupportedError`: there is nothing on the wire to send it as, since server-initiated
+   * requests are replaced by multi round-trip requests (MRTR, SEP-2322) in that revision, which
+   * mokei does not implement yet. `log` is gated on the independent
+   * `requiresPerRequestLogLevel`: when true it scopes emission to the level this request opted
+   * into via `_meta`, instead of a standing session level.
+   *
+   * `2025-11-25` has all three methods in `serverMethods` and `requiresPerRequestLogLevel:
+   * false`, so this returns the constructor-built, session-scoped `#client` unchanged — its
+   * `log` is `ContextServer.log`, gated by `#clientLoggingLevel` (`logging/setLevel`). Any other
+   * combination builds a fresh client per request, so it can close over the request's resolved
+   * `logLevel`.
+   */
+  #createClient(protocol: ProtocolDefinition, logLevel?: LoggingLevel): ServerClient {
+    const supportsCreateMessage = protocol.serverMethods.has('sampling/createMessage')
+    const supportsElicit = protocol.serverMethods.has('elicitation/create')
+    const supportsListRoots = protocol.serverMethods.has('roots/list')
+    if (
+      supportsCreateMessage &&
+      supportsElicit &&
+      supportsListRoots &&
+      !protocol.requiresPerRequestLogLevel
+    ) {
+      return this.#client
+    }
+    return {
+      createMessage: supportsCreateMessage
+        ? this.createMessage.bind(this)
+        : () => Promise.reject(new MRTRNotSupportedError('createMessage', protocol.version)),
+      elicit: supportsElicit
+        ? this.elicit.bind(this)
+        : () => Promise.reject(new MRTRNotSupportedError('elicit', protocol.version)),
+      listRoots: supportsListRoots
+        ? this.listRoots.bind(this)
+        : () => Promise.reject(new MRTRNotSupportedError('listRoots', protocol.version)),
+      // Delivered only when this request opted in via `_meta`, at or above its level — but the
+      // `log` event is raised either way, so `server.events.on('log')` sees handler logs on
+      // every revision.
+      log: protocol.requiresPerRequestLogLevel
+        ? (params: LogParams) => this.#emitLog(params, logLevel)
+        : this.log.bind(this),
+    }
+  }
+
+  async _handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
+    const protocol = this.#resolveProtocol(request)
+    if (!protocol.clientMethods.has(request.method)) {
+      throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
+    }
+    if (request.method === 'ping') {
+      return {}
+    }
+    const meta = (request.params as Record<string, unknown> | undefined)?._meta as
+      | Record<string, unknown>
+      | undefined
+    const client = this.#createClient(protocol, protocol.readRequestMeta(request).logLevel)
+    const result = await withRequestMeta(meta, () =>
+      this.#dispatchRequest(request, protocol, client, signal),
+    )
+    const body = protocol.requiresCacheHints
+      ? applyCacheHints(request.method, result as Record<string, unknown>, this.#cache)
+      : (result as Record<string, unknown>)
+    return protocol.wrapResult(body, { serverInfo: this.#serverInfo }) as ServerResult
+  }
+
+  async #dispatchRequest(
+    request: ClientRequest,
+    protocol: ProtocolDefinition,
+    client: ServerClient,
+    signal: AbortSignal,
+  ): Promise<ServerResult> {
     switch (request.method) {
       case 'completion/complete':
         if (this.#completeHandler == null) {
           break
         }
-        return await this.#completeHandler({ client: this.#client, params: request.params, signal })
+        return await this.#completeHandler({ client, params: request.params, signal })
       case 'initialize':
         this.#clientInitialize = request.params
         this.events.emit('initialize', request.params)
         return {
           capabilities: this.#capabilities,
-          protocolVersion: LATEST_PROTOCOL_VERSION,
+          protocolVersion: protocol.version,
           serverInfo: this.#serverInfo,
         } satisfies InitializeResult
       case 'logging/setLevel':
         this.#clientLoggingLevel = request.params.level
         return {}
       case 'prompts/get':
-        return await this.#getPrompt(request, signal)
+        return await this.#getPrompt(request, client, signal)
       case 'prompts/list':
         return { prompts: this.#promptsList, ...this.#cache }
       case 'resources/list':
         if (this.#resources == null) {
           break
         }
-        return this.#resources.list({ client: this.#client, params: request.params, signal })
+        return this.#resources.list({ client, params: request.params, signal })
       case 'resources/read':
         if (this.#resources == null) {
           break
         }
-        return this.#resources.read({ client: this.#client, params: request.params, signal })
+        return this.#resources.read({ client, params: request.params, signal })
       case 'resources/templates/list':
         if (this.#resources == null) {
           break
         }
         return this.#resources.listTemplates({
-          client: this.#client,
+          client,
           params: request.params,
           signal,
         })
+      case 'server/discover':
+        return buildDiscoverResult({
+          capabilities: this.#capabilities,
+          protocolVersions: this.#protocolVersions,
+        })
       case 'tools/call':
-        return await this.#callTool(request, signal)
+        return await this.#callTool(request, client, signal)
       case 'tools/list':
         return { tools: this.#toolsList, ...this.#cache }
     }
     throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
   }
 
-  async #callTool(request: CallToolRequest, signal: AbortSignal): Promise<CallToolResult> {
+  async #callTool(
+    request: CallToolRequest,
+    client: ServerClient,
+    signal: AbortSignal,
+  ): Promise<CallToolResult> {
     const name = request.params.name
     const handler = Object.hasOwn(this.#toolHandlers, name) ? this.#toolHandlers[name] : undefined
     if (handler == null) {
@@ -292,7 +452,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         // The wire calls it `arguments` (MCP `tools/call`); handlers receive it as `input`,
         // the thing the tool's `inputSchema` describes.
         input: request.params.arguments ?? {},
-        client: this.#client,
+        client,
         progress,
         signal,
       })
@@ -314,7 +474,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
   }
 
-  async #getPrompt(request: GetPromptRequest, signal: AbortSignal): Promise<GetPromptResult> {
+  async #getPrompt(
+    request: GetPromptRequest,
+    client: ServerClient,
+    signal: AbortSignal,
+  ): Promise<GetPromptResult> {
     const name = request.params.name
     const handler = Object.hasOwn(this.#promptHandlers, name)
       ? this.#promptHandlers[name]
@@ -322,7 +486,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (handler == null) {
       throw new RPCError(INVALID_PARAMS, `Prompt ${name} not found`)
     }
-    return await handler({ input: request.params.arguments, client: this.#client, signal })
+    return await handler({ input: request.params.arguments, client, signal })
   }
 }
 

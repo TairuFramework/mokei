@@ -1,5 +1,30 @@
+import {
+  isSupportedProtocolVersion,
+  PROTOCOL_VERSIONS,
+  type ProtocolVersion,
+} from '@mokei/context-protocol'
 import { withSocketPath as tejikaWithSocketPath } from '@tejika/cli'
 import type { Command } from 'commander'
+
+/**
+ * The accepted `--protocol` values, spelled for a human. Derived from `PROTOCOL_VERSIONS` so
+ * adding a revision cannot leave the help text and the error message behind; `auto` is appended
+ * separately because it is not a revision.
+ */
+const PROTOCOL_CHOICES = `${PROTOCOL_VERSIONS.join(', ')} or auto`
+
+export const PROTOCOL_OPTION_DESCRIPTION = `protocol revision to speak: ${PROTOCOL_CHOICES}`
+
+/**
+ * Validates a user-supplied protocol revision. Without this the value would reach the client as
+ * an unchecked cast and surface as an obscure internal failure rather than a usage error.
+ */
+export function parseProtocolOption(value: string): ProtocolVersion | 'auto' {
+  if (value === 'auto' || isSupportedProtocolVersion(value)) {
+    return value
+  }
+  throw new Error(`Unsupported protocol revision "${value}": expected ${PROTOCOL_CHOICES}`)
+}
 
 export function withChatOptions(cmd: Command): Command {
   return cmd

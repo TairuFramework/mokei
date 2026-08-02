@@ -143,54 +143,65 @@ Providing a `description` to each property allows to provide information about h
 
 #### Tool definitions
 
-Using our `toolInputSchema` defined above, we'll now define the tools using the `createTool` function, which takes a description, input schema, and handler function:
+Using our `toolInputSchema` defined above, we'll now define the tools using the `createTool` function, which takes an options object with a description, input schema, and handler function:
 
 ```js title="index.js (continued)"
 const tools = {
-  sqlite_all: createTool(
-    'This method executes a prepared statement and returns all results as an array of objects',
-    toolInputSchema,
-    (req) => {
-      const results = db.prepare(req.arguments.sql).all(req.arguments.parameters ?? {})
+  sqlite_all: createTool({
+    description:
+      'This method executes a prepared statement and returns all results as an array of objects',
+    inputSchema: toolInputSchema,
+    handler: (req) => {
+      const results = db.prepare(req.input.sql).all(req.input.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
     },
-  ),
-  sqlite_get: createTool(
-    'This method executes a prepared statement and returns the first result as an object',
-    toolInputSchema,
-    (req) => {
-      const result = db.prepare(req.arguments.sql).get(req.arguments.parameters ?? {})
+  }),
+  sqlite_get: createTool({
+    description:
+      'This method executes a prepared statement and returns the first result as an object',
+    inputSchema: toolInputSchema,
+    handler: (req) => {
+      const result = db.prepare(req.input.sql).get(req.input.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
     },
-  ),
-  sqlite_run: createTool(
-    'This method executes a prepared statement and returns an object summarizing the resulting changes',
-    toolInputSchema,
-    (req) => {
-      const changes = db.prepare(req.arguments.sql).run(req.arguments.parameters ?? {})
+  }),
+  sqlite_run: createTool({
+    description:
+      'This method executes a prepared statement and returns an object summarizing the resulting changes',
+    inputSchema: toolInputSchema,
+    handler: (req) => {
+      const changes = db.prepare(req.input.sql).run(req.input.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
     },
-  ),
+  }),
 }
 ```
 
 Here we define 3 tools, approximately matching some of the APIs provided by [Node.js' SQLite module](https://nodejs.org/docs/latest/api/sqlite.html).
 
-Each tool is created with `createTool()` which takes:
-- A `description` to inform the LLM about usage
-- An `inputSchema` defining the expected input format
-- A handler function that receives `req.arguments` with the validated input
+Each tool is created with `createTool()`, which takes a single options object:
+- `description`, to inform the LLM about usage
+- `inputSchema`, defining the expected input format
+- `handler`, a function that receives `req.input` with the validated input
 
 #### MCP server
 
 Finally, we'll start the server to handle connections from MCP clients using `serveProcess()`.
 
-The Mokei server and client libraries currently only support the Standard I/O transport.
+`serveProcess()` serves over the Standard I/O transport. Mokei also ships a Streamable HTTP
+transport — `@mokei/http-server` and `@mokei/http-client` — which is not used in this guide.
+
+`protocolVersions` declares the revisions this server serves. The Mokei CLI — both
+`mokei inspect` and the chat session's `/context add` — defaults to `auto`, which probes the
+server and speaks whichever revision it serves, so either revision alone would work for this
+guide. We declare both so the server reaches clients pinned to either one, and so the
+`--protocol` examples below have something to select between.
 
 ```js title="index.js (continued)"
 serveProcess({
   name: 'sqlite',
   version: '0.1.0',
+  protocolVersions: ['2026-07-28', '2025-11-25'],
   tools,
 })
 ```
@@ -231,35 +242,39 @@ const toolInputSchema = {
 }
 
 const tools = {
-  sqlite_all: createTool(
-    'This method executes a prepared statement and returns all results as an array of objects',
-    toolInputSchema,
-    (req) => {
-      const results = db.prepare(req.arguments.sql).all(req.arguments.parameters ?? {})
+  sqlite_all: createTool({
+    description:
+      'This method executes a prepared statement and returns all results as an array of objects',
+    inputSchema: toolInputSchema,
+    handler: (req) => {
+      const results = db.prepare(req.input.sql).all(req.input.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(results) }], isError: false }
     },
-  ),
-  sqlite_get: createTool(
-    'This method executes a prepared statement and returns the first result as an object',
-    toolInputSchema,
-    (req) => {
-      const result = db.prepare(req.arguments.sql).get(req.arguments.parameters ?? {})
+  }),
+  sqlite_get: createTool({
+    description:
+      'This method executes a prepared statement and returns the first result as an object',
+    inputSchema: toolInputSchema,
+    handler: (req) => {
+      const result = db.prepare(req.input.sql).get(req.input.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
     },
-  ),
-  sqlite_run: createTool(
-    'This method executes a prepared statement and returns an object summarizing the resulting changes',
-    toolInputSchema,
-    (req) => {
-      const changes = db.prepare(req.arguments.sql).run(req.arguments.parameters ?? {})
+  }),
+  sqlite_run: createTool({
+    description:
+      'This method executes a prepared statement and returns an object summarizing the resulting changes',
+    inputSchema: toolInputSchema,
+    handler: (req) => {
+      const changes = db.prepare(req.input.sql).run(req.input.parameters ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(changes) }], isError: false }
     },
-  ),
+  }),
 }
 
 serveProcess({
   name: 'sqlite',
   version: '0.1.0',
+  protocolVersions: ['2026-07-28', '2025-11-25'],
   tools,
 })
 ```
@@ -270,19 +285,60 @@ serveProcess({
 
 Now that we have implemented a MCP server, let's see if we can interact with it!
 
-As a sanity check, we will use the Mokei CLI to simply run the [`initialize` request](https://spec.modelcontextprotocol.io/specification/2024-11-05/basic/lifecycle/#initialization) on the server to ensure the server can initialize as expected:
+As a sanity check, we will use the Mokei CLI to ask the server to describe itself:
 
 ```sh
-mokei context inspect node -- index.js
+mokei inspect node index.js
 ```
 
-The terminal should display the following output:
+`inspect` defaults to `--protocol auto`, which probes the server and speaks whichever
+revision it serves — here `2026-07-28`, so it prints the server's
+[`server/discover`](https://modelcontextprotocol.io/specification/2026-07-28) result:
 
 ```sh
-✔ Initialized
+discovered
 {
-  "capabilities": {},
-  "protocolVersion": "2024-11-05",
+  "ttlMs": 0,
+  "cacheScope": "private",
+  "capabilities": {
+    "logging": {},
+    "tools": {
+      "listChanged": true
+    }
+  },
+  "supportedVersions": [
+    "2026-07-28",
+    "2025-11-25"
+  ],
+  "resultType": "complete",
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "sqlite",
+      "version": "0.1.0"
+    }
+  }
+}
+```
+
+`supportedVersions` echoes back the `protocolVersions` we declared. Pass
+`--protocol 2025-11-25` to run the older revision's
+[`initialize` handshake](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle#initialization)
+instead:
+
+```sh
+mokei inspect --protocol 2025-11-25 node index.js
+```
+
+```sh
+initialized
+{
+  "capabilities": {
+    "logging": {},
+    "tools": {
+      "listChanged": true
+    }
+  },
+  "protocolVersion": "2025-11-25",
   "serverInfo": {
     "name": "sqlite",
     "version": "0.1.0"
@@ -295,7 +351,7 @@ The terminal should display the following output:
 To start a monitor, simply use the Mokei CLI to run a local HTTP server, optionally providing the `port` you want the server to listen on:
 
 ```sh
-mokei context monitor --port 8000
+mokei monitor --port 8000
 ```
 
 Then open the URL in your Web browser, assuming the server is listening on port `8000`:
@@ -420,10 +476,8 @@ Once your setup is working, edit the `claude_desktop_config.json` file to add yo
     "sqlite": {
       "command": "mokei",
       "args": [
-        "context",
         "proxy",
         "node",
-        "--",
         "/path/to/your/mokei-quick-start/index.js"
       ]
     }

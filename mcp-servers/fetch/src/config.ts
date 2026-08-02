@@ -97,6 +97,10 @@ export function createFetchConfig(options: FetchToolsOptions = {}) {
   return {
     name: 'fetch',
     version: '0.1.0',
+    // Both revisions: these ship with mokei and are what its host and CLI point at by
+    // default, so they must answer a `2026-07-28` client — while still reaching every
+    // client that only speaks `2025-11-25`, including the current SDK release.
+    protocolVersions: ['2026-07-28', '2025-11-25'],
     tools: createFetchTools(options),
   } as const satisfies ServerConfig
 }
@@ -109,7 +113,7 @@ export function createFetchConfig(options: FetchToolsOptions = {}) {
  * import type { FetchServerTypes } from '@mokei/mcp-fetch'
  * import { ContextClient } from '@mokei/context-client'
  *
- * const client = new ContextClient<FetchServerTypes>({ transport })
+ * const client = new ContextClient<FetchServerTypes>({ protocolVersion: '2025-11-25', transport })
  * ```
  */
 export type FetchServerTypes = ExtractServerTypes<ReturnType<typeof createFetchConfig>>

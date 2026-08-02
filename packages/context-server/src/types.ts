@@ -17,6 +17,7 @@ import type {
   ListRootsRequest,
   ListRootsResult,
   LoggingLevel,
+  ProtocolVersion,
   ReadResourceRequest,
   ReadResourceResult,
   Resource,
@@ -39,6 +40,16 @@ export type LogParams = {
 }
 
 export type LogFunction = (params: LogParams) => void
+
+/** Thrown when a handler reaches for a client capability that 2026-07-28 routes through MRTR. */
+export class MRTRNotSupportedError extends Error {
+  constructor(method: string, version: ProtocolVersion) {
+    super(
+      `${method} is not available on protocol version ${version}: server-initiated requests are replaced by multi round-trip requests (SEP-2322), which mokei does not implement yet`,
+    )
+    this.name = 'MRTRNotSupportedError'
+  }
+}
 
 export type ServerClient = {
   createMessage: (
@@ -226,7 +237,7 @@ export type ExtractPromptTypes<T extends PromptDefinitions> = {
  * } satisfies ServerConfig
  *
  * type MyServerTypes = ExtractServerTypes<typeof config>
- * const client = new ContextClient<MyServerTypes>({ transport })
+ * const client = new ContextClient<MyServerTypes>({ protocolVersion: '2025-11-25', transport })
  * ```
  */
 export type ExtractServerTypes<T extends { tools?: ToolDefinitions; prompts?: PromptDefinitions }> =

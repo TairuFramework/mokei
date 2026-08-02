@@ -1,6 +1,5 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { CallToolResult, ClientMessage, ServerMessage, Tool } from '@mokei/context-protocol'
-import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import type {
   AggregatedMessage,
   FunctionToolCall,
@@ -173,68 +172,94 @@ async function createMockSessionWithTools(
   // Create a mock server transport pair
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
 
-  // Set up a simple server that handles initialize and tool calls
+  // A mock server that dispatches on method rather than on message order, so it serves both
+  // `2025-11-25` (`initialize` handshake) and `2026-07-28` (`server/discover` probe, no
+  // handshake) and stays correct whatever revision the host's client speaks.
   const serverLoop = async () => {
     const transport = transports.server
+    const serverInfo = { name: 'MockServer', version: '1.0.0' }
+    const toolsList = tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: { type: 'object' },
+    }))
 
-    // Handle initialize
-    const initReq = await transport.read()
-    if (!initReq.done) {
-      transport.write({
-        jsonrpc: '2.0',
-        id: (initReq.value as { id: number }).id,
-        result: {
-          capabilities: { tools: {} },
-          protocolVersion: LATEST_PROTOCOL_VERSION,
-          serverInfo: { name: 'MockServer', version: '1.0.0' },
-        },
-      })
+    // Mirrors `PROTOCOL.wrapResult` for whichever revision the client turns out to speak:
+    // identity on `2025-11-25`, and on `2026-07-28` a `resultType` plus `_meta` serverInfo
+    // stamped onto *every* result, not just the `server/discover` one. The first message the
+    // client sends settles it — `initialize` means `2025-11-25`, `server/discover` means
+    // `2026-07-28` — exactly as a real server's per-connection protocol does.
+    let wrapResult = (value: Record<string, unknown>): Record<string, unknown> => value
+    const wrapForCurrentRevision = (value: Record<string, unknown>): Record<string, unknown> => ({
+      ...value,
+      resultType: 'complete',
+      _meta: {
+        ...((value._meta as Record<string, unknown> | undefined) ?? {}),
+        'io.modelcontextprotocol/serverInfo': serverInfo,
+      },
+    })
 
-      // Wait for initialized notification
-      await transport.read()
+    const respond = (id: number, result: Record<string, unknown>) => {
+      transport.write({ jsonrpc: '2.0', id, result: wrapResult(result) })
+    }
 
-      // Handle tools/list
-      const toolsReq = await transport.read()
-      if (!toolsReq.done) {
-        transport.write({
-          jsonrpc: '2.0',
-          id: (toolsReq.value as { id: number }).id,
-          result: {
-            tools: tools.map((t) => ({
-              name: t.name,
-              description: t.description,
-              inputSchema: { type: 'object' },
-            })),
-          },
-        })
-      }
+    while (true) {
+      const req = await transport.read()
+      if (req.done) break
 
-      // Handle tool calls
-      while (true) {
-        const req = await transport.read()
-        if (req.done) break
-
-        const request = req.value as { id: number; method: string; params?: { name: string } }
-        if (request.method === 'tools/call') {
+      const request = req.value as { id: number; method: string; params?: { name: string } }
+      switch (request.method) {
+        case 'initialize':
+          // `2025-11-25` wraps nothing, so `wrapResult` stays the identity it starts as.
+          respond(request.id, {
+            capabilities: { tools: {} },
+            protocolVersion: '2025-11-25',
+            serverInfo,
+          })
+          break
+        case 'server/discover':
+          wrapResult = wrapForCurrentRevision
+          respond(request.id, {
+            capabilities: { tools: {} },
+            supportedVersions: ['2026-07-28', '2025-11-25'],
+          })
+          break
+        // Sent only under `2025-11-25`; it carries no id and expects no reply.
+        case 'notifications/initialized':
+          break
+        case 'tools/list':
+          respond(request.id, { tools: toolsList })
+          break
+        case 'tools/call': {
           const tool = tools.find((t) => t.name === request.params?.name)
+          const unknownToolResult: CallToolResult = {
+            content: [{ type: 'text', text: 'Unknown tool' }],
+          }
+          const toolResult = (tool?.result ?? unknownToolResult) as unknown as Record<
+            string,
+            unknown
+          >
           if (tool?.delayMs != null) {
             const timer = setTimeout(() => {
-              transport.write({
-                jsonrpc: '2.0',
-                id: request.id,
-                result: tool.result,
-              })
+              respond(request.id, toolResult)
             }, tool.delayMs)
             // Allow the process to exit even if a stalled response is still pending.
             ;(timer as { unref?: () => void }).unref?.()
           } else {
-            transport.write({
-              jsonrpc: '2.0',
-              id: request.id,
-              result: tool?.result ?? { content: [{ type: 'text', text: 'Unknown tool' }] },
-            })
+            respond(request.id, toolResult)
           }
+          break
         }
+        // Without this, an unhandled method gets no reply at all and the client hangs to the
+        // suite timeout. A real JSON-RPC error turns any future desync — a revision that adds
+        // a method, say — into an immediate, legible failure instead of a mystery timeout.
+        default:
+          transport.write({
+            jsonrpc: '2.0',
+            id: request.id,
+            error: { code: -32601, message: `Unsupported method: ${request.method}` },
+          })
+          break
       }
     }
   }

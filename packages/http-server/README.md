@@ -14,6 +14,11 @@ pnpm add @mokei/http-server
 
 ## Usage
 
+Both protocol revisions are served. A `2025-11-25` client gets a session (`Mcp-Session-Id`,
+resumable GET stream, `DELETE` to terminate); a `2026-07-28` client is handled statelessly —
+no session is minted, `GET` and `DELETE` return `405`, and each request is answered by its
+own short-lived `ContextServer`. List both revisions in `protocolVersions` to reach both.
+
 `serveHTTP` starts an HTTP server (via `@hono/node-server`) that bridges each session
 to a `ContextServer` you create per connection:
 
@@ -26,7 +31,13 @@ const { server, dispose } = serveHTTP({
   hostname: '127.0.0.1',
   path: '/mcp',
   createServer: (transport) =>
-    new ContextServer({ transport, name: 'my-server', version: '1.0.0', tools }),
+    new ContextServer({
+      transport,
+      name: 'my-server',
+      version: '1.0.0',
+      protocolVersions: ['2026-07-28', '2025-11-25'],
+      tools,
+    }),
 })
 
 // Later, to shut down:
@@ -41,7 +52,13 @@ import { createHTTPHandler } from '@mokei/http-server'
 
 const handler = createHTTPHandler({
   createServer: (transport) =>
-    new ContextServer({ transport, name: 'my-server', version: '1.0.0', tools }),
+    new ContextServer({
+      transport,
+      name: 'my-server',
+      version: '1.0.0',
+      protocolVersions: ['2026-07-28', '2025-11-25'],
+      tools,
+    }),
   allowedOrigins: ['https://app.example.com'],
 })
 

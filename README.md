@@ -68,7 +68,7 @@ const response = await session.chat({
 
 ```bash
 mokei monitor            # Start the monitor UI for MCP server traffic
-mokei inspect            # Inspect an MCP server (prints its initialize result)
+mokei inspect            # Inspect an MCP server (prints how it describes itself)
 mokei chat -p openai     # Interactive chat
 ```
 

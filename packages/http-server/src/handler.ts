@@ -2,12 +2,20 @@ import { Transport } from '@enkaku/transport'
 import {
   type ClientMessage,
   isSupportedProtocolVersion,
+  PROTOCOLS,
+  type ProtocolVersion,
   type ServerMessage,
 } from '@mokei/context-protocol'
 import type { ContextServer, ServerTransport } from '@mokei/context-server'
 
 import { appendReplay, eventsAfter, type Session, SessionManager } from './session.js'
+import { createSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.js'
 import { type SSEEvent, SSEWriter } from './sse-writer.js'
+import {
+  DEFAULT_STATELESS_TIMEOUT_MS,
+  readRequestProtocolVersion,
+  runStatelessExchange,
+} from './stateless.js'
 
 export type HTTPHandlerParams = {
   createServer: (transport: ServerTransport) => ContextServer
@@ -24,10 +32,35 @@ export type HTTPHandlerParams = {
   replayBufferSize?: number
   /** Maximum accepted POST body size in bytes (default: 4 MiB). Oversized bodies get a 413. */
   maxBodyBytes?: number
+  /**
+   * How long a stateless `2026-07-28` exchange waits for its server to respond
+   * (default: 30000).
+   */
+  statelessTimeoutMs?: number
+  /**
+   * How many stateless exchanges may be in flight at once (default:
+   * {@link DEFAULT_MAX_STATELESS_EXCHANGES}). Past the cap a POST is refused with `503` before
+   * anything is built for it.
+   *
+   * The session path's `maxSessions` has no reach here — a stateless exchange has no session —
+   * and `statelessTimeoutMs` is not a substitute: that timer is cleared by the first thing the
+   * server writes, so a tool that emits one progress notification and then blocks holds its
+   * throwaway `ContextServer`, transport and connection for as long as the caller keeps reading.
+   */
+  maxStatelessExchanges?: number
 }
 
 /** Default maximum accepted POST body size, in bytes (4 MiB). */
 export const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024
+
+/**
+ * Default cap on concurrent stateless exchanges.
+ *
+ * An order of magnitude below `maxSessions`' 1000 on purpose: a session is one *client*, whereas
+ * a stateless exchange is one in-flight *request*, and each holds a whole `ContextServer` for as
+ * long as its handler runs. Raise it deliberately for a server fronting many concurrent callers.
+ */
+export const DEFAULT_MAX_STATELESS_EXCHANGES = 100
 
 export type HTTPHandler = {
   handleRequest: (request: Request) => Promise<Response>
@@ -57,51 +90,6 @@ function isServerResponse(message: Record<string, unknown>): boolean {
 
 function isServerRequestOrNotification(message: Record<string, unknown>): boolean {
   return 'method' in message
-}
-
-/**
- * Create a stream pair for SSE output. The writable side accepts strings
- * (SSE-formatted text), and the readable side produces Uint8Array chunks
- * suitable for use as a Response body.
- */
-function createSSEStream(): {
-  readable: ReadableStream<Uint8Array>
-  writable: WritableStream<string>
-} {
-  const encoder = new TextEncoder()
-  let controller!: ReadableStreamDefaultController<Uint8Array>
-  let closed = false
-
-  const readable = new ReadableStream<Uint8Array>({
-    start(c) {
-      controller = c
-    },
-    cancel() {
-      closed = true
-    },
-  })
-
-  const writable = new WritableStream<string>({
-    write(chunk) {
-      if (!closed) {
-        controller.enqueue(encoder.encode(chunk))
-      }
-    },
-    close() {
-      if (!closed) {
-        closed = true
-        controller.close()
-      }
-    },
-    abort(reason) {
-      if (!closed) {
-        closed = true
-        controller.error(reason)
-      }
-    },
-  })
-
-  return { readable, writable }
 }
 
 /**
@@ -177,10 +165,18 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     maxSessions = 1000,
     replayBufferSize = 100,
     maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
+    statelessTimeoutMs = DEFAULT_STATELESS_TIMEOUT_MS,
+    maxStatelessExchanges = DEFAULT_MAX_STATELESS_EXCHANGES,
   } = params
 
   // Map session IDs to their transport bridges
   const bridges = new Map<string, TransportBridge>()
+
+  // Teardown handles for the stateless exchanges currently in flight, so shutting the
+  // handler down ends them instead of leaving their throwaway servers un-disposed and
+  // their callers waiting on the timeout. A keyless set on purpose: these handles are
+  // shutdown bookkeeping, never addressable by anything a client sends.
+  const statelessTeardowns = new Set<() => void>()
 
   // Map session IDs to promises that resolve when a specific request ID gets a response
   // Used for the initialize flow where we need to capture the response synchronously
@@ -317,6 +313,31 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       return new Response('Invalid JSON', { status: 400 })
     }
 
+    // Revisions that require per-request `_meta` carry their version in the request itself
+    // and have no session, so they are served statelessly and any `Mcp-Session-Id` on them
+    // is ignored, per the specification. The gate is `requiresRequestMeta` rather than the
+    // mere presence of the `_meta` key: a session-based request is free to stamp that key
+    // too, and pulling it off its session onto a throwaway server would silently discard
+    // all of its session state.
+    const requestVersion = readRequestProtocolVersion(body)
+    if (
+      requestVersion != null &&
+      PROTOCOLS[requestVersion as ProtocolVersion]?.requiresRequestMeta
+    ) {
+      const headerVersion = request.headers.get('MCP-Protocol-Version')
+      // An absent header is accepted: the body's `_meta` is what `ContextServer` resolves
+      // the revision from, so the header is redundant confirmation for intermediaries. A
+      // header that *contradicts* the body is rejected — one of the two is wrong, and
+      // guessing which would let a stale proxy silently reroute a request.
+      if (headerVersion != null && headerVersion !== requestVersion) {
+        return new Response(
+          `MCP-Protocol-Version header "${headerVersion}" does not match request _meta "${requestVersion}"`,
+          { status: 400 },
+        )
+      }
+      return await handleStateless(request, body, requestVersion)
+    }
+
     const sessionID = request.headers.get('Mcp-Session-Id')
 
     // Initialize request: no session ID and message is 'initialize'
@@ -369,15 +390,58 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
 
       return new Response(readable, {
         status: 200,
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-        },
+        headers: SSE_RESPONSE_HEADERS,
       })
     }
 
     return new Response('Invalid message', { status: 400 })
+  }
+
+  async function handleStateless(
+    request: Request,
+    body: Record<string, unknown>,
+    _requestVersion: string,
+  ): Promise<Response> {
+    const rawID = body.id
+    const requestID: string | number | null =
+      typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
+
+    // Refused before dispatch, mirroring the session path's `maxSessions` gate —
+    // `statelessTeardowns` holds exactly the exchanges currently in flight, and `Retry-After: 1`
+    // because the condition is transient by construction: the cap frees as handlers return.
+    //
+    // Gated on `requestID != null`, and therefore placed after the id is parsed rather than at
+    // the top of this function: an id-less frame occupies no slot. `runStatelessExchange`
+    // acknowledges it `202` and finishes it before `onStart` ever registers a teardown, so
+    // refusing one at the cap would reject work the cap is not protecting anything from.
+    //
+    // Note what `requestID` actually tests: the presence of `body.id`, not the frame's kind. A
+    // *response* carries an id, so it would take a slot and hold it until the exchange times
+    // out. That is unreachable rather than handled — `handlePOST` routes here only on a
+    // `params._meta` protocol version, and a response has no `params` at all, so one never
+    // arrives. Anything that made responses routable would have to revisit this.
+    if (requestID != null && statelessTeardowns.size >= maxStatelessExchanges) {
+      return new Response('Too many stateless exchanges', {
+        status: 503,
+        headers: { 'Retry-After': '1' },
+      })
+    }
+
+    return await runStatelessExchange({
+      message: body as unknown as ClientMessage,
+      requestID,
+      createServer,
+      replayBufferSize,
+      timeoutMs: statelessTimeoutMs,
+      // The client hanging up is a stateless exchange's only cancellation channel.
+      signal: request.signal,
+      onStart: (teardown) => {
+        statelessTeardowns.add(teardown)
+      },
+      onEnd: (teardown) => {
+        statelessTeardowns.delete(teardown)
+      },
+    })
   }
 
   async function handleInitialize(message: ClientMessage): Promise<Response> {
@@ -450,6 +514,15 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     if (!validateProtocolVersion(request)) {
       return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
     }
+    // A revision with no handshake has no session to attach a stream to, and its
+    // request-scoped notifications travel on that request's own POST response, so there is
+    // nothing a GET stream could carry. Keyed on the header because a GET has no body; an
+    // unrecognised or absent header leaves `protocol` nullish and falls through to the
+    // session lookup below, which is what keeps a header-less `2025-11-25` GET working.
+    const protocol = PROTOCOLS[request.headers.get('MCP-Protocol-Version') as ProtocolVersion]
+    if (protocol != null && !protocol.requiresHandshake) {
+      return new Response('Method not allowed', { status: 405 })
+    }
 
     const sessionID = request.headers.get('Mcp-Session-Id')
     if (sessionID == null) {
@@ -496,11 +569,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
 
     return new Response(readable, {
       status: 200,
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
+      headers: SSE_RESPONSE_HEADERS,
     })
   }
 
@@ -510,6 +579,13 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     }
     if (!validateProtocolVersion(request)) {
       return new Response('Unsupported MCP-Protocol-Version', { status: 400 })
+    }
+    // DELETE exists only to terminate a session, and a session is what a handshake
+    // establishes: a revision without one never creates anything to terminate. Nullish for
+    // an unrecognised or absent header, which falls through to the session lookup below.
+    const protocol = PROTOCOLS[request.headers.get('MCP-Protocol-Version') as ProtocolVersion]
+    if (protocol != null && !protocol.requiresHandshake) {
+      return new Response('Method not allowed', { status: 405 })
     }
 
     const sessionID = request.headers.get('Mcp-Session-Id')
@@ -553,6 +629,12 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       closeBridge(sessionID)
     }
     initWaiters.clear()
+
+    // Iterate a copy: each teardown removes its own handle from the set as it runs.
+    for (const teardown of [...statelessTeardowns]) {
+      teardown()
+    }
+    statelessTeardowns.clear()
   }
 
   return { handleRequest, dispose }

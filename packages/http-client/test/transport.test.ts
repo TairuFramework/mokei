@@ -1,5 +1,4 @@
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
-import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { isSessionExpiredCode, SESSION_EXPIRED_CODE } from '../src/errors.js'
@@ -58,12 +57,17 @@ function errorResponse(status: number, text: string): Response {
 
 const TEST_URL = 'http://localhost:3000/mcp'
 
+// The shared handshake fixtures name `2025-11-25` explicitly rather than tracking
+// `LATEST_PROTOCOL_VERSION`. Sessions, the GET notification stream and the terminating DELETE
+// all belong to the revision that keeps the `initialize`/`initialized` handshake, so a suite
+// that negotiates the latest revision and then exercises them would encode a connection no
+// server can serve.
 const initializeRequest: ClientMessage = {
   jsonrpc: '2.0',
   id: 1,
   method: 'initialize',
   params: {
-    protocolVersion: LATEST_PROTOCOL_VERSION,
+    protocolVersion: '2025-11-25',
     capabilities: {},
     clientInfo: { name: 'test', version: '1.0' },
   },
@@ -73,7 +77,7 @@ const initializeResult: ServerMessage = {
   jsonrpc: '2.0',
   id: 1,
   result: {
-    protocolVersion: LATEST_PROTOCOL_VERSION,
+    protocolVersion: '2025-11-25',
     capabilities: {},
     serverInfo: { name: 'test-server', version: '1.0' },
   },
@@ -95,6 +99,21 @@ const pingResult: ServerMessage = {
   id: 2,
   result: {},
 } as ServerMessage
+
+/** Protocol `_meta` a `2026-07-28` client puts on every request. */
+const requestMeta20260728 = {
+  'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+  'io.modelcontextprotocol/clientCapabilities': {},
+}
+
+function request20260728(id: number): ClientMessage {
+  return {
+    jsonrpc: '2.0',
+    id,
+    method: 'tools/list',
+    params: { _meta: { ...requestMeta20260728 } },
+  } as ClientMessage
+}
 
 const progressNotification: ClientMessage = {
   jsonrpc: '2.0',
@@ -140,7 +159,7 @@ describe('HTTPTransport', () => {
   })
 
   describe('POST sends correct headers and body', () => {
-    test('sends Content-Type, Accept, and MCP-Protocol-Version headers', async () => {
+    test('sends Content-Type and Accept headers', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
 
       const transport = new HTTPTransport({ url: TEST_URL })
@@ -152,7 +171,6 @@ describe('HTTPTransport', () => {
       expect(options.method).toBe('POST')
       expect(options.headers['Content-Type']).toBe('application/json')
       expect(options.headers.Accept).toBe('application/json, text/event-stream')
-      expect(options.headers['MCP-Protocol-Version']).toBe(LATEST_PROTOCOL_VERSION)
       expect(JSON.parse(options.body)).toEqual(initializeRequest)
 
       await transport.dispose()
@@ -161,8 +179,8 @@ describe('HTTPTransport', () => {
 
   describe('negotiated MCP-Protocol-Version header', () => {
     test('after initialize, requests send the negotiated MCP-Protocol-Version', async () => {
-      // Use an older protocol version to prove the value comes from the initialize response,
-      // not from LATEST_PROTOCOL_VERSION (which is '2025-11-25').
+      // A version no fixture and no constant in this file mentions, so the header can only
+      // have come from the initialize response.
       const negotiatedVersion = '2024-11-05'
       const negotiatedInitResult: ServerMessage = {
         jsonrpc: '2.0',
@@ -181,16 +199,155 @@ describe('HTTPTransport', () => {
 
       const transport = new HTTPTransport({ url: TEST_URL })
 
-      // The initialize POST must still use LATEST_PROTOCOL_VERSION (negotiation hasn't happened yet)
+      // The initialize POST carries no version: nothing has told the transport which
+      // revision it speaks yet, and the request itself does not declare one.
       await transport.write(initializeRequest)
       await transport.read()
-      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe(
-        LATEST_PROTOCOL_VERSION,
-      )
+      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBeUndefined()
 
       // A subsequent request must use the negotiated version captured from the initialize response
       await transport.write(pingRequest)
       expect(fetchMock.mock.calls[1][1].headers['MCP-Protocol-Version']).toBe(negotiatedVersion)
+
+      await transport.dispose()
+    })
+  })
+
+  describe('MCP-Protocol-Version header', () => {
+    test('is omitted before any revision is known', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+
+      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBeUndefined()
+
+      await transport.dispose()
+    })
+
+    test('uses the constructor seed before any revision is known', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL, protocolVersion: '2024-11-05' })
+      await transport.write(initializeRequest)
+
+      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe('2024-11-05')
+
+      await transport.dispose()
+    })
+
+    test('is taken from the request _meta on 2026-07-28', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe('2026-07-28')
+
+      await transport.dispose()
+    })
+
+    test('the request _meta wins over the negotiated version', async () => {
+      // A single transport may carry both revisions. The version a message declares must
+      // describe that message, never the last handshake the transport happened to see.
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            protocolVersion: '2025-11-25',
+            capabilities: {},
+            serverInfo: { name: 'test-server', version: '1.0' },
+          },
+        }),
+      )
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+      await transport.read()
+      await transport.write(request20260728(2))
+
+      expect(fetchMock.mock.calls[1][1].headers['MCP-Protocol-Version']).toBe('2026-07-28')
+
+      await transport.dispose()
+    })
+
+    test('no session header is sent on a 2026-07-28 request', async () => {
+      // The server hands back a session id anyway; the transport must not echo it on a
+      // request that declares a revision without sessions.
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(pingResult, { 'Mcp-Session-Id': 'leaked-session' }),
+      )
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+      await transport.write(request20260728(2))
+
+      expect(fetchMock.mock.calls[1][1].headers['Mcp-Session-Id']).toBeUndefined()
+
+      await transport.dispose()
+    })
+
+    test('a 2025-11-25 request on the same transport keeps its session header', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          {
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              protocolVersion: '2025-11-25',
+              capabilities: {},
+              serverInfo: { name: 'test-server', version: '1.0' },
+            },
+          },
+          { 'Mcp-Session-Id': 'session-kept' },
+        ),
+      )
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+      await transport.read()
+      await transport.write(request20260728(3))
+      await transport.write(pingRequest)
+
+      expect(fetchMock.mock.calls[1][1].headers['Mcp-Session-Id']).toBeUndefined()
+      expect(fetchMock.mock.calls[2][1].headers['Mcp-Session-Id']).toBe('session-kept')
+
+      await transport.dispose()
+    })
+
+    test('never opens a GET stream or sends Last-Event-ID on 2026-07-28', async () => {
+      // The first response is an SSE stream carrying an event id, so the transport really
+      // does hold a `#lastEventID` by the time the later requests go out. Without it the
+      // `Last-Event-ID` assertion below would be vacuous: there would be nothing to resume
+      // from, and any resumption code added to the POST path would still find nothing to send.
+      fetchMock.mockImplementationOnce(async () =>
+        sseResponse([{ data: JSON.stringify(pingResult), id: 'evt-1' }]),
+      )
+      fetchMock.mockImplementation(async () => jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+      // Reading the streamed message proves the SSE handler ran, which is what records the
+      // event id — it does so before enqueuing.
+      await transport.read()
+      expect(transport.lastEventID).toBe('evt-1')
+      for (const id of [2, 3]) {
+        await transport.write(request20260728(id))
+      }
+
+      // The GET reconnect loop and `Last-Event-ID` resumption belong to a session, which
+      // this revision never has. Nothing should have opened one.
+      const calls = fetchMock.mock.calls as Array<FetchCall>
+      // `every` is vacuously true over an empty list; pin the count so a transport that
+      // stopped sending altogether cannot pass.
+      expect(calls.length).toBe(3)
+      expect(calls.every((call) => call[1].method === 'POST')).toBe(true)
+      expect(calls.every((call) => call[1].headers['Last-Event-ID'] == null)).toBe(true)
 
       await transport.dispose()
     })
@@ -317,6 +474,214 @@ describe('HTTPTransport', () => {
       expect(isSessionExpiredCode(frame.error?.code)).toBe(true)
       // And: transport.sessionID is now null
       expect(transport.sessionID).toBeNull()
+
+      await transport.dispose()
+    })
+  })
+
+  describe('non-OK responses carrying a JSON-RPC error', () => {
+    test('a 400 with a matching JSON-RPC error is surfaced with its own code and data', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            error: {
+              code: -32022,
+              message: 'Unsupported protocol version',
+              data: { supported: ['2025-11-25'], requested: '2026-07-28' },
+            },
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as {
+        id?: number
+        error?: { code?: number; message?: string; data?: { supported?: Array<string> } }
+      }
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32022)
+      expect(frame.error?.message).toBe('Unsupported protocol version')
+      expect(frame.error?.data?.supported).toEqual(['2025-11-25'])
+
+      // The carried error rejects only its own request; the transport stays usable.
+      await transport.write(pingRequest)
+      const { value: value2 } = await transport.read()
+      expect(value2).toEqual(pingResult)
+
+      await transport.dispose()
+    })
+
+    // `error.data` is whatever the answering server chose to put there — the SDK types it as
+    // `unknown` and JSON-RPC constrains it not at all. `parseJSONRPCError` must therefore accept
+    // every shape the RPC layer's inbound validator does, or the frame is *dropped* there rather
+    // than rejected and the caller of a `2026-07-28` `tools/call` waits forever, because nothing
+    // times an ordinary request out. This half asserts the transport passes the frame through
+    // verbatim; that the validator admits the same shapes is asserted in
+    // `packages/context-protocol/test/lib.test.ts`, and that the pair does not strand a caller
+    // in `packages/context-client/test/lib.test.ts`.
+    test.each([
+      ['a string', 'only 2025-11-25'],
+      ['null', null],
+      ['an array', ['2025-11-25']],
+      ['a number', 1],
+    ])('a 400 whose error.data is %s reaches the caller', async (_label, data) => {
+      const carried = {
+        jsonrpc: '2.0',
+        id: 1,
+        error: { code: -32022, message: 'Unsupported protocol version', data },
+      }
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify(carried), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      expect(value).toEqual(carried)
+
+      await transport.dispose()
+    })
+
+    test('a 400 with an unparseable body still fails the request', async () => {
+      // Several of a server's `400` bodies are plain text, not JSON. Parsing must not throw
+      // and must not leave the request hanging.
+      fetchMock.mockResolvedValueOnce(errorResponse(400, 'Mcp-Session-Id header required'))
+      fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
+      expect(frame.error?.message).toContain('Mcp-Session-Id header required')
+
+      await transport.write(pingRequest)
+      const { value: value2 } = await transport.read()
+      expect(value2).toEqual(pingResult)
+
+      await transport.dispose()
+    })
+
+    test('a 400 naming a different request is not routed to this one', async () => {
+      // Passing through an error frame whose id belongs to another request would reject the
+      // wrong caller and leave this one waiting forever.
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 99,
+            error: { code: -32022, message: 'Unsupported protocol version' },
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
+
+      await transport.dispose()
+    })
+
+    // A frame the RPC layer's inbound validator would reject is dropped there, not rejected,
+    // and no timeout covers an ordinary request — so enqueuing one strands its caller. Each of
+    // these bodies is a valid-looking error frame missing exactly one member that validator
+    // requires, and each must come back as the synthesized fallback instead.
+    test('a 400 whose error carries no code falls back', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { message: 'x' } }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
+
+      await transport.dispose()
+    })
+
+    test('a 400 whose error carries no message falls back', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32022 } }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
+
+      await transport.dispose()
+    })
+
+    test('a 400 whose body omits jsonrpc falls back', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 1, error: { code: -32022, message: 'x' } }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
+
+      await transport.dispose()
+    })
+
+    test('a 400 whose JSON body carries no error member falls back', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(1)
+      expect(frame.error?.code).toBe(-32603)
+      expect(frame.error?.message).toContain('HTTP 400')
 
       await transport.dispose()
     })
@@ -554,6 +919,78 @@ describe('HTTPTransport', () => {
     await transport.dispose()
   })
 
+  test('POST derives Mcp-Name from each method’s own source field', async () => {
+    // `resources/read` names its subject in `uri`, not `name`. A client reading `params.name`
+    // for every method sends no header at all here, which a conformant peer rejects outright.
+    const cases: Array<{ method: string; params: Record<string, unknown>; expected: string }> = [
+      { method: 'prompts/get', params: { name: 'greet' }, expected: 'greet' },
+      { method: 'resources/read', params: { uri: 'test://greeting' }, expected: 'test://greeting' },
+    ]
+    for (const [index, { method, params, expected }] of cases.entries()) {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ jsonrpc: '2.0', id: index, result: {} }))
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write({ jsonrpc: '2.0', id: index, method, params } as ClientMessage)
+      const [, init] = getCallByMethod(fetchMock.mock.calls, 'POST')
+      expect(init.headers['Mcp-Method']).toBe(method)
+      expect(init.headers['Mcp-Name']).toBe(expected)
+      await transport.dispose()
+      fetchMock.mockClear()
+    }
+  })
+
+  test('POST Base64-wraps an Mcp-Name a header value cannot carry raw', async () => {
+    // A resource URI is unconstrained text, but an HTTP header value is a ByteString: assigning
+    // one raw makes the `new Headers()` that `fetch` builds internally throw, and the read comes
+    // back as an opaque send failure instead of the resource. `fetchMock` never constructs a
+    // `Headers`, so this test builds one itself — without that, an ASCII-only fixture and a
+    // mocked `fetch` between them can assert the header's *value* while never exercising the one
+    // constraint that makes the raw form illegal.
+    const uri = 'file:///Users/paul/文档/notes.md'
+    const contents = [{ uri, mimeType: 'text/plain', text: 'notes' }]
+    fetchMock.mockResolvedValueOnce(jsonResponse({ jsonrpc: '2.0', id: 1, result: { contents } }))
+
+    const transport = new HTTPTransport({ url: TEST_URL })
+    await transport.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'resources/read',
+      params: { uri },
+    } as ClientMessage)
+
+    const [, init] = getCallByMethod(fetchMock.mock.calls, 'POST')
+    const headerValue = new Headers(init.headers).get('Mcp-Name') as string
+    expect(headerValue).toMatch(/^=\?base64\?.+\?=$/)
+    // What a conformant peer compares against `params.uri` is the *decoded* value, so the round
+    // trip is the assertion that matters, not the wrapper's shape alone. Decoded the way the
+    // SDK's own `decodeMcpParamValue` does: Base64 to bytes, bytes to UTF-8.
+    const bytes = Uint8Array.from(atob(headerValue.slice(9, -2)), (char) => char.charCodeAt(0))
+    expect(new TextDecoder().decode(bytes)).toBe(uri)
+
+    // And the read itself succeeds rather than failing inside the send.
+    const { value } = await transport.read()
+    expect(value).toEqual({ jsonrpc: '2.0', id: 1, result: { contents } })
+
+    await transport.dispose()
+  })
+
+  test('POST omits Mcp-Name for a method that does not require it', async () => {
+    // Only the three methods the specification lists carry the header. A `name` in the params
+    // of any other method is an ordinary argument and must not be mirrored into a header a
+    // peer would then cross-check.
+    fetchMock.mockResolvedValueOnce(jsonResponse({ jsonrpc: '2.0', id: 1, result: { tools: [] } }))
+    const transport = new HTTPTransport({ url: TEST_URL })
+    await transport.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+      params: { name: 'search' },
+    } as ClientMessage)
+    const [, init] = getCallByMethod(fetchMock.mock.calls, 'POST')
+    expect(init.headers['Mcp-Method']).toBe('tools/list')
+    expect(init.headers['Mcp-Name']).toBeUndefined()
+    await transport.dispose()
+  })
+
   describe('x-mcp-header param injection', () => {
     const listRequest: ClientMessage = {
       jsonrpc: '2.0',
@@ -749,7 +1186,7 @@ describe('HTTPTransport', () => {
 
       const getCall = getCallByMethod(fetchMock.mock.calls, 'GET')
       expect(getCall[1].headers.Accept).toBe('text/event-stream')
-      expect(getCall[1].headers['MCP-Protocol-Version']).toBe(LATEST_PROTOCOL_VERSION)
+      expect(getCall[1].headers['MCP-Protocol-Version']).toBe('2025-11-25')
       expect(getCall[1].headers['Mcp-Session-Id']).toBe('session-hdr')
 
       await transport.dispose()

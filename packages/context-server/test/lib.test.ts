@@ -17,6 +17,7 @@ import {
   createPrompt,
   createTool,
   type GenericToolDefinition,
+  MRTRNotSupportedError,
   type Schema,
   type ServerParams,
 } from '../src/index.js'
@@ -28,7 +29,7 @@ type TestContext = {
 
 type TestContextParams = Omit<ServerParams, 'name' | 'transport' | 'version'>
 
-function createTestContext(params: TestContextParams = {}): TestContext {
+function createTestContext(params: TestContextParams): TestContext {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const server = new ContextServer({
     name: 'test',
@@ -78,12 +79,12 @@ const expectedClient = {
 
 describe('ContextServer', () => {
   test('supports initialization lifecycle', async () => {
-    const { server, transports } = createTestContext()
+    const { server, transports } = createTestContext({ protocolVersions: ['2025-11-25'] })
 
     const params = {
       capabilities: {},
       clientInfo: { name: 'mokei', version: '0.0.0' },
-      protocolVersion: LATEST_PROTOCOL_VERSION,
+      protocolVersion: '2025-11-25',
     }
 
     transports.client.write({
@@ -102,7 +103,7 @@ describe('ContextServer', () => {
         id: 1,
         result: {
           capabilities: { logging: {} },
-          protocolVersion: LATEST_PROTOCOL_VERSION,
+          protocolVersion: '2025-11-25',
           serverInfo: { name: 'test', version: '0.0.0' },
         },
       },
@@ -117,7 +118,7 @@ describe('ContextServer', () => {
   })
 
   test('supports sending logs', async () => {
-    const { server, transports } = createTestContext()
+    const { server, transports } = createTestContext({ protocolVersions: ['2025-11-25'] })
     const serverLogs: Array<Log> = []
     server.events.on('log', (log) => {
       serverLogs.push(log)
@@ -199,7 +200,7 @@ describe('ContextServer', () => {
   })
 
   test('supports outgoing roots list requests', async () => {
-    const { server, transports } = createTestContext()
+    const { server, transports } = createTestContext({ protocolVersions: ['2025-11-25'] })
     const roots = [{ name: 'test', url: 'test://test' }]
 
     const responsePromise = server.listRoots()
@@ -215,7 +216,7 @@ describe('ContextServer', () => {
   })
 
   test('supports outgoing sampling messages requests', async () => {
-    const { server, transports } = createTestContext()
+    const { server, transports } = createTestContext({ protocolVersions: ['2025-11-25'] })
 
     const params: CreateMessageRequest['params'] = {
       messages: [{ role: 'user', content: { type: 'text', text: 'hello' } }],
@@ -240,7 +241,7 @@ describe('ContextServer', () => {
   })
 
   test('supports outgoing elicit requests', async () => {
-    const { server, transports } = createTestContext()
+    const { server, transports } = createTestContext({ protocolVersions: ['2025-11-25'] })
 
     const params: ElicitRequest['params'] = {
       message: 'Run this test?',
@@ -267,7 +268,7 @@ describe('ContextServer', () => {
   })
 
   test('outgoing request transport options never reach the wire', async () => {
-    const { server, transports } = createTestContext()
+    const { server, transports } = createTestContext({ protocolVersions: ['2025-11-25'] })
 
     const params: ElicitRequest['params'] = {
       message: 'Run this test?',
@@ -305,7 +306,7 @@ describe('ContextServer', () => {
 
     const complete = vi.fn(() => ({ completion }))
     await expectServerResult(
-      { complete },
+      { protocolVersions: ['2025-11-25'], complete },
       { method: 'completion/complete', params },
       { completion },
     )
@@ -320,6 +321,7 @@ describe('ContextServer', () => {
     test('lists available prompts', async () => {
       await expectServerResult(
         {
+          protocolVersions: ['2025-11-25'],
           prompts: {
             foo: createPrompt({
               description: 'prompt foo',
@@ -365,6 +367,7 @@ describe('ContextServer', () => {
     test('gets a prompt', async () => {
       await expectServerResult(
         {
+          protocolVersions: ['2025-11-25'],
           prompts: {
             hello: createPrompt({
               description: 'Hello prompt',
@@ -409,6 +412,7 @@ describe('ContextServer', () => {
     test('validates prompt arguments', async () => {
       await expectServerError(
         {
+          protocolVersions: ['2025-11-25'],
           prompts: {
             hello: createPrompt({
               description: 'Hello prompt',
@@ -457,6 +461,7 @@ describe('ContextServer', () => {
 
       await expectServerResult(
         {
+          protocolVersions: ['2025-11-25'],
           resources: {
             list: () => ({ resources }),
             read: () => ({ contents: [] }),
@@ -475,6 +480,7 @@ describe('ContextServer', () => {
 
       await expectServerResult(
         {
+          protocolVersions: ['2025-11-25'],
           resources: {
             list: resources,
             read: () => ({ contents: [] }),
@@ -493,6 +499,7 @@ describe('ContextServer', () => {
 
       await expectServerResult(
         {
+          protocolVersions: ['2025-11-25'],
           resources: {
             listTemplates: () => ({ resourceTemplates }),
             read: () => ({ contents: [] }),
@@ -511,6 +518,7 @@ describe('ContextServer', () => {
 
       await expectServerResult(
         {
+          protocolVersions: ['2025-11-25'],
           resources: {
             listTemplates: resourceTemplates,
             read: () => ({ contents: [] }),
@@ -524,6 +532,7 @@ describe('ContextServer', () => {
     test('reads a resources', async () => {
       await expectServerResult(
         {
+          protocolVersions: ['2025-11-25'],
           resources: {
             read: ({ params }) => {
               return { contents: [{ uri: params.uri, text: 'test resource' }] }
@@ -539,6 +548,7 @@ describe('ContextServer', () => {
   describe('Error codes (MCP draft alignment)', () => {
     test('unknown tool returns INVALID_PARAMS (-32602)', async () => {
       const { transports } = createTestContext({
+        protocolVersions: ['2025-11-25'],
         tools: {
           known: createTool({
             description: 'x',
@@ -562,6 +572,7 @@ describe('ContextServer', () => {
   describe('Cache hints on lists', () => {
     test('tools/list includes configured ttlMs and cacheScope', async () => {
       const { transports } = createTestContext({
+        protocolVersions: ['2025-11-25'],
         cache: { ttlMs: 60000, cacheScope: 'public' },
         tools: {
           a: createTool({
@@ -587,6 +598,7 @@ describe('ContextServer', () => {
     test('tools/list returns tools sorted by name', async () => {
       const noop = async () => ({ content: [] as [] })
       const { transports } = createTestContext({
+        protocolVersions: ['2025-11-25'],
         tools: {
           charlie: createTool({ description: 'c', inputSchema: { type: 'object' }, handler: noop }),
           alpha: createTool({ description: 'a', inputSchema: { type: 'object' }, handler: noop }),
@@ -617,6 +629,7 @@ describe('ContextServer', () => {
 
     // Server WITH a complete handler — logging and completions must both appear
     const { transports: t1 } = createTestContext({
+      protocolVersions: ['2025-11-25'],
       complete: async () => ({ completion: { values: [] } }),
     })
     t1.client.write({
@@ -633,7 +646,7 @@ describe('ContextServer', () => {
     await t1.dispose()
 
     // Server WITHOUT a complete handler — logging present, completions absent
-    const { transports: t2 } = createTestContext({})
+    const { transports: t2 } = createTestContext({ protocolVersions: ['2025-11-25'] })
     t2.client.write({
       jsonrpc: '2.0' as const,
       id: 1,
@@ -650,6 +663,7 @@ describe('ContextServer', () => {
 
   test('declares listChanged:true for tools/prompts/resources it serves', async () => {
     const { transports } = createTestContext({
+      protocolVersions: ['2025-11-25'],
       tools: {
         a: createTool({
           description: 'a',
@@ -691,6 +705,7 @@ describe('ContextServer', () => {
   describe('Progress emitter', () => {
     test('handler can emit progress when a progressToken is provided', async () => {
       const { transports } = createTestContext({
+        protocolVersions: ['2025-11-25'],
         tools: {
           work: createTool({
             description: 'work',
@@ -731,6 +746,7 @@ describe('ContextServer', () => {
   describe('inherited-prop tool/prompt lookup', () => {
     test('tools/call with an inherited prop name returns not found', async () => {
       const { transports } = createTestContext({
+        protocolVersions: ['2025-11-25'],
         tools: {
           real: createTool({
             description: 'real',
@@ -752,6 +768,7 @@ describe('ContextServer', () => {
 
     test('prompts/get with an inherited prop name returns not found', async () => {
       const { transports } = createTestContext({
+        protocolVersions: ['2025-11-25'],
         prompts: {
           real: {
             description: 'real prompt',
@@ -781,6 +798,7 @@ describe('ContextServer', () => {
   describe('isError results (SEP-1303)', () => {
     test('tool handler exception becomes an isError result', async () => {
       const { transports } = createTestContext({
+        protocolVersions: ['2025-11-25'],
         tools: {
           boom: createTool({
             description: 'boom',
@@ -807,6 +825,7 @@ describe('ContextServer', () => {
 
     test('input-validation error becomes an isError result', async () => {
       const { transports } = createTestContext({
+        protocolVersions: ['2025-11-25'],
         tools: {
           strict: createTool({
             description: 'strict',
@@ -827,7 +846,7 @@ describe('ContextServer', () => {
     })
 
     test('unknown tool stays a JSON-RPC error', async () => {
-      const { transports } = createTestContext({ tools: {} })
+      const { transports } = createTestContext({ protocolVersions: ['2025-11-25'], tools: {} })
       transports.client.write({
         jsonrpc: '2.0',
         id: 1,
@@ -850,6 +869,7 @@ describe('ContextServer', () => {
 
     test('a structuredContent violation crosses the wire as INTERNAL_ERROR', async () => {
       const { transports } = createTestContext({
+        protocolVersions: ['2025-11-25'],
         tools: {
           counter: createTool({
             description: 'counts',
@@ -876,6 +896,7 @@ describe('ContextServer', () => {
 
     test('a missing structuredContent crosses the wire as INTERNAL_ERROR', async () => {
       const { transports } = createTestContext({
+        protocolVersions: ['2025-11-25'],
         tools: {
           counter: createTool({
             description: 'counts',
@@ -901,6 +922,7 @@ describe('ContextServer', () => {
     test('validates a tool whose inputSchema declares the 2020-12 dialect', async () => {
       await expectServerResult(
         {
+          protocolVersions: ['2025-11-25'],
           tools: {
             coords: createTool({
               description: 'coords',
@@ -932,6 +954,7 @@ describe('ContextServer', () => {
     test('lists available tools', async () => {
       await expectServerResult(
         {
+          protocolVersions: ['2025-11-25'],
           tools: {
             test: createTool({
               description: 'test tool',
@@ -986,6 +1009,7 @@ describe('ContextServer', () => {
     test('executes tool call handler', async () => {
       await expectServerResult(
         {
+          protocolVersions: ['2025-11-25'],
           tools: {
             test: createTool({
               description: 'test',
@@ -1014,6 +1038,7 @@ describe('ContextServer', () => {
     test('validates tool call inputs', async () => {
       // Input-validation errors are reported as isError results (SEP-1303), not JSON-RPC errors.
       const { transports } = createTestContext({
+        protocolVersions: ['2025-11-25'],
         tools: {
           test: createTool({
             description: 'test',
@@ -1042,6 +1067,369 @@ describe('ContextServer', () => {
       })
       await transports.dispose()
     })
+  })
+})
+
+const NEW_META = {
+  'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+  'io.modelcontextprotocol/clientCapabilities': {},
+}
+
+const echoTool = createTool({
+  description: 'Echo the input back',
+  inputSchema: { type: 'object' },
+  handler: async () => ({ content: [{ type: 'text', text: 'echo' }] }),
+})
+
+const echoToolInfo = {
+  description: 'Echo the input back',
+  inputSchema: { type: 'object' },
+}
+
+const greetPrompt = createPrompt({
+  description: 'Greets the caller',
+  argumentsSchema: { type: 'object' },
+  handler: () => ({
+    messages: [{ role: 'assistant', content: { type: 'text', text: 'hi' } }],
+  }),
+})
+
+describe('protocol version resolution', () => {
+  test('answers ping on 2025-11-25 and rejects it on 2026-07-28', async () => {
+    await expectServerResult({ protocolVersions: ['2025-11-25'] }, { method: 'ping' }, {})
+    await expectServerError(
+      { protocolVersions: ['2026-07-28'] },
+      { method: 'ping', params: { _meta: NEW_META } },
+      { code: -32601, message: 'Unsupported method: ping' },
+    )
+  })
+
+  test('rejects a 2026-07-28 request missing required _meta with -32602', async () => {
+    await expectServerError(
+      { protocolVersions: ['2026-07-28'] },
+      { method: 'tools/list', params: {} },
+      {
+        code: -32602,
+        message: 'Missing "io.modelcontextprotocol/protocolVersion" in request _meta',
+      },
+    )
+  })
+
+  test('rejects an unsupported version with -32022 listing supported versions', async () => {
+    await expectServerError(
+      { protocolVersions: ['2026-07-28'] },
+      {
+        method: 'tools/list',
+        params: {
+          _meta: {
+            'io.modelcontextprotocol/protocolVersion': '1900-01-01',
+            'io.modelcontextprotocol/clientCapabilities': {},
+          },
+        },
+      },
+      {
+        code: -32022,
+        message: 'Unsupported protocol version',
+        data: { supported: ['2026-07-28'], requested: '1900-01-01' },
+      },
+    )
+  })
+
+  test('serves both revisions when configured for both', async () => {
+    const { transports } = createTestContext({
+      protocolVersions: ['2026-07-28', '2025-11-25'],
+      tools: { echo: echoTool },
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        capabilities: {},
+        clientInfo: { name: 'test', version: '0.0.0' },
+        protocolVersion: '2025-11-25',
+      },
+    } as ClientRequest)
+    const initialized = await transports.client.read()
+    expect(
+      (initialized.value as { result: { protocolVersion: string } }).result.protocolVersion,
+    ).toBe('2025-11-25')
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/list',
+      params: { _meta: NEW_META },
+    } as ClientRequest)
+    const listed = await transports.client.read()
+    expect((listed.value as unknown as { result: { resultType: string } }).result.resultType).toBe(
+      'complete',
+    )
+
+    await transports.dispose()
+  })
+})
+
+describe('server/discover', () => {
+  test('server/discover advertises the configured versions, capabilities and identity', async () => {
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28', '2025-11-25'], tools: { echo: echoTool } },
+      { method: 'server/discover', params: { _meta: NEW_META } },
+      {
+        resultType: 'complete',
+        supportedVersions: ['2026-07-28', '2025-11-25'],
+        capabilities: { logging: {}, tools: { listChanged: true } },
+        ttlMs: 0,
+        cacheScope: 'private',
+        _meta: {
+          'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' },
+        },
+      },
+    )
+  })
+
+  test('a 2025-11-25 result carries no resultType and no serverInfo _meta', async () => {
+    await expectServerResult(
+      { protocolVersions: ['2025-11-25'], tools: { echo: echoTool } },
+      { method: 'tools/list' },
+      { tools: [{ name: 'echo', ...echoToolInfo }] },
+    )
+  })
+})
+
+const noisyTool = createTool({
+  description: 'Logs while running',
+  inputSchema: { type: 'object', properties: {} },
+  handler: ({ client }) => {
+    client.log({ level: 'warning', data: 'from the tool' })
+    return { content: [{ type: 'text', text: 'ok' }] }
+  },
+})
+
+const asksTool = createTool({
+  description: 'Needs the client',
+  inputSchema: { type: 'object', properties: {} },
+  handler: async ({ client }) => {
+    await client.createMessage({ messages: [], maxTokens: 1 })
+    return { content: [] }
+  },
+})
+
+describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', () => {
+  test('2026-07-28 emits log notifications only for requests carrying logLevel', async () => {
+    const { transports } = createTestContext({
+      protocolVersions: ['2026-07-28'],
+      tools: { noisy: noisyTool },
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'noisy', arguments: {}, _meta: NEW_META },
+    } as ClientRequest)
+    // With no logLevel opted in, the first message back is the result itself.
+    const silent = await transports.client.read()
+    expect((silent.value as { id: number }).id).toBe(1)
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'noisy',
+        arguments: {},
+        _meta: { ...NEW_META, 'io.modelcontextprotocol/logLevel': 'warning' },
+      },
+    } as ClientRequest)
+    // With logLevel opted in, the notification precedes the result.
+    const notified = await transports.client.read()
+    expect((notified.value as { method: string }).method).toBe('notifications/message')
+
+    // The tool call itself still completes normally after the notification.
+    const completed = await transports.client.read()
+    expect(completed.value).toMatchObject({
+      id: 2,
+      result: { content: [{ type: 'text', text: 'ok' }] },
+    })
+
+    await transports.dispose()
+  })
+
+  // The refusal itself is derived from `serverMethods`, so it will fire for any future revision
+  // that also drops the server-initiated requests. The message has to name that revision rather
+  // than the one that happened to introduce the restriction.
+  test('MRTRNotSupportedError names the revision it was raised for', () => {
+    expect(new MRTRNotSupportedError('sampling/createMessage', '2025-11-25').message).toContain(
+      '2025-11-25',
+    )
+  })
+
+  // `ServerEvents.log` is an exported observability surface: a handler's log has to reach it on
+  // every revision, whether or not the request opted into wire delivery.
+  test('2026-07-28 still emits the log event for handler logs', async () => {
+    const { server, transports } = createTestContext({
+      protocolVersions: ['2026-07-28'],
+      tools: { noisy: noisyTool },
+    })
+    const observed: Array<Log> = []
+    server.events.on('log', (log) => {
+      observed.push(log)
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'noisy', arguments: {}, _meta: NEW_META },
+    } as ClientRequest)
+    await transports.client.read()
+
+    expect(observed).toEqual([{ level: 'warning', data: 'from the tool' }])
+
+    await transports.dispose()
+  })
+
+  // The hazard the event emission opens up: on a server serving both revisions, a `2025-11-25`
+  // peer can have set a standing `#clientLoggingLevel`, so a per-request log that both emits the
+  // event and relies on a session-scoped bridge to write would put two identical
+  // `notifications/message` frames on the wire for one `client.log()` call.
+  test('a dual-revision server writes one notification per handler log', async () => {
+    const { transports } = createTestContext({
+      protocolVersions: ['2026-07-28', '2025-11-25'],
+      tools: { noisy: noisyTool },
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'logging/setLevel',
+      params: { level: 'debug' },
+    } as ClientRequest)
+    await expect(transports.client.read()).resolves.toMatchObject({ value: { id: 1, result: {} } })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'noisy',
+        arguments: {},
+        _meta: { ...NEW_META, 'io.modelcontextprotocol/logLevel': 'warning' },
+      },
+    } as ClientRequest)
+
+    const notified = await transports.client.read()
+    expect(notified.value).toMatchObject({ method: 'notifications/message' })
+    // The next frame must be the result, not a second copy of the same log.
+    const completed = await transports.client.read()
+    expect(completed.value).toMatchObject({ id: 2 })
+
+    await transports.dispose()
+  })
+
+  test('2026-07-28 tool handlers cannot reach the client until MRTR lands', async () => {
+    const { transports } = createTestContext({
+      protocolVersions: ['2026-07-28'],
+      tools: { asks: asksTool },
+    })
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'asks', arguments: {}, _meta: NEW_META },
+    } as ClientRequest)
+    const response = await transports.client.read()
+    // A tool-execution failure is reported inside the result, not as a protocol error.
+    const result = (
+      response.value as { result: { isError: boolean; content: Array<{ text: string }> } }
+    ).result
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('2026-07-28')
+    await transports.dispose()
+  })
+})
+
+describe('mandatory caching hints (2026-07-28)', () => {
+  const cacheableConfig: TestContextParams = {
+    protocolVersions: ['2026-07-28'],
+    tools: { echo: echoTool },
+    prompts: { greet: greetPrompt },
+    resources: {
+      list: [{ uri: 'test://greeting', name: 'greeting' }],
+      read: () => ({ contents: [{ uri: 'test://greeting', text: 'hi' }] }),
+    },
+  }
+
+  test('2026-07-28 emits caching hints on every cacheable list-shaped method', async () => {
+    for (const method of [
+      'server/discover',
+      'tools/list',
+      'prompts/list',
+      'resources/list',
+      'resources/templates/list',
+    ]) {
+      const { transports } = createTestContext(cacheableConfig)
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method,
+        params: { _meta: NEW_META },
+      } as ClientRequest)
+      const response = await transports.client.read()
+      const result = (response.value as { result: Record<string, unknown> }).result
+      expect(result.ttlMs, method).toBe(0)
+      expect(result.cacheScope, method).toBe('private')
+      await transports.dispose()
+    }
+  })
+
+  test('2026-07-28 emits caching hints on resources/read', async () => {
+    const { transports } = createTestContext(cacheableConfig)
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'resources/read',
+      params: { uri: 'test://greeting', _meta: NEW_META },
+    } as ClientRequest)
+    const response = await transports.client.read()
+    const result = (response.value as { result: Record<string, unknown> }).result
+    expect(result.ttlMs).toBe(0)
+    expect(result.cacheScope).toBe('private')
+    expect(result.contents).toEqual([{ uri: 'test://greeting', text: 'hi' }])
+    await transports.dispose()
+  })
+
+  test('2026-07-28 honors configured cache hints', async () => {
+    const { transports } = createTestContext({
+      ...cacheableConfig,
+      cache: { ttlMs: 300_000, cacheScope: 'public' },
+    })
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+      params: { _meta: NEW_META },
+    } as ClientRequest)
+    const response = await transports.client.read()
+    const result = (response.value as { result: Record<string, unknown> }).result
+    expect(result.ttlMs).toBe(300_000)
+    expect(result.cacheScope).toBe('public')
+    await transports.dispose()
+  })
+
+  test('2025-11-25 emits caching hints only when configured', async () => {
+    const { transports } = createTestContext({
+      ...cacheableConfig,
+      protocolVersions: ['2025-11-25'],
+    })
+    transports.client.write({ jsonrpc: '2.0', id: 1, method: 'resources/list' } as ClientRequest)
+    const response = await transports.client.read()
+    const result = (response.value as { result: Record<string, unknown> }).result
+    expect(result.ttlMs).toBeUndefined()
+    expect(result.cacheScope).toBeUndefined()
+    await transports.dispose()
   })
 })
 
@@ -1184,6 +1572,7 @@ describe('tool outputSchema', () => {
 
   test('outputSchema is advertised in tools/list', async () => {
     const { transports } = createTestContext({
+      protocolVersions: ['2025-11-25'],
       tools: {
         counter: createTool({
           description: 'counts',

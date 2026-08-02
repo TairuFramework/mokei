@@ -2,8 +2,10 @@
 
 End-to-end suites that drive real processes: MCP servers over stdio and Streamable HTTP,
 the official SDK v2 as an interop peer, the `mokei chat` TUI over a PTY, and the model
-providers against a local inference server. Not part of the root `pnpm test` — run them
-from this directory:
+providers against a local inference server.
+
+The root `pnpm test` runs these after the package suites, via `pnpm test:integration`. To run
+them alone, from this directory:
 
 ```sh
 pnpm test                    # every suite the environment supports
@@ -11,15 +13,19 @@ pnpm exec vitest run suites/interop-sdk-client.test.ts
 ```
 
 Suites whose requirements are missing **skip** rather than fail, so a partial environment
-still gives a meaningful result.
+still gives a meaningful result. That is what makes them safe to run in CI: no runner has a
+chat backend or a GGUF file, so the model-facing suites skip themselves and the rest — the
+protocol, transport and CLI suites — still gate the merge. Keep new suites on that footing:
+gate anything needing a backend on `hasChatBackend` (`support/requirements.ts`), never on an
+assumption that the environment has one.
 
 ## Requirements
 
 | Suites | Needs |
 |---|---|
-| `interop-sdk-*`, `http-transport`, `lifecycle`, `local-tools` | nothing beyond a build |
+| `interop-sdk-*`, `interop-2026-07-28-stdio`, `interop-2026-07-28-http`, `version-detection-stdio`, `version-detection-http`, `http-transport` | nothing beyond a build |
 | `session`, `agent`, `host`, `cli-chat*` | a chat backend (below) |
-| `cli-*` | the CLI `dist` built (`pnpm build` — the dev binary loads from `dist/`) and a working PTY |
+| `cli-*` | the CLI built (`pnpm build` — the dev binary loads from `lib/`) and a working PTY |
 | `llama-provider`, `cli-chat-llama` | `MOKEI_LLAMA_GGUF` |
 
 ## Chat backend

@@ -13,7 +13,8 @@
     "postinstall": "node scripts/fix-node-pty-permissions.mjs",
     "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
     "prepare": "git config core.hooksPath .githooks",
-    "test": "pnpm run --filter './packages/**' --filter './mcp-servers/**' test"
+    "test": "pnpm run --filter './packages/**' --filter './mcp-servers/**' test && pnpm run test:integration",
+    "test:integration": "pnpm run --filter mokei-integration-tests test"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",

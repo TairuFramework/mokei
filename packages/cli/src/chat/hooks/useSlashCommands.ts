@@ -1,6 +1,8 @@
+import type { ProtocolVersion } from '@mokei/context-protocol'
 import type { Session } from '@mokei/session'
 import { useCallback } from 'react'
 
+import { parseProtocolOption } from '../../options.js'
 import { parseSlash } from '../slash.js'
 import type { PushEntry } from '../transcript.js'
 
@@ -91,17 +93,33 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
               text: contexts.length === 0 ? 'no contexts' : `contexts: ${contexts.join(', ')}`,
             })
           } else if (sub === 'add') {
-            const [key, command, ...cmdArgs] = rest
+            // `--protocol <version>` may lead the positional arguments, so a user can pin a
+            // server that would otherwise be probed. Defaults to `'auto'` to match
+            // `mokei inspect`: both point at arbitrary third-party servers, most of which
+            // serve `2025-11-25` only, and the host's own `'2026-07-28'` default would reject
+            // those with `-32022`.
+            let positional = rest
+            let protocolVersion: ProtocolVersion | 'auto' = 'auto'
+            if (positional[0] === '--protocol' || positional[0] === '-p') {
+              try {
+                protocolVersion = parseProtocolOption(positional[1] ?? '')
+              } catch (err) {
+                pushEntry({ kind: 'notice', variant: 'error', text: (err as Error).message })
+                break
+              }
+              positional = positional.slice(2)
+            }
+            const [key, command, ...cmdArgs] = positional
             if (!key || !command) {
               pushEntry({
                 kind: 'notice',
                 variant: 'error',
-                text: 'usage: /context add <key> <cmd> [args...]',
+                text: 'usage: /context add [--protocol <version>] <key> <cmd> [args...]',
               })
               break
             }
             try {
-              const tools = await addContext({ key, command, args: cmdArgs })
+              const tools = await addContext({ key, command, args: cmdArgs, protocolVersion })
               pushEntry({
                 kind: 'notice',
                 variant: 'success',

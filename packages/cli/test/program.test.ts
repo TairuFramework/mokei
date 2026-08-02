@@ -2,6 +2,7 @@ import type { Command } from 'commander'
 import { describe, expect, test, vi } from 'vitest'
 
 import { run } from '../src/index.js'
+import { parseProtocolOption } from '../src/options.js'
 import { buildProgram } from '../src/program.js'
 
 /**
@@ -77,6 +78,16 @@ describe('buildProgram', () => {
     expect(args[1]?.variadic).toBe(true)
   })
 
+  test('inspect has --protocol with short -p, defaulting to auto', () => {
+    const inspect = program.commands.find((c) => c.name() === 'inspect')
+    const opt = inspect?.options.find((o) => o.long === '--protocol')
+    expect(opt).toBeDefined()
+    expect(opt?.short).toBe('-p')
+    // `auto` and not the newest revision: `inspect` is pointed at arbitrary third-party
+    // servers, most of which only speak `2025-11-25`.
+    expect(opt?.defaultValue).toBe('auto')
+  })
+
   test('proxy accepts a required command argument and variadic args', () => {
     const proxy = program.commands.find((c) => c.name() === 'proxy')
     const args = proxy?.registeredArguments ?? []
@@ -105,6 +116,19 @@ describe('buildProgram', () => {
   test('program has --version flag', () => {
     const versionOpt = program.options.find((o) => o.long === '--version' || o.short === '-v')
     expect(versionOpt).toBeDefined()
+  })
+})
+
+describe('parseProtocolOption', () => {
+  test('accepts every supported revision and auto', () => {
+    expect(parseProtocolOption('2026-07-28')).toBe('2026-07-28')
+    expect(parseProtocolOption('2025-11-25')).toBe('2025-11-25')
+    expect(parseProtocolOption('auto')).toBe('auto')
+  })
+
+  test('rejects anything else, naming the offending value', () => {
+    expect(() => parseProtocolOption('2024-11-05')).toThrow('2024-11-05')
+    expect(() => parseProtocolOption('')).toThrow(/Unsupported protocol revision/)
   })
 })
 

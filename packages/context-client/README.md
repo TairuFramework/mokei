@@ -9,13 +9,15 @@ npm install @mokei/context-client
 ## Basic Usage
 
 ```typescript
-import { ContextClient } from '@mokei/context-client'
-import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
+import { ContextClient, type ClientTransport } from '@mokei/context-client'
+import { NodeStreamsTransport } from '@enkaku/node-streams'
 
-const transport = new NodeStreamsTransport({ streams })
-const client = new ContextClient({ transport })
+const transport = new NodeStreamsTransport({ streams }) as ClientTransport
+const client = new ContextClient({ protocolVersion: '2026-07-28', transport })
 
-await client.initialize()
+// No handshake on 2026-07-28 — the client sets itself up lazily on its first call, opening
+// with one `server/discover` bounded by `setupTimeout` so a server that never answers fails
+// instead of hanging.
 
 // List available tools
 const { tools } = await client.listTools()
@@ -40,8 +42,7 @@ import type { FetchServerTypes } from '@mokei/mcp-fetch'
 import { ContextClient } from '@mokei/context-client'
 
 // Create a typed client
-const client = new ContextClient<FetchServerTypes>({ transport })
-await client.initialize()
+const client = new ContextClient<FetchServerTypes>({ protocolVersion: '2026-07-28', transport })
 
 // Now all tool calls are type-checked!
 const result = await client.callTool({
@@ -70,8 +71,7 @@ type MyContextTypes = {
   }
 }
 
-const client = new ContextClient<MyContextTypes>({ transport })
-await client.initialize()
+const client = new ContextClient<MyContextTypes>({ protocolVersion: '2026-07-28', transport })
 
 // Typed tool calls
 await client.callTool({
@@ -97,7 +97,8 @@ await client.getPrompt({
 
 ### Client Methods
 
-- `initialize()` - Initialize the client connection
+- `initialize()` - Initialize the client connection (`2025-11-25` only — `2026-07-28` has no
+  handshake and throws if called; setup happens lazily on the first request)
 - `listTools()` - List available tools from the server
 - `callTool(params)` - Call a tool with arguments
 - `listPrompts()` - List available prompts from the server

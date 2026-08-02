@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 const SERVER_CONFIG: ServerConfig = {
   name: 'integration-test',
   version: '1.0.0',
+  protocolVersions: ['2025-11-25'],
   tools: {
     echo: {
       description: 'Echo input',
@@ -58,7 +59,10 @@ describe('HTTP transport end-to-end', () => {
     const url = `http://127.0.0.1:${address.port}/mcp`
 
     const transport = new HTTPTransport({ url })
-    client = new ContextClient({ transport: transport as ClientTransport })
+    client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transport as ClientTransport,
+    })
 
     // Initialize
     const initResult = await client.initialize()

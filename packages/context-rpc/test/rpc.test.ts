@@ -134,4 +134,21 @@ describe('ContextRPC transport lifecycle', () => {
     await rpc.dispose()
     await transports.dispose()
   })
+
+  test('does not answer ping itself — the protocol layer decides', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const handled: Array<string> = []
+    class TestRPC extends ContextRPC<TestTypes> {
+      _handleRequest(request: TestTypes['HandleRequest']): Record<string, never> {
+        handled.push(request.method)
+        return {}
+      }
+    }
+    const rpc = new TestRPC({ transport: transports.client, validateMessageIn: passthrough })
+    rpc._handle()
+    await transports.server.write({ jsonrpc: '2.0', id: 1, method: 'ping' } as AnyMessage)
+    await vi.waitFor(() => expect(handled).toEqual(['ping']))
+    await rpc.dispose()
+    await transports.dispose()
+  })
 })

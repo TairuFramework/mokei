@@ -25,6 +25,24 @@ function handle(message) {
     })
     return
   }
+  // The '2026-07-28' reply to `server/discover`, the revision's handshake-less replacement for
+  // `initialize`. Without this a client pinned to '2026-07-28' gets `Unsupported method` before
+  // ever reaching `tools/list`.
+  if (message.method === 'server/discover') {
+    send({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: {
+        resultType: 'complete',
+        capabilities: { tools: { listChanged: false } },
+        supportedVersions: ['2026-07-28', '2025-11-25'],
+        _meta: {
+          'io.modelcontextprotocol/serverInfo': { name: 'paginating', version: '0.0.0' },
+        },
+      },
+    })
+    return
+  }
   if (message.method === 'tools/list') {
     const cursor = message.params?.cursor
     send({ jsonrpc: '2.0', id: message.id, result: PAGES[cursor ?? '__first'] })

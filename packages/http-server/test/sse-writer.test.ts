@@ -180,3 +180,64 @@ describe('SSEWriter', () => {
     writer.close()
   })
 })
+
+describe('SSEWriter teardown on a faulted stream', () => {
+  /**
+   * Collects anything Node reports as an unhandled rejection while `run` executes. The two
+   * macrotask turns matter: a rejection is only "unhandled" once a turn has passed with no
+   * handler attached, so asserting immediately would pass whatever the code does.
+   */
+  async function unhandledDuring(run: () => void | Promise<void>): Promise<Array<unknown>> {
+    const seen: Array<unknown> = []
+    const onUnhandled = (reason: unknown): void => {
+      seen.push(reason)
+    }
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      await run()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+    return seen
+  }
+
+  // `close()` is synchronous because every caller is a teardown path with nothing left to await,
+  // so the promise it starts is nobody's to handle. Closing an *errored* writable rejects, and
+  // every route into this method — a client hanging up mid-stream, a stateless sink throwing
+  // after it settled — is a route taken because something already went wrong. Uncaught, that is
+  // a process-level crash originating in cleanup code.
+  test('close() on an errored stream raises no unhandled rejection', async () => {
+    const writable = new WritableStream<string>({
+      write() {
+        throw new Error('stream faulted')
+      },
+    })
+    const writer = new SSEWriter({ writable, streamID: 'faulted', replayBufferSize: 4 })
+
+    const seen = await unhandledDuring(async () => {
+      await expect(writer.writeEvent({ data: 'first' })).rejects.toThrow('stream faulted')
+      writer.close()
+    })
+
+    expect(seen).toEqual([])
+  })
+
+  // The ordinary path must still actually close the stream, or the guard above would be
+  // satisfied by a `close()` that quietly does nothing.
+  test('close() still closes a healthy stream', async () => {
+    let closed = false
+    const writable = new WritableStream<string>({
+      write() {},
+      close() {
+        closed = true
+      },
+    })
+    const writer = new SSEWriter({ writable, streamID: 'healthy', replayBufferSize: 4 })
+    await writer.writeEvent({ data: 'first' })
+    writer.close()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(closed).toBe(true)
+  })
+})

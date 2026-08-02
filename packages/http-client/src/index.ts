@@ -18,6 +18,7 @@ export {
   SessionExpiredError,
 } from './errors.js'
 export {
+  type CreateHTTPClientParams,
   createHTTPClient,
   DEFAULT_HTTP_TIMEOUT,
   HTTPTransport,

@@ -14,7 +14,10 @@ describe('SQLite MCP server', () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const server = new ContextServer({ ...config, transport: transports.server })
 
-    const client = new ContextClient<SQLiteServerTypes>({ transport: transports.client })
+    const client = new ContextClient<SQLiteServerTypes>({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
 
     const result = await client.callTool({
       name: 'sqlite_run',
@@ -37,7 +40,10 @@ describe('SQLite MCP server', () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const server = new ContextServer({ ...config, transport: transports.server })
 
-    const client = new ContextClient<SQLiteServerTypes>({ transport: transports.client })
+    const client = new ContextClient<SQLiteServerTypes>({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
 
     const result = await client.callTool({
       name: 'sqlite_run',
@@ -63,7 +69,10 @@ describe('SQLite MCP server', () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const server = new ContextServer({ ...config, transport: transports.server })
 
-    const client = new ContextClient<SQLiteServerTypes>({ transport: transports.client })
+    const client = new ContextClient<SQLiteServerTypes>({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
 
     const result = await client.callTool({
       name: 'sqlite_get',
@@ -89,7 +98,10 @@ describe('SQLite MCP server', () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const server = new ContextServer({ ...config, transport: transports.server })
 
-    const client = new ContextClient<SQLiteServerTypes>({ transport: transports.client })
+    const client = new ContextClient<SQLiteServerTypes>({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+    })
 
     const result = await client.callTool({
       name: 'sqlite_all',

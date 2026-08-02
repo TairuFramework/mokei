@@ -4,7 +4,7 @@ import { ChatDriver, UI } from '../support/chat-driver.js'
 
 const GGUF = process.env.MOKEI_LLAMA_GGUF
 
-// Gated on a local GGUF; not run in CI. Requires the cli `dist` to be built.
+// Gated on a local GGUF; not run in CI. Requires the CLI to be built — see `chat-driver.ts`.
 describe.skipIf(!GGUF)('CLI chat — llama', () => {
   let driver: ChatDriver
 

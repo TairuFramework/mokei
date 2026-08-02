@@ -1,18 +1,83 @@
 import { Transport } from '@enkaku/transport'
 import type { ClientTransport } from '@mokei/context-client'
 import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
-import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
-import { LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
+import type { ClientMessage, ProtocolVersion, ServerMessage } from '@mokei/context-protocol'
+import {
+  isSupportedProtocolVersion,
+  META_PROTOCOL_VERSION,
+  PROTOCOLS,
+} from '@mokei/context-protocol'
 import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { createReadable, writeTo } from '@sozai/stream'
 import { parseServerSentEvents } from 'parse-sse'
 
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
 import { SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE } from './errors.js'
-import { buildParamHeaders, collectHeaderAnnotations } from './x-mcp-header.js'
+import { buildParamHeaders, collectHeaderAnnotations, encodeHeaderValue } from './x-mcp-header.js'
 
 /** Standard JSON-RPC internal-error code, used for synthesized transport failures. */
 const INTERNAL_ERROR_CODE = -32603
+
+/**
+ * A JSON-RPC error response carried in a non-OK HTTP body, or `null` if the body is not one
+ * — or names a different request, which would mean routing an error to the wrong caller.
+ *
+ * The accepted shape is deliberately no looser than what the RPC layer's inbound validator
+ * admits: a response failing that validation is dropped there rather than rejected, and no
+ * timeout covers an ordinary request, so an under-checked frame would leave its caller waiting
+ * forever. It must be no *stricter* either, for the mirror-image reason: a frame refused here
+ * comes back as a synthesized internal error whose message is the raw body, losing the code and
+ * `data` an `'auto'` client reads. So the two checks below are exactly the constraints
+ * `errorResponse` places on an error object, and `error.data` — whose value JSON-RPC leaves
+ * entirely to the server — is checked here no more than it is there.
+ */
+function parseJSONRPCError(
+  body: string,
+  requestID: string | number | null,
+): Record<string, unknown> | null {
+  if (requestID == null || body === '') {
+    return null
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return null
+  }
+  if (parsed == null || typeof parsed !== 'object') {
+    return null
+  }
+  const record = parsed as Record<string, unknown>
+  const error = record.error
+  if (
+    record.jsonrpc !== '2.0' ||
+    record.id !== requestID ||
+    error == null ||
+    typeof error !== 'object'
+  ) {
+    return null
+  }
+  const errorRecord = error as Record<string, unknown>
+  return typeof errorRecord.code === 'number' && typeof errorRecord.message === 'string'
+    ? record
+    : null
+}
+
+/**
+ * The methods whose `Mcp-Name` request header mirrors a field of the request body, and which
+ * field supplies it (specification/2026-07-28/basic/transports, standard request headers).
+ *
+ * Keyed by method rather than read off whatever `name` a body happens to carry: the source
+ * field is not the same for all three — `resources/read` names its subject in `uri` — and a
+ * method outside this table must not acquire the header just because its params carry a `name`.
+ * A method the specification adds later then arrives here as a missing entry, which a
+ * conformant peer rejects visibly, rather than as a header quietly built from the wrong field.
+ */
+const MCP_NAME_HEADER_SOURCE: Readonly<Record<string, string | undefined>> = {
+  'tools/call': 'name',
+  'prompts/get': 'name',
+  'resources/read': 'uri',
+}
 
 /**
  * Parameters for creating an MCP HTTP transport.
@@ -28,6 +93,29 @@ export type HTTPTransportParams = {
   timeout?: number
   /** Optional logger (defaults to the `mokei:http-client` logger) */
   logger?: Logger
+  /**
+   * Seeds the `MCP-Protocol-Version` header before any revision is known. Rarely needed:
+   * a `2026-07-28` request declares its revision in its own `_meta`, and a `2025-11-25`
+   * connection learns it from the `initialize` result. Left unset, the header is omitted
+   * until one of those two supplies a value — which is what the specification asks for on
+   * the `initialize` request itself.
+   */
+  protocolVersion?: string
+}
+
+/**
+ * Whether a revision has protocol sessions to name in an `Mcp-Session-Id` header.
+ *
+ * A session is established by the `initialize`/`initialized` handshake, so a revision that
+ * does not require the handshake has no session at all. Unknown revisions are treated as
+ * session-bearing: suppressing the header on a revision this build does not recognise would
+ * break a connection that a pass-through server might otherwise handle.
+ */
+function hasSession(version: string | null): boolean {
+  if (version == null || !isSupportedProtocolVersion(version)) {
+    return true
+  }
+  return PROTOCOLS[version].requiresHandshake
 }
 
 /** Default HTTP request timeout in milliseconds. */
@@ -68,8 +156,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #pendingMethods = new Map<string | number, string>()
   /** Cached tool `inputSchema`s keyed by tool name, populated from `tools/list` results. */
   #toolSchemas = new Map<string, unknown>()
-  /** Protocol version to send in `MCP-Protocol-Version` header; updated after initialize. */
-  #protocolVersion: string = LATEST_PROTOCOL_VERSION
+  /**
+   * Version for the `MCP-Protocol-Version` header when the outgoing message does not
+   * declare one itself. Stays `null` until an `initialize` result or a constructor seed
+   * supplies a value; while it is `null` and the message declares nothing, the header is
+   * omitted.
+   */
+  #protocolVersion: string | null
   #logger: Logger
 
   constructor(params: HTTPTransportParams) {
@@ -82,6 +175,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#url = params.url
     this.#headers = buildHTTPHeaders({ headers: params.headers, auth: params.auth })
     this.#timeout = params.timeout ?? DEFAULT_HTTP_TIMEOUT
+    this.#protocolVersion = params.protocolVersion ?? null
     this.#logger = params.logger ?? getMokeiLogger('http-client')
   }
 
@@ -135,6 +229,25 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
+   * The revision an outgoing message declares in its own `_meta`, if any. Revisions with
+   * `requiresRequestMeta` put it there on every request, which makes the header derivable
+   * rather than tracked: transport and payload can never disagree about which revision a
+   * message belongs to.
+   */
+  #declaredVersion(message: ClientMessage): string | null {
+    const params = (message as { params?: unknown }).params
+    if (params == null || typeof params !== 'object') {
+      return null
+    }
+    const meta = (params as Record<string, unknown>)._meta
+    if (meta == null || typeof meta !== 'object') {
+      return null
+    }
+    const version = (meta as Record<string, unknown>)[META_PROTOCOL_VERSION]
+    return typeof version === 'string' ? version : null
+  }
+
+  /**
    * Send a JSON-RPC message to the server via HTTP POST.
    *
    * Never throws: per-message failures are routed to {@link #failRequest} so a
@@ -151,18 +264,32 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       return
     }
 
+    const declaredVersion = this.#declaredVersion(message)
+    const headerVersion = declaredVersion ?? this.#protocolVersion
+
     const headers: Record<string, string> = {
       ...this.#headers,
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
-      'MCP-Protocol-Version': this.#protocolVersion,
+    }
+    if (headerVersion != null) {
+      headers['MCP-Protocol-Version'] = headerVersion
     }
 
     if ('method' in message && typeof message.method === 'string') {
       headers['Mcp-Method'] = message.method
-      const name = (message as { params?: { name?: unknown } }).params?.name
-      if (typeof name === 'string') {
-        headers['Mcp-Name'] = name
+      const nameSourceField = MCP_NAME_HEADER_SOURCE[message.method]
+      const params = (message as { params?: Record<string, unknown> }).params
+      const nameValue = nameSourceField == null ? undefined : params?.[nameSourceField]
+      if (typeof nameValue === 'string') {
+        // Encoded, never raw: a resource URI (and a tool or prompt name) is unconstrained text,
+        // while an HTTP header value is a ByteString — `new Headers()` throws on any character
+        // above U+00FF, which `fetch` does internally, so a raw assignment here turns
+        // `readResource({ uri: 'file:///文档/notes.md' })` into an opaque send failure. The
+        // `=?base64?…?=` sentinel is the specification's own encoding for header-carried values,
+        // and a conformant peer runs `Mcp-Name` through that decoder before cross-checking it
+        // against `params.name`/`params.uri`, so the encoded form is what it compares.
+        headers['Mcp-Name'] = encodeHeaderValue(nameValue)
       }
       // Track in-flight requests so responses can be correlated back to their method.
       if (requestID != null) {
@@ -172,8 +299,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // buildParamHeaders can throw (e.g. a non-integer value for an integer-annotated
       // param); route that to the originating request rather than letting it escape the
       // sink and poison the shared writable stream.
-      if (message.method === 'tools/call' && typeof name === 'string') {
-        const schema = this.#toolSchemas.get(name)
+      if (message.method === 'tools/call' && typeof nameValue === 'string') {
+        const schema = this.#toolSchemas.get(nameValue)
         if (schema != null) {
           try {
             const { annotations } = collectHeaderAnnotations(schema)
@@ -202,7 +329,11 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       }
     }
 
-    if (this.#sessionID) {
+    // A revision without the handshake has no protocol session. Sending a session id on
+    // such a request would ask a multi-revision server to route it into session state it
+    // must ignore, so the header is suppressed for exactly the requests that declare such
+    // a revision — a `2025-11-25` connection on the same transport keeps its session.
+    if (this.#sessionID && hasSession(declaredVersion)) {
       headers['Mcp-Session-Id'] = this.#sessionID
     }
 
@@ -258,6 +389,21 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       }
       if (requestID != null) {
         this.#pendingMethods.delete(requestID)
+      }
+      // A `2026-07-28` server answers an envelope failure with a real HTTP `400` whose body
+      // is the JSON-RPC error itself (unsupported revision, missing required `_meta`). That
+      // body is the whole signal an `'auto'` client uses to tell a current server from an
+      // older one, and the only actionable message a pinned client can show — so pass it
+      // through verbatim rather than flattening it into an internal error.
+      const carried = parseJSONRPCError(errorText, requestID)
+      if (carried != null) {
+        try {
+          this.#controller?.enqueue(carried as unknown as ServerMessage)
+        } catch {
+          // Controller may already be closed by a concurrent dispose(); nothing to surface.
+          // Throwing here would reject the sink and permanently error the writable stream.
+        }
+        return
       }
       this.#failRequest(requestID, INTERNAL_ERROR_CODE, `HTTP ${response.status}: ${errorText}`)
       return
@@ -426,7 +572,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         const headers: Record<string, string> = {
           ...this.#headers,
           Accept: 'text/event-stream',
-          'MCP-Protocol-Version': this.#protocolVersion,
+        }
+        if (this.#protocolVersion != null) {
+          headers['MCP-Protocol-Version'] = this.#protocolVersion
         }
         if (this.#sessionID) {
           headers['Mcp-Session-Id'] = this.#sessionID
@@ -509,13 +657,16 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     // Terminate session with DELETE, bounded so a hung server can't stall shutdown.
     if (this.#sessionID) {
       try {
+        const headers: Record<string, string> = {
+          ...this.#headers,
+          'Mcp-Session-Id': this.#sessionID,
+        }
+        if (this.#protocolVersion != null) {
+          headers['MCP-Protocol-Version'] = this.#protocolVersion
+        }
         await fetch(this.#url, {
           method: 'DELETE',
-          headers: {
-            ...this.#headers,
-            'MCP-Protocol-Version': this.#protocolVersion,
-            'Mcp-Session-Id': this.#sessionID,
-          },
+          headers,
           signal: AbortSignal.timeout(DEFAULT_DISPOSE_TIMEOUT),
         })
       } catch {
@@ -535,14 +686,24 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 }
 
+/** Parameters for {@link createHTTPClient}. */
+export type CreateHTTPClientParams = HTTPTransportParams & {
+  /** Revision to speak. `'auto'` probes the server, then caches the result. */
+  protocolVersion: ProtocolVersion | 'auto'
+}
+
 /**
  * Create an MCP HTTP client with a single call.
  *
  * Instantiates an {@link HTTPTransport} and wires it to a {@link ContextClient}.
  */
 export function createHTTPClient<T extends ContextTypes = UnknownContextTypes>(
-  params: HTTPTransportParams,
+  params: CreateHTTPClientParams,
 ): ContextClient<T> {
-  const transport = new HTTPTransport(params)
-  return new ContextClient<T>({ transport: transport as ClientTransport })
+  const { protocolVersion, ...transportParams } = params
+  const transport = new HTTPTransport(transportParams)
+  return new ContextClient<T>({
+    protocolVersion,
+    transport: transport as ClientTransport,
+  })
 }

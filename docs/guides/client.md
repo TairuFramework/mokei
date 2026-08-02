@@ -11,29 +11,58 @@ npm install @mokei/context-client
 ## Basic Client
 
 ```typescript
-import { ContextClient } from '@mokei/context-client'
-import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
+import { ContextClient, type ClientTransport } from '@mokei/context-client'
+import { NodeStreamsTransport } from '@enkaku/node-streams'
 
 // Create transport (e.g., from spawned process)
 const transport = new NodeStreamsTransport({
   streams: { readable: childProcess.stdout, writable: childProcess.stdin }
-})
+}) as ClientTransport
 
-const client = new ContextClient({ transport })
+const client = new ContextClient({ transport, protocolVersion: '2026-07-28' })
 
-// Initialize connection (required before any other calls)
-const serverInfo = await client.initialize()
-console.log('Connected to:', serverInfo.serverInfo.name)
+// No handshake on 2026-07-28 — the client sets itself up lazily on its first call, opening
+// with one `server/discover` bounded by `setupTimeout` so a server that never answers fails
+// instead of hanging.
+const { tools } = await client.listTools()
 ```
 
+## HTTP Client
+
+To reach a server over the MCP Streamable HTTP transport, use `createHTTPClient` from
+`@mokei/http-client` instead of building a transport by hand. `protocolVersion` is required
+there too:
+
+```typescript
+import { createHTTPClient } from '@mokei/http-client'
+
+const client = createHTTPClient({
+  url: 'https://mcp.example.com/mcp',
+  protocolVersion: '2026-07-28',
+})
+
+const { tools } = await client.listTools()
+```
+
+Pass `protocolVersion: 'auto'` to probe the server, or `'2025-11-25'` to pin the older
+revision — which, unlike `2026-07-28`, needs an explicit `await client.initialize()` first.
+
+Everything below applies to an HTTP client exactly as it does to a stdio one: the returned
+value is a `ContextClient`.
+
 ## Client Configuration
+
+`elicit`, `createMessage` and `listRoots` are server-initiated requests, present only on
+`2025-11-25` — `2026-07-28` refuses them at client setup (MRTR, SEP-2322, replaces
+server-initiated requests, and mokei does not implement MRTR yet).
 
 ```typescript
 import { ContextClient, type ClientParams } from '@mokei/context-client'
 
 const client = new ContextClient({
   transport,
-  
+  protocolVersion: '2025-11-25',
+
   // Handle elicitation requests from server
   elicit: async ({ params, signal }) => {
     const userResponse = await promptUser(params.message)
@@ -172,6 +201,9 @@ console.log('Suggestions:', completion.values)
 
 ## Logging
 
+`setLoggingLevel` requires `logging/setLevel`, present only on `2025-11-25` — `2026-07-28`
+carries the log level in each request's `_meta` instead and refuses this call.
+
 ```typescript
 // Set logging level
 await client.setLoggingLevel({ level: 'debug' })
@@ -210,11 +242,10 @@ while (true) {
 When the server exports types, use them for full type safety:
 
 ```typescript
-import type { SqliteServerTypes } from '@mokei/mcp-sqlite'
+import type { SQLiteServerTypes } from '@mokei/mcp-sqlite'
 import { ContextClient } from '@mokei/context-client'
 
-const client = new ContextClient<SqliteServerTypes>({ transport })
-await client.initialize()
+const client = new ContextClient<SQLiteServerTypes>({ transport, protocolVersion: '2026-07-28' })
 
 // Fully typed tool call
 const result = await client.callTool({
@@ -264,8 +295,12 @@ const result = await client.callTool({
 
 ## Events
 
+The `initialized` event fires only from `2025-11-25`'s handshake — `2026-07-28` has no
+handshake, so it never fires there; use `discover()` for server identity and capabilities
+instead.
+
 ```typescript
-// When server initialization completes
+// When server initialization completes (2025-11-25 only)
 client.events.on('initialized', (result) => {
   console.log('Server capabilities:', result.capabilities)
 })
@@ -279,9 +314,9 @@ client.events.on('log', (log) => {
 ## Complete Example
 
 ```typescript
-import { ContextClient } from '@mokei/context-client'
+import { ContextClient, type ClientTransport } from '@mokei/context-client'
 import { spawn } from 'node:child_process'
-import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
+import { NodeStreamsTransport } from '@enkaku/node-streams'
 
 async function main() {
   // Spawn MCP server
@@ -295,13 +330,11 @@ async function main() {
       readable: serverProcess.stdout!, 
       writable: serverProcess.stdin! 
     }
-  })
+  }) as ClientTransport
   
-  // Create and initialize client
-  const client = new ContextClient({ transport })
-  const info = await client.initialize()
-  console.log(`Connected to ${info.serverInfo.name} v${info.serverInfo.version}`)
-  
+  // Create the client — no handshake on 2026-07-28, setup happens lazily on first call
+  const client = new ContextClient({ transport, protocolVersion: '2026-07-28' })
+
   // List available tools
   const { tools } = await client.listTools()
   console.log('Available tools:', tools.map(t => t.name))

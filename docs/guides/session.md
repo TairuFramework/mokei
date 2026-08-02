@@ -97,6 +97,14 @@ const tools = await session.addContext({
 
 Connect to remote MCP servers via HTTP using the MCP Streamable HTTP transport specification.
 
+`addHTTPContext` takes an optional `protocolVersion`, defaulting to `'2026-07-28'`. None of
+the examples below pass one, so all of them connect at that revision. A server that only
+serves `'2025-11-25'` needs an explicit `protocolVersion: '2025-11-25'`, or `'auto'` to probe
+it — see [the host guide](host.md#protocol-revisions).
+
+The hostnames below are placeholders, so these examples illustrate the shape of each call
+rather than being runnable as written.
+
 ```typescript
 // Basic HTTP connection
 const client = await session.contextHost.addHTTPContext({
@@ -142,9 +150,13 @@ const client = await session.contextHost.addHTTPContext({
 
 The HTTP transport:
 - Implements MCP Streamable HTTP specification
-- Manages session IDs automatically via `Mcp-Session-Id` header
+- Manages session IDs automatically via the `Mcp-Session-Id` header — on `2025-11-25` only.
+  A session is established by the `initialize`/`initialized` handshake, and `2026-07-28` has
+  no handshake, so it is stateless: no session is minted and no `Mcp-Session-Id` is sent
 - Supports JSON and SSE responses
-- Includes protocol version header on all requests
+- Includes the `MCP-Protocol-Version` header once the revision is known. On `2026-07-28`
+  that is every request; on `2025-11-25` the opening `initialize` carries no version header,
+  since the revision is not negotiated until it returns
 
 ## Managing Providers
 

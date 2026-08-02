@@ -3,9 +3,10 @@
  * exercised end-to-end in integration tests. ink needs a real TTY on stdin (setRawMode),
  * which a plain child_process pipe cannot provide.
  *
- * Requires the cli `dist` to be built (the dev binary loads commands from dist/commands),
- * the built fetch MCP server, and a chat backend — ollama by default, or llama-server via
- * `LLAMA_SERVER_URL`, which the suites gate on with `hasChatBackend`.
+ * Requires the CLI to be built (`bin/dev.js` below imports `../lib/index.js`, so `lib/` must
+ * be current — `packages/cli/dist/` is a stale artifact from an older build layout and is
+ * gitignored), the built fetch MCP server, and a chat backend — ollama by default, or
+ * llama-server via `LLAMA_SERVER_URL`, which the suites gate on with `hasChatBackend`.
  */
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'

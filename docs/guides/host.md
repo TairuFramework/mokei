@@ -52,6 +52,21 @@ const client = await host.addLocalContext({
 const tools = await host.setup({ key: 'myserver' })
 ```
 
+### HTTP Context
+
+Connects to a server over the MCP Streamable HTTP transport:
+
+```typescript
+const client = await host.addHTTPContext({
+  key: 'remote',
+  url: 'https://mcp.example.com/mcp',
+  auth: { type: 'bearer', token: 'your-api-key' },  // optional
+  timeout: 60_000,                                  // optional
+})
+
+const tools = await host.setup({ key: 'remote' })
+```
+
 ### Direct Context
 
 Uses in-memory transport for testing or embedded servers:
@@ -62,6 +77,7 @@ import { type ServerConfig } from '@mokei/context-server'
 const config: ServerConfig = {
   name: 'embedded',
   version: '1.0.0',
+  protocolVersions: ['2026-07-28'],
   tools: { /* ... */ }
 }
 
@@ -92,6 +108,32 @@ const client = host.createContext({
 
 const tools = await host.setup({ key: 'custom' })
 ```
+
+## Protocol Revisions
+
+`addLocalContext`, `addHTTPContext` and `addDirectContext` each take an optional
+`protocolVersion`, defaulting to `'2026-07-28'`. A server that only serves `'2025-11-25'`
+needs an explicit value, or `'auto'` to probe it:
+
+```typescript
+// Pin the older revision
+await host.addLocalContext({
+  key: 'older-server',
+  command: 'node',
+  args: ['old-server.js'],
+  protocolVersion: '2025-11-25',
+})
+
+// Or let the host work out which revision the server serves
+await host.addHTTPContext({
+  key: 'unknown',
+  url: 'https://mcp.example.com/mcp',
+  protocolVersion: 'auto',
+})
+```
+
+`'auto'` is resolved per context: the host does not share a resolution between contexts, so
+each `'auto'` context probes its own server.
 
 ## Tool Namespacing
 

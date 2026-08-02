@@ -14,6 +14,7 @@ import type {
   ClientMessage,
   GetPromptResult,
   Metadata,
+  ProtocolVersion,
   ServerMessage,
   Tool,
 } from '@mokei/context-protocol'
@@ -120,6 +121,12 @@ export type CreateHostedContextParams = {
   transport: ClientTransport
   tools?: Array<ContextTool>
   dispose?: () => void | Promise<void>
+  /**
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
+   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
+   * `'auto'`.
+   */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export type CreateContextParams = CreateHostedContextParams & {
@@ -135,8 +142,8 @@ export type HostEvents = {
 export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
   params: CreateHostedContextParams,
 ): HostedContext<T> {
-  const { transport, tools = [], dispose } = params
-  const client = new ContextClient<T>({ transport })
+  const { transport, tools = [], dispose, protocolVersion = '2026-07-28' } = params
+  const client = new ContextClient<T>({ protocolVersion, transport })
   const disposer = new Disposer({
     dispose: async () => {
       await transport.dispose()
@@ -156,13 +163,26 @@ export type SpawnHostedContextParams = SpawnContextServerParams & {
   maxMessageSize?: number
   /** Grace period (ms) between SIGTERM and SIGKILL on dispose. Default 5000. */
   killTimeout?: number
+  /**
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
+   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
+   * `'auto'`.
+   */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export async function spawnHostedContext<T extends ContextTypes = UnknownContextTypes>(
   params: SpawnHostedContextParams,
 ): Promise<HostedContext<T>> {
-  const { onExit, onStreamError, maxBufferSize, maxMessageSize, killTimeout, ...spawnParams } =
-    params
+  const {
+    onExit,
+    onStreamError,
+    maxBufferSize,
+    maxMessageSize,
+    killTimeout,
+    protocolVersion,
+    ...spawnParams
+  } = params
   const { childProcess, streams, subprocess } = await spawnContextServer(spawnParams)
   if (onExit != null) {
     subprocess.then(
@@ -190,6 +210,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
   })
   return createHostedContext({
     transport: transport as ClientTransport,
+    protocolVersion,
     dispose: async () => {
       // Already exited — nothing to reap.
       if (childProcess.exitCode != null || childProcess.signalCode != null) {
@@ -216,6 +237,11 @@ export type AddDirectContextParams = {
   key: string
   config: ServerConfig
   tools?: Array<ContextTool>
+  /**
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
+   * `'2026-07-28'`.
+   */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export type AddLocalContextParams = SpawnContextServerParams & {
@@ -224,6 +250,11 @@ export type AddLocalContextParams = SpawnContextServerParams & {
   maxBufferSize?: number
   /** Optional tighter per-message cap in bytes. */
   maxMessageSize?: number
+  /**
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
+   * `'2026-07-28'`.
+   */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export type HTTPContextParams = {
@@ -237,6 +268,11 @@ export type HTTPContextParams = {
   auth?: HTTPAuthOptions
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number
+  /**
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
+   * `'2026-07-28'`.
+   */
+  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export class ContextHost extends Disposer {
@@ -420,7 +456,7 @@ export class ContextHost extends Disposer {
   addDirectContext<T extends ContextTypes = UnknownContextTypes>(
     params: AddDirectContextParams,
   ): ContextClient<T> {
-    const { key, config, tools } = params
+    const { key, config, tools, protocolVersion } = params
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
@@ -431,6 +467,7 @@ export class ContextHost extends Disposer {
       key,
       transport: transports.client,
       tools,
+      protocolVersion,
       dispose: async () => {
         await Promise.all([server.dispose(), transports.client.dispose()])
       },
@@ -514,33 +551,24 @@ export class ContextHost extends Disposer {
   async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
     params: HTTPContextParams,
   ): Promise<ContextClient<T>> {
-    const { key, url, headers, auth, timeout } = params
+    const { key, url, headers, auth, timeout, protocolVersion } = params
 
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
 
-    // Create MCP HTTP transport
-    const transport = new HTTPTransport({ url, headers, auth, timeout })
-
-    // Create the context client
-    const client = new ContextClient<T>({ transport: transport as ClientTransport })
-
-    // Create disposer for cleanup
-    const disposer = new Disposer({
-      dispose: async () => {
-        await transport.dispose()
-      },
+    // Built through `createHostedContext` rather than assembled here so the default revision is
+    // named in exactly one place. Spelling it a second time is the literal-as-capability
+    // pattern this revision's work set out to remove, and a one-sided change to it would be a
+    // behavior difference between two entry points that read as siblings.
+    const context = createHostedContext<T>({
+      transport: new HTTPTransport({ url, headers, auth, timeout }) as ClientTransport,
+      protocolVersion,
     })
 
-    // Store the hosted context
-    this._contexts[key] = {
-      client: client as unknown as ContextClient,
-      disposer,
-      tools: [],
-    }
+    this._contexts[key] = context as unknown as HostedContext
 
-    return client
+    return context.client
   }
 
   async setup(params: SetupParams): Promise<Array<ContextTool>> {

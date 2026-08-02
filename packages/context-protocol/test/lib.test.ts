@@ -1,6 +1,6 @@
+import { createValidator } from '@sozai/schema'
 import { describe, expect, test } from 'vitest'
 
-import { clientMessage } from '../src/client.js'
 import { imageContent, role, textContent } from '../src/content.js'
 import {
   clientCapabilities,
@@ -23,7 +23,6 @@ import {
   INTERNAL_ERROR,
   INVALID_PARAMS,
   INVALID_REQUEST,
-  isSupportedProtocolVersion,
   JSONRPC_VERSION,
   LATEST_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
@@ -33,7 +32,6 @@ import {
   RESOURCE_NOT_FOUND,
   request,
   response,
-  SUPPORTED_PROTOCOL_VERSIONS,
   URL_ELICITATION_REQUIRED,
 } from '../src/rpc.js'
 import { createMessageRequest, modelPreferences } from '../src/sampling.js'
@@ -47,10 +45,12 @@ import {
   outputSchema,
   tool,
 } from '../src/tool.js'
+import { clientMessage } from '../src/versions/2025-11-25.js'
+import { isSupportedProtocolVersion, PROTOCOL_VERSIONS, PROTOCOLS } from '../src/versions/index.js'
 
 describe('Protocol Version and Constants', () => {
-  test('should use MCP protocol version 2025-11-25', async () => {
-    expect(LATEST_PROTOCOL_VERSION).toBe('2025-11-25')
+  test('should use MCP protocol version 2026-07-28', async () => {
+    expect(LATEST_PROTOCOL_VERSION).toBe('2026-07-28')
   })
 
   test('should use JSON-RPC version 2.0', async () => {
@@ -85,6 +85,43 @@ describe('Core RPC Schema Structures', () => {
     expect(response.type).toBe('object')
     expect(response.required).toEqual(['id', 'jsonrpc'])
     expect(response.properties.jsonrpc.const).toBe('2.0')
+  })
+
+  // JSON-RPC 2.0 leaves `error.data` entirely to the server, and the official SDK types it as
+  // `unknown`. A validator that only admitted objects there dropped every other shape, and a
+  // *dropped* inbound response is worse than a rejected one: the RPC read loop discards it
+  // silently and the caller of the request it answers waits forever, since no timeout covers an
+  // ordinary request. Both revisions share this schema, so both must accept all of these.
+  test.each([
+    ['an object', { a: 1 }],
+    ['a string', 'only 2025-11-25'],
+    ['null', null],
+    ['an array', [1, 2]],
+    ['a number', 3],
+  ])('error response accepts %s in error.data', async (_label, data) => {
+    for (const version of PROTOCOL_VERSIONS) {
+      const validate = createValidator(PROTOCOLS[version].serverMessage)
+      const outcome = validate({
+        jsonrpc: '2.0',
+        id: 0,
+        error: { code: -32022, message: 'Unsupported protocol version', data },
+      })
+      expect(outcome.issues, `${version} rejected error.data`).toBeUndefined()
+    }
+  })
+
+  // The widening above must not have turned `error` into "anything": `code` and `message` are
+  // required by JSON-RPC itself, and a frame missing them is genuinely unroutable.
+  test.each([
+    ['no code', { message: 'nope' }],
+    ['a non-numeric code', { code: 'x', message: 'nope' }],
+    ['no message', { code: -32022 }],
+  ])('error response still rejects %s', async (_label, error) => {
+    for (const version of PROTOCOL_VERSIONS) {
+      const validate = createValidator(PROTOCOLS[version].serverMessage)
+      const outcome = validate({ jsonrpc: '2.0', id: 0, error })
+      expect(outcome.issues, `${version} accepted an invalid error`).toBeDefined()
+    }
   })
 
   test('progress notification should follow MCP spec', async () => {
@@ -367,8 +404,8 @@ describe('JSON Schema draft inference', () => {
 })
 
 describe('protocol version support', () => {
-  test('SUPPORTED_PROTOCOL_VERSIONS contains the targeted revision', () => {
-    expect(SUPPORTED_PROTOCOL_VERSIONS).toContain('2025-11-25')
+  test('PROTOCOL_VERSIONS contains the targeted revision', () => {
+    expect(PROTOCOL_VERSIONS).toContain('2025-11-25')
   })
 
   test('isSupportedProtocolVersion gates on the set', () => {

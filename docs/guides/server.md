@@ -12,12 +12,18 @@ npm install @mokei/context-server
 
 The simplest way to create an MCP server is using `serveProcess()`:
 
+`protocolVersions` is the set of revisions the server serves (order is not significant).
+`'2026-07-28'` alone is enough for mokei's own host, session and CLI: the host defaults to
+`'2026-07-28'`, and `mokei inspect` defaults to `'auto'`. Add `'2025-11-25'` to also serve
+clients pinned to the older revision.
+
 ```typescript
 import { serveProcess } from '@mokei/context-server'
 
 serveProcess({
   name: 'my-server',
   version: '1.0.0',
+  protocolVersions: ['2026-07-28'],
   tools: { /* tool definitions */ },
   prompts: { /* prompt definitions */ },
   resources: { /* resource definitions */ }
@@ -57,7 +63,7 @@ const tools = {
   })
 } satisfies ToolDefinitions
 
-serveProcess({ name: 'greeter', version: '1.0.0', tools })
+serveProcess({ name: 'greeter', version: '1.0.0', protocolVersions: ['2026-07-28'], tools })
 ```
 
 ### Tool Handler Context
@@ -66,15 +72,21 @@ The handler receives a request object with:
 
 ```typescript
 type HandlerRequest = {
-  arguments: T        // Validated input matching your schema
-  client: ServerClient // Access to client capabilities
-  signal: AbortSignal  // For cancellation
+  input: T                    // Validated input matching your schema
+  client: ServerClient        // Access to client capabilities
+  progress?: ProgressEmitter  // Report progress on long-running calls
+  signal: AbortSignal         // For cancellation
 }
 ```
 
 ### ServerClient Methods
 
 Inside tool handlers, you can use `client` to:
+
+`elicit`, `createMessage` and `listRoots` are server-initiated requests, present only on
+`2025-11-25` — on a server configured with `protocolVersions: ['2026-07-28']` only, they
+reject with `MRTRNotSupportedError` (MRTR, SEP-2322, not yet implemented). Include
+`'2025-11-25'` in `protocolVersions` to use them.
 
 ```typescript
 // Request user input via elicitation
@@ -183,7 +195,7 @@ const prompts = {
   })
 } satisfies PromptDefinitions
 
-serveProcess({ name: 'prompts-server', version: '1.0.0', prompts })
+serveProcess({ name: 'prompts-server', version: '1.0.0', protocolVersions: ['2026-07-28'], prompts })
 ```
 
 ## Handling Resources
@@ -231,7 +243,7 @@ const resources: ResourceDefinitions = {
   }
 }
 
-serveProcess({ name: 'resource-server', version: '1.0.0', resources })
+serveProcess({ name: 'resource-server', version: '1.0.0', protocolVersions: ['2026-07-28'], resources })
 ```
 
 ## Autocompletion Support
@@ -255,7 +267,7 @@ const complete: CompleteHandler = async (req) => {
   return { completion: { values: [] } }
 }
 
-serveProcess({ name: 'server', version: '1.0.0', complete, prompts })
+serveProcess({ name: 'server', version: '1.0.0', protocolVersions: ['2026-07-28'], complete, prompts })
 ```
 
 ## Advanced: ContextServer Class
@@ -263,22 +275,24 @@ serveProcess({ name: 'server', version: '1.0.0', complete, prompts })
 For more control, use the `ContextServer` class directly:
 
 ```typescript
-import { ContextServer, type ServerConfig } from '@mokei/context-server'
-import { NodeStreamsTransport } from '@enkaku/node-streams-transport'
+import { ContextServer, type ServerConfig, type ServerTransport } from '@mokei/context-server'
+import { NodeStreamsTransport } from '@enkaku/node-streams'
 
 const config: ServerConfig = {
   name: 'my-server',
   version: '1.0.0',
+  protocolVersions: ['2026-07-28'],
   tools: { /* ... */ }
 }
 
 const transport = new NodeStreamsTransport({
   streams: { readable: process.stdin, writable: process.stdout }
-})
+}) as ServerTransport
 
 const server = new ContextServer({ ...config, transport })
 
-// Listen for events
+// Listen for events. 'initialize' fires only when this server also serves 2025-11-25 —
+// 2026-07-28 has no handshake to emit it from.
 server.events.on('initialize', (params) => {
   console.error('Client connected:', params.clientInfo.name)
 })
@@ -308,6 +322,7 @@ const tools = {
 const config = {
   name: 'typed-server',
   version: '1.0.0',
+  protocolVersions: ['2026-07-28'],
   tools
 } satisfies ServerConfig
 
@@ -323,7 +338,7 @@ Clients can then import the type:
 import type { MyServerTypes } from './server'
 import { ContextClient } from '@mokei/context-client'
 
-const client = new ContextClient<MyServerTypes>({ transport })
+const client = new ContextClient<MyServerTypes>({ transport, protocolVersion: '2026-07-28' })
 // Tool calls are now fully typed
 ```
 
@@ -379,7 +394,12 @@ const tools = {
   })
 } satisfies ToolDefinitions
 
-const config = { name: 'sqlite', version: '0.1.0', tools } satisfies ServerConfig
+const config = {
+  name: 'sqlite',
+  version: '0.1.0',
+  protocolVersions: ['2026-07-28'],
+  tools,
+} satisfies ServerConfig
 
 export type SqliteServerTypes = ExtractServerTypes<typeof config>
 

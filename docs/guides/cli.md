@@ -32,10 +32,10 @@ mokei chat [--provider <name>] [--api-key <key>] [--api-url <url>] [--model <mod
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--provider` | `-p` | Provider: `ollama`, `openai`, or `anthropic`. Prompted if not provided. |
-| `--api-key` | `-k` | API key (openai/anthropic). Falls back to `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`. |
+| `--provider` | `-p` | Provider: `ollama`, `openai`, `anthropic` or `llama`. Prompted if not provided. |
+| `--api-key` | `-k` | API key (openai/anthropic). Falls back to `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`, which is preferred — a key on the command line leaks via `ps` and shell history. |
 | `--api-url` | `-u` | Provider API URL (override the default endpoint). |
-| `--model` | `-m` | Model name. Prompted if not provided. |
+| `--model` | `-m` | Model name, or a GGUF file path for `llama`. Prompted if not provided. |
 | `--timeout` | `-t` | Agent turn timeout in seconds (default: `300`). |
 
 **Examples:**
@@ -67,7 +67,7 @@ Slash commands (type `/` to see suggestions):
 
 | Command | Description |
 |---------|-------------|
-| `/context add <key> <command> [args...]` | Add an MCP server context (opens a tool-select card) |
+| `/context add [--protocol <version>] <key> <command> [args...]` | Add an MCP server context (opens a tool-select card) |
 | `/context list` | List active contexts |
 | `/context remove <key>` | Remove a context (asks to confirm) |
 | `/tools` | Open the tool enable/disable card |
@@ -85,13 +85,28 @@ Slash commands (type `/` to see suggestions):
 
 This spawns the server, registers its tools, and opens a card to enable/disable them.
 
+`--protocol` (or `-p`) pins the protocol revision, and must come before the context key:
+
+```
+/context add --protocol 2025-11-25 sqlite npx -y @mokei/mcp-sqlite
+```
+
+Accepted values are `2026-07-28`, `2025-11-25` and `auto`. The default is `auto`, matching
+`mokei inspect`: it probes the server and speaks whichever revision it serves. Pin a
+revision to speak exactly that one — a server that does not serve the pinned revision is
+refused with a `-32022` unsupported-protocol-version error. The message differs by
+direction: pinning `2026-07-28` against a `2025-11-25`-only server reports
+`Unsupported protocol version`, while pinning `2025-11-25` against a `2026-07-28`-only
+server takes the handshake path and reports `This server supports 2026-07-28`.
+
 ## `mokei inspect`
 
-Spawns an MCP server and runs the initialization handshake to verify it works, printing
-the server's capabilities.
+Spawns an MCP server and asks it to describe itself, printing what it answers. What is
+printed depends on the revision spoken: `2026-07-28` has no handshake, so the server is
+asked for its `server/discover` result; `2025-11-25` runs the `initialize` handshake.
 
 ```bash
-mokei inspect <command> [args...]
+mokei inspect [--protocol <version>] <command> [args...]
 ```
 
 **Arguments:**
@@ -100,6 +115,16 @@ mokei inspect <command> [args...]
 |----------|-------------|
 | `<command>` | Command to start the MCP server |
 | `[args...]` | Arguments passed to the command (forwarded as-is, including flags) |
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--protocol` | `-p` | Protocol revision: `2026-07-28`, `2025-11-25` or `auto` (default: `auto`) |
+
+`auto` probes the server and speaks whichever revision it serves, so it is what you want
+unless you are deliberately testing one revision. `--protocol` must come *before* the
+server command — everything after the command is forwarded to the server untouched.
 
 **Examples:**
 
@@ -112,15 +137,55 @@ mokei inspect npx -y @modelcontextprotocol/server-filesystem ./
 
 # Inspect with flags (passed through to the server command)
 mokei inspect npx -y @mokei/mcp-sqlite --db ./data.db
+
+# Pin a revision on a server that serves both
+mokei inspect --protocol 2025-11-25 npx -y @mokei/mcp-sqlite
 ```
 
-**Output:**
+**Output on `2026-07-28`** — a `server/discover` result, which is what `auto` prints
+against a server serving the current revision:
+
+```
+discovered
+{
+  "ttlMs": 0,
+  "cacheScope": "private",
+  "capabilities": {
+    "logging": {},
+    "tools": {
+      "listChanged": true
+    }
+  },
+  "supportedVersions": [
+    "2026-07-28",
+    "2025-11-25"
+  ],
+  "resultType": "complete",
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "sqlite",
+      "version": "0.1.0"
+    }
+  }
+}
+```
+
+`supportedVersions` lists every revision the server serves, so one `auto` run tells you
+both what it can do and which revisions it will accept.
+
+**Output on `2025-11-25`** — an `initialize` result, printed when the server serves only
+that revision or when `--protocol 2025-11-25` is passed:
 
 ```
 initialized
 {
-  "capabilities": {},
-  "protocolVersion": "2024-11-05",
+  "capabilities": {
+    "logging": {},
+    "tools": {
+      "listChanged": true
+    }
+  },
+  "protocolVersion": "2025-11-25",
   "serverInfo": {
     "name": "sqlite",
     "version": "0.1.0"
@@ -128,12 +193,18 @@ initialized
 }
 ```
 
+Pinning a revision the server does not serve is refused with a `-32022`
+unsupported-protocol-version error — `✘ Unsupported protocol version` when pinning
+`2026-07-28` against a `2025-11-25`-only server, or `✘ This server supports 2026-07-28` when
+pinning `2025-11-25` against a `2026-07-28`-only one, since that direction goes through the
+`initialize` handshake.
+
 ## `mokei monitor`
 
 Starts a local HTTP server serving the Monitor UI for tracking MCP interactions.
 
 ```bash
-mokei monitor [--port <port>] [--path <socket-path>]
+mokei monitor [--port <port>] [--socket-path <path>]
 ```
 
 **Flags:**
@@ -141,7 +212,7 @@ mokei monitor [--port <port>] [--path <socket-path>]
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--port` | `-p` | Port for the HTTP server (auto-assigned if not specified) |
-| `--path` | `-s` | Socket path for daemon communication |
+| `--socket-path` | `-s` | Socket path for daemon communication |
 
 **Examples:**
 
@@ -162,7 +233,7 @@ and results, notifications, and errors.
 Proxies an MCP server through the Mokei daemon, enabling monitoring.
 
 ```bash
-mokei proxy <command> [args...] [--path <socket-path>]
+mokei proxy <command> [args...] [--socket-path <path>]
 ```
 
 **Arguments:**
@@ -176,7 +247,7 @@ mokei proxy <command> [args...] [--path <socket-path>]
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--path` | `-s` | Socket path for daemon communication |
+| `--socket-path` | `-s` | Socket path for daemon communication |
 
 **Example:**
 

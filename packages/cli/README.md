@@ -31,15 +31,24 @@ If `--provider` is omitted, an interactive provider selection prompt appears.
 
 ### `mokei inspect`
 
-Inspect an MCP context server.
+Inspect an MCP context server: prints its `server/discover` result on `2026-07-28`, or its
+`initialize` result on `2025-11-25`.
 
 ```
 Usage: mokei inspect [options] <command> [args...]
 
 Arguments:
-  command   command to run the MCP server
-  args      arguments for the server command
+  command                   command to run the MCP server
+  args                      arguments for the server command
+
+Options:
+  -p, --protocol <version>  protocol revision to speak: 2026-07-28, 2025-11-25
+                            or auto (default: "auto")
 ```
+
+The default `auto` probes the server and speaks whichever revision it supports. Pass
+`--protocol` before the server command to pin one instead — anything after the command is
+forwarded to the server.
 
 ### `mokei monitor`
 
