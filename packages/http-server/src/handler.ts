@@ -411,9 +411,15 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     // because the condition is transient by construction: the cap frees as handlers return.
     //
     // Gated on `requestID != null`, and therefore placed after the id is parsed rather than at
-    // the top of this function: a notification or a response occupies no slot. It is
-    // acknowledged `202` and its exchange finishes before `onStart` ever runs, so refusing one
-    // at the cap would reject work that costs the cap nothing.
+    // the top of this function: an id-less frame occupies no slot. `runStatelessExchange`
+    // acknowledges it `202` and finishes it before `onStart` ever registers a teardown, so
+    // refusing one at the cap would reject work the cap is not protecting anything from.
+    //
+    // Note what `requestID` actually tests: the presence of `body.id`, not the frame's kind. A
+    // *response* carries an id, so it would take a slot and hold it until the exchange times
+    // out. That is unreachable rather than handled — `handlePOST` routes here only on a
+    // `params._meta` protocol version, and a response has no `params` at all, so one never
+    // arrives. Anything that made responses routable would have to revisit this.
     if (requestID != null && statelessTeardowns.size >= maxStatelessExchanges) {
       return new Response('Too many stateless exchanges', {
         status: 503,

@@ -76,7 +76,14 @@ export function readRequestProtocolVersion(body: Record<string, unknown>): strin
 
 export type StatelessExchangeParams = {
   message: ClientMessage
-  /** `null` for a notification or a response, which expect no reply. */
+  /**
+   * The `id` of the frame being exchanged, or `null` when it carries none — a notification.
+   *
+   * Read off `body.id`, so it says nothing about the frame's *kind*: a JSON-RPC response also
+   * carries an id and would be treated as a request here. Unreachable rather than handled — the
+   * handler routes a POST here only on a `params._meta` protocol version, and a response has no
+   * `params` — but it is the id, not the kind, that this field reports.
+   */
   requestID: string | number | null
   createServer: (transport: ServerTransport) => ContextServer
   replayBufferSize: number
@@ -253,8 +260,8 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
   }
 
   if (requestID == null) {
-    // A notification or a response on a sessionless POST. It is acknowledged but never
-    // dispatched: the server that would receive it exists for this POST alone and is
+    // An id-less frame on a sessionless POST — in practice a notification. It is acknowledged
+    // but never dispatched: the server that would receive it exists for this POST alone and is
     // discarded with it, so no state it could mutate outlives the exchange, and with no
     // request in flight there is nothing for it to correlate against either.
     finish()
