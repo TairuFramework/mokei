@@ -1,5 +1,6 @@
 import { DirectTransports, type TransportType } from '@enkaku/transport'
 import type { AnyMessage } from '@mokei/context-protocol'
+import { defer } from '@sozai/async'
 import type { Validator } from '@sozai/schema'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -148,6 +149,99 @@ describe('ContextRPC transport lifecycle', () => {
     rpc._handle()
     await transports.server.write({ jsonrpc: '2.0', id: 1, method: 'ping' } as AnyMessage)
     await vi.waitFor(() => expect(handled).toEqual(['ping']))
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('a quick request behind a slow one answers first', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const slow = defer<void>()
+    class TestRPC extends ContextRPC<TestTypes> {
+      async _handleRequest(request: TestTypes['HandleRequest']): Promise<Record<string, unknown>> {
+        if (request.method === 'slow') {
+          await slow.promise
+        }
+        return { method: request.method }
+      }
+    }
+    const rpc = new TestRPC({ transport: transports.client, validateMessageIn: passthrough })
+    rpc._handle()
+
+    const answered: Array<unknown> = []
+    void (async () => {
+      for await (const message of transports.server) {
+        answered.push((message as { result?: { method?: string } }).result?.method)
+      }
+    })()
+
+    await transports.server.write({ jsonrpc: '2.0', id: 1, method: 'slow' } as AnyMessage)
+    await transports.server.write({ jsonrpc: '2.0', id: 2, method: 'quick' } as AnyMessage)
+
+    await vi.waitFor(() => expect(answered).toEqual(['quick']))
+    slow.resolve()
+    await vi.waitFor(() => expect(answered).toEqual(['quick', 'slow']))
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('a notification is handled while a request is in flight', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const slow = defer<void>()
+    const notified: Array<string> = []
+    class TestRPC extends ContextRPC<TestTypes> {
+      async _handleRequest(): Promise<Record<string, unknown>> {
+        await slow.promise
+        return {}
+      }
+      _handleNotification(notification: { method: string }): void {
+        notified.push(notification.method)
+      }
+    }
+    const rpc = new TestRPC({ transport: transports.client, validateMessageIn: passthrough })
+    rpc._handle()
+
+    await transports.server.write({ jsonrpc: '2.0', id: 1, method: 'slow' } as AnyMessage)
+    await transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/progress',
+    } as AnyMessage)
+
+    await vi.waitFor(() => expect(notified).toEqual(['notifications/progress']))
+    slow.resolve()
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('notifications/cancelled aborts a handler that is still running', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const started = defer<AbortSignal>()
+    const never = defer<void>()
+    class TestRPC extends ContextRPC<TestTypes> {
+      async _handleRequest(
+        _request: TestTypes['HandleRequest'],
+        signal: AbortSignal,
+      ): Promise<Record<string, unknown>> {
+        started.resolve(signal)
+        await never.promise
+        return {}
+      }
+    }
+    const rpc = new TestRPC({ transport: transports.client, validateMessageIn: passthrough })
+    rpc._handle()
+
+    await transports.server.write({ jsonrpc: '2.0', id: 1, method: 'slow' } as AnyMessage)
+    const signal = await started.promise
+    await transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { requestId: 1 },
+    } as AnyMessage)
+
+    await vi.waitFor(() => expect(signal.aborted).toBe(true))
+
+    never.resolve()
     await rpc.dispose()
     await transports.dispose()
   })

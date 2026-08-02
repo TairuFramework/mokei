@@ -16,6 +16,7 @@ import type { Validator } from '@sozai/schema'
 import { ContinuationStore } from './continuation.js'
 import { errorResponse, RequestTimeoutError, RPCError, TransportClosedError } from './error.js'
 import { type ExchangeController, ExchangeRegistry, type StreamHandlers } from './exchange.js'
+import { RequestScheduler } from './scheduler.js'
 
 function isRequestID(id: unknown): id is RequestID {
   return typeof id === 'string' || typeof id === 'number'
@@ -70,23 +71,38 @@ export type RPCTypes = {
 }
 
 export type RPCParams<T extends RPCTypes> = {
+  /** Request handlers allowed to run at once (default 100). */
+  maxConcurrentRequests?: number
+  /** Requests allowed to wait for a slot before further requests are refused (default 1000). */
+  maxQueuedRequests?: number
   transport: TransportType<T['MessageIn'], T['MessageOut']>
   validateMessageIn: Validator<T['MessageIn']>
 }
 
+/**
+ * Message ordering:
+ * - notifications and responses are handled in wire order, synchronously in the read loop;
+ * - requests *start* in wire order and complete out of order;
+ * - a request never delays a notification — which is what lets `notifications/cancelled`
+ *   reach a handler that is still running.
+ */
 export class ContextRPC<T extends RPCTypes> extends Disposer {
   #closed = false
   #events: EventEmitter<T['Events']>
-  #receivedRequests: Record<RequestID, AbortController> = {}
   #requestID = 0
   #exchanges: ExchangeRegistry = new ExchangeRegistry()
   #continuations: ContinuationStore = new ContinuationStore()
+  #scheduler: RequestScheduler
   #transport: TransportType<T['MessageIn'], T['MessageOut']>
   #validateMessageIn: Validator<T['MessageIn']>
 
   constructor(params: RPCParams<T>) {
     super({ dispose: () => this.#dispose() })
     this.#events = new EventEmitter<T['Events']>()
+    this.#scheduler = new RequestScheduler({
+      maxConcurrentRequests: params.maxConcurrentRequests,
+      maxQueuedRequests: params.maxQueuedRequests,
+    })
     this.#transport = params.transport
     this.#validateMessageIn = params.validateMessageIn
   }
@@ -118,19 +134,23 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         if (next.done) {
           break
         }
-        let response: Response | null = null
+        let result: Response | null | Promise<Response | null> = null
         try {
-          response = await this._handleMessage(next.value)
+          result = this._handleMessage(next.value)
         } catch {
           // _handleMessage is defensive; never let a handler error kill the loop.
-          response = null
+          result = null
         }
-        if (response != null) {
-          try {
-            await this._write(response)
-          } catch {
-            // A failed response write is not fatal; transport death surfaces on next read.
-          }
+        if (result == null) {
+          continue
+        }
+        if (result instanceof Promise) {
+          // Deliberately not awaited: awaiting here is what made every mokei server handle
+          // one request at a time, and made `notifications/cancelled` unreadable until the
+          // request it names had already settled.
+          void this.#settleRequest(result)
+        } else {
+          await this.#writeResponse(result)
         }
       }
       this.#close()
@@ -140,6 +160,28 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
           ? cause
           : new TransportClosedError('Transport read failed', { cause }),
       )
+    }
+  }
+
+  async #settleRequest(pending: Promise<Response | null>): Promise<void> {
+    let response: Response | null = null
+    try {
+      response = await pending
+    } catch {
+      // The request branch of `_handleMessage` turns handler failures into error responses;
+      // a rejection here is a defect in that branch, not something to kill the loop over.
+      return
+    }
+    if (response != null) {
+      await this.#writeResponse(response)
+    }
+  }
+
+  async #writeResponse(response: Response): Promise<void> {
+    try {
+      await this._write(response as T['MessageOut'])
+    } catch {
+      // A failed response write is not fatal; transport death surfaces on next read.
     }
   }
 
@@ -188,11 +230,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         | T['HandleNotification']
       if (notification.method === 'notifications/cancelled') {
         const cancelled = notification as CancelledNotification
-        const controller = this.#receivedRequests[cancelled.params.requestId]
-        if (controller != null) {
-          controller.abort()
-          delete this.#receivedRequests[cancelled.params.requestId]
-        }
+        this.#scheduler.cancel(cancelled.params.requestId)
       } else {
         void this._handleNotification(notification)
       }
@@ -205,15 +243,13 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       return null
     }
 
-    // Message is a request
-    const controller = new AbortController()
-    this.#receivedRequests[id] = controller
-    return toPromise(() => {
-      return this._handleRequest(validated.value as T['HandleRequest'], controller.signal)
-    })
-      .then(
+    // Message is a request — the scheduler owns its signal and decides when it runs.
+    return this.#scheduler.schedule(id, (signal) => {
+      return toPromise(() => {
+        return this._handleRequest(validated.value as T['HandleRequest'], signal)
+      }).then(
         (result) => {
-          if (this.#receivedRequests[id] == null || this.#receivedRequests[id].signal.aborted) {
+          if (signal.aborted) {
             return null
           }
           return result == null
@@ -222,14 +258,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         },
         (cause) => {
           // TODO: call optional error handler
-          return this.#receivedRequests[id] == null || this.#receivedRequests[id].signal.aborted
-            ? null
-            : errorResponse(id, cause)
+          return signal.aborted ? null : errorResponse(id, cause)
         },
       )
-      .finally(() => {
-        delete this.#receivedRequests[id]
-      })
+    })
   }
 
   // TODO: handle cancel notification, delegate to handler for other notifications
