@@ -331,6 +331,81 @@ describe('stateless 2026-07-28 POST path', () => {
       }
     })
 
+    // Every path out of the write sink has to reach `finish()`. `settle()` clears the timeout,
+    // so a throw after the SSE stream has opened leaves nothing to end the exchange: before the
+    // cap that was a stale teardown registration, and with it the slot is held for the life of
+    // the process. `BigInt` is the cheapest realistic trigger — `JSON.stringify` refuses it, and
+    // a tool returning one is an ordinary server-side bug — and it throws on the very write that
+    // has just settled the response.
+    test('a sink that throws after settling still releases its slot', async () => {
+      const servers: Array<ContextServer> = []
+      const handler = createHTTPHandler({
+        maxStatelessExchanges: 1,
+        createServer: (transport) => {
+          const server = new ContextServer({
+            ...SERVER_CONFIG,
+            tools: {
+              boom: {
+                description: 'Returns a payload JSON cannot serialize',
+                inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+                handler: async () => ({ structuredContent: { value: 1n } }) as never,
+              },
+            },
+            transport,
+          })
+          servers.push(server)
+          return server
+        },
+      })
+      try {
+        const response = await handler.handleRequest(
+          statelessRequest('tools/call', { name: 'boom', arguments: {} }),
+        )
+        // Settled before the throw: the SSE stream opened, which is what clears the timeout.
+        expect(response.status).toBe(200)
+        await response.body?.cancel()
+
+        // The slot was released, so the next request is admitted rather than refused at the cap.
+        await vi.waitFor(async () => {
+          const next = await handler.handleRequest(statelessRequest('tools/list'))
+          expect(next.status).toBe(200)
+          await next.text()
+        })
+        // And the throwaway server went down with it rather than being left running.
+        await servers[0].disposed
+        expect(servers[0].signal.aborted).toBe(true)
+      } finally {
+        handler.dispose()
+      }
+    })
+
+    // A notification occupies no slot — its exchange is acknowledged and finished before
+    // `onStart` ever registers a teardown — so refusing one at the cap would reject work the cap
+    // is not protecting anything from. The check therefore sits after the id is parsed.
+    test('a notification is still accepted while the cap is full', async () => {
+      const { handler, servers, releaseTool } = createBlockingHandler({
+        maxStatelessExchanges: 1,
+      })
+      try {
+        const inFlight = handler.handleRequest(blockingRequest())
+        await untilInFlight(servers, 1)
+
+        // A request is refused at this point; the notification below is not.
+        expect((await handler.handleRequest(blockingRequest())).status).toBe(503)
+
+        const acknowledged = await handler.handleRequest(
+          statelessNotification('notifications/cancelled', { requestId: 1 }),
+        )
+        expect(acknowledged.status).toBe(202)
+
+        releaseTool()
+        await (await inFlight).text()
+      } finally {
+        releaseTool()
+        handler.dispose()
+      }
+    })
+
     test('the default cap applies when the option is omitted', async () => {
       // The default has to be wired, not merely exported: a handler built without the option
       // must still refuse past it.

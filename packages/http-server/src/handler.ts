@@ -402,19 +402,24 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     body: Record<string, unknown>,
     _requestVersion: string,
   ): Promise<Response> {
-    // Refused before anything is built for it, mirroring the session path's `maxSessions` gate
-    // — `statelessTeardowns` holds exactly the exchanges currently in flight. `Retry-After: 1`
+    const rawID = body.id
+    const requestID: string | number | null =
+      typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
+
+    // Refused before dispatch, mirroring the session path's `maxSessions` gate —
+    // `statelessTeardowns` holds exactly the exchanges currently in flight, and `Retry-After: 1`
     // because the condition is transient by construction: the cap frees as handlers return.
-    if (statelessTeardowns.size >= maxStatelessExchanges) {
+    //
+    // Gated on `requestID != null`, and therefore placed after the id is parsed rather than at
+    // the top of this function: a notification or a response occupies no slot. It is
+    // acknowledged `202` and its exchange finishes before `onStart` ever runs, so refusing one
+    // at the cap would reject work that costs the cap nothing.
+    if (requestID != null && statelessTeardowns.size >= maxStatelessExchanges) {
       return new Response('Too many stateless exchanges', {
         status: 503,
         headers: { 'Retry-After': '1' },
       })
     }
-
-    const rawID = body.id
-    const requestID: string | number | null =
-      typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
 
     return await runStatelessExchange({
       message: body as unknown as ClientMessage,

@@ -186,43 +186,57 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
 
   const writable = new WritableStream<ServerMessage>({
     async write(outgoing) {
-      const record = outgoing as unknown as Record<string, unknown>
-      const isOwnResponse = requestID != null && record.id === requestID && !('method' in record)
+      // Every path out of this sink has to reach `finish()`, including the throwing ones.
+      // `settle()` clears the timeout, so once the SSE stream is open nothing else will ever
+      // end this exchange: an unserializable payload (a `BigInt` in a tool result is enough),
+      // or a faulted SSE writer, would leave its throwaway `ContextServer` undisposed and its
+      // teardown registered forever. That used to be stale bookkeeping; with the concurrency
+      // cap it is a permanently held slot, and enough of them refuse every later request.
+      //
+      // The error is rethrown unchanged: a rejected sink write is what the writer already sees
+      // today, and only the cleanup is new.
+      try {
+        const record = outgoing as unknown as Record<string, unknown>
+        const isOwnResponse = requestID != null && record.id === requestID && !('method' in record)
 
-      // Held in a local: `sse` is a closure variable from an enclosing scope, which
-      // TypeScript will not keep narrowed across the assignment below.
-      let writer = sse
-      if (writer == null) {
-        if (isOwnResponse) {
-          const error = record.error as { code?: unknown; message?: unknown } | undefined
-          if (error != null && isEnvelopeFailure(error)) {
-            settle(
-              new Response(JSON.stringify(outgoing), {
-                status: 400,
-                headers: { 'Content-Type': 'application/json' },
-              }),
-            )
-            finish()
-            return
+        // Held in a local: `sse` is a closure variable from an enclosing scope, which
+        // TypeScript will not keep narrowed across the assignment below.
+        let writer = sse
+        if (writer == null) {
+          if (isOwnResponse) {
+            const error = record.error as { code?: unknown; message?: unknown } | undefined
+            if (error != null && isEnvelopeFailure(error)) {
+              settle(
+                new Response(JSON.stringify(outgoing), {
+                  status: 400,
+                  headers: { 'Content-Type': 'application/json' },
+                }),
+              )
+              finish()
+              return
+            }
           }
+          const stream = createSSEStream()
+          // `replayBufferSize` is passed through rather than zeroed: `SSEWriter`'s ring
+          // buffer indexes modulo its size, so 0 would produce a NaN index. Nothing replays
+          // a stateless exchange — the buffer is simply unused.
+          writer = new SSEWriter({
+            writable: stream.writable,
+            streamID: `stateless-${requestID ?? 'notification'}`,
+            replayBufferSize,
+          })
+          sse = writer
+          settle(new Response(stream.readable, { status: 200, headers: SSE_RESPONSE_HEADERS }))
+          await writer.writePrimingEvent()
         }
-        const stream = createSSEStream()
-        // `replayBufferSize` is passed through rather than zeroed: `SSEWriter`'s ring
-        // buffer indexes modulo its size, so 0 would produce a NaN index. Nothing replays
-        // a stateless exchange — the buffer is simply unused.
-        writer = new SSEWriter({
-          writable: stream.writable,
-          streamID: `stateless-${requestID ?? 'notification'}`,
-          replayBufferSize,
-        })
-        sse = writer
-        settle(new Response(stream.readable, { status: 200, headers: SSE_RESPONSE_HEADERS }))
-        await writer.writePrimingEvent()
-      }
 
-      await writer.writeEvent({ data: JSON.stringify(outgoing) })
-      if (isOwnResponse) {
+        await writer.writeEvent({ data: JSON.stringify(outgoing) })
+        if (isOwnResponse) {
+          finish()
+        }
+      } catch (error) {
         finish()
+        throw error
       }
     },
   })
