@@ -99,9 +99,22 @@ export class SSEWriter {
     return result
   }
 
+  /**
+   * Closes the underlying stream. Synchronous by design — every caller is a teardown path with
+   * nothing left to await on — which makes the returned promise nobody's to handle.
+   *
+   * Hence the `catch`. `close()` on an already-errored writable rejects, and every route here is
+   * a route that reaches this method precisely because something went wrong: a client that hung
+   * up mid-stream, a sink that threw after its response was settled. Without it, closing a
+   * faulted stream raises an unhandled rejection in the server process — a crash under Node's
+   * default `--unhandled-rejections=throw`, from cleanup code whose failure has nobody to report
+   * to and nothing to retry.
+   */
   close(): void {
     if (this.#closed) return
     this.#closed = true
-    this.#writer.close()
+    void this.#writer.close().catch(() => {
+      // The stream is already gone; that is the only reason this can reject.
+    })
   }
 }
