@@ -301,3 +301,49 @@ describe('ContextRPC transport lifecycle', () => {
     await transports.dispose()
   })
 })
+
+describe('ContextRPC invalid inbound messages', () => {
+  // Rejects anything without a `method`, i.e. every response frame.
+  const rejectResponses = ((message: unknown) => {
+    return (message as { method?: unknown }).method == null
+      ? { issues: [{ message: 'invalid' }] }
+      : { value: message }
+  }) as unknown as Validator<AnyMessage>
+
+  test('an invalid response rejects its caller instead of stranding it', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = new ContextRPC<TestTypes>({
+      transport: transports.client,
+      validateMessageIn: rejectResponses,
+    })
+    rpc._handle()
+
+    const pending = rpc.request('tools/list', {})
+    await transports.server.write({ jsonrpc: '2.0', id: 0, result: { tools: [] } } as AnyMessage)
+
+    await expect(pending).rejects.toThrow('Invalid response')
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('onError receives a frame that could not be validated or routed', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const onError = vi.fn()
+    const rpc = new ContextRPC<TestTypes>({
+      onError,
+      transport: transports.client,
+      validateMessageIn: rejectResponses,
+    })
+    rpc._handle()
+
+    // No request id 99 is pending, so there is no exchange to fail.
+    await transports.server.write({ jsonrpc: '2.0', id: 99, result: {} } as AnyMessage)
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1))
+    expect((onError.mock.calls[0][0] as Error).message).toBe('Invalid message')
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+})

@@ -75,6 +75,12 @@ export type RPCParams<T extends RPCTypes> = {
   maxConcurrentRequests?: number
   /** Requests allowed to wait for a slot before further requests are refused (default 1000). */
   maxQueuedRequests?: number
+  /**
+   * Called for an inbound frame that could neither be validated nor routed to anything —
+   * an invalid notification, or a response for an id nobody is waiting on. Without it such
+   * frames vanish silently.
+   */
+  onError?: (error: Error) => void
   transport: TransportType<T['MessageIn'], T['MessageOut']>
   validateMessageIn: Validator<T['MessageIn']>
 }
@@ -95,6 +101,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #scheduler: RequestScheduler
   #transport: TransportType<T['MessageIn'], T['MessageOut']>
   #validateMessageIn: Validator<T['MessageIn']>
+  #onError?: (error: Error) => void
 
   constructor(params: RPCParams<T>) {
     super({ dispose: () => this.#dispose() })
@@ -105,6 +112,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     })
     this.#transport = params.transport
     this.#validateMessageIn = params.validateMessageIn
+    this.#onError = params.onError
   }
 
   get events(): EventEmitter<T['Events']> {
@@ -220,7 +228,13 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         // Send an error response if incoming message is a request
         return new RPCError(INVALID_REQUEST, 'Invalid request').toResponse(id)
       }
-      // TODO: call optional error handler
+      if (isRequestID(id) && this.#exchanges.has(id)) {
+        // A frame carrying an id and no method is a response. Dropping it left its caller's
+        // promise pending forever, with nothing to time it out.
+        this.#exchanges.cancel(id, new RPCError(INTERNAL_ERROR, 'Invalid response'))
+        return null
+      }
+      this.#onError?.(new RPCError(INVALID_REQUEST, 'Invalid message'))
       return null
     }
 
@@ -261,7 +275,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
             : { jsonrpc: '2.0' as const, id, result }
         },
         (cause) => {
-          // TODO: call optional error handler
+          this.#onError?.(cause instanceof Error ? cause : new Error(String(cause)))
           return signal.aborted ? null : errorResponse(id, cause)
         },
       )
