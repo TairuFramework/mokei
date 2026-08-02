@@ -115,6 +115,30 @@ export const DEFAULT_LIST_MAX_PAGES = 100
 /** Max notifications buffered once a reader is attached; oldest dropped past this. */
 const NOTIFICATION_BUFFER_CAP = 256
 
+/**
+ * The revision an `'auto'` probe speaks before it knows what the server speaks: the newest
+ * registered revision that both needs no handshake and has `server/discover` to send.
+ *
+ * Derived from the registry rather than named, so a future handshake-less revision is probed
+ * with its own envelope instead of an older one's — `PROTOCOL_VERSIONS` is newest-first.
+ *
+ * The stamp this produces is a *guess*, and deliberately so: a probe is by definition sent
+ * before the revision is agreed, and a server that speaks something else answers with an error,
+ * which is precisely the signal `#probe()` falls back on. This is the one place in this file
+ * where stamping a revision the peer may not speak is correct — every other outgoing frame
+ * stamps the revision that was actually resolved.
+ */
+const PROBE_PROTOCOL: ProtocolDefinition = (() => {
+  const version = PROTOCOL_VERSIONS.find((candidate) => {
+    const protocol = PROTOCOLS[candidate]
+    return !protocol.requiresHandshake && protocol.clientMethods.has('server/discover')
+  })
+  if (version == null) {
+    throw new Error('No registered protocol revision can send server/discover without a handshake')
+  }
+  return PROTOCOLS[version]
+})()
+
 /** Notifications that invalidate whatever the client learned from `server/discover`. */
 const LIST_CHANGED_NOTIFICATIONS: ReadonlySet<string> = new Set([
   'notifications/prompts/list_changed',
@@ -362,7 +386,7 @@ export class ContextClient<
   #notificationPull: (() => void) | null = null
   #hasNotificationReader = false
   #notifications: ReadableStream<HandleNotification>
-  // The one outstanding low-level read shared by `#probeDiscover()` and `#initialize()` via
+  // The one outstanding low-level read shared by `#sendDiscover()` and `#initialize()` via
   // `#readUntil()`. See `#readUntil()`'s own comment for why this must not become two
   // independent `reader.read()` calls.
   #pendingSetupRead: Promise<ReadableStreamReadResult<ServerMessage>> | null = null
@@ -537,7 +561,7 @@ export class ContextClient<
     //
     // Placed after the `#ready` await so an `'auto'` client is gated on the revision it
     // resolved, never on an unresolved one. That cannot starve the probe that resolves it:
-    // `#probeDiscover()` writes `server/discover` through `super._write` rather than through
+    // `#sendDiscover()` writes `server/discover` through `super._write` rather than through
     // this method.
     if (!protocol.clientMethods.has(method as string)) {
       throw new MethodNotInRevisionError(method as string, protocol.version)
@@ -609,7 +633,7 @@ export class ContextClient<
    * `label` names the request this bounded read is waiting on (`'initialize'` or
    * `'server/discover'`), used only in the closed-connection error message below.
    *
-   * Shared by `#probeDiscover()` and `#initialize()` so both funnel through one outstanding
+   * Shared by `#sendDiscover()` and `#initialize()` so both funnel through one outstanding
    * low-level read (`#pendingSetupRead`) instead of each issuing its own. `@enkaku/transport`'s
    * `Transport#read()` obtains the stream's reader once (`_getReader()`) and shares it, and per
    * the Streams spec, concurrent `reader.read()` calls on one reader are served FIFO — the
@@ -795,17 +819,29 @@ export class ContextClient<
    * hangs its host forever rather than failing in `#setupTimeout` the way the same server does
    * on `2025-11-25`. One bounded round trip restores that bound.
    *
+   * Not free, and not claimed to be. A client whose first call is capability-gated pays nothing:
+   * `#seedDiscovery` hands that call the answer it would have fetched itself. A client whose
+   * calls are all ungated — `prompts/list`, `resources/read`, `getPrompt` never consult
+   * capabilities — sends one request per connection it did not send before. That is the cost of
+   * having any liveness bound at all here, which is worth more than the request it costs.
+   *
    * An error *response* is accepted, not raised: it proves the connection is live, which is the
    * whole point of the round trip, and a revision that does not mandate discovery may be served
    * by a peer that simply does not implement it. Refusing there would turn a working connection
    * into a failed one. Only silence — a `#setupTimeout` expiry, or the connection closing —
    * fails setup, which is exactly the "mute server" case this exists to catch. A caller that
    * needs the result itself still gets the error, from its own `discover()`.
+   *
+   * Stamps with `#requireProtocol()`, not with {@link PROBE_PROTOCOL}: this runs *after* the
+   * revision is resolved, so the revision is known and there is nothing to guess. Reusing the
+   * probe's stamp here would label a future handshake-less revision's setup frame `2026-07-28`
+   * — a version literal standing in for a capability, which is what the capability-derived gate
+   * above it exists to avoid.
    */
   async #setupDiscover(): Promise<void> {
     let result: DiscoverResult
     try {
-      result = await this.#probeDiscover()
+      result = await this.#sendDiscover(this.#requireProtocol())
     } catch (cause) {
       if (cause instanceof RPCError) {
         return
@@ -847,12 +883,12 @@ export class ContextClient<
    * handshake, so the invariant currently holds by construction, not by choice made here.
    */
   async #probe(): Promise<ProtocolDefinition> {
-    const candidate = PROTOCOLS['2026-07-28']
+    const candidate = PROBE_PROTOCOL
     try {
       // Seeded, not discarded: the probe's answer is a full `DiscoverResult`, and throwing it
       // away made every `'auto'` connection send `server/discover` a second time on its first
       // gated call — a redundant POST per connection over HTTP.
-      this.#seedDiscovery(await this.#probeDiscover())
+      this.#seedDiscovery(await this.#sendDiscover(candidate))
       return candidate
     } catch (cause) {
       const supported =
@@ -878,22 +914,28 @@ export class ContextClient<
   /**
    * Sends `server/discover` directly on the transport (`super._write`), bypassing
    * `ContextRPC`'s request/exchange machinery: `#startReadLoop()` hasn't run yet — resolving
-   * whether it should is the point of this probe — so there is no read loop to route a response
-   * through yet. Reads the response via `#readUntil()`, sharing its bounded-read state with
-   * `#initialize()` so a probe timeout can't cause the handshake that follows to lose its
-   * response (see `#readUntil()`'s comment).
+   * whether it should is the point of the probe that is one of this method's two callers — so
+   * there is no read loop to route a response through yet. Reads the response via
+   * `#readUntil()`, sharing its bounded-read state with `#initialize()` so a probe timeout can't
+   * cause the handshake that follows to lose its response (see `#readUntil()`'s comment).
+   *
+   * `protocol` is the revision whose envelope stamps the outgoing frame, and it is a parameter
+   * rather than a constant because the two callers know different things. `#setupDiscover()`
+   * runs once the revision is resolved and passes that revision. `#probe()` runs before any
+   * revision is known and passes {@link PROBE_PROTOCOL}, a registry-derived guess. Hardcoding
+   * either here would stamp a future handshake-less revision's setup frame with an older
+   * revision's version — a version literal standing in for a capability.
    *
    * Sends the same `clientInfo`/`logLevel` context `request()` sends with every other request,
    * plus the same W3C trace context (SEP-414) `request()` injects into `_meta` via
    * `currentTraceMeta()`: the spec says a client SHOULD send `clientInfo`, and there's no reason
-   * for the one-off probe to present a different envelope to the server than any request that
-   * follows it once the revision is resolved — a server keying logs, metrics or trace
-   * correlation off `clientInfo`/`traceparent` shouldn't see a gap for the request that
-   * established the connection.
+   * for the one-off setup request to present a different envelope to the server than any request
+   * that follows it — a server keying logs, metrics or trace correlation off
+   * `clientInfo`/`traceparent` shouldn't see a gap for the request that established the
+   * connection.
    */
-  async #probeDiscover(): Promise<DiscoverResult> {
+  async #sendDiscover(protocol: ProtocolDefinition): Promise<DiscoverResult> {
     const id = this._getNextRequestID()
-    const protocol = PROTOCOLS['2026-07-28']
     const trace = currentTraceMeta()
     const base: Record<string, unknown> = {}
     if (trace.traceparent != null) {

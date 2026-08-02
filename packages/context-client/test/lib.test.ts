@@ -1698,6 +1698,23 @@ describe('setup on a revision without a handshake', () => {
     expect(methodsSent(sent)).toEqual(['server/discover'])
   })
 
+  // The stamp comes from the *resolved* revision, not from the registry-derived guess the
+  // `'auto'` probe uses: setup runs after resolution, so there is nothing to guess, and reusing
+  // the probe's constant would label a future handshake-less revision's setup frame with an
+  // older revision's version — a version literal standing in for a capability.
+  test('the setup discover is stamped with the resolved revision', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => ({ resultType: 'complete', prompts: [] }),
+    })
+    await client.listPrompts()
+    const discover = sent.find((message) => message.method === 'server/discover') as ClientRequest
+    const meta = (discover.params as { _meta?: Record<string, unknown> })._meta
+    expect(meta?.['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
+    // The full request envelope, the same one every later request carries.
+    expect(meta?.['io.modelcontextprotocol/clientCapabilities']).toEqual({})
+  })
+
   // The liveness check must not become a second, stricter handshake. `2026-07-28` does not
   // *require* a peer to implement discovery, so an error answer means "alive, but no discovery
   // here" — a usable connection. Only silence is a dead peer.
