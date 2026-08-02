@@ -903,6 +903,41 @@ describe('HTTPTransport', () => {
     }
   })
 
+  test('POST Base64-wraps an Mcp-Name a header value cannot carry raw', async () => {
+    // A resource URI is unconstrained text, but an HTTP header value is a ByteString: assigning
+    // one raw makes the `new Headers()` that `fetch` builds internally throw, and the read comes
+    // back as an opaque send failure instead of the resource. `fetchMock` never constructs a
+    // `Headers`, so this test builds one itself — without that, an ASCII-only fixture and a
+    // mocked `fetch` between them can assert the header's *value* while never exercising the one
+    // constraint that makes the raw form illegal.
+    const uri = 'file:///Users/paul/文档/notes.md'
+    const contents = [{ uri, mimeType: 'text/plain', text: 'notes' }]
+    fetchMock.mockResolvedValueOnce(jsonResponse({ jsonrpc: '2.0', id: 1, result: { contents } }))
+
+    const transport = new HTTPTransport({ url: TEST_URL })
+    await transport.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'resources/read',
+      params: { uri },
+    } as ClientMessage)
+
+    const [, init] = getCallByMethod(fetchMock.mock.calls, 'POST')
+    const headerValue = new Headers(init.headers).get('Mcp-Name') as string
+    expect(headerValue).toMatch(/^=\?base64\?.+\?=$/)
+    // What a conformant peer compares against `params.uri` is the *decoded* value, so the round
+    // trip is the assertion that matters, not the wrapper's shape alone. Decoded the way the
+    // SDK's own `decodeMcpParamValue` does: Base64 to bytes, bytes to UTF-8.
+    const bytes = Uint8Array.from(atob(headerValue.slice(9, -2)), (char) => char.charCodeAt(0))
+    expect(new TextDecoder().decode(bytes)).toBe(uri)
+
+    // And the read itself succeeds rather than failing inside the send.
+    const { value } = await transport.read()
+    expect(value).toEqual({ jsonrpc: '2.0', id: 1, result: { contents } })
+
+    await transport.dispose()
+  })
+
   test('POST omits Mcp-Name for a method that does not require it', async () => {
     // Only the three methods the specification lists carry the header. A `name` in the params
     // of any other method is an ordinary argument and must not be mirrored into a header a

@@ -38,6 +38,27 @@ export const SERVER_VERSION = '1.0.0'
 export const GREETING_URI = 'test://greeting'
 export const GREETING_TEXT = 'Hello from the interop fixture'
 
+/**
+ * A resource URI carrying characters no HTTP header value can hold raw: the `Mcp-Name` header
+ * mirrors `params.uri` for `resources/read`, and a header value is a ByteString. Served by
+ * `createSDKServer()` only — the point of it is to put the Base64 sentinel in front of a
+ * conformant *decoder*, which is the SDK's, and mokei's own server never reads the header back.
+ */
+export const NON_ASCII_RESOURCE_URI = 'test://notes/文書.md'
+
+/**
+ * The form the SDK is *registered* with, and therefore the one it echoes back in `contents`.
+ *
+ * SDK `2.0.0` lists a resource under the string it was registered with but looks a read up by
+ * `new URL(params.uri).href`, so registering the raw URI above makes every read of it miss with
+ * "Resource not found". Registering the percent-encoded form makes the two agree. What the
+ * client sends — and therefore what the header carries and the server cross-checks — is still
+ * the raw URI.
+ */
+export const NON_ASCII_RESOURCE_REGISTERED_URI = 'test://notes/%E6%96%87%E6%9B%B8.md'
+
+export const NON_ASCII_RESOURCE_TEXT = 'Notes filed under a non-ASCII URI'
+
 export const ITEM_TEMPLATE_URI = 'test://items/{id}'
 export const ITEM_TEMPLATE_NAME = 'item'
 
@@ -194,6 +215,15 @@ export function createSDKServer(): McpServer {
   server.registerResource('greeting', GREETING_URI, { mimeType: 'text/plain' }, (uri: URL) => ({
     contents: [{ uri: uri.href, mimeType: 'text/plain', text: GREETING_TEXT }],
   }))
+
+  server.registerResource(
+    'notes',
+    NON_ASCII_RESOURCE_REGISTERED_URI,
+    { mimeType: 'text/plain' },
+    (uri: URL) => ({
+      contents: [{ uri: uri.href, mimeType: 'text/plain', text: NON_ASCII_RESOURCE_TEXT }],
+    }),
+  )
 
   return server
 }

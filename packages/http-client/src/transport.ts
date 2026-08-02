@@ -13,7 +13,7 @@ import { parseServerSentEvents } from 'parse-sse'
 
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
 import { SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE } from './errors.js'
-import { buildParamHeaders, collectHeaderAnnotations } from './x-mcp-header.js'
+import { buildParamHeaders, collectHeaderAnnotations, encodeHeaderValue } from './x-mcp-header.js'
 
 /** Standard JSON-RPC internal-error code, used for synthesized transport failures. */
 const INTERNAL_ERROR_CODE = -32603
@@ -279,7 +279,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       const params = (message as { params?: Record<string, unknown> }).params
       const nameValue = nameSourceField == null ? undefined : params?.[nameSourceField]
       if (typeof nameValue === 'string') {
-        headers['Mcp-Name'] = nameValue
+        // Encoded, never raw: a resource URI (and a tool or prompt name) is unconstrained text,
+        // while an HTTP header value is a ByteString — `new Headers()` throws on any character
+        // above U+00FF, which `fetch` does internally, so a raw assignment here turns
+        // `readResource({ uri: 'file:///文档/notes.md' })` into an opaque send failure. The
+        // `=?base64?…?=` sentinel is the specification's own encoding for header-carried values,
+        // and a conformant peer runs `Mcp-Name` through that decoder before cross-checking it
+        // against `params.name`/`params.uri`, so the encoded form is what it compares.
+        headers['Mcp-Name'] = encodeHeaderValue(nameValue)
       }
       // Track in-flight requests so responses can be correlated back to their method.
       if (requestID != null) {

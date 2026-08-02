@@ -15,7 +15,14 @@ import { META_CLIENT_CAPABILITIES, META_PROTOCOL_VERSION } from '@mokei/context-
 import { afterEach, describe, expect, test } from 'vitest'
 
 import { checkMokeiClient } from '../support/interop/expectations.ts'
-import { GREETING_TEXT, GREETING_URI, greetingMessage } from '../support/interop/fixture.ts'
+import {
+  GREETING_TEXT,
+  GREETING_URI,
+  greetingMessage,
+  NON_ASCII_RESOURCE_REGISTERED_URI,
+  NON_ASCII_RESOURCE_TEXT,
+  NON_ASCII_RESOURCE_URI,
+} from '../support/interop/fixture.ts'
 import {
   type BlockingHTTPServer,
   connectMokeiHTTPClient,
@@ -205,6 +212,26 @@ describe('mokei client against an SDK server over Streamable HTTP on 2026-07-28'
     const read = await client.readResource({ uri: GREETING_URI })
     expect(read.contents).toEqual([
       { uri: GREETING_URI, mimeType: 'text/plain', text: GREETING_TEXT },
+    ])
+  })
+
+  // A resource URI is unconstrained text; an HTTP header value is a ByteString. Sending the URI
+  // raw makes the `new Headers()` inside `fetch` throw before the request leaves, so a client
+  // that does not Base64-wrap it cannot read such a resource at all. Only a peer that runs
+  // `Mcp-Name` through the sentinel decoder before cross-checking it against `params.uri` can
+  // show that the wrapped form is also *accepted*: mokei's own server never reads the header
+  // back, so no mokei-to-mokei test can distinguish the two.
+  test('reads a resource whose URI no header value can carry raw', async () => {
+    server = await startSDK20260728HTTPServer()
+    client = connectMokeiHTTPClient(server.url, '2026-07-28')
+
+    const read = await client.readResource({ uri: NON_ASCII_RESOURCE_URI })
+    expect(read.contents).toEqual([
+      {
+        uri: NON_ASCII_RESOURCE_REGISTERED_URI,
+        mimeType: 'text/plain',
+        text: NON_ASCII_RESOURCE_TEXT,
+      },
     ])
   })
 })

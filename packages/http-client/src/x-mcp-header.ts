@@ -85,10 +85,14 @@ function base64Utf8(value: string): string {
 }
 
 /**
- * Encode a primitive argument value for use in an `Mcp-Param-*` header. Integers become
+ * Encode a primitive value for use in an `Mcp-Param-*` or `Mcp-Name` header. Integers become
  * decimal strings, booleans become `"true"`/`"false"`, strings pass through unless they
  * require Base64 wrapping (non-ASCII, control characters, surrounding whitespace, or a
  * sentinel collision).
+ *
+ * Both headers share this encoding because both carry values a caller chooses freely — a tool
+ * argument, a tool/prompt name, a resource URI — into a field an HTTP header can only hold as a
+ * ByteString.
  *
  * @throws if given a non-integer number.
  */

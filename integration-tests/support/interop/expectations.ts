@@ -62,7 +62,10 @@ export async function checkMokeiClient(
   ])
 
   const { resources } = await client.listResources()
-  expect(resources.map((resource) => resource.uri)).toEqual([GREETING_URI])
+  // `toContain`, not an exact list: the SDK fixture also serves the non-ASCII resource the
+  // `Mcp-Name` conformance test reads, and this helper runs against both stacks. The resource
+  // *sets* the two fixtures expose already differ deliberately — see `fixture.ts`'s header.
+  expect(resources.map((resource) => resource.uri)).toContain(GREETING_URI)
 
   const readResult = await client.readResource({ uri: GREETING_URI })
   expect(readResult.contents).toEqual([
@@ -98,7 +101,10 @@ export async function checkSDKClient(client: Client): Promise<void> {
   ])
 
   const { resources } = await client.listResources()
-  expect(resources.map((resource) => resource.uri)).toEqual([GREETING_URI])
+  // `toContain`, not an exact list: the SDK fixture also serves the non-ASCII resource the
+  // `Mcp-Name` conformance test reads, and this helper runs against both stacks. The resource
+  // *sets* the two fixtures expose already differ deliberately — see `fixture.ts`'s header.
+  expect(resources.map((resource) => resource.uri)).toContain(GREETING_URI)
 
   const readResult = await client.readResource({ uri: GREETING_URI })
   expect(readResult.contents).toEqual([
