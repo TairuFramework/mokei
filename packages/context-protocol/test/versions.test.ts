@@ -8,9 +8,55 @@ import {
   MISSING_REQUIRED_CLIENT_CAPABILITY,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
+  type ProtocolVersion,
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '../src/index.js'
-import { PROTOCOL as PROTOCOL_2026_07_28 } from '../src/versions/2026-07-28.js'
+import { clientNotification as CLIENT_NOTIFICATION_2025_11_25 } from '../src/versions/2025-11-25.js'
+import {
+  clientNotification as CLIENT_NOTIFICATION_2026_07_28,
+  PROTOCOL as PROTOCOL_2026_07_28,
+} from '../src/versions/2026-07-28.js'
+
+/**
+ * Each revision's `clientNotification` union, keyed by revision. Imported from the version
+ * modules rather than read off `ProtocolDefinition`, which carries only the whole-message
+ * `clientMessage` union — a notification union is what `clientNotifications` has to agree with,
+ * so the guard below compares against the union itself and not against a copy of it.
+ */
+const CLIENT_NOTIFICATION_UNIONS: Record<ProtocolVersion, { anyOf: ReadonlyArray<unknown> }> = {
+  '2025-11-25': CLIENT_NOTIFICATION_2025_11_25,
+  '2026-07-28': CLIENT_NOTIFICATION_2026_07_28,
+}
+
+/**
+ * Every `method` const a notification union names, found by walking its members through the
+ * `allOf`/`anyOf`/`oneOf` composition each notification schema is built from.
+ */
+function unionMethods(union: { anyOf: ReadonlyArray<unknown> }): Set<string> {
+  const found = new Set<string>()
+  const visit = (node: unknown): void => {
+    if (node == null || typeof node !== 'object') {
+      return
+    }
+    const record = node as Record<string, unknown>
+    const properties = record.properties as Record<string, { const?: unknown }> | undefined
+    if (typeof properties?.method?.const === 'string') {
+      found.add(properties.method.const)
+    }
+    for (const key of ['allOf', 'anyOf', 'oneOf'] as const) {
+      const branches = record[key]
+      if (Array.isArray(branches)) {
+        for (const branch of branches) {
+          visit(branch)
+        }
+      }
+    }
+  }
+  for (const member of union.anyOf) {
+    visit(member)
+  }
+  return found
+}
 
 describe('protocol versions', () => {
   test('lists both supported revisions, newest first', () => {
@@ -145,17 +191,36 @@ describe('protocol records', () => {
   // member missing from the set is refused locally though the peer would have taken it. Driven
   // off the union rather than a hand-copied list, so a revision that changes one and not the
   // other fails here.
-  test('every declared client notification validates, and nothing else does', () => {
-    const others = ['notifications/initialized', 'notifications/roots/list_changed']
+  test('clientNotifications names exactly the members of its own notification union', () => {
+    for (const version of PROTOCOL_VERSIONS) {
+      const declared = [...PROTOCOLS[version].clientNotifications].sort()
+      expect(declared, version).toEqual(
+        [...unionMethods(CLIENT_NOTIFICATION_UNIONS[version])].sort(),
+      )
+    }
+  })
+
+  // The behavioural half of the same guard: a name the set declares has to produce a frame the
+  // revision's *own* `clientMessage` validator accepts, and a name it does not declare has to
+  // produce one that validator rejects. The undeclared names are taken from every other
+  // registered revision's union rather than hardcoded, so this stays honest as revisions come
+  // and go — with the set-equality test above, that covers union ⊄ set for every name, not just
+  // for a list somebody remembered to update.
+  test('every declared client notification validates, and no undeclared one does', () => {
+    // The minimum params each notification's own schema requires; anything not listed has none.
+    const required: Record<string, Record<string, unknown>> = {
+      'notifications/cancelled': { requestId: 1 },
+      'notifications/progress': { progressToken: 1, progress: 0 },
+    }
+    const everyKnownMethod = new Set(
+      PROTOCOL_VERSIONS.flatMap((version) => [
+        ...unionMethods(CLIENT_NOTIFICATION_UNIONS[version]),
+      ]),
+    )
+
     for (const version of PROTOCOL_VERSIONS) {
       const protocol = PROTOCOLS[version]
       const validate = createValidator(protocol.clientMessage)
-      // The minimum params each notification's own schema requires; anything not listed has
-      // none.
-      const required: Record<string, Record<string, unknown>> = {
-        'notifications/cancelled': { requestId: 1 },
-        'notifications/progress': { progressToken: 1, progress: 0 },
-      }
       for (const method of protocol.clientNotifications) {
         const frame = {
           jsonrpc: '2.0',
@@ -164,11 +229,15 @@ describe('protocol records', () => {
         }
         expect(validate(frame).issues, `${version} rejects declared ${method}`).toBeUndefined()
       }
-      for (const method of others) {
-        if (protocol.clientNotifications.has(method)) {
-          continue
+      const undeclared = [...everyKnownMethod].filter(
+        (method) => !protocol.clientNotifications.has(method),
+      )
+      for (const method of undeclared) {
+        const frame = {
+          jsonrpc: '2.0',
+          method,
+          params: protocol.decorateNotification(required[method] ?? {}),
         }
-        const frame = { jsonrpc: '2.0', method, params: protocol.decorateNotification({}) }
         expect(validate(frame).issues, `${version} admits undeclared ${method}`).toBeDefined()
       }
     }
