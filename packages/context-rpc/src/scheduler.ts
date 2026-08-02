@@ -99,10 +99,22 @@ export class RequestScheduler {
 
   #start(id: RequestID, controller: AbortController, run: RunRequest): Promise<Response | null> {
     this.#running.set(id, controller)
-    return run(controller.signal).finally(() => {
+    const reclaim = () => {
       this.#running.delete(id)
       this.#drain()
-    })
+    }
+    return run(controller.signal).then(
+      (response) => {
+        reclaim()
+        return response
+      },
+      () => {
+        // A handler that rejects has no response to write. Settled here rather than at each
+        // call site so an immediately-run request and a queued one settle identically.
+        reclaim()
+        return null
+      },
+    )
   }
 
   #drain(): void {
@@ -113,11 +125,7 @@ export class RequestScheduler {
       }
       const [id, queued] = next.value
       this.#queued.delete(id)
-      this.#start(id, queued.controller, queued.run).then(queued.resolve, () => {
-        // A handler that rejects has no response to write; the caller of `schedule` for a
-        // queued request cannot observe the rejection, so it settles as "write nothing".
-        queued.resolve(null)
-      })
+      this.#start(id, queued.controller, queued.run).then(queued.resolve)
     }
   }
 }

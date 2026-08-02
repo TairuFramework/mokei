@@ -98,4 +98,47 @@ describe('RequestScheduler', () => {
     await expect(queued).resolves.toBeNull()
     expect(second.calls).toHaveLength(0)
   })
+
+  test('an immediately-run handler that rejects settles to null', async () => {
+    const scheduler = new RequestScheduler()
+    const result = await scheduler.schedule(1, async () => {
+      throw new Error('handler failed')
+    })
+
+    expect(result).toBeNull()
+  })
+
+  test('a queued handler that rejects settles to null and drains the next request', async () => {
+    const scheduler = new RequestScheduler({ maxConcurrentRequests: 1 })
+    const third = controllable()
+
+    // Start first request
+    const first = scheduler.schedule(1, async () => {
+      throw new Error('handler failed')
+    })
+
+    // Queue second (also rejecting)
+    const second = scheduler.schedule(2, async () => {
+      throw new Error('handler failed')
+    })
+
+    // Queue third (succeeds)
+    const queued = scheduler.schedule(3, third.run)
+
+    // Wait for first to settle as null
+    const firstResult = await first
+    expect(firstResult).toBeNull()
+
+    // Wait for second to settle as null
+    const secondResult = await second
+    expect(secondResult).toBeNull()
+
+    // Verify third was started (drained and running)
+    await vi.waitFor(() => expect(third.calls).toHaveLength(1))
+    expect(scheduler.runningCount).toBe(1)
+
+    // Clean up
+    third.gate.resolve()
+    await queued
+  })
 })
