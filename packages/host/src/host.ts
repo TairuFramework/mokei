@@ -551,36 +551,24 @@ export class ContextHost extends Disposer {
   async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
     params: HTTPContextParams,
   ): Promise<ContextClient<T>> {
-    const { key, url, headers, auth, timeout, protocolVersion = '2026-07-28' } = params
+    const { key, url, headers, auth, timeout, protocolVersion } = params
 
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
 
-    // Create MCP HTTP transport
-    const transport = new HTTPTransport({ url, headers, auth, timeout })
-
-    // Create the context client
-    const client = new ContextClient<T>({
+    // Built through `createHostedContext` rather than assembled here so the default revision is
+    // named in exactly one place. Spelling it a second time is the literal-as-capability
+    // pattern this revision's work set out to remove, and a one-sided change to it would be a
+    // behavior difference between two entry points that read as siblings.
+    const context = createHostedContext<T>({
+      transport: new HTTPTransport({ url, headers, auth, timeout }) as ClientTransport,
       protocolVersion,
-      transport: transport as ClientTransport,
     })
 
-    // Create disposer for cleanup
-    const disposer = new Disposer({
-      dispose: async () => {
-        await transport.dispose()
-      },
-    })
+    this._contexts[key] = context as unknown as HostedContext
 
-    // Store the hosted context
-    this._contexts[key] = {
-      client: client as unknown as ContextClient,
-      disposer,
-      tools: [],
-    }
-
-    return client
+    return context.client
   }
 
   async setup(params: SetupParams): Promise<Array<ContextTool>> {
