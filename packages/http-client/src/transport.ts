@@ -25,8 +25,11 @@ const INTERNAL_ERROR_CODE = -32603
  * The accepted shape is deliberately no looser than what the RPC layer's inbound validator
  * admits: a response failing that validation is dropped there rather than rejected, and no
  * timeout covers an ordinary request, so an under-checked frame would leave its caller waiting
- * forever. Anything this returns `null` for still reaches the caller as a synthesized internal
- * error carrying the raw body, which is strictly better than silence.
+ * forever. It must be no *stricter* either, for the mirror-image reason: a frame refused here
+ * comes back as a synthesized internal error whose message is the raw body, losing the code and
+ * `data` an `'auto'` client reads. So the two checks below are exactly the constraints
+ * `errorResponse` places on an error object, and `error.data` — whose value JSON-RPC leaves
+ * entirely to the server — is checked here no more than it is there.
  */
 function parseJSONRPCError(
   body: string,

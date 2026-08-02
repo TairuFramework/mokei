@@ -259,11 +259,18 @@ export const response = {
 } as const satisfies Schema
 export type Response = FromSchema<typeof response>
 
+// `data` is unconstrained on purpose. JSON-RPC 2.0 says only that it "MAY be omitted" and that
+// its value is "defined by the Server", so a peer is free to send a string, a number, an array
+// or `null` there — the official SDK types it as `unknown`. Constraining it to an object made
+// this validator stricter than the specification, and an inbound frame failing it is *dropped*
+// by the RPC read loop rather than rejected: the caller of the request it answers then waits
+// forever, since no timeout covers an ordinary request. Widening only ever accepts more, on
+// every revision.
 export const error = {
   properties: {
     code: { type: 'number' },
     message: { type: 'string' },
-    data: { type: 'object', additionalProperties: {} },
+    data: {},
   },
   required: ['code', 'message'],
   type: 'object',

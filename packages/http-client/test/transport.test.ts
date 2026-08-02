@@ -518,6 +518,41 @@ describe('HTTPTransport', () => {
       await transport.dispose()
     })
 
+    // `error.data` is whatever the answering server chose to put there — the SDK types it as
+    // `unknown` and JSON-RPC constrains it not at all. `parseJSONRPCError` must therefore accept
+    // every shape the RPC layer's inbound validator does, or the frame is *dropped* there rather
+    // than rejected and the caller of a `2026-07-28` `tools/call` waits forever, because nothing
+    // times an ordinary request out. This half asserts the transport passes the frame through
+    // verbatim; that the validator admits the same shapes is asserted in
+    // `packages/context-protocol/test/lib.test.ts`, and that the pair does not strand a caller
+    // in `packages/context-client/test/lib.test.ts`.
+    test.each([
+      ['a string', 'only 2025-11-25'],
+      ['null', null],
+      ['an array', ['2025-11-25']],
+      ['a number', 1],
+    ])('a 400 whose error.data is %s reaches the caller', async (_label, data) => {
+      const carried = {
+        jsonrpc: '2.0',
+        id: 1,
+        error: { code: -32022, message: 'Unsupported protocol version', data },
+      }
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify(carried), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(request20260728(1))
+
+      const { value } = await transport.read()
+      expect(value).toEqual(carried)
+
+      await transport.dispose()
+    })
+
     test('a 400 with an unparseable body still fails the request', async () => {
       // Several of a server's `400` bodies are plain text, not JSON. Parsing must not throw
       // and must not leave the request hanging.

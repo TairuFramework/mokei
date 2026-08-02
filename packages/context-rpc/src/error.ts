@@ -31,9 +31,12 @@ export class RPCError extends Error {
   }
 
   #code: number
-  #data?: Record<string, unknown>
+  // `unknown`, not `Record<string, unknown>`: JSON-RPC says only that `error.data` is "defined
+  // by the Server", so a peer may put a string, a number, an array or `null` there. Narrowing it
+  // here would have made this class unable to carry what the wire schema now admits.
+  #data?: unknown
 
-  constructor(code: number, message: string, data?: Record<string, unknown>) {
+  constructor(code: number, message: string, data?: unknown) {
     super(message)
     this.#code = code
     this.#data = data
@@ -43,7 +46,7 @@ export class RPCError extends Error {
     return this.#code
   }
 
-  get data(): Record<string, unknown> | undefined {
+  get data(): unknown {
     return this.#data
   }
 
