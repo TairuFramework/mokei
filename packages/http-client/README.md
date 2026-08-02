@@ -25,7 +25,9 @@ const client = createHTTPClient({
   timeout: 30_000,
 })
 
-// No handshake on 2026-07-28 — the client sets itself up lazily on its first call.
+// No handshake on 2026-07-28 — the client sets itself up lazily on its first call, opening
+// with one `server/discover` bounded by `setupTimeout` so a server that never answers fails
+// instead of hanging.
 const { tools } = await client.listTools()
 ```
 

@@ -5,6 +5,39 @@ import { createHTTPClient } from '../src/index.js'
 
 const TEST_URL = 'http://localhost:3000/mcp'
 
+const DISCOVER_RESULT = {
+  resultType: 'complete',
+  supportedVersions: ['2026-07-28'],
+  capabilities: { tools: {} },
+  ttlMs: 0,
+  cacheScope: 'private',
+}
+
+type PostedMessage = { id?: number; method?: string }
+
+/**
+ * A `fetch` implementation that answers setup's `server/discover` with a real result and hands
+ * every other POST to `otherwise`, which receives the parsed request body so it can echo the id.
+ *
+ * A client on a revision with no handshake opens with one bounded `server/discover` — its
+ * liveness check, standing in for the handshake — so a mock that leaves it unanswered stalls
+ * setup and nothing the test is actually about ever reaches the wire.
+ */
+function answerDiscover(
+  otherwise: (message: PostedMessage) => Response,
+): (url: string, init: { body?: string }) => Response {
+  return (_url, init) => {
+    const message: PostedMessage = init.body == null ? {} : JSON.parse(init.body)
+    if (message.method !== 'server/discover') {
+      return otherwise(message)
+    }
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: message.id, result: DISCOVER_RESULT }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+}
+
 describe('createHTTPClient', () => {
   let fetchMock: ReturnType<typeof vi.fn>
 
@@ -23,18 +56,21 @@ describe('createHTTPClient', () => {
   })
 
   test('speaks the revision it is given rather than a fixed one', async () => {
-    // The POST is answered with 202 so nothing is enqueued and the request stays open;
-    // only the outgoing frame is under test here.
-    fetchMock.mockResolvedValue(new Response(null, { status: 202 }))
+    // The `tools/list` POST is answered with 202 so nothing is enqueued and the request stays
+    // open; only the outgoing frame is under test here.
+    fetchMock.mockImplementation(answerDiscover(() => new Response(null, { status: 202 })))
 
     const client = createHTTPClient({ url: TEST_URL, protocolVersion: '2026-07-28' })
     void client.request('tools/list', {}).catch(() => {})
     await vi.waitFor(() => {
-      expect(fetchMock).toHaveBeenCalled()
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(1)
     })
 
-    const [, options] = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }]
-    expect(options.headers['MCP-Protocol-Version']).toBe('2026-07-28')
+    for (const [, options] of fetchMock.mock.calls as Array<
+      [string, { headers: Record<string, string> }]
+    >) {
+      expect(options.headers['MCP-Protocol-Version']).toBe('2026-07-28')
+    }
 
     await client.dispose()
   })
@@ -44,15 +80,52 @@ describe('createHTTPClient', () => {
     // inbound response its validator rejects and nothing times an ordinary request out, so a
     // frame passed through too permissively strands this `await` forever rather than failing
     // it. The body below is a plausible error frame missing only `error.message`.
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ jsonrpc: '2.0', id: 0, error: { code: -32022 } }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    fetchMock.mockImplementation(
+      answerDiscover(
+        (message) =>
+          new Response(
+            JSON.stringify({ jsonrpc: '2.0', id: message.id, error: { code: -32022 } }),
+            {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          ),
+      ),
     )
 
     const client = createHTTPClient({ url: TEST_URL, protocolVersion: '2026-07-28' })
     await expect(client.request('tools/list', {})).rejects.toThrow(/HTTP 400/)
+
+    await client.dispose()
+  })
+
+  // The mirror image of the test above, and the case the wire schema was widened for: a peer is
+  // free to put any JSON value in `error.data`, and this one is what an SDK server answers an
+  // unsupported revision with. Too strict anywhere along the path and the frame is dropped
+  // rather than rejected, leaving this `await` hanging with nothing to time it out.
+  test.each([
+    ['a string', 'only 2025-11-25'],
+    ['null', null],
+    ['an array', ['2025-11-25']],
+  ])('a 400 whose error.data is %s rejects the caller with the server error', async (_l, data) => {
+    fetchMock.mockImplementation(
+      answerDiscover(
+        (message) =>
+          new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: message.id,
+              error: { code: -32022, message: 'Unsupported protocol version', data },
+            }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } },
+          ),
+      ),
+    )
+
+    const client = createHTTPClient({ url: TEST_URL, protocolVersion: '2026-07-28' })
+    // The server's own message, not the synthesized `HTTP 400:` fallback — the code and `data`
+    // an `'auto'` client reads survive the trip.
+    await expect(client.request('tools/list', {})).rejects.toThrow('Unsupported protocol version')
 
     await client.dispose()
   })
@@ -64,7 +137,7 @@ describe('createHTTPClient', () => {
     // answered `400` instead of being routed; with it the server acknowledges it `202`.
     // Asserting the key here, rather than only that the POST happened, is the point: the send
     // existing proves nothing if it cannot be placed.
-    fetchMock.mockResolvedValue(new Response(null, { status: 202 }))
+    fetchMock.mockImplementation(answerDiscover(() => new Response(null, { status: 202 })))
 
     const client = createHTTPClient({ url: TEST_URL, protocolVersion: '2026-07-28' })
     const controller = new AbortController()

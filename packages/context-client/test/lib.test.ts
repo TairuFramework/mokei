@@ -165,10 +165,28 @@ const WITHHOLD = Symbol('WITHHOLD')
 type Respond = (message: ClientRequest) => Record<string, unknown> | typeof WITHHOLD | undefined
 
 /**
+ * What the harness answers a setup-time `server/discover` with when `respond` declines to.
+ *
+ * A revision with no handshake still opens with one bounded round trip (`ContextClient`'s
+ * `#setupDiscover`), so a harness that left it unanswered would stall every such client in setup
+ * rather than exercising whatever the test is about — the exact counterpart of the `initialize`
+ * answer below it. Declares no capabilities: a test that needs one gated open says so through
+ * `respond`, and a permissive default would let a broken gate pass unnoticed.
+ */
+const DEFAULT_DISCOVER_RESULT = {
+  resultType: 'complete',
+  supportedVersions: ['2026-07-28'],
+  capabilities: {},
+  ttlMs: 0,
+  cacheScope: 'private',
+}
+
+/**
  * Drives a client against a scripted server: `respond` returns the result for each request
- * the server receives, `undefined` to answer with `{}`, or `WITHHOLD` to record the request
- * and never answer it. `sent` records every outbound message in order, and `transports` is
- * exposed so a test can also push server-initiated frames the scripted loop never sends.
+ * the server receives, `undefined` to answer with `{}` (or, for `server/discover`,
+ * {@link DEFAULT_DISCOVER_RESULT}), or `WITHHOLD` to record the request and never answer it.
+ * `sent` records every outbound message in order, and `transports` is exposed so a test can also
+ * push server-initiated frames the scripted loop never sends.
  */
 function createTestClient(params: Omit<ClientParams, 'transport'> & { respond?: Respond }): {
   client: ContextClient
@@ -203,7 +221,8 @@ function createTestClient(params: Omit<ClientParams, 'transport'> & { respond?: 
         continue
       }
       if (answer === undefined) {
-        transports.server.write({ jsonrpc: '2.0', id: message.id, result: {} } as ServerMessage)
+        const result = message.method === 'server/discover' ? DEFAULT_DISCOVER_RESULT : {}
+        transports.server.write({ jsonrpc: '2.0', id: message.id, result } as ServerMessage)
       } else if ('error' in answer) {
         transports.server.write({ jsonrpc: '2.0', id: message.id, ...answer } as ServerMessage)
       } else {
@@ -1081,7 +1100,8 @@ describe('protocolVersion negotiation', () => {
 /**
  * A `2026-07-28` client whose read loop is running, with the transports it runs on. That
  * revision has no handshake, so the only way to settle `#ready` — and therefore start the read
- * loop a server-initiated frame needs — is to make a request first.
+ * loop a server-initiated frame needs — is to make a request first. Setup opens with its own
+ * bounded `server/discover`, which has to be answered before the caller's request appears.
  */
 async function createReady20260728Transports(): Promise<
   DirectTransports<ServerMessage, ClientMessage>
@@ -1092,6 +1112,12 @@ async function createReady20260728Transports(): Promise<
     transport: transports.client,
   })
   const listing = client.listPrompts()
+  const discover = await transports.server.read()
+  transports.server.write({
+    jsonrpc: '2.0',
+    id: (discover.value as ClientRequest).id,
+    result: DEFAULT_DISCOVER_RESULT,
+  } as ServerMessage)
   const incoming = await transports.server.read()
   transports.server.write({
     jsonrpc: '2.0',
@@ -1103,6 +1129,11 @@ async function createReady20260728Transports(): Promise<
 }
 
 describe('protocol version selection', () => {
+  /** The `_meta` of the last request the harness recorded. */
+  const lastMeta = (sent: Array<ClientRequest>): Record<string, unknown> => {
+    return (sent[sent.length - 1].params as { _meta: Record<string, unknown> })._meta
+  }
+
   // `listPrompts` is deliberate: it is not capability-gated, so these tests exercise
   // decoration and handshake behavior without depending on the discover-backed capability gate.
   test('2026-07-28 sends no initialize and decorates every request', async () => {
@@ -1111,8 +1142,10 @@ describe('protocol version selection', () => {
       respond: () => ({ resultType: 'complete', prompts: [] }),
     })
     await client.listPrompts()
-    expect(sent.map((message) => message.method)).toEqual(['prompts/list'])
-    const params = sent[0].params as { _meta: Record<string, unknown> }
+    // `server/discover` is setup's bounded liveness round trip, standing in for the handshake
+    // this revision does not have — never `initialize`.
+    expect(sent.map((message) => message.method)).toEqual(['server/discover', 'prompts/list'])
+    const params = sent[1].params as { _meta: Record<string, unknown> }
     expect(params._meta['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
     expect(params._meta['io.modelcontextprotocol/clientCapabilities']).toEqual({})
   })
@@ -1126,8 +1159,7 @@ describe('protocol version selection', () => {
       respond: () => ({ resultType: 'complete', prompts: [] }),
     })
     await client.listPrompts()
-    const params = sent[0].params as { _meta: Record<string, unknown> }
-    expect(params._meta['io.modelcontextprotocol/logLevel']).toBe('debug')
+    expect(lastMeta(sent)['io.modelcontextprotocol/logLevel']).toBe('debug')
   })
 
   test('2026-07-28 omits the logLevel _meta key when none is configured', async () => {
@@ -1136,8 +1168,7 @@ describe('protocol version selection', () => {
       respond: () => ({ resultType: 'complete', prompts: [] }),
     })
     await client.listPrompts()
-    const params = sent[0].params as { _meta: Record<string, unknown> }
-    expect(params._meta).not.toHaveProperty('io.modelcontextprotocol/logLevel')
+    expect(lastMeta(sent)).not.toHaveProperty('io.modelcontextprotocol/logLevel')
   })
 
   test('2025-11-25 still runs the handshake and sends no protocol _meta', async () => {
@@ -1304,7 +1335,12 @@ describe('outbound requests and notifications on the resolved revision', () => {
   async function cancelInFlight(
     protocolVersion: ClientParams['protocolVersion'],
   ): Promise<ClientRequest> {
-    const { client, sent } = createTestClient({ protocolVersion, respond: () => WITHHOLD })
+    // Setup's `server/discover` is answered; everything after it is withheld, so the
+    // `prompts/list` below stays in flight for the abort to cancel.
+    const { client, sent } = createTestClient({
+      protocolVersion,
+      respond: (message) => (message.method === 'server/discover' ? undefined : WITHHOLD),
+    })
     const controller = new AbortController()
     const pending = client.request('prompts/list', {}, { signal: controller.signal })
     await vi.waitFor(() => {
@@ -1438,13 +1474,16 @@ describe('discover()', () => {
     await expect(client.setLoggingLevel({ level: 'info' })).rejects.toThrow(
       MethodNotInRevisionError,
     )
-    expect(sent.some((message) => message.method === 'server/discover')).toBe(false)
+    // Exactly one `server/discover`, and it is setup's own — the refusal consulted no
+    // capabilities of its own, or a second one would appear here after it.
+    expect(sent.map((message) => message.method)).toEqual(['server/discover'])
   })
 
   // An unconfigured server returns `ttlMs: 0`, which used to make the capability *gate* re-issue
   // `server/discover` before every gated call, forever. The gate must snapshot the discovered
   // capabilities for the connection's lifetime instead, independent of `discover()`'s own
-  // `ttlMs` cache.
+  // `ttlMs` cache. The one request counted below is setup's own liveness round trip, whose
+  // result seeds that snapshot — neither gated call adds one of its own.
   test('the capability gate sends server/discover exactly once across two gated calls, even when ttlMs is 0', async () => {
     const { client, sent } = createTestClient({
       protocolVersion: '2026-07-28',
@@ -1509,9 +1548,11 @@ describe('discover()', () => {
         cacheScope: 'private',
       }),
     })
+    // Three, not two: setup's own `server/discover` seeds the cache, and `ttlMs: 0` expires it
+    // immediately, so each explicit call re-requests exactly as it would have without a seed.
     await client.discover()
     await client.discover()
-    expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(2)
+    expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(3)
   })
 
   test('a rejected discover clears #discovering so a retry re-requests', async () => {
@@ -1523,7 +1564,10 @@ describe('discover()', () => {
           return undefined
         }
         calls += 1
-        return calls === 1
+        // The first two are setup's liveness round trip and the first explicit call. Setup
+        // tolerates an error answer — a live peer that refuses discovery is still usable — so
+        // both fail here, and only the third succeeds.
+        return calls <= 2
           ? { error: { code: -32000, message: 'discover failed' } }
           : {
               resultType: 'complete',
@@ -1536,7 +1580,7 @@ describe('discover()', () => {
     })
     await expect(client.discover()).rejects.toThrow(/discover failed/)
     await expect(client.discover()).resolves.toMatchObject({ capabilities: { tools: {} } })
-    expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(2)
+    expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(3)
   })
 
   test('concurrent callers collapse onto one in-flight request', async () => {
@@ -1609,6 +1653,55 @@ describe('discover()', () => {
   })
 })
 
+describe('setup on a revision without a handshake', () => {
+  const methodsSent = (sent: Array<ClientRequest>): Array<string> =>
+    sent.map((message) => message.method as string)
+
+  // `#setupTimeout` is the only bound anything in setup has, and on `2025-11-25` the handshake
+  // is what spends it. A revision with no handshake used to spend nothing at all: `#setup()`
+  // reached `#startReadLoop()` and returned, and since `ContextRPC.request` arms a timer only
+  // when the caller passes one, a server that is spawned but never writes a byte hung its caller
+  // forever. That is not a hypothetical shape — a crashed-on-startup child process produces it.
+  test('a mute server fails setup within setupTimeout instead of hanging', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      setupTimeout: 50,
+      respond: () => WITHHOLD,
+    })
+    await expect(client.listPrompts()).rejects.toThrow(
+      /did not respond to server\/discover request within 50ms/,
+    )
+    // The caller's own request never went out: setup failed before the read loop started.
+    expect(methodsSent(sent)).toEqual(['server/discover'])
+  })
+
+  // The liveness check must not become a second, stricter handshake. `2026-07-28` does not
+  // *require* a peer to implement discovery, so an error answer means "alive, but no discovery
+  // here" — a usable connection. Only silence is a dead peer.
+  test('a server that refuses server/discover still yields a usable connection', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? { error: { code: METHOD_NOT_FOUND, message: 'Method not found' } }
+          : { resultType: 'complete', prompts: [] },
+    })
+    await expect(client.listPrompts()).resolves.toEqual({ resultType: 'complete', prompts: [] })
+    expect(methodsSent(sent)).toEqual(['server/discover', 'prompts/list'])
+  })
+
+  // A refused discovery must not be cached as if it had answered, or the caller's own
+  // `discover()` would resolve with something the server never sent.
+  test('a refused setup discovery leaves discover() to re-request', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => ({ error: { code: METHOD_NOT_FOUND, message: 'Method not found' } }),
+    })
+    await expect(client.discover()).rejects.toThrow(/Method not found/)
+    expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(2)
+  })
+})
+
 describe("'auto' probe", () => {
   test("'auto' resolves to 2026-07-28 when discover answers", async () => {
     const { client } = createTestClient({
@@ -1623,6 +1716,30 @@ describe("'auto' probe", () => {
     })
     await client.listPrompts()
     expect(client.protocolVersion).toBe('2026-07-28')
+  })
+
+  // The probe's answer *is* a `DiscoverResult`, so throwing it away made the first gated call
+  // ask for the same thing again — a redundant POST on every `'auto'` HTTP connection, and both
+  // CLI entry points default to `'auto'`. `ttlMs: 0` is the case that matters: it expires
+  // `discover()`'s own cache immediately, so only the connection-lifetime capability snapshot
+  // can keep the gate from re-requesting.
+  test("'auto' sends server/discover once across the probe and two gated calls", async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: 'auto',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: { tools: {} },
+              ttlMs: 0,
+              cacheScope: 'private',
+            }
+          : { resultType: 'complete', tools: [] },
+    })
+    await client.listTools()
+    await client.listTools()
+    expect(sent.filter((message) => message.method === 'server/discover')).toHaveLength(1)
   })
 
   test("'auto' falls back to 2025-11-25 when discover is not a known method", async () => {

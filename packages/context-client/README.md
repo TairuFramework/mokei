@@ -15,7 +15,9 @@ import { NodeStreamsTransport } from '@enkaku/node-streams'
 const transport = new NodeStreamsTransport({ streams }) as ClientTransport
 const client = new ContextClient({ protocolVersion: '2026-07-28', transport })
 
-// No handshake on 2026-07-28 — the client sets itself up lazily on its first call.
+// No handshake on 2026-07-28 — the client sets itself up lazily on its first call, opening
+// with one `server/discover` bounded by `setupTimeout` so a server that never answers fails
+// instead of hanging.
 
 // List available tools
 const { tools } = await client.listTools()

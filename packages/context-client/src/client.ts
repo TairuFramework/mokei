@@ -332,7 +332,11 @@ export type ClientParams = {
   listMaxPages?: number
   listRoots?: Array<Root> | ListRootsHandler
   logLevel?: LoggingLevel
-  /** Bounds both the 2025-11-25 handshake and the `'auto'` probe. */
+  /**
+   * Bounds every setup-time round trip: the `2025-11-25` handshake, the `'auto'` probe, and the
+   * `server/discover` a revision without a handshake sends in their place. It is the only thing
+   * that fails a connection to a server that is spawned but never answers.
+   */
   setupTimeout?: number
   /** @deprecated Renamed to `setupTimeout`. */
   initializeTimeout?: number
@@ -747,6 +751,9 @@ export class ContextClient<
    */
   async #setup(): Promise<void> {
     try {
+      // `#probe()` already issued (and seeded from) a `server/discover` of its own, so a
+      // resolved `'auto'` connection must not send a second one here.
+      const probed = this.#protocol == null
       const protocol = this.#protocol ?? (await this.#probe())
       this.#protocol = protocol
       this.#refuseUnsupportedHandlers(protocol)
@@ -754,11 +761,56 @@ export class ContextClient<
         await this.#initialized
         return
       }
+      if (!probed) {
+        await this.#setupDiscover()
+      }
       this.#startReadLoop()
     } catch (cause) {
       await this.dispose()
       throw cause
     }
+  }
+
+  /**
+   * The setup-time liveness check for a revision with no handshake, and the counterpart to
+   * `#initialize()` on one that has it.
+   *
+   * Without it nothing in setup is bounded at all on such a revision — `#setupTimeout` covers
+   * only the handshake and the `'auto'` probe, and `ContextRPC.request` arms a timer only when
+   * the caller passes `options.timeout` — so a server that is spawned but never writes a byte
+   * hangs its host forever rather than failing in `#setupTimeout` the way the same server does
+   * on `2025-11-25`. One bounded round trip restores that bound.
+   *
+   * An error *response* is accepted, not raised: it proves the connection is live, which is the
+   * whole point of the round trip, and a revision that does not mandate discovery may be served
+   * by a peer that simply does not implement it. Refusing there would turn a working connection
+   * into a failed one. Only silence — a `#setupTimeout` expiry, or the connection closing —
+   * fails setup, which is exactly the "mute server" case this exists to catch. A caller that
+   * needs the result itself still gets the error, from its own `discover()`.
+   */
+  async #setupDiscover(): Promise<void> {
+    let result: DiscoverResult
+    try {
+      result = await this.#probeDiscover()
+    } catch (cause) {
+      if (cause instanceof RPCError) {
+        return
+      }
+      throw cause
+    }
+    this.#seedDiscovery(result)
+  }
+
+  /**
+   * Seeds both discover-derived caches from a `server/discover` answered during setup, so the
+   * first gated call does not issue a second identical request. `#discovered` honors the
+   * server's own `ttlMs` exactly as `discover()` would; `#serverCapabilitySnapshot` is seeded
+   * unconditionally, per the connection-lifetime argument on that field.
+   */
+  #seedDiscovery(result: DiscoverResult): void {
+    const ttlMs = typeof result.ttlMs === 'number' && result.ttlMs > 0 ? result.ttlMs : 0
+    this.#discovered = { result, expiresAt: Date.now() + ttlMs }
+    this.#serverCapabilitySnapshot = result.capabilities ?? {}
   }
 
   /**
@@ -783,7 +835,10 @@ export class ContextClient<
   async #probe(): Promise<ProtocolDefinition> {
     const candidate = PROTOCOLS['2026-07-28']
     try {
-      await this.#probeDiscover()
+      // Seeded, not discarded: the probe's answer is a full `DiscoverResult`, and throwing it
+      // away made every `'auto'` connection send `server/discover` a second time on its first
+      // gated call — a redundant POST per connection over HTTP.
+      this.#seedDiscovery(await this.#probeDiscover())
       return candidate
     } catch (cause) {
       const supported =
@@ -881,10 +936,12 @@ export class ContextClient<
    * outstanding low-level read in flight at the same time, or the FIFO-steal bug `#readUntil()`
    * exists to prevent returns — a read meant for `#readUntil()`'s caller could instead resolve
    * whichever `_read()` call `ContextRPC`'s read loop just issued, and vice versa. Every setup
-   * path that reaches here either never called `#readUntil()` (the `2026-07-28` no-handshake
-   * path) or has already consumed `#pendingSetupRead` down to `null` via the initialize
-   * response that unblocked it (`#initialize()`, immediately before its own call to this
-   * method) — see `#probe()`'s comment for the one assumption this depends on.
+   * path that reaches here has already consumed `#pendingSetupRead` down to `null` via the
+   * response that unblocked its own bounded read — the initialize response for `#initialize()`,
+   * the `server/discover` response for `#setupDiscover()` and `#probe()` — each immediately
+   * before this method runs. A bounded read that instead *times out* leaves the field set, but
+   * also throws, so `#setup()` disposes rather than reaching here. See `#probe()`'s comment for
+   * the one assumption this depends on.
    */
   #startReadLoop(): void {
     if (this.#reading) {
