@@ -1,15 +1,12 @@
-import type {
-  DiscoverResult,
-  Implementation,
-  ProtocolVersion,
-  ServerCapabilities,
-} from '@mokei/context-protocol'
+import type { DiscoverResult, ProtocolVersion, ServerCapabilities } from '@mokei/context-protocol'
 
 export type DiscoverParams = {
   capabilities: ServerCapabilities
   protocolVersions: Array<ProtocolVersion>
-  // Unused here — kept because it's part of the documented `DiscoverParams` interface.
-  serverInfo: Implementation
+  /**
+   * Part of the spec's `DiscoverResult`, so it is carried through even though no `ServerConfig`
+   * field feeds it yet. Not dead: it is the only way a server can describe itself in prose.
+   */
   instructions?: string
 }
 

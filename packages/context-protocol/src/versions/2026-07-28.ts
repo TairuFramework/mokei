@@ -73,20 +73,6 @@ export function withProtocolMeta<S extends Schema>(schema: S) {
   } as const satisfies Schema
 }
 
-/** Composes a result schema with this revision's required `resultType`. */
-export function withResultType<S extends Schema>(schema: S) {
-  return {
-    allOf: [
-      schema,
-      {
-        properties: { resultType: { const: 'complete', type: 'string' } },
-        required: ['resultType'],
-        type: 'object',
-      },
-    ],
-  } as const satisfies Schema
-}
-
 export const discoverRequest = {
   description: "Queries a server's supported protocol versions, capabilities and identity.",
   allOf: [

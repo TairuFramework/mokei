@@ -420,7 +420,6 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         return buildDiscoverResult({
           capabilities: this.#capabilities,
           protocolVersions: this.#protocolVersions,
-          serverInfo: this.#serverInfo,
         })
       case 'tools/call':
         return await this.#callTool(request, client, signal)

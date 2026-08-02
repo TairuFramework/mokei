@@ -1,22 +1,28 @@
 /**
  * Stdio entry point for the cancellation test, on `2026-07-28`.
  *
- * `hang` settles when its own handler `signal` aborts, and records that it did in
- * process-lifetime state; `started` and `aborted` read that state back. The state is read back
- * out of band because the RPC surface cannot show it: a cancelled call's response is never
- * written, so whether the server stopped working is invisible to the client that cancelled it.
+ * `hang` settles when its own handler `signal` aborts, or on its deadline, whichever comes
+ * first; `started` reports whether it began. That is read back out of band because the RPC
+ * surface cannot show it: a cancelled call's response is never written, so what the server did
+ * with the call is invisible to the client that cancelled it.
  *
- * The deadline is what actually settles `hang` today, and is not merely a harness guard.
- * `ContextRPC`'s read loop awaits each message's handler before reading the next, so nothing —
- * including `notifications/cancelled` — is read while this handler is pending, and the abort it
- * would trigger cannot arrive until after the handler has already finished. Keep it short: the
- * connection is unusable for its duration.
+ * **The abort is unobservable today, so nothing here reports it.** The deadline is what actually
+ * settles `hang`, and is not merely a harness guard: `ContextRPC`'s read loop awaits each
+ * message's handler before reading the next, so nothing — including `notifications/cancelled` —
+ * is read while this handler is pending. By the time the cancellation is read, `hang` has already
+ * settled and `#receivedRequests[id]` has been deleted, so the abort never fires. A tool
+ * reporting the abort flag would therefore report `false` unconditionally, which reads as
+ * verification of an abort that never happened; the abort listener is kept because it is what
+ * a correct handler does, not because anything exercises it. The read loop is tracked in
+ * `docs/agents/plans/backlog/2026-06-20-mcp-draft-remaining.md`.
+ *
+ * Keep the deadline short: the connection is unusable for its duration.
  */
 import { createTool, serveProcess } from '@mokei/context-server'
 
 const HANG_DEADLINE = 500
 
-const state = { aborted: false, started: false }
+const state = { started: false }
 
 const noArguments = { type: 'object', properties: {}, additionalProperties: false } as const
 
@@ -36,7 +42,6 @@ serveProcess({
           signal.addEventListener(
             'abort',
             () => {
-              state.aborted = true
               clearTimeout(timer)
               settle('aborted')
             },
@@ -49,11 +54,6 @@ serveProcess({
       description: 'Reports whether the hang handler has begun',
       inputSchema: noArguments,
       handler: () => ({ content: [{ type: 'text', text: String(state.started) }] }),
-    }),
-    aborted: createTool({
-      description: 'Reports whether the hang handler signal aborted',
-      inputSchema: noArguments,
-      handler: () => ({ content: [{ type: 'text', text: String(state.aborted) }] }),
     }),
   },
 })

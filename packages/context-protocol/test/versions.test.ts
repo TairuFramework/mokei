@@ -121,7 +121,7 @@ describe('protocol records', () => {
   // `logging/setLevel` while leaving `requiresPerRequestLogLevel: false` makes `ContextServer`
   // discard every `notifications/message` for the lifetime of the connection, with no error
   // anywhere. Asserted over every registered revision so a new one cannot land inconsistent.
-  test('the derivable flags match their method table on every revision', () => {
+  test('the derivable flags and notification stamping match their method table on every revision', () => {
     for (const version of PROTOCOL_VERSIONS) {
       const protocol = PROTOCOLS[version]
       expect(protocol.requiresHandshake, version).toBe(protocol.clientMethods.has('initialize'))

@@ -1,14 +1,22 @@
 /**
  * mokei's `2026-07-28` wire output, checked against the official SDK's own zod schemas.
  *
- * There is no live SDK peer for this revision to test against: SDK 2.0.0's
- * `@modelcontextprotocol/core` still reports `LATEST_PROTOCOL_VERSION` /
- * `SUPPORTED_PROTOCOL_VERSIONS` as `'2025-11-25'` down to `'2024-10-07'` — `'2026-07-28'` does
- * not appear anywhere in the SDK's runtime logic, only in JSDoc prose. So an SDK server cannot
- * answer as a `2026-07-28` server and an SDK client cannot be pinned to it. What the SDK *does*
- * ship for this revision are its zod schemas and `_meta` key constants, which is what this
- * suite uses instead: mokei's `ContextClient` drives mokei's own stdio server, and every result
- * is parsed with the matching SDK schema as an independent conformance oracle.
+ * SDK `2.0.0`'s `LATEST_PROTOCOL_VERSION` is `'2025-11-25'`, but that constant only names the
+ * revision its *handshake* negotiates. `2026-07-28` needs no handshake, and the SDK does
+ * implement it: `FIRST_MODERN_PROTOCOL_VERSION = "2026-07-28"`,
+ * `SUPPORTED_MODERN_PROTOCOL_VERSIONS`, `isModernProtocolVersion()`, a wire codec,
+ * `validateEnvelopeMeta()` and a `server/discover` handler are all runtime code, not prose. Over
+ * stdio that path is reached by `serveStdio` — verified by driving mokei's `ContextClient`,
+ * pinned to `'2026-07-28'`, against `support/interop/sdk-stdio-server.ts`: `server/discover`
+ * answers `supportedVersions: ['2026-07-28']`, and `tools/list` and `tools/call` both work.
+ *
+ * So a live SDK stdio peer *is* reachable on this revision, and driving one is the stronger
+ * check. This suite does something narrower and complementary: it drives mokei's own server and
+ * parses every result with the SDK's zod schemas, which pins mokei's *emitted* wire shape field
+ * by field in a way a round trip against an SDK server does not — a peer that accepts a result
+ * says nothing about which fields it looked at. Pointing this suite's mokei-against-mokei
+ * expectations at the SDK peer as well is tracked in
+ * `docs/agents/plans/backlog/2026-06-20-mcp-draft-remaining.md`.
  *
  * ## How strong is this oracle? (read before trusting an assertion below)
  *

@@ -35,14 +35,12 @@ For the best developer experience, use type-safe clients by importing server typ
 
 If your server exports types using `ExtractServerTypes` from `@mokei/context-server`:
 
-`@mokei/mcp-fetch` currently serves `2025-11-25` only — connect at that revision to reach it.
-
 ```typescript
 import type { FetchServerTypes } from '@mokei/mcp-fetch'
 import { ContextClient } from '@mokei/context-client'
 
 // Create a typed client
-const client = new ContextClient<FetchServerTypes>({ protocolVersion: '2025-11-25', transport })
+const client = new ContextClient<FetchServerTypes>({ protocolVersion: '2026-07-28', transport })
 
 // Now all tool calls are type-checked!
 const result = await client.callTool({

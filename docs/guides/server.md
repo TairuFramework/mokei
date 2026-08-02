@@ -12,9 +12,10 @@ npm install @mokei/context-server
 
 The simplest way to create an MCP server is using `serveProcess()`:
 
-`protocolVersions` is the set of revisions the server serves (order is not significant). Add
-`'2025-11-25'` to reach clients that do not speak `2026-07-28` yet — including the mokei host
-and CLI, and the current `@modelcontextprotocol/{core,client,server,node}` release.
+`protocolVersions` is the set of revisions the server serves (order is not significant).
+`'2026-07-28'` alone is enough for mokei's own host, session and CLI: the host defaults to
+`'2026-07-28'`, and `mokei inspect` defaults to `'auto'`. Add `'2025-11-25'` to also serve
+clients pinned to the older revision.
 
 ```typescript
 import { serveProcess } from '@mokei/context-server'

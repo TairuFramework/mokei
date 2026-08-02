@@ -6,6 +6,13 @@
 npm install @mokei/host
 ```
 
+## Protocol revisions
+
+`addLocalContext`, `addHTTPContext` and `addDirectContext` each take an optional
+`protocolVersion`, defaulting to `'2026-07-28'`. A server that only serves `'2025-11-25'`
+needs an explicit `protocolVersion: '2025-11-25'`, or `'auto'` to probe the server and use
+whichever revision it serves.
+
 ## Security
 
 The daemon control socket exposes a `spawn` channel that runs arbitrary

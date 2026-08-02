@@ -25,6 +25,29 @@ const client = new ContextClient({ transport, protocolVersion: '2026-07-28' })
 const { tools } = await client.listTools()
 ```
 
+## HTTP Client
+
+To reach a server over the MCP Streamable HTTP transport, use `createHTTPClient` from
+`@mokei/http-client` instead of building a transport by hand. `protocolVersion` is required
+there too:
+
+```typescript
+import { createHTTPClient } from '@mokei/http-client'
+
+const client = createHTTPClient({
+  url: 'https://mcp.example.com/mcp',
+  protocolVersion: '2026-07-28',
+})
+
+const { tools } = await client.listTools()
+```
+
+Pass `protocolVersion: 'auto'` to probe the server, or `'2025-11-25'` to pin the older
+revision — which, unlike `2026-07-28`, needs an explicit `await client.initialize()` first.
+
+Everything below applies to an HTTP client exactly as it does to a stdio one: the returned
+value is a `ContextClient`.
+
 ## Client Configuration
 
 `elicit`, `createMessage` and `listRoots` are server-initiated requests, present only on
@@ -216,13 +239,11 @@ while (true) {
 
 When the server exports types, use them for full type safety:
 
-`@mokei/mcp-sqlite` currently serves `2025-11-25` only — connect at that revision to reach it.
-
 ```typescript
 import type { SQLiteServerTypes } from '@mokei/mcp-sqlite'
 import { ContextClient } from '@mokei/context-client'
 
-const client = new ContextClient<SQLiteServerTypes>({ transport, protocolVersion: '2025-11-25' })
+const client = new ContextClient<SQLiteServerTypes>({ transport, protocolVersion: '2026-07-28' })
 
 // Fully typed tool call
 const result = await client.callTool({

@@ -24,62 +24,68 @@ import TabItem from '@theme/TabItem'
 
 ## Commands
 
-### `mokei chat ollama`
+### `mokei chat`
 
-Interactive chat with a local model using [Ollama](https://ollama.com/).
+Interactive chat with a model provider. One command handles every provider — if
+`--provider` is omitted, an interactive selection prompt appears.
 
-Usage: `mokei chat ollama --model "llama3.1:8b"`
-
-#### Flags
-
-- `--api-url`: URL of the Ollama API, if not provided the default URL will be used
-- `--model`: model identifier, if not provided it will be prompted when needed
-
-### `mokei chat openai`
-
-Interactive chat with a model provider using OpenAI APIs.
-
-Usage: `mokei chat openai --model "gpt-4"`
+Usage: `mokei chat --provider ollama --model "llama3.1:8b"`
 
 #### Flags
 
-- `--api-key`: OpenAI API key, can also be set via the `OPENAI_API_KEY` environment variable
-- `--api-url`: URL of the OpenAI-compatible API, if not provided the default OpenAI URL will be used
-- `--model`: model identifier, if not provided it will be prompted when needed
+- `-p, --provider <name>`: model provider (`ollama`, `openai`, `anthropic` or `llama`)
+- `-k, --api-key <key>`: provider API key. Prefer the `OPENAI_API_KEY` /
+  `ANTHROPIC_API_KEY` environment variables — a key passed on the command line leaks via
+  `ps` and shell history
+- `-u, --api-url <url>`: provider API URL, overriding the default endpoint
+- `-m, --model <name>`: model name, or a GGUF file path for the `llama` provider
+- `-t, --timeout <seconds>`: agent turn timeout in seconds (default: `300`)
 
-### `mokei context inspect <COMMAND> -- <ARGS...>`
+Inside the session, `/context add [--protocol <version>] <key> <command> [args...]` attaches
+an MCP server. `--protocol` accepts `2026-07-28`, `2025-11-25` or `auto`, and defaults to
+`2026-07-28`. Type `/` to list the other slash commands.
 
-Spawns a local MCP server and run an [`inspect` request](https://spec.modelcontextprotocol.io/specification/2024-11-05/basic/lifecycle/#initialization) on it.
+### `mokei inspect <command> [args...]`
 
-Usage: `mokei context inspect npx -- -y @modelcontextprotocol/server-filesystem ./`
+Spawns a local MCP server and asks it to describe itself. On `2026-07-28` that is a
+`server/discover` request; on `2025-11-25` it is the `initialize` handshake.
+
+Usage: `mokei inspect npx -y @modelcontextprotocol/server-filesystem ./`
 
 #### Arguments
 
-- `COMMAND`: the command to execute to start the MCP server (required)
-- `ARGS...`: arguments to pass to the command, following a `--` separator
-
-### `mokei context monitor`
-
-Start a local HTTP server to serve the monitor UI, allowing to track MCP client-server interactions using the proxy.
-
-Usage: `mokei context monitor --port 4000`
+- `command`: the command to execute to start the MCP server (required)
+- `args...`: arguments passed to the command, forwarded as-is
 
 #### Flags
 
-- `--path`: path to the socket used by the host daemon (optional)
-- `--port`: port the HTTP server should listen to (optional)
+- `-p, --protocol <version>`: protocol revision to speak — `2026-07-28`, `2025-11-25` or
+  `auto` (default: `auto`). Must come before the server command; everything after the
+  command belongs to the server
 
-### `mokei context proxy <COMMAND> -- <ARGS...>`
+### `mokei monitor`
 
-Proxy a MCP server so it can be inspected using the monitor.
+Start a local HTTP server serving the monitor UI, which tracks MCP client-server
+interactions routed through `mokei proxy`.
 
-Usage: `mokei context proxy npx -- -y @modelcontextprotocol/server-filesystem ./`
+Usage: `mokei monitor --port 4000`
+
+#### Flags
+
+- `-s, --socket-path <path>`: path to the socket used by the host daemon (optional)
+- `-p, --port <number>`: port the HTTP server should listen on (optional)
+
+### `mokei proxy <command> [args...]`
+
+Proxy an MCP server so its traffic can be inspected in the monitor.
+
+Usage: `mokei proxy npx -y @modelcontextprotocol/server-filesystem ./`
 
 #### Arguments
 
-- `COMMAND`: the command to execute to start the MCP server (required)
-- `ARGS...`: arguments to pass to the command, following a `--` separator
+- `command`: the command to execute to start the MCP server (required)
+- `args...`: arguments passed to the command, forwarded as-is
 
 #### Flags
 
-- `--path`: path to the socket used by the host daemon (optional)
+- `-s, --socket-path <path>`: path to the socket used by the host daemon (optional)
