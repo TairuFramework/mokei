@@ -361,6 +361,12 @@ export type ClientParams = {
   listRoots?: Array<Root> | ListRootsHandler
   logLevel?: LoggingLevel
   /**
+   * Default timeout for every request after setup. Unset means unbounded — `tools/call` can
+   * legitimately run for minutes, and `@mokei/session` already bounds tool calls itself.
+   * `setupTimeout` covers connection setup regardless of this value.
+   */
+  requestTimeout?: number
+  /**
    * Bounds every setup-time round trip: the `2025-11-25` handshake, the `'auto'` probe, and the
    * `server/discover` a revision without a handshake sends in their place. It is the only thing
    * that fails a connection to a server that is spawned but never answers.
@@ -424,6 +430,7 @@ export class ContextClient<
     // Indirected through a method so the validator tracks the resolved revision rather than
     // being frozen at construction, which `protocolVersion: 'auto'` requires.
     super({
+      defaultRequestTimeout: params.requestTimeout,
       validateMessageIn: (message) => this.#validateServerMessage(message),
       transport: params.transport,
     })

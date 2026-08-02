@@ -300,6 +300,38 @@ describe('ContextRPC transport lifecycle', () => {
     await rpc.dispose()
     await transports.dispose()
   })
+
+  test('defaultRequestTimeout bounds a request that passes no timeout', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = new ContextRPC<TestTypes>({
+      defaultRequestTimeout: 30,
+      transport: transports.client,
+      validateMessageIn: passthrough,
+    })
+    rpc._handle()
+
+    await expect(rpc.request('tools/list', {})).rejects.toBeInstanceOf(RequestTimeoutError)
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('an explicit timeout wins over defaultRequestTimeout', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = new ContextRPC<TestTypes>({
+      defaultRequestTimeout: 10_000,
+      transport: transports.client,
+      validateMessageIn: passthrough,
+    })
+    rpc._handle()
+
+    await expect(rpc.request('tools/list', {}, { timeout: 30 })).rejects.toBeInstanceOf(
+      RequestTimeoutError,
+    )
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
 })
 
 describe('ContextRPC invalid inbound messages', () => {

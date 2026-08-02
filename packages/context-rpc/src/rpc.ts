@@ -71,6 +71,11 @@ export type RPCTypes = {
 }
 
 export type RPCParams<T extends RPCTypes> = {
+  /**
+   * Timeout applied to a request that passes none of its own. Unset means unbounded, which
+   * is the historical behavior: a blanket default would cut off a long-running `tools/call`.
+   */
+  defaultRequestTimeout?: number
   /** Request handlers allowed to run at once (default 100). */
   maxConcurrentRequests?: number
   /** Requests allowed to wait for a slot before further requests are refused (default 1000). */
@@ -94,6 +99,7 @@ export type RPCParams<T extends RPCTypes> = {
  */
 export class ContextRPC<T extends RPCTypes> extends Disposer {
   #closed = false
+  #defaultRequestTimeout?: number
   #events: EventEmitter<T['Events']>
   #requestID = 0
   #exchanges: ExchangeRegistry = new ExchangeRegistry()
@@ -110,6 +116,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       maxConcurrentRequests: params.maxConcurrentRequests,
       maxQueuedRequests: params.maxQueuedRequests,
     })
+    this.#defaultRequestTimeout = params.defaultRequestTimeout
     this.#transport = params.transport
     this.#validateMessageIn = params.validateMessageIn
     this.#onError = params.onError
@@ -368,17 +375,15 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     const controller = Object.assign(new AbortController(), defer())
     this.#exchanges.registerOnce(id, controller)
 
-    if (options?.timeout != null) {
+    const timeout = options?.timeout ?? this.#defaultRequestTimeout
+    if (timeout != null) {
       const timer = setTimeout(() => {
         if (!this.#exchanges.has(id)) {
           return
         }
-        this.#exchanges.cancel(
-          id,
-          new RequestTimeoutError(`Request timed out after ${options.timeout}ms`),
-        )
+        this.#exchanges.cancel(id, new RequestTimeoutError(`Request timed out after ${timeout}ms`))
         this.notify('cancelled', { requestId: id }).catch(() => {})
-      }, options.timeout)
+      }, timeout)
       controller.promise.then(
         () => clearTimeout(timer),
         () => clearTimeout(timer),
