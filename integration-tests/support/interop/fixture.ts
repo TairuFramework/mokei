@@ -59,6 +59,18 @@ export const NON_ASCII_RESOURCE_REGISTERED_URI = 'test://notes/%E6%96%87%E6%9B%B
 
 export const NON_ASCII_RESOURCE_TEXT = 'Notes filed under a non-ASCII URI'
 
+/**
+ * The exact resource set each fixture serves. They differ — only the SDK side carries the
+ * non-ASCII resource, since the point of it is a conformant `Mcp-Name` decoder and mokei's own
+ * server never reads that header back — so an assertion shared across both stacks has to be told
+ * which one it is looking at rather than weakened to a subset check.
+ */
+export const MOKEI_RESOURCE_URIS: ReadonlyArray<string> = [GREETING_URI]
+export const SDK_RESOURCE_URIS: ReadonlyArray<string> = [
+  GREETING_URI,
+  NON_ASCII_RESOURCE_REGISTERED_URI,
+]
+
 export const ITEM_TEMPLATE_URI = 'test://items/{id}'
 export const ITEM_TEMPLATE_NAME = 'item'
 

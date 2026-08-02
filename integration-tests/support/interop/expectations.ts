@@ -11,6 +11,7 @@ import {
   GREETING_TEXT,
   GREETING_URI,
   greetingMessage,
+  MOKEI_RESOURCE_URIS,
   SERVER_NAME,
   SERVER_VERSION,
 } from './fixture.ts'
@@ -24,6 +25,15 @@ export type CheckMokeiClientOptions = {
    * that assertion differs by what's driving it (a plain equality check vs. an SDK schema).
    */
   protocolVersion?: ProtocolVersion
+  /**
+   * The exact set of resource URIs the server under test serves. Defaults to the mokei
+   * fixture's, which is what three of the four call sites drive; the two that drive the SDK
+   * fixture pass `SDK_RESOURCE_URIS`, which also carries the non-ASCII resource.
+   *
+   * A parameter rather than a subset check: both sets are exactly known, and "the list contains
+   * the greeting" would pass against a server serving anything at all alongside it.
+   */
+  resourceURIs?: ReadonlyArray<string>
 }
 
 /**
@@ -36,6 +46,7 @@ export async function checkMokeiClient(
   options: CheckMokeiClientOptions = {},
 ): Promise<void> {
   const protocolVersion = options.protocolVersion ?? '2025-11-25'
+  const resourceURIs = options.resourceURIs ?? MOKEI_RESOURCE_URIS
   if (protocolVersion === '2025-11-25') {
     const initResult = await client.initialize()
     expect(initResult.serverInfo).toMatchObject({ name: SERVER_NAME, version: SERVER_VERSION })
@@ -62,10 +73,7 @@ export async function checkMokeiClient(
   ])
 
   const { resources } = await client.listResources()
-  // `toContain`, not an exact list: the SDK fixture also serves the non-ASCII resource the
-  // `Mcp-Name` conformance test reads, and this helper runs against both stacks. The resource
-  // *sets* the two fixtures expose already differ deliberately — see `fixture.ts`'s header.
-  expect(resources.map((resource) => resource.uri)).toContain(GREETING_URI)
+  expect(resources.map((resource) => resource.uri).sort()).toEqual([...resourceURIs].sort())
 
   const readResult = await client.readResource({ uri: GREETING_URI })
   expect(readResult.contents).toEqual([
@@ -73,7 +81,11 @@ export async function checkMokeiClient(
   ])
 }
 
-/** Drives an SDK v2 `Client` against a fixture server, whichever stack serves it. */
+/**
+ * Drives an SDK v2 `Client` against a fixture server. Both of its call sites serve the *mokei*
+ * fixture, so its resource set is fixed rather than a parameter — add one the day an SDK client
+ * is pointed at the SDK fixture.
+ */
 export async function checkSDKClient(client: Client): Promise<void> {
   expect(client.getServerVersion()).toMatchObject({
     name: SERVER_NAME,
@@ -101,10 +113,7 @@ export async function checkSDKClient(client: Client): Promise<void> {
   ])
 
   const { resources } = await client.listResources()
-  // `toContain`, not an exact list: the SDK fixture also serves the non-ASCII resource the
-  // `Mcp-Name` conformance test reads, and this helper runs against both stacks. The resource
-  // *sets* the two fixtures expose already differ deliberately — see `fixture.ts`'s header.
-  expect(resources.map((resource) => resource.uri)).toContain(GREETING_URI)
+  expect(resources.map((resource) => resource.uri).sort()).toEqual([...MOKEI_RESOURCE_URIS].sort())
 
   const readResult = await client.readResource({ uri: GREETING_URI })
   expect(readResult.contents).toEqual([
