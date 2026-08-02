@@ -1,7 +1,12 @@
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
-import { createHTTPHandler, type HTTPHandler, type HTTPHandlerParams } from '../src/handler.js'
+import {
+  createHTTPHandler,
+  DEFAULT_MAX_STATELESS_EXCHANGES,
+  type HTTPHandler,
+  type HTTPHandlerParams,
+} from '../src/handler.js'
 
 const SERVER_CONFIG: ServerConfig = {
   name: 'stateless-test-server',
@@ -263,6 +268,104 @@ describe('stateless 2026-07-28 POST path', () => {
       expect(servers[0].signal.aborted).toBe(true)
     } finally {
       releaseTool()
+    }
+  })
+
+  describe('concurrency cap', () => {
+    // The blocking tool writes nothing until released, so its exchange never opens an SSE
+    // response — `handleRequest` stays pending. What marks it as in flight is the throwaway
+    // server being built, which is the same synchronous step that registers its teardown, so
+    // counting `servers` is how these tests wait for the cap to be occupied.
+    const untilInFlight = (servers: Array<ContextServer>, count: number): Promise<void> => {
+      return vi.waitFor(() => {
+        expect(servers).toHaveLength(count)
+      })
+    }
+
+    // `maxSessions` does not reach a stateless exchange, and `statelessTimeoutMs` is no
+    // substitute: its timer is cleared by the first thing the server writes, so a tool that
+    // streams once and then blocks holds its throwaway `ContextServer` for as long as the
+    // caller keeps reading. Without a cap, that is unbounded.
+    test('refuses past the cap and admits again once an exchange completes', async () => {
+      const { handler, servers, releaseTool } = createBlockingHandler({
+        maxStatelessExchanges: 1,
+      })
+      try {
+        const inFlight = handler.handleRequest(blockingRequest())
+        await untilInFlight(servers, 1)
+
+        const refused = await handler.handleRequest(blockingRequest())
+        expect(refused.status).toBe(503)
+        expect(refused.headers.get('Retry-After')).toBe('1')
+        expect(await refused.text()).toBe('Too many stateless exchanges')
+        // Refused *before* dispatch: no second throwaway server was stood up for it.
+        expect(servers).toHaveLength(1)
+
+        // Releasing the tool lets the first exchange answer and free its slot.
+        releaseTool()
+        await (await inFlight).text()
+
+        const admitted = await handler.handleRequest(statelessRequest('tools/list'))
+        expect(admitted.status).toBe(200)
+        await admitted.text()
+      } finally {
+        releaseTool()
+        handler.dispose()
+      }
+    })
+
+    test('the default cap applies when the option is omitted', async () => {
+      // The default has to be wired, not merely exported: a handler built without the option
+      // must still refuse past it.
+      expect(DEFAULT_MAX_STATELESS_EXCHANGES).toBe(100)
+      const { handler, servers, releaseTool } = createBlockingHandler()
+      const pending: Array<Promise<Response>> = []
+      try {
+        for (let index = 0; index < DEFAULT_MAX_STATELESS_EXCHANGES; index++) {
+          pending.push(handler.handleRequest(blockingRequest()))
+        }
+        await untilInFlight(servers, DEFAULT_MAX_STATELESS_EXCHANGES)
+
+        const refused = await handler.handleRequest(blockingRequest())
+        expect(refused.status).toBe(503)
+        expect(refused.headers.get('Retry-After')).toBe('1')
+        expect(servers).toHaveLength(DEFAULT_MAX_STATELESS_EXCHANGES)
+      } finally {
+        releaseTool()
+        await Promise.all(pending.map(async (response) => await (await response).text()))
+        handler.dispose()
+      }
+    })
+  })
+
+  // A client on this revision stamps its outgoing notifications with the protocol version, so a
+  // sessionless `notifications/cancelled` POST routes statelessly and is acknowledged instead of
+  // falling through to `400` the way an unstamped one does. That is server-observable behaviour,
+  // and the `requestID == null` branch it lands on had no coverage of its own.
+  test('acknowledges a stamped notification on a sessionless POST without dispatching it', async () => {
+    const servers: Array<ContextServer> = []
+    const handler = createHTTPHandler({
+      createServer: (transport) => {
+        const server = new ContextServer({ ...SERVER_CONFIG, transport })
+        servers.push(server)
+        return server
+      },
+    })
+    try {
+      const response = await handler.handleRequest(
+        statelessNotification('notifications/cancelled', { requestId: 1 }),
+      )
+
+      expect(response.status).toBe(202)
+      expect(await response.text()).toBe('')
+      // The exchange is stood up before the missing id is noticed, so one throwaway server is
+      // still built — and it is torn down with the acknowledgement rather than left holding
+      // the connection open for a reply that is never coming.
+      expect(servers).toHaveLength(1)
+      await servers[0].disposed
+      expect(servers[0].signal.aborted).toBe(true)
+    } finally {
+      handler.dispose()
     }
   })
 

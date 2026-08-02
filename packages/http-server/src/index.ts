@@ -10,7 +10,12 @@
  * @module http-server
  */
 
-export { createHTTPHandler, type HTTPHandler, type HTTPHandlerParams } from './handler.js'
+export {
+  createHTTPHandler,
+  DEFAULT_MAX_STATELESS_EXCHANGES,
+  type HTTPHandler,
+  type HTTPHandlerParams,
+} from './handler.js'
 export { type ServeHTTPParams, type ServeHTTPResult, serveHTTP } from './serve.js'
 export { type Session, SessionManager, type SessionManagerParams } from './session.js'
 export { createSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.js'

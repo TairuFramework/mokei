@@ -37,10 +37,30 @@ export type HTTPHandlerParams = {
    * (default: 30000).
    */
   statelessTimeoutMs?: number
+  /**
+   * How many stateless exchanges may be in flight at once (default:
+   * {@link DEFAULT_MAX_STATELESS_EXCHANGES}). Past the cap a POST is refused with `503` before
+   * anything is built for it.
+   *
+   * The session path's `maxSessions` has no reach here — a stateless exchange has no session —
+   * and `statelessTimeoutMs` is not a substitute: that timer is cleared by the first thing the
+   * server writes, so a tool that emits one progress notification and then blocks holds its
+   * throwaway `ContextServer`, transport and connection for as long as the caller keeps reading.
+   */
+  maxStatelessExchanges?: number
 }
 
 /** Default maximum accepted POST body size, in bytes (4 MiB). */
 export const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024
+
+/**
+ * Default cap on concurrent stateless exchanges.
+ *
+ * An order of magnitude below `maxSessions`' 1000 on purpose: a session is one *client*, whereas
+ * a stateless exchange is one in-flight *request*, and each holds a whole `ContextServer` for as
+ * long as its handler runs. Raise it deliberately for a server fronting many concurrent callers.
+ */
+export const DEFAULT_MAX_STATELESS_EXCHANGES = 100
 
 export type HTTPHandler = {
   handleRequest: (request: Request) => Promise<Response>
@@ -146,6 +166,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     replayBufferSize = 100,
     maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
     statelessTimeoutMs = DEFAULT_STATELESS_TIMEOUT_MS,
+    maxStatelessExchanges = DEFAULT_MAX_STATELESS_EXCHANGES,
   } = params
 
   // Map session IDs to their transport bridges
@@ -381,6 +402,16 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     body: Record<string, unknown>,
     _requestVersion: string,
   ): Promise<Response> {
+    // Refused before anything is built for it, mirroring the session path's `maxSessions` gate
+    // — `statelessTeardowns` holds exactly the exchanges currently in flight. `Retry-After: 1`
+    // because the condition is transient by construction: the cap frees as handlers return.
+    if (statelessTeardowns.size >= maxStatelessExchanges) {
+      return new Response('Too many stateless exchanges', {
+        status: 503,
+        headers: { 'Retry-After': '1' },
+      })
+    }
+
     const rawID = body.id
     const requestID: string | number | null =
       typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
