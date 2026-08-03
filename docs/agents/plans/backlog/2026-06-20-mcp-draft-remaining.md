@@ -495,7 +495,7 @@ faulted writer is constructible at the `SSEWriter` boundary, which is where the 
 Both surfaced by the final whole-branch review of `fix/mcp-2026-07-28-defect-wave`, both left
 unfixed there on scope grounds.
 
-#### 3.6.1 An inbound frame correlates against the client's own request IDs
+#### 3.6.1 ~~An inbound frame correlates against the client's own request IDs~~ — **fixed 2026-08-03**
 
 `#handleIncoming` (`packages/http-client/src/transport.ts:519`) looks up `#pendingMethods` for
 *any* inbound id. A server-initiated request with id `0` therefore calls `#clearExchange(0)` and
@@ -509,7 +509,7 @@ scratch test: colliding id, the abort never lands; id `99`, it passes.
 
 Fix: skip the correlation when `'method' in message`. One line, same shape as the outgoing gate.
 
-#### 3.6.2 An outgoing response's POST is untracked, so `dispose()` cannot abort it
+#### 3.6.2 ~~An outgoing response's POST is untracked, so `dispose()` cannot abort it~~ — **fixed 2026-08-03**
 
 Fixing 3.6.1's outgoing counterpart meant no longer registering an exchange controller for
 outgoing *responses* (their ids belong to the peer's space). The consequence: that POST is now
