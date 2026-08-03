@@ -228,7 +228,7 @@ describe('HTTPTransport', () => {
     test('uses the constructor seed before any revision is known', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
 
-      const transport = new HTTPTransport({ url: TEST_URL, protocolVersion: '2024-11-05' })
+      const transport = new HTTPTransport({ url: TEST_URL, protocolVersionHeader: '2024-11-05' })
       await transport.write(initializeRequest)
 
       expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe('2024-11-05')

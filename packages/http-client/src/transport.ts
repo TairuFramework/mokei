@@ -104,8 +104,14 @@ export type HTTPTransportParams = {
    * connection learns it from the `initialize` result. Left unset, the header is omitted
    * until one of those two supplies a value — which is what the specification asks for on
    * the `initialize` request itself.
+   *
+   * Distinct from {@link CreateHTTPClientParams.protocolVersion}, the revision the client
+   * speaks: this field is a raw header string, unconstrained to {@link ProtocolVersion} —
+   * the one in-repo use seeds `'2024-11-05'`, a legacy revision outside that union — and
+   * `createHTTPClient` never derives it from the revision, since sending the header on the
+   * `initialize` request itself is exactly what the paragraph above says not to do.
    */
-  protocolVersion?: string
+  protocolVersionHeader?: string
 }
 
 /**
@@ -220,7 +226,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#url = params.url
     this.#headers = buildHTTPHeaders({ headers: params.headers, auth: params.auth })
     this.#timeout = params.timeout ?? DEFAULT_HTTP_TIMEOUT
-    this.#protocolVersion = params.protocolVersion ?? null
+    this.#protocolVersion = params.protocolVersionHeader ?? null
     this.#logger = params.logger ?? getMokeiLogger('http-client')
   }
 
@@ -794,7 +800,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
 /** Parameters for {@link createHTTPClient}. */
 export type CreateHTTPClientParams = HTTPTransportParams & {
-  /** Revision to speak. `'auto'` probes the server, then caches the result. */
+  /**
+   * Revision to speak. `'auto'` probes the server, then caches the result.
+   *
+   * Distinct from {@link HTTPTransportParams.protocolVersionHeader}, the optional raw seed
+   * for the `MCP-Protocol-Version` header: this field drives `ContextClient` negotiation and
+   * is stripped before the transport is constructed, so it never reaches `HTTPTransport`
+   * itself.
+   */
   protocolVersion: ProtocolVersion | 'auto'
 }
 
