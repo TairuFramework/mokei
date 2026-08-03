@@ -1,4 +1,9 @@
-import { INTERNAL_ERROR, type RequestID, type Response } from '@mokei/context-protocol'
+import {
+  INTERNAL_ERROR,
+  INVALID_REQUEST,
+  type RequestID,
+  type Response,
+} from '@mokei/context-protocol'
 import { defer } from '@sozai/async'
 
 import { RPCError } from './error.js'
@@ -58,8 +63,22 @@ export class RequestScheduler {
   /**
    * Runs `run` now if a slot is free, queues it if not, and refuses it past the queue bound.
    * Resolves to the response to write, or `null` when nothing should be written.
+   *
+   * An id currently running or queued is refused outright, without ever calling `run`: MCP
+   * forbids reusing a request id within a session, and `#running`/`#queued` are keyed by id
+   * with no other way to tell two requests apart. Without this check a reused id overwrites
+   * the original's map entry — `runningCount` stays flat while every duplicate still runs its
+   * handler, a queued duplicate's `resolve` is silently orphaned, and `abortAll` later aborts
+   * only whichever entry happens to occupy the slot.
    */
   schedule(id: RequestID, run: RunRequest): Promise<Response | null> {
+    if (this.#running.has(id) || this.#queued.has(id)) {
+      return Promise.resolve(
+        new RPCError(INVALID_REQUEST, `Request id ${String(id)} is already in flight`).toResponse(
+          id,
+        ),
+      )
+    }
     if (this.#running.size < this.#maxConcurrent) {
       return this.#start(id, new AbortController(), run)
     }

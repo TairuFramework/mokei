@@ -85,6 +85,71 @@ describe('RequestScheduler', () => {
     expect(first.calls[0].aborted).toBe(true)
   })
 
+  test('refuses a duplicate id while its original is running, without touching the original', async () => {
+    const scheduler = new RequestScheduler()
+    const first = controllable()
+    const duplicate = controllable()
+
+    void scheduler.schedule(1, first.run)
+    const refused = await scheduler.schedule(1, duplicate.run)
+
+    expect(duplicate.calls).toHaveLength(0)
+    expect(refused).toMatchObject({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32600 },
+    })
+    expect(scheduler.runningCount).toBe(1)
+    expect(first.calls).toHaveLength(1)
+  })
+
+  test('refuses a duplicate id while its original is still queued', async () => {
+    const scheduler = new RequestScheduler({ maxConcurrentRequests: 1 })
+    const first = controllable()
+    const second = controllable()
+    const duplicate = controllable()
+
+    void scheduler.schedule(1, first.run)
+    void scheduler.schedule(2, second.run)
+    const refused = await scheduler.schedule(2, duplicate.run)
+
+    expect(duplicate.calls).toHaveLength(0)
+    expect(refused).toMatchObject({
+      jsonrpc: '2.0',
+      id: 2,
+      error: { code: -32600 },
+    })
+    expect(scheduler.queuedCount).toBe(1)
+  })
+
+  test('accepts a reused id again once the original request has settled', async () => {
+    const scheduler = new RequestScheduler()
+    const first = controllable()
+    void scheduler.schedule(1, first.run)
+    first.gate.resolve()
+    await vi.waitFor(() => expect(scheduler.runningCount).toBe(0))
+
+    const second = controllable()
+    void scheduler.schedule(1, second.run)
+
+    expect(second.calls).toHaveLength(1)
+  })
+
+  test('a reused id refused while running never reaches #running, so abortAll only aborts the original', () => {
+    const scheduler = new RequestScheduler()
+    const first = controllable()
+    const duplicate = controllable()
+
+    void scheduler.schedule(1, first.run)
+    void scheduler.schedule(1, duplicate.run)
+
+    scheduler.abortAll(new Error('closed'))
+
+    expect(first.calls).toHaveLength(1)
+    expect(first.calls[0].aborted).toBe(true)
+    expect(duplicate.calls).toHaveLength(0)
+  })
+
   test('abortAll aborts running signals and drops queued requests', async () => {
     const scheduler = new RequestScheduler({ maxConcurrentRequests: 1 })
     const first = controllable()
