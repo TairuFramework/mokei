@@ -9,7 +9,12 @@ import type {
   Log,
   ServerMessage,
 } from '@mokei/context-protocol'
-import { INTERNAL_ERROR, INVALID_PARAMS, LATEST_PROTOCOL_VERSION } from '@mokei/context-protocol'
+import {
+  ENVELOPE_VIOLATION,
+  INTERNAL_ERROR,
+  INVALID_PARAMS,
+  LATEST_PROTOCOL_VERSION,
+} from '@mokei/context-protocol'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
@@ -1191,6 +1196,10 @@ describe('protocol version resolution', () => {
       {
         code: -32602,
         message: 'Missing "io.modelcontextprotocol/protocolVersion" in request _meta',
+        // Structured marker the HTTP transport keys its `400` classification off of
+        // (`packages/http-server/src/stateless.ts`, `isEnvelopeFailure`), rather than the
+        // message text.
+        data: { [ENVELOPE_VIOLATION]: true },
       },
     )
   })

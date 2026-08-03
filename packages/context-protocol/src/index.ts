@@ -69,6 +69,7 @@ export {
   type AnyMessage,
   type CacheableResult,
   type CancelledNotification,
+  ENVELOPE_VIOLATION,
   type ErrorResponse,
   HEADER_MISMATCH,
   type Icon,

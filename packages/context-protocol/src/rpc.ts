@@ -18,6 +18,20 @@ export const HEADER_MISMATCH = -32020
 export const MISSING_REQUIRED_CLIENT_CAPABILITY = -32021
 export const UNSUPPORTED_PROTOCOL_VERSION = -32022
 
+/**
+ * Key an `INVALID_PARAMS` error's `data` carries, set to `true`, when the request failed
+ * before reaching any handler because it violated the transport envelope itself — missing a
+ * required `_meta` key on `2026-07-28` — as opposed to an ordinary application error that
+ * happens to share the same JSON-RPC code (an unknown tool name, invalid arguments).
+ * `INVALID_PARAMS` alone cannot tell the two apart, since application errors use it too.
+ *
+ * Not an `io.modelcontextprotocol/…` `_meta` key: this is a mokei-internal signal between
+ * `ContextServer`, which throws it, and the HTTP transport, which reads it to decide `400`
+ * vs. `200` (`packages/http-server/src/stateless.ts`) — never something a peer is expected to
+ * interpret.
+ */
+export const ENVELOPE_VIOLATION = 'envelopeViolation'
+
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1465
 export const requestId = {
   description: 'A uniquely identifying ID for a request in JSON-RPC.',

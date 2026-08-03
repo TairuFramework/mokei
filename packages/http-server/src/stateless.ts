@@ -1,6 +1,7 @@
 import { Transport } from '@enkaku/transport'
 import {
   type ClientMessage,
+  ENVELOPE_VIOLATION,
   INVALID_PARAMS,
   META_PROTOCOL_VERSION,
   MISSING_REQUIRED_CLIENT_CAPABILITY,
@@ -35,19 +36,19 @@ export const BAD_REQUEST_CODES: ReadonlySet<number> = new Set([
  * it both for an envelope violation (a missing required `_meta` key — an HTTP `400`) and for
  * an ordinary application error (an unknown tool name, invalid tool arguments — an HTTP
  * `200` carrying a JSON-RPC error, same as every other revision). Only the first is a
- * transport-level failure, and the two are told apart by the message the server's protocol
- * resolution itself writes, which always reports the `_meta` key it could not find.
- *
- * Matched as a prefix, not a substring: a tool or prompt *name* reaches the message of an
- * application error verbatim (`Tool <name> not found`), so a client could otherwise pick its
- * own HTTP status by naming a tool `io.modelcontextprotocol/…`. Only the leading `Missing "`
- * is beyond a caller's reach.
+ * transport-level failure, and the two are told apart by {@link ENVELOPE_VIOLATION} on the
+ * error's `data` — a structured marker `#resolveProtocol` (`packages/context-server/src/
+ * server.ts`) attaches at both its `INVALID_PARAMS` throw sites, rather than the message
+ * text: a thrower in another package matching this transport's classification by opening its
+ * message with the right words is a much easier invariant to break by accident than one
+ * failing to set a field it was never told to set.
  */
-function isEnvelopeFailure(error: { code?: unknown; message?: unknown }): boolean {
+function isEnvelopeFailure(error: { code?: unknown; data?: unknown }): boolean {
   if (error.code === INVALID_PARAMS) {
     return (
-      typeof error.message === 'string' &&
-      error.message.startsWith('Missing "io.modelcontextprotocol/')
+      error.data != null &&
+      typeof error.data === 'object' &&
+      (error.data as Record<string, unknown>)[ENVELOPE_VIOLATION] === true
     )
   }
   return typeof error.code === 'number' && BAD_REQUEST_CODES.has(error.code)
@@ -230,7 +231,7 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
             return
           }
           if (isOwnResponse) {
-            const error = record.error as { code?: unknown; message?: unknown } | undefined
+            const error = record.error as { code?: unknown; data?: unknown } | undefined
             if (error != null && isEnvelopeFailure(error)) {
               settle(
                 new Response(JSON.stringify(outgoing), {

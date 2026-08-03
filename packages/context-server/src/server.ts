@@ -30,6 +30,7 @@ import type {
   Tool,
 } from '@mokei/context-protocol'
 import {
+  ENVELOPE_VIOLATION,
   INVALID_PARAMS,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
@@ -298,7 +299,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         (version) => !PROTOCOLS[version].requiresRequestMeta,
       )
       if (fallback == null) {
-        throw new RPCError(INVALID_PARAMS, `Missing "${META_PROTOCOL_VERSION}" in request _meta`)
+        throw new RPCError(INVALID_PARAMS, `Missing "${META_PROTOCOL_VERSION}" in request _meta`, {
+          [ENVELOPE_VIOLATION]: true,
+        })
       }
       protocol = PROTOCOLS[fallback]
     } else if (!this.#protocolVersions.includes(requested as ProtocolVersion)) {
@@ -311,7 +314,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
 
     if (protocol.requiresRequestMeta && meta?.[META_CLIENT_CAPABILITIES] == null) {
-      throw new RPCError(INVALID_PARAMS, `Missing "${META_CLIENT_CAPABILITIES}" in request _meta`)
+      throw new RPCError(INVALID_PARAMS, `Missing "${META_CLIENT_CAPABILITIES}" in request _meta`, {
+        [ENVELOPE_VIOLATION]: true,
+      })
     }
     return protocol
   }

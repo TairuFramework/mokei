@@ -74,3 +74,62 @@ describe('runStatelessExchange', () => {
     expect(createSSEStreamSpy).not.toHaveBeenCalled()
   })
 })
+
+describe('runStatelessExchange envelope-failure classification', () => {
+  /**
+   * Runs one exchange and immediately answers it with the given `error`, returning the HTTP
+   * response — same shape `#resolveProtocol`'s own throw sites produce, but built directly so
+   * the message and `data` can be varied independently of what the real thrower happens to
+   * send today.
+   */
+  async function respondWithError(error: {
+    code: number
+    message: string
+    data?: unknown
+  }): Promise<Response> {
+    const fakeServer = { dispose: () => Promise.resolve() } as unknown as ContextServer
+    let transport: ServerTransport | undefined
+
+    const responsePromise = runStatelessExchange({
+      message: {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/list',
+        params: {},
+      } as unknown as ClientMessage,
+      requestID: 1,
+      createServer: (t) => {
+        transport = t
+        return fakeServer
+      },
+      replayBufferSize: 4,
+      timeoutMs: 1000,
+    })
+
+    await transport?.write({ jsonrpc: '2.0', id: 1, error } as unknown as ServerMessage)
+    return await responsePromise
+  }
+
+  // The classification the HTTP transport applies is `error.data[ENVELOPE_VIOLATION] === true`,
+  // not the message text — so an arbitrarily worded `INVALID_PARAMS` still gets `400` as long
+  // as it carries the marker. This is what makes a third envelope-violation thrower safe to add
+  // without it having to open its message with a particular prefix.
+  test('an INVALID_PARAMS error with the envelope marker is 400 regardless of wording', async () => {
+    const response = await respondWithError({
+      code: -32602,
+      message: 'Something else entirely',
+      data: { envelopeViolation: true },
+    })
+    expect(response.status).toBe(400)
+  })
+
+  // The mirror case: a message that happens to look like the old prefix no longer buys a `400`
+  // on its own now that the classification does not read the message at all.
+  test('an INVALID_PARAMS error without the marker is not 400, even with envelope-like wording', async () => {
+    const response = await respondWithError({
+      code: -32602,
+      message: 'Missing "io.modelcontextprotocol/protocolVersion" in request _meta',
+    })
+    expect(response.status).toBe(200)
+  })
+})
