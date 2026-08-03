@@ -1389,16 +1389,14 @@ describe('outbound requests and notifications on the resolved revision', () => {
   }
 
   // The cancellation has to reach the peer on *every* transport, not just the ones that can read
-  // a revision off a session: `ContextRPC._handleMessage` acts on it directly, aborting the
-  // handler signal of the request it names, and that is the only code path by which a server
-  // could stop working on a call nobody is waiting for any more.
-  //
-  // "could", not "does": `ContextRPC`'s read loop awaits each message's handler before reading
-  // the next, so a cancellation is not read until the handler it names has already settled, by
-  // which point `#receivedRequests[id]` is gone and the abort is a no-op. The stamp asserted
-  // below is still what a peer routes the frame on, and is what has to be right for the abort to
-  // land once the read loop no longer serializes — tracked in
-  // `docs/agents/plans/backlog/2026-06-20-mcp-draft-remaining.md`.
+  // a revision off a session: `ContextRPC._handleMessage` routes `notifications/cancelled`
+  // straight to `RequestScheduler.cancel`, which aborts the named request's handler signal if
+  // it is running (or drops it unstarted if it is still queued) — the only code path by which a
+  // server could stop working on a call nobody is waiting for any more. The read loop dispatches
+  // requests concurrently rather than awaiting each handler before reading the next frame, so a
+  // cancellation is read and acted on while the handler it names is genuinely still in flight —
+  // the abort lands, it does not merely have the opportunity to. The stamp asserted below is
+  // what a peer routes the frame on, which is what has to be right for that abort to land.
   test('2026-07-28 sends a cancellation stamped with its protocol version', async () => {
     const cancelled = await cancelInFlight('2026-07-28')
     const meta = (cancelled.params as { _meta?: Record<string, unknown> })._meta
