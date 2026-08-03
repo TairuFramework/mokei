@@ -8,6 +8,7 @@ import {
   type PromptParams,
   type ToolParams,
   type UnknownContextTypes,
+  UnsupportedProtocolVersionError,
 } from '@mokei/context-client'
 import type {
   CallToolResult,
@@ -18,6 +19,7 @@ import type {
   ServerMessage,
   Tool,
 } from '@mokei/context-protocol'
+import { isSupportedProtocolVersion } from '@mokei/context-protocol'
 import type { WithRequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
 import { type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
@@ -183,6 +185,17 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
     protocolVersion,
     ...spawnParams
   } = params
+  // Validated before spawning: `ContextClient`'s constructor also rejects an unsupported pin,
+  // but only after `createHostedContext` builds it below — by which point the child would
+  // already be running with no disposer wired up to reap it. Same predicate Task 8 uses, so
+  // the supported-version list is not duplicated here.
+  if (
+    protocolVersion != null &&
+    protocolVersion !== 'auto' &&
+    !isSupportedProtocolVersion(protocolVersion)
+  ) {
+    throw new UnsupportedProtocolVersionError(protocolVersion)
+  }
   const { childProcess, streams, subprocess } = await spawnContextServer(spawnParams)
   if (onExit != null) {
     subprocess.then(
