@@ -383,6 +383,20 @@ export type ClientParams = {
   listRoots?: Array<Root> | ListRootsHandler
   logLevel?: LoggingLevel
   /**
+   * Server-initiated request handlers (`sampling/createMessage`, `elicitation/create`,
+   * `roots/list` on `2025-11-25`) allowed to run at once (default 100). Symmetric with
+   * `@mokei/context-server`'s `ServerParams.maxConcurrentRequests`.
+   */
+  maxConcurrentRequests?: number
+  /** Server-initiated requests allowed to wait for a slot before further ones are refused (default 1000). */
+  maxQueuedRequests?: number
+  /**
+   * Called for an inbound frame that could neither be validated nor routed to anything —
+   * an invalid notification, or a response for an id nobody is waiting on — and for
+   * server-initiated request handlers that failed. Without it such frames vanish silently.
+   */
+  onError?: (error: Error) => void
+  /**
    * Default timeout for every request after setup. Unset means unbounded — `tools/call` can
    * legitimately run for minutes, and `@mokei/session` already bounds tool calls itself.
    * `setupTimeout` covers connection setup regardless of this value.
@@ -455,6 +469,9 @@ export class ContextClient<
       defaultRequestTimeout: params.requestTimeout,
       validateMessageIn: (message) => this.#validateServerMessage(message),
       transport: params.transport,
+      maxConcurrentRequests: params.maxConcurrentRequests,
+      maxQueuedRequests: params.maxQueuedRequests,
+      onError: params.onError,
     })
 
     this.#createMessage = params.createMessage

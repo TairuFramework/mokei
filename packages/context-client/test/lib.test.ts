@@ -1970,3 +1970,89 @@ describe("'auto' probe", () => {
     expect(client.protocolVersion).toBe('2025-11-25')
   })
 })
+
+describe('ContextRPC configuration surfaced through ClientParams', () => {
+  test('maxConcurrentRequests bounds concurrent server-initiated handler execution', async () => {
+    const started: Array<string> = []
+    let releaseSlow: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      releaseSlow = resolve
+    })
+
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+      maxConcurrentRequests: 1,
+      createMessage: async () => {
+        started.push('slow')
+        await gate
+        return { role: 'assistant', model: 'test', content: { type: 'text', text: 'slow' } }
+      },
+      elicit: () => {
+        started.push('quick')
+        return { action: 'accept', content: {} }
+      },
+    })
+
+    client.initialize()
+    await handleServerInitialize(transports.server, {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { sampling: {}, elicitation: {} },
+    })
+
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'sampling/createMessage',
+      params: { messages: [], maxTokens: 1 },
+    } as ServerRequest)
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'elicitation/create',
+      params: { message: 'hi', requestedSchema: { type: 'object', properties: {} } },
+    } as ServerRequest)
+
+    await vi.waitFor(() => expect(started).toContain('slow'))
+    // With the cap at 1, `quick` cannot start until `slow` frees its slot — the scheduler
+    // will not run it early no matter how long this assertion waits, so this is a real
+    // invariant rather than a timing race.
+    expect(started).toEqual(['slow'])
+
+    releaseSlow()
+    await vi.waitFor(() => expect(started).toEqual(['slow', 'quick']))
+
+    await transports.dispose()
+  })
+
+  test('onError set via ClientParams receives a server-initiated request handler failure', async () => {
+    const onError = vi.fn()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    // No `listRoots` configured, so an inbound `roots/list` throws METHOD_NOT_FOUND from
+    // `_handleRequest` — a genuine handler failure, which is what `RPCParams.onError` is
+    // documented to report.
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+      onError,
+    })
+
+    client.initialize()
+    await handleServerInitialize(transports.server)
+
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'roots/list',
+    } as ServerRequest)
+
+    await expect(transports.server.read()).resolves.toEqual({
+      done: false,
+      value: { jsonrpc: '2.0', id: 1, error: expect.anything() },
+    })
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    await transports.dispose()
+  })
+})

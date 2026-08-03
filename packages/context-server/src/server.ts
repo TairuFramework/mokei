@@ -107,6 +107,16 @@ export type ServerConfig = {
 
 export type ServerParams = ServerConfig & {
   transport: ServerTransport
+  /** Request handlers allowed to run at once (default 100). */
+  maxConcurrentRequests?: number
+  /** Requests allowed to wait for a slot before further requests are refused (default 1000). */
+  maxQueuedRequests?: number
+  /**
+   * Called for an inbound frame that could neither be validated nor routed to anything —
+   * an invalid notification, or a response for an id nobody is waiting on — and for request
+   * handlers that failed. Without it such frames vanish silently.
+   */
+  onError?: (error: Error) => void
 }
 
 export type ServerEvents = {
@@ -144,7 +154,13 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #toolsList: Array<Tool> = []
 
   constructor(params: ServerParams) {
-    super({ transport: params.transport, validateMessageIn: validateClientMessage })
+    super({
+      transport: params.transport,
+      validateMessageIn: validateClientMessage,
+      maxConcurrentRequests: params.maxConcurrentRequests,
+      maxQueuedRequests: params.maxQueuedRequests,
+      onError: params.onError,
+    })
 
     this.#client = {
       createMessage: this.createMessage.bind(this),

@@ -1070,6 +1070,86 @@ describe('ContextServer', () => {
   })
 })
 
+describe('ContextRPC configuration surfaced through ServerParams', () => {
+  test('maxConcurrentRequests bounds concurrent tool handler execution', async () => {
+    const started: Array<string> = []
+    let releaseSlow: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      releaseSlow = resolve
+    })
+
+    const { transports } = createTestContext({
+      protocolVersions: ['2025-11-25'],
+      maxConcurrentRequests: 1,
+      tools: {
+        slow: createTool({
+          description: 'slow',
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          handler: async () => {
+            started.push('slow')
+            await gate
+            return { content: [{ type: 'text' as const, text: 'slow-done' }] }
+          },
+        }),
+        quick: createTool({
+          description: 'quick',
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          handler: () => {
+            started.push('quick')
+            return { content: [{ type: 'text' as const, text: 'quick-done' }] }
+          },
+        }),
+      },
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'slow', arguments: {} },
+    } as ClientRequest)
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'quick', arguments: {} },
+    } as ClientRequest)
+
+    await vi.waitFor(() => expect(started).toContain('slow'))
+    // With the cap at 1, `quick` cannot start until `slow` frees its slot — the scheduler
+    // will not run it early no matter how long this assertion waits, so this is a real
+    // invariant rather than a timing race.
+    expect(started).toEqual(['slow'])
+
+    releaseSlow()
+    await vi.waitFor(() => expect(started).toEqual(['slow', 'quick']))
+
+    await transports.dispose()
+  })
+
+  test('onError set via ServerParams receives a request handler failure', async () => {
+    const onError = vi.fn()
+    // `completion/complete` is a real, schema-valid method on 2025-11-25 that this server was
+    // not configured to serve (no `complete` handler passed to createTestContext), so it
+    // reaches `#dispatchRequest`'s fallthrough `RPCError(METHOD_NOT_FOUND)` — a genuine handler
+    // failure, which is what `RPCParams.onError` is documented to report.
+    const { transports } = createTestContext({ protocolVersions: ['2025-11-25'], onError })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'completion/complete',
+      params: { ref: { type: 'ref/prompt', name: 'greet' }, argument: { name: 'a', value: '' } },
+    } as ClientRequest)
+
+    const res = await transports.client.read()
+    expect(res.value).toMatchObject({ id: 1, error: expect.anything() })
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    await transports.dispose()
+  })
+})
+
 const NEW_META = {
   'io.modelcontextprotocol/protocolVersion': '2026-07-28',
   'io.modelcontextprotocol/clientCapabilities': {},
