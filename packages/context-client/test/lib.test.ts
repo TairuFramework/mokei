@@ -10,6 +10,7 @@ import type {
   InitializeRequest,
   InitializeResult,
   Log,
+  ProtocolVersion,
   Root,
   ServerMessage,
   ServerRequest,
@@ -1200,6 +1201,16 @@ describe('protocol version selection', () => {
           }),
         }),
     ).toThrow(MRTRNotSupportedError)
+  })
+
+  test('an unsupported protocolVersion string throws instead of probing', () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    expect(() => {
+      new ContextClient({
+        protocolVersion: '2024-01-01' as ProtocolVersion,
+        transport: transports.client,
+      })
+    }).toThrow(UnsupportedProtocolVersionError)
   })
 
   // The refusal is derived from `serverMethods`, so it will fire for any future revision that

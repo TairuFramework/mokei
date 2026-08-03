@@ -47,6 +47,7 @@ import {
   type ErrorResponse,
   INVALID_REQUEST,
   inferSchemaDraft,
+  isSupportedProtocolVersion,
   METHOD_NOT_FOUND,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
@@ -162,8 +163,18 @@ const LIST_CHANGED_NOTIFICATIONS: ReadonlySet<string> = new Set([
 ])
 
 export class UnsupportedProtocolVersionError extends Error {
-  constructor(received: string, expected: ProtocolVersion) {
-    super(`Server responded with unsupported protocolVersion "${received}"; expected "${expected}"`)
+  /**
+   * `expected` is only known when this is raised against a server's handshake response (the
+   * negotiated version has to match the one the client asked for). A rejected config-time pin
+   * (`ClientParams.protocolVersion`) has no single "expected" value to name, so it's omitted
+   * there and the message drops the clause instead of naming an arbitrary revision.
+   */
+  constructor(received: string, expected?: ProtocolVersion) {
+    super(
+      expected == null
+        ? `Unsupported protocolVersion "${received}"`
+        : `Server responded with unsupported protocolVersion "${received}"; expected "${expected}"`,
+    )
     this.name = 'UnsupportedProtocolVersionError'
   }
 }
@@ -449,6 +460,13 @@ export class ContextClient<
     this.#createMessage = params.createMessage
     this.#elicit = params.elicit
     this.#listRoots = params.listRoots
+
+    // `isSupportedProtocolVersion` before indexing: `PROTOCOLS[unknown]` is `undefined`, which
+    // is nullish, so an unvalidated string used to skip the handler check below and reach
+    // `#setup()` as though `'auto'` had been asked for — silently probing instead of failing.
+    if (params.protocolVersion !== 'auto' && !isSupportedProtocolVersion(params.protocolVersion)) {
+      throw new UnsupportedProtocolVersionError(params.protocolVersion)
+    }
 
     // Derived from `serverMethods`, not a hardcoded version check: a handler is refused
     // exactly when its own method (`sampling/createMessage`/`elicitation/create`/`roots/list`)
