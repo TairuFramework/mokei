@@ -67,4 +67,11 @@ describe('2026-07-28 serverResult', () => {
     ).toBeUndefined()
     expect(validate20260728({ resultType: 'complete', inputRequests: {} }).issues).toBeDefined()
   })
+
+  test('rejects an input_required result carrying a field SEP-2322 does not define', () => {
+    expect(
+      validate20260728({ resultType: 'input_required', requestState: 'opaque-blob', extra: 1 })
+        .issues,
+    ).toBeDefined()
+  })
 })
