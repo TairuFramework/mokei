@@ -7,7 +7,7 @@ Shipped work is recorded in the completed summaries, not repeated here:
 `completed/2026-06-20-mcp-deferred-groundwork.complete.md` (G1–G8),
 `completed/2026-08-02-mcp-2026-07-28-stateless-core.complete.md` (B5, B2, B3, B1 and the
 `logLevel` half of B6) and `completed/2026-08-03-mcp-2026-07-28-defect-wave.complete.md`
-(the §3.1 correctness defects, §3.5.1–3.5.8 and the §3.6 follow-ups).
+(the §3.1 correctness defects, all of §3.5 and the §3.6 follow-ups).
 
 Section numbers are stable: gaps mean an item shipped, not that it was renumbered.
 
@@ -187,20 +187,6 @@ proposal.
   invocation. The CLI is now an Ink TUI driven by slash commands, and the command is
   `mokei chat --provider ollama`. Rewriting it needs a real PTY run to capture accurate output,
   which is why it was not attempted during that sweep.
-
-### 3.5 Findings from the whole-plan review (filed 2026-08-02)
-
-#### 3.5.6 `CreateHTTPClientParams.protocolVersion` shadows `HTTPTransportParams.protocolVersion`
-
-The last of that section's five transport minors; the other four shipped 2026-08-03.
-
-`CreateHTTPClientParams` intersects `HTTPTransportParams`, and the two spell `protocolVersion`
-with different meanings — the revision to speak vs. the header seed. `createHTTPClient` strips
-the field before constructing `HTTPTransport`, so the documented header seed is **unreachable**
-through that entry point.
-
-**Blocked on a decision:** every correct fix renames or reshapes one of the two public param
-types, which is breaking. Left as-is deliberately rather than half-fixed.
 
 ## Notes
 
