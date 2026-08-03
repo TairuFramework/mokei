@@ -443,13 +443,30 @@ describe('ContextRPC invalid inbound messages', () => {
   })
 
   test('a cancelled request whose handler rejects on abort does not call onError', async () => {
+    // Drives a real *inbound* request (the peer sends it, this RPC's `_handleRequest` runs
+    // it), not an outbound `request()` abort: only an inbound handler ever reaches
+    // `_handleMessage`'s abort check, which is what this test is meant to guard. An outbound
+    // abort never invokes `_handleRequest` at all, so a version of this test that only aborts
+    // `rpc.request(...)` cannot fail even if the check is deleted.
     const transports = new DirectTransports<AnyMessage, AnyMessage>()
     const onError = vi.fn()
+    const started = defer<AbortSignal>()
+    const gate = defer<void>()
+    let handlerRan = false
+
     class TestRPC extends ContextRPC<TestTypes> {
       async _handleRequest(
-        _request: TestTypes['HandleRequest'],
+        request: TestTypes['HandleRequest'],
         signal: AbortSignal,
       ): Promise<Record<string, unknown>> {
+        if (request.method !== 'slow') {
+          return {}
+        }
+        handlerRan = true
+        started.resolve(signal)
+        await gate.promise
+        // Mirrors a real handler that notices the abort and rejects instead of returning —
+        // the rejection `_handleMessage`'s abort branch must swallow without calling onError.
         signal.throwIfAborted()
         return {}
       }
@@ -461,12 +478,31 @@ describe('ContextRPC invalid inbound messages', () => {
     })
     rpc._handle()
 
-    const controller = new AbortController()
-    const pending = rpc.request('tools/list', {}, { signal: controller.signal })
-    controller.abort()
-    await expect(pending).rejects.toThrow()
+    await transports.server.write({ jsonrpc: '2.0', id: 1, method: 'slow' } as AnyMessage)
+    const signal = await started.promise
 
-    // onError should not be called for a cancelled request's abort rejection
+    await transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { requestId: 1 },
+    } as AnyMessage)
+    await vi.waitFor(() => expect(signal.aborted).toBe(true))
+
+    // Unblock the handler now that it is aborted: `signal.throwIfAborted()` throws
+    // synchronously, exercising the exact rejection path the abort check has to suppress.
+    gate.resolve()
+
+    // A second, ordinary request started only now, after the first handler's purely local
+    // rejection (no transport I/O) is already in motion: waiting for its full round trip is a
+    // real synchronization point on the first request's settlement, not a guessed tick count.
+    await transports.server.write({ jsonrpc: '2.0', id: 2, method: 'quick' } as AnyMessage)
+    await expect(transports.server.read()).resolves.toEqual({
+      done: false,
+      value: { jsonrpc: '2.0', id: 2, result: {} },
+    })
+
+    expect(handlerRan).toBe(true)
+    // onError should not be called for a cancelled request's abort rejection.
     expect(onError).not.toHaveBeenCalled()
 
     await rpc.dispose()
