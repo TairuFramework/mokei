@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'vitest'
+import type { Logger } from '@mokei/logger'
+import { describe, expect, test, vi } from 'vitest'
 
 import { SSEWriter } from '../src/sse-writer.js'
 
@@ -222,6 +223,30 @@ describe('SSEWriter teardown on a faulted stream', () => {
     })
 
     expect(seen).toEqual([])
+  })
+
+  // The rejection must not just be swallowed: without a logger, a genuinely diagnosable
+  // stream fault vanishes. This is the boundary described in the backlog note — a faulted
+  // writer is constructible here even though `createSSEStream`'s own sink never throws.
+  test('close() on an errored stream logs the rejection', async () => {
+    const writable = new WritableStream<string>({
+      write() {
+        throw new Error('stream faulted')
+      },
+    })
+    const warn = vi.fn()
+    const logger = { warn } as unknown as Logger
+    const writer = new SSEWriter({ writable, streamID: 'faulted', replayBufferSize: 4, logger })
+
+    await expect(writer.writeEvent({ data: 'first' })).rejects.toThrow('stream faulted')
+    writer.close()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to close SSE stream',
+      expect.objectContaining({ streamID: 'faulted', error: expect.any(String) }),
+    )
   })
 
   // The ordinary path must still actually close the stream, or the guard above would be

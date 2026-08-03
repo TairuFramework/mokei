@@ -44,6 +44,7 @@
     "@hono/node-server": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
+    "@mokei/logger": "workspace:^",
     "hono": "catalog:"
   },
   "devDependencies": {

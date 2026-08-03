@@ -733,6 +733,9 @@ importers:
       '@mokei/context-server':
         specifier: workspace:^
         version: link:../context-server
+      '@mokei/logger':
+        specifier: workspace:^
+        version: link:../logger
       hono:
         specifier: 'catalog:'
         version: 4.12.32

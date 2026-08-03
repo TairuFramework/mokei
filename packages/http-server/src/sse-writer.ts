@@ -1,3 +1,5 @@
+import { getMokeiLogger, type Logger } from '@mokei/logger'
+
 export type SSEEvent = {
   id: string
   data: string
@@ -8,6 +10,8 @@ export type SSEWriterParams = {
   streamID: string
   replayBufferSize: number
   onEvent?: (event: SSEEvent) => void
+  /** Optional logger (defaults to the `mokei:http-server` logger) */
+  logger?: Logger
 }
 
 export class SSEWriter {
@@ -20,6 +24,7 @@ export class SSEWriter {
   #bufferCount = 0
   #closed = false
   #onEvent: ((event: SSEEvent) => void) | undefined
+  #logger: Logger
 
   constructor(params: SSEWriterParams) {
     this.#writer = params.writable.getWriter()
@@ -27,6 +32,7 @@ export class SSEWriter {
     this.#bufferSize = params.replayBufferSize
     this.#buffer = new Array<SSEEvent>(params.replayBufferSize)
     this.#onEvent = params.onEvent
+    this.#logger = params.logger ?? getMokeiLogger('http-server')
   }
 
   get streamID(): string {
@@ -108,13 +114,17 @@ export class SSEWriter {
    * up mid-stream, a sink that threw after its response was settled. Without it, closing a
    * faulted stream raises an unhandled rejection in the server process — a crash under Node's
    * default `--unhandled-rejections=throw`, from cleanup code whose failure has nobody to report
-   * to and nothing to retry.
+   * to and nothing to retry. The rejection is logged rather than swallowed outright, so a
+   * genuinely diagnosable stream fault does not vanish.
    */
   close(): void {
     if (this.#closed) return
     this.#closed = true
-    void this.#writer.close().catch(() => {
-      // The stream is already gone; that is the only reason this can reject.
+    void this.#writer.close().catch((error: unknown) => {
+      this.#logger.warn('Failed to close SSE stream', {
+        streamID: this.#streamID,
+        error: error instanceof Error ? error.message : String(error),
+      })
     })
   }
 }

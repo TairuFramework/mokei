@@ -8,6 +8,7 @@ import {
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
 import type { ContextServer, ServerTransport } from '@mokei/context-server'
+import { getMokeiLogger, type Logger } from '@mokei/logger'
 
 import { createSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.js'
 import { SSEWriter } from './sse-writer.js'
@@ -104,6 +105,8 @@ export type StatelessExchangeParams = {
    */
   onStart?: (teardown: () => void) => void
   onEnd?: (teardown: () => void) => void
+  /** Optional logger (defaults to the `mokei:http-server` logger) */
+  logger?: Logger
 }
 
 /**
@@ -118,8 +121,17 @@ export type StatelessExchangeParams = {
  * instead of being buffered until it finishes.
  */
 export function runStatelessExchange(params: StatelessExchangeParams): Promise<Response> {
-  const { message, requestID, createServer, replayBufferSize, timeoutMs, signal, onStart, onEnd } =
-    params
+  const {
+    message,
+    requestID,
+    createServer,
+    replayBufferSize,
+    timeoutMs,
+    signal,
+    onStart,
+    onEnd,
+    logger = getMokeiLogger('http-server'),
+  } = params
 
   if (signal?.aborted) {
     // The client is already gone: standing a server up for it would only create work to
@@ -231,6 +243,7 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
             writable: stream.writable,
             streamID: `stateless-${requestID ?? 'notification'}`,
             replayBufferSize,
+            logger,
           })
           sse = writer
           settle(new Response(stream.readable, { status: 200, headers: SSE_RESPONSE_HEADERS }))
