@@ -223,9 +223,16 @@ export const emptyResult = {
  * the defect-wave design doc); this member only lets a spec-shaped `input_required` result clear
  * wire validation so `context-client`'s existing `InputRequiredNotSupportedError` guard can
  * refuse it with a clear error instead of the read loop dropping it as an unparseable response.
+ *
+ * Closed (`additionalProperties: false`), not open: this is one branch inside a union whose
+ * entire purpose is closing off a vacuous escape hatch, so it must not itself become one. Limited
+ * to exactly SEP-2322's four `InputRequiredResult` fields — `_meta`, `resultType`,
+ * `inputRequests`, `requestState` — a real MRTR frame carries nothing else. `inputRequests`'
+ * values stay open (`additionalProperties: {}`): each is a full elicitation or sampling request,
+ * and modeling those here is the same out-of-scope MRTR work as the retry path above.
  */
 export const inputRequiredResult = {
-  additionalProperties: {},
+  additionalProperties: false,
   properties: {
     _meta: metadata,
     inputRequests: { additionalProperties: {}, type: 'object' },

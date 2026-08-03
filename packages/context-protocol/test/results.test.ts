@@ -56,4 +56,15 @@ describe('2026-07-28 serverResult', () => {
   test('rejects an object matching no known result', () => {
     expect(validate20260728({ nonsense: true, resultType: 'complete' }).issues).toBeDefined()
   })
+
+  test('accepts a spec-shaped input_required result and rejects a complete one carrying it', () => {
+    expect(
+      validate20260728({
+        resultType: 'input_required',
+        inputRequests: { foo: { role: 'user' } },
+        requestState: 'opaque-blob',
+      }).issues,
+    ).toBeUndefined()
+    expect(validate20260728({ resultType: 'complete', inputRequests: {} }).issues).toBeDefined()
+  })
 })
