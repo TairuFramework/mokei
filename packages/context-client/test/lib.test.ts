@@ -1212,7 +1212,7 @@ describe('protocol version selection', () => {
   test('rejects an input_required result until MRTR lands', async () => {
     const { client } = createTestClient({
       protocolVersion: '2026-07-28',
-      respond: () => ({ resultType: 'input_required', inputRequests: [] }),
+      respond: () => ({ resultType: 'input_required', inputRequests: {} }),
     })
     await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow(
       InputRequiredNotSupportedError,

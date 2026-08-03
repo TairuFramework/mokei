@@ -127,6 +127,7 @@ export {
   clientMessage,
   type DiscoverRequest,
   type DiscoverResult,
+  discoverResult,
   isSupportedProtocolVersion,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,

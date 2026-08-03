@@ -45,7 +45,14 @@ function handle(message) {
   }
   if (message.method === 'tools/list') {
     const cursor = message.params?.cursor
-    send({ jsonrpc: '2.0', id: message.id, result: PAGES[cursor ?? '__first'] })
+    // `2026-07-28` requires `resultType` on every result (enforced by that revision's own
+    // `serverResult` union); a page missing it fails wire validation on a client resolved to
+    // that revision, whether pinned or landed there via the `'auto'` probe.
+    send({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: { resultType: 'complete', ...PAGES[cursor ?? '__first'] },
+    })
     return
   }
   if (message.method === 'notifications/initialized') {

@@ -43,7 +43,9 @@ import type {
   SetLevelRequest,
 } from '@mokei/context-protocol'
 import {
+  discoverResult,
   type ErrorResponse,
+  INVALID_REQUEST,
   inferSchemaDraft,
   METHOD_NOT_FOUND,
   PROTOCOL_VERSIONS,
@@ -90,6 +92,15 @@ const SERVER_MESSAGE_VALIDATORS: Record<ProtocolVersion, Validator<ServerMessage
  * total rather than making the read loop depend on that ordering.
  */
 const validateAnyServerMessage = createValidator(serverMessage)
+
+/**
+ * Validates a `server/discover` result against `2026-07-28`'s own schema, replacing the cast
+ * `#sendDiscover()` used to return through. `discoverResult` is not a member of `2025-11-25`'s
+ * `serverResult` — `server/discover` does not exist on that revision, and `#sendDiscover()` is
+ * only ever called once a handshake-less revision is known or being probed — so one validator
+ * covers every caller.
+ */
+const validateDiscoverResult = createValidator(discoverResult)
 
 export const DEFAULT_CLIENT_INFO: Implementation = {
   name: 'Mokei',
@@ -991,7 +1002,11 @@ export class ContextClient<
     if ('error' in message) {
       throw RPCError.fromResponse(message as ErrorResponse)
     }
-    return message.result as DiscoverResult
+    const discovered = validateDiscoverResult(message.result)
+    if (discovered.issues != null) {
+      throw new RPCError(INVALID_REQUEST, 'Invalid server/discover result')
+    }
+    return discovered.value
   }
 
   /**

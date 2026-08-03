@@ -11,6 +11,7 @@ import {
   type ClientRequest as ClientRequest20260728,
   type DiscoverRequest,
   type DiscoverResult,
+  discoverResult,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
   PROTOCOL as PROTOCOL_2026_07_28,
@@ -30,7 +31,7 @@ export type { DiscoverRequest, DiscoverResult }
 // own `PROTOCOL.clientMessage` currently consumes it as a value. Multi-revision wire validation
 // goes through `PROTOCOLS[version].clientMessage` instead; this is kept only for existing
 // callers of the value export.
-export { clientMessage, META_CLIENT_CAPABILITIES, META_PROTOCOL_VERSION }
+export { clientMessage, discoverResult, META_CLIENT_CAPABILITIES, META_PROTOCOL_VERSION }
 
 /** Supported revisions, newest first. */
 export const PROTOCOL_VERSIONS = [
