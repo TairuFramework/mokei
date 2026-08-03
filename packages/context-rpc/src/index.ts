@@ -19,3 +19,4 @@ export {
   splitRequestOptions,
   type WithRequestOptions,
 } from './rpc.js'
+export { DEFAULT_MAX_CONCURRENT_REQUESTS, DEFAULT_MAX_QUEUED_REQUESTS } from './scheduler.js'
