@@ -978,6 +978,41 @@ describe('HTTPTransport', () => {
 
       await transport.dispose()
     })
+
+    test('an outgoing response does not clobber a pending request sharing its id', async () => {
+      // Both the client's own request ids and a server-initiated request's ids start at 0, so
+      // a client *response* to server request 0 must not register (or clear) the exchange
+      // tracking entry for the client's own pending request 0.
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const stream = new ReadableStream<Uint8Array>({ start() {} })
+      fetchMock.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+      // The outgoing response's own POST — a 202 with no body, like a real server's ack.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+      // The cancellation notification's own POST.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+
+      await transport.write(request20260728(0))
+      const requestPost = fetchMock.mock.calls[0] as FetchCall
+
+      // The client answering a server-initiated request that happens to reuse id 0, from the
+      // server's own id space.
+      await transport.write({ jsonrpc: '2.0', id: 0, result: {} } as ClientMessage)
+
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 0, _meta: { ...requestMeta20260728 } },
+      } as ClientMessage)
+
+      expect(requestPost[1].signal?.aborted).toBe(true)
+
+      await transport.dispose()
+    })
   })
 
   describe('dispose aborts in-flight exchanges', () => {

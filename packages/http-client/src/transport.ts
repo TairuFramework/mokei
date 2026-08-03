@@ -273,9 +273,17 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     const rawID = (message as { id?: unknown }).id
     const requestID: string | number | null =
       typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
+    // Only an outgoing *request* owns an exchange-tracking entry, a synthesized failure frame,
+    // or a carried HTTP-level error: a *response* also carries an `id`, but from the peer's own
+    // id space, which starts at 0 just like this client's own request ids. Keying any of that
+    // bookkeeping on a response's id risks registering, clearing, or failing whatever request
+    // happens to share the number instead. `trackedID` is `null` for a response (and for a
+    // notification, which already has no id), so every site below that used to key on
+    // `requestID` keys on `trackedID` instead.
+    const trackedID = requestID != null && 'method' in message ? requestID : null
 
     if (this.#disposed) {
-      this.#failRequest(requestID, INTERNAL_ERROR_CODE, 'Transport is disposed')
+      this.#failRequest(trackedID, INTERNAL_ERROR_CODE, 'Transport is disposed')
       return
     }
 
@@ -373,8 +381,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     // be cuttable by an explicit cancellation.
     const controller = new AbortController()
     const timeoutID = setTimeout(() => controller.abort(), this.#timeout)
-    if (requestID != null) {
-      this.#exchangeControllers.set(requestID, {
+    if (trackedID != null) {
+      this.#exchangeControllers.set(trackedID, {
         cancelled: false,
         cancellable: !hasSession(declaredVersion),
         controller,
@@ -391,9 +399,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       })
     } catch (error) {
       clearTimeout(timeoutID)
-      const entry = requestID == null ? undefined : this.#exchangeControllers.get(requestID)
-      if (requestID != null) {
-        this.#clearExchange(requestID)
+      const entry = trackedID == null ? undefined : this.#exchangeControllers.get(trackedID)
+      if (trackedID != null) {
+        this.#clearExchange(trackedID)
       }
       if (entry?.cancelled) {
         // The caller already rejected this exchange locally; a second error frame for a
@@ -403,7 +411,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       const reason = controller.signal.aborted
         ? `Request timed out after ${this.#timeout}ms`
         : `Request failed: ${error instanceof Error ? error.message : String(error)}`
-      this.#failRequest(requestID, INTERNAL_ERROR_CODE, reason)
+      this.#failRequest(trackedID, INTERNAL_ERROR_CODE, reason)
       return
     }
     clearTimeout(timeoutID)
@@ -418,10 +426,10 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // Spec MUST: a 404 on an active session means it is gone. Clear it and surface
       // a coded error so the client can detect it (isSessionExpiredCode) and re-initialize.
       this.#sessionID = null
-      if (requestID != null) {
-        this.#clearExchange(requestID)
+      if (trackedID != null) {
+        this.#clearExchange(trackedID)
       }
-      this.#failRequest(requestID, SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE)
+      this.#failRequest(trackedID, SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE)
       return
     }
 
@@ -432,15 +440,15 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       } catch {
         // Body may be unreadable; the status alone is enough to surface the failure.
       }
-      if (requestID != null) {
-        this.#clearExchange(requestID)
+      if (trackedID != null) {
+        this.#clearExchange(trackedID)
       }
       // A `2026-07-28` server answers an envelope failure with a real HTTP `400` whose body
       // is the JSON-RPC error itself (unsupported revision, missing required `_meta`). That
       // body is the whole signal an `'auto'` client uses to tell a current server from an
       // older one, and the only actionable message a pinned client can show — so pass it
       // through verbatim rather than flattening it into an internal error.
-      const carried = parseJSONRPCError(errorText, requestID)
+      const carried = parseJSONRPCError(errorText, trackedID)
       if (carried != null) {
         try {
           this.#controller?.enqueue(carried as unknown as ServerMessage)
@@ -450,7 +458,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         }
         return
       }
-      this.#failRequest(requestID, INTERNAL_ERROR_CODE, `HTTP ${response.status}: ${errorText}`)
+      this.#failRequest(trackedID, INTERNAL_ERROR_CODE, `HTTP ${response.status}: ${errorText}`)
       return
     }
 
@@ -461,17 +469,17 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       try {
         data = await response.json()
       } catch {
-        if (requestID != null) {
-          this.#clearExchange(requestID)
+        if (trackedID != null) {
+          this.#clearExchange(trackedID)
         }
-        this.#failRequest(requestID, INTERNAL_ERROR_CODE, 'Invalid JSON in response')
+        this.#failRequest(trackedID, INTERNAL_ERROR_CODE, 'Invalid JSON in response')
         return
       }
       if (data && this.#controller) {
         this.#controller.enqueue(this.#handleIncoming(data as ServerMessage))
       }
-      if (requestID != null) {
-        this.#clearExchange(requestID)
+      if (trackedID != null) {
+        this.#clearExchange(trackedID)
       }
     } else if (contentType.includes('text/event-stream')) {
       // Consume the SSE stream in the background so the sink unblocks as soon as the
@@ -480,7 +488,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // — behind it. The correlation entry is reclaimed once the stream ends.
       void this.#handleSSEResponse(response)
         .catch((error) => {
-          if (requestID != null && this.#exchangeControllers.get(requestID)?.cancelled) {
+          if (trackedID != null && this.#exchangeControllers.get(trackedID)?.cancelled) {
             return
           }
           this.#logger.warn('SSE response stream failed', {
@@ -488,13 +496,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           })
         })
         .finally(() => {
-          if (requestID != null) {
-            this.#clearExchange(requestID)
+          if (trackedID != null) {
+            this.#clearExchange(trackedID)
           }
         })
-    } else if (requestID != null) {
+    } else if (trackedID != null) {
       // 202 Accepted or other no-content responses: nothing to enqueue, reclaim the entry.
-      this.#clearExchange(requestID)
+      this.#clearExchange(trackedID)
     }
 
     // After sending notifications/initialized with a session, open GET stream
