@@ -164,10 +164,35 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     string | number,
     { cancelled: boolean; cancellable: boolean; controller: AbortController }
   >()
+  /**
+   * Controllers for POSTs with no id in this client's own request space — an outgoing response
+   * or notification (`trackedID` is `null` for both). Such a POST is tracked in neither
+   * `#pendingMethods` nor `#exchangeControllers`, so without this it is bounded only by the
+   * time-to-headers timer and `dispose()` cannot abort it. `notifications/cancelled` never
+   * touches this set — a cancel names an id in this client's own request space, and these
+   * frames have none there; only `dispose()` does. Each entry is added when its POST is issued
+   * and removed on every exit path `#clearExchange` already covers for a tracked exchange, so
+   * this set cannot grow for the life of the transport.
+   */
+  #untrackedControllers = new Set<AbortController>()
 
   #clearExchange(requestID: string | number): void {
     this.#pendingMethods.delete(requestID)
     this.#exchangeControllers.delete(requestID)
+  }
+
+  /**
+   * Release the bookkeeping for one outgoing POST's controller once its fetch has settled — a
+   * tracked exchange (`trackedID != null`) reclaims its `#exchangeControllers`/`#pendingMethods`
+   * entry, while an untracked one (an outgoing response or notification) is removed from
+   * {@link #untrackedControllers}. Call at every exit path a POST can settle through.
+   */
+  #releaseController(trackedID: string | number | null, controller: AbortController): void {
+    if (trackedID != null) {
+      this.#clearExchange(trackedID)
+    } else {
+      this.#untrackedControllers.delete(controller)
+    }
   }
   /** Cached tool `inputSchema`s keyed by tool name, populated from `tools/list` results. */
   #toolSchemas = new Map<string, unknown>()
@@ -387,6 +412,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         cancellable: !hasSession(declaredVersion),
         controller,
       })
+    } else {
+      this.#untrackedControllers.add(controller)
     }
 
     let response: Response
@@ -400,9 +427,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     } catch (error) {
       clearTimeout(timeoutID)
       const entry = trackedID == null ? undefined : this.#exchangeControllers.get(trackedID)
-      if (trackedID != null) {
-        this.#clearExchange(trackedID)
-      }
+      this.#releaseController(trackedID, controller)
       if (entry?.cancelled) {
         // The caller already rejected this exchange locally; a second error frame for a
         // settled id is noise.
@@ -426,9 +451,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // Spec MUST: a 404 on an active session means it is gone. Clear it and surface
       // a coded error so the client can detect it (isSessionExpiredCode) and re-initialize.
       this.#sessionID = null
-      if (trackedID != null) {
-        this.#clearExchange(trackedID)
-      }
+      this.#releaseController(trackedID, controller)
       this.#failRequest(trackedID, SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE)
       return
     }
@@ -440,9 +463,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       } catch {
         // Body may be unreadable; the status alone is enough to surface the failure.
       }
-      if (trackedID != null) {
-        this.#clearExchange(trackedID)
-      }
+      this.#releaseController(trackedID, controller)
       // A `2026-07-28` server answers an envelope failure with a real HTTP `400` whose body
       // is the JSON-RPC error itself (unsupported revision, missing required `_meta`). That
       // body is the whole signal an `'auto'` client uses to tell a current server from an
@@ -469,18 +490,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       try {
         data = await response.json()
       } catch {
-        if (trackedID != null) {
-          this.#clearExchange(trackedID)
-        }
+        this.#releaseController(trackedID, controller)
         this.#failRequest(trackedID, INTERNAL_ERROR_CODE, 'Invalid JSON in response')
         return
       }
       if (data && this.#controller) {
         this.#controller.enqueue(this.#handleIncoming(data as ServerMessage))
       }
-      if (trackedID != null) {
-        this.#clearExchange(trackedID)
-      }
+      this.#releaseController(trackedID, controller)
     } else if (contentType.includes('text/event-stream')) {
       // Consume the SSE stream in the background so the sink unblocks as soon as the
       // response headers arrive. Awaiting here would serialize all other outgoing
@@ -496,13 +513,11 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           })
         })
         .finally(() => {
-          if (trackedID != null) {
-            this.#clearExchange(trackedID)
-          }
+          this.#releaseController(trackedID, controller)
         })
-    } else if (trackedID != null) {
+    } else {
       // 202 Accepted or other no-content responses: nothing to enqueue, reclaim the entry.
-      this.#clearExchange(trackedID)
+      this.#releaseController(trackedID, controller)
     }
 
     // After sending notifications/initialized with a session, open GET stream
@@ -730,6 +745,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     for (const entry of this.#exchangeControllers.values()) {
       entry.cancelled = true
       entry.controller.abort()
+    }
+
+    // Same reasoning for a POST with no id in this client's own request space (an outgoing
+    // response or notification): it is bounded only by the time-to-headers timer otherwise.
+    // Left un-deleted here for the same reclaim-races-eager-delete reason as above — its own
+    // catch/finally removes it from the set once the abort is observed.
+    for (const controller of this.#untrackedControllers) {
+      controller.abort()
     }
 
     // Terminate session with DELETE, bounded so a hung server can't stall shutdown.

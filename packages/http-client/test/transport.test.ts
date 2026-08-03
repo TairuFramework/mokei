@@ -1091,6 +1091,75 @@ describe('HTTPTransport', () => {
     })
   })
 
+  describe('dispose aborts untracked outgoing POSTs', () => {
+    test('dispose aborts an in-flight outgoing notification POST', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+
+      // The notification's POST hangs until its signal aborts, so it is still in flight when
+      // dispose() runs — like the connect-timeout test's abort-on-signal fetch mock.
+      fetchMock.mockImplementationOnce((_url: string, init: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      })
+
+      const writePromise = transport.write(progressNotification)
+
+      await vi.waitFor(() => {
+        expect(fetchMock.mock.calls.length).toBe(1)
+      })
+      const post = fetchMock.mock.calls[0] as FetchCall
+      expect(post[1].signal?.aborted).toBe(false)
+
+      await transport.dispose()
+
+      expect(post[1].signal?.aborted).toBe(true)
+      await writePromise
+    })
+
+    test('dispose only aborts still-open untracked exchanges, not ones that already settled', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+
+      // Two notifications complete normally: their untracked-controller bookkeeping must be
+      // reclaimed on completion, same as a tracked exchange reclaims its entry.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+      await transport.write(progressNotification)
+      await transport.write(progressNotification)
+
+      // A third notification's POST hangs, still in flight when dispose runs.
+      fetchMock.mockImplementationOnce((_url: string, init: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      })
+      const writePromise = transport.write(progressNotification)
+      await vi.waitFor(() => {
+        expect(fetchMock.mock.calls.length).toBe(3)
+      })
+
+      const [firstPost, secondPost, thirdPost] = fetchMock.mock.calls as Array<FetchCall>
+      expect(firstPost[1].signal?.aborted).toBe(false)
+      expect(secondPost[1].signal?.aborted).toBe(false)
+
+      await transport.dispose()
+
+      // The still-open exchange is aborted...
+      expect(thirdPost[1].signal?.aborted).toBe(true)
+      // ...but the two that already completed are not touched a second time. If their
+      // untracked controllers had leaked into the set instead of being reclaimed on
+      // completion, dispose's loop would call abort() on them too, flipping these back to
+      // true — proof the set does not grow for the life of the transport.
+      expect(firstPost[1].signal?.aborted).toBe(false)
+      expect(secondPost[1].signal?.aborted).toBe(false)
+      await writePromise
+    })
+  })
+
   describe('connect timeout', () => {
     test('a connection that never returns headers fails with a timeout error frame', async () => {
       vi.useFakeTimers()
