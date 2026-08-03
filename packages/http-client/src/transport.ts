@@ -72,12 +72,17 @@ function parseJSONRPCError(
  * method outside this table must not acquire the header just because its params carry a `name`.
  * A method the specification adds later then arrives here as a missing entry, which a
  * conformant peer rejects visibly, rather than as a header quietly built from the wrong field.
+ *
+ * A `Map` rather than an object literal: methods come from a fixed table today, so nothing
+ * currently reaches this as a plain property lookup, but an object literal is a lookup that
+ * invites it — a body naming `constructor` or `__proto__` as its method would resolve to
+ * `Object.prototype` machinery instead of `undefined`.
  */
-const MCP_NAME_HEADER_SOURCE: Readonly<Record<string, string | undefined>> = {
-  'tools/call': 'name',
-  'prompts/get': 'name',
-  'resources/read': 'uri',
-}
+const MCP_NAME_HEADER_SOURCE: ReadonlyMap<string, string> = new Map([
+  ['tools/call', 'name'],
+  ['prompts/get', 'name'],
+  ['resources/read', 'uri'],
+])
 
 /**
  * Parameters for creating an MCP HTTP transport.
@@ -342,7 +347,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
     if ('method' in message && typeof message.method === 'string') {
       headers['Mcp-Method'] = message.method
-      const nameSourceField = MCP_NAME_HEADER_SOURCE[message.method]
+      const nameSourceField = MCP_NAME_HEADER_SOURCE.get(message.method)
       const params = (message as { params?: Record<string, unknown> }).params
       const nameValue = nameSourceField == null ? undefined : params?.[nameSourceField]
       if (typeof nameValue === 'string') {

@@ -24,5 +24,6 @@ export {
   BAD_REQUEST_CODES,
   DEFAULT_STATELESS_TIMEOUT_MS,
   readRequestProtocolVersion,
+  runStatelessExchange,
   type StatelessExchangeParams,
 } from './stateless.js'

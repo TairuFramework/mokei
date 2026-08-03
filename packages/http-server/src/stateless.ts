@@ -222,6 +222,13 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
         // TypeScript will not keep narrowed across the assignment below.
         let writer = sse
         if (writer == null) {
+          if (finished) {
+            // The exchange already tore down — the client hung up, the handler was
+            // disposed, or the timeout fired — and whoever was waiting on `response` has
+            // already gotten an answer. Building a fresh SSE stream here would create one
+            // nobody will ever read.
+            return
+          }
           if (isOwnResponse) {
             const error = record.error as { code?: unknown; message?: unknown } | undefined
             if (error != null && isEnvelopeFailure(error)) {

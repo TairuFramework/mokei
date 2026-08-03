@@ -339,7 +339,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
           { status: 400 },
         )
       }
-      return await handleStateless(request, body, requestVersion)
+      return await handleStateless(request, body)
     }
 
     const sessionID = request.headers.get('Mcp-Session-Id')
@@ -405,7 +405,6 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   async function handleStateless(
     request: Request,
     body: Record<string, unknown>,
-    _requestVersion: string,
   ): Promise<Response> {
     const rawID = body.id
     const requestID: string | number | null =
