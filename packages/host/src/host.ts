@@ -252,7 +252,8 @@ export type AddDirectContextParams = {
   tools?: Array<ContextTool>
   /**
    * Revision the client speaks, or `'auto'` to probe the server. Defaults to
-   * `'2026-07-28'`.
+   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
+   * `'auto'`.
    */
   protocolVersion?: ProtocolVersion | 'auto'
 }
@@ -265,7 +266,8 @@ export type AddLocalContextParams = SpawnContextServerParams & {
   maxMessageSize?: number
   /**
    * Revision the client speaks, or `'auto'` to probe the server. Defaults to
-   * `'2026-07-28'`.
+   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
+   * `'auto'`.
    */
   protocolVersion?: ProtocolVersion | 'auto'
 }
@@ -283,7 +285,8 @@ export type HTTPContextParams = {
   timeout?: number
   /**
    * Revision the client speaks, or `'auto'` to probe the server. Defaults to
-   * `'2026-07-28'`.
+   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
+   * `'auto'`.
    */
   protocolVersion?: ProtocolVersion | 'auto'
 }

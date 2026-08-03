@@ -18,7 +18,8 @@ export type ProxySpawnParams = {
   env?: Record<string, string | null | undefined>
   /**
    * Revision the client speaks, or `'auto'` to probe the server. Defaults to
-   * `'2026-07-28'`.
+   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
+   * `'auto'`.
    */
   protocolVersion?: ProtocolVersion | 'auto'
 }
