@@ -154,6 +154,21 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #getStreamAbortController: AbortController | null = null
   /** Method of each in-flight request, keyed by request id (for response correlation). */
   #pendingMethods = new Map<string | number, string>()
+  /**
+   * The in-flight fetch of each request, keyed by request id. Retained past response headers —
+   * unlike the time-to-headers timer — so an outgoing `notifications/cancelled` can hang up on
+   * the exchange. `cancellable` is true only for a revision without protocol sessions, where
+   * the server handles each POST on its own and reads the disconnect as a cancellation.
+   */
+  #exchangeControllers = new Map<
+    string | number,
+    { cancelled: boolean; cancellable: boolean; controller: AbortController }
+  >()
+
+  #clearExchange(requestID: string | number): void {
+    this.#pendingMethods.delete(requestID)
+    this.#exchangeControllers.delete(requestID)
+  }
   /** Cached tool `inputSchema`s keyed by tool name, populated from `tools/list` results. */
   #toolSchemas = new Map<string, unknown>()
   /**
@@ -264,6 +279,22 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       return
     }
 
+    if (
+      'method' in message &&
+      message.method === 'notifications/cancelled' &&
+      typeof (message as { params?: { requestId?: unknown } }).params?.requestId !== 'undefined'
+    ) {
+      const cancelledID = (message as { params: { requestId: string | number } }).params.requestId
+      const entry = this.#exchangeControllers.get(cancelledID)
+      if (entry?.cancellable) {
+        // Aborting the fetch is what a stateless server observes as the disconnect it already
+        // handles. The notification is still POSTed below: a peer may want the record, and on
+        // the session path it is the only cancellation channel there is.
+        entry.cancelled = true
+        entry.controller.abort()
+      }
+    }
+
     const declaredVersion = this.#declaredVersion(message)
     const headerVersion = declaredVersion ?? this.#protocolVersion
 
@@ -337,10 +368,18 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       headers['Mcp-Session-Id'] = this.#sessionID
     }
 
-    // The timeout guards time-to-headers only. Once a response begins, a long
-    // streamed tool call must not be aborted — its own request-level timeout applies.
+    // The timer guards time-to-headers only. The controller outlives it: once a response
+    // begins, a long streamed tool call must not be cut off by a timeout — but it must still
+    // be cuttable by an explicit cancellation.
     const controller = new AbortController()
     const timeoutID = setTimeout(() => controller.abort(), this.#timeout)
+    if (requestID != null) {
+      this.#exchangeControllers.set(requestID, {
+        cancelled: false,
+        cancellable: !hasSession(declaredVersion),
+        controller,
+      })
+    }
 
     let response: Response
     try {
@@ -352,8 +391,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       })
     } catch (error) {
       clearTimeout(timeoutID)
+      const entry = requestID == null ? undefined : this.#exchangeControllers.get(requestID)
       if (requestID != null) {
-        this.#pendingMethods.delete(requestID)
+        this.#clearExchange(requestID)
+      }
+      if (entry?.cancelled) {
+        // The caller already rejected this exchange locally; a second error frame for a
+        // settled id is noise.
+        return
       }
       const reason = controller.signal.aborted
         ? `Request timed out after ${this.#timeout}ms`
@@ -374,7 +419,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // a coded error so the client can detect it (isSessionExpiredCode) and re-initialize.
       this.#sessionID = null
       if (requestID != null) {
-        this.#pendingMethods.delete(requestID)
+        this.#clearExchange(requestID)
       }
       this.#failRequest(requestID, SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE)
       return
@@ -388,7 +433,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         // Body may be unreadable; the status alone is enough to surface the failure.
       }
       if (requestID != null) {
-        this.#pendingMethods.delete(requestID)
+        this.#clearExchange(requestID)
       }
       // A `2026-07-28` server answers an envelope failure with a real HTTP `400` whose body
       // is the JSON-RPC error itself (unsupported revision, missing required `_meta`). That
@@ -417,7 +462,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         data = await response.json()
       } catch {
         if (requestID != null) {
-          this.#pendingMethods.delete(requestID)
+          this.#clearExchange(requestID)
         }
         this.#failRequest(requestID, INTERNAL_ERROR_CODE, 'Invalid JSON in response')
         return
@@ -426,7 +471,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         this.#controller.enqueue(this.#handleIncoming(data as ServerMessage))
       }
       if (requestID != null) {
-        this.#pendingMethods.delete(requestID)
+        this.#clearExchange(requestID)
       }
     } else if (contentType.includes('text/event-stream')) {
       // Consume the SSE stream in the background so the sink unblocks as soon as the
@@ -435,18 +480,21 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // — behind it. The correlation entry is reclaimed once the stream ends.
       void this.#handleSSEResponse(response)
         .catch((error) => {
+          if (requestID != null && this.#exchangeControllers.get(requestID)?.cancelled) {
+            return
+          }
           this.#logger.warn('SSE response stream failed', {
             error: error instanceof Error ? error.message : String(error),
           })
         })
         .finally(() => {
           if (requestID != null) {
-            this.#pendingMethods.delete(requestID)
+            this.#clearExchange(requestID)
           }
         })
     } else if (requestID != null) {
       // 202 Accepted or other no-content responses: nothing to enqueue, reclaim the entry.
-      this.#pendingMethods.delete(requestID)
+      this.#clearExchange(requestID)
     }
 
     // After sending notifications/initialized with a session, open GET stream
@@ -469,7 +517,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     if (method == null) {
       return message
     }
-    this.#pendingMethods.delete(id)
+    this.#clearExchange(id)
     if (method === 'initialize') {
       const version = (message as { result?: { protocolVersion?: unknown } }).result
         ?.protocolVersion

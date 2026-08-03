@@ -832,6 +832,62 @@ describe('HTTPTransport', () => {
     })
   })
 
+  describe('cancellation aborts an in-flight fetch', () => {
+    test('a cancellation aborts the in-flight fetch on a stateless revision', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      // An SSE body that never ends, so the exchange is still open when the cancel arrives.
+      const stream = new ReadableStream<Uint8Array>({ start() {} })
+      fetchMock.mockResolvedValue(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+
+      await transport.write(request20260728(7))
+      const post = getCallByMethod(fetchMock.mock.calls, 'POST')
+
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 7, _meta: { ...requestMeta20260728 } },
+      } as ClientMessage)
+
+      expect(post[1].signal?.aborted).toBe(true)
+
+      await transport.dispose()
+    })
+
+    test('a cancellation does not abort the fetch on a session revision', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const stream = new ReadableStream<Uint8Array>({ start() {} })
+      fetchMock.mockResolvedValue(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+
+      await transport.write({
+        jsonrpc: '2.0',
+        id: 8,
+        method: 'tools/list',
+        params: {},
+      } as ClientMessage)
+      const post = getCallByMethod(fetchMock.mock.calls, 'POST')
+
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 8 },
+      } as ClientMessage)
+
+      expect(post[1].signal?.aborted).toBe(false)
+
+      await transport.dispose()
+    })
+  })
+
   describe('connect timeout', () => {
     test('a connection that never returns headers fails with a timeout error frame', async () => {
       vi.useFakeTimers()
