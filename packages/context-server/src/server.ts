@@ -114,8 +114,8 @@ export type ServerParams = ServerConfig & {
   maxQueuedRequests?: number
   /**
    * Called for an inbound frame that could neither be validated nor routed to anything —
-   * an invalid notification, or a response for an id nobody is waiting on — and for request
-   * handlers that failed. Without it such frames vanish silently.
+   * an invalid notification, or a malformed frame naming an id nobody is waiting on — and
+   * for request handlers that failed. Without it such frames vanish silently.
    */
   onError?: (error: Error) => void
 }

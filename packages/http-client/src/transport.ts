@@ -107,9 +107,10 @@ export type HTTPTransportParams = {
    *
    * Distinct from {@link CreateHTTPClientParams.protocolVersion}, the revision the client
    * speaks: this field is a raw header string, unconstrained to {@link ProtocolVersion} —
-   * the one in-repo use seeds `'2024-11-05'`, a legacy revision outside that union — and
-   * `createHTTPClient` never derives it from the revision, since sending the header on the
-   * `initialize` request itself is exactly what the paragraph above says not to do.
+   * the scenario it exists for is seeding a legacy revision such as `'2024-11-05'`, outside
+   * that union, before any handshake has run. `createHTTPClient` never derives it from the
+   * revision, since sending the header on the `initialize` request itself is exactly what
+   * the paragraph above says not to do.
    */
   protocolVersionHeader?: string
 }
@@ -262,7 +263,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    */
   #failRequest(requestID: string | number | null, code: number, errorMessage: string): void {
     if (requestID == null) {
-      this.#logger.warn('Outgoing notification failed', { error: errorMessage })
+      this.#logger.warn('Outgoing frame without a tracked exchange failed', { error: errorMessage })
       return
     }
     if (this.#controller == null) {

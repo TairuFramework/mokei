@@ -70,6 +70,14 @@ export class RequestScheduler {
    * the original's map entry — `runningCount` stays flat while every duplicate still runs its
    * handler, a queued duplicate's `resolve` is silently orphaned, and `abortAll` later aborts
    * only whichever entry happens to occupy the slot.
+   *
+   * The refusal response is written to the wire carrying the reused id, so the peer's
+   * `ExchangeRegistry.routeResponse` matches it to the *original*, still-in-flight exchange
+   * and rejects that one with `INVALID_REQUEST` — the original handler keeps running and its
+   * real response is later dropped as unroutable. A peer that reuses an id therefore loses
+   * the original request too, not just the duplicate. This is defensible — reuse violates
+   * "a request ID MUST NOT be reused within a session", and mokei's own monotonic counter
+   * cannot produce it — but it is a real consequence of the refusal, not just of the reuse.
    */
   schedule(id: RequestID, run: RunRequest): Promise<Response | null> {
     if (this.#running.has(id) || this.#queued.has(id)) {
