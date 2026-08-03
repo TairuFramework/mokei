@@ -40,13 +40,11 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@enkaku/transport": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/logger": "workspace:^",
     "@sozai/stream": "catalog:",
     "parse-sse": "catalog:"
-  },
-  "devDependencies": {
-    "@enkaku/transport": "catalog:"
   }
 }

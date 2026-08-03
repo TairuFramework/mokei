@@ -40,13 +40,13 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@enkaku/transport": "catalog:",
     "@hono/node-server": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "hono": "catalog:"
   },
   "devDependencies": {
-    "@enkaku/transport": "catalog:",
     "@types/node": "catalog:"
   }
 }
