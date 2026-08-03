@@ -886,6 +886,118 @@ describe('HTTPTransport', () => {
 
       await transport.dispose()
     })
+
+    test('cancelling one exchange does not abort a sibling in-flight exchange', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const streamA = new ReadableStream<Uint8Array>({ start() {} })
+      const streamB = new ReadableStream<Uint8Array>({ start() {} })
+      fetchMock.mockResolvedValueOnce(
+        new Response(streamA, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+      fetchMock.mockResolvedValueOnce(
+        new Response(streamB, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+      // The cancellation notification's own POST.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+
+      await transport.write(request20260728(7))
+      await transport.write(request20260728(9))
+      const postA = fetchMock.mock.calls[0] as FetchCall
+      const postB = fetchMock.mock.calls[1] as FetchCall
+
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 9, _meta: { ...requestMeta20260728 } },
+      } as ClientMessage)
+
+      expect(postB[1].signal?.aborted).toBe(true)
+      expect(postA[1].signal?.aborted).toBe(false)
+
+      await transport.dispose()
+    })
+
+    test('a cancellation reclaims its tracking entry once the exchange settles', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const abortSpy = vi.spyOn(AbortController.prototype, 'abort')
+
+      let sseController!: ReadableStreamDefaultController<Uint8Array>
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          sseController = controller
+        },
+      })
+      fetchMock.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+      // Every notifications/cancelled POST below, including the polled retries.
+      fetchMock.mockResolvedValue(acceptedResponse())
+
+      await transport.write(request20260728(7))
+
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 7, _meta: { ...requestMeta20260728 } },
+      } as ClientMessage)
+      expect(abortSpy).toHaveBeenCalledTimes(1)
+
+      // A real server closes the connection once it reads the disconnect. Simulate that so the
+      // backgrounded SSE consumption settles and reclaims its tracking entry via the same path
+      // a normal stream end takes.
+      sseController.close()
+
+      // Once reclaimed, a second cancellation naming the same id finds nothing to abort and is
+      // a no-op. The reclaim runs on the backgrounded consumption promise, not synchronously
+      // with the close() above, so poll for it: each retry resends the cancellation and
+      // compares the call count against the previous attempt. A reclaimed entry stops growing
+      // the count after at most one race against the in-flight reclaim; a leaked entry (the
+      // regression this guards) calls abort() again on every single retry and never stabilizes,
+      // so vi.waitFor times out instead of falsely passing.
+      let previousCount = abortSpy.mock.calls.length
+      await vi.waitFor(async () => {
+        await transport.write({
+          jsonrpc: '2.0',
+          method: 'notifications/cancelled',
+          params: { requestId: 7, _meta: { ...requestMeta20260728 } },
+        } as ClientMessage)
+        const count = abortSpy.mock.calls.length
+        const stable = count === previousCount
+        previousCount = count
+        expect(stable).toBe(true)
+      })
+
+      await transport.dispose()
+    })
+  })
+
+  describe('dispose aborts in-flight exchanges', () => {
+    test('dispose aborts a POST whose SSE body never ends', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const stream = new ReadableStream<Uint8Array>({ start() {} })
+      fetchMock.mockResolvedValue(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+
+      await transport.write(request20260728(7))
+      const post = getCallByMethod(fetchMock.mock.calls, 'POST')
+
+      await transport.dispose()
+
+      expect(post[1].signal?.aborted).toBe(true)
+    })
   })
 
   describe('connect timeout', () => {

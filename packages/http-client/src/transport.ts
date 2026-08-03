@@ -702,6 +702,21 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       this.#getStreamAbortController = null
     }
 
+    // Abort every in-flight exchange. The #disposed guard above stops new sends, but an
+    // exchange already past it — including a POST whose SSE body never ends — must not
+    // outlive dispose: any transport close, dispose or peer EOF, aborts in-flight work, and
+    // leaving one running is the exact symptom cancellation exists to fix, one path over.
+    // Marking `cancelled` (rather than deleting the entry here) routes the resulting
+    // rejection through the same silent-return path a notifications/cancelled abort takes —
+    // each exchange reclaims its own entry via #clearExchange when its catch/finally runs,
+    // same as it already does for an explicit cancel. Deleting eagerly here would race that:
+    // a catch that fires after this loop but before #controller is closed below would find no
+    // entry, skip the cancelled check, and enqueue a spurious error frame.
+    for (const entry of this.#exchangeControllers.values()) {
+      entry.cancelled = true
+      entry.controller.abort()
+    }
+
     // Terminate session with DELETE, bounded so a hung server can't stall shutdown.
     if (this.#sessionID) {
       try {
