@@ -1587,7 +1587,12 @@ describe('AgentSession', () => {
               name: 'generate_image',
               description: 'Generate image',
               result: {
-                content: [{ type: 'image', data: 'base64encodeddata', mimeType: 'image/png' }],
+                // `data` must be real base64 (`format: 'byte'` on `imageContent`,
+                // `packages/context-protocol/src/content.ts`): an arbitrary placeholder string
+                // validated only while `2026-07-28`'s `serverResult` union still had a bare, open
+                // `result` member to fall back on (closed in the defect-wave fix); a `2026-07-28`
+                // server response now goes through the tightened union for real.
+                content: [{ type: 'image', data: 'aGVsbG8=', mimeType: 'image/png' }],
               },
             },
           ],

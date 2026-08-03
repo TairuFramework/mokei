@@ -41,6 +41,10 @@ export const MOKEI_STDIO_SERVER_BOTH_PATH = fileURLToPath(
 export const MOKEI_STDIO_SERVER_CANCELLATION_PATH = fileURLToPath(
   new URL('./mokei-stdio-server-cancellation.ts', import.meta.url),
 )
+/** Serves a slow and a quick tool, on `2026-07-28`, to exercise concurrent request handling. */
+export const MOKEI_STDIO_SERVER_CONCURRENCY_PATH = fileURLToPath(
+  new URL('./mokei-stdio-server-concurrency.ts', import.meta.url),
+)
 /** Refuses every request, including `server/discover` and `initialize`. */
 export const REFUSING_STDIO_SERVER_PATH = fileURLToPath(
   new URL('./refusing-stdio-server.ts', import.meta.url),

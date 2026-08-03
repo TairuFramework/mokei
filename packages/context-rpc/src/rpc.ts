@@ -16,6 +16,7 @@ import type { Validator } from '@sozai/schema'
 import { ContinuationStore } from './continuation.js'
 import { errorResponse, RequestTimeoutError, RPCError, TransportClosedError } from './error.js'
 import { type ExchangeController, ExchangeRegistry, type StreamHandlers } from './exchange.js'
+import { RequestScheduler } from './scheduler.js'
 
 function isRequestID(id: unknown): id is RequestID {
   return typeof id === 'string' || typeof id === 'number'
@@ -70,25 +71,67 @@ export type RPCTypes = {
 }
 
 export type RPCParams<T extends RPCTypes> = {
+  /**
+   * Timeout applied to a request that passes none of its own. Unset means unbounded, which
+   * is the historical behavior: a blanket default would cut off a long-running `tools/call`.
+   */
+  defaultRequestTimeout?: number
+  /** Request handlers allowed to run at once (default 100). */
+  maxConcurrentRequests?: number
+  /** Requests allowed to wait for a slot before further requests are refused (default 1000). */
+  maxQueuedRequests?: number
+  /**
+   * Called for an inbound frame that could neither be validated nor routed to anything —
+   * an invalid notification, or a malformed frame naming an id nobody is waiting on — and
+   * for request handlers that failed. Without it such frames vanish silently.
+   */
+  onError?: (error: Error) => void
   transport: TransportType<T['MessageIn'], T['MessageOut']>
   validateMessageIn: Validator<T['MessageIn']>
 }
 
+/**
+ * Message ordering:
+ * - notifications and responses are handled in wire order, synchronously in the read loop;
+ * - requests *start* in wire order and complete out of order;
+ * - a request never delays a notification — which is what lets `notifications/cancelled`
+ *   reach a handler that is still running.
+ */
 export class ContextRPC<T extends RPCTypes> extends Disposer {
   #closed = false
+  #defaultRequestTimeout?: number
   #events: EventEmitter<T['Events']>
-  #receivedRequests: Record<RequestID, AbortController> = {}
   #requestID = 0
   #exchanges: ExchangeRegistry = new ExchangeRegistry()
   #continuations: ContinuationStore = new ContinuationStore()
+  #scheduler: RequestScheduler
   #transport: TransportType<T['MessageIn'], T['MessageOut']>
   #validateMessageIn: Validator<T['MessageIn']>
+  #onError?: (error: Error) => void
 
   constructor(params: RPCParams<T>) {
     super({ dispose: () => this.#dispose() })
     this.#events = new EventEmitter<T['Events']>()
+    this.#scheduler = new RequestScheduler({
+      maxConcurrentRequests: params.maxConcurrentRequests,
+      maxQueuedRequests: params.maxQueuedRequests,
+    })
+    this.#defaultRequestTimeout = params.defaultRequestTimeout
     this.#transport = params.transport
     this.#validateMessageIn = params.validateMessageIn
+    this.#onError = params.onError
+  }
+
+  /**
+   * Reports an error to the consumer's handler without letting it back into the RPC layer:
+   * a callback that throws must not suppress the response this request still owes its peer.
+   */
+  #reportError(error: Error): void {
+    try {
+      this.#onError?.(error)
+    } catch {
+      // A consumer's error handler is not allowed to break message handling.
+    }
   }
 
   get events(): EventEmitter<T['Events']> {
@@ -118,19 +161,23 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         if (next.done) {
           break
         }
-        let response: Response | null = null
+        let result: Response | null | Promise<Response | null> = null
         try {
-          response = await this._handleMessage(next.value)
+          result = this._handleMessage(next.value)
         } catch {
           // _handleMessage is defensive; never let a handler error kill the loop.
-          response = null
+          result = null
         }
-        if (response != null) {
-          try {
-            await this._write(response)
-          } catch {
-            // A failed response write is not fatal; transport death surfaces on next read.
-          }
+        if (result == null) {
+          continue
+        }
+        if (result instanceof Promise) {
+          // Deliberately not awaited: awaiting here is what made every mokei server handle
+          // one request at a time, and made `notifications/cancelled` unreadable until the
+          // request it names had already settled.
+          void this.#settleRequest(result)
+        } else {
+          await this.#writeResponse(result)
         }
       }
       this.#close()
@@ -140,6 +187,28 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
           ? cause
           : new TransportClosedError('Transport read failed', { cause }),
       )
+    }
+  }
+
+  async #settleRequest(pending: Promise<Response | null>): Promise<void> {
+    let response: Response | null = null
+    try {
+      response = await pending
+    } catch {
+      // The request branch of `_handleMessage` turns handler failures into error responses;
+      // a rejection here is a defect in that branch, not something to kill the loop over.
+      return
+    }
+    if (response != null) {
+      await this.#writeResponse(response)
+    }
+  }
+
+  async #writeResponse(response: Response): Promise<void> {
+    try {
+      await this._write(response as T['MessageOut'])
+    } catch {
+      // A failed response write is not fatal; transport death surfaces on next read.
     }
   }
 
@@ -155,6 +224,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #endPendingRequests(reason: Error): void {
     this.#exchanges.endAll(reason)
     this.#continuations.clearAll(reason)
+    // Outbound exchanges are not the only thing a closed transport strands: a handler still
+    // running has nobody left to answer, so it is told the connection is gone. Covers both
+    // `#dispose()` and a peer EOF, which both funnel through `#close()`.
+    this.#scheduler.abortAll(reason)
   }
 
   async #dispose(): Promise<void> {
@@ -174,7 +247,13 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         // Send an error response if incoming message is a request
         return new RPCError(INVALID_REQUEST, 'Invalid request').toResponse(id)
       }
-      // TODO: call optional error handler
+      if (isRequestID(id) && this.#exchanges.has(id)) {
+        // A frame carrying an id and no method is a response. Dropping it left its caller's
+        // promise pending forever, with nothing to time it out.
+        this.#exchanges.fail(id, new RPCError(INTERNAL_ERROR, 'Invalid response'))
+        return null
+      }
+      this.#reportError(new RPCError(INVALID_REQUEST, 'Invalid message'))
       return null
     }
 
@@ -188,11 +267,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         | T['HandleNotification']
       if (notification.method === 'notifications/cancelled') {
         const cancelled = notification as CancelledNotification
-        const controller = this.#receivedRequests[cancelled.params.requestId]
-        if (controller != null) {
-          controller.abort()
-          delete this.#receivedRequests[cancelled.params.requestId]
-        }
+        this.#scheduler.cancel(cancelled.params.requestId)
       } else {
         void this._handleNotification(notification)
       }
@@ -205,15 +280,13 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       return null
     }
 
-    // Message is a request
-    const controller = new AbortController()
-    this.#receivedRequests[id] = controller
-    return toPromise(() => {
-      return this._handleRequest(validated.value as T['HandleRequest'], controller.signal)
-    })
-      .then(
+    // Message is a request — the scheduler owns its signal and decides when it runs.
+    return this.#scheduler.schedule(id, (signal) => {
+      return toPromise(() => {
+        return this._handleRequest(validated.value as T['HandleRequest'], signal)
+      }).then(
         (result) => {
-          if (this.#receivedRequests[id] == null || this.#receivedRequests[id].signal.aborted) {
+          if (signal.aborted) {
             return null
           }
           return result == null
@@ -221,15 +294,16 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
             : { jsonrpc: '2.0' as const, id, result }
         },
         (cause) => {
-          // TODO: call optional error handler
-          return this.#receivedRequests[id] == null || this.#receivedRequests[id].signal.aborted
-            ? null
-            : errorResponse(id, cause)
+          if (signal.aborted) {
+            // A cancelled request answers nothing, and its handler's abort rejection is the
+            // expected outcome rather than an error the consumer needs to hear about.
+            return null
+          }
+          this.#reportError(cause instanceof Error ? cause : new Error(String(cause)))
+          return errorResponse(id, cause)
         },
       )
-      .finally(() => {
-        delete this.#receivedRequests[id]
-      })
+    })
   }
 
   // TODO: handle cancel notification, delegate to handler for other notifications
@@ -301,17 +375,15 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     const controller = Object.assign(new AbortController(), defer())
     this.#exchanges.registerOnce(id, controller)
 
-    if (options?.timeout != null) {
+    const timeout = options?.timeout ?? this.#defaultRequestTimeout
+    if (timeout != null) {
       const timer = setTimeout(() => {
         if (!this.#exchanges.has(id)) {
           return
         }
-        this.#exchanges.cancel(
-          id,
-          new RequestTimeoutError(`Request timed out after ${options.timeout}ms`),
-        )
+        this.#exchanges.cancel(id, new RequestTimeoutError(`Request timed out after ${timeout}ms`))
         this.notify('cancelled', { requestId: id }).catch(() => {})
-      }, options.timeout)
+      }, timeout)
       controller.promise.then(
         () => clearTimeout(timer),
         () => clearTimeout(timer),

@@ -228,7 +228,7 @@ describe('HTTPTransport', () => {
     test('uses the constructor seed before any revision is known', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
 
-      const transport = new HTTPTransport({ url: TEST_URL, protocolVersion: '2024-11-05' })
+      const transport = new HTTPTransport({ url: TEST_URL, protocolVersionHeader: '2024-11-05' })
       await transport.write(initializeRequest)
 
       expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe('2024-11-05')
@@ -829,6 +829,334 @@ describe('HTTPTransport', () => {
 
       sseController.close()
       await transport.dispose()
+    })
+  })
+
+  describe('cancellation aborts an in-flight fetch', () => {
+    test('a cancellation aborts the in-flight fetch on a stateless revision', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      // An SSE body that never ends, so the exchange is still open when the cancel arrives.
+      const stream = new ReadableStream<Uint8Array>({ start() {} })
+      fetchMock.mockResolvedValue(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+
+      await transport.write(request20260728(7))
+      const post = getCallByMethod(fetchMock.mock.calls, 'POST')
+
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 7, _meta: { ...requestMeta20260728 } },
+      } as ClientMessage)
+
+      expect(post[1].signal?.aborted).toBe(true)
+
+      await transport.dispose()
+    })
+
+    test('a cancellation does not abort the fetch on a session revision', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const stream = new ReadableStream<Uint8Array>({ start() {} })
+      fetchMock.mockResolvedValue(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+
+      await transport.write({
+        jsonrpc: '2.0',
+        id: 8,
+        method: 'tools/list',
+        params: {},
+      } as ClientMessage)
+      const post = getCallByMethod(fetchMock.mock.calls, 'POST')
+
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 8 },
+      } as ClientMessage)
+
+      expect(post[1].signal?.aborted).toBe(false)
+
+      await transport.dispose()
+    })
+
+    test('cancelling one exchange does not abort a sibling in-flight exchange', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const streamA = new ReadableStream<Uint8Array>({ start() {} })
+      const streamB = new ReadableStream<Uint8Array>({ start() {} })
+      fetchMock.mockResolvedValueOnce(
+        new Response(streamA, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+      fetchMock.mockResolvedValueOnce(
+        new Response(streamB, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+      // The cancellation notification's own POST.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+
+      await transport.write(request20260728(7))
+      await transport.write(request20260728(9))
+      const postA = fetchMock.mock.calls[0] as FetchCall
+      const postB = fetchMock.mock.calls[1] as FetchCall
+
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 9, _meta: { ...requestMeta20260728 } },
+      } as ClientMessage)
+
+      expect(postB[1].signal?.aborted).toBe(true)
+      expect(postA[1].signal?.aborted).toBe(false)
+
+      await transport.dispose()
+    })
+
+    test('a cancellation reclaims its tracking entry once the exchange settles', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const abortSpy = vi.spyOn(AbortController.prototype, 'abort')
+
+      let sseController!: ReadableStreamDefaultController<Uint8Array>
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          sseController = controller
+        },
+      })
+      fetchMock.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+      // Every notifications/cancelled POST below, including the polled retries.
+      fetchMock.mockResolvedValue(acceptedResponse())
+
+      await transport.write(request20260728(7))
+
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 7, _meta: { ...requestMeta20260728 } },
+      } as ClientMessage)
+      expect(abortSpy).toHaveBeenCalledTimes(1)
+
+      // A real server closes the connection once it reads the disconnect. Simulate that so the
+      // backgrounded SSE consumption settles and reclaims its tracking entry via the same path
+      // a normal stream end takes.
+      sseController.close()
+
+      // Once reclaimed, a second cancellation naming the same id finds nothing to abort and is
+      // a no-op. The reclaim runs on the backgrounded consumption promise, not synchronously
+      // with the close() above, so poll for it: each retry resends the cancellation and
+      // compares the call count against the previous attempt. A reclaimed entry stops growing
+      // the count after at most one race against the in-flight reclaim; a leaked entry (the
+      // regression this guards) calls abort() again on every single retry and never stabilizes,
+      // so vi.waitFor times out instead of falsely passing.
+      let previousCount = abortSpy.mock.calls.length
+      await vi.waitFor(async () => {
+        await transport.write({
+          jsonrpc: '2.0',
+          method: 'notifications/cancelled',
+          params: { requestId: 7, _meta: { ...requestMeta20260728 } },
+        } as ClientMessage)
+        const count = abortSpy.mock.calls.length
+        const stable = count === previousCount
+        previousCount = count
+        expect(stable).toBe(true)
+      })
+
+      await transport.dispose()
+    })
+
+    test('an outgoing response does not clobber a pending request sharing its id', async () => {
+      // Both the client's own request ids and a server-initiated request's ids start at 0, so
+      // a client *response* to server request 0 must not register (or clear) the exchange
+      // tracking entry for the client's own pending request 0.
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const stream = new ReadableStream<Uint8Array>({ start() {} })
+      fetchMock.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+      // The outgoing response's own POST — a 202 with no body, like a real server's ack.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+      // The cancellation notification's own POST.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+
+      await transport.write(request20260728(0))
+      const requestPost = fetchMock.mock.calls[0] as FetchCall
+
+      // The client answering a server-initiated request that happens to reuse id 0, from the
+      // server's own id space.
+      await transport.write({ jsonrpc: '2.0', id: 0, result: {} } as ClientMessage)
+
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 0, _meta: { ...requestMeta20260728 } },
+      } as ClientMessage)
+
+      expect(requestPost[1].signal?.aborted).toBe(true)
+
+      await transport.dispose()
+    })
+  })
+
+  describe('an inbound request does not clobber a pending client request sharing its id', () => {
+    test('a server-initiated request whose id collides with a pending client request leaves that request cancellable', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+
+      // The client's own pending request (id 0), answered on a still-open SSE stream so the
+      // exchange stays tracked while the server pushes its own request on the same stream —
+      // both id spaces start at 0, so this collision is the realistic case.
+      const encoder = new TextEncoder()
+      let sseController!: ReadableStreamDefaultController<Uint8Array>
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          sseController = controller
+        },
+      })
+      fetchMock.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+      // The cancellation notification's own POST.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+
+      await transport.write(request20260728(0))
+      const post = getCallByMethod(fetchMock.mock.calls, 'POST')
+      expect(post[1].signal?.aborted).toBe(false)
+
+      // A server-initiated request reusing id 0, from the server's own id space, arrives on
+      // the same stream before the client's own request has a response.
+      const serverRequest: ServerMessage = {
+        jsonrpc: '2.0',
+        id: 0,
+        method: 'sampling/createMessage',
+        params: {},
+      } as ServerMessage
+      sseController.enqueue(encoder.encode(`data: ${JSON.stringify(serverRequest)}\n\n`))
+
+      // Read it off the transport, proving #handleIncoming processed it.
+      const { value } = await transport.read()
+      expect(value).toEqual(serverRequest)
+
+      // The client's own pending request 0 must still be cancellable: the collision above
+      // must not have cleared its exchange-tracking entry.
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 0, _meta: { ...requestMeta20260728 } },
+      } as ClientMessage)
+
+      expect(post[1].signal?.aborted).toBe(true)
+
+      sseController.close()
+      await transport.dispose()
+    })
+  })
+
+  describe('dispose aborts in-flight exchanges', () => {
+    test('dispose aborts a POST whose SSE body never ends', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const stream = new ReadableStream<Uint8Array>({ start() {} })
+      fetchMock.mockResolvedValue(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+
+      await transport.write(request20260728(7))
+      const post = getCallByMethod(fetchMock.mock.calls, 'POST')
+
+      await transport.dispose()
+
+      expect(post[1].signal?.aborted).toBe(true)
+    })
+  })
+
+  describe('dispose aborts untracked outgoing POSTs', () => {
+    test('dispose aborts an in-flight outgoing notification POST', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+
+      // The notification's POST hangs until its signal aborts, so it is still in flight when
+      // dispose() runs — like the connect-timeout test's abort-on-signal fetch mock.
+      fetchMock.mockImplementationOnce((_url: string, init: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      })
+
+      const writePromise = transport.write(progressNotification)
+
+      await vi.waitFor(() => {
+        expect(fetchMock.mock.calls.length).toBe(1)
+      })
+      const post = fetchMock.mock.calls[0] as FetchCall
+      expect(post[1].signal?.aborted).toBe(false)
+
+      await transport.dispose()
+
+      expect(post[1].signal?.aborted).toBe(true)
+      await writePromise
+    })
+
+    test('dispose only aborts still-open untracked exchanges, not ones that already settled', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+
+      // Two notifications complete normally: their untracked-controller bookkeeping must be
+      // reclaimed on completion, same as a tracked exchange reclaims its entry.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+      await transport.write(progressNotification)
+      await transport.write(progressNotification)
+
+      // A third notification's POST hangs, still in flight when dispose runs.
+      fetchMock.mockImplementationOnce((_url: string, init: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      })
+      const writePromise = transport.write(progressNotification)
+      await vi.waitFor(() => {
+        expect(fetchMock.mock.calls.length).toBe(3)
+      })
+
+      const [firstPost, secondPost, thirdPost] = fetchMock.mock.calls as Array<FetchCall>
+      expect(firstPost[1].signal?.aborted).toBe(false)
+      expect(secondPost[1].signal?.aborted).toBe(false)
+
+      await transport.dispose()
+
+      // The still-open exchange is aborted...
+      expect(thirdPost[1].signal?.aborted).toBe(true)
+      // ...but the two that already completed are not touched a second time. If their
+      // untracked controllers had leaked into the set instead of being reclaimed on
+      // completion, dispose's loop would call abort() on them too, flipping these back to
+      // true — proof the set does not grow for the life of the transport.
+      expect(firstPost[1].signal?.aborted).toBe(false)
+      expect(secondPost[1].signal?.aborted).toBe(false)
+      await writePromise
     })
   })
 

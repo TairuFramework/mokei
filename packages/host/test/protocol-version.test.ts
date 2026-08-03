@@ -1,9 +1,11 @@
 import { fileURLToPath } from 'node:url'
+import { UnsupportedProtocolVersionError } from '@mokei/context-client'
 import type { ProtocolVersion } from '@mokei/context-protocol'
 import { createTool } from '@mokei/context-server'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { ContextHost, type HostClient, ProxyHost } from '../src/index.js'
+import { ContextHost, type HostClient, ProxyHost, spawnHostedContext } from '../src/index.js'
+import * as spawnModule from '../src/spawn.js'
 
 const ECHO_SERVER = fileURLToPath(new URL('./fixtures/echo-server.mjs', import.meta.url))
 
@@ -144,5 +146,31 @@ describe('ProxyHost protocol version', () => {
     expect(client.protocolVersion).toBe('2026-07-28')
 
     await proxy.dispose()
+  })
+})
+
+describe('spawnHostedContext protocol version validation', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // Filed scenario: a bad version string in a config file. Pre-fix, `ContextClient`'s
+  // constructor rejected the pin only after `spawnContextServer` had already spawned the
+  // child (host.ts spawns, then constructs the client) — and since the throw happened before
+  // `spawnHostedContext` could hand back a disposer, the child was unreachable and leaked. The
+  // fix validates with the same `isSupportedProtocolVersion` predicate Task 8 uses, before
+  // spawning anything.
+  test('an unsupported pin throws before any child process is spawned', async () => {
+    const spawnSpy = vi.spyOn(spawnModule, 'spawnContextServer')
+
+    await expect(
+      spawnHostedContext({
+        command: process.execPath,
+        args: ['-e', 'process.exit(0)'],
+        protocolVersion: 'not-a-real-version' as ProtocolVersion,
+      }),
+    ).rejects.toThrow(UnsupportedProtocolVersionError)
+
+    expect(spawnSpy).not.toHaveBeenCalled()
   })
 })

@@ -72,12 +72,17 @@ function parseJSONRPCError(
  * method outside this table must not acquire the header just because its params carry a `name`.
  * A method the specification adds later then arrives here as a missing entry, which a
  * conformant peer rejects visibly, rather than as a header quietly built from the wrong field.
+ *
+ * A `Map` rather than an object literal: methods come from a fixed table today, so nothing
+ * currently reaches this as a plain property lookup, but an object literal is a lookup that
+ * invites it — a body naming `constructor` or `__proto__` as its method would resolve to
+ * `Object.prototype` machinery instead of `undefined`.
  */
-const MCP_NAME_HEADER_SOURCE: Readonly<Record<string, string | undefined>> = {
-  'tools/call': 'name',
-  'prompts/get': 'name',
-  'resources/read': 'uri',
-}
+const MCP_NAME_HEADER_SOURCE: ReadonlyMap<string, string> = new Map([
+  ['tools/call', 'name'],
+  ['prompts/get', 'name'],
+  ['resources/read', 'uri'],
+])
 
 /**
  * Parameters for creating an MCP HTTP transport.
@@ -99,8 +104,15 @@ export type HTTPTransportParams = {
    * connection learns it from the `initialize` result. Left unset, the header is omitted
    * until one of those two supplies a value — which is what the specification asks for on
    * the `initialize` request itself.
+   *
+   * Distinct from {@link CreateHTTPClientParams.protocolVersion}, the revision the client
+   * speaks: this field is a raw header string, unconstrained to {@link ProtocolVersion} —
+   * the scenario it exists for is seeding a legacy revision such as `'2024-11-05'`, outside
+   * that union, before any handshake has run. `createHTTPClient` never derives it from the
+   * revision, since sending the header on the `initialize` request itself is exactly what
+   * the paragraph above says not to do.
    */
-  protocolVersion?: string
+  protocolVersionHeader?: string
 }
 
 /**
@@ -154,6 +166,46 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #getStreamAbortController: AbortController | null = null
   /** Method of each in-flight request, keyed by request id (for response correlation). */
   #pendingMethods = new Map<string | number, string>()
+  /**
+   * The in-flight fetch of each request, keyed by request id. Retained past response headers —
+   * unlike the time-to-headers timer — so an outgoing `notifications/cancelled` can hang up on
+   * the exchange. `cancellable` is true only for a revision without protocol sessions, where
+   * the server handles each POST on its own and reads the disconnect as a cancellation.
+   */
+  #exchangeControllers = new Map<
+    string | number,
+    { cancelled: boolean; cancellable: boolean; controller: AbortController }
+  >()
+  /**
+   * Controllers for POSTs with no id in this client's own request space — an outgoing response
+   * or notification (`trackedID` is `null` for both). Such a POST is tracked in neither
+   * `#pendingMethods` nor `#exchangeControllers`, so without this it is bounded only by the
+   * time-to-headers timer and `dispose()` cannot abort it. `notifications/cancelled` never
+   * touches this set — a cancel names an id in this client's own request space, and these
+   * frames have none there; only `dispose()` does. Each entry is added when its POST is issued
+   * and removed on every exit path `#clearExchange` already covers for a tracked exchange, so
+   * this set cannot grow for the life of the transport.
+   */
+  #untrackedControllers = new Set<AbortController>()
+
+  #clearExchange(requestID: string | number): void {
+    this.#pendingMethods.delete(requestID)
+    this.#exchangeControllers.delete(requestID)
+  }
+
+  /**
+   * Release the bookkeeping for one outgoing POST's controller once its fetch has settled — a
+   * tracked exchange (`trackedID != null`) reclaims its `#exchangeControllers`/`#pendingMethods`
+   * entry, while an untracked one (an outgoing response or notification) is removed from
+   * {@link #untrackedControllers}. Call at every exit path a POST can settle through.
+   */
+  #releaseController(trackedID: string | number | null, controller: AbortController): void {
+    if (trackedID != null) {
+      this.#clearExchange(trackedID)
+    } else {
+      this.#untrackedControllers.delete(controller)
+    }
+  }
   /** Cached tool `inputSchema`s keyed by tool name, populated from `tools/list` results. */
   #toolSchemas = new Map<string, unknown>()
   /**
@@ -175,7 +227,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#url = params.url
     this.#headers = buildHTTPHeaders({ headers: params.headers, auth: params.auth })
     this.#timeout = params.timeout ?? DEFAULT_HTTP_TIMEOUT
-    this.#protocolVersion = params.protocolVersion ?? null
+    this.#protocolVersion = params.protocolVersionHeader ?? null
     this.#logger = params.logger ?? getMokeiLogger('http-client')
   }
 
@@ -211,7 +263,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    */
   #failRequest(requestID: string | number | null, code: number, errorMessage: string): void {
     if (requestID == null) {
-      this.#logger.warn('Outgoing notification failed', { error: errorMessage })
+      this.#logger.warn('Outgoing frame without a tracked exchange failed', { error: errorMessage })
       return
     }
     if (this.#controller == null) {
@@ -258,10 +310,34 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     const rawID = (message as { id?: unknown }).id
     const requestID: string | number | null =
       typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
+    // Only an outgoing *request* owns an exchange-tracking entry, a synthesized failure frame,
+    // or a carried HTTP-level error: a *response* also carries an `id`, but from the peer's own
+    // id space, which starts at 0 just like this client's own request ids. Keying any of that
+    // bookkeeping on a response's id risks registering, clearing, or failing whatever request
+    // happens to share the number instead. `trackedID` is `null` for a response (and for a
+    // notification, which already has no id), so every site below that used to key on
+    // `requestID` keys on `trackedID` instead.
+    const trackedID = requestID != null && 'method' in message ? requestID : null
 
     if (this.#disposed) {
-      this.#failRequest(requestID, INTERNAL_ERROR_CODE, 'Transport is disposed')
+      this.#failRequest(trackedID, INTERNAL_ERROR_CODE, 'Transport is disposed')
       return
+    }
+
+    if (
+      'method' in message &&
+      message.method === 'notifications/cancelled' &&
+      typeof (message as { params?: { requestId?: unknown } }).params?.requestId !== 'undefined'
+    ) {
+      const cancelledID = (message as { params: { requestId: string | number } }).params.requestId
+      const entry = this.#exchangeControllers.get(cancelledID)
+      if (entry?.cancellable) {
+        // Aborting the fetch is what a stateless server observes as the disconnect it already
+        // handles. The notification is still POSTed below: a peer may want the record, and on
+        // the session path it is the only cancellation channel there is.
+        entry.cancelled = true
+        entry.controller.abort()
+      }
     }
 
     const declaredVersion = this.#declaredVersion(message)
@@ -278,7 +354,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
     if ('method' in message && typeof message.method === 'string') {
       headers['Mcp-Method'] = message.method
-      const nameSourceField = MCP_NAME_HEADER_SOURCE[message.method]
+      const nameSourceField = MCP_NAME_HEADER_SOURCE.get(message.method)
       const params = (message as { params?: Record<string, unknown> }).params
       const nameValue = nameSourceField == null ? undefined : params?.[nameSourceField]
       if (typeof nameValue === 'string') {
@@ -337,10 +413,20 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       headers['Mcp-Session-Id'] = this.#sessionID
     }
 
-    // The timeout guards time-to-headers only. Once a response begins, a long
-    // streamed tool call must not be aborted — its own request-level timeout applies.
+    // The timer guards time-to-headers only. The controller outlives it: once a response
+    // begins, a long streamed tool call must not be cut off by a timeout — but it must still
+    // be cuttable by an explicit cancellation.
     const controller = new AbortController()
     const timeoutID = setTimeout(() => controller.abort(), this.#timeout)
+    if (trackedID != null) {
+      this.#exchangeControllers.set(trackedID, {
+        cancelled: false,
+        cancellable: !hasSession(declaredVersion),
+        controller,
+      })
+    } else {
+      this.#untrackedControllers.add(controller)
+    }
 
     let response: Response
     try {
@@ -352,13 +438,17 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       })
     } catch (error) {
       clearTimeout(timeoutID)
-      if (requestID != null) {
-        this.#pendingMethods.delete(requestID)
+      const entry = trackedID == null ? undefined : this.#exchangeControllers.get(trackedID)
+      this.#releaseController(trackedID, controller)
+      if (entry?.cancelled) {
+        // The caller already rejected this exchange locally; a second error frame for a
+        // settled id is noise.
+        return
       }
       const reason = controller.signal.aborted
         ? `Request timed out after ${this.#timeout}ms`
         : `Request failed: ${error instanceof Error ? error.message : String(error)}`
-      this.#failRequest(requestID, INTERNAL_ERROR_CODE, reason)
+      this.#failRequest(trackedID, INTERNAL_ERROR_CODE, reason)
       return
     }
     clearTimeout(timeoutID)
@@ -373,10 +463,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // Spec MUST: a 404 on an active session means it is gone. Clear it and surface
       // a coded error so the client can detect it (isSessionExpiredCode) and re-initialize.
       this.#sessionID = null
-      if (requestID != null) {
-        this.#pendingMethods.delete(requestID)
-      }
-      this.#failRequest(requestID, SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE)
+      this.#releaseController(trackedID, controller)
+      this.#failRequest(trackedID, SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE)
       return
     }
 
@@ -387,15 +475,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       } catch {
         // Body may be unreadable; the status alone is enough to surface the failure.
       }
-      if (requestID != null) {
-        this.#pendingMethods.delete(requestID)
-      }
+      this.#releaseController(trackedID, controller)
       // A `2026-07-28` server answers an envelope failure with a real HTTP `400` whose body
       // is the JSON-RPC error itself (unsupported revision, missing required `_meta`). That
       // body is the whole signal an `'auto'` client uses to tell a current server from an
       // older one, and the only actionable message a pinned client can show — so pass it
       // through verbatim rather than flattening it into an internal error.
-      const carried = parseJSONRPCError(errorText, requestID)
+      const carried = parseJSONRPCError(errorText, trackedID)
       if (carried != null) {
         try {
           this.#controller?.enqueue(carried as unknown as ServerMessage)
@@ -405,7 +491,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         }
         return
       }
-      this.#failRequest(requestID, INTERNAL_ERROR_CODE, `HTTP ${response.status}: ${errorText}`)
+      this.#failRequest(trackedID, INTERNAL_ERROR_CODE, `HTTP ${response.status}: ${errorText}`)
       return
     }
 
@@ -416,18 +502,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       try {
         data = await response.json()
       } catch {
-        if (requestID != null) {
-          this.#pendingMethods.delete(requestID)
-        }
-        this.#failRequest(requestID, INTERNAL_ERROR_CODE, 'Invalid JSON in response')
+        this.#releaseController(trackedID, controller)
+        this.#failRequest(trackedID, INTERNAL_ERROR_CODE, 'Invalid JSON in response')
         return
       }
       if (data && this.#controller) {
         this.#controller.enqueue(this.#handleIncoming(data as ServerMessage))
       }
-      if (requestID != null) {
-        this.#pendingMethods.delete(requestID)
-      }
+      this.#releaseController(trackedID, controller)
     } else if (contentType.includes('text/event-stream')) {
       // Consume the SSE stream in the background so the sink unblocks as soon as the
       // response headers arrive. Awaiting here would serialize all other outgoing
@@ -435,18 +517,19 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // — behind it. The correlation entry is reclaimed once the stream ends.
       void this.#handleSSEResponse(response)
         .catch((error) => {
+          if (trackedID != null && this.#exchangeControllers.get(trackedID)?.cancelled) {
+            return
+          }
           this.#logger.warn('SSE response stream failed', {
             error: error instanceof Error ? error.message : String(error),
           })
         })
         .finally(() => {
-          if (requestID != null) {
-            this.#pendingMethods.delete(requestID)
-          }
+          this.#releaseController(trackedID, controller)
         })
-    } else if (requestID != null) {
+    } else {
       // 202 Accepted or other no-content responses: nothing to enqueue, reclaim the entry.
-      this.#pendingMethods.delete(requestID)
+      this.#releaseController(trackedID, controller)
     }
 
     // After sending notifications/initialized with a session, open GET stream
@@ -461,6 +544,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    * `x-mcp-header` annotations, per SEP-2243.
    */
   #handleIncoming(message: ServerMessage): ServerMessage {
+    // A message carrying its own `method` is a server-initiated request or notification, never
+    // a response to one of ours — same invariant as `trackedID` gates on the outgoing side,
+    // above. Both id spaces start at 0, so without this a server-initiated request can collide
+    // with, and wipe, the client's own pending request sharing that id.
+    if ('method' in message) {
+      return message
+    }
     const id = (message as { id?: unknown }).id
     if (typeof id !== 'string' && typeof id !== 'number') {
       return message
@@ -469,7 +559,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     if (method == null) {
       return message
     }
-    this.#pendingMethods.delete(id)
+    this.#clearExchange(id)
     if (method === 'initialize') {
       const version = (message as { result?: { protocolVersion?: unknown } }).result
         ?.protocolVersion
@@ -654,6 +744,29 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       this.#getStreamAbortController = null
     }
 
+    // Abort every in-flight exchange. The #disposed guard above stops new sends, but an
+    // exchange already past it — including a POST whose SSE body never ends — must not
+    // outlive dispose: any transport close, dispose or peer EOF, aborts in-flight work, and
+    // leaving one running is the exact symptom cancellation exists to fix, one path over.
+    // Marking `cancelled` (rather than deleting the entry here) routes the resulting
+    // rejection through the same silent-return path a notifications/cancelled abort takes —
+    // each exchange reclaims its own entry via #clearExchange when its catch/finally runs,
+    // same as it already does for an explicit cancel. Deleting eagerly here would race that:
+    // a catch that fires after this loop but before #controller is closed below would find no
+    // entry, skip the cancelled check, and enqueue a spurious error frame.
+    for (const entry of this.#exchangeControllers.values()) {
+      entry.cancelled = true
+      entry.controller.abort()
+    }
+
+    // Same reasoning for a POST with no id in this client's own request space (an outgoing
+    // response or notification): it is bounded only by the time-to-headers timer otherwise.
+    // Left un-deleted here for the same reclaim-races-eager-delete reason as above — its own
+    // catch/finally removes it from the set once the abort is observed.
+    for (const controller of this.#untrackedControllers) {
+      controller.abort()
+    }
+
     // Terminate session with DELETE, bounded so a hung server can't stall shutdown.
     if (this.#sessionID) {
       try {
@@ -688,7 +801,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
 /** Parameters for {@link createHTTPClient}. */
 export type CreateHTTPClientParams = HTTPTransportParams & {
-  /** Revision to speak. `'auto'` probes the server, then caches the result. */
+  /**
+   * Revision to speak. `'auto'` probes the server, then caches the result.
+   *
+   * Distinct from {@link HTTPTransportParams.protocolVersionHeader}, the optional raw seed
+   * for the `MCP-Protocol-Version` header: this field drives `ContextClient` negotiation and
+   * is stripped before the transport is constructed, so it never reaches `HTTPTransport`
+   * itself.
+   */
   protocolVersion: ProtocolVersion | 'auto'
 }
 

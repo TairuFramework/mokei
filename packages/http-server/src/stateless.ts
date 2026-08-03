@@ -1,6 +1,7 @@
 import { Transport } from '@enkaku/transport'
 import {
   type ClientMessage,
+  ENVELOPE_VIOLATION,
   INVALID_PARAMS,
   META_PROTOCOL_VERSION,
   MISSING_REQUIRED_CLIENT_CAPABILITY,
@@ -8,6 +9,7 @@ import {
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
 import type { ContextServer, ServerTransport } from '@mokei/context-server'
+import { getMokeiLogger, type Logger } from '@mokei/logger'
 
 import { createSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.js'
 import { SSEWriter } from './sse-writer.js'
@@ -34,19 +36,19 @@ export const BAD_REQUEST_CODES: ReadonlySet<number> = new Set([
  * it both for an envelope violation (a missing required `_meta` key — an HTTP `400`) and for
  * an ordinary application error (an unknown tool name, invalid tool arguments — an HTTP
  * `200` carrying a JSON-RPC error, same as every other revision). Only the first is a
- * transport-level failure, and the two are told apart by the message the server's protocol
- * resolution itself writes, which always reports the `_meta` key it could not find.
- *
- * Matched as a prefix, not a substring: a tool or prompt *name* reaches the message of an
- * application error verbatim (`Tool <name> not found`), so a client could otherwise pick its
- * own HTTP status by naming a tool `io.modelcontextprotocol/…`. Only the leading `Missing "`
- * is beyond a caller's reach.
+ * transport-level failure, and the two are told apart by {@link ENVELOPE_VIOLATION} on the
+ * error's `data` — a structured marker `#resolveProtocol` (`packages/context-server/src/
+ * server.ts`) attaches at both its `INVALID_PARAMS` throw sites, rather than the message
+ * text: a thrower in another package matching this transport's classification by opening its
+ * message with the right words is a much easier invariant to break by accident than one
+ * failing to set a field it was never told to set.
  */
-function isEnvelopeFailure(error: { code?: unknown; message?: unknown }): boolean {
+function isEnvelopeFailure(error: { code?: unknown; data?: unknown }): boolean {
   if (error.code === INVALID_PARAMS) {
     return (
-      typeof error.message === 'string' &&
-      error.message.startsWith('Missing "io.modelcontextprotocol/')
+      error.data != null &&
+      typeof error.data === 'object' &&
+      (error.data as Record<string, unknown>)[ENVELOPE_VIOLATION] === true
     )
   }
   return typeof error.code === 'number' && BAD_REQUEST_CODES.has(error.code)
@@ -104,6 +106,8 @@ export type StatelessExchangeParams = {
    */
   onStart?: (teardown: () => void) => void
   onEnd?: (teardown: () => void) => void
+  /** Optional logger (defaults to the `mokei:http-server` logger) */
+  logger?: Logger
 }
 
 /**
@@ -118,8 +122,17 @@ export type StatelessExchangeParams = {
  * instead of being buffered until it finishes.
  */
 export function runStatelessExchange(params: StatelessExchangeParams): Promise<Response> {
-  const { message, requestID, createServer, replayBufferSize, timeoutMs, signal, onStart, onEnd } =
-    params
+  const {
+    message,
+    requestID,
+    createServer,
+    replayBufferSize,
+    timeoutMs,
+    signal,
+    onStart,
+    onEnd,
+    logger = getMokeiLogger('http-server'),
+  } = params
 
   if (signal?.aborted) {
     // The client is already gone: standing a server up for it would only create work to
@@ -210,8 +223,15 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
         // TypeScript will not keep narrowed across the assignment below.
         let writer = sse
         if (writer == null) {
+          if (finished) {
+            // The exchange already tore down — the client hung up, the handler was
+            // disposed, or the timeout fired — and whoever was waiting on `response` has
+            // already gotten an answer. Building a fresh SSE stream here would create one
+            // nobody will ever read.
+            return
+          }
           if (isOwnResponse) {
-            const error = record.error as { code?: unknown; message?: unknown } | undefined
+            const error = record.error as { code?: unknown; data?: unknown } | undefined
             if (error != null && isEnvelopeFailure(error)) {
               settle(
                 new Response(JSON.stringify(outgoing), {
@@ -231,6 +251,7 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
             writable: stream.writable,
             streamID: `stateless-${requestID ?? 'notification'}`,
             replayBufferSize,
+            logger,
           })
           sse = writer
           settle(new Response(stream.readable, { status: 200, headers: SSE_RESPONSE_HEADERS }))

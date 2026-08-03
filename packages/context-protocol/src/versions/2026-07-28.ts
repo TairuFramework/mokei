@@ -1,14 +1,23 @@
 import type { FromSchema, Schema } from '@sozai/schema'
 
 import { clientResponse } from '../client.js'
-import { completeRequest } from '../completion.js'
+import { completeRequest, completeResult } from '../completion.js'
 import { clientCapabilities, implementation, serverCapabilities } from '../initialize.js'
 import { loggingLevel, loggingMessageNotification } from '../logging.js'
-import { getPromptRequest, listPromptsRequest, promptListChangedNotification } from '../prompt.js'
+import {
+  getPromptRequest,
+  getPromptResult,
+  listPromptsRequest,
+  listPromptsResult,
+  promptListChangedNotification,
+} from '../prompt.js'
 import {
   listResourcesRequest,
+  listResourcesResult,
   listResourceTemplatesRequest,
+  listResourceTemplatesResult,
   readResourceRequest,
+  readResourceResult,
   resourceListChangedNotification,
   resourceUpdatedNotification,
 } from '../resource.js'
@@ -16,12 +25,20 @@ import type { Request } from '../rpc.js'
 import {
   cacheableResult,
   cancelledNotification,
+  errorResponse,
+  metadata,
   progressNotification,
   request,
+  response,
   result,
 } from '../rpc.js'
-import { serverResponse } from '../server.js'
-import { callToolRequest, listToolsRequest, toolListChangedNotification } from '../tool.js'
+import {
+  callToolRequest,
+  callToolResult,
+  listToolsRequest,
+  listToolsResult,
+  toolListChangedNotification,
+} from '../tool.js'
 import type {
   ClientRequestContext,
   ProtocolDefinition,
@@ -155,6 +172,112 @@ export const serverNotification = {
     resourceListChangedNotification,
     toolListChangedNotification,
     promptListChangedNotification,
+  ],
+} as const satisfies Schema
+
+/**
+ * Every result on this revision carries a `resultType`: `'complete'` for a terminal answer,
+ * `'input_required'` for one suspended on MRTR input. Applied per union member rather than
+ * once around the union, so a result must be both a known shape *and* carry the field.
+ */
+function withResultType<S extends Schema>(schema: S) {
+  return {
+    allOf: [
+      schema,
+      {
+        properties: { resultType: { enum: ['complete', 'input_required'], type: 'string' } },
+        required: ['resultType'],
+        type: 'object',
+      },
+    ],
+  } as const satisfies Schema
+}
+
+/**
+ * An empty result on this revision: `_meta` and the mandatory `resultType`, nothing else.
+ *
+ * Purpose-built rather than `withResultType(emptyResult)` — `additionalProperties: false` in
+ * one `allOf` branch rejects the `resultType` the other branch adds, so the two cannot be
+ * composed.
+ */
+export const emptyResult = {
+  additionalProperties: false,
+  properties: {
+    _meta: metadata,
+    resultType: { enum: ['complete', 'input_required'], type: 'string' },
+  },
+  required: ['resultType'],
+  type: 'object',
+} as const satisfies Schema
+
+/**
+ * A result suspended on MRTR input (SEP-2322): `resultType: 'input_required'` stands in for a
+ * terminal answer, carrying the server's `inputRequests` and an opaque `requestState` the client
+ * must echo back unmodified. Modeled directly off SEP-2322's `InputRequiredResult extends
+ * Result` rather than `withResultType(<terminal shape>)`: a suspended `tools/call` has none of
+ * `callToolResult`'s required `content`, so composing it with any terminal shape's `allOf` would
+ * make a real `input_required` response fail validation the same way the fixture below did
+ * before this member existed.
+ *
+ * Full MRTR — retrying with `inputResponses` — is out of scope for this revision's schema (see
+ * the defect-wave design doc); this member only lets a spec-shaped `input_required` result clear
+ * wire validation so `context-client`'s existing `InputRequiredNotSupportedError` guard can
+ * refuse it with a clear error instead of the read loop dropping it as an unparseable response.
+ *
+ * Closed (`additionalProperties: false`), not open: this is one branch inside a union whose
+ * entire purpose is closing off a vacuous escape hatch, so it must not itself become one. Limited
+ * to exactly SEP-2322's four `InputRequiredResult` fields — `_meta`, `resultType`,
+ * `inputRequests`, `requestState` — a real MRTR frame carries nothing else. `inputRequests`'
+ * values stay open (`additionalProperties: {}`): each is a full elicitation or sampling request,
+ * and modeling those here is the same out-of-scope MRTR work as the retry path above.
+ */
+export const inputRequiredResult = {
+  additionalProperties: false,
+  properties: {
+    _meta: metadata,
+    inputRequests: { additionalProperties: {}, type: 'object' },
+    requestState: { type: 'string' },
+    resultType: { const: 'input_required', type: 'string' },
+  },
+  required: ['resultType'],
+  type: 'object',
+} as const satisfies Schema
+
+/**
+ * Results a server may return in this revision. No `initializeResult`: there is no handshake.
+ * `discoverResult` is a member here, which is what lets a `server/discover` answer be
+ * validated rather than cast.
+ */
+export const serverResult = {
+  anyOf: [
+    emptyResult,
+    inputRequiredResult,
+    discoverResult,
+    withResultType(completeResult),
+    withResultType(getPromptResult),
+    withResultType(listPromptsResult),
+    withResultType(listResourcesResult),
+    withResultType(listResourceTemplatesResult),
+    withResultType(readResourceResult),
+    withResultType(callToolResult),
+    withResultType(listToolsResult),
+  ],
+} as const satisfies Schema
+export type ServerResult = FromSchema<typeof serverResult>
+
+export const serverResponse = {
+  anyOf: [
+    errorResponse,
+    {
+      allOf: [
+        response,
+        {
+          properties: { result: serverResult },
+          required: ['result'],
+          type: 'object',
+        },
+      ],
+    },
   ],
 } as const satisfies Schema
 

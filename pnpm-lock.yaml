@@ -700,6 +700,9 @@ importers:
 
   packages/http-client:
     dependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.20.0
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -715,13 +718,12 @@ importers:
       parse-sse:
         specifier: 'catalog:'
         version: 0.1.0
-    devDependencies:
-      '@enkaku/transport':
-        specifier: 'catalog:'
-        version: 0.20.0
 
   packages/http-server:
     dependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.20.0
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.11(hono@4.12.32)
@@ -731,13 +733,13 @@ importers:
       '@mokei/context-server':
         specifier: workspace:^
         version: link:../context-server
+      '@mokei/logger':
+        specifier: workspace:^
+        version: link:../logger
       hono:
         specifier: 'catalog:'
         version: 4.12.32
     devDependencies:
-      '@enkaku/transport':
-        specifier: 'catalog:'
-        version: 0.20.0
       '@types/node':
         specifier: 'catalog:'
         version: 26.1.1

@@ -7,6 +7,7 @@ import {
   type ServerMessage,
 } from '@mokei/context-protocol'
 import type { ContextServer, ServerTransport } from '@mokei/context-server'
+import { getMokeiLogger, type Logger } from '@mokei/logger'
 
 import { appendReplay, eventsAfter, type Session, SessionManager } from './session.js'
 import { createSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.js'
@@ -48,6 +49,8 @@ export type HTTPHandlerParams = {
    * throwaway `ContextServer`, transport and connection for as long as the caller keeps reading.
    */
   maxStatelessExchanges?: number
+  /** Optional logger (defaults to the `mokei:http-server` logger) */
+  logger?: Logger
 }
 
 /** Default maximum accepted POST body size, in bytes (4 MiB). */
@@ -167,6 +170,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
     statelessTimeoutMs = DEFAULT_STATELESS_TIMEOUT_MS,
     maxStatelessExchanges = DEFAULT_MAX_STATELESS_EXCHANGES,
+    logger = getMokeiLogger('http-server'),
   } = params
 
   // Map session IDs to their transport bridges
@@ -335,7 +339,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
           { status: 400 },
         )
       }
-      return await handleStateless(request, body, requestVersion)
+      return await handleStateless(request, body)
     }
 
     const sessionID = request.headers.get('Mcp-Session-Id')
@@ -381,6 +385,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
         streamID: `post-${requestID}`,
         replayBufferSize,
         onEvent: (event) => appendReplay(session, event, replayBufferSize),
+        logger,
       })
 
       session.postStreams.set(requestID, sseWriter)
@@ -400,7 +405,6 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   async function handleStateless(
     request: Request,
     body: Record<string, unknown>,
-    _requestVersion: string,
   ): Promise<Response> {
     const rawID = body.id
     const requestID: string | number | null =
@@ -441,6 +445,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       onEnd: (teardown) => {
         statelessTeardowns.delete(teardown)
       },
+      logger,
     })
   }
 
@@ -554,6 +559,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       streamID: `get-${sessionID}`,
       replayBufferSize,
       onEvent: (event) => appendReplay(session, event, replayBufferSize),
+      logger,
     })
 
     session.getStream = sseWriter

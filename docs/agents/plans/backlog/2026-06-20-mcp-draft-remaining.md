@@ -3,9 +3,13 @@
 **Status:** backlog
 **Origin:** `milestones/2026-06-08-mcp-draft-migration.md`. Consolidates the two prior
 backlog files (deferred groundwork + breaking cut) down to live, unshipped work only.
-Shipped groundwork (G1–G8, G5 outbound/baggage/inbound, G7 walk depth) is recorded in
-`completed/2026-06-20-mcp-deferred-groundwork.complete.md` and the milestone — not repeated
-here.
+Shipped work is recorded in the completed summaries, not repeated here:
+`completed/2026-06-20-mcp-deferred-groundwork.complete.md` (G1–G8),
+`completed/2026-08-02-mcp-2026-07-28-stateless-core.complete.md` (B5, B2, B3, B1 and the
+`logLevel` half of B6) and `completed/2026-08-03-mcp-2026-07-28-defect-wave.complete.md`
+(the §3.1 correctness defects, all of §3.5, §3.3.2, §3.3.4 and the §3.6 follow-ups).
+
+Section numbers are stable: gaps mean an item shipped, not that it was renumbered.
 
 ## 1. Deferred groundwork — last item
 
@@ -29,50 +33,30 @@ here.
 - Two `useLiteralKeys` Biome *infos* in `http-client/src/x-mcp-header.ts` (`node['…']` →
   `node.…`); lint gate passes (info-level), tidy if touching the file.
 
-## 2. Additive draft wiring (B1–B7, opt-in coexistence)
+## 2. Additive draft wiring (B4, B6-roots, B7, D1–D3)
 
-**Draft finalized; most items shipped for stdio.** U1 resolved + core shipped (PR #32).
-Not a hard-cut: mokei keeps `2025-11-25` and adds the finalized `2026-07-28` revision as a
-second version selected per context (see the milestone's Architecture decision). The
-B-items are additive wiring behind a version selector, not removals. B5, B2, B3 and B6 are
-shipped for stdio; B1 (HTTP) and B7 (MRTR) remain, per the per-item notes below.
+**Draft finalized; the stateless core shipped for both transports.** Not a hard-cut: mokei
+keeps `2025-11-25` and adds the finalized `2026-07-28` revision as a second version selected
+per context (see the milestone's Architecture decision). The remaining B-items are additive
+wiring behind a version selector, not removals.
 
-*Update 2026-07-02:* the draft is now the **`2026-07-28` revision at RC stage** —
-finalization expected July 28, 2026, with SDK v2 stable alongside. SDK v2 beta ships wire
-codecs for the revision (`wire/rev2026-07-28/`), so B-item shapes can be pinned against a
-reference implementation ahead of the freeze. Details in the milestone's status-update
-section and `2026-07-02-mcp-sdk-v2-adoption.md`.
+Original numbering kept so cross-references still resolve:
 
-Scope, ordered by dependency:
-
-1. ~~**B5** remove `ping`~~ **Delivered (`feat/mcp-2026-07-28-core`), both transports.**
-   `ContextRPC` no longer auto-answers `ping`; each protocol record's method table decides, and
-   `2026-07-28` has no `ping`.
-2. ~~**B2** remove `initialize`/`initialized`; stateless `_meta` (version/identity/caps per
-   request); version-mismatch error (SEP-2575)~~ **Delivered, both transports.** `2026-07-28`
-   has `requiresHandshake: false`; every request carries protocol version and client
-   capabilities in `_meta` instead.
-3. ~~**B3** add `server/discover` RPC (MUST) — advertises versions/caps/identity
-   (SEP-2575).~~ **Delivered, both transports.** Correction: the spec makes `server/discover`
-   mandatory for the *server* to implement, not mandatory for a *client* to call — a client
-   may still reach a `2026-07-28` server via the version it already knows. mokei's client
-   uses it only to probe under `protocolVersion: 'auto'`.
-4. ~~**B1** remove protocol sessions + `Mcp-Session-Id` (SEP-2567)~~ **Delivered
-   (`feat/mcp-2026-07-28-core`).** stdio never had a session concept. The HTTP half shipped in
-   plan 2: a `2026-07-28` request is handled statelessly — no `Mcp-Session-Id` is minted, `GET`
-   and `DELETE` return `405`, and each request gets its own short-lived `ContextServer`. The
-   `2025-11-25` session path is untouched. Cross-call state → server-minted handles as tool args
-   remains unimplemented, but that is a consumer concern, not transport work.
 5. **B6** remove `logging/setLevel` + roots list-changed; per-request `_meta` log level.
-   **`logLevel` half delivered, both transports:** `2026-07-28`'s client method table has no
-   `logging/setLevel`; log level travels in request `_meta` instead and log emission is
-   scoped to the handling request. The roots list-changed half is not done and belongs with
-   B7 (roots only exist through MRTR on `2026-07-28`).
+   **`logLevel` half delivered, both transports.** The roots list-changed half is not done and
+   belongs with B7 (roots only exist through MRTR on `2026-07-28`).
 6. **B7** MRTR — `inputRequests`/`inputResponses` replace server-initiated requests
    (SEP-2322). Deepest; dismantles bidirectional `request()`/`#sentRequests` in
-   `context-rpc`. Depends on U1 + B2. **Not shipped:** plan 1 refuses
-   `sampling/createMessage`, `elicitation/create` and `roots/list` at client/server setup on
-   `2026-07-28` (`MRTRNotSupportedError`) rather than implementing MRTR itself.
+   `context-rpc`. Depends on U1 + B2. **Not shipped:** client and server refuse
+   `sampling/createMessage`, `elicitation/create` and `roots/list` at setup on `2026-07-28`
+   (`MRTRNotSupportedError`) rather than implementing MRTR itself.
+
+   The wire schema admits a spec-shaped suspended result (`inputRequiredResult` in
+   `context-protocol/src/versions/2026-07-28.ts`) so the client's refusal fires with its own
+   error rather than a generic validation failure — but nothing consumes `inputRequests` or
+   sends `inputResponses`. When this lands, tighten `withResultType` to `const: 'complete'`:
+   it currently admits `'input_required'` on every terminal branch, so a `callToolResult`-shaped
+   frame labelled `input_required` validates.
 7. **B4** `subscriptions/listen` replaces GET endpoint + `resources/subscribe` (SEP-2575).
    Rewrite HTTP server/client streaming. Depends on U1; parallel with B7.
    **`2025-11-25`-side `resources/subscribe` (folded from the retired `2026-07-02-mcp-feature-gaps.md`,
@@ -80,132 +64,19 @@ Scope, ordered by dependency:
    `resourceUpdatedNotification` in `context-protocol/src/resource.ts`) but there are no client
    methods, no server dispatch, and no `resources.subscribe` capability declaration. Since mokei
    keeps `2025-11-25` per the coexistence decision, a `2025-11-25` peer may still expect this surface.
-   Implement it as the `2025-11-25` branch of B4 only if a real peer needs it. (The
-   `UnsubscribeRequest` alias typo that item flagged is already fixed, `d82dc9c`.)
+   Implement it as the `2025-11-25` branch of B4 only if a real peer needs it.
 8. **D1–D3** apply deprecation handling (Roots/Sampling/Logging; HTTP+SSE transport;
    `includeContext`) as the above land.
 
-### B7 stream-arm follow-ons — **done 2026-07-27**
-
-The U1 streaming arm + continuation store are built and unit-tested but have **no wire
-trigger yet**; B4/B7 wire into the `_registerStreamExchange` seam they create
-(`context-rpc` `exchange.ts` / `continuation.ts`). All five hardening items listed here
-shipped ahead of that wiring, so the seam is ready to consume:
-
-- `onSettle` now receives a `SettleReason` (`'result' | 'error' | 'cancel' | 'closed'`), so
-  continuation teardown can tell a terminal frame from a local cancel or a transport close.
-  `ContextRPC` folds it into the `clearForExchange` reason message.
-- Malformed-response policy: `routeResponse` settles an exchange carrying neither a usable
-  `result` nor a well-formed `error` as an internal `RPCError('Malformed response')` instead
-  of deleting it while leaving the promise pending forever (the old `once`-arm leak). An
-  `error` stream frame carrying a non-`Error` value is coerced; a frame of an unknown type is
-  dropped **without** settling — only `result` and `error` frames are terminal.
-- `isErrorResponse` in `error.ts` replaces the `as ErrorResponse` cast, so an `error: null` or
-  a `code`/`message`-less error object is no longer read as an error response.
-- Stream `cancel` / `endAll` / error-response / malformed-response `onSettle` paths are
-  covered, plus settle-once-only under trailing frames.
-- `ExchangeRegistry.#settle(id, exchange, reason, outcome)` dedups the delete +
-  resolve/reject + `onSettle` blocks across all four settle sites.
-
-Open when the wiring lands: nothing on the registry itself — the remaining decisions
-(continuation state across reconnects, server-minted handles) live in the milestone's open
-questions.
+The U1 streaming arm and continuation store are built, unit-tested and hardened, but have **no
+wire trigger yet**; B4/B7 wire into the `_registerStreamExchange` seam
+(`context-rpc` `exchange.ts` / `continuation.ts`). Nothing is open on the registry itself — the
+remaining decisions (continuation state across reconnects, server-minted handles) live in the
+milestone's open questions.
 
 ## 3. Findings from `feat/mcp-2026-07-28-core` (filed 2026-08-01)
 
-Everything below was verified against source on that branch. Nothing here is speculative.
-
-### 3.1 Correctness defects
-
-#### 3.1.1 The read loop serializes every server — needs its own task
-
-`ContextRPC.#readLoop` (`packages/context-rpc/src/rpc.ts:114`) does
-`response = await this._handleMessage(next.value)` inside its `while (true)` loop. A server
-therefore does not read the next message until the current handler has resolved:
-**every mokei server handles exactly one request at a time, on every transport and every
-revision.** The identical line is on `main` at the same position, so this predates the branch —
-it is not a regression, it is a long-standing design defect that this branch happened to
-measure.
-
-Two consequences, both confirmed:
-
-- **No concurrent tool calls.** Measured twice, independently: a second `tools/call` issued
-  100ms behind a tool that sleeps 5s was answered at **5003ms**, one millisecond before the slow
-  call itself (5004ms). An earlier measurement on the same branch put it at 5230ms. The
-  reproduction is a two-tool stdio server (`slow` sleeping 5s, `quick` returning at once) and one
-  client issuing both.
-- **`notifications/cancelled` cannot reach an in-flight request** on stdio or the HTTP session
-  path. The cancellation is not read until the handler it names has already settled, by which
-  point `.finally` has deleted `#receivedRequests[id]`, so the abort is a no-op. The handler
-  controllers are aborted only from the `notifications/cancelled` branch
-  (`rpc.ts:191-194`), so there is no other path that could fire.
-
-The stateless HTTP path also cannot abort, but for an independent and *documented* reason: it
-acknowledges with `202` and deliberately does not dispatch. Do not conflate the two.
-
-Fixing this means not awaiting the handler in the read loop — which requires deciding what
-back-pressure replaces the implicit one-at-a-time bound, and what ordering guarantees (if any)
-mokei promises between a request and a notification that follows it. That is why this is a task,
-not a patch. Two suites currently document the current behavior in prose and would need
-updating: `integration-tests/suites/interop-2026-07-28-stdio.test.ts` (the cancellation test's
-header) and `integration-tests/support/interop/mokei-stdio-server-cancellation.ts`.
-
-#### 3.1.2 `resultType` is unenforced inbound on `2026-07-28`
-
-Three compounding causes — a complete fix needs **both** halves, since applying the first alone
-changes nothing while the permissive branch remains:
-
-1. `withResultType` had zero call sites anywhere and was deleted on this branch
-   (`packages/context-protocol/src/versions/2026-07-28.ts`). Reintroducing it is half the fix.
-2. The validator chain for an inbound server result runs to the shared `serverResult`
-   (`packages/context-protocol/src/server.ts:48-61`), whose **first `anyOf` branch** is the bare
-   open object `result` (`packages/context-protocol/src/rpc.ts:214-220`):
-   `{ additionalProperties: {}, properties: { _meta: metadata }, type: 'object' }`. It declares
-   no `required`, so it admits any object at all and the remaining branches never get a say.
-3. `discoverResult` (`versions/2026-07-28.ts`) is the one schema that *does* require
-   `resultType`, and it is **not** a member of `serverResult`. It is reached only through a cast
-   in `#probeDiscover` — `packages/context-client/src/client.ts:855`,
-   `return message.result as DiscoverResult`.
-
-#### 3.1.3 An unsupported `protocolVersion` string silently degrades to auto-detection
-
-`packages/context-client/src/client.ts:411`:
-`const protocol = params.protocolVersion === 'auto' ? null : PROTOCOLS[params.protocolVersion]`.
-`PROTOCOLS[unknown]` is `undefined`, which is nullish, so the `if (protocol != null)` guard at
-`:412` skips the handler check and `#setup()`'s `this.#protocol ?? (await this.#probe())`
-(`:750`) treats an invalid pin exactly like `'auto'`. Any caller passing an unvalidated version
-string — a config file, a CLI argument that bypassed `parseProtocolOption`, an API consumer —
-silently gets probing instead of a failure. `isSupportedProtocolVersion` exists; the constructor
-does not use it.
-
-#### 3.1.4 An invalid inbound response strands its caller
-
-`ContextRPC._handleMessage` (`packages/context-rpc/src/rpc.ts:169-178`): when validation fails
-and the frame is not a request, it hits `// TODO: call optional error handler` and `return null`.
-Nothing rejects the pending exchange. So a malformed error frame delivered over a normal `200`
-leaves its caller's promise pending forever — and there is no backstop: `rpc.ts:304` applies a
-timeout only when one was passed (`if (options?.timeout != null)`), and nothing at the
-`ContextClient` layer defaults one for a normal request. `DEFAULT_INITIALIZE_TIMEOUT`
-(`client.ts:434-435`) covers `#setup` only. A second `TODO` sits at `rpc.ts:225`.
-
-> **Still open, but one reachable instance closed 2026-08-02.** The path that actually produced
-> a hang was a peer sending a non-object `error.data` — legal per JSON-RPC, typed `unknown` by
-> the SDK — against a wire schema that admitted objects only. `error.data` is now unconstrained
-> (`packages/context-protocol/src/rpc.ts`), so that frame routes instead of being dropped. The
-> underlying defect is unchanged: *any* frame the validator rejects still strands its caller,
-> and only a default request timeout or an error handler on the drop path fixes that.
-
-#### 3.1.5 `ContextServer#dispose()` does not abort in-flight handler signals
-
-Handler controllers live in `#receivedRequests` and are aborted only from the
-`notifications/cancelled` branch (`packages/context-rpc/src/rpc.ts:191-194`). The dispose chain
-is `rpc.ts:88` `super({ dispose: () => this.#dispose() })` → `:160` `#dispose()` → `:146`
-`#close()` → `:155-158` `#endPendingRequests()`, which touches only `#exchanges.endAll` and
-`#continuations.clearAll`. `ContextServer` (`packages/context-server/src/server.ts:131`)
-overrides no part of it. So disposing a server leaves every running tool handler running, with
-nothing to observe that the connection is gone. Note the interaction with 3.1.1: while the read
-loop serializes, at most one handler is ever in flight, so the blast radius is currently one
-handler — fixing the read loop widens it.
+Everything below was verified against source. Nothing here is speculative.
 
 ### 3.2 Test-coverage gaps
 
@@ -217,29 +88,11 @@ validates **none** of them — zero references to any of those header names anyw
 ignores its output, and **any client-side header-encoding bug is invisible to every
 mokei-against-mokei suite by construction**, no matter how many are added.
 
-This is not hypothetical: it already produced one real defect. `Mcp-Name` was omitted for
+This is not hypothetical: it already produced two real defects. `Mcp-Name` was omitted for
 `resources/read`, and it was found the day an SDK peer was added — not by any of the
-mokei-against-mokei coverage that preceded it. `Mcp-Param-*` is the same shape, built by the
-same code, and still has unit coverage only. The fix is not more unit tests; it is a peer that
-reads the headers (see 3.2.3).
-
-#### 3.2.2 ~~mokei never emits the Base64 sentinel form of `Mcp-Name`~~ — **fixed 2026-08-02**
-
-A genuine conformance gap, not an unexercised option. `packages/http-client/src/transport.ts:282`
-emits the raw value: `headers['Mcp-Name'] = nameValue`, with no fallback. The sentinel encoder
-`encodeHeaderValue` (`packages/http-client/src/x-mcp-header.ts:99-108`, the `=?base64?…?=`
-form) exists but is called only from `buildParamHeaders` (`:271`), for `Mcp-Param-*`.
-
-The sentinel exists precisely so a name or URI that cannot survive as a raw HTTP field-value —
-non-ASCII, control characters, anything needing folding — can still be sent. A tool, prompt or
-resource URI in that class is silently mis-sent today.
-
-> **Fixed.** Worse than "mis-sent", as it turned out: `new Headers()` throws a `TypeError` on any
-> character above U+00FF, and `fetch` builds one internally, so `readResource` on such a URI came
-> back as an opaque `Request failed: Cannot convert argument to a ByteString…`. `Mcp-Name` now
-> goes through `encodeHeaderValue`. Covered by a unit test that constructs a real `Headers` (a
-> mocked `fetch` never does) and by an SDK-peer interop read of a non-ASCII resource URI, which
-> is the only place a conformant `decodeMcpParamValue` sees the sentinel.
+mokei-against-mokei coverage that preceded it. The Base64 sentinel gap (since fixed) was the
+same shape. `Mcp-Param-*` is built by the same code and still has unit coverage only. The fix
+is not more unit tests; it is a peer that reads the headers (see 3.2.3).
 
 #### 3.2.3 Near-term cleanup — point `checkMokeiClient` at the SDK peer for `2026-07-28`
 
@@ -270,7 +123,7 @@ The SDK-client direction has no harness helper yet; adding one is the counterpar
 Note `serveStdio(factory, { legacy: 'reject' })` if a `2026-07-28`-only SDK stdio server is
 wanted (`server/dist/stdio.d.mts:20,61`).
 
-#### 3.2.4 Still unexercised against mokei after this branch
+#### 3.2.4 Still unexercised against mokei
 
 - `Mcp-Param-*` entirely (unit coverage only — see 3.2.1).
 - Negative `Mcp-Name` cases.
@@ -291,44 +144,17 @@ wanted (`server/dist/stdio.d.mts:20,61`).
   `ServerClient.createMessage` / `elicit` / `listRoots` throw `MRTRNotSupportedError` first.
   Revisit with MRTR (B7).
 
-#### 3.3.2 `#resolveProtocol` should mark envelope violations in structured `data`
-
-`packages/http-server/src/stateless.ts:45-52`, `isEnvelopeFailure`, keys on **prose**:
-
-```ts
-if (error.code === INVALID_PARAMS) {
-  return typeof error.message === 'string' &&
-    error.message.startsWith('Missing "io.modelcontextprotocol/')
-}
-```
-
-The thrower is `#resolveProtocol` in a *different package*
-(`packages/context-server/src/server.ts:259`), with two `INVALID_PARAMS` sites today (`:285`
-missing `META_PROTOCOL_VERSION`, `:298` missing `META_CLIENT_CAPABILITIES`) plus two
-`UNSUPPORTED_PROTOCOL_VERSION` (`:266`, `:289`). A third `INVALID_PARAMS` thrower added later
-escapes every existing test unless its author happens to open the message with `Missing "` —
-a cross-package coupling through a string prefix, already flagged in a comment at
-`packages/context-server/test/envelope-errors.test.ts:13`. Attach structured `data` marking the
-failure as an envelope violation and have the HTTP transport key on that field instead.
-
 #### 3.3.3 `2025-11-25`'s `clientMethods` omits `resources/subscribe`/`unsubscribe`
 
-`packages/context-protocol/src/versions/2025-11-25.ts:83-95` lists eleven client methods,
-omitting both, although `clientRequest` / `clientMessage` (`:36-37`, `:65-66`) do include
-`subscribeRequest` / `unsubscribeRequest`.
+`packages/context-protocol/src/versions/2025-11-25.ts` lists eleven client methods, omitting
+both, although `clientRequest` / `clientMessage` do include `subscribeRequest` /
+`unsubscribeRequest`.
 
-**Do not simply widen the table.** `packages/context-server/src/server.ts:354` gates *inbound*
+**Do not simply widen the table.** `packages/context-server/src/server.ts` gates *inbound*
 requests on that same set (`if (!protocol.clientMethods.has(request.method))` →
 `METHOD_NOT_FOUND`), so widening it changes server behavior too: mokei would start accepting
 subscribe/unsubscribe requests it has no dispatch for. Fix this together with the
 `2025-11-25` side of B4 (§2 item 7), not on its own.
-
-#### 3.3.4 `@enkaku/transport` is a `devDependency` but imported at runtime
-
-`packages/http-server/package.json` lists it under `devDependencies` only, while
-`packages/http-server/src/handler.ts:1` and `packages/http-server/src/stateless.ts:1` both do
-`import { Transport } from '@enkaku/transport'` — value imports, used at runtime. A consumer
-installing `@mokei/http-server` alone gets it only by hoisting luck. Move it to `dependencies`.
 
 #### 3.3.5 The CLI's `-p` means three different things
 
@@ -348,147 +174,19 @@ proposal.
   `requiresPerRequestLogLevel` (`packages/context-protocol/src/versions/types.ts:32,43`). Drift
   is already guarded by a test (`packages/context-protocol/test/versions.test.ts:124-130`), so
   this is tidying, not a defect.
-- The full per-revision `ServerRequest` / `ServerNotification` / `ServerResult` type split.
+- The full per-revision `ServerRequest` / `ServerNotification` type split. The result side was
+  split by the defect wave; requests and notifications still share the cross-revision unions.
 - **Host-level caching of `'auto'` resolution.** `ContextClient` already caches its resolved
   revision for the transport's lifetime, and each context owns exactly one transport, so the only
   thing a host-level cache would add is reuse *across* contexts sharing a config — which needs a
   registry keyed by structural config identity, invalidated on a signal nobody has specified.
   Speculative work for one saved round trip.
-- ~~**The website's `createTool(` rot.**~~ **Fixed 2026-08-02, not deferred.**
-  `website/docs/quick-start.mdx` called `createTool` positionally at six sites and used
-  `req.arguments` where the real handler receives `req.input`, so the page's primary example did
-  not run at all. All six sites converted to the object form, and the example was then executed
-  verbatim end to end: `mokei inspect` against it reproduces the page's own documented
-  `discovered` output, and all three tools (`sqlite_run`, `sqlite_all`, `sqlite_get`) round-trip
-  through a real host. The 7th site, `website/docs/api/context-server/index.md:500`, is stale
-  typedoc output — the source docstring is already correct
-  (`packages/context-server/src/types.ts:177`), so it self-heals on the next docs build.
-- **The website quick-start's chat walkthrough is obsolete**, found during the same sweep and
-  unrelated to protocol revisions: it documents an inquirer-style `? Select an action …` menu
+- **The website quick-start's chat walkthrough is obsolete**, found during a documentation sweep
+  and unrelated to protocol revisions: it documents an inquirer-style `? Select an action …` menu
   (`Add a context` / `Send a message` / `Select tools to enable`) and a `mokei chat ollama`
   invocation. The CLI is now an Ink TUI driven by slash commands, and the command is
   `mokei chat --provider ollama`. Rewriting it needs a real PTY run to capture accurate output,
-  which is why it was not attempted during a documentation sweep.
-
-### 3.5 Findings from the whole-plan review (filed 2026-08-02)
-
-Everything below was verified against source on `feat/mcp-2026-07-28-core` after the blocking
-fixes from that review landed. Nothing here is speculative.
-
-#### 3.5.1 `2026-07-28` over HTTP has no cancellation channel from the client
-
-The server implemented its half: `runStatelessExchange` takes the incoming `request.signal`,
-wires `onAbort` to `finish()`, and tears the throwaway `ContextServer` down when the caller hangs
-up (`packages/http-server/src/stateless.ts`). The client never hangs up. `HTTPTransport`'s
-`AbortController` (`packages/http-client/src/transport.ts`, in `#sendMessage`) is armed only for
-time-to-headers and is discarded before `#handleSSEResponse` reads the body — deliberately, so a
-long streamed tool call is not cut off mid-flight. The consequence is that an aborted `callTool`
-rejects locally while the server runs the tool to completion, and the exchange's `ContextServer`
-lives until the tool returns or the 30s timer fires.
-
-`notifications/cancelled` does not close it: on a stateless exchange it arrives as a separate
-POST, which stands up its own throwaway server and is acknowledged `202` without dispatch —
-correctly, since a sessionless POST cannot prove it owns the id it names (see
-`StatelessExchangeParams.signal`'s own comment).
-
-Design to implement: key the fetch/stream `AbortController` by outgoing request id inside
-`HTTPTransport`, and abort that entry when an outgoing `notifications/cancelled` names the id
-**and** the in-flight request's revision has `requiresHandshake === false` — derived from
-`PROTOCOLS[version]`, never a version literal. Aborting the fetch is what the server observes as
-the disconnect it already handles. Two interactions to keep in view: the read-loop serialization
-in 3.1.1 (a cancellation is not read until the handler it names has settled, so the abort is a
-no-op until that is fixed), and 3.1.5 (`dispose()` does not abort handler signals, so tearing the
-server down does not by itself stop the tool).
-
-#### 3.5.2 ~~Concurrent stateless exchanges are uncapped~~ — **fixed 2026-08-02**
-
-The session path has `maxSessions` and answers `503` past it. The stateless path had no
-analogue: every POST that declares a revision with `requiresRequestMeta` built a throwaway
-`ContextServer` with nothing counting them, and `statelessTimeoutMs` is no backstop — `settle()`
-clears the timer on the *first* write, so a tool that emits one progress notification and then
-blocks holds its server, transport and connection for as long as the client keeps reading.
-
-> **Fixed.** `HTTPHandlerParams.maxStatelessExchanges`, default
-> `DEFAULT_MAX_STATELESS_EXCHANGES` (100 — an order of magnitude below `maxSessions`, because a
-> session is one client whereas a stateless exchange is one in-flight request). Counted over the
-> `statelessTeardowns` set the handler already maintained; past the cap a POST is refused with
-> `503` and `Retry-After: 1` **before** anything is built for it. Scoped to the stateless path
-> only; the `2025-11-25` session path is untouched.
-
-#### 3.5.3 ~~`notify()` is decorated but not gated~~ — **fixed 2026-08-02**
-
-`ContextClient.notify` stamped the revision via `decorateNotification` but checked nothing
-against the revision's own notification set — `ProtocolDefinition` had lost that set when the
-notification suppression was reversed. So `client.notify('roots/list_changed', {})` type-checked
-on a `2026-07-28` client and put a frame on the wire that `PROTOCOLS['2026-07-28'].clientMessage`
-itself rejects.
-
-> **Fixed.** `ProtocolDefinition.clientNotifications` restored as the notification counterpart of
-> `clientMethods` — kept a separate set so gating requests cannot accidentally admit a
-> notification as a request — and `notify()` now refuses with `MethodNotInRevisionError`,
-> comparing the wire method (`notifications/${event}`, since `ContextRPC.notify` takes the
-> suffix). A drift guard in `packages/context-protocol/test/versions.test.ts` drives every
-> declared name through the revision's own `clientMessage` validator, so the set and the union
-> cannot diverge silently.
-
-#### 3.5.4 ~~`addHTTPContext` spells the `'2026-07-28'` default a second time~~ — **fixed 2026-08-02**
-
-`ContextHost.addHTTPContext` wrote the default revision itself instead of delegating to
-`createHostedContext`, which already applies it.
-
-> **Fixed.** It now builds its context through `createHostedContext`, leaving exactly one place
-> in `packages/host/src/host.ts` that names the default. Verified by mutation: changing that one
-> default now fails all four `defaults to 2026-07-28` tests, where before it left
-> `addHTTPContext`'s passing.
-
-#### 3.5.5 No default timeout on an ordinary request
-
-The follow-up to 3.1.4, and the general form of the bound that `setupTimeout` now restores for
-connection setup.
-`ContextRPC.request` arms a timer only when the caller passes `options.timeout`
-(`packages/context-rpc/src/rpc.ts`), and no layer above it supplies a default. Combined with the
-drop path in 3.1.4 — a frame the inbound validator rejects is discarded, not rejected — any peer
-that answers unparseably strands its caller for the lifetime of the process. `setupTimeout` now
-bounds connection setup on both revisions, so the remaining exposure is every request after it.
-Wanted: a `ClientParams`-level default request timeout, and an error handler on the drop path so
-a rejected frame fails its exchange instead of vanishing. Deliberately not built during the
-2026-08-02 fix wave — it changes the failure mode of every request on both revisions and wants
-its own task.
-
-#### 3.5.6 Transport minors
-
-- `SSEWriter`-building in `runStatelessExchange`'s `write()` has no `finished` guard, so a write
-  arriving after teardown builds a fresh SSE writer nobody will ever consume.
-- `handleStateless`'s `_requestVersion` parameter is dead.
-- `StatelessExchangeParams` is exported while `runStatelessExchange` is not.
-- `CreateHTTPClientParams.protocolVersion` shadows `HTTPTransportParams.protocolVersion` with a
-  different meaning (the revision to speak vs. the header seed), which makes the documented
-  header seed unreachable through `createHTTPClient`.
-- `MCP_NAME_HEADER_SOURCE` is a plain object literal where the lookup would be safer as a `Map`
-  or a frozen record — a body carrying `constructor` or `__proto__` as a method name cannot
-  reach it today (methods come from a fixed table), but the shape invites it.
-
-#### 3.5.7 Doc minors
-
-- Three of the six `protocolVersion` doc comments omit the "a `2025-11-25`-only server needs an
-  explicit value or `'auto'`" sentence the other three carry. `addDirectContext` is the one most
-  likely to bite, since its callers supply their own `ServerConfig` and may well be pinning the
-  older revision.
-- `packages/host/README.md`'s new protocol-version section omits `createHostedContext`,
-  `spawnHostedContext` and `ProxyHost.spawn`, all of which take the same parameter.
-
-#### 3.5.8 `SSEWriter.close()` discards a teardown failure silently
-
-`close()` swallows the rejection from `#writer.close()` rather than logging it. The `catch` is
-needed — every route into that method is a teardown path with nothing left to await on, so
-without it a faulted stream raises an unhandled rejection in the server process, which is a
-crash under Node's default `--unhandled-rejections=throw`. But `SSEWriter` has no logger, so a
-diagnosable stream fault now vanishes. Giving it one is a wider change than the fix that
-introduced the guard.
-
-Note the hazard is latent rather than live: `createSSEStream`'s sink guards every write with
-`if (!closed)` and never throws, so its writable does not error and `close()` resolves. A
-faulted writer is constructible at the `SSEWriter` boundary, which is where the guard is tested.
+  which is why it was not attempted during that sweep.
 
 ## Notes
 

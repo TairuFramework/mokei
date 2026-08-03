@@ -10,6 +10,7 @@ import type {
   InitializeRequest,
   InitializeResult,
   Log,
+  ProtocolVersion,
   Root,
   ServerMessage,
   ServerRequest,
@@ -373,7 +374,7 @@ describe('ContextClient', () => {
   describe('supports outgoing prompt requests', () => {
     test('lists available prompts', async () => {
       const prompts = [
-        { name: 'first', description: 'test', arguments: { type: 'object' } },
+        { name: 'first', description: 'test', arguments: [{ name: 'topic' }] },
         { name: 'second', description: 'test' },
       ]
       const request = executeClientRequest(
@@ -1202,6 +1203,16 @@ describe('protocol version selection', () => {
     ).toThrow(MRTRNotSupportedError)
   })
 
+  test('an unsupported protocolVersion string throws instead of probing', () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    expect(() => {
+      new ContextClient({
+        protocolVersion: '2024-01-01' as ProtocolVersion,
+        transport: transports.client,
+      })
+    }).toThrow(UnsupportedProtocolVersionError)
+  })
+
   // The refusal is derived from `serverMethods`, so it will fire for any future revision that
   // also drops the server-initiated requests. The message has to name that revision rather than
   // the one that happened to introduce the restriction.
@@ -1212,7 +1223,7 @@ describe('protocol version selection', () => {
   test('rejects an input_required result until MRTR lands', async () => {
     const { client } = createTestClient({
       protocolVersion: '2026-07-28',
-      respond: () => ({ resultType: 'input_required', inputRequests: [] }),
+      respond: () => ({ resultType: 'input_required', inputRequests: {} }),
     })
     await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow(
       InputRequiredNotSupportedError,
@@ -1378,16 +1389,14 @@ describe('outbound requests and notifications on the resolved revision', () => {
   }
 
   // The cancellation has to reach the peer on *every* transport, not just the ones that can read
-  // a revision off a session: `ContextRPC._handleMessage` acts on it directly, aborting the
-  // handler signal of the request it names, and that is the only code path by which a server
-  // could stop working on a call nobody is waiting for any more.
-  //
-  // "could", not "does": `ContextRPC`'s read loop awaits each message's handler before reading
-  // the next, so a cancellation is not read until the handler it names has already settled, by
-  // which point `#receivedRequests[id]` is gone and the abort is a no-op. The stamp asserted
-  // below is still what a peer routes the frame on, and is what has to be right for the abort to
-  // land once the read loop no longer serializes — tracked in
-  // `docs/agents/plans/backlog/2026-06-20-mcp-draft-remaining.md`.
+  // a revision off a session: `ContextRPC._handleMessage` routes `notifications/cancelled`
+  // straight to `RequestScheduler.cancel`, which aborts the named request's handler signal if
+  // it is running (or drops it unstarted if it is still queued) — the only code path by which a
+  // server could stop working on a call nobody is waiting for any more. The read loop dispatches
+  // requests concurrently rather than awaiting each handler before reading the next frame, so a
+  // cancellation is read and acted on while the handler it names is genuinely still in flight —
+  // the abort lands, it does not merely have the opportunity to. The stamp asserted below is
+  // what a peer routes the frame on, which is what has to be right for that abort to land.
   test('2026-07-28 sends a cancellation stamped with its protocol version', async () => {
     const cancelled = await cancelInFlight('2026-07-28')
     const meta = (cancelled.params as { _meta?: Record<string, unknown> })._meta
@@ -1957,5 +1966,91 @@ describe("'auto' probe", () => {
     })
     await expect(client.listPrompts()).resolves.toEqual({ prompts: [] })
     expect(client.protocolVersion).toBe('2025-11-25')
+  })
+})
+
+describe('ContextRPC configuration surfaced through ClientParams', () => {
+  test('maxConcurrentRequests bounds concurrent server-initiated handler execution', async () => {
+    const started: Array<string> = []
+    let releaseSlow: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      releaseSlow = resolve
+    })
+
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+      maxConcurrentRequests: 1,
+      createMessage: async () => {
+        started.push('slow')
+        await gate
+        return { role: 'assistant', model: 'test', content: { type: 'text', text: 'slow' } }
+      },
+      elicit: () => {
+        started.push('quick')
+        return { action: 'accept', content: {} }
+      },
+    })
+
+    client.initialize()
+    await handleServerInitialize(transports.server, {
+      ...DEFAULT_INITIALIZE_RESULT,
+      capabilities: { sampling: {}, elicitation: {} },
+    })
+
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'sampling/createMessage',
+      params: { messages: [], maxTokens: 1 },
+    } as ServerRequest)
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'elicitation/create',
+      params: { message: 'hi', requestedSchema: { type: 'object', properties: {} } },
+    } as ServerRequest)
+
+    await vi.waitFor(() => expect(started).toContain('slow'))
+    // With the cap at 1, `quick` cannot start until `slow` frees its slot — the scheduler
+    // will not run it early no matter how long this assertion waits, so this is a real
+    // invariant rather than a timing race.
+    expect(started).toEqual(['slow'])
+
+    releaseSlow()
+    await vi.waitFor(() => expect(started).toEqual(['slow', 'quick']))
+
+    await transports.dispose()
+  })
+
+  test('onError set via ClientParams receives a server-initiated request handler failure', async () => {
+    const onError = vi.fn()
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    // No `listRoots` configured, so an inbound `roots/list` throws METHOD_NOT_FOUND from
+    // `_handleRequest` — a genuine handler failure, which is what `RPCParams.onError` is
+    // documented to report.
+    const client = new ContextClient({
+      protocolVersion: '2025-11-25',
+      transport: transports.client,
+      onError,
+    })
+
+    client.initialize()
+    await handleServerInitialize(transports.server)
+
+    transports.server.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'roots/list',
+    } as ServerRequest)
+
+    await expect(transports.server.read()).resolves.toEqual({
+      done: false,
+      value: { jsonrpc: '2.0', id: 1, error: expect.anything() },
+    })
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    await transports.dispose()
   })
 })

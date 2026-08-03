@@ -43,8 +43,11 @@ import type {
   SetLevelRequest,
 } from '@mokei/context-protocol'
 import {
+  discoverResult,
   type ErrorResponse,
+  INVALID_REQUEST,
   inferSchemaDraft,
+  isSupportedProtocolVersion,
   METHOD_NOT_FOUND,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
@@ -90,6 +93,15 @@ const SERVER_MESSAGE_VALIDATORS: Record<ProtocolVersion, Validator<ServerMessage
  * total rather than making the read loop depend on that ordering.
  */
 const validateAnyServerMessage = createValidator(serverMessage)
+
+/**
+ * Validates a `server/discover` result against `2026-07-28`'s own schema, replacing the cast
+ * `#sendDiscover()` used to return through. `discoverResult` is not a member of `2025-11-25`'s
+ * `serverResult` — `server/discover` does not exist on that revision, and `#sendDiscover()` is
+ * only ever called once a handshake-less revision is known or being probed — so one validator
+ * covers every caller.
+ */
+const validateDiscoverResult = createValidator(discoverResult)
 
 export const DEFAULT_CLIENT_INFO: Implementation = {
   name: 'Mokei',
@@ -151,8 +163,18 @@ const LIST_CHANGED_NOTIFICATIONS: ReadonlySet<string> = new Set([
 ])
 
 export class UnsupportedProtocolVersionError extends Error {
-  constructor(received: string, expected: ProtocolVersion) {
-    super(`Server responded with unsupported protocolVersion "${received}"; expected "${expected}"`)
+  /**
+   * `expected` is only known when this is raised against a server's handshake response (the
+   * negotiated version has to match the one the client asked for). A rejected config-time pin
+   * (`ClientParams.protocolVersion`) has no single "expected" value to name, so it's omitted
+   * there and the message drops the clause instead of naming an arbitrary revision.
+   */
+  constructor(received: string, expected?: ProtocolVersion) {
+    super(
+      expected == null
+        ? `Unsupported protocolVersion "${received}"`
+        : `Server responded with unsupported protocolVersion "${received}"; expected "${expected}"`,
+    )
     this.name = 'UnsupportedProtocolVersionError'
   }
 }
@@ -361,6 +383,26 @@ export type ClientParams = {
   listRoots?: Array<Root> | ListRootsHandler
   logLevel?: LoggingLevel
   /**
+   * Server-initiated request handlers (`sampling/createMessage`, `elicitation/create`,
+   * `roots/list` on `2025-11-25`) allowed to run at once (default 100). Symmetric with
+   * `@mokei/context-server`'s `ServerParams.maxConcurrentRequests`.
+   */
+  maxConcurrentRequests?: number
+  /** Server-initiated requests allowed to wait for a slot before further ones are refused (default 1000). */
+  maxQueuedRequests?: number
+  /**
+   * Called for an inbound frame that could neither be validated nor routed to anything —
+   * an invalid notification, or a malformed frame naming an id nobody is waiting on — and
+   * for server-initiated request handlers that failed. Without it such frames vanish silently.
+   */
+  onError?: (error: Error) => void
+  /**
+   * Default timeout for every request after setup. Unset means unbounded — `tools/call` can
+   * legitimately run for minutes, and `@mokei/session` already bounds tool calls itself.
+   * `setupTimeout` covers connection setup regardless of this value.
+   */
+  requestTimeout?: number
+  /**
    * Bounds every setup-time round trip: the `2025-11-25` handshake, the `'auto'` probe, and the
    * `server/discover` a revision without a handshake sends in their place. It is the only thing
    * that fails a connection to a server that is spawned but never answers.
@@ -424,13 +466,24 @@ export class ContextClient<
     // Indirected through a method so the validator tracks the resolved revision rather than
     // being frozen at construction, which `protocolVersion: 'auto'` requires.
     super({
+      defaultRequestTimeout: params.requestTimeout,
       validateMessageIn: (message) => this.#validateServerMessage(message),
       transport: params.transport,
+      maxConcurrentRequests: params.maxConcurrentRequests,
+      maxQueuedRequests: params.maxQueuedRequests,
+      onError: params.onError,
     })
 
     this.#createMessage = params.createMessage
     this.#elicit = params.elicit
     this.#listRoots = params.listRoots
+
+    // `isSupportedProtocolVersion` before indexing: `PROTOCOLS[unknown]` is `undefined`, which
+    // is nullish, so an unvalidated string used to skip the handler check below and reach
+    // `#setup()` as though `'auto'` had been asked for — silently probing instead of failing.
+    if (params.protocolVersion !== 'auto' && !isSupportedProtocolVersion(params.protocolVersion)) {
+      throw new UnsupportedProtocolVersionError(params.protocolVersion)
+    }
 
     // Derived from `serverMethods`, not a hardcoded version check: a handler is refused
     // exactly when its own method (`sampling/createMessage`/`elicitation/create`/`roots/list`)
@@ -984,7 +1037,11 @@ export class ContextClient<
     if ('error' in message) {
       throw RPCError.fromResponse(message as ErrorResponse)
     }
-    return message.result as DiscoverResult
+    const discovered = validateDiscoverResult(message.result)
+    if (discovered.issues != null) {
+      throw new RPCError(INVALID_REQUEST, 'Invalid server/discover result')
+    }
+    return discovered.value
   }
 
   /**

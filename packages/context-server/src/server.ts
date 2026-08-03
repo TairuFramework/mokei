@@ -30,6 +30,7 @@ import type {
   Tool,
 } from '@mokei/context-protocol'
 import {
+  ENVELOPE_VIOLATION,
   INVALID_PARAMS,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
@@ -107,6 +108,16 @@ export type ServerConfig = {
 
 export type ServerParams = ServerConfig & {
   transport: ServerTransport
+  /** Request handlers allowed to run at once (default 100). */
+  maxConcurrentRequests?: number
+  /** Requests allowed to wait for a slot before further requests are refused (default 1000). */
+  maxQueuedRequests?: number
+  /**
+   * Called for an inbound frame that could neither be validated nor routed to anything —
+   * an invalid notification, or a malformed frame naming an id nobody is waiting on — and
+   * for request handlers that failed. Without it such frames vanish silently.
+   */
+  onError?: (error: Error) => void
 }
 
 export type ServerEvents = {
@@ -144,7 +155,13 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #toolsList: Array<Tool> = []
 
   constructor(params: ServerParams) {
-    super({ transport: params.transport, validateMessageIn: validateClientMessage })
+    super({
+      transport: params.transport,
+      validateMessageIn: validateClientMessage,
+      maxConcurrentRequests: params.maxConcurrentRequests,
+      maxQueuedRequests: params.maxQueuedRequests,
+      onError: params.onError,
+    })
 
     this.#client = {
       createMessage: this.createMessage.bind(this),
@@ -282,7 +299,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         (version) => !PROTOCOLS[version].requiresRequestMeta,
       )
       if (fallback == null) {
-        throw new RPCError(INVALID_PARAMS, `Missing "${META_PROTOCOL_VERSION}" in request _meta`)
+        throw new RPCError(INVALID_PARAMS, `Missing "${META_PROTOCOL_VERSION}" in request _meta`, {
+          [ENVELOPE_VIOLATION]: true,
+        })
       }
       protocol = PROTOCOLS[fallback]
     } else if (!this.#protocolVersions.includes(requested as ProtocolVersion)) {
@@ -295,7 +314,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
 
     if (protocol.requiresRequestMeta && meta?.[META_CLIENT_CAPABILITIES] == null) {
-      throw new RPCError(INVALID_PARAMS, `Missing "${META_CLIENT_CAPABILITIES}" in request _meta`)
+      throw new RPCError(INVALID_PARAMS, `Missing "${META_CLIENT_CAPABILITIES}" in request _meta`, {
+        [ENVELOPE_VIOLATION]: true,
+      })
     }
     return protocol
   }

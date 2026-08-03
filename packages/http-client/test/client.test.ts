@@ -55,6 +55,42 @@ describe('createHTTPClient', () => {
     expect(client).toBeInstanceOf(ContextClient)
   })
 
+  // The capability `protocolVersionHeader` restores: previously it collided with
+  // `protocolVersion` in the intersected params type and was stripped before reaching
+  // `HTTPTransport`, so the seed never reached the wire through this entry point.
+  test('forwards protocolVersionHeader to the transport, seeding the initialize request', async () => {
+    fetchMock.mockImplementation((_url: string, init: { body?: string }) => {
+      const message: PostedMessage = init.body == null ? {} : JSON.parse(init.body)
+      if (message.method === 'notifications/initialized') {
+        return new Response(null, { status: 202 })
+      }
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: message.id,
+          result: {
+            protocolVersion: '2025-11-25',
+            capabilities: {},
+            serverInfo: { name: 'test-server', version: '1.0' },
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    })
+
+    const client = createHTTPClient({
+      url: TEST_URL,
+      protocolVersion: '2025-11-25',
+      protocolVersionHeader: '2024-11-05',
+    })
+    await client.initialize()
+
+    const [, options] = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }]
+    expect(options.headers['MCP-Protocol-Version']).toBe('2024-11-05')
+
+    await client.dispose()
+  })
+
   test('speaks the revision it is given rather than a fixed one', async () => {
     // The `tools/list` POST is answered with 202 so nothing is enqueued and the request stays
     // open; only the outgoing frame is under test here.

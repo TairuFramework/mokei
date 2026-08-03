@@ -190,15 +190,11 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
    * tells a peer which revision an out-of-band frame belongs to. This drives it through a real
    * process boundary — the stamp has to survive serialization, not just unit-level decoration.
    *
-   * What this does **not** cover, deliberately, is the server-side handler actually aborting.
-   * `ContextRPC`'s read loop awaits each message's handler before reading the next
-   * (`packages/context-rpc/src/rpc.ts`, `#readLoop`), so while a tool handler is pending the
-   * server reads nothing at all — the cancellation is only read once the handler has already
-   * settled, by which point `#receivedRequests[id]` has been deleted and the abort is a no-op.
-   * That is independent of anything here, and measured rather than inferred: a second tool call
-   * issued while `hang` was pending was answered only after `hang`'s own 500ms deadline expired.
-   * Asserting the abort would therefore pin the read loop, not the cancellation, and asserting
-   * its absence would pin a bug as expected behavior — so this asserts neither.
+   * This also covers the server-side handler actually aborting. `ContextRPC`'s read loop no
+   * longer awaits each message's handler before reading the next
+   * (`packages/context-rpc/src/rpc.ts`, `#readLoop`), so `notifications/cancelled` is read while
+   * `hang`'s handler is still pending, and its `signal` aborts before the handler's own deadline
+   * would otherwise settle it.
    */
   test('a cancelled tool call sends a stamped cancellation the server can place', async () => {
     spawned = await spawnMokeiStdioClient(MOKEI_STDIO_SERVER_CANCELLATION_PATH, PROTOCOL_VERSION)
@@ -241,6 +237,12 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
     // dropped, and one that killed the read loop would leave this call unanswered forever. It
     // also confirms the cancelled call was genuinely in flight when it was cancelled.
     expect(await callText(client, 'started')).toBe('true')
+
+    // The cancellation reaches the handler that is still running — the read loop no longer
+    // waits for it to settle first.
+    await vi.waitFor(async () => {
+      expect(await callText(client, 'aborted')).toBe('true')
+    })
   })
 
   test('mokei client against the mokei server', async () => {
