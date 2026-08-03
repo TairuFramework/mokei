@@ -117,7 +117,7 @@ Everything below was verified against source on that branch. Nothing here is spe
 
 ### 3.1 Correctness defects
 
-#### 3.1.1 The read loop serializes every server — needs its own task
+#### 3.1.1 ~~The read loop serializes every server~~ — **fixed 2026-08-03**
 
 `ContextRPC.#readLoop` (`packages/context-rpc/src/rpc.ts:114`) does
 `response = await this._handleMessage(next.value)` inside its `while (true)` loop. A server
@@ -150,7 +150,7 @@ not a patch. Two suites currently document the current behavior in prose and wou
 updating: `integration-tests/suites/interop-2026-07-28-stdio.test.ts` (the cancellation test's
 header) and `integration-tests/support/interop/mokei-stdio-server-cancellation.ts`.
 
-#### 3.1.2 `resultType` is unenforced inbound on `2026-07-28`
+#### 3.1.2 ~~`resultType` is unenforced inbound on `2026-07-28`~~ — **fixed 2026-08-03**
 
 Three compounding causes — a complete fix needs **both** halves, since applying the first alone
 changes nothing while the permissive branch remains:
@@ -167,7 +167,7 @@ changes nothing while the permissive branch remains:
    in `#probeDiscover` — `packages/context-client/src/client.ts:855`,
    `return message.result as DiscoverResult`.
 
-#### 3.1.3 An unsupported `protocolVersion` string silently degrades to auto-detection
+#### 3.1.3 ~~An unsupported `protocolVersion` string silently degrades to auto-detection~~ — **fixed 2026-08-03**
 
 `packages/context-client/src/client.ts:411`:
 `const protocol = params.protocolVersion === 'auto' ? null : PROTOCOLS[params.protocolVersion]`.
@@ -178,7 +178,7 @@ string — a config file, a CLI argument that bypassed `parseProtocolOption`, an
 silently gets probing instead of a failure. `isSupportedProtocolVersion` exists; the constructor
 does not use it.
 
-#### 3.1.4 An invalid inbound response strands its caller
+#### 3.1.4 ~~An invalid inbound response strands its caller~~ — **fixed 2026-08-03**
 
 `ContextRPC._handleMessage` (`packages/context-rpc/src/rpc.ts:169-178`): when validation fails
 and the frame is not a request, it hits `// TODO: call optional error handler` and `return null`.
@@ -195,7 +195,7 @@ timeout only when one was passed (`if (options?.timeout != null)`), and nothing 
 > underlying defect is unchanged: *any* frame the validator rejects still strands its caller,
 > and only a default request timeout or an error handler on the drop path fixes that.
 
-#### 3.1.5 `ContextServer#dispose()` does not abort in-flight handler signals
+#### 3.1.5 ~~`ContextServer#dispose()` does not abort in-flight handler signals~~ — **fixed 2026-08-03**
 
 Handler controllers live in `#receivedRequests` and are aborted only from the
 `notifications/cancelled` branch (`packages/context-rpc/src/rpc.ts:191-194`). The dispose chain
@@ -375,7 +375,7 @@ proposal.
 Everything below was verified against source on `feat/mcp-2026-07-28-core` after the blocking
 fixes from that review landed. Nothing here is speculative.
 
-#### 3.5.1 `2026-07-28` over HTTP has no cancellation channel from the client
+#### 3.5.1 ~~`2026-07-28` over HTTP has no cancellation channel from the client~~ — **fixed 2026-08-03**
 
 The server implemented its half: `runStatelessExchange` takes the incoming `request.signal`,
 wires `onAbort` to `finish()`, and tears the throwaway `ContextServer` down when the caller hangs
@@ -441,7 +441,7 @@ itself rejects.
 > default now fails all four `defaults to 2026-07-28` tests, where before it left
 > `addHTTPContext`'s passing.
 
-#### 3.5.5 No default timeout on an ordinary request
+#### 3.5.5 ~~No default timeout on an ordinary request~~ — **fixed 2026-08-03**
 
 The follow-up to 3.1.4, and the general form of the bound that `setupTimeout` now restores for
 connection setup.
@@ -489,6 +489,34 @@ introduced the guard.
 Note the hazard is latent rather than live: `createSSEStream`'s sink guards every write with
 `if (!closed)` and never throws, so its writable does not error and `close()` resolves. A
 faulted writer is constructible at the `SSEWriter` boundary, which is where the guard is tested.
+
+### 3.6 Findings from the `2026-07-28` defect wave (filed 2026-08-03)
+
+Both surfaced by the final whole-branch review of `fix/mcp-2026-07-28-defect-wave`, both left
+unfixed there on scope grounds.
+
+#### 3.6.1 An inbound frame correlates against the client's own request IDs
+
+`#handleIncoming` (`packages/http-client/src/transport.ts:519`) looks up `#pendingMethods` for
+*any* inbound id. A server-initiated request with id `0` therefore calls `#clearExchange(0)` and
+wipes the client's own pending request `0`: the later `notifications/cancelled` cannot abort that
+fetch, and `initialize` / `tools/list` post-processing is skipped. Both ID spaces start at `0`, so
+the collision is likely rather than exotic.
+
+This is the inbound mirror of the outgoing-side bug fixed on that branch. It **predates the
+branch** — reproduced on `main` — which is why it was filed rather than folded in. Confirmed with a
+scratch test: colliding id, the abort never lands; id `99`, it passes.
+
+Fix: skip the correlation when `'method' in message`. One line, same shape as the outgoing gate.
+
+#### 3.6.2 An outgoing response's POST is untracked, so `dispose()` cannot abort it
+
+Fixing 3.6.1's outgoing counterpart meant no longer registering an exchange controller for
+outgoing *responses* (their ids belong to the peer's space). The consequence: that POST is now
+tracked nowhere, so `dispose()` does not abort its in-flight fetch — it is bounded only by the
+30 s time-to-headers timer. Notifications already had this status; responses joined them.
+
+Fix: a separate untracked-controller set, aborted on dispose alongside `#exchangeControllers`.
 
 ## Notes
 
