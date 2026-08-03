@@ -1015,6 +1015,62 @@ describe('HTTPTransport', () => {
     })
   })
 
+  describe('an inbound request does not clobber a pending client request sharing its id', () => {
+    test('a server-initiated request whose id collides with a pending client request leaves that request cancellable', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+
+      // The client's own pending request (id 0), answered on a still-open SSE stream so the
+      // exchange stays tracked while the server pushes its own request on the same stream —
+      // both id spaces start at 0, so this collision is the realistic case.
+      const encoder = new TextEncoder()
+      let sseController!: ReadableStreamDefaultController<Uint8Array>
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          sseController = controller
+        },
+      })
+      fetchMock.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+      // The cancellation notification's own POST.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+
+      await transport.write(request20260728(0))
+      const post = getCallByMethod(fetchMock.mock.calls, 'POST')
+      expect(post[1].signal?.aborted).toBe(false)
+
+      // A server-initiated request reusing id 0, from the server's own id space, arrives on
+      // the same stream before the client's own request has a response.
+      const serverRequest: ServerMessage = {
+        jsonrpc: '2.0',
+        id: 0,
+        method: 'sampling/createMessage',
+        params: {},
+      } as ServerMessage
+      sseController.enqueue(encoder.encode(`data: ${JSON.stringify(serverRequest)}\n\n`))
+
+      // Read it off the transport, proving #handleIncoming processed it.
+      const { value } = await transport.read()
+      expect(value).toEqual(serverRequest)
+
+      // The client's own pending request 0 must still be cancellable: the collision above
+      // must not have cleared its exchange-tracking entry.
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 0, _meta: { ...requestMeta20260728 } },
+      } as ClientMessage)
+
+      expect(post[1].signal?.aborted).toBe(true)
+
+      sseController.close()
+      await transport.dispose()
+    })
+  })
+
   describe('dispose aborts in-flight exchanges', () => {
     test('dispose aborts a POST whose SSE body never ends', async () => {
       const transport = new HTTPTransport({ url: TEST_URL })

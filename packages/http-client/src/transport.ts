@@ -517,6 +517,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    * `x-mcp-header` annotations, per SEP-2243.
    */
   #handleIncoming(message: ServerMessage): ServerMessage {
+    // A message carrying its own `method` is a server-initiated request or notification, never
+    // a response to one of ours — same invariant as `trackedID` gates on the outgoing side,
+    // above. Both id spaces start at 0, so without this a server-initiated request can collide
+    // with, and wipe, the client's own pending request sharing that id.
+    if ('method' in message) {
+      return message
+    }
     const id = (message as { id?: unknown }).id
     if (typeof id !== 'string' && typeof id !== 'number') {
       return message
