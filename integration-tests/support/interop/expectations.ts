@@ -12,6 +12,7 @@ import {
   GREETING_URI,
   greetingMessage,
   MOKEI_RESOURCE_URIS,
+  MOKEI_TOOL_NAMES,
   SERVER_NAME,
   SERVER_VERSION,
 } from './fixture.ts'
@@ -34,6 +35,16 @@ export type CheckMokeiClientOptions = {
    * the greeting" would pass against a server serving anything at all alongside it.
    */
   resourceURIs?: ReadonlyArray<string>
+  /**
+   * The exact set of tool names the server under test serves. Defaults to the mokei fixture's,
+   * which is what three of the four call sites drive; the two that drive the SDK fixture pass
+   * `SDK_TOOL_NAMES`, which also carries the `x-mcp-header`-annotated `headerEcho`.
+   *
+   * A parameter rather than a subset check, for the same reason `resourceURIs` is one: both sets
+   * are exactly known, and "the list contains echo" would pass against a server serving anything
+   * at all alongside it.
+   */
+  toolNames?: ReadonlyArray<string>
 }
 
 /**
@@ -47,6 +58,7 @@ export async function checkMokeiClient(
 ): Promise<void> {
   const protocolVersion = options.protocolVersion ?? '2025-11-25'
   const resourceURIs = options.resourceURIs ?? MOKEI_RESOURCE_URIS
+  const toolNames = options.toolNames ?? MOKEI_TOOL_NAMES
   if (protocolVersion === '2025-11-25') {
     const initResult = await client.initialize()
     expect(initResult.serverInfo).toMatchObject({ name: SERVER_NAME, version: SERVER_VERSION })
@@ -54,7 +66,7 @@ export async function checkMokeiClient(
   }
 
   const { tools } = await client.listTools()
-  expect(tools.map((tool) => tool.name).sort()).toEqual(['echo', 'sum'])
+  expect(tools.map((tool) => tool.name).sort()).toEqual([...toolNames].sort())
   const sumTool = tools.find((tool) => tool.name === 'sum')
   expect(sumTool?.outputSchema).toMatchObject({ type: 'object' })
 
@@ -81,20 +93,35 @@ export async function checkMokeiClient(
   ])
 }
 
+export type CheckSDKClientOptions = {
+  /**
+   * Revision the connection is expected to have selected, `'2025-11-25'` by default. Asserted
+   * rather than assumed: a client that fell back to the other revision would satisfy every
+   * assertion below, since the fixture surface is identical on both.
+   */
+  protocolVersion?: ProtocolVersion
+}
+
 /**
  * Drives an SDK v2 `Client` against a fixture server. Both of its call sites serve the *mokei*
  * fixture, so its resource set is fixed rather than a parameter — add one the day an SDK client
  * is pointed at the SDK fixture.
  */
-export async function checkSDKClient(client: Client): Promise<void> {
+export async function checkSDKClient(
+  client: Client,
+  options: CheckSDKClientOptions = {},
+): Promise<void> {
+  // Required on the `initialize` result; a specification SHOULD in the discover result's `_meta`
+  // on `2026-07-28`, which mokei stamps on every result (`PROTOCOL.wrapResult`,
+  // `packages/context-protocol/src/versions/2026-07-28.ts`).
   expect(client.getServerVersion()).toMatchObject({
     name: SERVER_NAME,
     version: SERVER_VERSION,
   })
-  expect(client.getNegotiatedProtocolVersion()).toBe('2025-11-25')
+  expect(client.getNegotiatedProtocolVersion()).toBe(options.protocolVersion ?? '2025-11-25')
 
   const { tools } = await client.listTools()
-  expect(tools.map((tool) => tool.name).sort()).toEqual(['echo', 'sum'])
+  expect(tools.map((tool) => tool.name).sort()).toEqual([...MOKEI_TOOL_NAMES].sort())
   const sumTool = tools.find((tool) => tool.name === 'sum')
   expect(sumTool?.outputSchema).toMatchObject({ type: 'object' })
 

@@ -1,7 +1,9 @@
 /**
  * A single MCP surface, defined twice: once with mokei's server API and once with the
- * official SDK v2 API. Both sides expose identical tools and prompts, so every interop test can
- * assert the same tool/prompt expectations regardless of which implementation serves.
+ * official SDK v2 API. Both sides expose identical prompts, so every interop test can assert the
+ * same prompt expectations regardless of which implementation serves. Tools and resources are
+ * both asymmetric — see the `MOKEI_TOOL_NAMES`/`SDK_TOOL_NAMES` comment below for the tool split
+ * (`headerEcho` is SDK-only) and the rest of this header for the resource split.
  *
  * Resources are asymmetric, deliberately: `createMokeiConfig()` also serves a resource template
  * (`ITEM_TEMPLATE_URI`) and a `complete` handler, but `createSDKServer()` has neither. Both were
@@ -23,9 +25,9 @@
  * That's harmless today because no `2025-11-25` suite asserts the capability set, but the next
  * person adding one should know why `completions` shows up.
  *
- * If a future change needs the SDK side to expose a template or `complete` too (e.g. a shared
- * "both sides have identical resources" assertion), extend `createSDKServer()` explicitly rather
- * than assuming this asymmetry is accidental — it isn't.
+ * If a future change needs the SDK side to expose a template, `complete` handler, or a matching
+ * tool set too (e.g. a shared "both sides have identical surface" assertion), extend
+ * `createSDKServer()` explicitly rather than assuming this asymmetry is accidental — it isn't.
  */
 import { fromJsonSchema, McpServer } from '@modelcontextprotocol/server'
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv'
@@ -71,6 +73,15 @@ export const SDK_RESOURCE_URIS: ReadonlyArray<string> = [
   NON_ASCII_RESOURCE_REGISTERED_URI,
 ]
 
+/**
+ * The exact tool set each fixture serves. They differ for the same reason the resource sets do:
+ * only the SDK side carries `headerEcho`, whose `x-mcp-header` annotations exist to put mokei's
+ * `Mcp-Param-*` encoder in front of a conformant decoder. mokei's own server never reads those
+ * headers back, so the tool would be inert surface on that side.
+ */
+export const MOKEI_TOOL_NAMES: ReadonlyArray<string> = ['echo', 'sum']
+export const SDK_TOOL_NAMES: ReadonlyArray<string> = ['echo', 'headerEcho', 'sum']
+
 export const ITEM_TEMPLATE_URI = 'test://items/{id}'
 export const ITEM_TEMPLATE_NAME = 'item'
 
@@ -106,6 +117,30 @@ export const SUM_OUTPUT_SCHEMA = {
   required: ['total'],
   additionalProperties: false,
 } as const
+
+/**
+ * Two `x-mcp-header`-annotated arguments (SEP-2243), both optional so the omitted-argument case
+ * is reachable. `integer` rather than `number` deliberately: neither mokei's encoder nor the SDK's
+ * decoder admits an arbitrary number, and the integer path is compared numerically on the SDK
+ * side while mokei writes canonical decimal.
+ */
+export const HEADER_ECHO_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    tenant: { type: 'string', 'x-mcp-header': 'Tenant' },
+    limit: { type: 'integer', 'x-mcp-header': 'Limit' },
+  },
+  additionalProperties: false,
+} as const
+
+/**
+ * What `headerEcho` returns. Reaching this text at all is the assertion: the SDK validates every
+ * `Mcp-Param-*` header against the body `arguments` *before* dispatch, so a disagreeing or absent
+ * header is answered `-32020` and the handler never runs.
+ */
+export function headerEchoText(tenant: string | undefined, limit: number | undefined): string {
+  return JSON.stringify({ tenant: tenant ?? null, limit: limit ?? null })
+}
 
 export const GREET_ARGUMENTS_SCHEMA = {
   type: 'object',
@@ -211,6 +246,18 @@ export function createSDKServer(): McpServer {
       content: [{ type: 'text', text: JSON.stringify({ total: a + b }) }],
       structuredContent: { total: a + b },
     }),
+  )
+
+  server.registerTool(
+    'headerEcho',
+    {
+      description: 'Echo arguments that are mirrored into Mcp-Param-* request headers',
+      inputSchema: fromJsonSchema<{ tenant?: string; limit?: number }>(
+        HEADER_ECHO_INPUT_SCHEMA,
+        validator,
+      ),
+    },
+    ({ tenant, limit }) => ({ content: [{ type: 'text', text: headerEchoText(tenant, limit) }] }),
   )
 
   server.registerPrompt(

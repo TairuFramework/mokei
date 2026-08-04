@@ -4,6 +4,7 @@ import { createServer } from 'node:http'
 import { PassThrough, type Readable, type Writable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { NodeStreamsTransport } from '@enkaku/node-streams'
+import { Client } from '@modelcontextprotocol/client'
 import { NodeStreamableHTTPServerTransport, toNodeHandler } from '@modelcontextprotocol/node'
 import { createMcpHandler } from '@modelcontextprotocol/server'
 import { type ClientTransport, ContextClient } from '@mokei/context-client'
@@ -19,6 +20,10 @@ export const MOKEI_STDIO_SERVER_PATH = fileURLToPath(
 )
 export const SDK_STDIO_SERVER_PATH = fileURLToPath(
   new URL('./sdk-stdio-server.ts', import.meta.url),
+)
+/** Serves the fixture on protocol version `2026-07-28` only, via the official SDK v2 server. */
+export const SDK_STDIO_SERVER_2026_07_28_PATH = fileURLToPath(
+  new URL('./sdk-stdio-server-2026-07-28.ts', import.meta.url),
 )
 /**
  * Serves the fixture on protocol version `2025-11-25` only, via `@mokei/context-server`. Distinct
@@ -236,6 +241,22 @@ export function connectMokeiHTTPClient(
   protocolVersion: ProtocolVersion | 'auto',
 ): ContextClient {
   return createHTTPClient({ url, protocolVersion })
+}
+
+const SDK_CLIENT_INFO = { name: 'mokei-interop-test', version: '1.0.0' }
+
+/**
+ * An SDK v2 `Client` for `protocolVersion`.
+ *
+ * `2025-11-25` is the SDK's default negotiation mode — a plain `new Client(info)`, byte-identical
+ * to a client carrying no negotiation option at all. `2026-07-28` pins: the connect-time
+ * `server/discover` must offer exactly that revision, and anything else fails loudly rather than
+ * falling back to the `initialize` handshake.
+ */
+export function createSDKClient(protocolVersion: ProtocolVersion): Client {
+  return protocolVersion === '2026-07-28'
+    ? new Client(SDK_CLIENT_INFO, { versionNegotiation: { mode: { pin: '2026-07-28' } } })
+    : new Client(SDK_CLIENT_INFO)
 }
 
 export type BlockingHTTPServer = RunningHTTPServer & {
