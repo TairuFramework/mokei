@@ -178,7 +178,7 @@ describe('spawnHostedContext protocol version validation', () => {
   // constructor rejected the pin only after `spawnContextServer` had already spawned the
   // child (host.ts spawns, then constructs the client) — and since the throw happened before
   // `spawnHostedContext` could hand back a disposer, the child was unreachable and leaked. The
-  // fix validates with the same `isSupportedProtocolVersion` predicate Task 8 uses, before
+  // fix validates with the same `isSupportedProtocolVersion` predicate the client uses, before
   // spawning anything.
   test('an unsupported pin throws before any child process is spawned', async () => {
     const spawnSpy = vi.spyOn(spawnModule, 'spawnContextServer')

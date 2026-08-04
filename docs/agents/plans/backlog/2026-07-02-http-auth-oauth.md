@@ -7,8 +7,8 @@ item 2, promoted to a dedicated item). Supersedes the bare roadmap P3 line
 
 ## Current state
 
-- `@mokei/http-client` — static Bearer token only (`auth.ts`, `HTTPAuthOptions`). No
-  OAuth flow, no token refresh, no discovery.
+- `@mokei/http-client` — static credentials only (`auth.ts`, `HTTPAuthOptions`: bearer,
+  basic, or a custom header). No OAuth flow, no token refresh, no discovery.
 - `@mokei/http-server` — no auth at all: no bearer verification, no protected-resource
   metadata. Origin validation is the only gate.
 

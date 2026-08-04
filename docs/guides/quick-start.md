@@ -77,10 +77,9 @@ console.log(`Completed in ${result.iterations} iterations`)
 ## Creating an MCP Server
 
 A server declares the set of protocol revisions it serves. `session.addContext` above
-connects at `2026-07-28` by default, so that revision has to be in the list — a server
-declaring only `2025-11-25` would reject it with `-32022`. Declaring both, as here, also
-serves clients that do not speak `2026-07-28` yet; pass `protocolVersion: '2025-11-25'` or
-`'auto'` to `addContext` to reach a server that only serves the older revision.
+probes the server and speaks the newest revision both sides support, so a server declaring
+only `2025-11-25` still connects. Declaring both, as here, serves clients on either revision;
+pass `protocolVersion` to `addContext` to pin one and skip the probe.
 
 ```typescript
 import { createTool, serveProcess } from '@mokei/context-server'

@@ -5,7 +5,7 @@
 Mokei is a TypeScript toolkit for creating, interacting with, and monitoring clients and servers using the Model Context Protocol (MCP). It provides a comprehensive framework for building MCP-based applications with AI model integration.
 
 **Repository**: https://github.com/TairuFramework/mokei
-**Documentation**: See `docs/` folder or `llms.txt` for LLM-optimized docs
+**Documentation**: `docs/guides/` for usage guides, `docs/agents/` for agent-facing docs
 
 ---
 
@@ -33,10 +33,33 @@ Mokei is a TypeScript toolkit for creating, interacting with, and monitoring cli
 ### Communication Flow
 
 1. Host spawns MCP server processes via stdio streams (or connects via HTTP)
-2. Client initializes connection and discovers tools/prompts
+2. Client resolves the protocol revision, then discovers tools and prompts -- through an
+   `initialize` handshake on `2025-11-25`, or lazily on the first call on `2026-07-28`
 3. Tools are namespaced as `contextKey:toolName` (or `local:toolName` for local tools)
 4. Session routes tool calls to appropriate MCP servers
 5. Results are aggregated and returned to model providers
+
+### Protocol Revisions
+
+Two MCP revisions are supported side by side rather than one superseding the other. Each is a
+`ProtocolDefinition` in `packages/context-protocol/src/versions/`, and `PROTOCOLS` maps a
+revision to its definition.
+
+- `2025-11-25` is stateful. An `initialize` handshake opens every connection, and servers may
+  send requests to clients, so `sampling`, `elicitation` and `roots` work here.
+- `2026-07-28` is stateless. There is no handshake: a client reads capabilities from
+  `server/discover` and sets itself up on its first call. The log level travels per request in
+  `_meta`. Servers send no requests, so `sampling`, `elicitation` and `roots` throw
+  `MRTRNotSupportedError` until multi round-trip requests are implemented.
+
+A client speaks one revision, fixed for the lifetime of its transport. `ContextClient` takes a
+`protocolVersion`: a revision, or `'auto'` to probe the server and settle on the newest revision
+both sides support. Host contexts and the CLI default to `'auto'`. A server takes
+`protocolVersions`, the list it serves; listing both serves both.
+
+On `2026-07-28` the HTTP client encodes the `Mcp-Method`, `Mcp-Name` and `Mcp-Param-*` request
+headers (SEP-2243). The HTTP server does not read them; conformance of the encoder is covered by
+SDK interop tests instead.
 
 ---
 
@@ -116,6 +139,16 @@ packages/
 +-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
 ```
 
+Other workspaces:
+
+```
+mcp-servers/fetch/        # published MCP server: HTTP fetch
+mcp-servers/sqlite/       # published MCP server: SQLite access
+integration-tests/        # cross-package + official SDK interop suites (private)
+monitor/                  # monitor UI frontend (private)
+website/                  # documentation site (private)
+```
+
 ---
 
 ## Where to Find Things
@@ -123,6 +156,7 @@ packages/
 | Looking for... | Location |
 |----------------|----------|
 | Protocol types | `packages/context-protocol/src/` |
+| Protocol revisions | `packages/context-protocol/src/versions/` |
 | Server creation | `packages/context-server/src/` |
 | Client implementation | `packages/context-client/src/` |
 | Host orchestration | `packages/host/src/` |
@@ -131,6 +165,7 @@ packages/
 | CLI commands | `packages/cli/src/commands/` |
 | Tests | `packages/*/test/` |
 | Integration tests | `integration-tests/` |
+| SDK interop harness | `integration-tests/support/interop/` |
 
 ---
 

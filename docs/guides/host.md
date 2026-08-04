@@ -112,8 +112,8 @@ const tools = await host.setup({ key: 'custom' })
 ## Protocol Revisions
 
 `addLocalContext`, `addHTTPContext` and `addDirectContext` each take an optional
-`protocolVersion`, defaulting to `'2026-07-28'`. A server that only serves `'2025-11-25'`
-needs an explicit value, or `'auto'` to probe it:
+`protocolVersion`, defaulting to `'auto'`: the client probes the server and speaks the newest
+revision both sides support. Pin a revision to skip the probe:
 
 ```typescript
 // Pin the older revision

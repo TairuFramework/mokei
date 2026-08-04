@@ -1,13 +1,12 @@
 # Milestone: MCP draft spec migration
 
-**Status:** in progress — Phase 0 groundwork shipped; breaking cut deferred.
+**Status:** in progress — both revisions ship; MRTR (B7) and `subscriptions/listen` (B4)
+remain.
 **Opened:** 2026-06-08
 **Branch / PR:** `feat/mcp-spec-update` → PR #23
 **Baseline:** `2025-11-25` (`LATEST_PROTOCOL_VERSION`)
-**Target:** MCP `2026-07-28` — the former draft, now at **release-candidate** stage with a
-named revision and a release date (July 28, 2026). Schemas still publish under
-`schema/draft/` in the spec repo until finalized. See
-[RC announcement](https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/).
+**Target:** MCP `2026-07-28` — released on schedule, no longer a draft. mokei serves and speaks
+both revisions, selected per context.
 
 ## Goal
 
@@ -23,9 +22,30 @@ model resolved — see the **Architecture decision** section below (this milesto
 authoritative record). The "hard-cut" framing in Phase 1 is superseded — the B-items become
 additive draft wiring behind a per-context version selector, not removals.
 
+## Status update — the revision shipped (2026-08-04)
+
+The additive wiring is in and released work now spans both revisions. What landed, in order:
+
+- **Stateless core** (PR #40, `completed/2026-08-02-mcp-2026-07-28-stateless-core.complete.md`):
+  B5, B2, B3, B1 and the `logLevel` half of B6, on both transports. Version selection is real —
+  `PROTOCOL_VERSIONS`, `PROTOCOLS`, per-context `protocolVersion` and the `'auto'` probe.
+- **Defect wave** (PR #41, `completed/2026-08-03-mcp-2026-07-28-defect-wave.complete.md`): the
+  correctness follow-ons, including bounded concurrent dispatch and non-vacuous result unions on
+  both revisions.
+- **Interop peer matrix** (PR #42, `completed/2026-08-04-interop-peer-matrix.complete.md`): all
+  four client/server × stdio/HTTP quadrants against SDK `2.0.0`, on both revisions.
+
+What remains: B7 (MRTR) and the roots half of B6, B4 (`subscriptions/listen`), D1–D3, and G7
+part 5's retry loop. Each is tracked in `backlog/2026-06-20-mcp-draft-remaining.md`; B7 and the
+G7 part 5 / `Mcp-Method` pair are promoted to `next/`.
+
+The open question about `server/discover` STDIO probe semantics is answered: the client probes
+with `server/discover`, and any failure falls back to the `2025-11-25` handshake, with a `-32022`
+response's `data.supported` used to negotiate the newest shared revision.
+
 ## Status update — SDK v2 evaluation findings (2026-07-02)
 
-The official TypeScript SDK v2 (`2.0.0-beta.2`, the `main` branch) implements the
+The official TypeScript SDK v2 (evaluated at `2.0.0-beta.2`, stable `2.0.0` since) implements the
 `2026-07-28` revision and was evaluated against mokei (decision: keep custom core — see
 `backlog/2026-07-02-mcp-sdk-v2-adoption.md`). Findings that bear on this milestone:
 
@@ -171,23 +191,26 @@ Additive, backward-compatible; `2025-11-25` peers ignore the extras. Landed on
   trace context + baggage for the handler — new `context-server/src/trace.ts`
   (`withRequestMeta`), `_handleRequest` wraps dispatch once (`@enkaku/otel@0.17.1`
   `extractW3CTraceContext` + `withActiveBaggage`, enkaku #42). → same backlog item.
-- **G7 part 5** — stale-schema → `-32001` HeaderMismatch → `tools/list` refresh + retry
-  deferred; no emitter yet, `-32001` collides with `SESSION_EXPIRED`. → same backlog item.
+- **G7 part 5** — stale-schema → `-32020` HeaderMismatch → `tools/list` refresh + retry.
+  Still deferred, but unblocked as of 2026-08-04: the specification's code is `-32020`, which
+  mokei reserves as `HEADER_MISMATCH`, and SDK `2.0.0`'s server emits it. The earlier `-32001`
+  collision note was wrong. → `next/2026-08-04-mcp-header-story.md`.
 
-## Phase 1 — Breaking cut (draft-only, when draft finalized)
+## Phase 1 — Additive `2026-07-28` wiring
 
-Hard-cut; ordered by dependency. Blocked on the draft finalizing **and** on U1.
+Originally scoped as a hard cut; superseded by the coexistence decision above, so these are
+additive behind the version selector rather than removals. Ordered by dependency.
 
-| # | Change | Notes |
+| # | Change | Status |
 |---|---|---|
-| B5 | Remove `ping` | Smallest; decouples RPC core early. |
-| B2 | Remove `initialize`/`initialized`; stateless `_meta` (version/identity/caps per request); version-mismatch error (SEP-2575) | Foundational; everything below assumes it. |
-| B3 | Add `server/discover` RPC (MUST) — advertises versions/caps/identity (SEP-2575) | Replaces `initialize` negotiation. Depends on B2. |
-| B1 | Remove protocol sessions + `Mcp-Session-Id` (SEP-2567) | Depends on B2; cross-call state → server-minted handles as tool args. |
-| B6 | Remove `logging/setLevel` + roots list-changed; per-request `_meta` log level | Depends on B2 `_meta`. |
-| B7 | **MRTR** replaces server-initiated requests — `inputRequests`/`inputResponses` (SEP-2322) | Deepest. Dismantles bidirectional `request()`/`#sentRequests` in `context-rpc`. Depends on U1 + B2. |
-| B4 | `subscriptions/listen` replaces GET endpoint + `resources/subscribe` (SEP-2575) | Rewrite HTTP server/client streaming. Depends on U1; parallel with B7. |
-| D1–D3 | Apply deprecation handling (Roots/Sampling/Logging; HTTP+SSE transport; `includeContext`) | As the above land. |
+| B5 | Remove `ping` | done (PR #40) |
+| B2 | Remove `initialize`/`initialized`; stateless `_meta` (version/identity/caps per request); version-mismatch error (SEP-2575) | done (PR #40) |
+| B3 | Add `server/discover` RPC (MUST) — advertises versions/caps/identity (SEP-2575) | done (PR #40) |
+| B1 | Remove protocol sessions + `Mcp-Session-Id` (SEP-2567) | done (PR #40) |
+| B6 | Remove `logging/setLevel` + roots list-changed; per-request `_meta` log level | `logLevel` done (PR #40); roots half belongs with B7 |
+| B7 | **MRTR** replaces server-initiated requests — `inputRequests`/`inputResponses` (SEP-2322) | open — `next/2026-08-04-mcp-mrtr.md` |
+| B4 | `subscriptions/listen` replaces GET endpoint + `resources/subscribe` (SEP-2575) | open — backlog piece E |
+| D1–D3 | Apply deprecation handling (Roots/Sampling/Logging; HTTP+SSE transport; `includeContext`) | open — backlog piece F |
 
 ## Upstream (Enkaku) dependencies
 
@@ -212,8 +235,9 @@ Hard-cut; ordered by dependency. Blocked on the draft finalizing **and** on U1.
 ## Open questions (later phases)
 
 - MRTR continuation state: STDIO vs HTTP, and interaction with `notifications/cancelled`.
-- `server/discover` on STDIO: back-compat probe semantics vs version mismatch.
 - Server-minted handles (replacing sessions): convention for passing as tool args across `ContextHost`.
+
+Answered: `server/discover` STDIO probe semantics — see the 2026-08-04 status update.
 
 ## Source
 

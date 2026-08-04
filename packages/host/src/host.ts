@@ -190,7 +190,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
   } = params
   // Validated before spawning: `ContextClient`'s constructor also rejects an unsupported pin,
   // but only after `createHostedContext` builds it below — by which point the child would
-  // already be running with no disposer wired up to reap it. Same predicate Task 8 uses, so
+  // already be running with no disposer wired up to reap it. Same predicate the client uses, so
   // the supported-version list is not duplicated here.
   if (
     protocolVersion != null &&

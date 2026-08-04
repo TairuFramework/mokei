@@ -23,7 +23,7 @@ export function resolveApiKey(provider: string, apiKey?: string): string | undef
 
 export type ChatOptions = {
   apiKey?: string
-  apiUrl?: string
+  apiURL?: string
   model?: string
   timeoutMs?: number
 }
@@ -79,20 +79,20 @@ export async function buildChat(provider: string, opts: ChatOptions): Promise<Bu
 
   switch (provider) {
     case 'ollama': {
-      const p = new OllamaProvider({ client: { baseURL: opts.apiUrl, timeout: false } })
+      const p = new OllamaProvider({ client: { baseURL: opts.apiURL, timeout: false } })
       const session = new Session<OllamaTypes>({ contextHost: host, providers: { ollama: p } })
       return build(session, p, 'ollama')
     }
     case 'openai': {
       const p = new OpenAIProvider({
-        client: { apiKey, baseURL: opts.apiUrl, timeout: false },
+        client: { apiKey, baseURL: opts.apiURL, timeout: false },
       })
       const session = new Session<OpenAITypes>({ contextHost: host, providers: { openai: p } })
       return build(session, p, 'openai')
     }
     case 'anthropic': {
       const p = new AnthropicProvider({
-        client: { apiKey, baseURL: opts.apiUrl, timeout: false },
+        client: { apiKey, baseURL: opts.apiURL, timeout: false },
       })
       const session = new Session<AnthropicTypes>({
         contextHost: host,

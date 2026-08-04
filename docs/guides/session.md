@@ -97,10 +97,10 @@ const tools = await session.addContext({
 
 Connect to remote MCP servers via HTTP using the MCP Streamable HTTP transport specification.
 
-`addHTTPContext` takes an optional `protocolVersion`, defaulting to `'2026-07-28'`. None of
-the examples below pass one, so all of them connect at that revision. A server that only
-serves `'2025-11-25'` needs an explicit `protocolVersion: '2025-11-25'`, or `'auto'` to probe
-it — see [the host guide](host.md#protocol-revisions).
+`addHTTPContext` takes an optional `protocolVersion`, defaulting to `'auto'`: the client
+probes the server and speaks the newest revision both sides support. None of the examples
+below pass one. Pin `'2026-07-28'` or `'2025-11-25'` to skip the probe — see
+[the host guide](host.md#protocol-revisions).
 
 The hostnames below are placeholders, so these examples illustrate the shape of each call
 rather than being runnable as written.

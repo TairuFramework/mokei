@@ -1,37 +1,24 @@
-# AGENTS.md
+# mokei
 
-Mokei is a comprehensive TypeScript toolkit for the Model Context Protocol (MCP). It provides LLM provider abstraction, tool orchestration, and multi-provider support (OpenAI, Anthropic, Ollama, Llama) through a unified session and agent architecture built on typed MCP server/client communication.
+> Conventions: the `kigu:conventions` skill (canonical -- do not restate).
+> Build, test and release workflow: the `kigu:development` skill.
+> Stack map / sibling docs: the `kigu:stack-map` skill.
+> Architecture and package layout: `docs/agents/architecture.md`.
+
+## What this repo is
+
+Mokei is a TypeScript toolkit for the Model Context Protocol (MCP). It provides LLM provider
+abstraction, tool orchestration, and multi-provider support (OpenAI, Anthropic, Ollama, Llama)
+through a unified session and agent architecture built on typed MCP server/client communication.
 
 ## Key Concepts
 
 - **MCP Server/Client Architecture** -- Servers expose tools and prompts; clients connect and discover them. The `ContextHost` orchestrates multiple server connections simultaneously.
+- **Protocol Revisions** -- Two MCP revisions are served and spoken side by side, `2025-11-25` and `2026-07-28`, selected per context. See `docs/agents/architecture.md`.
 - **Tool Namespacing** -- Tools are namespaced as `contextKey:toolName` (or `local:toolName` for local tools), enabling multiple contexts to coexist without name collisions.
-- **Context Management** -- `ContextHost` manages MCP server lifecycles, including spawning processes, initializing connections, and handling enable/disable states.
+- **Context Management** -- `ContextHost` manages MCP server lifecycles, including spawning processes, setting up connections, and handling enable/disable states.
 - **Provider Abstraction** -- A unified `ModelProvider` interface wraps OpenAI, Anthropic, Ollama, and Llama (local GGUF via node-llama-cpp), allowing the `Session` and `AgentSession` layers to work with any backend interchangeably.
 - **Session and Agent Layers** -- `Session` provides high-level chat + MCP abstraction; `AgentSession` adds an automatic agent loop with tool execution.
-
-## Package Overview
-
-```
-packages/
-+-- context-protocol/     # MCP protocol definitions and types
-+-- context-rpc/          # JSON-RPC implementation
-+-- context-server/       # MCP server implementation
-+-- context-client/       # MCP client implementation
-+-- host/                 # Multi-context orchestrator
-+-- host-protocol/        # Host <-> monitor protocol types
-+-- host-monitor/         # Monitor UI for host contexts
-+-- http-client/          # MCP Streamable HTTP client transport
-+-- http-server/          # MCP Streamable HTTP server transport
-+-- session/              # High-level chat + MCP abstraction
-+-- model-provider/       # Provider interface definitions
-+-- openai-provider/      # OpenAI integration
-+-- anthropic-provider/   # Anthropic Claude integration
-+-- ollama-provider/      # Ollama integration
-+-- llama-provider/       # Local GGUF inference via node-llama-cpp
-+-- logger/               # Shared logger utility
-+-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
-```
 
 ## Quick Commands
 
@@ -47,23 +34,19 @@ packages/
 Published packages release in lockstep -- `versioning.fixed` in `pnpm-workspace.yaml` holds
 every public package, so one intent moves them all to the same version.
 
-## Important Guardrails
+## Guardrails
 
-**DO NOT:**
-- Use `interface` for type definitions (use `type`)
-- Use lowercase abbreviations in names (`ID` not `Id`, `HTTP` not `Http`, `JWT` not `Jwt`)
-- Use `T[]` instead of `Array<T>`
-- Use `any` type -- use `unknown`, `Record<string, unknown>`, or a more specific type
-- Use `npm`/`npx` -- always use `pnpm`/`pnpx`
-- Edit generated files (`.gen.ts`, `__generated__/`, `lib/`, `schema.graphql`)
-- Create new packages without checking with the user -- keep functionality in existing packages
+See the `kigu:conventions` skill. Repo-specific only:
+
+- Never create a new package without checking with the user -- keep functionality in existing packages.
+- `pnpm` / `pnpx` only, never `npm` / `npx`.
 
 ## Additional Context
 
-Load these files based on your current task:
+Load these based on your current task:
 
 | Task | Files to read |
 |------|---------------|
-| Planning | `docs/agents/architecture.md`, the `stack-packages` skill |
-| Implementation | the `conventions`, `development`, and `stack-packages` skills |
-| Review | the `conventions` skill, `docs/agents/architecture.md`, the `development` skill |
+| Planning | `docs/agents/architecture.md`, the `kigu:stack-packages` skill |
+| Implementation | the `kigu:conventions`, `kigu:development` and `kigu:stack-packages` skills |
+| Review | the `kigu:conventions` and `kigu:development` skills, `docs/agents/architecture.md` |

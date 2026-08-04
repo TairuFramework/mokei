@@ -3,8 +3,8 @@
 **Status:** backlog
 **Origin:** SDK v2 evaluation, 2026-07-02. The official TypeScript SDK
 ([modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk),
-`main` = v2, `2.0.0-beta.2`) was evaluated for adopt / wrap / keep-custom against mokei's
-MCP packages. Spec-migration implications recorded in
+v2, evaluated at `2.0.0-beta.2` and stable at `2.0.0` since) was evaluated for adopt / wrap /
+keep-custom against mokei's MCP packages. Spec-migration implications recorded in
 `milestones/2026-06-08-mcp-draft-migration.md` (status-update section).
 
 ## Decision: keep the custom MCP core
@@ -44,11 +44,10 @@ Keep `context-protocol` / `context-rpc` / `context-client` / `context-server` /
    four combinations against shared expectations: negotiated protocol version, `serverInfo`,
    `tools/list` (incl. `outputSchema`), `tools/call` text + `structuredContent`,
    `prompts/list` + `prompts/get`, `resources/list` + `resources/read`.
-   SDK pinned at `2.0.0-beta.5` as devDependencies of the private `mokei-integration-tests`
-   package. **Follow-ups:** multi-page cursor-walk interop (needs a paginating fixture);
-   the modern-era (`2026-07-28`) half once B-wiring exists — this harness is the live draft
-   peer it validates against, and the G7 part 5 HeaderMismatch story
-   (see `2026-06-20-mcp-draft-remaining.md`).
+   SDK pinned as devDependencies of the private `mokei-integration-tests` package, now at
+   `2.0.0`. The `2026-07-28` half of the matrix shipped 2026-08-04 (all four quadrants, both
+   revisions — `completed/2026-08-04-interop-peer-matrix.complete.md`).
+   **Follow-up still open:** multi-page cursor-walk interop, which needs a paginating fixture.
 2. **Client OAuth + JWT** — promoted to a dedicated backlog item:
    `2026-07-02-http-auth-oauth.md` (client OAuth via SDK `withOAuth` fetch-middleware
    wrap vs native `@kokuin/token` port, server-side bearer verification for
@@ -67,7 +66,7 @@ Keep `context-protocol` / `context-rpc` / `context-client` / `context-server` /
 
 ## Reference — SDK v2 shape (verified 2026-07-02)
 
-- Packages (all `2.0.0-beta.2`): `@modelcontextprotocol/server`, `/client`, `/core`
+- Packages (evaluated at `2.0.0-beta.2`, released as `2.0.0`): `@modelcontextprotocol/server`, `/client`, `/core`
   (public Zod schemas only), `/core-internal` (private engine), `/node`, `/express`
   (incl. Resource-Server auth), `/hono`, `/fastify`, `/server-legacy` (frozen v1 SSE +
   AS-side OAuth), `/codemod`.
@@ -76,6 +75,6 @@ Keep `context-protocol` / `context-rpc` / `context-client` / `context-server` /
   `jsonSchemaValidator` (AJV on Node, `@cfworker/json-schema` on workers).
 - Two protocol eras: legacy (≤`2025-11-25`, default, `initialize`) and modern
   (`2026-07-28`, `server/discover`, opt-in via `versionNegotiation`).
-- Timeline: stable expected alongside the `2026-07-28` spec release; v1.x supported
-  ≥6 months after v2 ships.
+- Timeline: v2 shipped stable alongside the `2026-07-28` spec release; v1.x supported
+  ≥6 months from that point.
 - Docs: https://ts.sdk.modelcontextprotocol.io/v2/

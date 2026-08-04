@@ -22,7 +22,7 @@ export function createChatCommand(): Command {
         initialProvider={opts.provider}
         chatOptions={{
           apiKey: opts.apiKey,
-          apiUrl: opts.apiUrl,
+          apiURL: opts.apiUrl,
           model: opts.model,
           timeoutMs: timeoutSec * 1000,
         }}

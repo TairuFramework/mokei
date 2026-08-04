@@ -26,8 +26,8 @@ import { ContextHost } from '@mokei/host'
 import { OpenAIProvider } from '@mokei/openai-provider'
 
 // Set up host with MCP servers. `addLocalContext` takes an optional `protocolVersion`,
-// defaulting to '2026-07-28'; pass '2025-11-25' or 'auto' for a server that only serves the
-// older revision — see the host guide's Protocol Revisions section.
+// defaulting to 'auto', which speaks the newest revision both sides support — see the host
+// guide's Protocol Revisions section.
 const host = new ContextHost()
 await host.addLocalContext({
   key: 'sqlite',

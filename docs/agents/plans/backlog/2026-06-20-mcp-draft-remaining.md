@@ -11,6 +11,24 @@ Shipped work is recorded in the completed summaries, not repeated here:
 
 Section numbers are stable: gaps mean an item shipped, not that it was renumbered.
 
+## Pieces
+
+This file tracks six independent sub-projects. Each can be picked up on its own; only D and E
+are large. Sections below hold the detail -- this table says what exists and where it is.
+
+| Piece | Scope | Size | Where |
+|-------|-------|------|-------|
+| A | Interop peer matrix + `Mcp-Param-*` coverage | -- | Shipped 2026-08-04 (PR #42), `completed/2026-08-04-interop-peer-matrix.complete.md` |
+| B | Stale-schema retry on `-32020` (§1) | Small | `next/2026-08-04-mcp-header-story.md` |
+| C | Direct `Mcp-Method` assertion + remaining §3.2.4 coverage | Very small | `next/2026-08-04-mcp-header-story.md` |
+| D | B7 MRTR -- `inputRequests` / `inputResponses` (§2 item 6) | Large | `next/2026-08-04-mcp-mrtr.md` |
+| E | B4 `subscriptions/listen` + the `2025-11-25` `resources/subscribe` branch (§2 item 7, §3.3.3) | Large | Here |
+| F | D1--D3 deprecation handling (§2 item 8) + the §3.4 tidy-ups | Medium | Here |
+
+B and C together finish the `x-mcp-header` work: the encoder is conformant against a real
+decoder, but nothing retries a stale schema and nothing asserts `Mcp-Method` directly. D unlocks
+`sampling`, `elicitation` and `roots` on `2026-07-28` and makes the `-32021` ladder reachable.
+
 ## 1. Deferred groundwork — last item
 
 - **G7 part 5** — stale-schema fallback: on a `-32020` HeaderMismatch, refresh via
@@ -99,13 +117,6 @@ mokei-against-mokei coverage that preceded it. The Base64 sentinel gap (since fi
 same shape. `Mcp-Param-*` is built by the same code and still has unit coverage only. The fix
 is not more unit tests; it is a peer that reads the headers (see 3.2.3).
 
-#### 3.2.3 Point `checkMokeiClient` at the SDK peer for `2026-07-28` — **done 2026-08-04**
-
-Closed by `docs/agents/plans/completed/2026-08-04-interop-peer-matrix.complete.md`. All four quadrants
-(mokei client ↔ SDK server, SDK client ↔ mokei server, each over stdio and Streamable HTTP) now
-run on both revisions from the shared expectations, in `interop-sdk-client.test.ts` and
-`interop-sdk-server.test.ts`.
-
 #### 3.2.4 Still unexercised against mokei
 
 - `subscriptions/listen` (also B4).
@@ -175,12 +186,6 @@ proposal.
   thing a host-level cache would add is reuse *across* contexts sharing a config — which needs a
   registry keyed by structural config identity, invalidated on a signal nobody has specified.
   Speculative work for one saved round trip.
-- **The website quick-start's chat walkthrough is obsolete**, found during a documentation sweep
-  and unrelated to protocol revisions: it documents an inquirer-style `? Select an action …` menu
-  (`Add a context` / `Send a message` / `Select tools to enable`) and a `mokei chat ollama`
-  invocation. The CLI is now an Ink TUI driven by slash commands, and the command is
-  `mokei chat --provider ollama`. Rewriting it needs a real PTY run to capture accurate output,
-  which is why it was not attempted during that sweep.
 
 ## Notes
 

@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-07-02
+**Last updated:** 2026-08-04
 
 ## Vision
 
@@ -9,7 +9,10 @@ runtime, provider abstraction across cloud + local models, and monitoring UI.
 
 ## Current state
 
-17 packages. Providers: OpenAI, Anthropic, Ollama, Llama (local GGUF).
+17 packages under `packages/`, plus two published MCP servers under `mcp-servers/`.
+Two MCP revisions are served and spoken side by side — `2025-11-25` and `2026-07-28` —
+selected per context, with `'auto'` probing the peer and negotiating the newest shared
+revision. Providers: OpenAI, Anthropic, Ollama, Llama (local GGUF).
 Streamable HTTP transport shipped as standalone `@mokei/http-client` +
 `@mokei/http-server`. Host monitor UI in `host-monitor`. CLI (`mokei`) with a
 flat command surface (`chat` / `inspect` / `monitor` / `proxy`): Ink chat UI on
@@ -19,6 +22,8 @@ commander routing. Replaced oclif + enquirer + ora.
 Stack: migrated to the post-split toolchain (PR #35) — `@kigu/dev` build/test
 tooling, the enkaku split (general utilities → `@sozai/*`, RPC/transport core
 stays `@enkaku/*`), and `@tejika/*` CLI/server/UI. ISOLATED pnpm linker.
+Releases run on pnpm's native versioning (`pnpm change` → `pnpm version -r`), with every
+published package in one `versioning.fixed` lockstep group.
 
 ## Competitive position
 
@@ -26,6 +31,7 @@ stays `@enkaku/*`), and `@tejika/*` CLI/server/UI. ISOLATED pnpm linker.
 |-----------------------|-------|-----------|-------------|---------|
 | MCP server creation   | Yes   | No        | No          | Yes     |
 | MCP client            | Yes   | No        | No          | Yes     |
+| Both MCP revisions    | Yes   | N/A       | N/A         | Yes     |
 | Multi-context host    | Yes   | No        | No          | No      |
 | Monitoring UI         | Yes   | No        | No          | No      |
 | Agent loop            | Yes   | Yes       | Yes         | No      |
@@ -39,123 +45,78 @@ stays `@enkaku/*`), and `@tejika/*` CLI/server/UI. ISOLATED pnpm linker.
 
 ## Now (next/)
 
-_Empty — all 2026-06-12 audit `next/` items shipped (see `completed/`)._
+- **Close the `x-mcp-header` story** (`next/2026-08-04-mcp-header-story.md`) — the `-32020`
+  stale-schema retry (G7 part 5, unblocked 2026-08-04) plus a direct `Mcp-Method` assertion.
+  Both small.
+- **MRTR** (`next/2026-08-04-mcp-mrtr.md`) — `inputRequests` / `inputResponses` (SEP-2322).
+  Restores `sampling`, `elicitation` and `roots` on `2026-07-28`, where they currently throw
+  `MRTRNotSupportedError`. Largest remaining piece of the migration.
 
-Shipped from this audit (see `completed/`):
+## Recently shipped (completed/)
 
-- **MCP 2025-11-25 feature gaps** (`completed/2026-07-11-mcp-feature-gaps.complete.md`)
-  — shipped on `feat/mcp-feature-gaps`: client-side cursor walk in all four list
-  methods (fixes silent first-page truncation of `ContextHost`'s tool set), tool
-  `outputSchema` + validated `structuredContent` on both sides, `SentRequest`
-  replaced by `AbortSignal` injection across the request path, and the
-  `UnsubscribeRequest` alias typo. **BREAKING:** `SentRequest`/`requestValue` removed
-  and every request method takes an optional `signal`; `createTool`/`createPrompt`
-  take a parameters object. `resources/subscribe` (gap 3) deferred into B4.
-- **Monitor + daemon security** (`completed/2026-06-16-monitor-daemon-security.complete.md`) —
-  items 1–5: monitor localhost bind, `/api` Host-allowlist + bearer-token gate,
-  socket `0600`, daemon connect-before-remove + signal shutdown + child reaping,
-  socket-poll startup. Closed the unauthenticated RCE.
-- **Hang/crash core** (`completed/2026-06-15-hang-crash-core.complete.md`) — items 1–5,
-  7–9 (spawn rethrow, RPC read-loop/timeouts/`#sentRequests` leak, client initialize
-  hardening, CLI crash paths) merged via PR #25.
-- **Stdio framing limits** (`completed/`) — hang/crash item 6, merged via PR #26
-  (bounded stdio framing, reap on framing fault).
-- **MCP 2025-11-25 conformance** (`completed/2026-06-18-mcp-2025-11-25-conformance.complete.md`)
-  — shipped on `fix/mcp-spec-conformance` (PR #28): protocolVersion validation
-  (client + HTTP header, items 6/12), client/server capability declarations + gating
-  (item 12), sampling/elicitation/tool-result schemas (items 3–5, SEP-1577), tool
-  errors as results (SEP-1303, item 11), tool progress notifications, HTTP transport
-  MUSTs — negotiated `MCP-Protocol-Version` header, `SessionExpiredError` on 404
-  (item 7), secure-by-default Origin validation (item 8), and cross-stream replay
-  for GET resumption (SEP-1699, item 9).
-- **Provider robustness + sampling params** (`completed/2026-06-18-provider-robustness.complete.md`)
-  — shipped on `fix/provider-robustness`: stream-killing parse guards (openai SSE,
-  anthropic tool JSON), anthropic input-token accounting fix, ollama `generate()` abort,
-  llama failed-load cache + stream-cancel + listener-leak fixes, zero-arg `OpenAIProvider`,
-  and per-request sampling params (`temperature`/`maxTokens`/`topP` + raw `providerOptions`)
-  across all four providers. **BREAKING: anthropic default request timeout 60s → 30s.**
-- **HTTP transport resilience** (`completed/2026-06-19-http-transport-resilience.complete.md`)
-  — shipped on `fix/http-transport-resilience`: all 6 audit items. Client — sink never
-  throws (failed POST → correlated JSON-RPC error frame, transport stays usable; **contract
-  change: `transport.write()` no longer rejects on HTTP error**; session-expiry now a coded
-  `SESSION_EXPIRED_CODE`/`isSessionExpiredCode` signal), SSE consumed in background (no
-  cancellation deadlock) with connect-only timeout, GET stream reconnect with capped
-  backoff + `Last-Event-ID` resume, bounded dispose DELETE. Server — `SessionManager.onDelete`
-  closes the transport bridge on idle-timeout/DELETE/dispose (fixes bridge leak), and a
-  4 MiB-default `maxBodyBytes` cap returns 413 before buffering (DoS).
-- **Host + session lifecycle robustness** (`completed/2026-06-19-host-session-lifecycle.complete.md`)
-  — shipped on `fix/session-lifecycle`: all 11 live audit items — SIGTERM→SIGKILL child
-  reaping with awaited exit, daemon child-exit cleanup + guarded event writes, setup/remove
-  race guard, local-tool AbortSignal plumbing (incl. MCP-converted tools), monitor
-  abort-driven pipe teardown, addContext abort orphan (event-race) + `#activeChatRequest`
-  clobber guard, bounded+drop-when-no-reader notifications, `anySignal` via `AbortSignal.any`,
-  abandoned agent generator closing the provider stream, and `Object.hasOwn` tool/prompt
-  lookup hardening. Item 12 (floating cancel notify) was already fixed by the rpc work.
-- **Anthropic test — red suite fix** (`completed/2026-06-19-anthropic-test-known-models.complete.md`)
-  — commit `eb0f5b6`: deleted the stale `KNOWN_MODELS` import/block, mocked the
-  transport for the two `listModels` tests (no live 401). Suite green.
-- **CLI UX polish** (`completed/2026-06-19-cli-ux-polish.complete.md`) — commit `1654f8e`:
-  API-key fail-fast (before daemon spawn) + env-var/leak help, `inspect` inherits server
-  stderr, empty model-list state names the provider.
-- **Docs + packaging sweep** (`completed/2026-06-19-docs-packaging-sweep.complete.md`) —
-  all 6 items: type-imported `@mokei/*` devDeps→deps (session/providers/host), corrected
-  AgentSession/Session/Ollama/anthropic-stream doc examples, `'ask'` doc+code truth-up,
-  new READMEs (http-client/http-server/llama-provider), doc-index + root README CLI sync,
-  cli `repository` field.
-- **CLI `chat --provider llama` wiring + llama integration tests**
-  (`completed/2026-06-20-cli-chat-llama-wiring.complete.md`) — shipped via PR #34 (commit
-  `c3fa691`). `mokei chat --provider llama` end-to-end: `-m` carries the GGUF path with a
-  fail-fast guard + interactive `LlamaPathCard` fallback, basename-derived model identity so
-  `listModels`/`/model` work unchanged. Gated, out-of-CI `integration-tests/` (real GGUF):
-  provider-level (listModels/streaming/tool-call) + PTY-driven CLI e2e. Closed both paired
-  backlog items (`cli-chat-llama-wiring`, `llama-provider-follow-ups`).
-- **Stack migration** (`completed/2026-06-22-mokei-stack-migration.complete.md`) — shipped
-  via PR #35 (commit `0a0ea88`). Post-split toolchain: `@kigu/dev`, enkaku split
-  (`@sozai/*` utilities + `@enkaku/*` RPC core), `@tejika/*`. User-facing: CLI socket flag
-  `-s, --path` → `-s, --socket-path`; daemon socket default → `getSocketPath('mokei')`;
-  monitor `--host` dropped (loopback-only); frontend token global `__APP_TOKEN__`.
+- **Interop peer matrix** (2026-08-04, PR #42) — all four client/server × stdio/HTTP quadrants
+  against SDK `2.0.0`, on both revisions, from shared expectations. Closed the structural gap
+  where mokei's request-header encoder had only ever faced peers that ignore it.
+- **`2026-07-28` defect wave** (2026-08-03, PR #41) — seven correctness defects across the MCP
+  core. Two are peer-visible: bounded concurrent request dispatch replacing serialization, and
+  non-vacuous result unions on both revisions.
+- **`2026-07-28` stateless core** (2026-08-02, PR #40) — B5, B2, B3, B1 and the `logLevel` half
+  of B6 on both transports, behind the per-context version selector.
+- **Integration test environment** (2026-07-27, PR #39) — node-pty `spawn-helper` postinstall,
+  model-backed suites skip instead of failing with no backend, llama.cpp added as a second chat
+  backend. Exposed and fixed dropped reasoning deltas in `@mokei/openai-provider`.
+- **SDK v2 interop harness** (2026-07-27, PR #37) — one fixture surface defined twice (mokei and
+  SDK), served over stdio and Streamable HTTP; the live peer the matrix above built on.
+- **`context-rpc` stream follow-ups** (2026-07-27, PR #38) — the five items left open when the
+  U1 streaming arm landed, readying `_registerStreamExchange` for MRTR.
+- **MCP `2025-11-25` feature gaps** (2026-07-11, PR #36) — client-side cursor walk in all four
+  list methods (fixed silent first-page truncation of `ContextHost`'s tool set), tool
+  `outputSchema` + validated `structuredContent`. **BREAKING:** `SentRequest`/`requestValue`
+  removed, every request method takes an optional `signal`, `createTool`/`createPrompt` take a
+  parameters object.
+
+Earlier work — the 2026-06 hardening wave (hang/crash, monitor/daemon security, `2025-11-25`
+conformance, provider robustness, HTTP transport resilience, host/session lifecycle), the CLI
+llama wiring, the U1 `PendingExchange` refactor and the stack migration — is recorded in
+`completed/`, with pre-2026-04 history in `archive/`.
 
 ## Milestones (milestones/)
 
-- **MCP draft spec migration** (`milestones/2026-06-08-mcp-draft-migration.md`) —
+- **MCP spec migration** (`milestones/2026-06-08-mcp-draft-migration.md`) —
   in progress. Phase 0 groundwork (G1–G4, G6, G7) shipped on `2025-11-25`
-  (PR #23, `feat/mcp-spec-update`). Draft wiring (B1–B7, opt-in coexistence) waits on
-  finalization — now dated: the draft is the **`2026-07-28` revision at RC stage**,
-  spec release expected July 28, 2026 (SDK v2 stable alongside). U1 resolved + shipped.
-  See backlog entries below.
+  (PR #23). The `2026-07-28` revision then shipped as opt-in coexistence: stateless core
+  (PR #40), defect wave (PR #41), interop peer matrix against SDK `2.0.0` (PR #42).
+  Remaining: B7 (MRTR) + the roots half of B6, B4 (`subscriptions/listen`), D1–D3, and
+  G7 part 5's retry loop. See `next/` and the backlog entries below.
 
 ## Near-term (backlog/)
 
-- **MCP draft — remaining work** (`backlog/2026-06-20-mcp-draft-remaining.md`) —
-  consolidated tracker. Groundwork done: G1–G8 + G5 outbound/baggage/inbound + G7 walk depth
-  (G5 inbound via `@sozai/otel`, enkaku #42). Remaining: G7 part 5 retry (deferred);
-  additive draft wiring B1–B7 as opt-in coexistence, blocked on draft finalization only —
-  now dated (`2026-07-28` RC; shapes pinnable against SDK v2's wire codecs early).
-  No enkaku blockers left.
+- **MCP `2026-07-28` — remaining work** (`backlog/2026-06-20-mcp-draft-remaining.md`) —
+  consolidated tracker, decomposed into six independent pieces. A (interop matrix) shipped;
+  B and C are promoted to `next/`; E (B4 `subscriptions/listen`, plus the `2025-11-25`
+  `resources/subscribe` branch) and F (D1–D3 + tidy-ups) stay here. No enkaku blockers.
 - **MCP SDK v2 — selective adoption** (`backlog/2026-07-02-mcp-sdk-v2-adoption.md`) —
   outcome of the 2026-07-02 SDK v2 evaluation. Decision: keep the custom MCP core
   (SDK's engine is private/unimportable; Zod hard dep; bespoke typed-client value).
-  Follow-ups: SDK v2 interop tests in `integration-tests/` (doubles as the live draft
-  peer), Standard Schema bridge (consider), sampling-deprecation watch (SEP-2577).
-  OAuth/JWT split out below.
+  The interop harness it proposed shipped (see Recently shipped). Open follow-ups:
+  multi-page cursor-walk interop, a Standard Schema bridge (consider), and the
+  sampling-deprecation watch (SEP-2577). OAuth/JWT split out below.
 - **HTTP transport auth — OAuth + JWT** (`backlog/2026-07-02-http-auth-oauth.md`) —
   client OAuth 2.1 + PKCE for remote MCP servers (wrap SDK v2 `withOAuth` fetch
   middleware first, native `@kokuin/token` port later), server-side bearer verification +
   protected-resource metadata for `@mokei/http-server` (hono middleware, not SDK's
   Express-only helpers), JWT machine auth (SEP-991 grants / `@kokuin/token` DID tokens).
   Replaces the former P3 "OAuth / auth helpers" line.
-- **Stack migration follow-ups** — **SHIPPED** (PR #39,
-  `completed/2026-07-27-integration-test-environment.complete.md`): node-pty `spawn-helper`
-  `+x` postinstall, and the model-backed integration suites now skip instead of failing when
-  no inference server is running. Added llama.cpp (`LLAMA_SERVER_URL`) as a second chat
-  backend alongside ollama, which exposed and fixed a real defect — `@mokei/openai-provider`
-  dropped reasoning deltas entirely. Remaining coverage gaps:
-  `backlog/2026-07-27-cli-reasoning-coverage.md`.
-- **MCP draft — U1 correlation refactor** — **SHIPPED** (PR #32,
-  `completed/2026-06-20-pendingexchange-refactor.complete.md`): `context-rpc`'s `#sentRequests`
-  generalized into the `PendingExchange` (resolve-once | streaming) abstraction +
-  continuation-token store, behavior-preserving on `2025-11-25`. The seam the draft B7/B4
-  wiring plugs into. Decision recorded in `milestones/2026-06-08-mcp-draft-migration.md`.
+- **CLI reasoning coverage** (`backlog/2026-07-27-cli-reasoning-coverage.md`) — two coverage
+  gaps, no defect: assert reasoning separation where the backend provides it, and verify the
+  OpenAI-compatible `reasoning_content` / `reasoning` mapping against a server that actually
+  splits reasoning. The mapping ships in 0.11.0 unit-tested only.
+- **Website chat walkthrough** (`backlog/2026-08-04-website-chat-walkthrough.md`) — the
+  website quick-start documents an inquirer-style menu and `mokei chat ollama`; the CLI is an
+  Ink TUI driven by slash commands. Needs a real PTY run to capture accurate output.
+- **Llama provider follow-ups** (`backlog/2026-06-20-llama-provider-follow-ups.md`) — optional
+  local-inference tuning (`gpu` / `contextSize` flags) and a positive tool-call assertion in
+  the gated GGUF suite. Nothing depends on either.
 
 ## Planned — P2
 
@@ -187,5 +148,9 @@ Shipped from this audit (see `completed/`):
   is unimportable (`core-internal` private), Zod is a hard dep, and mokei's typed-client
   generics + Enkaku transports have no SDK equivalent. Adopt narrowly instead
   (`backlog/2026-07-02-mcp-sdk-v2-adoption.md`).
+- Revision coexistence over a hard cut — mokei is a library, so `2025-11-25` and
+  `2026-07-28` are both served and spoken, selected per context. Dropping the older revision
+  later is a branch deletion, not a rewrite (ADR in
+  `milestones/2026-06-08-mcp-draft-migration.md`).
 - Provider pattern: `client.ts` + `provider.ts` + `config.ts` + `types.ts`.
 - Streaming via `TransformStream` → `MessagePart<>`.
