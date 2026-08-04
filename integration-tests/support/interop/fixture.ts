@@ -71,6 +71,15 @@ export const SDK_RESOURCE_URIS: ReadonlyArray<string> = [
   NON_ASCII_RESOURCE_REGISTERED_URI,
 ]
 
+/**
+ * The exact tool set each fixture serves. They differ for the same reason the resource sets do:
+ * only the SDK side carries `headerEcho`, whose `x-mcp-header` annotations exist to put mokei's
+ * `Mcp-Param-*` encoder in front of a conformant decoder. mokei's own server never reads those
+ * headers back, so the tool would be inert surface on that side.
+ */
+export const MOKEI_TOOL_NAMES: ReadonlyArray<string> = ['echo', 'sum']
+export const SDK_TOOL_NAMES: ReadonlyArray<string> = ['echo', 'headerEcho', 'sum']
+
 export const ITEM_TEMPLATE_URI = 'test://items/{id}'
 export const ITEM_TEMPLATE_NAME = 'item'
 
@@ -106,6 +115,30 @@ export const SUM_OUTPUT_SCHEMA = {
   required: ['total'],
   additionalProperties: false,
 } as const
+
+/**
+ * Two `x-mcp-header`-annotated arguments (SEP-2243), both optional so the omitted-argument case
+ * is reachable. `integer` rather than `number` deliberately: neither mokei's encoder nor the SDK's
+ * decoder admits an arbitrary number, and the integer path is compared numerically on the SDK
+ * side while mokei writes canonical decimal.
+ */
+export const HEADER_ECHO_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    tenant: { type: 'string', 'x-mcp-header': 'Tenant' },
+    limit: { type: 'integer', 'x-mcp-header': 'Limit' },
+  },
+  additionalProperties: false,
+} as const
+
+/**
+ * What `headerEcho` returns. Reaching this text at all is the assertion: the SDK validates every
+ * `Mcp-Param-*` header against the body `arguments` *before* dispatch, so a disagreeing or absent
+ * header is answered `-32020` and the handler never runs.
+ */
+export function headerEchoText(tenant: string | undefined, limit: number | undefined): string {
+  return JSON.stringify({ tenant: tenant ?? null, limit: limit ?? null })
+}
 
 export const GREET_ARGUMENTS_SCHEMA = {
   type: 'object',
@@ -211,6 +244,18 @@ export function createSDKServer(): McpServer {
       content: [{ type: 'text', text: JSON.stringify({ total: a + b }) }],
       structuredContent: { total: a + b },
     }),
+  )
+
+  server.registerTool(
+    'headerEcho',
+    {
+      description: 'Echo arguments that are mirrored into Mcp-Param-* request headers',
+      inputSchema: fromJsonSchema<{ tenant?: string; limit?: number }>(
+        HEADER_ECHO_INPUT_SCHEMA,
+        validator,
+      ),
+    },
+    ({ tenant, limit }) => ({ content: [{ type: 'text', text: headerEchoText(tenant, limit) }] }),
   )
 
   server.registerPrompt(

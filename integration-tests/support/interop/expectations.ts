@@ -12,6 +12,7 @@ import {
   GREETING_URI,
   greetingMessage,
   MOKEI_RESOURCE_URIS,
+  MOKEI_TOOL_NAMES,
   SERVER_NAME,
   SERVER_VERSION,
 } from './fixture.ts'
@@ -34,6 +35,16 @@ export type CheckMokeiClientOptions = {
    * the greeting" would pass against a server serving anything at all alongside it.
    */
   resourceURIs?: ReadonlyArray<string>
+  /**
+   * The exact set of tool names the server under test serves. Defaults to the mokei fixture's,
+   * which is what three of the four call sites drive; the two that drive the SDK fixture pass
+   * `SDK_TOOL_NAMES`, which also carries the `x-mcp-header`-annotated `headerEcho`.
+   *
+   * A parameter rather than a subset check, for the same reason `resourceURIs` is one: both sets
+   * are exactly known, and "the list contains echo" would pass against a server serving anything
+   * at all alongside it.
+   */
+  toolNames?: ReadonlyArray<string>
 }
 
 /**
@@ -47,6 +58,7 @@ export async function checkMokeiClient(
 ): Promise<void> {
   const protocolVersion = options.protocolVersion ?? '2025-11-25'
   const resourceURIs = options.resourceURIs ?? MOKEI_RESOURCE_URIS
+  const toolNames = options.toolNames ?? MOKEI_TOOL_NAMES
   if (protocolVersion === '2025-11-25') {
     const initResult = await client.initialize()
     expect(initResult.serverInfo).toMatchObject({ name: SERVER_NAME, version: SERVER_VERSION })
@@ -54,7 +66,7 @@ export async function checkMokeiClient(
   }
 
   const { tools } = await client.listTools()
-  expect(tools.map((tool) => tool.name).sort()).toEqual(['echo', 'sum'])
+  expect(tools.map((tool) => tool.name).sort()).toEqual([...toolNames].sort())
   const sumTool = tools.find((tool) => tool.name === 'sum')
   expect(sumTool?.outputSchema).toMatchObject({ type: 'object' })
 

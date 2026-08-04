@@ -5,7 +5,7 @@ import { HTTPTransport } from '@mokei/http-client'
 import { afterEach, describe, test } from 'vitest'
 
 import { checkMokeiClient } from '../support/interop/expectations.ts'
-import { SDK_RESOURCE_URIS } from '../support/interop/fixture.ts'
+import { SDK_RESOURCE_URIS, SDK_TOOL_NAMES } from '../support/interop/fixture.ts'
 import {
   type RunningHTTPServer,
   SDK_STDIO_SERVER_PATH,
@@ -36,7 +36,10 @@ describe('mokei client against the SDK v2 server', () => {
       protocolVersion: '2025-11-25',
     })
     try {
-      await checkMokeiClient(context.client, { resourceURIs: SDK_RESOURCE_URIS })
+      await checkMokeiClient(context.client, {
+        resourceURIs: SDK_RESOURCE_URIS,
+        toolNames: SDK_TOOL_NAMES,
+      })
     } finally {
       await context.disposer.dispose()
     }
@@ -49,6 +52,9 @@ describe('mokei client against the SDK v2 server', () => {
       protocolVersion: '2025-11-25',
       transport: transport as ClientTransport,
     })
-    await checkMokeiClient(client, { resourceURIs: SDK_RESOURCE_URIS })
+    await checkMokeiClient(client, {
+      resourceURIs: SDK_RESOURCE_URIS,
+      toolNames: SDK_TOOL_NAMES,
+    })
   })
 })
