@@ -93,17 +93,32 @@ export async function checkMokeiClient(
   ])
 }
 
+export type CheckSDKClientOptions = {
+  /**
+   * Revision the connection is expected to have selected, `'2025-11-25'` by default. Asserted
+   * rather than assumed: a client that fell back to the other revision would satisfy every
+   * assertion below, since the fixture surface is identical on both.
+   */
+  protocolVersion?: ProtocolVersion
+}
+
 /**
  * Drives an SDK v2 `Client` against a fixture server. Both of its call sites serve the *mokei*
  * fixture, so its resource set is fixed rather than a parameter — add one the day an SDK client
  * is pointed at the SDK fixture.
  */
-export async function checkSDKClient(client: Client): Promise<void> {
+export async function checkSDKClient(
+  client: Client,
+  options: CheckSDKClientOptions = {},
+): Promise<void> {
+  // Required on the `initialize` result; a specification SHOULD in the discover result's `_meta`
+  // on `2026-07-28`, which mokei stamps on every result (`PROTOCOL.wrapResult`,
+  // `packages/context-protocol/src/versions/2026-07-28.ts`).
   expect(client.getServerVersion()).toMatchObject({
     name: SERVER_NAME,
     version: SERVER_VERSION,
   })
-  expect(client.getNegotiatedProtocolVersion()).toBe('2025-11-25')
+  expect(client.getNegotiatedProtocolVersion()).toBe(options.protocolVersion ?? '2025-11-25')
 
   const { tools } = await client.listTools()
   expect(tools.map((tool) => tool.name).sort()).toEqual(['echo', 'sum'])
