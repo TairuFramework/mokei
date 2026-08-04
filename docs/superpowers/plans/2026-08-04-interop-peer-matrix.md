@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Stage:** reviewing
+**Stage:** qa
 **Mode:** tasks
 **Spec:** `docs/superpowers/specs/2026-08-03-interop-peer-matrix-design.md`
 **Branch:** `feat/interop-peer-matrix`
