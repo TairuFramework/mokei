@@ -9,6 +9,7 @@ import {
   GREETING_TEXT,
   GREETING_URI,
   greetingMessage,
+  headerEchoText,
   NON_ASCII_RESOURCE_REGISTERED_URI,
   NON_ASCII_RESOURCE_TEXT,
   NON_ASCII_RESOURCE_URI,
@@ -174,5 +175,84 @@ describe('mokei client against the SDK v2 server on 2026-07-28', () => {
         text: NON_ASCII_RESOURCE_TEXT,
       },
     ])
+  })
+
+  /**
+   * The `Mcp-Param-*` cases. All three drive mokei's encoder into the SDK's decoder, which
+   * validates every declared header against the body `arguments` before dispatch and answers a
+   * disagreement `-32020` `HeaderMismatch` (HTTP 400) with the offending pair in `data.mismatch`.
+   * So reaching the handler's echoed text at all *is* the assertion.
+   *
+   * Each case calls `listTools()` first, and must: mokei's transport reads the `x-mcp-header`
+   * annotations off a tool `inputSchema` it caches from a `tools/list` result
+   * (`packages/http-client/src/transport.ts:571-599`). Without that call no header is sent, the
+   * SDK sees a body value with no header, and the case fails as `param-header-missing` — which
+   * would be the right failure for the wrong reason.
+   */
+  test('mirrors a plain x-mcp-header argument into Mcp-Param-*', async () => {
+    httpServer = await startSDK20260728HTTPServer()
+    client = connectMokeiHTTPClient(httpServer.url, '2026-07-28')
+    await client.listTools()
+
+    const called = await client.callTool({ name: 'headerEcho', arguments: { tenant: 'acme' } })
+    expect(called.content).toEqual([{ type: 'text', text: headerEchoText('acme', undefined) }])
+  })
+
+  // One layer below the `Mcp-Name` defect's shape: a value no header can carry raw, round-tripped
+  // through a conformant decoder. mokei wraps it in the `=?base64?…?=` sentinel; the SDK decodes
+  // the payload, rejects it if it is not canonical Base64 or not valid UTF-8, and compares the
+  // decoded string against the body value.
+  test('Base64-wraps a non-Latin-1 x-mcp-header argument', async () => {
+    httpServer = await startSDK20260728HTTPServer()
+    client = connectMokeiHTTPClient(httpServer.url, '2026-07-28')
+    await client.listTools()
+
+    const called = await client.callTool({ name: 'headerEcho', arguments: { tenant: '文書' } })
+    expect(called.content).toEqual([{ type: 'text', text: headerEchoText('文書', undefined) }])
+  })
+
+  // An integer-typed declaration is compared numerically on the SDK side and written as canonical
+  // decimal on mokei's — a distinct path from the string comparison above.
+  test('writes an integer x-mcp-header argument as canonical decimal', async () => {
+    httpServer = await startSDK20260728HTTPServer()
+    client = connectMokeiHTTPClient(httpServer.url, '2026-07-28')
+    await client.listTools()
+
+    const called = await client.callTool({ name: 'headerEcho', arguments: { limit: 42 } })
+    expect(called.content).toEqual([{ type: 'text', text: headerEchoText(undefined, 42) }])
+  })
+
+  /**
+   * The absence case, and the one case the peer cannot fail for us: when the body value is absent
+   * the SDK MUST NOT expect the header, and a header sent anyway is *ignored*. So this is asserted
+   * on the outgoing request instead, by wrapping `globalThis.fetch` — the technique the
+   * `Mcp-Session-Id` tripwire in `interop-2026-07-28-http.test.ts` already uses.
+   *
+   * Patching a global is safe only because vitest runs the tests within a file serially; under
+   * `test.concurrent` this would capture (and restore under) its neighbours.
+   */
+  test('sends no Mcp-Param-* header for an omitted annotated argument', async () => {
+    httpServer = await startSDK20260728HTTPServer()
+    const sent: Array<Headers> = []
+    const original = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (typeof init?.body === 'string' && init.body.includes('"headerEcho"')) {
+        sent.push(new Headers(init.headers))
+      }
+      return await original(input, init)
+    }) as typeof globalThis.fetch
+    try {
+      client = connectMokeiHTTPClient(httpServer.url, '2026-07-28')
+      await client.listTools()
+
+      const called = await client.callTool({ name: 'headerEcho', arguments: { limit: 7 } })
+      expect(called.content).toEqual([{ type: 'text', text: headerEchoText(undefined, 7) }])
+    } finally {
+      globalThis.fetch = original
+    }
+
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.get('Mcp-Param-Limit')).toBe('7')
+    expect(sent[0]?.get('Mcp-Param-Tenant')).toBeNull()
   })
 })
