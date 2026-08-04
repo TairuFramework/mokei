@@ -21,6 +21,10 @@ export const MOKEI_STDIO_SERVER_PATH = fileURLToPath(
 export const SDK_STDIO_SERVER_PATH = fileURLToPath(
   new URL('./sdk-stdio-server.ts', import.meta.url),
 )
+/** Serves the fixture on protocol version `2026-07-28` only, via the official SDK v2 server. */
+export const SDK_STDIO_SERVER_2026_07_28_PATH = fileURLToPath(
+  new URL('./sdk-stdio-server-2026-07-28.ts', import.meta.url),
+)
 /**
  * Serves the fixture on protocol version `2025-11-25` only, via `@mokei/context-server`. Distinct
  * from `MOKEI_STDIO_SERVER_PATH`, which now serves both revisions (matching mokei's own bundled
