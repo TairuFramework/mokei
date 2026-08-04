@@ -68,8 +68,12 @@ describe.each(ROWS)('mokei client against the SDK v2 server on $protocolVersion'
     const context = await spawnHostedContext({
       command: process.execPath,
       args: [row.stdioServerPath],
-      // Pinned rather than left to the host default: each row's server serves exactly one
-      // revision, and `'auto'` would make a probe failure look like a successful fallback.
+      // Pinned rather than left to the host default. On the `2026-07-28` row the server serves
+      // exactly one revision, so `'auto'` would make a probe failure look like a successful
+      // fallback; the `2025-11-25` row's server (`sdk-stdio-server.ts`, the SDK default) answers
+      // both revisions, so what actually makes that row sound is `checkMokeiClient`'s own
+      // assertion that `initResult.protocolVersion === '2025-11-25'` — a silent fallback there
+      // would fail the assertion instead of the connect.
       protocolVersion: row.protocolVersion,
     })
     try {
@@ -178,7 +182,7 @@ describe('mokei client against the SDK v2 server on 2026-07-28', () => {
   })
 
   /**
-   * The `Mcp-Param-*` cases. All three drive mokei's encoder into the SDK's decoder, which
+   * The `Mcp-Param-*` cases. All four drive mokei's encoder into the SDK's decoder, which
    * validates every declared header against the body `arguments` before dispatch and answers a
    * disagreement `-32020` `HeaderMismatch` (HTTP 400) with the offending pair in `data.mismatch`.
    * So reaching the handler's echoed text at all *is* the assertion.

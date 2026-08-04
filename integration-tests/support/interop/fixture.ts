@@ -1,7 +1,9 @@
 /**
  * A single MCP surface, defined twice: once with mokei's server API and once with the
- * official SDK v2 API. Both sides expose identical tools and prompts, so every interop test can
- * assert the same tool/prompt expectations regardless of which implementation serves.
+ * official SDK v2 API. Both sides expose identical prompts, so every interop test can assert the
+ * same prompt expectations regardless of which implementation serves. Tools and resources are
+ * both asymmetric — see the `MOKEI_TOOL_NAMES`/`SDK_TOOL_NAMES` comment below for the tool split
+ * (`headerEcho` is SDK-only) and the rest of this header for the resource split.
  *
  * Resources are asymmetric, deliberately: `createMokeiConfig()` also serves a resource template
  * (`ITEM_TEMPLATE_URI`) and a `complete` handler, but `createSDKServer()` has neither. Both were
@@ -23,9 +25,9 @@
  * That's harmless today because no `2025-11-25` suite asserts the capability set, but the next
  * person adding one should know why `completions` shows up.
  *
- * If a future change needs the SDK side to expose a template or `complete` too (e.g. a shared
- * "both sides have identical resources" assertion), extend `createSDKServer()` explicitly rather
- * than assuming this asymmetry is accidental — it isn't.
+ * If a future change needs the SDK side to expose a template, `complete` handler, or a matching
+ * tool set too (e.g. a shared "both sides have identical surface" assertion), extend
+ * `createSDKServer()` explicitly rather than assuming this asymmetry is accidental — it isn't.
  */
 import { fromJsonSchema, McpServer } from '@modelcontextprotocol/server'
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv'

@@ -14,9 +14,9 @@
  * check. This suite does something narrower and complementary: it drives mokei's own server and
  * parses every result with the SDK's zod schemas, which pins mokei's *emitted* wire shape field
  * by field in a way a round trip against an SDK server does not — a peer that accepts a result
- * says nothing about which fields it looked at. Pointing this suite's mokei-against-mokei
- * expectations at the SDK peer as well is tracked in
- * `docs/agents/plans/backlog/2026-06-20-mcp-draft-remaining.md`.
+ * says nothing about which fields it looked at. Driving mokei against a live SDK peer, rather
+ * than against itself, is covered separately, in `interop-sdk-client.test.ts` and
+ * `interop-sdk-server.test.ts`.
  *
  * ## How strong is this oracle? (read before trusting an assertion below)
  *

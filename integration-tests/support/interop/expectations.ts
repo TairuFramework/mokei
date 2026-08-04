@@ -121,7 +121,7 @@ export async function checkSDKClient(
   expect(client.getNegotiatedProtocolVersion()).toBe(options.protocolVersion ?? '2025-11-25')
 
   const { tools } = await client.listTools()
-  expect(tools.map((tool) => tool.name).sort()).toEqual(['echo', 'sum'])
+  expect(tools.map((tool) => tool.name).sort()).toEqual([...MOKEI_TOOL_NAMES].sort())
   const sumTool = tools.find((tool) => tool.name === 'sum')
   expect(sumTool?.outputSchema).toMatchObject({ type: 'object' })
 

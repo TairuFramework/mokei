@@ -13,7 +13,7 @@ Section numbers are stable: gaps mean an item shipped, not that it was renumbere
 
 ## 1. Deferred groundwork — last item
 
-- **G7 part 5** — stale-schema fallback: on a `-32001` HeaderMismatch, refresh via
+- **G7 part 5** — stale-schema fallback: on a `-32020` HeaderMismatch, refresh via
   `tools/list` and retry the `tools/call`. **Deferred:** the retry loop itself is unwritten. Both
   originally recorded blockers are gone as of 2026-08-04: SDK `2.0.0`'s server *does* emit
   `-32020` `HeaderMismatch` for an `Mcp-Param-*` disagreement
@@ -26,7 +26,8 @@ Section numbers are stable: gaps mean an item shipped, not that it was renumbere
   `2026-07-02-mcp-sdk-v2-adoption.md`, interop tests item). *Update 2026-07-27:* the peer
   harness is in place (`integration-tests/support/interop/`, SDK `2.0.0-beta.5`), covering
   `2025-11-25` in all four client/server × stdio/HTTP combinations; the `2026-07-28`
-  half lands with the B-wiring.
+  half lands with the B-wiring. *Update 2026-08-04:* the 2026-07-28 half landed (SDK
+  2.0.0) — see §3.2.3.
 
 ### Non-blocking polish (from final review — optional, not gating)
 
