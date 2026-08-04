@@ -1,0 +1,40 @@
+"@mokei/context-client@0.11.0":
+  dir: packages/context-client
+  intents:
+    - mcp-2026-07-28
+"@mokei/context-protocol@0.11.0":
+  dir: packages/context-protocol
+  intents:
+    - mcp-2026-07-28
+"@mokei/context-rpc@0.11.0":
+  dir: packages/context-rpc
+  intents:
+    - mcp-2026-07-28
+"@mokei/context-server@0.11.0":
+  dir: packages/context-server
+  intents:
+    - mcp-2026-07-28
+"@mokei/host@0.11.0":
+  dir: packages/host
+  intents:
+    - mcp-2026-07-28
+"@mokei/http-client@0.11.0":
+  dir: packages/http-client
+  intents:
+    - mcp-2026-07-28
+"@mokei/http-server@0.11.0":
+  dir: packages/http-server
+  intents:
+    - mcp-2026-07-28
+"@mokei/openai-provider@0.11.0":
+  dir: packages/openai-provider
+  intents:
+    - mcp-2026-07-28
+"@mokei/session@0.11.0":
+  dir: packages/session
+  intents:
+    - mcp-2026-07-28
+mokei@0.11.0:
+  dir: packages/cli
+  intents:
+    - mcp-2026-07-28
