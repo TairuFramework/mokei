@@ -101,7 +101,7 @@ is not more unit tests; it is a peer that reads the headers (see 3.2.3).
 
 #### 3.2.3 Point `checkMokeiClient` at the SDK peer for `2026-07-28` — **done 2026-08-04**
 
-Closed by `docs/superpowers/specs/2026-08-03-interop-peer-matrix-design.md`. All four quadrants
+Closed by `docs/agents/plans/completed/2026-08-04-interop-peer-matrix.complete.md`. All four quadrants
 (mokei client ↔ SDK server, SDK client ↔ mokei server, each over stdio and Streamable HTTP) now
 run on both revisions from the shared expectations, in `interop-sdk-client.test.ts` and
 `interop-sdk-server.test.ts`.
@@ -114,6 +114,10 @@ run on both revisions from the shared expectations, in `interop-sdk-client.test.
   emitter arrives with MRTR (B7).
 - Task-augmented params — SEP-2663 removed tasks from the specification and mokei never
   implemented them; delete this line rather than covering it.
+- `Mcp-Method` is never asserted directly, only implied by the SDK's inbound classifier accepting
+  the `2026-07-28` HTTP calls. Cheap to close where the omitted-argument case already wraps
+  `globalThis.fetch` (`integration-tests/suites/interop-sdk-server.test.ts`): the captured
+  `Headers` carries it.
 
 Covered as of 2026-08-04 (see 3.2.3): `Mcp-Param-*` end to end against the SDK's decoder,
 including the Base64 sentinel and integer paths and the omitted-argument case; and
