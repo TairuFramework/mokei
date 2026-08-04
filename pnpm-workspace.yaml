@@ -34,10 +34,10 @@ catalog:
   '@enkaku/socket': ^0.20.0
   '@enkaku/transport': ^0.20.0
   '@sozai/async': ^0.2.1
-  '@sozai/event': ^0.1.2
+  '@sozai/event': ^0.1.3
   '@sozai/generator': ^0.2.0
-  '@sozai/log': ^0.2.0
-  '@sozai/otel': ^0.3.1
+  '@sozai/log': ^0.3.0
+  '@sozai/otel': ^0.3.2
   '@sozai/schema': ^0.1.1
   '@sozai/stream': ^0.2.0
   '@tejika/cli': ^0.4.0
@@ -45,39 +45,39 @@ catalog:
   '@tejika/process': ^0.4.0
   '@tejika/server': ^0.4.0
   '@tejika/ui': ^0.4.0
-  '@hono/node-server': ^2.0.11
+  '@hono/node-server': ^2.0.12
   '@inkjs/ui': ^2.0.0
-  '@mantine/core': ^9.4.2
-  '@mantine/hooks': ^9.4.2
+  '@mantine/core': ^9.5.1
+  '@mantine/hooks': ^9.5.1
   '@swc/cli': ^0.8.1
   '@swc/core': ^1.15.41
-  '@tabler/icons-react': ^3.45.0
+  '@tabler/icons-react': ^3.46.0
   '@tanstack/react-router': ^1.170.18
-  '@tanstack/react-virtual': ^3.14.8
+  '@tanstack/react-virtual': ^3.14.9
   '@tanstack/router-devtools': ^1.167.0
   '@tanstack/router-plugin': ^1.168.23
-  '@types/luxon': ^3.7.2
-  '@types/node': ^26.1.1
-  '@types/react': ^19.2.17
-  '@types/react-dom': ^19.2.3
+  '@types/luxon': ^3.7.3
+  '@types/node': ^26.1.2
+  '@types/react': ^19.2.18
+  '@types/react-dom': ^19.2.4
   '@types/turndown': ^5.0.6
-  '@vitejs/plugin-react': ^6.0.4
+  '@vitejs/plugin-react': ^6.0.5
   '@vitest/ui': ^4.1.9
   ansi-colors: ^4.1.3
   del-cli: ^7.0.0
   eventsource-parser: ^3.1.0
-  globals: ^17.7.0
-  hono: ^4.12.32
+  globals: ^17.9.0
+  hono: ^4.12.34
   ink: ^7.1.1
   commander: ^15.0.0
   ink-testing-library: ^4.0.0
   jotai: ^2.20.2
-  jsdom: ^27.4.0
+  jsdom: ^30.0.1
   ky: ^2.0.2
   luxon: ^3.7.2
   nano-spawn: ^2.1.0
   parse-sse: ^0.1.0
-  postcss: ^8.5.23
+  postcss: ^8.5.25
   postcss-preset-mantine: ^1.18.0
   postcss-simple-vars: ^7.0.1
   prism-react-renderer: ^2.3.0
@@ -90,7 +90,7 @@ catalog:
   typedoc: ^0.28.20
   typedoc-plugin-markdown: ^4.12.0
   typescript: ^6.0.3
-  vite: ^8.1.5
+  vite: ^8.2.0
   vitest: ^4.1.10
 
 catalogMode: manual
@@ -104,6 +104,32 @@ minimumReleaseAgeExclude:
   - '@kokuin/*'
   - '@sozai/*'
   - '@tejika/*'
+
+# Release management (`pnpm change` to record an intent, `pnpm version -r` to apply them).
+# Every published package moves in lockstep, which is what the manual bumps up to 0.10.0 did:
+# the packages are one toolkit and are documented against a single version. `mokei-integration-tests`,
+# `monitor` and `website` are private and never enter a release plan.
+versioning:
+  fixed:
+    - - '@mokei/anthropic-provider'
+      - '@mokei/context-client'
+      - '@mokei/context-protocol'
+      - '@mokei/context-rpc'
+      - '@mokei/context-server'
+      - '@mokei/host'
+      - '@mokei/host-monitor'
+      - '@mokei/host-protocol'
+      - '@mokei/http-client'
+      - '@mokei/http-server'
+      - '@mokei/llama-provider'
+      - '@mokei/logger'
+      - '@mokei/mcp-fetch'
+      - '@mokei/mcp-sqlite'
+      - '@mokei/model-provider'
+      - '@mokei/ollama-provider'
+      - '@mokei/openai-provider'
+      - '@mokei/session'
+      - 'mokei'
 
 supportedArchitectures:
   cpu: [ current ]

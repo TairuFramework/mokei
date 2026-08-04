@@ -124,9 +124,9 @@ export type CreateHostedContextParams = {
   tools?: Array<ContextTool>
   dispose?: () => void | Promise<void>
   /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
-   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
-   * `'auto'`.
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
+   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
+   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
    */
   protocolVersion?: ProtocolVersion | 'auto'
 }
@@ -144,7 +144,10 @@ export type HostEvents = {
 export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
   params: CreateHostedContextParams,
 ): HostedContext<T> {
-  const { transport, tools = [], dispose, protocolVersion = '2026-07-28' } = params
+  // `'auto'` rather than the newest revision: a host points at arbitrary third-party servers,
+  // most of which serve `'2025-11-25'` only, and a `'2026-07-28'` pin rejects those with
+  // `-32022` instead of negotiating down. Callers that know their server pin explicitly.
+  const { transport, tools = [], dispose, protocolVersion = 'auto' } = params
   const client = new ContextClient<T>({ protocolVersion, transport })
   const disposer = new Disposer({
     dispose: async () => {
@@ -166,9 +169,9 @@ export type SpawnHostedContextParams = SpawnContextServerParams & {
   /** Grace period (ms) between SIGTERM and SIGKILL on dispose. Default 5000. */
   killTimeout?: number
   /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
-   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
-   * `'auto'`.
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
+   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
+   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
    */
   protocolVersion?: ProtocolVersion | 'auto'
 }
@@ -251,9 +254,9 @@ export type AddDirectContextParams = {
   config: ServerConfig
   tools?: Array<ContextTool>
   /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
-   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
-   * `'auto'`.
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
+   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
+   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
    */
   protocolVersion?: ProtocolVersion | 'auto'
 }
@@ -265,9 +268,9 @@ export type AddLocalContextParams = SpawnContextServerParams & {
   /** Optional tighter per-message cap in bytes. */
   maxMessageSize?: number
   /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
-   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
-   * `'auto'`.
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
+   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
+   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
    */
   protocolVersion?: ProtocolVersion | 'auto'
 }
@@ -284,9 +287,9 @@ export type HTTPContextParams = {
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number
   /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
-   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
-   * `'auto'`.
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
+   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
+   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
    */
   protocolVersion?: ProtocolVersion | 'auto'
 }

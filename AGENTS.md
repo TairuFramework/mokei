@@ -40,6 +40,12 @@ packages/
 | `pnpm build` | Full build (types + JS) |
 | `pnpm test` | Run all tests |
 | `pnpm lint` | Lint and format |
+| `pnpm change` | Record a release intent in `.changeset/` (pnpm native versioning) |
+| `pnpm change status` | Preview the release plan the pending intents produce |
+| `pnpm version -r` | Apply the plan: bump versions, propagate `workspace:` ranges |
+
+Published packages release in lockstep -- `versioning.fixed` in `pnpm-workspace.yaml` holds
+every public package, so one intent moves them all to the same version.
 
 ## Important Guardrails
 

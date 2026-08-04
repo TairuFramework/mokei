@@ -65,7 +65,7 @@ const transport = new HTTPTransport({ url: 'https://mcp.example.com/mcp' })
 
 Most applications connect HTTP contexts through the host via `contextHost.addHTTPContext(...)`
 or `session.contextHost.addHTTPContext(...)` rather than constructing the client directly.
-Those take a `protocolVersion` too, defaulting to `'2026-07-28'`.
+Those take a `protocolVersion` too, defaulting to `'auto'`.
 
 ## Documentation
 

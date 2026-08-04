@@ -17,15 +17,15 @@ describe('ContextHost protocol version', () => {
     host = null
   })
 
-  test('addLocalContext defaults to 2026-07-28', async () => {
+  test('addLocalContext defaults to auto, resolving the newest revision the server serves', async () => {
     host = new ContextHost()
     const client = await host.addLocalContext({
       key: 'echo',
       command: process.execPath,
       args: [ECHO_SERVER],
     })
-    // Read after an awaited request so an `'auto'` probe — were the default ever changed
-    // to it — would already be resolved rather than throwing from the getter.
+    // Read after an awaited request so the `'auto'` probe is resolved rather than throwing
+    // from the getter. The fixture serves both revisions, so the probe settles on the newest.
     await client.listTools()
     expect(client.protocolVersion).toBe('2026-07-28')
   })
@@ -57,11 +57,24 @@ describe('ContextHost protocol version', () => {
     },
   }
 
-  test('addDirectContext defaults to 2026-07-28', async () => {
+  test('addDirectContext defaults to auto, resolving the newest revision the server serves', async () => {
     host = new ContextHost()
     const client = host.addDirectContext({ key: 'direct', config: directConfig })
     await client.listTools()
     expect(client.protocolVersion).toBe('2026-07-28')
+  })
+
+  // The reason the default is `'auto'` rather than the newest revision: a server that serves
+  // `2025-11-25` only answers the probe's `server/discover` with an error, and the client
+  // negotiates down instead of failing the connection the way a `'2026-07-28'` pin would.
+  test('the default falls back to 2025-11-25 against a server that serves it only', async () => {
+    host = new ContextHost()
+    const client = host.addDirectContext({
+      key: 'direct',
+      config: { ...directConfig, protocolVersions: ['2025-11-25'] },
+    })
+    await client.listTools()
+    expect(client.protocolVersion).toBe('2025-11-25')
   })
 
   // The explicit revision here is deliberately the one that is *not* the default: asserting
@@ -77,15 +90,18 @@ describe('ContextHost protocol version', () => {
     expect(client.protocolVersion).toBe('2025-11-25')
   })
 
-  // No request is issued: for a fixed revision the client resolves it at construction, and
-  // the transport only reaches the network once a request is sent.
-  test('addHTTPContext defaults to 2026-07-28', async () => {
+  // No request is issued, which is exactly what the default being `'auto'` looks like from
+  // here: a pinned revision resolves at construction, an `'auto'` one only once the probe has
+  // reached the server — and nothing has, since the transport waits for a first request.
+  test('addHTTPContext defaults to auto, leaving the revision unresolved until a request', async () => {
     host = new ContextHost()
     const client = await host.addHTTPContext({
       key: 'remote',
       url: 'https://mcp.example.com/api',
     })
-    expect(client.protocolVersion).toBe('2026-07-28')
+    expect(() => client.protocolVersion).toThrow(
+      "The 'auto' protocol version has not been resolved yet",
+    )
   })
 
   test('addHTTPContext honours an explicit revision', async () => {
@@ -139,11 +155,15 @@ describe('ProxyHost protocol version', () => {
     await proxy.dispose()
   })
 
-  test('spawn defaults to 2026-07-28', async () => {
+  test('spawn defaults to auto', async () => {
     const { proxy } = stubProxyHost()
     const client = await proxy.spawn({ key: 'proxied', command: 'server' })
 
-    expect(client.protocolVersion).toBe('2026-07-28')
+    // The stub never answers, so an unresolved revision *is* the observation: a pinned one
+    // would have resolved at construction without any wire traffic.
+    expect(() => client.protocolVersion).toThrow(
+      "The 'auto' protocol version has not been resolved yet",
+    )
 
     await proxy.dispose()
   })

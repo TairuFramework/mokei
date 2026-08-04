@@ -10,9 +10,9 @@ npm install @mokei/host
 
 `addLocalContext`, `addHTTPContext`, `addDirectContext`, `createHostedContext`,
 `spawnHostedContext` and `ProxyHost.spawn` each take an optional `protocolVersion`,
-defaulting to `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit
-`protocolVersion: '2025-11-25'`, or `'auto'` to probe the server and use whichever revision
-it serves.
+defaulting to `'auto'`: the client probes the server and speaks the newest revision both
+sides support, `'2026-07-28'` where the server serves it and `'2025-11-25'` otherwise. Pin
+an explicit revision to skip the probe's extra round trip.
 
 ## Security
 

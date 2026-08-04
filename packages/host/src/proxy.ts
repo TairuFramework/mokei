@@ -17,9 +17,9 @@ export type ProxySpawnParams = {
   args?: Array<string>
   env?: Record<string, string | null | undefined>
   /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to
-   * `'2026-07-28'`. A server that only serves `'2025-11-25'` needs an explicit value or
-   * `'auto'`.
+   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
+   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
+   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
    */
   protocolVersion?: ProtocolVersion | 'auto'
 }
