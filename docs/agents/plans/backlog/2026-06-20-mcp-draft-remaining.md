@@ -14,10 +14,14 @@ Section numbers are stable: gaps mean an item shipped, not that it was renumbere
 ## 1. Deferred groundwork — last item
 
 - **G7 part 5** — stale-schema fallback: on a `-32001` HeaderMismatch, refresh via
-  `tools/list` and retry the `tools/call`. **Deferred:** no server emits HeaderMismatch
-  today (no live draft server), and `-32001` already means `SESSION_EXPIRED_CODE` in mokei
-  (`http-client/src/errors.ts`). Revisit only against a live draft peer; pick a
-  non-colliding code then. Self-contained in `@mokei/http-client`. *Update 2026-07-02:*
+  `tools/list` and retry the `tools/call`. **Deferred:** the retry loop itself is unwritten. Both
+  originally recorded blockers are gone as of 2026-08-04: SDK `2.0.0`'s server *does* emit
+  `-32020` `HeaderMismatch` for an `Mcp-Param-*` disagreement
+  (`core-internal/src/shared/mcpParamHeaders.ts`, `validateMcpParamHeaders`, HTTP `400`,
+  offending pair in `data.mismatch`), reachable from the integration suite today via
+  `startSDK20260728HTTPServer`; and the `-32001` collision with `SESSION_EXPIRED_CODE` is beside
+  the point, since the specification's code is `-32020`, which mokei already reserves as
+  `HEADER_MISMATCH`. Self-contained in `@mokei/http-client`. *Update 2026-07-02:*
   SDK v2 beta can now serve as the live draft peer (see
   `2026-07-02-mcp-sdk-v2-adoption.md`, interop tests item). *Update 2026-07-27:* the peer
   harness is in place (`integration-tests/support/interop/`, SDK `2.0.0-beta.5`), covering
@@ -94,43 +98,28 @@ mokei-against-mokei coverage that preceded it. The Base64 sentinel gap (since fi
 same shape. `Mcp-Param-*` is built by the same code and still has unit coverage only. The fix
 is not more unit tests; it is a peer that reads the headers (see 3.2.3).
 
-#### 3.2.3 Near-term cleanup — point `checkMokeiClient` at the SDK peer for `2026-07-28`
+#### 3.2.3 Point `checkMokeiClient` at the SDK peer for `2026-07-28` — **done 2026-08-04**
 
-**This is not indefinite backlog; it is the cheapest high-value item on this list.**
-`checkMokeiClient` (`integration-tests/support/interop/expectations.ts:34`) has four call sites.
-Two already drive a **real SDK server** at `2025-11-25`, over the identical fixture
-(`interop-sdk-server.test.ts:38` stdio, `:51` HTTP). The other two
-(`interop-2026-07-28-http.test.ts:44`, `interop-2026-07-28-stdio.test.ts:245`) drive mokei's own
-server. The SDK `2026-07-28` peer already exists in the harness
-(`startSDK20260728HTTPServer`) but is checked by bespoke inline assertions instead of the shared
-expectations.
-
-So this is one call-site edit on a pattern already proven twice — and it would have caught the
-`Mcp-Name` defect in 3.2.1 with no bespoke test at all.
-
-**All four peer directions are reachable**, verified against mokei with zero mokei changes, so
-the same approach extends past `checkMokeiClient`:
-
-| Direction | Transport | How |
-|---|---|---|
-| mokei client → SDK server | stdio | existing `support/interop/sdk-stdio-server.ts` |
-| mokei client → SDK server | HTTP | existing `startSDK20260728HTTPServer` |
-| SDK client → mokei server | stdio | `new Client(info, { versionNegotiation: { mode: { pin: '2026-07-28' } } })` + `StdioClientTransport` from `@modelcontextprotocol/client/stdio` |
-| SDK client → mokei server | HTTP | same `Client` options + `StreamableHTTPClientTransport` |
-
-The SDK-client direction has no harness helper yet; adding one is the counterpart to
-`checkSDKClient`-style expectations and would close the matrix the spec originally planned.
-Note `serveStdio(factory, { legacy: 'reject' })` if a `2026-07-28`-only SDK stdio server is
-wanted (`server/dist/stdio.d.mts:20,61`).
+Closed by `docs/superpowers/specs/2026-08-03-interop-peer-matrix-design.md`. All four quadrants
+(mokei client ↔ SDK server, SDK client ↔ mokei server, each over stdio and Streamable HTTP) now
+run on both revisions from the shared expectations, in `interop-sdk-client.test.ts` and
+`interop-sdk-server.test.ts`.
 
 #### 3.2.4 Still unexercised against mokei
 
-- `Mcp-Param-*` entirely (unit coverage only — see 3.2.1).
-- Negative `Mcp-Name` cases.
 - `subscriptions/listen` (also B4).
-- The `MissingRequiredClientCapability` ladders.
-- Task-augmented params.
-- `server/discover`'s `_meta` contents.
+- The `MissingRequiredClientCapability` ladders — not reachable on `2026-07-28`, where
+  `PROTOCOL.serverMethods` is empty and no handler can need an undeclared client capability. The
+  emitter arrives with MRTR (B7).
+- Task-augmented params — SEP-2663 removed tasks from the specification and mokei never
+  implemented them; delete this line rather than covering it.
+
+Covered as of 2026-08-04 (see 3.2.3): `Mcp-Param-*` end to end against the SDK's decoder,
+including the Base64 sentinel and integer paths and the omitted-argument case; and
+`server/discover`'s `_meta` contents, asserted through the SDK client's `getServerVersion()`.
+Negative `Mcp-Name` cases were deliberately not built — written the obvious way (a raw `fetch`
+carrying a wrong header) they test the SDK rather than mokei, since the request never goes
+through mokei's encoder at all.
 
 ### 3.3 Design and hygiene
 
