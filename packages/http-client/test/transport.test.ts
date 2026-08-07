@@ -1,4 +1,5 @@
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
+import { META_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { isSessionExpiredCode, SESSION_EXPIRED_CODE } from '../src/errors.js'
@@ -1454,6 +1455,288 @@ describe('HTTPTransport', () => {
         (t) => t.name,
       )
       expect(names).toEqual(['good'])
+
+      await transport.dispose()
+    })
+  })
+
+  describe('stale-schema retry on -32020', () => {
+    const listRequest: ClientMessage = {
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'tools/list',
+      params: {},
+    } as ClientMessage
+
+    const callRequest: ClientMessage = {
+      jsonrpc: '2.0',
+      id: 6,
+      method: 'tools/call',
+      params: { name: 'search', arguments: { region: 'us-east-1' } },
+    } as ClientMessage
+
+    function listResult(tools: Array<unknown>): ServerMessage {
+      return { jsonrpc: '2.0', id: 5, result: { tools } } as ServerMessage
+    }
+
+    function searchTool(annotated: boolean): unknown {
+      return {
+        name: 'search',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            region: annotated ? { type: 'string', 'x-mcp-header': 'Region' } : { type: 'string' },
+          },
+        },
+      }
+    }
+
+    /** The peer's `-32020`, shaped as SDK 2.0.0's `paramHeaderMismatchRejection` builds it. */
+    function mismatchResponse(id: number, header: string, data?: unknown): Response {
+      return errorResponse(
+        400,
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id,
+          error: {
+            code: -32020,
+            message: 'Bad Request: the request headers and body disagree',
+            data:
+              data === undefined
+                ? { mismatch: { header, body: 'the body carries region="us-east-1"' } }
+                : data,
+          },
+        }),
+      )
+    }
+
+    function posts(calls: Array<Array<unknown>>): Array<FetchCall> {
+      return calls.filter((call) => (call[1] as RequestInit).method === 'POST') as Array<FetchCall>
+    }
+
+    test('refreshes the annotations and retries a tools/call the peer rejected', async () => {
+      // The client's first list carries no annotation, so the call goes out bare...
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(false)])))
+      // ...and the peer, whose schema now declares one, rejects it.
+      fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
+      // The transport's own tools/list sees the annotation. Its request id is internal and the
+      // response is read from the fetch rather than enqueued, so the id here is not correlated.
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(true)])))
+      // The retry carries the header and succeeds.
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ jsonrpc: '2.0', id: 6, result: { content: [] } }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+      await transport.write(callRequest)
+
+      const { value } = await transport.read()
+      expect(value).toEqual({ jsonrpc: '2.0', id: 6, result: { content: [] } })
+
+      const sent = posts(fetchMock.mock.calls)
+      expect(sent).toHaveLength(4)
+      expect(sent[1][1].headers['Mcp-Param-Region']).toBeUndefined()
+      expect(sent[2][1].headers['Mcp-Method']).toBe('tools/list')
+      expect(sent[2][1].headers.Accept).toBe('application/json, text/event-stream')
+      expect(sent[3][1].headers['Mcp-Param-Region']).toBe('us-east-1')
+
+      await transport.dispose()
+    })
+
+    test('passes a -32020 through on a method other than tools/call', async () => {
+      fetchMock.mockResolvedValueOnce(mismatchResponse(7, 'Mcp-Param-Region'))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write({
+        jsonrpc: '2.0',
+        id: 7,
+        method: 'prompts/get',
+        params: { name: 'greet' },
+      } as ClientMessage)
+
+      const { value } = await transport.read()
+      expect((value as ErrorFrame).error?.code).toBe(-32020)
+      expect(posts(fetchMock.mock.calls)).toHaveLength(1)
+
+      await transport.dispose()
+    })
+
+    test('passes a -32020 through when the disagreeing header is not an Mcp-Param-*', async () => {
+      // The inbound classifier's standard-header cross-check uses the same code. No schema
+      // refresh can affect it, so it must not cost a tools/list.
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(true)])))
+      fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Name'))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+      await transport.write(callRequest)
+
+      const { value } = await transport.read()
+      expect((value as ErrorFrame).error?.code).toBe(-32020)
+      expect(posts(fetchMock.mock.calls)).toHaveLength(2)
+
+      await transport.dispose()
+    })
+
+    test('passes a -32020 through when error.data carries no mismatch', async () => {
+      // JSON-RPC leaves `data` entirely to the server, so an absent or differently-shaped one
+      // must fail the gate rather than throw or trigger a blind refresh.
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(true)])))
+      fetchMock.mockResolvedValueOnce(mismatchResponse(6, '', { detail: 'no mismatch key' }))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+      await transport.write(callRequest)
+
+      const { value } = await transport.read()
+      expect((value as ErrorFrame).error?.code).toBe(-32020)
+      expect(posts(fetchMock.mock.calls)).toHaveLength(2)
+
+      await transport.dispose()
+    })
+
+    test('does not retry a second time when the retry is rejected too', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(false)])))
+      fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(true)])))
+      fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+      await transport.write(callRequest)
+
+      const { value } = await transport.read()
+      expect((value as ErrorFrame).error?.code).toBe(-32020)
+      expect(posts(fetchMock.mock.calls)).toHaveLength(4)
+
+      await transport.dispose()
+    })
+
+    test('surfaces the original error when the refresh fails', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(false)])))
+      fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
+      // A refresh that answers HTML, or anything but a JSON tools/list result, is a failed
+      // refresh — not an error the caller ever hears about.
+      fetchMock.mockResolvedValueOnce(errorResponse(500, '<html>gateway</html>'))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+      await transport.write(callRequest)
+
+      const { value } = await transport.read()
+      const frame = value as ErrorFrame
+      expect(frame.id).toBe(6)
+      expect(frame.error?.code).toBe(-32020)
+      expect(posts(fetchMock.mock.calls)).toHaveLength(3)
+
+      await transport.dispose()
+    })
+
+    test('skips the retry when the refreshed annotations produce the same headers', async () => {
+      // Already annotated, and the refresh says the same. The retry would send byte-identical
+      // headers and fail identically, so it is not worth a round trip.
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(true)])))
+      fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(true)])))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+      await transport.write(callRequest)
+
+      const { value } = await transport.read()
+      expect((value as ErrorFrame).error?.code).toBe(-32020)
+      expect(posts(fetchMock.mock.calls)).toHaveLength(3)
+
+      await transport.dispose()
+    })
+
+    test('carries the revision envelope through the refresh', async () => {
+      // A `2026-07-28` request has no `initialize` handshake to seed `#protocolVersion` from —
+      // the refresh must derive its revision from the message's own `_meta`, same as an
+      // ordinary send, or its own envelope goes out revision-less. And the envelope is more than
+      // the version: `2026-07-28` also requires client capabilities, which only the layer above
+      // the transport knows, so the refresh must copy the originating request's own `_meta`
+      // rather than rebuild it — a conformant peer rejects an envelope missing either key.
+      const requestMeta = {
+        [META_PROTOCOL_VERSION]: '2026-07-28',
+        'io.modelcontextprotocol/clientCapabilities': {},
+      }
+      const versionedCallRequest: ClientMessage = {
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'tools/call',
+        params: {
+          name: 'search',
+          arguments: { region: 'us-east-1' },
+          _meta: requestMeta,
+        },
+      } as ClientMessage
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(false)])))
+      fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(true)])))
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ jsonrpc: '2.0', id: 6, result: { content: [] } }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+      await transport.write(versionedCallRequest)
+
+      const { value } = await transport.read()
+      expect(value).toEqual({ jsonrpc: '2.0', id: 6, result: { content: [] } })
+
+      const sent = posts(fetchMock.mock.calls)
+      expect(sent[2][1].headers['MCP-Protocol-Version']).toBe('2026-07-28')
+      const refreshBody = JSON.parse(sent[2][1].body as string) as {
+        params: { _meta: Record<string, unknown> }
+      }
+      expect(refreshBody.params._meta).toEqual(requestMeta)
+
+      await transport.dispose()
+    })
+
+    test('a re-encode that throws during the retry decision surfaces the original error', async () => {
+      // The peer's schema, once refreshed, types the param as an integer this call's argument
+      // cannot satisfy — the retry's own re-encode throws, and that must not become the
+      // caller's error in place of the peer's `-32020`.
+      function integerSearchTool(): unknown {
+        return {
+          name: 'search',
+          inputSchema: {
+            type: 'object',
+            properties: { region: { type: 'integer', 'x-mcp-header': 'Region' } },
+          },
+        }
+      }
+
+      const nonIntegerCallRequest: ClientMessage = {
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'tools/call',
+        params: { name: 'search', arguments: { region: 3.5 } },
+      } as ClientMessage
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(false)])))
+      fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([integerSearchTool()])))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+      await transport.write(nonIntegerCallRequest)
+
+      const { value } = await transport.read()
+      expect((value as ErrorFrame).error?.code).toBe(-32020)
+      expect(posts(fetchMock.mock.calls)).toHaveLength(3)
 
       await transport.dispose()
     })

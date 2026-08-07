@@ -9,6 +9,9 @@ import {
   GREETING_TEXT,
   GREETING_URI,
   greetingMessage,
+  HEADER_ECHO_INPUT_SCHEMA,
+  HEADER_ECHO_UNANNOTATED_SCHEMA,
+  type HeaderEchoSchema,
   headerEchoText,
   NON_ASCII_RESOURCE_REGISTERED_URI,
   NON_ASCII_RESOURCE_TEXT,
@@ -48,6 +51,33 @@ const ROWS: ReadonlyArray<SDKServerRow> = [
 ]
 
 const EXPECTATIONS = { resourceURIs: SDK_RESOURCE_URIS, toolNames: SDK_TOOL_NAMES }
+
+/**
+ * Run `body` with `globalThis.fetch` wrapped, collecting the headers of every request whose body
+ * `match` accepts, in send order. Restores the original `fetch` even if `body` throws.
+ *
+ * Patching a global is safe only because vitest runs the tests within a file serially; under
+ * `test.concurrent` this would capture — and restore under — its neighbours.
+ */
+async function captureFetch(
+  match: (body: string) => boolean,
+  body: () => Promise<void>,
+): Promise<Array<Headers>> {
+  const sent: Array<Headers> = []
+  const original = globalThis.fetch
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (typeof init?.body === 'string' && match(init.body)) {
+      sent.push(new Headers(init.headers))
+    }
+    return await original(input, init)
+  }) as typeof globalThis.fetch
+  try {
+    await body()
+  } finally {
+    globalThis.fetch = original
+  }
+  return sent
+}
 
 describe.each(ROWS)('mokei client against the SDK v2 server on $protocolVersion', (row) => {
   let httpServer: RunningHTTPServer | null = null
@@ -226,6 +256,34 @@ describe('mokei client against the SDK v2 server on 2026-07-28', () => {
     expect(called.content).toEqual([{ type: 'text', text: headerEchoText(undefined, 42) }])
   })
 
+  test('sends Mcp-Method naming the method on every standard-header request', async () => {
+    // Asserted on the outgoing request rather than inferred from the peer accepting the call:
+    // the SDK's inbound classifier cross-checks the header against the body, so a wrong value
+    // fails the call — but a *right* value passing is equally consistent with the header being
+    // built from some other field that happens to agree.
+    httpServer = await startSDK20260728HTTPServer()
+    client = connectMokeiHTTPClient(httpServer.url, '2026-07-28')
+    const activeClient = client
+
+    const sent = await captureFetch(
+      (body) =>
+        body.includes('"tools/call"') ||
+        body.includes('"prompts/get"') ||
+        body.includes('"resources/read"'),
+      async () => {
+        await activeClient.callTool({ name: 'echo', arguments: { text: 'hello interop' } })
+        await activeClient.getPrompt({ name: 'greet', arguments: { name: 'Ada' } })
+        await activeClient.readResource({ uri: GREETING_URI })
+      },
+    )
+
+    expect(sent.map((headers) => headers.get('Mcp-Method'))).toEqual([
+      'tools/call',
+      'prompts/get',
+      'resources/read',
+    ])
+  })
+
   /**
    * The absence case, and the one case the peer cannot fail for us: when the body value is absent
    * the SDK MUST NOT expect the header, and a header sent anyway is *ignored*. So this is asserted
@@ -237,26 +295,55 @@ describe('mokei client against the SDK v2 server on 2026-07-28', () => {
    */
   test('sends no Mcp-Param-* header for an omitted annotated argument', async () => {
     httpServer = await startSDK20260728HTTPServer()
-    const sent: Array<Headers> = []
-    const original = globalThis.fetch
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (typeof init?.body === 'string' && init.body.includes('"headerEcho"')) {
-        sent.push(new Headers(init.headers))
-      }
-      return await original(input, init)
-    }) as typeof globalThis.fetch
-    try {
-      client = connectMokeiHTTPClient(httpServer.url, '2026-07-28')
-      await client.listTools()
+    client = connectMokeiHTTPClient(httpServer.url, '2026-07-28')
+    const activeClient = client
+    await activeClient.listTools()
 
-      const called = await client.callTool({ name: 'headerEcho', arguments: { limit: 7 } })
-      expect(called.content).toEqual([{ type: 'text', text: headerEchoText(undefined, 7) }])
-    } finally {
-      globalThis.fetch = original
-    }
+    const sent = await captureFetch(
+      (body) => body.includes('"headerEcho"'),
+      async () => {
+        const called = await activeClient.callTool({ name: 'headerEcho', arguments: { limit: 7 } })
+        expect(called.content).toEqual([{ type: 'text', text: headerEchoText(undefined, 7) }])
+      },
+    )
 
     expect(sent).toHaveLength(1)
     expect(sent[0]?.get('Mcp-Param-Limit')).toBe('7')
     expect(sent[0]?.get('Mcp-Param-Tenant')).toBeNull()
+  })
+
+  test('retries a tools/call after the peer schema gains an annotation', async () => {
+    // The acceptance case for the stale-schema retry. The client lists an annotation-free
+    // `headerEcho`, the peer gains the annotation behind its back, and the call that follows
+    // carries a body value with no header — which the SDK answers `param-header-missing`.
+    let schema: HeaderEchoSchema = HEADER_ECHO_UNANNOTATED_SCHEMA
+    httpServer = await startSDK20260728HTTPServer({ headerEchoSchema: () => schema })
+    client = connectMokeiHTTPClient(httpServer.url, '2026-07-28')
+    const activeClient = client
+
+    await activeClient.listTools()
+    schema = HEADER_ECHO_INPUT_SCHEMA
+
+    const sent = await captureFetch(
+      (body) => body.includes('"headerEcho"') || body.includes('"tools/list"'),
+      async () => {
+        const called = await activeClient.callTool({
+          name: 'headerEcho',
+          arguments: { tenant: 'acme' },
+        })
+        // Reaching the handler's text at all is the assertion: the SDK validates every declared
+        // header against the body before dispatch, so the handler runs only on the retry.
+        expect(called.content).toEqual([{ type: 'text', text: headerEchoText('acme', undefined) }])
+      },
+    )
+
+    // Bare call, the transport's own refresh, then the retry carrying the header.
+    expect(sent).toHaveLength(3)
+    expect(sent[0]?.get('Mcp-Param-Tenant')).toBeNull()
+    expect(sent[1]?.get('Mcp-Method')).toBe('tools/list')
+    expect(sent[2]?.get('Mcp-Param-Tenant')).toBe('acme')
+    // Exactly the new header set, not merely a superset of it: `limit` was omitted from the
+    // arguments, so its annotation must produce no header on the retry either.
+    expect(sent[2]?.get('Mcp-Param-Limit')).toBeNull()
   })
 })

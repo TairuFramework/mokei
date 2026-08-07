@@ -3,6 +3,7 @@ import type { ClientTransport } from '@mokei/context-client'
 import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
 import type { ClientMessage, ProtocolVersion, ServerMessage } from '@mokei/context-protocol'
 import {
+  HEADER_MISMATCH,
   isSupportedProtocolVersion,
   META_PROTOCOL_VERSION,
   PROTOCOLS,
@@ -13,7 +14,12 @@ import { parseServerSentEvents } from 'parse-sse'
 
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
 import { SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE } from './errors.js'
-import { buildParamHeaders, collectHeaderAnnotations, encodeHeaderValue } from './x-mcp-header.js'
+import {
+  buildParamHeaders,
+  collectHeaderAnnotations,
+  encodeHeaderValue,
+  type HeaderAnnotation,
+} from './x-mcp-header.js'
 
 /** Standard JSON-RPC internal-error code, used for synthesized transport failures. */
 const INTERNAL_ERROR_CODE = -32603
@@ -61,6 +67,35 @@ function parseJSONRPCError(
   return typeof errorRecord.code === 'number' && typeof errorRecord.message === 'string'
     ? record
     : null
+}
+
+/**
+ * Whether a carried JSON-RPC error is the peer rejecting an `Mcp-Param-*` header that disagrees
+ * with the body — the one `-32020` a stale tool schema explains, and so the only one a schema
+ * refresh can fix.
+ *
+ * `-32020` is also the code for a standard-header cross-check failure (`Mcp-Method`, `Mcp-Name`
+ * or `MCP-Protocol-Version` against the body), which no refresh affects. `error.data` is left
+ * entirely to the server by JSON-RPC, so an absent or differently-shaped `data` fails this check
+ * and the error surfaces exactly as it does today.
+ */
+function isParamHeaderMismatch(carried: Record<string, unknown>): boolean {
+  const error = carried.error as { code?: unknown; data?: unknown } | undefined
+  if (error?.code !== HEADER_MISMATCH) {
+    return false
+  }
+  const data = error.data as { mismatch?: unknown } | undefined
+  const header = (data?.mismatch as { header?: unknown } | undefined)?.header
+  // Compared case-insensitively because the value is an HTTP field name, which RFC 9110 makes
+  // case-insensitive. The SDK happens to report the canonical casing, but a peer naming
+  // `mcp-param-tenant` is naming the same header and must not silently lose the retry.
+  return typeof header === 'string' && header.toLowerCase().startsWith('mcp-param-')
+}
+
+/** Whether two `Mcp-Param-*` header sets carry the same names and the same values. */
+function sameParamHeaders(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key])
 }
 
 /**
@@ -187,6 +222,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    * this set cannot grow for the life of the transport.
    */
   #untrackedControllers = new Set<AbortController>()
+  /** Counter behind the request ids the stale-schema refresh mints for its own `tools/list`. */
+  #internalRequestCount = 0
 
   #clearExchange(requestID: string | number): void {
     this.#pendingMethods.delete(requestID)
@@ -206,8 +243,188 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       this.#untrackedControllers.delete(controller)
     }
   }
-  /** Cached tool `inputSchema`s keyed by tool name, populated from `tools/list` results. */
-  #toolSchemas = new Map<string, unknown>()
+
+  /**
+   * Cache the `x-mcp-header` annotations of every valid tool in a `tools/list` result, and
+   * return the entries that passed. A tool whose annotations violate SEP-2243 is dropped rather
+   * than half-honoured: sending some of its headers and not others is what a peer rejects.
+   *
+   * Shared by the ordinary list path and the stale-schema refresh so the two cannot drift.
+   */
+  #cacheToolAnnotations(tools: Array<unknown>): Array<unknown> {
+    const kept: Array<unknown> = []
+    for (const entry of tools) {
+      const name = (entry as { name?: unknown })?.name
+      const inputSchema = (entry as { inputSchema?: unknown })?.inputSchema
+      const check = collectHeaderAnnotations(inputSchema)
+      if (!check.valid) {
+        this.#logger.warn('Excluding tool with invalid x-mcp-header annotation', {
+          tool: String(name),
+          errors: check.errors,
+        })
+        continue
+      }
+      if (typeof name === 'string') {
+        this.#toolAnnotations.set(name, check.annotations)
+      }
+      kept.push(entry)
+    }
+    return kept
+  }
+
+  /**
+   * Re-read the peer's tool list and refresh {@link #toolAnnotations} from it.
+   *
+   * Runs its own POST and consumes the response directly rather than going through
+   * `#sendMessage`: a `tools/list` this transport minted has no caller in the RPC layer's id
+   * space, so enqueuing its response would deliver a frame nobody is waiting for. Reading it
+   * here keeps the refresh invisible above the transport and leaves `#handleIncoming`'s
+   * single-return contract intact.
+   *
+   * @param version the revision this exchange belongs to. Supplied by the caller, derived from
+   * the message's own `_meta` exactly as the ordinary send path derives it (falling back to the
+   * transport's cached `#protocolVersion`) — so the transport and the refresh can never disagree
+   * about which revision governs the exchange. `2026-07-28` has no handshake and so no
+   * `initialize` result to seed `#protocolVersion` from; reading that field directly here, as
+   * opposed to taking the caller's derived version, would leave the refresh's own envelope
+   * revision-less on exactly the revision SEP-2243 exists for.
+   * @param requestMeta the originating request's own `params._meta`, copied verbatim onto the
+   * refresh rather than rebuilt. `2026-07-28`'s request envelope requires more than the revision
+   * — capabilities and client identity too — and only the layer above (`ContextClient`, via
+   * `decorateRequest`) knows those; the transport has no `ClientRequestContext` to synthesize
+   * them from. A refresh that invented its own envelope would be missing required keys and a
+   * conformant peer would reject it, exactly as it rejects one missing the revision. Copying the
+   * whole envelope, rather than naming the keys this revision happens to require today, is
+   * deliberate: it cannot break again the next time the envelope gains a required field, whereas
+   * an enumeration silently drops whatever it was not taught about. What mokei's own client
+   * generates for this revision — version, capabilities, client info, log level — carries no
+   * per-request identity such as a progress token, so copying it onto a second request is inert.
+   * That is a property of today's generated envelope, not a structural guarantee: both revisions'
+   * `decorateRequest` pass caller-supplied `_meta` through untouched, so a caller could put
+   * per-request state there. Copying it is still the right trade — a duplicated progress token
+   * costs at most a spurious progress notification, while a missing required key costs the retry
+   * entirely.
+   * @returns whether the annotations were refreshed.
+   */
+  async #refreshToolAnnotations(version: string | null, requestMeta: unknown): Promise<boolean> {
+    const headers = this.#baseHeaders(version, version)
+    headers['Mcp-Method'] = 'tools/list'
+
+    // The originating request's envelope, copied verbatim (see @param requestMeta), with the
+    // version stamped in as a floor so the key is present even if the source envelope somehow
+    // lacked it.
+    const meta: Record<string, unknown> =
+      requestMeta != null && typeof requestMeta === 'object'
+        ? { ...(requestMeta as Record<string, unknown>) }
+        : {}
+    if (
+      version != null &&
+      isSupportedProtocolVersion(version) &&
+      PROTOCOLS[version].requiresRequestMeta
+    ) {
+      meta[META_PROTOCOL_VERSION] = version
+    }
+    const params: Record<string, unknown> = Object.keys(meta).length > 0 ? { _meta: meta } : {}
+
+    const controller = new AbortController()
+    const timeoutID = setTimeout(() => controller.abort(), this.#timeout)
+    this.#untrackedControllers.add(controller)
+    try {
+      const response = await fetch(this.#url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          // An id in a space of this transport's own making. The response is read from the
+          // fetch and never enqueued, so it cannot collide with the RPC layer's numeric ids.
+          id: `mokei-internal:tools/list:${++this.#internalRequestCount}`,
+          method: 'tools/list',
+          params,
+        }),
+        signal: controller.signal,
+      })
+      // `#baseHeaders` advertises both `application/json` and `text/event-stream` in `Accept`,
+      // as the specification requires for every POST — declining anything but JSON happens here,
+      // at the response's actual `Content-Type`, instead.
+      const contentType = response.headers.get('Content-Type') ?? ''
+      if (!response.ok || !contentType.includes('application/json')) {
+        return false
+      }
+      const data = (await response.json()) as { result?: { tools?: unknown } }
+      const tools = data?.result?.tools
+      if (!Array.isArray(tools)) {
+        return false
+      }
+      this.#cacheToolAnnotations(tools)
+      return true
+    } catch {
+      // A failed refresh is never the caller's error: the peer's own `-32020` is what surfaces.
+      return false
+    } finally {
+      clearTimeout(timeoutID)
+      this.#untrackedControllers.delete(controller)
+    }
+  }
+
+  /**
+   * Refresh the tool annotations and, if that changes the `Mcp-Param-*` headers this call would
+   * carry, send it once more.
+   *
+   * Every refusal below is deliberate rather than a fallback. If the refresh failed, or the
+   * fresh annotations produce the very headers the peer just rejected, the retry would fail
+   * identically — so the caller gets the server's own diagnosis instead of a second round trip
+   * and a synthesized error.
+   *
+   * @returns whether the message was re-sent, and the original error therefore suppressed.
+   */
+  async #retryAfterSchemaRefresh(
+    message: ClientMessage,
+    sentParamHeaders: Record<string, string>,
+  ): Promise<boolean> {
+    const requestMeta = (message as { params?: { _meta?: unknown } }).params?._meta
+    if (
+      !(await this.#refreshToolAnnotations(
+        this.#declaredVersion(message) ?? this.#protocolVersion,
+        requestMeta,
+      ))
+    ) {
+      return false
+    }
+    const name = (message as { params?: { name?: unknown } }).params?.name
+    if (typeof name !== 'string') {
+      return false
+    }
+    const annotations = this.#toolAnnotations.get(name)
+    if (annotations == null) {
+      return false
+    }
+    let fresh: Record<string, string>
+    try {
+      const args = (message as { params?: { arguments?: unknown } }).params?.arguments
+      fresh = buildParamHeaders(
+        annotations,
+        args != null && typeof args === 'object' ? (args as Record<string, unknown>) : undefined,
+      )
+    } catch {
+      // The fresh schema cannot encode these arguments at all. `#sendMessage` would turn that
+      // into an internal error, replacing the peer's diagnosis with a worse one.
+      return false
+    }
+    if (sameParamHeaders(fresh, sentParamHeaders)) {
+      return false
+    }
+    await this.#sendMessage(message, true)
+    return true
+  }
+
+  /**
+   * Validated `x-mcp-header` annotations per tool name, populated from `tools/list` results.
+   *
+   * The collected annotations rather than the raw `inputSchema`: `#cacheToolAnnotations` walks
+   * every listed tool's schema for its validity filter anyway, so keeping that walk's output
+   * costs nothing there and spares `#sendMessage` a recompute on every single `tools/call`.
+   */
+  #toolAnnotations = new Map<string, Array<HeaderAnnotation>>()
   /**
    * Version for the `MCP-Protocol-Version` header when the outgoing message does not
    * declare one itself. Stays `null` until an `initialize` result or a constructor seed
@@ -300,12 +517,53 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
+   * The headers every POST carries: content negotiation, the revision the exchange belongs to,
+   * and the session id when the revision has one.
+   *
+   * A revision without the handshake has no protocol session. Sending a session id on such a
+   * request would ask a multi-revision server to route it into session state it must ignore, so
+   * the header is suppressed for exactly the requests that declare such a revision — a
+   * `2025-11-25` connection on the same transport keeps its session.
+   *
+   * Takes the protocol-version header's source and the session-suppression check's source
+   * separately: `#sendMessage` stamps `MCP-Protocol-Version` from the declared revision falling
+   * back to the transport's cached `#protocolVersion`, but decides `Mcp-Session-Id` suppression
+   * from the declared revision alone, so an undeclared request on a session-bearing connection
+   * keeps its session even while a stale cached `#protocolVersion` from a sessionless revision
+   * would otherwise suppress it. The refresh has only one version in play and passes it for both.
+   *
+   * One builder for the ordinary send path and the stale-schema refresh, so a change to the
+   * envelope cannot reach one and miss the other.
+   */
+  #baseHeaders(
+    headerVersion: string | null,
+    sessionVersion: string | null,
+  ): Record<string, string> {
+    const headers: Record<string, string> = {
+      ...this.#headers,
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+    }
+    if (headerVersion != null) {
+      headers['MCP-Protocol-Version'] = headerVersion
+    }
+    if (this.#sessionID && hasSession(sessionVersion)) {
+      headers['Mcp-Session-Id'] = this.#sessionID
+    }
+    return headers
+  }
+
+  /**
    * Send a JSON-RPC message to the server via HTTP POST.
    *
    * Never throws: per-message failures are routed to {@link #failRequest} so a
    * single failed send cannot poison the shared writable stream.
+   *
+   * `retried` marks the one re-send `#retryAfterSchemaRefresh` issues, which bounds the
+   * stale-schema recovery at a single extra attempt. It is internal: the writable sink calls
+   * this with one argument.
    */
-  async #sendMessage(message: ClientMessage): Promise<void> {
+  async #sendMessage(message: ClientMessage, retried = false): Promise<void> {
     // Determine the request id up front so any early failure can be correlated.
     const rawID = (message as { id?: unknown }).id
     const requestID: string | number | null =
@@ -343,14 +601,10 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     const declaredVersion = this.#declaredVersion(message)
     const headerVersion = declaredVersion ?? this.#protocolVersion
 
-    const headers: Record<string, string> = {
-      ...this.#headers,
-      'Content-Type': 'application/json',
-      Accept: 'application/json, text/event-stream',
-    }
-    if (headerVersion != null) {
-      headers['MCP-Protocol-Version'] = headerVersion
-    }
+    const headers: Record<string, string> = this.#baseHeaders(headerVersion, declaredVersion)
+    // The `Mcp-Param-*` subset actually sent, so a stale-schema retry can tell a refresh that
+    // changed something from one that changed nothing.
+    let sentParamHeaders: Record<string, string> = {}
 
     if ('method' in message && typeof message.method === 'string') {
       headers['Mcp-Method'] = message.method
@@ -376,20 +630,17 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // param); route that to the originating request rather than letting it escape the
       // sink and poison the shared writable stream.
       if (message.method === 'tools/call' && typeof nameValue === 'string') {
-        const schema = this.#toolSchemas.get(nameValue)
-        if (schema != null) {
+        const annotations = this.#toolAnnotations.get(nameValue)
+        if (annotations != null) {
           try {
-            const { annotations } = collectHeaderAnnotations(schema)
             const args = (message as { params?: { arguments?: unknown } }).params?.arguments
-            Object.assign(
-              headers,
-              buildParamHeaders(
-                annotations,
-                args != null && typeof args === 'object'
-                  ? (args as Record<string, unknown>)
-                  : undefined,
-              ),
+            sentParamHeaders = buildParamHeaders(
+              annotations,
+              args != null && typeof args === 'object'
+                ? (args as Record<string, unknown>)
+                : undefined,
             )
+            Object.assign(headers, sentParamHeaders)
           } catch (error) {
             if (requestID != null) {
               this.#pendingMethods.delete(requestID)
@@ -403,14 +654,6 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           }
         }
       }
-    }
-
-    // A revision without the handshake has no protocol session. Sending a session id on
-    // such a request would ask a multi-revision server to route it into session state it
-    // must ignore, so the header is suppressed for exactly the requests that declare such
-    // a revision — a `2025-11-25` connection on the same transport keeps its session.
-    if (this.#sessionID && hasSession(declaredVersion)) {
-      headers['Mcp-Session-Id'] = this.#sessionID
     }
 
     // The timer guards time-to-headers only. The controller outlives it: once a response
@@ -475,6 +718,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       } catch {
         // Body may be unreadable; the status alone is enough to surface the failure.
       }
+      // Read before releasing: `#releaseController` drops the entry the cancelled flag lives on.
+      // `notifications/cancelled` cannot be the source — the writable sink runs serially, so
+      // nothing can process a cancel while this exchange's own fetch is in flight — but
+      // `dispose()` can land between the response headers and this point, and a torn-down
+      // transport must not have this exchange revived by a retry.
+      const wasCancelled =
+        trackedID != null && this.#exchangeControllers.get(trackedID)?.cancelled === true
       this.#releaseController(trackedID, controller)
       // A `2026-07-28` server answers an envelope failure with a real HTTP `400` whose body
       // is the JSON-RPC error itself (unsupported revision, missing required `_meta`). That
@@ -483,6 +733,19 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // through verbatim rather than flattening it into an internal error.
       const carried = parseJSONRPCError(errorText, trackedID)
       if (carried != null) {
+        // One exception to passing it through: a `-32020` naming an `Mcp-Param-*` header means
+        // the peer's tool schema moved under this client. Refresh and re-send once — the caller
+        // sees an ordinary successful call rather than an error it cannot act on.
+        if (
+          !retried &&
+          !wasCancelled &&
+          'method' in message &&
+          message.method === 'tools/call' &&
+          isParamHeaderMismatch(carried) &&
+          (await this.#retryAfterSchemaRefresh(message, sentParamHeaders))
+        ) {
+          return
+        }
         try {
           this.#controller?.enqueue(carried as unknown as ServerMessage)
         } catch {
@@ -540,8 +803,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
   /**
    * Correlate an incoming message to its originating request. For `tools/list` results,
-   * cache each tool's `inputSchema` and exclude any tool carrying invalid
-   * `x-mcp-header` annotations, per SEP-2243.
+   * cache each tool's collected `x-mcp-header` annotations and exclude any tool whose
+   * annotations are invalid, per SEP-2243.
    */
   #handleIncoming(message: ServerMessage): ServerMessage {
     // A message carrying its own `method` is a server-initiated request or notification, never
@@ -576,23 +839,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     if (!Array.isArray(tools)) {
       return message
     }
-    const kept: Array<unknown> = []
-    for (const entry of tools) {
-      const name = (entry as { name?: unknown })?.name
-      const inputSchema = (entry as { inputSchema?: unknown })?.inputSchema
-      const check = collectHeaderAnnotations(inputSchema)
-      if (!check.valid) {
-        this.#logger.warn('Excluding tool with invalid x-mcp-header annotation', {
-          tool: String(name),
-          errors: check.errors,
-        })
-        continue
-      }
-      if (typeof name === 'string') {
-        this.#toolSchemas.set(name, inputSchema)
-      }
-      kept.push(entry)
-    }
+    const kept = this.#cacheToolAnnotations(tools)
     if (kept.length === tools.length) {
       return message
     }

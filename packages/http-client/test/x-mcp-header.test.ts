@@ -220,6 +220,117 @@ describe('collectHeaderAnnotations', () => {
     expect(result.valid).toBe(false)
     expect(result.errors.some((e) => e.includes('Unresolved'))).toBe(true)
   })
+
+  test('accepts a property and its $ref target annotating one path with the same name', () => {
+    // The walk visits the target at the property's own path, so the annotation is seen twice.
+    // One declaration, not two properties colliding on a name.
+    const schema = {
+      type: 'object',
+      properties: { region: { $ref: '#/$defs/Region', 'x-mcp-header': 'Region' } },
+      $defs: { Region: { type: 'string', 'x-mcp-header': 'Region' } },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(true)
+    expect(result.annotations).toEqual([{ headerName: 'Region', path: ['region'] }])
+  })
+
+  test('errors when a property and its $ref target claim one path with different names', () => {
+    const schema = {
+      type: 'object',
+      properties: { region: { $ref: '#/$defs/Region', 'x-mcp-header': 'Region' } },
+      $defs: { Region: { type: 'string', 'x-mcp-header': 'Zone' } },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('Conflicting'))).toBe(true)
+    expect(result.errors.some((e) => e.includes('Duplicate'))).toBe(false)
+  })
+
+  test('still reports two different properties claiming one name as a duplicate', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        region: { type: 'string', 'x-mcp-header': 'Region' },
+        zone: { type: 'string', 'x-mcp-header': 'region' },
+      },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('Duplicate'))).toBe(true)
+  })
+
+  test('errors on a $ref property that also declares an ineligible sibling type', () => {
+    // 2020-12 allows keywords beside `$ref`, so a wrapper may carry its own `type`. When it
+    // does, that type is the property's — deferring to the target would let an object-typed
+    // argument through as a scalar header.
+    const schema = {
+      type: 'object',
+      properties: { region: { $ref: '#/$defs/Region', type: 'object', 'x-mcp-header': 'Region' } },
+      $defs: { Region: { type: 'object', properties: {} } },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('must annotate boolean/integer/string'))).toBe(true)
+  })
+
+  test('errors when a $ref wrapper defers to an object-typed target', () => {
+    // The wrapper declares no `type` of its own, so its eligibility check defers to the target —
+    // and the target settles it: an object cannot be carried in a scalar header.
+    const schema = {
+      type: 'object',
+      properties: { region: { $ref: '#/$defs/Region', 'x-mcp-header': 'Region' } },
+      $defs: { Region: { type: 'object' } },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('must annotate boolean/integer/string'))).toBe(true)
+    expect(result.annotations).toEqual([])
+  })
+
+  test('errors when a $ref wrapper defers to an array-typed target', () => {
+    // The target's `items` type is the element's, never the annotated argument's: an array is
+    // ineligible however primitive its members are.
+    const schema = {
+      type: 'object',
+      properties: { region: { $ref: '#/$defs/Region', 'x-mcp-header': 'Region' } },
+      $defs: { Region: { type: 'array', items: { type: 'string' } } },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('must annotate boolean/integer/string'))).toBe(true)
+    expect(result.annotations).toEqual([])
+  })
+
+  test('errors when a $ref wrapper defers to a target declaring no type at all', () => {
+    // Nothing anywhere in the walk proves the argument is a primitive. Unprovable is not
+    // eligible: honouring the annotation would send a header this client cannot encode.
+    const schema = {
+      type: 'object',
+      properties: { region: { $ref: '#/$defs/Region', 'x-mcp-header': 'Region' } },
+      $defs: { Region: { description: 'a region, somehow' } },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('must annotate boolean/integer/string'))).toBe(true)
+    expect(result.annotations).toEqual([])
+  })
+
+  test('errors when a chain of $refs re-declaring one name ends at an ineligible type', () => {
+    // Each hop agrees on the name, so every sighting after the first is accepted as one
+    // declaration — but the deferral survives the hops and the terminal type still decides.
+    const schema = {
+      type: 'object',
+      properties: { region: { $ref: '#/$defs/Region', 'x-mcp-header': 'Region' } },
+      $defs: {
+        Region: { $ref: '#/$defs/RegionBase', 'x-mcp-header': 'Region' },
+        RegionBase: { type: 'object' },
+      },
+    }
+    const result = collectHeaderAnnotations(schema)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('must annotate boolean/integer/string'))).toBe(true)
+    expect(result.annotations).toEqual([])
+  })
 })
 
 describe('buildParamHeaders', () => {

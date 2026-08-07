@@ -58,8 +58,13 @@ both sides support. Host contexts and the CLI default to `'auto'`. A server take
 `protocolVersions`, the list it serves; listing both serves both.
 
 On `2026-07-28` the HTTP client encodes the `Mcp-Method`, `Mcp-Name` and `Mcp-Param-*` request
-headers (SEP-2243). The HTTP server does not read them; conformance of the encoder is covered by
-SDK interop tests instead.
+headers (SEP-2243). The `Mcp-Param-*` set comes from the `x-mcp-header` annotations the transport
+caches per tool from `tools/list`, so a peer that changes a tool's schema afterwards leaves that
+cache stale. The transport recovers on its own: a `tools/call` rejected with `-32020` naming an
+`Mcp-Param-*` header triggers its own `tools/list` to refresh the annotations, and the call is
+re-sent once if the header set changed. Callers see an ordinary successful call, at the cost of up
+to two extra round trips. The HTTP server does not read any of these headers; conformance of the
+encoder, and the retry itself, are covered by SDK interop tests instead.
 
 ---
 

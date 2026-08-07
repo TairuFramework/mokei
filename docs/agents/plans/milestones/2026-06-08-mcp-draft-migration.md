@@ -191,10 +191,15 @@ Additive, backward-compatible; `2025-11-25` peers ignore the extras. Landed on
   trace context + baggage for the handler — new `context-server/src/trace.ts`
   (`withRequestMeta`), `_handleRequest` wraps dispatch once (`@enkaku/otel@0.17.1`
   `extractW3CTraceContext` + `withActiveBaggage`, enkaku #42). → same backlog item.
-- **G7 part 5** — stale-schema → `-32020` HeaderMismatch → `tools/list` refresh + retry.
-  Still deferred, but unblocked as of 2026-08-04: the specification's code is `-32020`, which
-  mokei reserves as `HEADER_MISMATCH`, and SDK `2.0.0`'s server emits it. The earlier `-32001`
-  collision note was wrong. → `next/2026-08-04-mcp-header-story.md`.
+- **G7 part 5** — **SHIPPED** (2026-08-07): stale-schema → `-32020` HeaderMismatch → `tools/list`
+  refresh + retry, in `http-client`'s transport below the RPC layer. The refresh reuses the
+  originating request's own `_meta` envelope — `2026-07-28` requires `clientCapabilities` there,
+  which only the client layer knows — and the retry is bounded at one, skipped when the refreshed
+  annotations produce the header set the peer just rejected. Proven end-to-end against the SDK v2
+  server by flipping `headerEcho`'s schema mid-connection. `Mcp-Method` is now asserted directly
+  in the same suite. The earlier `-32001` collision note was wrong: the code is `-32020`, which
+  mokei reserves as `HEADER_MISMATCH`. →
+  `docs/agents/plans/completed/2026-08-07-mcp-header-story-bc.complete.md`.
 
 ## Phase 1 — Additive `2026-07-28` wiring
 

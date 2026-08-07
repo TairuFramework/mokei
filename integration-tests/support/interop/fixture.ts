@@ -134,6 +134,38 @@ export const HEADER_ECHO_INPUT_SCHEMA = {
 } as const
 
 /**
+ * `HEADER_ECHO_INPUT_SCHEMA` with the annotations stripped and nothing else changed.
+ *
+ * A client that cached this form still sends the same body — it just sends no `Mcp-Param-*`
+ * header alongside it, which is exactly what a peer whose schema gained an annotation since the
+ * client's last `tools/list` sees, and what its decoder answers `param-header-missing`.
+ */
+export const HEADER_ECHO_UNANNOTATED_SCHEMA = {
+  type: 'object',
+  properties: {
+    tenant: { type: 'string' },
+    limit: { type: 'integer' },
+  },
+  additionalProperties: false,
+} as const
+
+/** Either form of the `headerEcho` `inputSchema`, for a server that switches between them. */
+export type HeaderEchoSchema =
+  | typeof HEADER_ECHO_INPUT_SCHEMA
+  | typeof HEADER_ECHO_UNANNOTATED_SCHEMA
+
+/** Options for {@link createSDKServer}, threaded through by `startSDK20260728HTTPServer`. */
+export type SDKServerOptions = {
+  /**
+   * Which `headerEcho` `inputSchema` to register. A getter rather than a value because
+   * `createMcpHandler` runs its factory once per request: a test that needs the peer's schema to
+   * change under a connected client changes what this returns between two calls. Defaults to the
+   * annotated form, so every existing caller is unaffected.
+   */
+  headerEchoSchema?: () => HeaderEchoSchema
+}
+
+/**
  * What `headerEcho` returns. Reaching this text at all is the assertion: the SDK validates every
  * `Mcp-Param-*` header against the body `arguments` *before* dispatch, so a disagreeing or absent
  * header is answered `-32020` and the handler never runs.
@@ -219,7 +251,7 @@ export function createMokeiConfig(
 }
 
 /** The same fixture served by the official SDK v2 `McpServer`. */
-export function createSDKServer(): McpServer {
+export function createSDKServer(options: SDKServerOptions = {}): McpServer {
   const validator = new AjvJsonSchemaValidator()
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
@@ -253,7 +285,7 @@ export function createSDKServer(): McpServer {
     {
       description: 'Echo arguments that are mirrored into Mcp-Param-* request headers',
       inputSchema: fromJsonSchema<{ tenant?: string; limit?: number }>(
-        HEADER_ECHO_INPUT_SCHEMA,
+        options.headerEchoSchema?.() ?? HEADER_ECHO_INPUT_SCHEMA,
         validator,
       ),
     },
