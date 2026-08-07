@@ -152,6 +152,13 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
   const annotations: Array<HeaderAnnotation> = []
   const errors: Array<string> = []
   const seen = new Set<string>()
+  // The header name claimed at each argument path. A `$ref` target is walked at the *same* path
+  // as the referencing property, so a name re-arriving at a claimed path is one declaration seen
+  // twice — not the two-properties-one-name collision `seen` guards.
+  const claimed = new Map<string, string>()
+  // Paths whose eligibility check is deferred: a `$ref` wrapper declaring no `type` waits for a
+  // node that supplies one at the same path.
+  const pending = new Map<string, string>()
   const root = inputSchema
 
   const walk = (
@@ -171,20 +178,50 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
     // Checking here rather than in the parent properties loop means $ref targets that
     // carry the annotation directly are processed correctly.
     if (path.length > 0) {
+      const at = path.join('.')
+
+      // Settle a deferral as soon as a node at this path declares a `type`. Array element schemas
+      // are excluded: their `type` describes an element, not the annotated argument.
+      if (!inArray && node.type !== undefined) {
+        const deferredName = pending.get(at)
+        if (deferredName !== undefined) {
+          pending.delete(at)
+          if (!isEligibleType(node.type)) {
+            errors.push(
+              `x-mcp-header "${deferredName}" at ${at} must annotate boolean/integer/string`,
+            )
+          }
+        }
+      }
+
       const annotation = node['x-mcp-header']
       if (annotation !== undefined) {
-        const at = path.join('.')
+        // 2020-12 allows keywords beside `$ref`, so a wrapper declaring its own `type` is judged
+        // here. Only a typeless one defers, and the deferral is recorded rather than waved
+        // through, so the check always lands somewhere.
+        const defers = node.$ref !== undefined && node.type === undefined
         if (inArray) {
           errors.push(`x-mcp-header at ${at} cannot be inside array items (scalar header)`)
         } else if (typeof annotation !== 'string' || !isValidHeaderParamName(annotation)) {
           errors.push(`Invalid x-mcp-header name at ${at}`)
+        } else if (!defers && !isEligibleType(node.type)) {
+          // Checked before the uniqueness branches so a property's declared type is validated
+          // before the same-path acceptance branch can skip it.
+          errors.push(`x-mcp-header "${annotation}" at ${at} must annotate boolean/integer/string`)
+        } else if (claimed.get(at) === annotation) {
+          // Same path, same name: property and `$ref` target agree. Already collected, and any
+          // deferral the first sighting recorded still stands.
+        } else if (claimed.has(at)) {
+          errors.push(`Conflicting x-mcp-header "${claimed.get(at)}" and "${annotation}" at ${at}`)
         } else if (seen.has(annotation.toLowerCase())) {
           errors.push(`Duplicate x-mcp-header "${annotation}" at ${at}`)
-        } else if (!isEligibleType(node.type)) {
-          errors.push(`x-mcp-header "${annotation}" at ${at} must annotate boolean/integer/string`)
         } else {
           seen.add(annotation.toLowerCase())
+          claimed.set(at, annotation)
           annotations.push({ headerName: annotation, path })
+          if (defers) {
+            pending.set(at, annotation)
+          }
         }
       }
     }
@@ -243,6 +280,11 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
   }
 
   walk(inputSchema, [], new Set<string>(), false)
+  // Still pending after the whole walk: no node ever declared a `type`. Unprovable is not
+  // eligible — better to report the tool invalid than offer a header this client cannot honour.
+  for (const [at, headerName] of pending) {
+    errors.push(`x-mcp-header "${headerName}" at ${at} must annotate boolean/integer/string`)
+  }
   const valid = errors.length === 0
   return { annotations: valid ? annotations : [], valid, errors }
 }

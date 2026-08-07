@@ -811,9 +811,9 @@ export class ContextClient<
       throw RPCError.fromResponse(message as ErrorResponse)
     }
     const result = message.result as InitializeResult
-    // Reject a negotiated version other than the one this client is configured to speak. The
-    // `dispose()` here is not covered by `#setup()`'s blanket catch: the public `initialize()`
-    // awaits `#initialized` directly, without ever going through `#setup()`.
+    // Reject a negotiated version other than the one this client is configured to speak. This
+    // `dispose()` runs twice — the throw propagates into `#setup()`'s blanket catch, which
+    // disposes again — but `Disposer.dispose()` is idempotent.
     if (result.protocolVersion !== protocol.version) {
       await this.dispose()
       throw new UnsupportedProtocolVersionError(result.protocolVersion, protocol.version)
@@ -1232,7 +1232,19 @@ export class ContextClient<
     return this.#requireProtocol().version
   }
 
+  /**
+   * The `2025-11-25` handshake result — server capabilities and identity.
+   *
+   * Awaits `#ready` like every other public method here: under `'auto'` the revision stays
+   * unresolved until `#setup()` runs the probe, so without it `#requireProtocol()` threw "not
+   * resolved yet" on every first call. No deadlock — `#initialize()` writes and reads the
+   * transport directly rather than through `request()`.
+   *
+   * Two accepted costs: on a handshake-less revision setup runs before the throw below, and a
+   * failed handshake now disposes the transport.
+   */
   async initialize(): Promise<InitializeResult> {
+    await this.#ready
     const protocol = this.#requireProtocol()
     if (!protocol.requiresHandshake) {
       throw new Error(

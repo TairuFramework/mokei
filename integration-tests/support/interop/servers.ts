@@ -13,7 +13,13 @@ import { ContextServer, createTool, type ServerConfig } from '@mokei/context-ser
 import { createHTTPClient } from '@mokei/http-client'
 import { serveHTTP } from '@mokei/http-server'
 
-import { createMokeiConfig, createSDKServer, SERVER_NAME, SERVER_VERSION } from './fixture.ts'
+import {
+  createMokeiConfig,
+  createSDKServer,
+  type SDKServerOptions,
+  SERVER_NAME,
+  SERVER_VERSION,
+} from './fixture.ts'
 
 export const MOKEI_STDIO_SERVER_PATH = fileURLToPath(
   new URL('./mokei-stdio-server.ts', import.meta.url),
@@ -344,8 +350,10 @@ export async function startBlockingHTTPServer(): Promise<BlockingHTTPServer> {
  * revision. The factory runs per request, as that entry requires — `createSDKServer()` builds a
  * fresh instance each time.
  */
-export async function startSDK20260728HTTPServer(): Promise<RunningHTTPServer> {
-  const handler = createMcpHandler(() => createSDKServer(), { legacy: 'reject' })
+export async function startSDK20260728HTTPServer(
+  options: SDKServerOptions = {},
+): Promise<RunningHTTPServer> {
+  const handler = createMcpHandler(() => createSDKServer(options), { legacy: 'reject' })
   const nodeHandler = toNodeHandler(handler)
   const server = createServer((request, response) => {
     void nodeHandler(request, response)

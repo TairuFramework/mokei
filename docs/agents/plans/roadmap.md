@@ -45,9 +45,6 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **Close the `x-mcp-header` story** (`next/2026-08-04-mcp-header-story.md`) — the `-32020`
-  stale-schema retry (G7 part 5, unblocked 2026-08-04) plus a direct `Mcp-Method` assertion.
-  Both small.
 - **MRTR** (`next/2026-08-04-mcp-mrtr.md`) — `inputRequests` / `inputResponses` (SEP-2322).
   Restores `sampling`, `elicitation` and `roots` on `2026-07-28`, where they currently throw
   `MRTRNotSupportedError`. Largest remaining piece of the migration.

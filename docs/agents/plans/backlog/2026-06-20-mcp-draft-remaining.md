@@ -13,27 +13,36 @@ Section numbers are stable: gaps mean an item shipped, not that it was renumbere
 
 ## Pieces
 
-This file tracks six independent sub-projects. Each can be picked up on its own; only D and E
-are large. Sections below hold the detail -- this table says what exists and where it is.
+This file tracks six independent sub-projects, of which three are now shipped. Each of the rest
+can be picked up on its own; only D and E are large. Sections below hold the detail -- this table
+says what exists and where it is.
 
 | Piece | Scope | Size | Where |
 |-------|-------|------|-------|
 | A | Interop peer matrix + `Mcp-Param-*` coverage | -- | Shipped 2026-08-04 (PR #42), `completed/2026-08-04-interop-peer-matrix.complete.md` |
-| B | Stale-schema retry on `-32020` (§1) | Small | `next/2026-08-04-mcp-header-story.md` |
-| C | Direct `Mcp-Method` assertion + remaining §3.2.4 coverage | Very small | `next/2026-08-04-mcp-header-story.md` |
+| B | Stale-schema retry on `-32020` (§1) | -- | Shipped 2026-08-07, `completed/2026-08-07-mcp-header-story-bc.complete.md` |
+| C | Direct `Mcp-Method` assertion + remaining §3.2.4 coverage | -- | Shipped 2026-08-07, same summary |
 | D | B7 MRTR -- `inputRequests` / `inputResponses` (§2 item 6) | Large | `next/2026-08-04-mcp-mrtr.md` |
 | E | B4 `subscriptions/listen` + the `2025-11-25` `resources/subscribe` branch (§2 item 7, §3.3.3) | Large | Here |
 | F | D1--D3 deprecation handling (§2 item 8) + the §3.4 tidy-ups | Medium | Here |
 
-B and C together finish the `x-mcp-header` work: the encoder is conformant against a real
-decoder, but nothing retries a stale schema and nothing asserts `Mcp-Method` directly. D unlocks
+B and C together finished the `x-mcp-header` work on 2026-08-07: the encoder was already
+conformant against a real decoder, and now a stale schema is refreshed and retried and
+`Mcp-Method` is asserted directly against the SDK v2 peer. D unlocks
 `sampling`, `elicitation` and `roots` on `2026-07-28` and makes the `-32021` ladder reachable.
 
-## 1. Deferred groundwork — last item
+## 1. Deferred groundwork — closed
 
 - **G7 part 5** — stale-schema fallback: on a `-32020` HeaderMismatch, refresh via
-  `tools/list` and retry the `tools/call`. **Deferred:** the retry loop itself is unwritten. Both
-  originally recorded blockers are gone as of 2026-08-04: SDK `2.0.0`'s server *does* emit
+  `tools/list` and retry the `tools/call`. **Shipped 2026-08-07** in `@mokei/http-client`'s
+  `HTTPTransport` (`#refreshToolAnnotations` / `#retryAfterSchemaRefresh`), gated on a `-32020`
+  whose `data.mismatch.header` names an `Mcp-Param-*` header, bounded at one retry, and driven
+  end to end against the SDK v2 server by a peer whose `headerEcho` schema gains an annotation
+  between the client's `tools/list` and its `tools/call`
+  (`integration-tests/suites/interop-sdk-server.test.ts`). Design of record:
+  `completed/2026-08-07-mcp-header-story-bc.complete.md`.
+
+  Historical note on the two blockers, both gone as of 2026-08-04: SDK `2.0.0`'s server *does* emit
   `-32020` `HeaderMismatch` for an `Mcp-Param-*` disagreement
   (`core-internal/src/shared/mcpParamHeaders.ts`, `validateMcpParamHeaders`, HTTP `400`,
   offending pair in `data.mismatch`), reachable from the integration suite today via
@@ -47,14 +56,23 @@ decoder, but nothing retries a stale schema and nothing asserts `Mcp-Method` dir
   half lands with the B-wiring. *Update 2026-08-04:* the 2026-07-28 half landed (SDK
   2.0.0) — see §3.2.3.
 
-### Non-blocking polish (from final review — optional, not gating)
+### Non-blocking polish (from final review) — closed
 
-- Cache collected `x-mcp-header` annotations alongside the schema in `#toolSchemas`
-  (`http-client/src/transport.ts`) to skip the per-`tools/call` walk recompute.
-- Clarify the `collectHeaderAnnotations` error message for the `$ref`-wrapper-plus-target
-  duplicate edge (currently reports "Duplicate", which misattributes the cause).
-- Two `useLiteralKeys` Biome *infos* in `http-client/src/x-mcp-header.ts` (`node['…']` →
-  `node.…`); lint gate passes (info-level), tidy if touching the file.
+All three are resolved; kept here only so the cross-references from that review still land.
+
+- ~~Cache collected `x-mcp-header` annotations alongside the schema in `#toolSchemas`~~ — done
+  2026-08-07: `#toolSchemas` became `#toolAnnotations`, written through one
+  `#cacheToolAnnotations` helper shared by the list path and the refresh path, so `#sendMessage`
+  no longer re-walks a schema on every `tools/call`.
+- ~~Clarify the `collectHeaderAnnotations` error message for the `$ref`-wrapper-plus-target
+  duplicate edge~~ — done 2026-08-07: a wrapper and its target agreeing on one name at one
+  argument path is one declaration seen twice and is accepted; disagreeing on the name reports
+  `Conflicting` rather than the misattributed `Duplicate`; two *different* paths sharing a name
+  remain a `Duplicate`. The eligibility check moved ahead of both uniqueness branches, and a bare
+  `$ref` wrapper carrying no `type` now defers that check to its target and is recorded as pending
+  until some node at that path supplies a type — an unprovable type being ineligible.
+- ~~Two `useLiteralKeys` Biome *infos* in `http-client/src/x-mcp-header.ts`~~ — no longer reported;
+  `pnpm exec biome check packages/http-client/src` is clean.
 
 ## 2. Additive draft wiring (B4, B6-roots, B7, D1–D3)
 
@@ -125,10 +143,12 @@ is not more unit tests; it is a peer that reads the headers (see 3.2.3).
   emitter arrives with MRTR (B7).
 - Task-augmented params — SEP-2663 removed tasks from the specification and mokei never
   implemented them; delete this line rather than covering it.
-- `Mcp-Method` is never asserted directly, only implied by the SDK's inbound classifier accepting
-  the `2026-07-28` HTTP calls. Cheap to close where the omitted-argument case already wraps
-  `globalThis.fetch` (`integration-tests/suites/interop-sdk-server.test.ts`): the captured
-  `Headers` carries it.
+
+Covered as of 2026-08-07: `Mcp-Method` is asserted directly on the outgoing request for a
+`tools/call`, a `prompts/get` and a `resources/read`, no longer merely implied by the SDK's
+inbound classifier accepting the `2026-07-28` HTTP calls. The `globalThis.fetch` wrapper the
+omitted-argument case used became a `captureFetch` helper in
+`integration-tests/suites/interop-sdk-server.test.ts` and both cases now share it.
 
 Covered as of 2026-08-04 (see 3.2.3): `Mcp-Param-*` end to end against the SDK's decoder,
 including the Base64 sentinel and integer paths and the omitted-argument case; and
@@ -141,8 +161,13 @@ through mokei's encoder at all.
 
 #### 3.3.1 `-32020` and `-32021` have constants but no emitter
 
-- `-32020` `HEADER_MISMATCH` — the constant exists, the emitter belongs to `x-mcp-header` retry
-  (G7 part 5, §1 above).
+- `-32020` `HEADER_MISMATCH` — **half closed as of 2026-08-07.** The constant now has a reachable
+  *consumer*: the HTTP client's stale-schema retry recognises a peer's `-32020` by comparing
+  against it (G7 part 5, §1 above), and that path is exercised against a real SDK peer. It still
+  has no **emitter**, and will not get one from this work: mokei's HTTP server does not read
+  `Mcp-Param-*`, `Mcp-Method` or `Mcp-Name` at all (see 3.2.1), so nothing in mokei is in a
+  position to reject a request for a header/body disagreement. An emitter needs the server-side
+  header validation of 3.2.1, which is not scheduled.
 - `-32021` `MISSING_REQUIRED_CLIENT_CAPABILITY` — the constant exists and has **no reachable
   emitter**. On `2026-07-28` a server sends no requests at all (`PROTOCOL.serverMethods` is
   empty), so no handler can need an undeclared client capability, and
@@ -173,6 +198,12 @@ proposal.
 
 ### 3.4 Carried over from the plan's own out-of-scope list
 
+- **A refresh-specific timeout in `HTTPTransport`.** Since the stale-schema retry shipped
+  (2026-08-07), a firing retry can hold the transport's serial outgoing sink for three round trips
+  — the original POST, the `tools/list` refresh, and the re-send — each bounded by its own full
+  `#timeout` budget rather than sharing one, so ~90s at the default. A tighter budget for the
+  refresh alone would bound the worst case without shortening the calls the caller actually made.
+  See `completed/2026-08-07-mcp-header-story-bc.complete.md`.
 - Extracting a `SetupReader` unit from `packages/context-client/src/client.ts` (~1172 lines, of
   which ~240 are pure declarations that should move first).
 - Removing the two derivable `ProtocolDefinition` booleans — `requiresHandshake` and
