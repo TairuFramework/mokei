@@ -136,9 +136,8 @@ export const HEADER_ECHO_INPUT_SCHEMA = {
 /**
  * `HEADER_ECHO_INPUT_SCHEMA` with the annotations stripped and nothing else changed.
  *
- * A client that cached this form still sends the same body — it just sends no `Mcp-Param-*`
- * header alongside it, which is exactly what a peer whose schema gained an annotation since the
- * client's last `tools/list` sees, and what its decoder answers `param-header-missing`.
+ * A client that cached this form sends the same body with no `Mcp-Param-*` header — what a peer
+ * whose schema gained an annotation since the last `tools/list` answers `param-header-missing`.
  */
 export const HEADER_ECHO_UNANNOTATED_SCHEMA = {
   type: 'object',
@@ -157,10 +156,9 @@ export type HeaderEchoSchema =
 /** Options for {@link createSDKServer}, threaded through by `startSDK20260728HTTPServer`. */
 export type SDKServerOptions = {
   /**
-   * Which `headerEcho` `inputSchema` to register. A getter rather than a value because
-   * `createMcpHandler` runs its factory once per request: a test that needs the peer's schema to
-   * change under a connected client changes what this returns between two calls. Defaults to the
-   * annotated form, so every existing caller is unaffected.
+   * Which `headerEcho` `inputSchema` to register. A getter because `createMcpHandler` runs its
+   * factory per request, so a test can change the peer's schema between two calls. Defaults to
+   * the annotated form.
    */
   headerEchoSchema?: () => HeaderEchoSchema
 }

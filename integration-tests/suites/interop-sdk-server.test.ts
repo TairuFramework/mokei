@@ -257,10 +257,9 @@ describe('mokei client against the SDK v2 server on 2026-07-28', () => {
   })
 
   test('sends Mcp-Method naming the method on every standard-header request', async () => {
-    // Asserted on the outgoing request rather than inferred from the peer accepting the call:
-    // the SDK's inbound classifier cross-checks the header against the body, so a wrong value
-    // fails the call — but a *right* value passing is equally consistent with the header being
-    // built from some other field that happens to agree.
+    // Asserted on the outgoing request, not inferred from the peer accepting the call: a wrong
+    // value fails, but a right one passing is equally consistent with the header being built
+    // from some other field that happens to agree.
     httpServer = await startSDK20260728HTTPServer()
     client = connectMokeiHTTPClient(httpServer.url, '2026-07-28')
     const activeClient = client

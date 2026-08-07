@@ -71,13 +71,9 @@ function parseJSONRPCError(
 
 /**
  * Whether a carried JSON-RPC error is the peer rejecting an `Mcp-Param-*` header that disagrees
- * with the body — the one `-32020` a stale tool schema explains, and so the only one a schema
- * refresh can fix.
- *
- * `-32020` is also the code for a standard-header cross-check failure (`Mcp-Method`, `Mcp-Name`
- * or `MCP-Protocol-Version` against the body), which no refresh affects. `error.data` is left
- * entirely to the server by JSON-RPC, so an absent or differently-shaped `data` fails this check
- * and the error surfaces exactly as it does today.
+ * with the body — the only `-32020` a schema refresh can fix. The same code covers standard-header
+ * cross-check failures (`Mcp-Method`, `Mcp-Name`, `MCP-Protocol-Version`), which it cannot, and
+ * `error.data` is server-defined, so an absent or unexpected shape fails this check.
  */
 function isParamHeaderMismatch(carried: Record<string, unknown>): boolean {
   const error = carried.error as { code?: unknown; data?: unknown } | undefined
@@ -86,9 +82,8 @@ function isParamHeaderMismatch(carried: Record<string, unknown>): boolean {
   }
   const data = error.data as { mismatch?: unknown } | undefined
   const header = (data?.mismatch as { header?: unknown } | undefined)?.header
-  // Compared case-insensitively because the value is an HTTP field name, which RFC 9110 makes
-  // case-insensitive. The SDK happens to report the canonical casing, but a peer naming
-  // `mcp-param-tenant` is naming the same header and must not silently lose the retry.
+  // Case-insensitive: HTTP field names are (RFC 9110), so a peer reporting `mcp-param-tenant`
+  // names the same header and must not lose the retry.
   return typeof header === 'string' && header.toLowerCase().startsWith('mcp-param-')
 }
 
@@ -281,38 +276,22 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    * here keeps the refresh invisible above the transport and leaves `#handleIncoming`'s
    * single-return contract intact.
    *
-   * @param version the revision this exchange belongs to. Supplied by the caller, derived from
-   * the message's own `_meta` exactly as the ordinary send path derives it (falling back to the
-   * transport's cached `#protocolVersion`) — so the transport and the refresh can never disagree
-   * about which revision governs the exchange. `2026-07-28` has no handshake and so no
-   * `initialize` result to seed `#protocolVersion` from; reading that field directly here, as
-   * opposed to taking the caller's derived version, would leave the refresh's own envelope
-   * revision-less on exactly the revision SEP-2243 exists for.
-   * @param requestMeta the originating request's own `params._meta`, copied verbatim onto the
-   * refresh rather than rebuilt. `2026-07-28`'s request envelope requires more than the revision
-   * — capabilities and client identity too — and only the layer above (`ContextClient`, via
-   * `decorateRequest`) knows those; the transport has no `ClientRequestContext` to synthesize
-   * them from. A refresh that invented its own envelope would be missing required keys and a
-   * conformant peer would reject it, exactly as it rejects one missing the revision. Copying the
-   * whole envelope, rather than naming the keys this revision happens to require today, is
-   * deliberate: it cannot break again the next time the envelope gains a required field, whereas
-   * an enumeration silently drops whatever it was not taught about. What mokei's own client
-   * generates for this revision — version, capabilities, client info, log level — carries no
-   * per-request identity such as a progress token, so copying it onto a second request is inert.
-   * That is a property of today's generated envelope, not a structural guarantee: both revisions'
-   * `decorateRequest` pass caller-supplied `_meta` through untouched, so a caller could put
-   * per-request state there. Copying it is still the right trade — a duplicated progress token
-   * costs at most a spurious progress notification, while a missing required key costs the retry
-   * entirely.
+   * @param version the exchange's revision, derived by the caller the same way the ordinary send
+   * path derives it. Not read from `#protocolVersion` here: that field is seeded from an
+   * `initialize` result, and `2026-07-28` — the only revision SEP-2243 applies to — has no
+   * handshake, so it is always `null` there.
+   * @param requestMeta the originating request's `params._meta`, copied verbatim rather than
+   * rebuilt. `2026-07-28` requires capabilities and client identity in the envelope, which only
+   * `ContextClient.decorateRequest` knows; a conformant peer rejects a refresh missing them.
+   * Verbatim rather than key-by-key so it cannot break again when the envelope gains a field —
+   * worst case a duplicated progress token costs a spurious notification.
    * @returns whether the annotations were refreshed.
    */
   async #refreshToolAnnotations(version: string | null, requestMeta: unknown): Promise<boolean> {
     const headers = this.#baseHeaders(version, version)
     headers['Mcp-Method'] = 'tools/list'
 
-    // The originating request's envelope, copied verbatim (see @param requestMeta), with the
-    // version stamped in as a floor so the key is present even if the source envelope somehow
-    // lacked it.
+    // Copied verbatim (see @param requestMeta), with the version stamped in as a floor.
     const meta: Record<string, unknown> =
       requestMeta != null && typeof requestMeta === 'object'
         ? { ...(requestMeta as Record<string, unknown>) }
@@ -343,9 +322,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         }),
         signal: controller.signal,
       })
-      // `#baseHeaders` advertises both `application/json` and `text/event-stream` in `Accept`,
-      // as the specification requires for every POST — declining anything but JSON happens here,
-      // at the response's actual `Content-Type`, instead.
+      // `Accept` must advertise SSE too, so declining a non-JSON body happens here instead.
       const contentType = response.headers.get('Content-Type') ?? ''
       if (!response.ok || !contentType.includes('application/json')) {
         return false
@@ -370,10 +347,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    * Refresh the tool annotations and, if that changes the `Mcp-Param-*` headers this call would
    * carry, send it once more.
    *
-   * Every refusal below is deliberate rather than a fallback. If the refresh failed, or the
-   * fresh annotations produce the very headers the peer just rejected, the retry would fail
-   * identically — so the caller gets the server's own diagnosis instead of a second round trip
-   * and a synthesized error.
+   * Every refusal below surfaces the peer's own `-32020` instead: a retry that would send the
+   * headers just rejected, or that cannot be built at all, only replaces the server's diagnosis
+   * with a worse one.
    *
    * @returns whether the message was re-sent, and the original error therefore suppressed.
    */
@@ -406,8 +382,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         args != null && typeof args === 'object' ? (args as Record<string, unknown>) : undefined,
       )
     } catch {
-      // The fresh schema cannot encode these arguments at all. `#sendMessage` would turn that
-      // into an internal error, replacing the peer's diagnosis with a worse one.
+      // The fresh schema cannot encode these arguments at all.
       return false
     }
     if (sameParamHeaders(fresh, sentParamHeaders)) {
@@ -525,15 +500,12 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    * the header is suppressed for exactly the requests that declare such a revision — a
    * `2025-11-25` connection on the same transport keeps its session.
    *
-   * Takes the protocol-version header's source and the session-suppression check's source
-   * separately: `#sendMessage` stamps `MCP-Protocol-Version` from the declared revision falling
-   * back to the transport's cached `#protocolVersion`, but decides `Mcp-Session-Id` suppression
-   * from the declared revision alone, so an undeclared request on a session-bearing connection
-   * keeps its session even while a stale cached `#protocolVersion` from a sessionless revision
-   * would otherwise suppress it. The refresh has only one version in play and passes it for both.
+   * The two version sources stay separate because `#sendMessage` stamps the header from the
+   * declared revision falling back to `#protocolVersion`, but suppresses the session from the
+   * declared revision alone — so an undeclared request keeps its session. The refresh has one
+   * version and passes it for both.
    *
-   * One builder for the ordinary send path and the stale-schema refresh, so a change to the
-   * envelope cannot reach one and miss the other.
+   * Shared by the send path and the stale-schema refresh so the envelope cannot drift.
    */
   #baseHeaders(
     headerVersion: string | null,
@@ -733,9 +705,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // through verbatim rather than flattening it into an internal error.
       const carried = parseJSONRPCError(errorText, trackedID)
       if (carried != null) {
-        // One exception to passing it through: a `-32020` naming an `Mcp-Param-*` header means
-        // the peer's tool schema moved under this client. Refresh and re-send once — the caller
-        // sees an ordinary successful call rather than an error it cannot act on.
+        // One exception: a `-32020` naming an `Mcp-Param-*` header means the peer's tool schema
+        // moved under this client. Refresh and re-send once.
         if (
           !retried &&
           !wasCancelled &&

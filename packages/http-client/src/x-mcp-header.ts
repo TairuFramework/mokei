@@ -153,13 +153,11 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
   const errors: Array<string> = []
   const seen = new Set<string>()
   // The header name claimed at each argument path. A `$ref` target is walked at the *same* path
-  // as the property that referenced it, so a name arriving at a path that already claimed one is
-  // a single declaration seen twice — not the two-properties-one-name collision `seen` guards.
+  // as the referencing property, so a name re-arriving at a claimed path is one declaration seen
+  // twice — not the two-properties-one-name collision `seen` guards.
   const claimed = new Map<string, string>()
-  // Paths whose annotation was accepted without a completed eligibility check: a `$ref` wrapper
-  // declaring no `type` of its own defers to whatever node supplies one at the same path. The
-  // entry is cleared when some node does (with an error if that type is ineligible), and any
-  // entry surviving the walk has no provable type at all, which is not eligible either.
+  // Paths whose eligibility check is deferred: a `$ref` wrapper declaring no `type` waits for a
+  // node that supplies one at the same path.
   const pending = new Map<string, string>()
   const root = inputSchema
 
@@ -182,10 +180,8 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
     if (path.length > 0) {
       const at = path.join('.')
 
-      // Settle a deferred eligibility check the moment a node at this path declares a `type` —
-      // normally the `$ref` target the wrapper deferred to, but any same-path node supplying a
-      // type answers the question the wrapper could not. Array element schemas are excluded:
-      // their `type` describes an element, not the annotated argument.
+      // Settle a deferral as soon as a node at this path declares a `type`. Array element schemas
+      // are excluded: their `type` describes an element, not the annotated argument.
       if (!inArray && node.type !== undefined) {
         const deferredName = pending.get(at)
         if (deferredName !== undefined) {
@@ -200,9 +196,8 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
 
       const annotation = node['x-mcp-header']
       if (annotation !== undefined) {
-        // 2020-12 allows keywords beside `$ref`, so a wrapper may declare its own `type` — and
-        // when it does, that type is the property's and is judged here. Only a `$ref` wrapper
-        // carrying no `type` defers, and a deferral is recorded in `pending` rather than waved
+        // 2020-12 allows keywords beside `$ref`, so a wrapper declaring its own `type` is judged
+        // here. Only a typeless one defers, and the deferral is recorded rather than waved
         // through, so the check always lands somewhere.
         const defers = node.$ref !== undefined && node.type === undefined
         if (inArray) {
@@ -214,8 +209,8 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
           // before the same-path acceptance branch can skip it.
           errors.push(`x-mcp-header "${annotation}" at ${at} must annotate boolean/integer/string`)
         } else if (claimed.get(at) === annotation) {
-          // Same path, same name: the property and its `$ref` target agree. Already collected,
-          // and any deferral the first sighting recorded still stands.
+          // Same path, same name: property and `$ref` target agree. Already collected, and any
+          // deferral the first sighting recorded still stands.
         } else if (claimed.has(at)) {
           errors.push(`Conflicting x-mcp-header "${claimed.get(at)}" and "${annotation}" at ${at}`)
         } else if (seen.has(annotation.toLowerCase())) {
@@ -285,10 +280,8 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
   }
 
   walk(inputSchema, [], new Set<string>(), false)
-  // A path still pending after the whole walk deferred its eligibility check to a target that
-  // never declared a `type`. Nothing proves the argument is a boolean, integer or string, and an
-  // unprovable type is not an eligible one: the annotation cannot be honoured, so the tool is
-  // reported invalid rather than offered with a header this client would silently omit.
+  // Still pending after the whole walk: no node ever declared a `type`. Unprovable is not
+  // eligible — better to report the tool invalid than offer a header this client cannot honour.
   for (const [at, headerName] of pending) {
     errors.push(`x-mcp-header "${headerName}" at ${at} must annotate boolean/integer/string`)
   }

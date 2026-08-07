@@ -811,15 +811,9 @@ export class ContextClient<
       throw RPCError.fromResponse(message as ErrorResponse)
     }
     const result = message.result as InitializeResult
-    // Reject a negotiated version other than the one this client is configured to speak.
-    //
-    // This `dispose()` runs twice whenever the handshake is driven from `#setup()` — which is
-    // every path, since `#setup()` awaits `#initialized` for a handshake revision and every
-    // public method now awaits `#ready`. The throw propagates out of that await into `#setup()`'s
-    // blanket catch, which disposes again. Harmless, and relied on rather than worked around:
-    // `Disposer.dispose()` is idempotent — it aborts an `AbortController` behind a `once`
-    // listener and a latch, then returns the same `#deferred.promise`, already settled here
-    // because the first call is awaited to completion before the throw propagates.
+    // Reject a negotiated version other than the one this client is configured to speak. This
+    // `dispose()` runs twice — the throw propagates into `#setup()`'s blanket catch, which
+    // disposes again — but `Disposer.dispose()` is idempotent.
     if (result.protocolVersion !== protocol.version) {
       await this.dispose()
       throw new UnsupportedProtocolVersionError(result.protocolVersion, protocol.version)
@@ -1241,27 +1235,13 @@ export class ContextClient<
   /**
    * The `2025-11-25` handshake result — server capabilities and identity.
    *
-   * Awaits `#ready` like every other public method here. Under `protocolVersion: 'auto'` the
-   * revision is unresolved until the probe runs, and the probe only runs when something awaits
-   * `#ready`; without this await `#requireProtocol()` threw "not resolved yet" before the probe
-   * that would have resolved it ever started. That made this method unusable on every `'auto'`
-   * client — and unworkable around, since it is the only accessor for an `InitializeResult`:
-   * calling anything else first to force the probe resolves the handshake without handing the
-   * result back.
+   * Awaits `#ready` like every other public method here: under `'auto'` the revision stays
+   * unresolved until `#setup()` runs the probe, so without it `#requireProtocol()` threw "not
+   * resolved yet" on every first call. No deadlock — `#initialize()` writes and reads the
+   * transport directly rather than through `request()`.
    *
-   * No deadlock against the handshake `#ready` itself waits on: `#setup()` awaits `#initialized`
-   * for a handshake revision, and `#initialize()` writes and reads the transport directly rather
-   * than going through `request()`, so nothing re-enters `#ready` from underneath.
-   *
-   * Two consequences of routing through `#ready`, both accepted rather than special-cased, since
-   * one rule for every public method is what kept this method's omission invisible in the first
-   * place. On a handshake-less revision the only possible outcome is the throw below, but setup
-   * runs first, so a `2026-07-28` caller using this as feature detection pays the full
-   * `setupTimeout` against an unresponsive server instead of an immediate error — `discover()`
-   * has the mirror shape, running the whole `2025-11-25` handshake before refusing. And a failed
-   * handshake now disposes: the caller sees the same error either way, but the transport no
-   * longer survives it, which is the point — `#initialized` is a `lazy()` memo of the rejection,
-   * so nothing was retryable and a spawned server was left with nobody to dispose it.
+   * Two accepted costs: on a handshake-less revision setup runs before the throw below, and a
+   * failed handshake now disposes the transport.
    */
   async initialize(): Promise<InitializeResult> {
     await this.#ready
