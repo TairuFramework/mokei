@@ -1857,6 +1857,32 @@ describe("'auto' probe", () => {
     expect(client.protocolVersion).toBe('2025-11-25')
   })
 
+  // `initialize()` reaches neither `request()` nor a `#ready` await of its own — it writes and
+  // reads the transport directly — so the fix that covered the three methods below never covered
+  // it, and no test caught that. Under `'auto'` it threw "not resolved yet" synchronously, before
+  // the probe that would resolve the revision had started, which made it unusable on every
+  // `'auto'` client. Unworkable around, too: it is the only accessor for an `InitializeResult`,
+  // so forcing the probe with some other call first resolves the handshake without handing the
+  // result back. Calls it as the very first thing on a fresh client, so the gap is exercised
+  // rather than ridden over by a probe an earlier call already triggered.
+  test("'auto' resolves via initialize when it is the first call made", async () => {
+    const { client } = createTestClient({
+      protocolVersion: 'auto',
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              error: {
+                code: -32022,
+                message: 'Unsupported protocol version',
+                data: { supported: ['2025-11-25'], requested: '2026-07-28' },
+              },
+            }
+          : undefined,
+    })
+    await expect(client.initialize()).resolves.toEqual(DEFAULT_INITIALIZE_RESULT)
+    expect(client.protocolVersion).toBe('2025-11-25')
+  })
+
   // `getPrompt`, `readResource` and `callTool` call `request()` directly with no `#ready` await
   // of their own (unlike `setLoggingLevel`/`complete`/`listTools`/`#listPaged`). Calling any of
   // them *first* under `protocolVersion: 'auto'` used to throw "not resolved yet" synchronously
