@@ -45,17 +45,17 @@ catalog:
   '@tejika/process': ^0.4.0
   '@tejika/server': ^0.4.0
   '@tejika/ui': ^0.4.0
-  '@hono/node-server': ^2.0.12
+  '@hono/node-server': ^2.1.0
   '@inkjs/ui': ^2.0.0
   '@mantine/core': ^9.5.1
   '@mantine/hooks': ^9.5.1
   '@swc/cli': ^0.8.1
   '@swc/core': ^1.15.41
   '@tabler/icons-react': ^3.46.0
-  '@tanstack/react-router': ^1.170.18
+  '@tanstack/react-router': ^1.170.20
   '@tanstack/react-virtual': ^3.14.9
-  '@tanstack/router-devtools': ^1.167.0
-  '@tanstack/router-plugin': ^1.168.23
+  '@tanstack/router-devtools': ^1.167.1
+  '@tanstack/router-plugin': ^1.168.25
   '@types/luxon': ^3.7.3
   '@types/node': ^26.1.2
   '@types/react': ^19.2.18
@@ -67,7 +67,7 @@ catalog:
   del-cli: ^7.0.0
   eventsource-parser: ^3.1.0
   globals: ^17.9.0
-  hono: ^4.12.34
+  hono: ^4.13.0
   ink: ^7.1.1
   commander: ^15.0.0
   ink-testing-library: ^4.0.0
