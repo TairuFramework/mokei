@@ -68,9 +68,14 @@ The additive wiring is in and released work now spans both revisions. What lande
 - **Interop peer matrix** (PR #42, `completed/2026-08-04-interop-peer-matrix.complete.md`): all
   four client/server × stdio/HTTP quadrants against SDK `2.0.0`, on both revisions.
 
-What remains: B7 (MRTR) and the roots half of B6, B4 (`subscriptions/listen`), D1–D3, and G7
-part 5's retry loop. Each is tracked in `backlog/2026-06-20-mcp-draft-remaining.md`; B7 and the
-G7 part 5 / `Mcp-Method` pair are promoted to `next/`.
+What remains (as of 2026-08-04): B7 (MRTR) and the roots half of B6, B4
+(`subscriptions/listen`), D1–D3, and G7 part 5's retry loop. Each is tracked in
+`backlog/2026-06-20-mcp-draft-remaining.md`; B7 and the G7 part 5 / `Mcp-Method` pair are
+promoted to `next/`.
+
+*Update:* both `next/` promotions shipped and their files are gone — G7 part 5 on 2026-08-07
+(PR #43) and B7 (MRTR) on 2026-08-08, see the status update above. `next/` is empty; what
+actually remains is the roots half of B6 (not applicable, see the Phase 1 table), B4, and D1–D3.
 
 The open question about `server/discover` STDIO probe semantics is answered: the client probes
 with `server/discover`, and any failure falls back to the `2025-11-25` handshake, with a `-32022`
@@ -288,6 +293,10 @@ additive behind the version selector rather than removals. Ordered by dependency
   store landed via `completed/2026-06-20-pendingexchange-refactor.complete.md` (PR #32).
   `@enkaku/transport` untouched — fully local `context-rpc` work, not an enkaku dependency.
   Draft wiring plugs into the `_registerStreamExchange` seam once the spec finalizes.
+
+  *Correction, 2026-08-08:* B7 shipped and did not plug into this seam — MRTR turned out not to
+  need it (see "Correlation abstraction" and "Buildable now vs blocked on the spec" above). B4
+  (`subscriptions/listen`) remains the candidate consumer this line anticipated.
 - **U2 → G8** — `@enkaku/schema` draft-07 → needs `Ajv2020` / configurable draft.
   **Resolved** in `@enkaku/schema@0.16.1` (`createValidator(schema, { draft: '2020-12' })`,
   new `ValidatorOptions` export). G8 unblocked.
