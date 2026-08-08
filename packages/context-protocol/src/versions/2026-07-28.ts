@@ -98,7 +98,8 @@ export function withProtocolMeta<S extends Schema>(schema: S) {
  *
  * Applied only to the three methods that can suspend. The specification reserves these two names
  * on client-initiated requests, so a method that cannot suspend must not admit them: a
- * `tools/list` carrying `inputResponses` is a client bug, not a retry.
+ * `tools/list` carrying `inputResponses` is a client bug, not a retry. Enforced on the wire by
+ * `forbidRetryParams` below, applied to every other member of `clientRequest`.
  *
  * Both are optional — round one carries neither.
  */
@@ -111,6 +112,36 @@ export function withRetryParams<S extends Schema>(schema: S) {
           params: {
             properties: { inputResponses, requestState: { type: 'string' } },
             type: 'object',
+          },
+        },
+        required: ['params'],
+        type: 'object',
+      },
+    ],
+  } as const satisfies Schema
+}
+
+/**
+ * Composes a request schema that rejects SEP-2322's retry fields (the `withRetryParams`
+ * counterpart): a method that cannot suspend must not admit `inputResponses`/`requestState`,
+ * so a peer sending either to `tools/list` or another non-suspending method fails validation
+ * instead of silently reaching a handler that never asked for them.
+ */
+function forbidRetryParams<S extends Schema>(schema: S) {
+  return {
+    allOf: [
+      schema,
+      {
+        properties: {
+          // `type: 'object'` on each `not` branch is required, not decorative — see
+          // `withProtocolMeta` above for why an untyped `required` warns under Ajv's strictTypes.
+          params: {
+            not: {
+              anyOf: [
+                { required: ['inputResponses'], type: 'object' },
+                { required: ['requestState'], type: 'object' },
+              ],
+            },
           },
         },
         required: ['params'],
@@ -218,14 +249,14 @@ export const inputResponses = {
 /** Requests a client may send in this revision, each carrying the required `_meta`. */
 export const clientRequest = {
   anyOf: [
-    withProtocolMeta(discoverRequest),
-    withProtocolMeta(completeRequest),
+    withProtocolMeta(forbidRetryParams(discoverRequest)),
+    withProtocolMeta(forbidRetryParams(completeRequest)),
     withProtocolMeta(withRetryParams(getPromptRequest)),
-    withProtocolMeta(listPromptsRequest),
-    withProtocolMeta(listResourcesRequest),
-    withProtocolMeta(listResourceTemplatesRequest),
+    withProtocolMeta(forbidRetryParams(listPromptsRequest)),
+    withProtocolMeta(forbidRetryParams(listResourcesRequest)),
+    withProtocolMeta(forbidRetryParams(listResourceTemplatesRequest)),
     withProtocolMeta(withRetryParams(readResourceRequest)),
-    withProtocolMeta(listToolsRequest),
+    withProtocolMeta(forbidRetryParams(listToolsRequest)),
     withProtocolMeta(withRetryParams(callToolRequest)),
   ],
 } as const satisfies Schema

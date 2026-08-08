@@ -19,6 +19,12 @@ import { INPUT_REQUEST_CAPABILITIES } from '@mokei/context-protocol'
  * business logic to protect its integrity and to reject state that fails verification. mokei ships
  * no crypto and imposes no key management: with no `verify`, the raw string reaches the handler and
  * is untrusted; with one, the seam refuses state the hook rejects before the handler runs.
+ *
+ * `mint` alone is legitimate (a custom encoding with no verification — the handler gets back
+ * exactly what it minted, still untrusted). `verify` alone is not: without a matching `mint`, a
+ * handler mints with the default `JSON.stringify`, and a custom `verify` written for a different
+ * encoding rejects that on every retry. `ContextServer`'s constructor throws for that combination
+ * rather than let it fail silently on the wire.
  */
 export type RequestStateHooks = {
   /** Encodes a handler's payload into the opaque string sent to the client. */

@@ -26,6 +26,7 @@ import {
   ContextClient,
   InputRequiredNotSupportedError,
   InputRequiredRoundsExceededError,
+  InputRequiredTotalTimeoutError,
   ListMaxPagesError,
   MethodNotInRevisionError,
   MRTRNotSupportedError,
@@ -1303,6 +1304,48 @@ describe('protocol version selection', () => {
     )
   })
 
+  // `2025-11-25` has no MRTR: `server.ts`'s handler-side gate throws if a handler suspends there,
+  // but nothing stopped a nonconforming (or malicious) `2025-11-25` peer from sending the frame
+  // anyway. Before the client-side gate, this drove MRTR rounds against an unvalidated
+  // `createMessage` handler call — the createMessage spy asserts that path is not reached.
+  test('refuses an input_required result on 2025-11-25, which has no MRTR', async () => {
+    const createMessage = vi.fn()
+    const { client } = createTestClient({
+      protocolVersion: '2025-11-25',
+      createMessage,
+      respond: (message) =>
+        message.method === 'tools/call'
+          ? {
+              content: [],
+              resultType: 'input_required',
+              inputRequests: {
+                ask: { method: 'sampling/createMessage', params: { maxTokens: 5 } },
+              },
+              requestState: 'st',
+            }
+          : undefined,
+    })
+    await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow(
+      InputRequiredNotSupportedError,
+    )
+    expect(createMessage).not.toHaveBeenCalled()
+  })
+
+  // `MRTR_METHODS` (SEP-2322) admits only `tools/call`, `prompts/get` and `resources/read` — a
+  // `2026-07-28` peer suspending any other method, `tools/list` here, is a protocol violation the
+  // client must refuse rather than drive rounds for. Mirrors `ContextServer`'s own handler-side
+  // `MRTR_METHODS` gate (`server.ts`).
+  test('refuses an input_required result on a 2026-07-28 method that cannot suspend', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: (message) =>
+        message.method === 'tools/list'
+          ? { resultType: 'input_required', requestState: 'st' }
+          : undefined,
+    })
+    await expect(client.request('tools/list', {})).rejects.toThrow(InputRequiredNotSupportedError)
+  })
+
   test('hands the raw suspension back when the call opts in', async () => {
     const { client } = createTestClient({
       protocolVersion: '2026-07-28',
@@ -1318,6 +1361,50 @@ describe('protocol version selection', () => {
       allowInputRequired: true,
     })
     expect((result as unknown as { resultType: string }).resultType).toBe('input_required')
+  })
+
+  // `maxTotalTimeout` is documented as covering the leg that produced the first suspension, not
+  // only the retries after it. Drives the wire by hand rather than through `createTestClient`'s
+  // `respond` (synchronous, so it cannot simulate a slow first leg): the harness delays its
+  // `tools/call` answer past the budget, and never answers a second one, so the flow can only
+  // pass by raising the total-timeout error itself rather than by retrying.
+  test('charges the leg that produced the first suspension against maxTotalTimeout', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      protocolVersion: '2026-07-28',
+      listRoots: [],
+      transport: transports.client,
+    })
+
+    void (async () => {
+      const discover = await transports.server.read()
+      if (discover.done) {
+        return
+      }
+      transports.server.write({
+        jsonrpc: '2.0',
+        id: (discover.value as ClientRequest).id,
+        result: DEFAULT_DISCOVER_RESULT,
+      } as ServerMessage)
+
+      const call = await transports.server.read()
+      if (call.done) {
+        return
+      }
+      // Longer than `maxTotalTimeout` below: this leg alone must exhaust the budget.
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      transports.server.write({
+        jsonrpc: '2.0',
+        id: (call.value as ClientRequest).id,
+        result: { resultType: 'input_required', inputRequests: { ask: ROOTS_INPUT_REQUEST } },
+      } as ServerMessage)
+    })()
+
+    await expect(
+      client.callTool({ name: 'echo', arguments: {}, maxTotalTimeout: 10 }),
+    ).rejects.toThrow(InputRequiredTotalTimeoutError)
+
+    await transports.dispose()
   })
 
   test('stops at the round cap', async () => {

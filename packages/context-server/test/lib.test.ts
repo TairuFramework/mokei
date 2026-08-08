@@ -1448,6 +1448,7 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
       {
         protocolVersions: ['2026-07-28'],
         requestState: {
+          mint: (payload) => JSON.stringify(payload),
           verify: () => {
             throw new Error('signature mismatch')
           },
@@ -1460,6 +1461,26 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
       },
       { code: -32602, message: 'Invalid requestState: signature mismatch' },
     )
+  })
+
+  test('refuses construction with a requestState.verify hook but no mint', () => {
+    expect(() =>
+      createTestContext({
+        protocolVersions: ['2026-07-28'],
+        requestState: { verify: (raw) => raw },
+        tools: { echo: echoTool },
+      }),
+    ).toThrow(/requestState\.verify is configured without requestState\.mint/)
+  })
+
+  test('allows construction with a requestState.mint hook but no verify', () => {
+    expect(() =>
+      createTestContext({
+        protocolVersions: ['2026-07-28'],
+        requestState: { mint: (payload) => JSON.stringify(payload) },
+        tools: { echo: echoTool },
+      }),
+    ).not.toThrow()
   })
 
   const suspendingTool = createTool({

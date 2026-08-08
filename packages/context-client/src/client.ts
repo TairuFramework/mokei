@@ -68,7 +68,12 @@ import {
 import { lazy } from '@sozai/async'
 import { createValidator, type Schema, type Validator } from '@sozai/schema'
 
-import { DEFAULT_MAX_ROUNDS, isInputRequiredResult, runInputRequiredFlow } from './mrtr.js'
+import {
+  DEFAULT_MAX_ROUNDS,
+  isInputRequiredResult,
+  MRTR_METHODS,
+  runInputRequiredFlow,
+} from './mrtr.js'
 import { currentTraceMeta } from './trace.js'
 import type { ClientTransport } from './types.js'
 
@@ -599,7 +604,12 @@ export class ContextClient<
 
   // Decorate every outgoing request with this revision's protocol envelope (`decorateRequest`)
   // and inject W3C trace context (SEP-414) into `_meta`; the latter is a no-op when no
-  // OpenTelemetry SDK is active. Reject an `input_required` result until MRTR (SEP-2322) lands.
+  // OpenTelemetry SDK is active. Drives MRTR (SEP-2322) rounds for an `input_required` result on
+  // a method that can suspend: dispatches the embedded requests and retries, unless the caller
+  // passed `allowInputRequired` (which hands the raw suspension back instead) or
+  // `inputRequired.autoFulfill` is off (which throws `InputRequiredNotSupportedError`). A
+  // suspension the revision or method cannot legally produce always throws, regardless of either
+  // opt-out.
   //
   // Awaits `#ready` first (not just `#requireProtocol()`): `getPrompt`, `readResource` and
   // `callTool` call `request()` directly with no `#ready` await of their own, so under
@@ -655,9 +665,26 @@ export class ContextClient<
       clientInfo: this.#clientInfo,
       logLevel: this.#logLevel,
     })
+    // Charges the leg below against `maxTotalTimeout` too: that budget is documented (and, via
+    // `runInputRequiredFlow`'s `startedAt`, implemented) as covering the leg that produced the
+    // first suspension, not just the retries after it.
+    const startedAt = Date.now()
     const result = await super.request(method, decorated as typeof params, options)
     if (!isInputRequiredResult(result)) {
       return result
+    }
+    // A suspension the resolved revision or this method can never legally produce is a
+    // nonconforming peer, not a suspension to drive or hand back — refused unconditionally, the
+    // same as every `input_required` result was refused before MRTR existed. Mirrors
+    // `ContextServer._handleRequest`'s own two-part gate (`server.ts`'s `inputRequestMethods.size`
+    // and `MRTR_METHODS` checks) so a `2025-11-25` peer or a non-MRTR method on `2026-07-28` (e.g.
+    // `tools/list`) cannot talk this client into driving rounds `MRTR_METHODS` never grants it.
+    if (protocol.inputRequestMethods.size === 0 || !MRTR_METHODS.has(method as string)) {
+      throw new InputRequiredNotSupportedError(
+        protocol.inputRequestMethods.size === 0
+          ? `protocol version ${protocol.version} has no multi round-trip requests`
+          : `${method as string} cannot suspend on input`,
+      )
     }
     // The opt-in path: hand the suspension back and let the caller drive its own rounds. Also how
     // the driver below reads each retry leg, so the loop lives in exactly one place.
@@ -675,6 +702,7 @@ export class ContextClient<
       maxRounds: this.#inputRequired.maxRounds,
       timeout: options?.timeout,
       maxTotalTimeout: options?.maxTotalTimeout,
+      startedAt,
       signal: options?.signal,
       dispatch: (key, inputRequest, signal) => this.#fulfilInputRequest(key, inputRequest, signal),
       retry: (retryParams, timeout) =>

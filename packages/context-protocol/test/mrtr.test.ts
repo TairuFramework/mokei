@@ -132,6 +132,38 @@ describe('2026-07-28 retry params', () => {
       }).issues,
     ).toBeDefined()
   })
+
+  test('rejects inputResponses/requestState on a method that cannot suspend', () => {
+    expect(
+      validateClientRequest({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/list',
+        params: { _meta: META, inputResponses: { a: { roots: [] } } },
+      }).issues,
+    ).toBeDefined()
+    expect(
+      validateClientRequest({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/list',
+        params: { _meta: META, requestState: 'opaque' },
+      }).issues,
+    ).toBeDefined()
+    expect(
+      validateClientRequest({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'completion/complete',
+        params: {
+          _meta: META,
+          ref: { type: 'ref/prompt', name: 'p' },
+          argument: { name: 'a', value: 'v' },
+          requestState: 'opaque',
+        },
+      }).issues,
+    ).toBeDefined()
+  })
 })
 
 describe('inputRequestMethods', () => {

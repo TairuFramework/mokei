@@ -17,6 +17,20 @@ import type { InputRequest, InputResponse } from '@mokei/context-protocol'
 export const DEFAULT_MAX_ROUNDS = 10
 
 /**
+ * The methods SEP-2322 allows to suspend. Everything else must answer terminally.
+ *
+ * A client-side copy of `@mokei/context-server`'s own `MRTR_METHODS`, not an import of it: the
+ * client package must not depend on the server package, and this table is small and pinned to the
+ * specification rather than to either package's internals, so the duplication is cheap and the
+ * two cannot drift without a spec change prompting both.
+ */
+export const MRTR_METHODS: ReadonlySet<string> = new Set([
+  'tools/call',
+  'prompts/get',
+  'resources/read',
+])
+
+/**
  * Pacing applied before retrying a `requestState`-only leg: one carrying no embedded requests, so
  * no handler work slows the loop down naturally. A server sends these to shed load or to report
  * that it is still working, and without the delay the client would spin against it.
