@@ -177,6 +177,11 @@ export function toolToLocalTool(params: ToolToLocalToolParams): LocalToolDefinit
         // Forward the caller's cancellation signal; fall back to a never-aborting
         // one when invoked outside callLocalTool's cancellation plumbing.
         signal: request.signal ?? new AbortController().signal,
+        // Local tools run outside any MCP request/response cycle, so there is no wire to
+        // round-trip a `requestState` over — but `mintRequestState` is a pure encoder a
+        // handler may still call while building an `inputRequired()` result, so it gets the
+        // same default `ContextServer` falls back to rather than a throwing stub.
+        mintRequestState: (payload: unknown) => JSON.stringify(payload),
       })
     },
   }

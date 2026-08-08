@@ -319,6 +319,9 @@ describe('ContextServer', () => {
       client: expect.objectContaining(expectedClient),
       params,
       signal: expect.any(AbortSignal),
+      inputResponses: undefined,
+      requestState: undefined,
+      mintRequestState: expect.any(Function),
     })
   })
 
@@ -1438,6 +1441,25 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
     expect(result.content[0].text).toContain('2026-07-28')
     await transports.dispose()
   })
+
+  test('answers -32602 when the requestState verify hook refuses', async () => {
+    await expectServerError(
+      {
+        protocolVersions: ['2026-07-28'],
+        requestState: {
+          verify: () => {
+            throw new Error('signature mismatch')
+          },
+        },
+        tools: { echo: echoTool },
+      },
+      {
+        method: 'tools/call',
+        params: { _meta: NEW_META, name: 'echo', arguments: {}, requestState: 'forged' },
+      },
+      { code: -32602, message: 'Invalid requestState: signature mismatch' },
+    )
+  })
 })
 
 describe('mandatory caching hints (2026-07-28)', () => {
@@ -1584,6 +1606,7 @@ describe('factory parameters object', () => {
       input: { value: 1 },
       client: {} as never,
       signal: new AbortController().signal,
+      mintRequestState: () => '',
     })
     expect(result).toEqual({ content: [{ type: 'text', text: '2' }] })
   })
@@ -1600,6 +1623,7 @@ describe('factory parameters object', () => {
         input: { value: 'not a number' },
         client: {} as never,
         signal: new AbortController().signal,
+        mintRequestState: () => '',
       }),
     ).rejects.toMatchObject({ code: INVALID_PARAMS })
   })
@@ -1622,6 +1646,7 @@ describe('factory parameters object', () => {
       input: { name: 'World' },
       client: {} as never,
       signal: new AbortController().signal,
+      mintRequestState: () => '',
     })
     expect(result).toEqual({
       messages: [{ role: 'assistant', content: { type: 'text', text: 'Hello World' } }],
@@ -1639,6 +1664,7 @@ describe('factory parameters object', () => {
       input: { anything: true },
       client: {} as never,
       signal: new AbortController().signal,
+      mintRequestState: () => '',
     })
     expect(result).toEqual({ messages: [] })
   })
@@ -1656,6 +1682,7 @@ describe('tool outputSchema', () => {
       input: args,
       client: {} as never,
       signal: new AbortController().signal,
+      mintRequestState: () => '',
     })
   }
 

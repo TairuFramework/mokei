@@ -10,6 +10,7 @@ import type {
   ElicitResult,
   GetPromptResult,
   InitializeRequest,
+  InputResponse,
   ListResourcesRequest,
   ListResourcesResult,
   ListResourceTemplatesRequest,
@@ -70,6 +71,22 @@ export type HandlerRequest<C extends Record<string, unknown> = Record<string, ne
   client: ServerClient
   progress?: ProgressEmitter
   signal: AbortSignal
+  /**
+   * Results for the input requests this handler asked for on a previous round (MRTR, SEP-2322),
+   * keyed as the handler keyed its own `inputRequests`. Absent on the first round and on
+   * `2025-11-25`, which has no MRTR.
+   */
+  inputResponses?: Record<string, InputResponse>
+  /**
+   * The state this handler minted on a previous round, echoed back by the client.
+   *
+   * The decoded payload when the server is configured with a `requestState.verify` hook; the raw
+   * string otherwise, in which case it is UNTRUSTED — it round-tripped through the client and any
+   * caller can forge it. Configure the hook before letting it influence authorization.
+   */
+  requestState?: unknown
+  /** Encodes a payload into the opaque `requestState` string to send with an `inputRequired()`. */
+  mintRequestState: (payload: unknown) => string
 }
 
 export type CompleteHandler = (

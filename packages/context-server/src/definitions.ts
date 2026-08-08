@@ -50,6 +50,9 @@ export function createPrompt<
         input: request.input as Arguments,
         client: request.client,
         signal: request.signal,
+        inputResponses: request.inputResponses,
+        requestState: request.requestState,
+        mintRequestState: request.mintRequestState,
       })
     }
     return { description, handler: passthrough } as PromptDefinition<Arguments>
@@ -63,7 +66,14 @@ export function createPrompt<
   const wrappedHandler = (request: HandlerRequest<{ input: unknown }>): PromptHandlerReturn => {
     const validated = validate(request.input)
     if (validated.issues == null) {
-      return handler({ input: validated.value, client: request.client, signal: request.signal })
+      return handler({
+        input: validated.value,
+        client: request.client,
+        signal: request.signal,
+        inputResponses: request.inputResponses,
+        requestState: request.requestState,
+        mintRequestState: request.mintRequestState,
+      })
     }
     throw new RPCError(INVALID_PARAMS, 'Invalid prompt arguments', {
       issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
@@ -145,6 +155,9 @@ export function createTool<
       client: request.client,
       progress: request.progress,
       signal: request.signal,
+      inputResponses: request.inputResponses,
+      requestState: request.requestState,
+      mintRequestState: request.mintRequestState,
     })
     return finalizeResult(result as CallToolResult)
   }

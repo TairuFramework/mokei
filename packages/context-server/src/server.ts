@@ -14,6 +14,7 @@ import type {
   GetPromptResult,
   Implementation,
   InitializeResult,
+  InputResponse,
   ListRootsRequest,
   ListRootsResult,
   Log,
@@ -50,6 +51,7 @@ import { createValidator, type Schema } from '@sozai/schema'
 import { applyCacheHints } from './cache.js'
 import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
 import { buildDiscoverResult } from './discover.js'
+import { liftRetryParams, type RequestStateHooks, resolveRequestState } from './mrtr.js'
 import { withRequestMeta } from './trace.js'
 import type {
   ClientInitialize,
@@ -65,6 +67,12 @@ import type {
   ToolDefinitions,
 } from './types.js'
 import { MRTRNotSupportedError } from './types.js'
+
+type MRTRContext = {
+  inputResponses?: Record<string, InputResponse>
+  requestState?: unknown
+  mintRequestState: (payload: unknown) => string
+}
 
 // cf https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1
 const LOGGING_LEVELS: Record<LoggingLevel, number> = {
@@ -100,6 +108,8 @@ export type ServerConfig = {
   /** Revisions this server serves. Listing both makes it serve both. */
   protocolVersions: Array<ProtocolVersion>
   cache?: CacheHints
+  /** Integrity hooks for the MRTR `requestState` (SEP-2322). See {@link RequestStateHooks}. */
+  requestState?: RequestStateHooks
   complete?: CompleteHandler
   prompts?: PromptDefinitions
   resources?: ResourceDefinitions
@@ -147,6 +157,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #clientLoggingLevel?: LoggingLevel
   #completeHandler?: CompleteHandler
   #protocolVersions: Array<ProtocolVersion>
+  #requestState?: RequestStateHooks
   #serverInfo: Implementation
   #promptHandlers: Record<string, GenericPromptHandler> = {}
   #promptsList: Array<Prompt> = []
@@ -172,6 +183,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this.#cache = params.cache
     this.#completeHandler = params.complete
     this.#protocolVersions = params.protocolVersions
+    this.#requestState = params.requestState
     this.#serverInfo = { name: params.name, version: params.version }
 
     // Logging is always supported (the server can emit notifications/message).
@@ -381,9 +393,35 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const meta = (request.params as Record<string, unknown> | undefined)?._meta as
       | Record<string, unknown>
       | undefined
+    // `2025-11-25` has no MRTR, so `inputResponses`/`requestState` are ordinary params there and
+    // must not be lifted: a peer is entitled to a tool argument by either name on that revision.
+    const { params: liftedParams, lifted } =
+      protocol.inputRequestMethods.size > 0
+        ? liftRetryParams(request.params)
+        : { params: request.params, lifted: {} }
+    // `verify` runs before the handler and its refusal must answer the request with -32602
+    // rather than throw past this dispatch loop — but the throw sits outside the `catch` so it
+    // is a fresh, unchained error: the hook's own error may carry internals (secrets, stack
+    // frames) that must not ride along on `.cause` into a response a peer can read.
+    let requestStateError: string | undefined
+    let requestState: unknown
+    try {
+      requestState = resolveRequestState(lifted.requestState, this.#requestState)
+    } catch (cause) {
+      requestStateError = cause instanceof Error ? cause.message : String(cause)
+    }
+    if (requestStateError != null) {
+      throw new RPCError(INVALID_PARAMS, `Invalid requestState: ${requestStateError}`)
+    }
+    const mrtr: MRTRContext = {
+      inputResponses: lifted.inputResponses,
+      requestState,
+      mintRequestState: this.#requestState?.mint ?? ((payload: unknown) => JSON.stringify(payload)),
+    }
+    const liftedRequest = { ...request, params: liftedParams } as ClientRequest
     const client = this.#createClient(protocol, protocol.readRequestMeta(request).logLevel)
     const result = await withRequestMeta(meta, () =>
-      this.#dispatchRequest(request, protocol, client, signal),
+      this.#dispatchRequest(liftedRequest, protocol, client, signal, mrtr),
     )
     const body = protocol.requiresCacheHints
       ? applyCacheHints(request.method, result as Record<string, unknown>, this.#cache)
@@ -396,13 +434,14 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     protocol: ProtocolDefinition,
     client: ServerClient,
     signal: AbortSignal,
+    mrtr: MRTRContext,
   ): Promise<ServerResult> {
     switch (request.method) {
       case 'completion/complete':
         if (this.#completeHandler == null) {
           break
         }
-        return await this.#completeHandler({ client, params: request.params, signal })
+        return await this.#completeHandler({ client, params: request.params, signal, ...mrtr })
       case 'initialize':
         this.#clientInitialize = request.params
         this.events.emit('initialize', request.params)
@@ -415,19 +454,19 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         this.#clientLoggingLevel = request.params.level
         return {}
       case 'prompts/get':
-        return await this.#getPrompt(request, client, signal)
+        return await this.#getPrompt(request, client, signal, mrtr)
       case 'prompts/list':
         return { prompts: this.#promptsList, ...this.#cache }
       case 'resources/list':
         if (this.#resources == null) {
           break
         }
-        return this.#resources.list({ client, params: request.params, signal })
+        return this.#resources.list({ client, params: request.params, signal, ...mrtr })
       case 'resources/read':
         if (this.#resources == null) {
           break
         }
-        return this.#resources.read({ client, params: request.params, signal })
+        return this.#resources.read({ client, params: request.params, signal, ...mrtr })
       case 'resources/templates/list':
         if (this.#resources == null) {
           break
@@ -436,6 +475,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           client,
           params: request.params,
           signal,
+          ...mrtr,
         })
       case 'server/discover':
         return buildDiscoverResult({
@@ -443,7 +483,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           protocolVersions: this.#protocolVersions,
         })
       case 'tools/call':
-        return await this.#callTool(request, client, signal)
+        return await this.#callTool(request, client, signal, mrtr)
       case 'tools/list':
         return { tools: this.#toolsList, ...this.#cache }
     }
@@ -454,6 +494,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     request: CallToolRequest,
     client: ServerClient,
     signal: AbortSignal,
+    mrtr: MRTRContext,
   ): Promise<CallToolResult> {
     const name = request.params.name
     const handler = Object.hasOwn(this.#toolHandlers, name) ? this.#toolHandlers[name] : undefined
@@ -476,6 +517,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         client,
         progress,
         signal,
+        ...mrtr,
       })
     } catch (cause) {
       // Tool-execution and input-validation failures (SEP-1303) are reported
@@ -499,6 +541,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     request: GetPromptRequest,
     client: ServerClient,
     signal: AbortSignal,
+    mrtr: MRTRContext,
   ): Promise<GetPromptResult> {
     const name = request.params.name
     const handler = Object.hasOwn(this.#promptHandlers, name)
@@ -507,7 +550,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (handler == null) {
       throw new RPCError(INVALID_PARAMS, `Prompt ${name} not found`)
     }
-    return await handler({ input: request.params.arguments, client, signal })
+    return await handler({ input: request.params.arguments, client, signal, ...mrtr })
   }
 }
 
