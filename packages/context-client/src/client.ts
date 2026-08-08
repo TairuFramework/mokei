@@ -18,6 +18,8 @@ import type {
   Implementation,
   InitializeRequest,
   InitializeResult,
+  InputRequest,
+  InputResponse,
   ListPromptsRequest,
   ListPromptsResult,
   ListResourcesRequest,
@@ -45,6 +47,7 @@ import type {
 import {
   discoverResult,
   type ErrorResponse,
+  INPUT_REQUEST_CAPABILITIES,
   INVALID_REQUEST,
   inferSchemaDraft,
   isSupportedProtocolVersion,
@@ -65,6 +68,7 @@ import {
 import { lazy } from '@sozai/async'
 import { createValidator, type Schema, type Validator } from '@sozai/schema'
 
+import { DEFAULT_MAX_ROUNDS, isInputRequiredResult, runInputRequiredFlow } from './mrtr.js'
 import { currentTraceMeta } from './trace.js'
 import type { ClientTransport } from './types.js'
 
@@ -218,12 +222,14 @@ export class MRTRNotSupportedError extends Error {
   }
 }
 
-/** Thrown when a server returns an `input_required` result: MRTR (SEP-2322) is not implemented yet. */
+/**
+ * Thrown when a server returns an `input_required` result the client will not fulfil: either
+ * auto-fulfilment is off and the call did not pass `allowInputRequired`, or no handler is
+ * configured for one of the embedded methods.
+ */
 export class InputRequiredNotSupportedError extends Error {
-  constructor() {
-    super(
-      'The server returned an "input_required" result: multi round-trip requests (MRTR, SEP-2322) are not implemented yet',
-    )
+  constructor(reason: string) {
+    super(`The server returned an "input_required" result: ${reason}`)
     this.name = 'InputRequiredNotSupportedError'
   }
 }
@@ -381,6 +387,13 @@ export type ClientParams = {
   listRoots?: Array<Root> | ListRootsHandler
   logLevel?: LoggingLevel
   /**
+   * Multi round-trip request behavior (MRTR, SEP-2322). `autoFulfill` (default `true`) dispatches
+   * a server's embedded input requests to this client's own `createMessage`/`elicit`/`listRoots`
+   * handlers and retries, so callers of `callTool`/`getPrompt`/`readResource` receive the same
+   * result type they do on `2025-11-25`. `maxRounds` (default 10) caps a single call's rounds.
+   */
+  inputRequired?: { autoFulfill?: boolean; maxRounds?: number }
+  /**
    * Server-initiated request handlers (`sampling/createMessage`, `elicitation/create`,
    * `roots/list` on `2025-11-25`) allowed to run at once (default 100). Symmetric with
    * `@mokei/context-server`'s `ServerParams.maxConcurrentRequests`.
@@ -423,6 +436,7 @@ export class ContextClient<
   #discovering: Promise<DiscoverResult> | null = null
   #elicit?: ElicitHandler
   #initialized: PromiseLike<InitializeResult>
+  #inputRequired: { autoFulfill: boolean; maxRounds: number }
   #listMaxPages: number
   #listRoots?: Array<Root> | ListRootsHandler
   #logLevel?: LoggingLevel
@@ -510,6 +524,10 @@ export class ContextClient<
     this.#clientInfo = params.clientInfo ?? DEFAULT_CLIENT_INFO
     this.#initialized = lazy(() => this.#initialize())
     this.#listMaxPages = params.listMaxPages ?? DEFAULT_LIST_MAX_PAGES
+    this.#inputRequired = {
+      autoFulfill: params.inputRequired?.autoFulfill ?? true,
+      maxRounds: params.inputRequired?.maxRounds ?? DEFAULT_MAX_ROUNDS,
+    }
     this.#logLevel = params.logLevel
     this.#protocol = protocol
     this.#ready = lazy(() => this.#setup())
@@ -638,10 +656,34 @@ export class ContextClient<
       logLevel: this.#logLevel,
     })
     const result = await super.request(method, decorated as typeof params, options)
-    if ((result as { resultType?: string } | undefined)?.resultType === 'input_required') {
-      throw new InputRequiredNotSupportedError()
+    if (!isInputRequiredResult(result)) {
+      return result
     }
-    return result
+    // The opt-in path: hand the suspension back and let the caller drive its own rounds. Also how
+    // the driver below reads each retry leg, so the loop lives in exactly one place.
+    if (options?.allowInputRequired) {
+      return result as ClientTypes['SendRequests'][Method]['Result']
+    }
+    if (!this.#inputRequired.autoFulfill) {
+      throw new InputRequiredNotSupportedError(
+        'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
+      )
+    }
+    return (await runInputRequiredFlow({
+      method: method as string,
+      first: result,
+      maxRounds: this.#inputRequired.maxRounds,
+      timeout: options?.timeout,
+      maxTotalTimeout: options?.maxTotalTimeout,
+      signal: options?.signal,
+      dispatch: (key, inputRequest, signal) => this.#fulfilInputRequest(key, inputRequest, signal),
+      retry: (retryParams, timeout) =>
+        this.request(method, { ...(params as object), ...retryParams } as typeof params, {
+          ...options,
+          allowInputRequired: true,
+          timeout,
+        }),
+    })) as ClientTypes['SendRequests'][Method]['Result']
   }
 
   /**
@@ -1150,6 +1192,43 @@ export class ContextClient<
       this.#notificationBuffer.shift()
     }
     this.#notificationPull?.()
+  }
+
+  /**
+   * Fulfils one embedded MRTR input request with this client's own handler.
+   *
+   * The same three handlers `_handleRequest` uses for `2025-11-25`'s server-initiated requests —
+   * one handler, both revisions, which is the whole point of driving MRTR here rather than
+   * exposing it to callers.
+   */
+  async #fulfilInputRequest(
+    key: string,
+    request: InputRequest,
+    signal: AbortSignal,
+  ): Promise<InputResponse> {
+    switch (request.method) {
+      case 'sampling/createMessage':
+        if (this.#createMessage != null) {
+          return await this.#createMessage({ params: request.params, signal })
+        }
+        break
+      case 'elicitation/create':
+        if (this.#elicit != null) {
+          return await this.#elicit({ params: request.params, signal })
+        }
+        break
+      case 'roots/list':
+        if (this.#listRoots != null) {
+          const roots = Array.isArray(this.#listRoots)
+            ? this.#listRoots
+            : await this.#listRoots({ signal })
+          return { roots }
+        }
+        break
+    }
+    throw new InputRequiredNotSupportedError(
+      `no handler is configured for the "${request.method}" input request "${key}" (declare the "${INPUT_REQUEST_CAPABILITIES[request.method]}" capability by passing its handler to the client)`,
+    )
   }
 
   async _handleRequest(request: ServerRequest, signal: AbortSignal): Promise<ClientResult> {

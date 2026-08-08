@@ -25,6 +25,7 @@ import {
   type ClientParams,
   ContextClient,
   InputRequiredNotSupportedError,
+  InputRequiredRoundsExceededError,
   ListMaxPagesError,
   MethodNotInRevisionError,
   MRTRNotSupportedError,
@@ -174,6 +175,9 @@ type Respond = (message: ClientRequest) => Record<string, unknown> | typeof WITH
  * answer below it. Declares no capabilities: a test that needs one gated open says so through
  * `respond`, and a permissive default would let a broken gate pass unnoticed.
  */
+/** An MRTR input request embedded in an `input_required` result, used across the tests below. */
+const ROOTS_INPUT_REQUEST = { method: 'roots/list', params: {} }
+
 const DEFAULT_DISCOVER_RESULT = {
   resultType: 'complete',
   supportedVersions: ['2026-07-28'],
@@ -1242,14 +1246,109 @@ describe('protocol version selection', () => {
     expect(new MRTRNotSupportedError('createMessage', '2025-11-25').message).toContain('2025-11-25')
   })
 
-  test('rejects an input_required result until MRTR lands', async () => {
+  test('auto-fulfils an input_required result through the configured handler', async () => {
+    let round = 0
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      listRoots: [{ uri: 'file:///work', name: 'work' }],
+      respond: (message) => {
+        if (message.method !== 'tools/call') {
+          return undefined
+        }
+        round += 1
+        return round === 1
+          ? {
+              resultType: 'input_required',
+              inputRequests: { ask: ROOTS_INPUT_REQUEST },
+              requestState: 'state-1',
+            }
+          : { content: [{ type: 'text', text: 'done' }], resultType: 'complete' }
+      },
+    })
+    const result = await client.callTool({ name: 'echo', arguments: {} })
+    expect(result.content).toEqual([{ type: 'text', text: 'done' }])
+    const calls = sent.filter((message) => message.method === 'tools/call')
+    expect(calls).toHaveLength(2)
+    expect((calls[1].params as Record<string, unknown>).inputResponses).toEqual({
+      ask: { roots: [{ uri: 'file:///work', name: 'work' }] },
+    })
+    expect((calls[1].params as Record<string, unknown>).requestState).toBe('state-1')
+  })
+
+  test('refuses an input_required result when no handler can fulfil it', async () => {
     const { client } = createTestClient({
       protocolVersion: '2026-07-28',
-      respond: () => ({ resultType: 'input_required', inputRequests: {} }),
+      respond: () => ({
+        resultType: 'input_required',
+        inputRequests: { ask: ROOTS_INPUT_REQUEST },
+      }),
     })
     await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow(
       InputRequiredNotSupportedError,
     )
+  })
+
+  test('refuses an input_required result when auto-fulfilment is off', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      inputRequired: { autoFulfill: false },
+      listRoots: [],
+      respond: () => ({
+        resultType: 'input_required',
+        inputRequests: { ask: ROOTS_INPUT_REQUEST },
+      }),
+    })
+    await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow(
+      InputRequiredNotSupportedError,
+    )
+  })
+
+  test('hands the raw suspension back when the call opts in', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      listRoots: [],
+      respond: () => ({
+        resultType: 'input_required',
+        inputRequests: { ask: ROOTS_INPUT_REQUEST },
+      }),
+    })
+    const result = await client.callTool({
+      name: 'echo',
+      arguments: {},
+      allowInputRequired: true,
+    })
+    expect((result as unknown as { resultType: string }).resultType).toBe('input_required')
+  })
+
+  test('stops at the round cap', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      inputRequired: { maxRounds: 2 },
+      listRoots: [],
+      respond: (message) =>
+        message.method === 'tools/call'
+          ? { resultType: 'input_required', inputRequests: { ask: ROOTS_INPUT_REQUEST } }
+          : undefined,
+    })
+    await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow(
+      InputRequiredRoundsExceededError,
+    )
+  })
+
+  test('does not send allowInputRequired or maxTotalTimeout on the wire', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => ({ content: [], resultType: 'complete' }),
+    })
+    await client.callTool({
+      name: 'echo',
+      arguments: {},
+      allowInputRequired: true,
+      maxTotalTimeout: 1_000,
+    })
+    const call = sent.find((message) => message.method === 'tools/call')
+    expect(call?.params).not.toHaveProperty('allowInputRequired')
+    expect(call?.params).not.toHaveProperty('maxTotalTimeout')
   })
 
   test('protocolVersion getter returns the configured revision', () => {

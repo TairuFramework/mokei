@@ -32,6 +32,16 @@ export type RequestOptions = {
   signal?: AbortSignal
   /** Rejects the request with a RequestTimeoutError after this many ms. */
   timeout?: number
+  /**
+   * Returns a suspended MRTR result to the caller instead of driving the retry rounds
+   * (SEP-2322). Consumed by `@mokei/context-client`; `ContextRPC` itself ignores it.
+   */
+  allowInputRequired?: boolean
+  /**
+   * Bounds a whole MRTR flow, as opposed to `timeout`, which bounds one leg of it. Consumed by
+   * `@mokei/context-client`; `ContextRPC` itself ignores it.
+   */
+  maxTotalTimeout?: number
 }
 
 /**
@@ -39,8 +49,8 @@ export type RequestOptions = {
  * options that drive the exchange carrying them.
  *
  * The two are one object at the API surface and must be separated before the params
- * reach the wire — see {@link splitRequestOptions}. No MCP request declares a `signal`
- * or `timeout` param, so the merge is unambiguous.
+ * reach the wire — see {@link splitRequestOptions}. No MCP request declares a `signal`,
+ * `timeout`, `allowInputRequired` or `maxTotalTimeout` param, so the merge is unambiguous.
  */
 export type WithRequestOptions<Params> = Params & RequestOptions
 
@@ -55,8 +65,9 @@ export type WithRequestOptions<Params> = Params & RequestOptions
 export function splitRequestOptions<Params>(
   params: WithRequestOptions<Params>,
 ): [Params, RequestOptions] {
-  const { signal, timeout, ...wireParams } = params as WithRequestOptions<Record<string, unknown>>
-  return [wireParams as Params, { signal, timeout }]
+  const { signal, timeout, allowInputRequired, maxTotalTimeout, ...wireParams } =
+    params as WithRequestOptions<Record<string, unknown>>
+  return [wireParams as Params, { signal, timeout, allowInputRequired, maxTotalTimeout }]
 }
 
 export type RPCTypes = {
