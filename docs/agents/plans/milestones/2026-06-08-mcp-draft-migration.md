@@ -1,7 +1,7 @@
 # Milestone: MCP draft spec migration
 
-**Status:** in progress — both revisions ship; MRTR (B7) and `subscriptions/listen` (B4)
-remain.
+**Status:** in progress — both revisions ship at capability parity; `subscriptions/listen` (B4)
+remains.
 **Opened:** 2026-06-08
 **Branch / PR:** `feat/mcp-spec-update` → PR #23
 **Baseline:** `2025-11-25` (`LATEST_PROTOCOL_VERSION`)
@@ -21,6 +21,39 @@ without disruption.
 model resolved — see the **Architecture decision** section below (this milestone is the
 authoritative record). The "hard-cut" framing in Phase 1 is superseded — the B-items become
 additive draft wiring behind a per-context version selector, not removals.
+
+## Status update — MRTR shipped, model corrected (2026-08-08)
+
+B7 (MRTR) shipped on `feat/mcp-mrtr` across eleven tasks (protocol schema, server-side
+suspend/resume, client-side auto-fulfilment driver, `-32021`
+`MissingRequiredClientCapabilityError`, and interop against `@modelcontextprotocol/*` 2.0.0 in
+all four client × server × transport combinations). `2026-07-28` is now at capability parity
+with `2025-11-25`: `sampling`, `elicitation` and `roots` all work on both revisions.
+
+The design this milestone recorded going in was **wrong** and is corrected throughout the
+sections above rather than left as a historical artifact, because the wrong model was this
+document's own working assumption, not an external one. The corrected model: MRTR is a
+**request-level retry loop**, not a stream. `tools/call` / `prompts/get` / `resources/read`
+answer **terminally** with `resultType: 'input_required'` (`inputRequests` and/or an opaque
+`requestState`); the client fulfils the embedded requests and sends a **fresh** request carrying
+`inputResponses` plus the echoed `requestState`; this repeats until `resultType: 'complete'`.
+There is no interleaved-frame stream, no continuation token, and no server-side continuation
+state held open across rounds — so `_registerStreamExchange` / `ContinuationStore` in
+`@mokei/context-rpc` (the U1 correlation abstraction below) were never wired to MRTR at all, and
+remain in the code unused by it. The one piece of state that does round-trip, `requestState`, is
+opaque to the client and owned by the server (mint on suspend, verify on resume) — not a token
+either side looks anything up by.
+
+The client-side handler surface held up as designed: `createMessage` / `elicit` / `listRoots`
+keep their `ClientParams` signatures, and an auto-fulfilment driver
+(`packages/context-client/src/mrtr.ts`, `runInputRequiredFlow`) dispatches a suspension's
+embedded requests to those same handlers by default. The server-side surface could not stay
+stable across revisions the way this document originally claimed: a `2026-07-28` handler
+suspends by *returning* `inputRequired({ inputRequests, requestState })`
+(`packages/context-server/src/mrtr.ts`) instead of awaiting an inbound request, and is
+re-invoked with `HandlerRequest.inputResponses` populated and `HandlerRequest.requestState`
+echoed back — a different shape of handler body than the `2025-11-25` one, not the same function
+running on two wire encodings.
 
 ## Status update — the revision shipped (2026-08-04)
 
@@ -98,14 +131,15 @@ a config/branch deletion, **not** a rewrite. Coexistence-first strictly dominate
 
 ### The U1 problem (what the draft changes)
 
-- **B7 / MRTR (SEP-2322):** removes server-initiated top-level requests. A `tools/call` that
-  needs model input mid-execution emits **`inputRequests`** inside its own response lifecycle;
-  the client answers with **`inputResponses`** correlated to the outer tool-call id + an input
-  id. Sampling/elicitation become **input sub-exchanges nested in a tool-call stream**, not
-  independent reverse-direction calls. So `tools/call` goes from 1-request → 1-response to
-  **1-request → (progress\* · inputRequest\* · result)**, and `inputResponse` frames are a
-  *second* client→server correlation keyed by a continuation token, not the outer id's
-  resolve-once slot — the piece today's core has no equivalent for.
+- **B7 / MRTR (SEP-2322):** removes server-initiated top-level requests. It is a
+  **request-level retry loop, not a stream**: a `tools/call` (or `prompts/get` /
+  `resources/read`) that needs model input answers **terminally** with
+  `resultType: 'input_required'`, carrying embedded `inputRequests` and/or an opaque
+  `requestState`. The client fulfils the embedded requests locally and sends a **fresh**
+  request carrying `params.inputResponses` plus the echoed `requestState`; this repeats until
+  `resultType: 'complete'`. There is no second correlation, no continuation token, and no
+  server-side continuation state on the wire — each round is an ordinary, independently
+  correlated request/response pair.
 - **B2:** no `initialize`; per-request `_meta` carries version/identity/caps.
 - **B3:** `server/discover` advertises versions/caps/identity. **B1:** no protocol sessions;
   cross-call state → server-minted handles. **B4:** `subscriptions/listen` replaces the GET
@@ -121,11 +155,29 @@ independent of any `#sentRequests` slot, torn down when the outer exchange settl
 `_handleMessage`'s response branch routes by id: `once` settles-and-deletes (unchanged); a
 `stream` feeds the sink and deletes only on a terminal frame.
 
-**Public handler surface stays stable across versions.** `onSampling` / `onElicitation` keep
-their signatures; only the *wiring* differs — in `2025-11-25` driven by an inbound
-server→client request, in draft by an `inputRequest` nested in a tool-call stream. The version
-flag on the RPC core selects the wiring. This is the core coexistence win: one handler, both
+*Correction, 2026-08-08:* MRTR turned out not to need this. It has **no MRTR consumer** — the
+continuation-token store correlates nothing on the wire, because MRTR has no second
+client→server correlation to correlate. The one piece of state MRTR actually round-trips is
+`requestState`, an opaque string **held by the server** (minted into a suspended result,
+verified when it comes back) and passed through, not looked up, on the client. `stream` /
+`ContinuationStore` remain in `@mokei/context-rpc`, unused by MRTR; B4 is the remaining
+candidate consumer (see "Buildable now vs blocked on the spec" below).
+
+**Public handler surface stays stable across versions — on the client.** `createMessage` /
+`elicit` / `listRoots` keep their signatures on `ContextClient`; only the *wiring* differs — on
+`2025-11-25` driven by an inbound server→client request, on `2026-07-28` by an auto-fulfilment
+driver (`runInputRequiredFlow`) that dispatches a suspended result's embedded `inputRequests` to
+those same handlers and retries. This is the client-side coexistence win: one handler, both
 protocols.
+
+*Correction, 2026-08-08:* this is **false on the server**. A `2025-11-25` handler that wants
+client input calls `req.client.elicit(...)` / `createMessage(...)` / `listRoots(...)` and
+`await`s the answer inline. A `2026-07-28` handler cannot: there is no server-initiated request
+to await an answer to, so it suspends by **returning** `inputRequired({ inputRequests, ... })`
+from `@mokei/context-server`'s `mrtr.ts`, and is **re-invoked** — a fresh call, not a resumed
+one — with `HandlerRequest.inputResponses` populated and `HandlerRequest.requestState` echoed
+back. The server-side handler body has to be written differently per revision; only the client
+side got a stable surface.
 
 ### Version selection (no `initialize` in draft)
 
@@ -149,14 +201,18 @@ version/identity/caps + version-mismatch error (B2, SEP-2575). *Update 2026-07-0
 these now have a reference implementation in SDK v2's `wire/rev2026-07-28/` codecs — shapes
 can be pinned early; finalization expected July 28, 2026 (see the status-update section).
 
+*Update 2026-08-08:* B7 shipped without touching this seam — MRTR is a retry loop, built
+entirely on ordinary `once`-arm requests (`packages/context-client/src/mrtr.ts`,
+`packages/context-server/src/mrtr.ts`). `_registerStreamExchange` and the continuation store
+(`context-rpc/src/exchange.ts`, `continuation.ts`) still have **no wire trigger**; B4
+(`subscriptions/listen`) remains the only candidate consumer.
+
 ### Risks
 
 - **Dual-path test matrix** — every transport/handler path doubles. Mitigate: single public
   handler surface; branch only at the wiring seam; table-test both versions against one handler.
 - **Probe ambiguity on STDIO** — `server/discover` to a legacy server has no standard
   negative; until pinned, prefer explicit `protocolVersion`, treat probe as best-effort.
-- **MRTR continuation lifetime** vs `notifications/cancelled` + tool-call timeout — store torn
-  down on outer settle/abort (the shipped `onSettle → clearForExchange` hook).
 - **Streaming back-pressure** STDIO vs HTTP — the sink must not unbounded-buffer (mirror the
   notification drop-when-no-reader policy).
 
@@ -212,8 +268,8 @@ additive behind the version selector rather than removals. Ordered by dependency
 | B2 | Remove `initialize`/`initialized`; stateless `_meta` (version/identity/caps per request); version-mismatch error (SEP-2575) | done (PR #40) |
 | B3 | Add `server/discover` RPC (MUST) — advertises versions/caps/identity (SEP-2575) | done (PR #40) |
 | B1 | Remove protocol sessions + `Mcp-Session-Id` (SEP-2567) | done (PR #40) |
-| B6 | Remove `logging/setLevel` + roots list-changed; per-request `_meta` log level | `logLevel` done (PR #40); roots half belongs with B7 |
-| B7 | **MRTR** replaces server-initiated requests — `inputRequests`/`inputResponses` (SEP-2322) | open — `next/2026-08-04-mcp-mrtr.md` |
+| B6 | Remove `logging/setLevel` + roots list-changed; per-request `_meta` log level | `logLevel` done (PR #40); roots list-changed half **not applicable** — `2026-07-28` has no `notifications/roots/list_changed` at all (confirmed against SDK 2.0.0's era registry) |
+| B7 | **MRTR** replaces server-initiated requests — `inputRequests`/`inputResponses` (SEP-2322) | done |
 | B4 | `subscriptions/listen` replaces GET endpoint + `resources/subscribe` (SEP-2575) | open — backlog piece E |
 | D1–D3 | Apply deprecation handling (Roots/Sampling/Logging; HTTP+SSE transport; `includeContext`) | open — backlog piece F |
 
@@ -239,10 +295,18 @@ additive behind the version selector rather than removals. Ordered by dependency
 
 ## Open questions (later phases)
 
-- MRTR continuation state: STDIO vs HTTP, and interaction with `notifications/cancelled`.
 - Server-minted handles (replacing sessions): convention for passing as tool args across `ContextHost`.
 
-Answered: `server/discover` STDIO probe semantics — see the 2026-08-04 status update.
+Answered:
+
+- `server/discover` STDIO probe semantics — see the 2026-08-04 status update.
+- MRTR continuation state: STDIO vs HTTP, and interaction with `notifications/cancelled` — MRTR
+  keeps no continuation state at all, so this had no answer to converge on. There is no stream
+  to hold open across a reconnect: a dropped connection mid-flow costs exactly the in-flight
+  round (the client re-sends the same request, carrying the last `inputResponses` and
+  `requestState`, once it reconnects), and cancellation is per-leg — `notifications/cancelled`
+  (or a per-request abort) cancels the round in flight, not some longer-lived exchange, because
+  no longer-lived exchange exists.
 
 ## Source
 

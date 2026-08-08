@@ -48,20 +48,42 @@ Pass `protocolVersion: 'auto'` to probe the server, or `'2025-11-25'` to pin the
 revision — which, unlike `2026-07-28`, needs an explicit `await client.initialize()` first.
 
 Everything below applies to an HTTP client exactly as it does to a stdio one: the returned
-value is a `ContextClient`.
+value is a `ContextClient`. One exception: `createHTTPClient` only forwards `protocolVersion`
+to the underlying `ContextClient` — handler options like `elicit`, `createMessage` and
+`listRoots` (below) have nowhere to go through it. To configure those over HTTP, build the
+transport and client separately instead:
+
+```typescript
+import { ContextClient, type ClientTransport } from '@mokei/context-client'
+import { HTTPTransport } from '@mokei/http-client'
+
+const transport = new HTTPTransport({ url: 'https://mcp.example.com/mcp' }) as ClientTransport
+
+const client = new ContextClient({
+  transport,
+  protocolVersion: '2026-07-28',
+  elicit: async ({ params, signal }) => { /* ... */ },
+})
+```
 
 ## Client Configuration
 
-`elicit`, `createMessage` and `listRoots` are server-initiated requests, present only on
-`2025-11-25` — `2026-07-28` refuses them at client setup (MRTR, SEP-2322, replaces
-server-initiated requests, and mokei does not implement MRTR yet).
+`elicit`, `createMessage` and `listRoots` handle input a server asks for mid-call. On
+`2025-11-25` a server asks by sending the client a request directly. On `2026-07-28`, which has
+no server-initiated requests, a server asks by suspending its `tools/call` / `prompts/get` /
+`resources/read` with a terminal `resultType: 'input_required'` result (MRTR, SEP-2322); the
+client answers by re-sending the same call with the results. The handlers below have the same
+signature either way — an auto-fulfilment driver dispatches a `2026-07-28` suspension's embedded
+requests to them and retries automatically, so `callTool`/`getPrompt`/`readResource` return the
+same result type on both revisions. Pass `inputRequired: { autoFulfill: false }` to
+`ContextClient` to opt out and drive rounds yourself (see "Multi round-trip requests" below).
 
 ```typescript
 import { ContextClient, type ClientParams } from '@mokei/context-client'
 
 const client = new ContextClient({
   transport,
-  protocolVersion: '2025-11-25',
+  protocolVersion: '2026-07-28',
 
   // Handle elicitation requests from server
   elicit: async ({ params, signal }) => {
@@ -85,6 +107,44 @@ const client = new ContextClient({
   ]
   // Or as async function:
   // listRoots: async ({ signal }) => [{ uri: '...', name: '...' }]
+})
+```
+
+## Multi Round-Trip Requests (MRTR)
+
+On `2026-07-28`, `callTool`, `getPrompt` and `readResource` requests can involve more than one
+wire round trip when the server needs client input to finish (SEP-2322). By default this is
+invisible: the client's `createMessage`/`elicit`/`listRoots` handlers configured above answer the
+server's embedded requests and the call retries on its own, so the caller just `await`s the same
+result it would get on `2025-11-25`.
+
+To drive rounds yourself instead — for example to show a progress indicator per round — pass
+`allowInputRequired: true`. `callTool`/`getPrompt`/`readResource` keep their ordinary result
+type, so a suspension needs a cast to check `resultType`:
+
+```typescript
+const result = await client.callTool({
+  name: 'long_operation',
+  arguments: { data: '...' },
+  allowInputRequired: true,
+})
+
+const suspended = result as unknown as { resultType: string; inputRequests?: unknown; requestState?: string }
+if (suspended.resultType === 'input_required') {
+  // suspended.inputRequests holds the embedded requests to fulfil; suspended.requestState (if
+  // present) must be echoed back on the retry, unchanged, alongside inputResponses.
+}
+```
+
+Cap the number of rounds a call may take (default 10, matching `maxRounds`) or opt out of
+auto-fulfilment for every call from a client via the constructor:
+
+```typescript
+const client = new ContextClient({
+  transport,
+  protocolVersion: '2026-07-28',
+  inputRequired: { autoFulfill: false, maxRounds: 5 },
+  // ...
 })
 ```
 

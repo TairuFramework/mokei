@@ -49,8 +49,13 @@ revision to its definition.
   send requests to clients, so `sampling`, `elicitation` and `roots` work here.
 - `2026-07-28` is stateless. There is no handshake: a client reads capabilities from
   `server/discover` and sets itself up on its first call. The log level travels per request in
-  `_meta`. Servers send no requests, so `sampling`, `elicitation` and `roots` throw
-  `MRTRNotSupportedError` until multi round-trip requests are implemented.
+  `_meta`. Servers send no requests: `sampling`, `elicitation` and `roots` work here too, through
+  multi round-trip requests (MRTR, SEP-2322) instead of server-initiated ones — a `tools/call` /
+  `prompts/get` / `resources/read` handler that needs client input suspends by returning a
+  terminal `resultType: 'input_required'` result, and is re-invoked once the client answers with
+  `inputResponses`. The client's `createMessage`/`elicit`/`listRoots` handlers are driven
+  automatically by an auto-fulfilment loop, so callers see the same result type as on
+  `2025-11-25` by default. Both revisions are now at capability parity.
 
 A client speaks one revision, fixed for the lifetime of its transport. `ContextClient` takes a
 `protocolVersion`: a revision, or `'auto'` to probe the server and settle on the newest revision
