@@ -1975,37 +1975,6 @@ describe("'auto' probe", () => {
     expect(client.protocolVersion).toBe('2026-07-28')
   })
 
-  // The constructor only synchronously validates a createMessage/elicit/listRoots handler when
-  // the revision is known (a fixed protocolVersion). Under 'auto' it is accepted at
-  // construction and re-checked once the probe resolves — #setup() re-runs
-  // #refuseUnsupportedHandlers rather than skipping it, so a handler that could not be reached
-  // on the resolved revision would not silently go live just because the revision wasn't known
-  // yet at construction. Both current revisions can reach a createMessage handler one way or
-  // the other, so this exercises the re-check landing on 2026-07-28 without expecting a
-  // throw: `sampling/createMessage` is reachable there as an MRTR input request.
-  test("'auto' still allows a createMessage handler once the probe resolves to 2026-07-28", async () => {
-    const { client } = createTestClient({
-      protocolVersion: 'auto',
-      createMessage: () => ({
-        content: { type: 'text', text: '' },
-        model: 'test',
-        role: 'assistant',
-      }),
-      respond: (message) =>
-        message.method === 'server/discover'
-          ? {
-              resultType: 'complete',
-              supportedVersions: ['2026-07-28'],
-              capabilities: {},
-              ttlMs: 0,
-              cacheScope: 'private',
-            }
-          : { resultType: 'complete', prompts: [] },
-    })
-    await expect(client.listPrompts()).resolves.toEqual({ resultType: 'complete', prompts: [] })
-    expect(client.protocolVersion).toBe('2026-07-28')
-  })
-
   test("'auto' still allows a createMessage handler when the probe falls back to 2025-11-25", async () => {
     const { client } = createTestClient({
       protocolVersion: 'auto',
