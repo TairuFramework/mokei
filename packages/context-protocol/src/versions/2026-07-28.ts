@@ -93,6 +93,33 @@ export function withProtocolMeta<S extends Schema>(schema: S) {
   } as const satisfies Schema
 }
 
+/**
+ * Composes a request schema with this revision's MRTR retry fields (SEP-2322).
+ *
+ * Applied only to the three methods that can suspend. The specification reserves these two names
+ * on client-initiated requests, so a method that cannot suspend must not admit them: a
+ * `tools/list` carrying `inputResponses` is a client bug, not a retry.
+ *
+ * Both are optional — round one carries neither.
+ */
+export function withRetryParams<S extends Schema>(schema: S) {
+  return {
+    allOf: [
+      schema,
+      {
+        properties: {
+          params: {
+            properties: { inputResponses, requestState: { type: 'string' } },
+            type: 'object',
+          },
+        },
+        required: ['params'],
+        type: 'object',
+      },
+    ],
+  } as const satisfies Schema
+}
+
 export const discoverRequest = {
   description: "Queries a server's supported protocol versions, capabilities and identity.",
   allOf: [
@@ -124,18 +151,82 @@ export const discoverResult = {
 } as const satisfies Schema
 export type DiscoverResult = FromSchema<typeof discoverResult>
 
+/**
+ * A single embedded input request inside an `input_required` result (SEP-2322): a sampling,
+ * elicitation or roots request carried in-band as `{ method, params }`.
+ *
+ * Deliberately not `createMessageRequest`/`elicitRequest`/`listRootsRequest`: those build on
+ * `request`, which requires `jsonrpc` and `id`. An embedded request is de-JSON-RPC'd — it never
+ * travels as a JSON-RPC request in this revision, because this revision has no server-initiated
+ * requests at all. `additionalProperties: false` so the envelope cannot be smuggled back in.
+ */
+export const inputRequest = {
+  anyOf: [
+    {
+      additionalProperties: false,
+      properties: {
+        method: { const: 'sampling/createMessage', type: 'string' },
+        params: createMessageRequestParams,
+      },
+      required: ['method', 'params'],
+      type: 'object',
+    },
+    {
+      additionalProperties: false,
+      properties: {
+        method: { const: 'elicitation/create', type: 'string' },
+        params: elicitRequestParams,
+      },
+      required: ['method', 'params'],
+      type: 'object',
+    },
+    {
+      additionalProperties: false,
+      properties: {
+        method: { const: 'roots/list', type: 'string' },
+        params: { additionalProperties: {}, type: 'object' },
+      },
+      required: ['method'],
+      type: 'object',
+    },
+  ],
+} as const satisfies Schema
+export type InputRequest = FromSchema<typeof inputRequest>
+
+/** A map of embedded input requests, keyed by server-assigned identifiers unique to one request. */
+export const inputRequests = {
+  additionalProperties: inputRequest,
+  type: 'object',
+} as const satisfies Schema
+
+/**
+ * A single embedded input response: the *bare* result for its request, never wrapped in a
+ * `{ method, result }` envelope and never carrying this revision's `resultType` — a suspended
+ * exchange's sub-answers are not themselves protocol results.
+ */
+export const inputResponse = {
+  anyOf: [createMessageResult, elicitResult, listRootsResult],
+} as const satisfies Schema
+export type InputResponse = FromSchema<typeof inputResponse>
+
+/** A map of embedded input responses, keyed as the server keyed its `inputRequests`. */
+export const inputResponses = {
+  additionalProperties: inputResponse,
+  type: 'object',
+} as const satisfies Schema
+
 /** Requests a client may send in this revision, each carrying the required `_meta`. */
 export const clientRequest = {
   anyOf: [
     withProtocolMeta(discoverRequest),
     withProtocolMeta(completeRequest),
-    withProtocolMeta(getPromptRequest),
+    withProtocolMeta(withRetryParams(getPromptRequest)),
     withProtocolMeta(listPromptsRequest),
     withProtocolMeta(listResourcesRequest),
     withProtocolMeta(listResourceTemplatesRequest),
-    withProtocolMeta(readResourceRequest),
+    withProtocolMeta(withRetryParams(readResourceRequest)),
     withProtocolMeta(listToolsRequest),
-    withProtocolMeta(callToolRequest),
+    withProtocolMeta(withRetryParams(callToolRequest)),
   ],
 } as const satisfies Schema
 export type ClientRequest = FromSchema<typeof clientRequest>
@@ -212,70 +303,6 @@ export const emptyResult = {
     resultType: { const: 'complete', type: 'string' },
   },
   required: ['resultType'],
-  type: 'object',
-} as const satisfies Schema
-
-/**
- * A single embedded input request inside an `input_required` result (SEP-2322): a sampling,
- * elicitation or roots request carried in-band as `{ method, params }`.
- *
- * Deliberately not `createMessageRequest`/`elicitRequest`/`listRootsRequest`: those build on
- * `request`, which requires `jsonrpc` and `id`. An embedded request is de-JSON-RPC'd — it never
- * travels as a JSON-RPC request in this revision, because this revision has no server-initiated
- * requests at all. `additionalProperties: false` so the envelope cannot be smuggled back in.
- */
-export const inputRequest = {
-  anyOf: [
-    {
-      additionalProperties: false,
-      properties: {
-        method: { const: 'sampling/createMessage', type: 'string' },
-        params: createMessageRequestParams,
-      },
-      required: ['method', 'params'],
-      type: 'object',
-    },
-    {
-      additionalProperties: false,
-      properties: {
-        method: { const: 'elicitation/create', type: 'string' },
-        params: elicitRequestParams,
-      },
-      required: ['method', 'params'],
-      type: 'object',
-    },
-    {
-      additionalProperties: false,
-      properties: {
-        method: { const: 'roots/list', type: 'string' },
-        params: { additionalProperties: {}, type: 'object' },
-      },
-      required: ['method'],
-      type: 'object',
-    },
-  ],
-} as const satisfies Schema
-export type InputRequest = FromSchema<typeof inputRequest>
-
-/** A map of embedded input requests, keyed by server-assigned identifiers unique to one request. */
-export const inputRequests = {
-  additionalProperties: inputRequest,
-  type: 'object',
-} as const satisfies Schema
-
-/**
- * A single embedded input response: the *bare* result for its request, never wrapped in a
- * `{ method, result }` envelope and never carrying this revision's `resultType` — a suspended
- * exchange's sub-answers are not themselves protocol results.
- */
-export const inputResponse = {
-  anyOf: [createMessageResult, elicitResult, listRootsResult],
-} as const satisfies Schema
-export type InputResponse = FromSchema<typeof inputResponse>
-
-/** A map of embedded input responses, keyed as the server keyed its `inputRequests`. */
-export const inputResponses = {
-  additionalProperties: inputResponse,
   type: 'object',
 } as const satisfies Schema
 
@@ -376,6 +403,10 @@ export const PROTOCOL = {
   // `clientMessage` union rejects.
   clientNotifications: new Set(['notifications/cancelled', 'notifications/progress']),
   serverMethods: new Set<string>(),
+  // Empty `serverMethods` and a populated `inputRequestMethods` are the same fact stated twice:
+  // this revision sends no server-initiated requests, so sampling, elicitation and roots reach the
+  // client only as requests embedded in an `input_required` result (SEP-2322).
+  inputRequestMethods: new Set(['sampling/createMessage', 'elicitation/create', 'roots/list']),
   clientMessage,
   serverMessage,
   decorateRequest: (params: unknown, context: ClientRequestContext): unknown => {
@@ -417,12 +448,15 @@ export const PROTOCOL = {
       logLevel: meta[META_LOG_LEVEL] as RequestMetaInfo['logLevel'],
     }
   },
+  // A handler that returns an `input_required` result has answered with a suspension, not with a
+  // terminal value. Stamping `resultType: 'complete'` over it would relabel the frame as an answer
+  // it is not, and the client would then hand a contentless `callToolResult` to its caller.
   wrapResult: (
     value: Record<string, unknown>,
     context: ServerResultContext,
   ): Record<string, unknown> => ({
     ...value,
-    resultType: 'complete',
+    resultType: value.resultType === 'input_required' ? 'input_required' : 'complete',
     _meta: { ...asRecord(value._meta), [META_SERVER_INFO]: context.serverInfo },
   }),
 } satisfies ProtocolDefinition

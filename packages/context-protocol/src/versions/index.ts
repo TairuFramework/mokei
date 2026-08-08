@@ -70,3 +70,4 @@ export type {
   RequestMetaInfo,
   ServerResultContext,
 } from './types.js'
+export { INPUT_REQUEST_CAPABILITIES } from './types.js'

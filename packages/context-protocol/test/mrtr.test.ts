@@ -2,10 +2,12 @@ import { createValidator } from '@sozai/schema'
 import { describe, expect, test } from 'vitest'
 
 import {
+  clientRequest as clientRequest20260728,
   inputRequest,
   inputResponse,
   serverResult as serverResult20260728,
 } from '../src/versions/2026-07-28.js'
+import { PROTOCOLS } from '../src/versions/index.js'
 
 const validateInputRequest = createValidator(inputRequest)
 const validateInputResponse = createValidator(inputResponse)
@@ -93,5 +95,77 @@ describe('2026-07-28 input_required results', () => {
         inputRequests: { ask: { method: 'tools/call', params: { name: 'x' } } },
       }).issues,
     ).toBeDefined()
+  })
+})
+
+const validateClientRequest = createValidator(clientRequest20260728)
+
+const META = {
+  'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+  'io.modelcontextprotocol/clientCapabilities': {},
+}
+
+describe('2026-07-28 retry params', () => {
+  test('accepts inputResponses and requestState on a tools/call', () => {
+    expect(
+      validateClientRequest({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          _meta: META,
+          name: 'ask',
+          inputResponses: { ask: { roots: [] } },
+          requestState: 'opaque',
+        },
+      }).issues,
+    ).toBeUndefined()
+  })
+
+  test('rejects an inputResponses value that is not an input response', () => {
+    expect(
+      validateClientRequest({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { _meta: META, name: 'ask', inputResponses: { ask: { nonsense: true } } },
+      }).issues,
+    ).toBeDefined()
+  })
+})
+
+describe('inputRequestMethods', () => {
+  test('2026-07-28 carries the three MRTR methods and 2025-11-25 carries none', () => {
+    expect([...PROTOCOLS['2026-07-28'].inputRequestMethods].sort()).toEqual([
+      'elicitation/create',
+      'roots/list',
+      'sampling/createMessage',
+    ])
+    expect(PROTOCOLS['2025-11-25'].inputRequestMethods.size).toBe(0)
+  })
+
+  test('a revision never carries a method both ways', () => {
+    for (const protocol of Object.values(PROTOCOLS)) {
+      for (const method of protocol.inputRequestMethods) {
+        expect(protocol.serverMethods.has(method)).toBe(false)
+      }
+    }
+  })
+})
+
+describe('wrapResult', () => {
+  const context = { serverInfo: { name: 'test', version: '1.0.0' } }
+
+  test('labels a terminal result complete', () => {
+    expect(PROTOCOLS['2026-07-28'].wrapResult({ tools: [] }, context).resultType).toBe('complete')
+  })
+
+  test('preserves an input_required body', () => {
+    const wrapped = PROTOCOLS['2026-07-28'].wrapResult(
+      { resultType: 'input_required', requestState: 'opaque' },
+      context,
+    )
+    expect(wrapped.resultType).toBe('input_required')
+    expect(wrapped.requestState).toBe('opaque')
   })
 })

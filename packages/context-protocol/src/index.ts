@@ -131,6 +131,7 @@ export {
   type DiscoverRequest,
   type DiscoverResult,
   discoverResult,
+  INPUT_REQUEST_CAPABILITIES,
   type InputRequest,
   type InputResponse,
   inputRequest,
