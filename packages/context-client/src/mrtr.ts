@@ -148,10 +148,14 @@ export async function runInputRequiredFlow(params: RunInputRequiredFlowParams): 
   while (true) {
     round += 1
     if (round > maxRounds) {
+      // `payload` is `Omit<InputRequiredResult, 'resultType'>`, so both its fields are optional at
+      // the type level — but it always originates from a wire-validated `InputRequiredResult`
+      // (`params.first`, or a prior round's checked `result`), so the schema's at-least-one
+      // invariant already holds here at runtime.
       throw new InputRequiredRoundsExceededError(method, maxRounds, {
         resultType: 'input_required',
         ...payload,
-      })
+      } as InputRequiredResult)
     }
 
     const entries = Object.entries(payload.inputRequests ?? {})

@@ -363,20 +363,26 @@ export const inputRequiredResult = {
 } as const satisfies Schema
 
 /**
- * Hand-written rather than `FromSchema<typeof inputRequiredResult>`: the schema's `anyOf`
- * (at-least-one-of `inputRequests`/`requestState`) derives into a type that a builder assembling
- * the object through conditional spreads — like `@mokei/context-server`'s `inputRequired()` —
- * cannot satisfy, because TypeScript cannot narrow spread-in conditionals to a specific union
- * member. The invariant is still enforced at runtime by that builder and on the wire by the
- * schema itself, so nothing is lost by keeping this permissive. `_meta` is also omitted: no
- * handler constructs one, and admitting it here would only widen what a consumer may assume is
- * present.
+ * `Omit` over a union type is not distributive — it collapses to a single object built from the
+ * union's *common* keys, which would erase the `anyOf`-derived at-least-one-of constraint below.
+ * Distributing over `T` first (`T extends unknown ? ... : never`) applies `Omit` to each union
+ * member individually and re-unions the results, keeping the constraint intact.
  */
-export type InputRequiredResult = {
-  resultType: 'input_required'
-  inputRequests?: Record<string, InputRequest>
-  requestState?: string
-}
+type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never
+
+/**
+ * Derived from `inputRequiredResult` rather than hand-written, so the schema's `anyOf`
+ * (at-least-one-of `inputRequests`/`requestState`) is enforced at compile time, not only at
+ * runtime and on the wire. `_meta` is excluded: no handler constructs one, and admitting it here
+ * would only widen what a consumer may assume is present.
+ *
+ * The two places that construct this type directly — `@mokei/context-server`'s `inputRequired()`
+ * and `@mokei/context-client`'s `InputRequiredRoundsExceededError` construction in `mrtr.ts` —
+ * assemble the object through conditional spreads or an already-validated rest object, which
+ * TypeScript cannot narrow to a specific union member. Both assert `as InputRequiredResult`
+ * immediately after the runtime check that already enforces the same invariant.
+ */
+export type InputRequiredResult = DistributiveOmit<FromSchema<typeof inputRequiredResult>, '_meta'>
 
 /**
  * A discriminator check, not a validator: the wire schema has already enforced the shape by the

@@ -108,11 +108,14 @@ export function inputRequired(params: {
       'An input_required result must carry at least one of inputRequests or requestState',
     )
   }
+  // The spreads above are conditional, so TypeScript can't narrow the result to a specific
+  // `InputRequiredResult` union member — the `if` above already enforces the same at-least-one
+  // invariant the type derives from the schema's `anyOf`.
   return {
     resultType: 'input_required',
     ...(hasRequests && { inputRequests: params.inputRequests }),
     ...(params.requestState !== undefined && { requestState: params.requestState }),
-  }
+  } as InputRequiredResult
 }
 
 /**
