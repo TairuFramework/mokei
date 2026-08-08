@@ -180,15 +180,17 @@ export const serverNotification = {
 
 /**
  * Every result on this revision carries a `resultType`: `'complete'` for a terminal answer,
- * `'input_required'` for one suspended on MRTR input. Applied per union member rather than
- * once around the union, so a result must be both a known shape *and* carry the field.
+ * `'input_required'` for one suspended on MRTR input. Applied per union member rather than once
+ * around the union, so a result must be both a known shape *and* be labelled complete — a
+ * suspended result is `inputRequiredResult` below, never a terminal shape wearing a different
+ * label.
  */
 function withResultType<S extends Schema>(schema: S) {
   return {
     allOf: [
       schema,
       {
-        properties: { resultType: { enum: ['complete', 'input_required'], type: 'string' } },
+        properties: { resultType: { const: 'complete', type: 'string' } },
         required: ['resultType'],
         type: 'object',
       },
@@ -207,7 +209,7 @@ export const emptyResult = {
   additionalProperties: false,
   properties: {
     _meta: metadata,
-    resultType: { enum: ['complete', 'input_required'], type: 'string' },
+    resultType: { const: 'complete', type: 'string' },
   },
   required: ['resultType'],
   type: 'object',
@@ -279,30 +281,22 @@ export const inputResponses = {
 
 /**
  * A result suspended on MRTR input (SEP-2322): `resultType: 'input_required'` stands in for a
- * terminal answer, carrying the server's `inputRequests` and an opaque `requestState` the client
- * must echo back unmodified. Modeled directly off SEP-2322's `InputRequiredResult extends
- * Result` rather than `withResultType(<terminal shape>)`: a suspended `tools/call` has none of
- * `callToolResult`'s required `content`, so composing it with any terminal shape's `allOf` would
- * make a real `input_required` response fail validation the same way the fixture below did
- * before this member existed.
+ * terminal answer, carrying the server's `inputRequests` and/or an opaque `requestState` the
+ * client must echo back unmodified.
  *
- * Full MRTR — retrying with `inputResponses` — is out of scope for this revision's schema (see
- * the defect-wave design doc); this member only lets a spec-shaped `input_required` result clear
- * wire validation so `context-client`'s existing `InputRequiredNotSupportedError` guard can
- * refuse it with a clear error instead of the read loop dropping it as an unparseable response.
+ * Modeled directly off SEP-2322's `InputRequiredResult extends Result` rather than composed with
+ * any terminal shape: a suspended `tools/call` has none of `callToolResult`'s required `content`.
  *
- * Closed (`additionalProperties: false`), not open: this is one branch inside a union whose
- * entire purpose is closing off a vacuous escape hatch, so it must not itself become one. Limited
- * to exactly SEP-2322's four `InputRequiredResult` fields — `_meta`, `resultType`,
- * `inputRequests`, `requestState` — a real MRTR frame carries nothing else. `inputRequests`'
- * values stay open (`additionalProperties: {}`): each is a full elicitation or sampling request,
- * and modeling those here is the same out-of-scope MRTR work as the retry path above.
+ * Closed (`additionalProperties: false`) and limited to exactly SEP-2322's four fields. The
+ * `anyOf` expresses the specification's at-least-one rule: a suspension that asks for nothing and
+ * carries no state tells the client neither what to do nor what to echo.
  */
 export const inputRequiredResult = {
   additionalProperties: false,
+  anyOf: [{ required: ['inputRequests'] }, { required: ['requestState'] }],
   properties: {
     _meta: metadata,
-    inputRequests: { additionalProperties: {}, type: 'object' },
+    inputRequests,
     requestState: { type: 'string' },
     resultType: { const: 'input_required', type: 'string' },
   },

@@ -1,10 +1,15 @@
 import { createValidator } from '@sozai/schema'
 import { describe, expect, test } from 'vitest'
 
-import { inputRequest, inputResponse } from '../src/versions/2026-07-28.js'
+import {
+  inputRequest,
+  inputResponse,
+  serverResult as serverResult20260728,
+} from '../src/versions/2026-07-28.js'
 
 const validateInputRequest = createValidator(inputRequest)
 const validateInputResponse = createValidator(inputResponse)
+const validateResult = createValidator(serverResult20260728)
 
 const SAMPLING_REQUEST = {
   method: 'sampling/createMessage',
@@ -56,5 +61,37 @@ describe('inputResponse', () => {
 
   test('rejects a shape matching no input response', () => {
     expect(validateInputResponse({ nonsense: true }).issues).toBeDefined()
+  })
+})
+
+describe('2026-07-28 input_required results', () => {
+  test('rejects a terminal result labelled input_required', () => {
+    expect(validateResult({ tools: [], resultType: 'input_required' }).issues).toBeDefined()
+    expect(validateResult({ content: [], resultType: 'input_required' }).issues).toBeDefined()
+    expect(validateResult({ resultType: 'input_required' }).issues).toBeDefined()
+  })
+
+  test('accepts a suspended result carrying inputRequests', () => {
+    expect(
+      validateResult({
+        resultType: 'input_required',
+        inputRequests: { ask: SAMPLING_REQUEST },
+      }).issues,
+    ).toBeUndefined()
+  })
+
+  test('accepts a suspended result carrying only requestState', () => {
+    expect(
+      validateResult({ resultType: 'input_required', requestState: 'opaque' }).issues,
+    ).toBeUndefined()
+  })
+
+  test('rejects a suspended result carrying an unknown embedded method', () => {
+    expect(
+      validateResult({
+        resultType: 'input_required',
+        inputRequests: { ask: { method: 'tools/call', params: { name: 'x' } } },
+      }).issues,
+    ).toBeDefined()
   })
 })

@@ -61,7 +61,15 @@ describe('2026-07-28 serverResult', () => {
     expect(
       validate20260728({
         resultType: 'input_required',
-        inputRequests: { foo: { role: 'user' } },
+        inputRequests: {
+          foo: {
+            method: 'sampling/createMessage',
+            params: {
+              maxTokens: 100,
+              messages: [{ role: 'user', content: { type: 'text', text: 'hi' } }],
+            },
+          },
+        },
         requestState: 'opaque-blob',
       }).issues,
     ).toBeUndefined()
