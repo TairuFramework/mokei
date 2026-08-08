@@ -3,4 +3,4 @@
 ### Patch Changes
 
 - Updated dependencies:
-  - @mokei/host-protocol@0.11.0
+  - @mokei/host-protocol@0.12.0
