@@ -10,7 +10,7 @@ import { createMcpHandler } from '@modelcontextprotocol/server'
 import { type ClientParams, type ClientTransport, ContextClient } from '@mokei/context-client'
 import type { ProtocolVersion } from '@mokei/context-protocol'
 import { ContextServer, createTool, type ServerConfig } from '@mokei/context-server'
-import { createHTTPClient, HTTPTransport } from '@mokei/http-client'
+import { createHTTPClient } from '@mokei/http-client'
 import { serveHTTP } from '@mokei/http-server'
 
 import {
@@ -159,8 +159,9 @@ async function killChild(childProcess: SpawnedChildProcess): Promise<void> {
  * Everything a `ContextClient` takes except the two these helpers own: the revision they were
  * asked for, and the transport they just built.
  *
- * `spawnMokeiStdioClient` and `connectMokeiHTTPClient` both spread it into their
- * `new ContextClient({...})`, so a suite needing an MRTR-capable client (one carrying a
+ * `spawnMokeiStdioClient` spreads it into its own `new ContextClient({...})`;
+ * `connectMokeiHTTPClient` spreads it into `createHTTPClient({...})`, which does the same
+ * underneath. Either way a suite needing an MRTR-capable client (one carrying a
  * `createMessage`/`elicit`/`listRoots` handler, which is also what makes the client declare the
  * matching capability on every request) can pass one without a second helper.
  */
@@ -284,28 +285,17 @@ export async function startMokeiMRTRHTTPServer(): Promise<RunningHTTPServer> {
 }
 
 /**
- * Connects a mokei `ContextClient` to `url` over Streamable HTTP at `protocolVersion`.
- *
- * With no `clientOptions` this goes through `createHTTPClient`, keeping that one-call helper on
- * the tested path for every existing suite. `createHTTPClient` accepts no `ContextClient`
- * parameters beyond `protocolVersion` — there is no way to give it a `listRoots`/`elicit`/
- * `createMessage` handler — so a caller that needs one gets the transport wired by hand instead,
- * which is what `createHTTPClient` itself does under the hood.
+ * Connects a mokei `ContextClient` to `url` over Streamable HTTP at `protocolVersion`, via
+ * `createHTTPClient` — the one-call helper every existing suite is on, now that it forwards
+ * `clientOptions` (a `listRoots`/`elicit`/`createMessage` handler included) straight through to
+ * the `ContextClient` it builds.
  */
 export function connectMokeiHTTPClient(
   url: string,
   protocolVersion: ProtocolVersion | 'auto',
   clientOptions?: MokeiClientOptions,
 ): ContextClient {
-  if (clientOptions == null) {
-    return createHTTPClient({ url, protocolVersion })
-  }
-  const transport = new HTTPTransport({ url })
-  return new ContextClient({
-    ...clientOptions,
-    protocolVersion,
-    transport: transport as ClientTransport,
-  })
+  return createHTTPClient({ url, protocolVersion, ...clientOptions })
 }
 
 const SDK_CLIENT_INFO = { name: 'mokei-interop-test', version: '1.0.0' }

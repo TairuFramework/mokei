@@ -1,5 +1,5 @@
 import { Transport } from '@enkaku/transport'
-import type { ClientTransport } from '@mokei/context-client'
+import type { ClientParams, ClientTransport } from '@mokei/context-client'
 import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
 import type { ClientMessage, ProtocolVersion, ServerMessage } from '@mokei/context-protocol'
 import {
@@ -1017,31 +1017,60 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 }
 
-/** Parameters for {@link createHTTPClient}. */
-export type CreateHTTPClientParams = HTTPTransportParams & {
-  /**
-   * Revision to speak. `'auto'` probes the server, then caches the result.
-   *
-   * Distinct from {@link HTTPTransportParams.protocolVersionHeader}, the optional raw seed
-   * for the `MCP-Protocol-Version` header: this field drives `ContextClient` negotiation and
-   * is stripped before the transport is constructed, so it never reaches `HTTPTransport`
-   * itself.
-   */
-  protocolVersion: ProtocolVersion | 'auto'
-}
+/**
+ * Parameters for {@link createHTTPClient}: the transport's own params plus every
+ * `ContextClient`-side {@link ClientParams} field except `transport`, which the helper
+ * constructs itself.
+ *
+ * `protocolVersion` is re-declared here, rather than left to flow through from `ClientParams`,
+ * solely to carry its own doc comment below — the type is identical either way, so this is not
+ * a narrowing.
+ */
+export type CreateHTTPClientParams = HTTPTransportParams &
+  Omit<ClientParams, 'transport' | 'protocolVersion'> & {
+    /**
+     * Revision to speak. `'auto'` probes the server, then caches the result.
+     *
+     * Distinct from {@link HTTPTransportParams.protocolVersionHeader}, the optional raw seed
+     * for the `MCP-Protocol-Version` header: this field drives `ContextClient` negotiation and
+     * is stripped before the transport is constructed, so it never reaches `HTTPTransport`
+     * itself.
+     */
+    protocolVersion: ProtocolVersion | 'auto'
+  }
 
 /**
  * Create an MCP HTTP client with a single call.
  *
- * Instantiates an {@link HTTPTransport} and wires it to a {@link ContextClient}.
+ * Instantiates an {@link HTTPTransport} from its own params and wires it to a
+ * {@link ContextClient} carrying every other field — `clientInfo`, `createMessage`, `elicit`,
+ * `listRoots`, `inputRequired`, and the rest of {@link ClientParams} — so an MRTR-capable
+ * client (SEP-2322: one whose server-side suspensions are answered by a `createMessage`/
+ * `elicit`/`listRoots` handler) can be built through this one-call helper.
+ *
+ * The split below names only {@link HTTPTransportParams}'s own six fields and forwards
+ * everything else; it does not enumerate `ClientParams` at all. That is deliberate: this file
+ * owns `HTTPTransportParams`, so a field it gains shows up right next to this destructure, while
+ * `ClientParams` lives in `@mokei/context-client` and grows independently (`inputRequired`,
+ * MRTR's own opt-out, arrived that way) — enumerating its keys here is exactly what caused this
+ * helper to silently drop new client params before. Naming the small, locally-owned side and
+ * spreading the rest into `ContextClient` means a `ClientParams` addition reaches it with no
+ * change needed here at all.
  */
 export function createHTTPClient<T extends ContextTypes = UnknownContextTypes>(
   params: CreateHTTPClientParams,
 ): ContextClient<T> {
-  const { protocolVersion, ...transportParams } = params
-  const transport = new HTTPTransport(transportParams)
+  const { url, headers, auth, timeout, logger, protocolVersionHeader, ...clientParams } = params
+  const transport = new HTTPTransport({
+    url,
+    headers,
+    auth,
+    timeout,
+    logger,
+    protocolVersionHeader,
+  })
   return new ContextClient<T>({
-    protocolVersion,
+    ...clientParams,
     transport: transport as ClientTransport,
   })
 }

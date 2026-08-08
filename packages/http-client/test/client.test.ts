@@ -166,6 +166,45 @@ describe('createHTTPClient', () => {
     await client.dispose()
   })
 
+  // Proves createHTTPClient forwards ClientParams fields beyond protocolVersion — a listRoots
+  // handler is otherwise dropped silently, and MRTR (SEP-2322) needs it to answer a server's
+  // embedded `roots/list` input request through this one-call helper.
+  test('forwards a listRoots handler, declaring the roots capability on the handshake', async () => {
+    fetchMock.mockImplementation((_url: string, init: { body?: string }) => {
+      const message: PostedMessage = init.body == null ? {} : JSON.parse(init.body)
+      if (message.method === 'notifications/initialized') {
+        return new Response(null, { status: 202 })
+      }
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: message.id,
+          result: {
+            protocolVersion: '2025-11-25',
+            capabilities: {},
+            serverInfo: { name: 'test-server', version: '1.0' },
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    })
+
+    const client = createHTTPClient({
+      url: TEST_URL,
+      protocolVersion: '2025-11-25',
+      listRoots: [{ uri: 'file:///work', name: 'work' }],
+    })
+    await client.initialize()
+
+    const [, options] = fetchMock.mock.calls[0] as [string, { body?: string }]
+    const body = JSON.parse(options.body as string) as {
+      params?: { capabilities?: { roots?: unknown } }
+    }
+    expect(body.params?.capabilities?.roots).toEqual({})
+
+    await client.dispose()
+  })
+
   test('a 2026-07-28 cancellation is sent carrying its protocol version', async () => {
     // The POST that carries a cancellation has no session to be placed by, so the only thing
     // that tells a stateless server which revision it belongs to is the version in its own

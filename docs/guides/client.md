@@ -48,19 +48,16 @@ Pass `protocolVersion: 'auto'` to probe the server, or `'2025-11-25'` to pin the
 revision — which, unlike `2026-07-28`, needs an explicit `await client.initialize()` first.
 
 Everything below applies to an HTTP client exactly as it does to a stdio one: the returned
-value is a `ContextClient`. One exception: `createHTTPClient` only forwards `protocolVersion`
-to the underlying `ContextClient` — handler options like `elicit`, `createMessage` and
-`listRoots` (below) have nowhere to go through it. To configure those over HTTP, build the
-transport and client separately instead:
+value is a `ContextClient`, and `createHTTPClient` forwards every `ContextClient`-side field —
+`elicit`, `createMessage`, `listRoots`, `inputRequired` and the rest of `ClientParams` — straight
+through, alongside the transport's own `url`/`headers`/`auth`/`timeout`/`logger`. Pass them
+directly to `createHTTPClient` itself:
 
 ```typescript
-import { ContextClient, type ClientTransport } from '@mokei/context-client'
-import { HTTPTransport } from '@mokei/http-client'
+import { createHTTPClient } from '@mokei/http-client'
 
-const transport = new HTTPTransport({ url: 'https://mcp.example.com/mcp' }) as ClientTransport
-
-const client = new ContextClient({
-  transport,
+const client = createHTTPClient({
+  url: 'https://mcp.example.com/mcp',
   protocolVersion: '2026-07-28',
   elicit: async ({ params, signal }) => { /* ... */ },
 })
