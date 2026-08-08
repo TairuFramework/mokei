@@ -97,7 +97,8 @@ The official TypeScript SDK v2 (evaluated at `2.0.0-beta.2`, stable `2.0.0` sinc
   milestone's version-selection design.
 - **Modern-era cancellation** is per-request stream close / `requestSignal`, not
   `notifications/cancelled` — direct input to the "MRTR continuation lifetime vs
-  cancellation" open question.
+  cancellation" open question. (That question is now answered — see "Open questions" below:
+  MRTR keeps no continuation state, so there was nothing for this finding to end up qualifying.)
 - **Tasks removed from the spec** (SEP-2663) — mokei never implemented them; the SDK
   keeps the 2025-11-25 task vocabulary as deprecated interop-only types. Nothing to do.
 - **Roots / sampling / logging deprecated** (SEP-2577) — annotation-only, ≥12-month
@@ -120,8 +121,14 @@ The official TypeScript SDK v2 (evaluated at `2.0.0-beta.2`, stable `2.0.0` sinc
 2. **U1 correlation model:** generalize the single-deferred `#sentRequests` in
    `@mokei/context-rpc` into a **pending-exchange** abstraction supporting both *resolve-once*
    (today's request/response) and *streaming* (draft tool calls with interleaved input
-   sub-requests), plus a **continuation-token store** decoupled from `#sentRequests` for MRTR
-   input correlation. `@enkaku/transport` stays untouched.
+   sub-requests), plus a **continuation-token store** decoupled from `#sentRequests`, built
+   speculatively for what was then assumed to be MRTR's input correlation. `@enkaku/transport`
+   stays untouched.
+
+   *Correction, 2026-08-08:* MRTR shipped with no need for the continuation-token store — see
+   "Correlation abstraction" and the corresponding entry in "Buildable now vs blocked on the
+   spec" below. The store still exists, still decoupled from `#sentRequests`, just without the
+   MRTR consumer this decision anticipated for it.
 
 Rationale for coexistence: mokei is a **library**. The hard-cut was chosen only to avoid
 dual-path maintenance, not because coexistence is infeasible. mokei already has the version
