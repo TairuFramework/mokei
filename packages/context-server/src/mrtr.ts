@@ -1,5 +1,13 @@
-import type { ClientCapabilities, InputRequest, InputResponse } from '@mokei/context-protocol'
-import { INPUT_REQUEST_CAPABILITIES } from '@mokei/context-protocol'
+import type {
+  ClientCapabilities,
+  InputRequest,
+  InputRequiredResult,
+  InputResponse,
+} from '@mokei/context-protocol'
+import { INPUT_REQUEST_CAPABILITIES, isInputRequiredResult } from '@mokei/context-protocol'
+
+export type { InputRequiredResult }
+export { isInputRequiredResult }
 
 /**
  * Server-side multi round-trip request support (MRTR, SEP-2322).
@@ -83,12 +91,6 @@ export const MRTR_METHODS: ReadonlySet<string> = new Set([
   'resources/read',
 ])
 
-export type InputRequiredResult = {
-  resultType: 'input_required'
-  inputRequests?: Record<string, InputRequest>
-  requestState?: string
-}
-
 /**
  * Builds the suspended result a handler returns to ask the client for input (MRTR, SEP-2322).
  *
@@ -111,15 +113,6 @@ export function inputRequired(params: {
     ...(hasRequests && { inputRequests: params.inputRequests }),
     ...(params.requestState !== undefined && { requestState: params.requestState }),
   }
-}
-
-/** A discriminator check over a handler's return value. */
-export function isInputRequiredResult(value: unknown): value is InputRequiredResult {
-  return (
-    value != null &&
-    typeof value === 'object' &&
-    (value as { resultType?: unknown }).resultType === 'input_required'
-  )
 }
 
 /**

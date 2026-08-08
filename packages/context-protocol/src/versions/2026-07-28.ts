@@ -363,6 +363,34 @@ export const inputRequiredResult = {
 } as const satisfies Schema
 
 /**
+ * Hand-written rather than `FromSchema<typeof inputRequiredResult>`: the schema's `anyOf`
+ * (at-least-one-of `inputRequests`/`requestState`) derives into a type that a builder assembling
+ * the object through conditional spreads — like `@mokei/context-server`'s `inputRequired()` —
+ * cannot satisfy, because TypeScript cannot narrow spread-in conditionals to a specific union
+ * member. The invariant is still enforced at runtime by that builder and on the wire by the
+ * schema itself, so nothing is lost by keeping this permissive. `_meta` is also omitted: no
+ * handler constructs one, and admitting it here would only widen what a consumer may assume is
+ * present.
+ */
+export type InputRequiredResult = {
+  resultType: 'input_required'
+  inputRequests?: Record<string, InputRequest>
+  requestState?: string
+}
+
+/**
+ * A discriminator check, not a validator: the wire schema has already enforced the shape by the
+ * time a result reaches here, and re-validating would duplicate that in a second place.
+ */
+export function isInputRequiredResult(value: unknown): value is InputRequiredResult {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    (value as { resultType?: unknown }).resultType === 'input_required'
+  )
+}
+
+/**
  * Results a server may return in this revision. No `initializeResult`: there is no handshake.
  * `discoverResult` is a member here, which is what lets a `server/discover` answer be
  * validated rather than cast.

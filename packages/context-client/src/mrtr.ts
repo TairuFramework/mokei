@@ -1,4 +1,8 @@
-import type { InputRequest, InputResponse } from '@mokei/context-protocol'
+import type { InputRequest, InputRequiredResult, InputResponse } from '@mokei/context-protocol'
+import { isInputRequiredResult } from '@mokei/context-protocol'
+
+export type { InputRequiredResult }
+export { isInputRequiredResult }
 
 /**
  * The multi round-trip driver (MRTR, SEP-2322).
@@ -37,28 +41,10 @@ export const MRTR_METHODS: ReadonlySet<string> = new Set([
  */
 export const REQUEST_STATE_ONLY_PACING_MS = 250
 
-export type InputRequiredResult = {
-  resultType: 'input_required'
-  inputRequests?: Record<string, InputRequest>
-  requestState?: string
-}
-
 /** The two fields a retry adds to the original request's params. */
 export type InputRequiredRetryParams = {
   inputResponses?: Record<string, InputResponse>
   requestState?: string
-}
-
-/**
- * A discriminator check, not a validator: the wire schema has already enforced the shape by the
- * time a result reaches here, and re-validating would duplicate that in a second place.
- */
-export function isInputRequiredResult(value: unknown): value is InputRequiredResult {
-  return (
-    value != null &&
-    typeof value === 'object' &&
-    (value as { resultType?: unknown }).resultType === 'input_required'
-  )
 }
 
 /** Thrown when a single call still needs input after its round cap is spent. */
