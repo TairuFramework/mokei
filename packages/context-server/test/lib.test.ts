@@ -1593,6 +1593,27 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
       },
     )
   })
+
+  const stateOnlyTool = createTool({
+    description: 'Suspends on requestState alone, asking for no embedded input',
+    inputSchema: { type: 'object' },
+    handler: ({ mintRequestState }) =>
+      inputRequired({ requestState: mintRequestState({ step: 1 }) }),
+  })
+
+  test('a requestState-only suspension clears the capability check with none declared', async () => {
+    // `NEW_META` declares no client capabilities at all — this must never trip -32021 since the
+    // suspension names no embedded request (a load-shedding leg, SEP-2322).
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28'], tools: { ask: stateOnlyTool } },
+      { method: 'tools/call', params: { _meta: NEW_META, name: 'ask', arguments: {} } },
+      {
+        resultType: 'input_required',
+        requestState: '{"step":1}',
+        _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
+      },
+    )
+  })
 })
 
 describe('mandatory caching hints (2026-07-28)', () => {
