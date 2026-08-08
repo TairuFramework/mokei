@@ -112,6 +112,51 @@ export const toolChoice = {
   type: 'object',
 } as const satisfies Schema
 
+export const createMessageRequestParams = {
+  properties: {
+    includeContext: {
+      description:
+        'A request to include context from one or more MCP servers (including the caller), to be attached to the prompt. The client MAY ignore this request.',
+      enum: ['allServers', 'none', 'thisServer'],
+      type: 'string',
+    },
+    maxTokens: {
+      description:
+        'The maximum number of tokens to sample, as requested by the server. The client MAY choose to sample fewer tokens than requested.',
+      type: 'integer',
+    },
+    messages: { items: samplingMessage, type: 'array' },
+    metadata: {
+      additionalProperties: true,
+      description:
+        'Optional metadata to pass through to the LLM provider. The format of this metadata is provider-specific.',
+      properties: {},
+      type: 'object',
+    },
+    modelPreferences,
+    stopSequences: { items: { type: 'string' }, type: 'array' },
+    systemPrompt: {
+      description:
+        'An optional system prompt the server wants to use for sampling. The client MAY modify or omit this prompt.',
+      type: 'string',
+    },
+    temperature: { type: 'number' },
+    toolChoice: {
+      ...toolChoice,
+      description:
+        'Controls how the model should use the provided tools. Only valid if the client declares the sampling.tools capability.',
+    },
+    tools: {
+      description:
+        'An array of tools that the model can call during sampling. Only valid if the client declares the sampling.tools capability. The client MUST return an error if this field is provided but the capability is not declared.',
+      items: tool,
+      type: 'array',
+    },
+  },
+  required: ['maxTokens', 'messages'],
+  type: 'object',
+} as const satisfies Schema
+
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L332
 export const createMessageRequest = {
   description:
@@ -120,64 +165,8 @@ export const createMessageRequest = {
     request,
     {
       properties: {
-        method: {
-          const: 'sampling/createMessage',
-          type: 'string',
-        },
-        params: {
-          properties: {
-            includeContext: {
-              description:
-                'A request to include context from one or more MCP servers (including the caller), to be attached to the prompt. The client MAY ignore this request.',
-              enum: ['allServers', 'none', 'thisServer'],
-              type: 'string',
-            },
-            maxTokens: {
-              description:
-                'The maximum number of tokens to sample, as requested by the server. The client MAY choose to sample fewer tokens than requested.',
-              type: 'integer',
-            },
-            messages: {
-              items: samplingMessage,
-              type: 'array',
-            },
-            metadata: {
-              additionalProperties: true,
-              description:
-                'Optional metadata to pass through to the LLM provider. The format of this metadata is provider-specific.',
-              properties: {},
-              type: 'object',
-            },
-            modelPreferences,
-            stopSequences: {
-              items: {
-                type: 'string',
-              },
-              type: 'array',
-            },
-            systemPrompt: {
-              description:
-                'An optional system prompt the server wants to use for sampling. The client MAY modify or omit this prompt.',
-              type: 'string',
-            },
-            temperature: {
-              type: 'number',
-            },
-            toolChoice: {
-              ...toolChoice,
-              description:
-                'Controls how the model should use the provided tools. Only valid if the client declares the sampling.tools capability.',
-            },
-            tools: {
-              description:
-                'An array of tools that the model can call during sampling. Only valid if the client declares the sampling.tools capability. The client MUST return an error if this field is provided but the capability is not declared.',
-              items: tool,
-              type: 'array',
-            },
-          },
-          required: ['maxTokens', 'messages'],
-          type: 'object',
-        },
+        method: { const: 'sampling/createMessage', type: 'string' },
+        params: createMessageRequestParams,
       },
       required: ['method', 'params'],
       type: 'object',

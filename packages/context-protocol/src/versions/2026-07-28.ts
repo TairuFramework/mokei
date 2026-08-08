@@ -2,6 +2,7 @@ import type { FromSchema, Schema } from '@sozai/schema'
 
 import { clientResponse } from '../client.js'
 import { completeRequest, completeResult } from '../completion.js'
+import { elicitRequestParams, elicitResult } from '../elicitation.js'
 import { clientCapabilities, implementation, serverCapabilities } from '../initialize.js'
 import { loggingLevel, loggingMessageNotification } from '../logging.js'
 import {
@@ -21,6 +22,7 @@ import {
   resourceListChangedNotification,
   resourceUpdatedNotification,
 } from '../resource.js'
+import { listRootsResult } from '../root.js'
 import type { Request } from '../rpc.js'
 import {
   cacheableResult,
@@ -32,6 +34,7 @@ import {
   response,
   result,
 } from '../rpc.js'
+import { createMessageRequestParams, createMessageResult } from '../sampling.js'
 import {
   callToolRequest,
   callToolResult,
@@ -207,6 +210,70 @@ export const emptyResult = {
     resultType: { enum: ['complete', 'input_required'], type: 'string' },
   },
   required: ['resultType'],
+  type: 'object',
+} as const satisfies Schema
+
+/**
+ * A single embedded input request inside an `input_required` result (SEP-2322): a sampling,
+ * elicitation or roots request carried in-band as `{ method, params }`.
+ *
+ * Deliberately not `createMessageRequest`/`elicitRequest`/`listRootsRequest`: those build on
+ * `request`, which requires `jsonrpc` and `id`. An embedded request is de-JSON-RPC'd — it never
+ * travels as a JSON-RPC request in this revision, because this revision has no server-initiated
+ * requests at all. `additionalProperties: false` so the envelope cannot be smuggled back in.
+ */
+export const inputRequest = {
+  anyOf: [
+    {
+      additionalProperties: false,
+      properties: {
+        method: { const: 'sampling/createMessage', type: 'string' },
+        params: createMessageRequestParams,
+      },
+      required: ['method', 'params'],
+      type: 'object',
+    },
+    {
+      additionalProperties: false,
+      properties: {
+        method: { const: 'elicitation/create', type: 'string' },
+        params: elicitRequestParams,
+      },
+      required: ['method', 'params'],
+      type: 'object',
+    },
+    {
+      additionalProperties: false,
+      properties: {
+        method: { const: 'roots/list', type: 'string' },
+        params: { additionalProperties: {}, type: 'object' },
+      },
+      required: ['method'],
+      type: 'object',
+    },
+  ],
+} as const satisfies Schema
+export type InputRequest = FromSchema<typeof inputRequest>
+
+/** A map of embedded input requests, keyed by server-assigned identifiers unique to one request. */
+export const inputRequests = {
+  additionalProperties: inputRequest,
+  type: 'object',
+} as const satisfies Schema
+
+/**
+ * A single embedded input response: the *bare* result for its request, never wrapped in a
+ * `{ method, result }` envelope and never carrying this revision's `resultType` — a suspended
+ * exchange's sub-answers are not themselves protocol results.
+ */
+export const inputResponse = {
+  anyOf: [createMessageResult, elicitResult, listRootsResult],
+} as const satisfies Schema
+export type InputResponse = FromSchema<typeof inputResponse>
+
+/** A map of embedded input responses, keyed as the server keyed its `inputRequests`. */
+export const inputResponses = {
+  additionalProperties: inputResponse,
   type: 'object',
 } as const satisfies Schema
 

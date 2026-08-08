@@ -70,6 +70,10 @@ export const elicitRequestURLParams = {
   type: 'object',
 } as const satisfies Schema
 
+export const elicitRequestParams = {
+  anyOf: [elicitRequestFormParams, elicitRequestURLParams],
+} as const satisfies Schema
+
 export const elicitRequest = {
   description:
     'A request from the server to elicit additional information from the user via the client.',
@@ -81,9 +85,7 @@ export const elicitRequest = {
           const: 'elicitation/create',
           type: 'string',
         },
-        params: {
-          anyOf: [elicitRequestFormParams, elicitRequestURLParams],
-        },
+        params: elicitRequestParams,
       },
       required: ['method', 'params'],
       type: 'object',
