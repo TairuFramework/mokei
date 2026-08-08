@@ -206,15 +206,13 @@ export class MethodNotInRevisionError extends Error {
 
 /**
  * Thrown when a client is configured with a `createMessage`/`elicit`/`listRoots` handler on a
- * protocol revision whose `serverMethods` carries no way to invoke it — the client-side mirror
- * of `@mokei/context-server`'s `MRTRNotSupportedError`. `2026-07-28` has no server-initiated
- * requests: `sampling/createMessage`, `elicitation/create` and `roots/list` are replaced by
- * multi round-trip requests (MRTR, SEP-2322), which mokei does not implement yet.
+ * protocol revision that can invoke it neither as a server-initiated request nor as an MRTR input
+ * request — the client-side mirror of `@mokei/context-server`'s `MRTRNotSupportedError`.
  */
 export class MRTRNotSupportedError extends Error {
   constructor(handler: string, version: ProtocolVersion) {
     super(
-      `The "${handler}" handler is not supported on protocol version ${version}: sampling, elicitation and roots are replaced by multi round-trip requests (MRTR, SEP-2322), which mokei does not implement yet`,
+      `The "${handler}" handler is not supported on protocol version ${version}: the revision carries its method neither as a server-initiated request nor as a multi round-trip input request (MRTR, SEP-2322)`,
     )
     this.name = 'MRTRNotSupportedError'
   }
@@ -485,14 +483,13 @@ export class ContextClient<
       throw new UnsupportedProtocolVersionError(params.protocolVersion)
     }
 
-    // Derived from `serverMethods`, not a hardcoded version check: a handler is refused
-    // exactly when its own method (`sampling/createMessage`/`elicitation/create`/`roots/list`)
-    // is absent from the configured revision — the client-side mirror of what
-    // `@mokei/context-server` does per capability on the server side. Skipped here when the
-    // revision is still `'auto'`: the revision isn't known yet, so `#setup()` re-runs this same
-    // check (`#refuseUnsupportedHandlers`) once the probe resolves it — a handler accepted here
-    // because the revision was unknown must still be refused if the probe lands on
-    // `2026-07-28`, whose `serverMethods` is always empty.
+    // Derived from `serverMethods` and `inputRequestMethods`, not a hardcoded version check: a
+    // handler is refused exactly when the configured revision can invoke its method neither
+    // way — the client-side mirror of what `@mokei/context-server` does per capability on the
+    // server side. Skipped here when the revision is still `'auto'`: the revision isn't known
+    // yet, so `#setup()` re-runs this same check (`#refuseUnsupportedHandlers`) once the probe
+    // resolves it — a handler accepted here because the revision was unknown must still be
+    // refused if the probe lands on a revision that can reach its method neither way.
     const protocol = params.protocolVersion === 'auto' ? null : PROTOCOLS[params.protocolVersion]
     if (protocol != null) {
       this.#refuseUnsupportedHandlers(protocol)
@@ -558,20 +555,26 @@ export class ContextClient<
 
   /**
    * Throws when a handler is configured (`createMessage`/`elicit`/`listRoots`) whose method
-   * (`sampling/createMessage`/`elicitation/create`/`roots/list`) is absent from `protocol`'s
-   * `serverMethods` — derived from the method table, never a version literal. Called once at
-   * construction for a fixed `protocolVersion`, and again from `#setup()` once an `'auto'`
-   * probe resolves the revision, so a handler that was accepted only because the revision
-   * wasn't known yet is still refused if the probe lands on `2026-07-28`.
+   * (`sampling/createMessage`/`elicitation/create`/`roots/list`) is reachable neither as a
+   * server-initiated request (`serverMethods`) nor as an MRTR input request
+   * (`inputRequestMethods`) in `protocol`. Derived from the method tables, never a version
+   * literal. Called once at construction for a fixed `protocolVersion`, and again from `#setup()`
+   * once an `'auto'` probe resolves the revision.
+   *
+   * Both current revisions carry all three methods one way or the other, so this refuses nothing
+   * today. It stays because the two tables are what make that true, and a future revision that
+   * dropped one would otherwise silently accept a handler it can never invoke.
    */
   #refuseUnsupportedHandlers(protocol: ProtocolDefinition): void {
-    if (this.#createMessage != null && !protocol.serverMethods.has('sampling/createMessage')) {
+    const reachable = (method: string): boolean =>
+      protocol.serverMethods.has(method) || protocol.inputRequestMethods.has(method)
+    if (this.#createMessage != null && !reachable('sampling/createMessage')) {
       throw new MRTRNotSupportedError('createMessage', protocol.version)
     }
-    if (this.#elicit != null && !protocol.serverMethods.has('elicitation/create')) {
+    if (this.#elicit != null && !reachable('elicitation/create')) {
       throw new MRTRNotSupportedError('elicit', protocol.version)
     }
-    if (this.#listRoots != null && !protocol.serverMethods.has('roots/list')) {
+    if (this.#listRoots != null && !reachable('roots/list')) {
       throw new MRTRNotSupportedError('listRoots', protocol.version)
     }
   }

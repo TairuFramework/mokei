@@ -1187,7 +1187,7 @@ describe('protocol version selection', () => {
     expect(params?._meta?.['io.modelcontextprotocol/protocolVersion']).toBeUndefined()
   })
 
-  test('refuses sampling handlers on 2026-07-28 at construction', () => {
+  test('accepts sampling handlers on 2026-07-28, which fulfils them through MRTR', () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     expect(
       () =>
@@ -1200,7 +1200,29 @@ describe('protocol version selection', () => {
             role: 'assistant',
           }),
         }),
-    ).toThrow(MRTRNotSupportedError)
+    ).not.toThrow()
+  })
+
+  test('declares the sampling capability in _meta on 2026-07-28', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      createMessage: () => ({
+        content: { type: 'text', text: '' },
+        model: 'test',
+        role: 'assistant',
+      }),
+      respond: () => ({ content: [], resultType: 'complete' }),
+    })
+    await client.callTool({ name: 'echo', arguments: {} })
+    const call = sent.find((message) => message.method === 'tools/call')
+    if (call == null) {
+      throw new Error('tools/call was not sent')
+    }
+    expect(
+      (call.params as Record<string, Record<string, Record<string, unknown>>>)._meta[
+        'io.modelcontextprotocol/clientCapabilities'
+      ],
+    ).toEqual({ sampling: {} })
   })
 
   test('an unsupported protocolVersion string throws instead of probing', () => {
@@ -1953,12 +1975,15 @@ describe("'auto' probe", () => {
     expect(client.protocolVersion).toBe('2026-07-28')
   })
 
-  // The constructor only refuses a createMessage/elicit/listRoots handler when the revision is
-  // known synchronously (a fixed protocolVersion). Under 'auto' it was
-  // accepted at construction and never re-checked, so a handler configured against a server
-  // that turns out to speak 2026-07-28 — whose serverMethods is always empty — went live
-  // anyway, and #capabilities kept advertising it in every request's _meta.
-  test("'auto' refuses a createMessage handler once the probe resolves to 2026-07-28", async () => {
+  // The constructor only synchronously validates a createMessage/elicit/listRoots handler when
+  // the revision is known (a fixed protocolVersion). Under 'auto' it is accepted at
+  // construction and re-checked once the probe resolves — #setup() re-runs
+  // #refuseUnsupportedHandlers rather than skipping it, so a handler that could not be reached
+  // on the resolved revision would not silently go live just because the revision wasn't known
+  // yet at construction. Both current revisions can reach a createMessage handler one way or
+  // the other, so this exercises the re-check landing on 2026-07-28 without expecting a
+  // throw: `sampling/createMessage` is reachable there as an MRTR input request.
+  test("'auto' still allows a createMessage handler once the probe resolves to 2026-07-28", async () => {
     const { client } = createTestClient({
       protocolVersion: 'auto',
       createMessage: () => ({
@@ -1966,15 +1991,19 @@ describe("'auto' probe", () => {
         model: 'test',
         role: 'assistant',
       }),
-      respond: () => ({
-        resultType: 'complete',
-        supportedVersions: ['2026-07-28'],
-        capabilities: {},
-        ttlMs: 0,
-        cacheScope: 'private',
-      }),
+      respond: (message) =>
+        message.method === 'server/discover'
+          ? {
+              resultType: 'complete',
+              supportedVersions: ['2026-07-28'],
+              capabilities: {},
+              ttlMs: 0,
+              cacheScope: 'private',
+            }
+          : { resultType: 'complete', prompts: [] },
     })
-    await expect(client.listPrompts()).rejects.toThrow(MRTRNotSupportedError)
+    await expect(client.listPrompts()).resolves.toEqual({ resultType: 'complete', prompts: [] })
+    expect(client.protocolVersion).toBe('2026-07-28')
   })
 
   test("'auto' still allows a createMessage handler when the probe falls back to 2025-11-25", async () => {
