@@ -25,6 +25,8 @@ import {
   type ClientParams,
   ContextClient,
   InputRequiredNotSupportedError,
+  InputRequiredRoundsExceededError,
+  InputRequiredTotalTimeoutError,
   ListMaxPagesError,
   MethodNotInRevisionError,
   MRTRNotSupportedError,
@@ -174,6 +176,9 @@ type Respond = (message: ClientRequest) => Record<string, unknown> | typeof WITH
  * answer below it. Declares no capabilities: a test that needs one gated open says so through
  * `respond`, and a permissive default would let a broken gate pass unnoticed.
  */
+/** An MRTR input request embedded in an `input_required` result, used across the tests below. */
+const ROOTS_INPUT_REQUEST = { method: 'roots/list', params: {} }
+
 const DEFAULT_DISCOVER_RESULT = {
   resultType: 'complete',
   supportedVersions: ['2026-07-28'],
@@ -1187,7 +1192,7 @@ describe('protocol version selection', () => {
     expect(params?._meta?.['io.modelcontextprotocol/protocolVersion']).toBeUndefined()
   })
 
-  test('refuses sampling handlers on 2026-07-28 at construction', () => {
+  test('accepts sampling handlers on 2026-07-28, which fulfils them through MRTR', () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     expect(
       () =>
@@ -1200,7 +1205,29 @@ describe('protocol version selection', () => {
             role: 'assistant',
           }),
         }),
-    ).toThrow(MRTRNotSupportedError)
+    ).not.toThrow()
+  })
+
+  test('declares the sampling capability in _meta on 2026-07-28', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      createMessage: () => ({
+        content: { type: 'text', text: '' },
+        model: 'test',
+        role: 'assistant',
+      }),
+      respond: () => ({ content: [], resultType: 'complete' }),
+    })
+    await client.callTool({ name: 'echo', arguments: {} })
+    const call = sent.find((message) => message.method === 'tools/call')
+    if (call == null) {
+      throw new Error('tools/call was not sent')
+    }
+    expect(
+      (call.params as Record<string, Record<string, Record<string, unknown>>>)._meta[
+        'io.modelcontextprotocol/clientCapabilities'
+      ],
+    ).toEqual({ sampling: {} })
   })
 
   test('an unsupported protocolVersion string throws instead of probing', () => {
@@ -1220,14 +1247,195 @@ describe('protocol version selection', () => {
     expect(new MRTRNotSupportedError('createMessage', '2025-11-25').message).toContain('2025-11-25')
   })
 
-  test('rejects an input_required result until MRTR lands', async () => {
+  test('auto-fulfils an input_required result through the configured handler', async () => {
+    let round = 0
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      listRoots: [{ uri: 'file:///work', name: 'work' }],
+      respond: (message) => {
+        if (message.method !== 'tools/call') {
+          return undefined
+        }
+        round += 1
+        return round === 1
+          ? {
+              resultType: 'input_required',
+              inputRequests: { ask: ROOTS_INPUT_REQUEST },
+              requestState: 'state-1',
+            }
+          : { content: [{ type: 'text', text: 'done' }], resultType: 'complete' }
+      },
+    })
+    const result = await client.callTool({ name: 'echo', arguments: {} })
+    expect(result.content).toEqual([{ type: 'text', text: 'done' }])
+    const calls = sent.filter((message) => message.method === 'tools/call')
+    expect(calls).toHaveLength(2)
+    expect((calls[1].params as Record<string, unknown>).inputResponses).toEqual({
+      ask: { roots: [{ uri: 'file:///work', name: 'work' }] },
+    })
+    expect((calls[1].params as Record<string, unknown>).requestState).toBe('state-1')
+  })
+
+  test('refuses an input_required result when no handler can fulfil it', async () => {
     const { client } = createTestClient({
       protocolVersion: '2026-07-28',
-      respond: () => ({ resultType: 'input_required', inputRequests: {} }),
+      respond: () => ({
+        resultType: 'input_required',
+        inputRequests: { ask: ROOTS_INPUT_REQUEST },
+      }),
     })
     await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow(
       InputRequiredNotSupportedError,
     )
+  })
+
+  test('refuses an input_required result when auto-fulfilment is off', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      inputRequired: { autoFulfill: false },
+      listRoots: [],
+      respond: () => ({
+        resultType: 'input_required',
+        inputRequests: { ask: ROOTS_INPUT_REQUEST },
+      }),
+    })
+    await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow(
+      InputRequiredNotSupportedError,
+    )
+  })
+
+  // `2025-11-25` has no MRTR: `server.ts`'s handler-side gate throws if a handler suspends there,
+  // but nothing stopped a nonconforming (or malicious) `2025-11-25` peer from sending the frame
+  // anyway. Before the client-side gate, this drove MRTR rounds against an unvalidated
+  // `createMessage` handler call — the createMessage spy asserts that path is not reached.
+  test('refuses an input_required result on 2025-11-25, which has no MRTR', async () => {
+    const createMessage = vi.fn()
+    const { client } = createTestClient({
+      protocolVersion: '2025-11-25',
+      createMessage,
+      respond: (message) =>
+        message.method === 'tools/call'
+          ? {
+              content: [],
+              resultType: 'input_required',
+              inputRequests: {
+                ask: { method: 'sampling/createMessage', params: { maxTokens: 5 } },
+              },
+              requestState: 'st',
+            }
+          : undefined,
+    })
+    await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow(
+      InputRequiredNotSupportedError,
+    )
+    expect(createMessage).not.toHaveBeenCalled()
+  })
+
+  // `MRTR_METHODS` (SEP-2322) admits only `tools/call`, `prompts/get` and `resources/read` — a
+  // `2026-07-28` peer suspending any other method, `tools/list` here, is a protocol violation the
+  // client must refuse rather than drive rounds for. Mirrors `ContextServer`'s own handler-side
+  // `MRTR_METHODS` gate (`server.ts`).
+  test('refuses an input_required result on a 2026-07-28 method that cannot suspend', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: (message) =>
+        message.method === 'tools/list'
+          ? { resultType: 'input_required', requestState: 'st' }
+          : undefined,
+    })
+    await expect(client.request('tools/list', {})).rejects.toThrow(InputRequiredNotSupportedError)
+  })
+
+  test('hands the raw suspension back when the call opts in', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      listRoots: [],
+      respond: () => ({
+        resultType: 'input_required',
+        inputRequests: { ask: ROOTS_INPUT_REQUEST },
+      }),
+    })
+    const result = await client.callTool({
+      name: 'echo',
+      arguments: {},
+      allowInputRequired: true,
+    })
+    expect((result as unknown as { resultType: string }).resultType).toBe('input_required')
+  })
+
+  // `maxTotalTimeout` is documented as covering the leg that produced the first suspension, not
+  // only the retries after it. Drives the wire by hand rather than through `createTestClient`'s
+  // `respond` (synchronous, so it cannot simulate a slow first leg): the harness delays its
+  // `tools/call` answer past the budget, and never answers a second one, so the flow can only
+  // pass by raising the total-timeout error itself rather than by retrying.
+  test('charges the leg that produced the first suspension against maxTotalTimeout', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      protocolVersion: '2026-07-28',
+      listRoots: [],
+      transport: transports.client,
+    })
+
+    void (async () => {
+      const discover = await transports.server.read()
+      if (discover.done) {
+        return
+      }
+      transports.server.write({
+        jsonrpc: '2.0',
+        id: (discover.value as ClientRequest).id,
+        result: DEFAULT_DISCOVER_RESULT,
+      } as ServerMessage)
+
+      const call = await transports.server.read()
+      if (call.done) {
+        return
+      }
+      // Longer than `maxTotalTimeout` below: this leg alone must exhaust the budget.
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      transports.server.write({
+        jsonrpc: '2.0',
+        id: (call.value as ClientRequest).id,
+        result: { resultType: 'input_required', inputRequests: { ask: ROOTS_INPUT_REQUEST } },
+      } as ServerMessage)
+    })()
+
+    await expect(
+      client.callTool({ name: 'echo', arguments: {}, maxTotalTimeout: 10 }),
+    ).rejects.toThrow(InputRequiredTotalTimeoutError)
+
+    await transports.dispose()
+  })
+
+  test('stops at the round cap', async () => {
+    const { client } = createTestClient({
+      protocolVersion: '2026-07-28',
+      inputRequired: { maxRounds: 2 },
+      listRoots: [],
+      respond: (message) =>
+        message.method === 'tools/call'
+          ? { resultType: 'input_required', inputRequests: { ask: ROOTS_INPUT_REQUEST } }
+          : undefined,
+    })
+    await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow(
+      InputRequiredRoundsExceededError,
+    )
+  })
+
+  test('does not send allowInputRequired or maxTotalTimeout on the wire', async () => {
+    const { client, sent } = createTestClient({
+      protocolVersion: '2026-07-28',
+      respond: () => ({ content: [], resultType: 'complete' }),
+    })
+    await client.callTool({
+      name: 'echo',
+      arguments: {},
+      allowInputRequired: true,
+      maxTotalTimeout: 1_000,
+    })
+    const call = sent.find((message) => message.method === 'tools/call')
+    expect(call?.params).not.toHaveProperty('allowInputRequired')
+    expect(call?.params).not.toHaveProperty('maxTotalTimeout')
   })
 
   test('protocolVersion getter returns the configured revision', () => {
@@ -1951,30 +2159,6 @@ describe("'auto' probe", () => {
       content: [],
     })
     expect(client.protocolVersion).toBe('2026-07-28')
-  })
-
-  // The constructor only refuses a createMessage/elicit/listRoots handler when the revision is
-  // known synchronously (a fixed protocolVersion). Under 'auto' it was
-  // accepted at construction and never re-checked, so a handler configured against a server
-  // that turns out to speak 2026-07-28 — whose serverMethods is always empty — went live
-  // anyway, and #capabilities kept advertising it in every request's _meta.
-  test("'auto' refuses a createMessage handler once the probe resolves to 2026-07-28", async () => {
-    const { client } = createTestClient({
-      protocolVersion: 'auto',
-      createMessage: () => ({
-        content: { type: 'text', text: '' },
-        model: 'test',
-        role: 'assistant',
-      }),
-      respond: () => ({
-        resultType: 'complete',
-        supportedVersions: ['2026-07-28'],
-        capabilities: {},
-        ttlMs: 0,
-        cacheScope: 'private',
-      }),
-    })
-    await expect(client.listPrompts()).rejects.toThrow(MRTRNotSupportedError)
   })
 
   test("'auto' still allows a createMessage handler when the probe falls back to 2025-11-25", async () => {

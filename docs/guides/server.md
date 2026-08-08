@@ -76,17 +76,18 @@ type HandlerRequest = {
   client: ServerClient        // Access to client capabilities
   progress?: ProgressEmitter  // Report progress on long-running calls
   signal: AbortSignal         // For cancellation
+
+  // MRTR only (2026-07-28) -- see "Multi Round-Trip Requests" below
+  inputResponses?: Record<string, InputResponse>  // Answers from a previous round
+  requestState?: unknown                          // State this handler minted on a previous round
+  mintRequestState: (payload: unknown) => string  // Encode a payload to send with inputRequired()
 }
 ```
 
 ### ServerClient Methods
 
-Inside tool handlers, you can use `client` to:
-
-`elicit`, `createMessage` and `listRoots` are server-initiated requests, present only on
-`2025-11-25` — on a server configured with `protocolVersions: ['2026-07-28']` only, they
-reject with `MRTRNotSupportedError` (MRTR, SEP-2322, not yet implemented). Include
-`'2025-11-25'` in `protocolVersions` to use them.
+Inside tool handlers, you can use `client` to send the client a request and `await` its answer
+inline:
 
 ```typescript
 // Request user input via elicitation
@@ -125,6 +126,77 @@ const result = await req.client.elicit({
   timeout: 30_000,
 })
 ```
+
+**This whole pattern is `2025-11-25`-only.** `elicit`, `createMessage` and `listRoots` are
+server-initiated requests: the server sends the client a request and awaits the answer inline,
+exactly as above. `2026-07-28` has no server-initiated requests at all, so on a server
+configured with `protocolVersions: ['2026-07-28']` (without `'2025-11-25'`), calling any of the
+three throws `MRTRNotSupportedError` — there is nothing on the wire to send it as. Reaching the
+client for input there uses multi round-trip requests instead (below).
+
+## Multi Round-Trip Requests (MRTR)
+
+On `2026-07-28`, a `tools/call`, `prompts/get` or `resources/read` handler that needs input from
+the client suspends by **returning** `inputRequired({ inputRequests, requestState })` instead of
+awaiting a `client` call, and is **re-invoked** — a fresh call, not a resumed one — once the
+client retries with the answers (SEP-2322). `inputRequired` is exported from
+`@mokei/context-server`.
+
+```typescript
+import { createTool, inputRequired, serveProcess, type ToolDefinitions } from '@mokei/context-server'
+
+const tools = {
+  summarize: createTool({
+    description: 'Summarizes text using client-side sampling',
+    inputSchema: {
+      type: 'object',
+      properties: { text: { type: 'string' } },
+      required: ['text'],
+      additionalProperties: false
+    } as const,
+    handler: ({ input, inputResponses, mintRequestState, requestState }) => {
+      const answer = inputResponses?.summary as { content?: { text?: string } } | undefined
+      if (answer == null) {
+        // First round: ask the client to sample, and mint state to recognize the retry.
+        return inputRequired({
+          inputRequests: {
+            summary: {
+              method: 'sampling/createMessage',
+              params: {
+                messages: [{ role: 'user', content: { type: 'text', text: `Summarize: ${input.text}` } }],
+                maxTokens: 200,
+              },
+            },
+          },
+          requestState: mintRequestState({ startedAt: Date.now() }),
+        })
+      }
+      // Re-invoked with the client's answer and the echoed requestState.
+      return {
+        content: [{ type: 'text', text: answer.content?.text ?? '' }],
+        isError: false
+      }
+    }
+  })
+} satisfies ToolDefinitions
+
+serveProcess({ name: 'summarizer', version: '1.0.0', protocolVersions: ['2026-07-28'], tools })
+```
+
+`inputRequests` keys are handler-chosen; `inputResponses` echoes them back keyed the same way.
+`requestState` is an opaque string the client only stores and re-sends verbatim — mint it with
+`mintRequestState` (JSON-stringifies by default) and read it back, already resolved, from
+`requestState` on the next round. Since it round-trips through the client, protect its integrity
+with a `requestState: { mint, verify }` hook on `ContextServer`/`serveProcess` before letting it
+influence authorization or business logic — unconfigured, the raw string reaches the handler
+untrusted. A request whose embedded `inputRequests` needs a capability the client never declared
+fails fast with `-32021` (`MissingRequiredClientCapabilityError`) rather than round-tripping to
+find out.
+
+Prompt and resource `read` handlers can suspend the same way — `PromptHandlerReturn` and
+`ReadResourceHandler` both admit `InputRequiredResult` alongside their ordinary result type,
+matching the three methods SEP-2322 allows to suspend (`tools/call`, `prompts/get`,
+`resources/read`).
 
 ### Tool Return Types
 

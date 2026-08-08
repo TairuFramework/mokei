@@ -9,6 +9,8 @@ import {
 import { RPCError } from '@mokei/context-rpc'
 import { createValidator, type FromSchema, type Schema } from '@sozai/schema'
 
+import { type InputRequiredResult, isInputRequiredResult } from './mrtr.js'
+
 /**
  * A tool handler's `structuredContent` violated (or was absent against) its
  * declared `outputSchema`. This is the server author's own contract breach, not
@@ -50,6 +52,9 @@ export function createPrompt<
         input: request.input as Arguments,
         client: request.client,
         signal: request.signal,
+        inputResponses: request.inputResponses,
+        requestState: request.requestState,
+        mintRequestState: request.mintRequestState,
       })
     }
     return { description, handler: passthrough } as PromptDefinition<Arguments>
@@ -63,7 +68,14 @@ export function createPrompt<
   const wrappedHandler = (request: HandlerRequest<{ input: unknown }>): PromptHandlerReturn => {
     const validated = validate(request.input)
     if (validated.issues == null) {
-      return handler({ input: validated.value, client: request.client, signal: request.signal })
+      return handler({
+        input: validated.value,
+        client: request.client,
+        signal: request.signal,
+        inputResponses: request.inputResponses,
+        requestState: request.requestState,
+        mintRequestState: request.mintRequestState,
+      })
     }
     throw new RPCError(INVALID_PARAMS, 'Invalid prompt arguments', {
       issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
@@ -133,7 +145,7 @@ export function createTool<
 
   const wrappedHandler = async (
     request: HandlerRequest<{ input: Record<string, unknown> }>,
-  ): Promise<CallToolResult> => {
+  ): Promise<CallToolResult | InputRequiredResult> => {
     const validated = validateInput(request.input)
     if (validated.issues != null) {
       throw new RPCError(INVALID_PARAMS, 'Invalid tool input', {
@@ -145,7 +157,15 @@ export function createTool<
       client: request.client,
       progress: request.progress,
       signal: request.signal,
+      inputResponses: request.inputResponses,
+      requestState: request.requestState,
+      mintRequestState: request.mintRequestState,
     })
+    // A suspension carries no `structuredContent` by construction — it is not an answer, so it
+    // must never reach output-schema validation. Pass it through untouched.
+    if (isInputRequiredResult(result)) {
+      return result
+    }
     return finalizeResult(result as CallToolResult)
   }
 

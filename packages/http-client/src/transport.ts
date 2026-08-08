@@ -1,5 +1,5 @@
 import { Transport } from '@enkaku/transport'
-import type { ClientTransport } from '@mokei/context-client'
+import type { ClientParams, ClientTransport } from '@mokei/context-client'
 import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
 import type { ClientMessage, ProtocolVersion, ServerMessage } from '@mokei/context-protocol'
 import {
@@ -1017,31 +1017,82 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 }
 
-/** Parameters for {@link createHTTPClient}. */
-export type CreateHTTPClientParams = HTTPTransportParams & {
-  /**
-   * Revision to speak. `'auto'` probes the server, then caches the result.
-   *
-   * Distinct from {@link HTTPTransportParams.protocolVersionHeader}, the optional raw seed
-   * for the `MCP-Protocol-Version` header: this field drives `ContextClient` negotiation and
-   * is stripped before the transport is constructed, so it never reaches `HTTPTransport`
-   * itself.
-   */
-  protocolVersion: ProtocolVersion | 'auto'
-}
+/**
+ * Parameters for {@link createHTTPClient}: the transport's own params plus every
+ * `ContextClient`-side {@link ClientParams} field except `transport`, which the helper
+ * constructs itself.
+ *
+ * `protocolVersion` is re-declared here, rather than left to flow through from `ClientParams`,
+ * solely to carry its own doc comment below — the type is identical either way, so this is not
+ * a narrowing.
+ */
+export type CreateHTTPClientParams = HTTPTransportParams &
+  Omit<ClientParams, 'transport' | 'protocolVersion'> & {
+    /**
+     * Revision to speak. `'auto'` probes the server, then caches the result.
+     *
+     * Distinct from {@link HTTPTransportParams.protocolVersionHeader}, the optional raw seed
+     * for the `MCP-Protocol-Version` header: this field drives `ContextClient` negotiation and
+     * is stripped before the transport is constructed, so it never reaches `HTTPTransport`
+     * itself.
+     */
+    protocolVersion: ProtocolVersion | 'auto'
+  }
+
+/**
+ * Every field name {@link HTTPTransportParams} declares, asserted complete via `satisfies
+ * Record<keyof HTTPTransportParams, true>`: `Record` requires a property for every key of the
+ * mapped type regardless of whether that type itself marks it optional, so a field
+ * `HTTPTransportParams` gains — realistically an optional one, as five of its current six
+ * already are — fails this object literal to compile instead of silently falling into
+ * `createHTTPClient`'s `ContextClient` spread below rather than reaching `HTTPTransport`. Fixing
+ * that compile error means adding the key here, which is also what routes it correctly at
+ * runtime: `createHTTPClient` reads this object's keys rather than repeating them in a second,
+ * uncoupled list that could drift from it.
+ */
+const HTTP_TRANSPORT_PARAM_KEYS = {
+  url: true,
+  headers: true,
+  auth: true,
+  timeout: true,
+  logger: true,
+  protocolVersionHeader: true,
+} satisfies Record<keyof HTTPTransportParams, true>
 
 /**
  * Create an MCP HTTP client with a single call.
  *
- * Instantiates an {@link HTTPTransport} and wires it to a {@link ContextClient}.
+ * Instantiates an {@link HTTPTransport} from its own params and wires it to a
+ * {@link ContextClient} carrying every other field — `clientInfo`, `createMessage`, `elicit`,
+ * `listRoots`, `inputRequired`, and the rest of {@link ClientParams} — so an MRTR-capable
+ * client (SEP-2322: one whose server-side suspensions are answered by a `createMessage`/
+ * `elicit`/`listRoots` handler) can be built through this one-call helper.
+ *
+ * The split below names only {@link HTTPTransportParams}'s own fields, via
+ * {@link HTTP_TRANSPORT_PARAM_KEYS}, and forwards everything else; it does not enumerate
+ * `ClientParams` at all. That is deliberate: this file owns `HTTPTransportParams`, and the
+ * `satisfies` check on that constant keeps its list complete under compiler pressure, while
+ * `ClientParams` lives in `@mokei/context-client` and grows independently (`inputRequired`,
+ * MRTR's own opt-out, arrived that way) — enumerating its keys here is exactly what caused this
+ * helper to silently drop new client params before. Naming the small, locally-owned,
+ * compile-checked side and spreading the rest into `ContextClient` means a `ClientParams`
+ * addition reaches it with no change needed here at all.
  */
 export function createHTTPClient<T extends ContextTypes = UnknownContextTypes>(
   params: CreateHTTPClientParams,
 ): ContextClient<T> {
-  const { protocolVersion, ...transportParams } = params
-  const transport = new HTTPTransport(transportParams)
+  const transportParams: Record<string, unknown> = {}
+  const clientParams: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(params)) {
+    if (key in HTTP_TRANSPORT_PARAM_KEYS) {
+      transportParams[key] = value
+    } else {
+      clientParams[key] = value
+    }
+  }
+  const transport = new HTTPTransport(transportParams as HTTPTransportParams)
   return new ContextClient<T>({
-    protocolVersion,
+    ...(clientParams as Omit<ClientParams, 'transport'>),
     transport: transport as ClientTransport,
   })
 }

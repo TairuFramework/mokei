@@ -13,23 +13,23 @@ Section numbers are stable: gaps mean an item shipped, not that it was renumbere
 
 ## Pieces
 
-This file tracks six independent sub-projects, of which three are now shipped. Each of the rest
-can be picked up on its own; only D and E are large. Sections below hold the detail -- this table
-says what exists and where it is.
+This file tracks six independent sub-projects, of which four are now shipped. Each of the rest
+can be picked up on its own; only E is large now that D has shipped. Sections below hold the
+detail -- this table says what exists and where it is.
 
 | Piece | Scope | Size | Where |
 |-------|-------|------|-------|
 | A | Interop peer matrix + `Mcp-Param-*` coverage | -- | Shipped 2026-08-04 (PR #42), `completed/2026-08-04-interop-peer-matrix.complete.md` |
 | B | Stale-schema retry on `-32020` (§1) | -- | Shipped 2026-08-07, `completed/2026-08-07-mcp-header-story-bc.complete.md` |
 | C | Direct `Mcp-Method` assertion + remaining §3.2.4 coverage | -- | Shipped 2026-08-07, same summary |
-| D | B7 MRTR -- `inputRequests` / `inputResponses` (§2 item 6) | Large | `next/2026-08-04-mcp-mrtr.md` |
+| D | B7 MRTR -- `inputRequests` / `inputResponses` (§2 item 6) | Large | Shipped 2026-08-08 (`feat/mcp-mrtr`), `completed/2026-08-08-mcp-mrtr.complete.md` |
 | E | B4 `subscriptions/listen` + the `2025-11-25` `resources/subscribe` branch (§2 item 7, §3.3.3) | Large | Here |
 | F | D1--D3 deprecation handling (§2 item 8) + the §3.4 tidy-ups | Medium | Here |
 
 B and C together finished the `x-mcp-header` work on 2026-08-07: the encoder was already
 conformant against a real decoder, and now a stale schema is refreshed and retried and
-`Mcp-Method` is asserted directly against the SDK v2 peer. D unlocks
-`sampling`, `elicitation` and `roots` on `2026-07-28` and makes the `-32021` ladder reachable.
+`Mcp-Method` is asserted directly against the SDK v2 peer. D shipped 2026-08-08: `sampling`,
+`elicitation` and `roots` work on `2026-07-28`, and the `-32021` ladder is reachable.
 
 ## 1. Deferred groundwork — closed
 
@@ -87,17 +87,17 @@ Original numbering kept so cross-references still resolve:
    **`logLevel` half delivered, both transports.** The roots list-changed half is not done and
    belongs with B7 (roots only exist through MRTR on `2026-07-28`).
 6. **B7** MRTR — `inputRequests`/`inputResponses` replace server-initiated requests
-   (SEP-2322). Deepest; dismantles bidirectional `request()`/`#sentRequests` in
-   `context-rpc`. Depends on U1 + B2. **Not shipped:** client and server refuse
-   `sampling/createMessage`, `elicitation/create` and `roots/list` at setup on `2026-07-28`
-   (`MRTRNotSupportedError`) rather than implementing MRTR itself.
+   (SEP-2322). Depended on U1 + B2. **Shipped 2026-08-08** (`feat/mcp-mrtr`),
+   `completed/2026-08-08-mcp-mrtr.complete.md`.
 
-   The wire schema admits a spec-shaped suspended result (`inputRequiredResult` in
-   `context-protocol/src/versions/2026-07-28.ts`) so the client's refusal fires with its own
-   error rather than a generic validation failure — but nothing consumes `inputRequests` or
-   sends `inputResponses`. When this lands, tighten `withResultType` to `const: 'complete'`:
-   it currently admits `'input_required'` on every terminal branch, so a `callToolResult`-shaped
-   frame labelled `input_required` validates.
+   MRTR turned out to be a request-level retry loop, not a stream, so nothing in
+   `context-rpc`'s `request()` / `#sentRequests` needed dismantling — every MRTR round is an
+   ordinary request/response pair. `sampling/createMessage`, `elicitation/create` and
+   `roots/list` are accepted on `2026-07-28` on both client and server; a suspended
+   `input_required` result is fulfilled by an auto-fulfilment driver on the client
+   (`context-client/src/mrtr.ts`) by default, and a `2026-07-28` handler suspends by returning
+   `inputRequired(...)` and is re-invoked with `inputResponses` on the server
+   (`context-server/src/mrtr.ts`).
 7. **B4** `subscriptions/listen` replaces GET endpoint + `resources/subscribe` (SEP-2575).
    Rewrite HTTP server/client streaming. Depends on U1; parallel with B7.
    **`2025-11-25`-side `resources/subscribe` (folded from the retired `2026-07-02-mcp-feature-gaps.md`,
@@ -110,10 +110,11 @@ Original numbering kept so cross-references still resolve:
    `includeContext`) as the above land.
 
 The U1 streaming arm and continuation store are built, unit-tested and hardened, but have **no
-wire trigger yet**; B4/B7 wire into the `_registerStreamExchange` seam
-(`context-rpc` `exchange.ts` / `continuation.ts`). Nothing is open on the registry itself — the
-remaining decisions (continuation state across reconnects, server-minted handles) live in the
-milestone's open questions.
+wire trigger yet** (`context-rpc` `exchange.ts` / `continuation.ts`). B7 shipped without wiring
+into that seam at all — MRTR is a request-level retry loop with no streaming or continuation
+state to correlate. Whether B4 wires into `_registerStreamExchange` is B4's own call to make when
+it is picked up; it is the only remaining candidate consumer. Nothing is open on the registry
+itself — the remaining decision (server-minted handles) lives in the milestone's open questions.
 
 ## 3. Findings from `feat/mcp-2026-07-28-core` (filed 2026-08-01)
 
@@ -138,11 +139,13 @@ is not more unit tests; it is a peer that reads the headers (see 3.2.3).
 #### 3.2.4 Still unexercised against mokei
 
 - `subscriptions/listen` (also B4).
-- The `MissingRequiredClientCapability` ladders — not reachable on `2026-07-28`, where
-  `PROTOCOL.serverMethods` is empty and no handler can need an undeclared client capability. The
-  emitter arrives with MRTR (B7).
 - Task-augmented params — SEP-2663 removed tasks from the specification and mokei never
   implemented them; delete this line rather than covering it.
+
+Covered as of 2026-08-08: the `MissingRequiredClientCapability` ladder — reachable now that MRTR
+(B7) shipped its `-32021` emitter (`missingInputCapabilities` /
+`MissingRequiredClientCapabilityError` in `context-server/src/mrtr.ts` and `types.ts`), and
+covered by the interop suite.
 
 Covered as of 2026-08-07: `Mcp-Method` is asserted directly on the outgoing request for a
 `tools/call`, a `prompts/get` and a `resources/read`, no longer merely implied by the SDK's
@@ -168,11 +171,11 @@ through mokei's encoder at all.
   `Mcp-Param-*`, `Mcp-Method` or `Mcp-Name` at all (see 3.2.1), so nothing in mokei is in a
   position to reject a request for a header/body disagreement. An emitter needs the server-side
   header validation of 3.2.1, which is not scheduled.
-- `-32021` `MISSING_REQUIRED_CLIENT_CAPABILITY` — the constant exists and has **no reachable
-  emitter**. On `2026-07-28` a server sends no requests at all (`PROTOCOL.serverMethods` is
-  empty), so no handler can need an undeclared client capability, and
-  `ServerClient.createMessage` / `elicit` / `listRoots` throw `MRTRNotSupportedError` first.
-  Revisit with MRTR (B7).
+- `-32021` `MISSING_REQUIRED_CLIENT_CAPABILITY` — **closed as of 2026-08-08.** MRTR (B7) shipped
+  the emitter: `missingInputCapabilities` in `context-server/src/mrtr.ts` checks each embedded
+  `inputRequests` entry's method against the request's declared `ClientCapabilities`, and
+  `MissingRequiredClientCapabilityError` (`context-server/src/types.ts`) throws before the round
+  trip is wasted, answered on the wire as `-32021`.
 
 #### 3.3.3 `2025-11-25`'s `clientMethods` omits `resources/subscribe`/`unsubscribe`
 
@@ -220,6 +223,6 @@ proposal.
 
 ## Notes
 
-- Re-read the milestone's "Open questions" (MRTR continuation state, `server/discover` STDIO
-  probe semantics, server-minted handles) before starting B4/B7.
+- Re-read the milestone's "Open questions" (server-minted handles; `server/discover` STDIO probe
+  semantics and MRTR continuation state are both answered) before starting B4.
 - Re-validate every B-item against the final spec before implementing draft payloads.

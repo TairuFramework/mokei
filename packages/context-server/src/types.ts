@@ -10,6 +10,7 @@ import type {
   ElicitResult,
   GetPromptResult,
   InitializeRequest,
+  InputResponse,
   ListResourcesRequest,
   ListResourcesResult,
   ListResourceTemplatesRequest,
@@ -29,6 +30,8 @@ import type {
 import type { WithRequestOptions } from '@mokei/context-rpc'
 import type { Schema } from '@sozai/schema'
 
+import type { InputRequiredResult } from './mrtr.js'
+
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
 export type ClientInitialize = InitializeRequest['params']
@@ -41,13 +44,33 @@ export type LogParams = {
 
 export type LogFunction = (params: LogParams) => void
 
-/** Thrown when a handler reaches for a client capability that 2026-07-28 routes through MRTR. */
+/** Thrown when a handler reaches for a client capability that this revision routes through MRTR. */
 export class MRTRNotSupportedError extends Error {
   constructor(method: string, version: ProtocolVersion) {
     super(
-      `${method} is not available on protocol version ${version}: server-initiated requests are replaced by multi round-trip requests (SEP-2322), which mokei does not implement yet`,
+      `${method} cannot be called on protocol version ${version}: server-initiated requests are replaced by multi round-trip requests (SEP-2322) — return \`inputRequired({ inputRequests: { <key>: { method, params } } })\` from the handler and read \`inputResponses[<key>]\` when it is re-invoked`,
     )
     this.name = 'MRTRNotSupportedError'
+  }
+}
+
+/**
+ * Thrown when a handler suspends on an input request whose capability the client never declared.
+ * Answered on the wire as `-32021`, carrying the missing capabilities in `data`.
+ */
+export class MissingRequiredClientCapabilityError extends Error {
+  requiredCapabilities: Record<string, Record<string, never>>
+
+  constructor(
+    key: string,
+    method: string,
+    requiredCapabilities: Record<string, Record<string, never>>,
+  ) {
+    super(
+      `Cannot request input "${key}" (${method}): the request's client capabilities do not declare ${Object.keys(requiredCapabilities).join(', ')}`,
+    )
+    this.name = 'MissingRequiredClientCapabilityError'
+    this.requiredCapabilities = requiredCapabilities
   }
 }
 
@@ -70,13 +93,32 @@ export type HandlerRequest<C extends Record<string, unknown> = Record<string, ne
   client: ServerClient
   progress?: ProgressEmitter
   signal: AbortSignal
+  /**
+   * Results for the input requests this handler asked for on a previous round (MRTR, SEP-2322),
+   * keyed as the handler keyed its own `inputRequests`. Absent on the first round and on
+   * `2025-11-25`, which has no MRTR.
+   */
+  inputResponses?: Record<string, InputResponse>
+  /**
+   * The state this handler minted on a previous round, echoed back by the client.
+   *
+   * The decoded payload when the server is configured with a `requestState.verify` hook; the raw
+   * string otherwise, in which case it is UNTRUSTED — it round-tripped through the client and any
+   * caller can forge it. Configure the hook before letting it influence authorization.
+   */
+  requestState?: unknown
+  /** Encodes a payload into the opaque `requestState` string to send with an `inputRequired()`. */
+  mintRequestState: (payload: unknown) => string
 }
 
 export type CompleteHandler = (
   request: HandlerRequest<{ params: CompleteRequest['params'] }>,
 ) => CompleteResult | Promise<CompleteResult>
 
-export type PromptHandlerReturn = GetPromptResult | Promise<GetPromptResult>
+export type PromptHandlerReturn =
+  | GetPromptResult
+  | InputRequiredResult
+  | Promise<GetPromptResult | InputRequiredResult>
 
 export type GenericPromptHandler = (
   request: HandlerRequest<{ input: unknown }>,
@@ -113,7 +155,7 @@ export type ListResourceTemplatesHandler = (
 
 export type ReadResourceHandler = (
   request: HandlerRequest<{ params: ReadResourceRequest['params'] }>,
-) => ReadResourceResult | Promise<ReadResourceResult>
+) => ReadResourceResult | InputRequiredResult | Promise<ReadResourceResult | InputRequiredResult>
 
 export type ResourceDefinitions = {
   list?: ListResourcesHandler | Array<Resource>
@@ -127,7 +169,10 @@ export type ResourceHandlers = {
   read: ReadResourceHandler
 }
 
-export type ToolHandlerReturn = CallToolResult | Promise<CallToolResult>
+export type ToolHandlerReturn =
+  | CallToolResult
+  | InputRequiredResult
+  | Promise<CallToolResult | InputRequiredResult>
 
 export type StructuredToolHandlerReturn<Output> = Omit<CallToolResult, 'content'> & {
   content?: CallToolResult['content']
@@ -142,7 +187,10 @@ export type TypedToolHandler<Arguments, Output = unknown> = (
   request: HandlerRequest<{ input: Arguments }>,
 ) => [unknown] extends [Output]
   ? ToolHandlerReturn
-  : StructuredToolHandlerReturn<Output> | Promise<StructuredToolHandlerReturn<Output>>
+  :
+      | StructuredToolHandlerReturn<Output>
+      | InputRequiredResult
+      | Promise<StructuredToolHandlerReturn<Output> | InputRequiredResult>
 
 export type GenericToolDefinition = {
   description: string

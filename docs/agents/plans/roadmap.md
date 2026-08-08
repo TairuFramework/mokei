@@ -45,12 +45,17 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **MRTR** (`next/2026-08-04-mcp-mrtr.md`) — `inputRequests` / `inputResponses` (SEP-2322).
-  Restores `sampling`, `elicitation` and `roots` on `2026-07-28`, where they currently throw
-  `MRTRNotSupportedError`. Largest remaining piece of the migration.
+Nothing queued.
 
 ## Recently shipped (completed/)
 
+- **MRTR** (2026-08-08, `feat/mcp-mrtr`) — `inputRequests`/`inputResponses` (SEP-2322), a
+  request-level retry loop replacing server-initiated requests: a suspended `tools/call` /
+  `prompts/get` / `resources/read` answers terminally with `resultType: 'input_required'` and
+  is retried with `inputResponses` + echoed `requestState`, no stream or continuation state
+  involved. Restores `sampling`, `elicitation` and `roots` on `2026-07-28` — both revisions now
+  at capability parity — and makes `-32021` `MissingRequiredClientCapabilityError` reachable.
+  See `completed/2026-08-08-mcp-mrtr.complete.md`.
 - **Interop peer matrix** (2026-08-04, PR #42) — all four client/server × stdio/HTTP quadrants
   against SDK `2.0.0`, on both revisions, from shared expectations. Closed the structural gap
   where mokei's request-header encoder had only ever faced peers that ignore it.
@@ -65,7 +70,8 @@ published package in one `versioning.fixed` lockstep group.
 - **SDK v2 interop harness** (2026-07-27, PR #37) — one fixture surface defined twice (mokei and
   SDK), served over stdio and Streamable HTTP; the live peer the matrix above built on.
 - **`context-rpc` stream follow-ups** (2026-07-27, PR #38) — the five items left open when the
-  U1 streaming arm landed, readying `_registerStreamExchange` for MRTR.
+  U1 streaming arm landed, readying `_registerStreamExchange` for draft wiring. MRTR (above)
+  turned out not to need it — `subscriptions/listen` (B4) is the remaining candidate consumer.
 - **MCP `2025-11-25` feature gaps** (2026-07-11, PR #36) — client-side cursor walk in all four
   list methods (fixed silent first-page truncation of `ContextHost`'s tool set), tool
   `outputSchema` + validated `structuredContent`. **BREAKING:** `SentRequest`/`requestValue`
@@ -82,9 +88,11 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 - **MCP spec migration** (`milestones/2026-06-08-mcp-draft-migration.md`) —
   in progress. Phase 0 groundwork (G1–G4, G6, G7) shipped on `2025-11-25`
   (PR #23). The `2026-07-28` revision then shipped as opt-in coexistence: stateless core
-  (PR #40), defect wave (PR #41), interop peer matrix against SDK `2.0.0` (PR #42).
-  Remaining: B7 (MRTR) + the roots half of B6, B4 (`subscriptions/listen`), D1–D3, and
-  G7 part 5's retry loop. See `next/` and the backlog entries below.
+  (PR #40), defect wave (PR #41), interop peer matrix against SDK `2.0.0` (PR #42),
+  G7 part 5's stale-schema retry (PR #43), and MRTR (`feat/mcp-mrtr`) — both revisions now at
+  capability parity. Remaining: the roots half of B6 (not applicable — `2026-07-28` has no
+  `notifications/roots/list_changed` at all), and B4 (`subscriptions/listen`) + D1–D3. See the
+  backlog entries below.
 
 ## Near-term (backlog/)
 

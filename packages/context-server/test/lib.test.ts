@@ -22,6 +22,7 @@ import {
   createPrompt,
   createTool,
   type GenericToolDefinition,
+  inputRequired,
   MRTRNotSupportedError,
   type Schema,
   type ServerParams,
@@ -319,6 +320,9 @@ describe('ContextServer', () => {
       client: expect.objectContaining(expectedClient),
       params,
       signal: expect.any(AbortSignal),
+      inputResponses: undefined,
+      requestState: undefined,
+      mintRequestState: expect.any(Function),
     })
   })
 
@@ -1418,7 +1422,7 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
     await transports.dispose()
   })
 
-  test('2026-07-28 tool handlers cannot reach the client until MRTR lands', async () => {
+  test('2026-07-28 tool handlers must suspend instead of reaching the client directly', async () => {
     const { transports } = createTestContext({
       protocolVersions: ['2026-07-28'],
       tools: { asks: asksTool },
@@ -1437,6 +1441,199 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('2026-07-28')
     await transports.dispose()
+  })
+
+  test('answers -32602 when the requestState verify hook refuses', async () => {
+    await expectServerError(
+      {
+        protocolVersions: ['2026-07-28'],
+        requestState: {
+          mint: (payload) => JSON.stringify(payload),
+          verify: () => {
+            throw new Error('signature mismatch')
+          },
+        },
+        tools: { echo: echoTool },
+      },
+      {
+        method: 'tools/call',
+        params: { _meta: NEW_META, name: 'echo', arguments: {}, requestState: 'forged' },
+      },
+      { code: -32602, message: 'Invalid requestState: signature mismatch' },
+    )
+  })
+
+  test('refuses construction with a requestState.verify hook but no mint', () => {
+    expect(() =>
+      createTestContext({
+        protocolVersions: ['2026-07-28'],
+        requestState: { verify: (raw) => raw },
+        tools: { echo: echoTool },
+      }),
+    ).toThrow(/requestState\.verify is configured without requestState\.mint/)
+  })
+
+  test('allows construction with a requestState.mint hook but no verify', () => {
+    expect(() =>
+      createTestContext({
+        protocolVersions: ['2026-07-28'],
+        requestState: { mint: (payload) => JSON.stringify(payload) },
+        tools: { echo: echoTool },
+      }),
+    ).not.toThrow()
+  })
+
+  const suspendingTool = createTool({
+    description: 'Suspends once, then answers',
+    inputSchema: { type: 'object' },
+    handler: ({ inputResponses, mintRequestState }) =>
+      inputResponses == null
+        ? inputRequired({
+            inputRequests: { roots: { method: 'roots/list', params: {} } },
+            requestState: mintRequestState({ step: 1 }),
+          })
+        : { content: [{ type: 'text', text: 'resumed' }] },
+  })
+
+  test('sends a handler suspension on the wire, uncached', async () => {
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28'], tools: { ask: suspendingTool } },
+      {
+        method: 'tools/call',
+        params: {
+          _meta: { ...NEW_META, 'io.modelcontextprotocol/clientCapabilities': { roots: {} } },
+          name: 'ask',
+          arguments: {},
+        },
+      },
+      {
+        resultType: 'input_required',
+        inputRequests: { roots: { method: 'roots/list', params: {} } },
+        requestState: '{"step":1}',
+        _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
+      },
+    )
+  })
+
+  test('re-invokes the handler with the responses on the retry', async () => {
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28'], tools: { ask: suspendingTool } },
+      {
+        method: 'tools/call',
+        params: {
+          _meta: NEW_META,
+          name: 'ask',
+          arguments: {},
+          inputResponses: { roots: { roots: [] } },
+          requestState: '{"step":1}',
+        },
+      },
+      {
+        content: [{ type: 'text', text: 'resumed' }],
+        resultType: 'complete',
+        _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
+      },
+    )
+  })
+
+  test('refuses a suspension from a method that cannot suspend', async () => {
+    await expectServerError(
+      {
+        protocolVersions: ['2026-07-28'],
+        complete: () => inputRequired({ requestState: 'opaque' }) as never,
+      },
+      {
+        method: 'completion/complete',
+        params: {
+          _meta: NEW_META,
+          ref: { type: 'ref/prompt', name: 'x' },
+          argument: { name: 'a', value: '' },
+        },
+      },
+      { code: -32603, message: 'completion/complete cannot suspend on input' },
+    )
+  })
+
+  test('refuses a suspension on a revision without MRTR', async () => {
+    await expectServerError(
+      { protocolVersions: ['2025-11-25'], tools: { ask: suspendingTool } },
+      { method: 'tools/call', params: { name: 'ask', arguments: {} } },
+      {
+        code: -32603,
+        message:
+          'A handler suspended on protocol version 2025-11-25, which has no multi round-trip requests',
+      },
+    )
+  })
+
+  const samplingTool = createTool({
+    description: 'Needs sampling',
+    inputSchema: { type: 'object' },
+    handler: () =>
+      inputRequired({
+        inputRequests: {
+          sample: { method: 'sampling/createMessage', params: { maxTokens: 1, messages: [] } },
+        },
+      }),
+  })
+
+  test('answers -32021 when the client did not declare the capability the handler needs', async () => {
+    // `NEW_META` declares no client capabilities at all.
+    await expectServerError(
+      { protocolVersions: ['2026-07-28'], tools: { ask: samplingTool } },
+      { method: 'tools/call', params: { _meta: NEW_META, name: 'ask', arguments: {} } },
+      {
+        code: -32021,
+        message:
+          'Cannot request input "sample" (sampling/createMessage): the request\'s client capabilities do not declare sampling',
+        data: { requiredCapabilities: { sampling: {} } },
+      },
+    )
+  })
+
+  test('sends the suspension when the client did declare it', async () => {
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28'], tools: { ask: samplingTool } },
+      {
+        method: 'tools/call',
+        params: {
+          _meta: {
+            ...NEW_META,
+            'io.modelcontextprotocol/clientCapabilities': { sampling: {} },
+          },
+          name: 'ask',
+          arguments: {},
+        },
+      },
+      {
+        resultType: 'input_required',
+        inputRequests: {
+          sample: { method: 'sampling/createMessage', params: { maxTokens: 1, messages: [] } },
+        },
+        _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
+      },
+    )
+  })
+
+  const stateOnlyTool = createTool({
+    description: 'Suspends on requestState alone, asking for no embedded input',
+    inputSchema: { type: 'object' },
+    handler: ({ mintRequestState }) =>
+      inputRequired({ requestState: mintRequestState({ step: 1 }) }),
+  })
+
+  test('a requestState-only suspension clears the capability check with none declared', async () => {
+    // `NEW_META` declares no client capabilities at all — this must never trip -32021 since the
+    // suspension names no embedded request (a load-shedding leg, SEP-2322).
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28'], tools: { ask: stateOnlyTool } },
+      { method: 'tools/call', params: { _meta: NEW_META, name: 'ask', arguments: {} } },
+      {
+        resultType: 'input_required',
+        requestState: '{"step":1}',
+        _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
+      },
+    )
   })
 })
 
@@ -1584,6 +1781,7 @@ describe('factory parameters object', () => {
       input: { value: 1 },
       client: {} as never,
       signal: new AbortController().signal,
+      mintRequestState: () => '',
     })
     expect(result).toEqual({ content: [{ type: 'text', text: '2' }] })
   })
@@ -1600,6 +1798,7 @@ describe('factory parameters object', () => {
         input: { value: 'not a number' },
         client: {} as never,
         signal: new AbortController().signal,
+        mintRequestState: () => '',
       }),
     ).rejects.toMatchObject({ code: INVALID_PARAMS })
   })
@@ -1622,6 +1821,7 @@ describe('factory parameters object', () => {
       input: { name: 'World' },
       client: {} as never,
       signal: new AbortController().signal,
+      mintRequestState: () => '',
     })
     expect(result).toEqual({
       messages: [{ role: 'assistant', content: { type: 'text', text: 'Hello World' } }],
@@ -1639,6 +1839,7 @@ describe('factory parameters object', () => {
       input: { anything: true },
       client: {} as never,
       signal: new AbortController().signal,
+      mintRequestState: () => '',
     })
     expect(result).toEqual({ messages: [] })
   })
@@ -1656,6 +1857,7 @@ describe('tool outputSchema', () => {
       input: args,
       client: {} as never,
       signal: new AbortController().signal,
+      mintRequestState: () => '',
     })
   }
 
@@ -1758,5 +1960,57 @@ describe('tool outputSchema', () => {
     await expect(callHandler(definition)).resolves.toEqual({
       content: [{ type: 'text', text: 'ok' }],
     })
+  })
+
+  // A suspension carries no `structuredContent` by construction — it must never reach output-
+  // schema validation, which would otherwise reject it as a missing/invalid structured result.
+  test('a handler suspension bypasses output validation entirely', async () => {
+    const definition = createTool({
+      description: 'counts',
+      inputSchema: { type: 'object' } as const,
+      outputSchema: countSchema,
+      handler: ({ inputResponses, mintRequestState }) =>
+        inputResponses == null
+          ? inputRequired({ requestState: mintRequestState({ step: 1 }) })
+          : { structuredContent: { count: 1 } },
+    })
+    await expect(callHandler(definition)).resolves.toEqual({
+      resultType: 'input_required',
+      // `callHandler`'s stub `mintRequestState` always returns `''` — its identity is not
+      // this test's concern, only that the suspension carries it through untouched.
+      requestState: '',
+    })
+  })
+
+  test('a structured-output tool reaches the wire as input_required, not -32603', async () => {
+    const structuredSuspendingTool = createTool({
+      description: 'counts, suspending once',
+      inputSchema: { type: 'object' } as const,
+      outputSchema: countSchema,
+      handler: ({ inputResponses, mintRequestState }) =>
+        inputResponses == null
+          ? inputRequired({
+              inputRequests: { roots: { method: 'roots/list', params: {} } },
+              requestState: mintRequestState({ step: 1 }),
+            })
+          : { structuredContent: { count: 1 } },
+    })
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28'], tools: { counter: structuredSuspendingTool } },
+      {
+        method: 'tools/call',
+        params: {
+          _meta: { ...NEW_META, 'io.modelcontextprotocol/clientCapabilities': { roots: {} } },
+          name: 'counter',
+          arguments: {},
+        },
+      },
+      {
+        resultType: 'input_required',
+        inputRequests: { roots: { method: 'roots/list', params: {} } },
+        requestState: '{"step":1}',
+        _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
+      },
+    )
   })
 })

@@ -100,6 +100,7 @@ export const PROTOCOL = {
     'notifications/roots/list_changed',
   ]),
   serverMethods: new Set(['ping', 'sampling/createMessage', 'roots/list', 'elicitation/create']),
+  inputRequestMethods: new Set<string>(),
   clientMessage,
   serverMessage,
   decorateRequest: (params: unknown): unknown => params,

@@ -56,6 +56,15 @@ export type ProtocolDefinition = {
   clientNotifications: ReadonlySet<string>
   /** Methods a server may send in this revision. */
   serverMethods: ReadonlySet<string>
+  /**
+   * Methods this revision carries as requests embedded in an `input_required` result (MRTR,
+   * SEP-2322), rather than as server-initiated requests.
+   *
+   * Disjoint from {@link ProtocolDefinition.serverMethods} by construction: a method is reachable
+   * one way or the other, never both. `2025-11-25` sends all three as real requests and so carries
+   * none here; `2026-07-28` sends no requests at all and so carries all three.
+   */
+  inputRequestMethods: ReadonlySet<string>
   /** Inbound-message validators, used by the server and client read loops. */
   clientMessage: Schema
   serverMessage: Schema
@@ -77,3 +86,16 @@ export type ProtocolDefinition = {
     context: ServerResultContext,
   ) => Record<string, unknown>
 }
+
+/**
+ * The client capability each input-request method requires, independent of revision.
+ *
+ * Read by the client when deciding whether a handler is configurable, and by the server when
+ * deciding whether an embedded request may be sent to this client (`-32021`). One table so the
+ * two cannot disagree about what `sampling` means.
+ */
+export const INPUT_REQUEST_CAPABILITIES = {
+  'sampling/createMessage': 'sampling',
+  'elicitation/create': 'elicitation',
+  'roots/list': 'roots',
+} as const satisfies Record<string, keyof ClientCapabilities>

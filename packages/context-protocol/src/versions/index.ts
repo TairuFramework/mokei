@@ -12,6 +12,14 @@ import {
   type DiscoverRequest,
   type DiscoverResult,
   discoverResult,
+  type InputRequest,
+  type InputRequiredResult,
+  type InputResponse,
+  inputRequest,
+  inputRequests,
+  inputResponse,
+  inputResponses,
+  isInputRequiredResult,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
   PROTOCOL as PROTOCOL_2026_07_28,
@@ -25,13 +33,23 @@ export type ClientNotification = ClientNotification20251125 | ClientNotification
 /** Any message a client speaking any supported revision may send. */
 export type ClientMessage = ClientMessage20251125 | ClientMessage20260728
 
-export type { DiscoverRequest, DiscoverResult }
+export type { DiscoverRequest, DiscoverResult, InputRequest, InputRequiredResult, InputResponse }
 // `clientMessage` (the schema value, as opposed to the `ClientMessage` type above) is
 // `2025-11-25`'s own schema — it predates the version split and nothing besides that revision's
 // own `PROTOCOL.clientMessage` currently consumes it as a value. Multi-revision wire validation
 // goes through `PROTOCOLS[version].clientMessage` instead; this is kept only for existing
 // callers of the value export.
-export { clientMessage, discoverResult, META_CLIENT_CAPABILITIES, META_PROTOCOL_VERSION }
+export {
+  clientMessage,
+  discoverResult,
+  inputRequest,
+  inputRequests,
+  inputResponse,
+  inputResponses,
+  isInputRequiredResult,
+  META_CLIENT_CAPABILITIES,
+  META_PROTOCOL_VERSION,
+}
 
 /** Supported revisions, newest first. */
 export const PROTOCOL_VERSIONS = [
@@ -55,3 +73,4 @@ export type {
   RequestMetaInfo,
   ServerResultContext,
 } from './types.js'
+export { INPUT_REQUEST_CAPABILITIES } from './types.js'

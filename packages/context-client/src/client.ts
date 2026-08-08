@@ -18,6 +18,8 @@ import type {
   Implementation,
   InitializeRequest,
   InitializeResult,
+  InputRequest,
+  InputResponse,
   ListPromptsRequest,
   ListPromptsResult,
   ListResourcesRequest,
@@ -45,6 +47,7 @@ import type {
 import {
   discoverResult,
   type ErrorResponse,
+  INPUT_REQUEST_CAPABILITIES,
   INVALID_REQUEST,
   inferSchemaDraft,
   isSupportedProtocolVersion,
@@ -65,6 +68,12 @@ import {
 import { lazy } from '@sozai/async'
 import { createValidator, type Schema, type Validator } from '@sozai/schema'
 
+import {
+  DEFAULT_MAX_ROUNDS,
+  isInputRequiredResult,
+  MRTR_METHODS,
+  runInputRequiredFlow,
+} from './mrtr.js'
 import { currentTraceMeta } from './trace.js'
 import type { ClientTransport } from './types.js'
 
@@ -206,26 +215,26 @@ export class MethodNotInRevisionError extends Error {
 
 /**
  * Thrown when a client is configured with a `createMessage`/`elicit`/`listRoots` handler on a
- * protocol revision whose `serverMethods` carries no way to invoke it — the client-side mirror
- * of `@mokei/context-server`'s `MRTRNotSupportedError`. `2026-07-28` has no server-initiated
- * requests: `sampling/createMessage`, `elicitation/create` and `roots/list` are replaced by
- * multi round-trip requests (MRTR, SEP-2322), which mokei does not implement yet.
+ * protocol revision that can invoke it neither as a server-initiated request nor as an MRTR input
+ * request — the client-side mirror of `@mokei/context-server`'s `MRTRNotSupportedError`.
  */
 export class MRTRNotSupportedError extends Error {
   constructor(handler: string, version: ProtocolVersion) {
     super(
-      `The "${handler}" handler is not supported on protocol version ${version}: sampling, elicitation and roots are replaced by multi round-trip requests (MRTR, SEP-2322), which mokei does not implement yet`,
+      `The "${handler}" handler is not supported on protocol version ${version}: the revision carries its method neither as a server-initiated request nor as a multi round-trip input request (MRTR, SEP-2322)`,
     )
     this.name = 'MRTRNotSupportedError'
   }
 }
 
-/** Thrown when a server returns an `input_required` result: MRTR (SEP-2322) is not implemented yet. */
+/**
+ * Thrown when a server returns an `input_required` result the client will not fulfil: either
+ * auto-fulfilment is off and the call did not pass `allowInputRequired`, or no handler is
+ * configured for one of the embedded methods.
+ */
 export class InputRequiredNotSupportedError extends Error {
-  constructor() {
-    super(
-      'The server returned an "input_required" result: multi round-trip requests (MRTR, SEP-2322) are not implemented yet',
-    )
+  constructor(reason: string) {
+    super(`The server returned an "input_required" result: ${reason}`)
     this.name = 'InputRequiredNotSupportedError'
   }
 }
@@ -383,6 +392,13 @@ export type ClientParams = {
   listRoots?: Array<Root> | ListRootsHandler
   logLevel?: LoggingLevel
   /**
+   * Multi round-trip request behavior (MRTR, SEP-2322). `autoFulfill` (default `true`) dispatches
+   * a server's embedded input requests to this client's own `createMessage`/`elicit`/`listRoots`
+   * handlers and retries, so callers of `callTool`/`getPrompt`/`readResource` receive the same
+   * result type they do on `2025-11-25`. `maxRounds` (default 10) caps a single call's rounds.
+   */
+  inputRequired?: { autoFulfill?: boolean; maxRounds?: number }
+  /**
    * Server-initiated request handlers (`sampling/createMessage`, `elicitation/create`,
    * `roots/list` on `2025-11-25`) allowed to run at once (default 100). Symmetric with
    * `@mokei/context-server`'s `ServerParams.maxConcurrentRequests`.
@@ -425,6 +441,7 @@ export class ContextClient<
   #discovering: Promise<DiscoverResult> | null = null
   #elicit?: ElicitHandler
   #initialized: PromiseLike<InitializeResult>
+  #inputRequired: { autoFulfill: boolean; maxRounds: number }
   #listMaxPages: number
   #listRoots?: Array<Root> | ListRootsHandler
   #logLevel?: LoggingLevel
@@ -485,14 +502,13 @@ export class ContextClient<
       throw new UnsupportedProtocolVersionError(params.protocolVersion)
     }
 
-    // Derived from `serverMethods`, not a hardcoded version check: a handler is refused
-    // exactly when its own method (`sampling/createMessage`/`elicitation/create`/`roots/list`)
-    // is absent from the configured revision — the client-side mirror of what
-    // `@mokei/context-server` does per capability on the server side. Skipped here when the
-    // revision is still `'auto'`: the revision isn't known yet, so `#setup()` re-runs this same
-    // check (`#refuseUnsupportedHandlers`) once the probe resolves it — a handler accepted here
-    // because the revision was unknown must still be refused if the probe lands on
-    // `2026-07-28`, whose `serverMethods` is always empty.
+    // Derived from `serverMethods` and `inputRequestMethods`, not a hardcoded version check: a
+    // handler is refused exactly when the configured revision can invoke its method neither
+    // way — the client-side mirror of what `@mokei/context-server` does per capability on the
+    // server side. Skipped here when the revision is still `'auto'`: the revision isn't known
+    // yet, so `#setup()` re-runs this same check (`#refuseUnsupportedHandlers`) once the probe
+    // resolves it — a handler accepted here because the revision was unknown must still be
+    // refused if the probe lands on a revision that can reach its method neither way.
     const protocol = params.protocolVersion === 'auto' ? null : PROTOCOLS[params.protocolVersion]
     if (protocol != null) {
       this.#refuseUnsupportedHandlers(protocol)
@@ -513,6 +529,10 @@ export class ContextClient<
     this.#clientInfo = params.clientInfo ?? DEFAULT_CLIENT_INFO
     this.#initialized = lazy(() => this.#initialize())
     this.#listMaxPages = params.listMaxPages ?? DEFAULT_LIST_MAX_PAGES
+    this.#inputRequired = {
+      autoFulfill: params.inputRequired?.autoFulfill ?? true,
+      maxRounds: params.inputRequired?.maxRounds ?? DEFAULT_MAX_ROUNDS,
+    }
     this.#logLevel = params.logLevel
     this.#protocol = protocol
     this.#ready = lazy(() => this.#setup())
@@ -558,27 +578,38 @@ export class ContextClient<
 
   /**
    * Throws when a handler is configured (`createMessage`/`elicit`/`listRoots`) whose method
-   * (`sampling/createMessage`/`elicitation/create`/`roots/list`) is absent from `protocol`'s
-   * `serverMethods` — derived from the method table, never a version literal. Called once at
-   * construction for a fixed `protocolVersion`, and again from `#setup()` once an `'auto'`
-   * probe resolves the revision, so a handler that was accepted only because the revision
-   * wasn't known yet is still refused if the probe lands on `2026-07-28`.
+   * (`sampling/createMessage`/`elicitation/create`/`roots/list`) is reachable neither as a
+   * server-initiated request (`serverMethods`) nor as an MRTR input request
+   * (`inputRequestMethods`) in `protocol`. Derived from the method tables, never a version
+   * literal. Called once at construction for a fixed `protocolVersion`, and again from `#setup()`
+   * once an `'auto'` probe resolves the revision.
+   *
+   * Both current revisions carry all three methods one way or the other, so this refuses nothing
+   * today. It stays because the two tables are what make that true, and a future revision that
+   * dropped one would otherwise silently accept a handler it can never invoke.
    */
   #refuseUnsupportedHandlers(protocol: ProtocolDefinition): void {
-    if (this.#createMessage != null && !protocol.serverMethods.has('sampling/createMessage')) {
+    const reachable = (method: string): boolean =>
+      protocol.serverMethods.has(method) || protocol.inputRequestMethods.has(method)
+    if (this.#createMessage != null && !reachable('sampling/createMessage')) {
       throw new MRTRNotSupportedError('createMessage', protocol.version)
     }
-    if (this.#elicit != null && !protocol.serverMethods.has('elicitation/create')) {
+    if (this.#elicit != null && !reachable('elicitation/create')) {
       throw new MRTRNotSupportedError('elicit', protocol.version)
     }
-    if (this.#listRoots != null && !protocol.serverMethods.has('roots/list')) {
+    if (this.#listRoots != null && !reachable('roots/list')) {
       throw new MRTRNotSupportedError('listRoots', protocol.version)
     }
   }
 
   // Decorate every outgoing request with this revision's protocol envelope (`decorateRequest`)
   // and inject W3C trace context (SEP-414) into `_meta`; the latter is a no-op when no
-  // OpenTelemetry SDK is active. Reject an `input_required` result until MRTR (SEP-2322) lands.
+  // OpenTelemetry SDK is active. Drives MRTR (SEP-2322) rounds for an `input_required` result on
+  // a method that can suspend: dispatches the embedded requests and retries, unless the caller
+  // passed `allowInputRequired` (which hands the raw suspension back instead) or
+  // `inputRequired.autoFulfill` is off (which throws `InputRequiredNotSupportedError`). A
+  // suspension the revision or method cannot legally produce always throws, regardless of either
+  // opt-out.
   //
   // Awaits `#ready` first (not just `#requireProtocol()`): `getPrompt`, `readResource` and
   // `callTool` call `request()` directly with no `#ready` await of their own, so under
@@ -634,11 +665,53 @@ export class ContextClient<
       clientInfo: this.#clientInfo,
       logLevel: this.#logLevel,
     })
+    // Charges the leg below against `maxTotalTimeout` too: that budget is documented (and, via
+    // `runInputRequiredFlow`'s `startedAt`, implemented) as covering the leg that produced the
+    // first suspension, not just the retries after it.
+    const startedAt = Date.now()
     const result = await super.request(method, decorated as typeof params, options)
-    if ((result as { resultType?: string } | undefined)?.resultType === 'input_required') {
-      throw new InputRequiredNotSupportedError()
+    if (!isInputRequiredResult(result)) {
+      return result
     }
-    return result
+    // A suspension the resolved revision or this method can never legally produce is a
+    // nonconforming peer, not a suspension to drive or hand back — refused unconditionally, the
+    // same as every `input_required` result was refused before MRTR existed. Mirrors
+    // `ContextServer._handleRequest`'s own two-part gate (`server.ts`'s `inputRequestMethods.size`
+    // and `MRTR_METHODS` checks) so a `2025-11-25` peer or a non-MRTR method on `2026-07-28` (e.g.
+    // `tools/list`) cannot talk this client into driving rounds `MRTR_METHODS` never grants it.
+    if (protocol.inputRequestMethods.size === 0 || !MRTR_METHODS.has(method as string)) {
+      throw new InputRequiredNotSupportedError(
+        protocol.inputRequestMethods.size === 0
+          ? `protocol version ${protocol.version} has no multi round-trip requests`
+          : `${method as string} cannot suspend on input`,
+      )
+    }
+    // The opt-in path: hand the suspension back and let the caller drive its own rounds. Also how
+    // the driver below reads each retry leg, so the loop lives in exactly one place.
+    if (options?.allowInputRequired) {
+      return result as ClientTypes['SendRequests'][Method]['Result']
+    }
+    if (!this.#inputRequired.autoFulfill) {
+      throw new InputRequiredNotSupportedError(
+        'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
+      )
+    }
+    return (await runInputRequiredFlow({
+      method: method as string,
+      first: result,
+      maxRounds: this.#inputRequired.maxRounds,
+      timeout: options?.timeout,
+      maxTotalTimeout: options?.maxTotalTimeout,
+      startedAt,
+      signal: options?.signal,
+      dispatch: (key, inputRequest, signal) => this.#fulfilInputRequest(key, inputRequest, signal),
+      retry: (retryParams, timeout) =>
+        this.request(method, { ...(params as object), ...retryParams } as typeof params, {
+          ...options,
+          allowInputRequired: true,
+          timeout,
+        }),
+    })) as ClientTypes['SendRequests'][Method]['Result']
   }
 
   /**
@@ -1147,6 +1220,43 @@ export class ContextClient<
       this.#notificationBuffer.shift()
     }
     this.#notificationPull?.()
+  }
+
+  /**
+   * Fulfils one embedded MRTR input request with this client's own handler.
+   *
+   * The same three handlers `_handleRequest` uses for `2025-11-25`'s server-initiated requests —
+   * one handler, both revisions, which is the whole point of driving MRTR here rather than
+   * exposing it to callers.
+   */
+  async #fulfilInputRequest(
+    key: string,
+    request: InputRequest,
+    signal: AbortSignal,
+  ): Promise<InputResponse> {
+    switch (request.method) {
+      case 'sampling/createMessage':
+        if (this.#createMessage != null) {
+          return await this.#createMessage({ params: request.params, signal })
+        }
+        break
+      case 'elicitation/create':
+        if (this.#elicit != null) {
+          return await this.#elicit({ params: request.params, signal })
+        }
+        break
+      case 'roots/list':
+        if (this.#listRoots != null) {
+          const roots = Array.isArray(this.#listRoots)
+            ? this.#listRoots
+            : await this.#listRoots({ signal })
+          return { roots }
+        }
+        break
+    }
+    throw new InputRequiredNotSupportedError(
+      `no handler is configured for the "${request.method}" input request "${key}" (declare the "${INPUT_REQUEST_CAPABILITIES[request.method]}" capability by passing its handler to the client)`,
+    )
   }
 
   async _handleRequest(request: ServerRequest, signal: AbortSignal): Promise<ClientResult> {
