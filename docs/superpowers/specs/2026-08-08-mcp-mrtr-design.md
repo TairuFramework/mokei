@@ -125,9 +125,11 @@ round = 1 .. maxRounds
 exhausted -> InputRequiredRoundsExceededError
 ```
 
-Both leg kinds count against the round cap. Embedded requests are validated *before* a user handler
-sees them, so a malformed frame fails the flow rather than reaching consumer code as untyped data.
-The `requestState`-only leg is a legal server behavior meaning "retry me, I am not finished"; without
+Both leg kinds count against the round cap. Embedded requests are validated before a user handler
+sees them, by the read loop's existing wire validation: `inputRequiredResult` reaches down into the
+embedded-request union, so a malformed frame is refused as an invalid response rather than reaching
+consumer code as untyped data. That is also why the server does not re-validate what it emits — the
+rule lives in the schema, in one place. The `requestState`-only leg is a legal server behavior meaning "retry me, I am not finished"; without
 the pacing delay nothing throttles that loop, since no handler work happens in the round.
 
 Each retry goes through `ContextClient.request()` unchanged, so every round is decorated with a
@@ -193,7 +195,6 @@ never entered.
 On the way out, an `input_required` result:
 
 - skips `applyCacheHints` — a suspended result is not an answer and must not be cached;
-- has each embedded request validated against its method's schema;
 - has each embedded method's required client capability checked (see §4);
 - passes through `wrapResult` with its own `resultType`;
 - is refused as an internal error when the method is not one of the three, or when the revision is
