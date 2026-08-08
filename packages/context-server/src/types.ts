@@ -54,6 +54,26 @@ export class MRTRNotSupportedError extends Error {
   }
 }
 
+/**
+ * Thrown when a handler suspends on an input request whose capability the client never declared.
+ * Answered on the wire as `-32021`, carrying the missing capabilities in `data`.
+ */
+export class MissingRequiredClientCapabilityError extends Error {
+  requiredCapabilities: Record<string, Record<string, never>>
+
+  constructor(
+    key: string,
+    method: string,
+    requiredCapabilities: Record<string, Record<string, never>>,
+  ) {
+    super(
+      `Cannot request input "${key}" (${method}): the request's client capabilities do not declare ${Object.keys(requiredCapabilities).join(', ')}`,
+    )
+    this.name = 'MissingRequiredClientCapabilityError'
+    this.requiredCapabilities = requiredCapabilities
+  }
+}
+
 export type ServerClient = {
   createMessage: (
     params: WithRequestOptions<CreateMessageRequest['params']>,

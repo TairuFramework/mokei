@@ -1477,7 +1477,14 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
   test('sends a handler suspension on the wire, uncached', async () => {
     await expectServerResult(
       { protocolVersions: ['2026-07-28'], tools: { ask: suspendingTool } },
-      { method: 'tools/call', params: { _meta: NEW_META, name: 'ask', arguments: {} } },
+      {
+        method: 'tools/call',
+        params: {
+          _meta: { ...NEW_META, 'io.modelcontextprotocol/clientCapabilities': { roots: {} } },
+          name: 'ask',
+          arguments: {},
+        },
+      },
       {
         resultType: 'input_required',
         inputRequests: { roots: { method: 'roots/list', params: {} } },
@@ -1534,6 +1541,55 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
         code: -32603,
         message:
           'A handler suspended on protocol version 2025-11-25, which has no multi round-trip requests',
+      },
+    )
+  })
+
+  const samplingTool = createTool({
+    description: 'Needs sampling',
+    inputSchema: { type: 'object' },
+    handler: () =>
+      inputRequired({
+        inputRequests: {
+          sample: { method: 'sampling/createMessage', params: { maxTokens: 1, messages: [] } },
+        },
+      }),
+  })
+
+  test('answers -32021 when the client did not declare the capability the handler needs', async () => {
+    // `NEW_META` declares no client capabilities at all.
+    await expectServerError(
+      { protocolVersions: ['2026-07-28'], tools: { ask: samplingTool } },
+      { method: 'tools/call', params: { _meta: NEW_META, name: 'ask', arguments: {} } },
+      {
+        code: -32021,
+        message:
+          'Cannot request input "sample" (sampling/createMessage): the request\'s client capabilities do not declare sampling',
+        data: { requiredCapabilities: { sampling: {} } },
+      },
+    )
+  })
+
+  test('sends the suspension when the client did declare it', async () => {
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28'], tools: { ask: samplingTool } },
+      {
+        method: 'tools/call',
+        params: {
+          _meta: {
+            ...NEW_META,
+            'io.modelcontextprotocol/clientCapabilities': { sampling: {} },
+          },
+          name: 'ask',
+          arguments: {},
+        },
+      },
+      {
+        resultType: 'input_required',
+        inputRequests: {
+          sample: { method: 'sampling/createMessage', params: { maxTokens: 1, messages: [] } },
+        },
+        _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
       },
     )
   })
@@ -1899,7 +1955,14 @@ describe('tool outputSchema', () => {
     })
     await expectServerResult(
       { protocolVersions: ['2026-07-28'], tools: { counter: structuredSuspendingTool } },
-      { method: 'tools/call', params: { _meta: NEW_META, name: 'counter', arguments: {} } },
+      {
+        method: 'tools/call',
+        params: {
+          _meta: { ...NEW_META, 'io.modelcontextprotocol/clientCapabilities': { roots: {} } },
+          name: 'counter',
+          arguments: {},
+        },
+      },
       {
         resultType: 'input_required',
         inputRequests: { roots: { method: 'roots/list', params: {} } },

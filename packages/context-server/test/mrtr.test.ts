@@ -5,6 +5,7 @@ import {
   isInputRequiredResult,
   liftRetryParams,
   MRTR_METHODS,
+  missingInputCapabilities,
   resolveRequestState,
 } from '../src/mrtr.js'
 
@@ -82,5 +83,24 @@ describe('inputRequired', () => {
 describe('MRTR_METHODS', () => {
   test('is exactly the three methods that may suspend', () => {
     expect([...MRTR_METHODS].sort()).toEqual(['prompts/get', 'resources/read', 'tools/call'])
+  })
+})
+
+describe('missingInputCapabilities', () => {
+  const sampling = {
+    method: 'sampling/createMessage' as const,
+    params: { maxTokens: 1, messages: [] },
+  }
+
+  test('reports the capability a client did not declare', () => {
+    expect(missingInputCapabilities({ ask: sampling }, {})).toEqual({ sampling: {} })
+  })
+
+  test('reports nothing when the client declared it', () => {
+    expect(missingInputCapabilities({ ask: sampling }, { sampling: {} })).toBeUndefined()
+  })
+
+  test('reports nothing for an empty request map', () => {
+    expect(missingInputCapabilities(undefined, {})).toBeUndefined()
   })
 })

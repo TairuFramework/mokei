@@ -14,6 +14,7 @@ import type {
   GetPromptResult,
   Implementation,
   InitializeResult,
+  InputRequest,
   InputResponse,
   ListRootsRequest,
   ListRootsResult,
@@ -32,11 +33,13 @@ import type {
 } from '@mokei/context-protocol'
 import {
   ENVELOPE_VIOLATION,
+  INPUT_REQUEST_CAPABILITIES,
   INTERNAL_ERROR,
   INVALID_PARAMS,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
   METHOD_NOT_FOUND,
+  MISSING_REQUIRED_CLIENT_CAPABILITY,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
   UNSUPPORTED_PROTOCOL_VERSION,
@@ -57,6 +60,7 @@ import {
   isInputRequiredResult,
   liftRetryParams,
   MRTR_METHODS,
+  missingInputCapabilities,
   type RequestStateHooks,
   resolveRequestState,
 } from './mrtr.js'
@@ -74,7 +78,7 @@ import type {
   ServerTransport,
   ToolDefinitions,
 } from './types.js'
-import { MRTRNotSupportedError } from './types.js'
+import { MissingRequiredClientCapabilityError, MRTRNotSupportedError } from './types.js'
 
 type MRTRContext = {
   inputResponses?: Record<string, InputResponse>
@@ -441,6 +445,20 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       }
       if (!MRTR_METHODS.has(request.method)) {
         throw new RPCError(INTERNAL_ERROR, `${request.method} cannot suspend on input`)
+      }
+      const missing = missingInputCapabilities(
+        result.inputRequests,
+        protocol.readRequestMeta(request).clientCapabilities,
+      )
+      if (missing != null) {
+        const [key, embedded] = Object.entries(result.inputRequests ?? {}).find(
+          ([, value]) => missing[INPUT_REQUEST_CAPABILITIES[value.method]] != null,
+        ) as [string, InputRequest]
+        throw new RPCError(
+          MISSING_REQUIRED_CLIENT_CAPABILITY,
+          new MissingRequiredClientCapabilityError(key, embedded.method, missing).message,
+          { requiredCapabilities: missing },
+        )
       }
       // Deliberately not through `applyCacheHints`: a suspension is not an answer, so there is
       // nothing to cache and a `ttlMs` on it would tell the client to reuse a half-finished call.

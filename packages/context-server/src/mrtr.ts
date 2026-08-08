@@ -1,4 +1,5 @@
-import type { InputRequest, InputResponse } from '@mokei/context-protocol'
+import type { ClientCapabilities, InputRequest, InputResponse } from '@mokei/context-protocol'
+import { INPUT_REQUEST_CAPABILITIES } from '@mokei/context-protocol'
 
 /**
  * Server-side multi round-trip request support (MRTR, SEP-2322).
@@ -113,4 +114,30 @@ export function isInputRequiredResult(value: unknown): value is InputRequiredRes
     typeof value === 'object' &&
     (value as { resultType?: unknown }).resultType === 'input_required'
   )
+}
+
+/**
+ * The capabilities an `input_required` result needs but its client has not declared.
+ *
+ * A `2026-07-28` client declares `sampling`/`elicitation`/`roots` in every request's `_meta`
+ * exactly when it has a handler for the matching method, so an undeclared capability means the
+ * embedded request could never be fulfilled and the exchange would burn a round trip to find out.
+ * Returns `undefined` when nothing is missing, so the caller's check is one `!= null`.
+ */
+export function missingInputCapabilities(
+  inputRequests: Record<string, InputRequest> | undefined,
+  clientCapabilities: ClientCapabilities | undefined,
+): Record<string, Record<string, never>> | undefined {
+  if (inputRequests == null) {
+    return undefined
+  }
+  const declared = clientCapabilities ?? {}
+  const missing: Record<string, Record<string, never>> = {}
+  for (const request of Object.values(inputRequests)) {
+    const capability = INPUT_REQUEST_CAPABILITIES[request.method]
+    if (capability != null && declared[capability] == null) {
+      missing[capability] = {}
+    }
+  }
+  return Object.keys(missing).length === 0 ? undefined : missing
 }
