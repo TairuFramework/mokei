@@ -1,4 +1,4 @@
-import type { InputResponse } from '@mokei/context-protocol'
+import type { InputRequest, InputResponse } from '@mokei/context-protocol'
 
 /**
  * Server-side multi round-trip request support (MRTR, SEP-2322).
@@ -67,4 +67,50 @@ export function resolveRequestState(
     return undefined
   }
   return hooks?.verify == null ? raw : hooks.verify(raw)
+}
+
+/** The methods SEP-2322 allows to suspend. Everything else must answer terminally. */
+export const MRTR_METHODS: ReadonlySet<string> = new Set([
+  'tools/call',
+  'prompts/get',
+  'resources/read',
+])
+
+export type InputRequiredResult = {
+  resultType: 'input_required'
+  inputRequests?: Record<string, InputRequest>
+  requestState?: string
+}
+
+/**
+ * Builds the suspended result a handler returns to ask the client for input (MRTR, SEP-2322).
+ *
+ * Enforces SEP-2322's at-least-one rule here rather than letting the wire validator catch it: a
+ * suspension that asks for nothing and carries no state tells the client neither what to do nor
+ * what to echo, and failing at the call site names the handler that built it.
+ */
+export function inputRequired(params: {
+  inputRequests?: Record<string, InputRequest>
+  requestState?: string
+}): InputRequiredResult {
+  const hasRequests = params.inputRequests != null && Object.keys(params.inputRequests).length > 0
+  if (!hasRequests && params.requestState === undefined) {
+    throw new Error(
+      'An input_required result must carry at least one of inputRequests or requestState',
+    )
+  }
+  return {
+    resultType: 'input_required',
+    ...(hasRequests && { inputRequests: params.inputRequests }),
+    ...(params.requestState !== undefined && { requestState: params.requestState }),
+  }
+}
+
+/** A discriminator check over a handler's return value. */
+export function isInputRequiredResult(value: unknown): value is InputRequiredResult {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    (value as { resultType?: unknown }).resultType === 'input_required'
+  )
 }

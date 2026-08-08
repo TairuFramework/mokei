@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
-import { liftRetryParams, resolveRequestState } from '../src/mrtr.js'
+import {
+  inputRequired,
+  isInputRequiredResult,
+  liftRetryParams,
+  MRTR_METHODS,
+  resolveRequestState,
+} from '../src/mrtr.js'
 
 describe('liftRetryParams', () => {
   test('removes both fields and reports them', () => {
@@ -49,5 +55,32 @@ describe('resolveRequestState', () => {
 
   test('returns undefined when no state was sent', () => {
     expect(resolveRequestState(undefined, { verify: () => 'never' })).toBeUndefined()
+  })
+})
+
+describe('inputRequired', () => {
+  test('builds a suspended result', () => {
+    const request = { method: 'roots/list' as const, params: {} }
+    expect(inputRequired({ inputRequests: { ask: request }, requestState: 'opaque' })).toEqual({
+      resultType: 'input_required',
+      inputRequests: { ask: request },
+      requestState: 'opaque',
+    })
+  })
+
+  test('refuses a suspension that carries neither field', () => {
+    expect(() => inputRequired({})).toThrow(/at least one/i)
+    expect(() => inputRequired({ inputRequests: {} })).toThrow(/at least one/i)
+  })
+
+  test('recognises its own output', () => {
+    expect(isInputRequiredResult(inputRequired({ requestState: 'opaque' }))).toBe(true)
+    expect(isInputRequiredResult({ content: [] })).toBe(false)
+  })
+})
+
+describe('MRTR_METHODS', () => {
+  test('is exactly the three methods that may suspend', () => {
+    expect([...MRTR_METHODS].sort()).toEqual(['prompts/get', 'resources/read', 'tools/call'])
   })
 })

@@ -30,6 +30,8 @@ import type {
 import type { WithRequestOptions } from '@mokei/context-rpc'
 import type { Schema } from '@sozai/schema'
 
+import type { InputRequiredResult } from './mrtr.js'
+
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
 export type ClientInitialize = InitializeRequest['params']
@@ -42,11 +44,11 @@ export type LogParams = {
 
 export type LogFunction = (params: LogParams) => void
 
-/** Thrown when a handler reaches for a client capability that 2026-07-28 routes through MRTR. */
+/** Thrown when a handler reaches for a client capability that this revision routes through MRTR. */
 export class MRTRNotSupportedError extends Error {
   constructor(method: string, version: ProtocolVersion) {
     super(
-      `${method} is not available on protocol version ${version}: server-initiated requests are replaced by multi round-trip requests (SEP-2322), which mokei does not implement yet`,
+      `${method} cannot be called on protocol version ${version}: server-initiated requests are replaced by multi round-trip requests (SEP-2322) — return \`inputRequired({ inputRequests: { <key>: { method, params } } })\` from the handler and read \`inputResponses[<key>]\` when it is re-invoked`,
     )
     this.name = 'MRTRNotSupportedError'
   }
@@ -93,7 +95,10 @@ export type CompleteHandler = (
   request: HandlerRequest<{ params: CompleteRequest['params'] }>,
 ) => CompleteResult | Promise<CompleteResult>
 
-export type PromptHandlerReturn = GetPromptResult | Promise<GetPromptResult>
+export type PromptHandlerReturn =
+  | GetPromptResult
+  | InputRequiredResult
+  | Promise<GetPromptResult | InputRequiredResult>
 
 export type GenericPromptHandler = (
   request: HandlerRequest<{ input: unknown }>,
@@ -130,7 +135,7 @@ export type ListResourceTemplatesHandler = (
 
 export type ReadResourceHandler = (
   request: HandlerRequest<{ params: ReadResourceRequest['params'] }>,
-) => ReadResourceResult | Promise<ReadResourceResult>
+) => ReadResourceResult | InputRequiredResult | Promise<ReadResourceResult | InputRequiredResult>
 
 export type ResourceDefinitions = {
   list?: ListResourcesHandler | Array<Resource>
@@ -144,7 +149,10 @@ export type ResourceHandlers = {
   read: ReadResourceHandler
 }
 
-export type ToolHandlerReturn = CallToolResult | Promise<CallToolResult>
+export type ToolHandlerReturn =
+  | CallToolResult
+  | InputRequiredResult
+  | Promise<CallToolResult | InputRequiredResult>
 
 export type StructuredToolHandlerReturn<Output> = Omit<CallToolResult, 'content'> & {
   content?: CallToolResult['content']

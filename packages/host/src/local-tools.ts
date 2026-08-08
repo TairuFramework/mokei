@@ -1,5 +1,6 @@
 import type { CallToolResult, InputSchema, Tool, ToolAnnotations } from '@mokei/context-protocol'
 import type { GenericToolDefinition, ServerClient, ToolDefinitions } from '@mokei/context-server'
+import { isInputRequiredResult } from '@mokei/context-server'
 
 /**
  * Request handed to a local tool's execute function: the validated `input` — the thing the
@@ -171,7 +172,7 @@ export function toolToLocalTool(params: ToolToLocalToolParams): LocalToolDefinit
     description: definition.description,
     inputSchema: definition.inputSchema,
     execute: async (request: LocalToolRequest) => {
-      return definition.handler({
+      const result = await definition.handler({
         input: request.input,
         client: stubClient,
         // Forward the caller's cancellation signal; fall back to a never-aborting
@@ -183,6 +184,17 @@ export function toolToLocalTool(params: ToolToLocalToolParams): LocalToolDefinit
         // same default `ContextServer` falls back to rather than a throwing stub.
         mintRequestState: (payload: unknown) => JSON.stringify(payload),
       })
+      // A handler suspends (MRTR, SEP-2322) by returning rather than awaiting, so there is no
+      // exception to catch here the way `createStubClient` catches a direct `client` call. Local
+      // execution has no wire and no retry loop to resume it on, so a suspension is refused the
+      // same way an unreachable `client` method is.
+      if (isInputRequiredResult(result)) {
+        throw new Error(
+          'This tool suspended on input (MRTR, SEP-2322), which is not available for local tools. ' +
+            'Local tools run outside of an MCP server context and cannot round-trip a client request.',
+        )
+      }
+      return result
     },
   }
 }

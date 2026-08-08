@@ -22,6 +22,7 @@ import {
   createPrompt,
   createTool,
   type GenericToolDefinition,
+  inputRequired,
   MRTRNotSupportedError,
   type Schema,
   type ServerParams,
@@ -1421,7 +1422,7 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
     await transports.dispose()
   })
 
-  test('2026-07-28 tool handlers cannot reach the client until MRTR lands', async () => {
+  test('2026-07-28 tool handlers must suspend instead of reaching the client directly', async () => {
     const { transports } = createTestContext({
       protocolVersions: ['2026-07-28'],
       tools: { asks: asksTool },
@@ -1458,6 +1459,82 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
         params: { _meta: NEW_META, name: 'echo', arguments: {}, requestState: 'forged' },
       },
       { code: -32602, message: 'Invalid requestState: signature mismatch' },
+    )
+  })
+
+  const suspendingTool = createTool({
+    description: 'Suspends once, then answers',
+    inputSchema: { type: 'object' },
+    handler: ({ inputResponses, mintRequestState }) =>
+      inputResponses == null
+        ? inputRequired({
+            inputRequests: { roots: { method: 'roots/list', params: {} } },
+            requestState: mintRequestState({ step: 1 }),
+          })
+        : { content: [{ type: 'text', text: 'resumed' }] },
+  })
+
+  test('sends a handler suspension on the wire, uncached', async () => {
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28'], tools: { ask: suspendingTool } },
+      { method: 'tools/call', params: { _meta: NEW_META, name: 'ask', arguments: {} } },
+      {
+        resultType: 'input_required',
+        inputRequests: { roots: { method: 'roots/list', params: {} } },
+        requestState: '{"step":1}',
+        _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
+      },
+    )
+  })
+
+  test('re-invokes the handler with the responses on the retry', async () => {
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28'], tools: { ask: suspendingTool } },
+      {
+        method: 'tools/call',
+        params: {
+          _meta: NEW_META,
+          name: 'ask',
+          arguments: {},
+          inputResponses: { roots: { roots: [] } },
+          requestState: '{"step":1}',
+        },
+      },
+      {
+        content: [{ type: 'text', text: 'resumed' }],
+        resultType: 'complete',
+        _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
+      },
+    )
+  })
+
+  test('refuses a suspension from a method that cannot suspend', async () => {
+    await expectServerError(
+      {
+        protocolVersions: ['2026-07-28'],
+        complete: () => inputRequired({ requestState: 'opaque' }) as never,
+      },
+      {
+        method: 'completion/complete',
+        params: {
+          _meta: NEW_META,
+          ref: { type: 'ref/prompt', name: 'x' },
+          argument: { name: 'a', value: '' },
+        },
+      },
+      { code: -32603, message: 'completion/complete cannot suspend on input' },
+    )
+  })
+
+  test('refuses a suspension on a revision without MRTR', async () => {
+    await expectServerError(
+      { protocolVersions: ['2025-11-25'], tools: { ask: suspendingTool } },
+      { method: 'tools/call', params: { name: 'ask', arguments: {} } },
+      {
+        code: -32603,
+        message:
+          'A handler suspended on protocol version 2025-11-25, which has no multi round-trip requests',
+      },
     )
   })
 })

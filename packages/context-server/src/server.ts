@@ -32,6 +32,7 @@ import type {
 } from '@mokei/context-protocol'
 import {
   ENVELOPE_VIOLATION,
+  INTERNAL_ERROR,
   INVALID_PARAMS,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
@@ -51,7 +52,14 @@ import { createValidator, type Schema } from '@sozai/schema'
 import { applyCacheHints } from './cache.js'
 import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
 import { buildDiscoverResult } from './discover.js'
-import { liftRetryParams, type RequestStateHooks, resolveRequestState } from './mrtr.js'
+import {
+  type InputRequiredResult,
+  isInputRequiredResult,
+  liftRetryParams,
+  MRTR_METHODS,
+  type RequestStateHooks,
+  resolveRequestState,
+} from './mrtr.js'
 import { withRequestMeta } from './trace.js'
 import type {
   ClientInitialize,
@@ -339,9 +347,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
    * `createMessage`/`elicit`/`listRoots` are gated individually on whether their own method
    * (`sampling/createMessage`/`elicitation/create`/`roots/list`) is in `protocol.serverMethods`
    * — the method the call would actually need to send. A revision missing one rejects it with
-   * `MRTRNotSupportedError`: there is nothing on the wire to send it as, since server-initiated
-   * requests are replaced by multi round-trip requests (MRTR, SEP-2322) in that revision, which
-   * mokei does not implement yet. `log` is gated on the independent
+   * `MRTRNotSupportedError`: there is nothing on the wire to send it as, because that revision
+   * replaces server-initiated requests with multi round-trip requests (MRTR, SEP-2322) — a
+   * handler on it reaches the client by suspending (`inputRequired()`) and being re-invoked with
+   * `inputResponses`, not by awaiting one of these three. `log` is gated on the independent
    * `requiresPerRequestLogLevel`: when true it scopes emission to the level this request opted
    * into via `_meta`, instead of a standing session level.
    *
@@ -423,6 +432,22 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const result = await withRequestMeta(meta, () =>
       this.#dispatchRequest(liftedRequest, protocol, client, signal, mrtr),
     )
+    if (isInputRequiredResult(result)) {
+      if (protocol.inputRequestMethods.size === 0) {
+        throw new RPCError(
+          INTERNAL_ERROR,
+          `A handler suspended on protocol version ${protocol.version}, which has no multi round-trip requests`,
+        )
+      }
+      if (!MRTR_METHODS.has(request.method)) {
+        throw new RPCError(INTERNAL_ERROR, `${request.method} cannot suspend on input`)
+      }
+      // Deliberately not through `applyCacheHints`: a suspension is not an answer, so there is
+      // nothing to cache and a `ttlMs` on it would tell the client to reuse a half-finished call.
+      return protocol.wrapResult(result as unknown as Record<string, unknown>, {
+        serverInfo: this.#serverInfo,
+      }) as ServerResult
+    }
     const body = protocol.requiresCacheHints
       ? applyCacheHints(request.method, result as Record<string, unknown>, this.#cache)
       : (result as Record<string, unknown>)
@@ -435,7 +460,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     client: ServerClient,
     signal: AbortSignal,
     mrtr: MRTRContext,
-  ): Promise<ServerResult> {
+  ): Promise<ServerResult | InputRequiredResult> {
     switch (request.method) {
       case 'completion/complete':
         if (this.#completeHandler == null) {
@@ -495,7 +520,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     client: ServerClient,
     signal: AbortSignal,
     mrtr: MRTRContext,
-  ): Promise<CallToolResult> {
+  ): Promise<CallToolResult | InputRequiredResult> {
     const name = request.params.name
     const handler = Object.hasOwn(this.#toolHandlers, name) ? this.#toolHandlers[name] : undefined
     if (handler == null) {
@@ -542,7 +567,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     client: ServerClient,
     signal: AbortSignal,
     mrtr: MRTRContext,
-  ): Promise<GetPromptResult> {
+  ): Promise<GetPromptResult | InputRequiredResult> {
     const name = request.params.name
     const handler = Object.hasOwn(this.#promptHandlers, name)
       ? this.#promptHandlers[name]
