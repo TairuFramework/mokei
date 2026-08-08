@@ -1863,4 +1863,49 @@ describe('tool outputSchema', () => {
       content: [{ type: 'text', text: 'ok' }],
     })
   })
+
+  // A suspension carries no `structuredContent` by construction — it must never reach output-
+  // schema validation, which would otherwise reject it as a missing/invalid structured result.
+  test('a handler suspension bypasses output validation entirely', async () => {
+    const definition = createTool({
+      description: 'counts',
+      inputSchema: { type: 'object' } as const,
+      outputSchema: countSchema,
+      handler: ({ inputResponses, mintRequestState }) =>
+        inputResponses == null
+          ? inputRequired({ requestState: mintRequestState({ step: 1 }) })
+          : { structuredContent: { count: 1 } },
+    })
+    await expect(callHandler(definition)).resolves.toEqual({
+      resultType: 'input_required',
+      // `callHandler`'s stub `mintRequestState` always returns `''` — its identity is not
+      // this test's concern, only that the suspension carries it through untouched.
+      requestState: '',
+    })
+  })
+
+  test('a structured-output tool reaches the wire as input_required, not -32603', async () => {
+    const structuredSuspendingTool = createTool({
+      description: 'counts, suspending once',
+      inputSchema: { type: 'object' } as const,
+      outputSchema: countSchema,
+      handler: ({ inputResponses, mintRequestState }) =>
+        inputResponses == null
+          ? inputRequired({
+              inputRequests: { roots: { method: 'roots/list', params: {} } },
+              requestState: mintRequestState({ step: 1 }),
+            })
+          : { structuredContent: { count: 1 } },
+    })
+    await expectServerResult(
+      { protocolVersions: ['2026-07-28'], tools: { counter: structuredSuspendingTool } },
+      { method: 'tools/call', params: { _meta: NEW_META, name: 'counter', arguments: {} } },
+      {
+        resultType: 'input_required',
+        inputRequests: { roots: { method: 'roots/list', params: {} } },
+        requestState: '{"step":1}',
+        _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
+      },
+    )
+  })
 })

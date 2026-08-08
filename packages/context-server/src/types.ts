@@ -167,7 +167,10 @@ export type TypedToolHandler<Arguments, Output = unknown> = (
   request: HandlerRequest<{ input: Arguments }>,
 ) => [unknown] extends [Output]
   ? ToolHandlerReturn
-  : StructuredToolHandlerReturn<Output> | Promise<StructuredToolHandlerReturn<Output>>
+  :
+      | StructuredToolHandlerReturn<Output>
+      | InputRequiredResult
+      | Promise<StructuredToolHandlerReturn<Output> | InputRequiredResult>
 
 export type GenericToolDefinition = {
   description: string

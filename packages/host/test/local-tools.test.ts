@@ -1,4 +1,4 @@
-import { createTool, type ToolDefinitions } from '@mokei/context-server'
+import { createTool, inputRequired, type ToolDefinitions } from '@mokei/context-server'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -391,6 +391,20 @@ describe('Server Tool to Local Tool Conversion', () => {
 
       await expect(localTool.execute({ input: {} })).rejects.toThrow(
         'createMessage() is not available for local tools',
+      )
+    })
+
+    test('refuses a handler suspension (MRTR): no wire or retry loop to resume it on', async () => {
+      const serverTool = createTool({
+        description: 'Tool that suspends',
+        inputSchema: { type: 'object' } as const,
+        handler: () => inputRequired({ requestState: 'opaque' }),
+      })
+
+      const localTool = toolToLocalTool({ name: 'suspends', definition: serverTool })
+
+      await expect(localTool.execute({ input: {} })).rejects.toThrow(
+        'This tool suspended on input (MRTR, SEP-2322), which is not available for local tools.',
       )
     })
 

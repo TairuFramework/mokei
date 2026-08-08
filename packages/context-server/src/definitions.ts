@@ -9,6 +9,8 @@ import {
 import { RPCError } from '@mokei/context-rpc'
 import { createValidator, type FromSchema, type Schema } from '@sozai/schema'
 
+import { type InputRequiredResult, isInputRequiredResult } from './mrtr.js'
+
 /**
  * A tool handler's `structuredContent` violated (or was absent against) its
  * declared `outputSchema`. This is the server author's own contract breach, not
@@ -143,7 +145,7 @@ export function createTool<
 
   const wrappedHandler = async (
     request: HandlerRequest<{ input: Record<string, unknown> }>,
-  ): Promise<CallToolResult> => {
+  ): Promise<CallToolResult | InputRequiredResult> => {
     const validated = validateInput(request.input)
     if (validated.issues != null) {
       throw new RPCError(INVALID_PARAMS, 'Invalid tool input', {
@@ -159,6 +161,11 @@ export function createTool<
       requestState: request.requestState,
       mintRequestState: request.mintRequestState,
     })
+    // A suspension carries no `structuredContent` by construction — it is not an answer, so it
+    // must never reach output-schema validation. Pass it through untouched.
+    if (isInputRequiredResult(result)) {
+      return result
+    }
     return finalizeResult(result as CallToolResult)
   }
 
