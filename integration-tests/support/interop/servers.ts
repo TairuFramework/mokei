@@ -4,13 +4,13 @@ import { createServer } from 'node:http'
 import { PassThrough, type Readable, type Writable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { NodeStreamsTransport } from '@enkaku/node-streams'
-import { Client } from '@modelcontextprotocol/client'
+import { Client, type ClientCapabilities } from '@modelcontextprotocol/client'
 import { NodeStreamableHTTPServerTransport, toNodeHandler } from '@modelcontextprotocol/node'
 import { createMcpHandler } from '@modelcontextprotocol/server'
-import { type ClientTransport, ContextClient } from '@mokei/context-client'
+import { type ClientParams, type ClientTransport, ContextClient } from '@mokei/context-client'
 import type { ProtocolVersion } from '@mokei/context-protocol'
 import { ContextServer, createTool, type ServerConfig } from '@mokei/context-server'
-import { createHTTPClient } from '@mokei/http-client'
+import { createHTTPClient, HTTPTransport } from '@mokei/http-client'
 import { serveHTTP } from '@mokei/http-server'
 
 import {
@@ -20,6 +20,7 @@ import {
   SERVER_NAME,
   SERVER_VERSION,
 } from './fixture.ts'
+import { createMokeiMRTRConfig, createSDKMRTRServer } from './mrtr-fixture.ts'
 
 export const MOKEI_STDIO_SERVER_PATH = fileURLToPath(
   new URL('./mokei-stdio-server.ts', import.meta.url),
@@ -59,6 +60,14 @@ export const MOKEI_STDIO_SERVER_CONCURRENCY_PATH = fileURLToPath(
 /** Refuses every request, including `server/discover` and `initialize`. */
 export const REFUSING_STDIO_SERVER_PATH = fileURLToPath(
   new URL('./refusing-stdio-server.ts', import.meta.url),
+)
+/** Serves the MRTR fixture on `2026-07-28` only, via `@mokei/context-server`. */
+export const MOKEI_STDIO_SERVER_MRTR_PATH = fileURLToPath(
+  new URL('./mokei-stdio-server-mrtr.ts', import.meta.url),
+)
+/** Serves the MRTR fixture on `2026-07-28` only, via the official SDK v2 server. */
+export const SDK_STDIO_SERVER_MRTR_PATH = fileURLToPath(
+  new URL('./sdk-stdio-server-mrtr.ts', import.meta.url),
 )
 
 export type RunningHTTPServer = {
@@ -146,6 +155,17 @@ async function killChild(childProcess: SpawnedChildProcess): Promise<void> {
   })
 }
 
+/**
+ * Everything a `ContextClient` takes except the two these helpers own: the revision they were
+ * asked for, and the transport they just built.
+ *
+ * `spawnMokeiStdioClient` and `connectMokeiHTTPClient` both spread it into their
+ * `new ContextClient({...})`, so a suite needing an MRTR-capable client (one carrying a
+ * `createMessage`/`elicit`/`listRoots` handler, which is also what makes the client declare the
+ * matching capability on every request) can pass one without a second helper.
+ */
+export type MokeiClientOptions = Omit<ClientParams, 'protocolVersion' | 'transport'>
+
 export type SpawnedMokeiClient = {
   client: ContextClient
   /**
@@ -171,6 +191,7 @@ export type SpawnedMokeiClient = {
 export async function spawnMokeiStdioClient(
   serverPath: string,
   protocolVersion: ProtocolVersion,
+  clientOptions: MokeiClientOptions = {},
 ): Promise<SpawnedMokeiClient> {
   const childProcess = spawn(process.execPath, [serverPath], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -204,7 +225,11 @@ export async function spawnMokeiStdioClient(
   const transport = new NodeStreamsTransport({
     streams: { readable: childProcess.stdout, writable: tap },
   })
-  const client = new ContextClient({ protocolVersion, transport: transport as ClientTransport })
+  const client = new ContextClient({
+    ...clientOptions,
+    protocolVersion,
+    transport: transport as ClientTransport,
+  })
 
   return {
     client,
@@ -241,12 +266,46 @@ export async function startMokeiHTTPServer(
   }
 }
 
-/** Connects a mokei `ContextClient` to `url` over Streamable HTTP at `protocolVersion`. */
+/** Serves the MRTR fixture over Streamable HTTP using `@mokei/http-server`, `2026-07-28` only. */
+export async function startMokeiMRTRHTTPServer(): Promise<RunningHTTPServer> {
+  const config = createMokeiMRTRConfig(['2026-07-28'])
+  const result = serveHTTP({
+    createServer: (transport) => new ContextServer({ ...config, transport }),
+    port: 0,
+    hostname: '127.0.0.1',
+  })
+  const port = await listening(result.server, '127.0.0.1')
+  return {
+    url: `http://127.0.0.1:${port}/mcp`,
+    dispose: async () => {
+      result.dispose()
+    },
+  }
+}
+
+/**
+ * Connects a mokei `ContextClient` to `url` over Streamable HTTP at `protocolVersion`.
+ *
+ * With no `clientOptions` this goes through `createHTTPClient`, keeping that one-call helper on
+ * the tested path for every existing suite. `createHTTPClient` accepts no `ContextClient`
+ * parameters beyond `protocolVersion` — there is no way to give it a `listRoots`/`elicit`/
+ * `createMessage` handler — so a caller that needs one gets the transport wired by hand instead,
+ * which is what `createHTTPClient` itself does under the hood.
+ */
 export function connectMokeiHTTPClient(
   url: string,
   protocolVersion: ProtocolVersion | 'auto',
+  clientOptions?: MokeiClientOptions,
 ): ContextClient {
-  return createHTTPClient({ url, protocolVersion })
+  if (clientOptions == null) {
+    return createHTTPClient({ url, protocolVersion })
+  }
+  const transport = new HTTPTransport({ url })
+  return new ContextClient({
+    ...clientOptions,
+    protocolVersion,
+    transport: transport as ClientTransport,
+  })
 }
 
 const SDK_CLIENT_INFO = { name: 'mokei-interop-test', version: '1.0.0' }
@@ -258,11 +317,27 @@ const SDK_CLIENT_INFO = { name: 'mokei-interop-test', version: '1.0.0' }
  * to a client carrying no negotiation option at all. `2026-07-28` pins: the connect-time
  * `server/discover` must offer exactly that revision, and anything else fails loudly rather than
  * falling back to the `initialize` handshake.
+ *
+ * `capabilities` is what the SDK stamps into every `2026-07-28` request's `_meta` envelope under
+ * `io.modelcontextprotocol/clientCapabilities` — it derives that from `ClientOptions` alone, never
+ * from the handlers registered on the instance. A client meant to fulfil an embedded input request
+ * therefore has to declare the matching capability here *and* register the handler; the SDK's own
+ * `setRequestHandler` refuses the second without the first. Omitted, `new Client(info)` stays
+ * exactly what it was.
  */
-export function createSDKClient(protocolVersion: ProtocolVersion): Client {
-  return protocolVersion === '2026-07-28'
-    ? new Client(SDK_CLIENT_INFO, { versionNegotiation: { mode: { pin: '2026-07-28' } } })
-    : new Client(SDK_CLIENT_INFO)
+export function createSDKClient(
+  protocolVersion: ProtocolVersion,
+  capabilities?: ClientCapabilities,
+): Client {
+  if (protocolVersion === '2026-07-28') {
+    return new Client(SDK_CLIENT_INFO, {
+      versionNegotiation: { mode: { pin: '2026-07-28' } },
+      ...(capabilities != null && { capabilities }),
+    })
+  }
+  return capabilities == null
+    ? new Client(SDK_CLIENT_INFO)
+    : new Client(SDK_CLIENT_INFO, { capabilities })
 }
 
 export type BlockingHTTPServer = RunningHTTPServer & {
@@ -354,6 +429,35 @@ export async function startSDK20260728HTTPServer(
   options: SDKServerOptions = {},
 ): Promise<RunningHTTPServer> {
   const handler = createMcpHandler(() => createSDKServer(options), { legacy: 'reject' })
+  const nodeHandler = toNodeHandler(handler)
+  const server = createServer((request, response) => {
+    void nodeHandler(request, response)
+  })
+  server.listen(0, '127.0.0.1')
+  const port = await listening(server, '127.0.0.1')
+  return {
+    url: `http://127.0.0.1:${port}/mcp`,
+    dispose: async () => {
+      await handler.close()
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error == null ? resolve() : reject(error)))
+        server.closeAllConnections()
+      })
+    },
+  }
+}
+
+/**
+ * Serves the MRTR fixture over Streamable HTTP on `2026-07-28`, through the same SDK v2
+ * `createMcpHandler` entry as `startSDK20260728HTTPServer` and for the same `legacy: 'reject'`
+ * reason.
+ *
+ * The per-request factory is not a problem for MRTR: a suspended exchange carries its whole
+ * continuation in the `requestState` the client echoes back, so a fresh `McpServer` per round is
+ * exactly what the pattern is designed for.
+ */
+export async function startSDKMRTRHTTPServer(): Promise<RunningHTTPServer> {
+  const handler = createMcpHandler(() => createSDKMRTRServer(), { legacy: 'reject' })
   const nodeHandler = toNodeHandler(handler)
   const server = createServer((request, response) => {
     void nodeHandler(request, response)
