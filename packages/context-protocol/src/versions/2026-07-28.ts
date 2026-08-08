@@ -379,8 +379,11 @@ type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : n
  * The two places that construct this type directly — `@mokei/context-server`'s `inputRequired()`
  * and `@mokei/context-client`'s `InputRequiredRoundsExceededError` construction in `mrtr.ts` —
  * assemble the object through conditional spreads or an already-validated rest object, which
- * TypeScript cannot narrow to a specific union member. Both assert `as InputRequiredResult`
- * immediately after the runtime check that already enforces the same invariant.
+ * TypeScript cannot narrow to a specific union member. Both assert `as InputRequiredResult`, and
+ * the invariant is enforced before each: `inputRequired()` throws on the empty case in the
+ * statement directly above its assertion, while the client's value arrives from the wire, where
+ * the RPC read loop has already validated it against this schema — `anyOf` included — and failed
+ * the exchange rather than resolving it if it did not hold.
  */
 export type InputRequiredResult = DistributiveOmit<FromSchema<typeof inputRequiredResult>, '_meta'>
 
