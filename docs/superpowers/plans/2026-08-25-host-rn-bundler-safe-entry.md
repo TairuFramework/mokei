@@ -332,13 +332,13 @@ git mv packages/host/src/server.ts packages/host-node/src/server.ts
 
 (`daemon.ts`'s `DAEMON_ENTRY = new URL('./server.js', import.meta.url)` keeps resolving because `server.ts` moves with it.)
 
-- [ ] **Step 4: Move and re-home `proxy.ts`.** `git mv packages/host/src/proxy.ts packages/host-node/src/proxy.ts`. Change its host import from the local path to the workspace package — line 11 becomes:
+- [ ] **Step 4: Move and re-home `proxy.ts`.** `git mv packages/host/src/proxy.ts packages/host-node/src/proxy.ts`. `ProxyHost` must inherit `addLocalContext`, so its parent stays `NodeContextHost` — line 11 becomes:
 
 ```ts
-import { ContextHost } from '@mokei/host'
+import { NodeContextHost } from './node-host.js'
 ```
 
-(`./daemon.js` and `./utils.js` imports stay — those files moved alongside it.)
+(`ProxyHost extends NodeContextHost`, not `ContextHost` directly. `./daemon.js` and `./utils.js` imports stay — those files moved alongside it.)
 
 - [ ] **Step 5: Create `packages/host-node/src/node-host.ts`** holding `spawnHostedContext`, its param type, the two constants, `AddLocalContextParams`, and `NodeContextHost`. Move the bodies verbatim from `packages/host/src/host.ts` (`SpawnHostedContextParams` 161-177, `spawnHostedContext` 179-250, `AddLocalContextParams` 264-275, `addLocalContext` method 496-542) and the constants (44, 47):
 

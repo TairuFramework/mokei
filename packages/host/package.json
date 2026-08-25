@@ -40,7 +40,6 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "@enkaku/client": "catalog:",
     "@enkaku/transport": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
@@ -48,8 +47,7 @@
     "@mokei/context-server": "workspace:^",
     "@mokei/http-client": "workspace:^",
     "@sozai/async": "catalog:",
-    "@sozai/event": "catalog:",
-    "@sozai/stream": "catalog:"
+    "@sozai/event": "catalog:"
   },
   "devDependencies": {
     "@mokei/context-server-node": "workspace:^",
