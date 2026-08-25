@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "node",
+      "args": ["mcp-servers/fetch/lib/serve.js"],
+      "env": {}
+    },
+    "sqlite": {
+      "command": "node",
+      "args": ["mcp-servers/sqlite/lib/serve.js"],
+      "env": {}
+    }
+  }
+}

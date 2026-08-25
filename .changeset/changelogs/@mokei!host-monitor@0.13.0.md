@@ -1,6 +1,6 @@
-## 0.12.0
+## 0.13.0
 
 ### Patch Changes
 
 - Updated dependencies:
-  - @mokei/context-server@0.12.0
+  - @mokei/host-protocol@0.13.0
