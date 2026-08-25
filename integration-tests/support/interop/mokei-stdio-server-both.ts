@@ -1,5 +1,5 @@
 /** Stdio entry point serving the interop fixture on both supported revisions. */
-import { serveProcess } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 import { createMokeiConfig } from './fixture.ts'
 

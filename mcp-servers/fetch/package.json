@@ -1,6 +1,6 @@
 {
   "name": "@mokei/mcp-fetch",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Fetch MCP server",
   "keywords": [
     "model",
@@ -49,6 +49,7 @@
   },
   "dependencies": {
     "@mokei/context-server": "workspace:^",
+    "@mokei/context-server-node": "workspace:^",
     "turndown": "catalog:",
     "turndown-plugin-gfm": "catalog:"
   },

@@ -1,10 +1,6 @@
 import type { CallToolResult, ProtocolVersion } from '@mokei/context-protocol'
-import {
-  ContextHost,
-  type ContextTool,
-  type EnableToolsArg,
-  type LocalToolDefinition,
-} from '@mokei/host'
+import type { ContextTool, EnableToolsArg, LocalToolDefinition } from '@mokei/host'
+import { NodeContextHost } from '@mokei/host-node'
 import type {
   AggregatedMessage,
   FunctionToolCall,
@@ -38,7 +34,7 @@ export type AddContextParams = {
   enableTools?: EnableToolsArg
   /**
    * Revision the context's client speaks, or `'auto'` to probe the server. Left unset,
-   * `ContextHost` picks its default.
+   * `NodeContextHost` picks its default.
    */
   protocolVersion?: ProtocolVersion | 'auto'
 }
@@ -76,8 +72,8 @@ export type SessionEvents<T extends ProviderTypes = ProviderTypes> = {
 
 export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
   providers?: Record<string, ModelProvider<T>>
-  /** Pre-built ContextHost instance. If omitted, a fresh ContextHost is created. */
-  contextHost?: ContextHost
+  /** Pre-built NodeContextHost instance. If omitted, a fresh NodeContextHost is created. */
+  contextHost?: NodeContextHost
   /**
    * Local tools that can be called directly without setting up an MCP server.
    * These tools are registered with the `local:` namespace prefix.
@@ -149,7 +145,7 @@ function chunkToServerMessage<M, C>(chunk: MessagePart<M, C>): ServerMessage<M, 
 export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #activeChatRequest: StreamChatRequest<T['MessagePart'], T['ToolCall']> | null = null
   #events: EventEmitter<SessionEvents<T>>
-  #contextHost: ContextHost
+  #contextHost: NodeContextHost
   #providers: Map<string, ModelProvider<T>>
 
   constructor(params: SessionParams<T> = {}) {
@@ -159,7 +155,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       },
     })
     this.#events = new EventEmitter()
-    this.#contextHost = params.contextHost ?? new ContextHost()
+    this.#contextHost = params.contextHost ?? new NodeContextHost()
     this.#providers = new Map(Object.entries(params.providers ?? {}))
 
     // Register local tools if provided
@@ -172,7 +168,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     return this.#activeChatRequest
   }
 
-  get contextHost(): ContextHost {
+  get contextHost(): NodeContextHost {
     return this.#contextHost
   }
 

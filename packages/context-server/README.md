@@ -9,7 +9,8 @@ npm install @mokei/context-server
 ## Basic Usage
 
 ```typescript
-import { createTool, serveProcess } from '@mokei/context-server'
+import { createTool } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 serveProcess({
   name: 'my-server',

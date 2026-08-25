@@ -1,0 +1,49 @@
+{
+  "name": "@mokei/context-server-node",
+  "version": "0.13.0",
+  "description": "Mokei Context server Node stdio entry",
+  "keywords": [
+    "model",
+    "context",
+    "protocol",
+    "mcp",
+    "server",
+    "llm",
+    "ai"
+  ],
+  "homepage": "https://mokei.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TairuFramework/mokei",
+    "directory": "packages/context-server-node"
+  },
+  "license": "MIT",
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": "./lib/index.js"
+  },
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib/*"
+  ],
+  "scripts": {
+    "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
+    "build:clean": "del lib",
+    "build:js": "swc src -d ./lib --config-file ../../node_modules/@kigu/dev/swc.json --strip-leading-paths",
+    "build:types": "tsc --emitDeclarationOnly --skipLibCheck",
+    "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
+    "prepublishOnly": "pnpm run build",
+    "test": "pnpm run test:types",
+    "test:types": "tsc --noEmit --skipLibCheck"
+  },
+  "dependencies": {
+    "@enkaku/node-streams": "catalog:",
+    "@mokei/context-protocol": "workspace:^",
+    "@mokei/context-server": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

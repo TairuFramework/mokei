@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 import { AnthropicProvider, type AnthropicTypes } from '@mokei/anthropic-provider'
-import { ProxyHost } from '@mokei/host'
+import { ProxyHost } from '@mokei/host-node'
 import { LlamaProvider, type LlamaTypes } from '@mokei/llama-provider'
 import type { ModelProvider, ProviderTypes } from '@mokei/model-provider'
 import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'

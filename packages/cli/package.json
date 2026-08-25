@@ -1,6 +1,6 @@
 {
   "name": "mokei",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Mokei CLI",
   "keywords": [
     "model",
@@ -46,6 +46,7 @@
     "@mokei/context-protocol": "workspace:^",
     "@mokei/host": "workspace:^",
     "@mokei/host-monitor": "workspace:^",
+    "@mokei/host-node": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "@mokei/llama-provider": "workspace:^",
     "@mokei/model-provider": "workspace:^",

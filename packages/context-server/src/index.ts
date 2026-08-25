@@ -31,7 +31,6 @@ export {
   type ServerConfig,
   type ServerEvents,
   type ServerParams,
-  serveProcess,
 } from './server.js'
 export type {
   ExtractPromptTypes,

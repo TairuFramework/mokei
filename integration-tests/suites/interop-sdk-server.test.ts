@@ -1,7 +1,7 @@
 /** mokei client ↔ official SDK v2 server, over stdio and Streamable HTTP, on both revisions. */
 import type { ContextClient } from '@mokei/context-client'
 import type { ProtocolVersion } from '@mokei/context-protocol'
-import { spawnHostedContext } from '@mokei/host'
+import { spawnHostedContext } from '@mokei/host-node'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import { checkMokeiClient } from '../support/interop/expectations.ts'

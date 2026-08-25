@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { serveProcess } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 import { createFetchConfig } from './config.js'
 

@@ -38,6 +38,10 @@
   dir: packages/host
   intents:
     - mcp-mrtr-header-retry
+"@mokei/host@0.13.0":
+  dir: packages/host
+  intents:
+    - olive-terms-pull
 "@mokei/http-client@0.11.0":
   dir: packages/http-client
   intents:

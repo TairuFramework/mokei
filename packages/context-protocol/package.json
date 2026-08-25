@@ -1,6 +1,6 @@
 {
   "name": "@mokei/context-protocol",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Mokei MCP constants, schemas and types",
   "keywords": [
     "model",

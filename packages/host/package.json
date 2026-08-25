@@ -1,6 +1,6 @@
 {
   "name": "@mokei/host",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Mokei Context host",
   "keywords": [
     "model",
@@ -40,21 +40,14 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "@enkaku/client": "catalog:",
-    "@enkaku/node-streams": "catalog:",
-    "@enkaku/server": "catalog:",
     "@enkaku/transport": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^",
     "@mokei/context-server": "workspace:^",
-    "@mokei/host-protocol": "workspace:^",
     "@mokei/http-client": "workspace:^",
     "@sozai/async": "catalog:",
-    "@sozai/event": "catalog:",
-    "@sozai/stream": "catalog:",
-    "@tejika/process": "catalog:",
-    "nano-spawn": "catalog:"
+    "@sozai/event": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:"

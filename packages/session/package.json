@@ -1,6 +1,6 @@
 {
   "name": "@mokei/session",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Mokei session",
   "keywords": [
     "model",
@@ -43,6 +43,7 @@
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^",
     "@mokei/host": "workspace:^",
+    "@mokei/host-node": "workspace:^",
     "@mokei/model-provider": "workspace:^",
     "@sozai/async": "catalog:",
     "@sozai/event": "catalog:",

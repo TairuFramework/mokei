@@ -1,5 +1,5 @@
-import { runDaemon } from '@mokei/host'
 import { startMonitor } from '@mokei/host-monitor'
+import { runDaemon } from '@mokei/host-node'
 import { runInk } from '@tejika/cli'
 import { Command } from 'commander'
 import { Box, Text } from 'ink'

@@ -18,7 +18,7 @@ The simplest way to create an MCP server is using `serveProcess()`:
 clients pinned to the older revision.
 
 ```typescript
-import { serveProcess } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 serveProcess({
   name: 'my-server',
@@ -37,7 +37,8 @@ takes a single parameters object: `description`, `inputSchema`, an optional `out
 the `handler`.
 
 ```typescript
-import { createTool, serveProcess, type ToolDefinitions } from '@mokei/context-server'
+import { createTool, type ToolDefinitions } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const tools = {
   greet: createTool({
@@ -143,7 +144,8 @@ client retries with the answers (SEP-2322). `inputRequired` is exported from
 `@mokei/context-server`.
 
 ```typescript
-import { createTool, inputRequired, serveProcess, type ToolDefinitions } from '@mokei/context-server'
+import { createTool, inputRequired, type ToolDefinitions } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const tools = {
   summarize: createTool({
@@ -239,7 +241,8 @@ Prompts are templates that return messages. `createPrompt()` also takes a single
 object: `description`, an optional `argumentsSchema`, and the `handler`.
 
 ```typescript
-import { createPrompt, serveProcess, type PromptDefinitions } from '@mokei/context-server'
+import { createPrompt, type PromptDefinitions } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const prompts = {
   code_review: createPrompt({
@@ -275,7 +278,8 @@ serveProcess({ name: 'prompts-server', version: '1.0.0', protocolVersions: ['202
 Resources provide access to data:
 
 ```typescript
-import { serveProcess, type ResourceDefinitions } from '@mokei/context-server'
+import { type ResourceDefinitions } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const resources: ResourceDefinitions = {
   // Static list of resources
@@ -323,7 +327,8 @@ serveProcess({ name: 'resource-server', version: '1.0.0', protocolVersions: ['20
 Implement completion for arguments:
 
 ```typescript
-import { serveProcess, type CompleteHandler } from '@mokei/context-server'
+import { type CompleteHandler } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const complete: CompleteHandler = async (req) => {
   const { ref, argument } = req.params
@@ -381,11 +386,11 @@ Export types for clients to use:
 ```typescript
 import { 
   createTool, 
-  serveProcess,
   type ServerConfig,
   type ToolDefinitions,
   type ExtractServerTypes 
 } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const tools = {
   myTool: createTool({ /* description, inputSchema, handler */ })
@@ -421,12 +426,12 @@ import { DatabaseSync } from 'node:sqlite'
 import { parseArgs } from 'node:util'
 import {
   createTool,
-  serveProcess,
   type Schema,
   type ServerConfig,
   type ToolDefinitions,
   type ExtractServerTypes
 } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const args = parseArgs({ options: { db: { type: 'string' } } })
 const db = new DatabaseSync(args.values.db ?? ':memory:')

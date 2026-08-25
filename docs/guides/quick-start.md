@@ -82,7 +82,8 @@ only `2025-11-25` still connects. Declaring both, as here, serves clients on eit
 pass `protocolVersion` to `addContext` to pin one and skip the probe.
 
 ```typescript
-import { createTool, serveProcess } from '@mokei/context-server'
+import { createTool } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const tools = {
   greet: createTool({

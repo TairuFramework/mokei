@@ -12,7 +12,8 @@
  * handler's `signal` is aborted — while `hang` is still pending, instead of only after it has
  * already settled on its deadline.
  */
-import { createTool, serveProcess } from '@mokei/context-server'
+import { createTool } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const HANG_DEADLINE = 5_000
 

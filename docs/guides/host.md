@@ -1,23 +1,29 @@
 # Managing MCP Server Connections
 
-Package: `@mokei/host`
+Packages: `@mokei/host` (React Native / browser-safe surface) and `@mokei/host-node` (Node stdio / daemon layer)
 
 ## Installation
 
 ```bash
-npm install @mokei/host
+npm install @mokei/host-node
 ```
+
+> `@mokei/host` exposes the RN/browser-safe `ContextHost` (direct + HTTP contexts). Spawning a
+> local MCP server as a child process needs `@mokei/host-node`, which re-exports a
+> `NodeContextHost` (a `ContextHost` subclass adding `addLocalContext`) plus the daemon
+> (`createClient`/`runDaemon`) and `ProxyHost`. The examples below use local spawning, so they
+> import from `@mokei/host-node`.
 
 ## Overview
 
-`ContextHost` manages multiple MCP server connections, handling their lifecycle, tool namespacing, and routing. It's the coordination layer between your application and multiple MCP servers.
+`ContextHost` (and its Node subclass `NodeContextHost`) manages multiple MCP server connections, handling their lifecycle, tool namespacing, and routing. It's the coordination layer between your application and multiple MCP servers.
 
 ## Basic Usage
 
 ```typescript
-import { ContextHost } from '@mokei/host'
+import { NodeContextHost } from '@mokei/host-node'
 
-const host = new ContextHost()
+const host = new NodeContextHost()
 
 // Add a local MCP server (spawned process)
 await host.addLocalContext({
@@ -284,10 +290,10 @@ const { resources } = await client.listResources()
 ## Complete Example
 
 ```typescript
-import { ContextHost } from '@mokei/host'
+import { NodeContextHost } from '@mokei/host-node'
 
 async function main() {
-  const host = new ContextHost()
+  const host = new NodeContextHost()
   
   try {
     // Add multiple MCP servers
