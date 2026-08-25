@@ -49,20 +49,20 @@ First, let's create a new directory for the project, for example `mokei-quick-st
 mkdir mokei-quick-start && cd mokei-quick-start
 ```
 
-Then, let's setup the Node project with a `package.json` and the `@mokei/context-server` library we are going to use:
+Then, let's setup the Node project with a `package.json` and the `@mokei/context-server` (server API) and `@mokei/context-server-node` (`serveProcess` stdio entry) libraries we are going to use:
 
 <Tabs groupId="package-manager">
   <TabItem value="npm" label="npm" default>
     
     ```sh
-    npm init -y && npm install @mokei/context-server
+    npm init -y && npm install @mokei/context-server @mokei/context-server-node
     ```
 
   </TabItem>
   <TabItem value="pnpm">
   
     ```sh
-    pnpm init && pnpm add @mokei/context-server
+    pnpm init && pnpm add @mokei/context-server @mokei/context-server-node
     ```
   
   </TabItem>
@@ -84,7 +84,8 @@ Finally, let's edit the `package.json` and add `"type": "module"` to support ESM
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@mokei/context-server": "^0.1.0"
+    "@mokei/context-server": "^0.1.0",
+    "@mokei/context-server-node": "^0.1.0"
   }
 }
 ```
@@ -96,7 +97,8 @@ Now let's create the `index.js` file with the following imports:
 ```js title="index.js"
 import { DatabaseSync } from 'node:sqlite'
 import { parseArgs } from 'node:util'
-import { createTool, serveProcess } from '@mokei/context-server'
+import { createTool } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 ```
 
 #### Creating the database
@@ -216,7 +218,8 @@ This example server is available on npm as the `@mokei/mcp-sqlite` package, with
 ```js title="index.js"
 import { DatabaseSync } from 'node:sqlite'
 import { parseArgs } from 'node:util'
-import { createTool, serveProcess } from '@mokei/context-server'
+import { createTool } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const args = parseArgs({
   options: {

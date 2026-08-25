@@ -22,13 +22,13 @@ npm install @mokei/session
 
 ```typescript
 import { AgentSession, Session } from '@mokei/session'
-import { ContextHost } from '@mokei/host'
+import { NodeContextHost } from '@mokei/host-node'
 import { OpenAIProvider } from '@mokei/openai-provider'
 
 // Set up host with MCP servers. `addLocalContext` takes an optional `protocolVersion`,
 // defaulting to 'auto', which speaks the newest revision both sides support — see the host
 // guide's Protocol Revisions section.
-const host = new ContextHost()
+const host = new NodeContextHost()
 await host.addLocalContext({
   key: 'sqlite',
   command: 'npx',
@@ -347,12 +347,12 @@ await agent.run({ prompt: 'Do something' })
 
 ```typescript
 import { AgentSession, Session } from '@mokei/session'
-import { ContextHost } from '@mokei/host'
+import { NodeContextHost } from '@mokei/host-node'
 import { OpenAIProvider } from '@mokei/openai-provider'
 
 async function main() {
   // Setup
-  const host = new ContextHost()
+  const host = new NodeContextHost()
   await host.addLocalContext({
     key: 'sqlite',
     command: 'npx',
