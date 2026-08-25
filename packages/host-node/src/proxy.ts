@@ -6,9 +6,9 @@ import type {
   UnknownContextTypes,
 } from '@mokei/context-client'
 import type { ProtocolVersion } from '@mokei/context-protocol'
+import { ContextHost } from '@mokei/host'
 
 import { type DaemonOptions, type HostClient, runDaemon } from './daemon.js'
-import { ContextHost } from './host.js'
 import { filterEnv } from './utils.js'
 
 export type ProxySpawnParams = {

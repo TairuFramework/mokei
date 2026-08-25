@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { ContextHost, spawnHostedContext } from '../src/host.js'
+import { NodeContextHost, spawnHostedContext } from '../src/node-host.js'
 
 describe('ContextHost lifecycle', () => {
   test('reaps a context and emits context:failed when its child exits non-zero, with no unhandled rejection', async () => {
@@ -8,7 +8,7 @@ describe('ContextHost lifecycle', () => {
     const onUnhandled = (reason: unknown) => unhandled.push(reason)
     process.on('unhandledRejection', onUnhandled)
 
-    const host = new ContextHost()
+    const host = new NodeContextHost()
     const failures: Array<{ key: string; error: Error }> = []
     host.events.on('context:failed', (data) => {
       failures.push(data)
@@ -35,7 +35,7 @@ describe('ContextHost lifecycle', () => {
   })
 
   test('emits context:added and context:removed without context:failed on a clean removal', async () => {
-    const host = new ContextHost()
+    const host = new NodeContextHost()
     const added: Array<string> = []
     const removed: Array<string> = []
     let failed = 0
@@ -68,7 +68,7 @@ describe('ContextHost lifecycle', () => {
 
 describe('ContextHost.setup race', () => {
   test('throws a clear error if the context is removed during listTools', async () => {
-    const host = new ContextHost()
+    const host = new NodeContextHost()
     await host.addLocalContext({
       key: 'racy',
       command: process.execPath,

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { ContextHost } from '../src/host.js'
+import { NodeContextHost } from '../src/node-host.js'
 
 describe('ContextHost stdio framing', () => {
   test('reaps the context when a child floods stdout past maxBufferSize', async () => {
@@ -8,7 +8,7 @@ describe('ContextHost stdio framing', () => {
     const onUnhandled = (reason: unknown) => unhandled.push(reason)
     process.on('unhandledRejection', onUnhandled)
 
-    const host = new ContextHost()
+    const host = new NodeContextHost()
     const failures: Array<{ key: string; error: Error }> = []
     host.events.on('context:failed', (data) => {
       failures.push(data)
@@ -40,7 +40,7 @@ describe('ContextHost stdio framing', () => {
   })
 
   test('reaps the context when a child prints a stray non-JSON line', async () => {
-    const host = new ContextHost()
+    const host = new NodeContextHost()
     const failures: Array<{ key: string; error: Error }> = []
     host.events.on('context:failed', (data) => {
       failures.push(data)
@@ -66,7 +66,7 @@ describe('ContextHost stdio framing', () => {
   })
 
   test('passes valid large frames through the framer untouched', async () => {
-    const host = new ContextHost()
+    const host = new NodeContextHost()
     let failed = 0
     host.events.on('context:failed', () => {
       failed += 1
@@ -96,7 +96,7 @@ describe('ContextHost stdio framing', () => {
   })
 
   test('emits context:failed exactly once on a framing fault', async () => {
-    const host = new ContextHost()
+    const host = new NodeContextHost()
     let failed = 0
     let removed = 0
     host.events.on('context:failed', () => {
@@ -132,7 +132,7 @@ describe('ContextHost stdio framing', () => {
     // the bytes sit in the OS pipe buffer (bounded by the kernel, not host
     // memory), so the framer never overflows. The context stays registered and
     // healthy — the cap only engages once the host actively reads.
-    const host = new ContextHost()
+    const host = new NodeContextHost()
     let failed = 0
     let removed = 0
     host.events.on('context:failed', () => {

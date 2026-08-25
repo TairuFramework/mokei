@@ -639,12 +639,6 @@ importers:
       '@enkaku/client':
         specifier: 'catalog:'
         version: 0.21.0(@logtape/logtape@2.3.0)
-      '@enkaku/node-streams':
-        specifier: 'catalog:'
-        version: 0.21.0
-      '@enkaku/server':
-        specifier: 'catalog:'
-        version: 0.21.2(@logtape/logtape@2.3.0)
       '@enkaku/transport':
         specifier: 'catalog:'
         version: 0.21.0
@@ -660,9 +654,6 @@ importers:
       '@mokei/context-server':
         specifier: workspace:^
         version: link:../context-server
-      '@mokei/host-protocol':
-        specifier: workspace:^
-        version: link:../host-protocol
       '@mokei/http-client':
         specifier: workspace:^
         version: link:../http-client
@@ -675,12 +666,6 @@ importers:
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.0
-      '@tejika/process':
-        specifier: 'catalog:'
-        version: 0.5.0(@logtape/logtape@2.3.0)
-      nano-spawn:
-        specifier: 'catalog:'
-        version: 2.1.0
     devDependencies:
       '@mokei/context-server-node':
         specifier: workspace:^
@@ -710,6 +695,52 @@ importers:
         specifier: 'catalog:'
         version: 0.4.1
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.2.0
+
+  packages/host-node:
+    dependencies:
+      '@enkaku/client':
+        specifier: 'catalog:'
+        version: 0.21.0(@logtape/logtape@2.3.0)
+      '@enkaku/node-streams':
+        specifier: 'catalog:'
+        version: 0.21.0
+      '@enkaku/server':
+        specifier: 'catalog:'
+        version: 0.21.2(@logtape/logtape@2.3.0)
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.21.0
+      '@mokei/context-client':
+        specifier: workspace:^
+        version: link:../context-client
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+      '@mokei/host':
+        specifier: workspace:^
+        version: link:../host
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../host-protocol
+      '@sozai/stream':
+        specifier: 'catalog:'
+        version: 0.2.0
+      '@tejika/process':
+        specifier: 'catalog:'
+        version: 0.5.0(@logtape/logtape@2.3.0)
+      nano-spawn:
+        specifier: 'catalog:'
+        version: 2.1.0
+    devDependencies:
+      '@mokei/context-server':
+        specifier: workspace:^
+        version: link:../context-server
+      '@mokei/context-server-node':
+        specifier: workspace:^
+        version: link:../context-server-node
       '@types/node':
         specifier: 'catalog:'
         version: 26.2.0

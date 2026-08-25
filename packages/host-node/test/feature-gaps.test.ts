@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { ContextHost, spawnHostedContext } from '../src/index.js'
+import { NodeContextHost, spawnHostedContext } from '../src/node-host.js'
 
 function fixture(name: string): string {
   return new URL(`./fixtures/${name}`, import.meta.url).pathname
@@ -8,7 +8,7 @@ function fixture(name: string): string {
 
 describe('MCP feature gaps, end to end', () => {
   test('host.setup aggregates every page from a paginating server', async () => {
-    const host = new ContextHost()
+    const host = new NodeContextHost()
     await host.addLocalContext({
       key: 'paged',
       command: process.execPath,
@@ -39,7 +39,7 @@ describe('MCP feature gaps, end to end', () => {
   })
 
   test('a structured tool result survives spawn, setup, and callTool', async () => {
-    const host = new ContextHost()
+    const host = new NodeContextHost()
     await host.addLocalContext({
       key: 'structured',
       command: process.execPath,

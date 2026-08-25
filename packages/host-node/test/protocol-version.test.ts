@@ -4,13 +4,15 @@ import type { ProtocolVersion } from '@mokei/context-protocol'
 import { createTool } from '@mokei/context-server'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { ContextHost, type HostClient, ProxyHost, spawnHostedContext } from '../src/index.js'
+import type { HostClient } from '../src/daemon.js'
+import { NodeContextHost, spawnHostedContext } from '../src/node-host.js'
+import { ProxyHost } from '../src/proxy.js'
 import * as spawnModule from '../src/spawn.js'
 
 const ECHO_SERVER = fileURLToPath(new URL('./fixtures/echo-server.mjs', import.meta.url))
 
 describe('ContextHost protocol version', () => {
-  let host: ContextHost | null = null
+  let host: NodeContextHost | null = null
 
   afterEach(async () => {
     await host?.dispose()
@@ -18,7 +20,7 @@ describe('ContextHost protocol version', () => {
   })
 
   test('addLocalContext defaults to auto, resolving the newest revision the server serves', async () => {
-    host = new ContextHost()
+    host = new NodeContextHost()
     const client = await host.addLocalContext({
       key: 'echo',
       command: process.execPath,
@@ -31,7 +33,7 @@ describe('ContextHost protocol version', () => {
   })
 
   test('addLocalContext honours an explicit revision', async () => {
-    host = new ContextHost()
+    host = new NodeContextHost()
     const client = await host.addLocalContext({
       key: 'echo',
       command: process.execPath,
@@ -58,7 +60,7 @@ describe('ContextHost protocol version', () => {
   }
 
   test('addDirectContext defaults to auto, resolving the newest revision the server serves', async () => {
-    host = new ContextHost()
+    host = new NodeContextHost()
     const client = host.addDirectContext({ key: 'direct', config: directConfig })
     await client.listTools()
     expect(client.protocolVersion).toBe('2026-07-28')
@@ -68,7 +70,7 @@ describe('ContextHost protocol version', () => {
   // `2025-11-25` only answers the probe's `server/discover` with an error, and the client
   // negotiates down instead of failing the connection the way a `'2026-07-28'` pin would.
   test('the default falls back to 2025-11-25 against a server that serves it only', async () => {
-    host = new ContextHost()
+    host = new NodeContextHost()
     const client = host.addDirectContext({
       key: 'direct',
       config: { ...directConfig, protocolVersions: ['2025-11-25'] },
@@ -80,7 +82,7 @@ describe('ContextHost protocol version', () => {
   // The explicit revision here is deliberately the one that is *not* the default: asserting
   // `'2026-07-28'` would pass even if `addDirectContext` dropped the parameter on the floor.
   test('addDirectContext honours an explicit revision', async () => {
-    host = new ContextHost()
+    host = new NodeContextHost()
     const client = host.addDirectContext({
       key: 'direct',
       protocolVersion: '2025-11-25',
@@ -94,7 +96,7 @@ describe('ContextHost protocol version', () => {
   // here: a pinned revision resolves at construction, an `'auto'` one only once the probe has
   // reached the server — and nothing has, since the transport waits for a first request.
   test('addHTTPContext defaults to auto, leaving the revision unresolved until a request', async () => {
-    host = new ContextHost()
+    host = new NodeContextHost()
     const client = await host.addHTTPContext({
       key: 'remote',
       url: 'https://mcp.example.com/api',
@@ -105,7 +107,7 @@ describe('ContextHost protocol version', () => {
   })
 
   test('addHTTPContext honours an explicit revision', async () => {
-    host = new ContextHost()
+    host = new NodeContextHost()
     const client = await host.addHTTPContext({
       key: 'remote',
       url: 'https://mcp.example.com/api',

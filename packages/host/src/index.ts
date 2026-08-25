@@ -18,10 +18,8 @@ export {
   type HTTPTransportParams,
 } from '@mokei/http-client'
 
-export { createClient, type DaemonOptions, type HostClient, runDaemon } from './daemon.js'
 export {
   type AddDirectContextParams,
-  type AddLocalContextParams,
   type AllowToolCalls,
   ContextHost,
   type ContextTool,
@@ -34,7 +32,6 @@ export {
   getContextToolInfo,
   type HostedContext,
   type HTTPContextParams,
-  spawnHostedContext,
 } from './host.js'
 export {
   createLocalToolID,
@@ -48,5 +45,3 @@ export {
   toolsToLocalTools,
   toolToLocalTool,
 } from './local-tools.js'
-export { ProxyHost, type ProxySpawnParams } from './proxy.js'
-export type { SpawnContextServerParams, StderrOption } from './spawn.js'
