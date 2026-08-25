@@ -1,4 +1,5 @@
-import { createTool, serveProcess } from '@mokei/context-server'
+import { createTool } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const config = {
   name: 'structured',

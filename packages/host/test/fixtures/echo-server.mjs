@@ -1,4 +1,5 @@
-import { createTool, serveProcess } from '@mokei/context-server'
+import { createTool } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 // Minimal stdio MCP server exposing one `echo` tool. Used by the framing
 // happy-path test to prove valid JSONL frames (including large ones) pass the

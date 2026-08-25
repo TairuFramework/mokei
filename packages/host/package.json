@@ -57,6 +57,7 @@
     "nano-spawn": "catalog:"
   },
   "devDependencies": {
+    "@mokei/context-server-node": "workspace:^",
     "@types/node": "catalog:"
   }
 }

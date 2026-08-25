@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { DatabaseSync } from 'node:sqlite'
 import { parseArgs } from 'node:util'
-import { serveProcess } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 import { createSQLiteConfig } from './index.js'
 

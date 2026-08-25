@@ -49,6 +49,7 @@
   },
   "dependencies": {
     "@mokei/context-server": "workspace:^",
+    "@mokei/context-server-node": "workspace:^",
     "turndown": "catalog:",
     "turndown-plugin-gfm": "catalog:"
   },

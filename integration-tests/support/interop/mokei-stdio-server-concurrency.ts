@@ -4,7 +4,8 @@
  * `slow` sleeps; `quick` returns at once. A server that reads one message at a time answers
  * `quick` only after `slow`'s sleep expires — which is what this fixture exists to detect.
  */
-import { createTool, serveProcess } from '@mokei/context-server'
+import { createTool } from '@mokei/context-server'
+import { serveProcess } from '@mokei/context-server-node'
 
 const SLOW_MS = 5_000
 
