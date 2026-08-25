@@ -1,4 +1,3 @@
-import { NodeStreamsTransport } from '@enkaku/node-streams'
 import type {
   CallToolRequest,
   CallToolResult,
@@ -606,11 +605,4 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     return await handler({ input: request.params.arguments, client, signal, ...mrtr })
   }
-}
-
-export function serveProcess(config: ServerConfig): ContextServer {
-  const transport = new NodeStreamsTransport<ClientMessage, ServerMessage>({
-    streams: { readable: process.stdin, writable: process.stdout },
-  })
-  return new ContextServer({ ...config, transport })
 }

@@ -1,7 +1,7 @@
 {
-  "name": "@mokei/context-server",
+  "name": "@mokei/context-server-node",
   "version": "0.12.0",
-  "description": "Mokei MCP server",
+  "description": "Mokei Context server Node stdio entry",
   "keywords": [
     "model",
     "context",
@@ -15,7 +15,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "packages/context-server"
+    "directory": "packages/context-server-node"
   },
   "license": "MIT",
   "sideEffects": false,
@@ -35,19 +35,15 @@
     "build:types": "tsc --emitDeclarationOnly --skipLibCheck",
     "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
     "prepublishOnly": "pnpm run build",
-    "test": "pnpm run test:types && pnpm run test:unit",
-    "test:types": "tsc --noEmit --skipLibCheck -p tsconfig.test.json",
-    "test:unit": "vitest run"
+    "test": "pnpm run test:types",
+    "test:types": "tsc --noEmit --skipLibCheck"
   },
   "dependencies": {
+    "@enkaku/node-streams": "catalog:",
     "@mokei/context-protocol": "workspace:^",
-    "@mokei/context-rpc": "workspace:^",
-    "@sozai/otel": "catalog:",
-    "@sozai/schema": "catalog:"
+    "@mokei/context-server": "workspace:^"
   },
   "devDependencies": {
-    "@enkaku/transport": "catalog:",
-    "@opentelemetry/api": "^1.9.1",
     "@types/node": "catalog:"
   }
 }
