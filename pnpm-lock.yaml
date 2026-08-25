@@ -230,6 +230,9 @@ importers:
       '@mokei/host':
         specifier: workspace:^
         version: link:../packages/host
+      '@mokei/host-node':
+        specifier: workspace:^
+        version: link:../packages/host-node
       '@mokei/http-client':
         specifier: workspace:^
         version: link:../packages/http-client
@@ -472,6 +475,9 @@ importers:
       '@mokei/host-monitor':
         specifier: workspace:^
         version: link:../host-monitor
+      '@mokei/host-node':
+        specifier: workspace:^
+        version: link:../host-node
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
@@ -896,6 +902,9 @@ importers:
       '@mokei/host':
         specifier: workspace:^
         version: link:../host
+      '@mokei/host-node':
+        specifier: workspace:^
+        version: link:../host-node
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider

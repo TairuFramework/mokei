@@ -46,6 +46,7 @@
     "@mokei/context-protocol": "workspace:^",
     "@mokei/host": "workspace:^",
     "@mokei/host-monitor": "workspace:^",
+    "@mokei/host-node": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "@mokei/llama-provider": "workspace:^",
     "@mokei/model-provider": "workspace:^",

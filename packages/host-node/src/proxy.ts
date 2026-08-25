@@ -6,9 +6,9 @@ import type {
   UnknownContextTypes,
 } from '@mokei/context-client'
 import type { ProtocolVersion } from '@mokei/context-protocol'
-import { ContextHost } from '@mokei/host'
 
 import { type DaemonOptions, type HostClient, runDaemon } from './daemon.js'
+import { NodeContextHost } from './node-host.js'
 import { filterEnv } from './utils.js'
 
 export type ProxySpawnParams = {
@@ -24,7 +24,7 @@ export type ProxySpawnParams = {
   protocolVersion?: ProtocolVersion | 'auto'
 }
 
-export class ProxyHost extends ContextHost {
+export class ProxyHost extends NodeContextHost {
   static async forDaemon(options?: DaemonOptions): Promise<ProxyHost> {
     const client = await runDaemon(options)
     return new ProxyHost(client)

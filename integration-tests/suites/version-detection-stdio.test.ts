@@ -1,6 +1,6 @@
 /** Compatibility-matrix cases for the 'auto' probe over stdio (specification/2026-07-28/basic/versioning#compatibility-matrix). */
 import { UNSUPPORTED_PROTOCOL_VERSION } from '@mokei/context-protocol'
-import { spawnHostedContext } from '@mokei/host'
+import { spawnHostedContext } from '@mokei/host-node'
 import { describe, expect, test } from 'vitest'
 
 import {

@@ -1,4 +1,5 @@
 import { ContextHost } from '@mokei/host'
+import { NodeContextHost } from '@mokei/host-node'
 import { createFetchConfig } from '@mokei/mcp-fetch'
 import type { ServerMessage } from '@mokei/model-provider'
 import { fromStream } from '@sozai/generator'
@@ -22,7 +23,7 @@ test.skipIf(!hasChatBackend)(
   'executes a tool call after adding a local context',
   { retry: TOOL_CALL_RETRY },
   async () => {
-    const host = new ContextHost()
+    const host = new NodeContextHost()
 
     try {
       await host.addLocalContext({

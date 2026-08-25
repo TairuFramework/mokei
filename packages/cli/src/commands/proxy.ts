@@ -1,5 +1,5 @@
 import { createTransportStream } from '@enkaku/node-streams'
-import { runDaemon } from '@mokei/host'
+import { runDaemon } from '@mokei/host-node'
 import { Command } from 'commander'
 
 import { withSocketPath } from '../options.js'

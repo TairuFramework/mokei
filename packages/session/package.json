@@ -43,6 +43,7 @@
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^",
     "@mokei/host": "workspace:^",
+    "@mokei/host-node": "workspace:^",
     "@mokei/model-provider": "workspace:^",
     "@sozai/async": "catalog:",
     "@sozai/event": "catalog:",

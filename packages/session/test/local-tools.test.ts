@@ -1,4 +1,4 @@
-import { ContextHost } from '@mokei/host'
+import { NodeContextHost } from '@mokei/host-node'
 import type { ModelProvider, ProviderTypes } from '@mokei/model-provider'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -6,7 +6,7 @@ import { type LocalToolDefinition, Session } from '../src/index.js'
 
 describe('Session({ contextHost })', () => {
   test('uses the supplied ContextHost instead of creating one', () => {
-    const host = new ContextHost()
+    const host = new NodeContextHost()
     const session = new Session({ contextHost: host })
     expect(session.contextHost).toBe(host)
   })

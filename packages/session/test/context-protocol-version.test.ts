@@ -3,7 +3,7 @@ import { Session } from '@mokei/session'
 import { afterEach, describe, expect, test } from 'vitest'
 
 const ECHO_SERVER = fileURLToPath(
-  new URL('../../host/test/fixtures/echo-server.mjs', import.meta.url),
+  new URL('../../host-node/test/fixtures/echo-server.mjs', import.meta.url),
 )
 
 describe('Session.addContext', () => {
