@@ -667,9 +667,6 @@ importers:
         specifier: 'catalog:'
         version: 0.1.3
     devDependencies:
-      '@mokei/context-server-node':
-        specifier: workspace:^
-        version: link:../context-server-node
       '@types/node':
         specifier: 'catalog:'
         version: 26.2.0

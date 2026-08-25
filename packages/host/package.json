@@ -50,7 +50,6 @@
     "@sozai/event": "catalog:"
   },
   "devDependencies": {
-    "@mokei/context-server-node": "workspace:^",
     "@types/node": "catalog:"
   }
 }
