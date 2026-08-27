@@ -417,7 +417,7 @@ describe('ContextRPC invalid inbound messages', () => {
 
   test('an invalid inbound response settles its exchange with SettleReason "error"', async () => {
     const transports = new DirectTransports<AnyMessage, AnyMessage>()
-    const settleReasons: Array<string> = []
+    const settles: Array<{ reason: string; error?: Error }> = []
     const rpc = new ContextRPC<TestTypes>({
       transport: transports.client,
       validateMessageIn: rejectResponses,
@@ -428,15 +428,20 @@ describe('ContextRPC invalid inbound messages', () => {
       'tools/list',
       {},
       {
-        onSettle: (reason) => {
-          settleReasons.push(reason)
+        onSettle: (settle) => {
+          settles.push(settle)
         },
       },
     )
     await transports.server.write({ jsonrpc: '2.0', id: 0, result: { tools: [] } } as AnyMessage)
 
     await expect(pending).rejects.toThrow('Invalid response')
-    expect(settleReasons).toEqual(['error'])
+    expect(settles).toEqual([
+      {
+        reason: 'error',
+        error: expect.objectContaining({ message: expect.stringContaining('Invalid response') }),
+      },
+    ])
 
     await rpc.dispose()
     await transports.dispose()
