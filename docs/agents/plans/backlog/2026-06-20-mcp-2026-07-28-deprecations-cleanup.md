@@ -68,8 +68,7 @@ here alongside the disposal/cleanup changes.
   (including new `subscriptions/listen`) until `#close`. Bounded and benign today
   (`#close`'s `abortAll` sweeps anything created in the window), but a `#disposing` flag gating the
   inbound-request path would stop a disposing server starting new work while still flushing held
-  terminals. See the design spec's "Disposal ordering — Accepted consequence / Hardening follow-up"
-  note (`docs/superpowers/specs/2026-08-27-mcp-2026-07-28-subscriptions-design.md`).
+  terminals. See `completed/2026-08-27-mcp-2026-07-28-subscriptions.complete.md`.
 
 (The stateless-borrower backpressure/write-failure teardown gap, originally listed here, was fixed
 in the review fix-wave: `SubscriptionSink.close` disposes a borrower server, whose transport
