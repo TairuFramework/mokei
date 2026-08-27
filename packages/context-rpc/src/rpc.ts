@@ -15,7 +15,12 @@ import type { Validator } from '@sozai/schema'
 
 import { ContinuationStore } from './continuation.js'
 import { errorResponse, RequestTimeoutError, RPCError, TransportClosedError } from './error.js'
-import { type ExchangeController, ExchangeRegistry, type StreamHandlers } from './exchange.js'
+import {
+  type ExchangeController,
+  ExchangeRegistry,
+  type StreamFrame,
+  type StreamHandlers,
+} from './exchange.js'
 import { RequestScheduler } from './scheduler.js'
 
 function isRequestID(id: unknown): id is RequestID {
@@ -97,6 +102,15 @@ export type RPCParams<T extends RPCTypes> = {
    * for request handlers that failed. Without it such frames vanish silently.
    */
   onError?: (error: Error) => void
+  /**
+   * Diverts an inbound notification into an existing stream exchange instead of
+   * `_handleNotification` — used by `subscriptions/listen` (SEP-1391), where server
+   * notifications carry a subscriptionId that maps back to the listen request's stream
+   * exchange. Returning `null` leaves the notification to the normal handling path.
+   */
+  routeStreamNotification?: (
+    notification: ProgressNotification | T['HandleNotification'],
+  ) => { id: RequestID; frame: StreamFrame } | null
   transport: TransportType<T['MessageIn'], T['MessageOut']>
   validateMessageIn: Validator<T['MessageIn']>
 }
@@ -119,6 +133,9 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #transport: TransportType<T['MessageIn'], T['MessageOut']>
   #validateMessageIn: Validator<T['MessageIn']>
   #onError?: (error: Error) => void
+  #routeStreamNotification?: (
+    notification: ProgressNotification | T['HandleNotification'],
+  ) => { id: RequestID; frame: StreamFrame } | null
 
   constructor(params: RPCParams<T>) {
     super({ dispose: () => this.#dispose() })
@@ -131,6 +148,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     this.#transport = params.transport
     this.#validateMessageIn = params.validateMessageIn
     this.#onError = params.onError
+    this.#routeStreamNotification = params.routeStreamNotification
   }
 
   /**
@@ -279,9 +297,22 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       if (notification.method === 'notifications/cancelled') {
         const cancelled = notification as CancelledNotification
         this.#scheduler.cancel(cancelled.params.requestId)
-      } else {
-        void this._handleNotification(notification)
+        return null
       }
+      if (this.#routeStreamNotification != null) {
+        let routed: { id: RequestID; frame: StreamFrame } | null = null
+        try {
+          routed = this.#routeStreamNotification(notification)
+        } catch (cause) {
+          this.#reportError(cause instanceof Error ? cause : new Error(String(cause)))
+          return null
+        }
+        if (routed != null) {
+          this.#exchanges.routeStreamFrame(routed.id, routed.frame)
+          return null
+        }
+      }
+      void this._handleNotification(notification)
       return null
     }
 

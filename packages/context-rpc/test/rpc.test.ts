@@ -514,3 +514,81 @@ describe('ContextRPC invalid inbound messages', () => {
     await transports.dispose()
   })
 })
+
+describe('ContextRPC stream-notification correlator', () => {
+  test('routeStreamNotification routes a matching notification to its stream exchange', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const notified: Array<string> = []
+    class TestRPC extends ContextRPC<TestTypes> {
+      _handleNotification(notification: { method: string }): void {
+        notified.push(notification.method)
+      }
+    }
+    const rpc = new TestRPC({
+      transport: transports.client,
+      validateMessageIn: passthrough,
+      routeStreamNotification: (notification: AnyMessage) => {
+        const params = (notification as { params?: { subscriptionId?: unknown; value?: unknown } })
+          .params
+        if (notification.method !== 'notifications/resource_updated' || params == null) {
+          return null
+        }
+        return {
+          id: params.subscriptionId as number,
+          frame: { type: 'progress' as const, value: params.value },
+        }
+      },
+    })
+    rpc._handle()
+
+    const onProgress = vi.fn()
+    // Never settled by this test — a `progress` frame is not terminal — so it rejects with
+    // TransportClosedError on dispose below; the catch keeps that an expected non-event.
+    rpc._registerStreamExchange('subscriptions/listen', {}, { onProgress }).catch(() => {})
+
+    await transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/resource_updated',
+      params: { subscriptionId: 0, value: { uri: 'file:///x' } },
+    } as AnyMessage)
+
+    await vi.waitFor(() => expect(onProgress).toHaveBeenCalledWith({ uri: 'file:///x' }))
+    expect(notified).toEqual([])
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('routeStreamNotification that throws reports the error and does not fall through', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const onError = vi.fn()
+    const notified: Array<string> = []
+    class TestRPC extends ContextRPC<TestTypes> {
+      _handleNotification(notification: { method: string }): void {
+        notified.push(notification.method)
+      }
+    }
+    const rpc = new TestRPC({
+      onError,
+      transport: transports.client,
+      validateMessageIn: passthrough,
+      routeStreamNotification: () => {
+        throw new Error('correlator failed')
+      },
+    })
+    rpc._handle()
+
+    await transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/resource_updated',
+      params: {},
+    } as AnyMessage)
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1))
+    expect((onError.mock.calls[0][0] as Error).message).toBe('correlator failed')
+    expect(notified).toEqual([])
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+})
