@@ -793,6 +793,16 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     // same abrupt teardown. On graceful dispose the terminal is already resolved by `complete()`,
     // so both calls here are no-ops.
     signal.addEventListener('abort', () => teardown(signal.reason as Error), { once: true })
+    // The listener above cannot observe an abort that already fired during the `enqueue(ack)`
+    // await -- `{ once: true }` only arms for *future* dispatches. Without this check the hub
+    // entry just registered above would be left registered forever (until the owning server's
+    // `endAllGracefully()`), silently delivering to a request the client already cancelled. Both
+    // `teardown` (via `handle`) and `_holdResponse` (via `signal.aborted`) are idempotent/safe to
+    // call in this state, so this synchronous check just closes the window rather than changing
+    // any settlement semantics.
+    if (signal.aborted) {
+      teardown(signal.reason as Error)
+    }
 
     return this._holdResponse({ terminal: terminal.promise, beforeTerminal: () => writer.flush() })
   }

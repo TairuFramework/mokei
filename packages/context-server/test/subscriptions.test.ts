@@ -682,6 +682,83 @@ describe('ContextServer subscriptions/listen', () => {
     await transports.dispose()
   })
 
+  test('signal aborting while the ack write is in flight tears the subscription down instead of leaking it', async () => {
+    // Reproduces the ack-write/abort race: `#listen()` suspends inside `await
+    // writer.enqueue(ack)`, and the request's AbortSignal fires *during* that suspension --
+    // before `#listen()` ever gets to `hub.register()` and attach its own `abort` listener. The
+    // `{ once: true }` listener cannot observe an abort that already fired, so without the
+    // synchronous `signal.aborted` check added alongside it, the hub entry registered just after
+    // would stay registered forever (until `endAllGracefully()`), silently delivering to a
+    // request the client already cancelled. This test gates the ack write open with a deferred
+    // (the same technique the "sink write failure" test above uses) so the abort can land inside
+    // that suspension deterministically, then lets the write complete and asserts the entry does
+    // not survive.
+    const { server, transports } = createServedContext({
+      protocolVersions: ['2026-07-28'],
+      resources: minimalResources,
+      subscriptions: true,
+    })
+
+    const ackGate = defer<void>()
+    const originalWrite = transports.server.write.bind(transports.server)
+    transports.server.write = async (message) => {
+      if ((message as { method?: string }).method === 'notifications/subscriptions/acknowledged') {
+        await ackGate.promise
+      }
+      return originalWrite(message)
+    }
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 13,
+      method: 'subscriptions/listen',
+      params: { notifications: { resourceSubscriptions: ['file:///a'] }, _meta: NEW_META },
+    } as ClientRequest)
+
+    // Give the read loop room to dispatch the listen request and reach the (now-gated) ack
+    // write -- i.e. suspend `#listen()` inside `await writer.enqueue(ack)`, before `hub.register`
+    // has run and before the `abort` listener has been attached.
+    await settle()
+
+    // Cancel the still-pending listen request while the ack write is suspended. The read loop
+    // processes this independently of the gated outgoing write (each direction of
+    // `DirectTransports` is an independent channel) and synchronously fires the request's
+    // AbortSignal via the scheduler -- with no listener yet attached to observe it.
+    transports.client.write({
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { requestId: 13 },
+    })
+    await settle()
+
+    // Now let the ack write resolve. `#listen()` resumes, registers with the hub, attaches the
+    // (now-moot) future `abort` listener, and must synchronously observe the already-fired abort
+    // to tear the entry down.
+    ackGate.resolve()
+    await settle()
+    await settle()
+
+    // The ack frame itself was still delivered -- the write succeeded, only the request was
+    // cancelled after the fact.
+    const ack = await transports.client.read()
+    expect((ack.value as { method: string }).method).toBe(
+      'notifications/subscriptions/acknowledged',
+    )
+
+    // The entry must not have survived registration: a matching producer event fired right after
+    // must not be delivered.
+    await server.events.emit('resourceUpdated', { uri: 'file:///a' })
+    await settle()
+
+    // And the hub retains nothing for it either -- graceful dispose has no terminal to write for
+    // this (cancelled) subscription and no stray `resources/updated` frame to flush: the very
+    // next frame the client sees is the stream close.
+    const disposing = server.dispose()
+    await expect(transports.client.read()).resolves.toEqual({ done: true, value: undefined })
+    await disposing
+    await transports.dispose()
+  })
+
   test('constructing with both `subscriptions` and `subscriptionHub` throws', () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const hub = createSubscriptionHub({ events: new EventEmitter<ServerEvents>() })
