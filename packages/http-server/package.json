@@ -49,6 +49,7 @@
     "hono": "catalog:"
   },
   "devDependencies": {
+    "@sozai/event": "catalog:",
     "@types/node": "catalog:"
   }
 }
