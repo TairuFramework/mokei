@@ -1,9 +1,17 @@
-import type { ServerNotification } from '@mokei/context-protocol'
+import { DirectTransports } from '@enkaku/transport'
+import type {
+  ClientMessage,
+  ClientRequest,
+  ServerMessage,
+  ServerNotification,
+} from '@mokei/context-protocol'
+import { META_SUBSCRIPTION_ID } from '@mokei/context-protocol'
 import { defer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 import { describe, expect, test, vi } from 'vitest'
 
-import type { ServerEvents } from '../src/index.js'
+import type { ServerEvents, ServerParams } from '../src/index.js'
+import { ContextServer } from '../src/index.js'
 import {
   createSubscriptionHub,
   SubscriptionBackpressureError,
@@ -11,6 +19,39 @@ import {
   type SubscriptionSink,
   SubscriptionWriter,
 } from '../src/subscriptions.js'
+
+const NEW_META = {
+  'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+  'io.modelcontextprotocol/clientCapabilities': {},
+}
+
+const minimalResources = {
+  list: () => ({ resources: [] }),
+  read: () => ({ contents: [] }),
+}
+
+/**
+ * Yields one macrotask. Ack-first means the hub entry is registered *after* the ack write
+ * succeeds — and on a pull-based transport the ack write resolves only once the client has read
+ * the frame, so registration lands one macrotask after the client observes the ack. A real
+ * producer event is not microtask-synchronized to that read; a test that emits immediately would
+ * be, so it waits a tick for the subscription to become fully live first.
+ */
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+
+function createServedContext(params: Omit<ServerParams, 'name' | 'transport' | 'version'>): {
+  server: ContextServer
+  transports: DirectTransports<ServerMessage, ClientMessage>
+} {
+  const transports = new DirectTransports<ServerMessage, ClientMessage>()
+  const server = new ContextServer({
+    name: 'test',
+    version: '0.0.0',
+    transport: transports.server,
+    ...params,
+  })
+  return { server, transports }
+}
 
 function resourceNotification(uri: string): ServerNotification {
   return {
@@ -423,5 +464,171 @@ describe('SubscriptionHub', () => {
     expect(completedFirst.deliver).not.toHaveBeenCalled()
 
     await hub.dispose()
+  })
+})
+
+describe('ContextServer subscriptions/listen', () => {
+  test('acks first, then streams matching producer notifications carrying the subscriptionId', async () => {
+    const { server, transports } = createServedContext({
+      protocolVersions: ['2026-07-28'],
+      resources: minimalResources,
+      subscriptions: true,
+    })
+
+    const filter = { resourceSubscriptions: ['file:///a'], toolsListChanged: true }
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'subscriptions/listen',
+      params: { notifications: filter, _meta: NEW_META },
+    } as ClientRequest)
+
+    // The first frame on the stream must be the acknowledgement -- not an immediate JSON-RPC
+    // response (a response would carry `id` and `result`, a notification carries neither).
+    const ack = await transports.client.read()
+    expect(ack.value).toMatchObject({
+      jsonrpc: '2.0',
+      method: 'notifications/subscriptions/acknowledged',
+      params: {
+        notifications: filter,
+        _meta: { [META_SUBSCRIPTION_ID]: 7 },
+      },
+    })
+    expect((ack.value as { id?: unknown }).id).toBeUndefined()
+    await settle()
+
+    // A producer event for a subscribed URI arrives on the stream, decorated with the id.
+    await server.events.emit('resourceUpdated', { uri: 'file:///a' })
+    const updated = await transports.client.read()
+    expect(updated.value).toMatchObject({
+      jsonrpc: '2.0',
+      method: 'notifications/resources/updated',
+      params: {
+        uri: 'file:///a',
+        _meta: { [META_SUBSCRIPTION_ID]: 7 },
+      },
+    })
+
+    // Read the graceful terminal concurrently with dispose so the pull-based transport's write
+    // is not left waiting on an absent reader.
+    const disposing = server.dispose()
+    await transports.client.read()
+    await disposing
+    await transports.dispose()
+  })
+
+  test('does not deliver events the filter did not opt into', async () => {
+    const { server, transports } = createServedContext({
+      protocolVersions: ['2026-07-28'],
+      resources: minimalResources,
+      subscriptions: true,
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'subscriptions/listen',
+      params: { notifications: { resourceSubscriptions: ['file:///a'] }, _meta: NEW_META },
+    } as ClientRequest)
+    await transports.client.read() // ack
+    await settle()
+
+    // A URI outside the filter is dropped; the next frame the client sees is the one for the
+    // subscribed URI, never the unsubscribed one.
+    await server.events.emit('resourceUpdated', { uri: 'file:///other' })
+    await server.events.emit('resourceUpdated', { uri: 'file:///a' })
+    const next = await transports.client.read()
+    expect(next.value).toMatchObject({
+      method: 'notifications/resources/updated',
+      params: { uri: 'file:///a' },
+    })
+
+    const disposing = server.dispose()
+    await transports.client.read()
+    await disposing
+    await transports.dispose()
+  })
+
+  test('graceful dispose writes the terminal result before closing', async () => {
+    const { server, transports } = createServedContext({
+      protocolVersions: ['2026-07-28'],
+      resources: minimalResources,
+      subscriptions: true,
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 42,
+      method: 'subscriptions/listen',
+      params: { notifications: { resourcesListChanged: true }, _meta: NEW_META },
+    } as ClientRequest)
+    await transports.client.read() // ack
+    await settle()
+
+    // Dispose gracefully; read the terminal concurrently so the pull-based transport's terminal
+    // write is not left blocked on an absent reader (which would stall dispose to its deadline).
+    const disposing = server.dispose()
+
+    // The terminal response carries only `result._meta[subscriptionId]` (== the listen id) --
+    // no `resultType`.
+    const terminal = await transports.client.read()
+    expect(terminal.value).toEqual({
+      jsonrpc: '2.0',
+      id: 42,
+      result: { _meta: { [META_SUBSCRIPTION_ID]: 42 } },
+    })
+    expect(
+      (terminal.value as { result: Record<string, unknown> }).result.resultType,
+    ).toBeUndefined()
+
+    // The stream is closed after the terminal write.
+    await expect(transports.client.read()).resolves.toEqual({ done: true, value: undefined })
+    await disposing
+    await transports.dispose()
+  })
+
+  describe('resources.subscribe capability gating', () => {
+    async function discoverCapabilities(
+      params: Omit<ServerParams, 'name' | 'transport' | 'version'>,
+    ): Promise<Record<string, unknown>> {
+      const { server, transports } = createServedContext(params)
+      transports.client.write({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'server/discover',
+        params: { _meta: NEW_META },
+      } as ClientRequest)
+      const res = await transports.client.read()
+      const capabilities = (res.value as { result: { capabilities: Record<string, unknown> } })
+        .result.capabilities
+      await server.dispose()
+      await transports.dispose()
+      return capabilities
+    }
+
+    test('advertises resources.subscribe when resources are configured and a hub is present', async () => {
+      const capabilities = await discoverCapabilities({
+        protocolVersions: ['2026-07-28'],
+        resources: minimalResources,
+        subscriptions: true,
+      })
+      expect(capabilities.resources).toEqual({ listChanged: true, subscribe: true })
+    })
+
+    test('does not advertise subscribe when resources are configured but no hub is present', async () => {
+      const capabilities = await discoverCapabilities({
+        protocolVersions: ['2026-07-28'],
+        resources: minimalResources,
+      })
+      expect(capabilities.resources).toEqual({ listChanged: true })
+    })
+
+    test('does not advertise a resources capability when a hub is present but no resources configured', async () => {
+      const capabilities = await discoverCapabilities({
+        protocolVersions: ['2026-07-28'],
+        subscriptions: true,
+      })
+      expect(capabilities.resources).toBeUndefined()
+    })
   })
 })
