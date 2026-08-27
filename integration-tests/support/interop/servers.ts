@@ -262,7 +262,7 @@ export async function startMokeiHTTPServer(
   return {
     url: `http://127.0.0.1:${port}/mcp`,
     dispose: async () => {
-      result.dispose()
+      await result.dispose()
     },
   }
 }
@@ -279,7 +279,7 @@ export async function startMokeiMRTRHTTPServer(): Promise<RunningHTTPServer> {
   return {
     url: `http://127.0.0.1:${port}/mcp`,
     dispose: async () => {
-      result.dispose()
+      await result.dispose()
     },
   }
 }
@@ -398,7 +398,7 @@ export async function startBlockingHTTPServer(): Promise<BlockingHTTPServer> {
     serverDisposed,
     dispose: async () => {
       release()
-      result.dispose()
+      await result.dispose()
     },
   }
 }

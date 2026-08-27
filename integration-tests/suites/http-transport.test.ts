@@ -33,7 +33,7 @@ describe('HTTP transport end-to-end', () => {
       client = null
     }
     if (serverResult != null) {
-      serverResult.dispose()
+      await serverResult.dispose()
       serverResult = null
     }
   })
