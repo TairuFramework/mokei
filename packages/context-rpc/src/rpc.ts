@@ -120,6 +120,19 @@ export type RPCTypes = {
   SendResult: unknown
 }
 
+/** Detail carried by a transport's `streamEvents` `closed` event — see {@link StreamEventsTransport}. */
+export type StreamClosedEvent = { requestID: RequestID; error?: Error }
+
+/**
+ * Optional transport capability (the HTTP client, later): fires `closed` when a per-request
+ * stream body ends without a terminal response, naming the exchange that was left hanging so
+ * `ContextRPC` can settle just that one instead of waiting forever. A transport without this
+ * property behaves exactly as before — `ContextRPC` only subscribes when it is present.
+ */
+export type StreamEventsTransport = {
+  streamEvents: EventEmitter<{ closed: StreamClosedEvent }>
+}
+
 export type RPCParams<T extends RPCTypes> = {
   /**
    * Timeout applied to a request that passes none of its own. Unset means unbounded, which
@@ -145,7 +158,7 @@ export type RPCParams<T extends RPCTypes> = {
   routeStreamNotification?: (
     notification: ProgressNotification | T['HandleNotification'],
   ) => { id: RequestID; frame: StreamFrame } | null
-  transport: TransportType<T['MessageIn'], T['MessageOut']>
+  transport: TransportType<T['MessageIn'], T['MessageOut']> & Partial<StreamEventsTransport>
   validateMessageIn: Validator<T['MessageIn']>
 }
 
@@ -169,12 +182,15 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   // the entry is removed (terminal written, terminal rejected, or the request was cancelled) —
   // `#flushHeldResponses` awaits it on disposal.
   #heldRequests: Map<RequestID, { signal: AbortSignal; settled: Promise<void> }> = new Map()
-  #transport: TransportType<T['MessageIn'], T['MessageOut']>
+  #transport: TransportType<T['MessageIn'], T['MessageOut']> & Partial<StreamEventsTransport>
   #validateMessageIn: Validator<T['MessageIn']>
   #onError?: (error: Error) => void
   #routeStreamNotification?: (
     notification: ProgressNotification | T['HandleNotification'],
   ) => { id: RequestID; frame: StreamFrame } | null
+  // Unsubscribes from `transport.streamEvents` — set only when the transport exposes that
+  // optional capability, called once from `#close` so the listener never outlives the RPC.
+  #unsubscribeStreamEvents?: () => void
 
   constructor(params: RPCParams<T>) {
     super({ dispose: () => this.#dispose() })
@@ -188,6 +204,14 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     this.#validateMessageIn = params.validateMessageIn
     this.#onError = params.onError
     this.#routeStreamNotification = params.routeStreamNotification
+    if (params.transport.streamEvents != null) {
+      this.#unsubscribeStreamEvents = params.transport.streamEvents.on(
+        'closed',
+        ({ requestID, error }) => {
+          this.#exchanges.close(requestID, error ?? new TransportClosedError('stream closed'))
+        },
+      )
+    }
   }
 
   /**
@@ -285,6 +309,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       return
     }
     this.#closed = true
+    this.#unsubscribeStreamEvents?.()
     this.#endPendingRequests(reason ?? new TransportClosedError())
     this._onTransportClosed(reason)
   }

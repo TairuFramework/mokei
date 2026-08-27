@@ -1,11 +1,17 @@
 import { DirectTransports, type TransportType } from '@enkaku/transport'
 import type { AnyMessage } from '@mokei/context-protocol'
 import { defer } from '@sozai/async'
+import { EventEmitter } from '@sozai/event'
 import type { Validator } from '@sozai/schema'
 import { describe, expect, test, vi } from 'vitest'
 
 import { RequestTimeoutError, TransportClosedError } from '../src/error.js'
-import { ContextRPC, type RPCTypes } from '../src/rpc.js'
+import {
+  ContextRPC,
+  type RPCTypes,
+  type StreamClosedEvent,
+  type StreamEventsTransport,
+} from '../src/rpc.js'
 
 // Passthrough validator — these tests exercise transport lifecycle, not schema.
 const passthrough = ((message: unknown) => ({ value: message })) as unknown as Validator<AnyMessage>
@@ -129,6 +135,101 @@ describe('ContextRPC transport lifecycle', () => {
 
     const pending = rpc._registerStreamExchange('tools/call', {})
     // Reply from the server side; request id starts at 0.
+    await transports.server.write({ jsonrpc: '2.0', id: 0, result: { done: true } } as AnyMessage)
+    await expect(pending).resolves.toEqual({ done: true })
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test("routes a transport's streamEvents.closed to the named stream exchange only", async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const streamEvents = new EventEmitter<{ closed: StreamClosedEvent }>()
+    const client = transports.client as TransportType<AnyMessage, AnyMessage> &
+      StreamEventsTransport
+    client.streamEvents = streamEvents
+    const rpc = makeRPC(client)
+    rpc._handle()
+
+    const settledA: Array<{ reason: string; error?: Error }> = []
+    const settledB: Array<{ reason: string; error?: Error }> = []
+    // First registered exchange gets id 0, second gets id 1 (request ids start at 0).
+    const pendingA = rpc._registerStreamExchange(
+      'tools/call',
+      {},
+      { onSettle: (settle) => settledA.push(settle) },
+    )
+    const pendingB = rpc._registerStreamExchange(
+      'tools/call',
+      {},
+      { onSettle: (settle) => settledB.push(settle) },
+    )
+    pendingA.catch(() => {})
+    pendingB.catch(() => {})
+
+    const closeError = new Error('peer stream ended')
+    await streamEvents.emit('closed', { requestID: 0, error: closeError })
+
+    await expect(pendingA).rejects.toBe(closeError)
+    expect(settledA).toEqual([{ reason: 'closed', error: closeError }])
+    // Exchange B was never named by the `closed` event and must stay untouched.
+    expect(settledB).toEqual([])
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('streamEvents.closed without an error settles with a TransportClosedError', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const streamEvents = new EventEmitter<{ closed: StreamClosedEvent }>()
+    const client = transports.client as TransportType<AnyMessage, AnyMessage> &
+      StreamEventsTransport
+    client.streamEvents = streamEvents
+    const rpc = makeRPC(client)
+    rpc._handle()
+
+    const pending = rpc._registerStreamExchange('tools/call', {})
+    pending.catch(() => {})
+
+    await streamEvents.emit('closed', { requestID: 0 })
+
+    await expect(pending).rejects.toBeInstanceOf(TransportClosedError)
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('unsubscribes from streamEvents on dispose', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const streamEvents = new EventEmitter<{ closed: StreamClosedEvent }>()
+    const client = transports.client as TransportType<AnyMessage, AnyMessage> &
+      StreamEventsTransport
+    client.streamEvents = streamEvents
+
+    let unsubscribeSpy: ReturnType<typeof vi.fn<() => void>> | undefined
+    const realOn = streamEvents.on.bind(streamEvents)
+    vi.spyOn(streamEvents, 'on').mockImplementation((...args) => {
+      const off = realOn(...(args as Parameters<typeof realOn>))
+      unsubscribeSpy = vi.fn<() => void>(off)
+      return unsubscribeSpy
+    })
+
+    const rpc = makeRPC(client)
+    rpc._handle()
+
+    expect(unsubscribeSpy).toBeDefined()
+    await rpc.dispose()
+    expect(unsubscribeSpy).toHaveBeenCalledTimes(1)
+
+    await transports.dispose()
+  })
+
+  test('a transport without streamEvents behaves exactly as before', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = makeRPC(transports.client)
+    rpc._handle()
+
+    const pending = rpc._registerStreamExchange('tools/call', {})
     await transports.server.write({ jsonrpc: '2.0', id: 0, result: { done: true } } as AnyMessage)
     await expect(pending).resolves.toEqual({ done: true })
 
