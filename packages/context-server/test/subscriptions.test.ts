@@ -587,6 +587,117 @@ describe('ContextServer subscriptions/listen', () => {
     await transports.dispose()
   })
 
+  test('client cancelling the listen tears the subscription down: no terminal, no further delivery', async () => {
+    const { server, transports } = createServedContext({
+      protocolVersions: ['2026-07-28'],
+      resources: minimalResources,
+      subscriptions: true,
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'subscriptions/listen',
+      params: { notifications: { resourceSubscriptions: ['file:///a'] }, _meta: NEW_META },
+    } as ClientRequest)
+    const ack = await transports.client.read()
+    expect((ack.value as { method: string }).method).toBe(
+      'notifications/subscriptions/acknowledged',
+    )
+    await settle()
+
+    // The client cancels the listen request -- the same `notifications/cancelled` path the RPC
+    // scheduler already handles. This aborts the held request's signal, which routes to
+    // `handle.close` and unregisters the subscription.
+    transports.client.write({
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { requestId: 5 },
+    })
+    await settle()
+
+    // A matching producer event must NOT reach the now-torn-down subscription.
+    await server.events.emit('resourceUpdated', { uri: 'file:///a' })
+    await settle()
+
+    // Graceful dispose must write NO terminal for a cancelled listen (MCP: a cancelled request is
+    // not responded to). The first -- and only -- frame the client sees is the stream close: no
+    // `resources/updated` frame from the emit above, and no `subscriptions/listen` terminal.
+    const disposing = server.dispose()
+    await expect(transports.client.read()).resolves.toEqual({ done: true, value: undefined })
+    await disposing
+    await transports.dispose()
+  })
+
+  test('a per-subscription sink write failure tears the subscription down', async () => {
+    const onError = vi.fn()
+    const { server, transports } = createServedContext({
+      protocolVersions: ['2026-07-28'],
+      resources: minimalResources,
+      subscriptions: true,
+      onError,
+    })
+
+    // Make the delivery write (only) fail, so the writer's `onFailure` fires on the first
+    // producer frame while the ack -- a different method -- still writes cleanly.
+    const writeError = new Error('sink boom')
+    const originalWrite = transports.server.write.bind(transports.server)
+    transports.server.write = async (message) => {
+      if ((message as { method?: string }).method === 'notifications/resources/updated') {
+        throw writeError
+      }
+      return originalWrite(message)
+    }
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 9,
+      method: 'subscriptions/listen',
+      params: { notifications: { resourceSubscriptions: ['file:///a'] }, _meta: NEW_META },
+    } as ClientRequest)
+    const ack = await transports.client.read()
+    expect((ack.value as { method: string }).method).toBe(
+      'notifications/subscriptions/acknowledged',
+    )
+    await settle()
+
+    // First matching event: its delivery write rejects -> writer.onFailure -> teardown, which
+    // rejects the held terminal. That rejection surfaces through the RPC layer's `onError`.
+    await server.events.emit('resourceUpdated', { uri: 'file:///a' })
+    await settle()
+    await settle()
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0][0]).toBe(writeError)
+
+    // The subscription is gone: a second matching event reaches no sink, so no further failure.
+    await server.events.emit('resourceUpdated', { uri: 'file:///a' })
+    await settle()
+    await settle()
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    // And graceful dispose writes no terminal for the torn-down subscription.
+    const disposing = server.dispose()
+    await expect(transports.client.read()).resolves.toEqual({ done: true, value: undefined })
+    await disposing
+    await transports.dispose()
+  })
+
+  test('constructing with both `subscriptions` and `subscriptionHub` throws', () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const hub = createSubscriptionHub({ events: new EventEmitter<ServerEvents>() })
+    expect(
+      () =>
+        new ContextServer({
+          name: 'test',
+          version: '0.0.0',
+          transport: transports.server,
+          protocolVersions: ['2026-07-28'],
+          subscriptions: true,
+          subscriptionHub: hub,
+        }),
+    ).toThrow()
+  })
+
   describe('resources.subscribe capability gating', () => {
     async function discoverCapabilities(
       params: Omit<ServerParams, 'name' | 'transport' | 'version'>,
