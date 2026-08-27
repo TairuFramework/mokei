@@ -5,7 +5,7 @@
 ([modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk),
 v2, evaluated at `2.0.0-beta.2` and stable at `2.0.0` since) was evaluated for adopt / wrap /
 keep-custom against mokei's MCP packages. Spec-migration implications recorded in
-`milestones/2026-06-08-mcp-draft-migration.md` (status-update section).
+`milestones/2026-06-08-mcp-2026-07-28-migration.md` (status-update section).
 
 ## Decision: keep the custom MCP core
 

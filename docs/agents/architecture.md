@@ -132,9 +132,11 @@ encoder, and the retry itself, are covered by SDK interop tests instead.
 packages/
 +-- context-protocol/     # MCP protocol definitions and types
 +-- context-rpc/          # JSON-RPC implementation
-+-- context-server/       # MCP server implementation
++-- context-server/       # MCP server implementation (RN/Metro-safe)
++-- context-server-node/  # Node stdio entry for context-server (serveProcess)
 +-- context-client/       # MCP client implementation
-+-- host/                 # Multi-context orchestrator
++-- host/                 # Multi-context orchestrator (RN/Metro-safe)
++-- host-node/            # Node stdio + daemon entry for host
 +-- host-protocol/        # Host <-> monitor protocol types
 +-- host-monitor/         # Monitor UI for host contexts
 +-- http-client/          # MCP Streamable HTTP client transport
@@ -148,6 +150,11 @@ packages/
 +-- logger/               # Shared logger utility
 +-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
 ```
+
+`@mokei/host` and `@mokei/context-server` are Node-free so they bundle under React Native /
+Metro. Node-only entry points live in the `-node` packages: `serveProcess` is in
+`@mokei/context-server-node`, and `addLocalContext` (now a method on `NodeContextHost`),
+`spawnHostedContext`, `createClient`, `runDaemon` and `ProxyHost` are in `@mokei/host-node`.
 
 Other workspaces:
 

@@ -1,7 +1,7 @@
 # Website quick-start — obsolete chat walkthrough
 
 **Status:** backlog
-**Origin:** found during the 2026-08-01 documentation sweep, recorded in
+**Origin:** found during the 2026-08-01 documentation sweep, recorded in the former
 `backlog/2026-06-20-mcp-draft-remaining.md` §3.4 until 2026-08-04. Unrelated to protocol
 revisions, so it is tracked on its own.
 

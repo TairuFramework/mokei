@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-08-04
+**Last updated:** 2026-08-27
 
 ## Vision
 
@@ -9,7 +9,10 @@ runtime, provider abstraction across cloud + local models, and monitoring UI.
 
 ## Current state
 
-17 packages under `packages/`, plus two published MCP servers under `mcp-servers/`.
+19 packages under `packages/`, plus two published MCP servers under `mcp-servers/`.
+`@mokei/host` and `@mokei/context-server` are React Native / Metro-bundle-safe (no Node
+built-ins); their Node stdio/daemon entries live in `@mokei/host-node` and
+`@mokei/context-server-node`.
 Two MCP revisions are served and spoken side by side — `2025-11-25` and `2026-07-28` —
 selected per context, with `'auto'` probing the peer and negotiating the newest shared
 revision. Providers: OpenAI, Anthropic, Ollama, Llama (local GGUF).
@@ -45,17 +48,30 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-Nothing queued.
+- **MCP `2026-07-28` — resource subscriptions** (`next/2026-08-27-mcp-2026-07-28-subscriptions.md`)
+  — B4 `subscriptions/listen` (+ the `2025-11-25` `resources/subscribe` branch). The last
+  capability gap in the migration; promoted from backlog 2026-08-27. Large. No enkaku blockers.
 
 ## Recently shipped (completed/)
 
-- **MRTR** (2026-08-08, `feat/mcp-mrtr`) — `inputRequests`/`inputResponses` (SEP-2322), a
+- **Host RN/Metro-safe `-node` split** (2026-08-25, PR #45) — `@mokei/host` and
+  `@mokei/context-server` trimmed of Node built-ins so they bundle under React Native / Metro;
+  Node stdio + daemon entries moved to new `@mokei/host-node` and `@mokei/context-server-node`.
+  **BREAKING:** `addLocalContext` (now a method on `NodeContextHost`), `spawnHostedContext`,
+  `createClient`, `runDaemon` and `ProxyHost` move to `@mokei/host-node`; `serveProcess` moves to
+  `@mokei/context-server-node`. Unblocks the Sakui mobile app. See
+  `completed/2026-08-25-host-rn-bundler-safe-entry.complete.md`.
+- **MRTR** (2026-08-08, PR #44) — `inputRequests`/`inputResponses` (SEP-2322), a
   request-level retry loop replacing server-initiated requests: a suspended `tools/call` /
   `prompts/get` / `resources/read` answers terminally with `resultType: 'input_required'` and
   is retried with `inputResponses` + echoed `requestState`, no stream or continuation state
   involved. Restores `sampling`, `elicitation` and `roots` on `2026-07-28` — both revisions now
   at capability parity — and makes `-32021` `MissingRequiredClientCapabilityError` reachable.
   See `completed/2026-08-08-mcp-mrtr.complete.md`.
+- **`x-mcp-header` story B/C** (2026-08-07, PR #43) — stale-schema retry on `-32020` (G7 part 5):
+  the HTTP client refreshes annotations via `tools/list` and re-sends the `tools/call` once when
+  the header set changed, driven against the SDK v2 peer; and `Mcp-Method` is now asserted
+  directly on the outgoing request rather than inferred from the peer's inbound classifier.
 - **Interop peer matrix** (2026-08-04, PR #42) — all four client/server × stdio/HTTP quadrants
   against SDK `2.0.0`, on both revisions, from shared expectations. Closed the structural gap
   where mokei's request-header encoder had only ever faced peers that ignore it.
@@ -85,7 +101,7 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 
 ## Milestones (milestones/)
 
-- **MCP spec migration** (`milestones/2026-06-08-mcp-draft-migration.md`) —
+- **MCP `2026-07-28` spec migration** (`milestones/2026-06-08-mcp-2026-07-28-migration.md`) —
   in progress. Phase 0 groundwork (G1–G4, G6, G7) shipped on `2025-11-25`
   (PR #23). The `2026-07-28` revision then shipped as opt-in coexistence: stateless core
   (PR #40), defect wave (PR #41), interop peer matrix against SDK `2.0.0` (PR #42),
@@ -96,10 +112,8 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 
 ## Near-term (backlog/)
 
-- **MCP `2026-07-28` — remaining work** (`backlog/2026-06-20-mcp-draft-remaining.md`) —
-  consolidated tracker, decomposed into six independent pieces. A (interop matrix) shipped;
-  B and C are promoted to `next/`; E (B4 `subscriptions/listen`, plus the `2025-11-25`
-  `resources/subscribe` branch) and F (D1–D3 + tidy-ups) stay here. No enkaku blockers.
+- **MCP `2026-07-28` — deprecations + cleanup** (`backlog/2026-06-20-mcp-2026-07-28-deprecations-cleanup.md`)
+  — piece F: D1–D3 deprecation handling plus the §3.4 tidy-ups and deferred design notes. Medium.
 - **MCP SDK v2 — selective adoption** (`backlog/2026-07-02-mcp-sdk-v2-adoption.md`) —
   outcome of the 2026-07-02 SDK v2 evaluation. Decision: keep the custom MCP core
   (SDK's engine is private/unimportable; Zod hard dep; bespoke typed-client value).
@@ -156,6 +170,6 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 - Revision coexistence over a hard cut — mokei is a library, so `2025-11-25` and
   `2026-07-28` are both served and spoken, selected per context. Dropping the older revision
   later is a branch deletion, not a rewrite (ADR in
-  `milestones/2026-06-08-mcp-draft-migration.md`).
+  `milestones/2026-06-08-mcp-2026-07-28-migration.md`).
 - Provider pattern: `client.ts` + `provider.ts` + `config.ts` + `types.ts`.
 - Streaming via `TransformStream` → `MessagePart<>`.
