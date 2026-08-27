@@ -103,7 +103,7 @@ describe('ExchangeRegistry stream', () => {
     registry.registerStream(1, controller, { onSettle })
     registry.routeStreamFrame(1, { type: 'result', value: 'done' })
     await expect(controller.promise).resolves.toBe('done')
-    expect(onSettle).toHaveBeenCalledWith('result')
+    expect(onSettle).toHaveBeenCalledWith({ reason: 'result', error: undefined })
     expect(registry.has(1)).toBe(false)
   })
 
@@ -115,7 +115,7 @@ describe('ExchangeRegistry stream', () => {
     const error = new Error('stream boom')
     registry.routeStreamFrame(1, { type: 'error', error })
     await expect(controller.promise).rejects.toBe(error)
-    expect(onSettle).toHaveBeenCalledWith('error')
+    expect(onSettle).toHaveBeenCalledWith({ reason: 'error', error })
   })
 
   test('an error frame carrying a non-Error value is coerced to an Error', async () => {
@@ -133,7 +133,7 @@ describe('ExchangeRegistry stream', () => {
     registry.registerStream(1, controller, { onSettle })
     registry.routeResponse(1, { jsonrpc: '2.0', id: 1, result: 'r' })
     await expect(controller.promise).resolves.toBe('r')
-    expect(onSettle).toHaveBeenCalledWith('result')
+    expect(onSettle).toHaveBeenCalledWith({ reason: 'result', error: undefined })
   })
 
   test('an error response settles a stream exchange with the error reason', async () => {
@@ -143,7 +143,7 @@ describe('ExchangeRegistry stream', () => {
     registry.registerStream(1, controller, { onSettle })
     registry.routeResponse(1, { jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'nope' } })
     await expect(controller.promise).rejects.toBeInstanceOf(RPCError)
-    expect(onSettle).toHaveBeenCalledWith('error')
+    expect(onSettle).toHaveBeenCalledWith({ reason: 'error', error: expect.any(RPCError) })
   })
 
   test('a malformed response settles a stream exchange with the error reason', async () => {
@@ -153,7 +153,10 @@ describe('ExchangeRegistry stream', () => {
     registry.registerStream(1, controller, { onSettle })
     registry.routeResponse(1, { jsonrpc: '2.0', id: 1 } as Response)
     await expect(controller.promise).rejects.toMatchObject({ message: 'Malformed response' })
-    expect(onSettle).toHaveBeenCalledWith('error')
+    expect(onSettle).toHaveBeenCalledWith({
+      reason: 'error',
+      error: expect.objectContaining({ message: 'Malformed response' }),
+    })
   })
 
   test('cancel settles a stream exchange with the cancel reason', async () => {
@@ -164,7 +167,7 @@ describe('ExchangeRegistry stream', () => {
     const reason = new Error('Cancelled')
     registry.cancel(1, reason)
     await expect(controller.promise).rejects.toBe(reason)
-    expect(onSettle).toHaveBeenCalledWith('cancel')
+    expect(onSettle).toHaveBeenCalledWith({ reason: 'cancel', error: reason })
     expect(registry.has(1)).toBe(false)
   })
 
@@ -180,8 +183,8 @@ describe('ExchangeRegistry stream', () => {
     registry.endAll(reason)
     await expect(a.promise).rejects.toBe(reason)
     await expect(b.promise).rejects.toBe(reason)
-    expect(onSettleA).toHaveBeenCalledWith('closed')
-    expect(onSettleB).toHaveBeenCalledWith('closed')
+    expect(onSettleA).toHaveBeenCalledWith({ reason: 'closed', error: reason })
+    expect(onSettleB).toHaveBeenCalledWith({ reason: 'closed', error: reason })
     expect(registry.has(1)).toBe(false)
     expect(registry.has(2)).toBe(false)
   })
@@ -224,5 +227,17 @@ describe('ExchangeRegistry stream', () => {
     registry.registerOnce(1, controller)
     registry.routeStreamFrame(1, { type: 'result', value: 1 })
     expect(registry.has(1)).toBe(true)
+  })
+
+  test('close settles a single stream exchange with reason "closed" and the error', async () => {
+    const registry = new ExchangeRegistry()
+    const controller = makeController()
+    const settles: Array<{ reason: string; error?: Error }> = []
+    registry.registerStream(7, controller, { onSettle: (s) => settles.push(s) })
+    const reason = new Error('stream ended')
+    registry.close(7, reason)
+    await expect(controller.promise).rejects.toBe(reason)
+    expect(settles).toEqual([{ reason: 'closed', error: reason }])
+    expect(registry.has(7)).toBe(false)
   })
 })

@@ -14,10 +14,13 @@ export type ExchangeController = Deferred<unknown> & AbortController
  */
 export type SettleReason = 'result' | 'error' | 'cancel' | 'closed'
 
+/** Detail passed to `onSettle`: the reason, plus the rejection value when applicable. */
+export type StreamSettle = { reason: SettleReason; error?: Error }
+
 export type StreamHandlers = {
   onProgress?: (value: unknown) => void
   onInputRequest?: (token: string, value: unknown) => void
-  onSettle?: (reason: SettleReason) => void
+  onSettle?: (settle: StreamSettle) => void
 }
 
 export type StreamFrame =
@@ -53,7 +56,7 @@ export class ExchangeRegistry {
       exchange.controller.reject(outcome.error)
     }
     if (exchange.kind === 'stream') {
-      exchange.handlers.onSettle?.(reason)
+      exchange.handlers.onSettle?.({ reason, error: outcome.ok ? undefined : outcome.error })
     }
   }
 
@@ -143,6 +146,14 @@ export class ExchangeRegistry {
 
   endAll(reason: Error): void {
     for (const [id, exchange] of Array.from(this.#exchanges.entries())) {
+      this.#settle(id, exchange, 'closed', { ok: false, error: reason })
+    }
+  }
+
+  /** Settles a single `stream` exchange with reason `'closed'`. A no-op for any other id. */
+  close(id: RequestID, reason: Error): void {
+    const exchange = this.#exchanges.get(id)
+    if (exchange?.kind === 'stream') {
       this.#settle(id, exchange, 'closed', { ok: false, error: reason })
     }
   }
