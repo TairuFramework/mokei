@@ -103,14 +103,26 @@ export type SubscriptionEntry = {
   subscriptionID: RequestID
   filter: SubscriptionFilter
   deliver: (n: ServerNotification) => Promise<void> // routes through the serving server's notify
+  complete: () => Promise<void>                      // graceful: resolve the held terminal, await its write
 }
-export type SubscriptionHandle = { close(reason?: Error): void; acknowledged: Promise<void> }
+export type SubscriptionHandle = {
+  acknowledged: Promise<void>
+  complete(): Promise<void>   // graceful teardown: resolves the held terminal (writes the terminal result), awaited; idempotent
+  close(reason?: Error): void // abrupt: cancels the held request, no terminal; idempotent
+}
 export type SubscriptionHub = {
-  register(entry: SubscriptionEntry): SubscriptionHandle // nested Map<connectionID, Map<RequestID, …>>
-  endAllGracefully(): Promise<void>
+  register(entry: SubscriptionEntry): SubscriptionHandle // nested Map<connectionID, Map<RequestID, …>>; retains handles
+  endAllGracefully(): Promise<void>                      // awaits handle.complete() for every entry, under the deadline
   dispose(): Promise<void>
 }
 ```
+
+`complete()` and `close(reason)` are the two mutually-exclusive terminal paths for one subscription,
+tied to the held response's first-settlement-wins rule: `complete()` resolves the held `terminal`
+with the `subscriptions/listen` result (`resultType: 'complete'`) and awaits `ContextRPC` writing it;
+`close(reason)` cancels the held request with no terminal. Whichever settles first wins; the other is
+a no-op. `endAllGracefully()` calls and awaits `complete()` for every retained entry (5s deadline,
+then abrupt close). The abort/response-body-cancellation path calls `close(reason)`.
 
 - The hub owner (`subscriptions: true`) subscribes once to its own `server.events`
   (`resourceUpdated`/`toolsListChanged`/`promptsListChanged`/`resourcesListChanged`) and, on each
@@ -229,12 +241,17 @@ mutation queue that also serializes reconnect:
   accepting, unregister, `SubscriptionBackpressureError` via `onError`, abrupt sink close (no terminal)
   → client reconnect re-establishes. `enqueue`/`flush`/`abort`. `enqueue(ack)` resolves only after the
   underlying write **succeeds**. Never concurrent writes for one subscription.
-- **Ack-first:** create writer → `await writer.enqueue(acknowledgement)` (written) → **then**
-  `hub.register(entry)`. Producers cannot target a not-yet-acknowledged stream.
+- **Ack-first:** create writer → `await writer.enqueue(acknowledgement)` (resolves only after the
+  write succeeds) → **then** `hub.register(entry)`. Producers cannot target a not-yet-acknowledged
+  stream. **If the request aborts or the ack write fails before registration, the entry is never
+  registered** (no handle published) and the held request is cancelled — so a subscription is either
+  fully acknowledged-and-registered or absent, never half-present.
 - **Producers:** extend the server `Events` map with `resourceUpdated: { uri }` + dataless
   `toolsListChanged`/`promptsListChanged`/`resourcesListChanged`; deployments emit via `server.events`.
-- **Dispatch:** `subscriptions/listen` returns `_holdResponse(...)` bound to the entry's terminal +
-  `beforeTerminal` drain. The `SubscriptionHandle.close(reason)` (idempotent) is wired to abort.
+- **Dispatch:** `subscriptions/listen` returns `_holdResponse(...)` whose `terminal` is the deferred
+  the handle's `complete()` resolves and whose `beforeTerminal` drains the writer. `complete()` is
+  driven by `hub.endAllGracefully()` (graceful teardown); `close(reason)` is wired to abort /
+  response-body cancellation (abrupt). Both idempotent, first-settlement-wins.
 - **Capability (#7):** set `resources.subscribe: true` only when resources are configured **and** a hub
   is available. The server factory takes `{ transport, subscriptionHub }` so a throwaway server
   answering `server/discover` reports the same effective availability; capability ownership stays in
