@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { NodeStreamsTransport } from '@enkaku/node-streams'
 import { Client, type ClientCapabilities } from '@modelcontextprotocol/client'
 import { NodeStreamableHTTPServerTransport, toNodeHandler } from '@modelcontextprotocol/node'
-import { createMcpHandler } from '@modelcontextprotocol/server'
+import { createMcpHandler, type ServerNotifier } from '@modelcontextprotocol/server'
 import { type ClientParams, type ClientTransport, ContextClient } from '@mokei/context-client'
 import type { ProtocolVersion } from '@mokei/context-protocol'
 import { ContextServer, createTool, type ServerConfig } from '@mokei/context-server'
@@ -21,6 +21,7 @@ import {
   SERVER_VERSION,
 } from './fixture.ts'
 import { createMokeiMRTRConfig, createSDKMRTRServer } from './mrtr-fixture.ts'
+import { createSDKSubscriptionServer } from './subscriptions-fixture.ts'
 
 export const MOKEI_STDIO_SERVER_PATH = fileURLToPath(
   new URL('./mokei-stdio-server.ts', import.meta.url),
@@ -68,6 +69,10 @@ export const MOKEI_STDIO_SERVER_MRTR_PATH = fileURLToPath(
 /** Serves the MRTR fixture on `2026-07-28` only, via the official SDK v2 server. */
 export const SDK_STDIO_SERVER_MRTR_PATH = fileURLToPath(
   new URL('./sdk-stdio-server-mrtr.ts', import.meta.url),
+)
+/** Serves the subscribe-capable subscriptions fixture on `2026-07-28`, via the SDK v2 server. */
+export const SDK_STDIO_SERVER_SUBSCRIPTIONS_PATH = fileURLToPath(
+  new URL('./sdk-stdio-server-subscriptions.ts', import.meta.url),
 )
 
 export type RunningHTTPServer = {
@@ -235,6 +240,93 @@ export async function spawnMokeiStdioClient(
   return {
     client,
     sent,
+    dispose: async () => {
+      await client.dispose()
+      await killChild(childProcess)
+    },
+  }
+}
+
+export type SpawnedMokeiSubscriptionClient = {
+  client: ContextClient
+  /**
+   * Every JSON-RPC frame the server wrote to the wire, captured by tapping the child's raw stdout
+   * before it reaches `ContextClient`'s transport. The graceful terminal `subscriptions/listen`
+   * result never surfaces through the client's public API (a graceful `result` settle fires no
+   * event), so the terminal-on-teardown assertion reads it directly off this tap.
+   */
+  received: Array<Record<string, unknown>>
+  /**
+   * Closes the child's stdin write side, the trigger the stdio entry turns into a graceful
+   * `serveStdio` teardown (its `end` handler calls `handle.close()`, flushing the terminal listen
+   * results). Kept separate from `dispose()` so the client stays alive to read those frames.
+   */
+  endInput: () => void
+  dispose: () => Promise<void>
+}
+
+/**
+ * Spawns `serverPath` and connects a mokei `ContextClient` to it over stdio at `2026-07-28`, while
+ * tapping the child's raw stdout into `received`.
+ *
+ * A sibling of {@link spawnMokeiStdioClient} that taps the READ side rather than the write side:
+ * the subscriptions suite needs to observe the server-sent frames the client's public surface does
+ * not re-expose — chiefly the graceful terminal listen result. It also owns `endInput`, the
+ * graceful-teardown trigger, which `spawnMokeiStdioClient` has no need for.
+ */
+export async function spawnMokeiStdioSubscriptionClient(
+  serverPath: string,
+): Promise<SpawnedMokeiSubscriptionClient> {
+  const childProcess = spawn(process.execPath, [serverPath], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+  }) as SpawnedChildProcess
+  childProcess.stderr.pipe(process.stderr)
+
+  const received: Array<Record<string, unknown>> = []
+  const state = { text: '' }
+  const tap = new PassThrough()
+  const reportStreamError = (context: string, error: Error): void => {
+    console.error(`[interop fixture] ${serverPath} — ${context}:`, error)
+  }
+  tap.on('error', (error: Error) => {
+    reportStreamError('tapped stdout stream error', error)
+  })
+  tap.on('data', (chunk: Buffer) => {
+    recordJSONLines(state, chunk, received, (error) => {
+      reportStreamError('malformed tapped stdout line', error)
+    })
+  })
+  // A dead child turns a late client write into an unhandled EPIPE that crashes the whole
+  // test-runner process; report it rather than let it escape.
+  childProcess.stdin.on('error', (error: Error) => {
+    reportStreamError('child stdin write error', error)
+  })
+  // Fan the child's stdout to both the tap (for `received`) and the transport (for the client),
+  // so tapping never steals bytes from the RPC read loop.
+  const toTransport = new PassThrough()
+  childProcess.stdout.on('data', (chunk: Buffer) => {
+    tap.write(chunk)
+    toTransport.write(chunk)
+  })
+  childProcess.stdout.on('end', () => {
+    tap.end()
+    toTransport.end()
+  })
+
+  const transport = new NodeStreamsTransport({
+    streams: { readable: toTransport, writable: childProcess.stdin },
+  })
+  const client = new ContextClient({
+    protocolVersion: '2026-07-28',
+    transport: transport as ClientTransport,
+  })
+
+  return {
+    client,
+    received,
+    endInput: () => {
+      childProcess.stdin.end()
+    },
     dispose: async () => {
       await client.dispose()
       await killChild(childProcess)
@@ -433,6 +525,56 @@ export async function startSDK20260728HTTPServer(
         server.close((error) => (error == null ? resolve() : reject(error)))
         server.closeAllConnections()
       })
+    },
+  }
+}
+
+export type SubscriptionsHTTPServer = RunningHTTPServer & {
+  /**
+   * The handler's publish-side facade. `resourceUpdated(uri)` / `resourcesChanged()` publish onto
+   * the listen bus every open subscription that opted in subscribes to — the HTTP counterpart to a
+   * pinned stdio instance's `sendResourceUpdated` / `sendResourceListChanged`.
+   */
+  notify: ServerNotifier
+  /**
+   * Gracefully closes the modern leg: `createMcpHandler().close()` calls the listen router's
+   * `closeAll()`, which writes the terminal `subscriptions/listen` result (its `_meta` carrying the
+   * subscription id) to each open stream before ending it. Separate from `dispose()` so a test can
+   * observe that terminal on the still-connected client, then tear the node server down.
+   */
+  closeHandler: () => Promise<void>
+}
+
+/**
+ * Serves the subscribe-capable subscriptions fixture over Streamable HTTP on `2026-07-28`, through
+ * the same SDK v2 `createMcpHandler` entry (and `legacy: 'reject'`) as `startSDK20260728HTTPServer`.
+ *
+ * Beyond `url`/`dispose` it exposes the handler's `notify` facade and a `closeHandler`, the two
+ * seams the suite drives: `notify.*` to emit change events onto the listen bus on demand, and
+ * `closeHandler()` to trigger the graceful terminal listen result. The default in-process
+ * `InMemoryServerEventBus` backs the bus — the per-request factory (a fresh instance each POST) is
+ * fine because subscription delivery is bus-mediated, not instance-mediated, on this transport.
+ */
+export async function startSDKSubscriptionsHTTPServer(): Promise<SubscriptionsHTTPServer> {
+  const handler = createMcpHandler(() => createSDKSubscriptionServer(), { legacy: 'reject' })
+  const nodeHandler = toNodeHandler(handler)
+  const server = createServer((request, response) => {
+    void nodeHandler(request, response)
+  })
+  server.listen(0, '127.0.0.1')
+  const port = await listening(server, '127.0.0.1')
+  const closeServer = (): Promise<void> =>
+    new Promise<void>((resolve, reject) => {
+      server.close((error) => (error == null ? resolve() : reject(error)))
+      server.closeAllConnections()
+    })
+  return {
+    url: `http://127.0.0.1:${port}/mcp`,
+    notify: handler.notify,
+    closeHandler: () => handler.close(),
+    dispose: async () => {
+      await handler.close()
+      await closeServer()
     },
   }
 }
