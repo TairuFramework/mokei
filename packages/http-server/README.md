@@ -65,6 +65,26 @@ const handler = createHTTPHandler({
 const response = await handler.handleRequest(request)
 ```
 
+## Subscriptions & graceful shutdown
+
+When `subscriptionHub` is passed to `serveHTTP` / `createHTTPHandler`, `2026-07-28`
+`subscriptions/listen` POSTs are served against transport-isolated per-POST servers that
+*borrow* that hub — they do not own it. The handler's own `dispose()` (the value returned by
+`serveHTTP`, or `handler.dispose()`) is therefore only the abrupt backstop: it does not
+gracefully complete open subscriptions, so any still-open `subscriptions/listen` stream is torn
+down abruptly with no terminal frame written.
+
+To shut down gracefully, dispose the durable hub-owning `ContextServer` first (or call
+`hub.endAllGracefully()` directly), and only then call the HTTP handler's `dispose()`:
+
+```typescript
+// 1. Gracefully complete every open subscription against the durable hub-owning server.
+await hub.endAllGracefully()
+
+// 2. Only now tear down the HTTP layer.
+await dispose()
+```
+
 ## Documentation
 
 See the full documentation at [mokei.dev](https://mokei.dev).

@@ -13,6 +13,7 @@
 export {
   createHTTPHandler,
   DEFAULT_MAX_STATELESS_EXCHANGES,
+  DEFAULT_MAX_SUBSCRIPTION_EXCHANGES,
   type HTTPHandler,
   type HTTPHandlerParams,
 } from './handler.js'
@@ -27,3 +28,4 @@ export {
   runStatelessExchange,
   type StatelessExchangeParams,
 } from './stateless.js'
+export { runSubscriptionExchange, type SubscriptionExchangeParams } from './subscriptions.js'

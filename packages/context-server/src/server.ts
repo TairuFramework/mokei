@@ -25,9 +25,11 @@ import type {
   ProtocolVersion,
   ServerCapabilities,
   ServerMessage,
+  ServerNotification,
   ServerNotifications,
   ServerRequests,
   ServerResult,
+  SubscriptionsListenRequest,
   Tool,
 } from '@mokei/context-protocol'
 import {
@@ -37,6 +39,7 @@ import {
   INVALID_PARAMS,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
+  META_SUBSCRIPTION_ID,
   METHOD_NOT_FOUND,
   MISSING_REQUIRED_CLIENT_CAPABILITY,
   PROTOCOL_VERSIONS,
@@ -45,10 +48,13 @@ import {
 } from '@mokei/context-protocol'
 import {
   ContextRPC,
+  type HeldResponse,
+  isHeldResponse,
   RPCError,
   splitRequestOptions,
   type WithRequestOptions,
 } from '@mokei/context-rpc'
+import { defer } from '@sozai/async'
 import { createValidator, type Schema } from '@sozai/schema'
 
 import { applyCacheHints } from './cache.js'
@@ -63,6 +69,13 @@ import {
   type RequestStateHooks,
   resolveRequestState,
 } from './mrtr.js'
+import {
+  createSubscriptionHub,
+  type SubscriptionHandle,
+  type SubscriptionHub,
+  type SubscriptionSink,
+  SubscriptionWriter,
+} from './subscriptions.js'
 import { withRequestMeta } from './trace.js'
 import type {
   ClientInitialize,
@@ -129,6 +142,24 @@ export type ServerConfig = {
 
 export type ServerParams = ServerConfig & {
   transport: ServerTransport
+  /**
+   * Owns resource subscriptions (SEP-1391 `subscriptions/listen`): creates and owns a
+   * {@link SubscriptionHub} bound to this server's own `events`, disposing it on teardown.
+   * Mutually exclusive with `subscriptionHub` — pass one or the other, never both.
+   */
+  subscriptions?: boolean
+  /**
+   * Borrows an externally-owned {@link SubscriptionHub} (the stateless-HTTP path, Task 13): the
+   * server serves `subscriptions/listen` against it but neither re-subscribes its producers nor
+   * disposes it. Affects capability advertising the same way `subscriptions: true` does.
+   */
+  subscriptionHub?: SubscriptionHub
+  /**
+   * Identifies this server's connection inside a shared hub, keeping subscriptions from two
+   * connections that reuse the same JSON-RPC id distinct. Defaults to a process-unique value;
+   * the HTTP per-POST server injects its own.
+   */
+  connectionID?: string
   /** Request handlers allowed to run at once (default 100). */
   maxConcurrentRequests?: number
   /** Requests allowed to wait for a slot before further requests are refused (default 1000). */
@@ -145,6 +176,14 @@ export type ServerEvents = {
   initialize: ClientInitialize
   initialized: undefined
   log: Log
+  /** Signals that a subscribed resource's content changed. Consumed by the subscription hub. */
+  resourceUpdated: { uri: string }
+  /** Signals that the resources list changed. Consumed by the subscription hub. */
+  resourcesListChanged: undefined
+  /** Signals that the prompts list changed. Consumed by the subscription hub. */
+  promptsListChanged: undefined
+  /** Signals that the tools list changed. Consumed by the subscription hub. */
+  toolsListChanged: undefined
 }
 
 type HandleNotification = ProgressNotification | ClientNotification
@@ -157,8 +196,18 @@ type ServerTypes = {
   HandleRequest: ClientRequest
   SendNotifications: ServerNotifications & Pick<CommonNotifications, 'progress'>
   SendRequests: ServerRequests
-  SendResult: ServerResult
+  // Widened to admit a held response: a `subscriptions/listen` handler returns
+  // `_holdResponse(...)` instead of a result body, and the RPC layer detects it via
+  // `isHeldResponse`. Every other method still returns a `ServerResult`.
+  SendResult: ServerResult | HeldResponse<ServerResult>
 }
+
+/**
+ * Process-unique id distinguishing one server's subscriptions from another's inside a shared
+ * hub. A plain (stdio) server owns its own hub, so any stable value would do; a counter keeps it
+ * RN-safe (no `crypto`) and lets Task 13's HTTP per-POST server inject its own via `connectionID`.
+ */
+let nextConnectionID = 0
 
 export class ContextServer extends ContextRPC<ServerTypes> {
   #cache?: CacheHints
@@ -175,6 +224,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #resources?: ResourceHandlers
   #toolHandlers: Record<string, GenericToolHandler> = {}
   #toolsList: Array<Tool> = []
+  #connectionID: string
+  #subscriptionHub?: SubscriptionHub
+  // True when this server created the hub (owner) and must dispose it; false when it borrows one.
+  #ownsHub = false
 
   constructor(params: ServerParams) {
     super({
@@ -228,6 +281,29 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (params.resources != null) {
       this.#capabilities.resources = { listChanged: true }
       this.#resources = toResourceHandlers(params.resources)
+    }
+
+    // Owner (`subscriptions: true`) creates and owns a hub bound to its own `events`; a borrower
+    // is handed one and neither re-subscribes producers to it nor disposes it. Passing both is a
+    // configuration error — the owned hub would shadow the borrowed one silently.
+    if (params.subscriptions === true && params.subscriptionHub != null) {
+      throw new Error(
+        'Pass either `subscriptions: true` (own a hub) or `subscriptionHub` (borrow one), not both',
+      )
+    }
+    this.#connectionID = params.connectionID ?? `context-server-${nextConnectionID++}`
+    if (params.subscriptions === true) {
+      this.#subscriptionHub = createSubscriptionHub({ events: this.events })
+      this.#ownsHub = true
+    } else if (params.subscriptionHub != null) {
+      this.#subscriptionHub = params.subscriptionHub
+    }
+    // `resources.subscribe` is honest only where both halves of a served subscription exist:
+    // resources to update *and* a hub to fan their updates out. Advertise it nowhere else.
+    if (this.#resources != null && this.#subscriptionHub != null) {
+      // The `resources` capability object was created just above alongside `#resources`.
+      ;(this.#capabilities.resources as { listChanged: boolean; subscribe?: boolean }).subscribe =
+        true
     }
 
     for (const [name, tool] of Object.entries(params.tools ?? {})) {
@@ -405,7 +481,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
   }
 
-  async _handleRequest(request: ClientRequest, signal: AbortSignal): Promise<ServerResult> {
+  async _handleRequest(
+    request: ClientRequest,
+    signal: AbortSignal,
+  ): Promise<ServerResult | HeldResponse<ServerResult>> {
     const protocol = this.#resolveProtocol(request)
     if (!protocol.clientMethods.has(request.method)) {
       throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
@@ -446,6 +525,13 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const result = await withRequestMeta(meta, () =>
       this.#dispatchRequest(liftedRequest, protocol, client, signal, mrtr),
     )
+    // A held `subscriptions/listen` response is already the wrapped terminal (or, more precisely,
+    // its `terminal` promise resolves to one): the RPC layer writes it verbatim without wrapping,
+    // so it must skip `wrapResult` here — passing it through `applyCacheHints`/`wrapResult` would
+    // stamp a `resultType`/serverInfo the terminal must not carry.
+    if (isHeldResponse(result)) {
+      return result
+    }
     if (isInputRequiredResult(result)) {
       if (protocol.inputRequestMethods.size === 0) {
         throw new RPCError(
@@ -488,7 +574,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     client: ServerClient,
     signal: AbortSignal,
     mrtr: MRTRContext,
-  ): Promise<ServerResult | InputRequiredResult> {
+  ): Promise<ServerResult | InputRequiredResult | HeldResponse<ServerResult>> {
     switch (request.method) {
       case 'completion/complete':
         if (this.#completeHandler == null) {
@@ -535,6 +621,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           capabilities: this.#capabilities,
           protocolVersions: this.#protocolVersions,
         })
+      case 'subscriptions/listen':
+        if (this.#subscriptionHub == null) {
+          break
+        }
+        return this.#listen(request as SubscriptionsListenRequest, protocol, signal)
       case 'tools/call':
         return await this.#callTool(request, client, signal, mrtr)
       case 'tools/list':
@@ -604,5 +695,141 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       throw new RPCError(INVALID_PARAMS, `Prompt ${name} not found`)
     }
     return await handler({ input: request.params.arguments, client, signal, ...mrtr })
+  }
+
+  /**
+   * Serves one `subscriptions/listen` request (SEP-1391). Returns a held response: no result body
+   * is written now — the stream stays open, the acknowledgement is the first frame on it, and the
+   * terminal result is written only on graceful teardown.
+   *
+   * Ack-first: the `notifications/subscriptions/acknowledged` frame is *written* (awaited) before
+   * the entry is registered with the hub, so a producer event can never target a stream the
+   * client has not yet seen acknowledged.
+   */
+  async #listen(
+    request: SubscriptionsListenRequest,
+    protocol: ProtocolDefinition,
+    signal: AbortSignal,
+  ): Promise<HeldResponse<ServerResult>> {
+    // Non-null: the dispatch case only reaches here with a hub configured.
+    const hub = this.#subscriptionHub as SubscriptionHub
+    const id = request.id
+    const filter = request.params.notifications
+
+    const terminal = defer<ServerResult>()
+    // Suppress unhandled-rejection in the narrow window before `#holdRequest` attaches its own
+    // handler (an `onFailure` firing between `register` and the `_holdResponse` return). It does
+    // not replace that handler — both fire; `#holdRequest`'s is what actually cleans up.
+    terminal.promise.catch(() => {})
+
+    // Every frame the writer sends is stamped with the per-subscription id (under `params._meta`)
+    // plus this revision's own notification decoration, so the client routes it back to this
+    // listen exchange by `_meta[subscriptionId]`.
+    const decorate = (notification: ServerNotification): ServerNotification => {
+      const decorated = protocol.decorateNotification(notification.params ?? {}) as Record<
+        string,
+        unknown
+      >
+      return {
+        ...notification,
+        params: {
+          ...decorated,
+          _meta: {
+            ...(decorated._meta as Record<string, unknown> | undefined),
+            [META_SUBSCRIPTION_ID]: id,
+          },
+        },
+      } as ServerNotification
+    }
+
+    const sink: SubscriptionSink = {
+      writeNotification: (notification) => this._write(decorate(notification) as ServerMessage),
+      // Fires only on writer failure (backpressure/write rejection), never on request-abort.
+      // A borrower's wire is this one throwaway exchange, so dispose it (closing the transport
+      // finishes the exchange); an owner shares its wire across subscriptions, so keep it open.
+      close: () => {
+        if (this.#subscriptionHub != null && !this.#ownsHub) {
+          void this.dispose()
+        }
+      },
+    }
+
+    let handle: SubscriptionHandle | undefined
+    // The abrupt teardown path, shared by backpressure/write failure (`writer.onFailure`) and
+    // request abort/cancel (`signal`): unregister from the hub and reject the held terminal so the
+    // request settles with no terminal result written. Idempotent via the hub handle + deferred.
+    const teardown = (reason: Error): void => {
+      handle?.close(reason)
+      // Reject only once the held response exists: before registration a failure surfaces through
+      // the `enqueue(ack)` rejection below, and rejecting an unheld terminal would strand it.
+      if (handle != null) {
+        terminal.reject(reason)
+      }
+    }
+
+    const writer = new SubscriptionWriter({ sink, onFailure: teardown })
+
+    // Ack-first: resolves only after the acknowledgement is written. A rejection here (the write
+    // failed, or the request was aborted mid-write) throws out of `#listen`, so the listen request
+    // answers with an error response and no entry is ever registered.
+    // The acknowledged notification lives only in the `2026-07-28` revision union, not the
+    // cross-revision aggregate `ServerNotification` the writer is typed against; the cast bridges
+    // that. The wire schema for the revision this listen resolved to admits it.
+    await writer.enqueue({
+      jsonrpc: '2.0',
+      method: 'notifications/subscriptions/acknowledged',
+      params: { notifications: filter },
+    } as unknown as ServerNotification)
+
+    // Build the held response before registering, so `held.written` exists before the entry can be
+    // completed (avoids a race with `#holdRequest`, which runs only after `#listen` returns).
+    const held = this._holdResponse({
+      terminal: terminal.promise,
+      beforeTerminal: () => writer.flush(),
+    })
+
+    handle = hub.register({
+      connectionID: this.#connectionID,
+      subscriptionID: id,
+      filter,
+      deliver: (notification) => writer.enqueue(notification),
+      // Graceful teardown: resolve the terminal (only `result._meta[subscriptionId]`, no
+      // `resultType`), then await its write so `endAllGracefully()` never reports completion before
+      // the result reaches the wire. Bounded by the RPC disposal deadline.
+      complete: async () => {
+        terminal.resolve({ _meta: { [META_SUBSCRIPTION_ID]: id } } as ServerResult)
+        await held.written.promise
+      },
+    })
+
+    // Request abort (a client `notifications/cancelled`, or `dispose`'s `abortAll`) routes to the
+    // same abrupt teardown. On graceful dispose the terminal is already resolved by `complete()`,
+    // so both calls here are no-ops.
+    signal.addEventListener('abort', () => teardown(signal.reason as Error), { once: true })
+    // The listener above cannot observe an abort that already fired during the `enqueue(ack)`
+    // await -- `{ once: true }` only arms for *future* dispatches. Without this check the hub
+    // entry just registered above would be left registered forever (until the owning server's
+    // `endAllGracefully()`), silently delivering to a request the client already cancelled. Both
+    // `teardown` (via `handle`) and `_holdResponse` (via `signal.aborted`) are idempotent/safe to
+    // call in this state, so this synchronous check just closes the window rather than changing
+    // any settlement semantics.
+    if (signal.aborted) {
+      teardown(signal.reason as Error)
+    }
+
+    return held
+  }
+
+  /**
+   * On an explicit `dispose()`, before the transport closes: if this server owns its subscription
+   * hub, resolve every held `subscriptions/listen` terminal (their writes are then awaited by the
+   * RPC layer's held-response flush) and release the hub. A borrower does neither — the hub's
+   * owner drives graceful teardown.
+   */
+  async _beforeTransportClose(_reason: Error): Promise<void> {
+    if (this.#ownsHub && this.#subscriptionHub != null) {
+      await this.#subscriptionHub.endAllGracefully()
+      await this.#subscriptionHub.dispose()
+    }
   }
 }

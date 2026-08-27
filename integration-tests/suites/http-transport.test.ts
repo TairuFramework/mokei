@@ -33,14 +33,14 @@ describe('HTTP transport end-to-end', () => {
       client = null
     }
     if (serverResult != null) {
-      serverResult.dispose()
+      await serverResult.dispose()
       serverResult = null
     }
   })
 
   test('full session lifecycle over HTTP', async () => {
     serverResult = serveHTTP({
-      createServer: (transport) => new ContextServer({ ...SERVER_CONFIG, transport }),
+      createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
       port: 0,
       hostname: '127.0.0.1',
     })

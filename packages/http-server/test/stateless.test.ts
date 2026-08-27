@@ -30,7 +30,7 @@ const SERVER_CONFIG: ServerConfig = {
 
 function createHandler(overrides?: Partial<HTTPHandlerParams>) {
   return createHTTPHandler({
-    createServer: (transport) => new ContextServer({ ...SERVER_CONFIG, transport }),
+    createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
     ...overrides,
   })
 }
@@ -126,7 +126,7 @@ function createBlockingHandler(overrides?: Partial<HTTPHandlerParams>): Blocking
   })
 
   const handler = createHTTPHandler({
-    createServer: (transport) => {
+    createServer: ({ transport }) => {
       const server = new ContextServer({
         ...SERVER_CONFIG,
         tools: {
@@ -341,7 +341,7 @@ describe('stateless 2026-07-28 POST path', () => {
       const servers: Array<ContextServer> = []
       const handler = createHTTPHandler({
         maxStatelessExchanges: 1,
-        createServer: (transport) => {
+        createServer: ({ transport }) => {
           const server = new ContextServer({
             ...SERVER_CONFIG,
             tools: {
@@ -437,7 +437,7 @@ describe('stateless 2026-07-28 POST path', () => {
   test('acknowledges a stamped notification on a sessionless POST without dispatching it', async () => {
     const servers: Array<ContextServer> = []
     const handler = createHTTPHandler({
-      createServer: (transport) => {
+      createServer: ({ transport }) => {
         const server = new ContextServer({ ...SERVER_CONFIG, transport })
         servers.push(server)
         return server
@@ -464,7 +464,7 @@ describe('stateless 2026-07-28 POST path', () => {
   test('an already-aborted request short-circuits before anything is built', async () => {
     let serversCreated = 0
     const handler = createHTTPHandler({
-      createServer: (transport) => {
+      createServer: ({ transport }) => {
         serversCreated++
         return new ContextServer({ ...SERVER_CONFIG, transport })
       },
@@ -492,7 +492,7 @@ describe('stateless 2026-07-28 POST path', () => {
     // throwaway one per request, so routing this request statelessly would make it two.
     let serversCreated = 0
     const handler = createHTTPHandler({
-      createServer: (transport) => {
+      createServer: ({ transport }) => {
         serversCreated++
         return new ContextServer({ ...SERVER_CONFIG, transport })
       },
@@ -598,7 +598,7 @@ describe('stateless 2026-07-28 POST path', () => {
   test('surfaces an unsupported revision as 400 with the JSON-RPC error body', async () => {
     // A server that serves only 2025-11-25, asked for 2026-07-28.
     const handler = createHTTPHandler({
-      createServer: (transport) =>
+      createServer: ({ transport }) =>
         new ContextServer({ ...SERVER_CONFIG, protocolVersions: ['2025-11-25'], transport }),
     })
     try {

@@ -32,6 +32,17 @@ export {
   type ServerEvents,
   type ServerParams,
 } from './server.js'
+export {
+  type CreateSubscriptionHubParams,
+  createSubscriptionHub,
+  SubscriptionBackpressureError,
+  type SubscriptionEntry,
+  type SubscriptionHandle,
+  type SubscriptionHub,
+  type SubscriptionSink,
+  SubscriptionWriter,
+  type SubscriptionWriterParams,
+} from './subscriptions.js'
 export type {
   ExtractPromptTypes,
   ExtractServerTypes,

@@ -23,7 +23,7 @@ const SERVER_CONFIG: ServerConfig = {
 
 function createHandler(overrides?: Partial<HTTPHandlerParams>) {
   return createHTTPHandler({
-    createServer: (transport) => new ContextServer({ ...SERVER_CONFIG, transport }),
+    createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
     ...overrides,
   })
 }

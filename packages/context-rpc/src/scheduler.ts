@@ -46,6 +46,10 @@ export class RequestScheduler {
   // Insertion-ordered, which is what makes the queue FIFO.
   #queued: Map<RequestID, QueuedRequest> = new Map()
   #running: Map<RequestID, AbortController> = new Map()
+  // Requests whose handler returned a held response (e.g. `subscriptions/listen`): they have
+  // released their concurrency slot but keep their cancellation/duplicate-id identity until
+  // their deferred response is finally written. See `detach`/`completeDetached`.
+  #detached: Map<RequestID, AbortController> = new Map()
 
   constructor(params: RequestSchedulerParams = {}) {
     this.#maxConcurrent = params.maxConcurrentRequests ?? DEFAULT_MAX_CONCURRENT_REQUESTS
@@ -58,6 +62,10 @@ export class RequestScheduler {
 
   get runningCount(): number {
     return this.#running.size
+  }
+
+  get detachedCount(): number {
+    return this.#detached.size
   }
 
   /**
@@ -80,7 +88,7 @@ export class RequestScheduler {
    * cannot produce it — but it is a real consequence of the refusal, not just of the reuse.
    */
   schedule(id: RequestID, run: RunRequest): Promise<Response | null> {
-    if (this.#running.has(id) || this.#queued.has(id)) {
+    if (this.#running.has(id) || this.#queued.has(id) || this.#detached.has(id)) {
       return Promise.resolve(
         new RPCError(INVALID_REQUEST, `Request id ${String(id)} is already in flight`).toResponse(
           id,
@@ -100,7 +108,7 @@ export class RequestScheduler {
     return promise
   }
 
-  /** Drops a queued request, or aborts a running one's signal. */
+  /** Drops a queued request, or aborts a running or detached one's signal. */
   cancel(id: RequestID): void {
     const queued = this.#queued.get(id)
     if (queued != null) {
@@ -109,10 +117,12 @@ export class RequestScheduler {
       queued.resolve(null)
       return
     }
-    this.#running.get(id)?.abort()
+    // An id is only ever in one of `#running`/`#detached` at a time, but a detached request
+    // keeps its identity so `notifications/cancelled` must still reach it.
+    ;(this.#running.get(id) ?? this.#detached.get(id))?.abort()
   }
 
-  /** Aborts every running handler and drops every queued request. */
+  /** Aborts every running and detached handler, and drops every queued request. */
   abortAll(reason: Error): void {
     for (const [id, queued] of Array.from(this.#queued.entries())) {
       this.#queued.delete(id)
@@ -122,6 +132,31 @@ export class RequestScheduler {
     for (const controller of Array.from(this.#running.values())) {
       controller.abort(reason)
     }
+    // A copy: aborting a detached controller can drive `completeDetached`, which deletes from
+    // `#detached` — mutating the map we would otherwise be iterating.
+    for (const controller of Array.from(this.#detached.values())) {
+      controller.abort(reason)
+    }
+  }
+
+  /**
+   * Moves a running request's controller into `#detached` and frees its slot. The request keeps
+   * its cancellation and duplicate-id identity, but no longer counts against the concurrency cap,
+   * so a queued request can start. Used for held responses whose write is deferred indefinitely.
+   */
+  detach(id: RequestID): void {
+    const controller = this.#running.get(id)
+    if (controller == null) {
+      return
+    }
+    this.#running.delete(id)
+    this.#detached.set(id, controller)
+    this.#drain()
+  }
+
+  /** Removes a detached request once its deferred response has been written (or cancelled). */
+  completeDetached(id: RequestID): void {
+    this.#detached.delete(id)
   }
 
   #start(id: RequestID, controller: AbortController, run: RunRequest): Promise<Response | null> {

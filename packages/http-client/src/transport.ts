@@ -1,7 +1,12 @@
 import { Transport } from '@enkaku/transport'
 import type { ClientParams, ClientTransport } from '@mokei/context-client'
 import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
-import type { ClientMessage, ProtocolVersion, ServerMessage } from '@mokei/context-protocol'
+import type {
+  ClientMessage,
+  ProtocolVersion,
+  RequestID,
+  ServerMessage,
+} from '@mokei/context-protocol'
 import {
   HEADER_MISMATCH,
   isSupportedProtocolVersion,
@@ -9,6 +14,7 @@ import {
   PROTOCOLS,
 } from '@mokei/context-protocol'
 import { getMokeiLogger, type Logger } from '@mokei/logger'
+import { EventEmitter } from '@sozai/event'
 import { createReadable, writeTo } from '@sozai/stream'
 import { parseServerSentEvents } from 'parse-sse'
 
@@ -219,6 +225,15 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #untrackedControllers = new Set<AbortController>()
   /** Counter behind the request ids the stale-schema refresh mints for its own `tools/list`. */
   #internalRequestCount = 0
+  /**
+   * Fires `closed` when a POST's SSE body ends without a terminal response ever having arrived
+   * on it — the abrupt-drop case a graceful terminal or a deliberate cancel must not trigger.
+   * Optional-capability shape (`Partial<StreamEventsTransport>` in `@mokei/context-rpc`):
+   * `ContextRPC` feature-detects this property and, when present, settles the matching stream
+   * exchange via `ExchangeRegistry.close` so a `subscriptions/listen` caller can reconnect
+   * instead of waiting forever. See `#handleSSEResponse`, the only emitter.
+   */
+  #streamEvents = new EventEmitter<{ closed: { requestID: RequestID; error?: Error } }>()
 
   #clearExchange(requestID: string | number): void {
     this.#pendingMethods.delete(requestID)
@@ -442,6 +457,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    */
   get retryMs(): number | null {
     return this.#retryMs
+  }
+
+  /**
+   * Per-exchange stream-closed signal (see {@link #streamEvents}'s field doc).
+   */
+  get streamEvents(): EventEmitter<{ closed: { requestID: RequestID; error?: Error } }> {
+    return this.#streamEvents
   }
 
   /**
@@ -749,7 +771,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // response headers arrive. Awaiting here would serialize all other outgoing
       // traffic — including the notifications/cancelled meant to stop this very stream
       // — behind it. The correlation entry is reclaimed once the stream ends.
-      void this.#handleSSEResponse(response)
+      void this.#handleSSEResponse(response, trackedID)
         .catch((error) => {
           if (trackedID != null && this.#exchangeControllers.get(trackedID)?.cancelled) {
             return
@@ -818,11 +840,43 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * Handle an SSE response, parsing events and enqueuing messages.
+   * Emit `streamEvents.closed` for a POST's SSE stream that just ended, unless one of the three
+   * exclusions holds — a graceful terminal already seen, a deliberate cancel, or whole-transport
+   * disposal. All three leave the exchange settled some other way, so signalling `closed` on top
+   * would tell `ContextRPC` to reconnect an exchange nobody is waiting to reconnect.
+   *
+   * `trackedID` is `null` for the GET notification stream, which belongs to no single request
+   * and never emits.
    */
-  async #handleSSEResponse(response: Response): Promise<void> {
+  #emitStreamClosed(trackedID: string | number | null, terminalSeen: boolean, error?: Error): void {
+    if (trackedID == null || terminalSeen || this.#disposed) {
+      return
+    }
+    if (this.#exchangeControllers.get(trackedID)?.cancelled) {
+      return
+    }
+    this.#streamEvents.fire(
+      'closed',
+      error ? { requestID: trackedID, error } : { requestID: trackedID },
+    )
+  }
+
+  /**
+   * Handle an SSE response, parsing events and enqueuing messages.
+   *
+   * `trackedID` names the POST request this SSE body answers (`null` for the GET notification
+   * stream, which answers no single request). When it is set, the body's end is reported to
+   * {@link #streamEvents} via {@link #emitStreamClosed} unless a terminal response for that id
+   * — a JSON-RPC response frame carrying it, as opposed to a notification or a progress update —
+   * was seen on this same stream.
+   */
+  async #handleSSEResponse(
+    response: Response,
+    trackedID: string | number | null = null,
+  ): Promise<void> {
     const stream = parseServerSentEvents(response)
     const reader = stream.getReader()
+    let terminalSeen = false
 
     try {
       while (true) {
@@ -838,6 +892,15 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         if (event.data && event.data.trim() !== '') {
           try {
             const message = JSON.parse(event.data) as ServerMessage
+            if (
+              trackedID != null &&
+              !('method' in message) &&
+              (message as { id?: unknown }).id === trackedID
+            ) {
+              // A JSON-RPC response naming this request: the graceful terminal for this
+              // exchange, as opposed to a notification or progress update sharing the stream.
+              terminalSeen = true
+            }
             if (this.#controller) {
               this.#controller.enqueue(this.#handleIncoming(message))
             }
@@ -846,6 +909,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           }
         }
       }
+      this.#emitStreamClosed(trackedID, terminalSeen)
+    } catch (error) {
+      this.#emitStreamClosed(
+        trackedID,
+        terminalSeen,
+        error instanceof Error ? error : new Error(String(error)),
+      )
+      throw error
     } finally {
       reader.releaseLock()
     }

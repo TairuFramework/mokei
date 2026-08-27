@@ -38,6 +38,7 @@ catalog:
   '@sozai/generator': ^0.2.0
   '@sozai/log': ^0.3.1
   '@sozai/otel': ^0.3.2
+  '@sozai/runtime': ^0.1.0
   '@sozai/schema': ^0.1.1
   '@sozai/stream': ^0.2.0
   '@tejika/cli': ^0.4.1

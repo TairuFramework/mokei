@@ -66,14 +66,19 @@ export class SessionManager {
     }
   }
 
-  delete(sessionID: string): void {
+  async delete(sessionID: string): Promise<void> {
     const session = this.#sessions.get(sessionID)
     if (session == null) {
       return
     }
 
+    // Remove from the registry first: server disposal now awaits (it flushes any held
+    // `subscriptions/listen` terminals), so a concurrent or re-entrant delete must find nothing
+    // rather than race a second disposal of the same server.
+    this.#sessions.delete(sessionID)
+
     if (session.server != null) {
-      session.server.dispose()
+      await session.server.dispose()
     }
 
     for (const writer of session.postStreams.values()) {
@@ -84,25 +89,25 @@ export class SessionManager {
       session.getStream.close()
     }
 
-    this.#sessions.delete(sessionID)
-
     // Notify the owner last, after the session's own resources are released, so
     // the bridge is torn down for timer-driven cleanup as well as explicit deletes.
     this.#onDelete?.(sessionID)
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     clearInterval(this.#cleanupInterval)
-    for (const sessionID of this.#sessions.keys()) {
-      this.delete(sessionID)
-    }
+    // Await every session's disposal (server flush included) so a caller awaiting `dispose()`
+    // knows teardown has actually completed. A snapshot of the ids, since `delete` mutates the map.
+    await Promise.all([...this.#sessions.keys()].map((sessionID) => this.delete(sessionID)))
   }
 
   #cleanup(): void {
     const now = Date.now()
     for (const [sessionID, session] of this.#sessions) {
       if (now - session.lastActivity > this.#sessionTimeoutMs) {
-        this.delete(sessionID)
+        // The idle timer is fire-and-forget: it cannot await, and a failed disposal has nobody
+        // to report to. `delete` still removes the session synchronously before its first await.
+        void this.delete(sessionID)
       }
     }
   }

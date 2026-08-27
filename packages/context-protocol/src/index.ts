@@ -110,6 +110,17 @@ export {
   serverMessage,
 } from './server.js'
 export {
+  META_SUBSCRIPTION_ID,
+  type SubscriptionFilter,
+  type SubscriptionsAcknowledgedNotification,
+  type SubscriptionsListenRequest,
+  type SubscriptionsListenResult,
+  subscriptionFilter,
+  subscriptionsAcknowledgedNotification,
+  subscriptionsListenRequest,
+  subscriptionsListenResult,
+} from './subscriptions.js'
+export {
   type CallToolRequest,
   type CallToolResult,
   type InputSchema,

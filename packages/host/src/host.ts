@@ -129,6 +129,27 @@ export type HostEvents = {
   'context:added': { key: string }
   'context:removed': { key: string }
   'context:failed': { key: string; error: Error }
+  /**
+   * A `2026-07-28` context's server signalled its tools list changed (SEP-1391). The host has
+   * already re-listed the context and refreshed its namespaced tool aggregate before emitting.
+   */
+  'tools:changed': { key: string }
+  /**
+   * A `2026-07-28` context's server signalled its prompts list changed (SEP-1391). The host has
+   * already re-listed the context's prompts before emitting.
+   */
+  'prompts:changed': { key: string }
+  /**
+   * A `2026-07-28` context's server signalled its resources list changed (SEP-1391). The host has
+   * already re-listed the context's resources before emitting.
+   */
+  'resources:changed': { key: string }
+  /**
+   * A `2026-07-28` context's server signalled a subscribed resource's content changed (SEP-1391),
+   * carrying the resource URI. The host forwards it as-is and does not re-read the resource —
+   * reacting is the consumer's policy.
+   */
+  'resource:updated': { key: string; uri: string }
 }
 
 export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
@@ -141,7 +162,10 @@ export function createHostedContext<T extends ContextTypes = UnknownContextTypes
   const client = new ContextClient<T>({ protocolVersion, transport })
   const disposer = new Disposer({
     dispose: async () => {
-      await transport.dispose()
+      // Via the client, not the transport: `client.dispose()` runs `_beforeTransportClose` (tears
+      // down the subscription driver, suppresses reconnect) then disposes the transport. Disposing
+      // the transport directly would skip that and could leave a reconnect firing after teardown.
+      await client.dispose()
       await dispose?.()
     },
   })
@@ -186,6 +210,9 @@ export class ContextHost extends Disposer {
   _localTools: Map<string, LocalTool> = new Map()
   /** @internal */
   _events: EventEmitter<HostEvents> = new EventEmitter<HostEvents>()
+  // Per-context teardown for the client subscription-event listeners wired on `2026-07-28`
+  // contexts (SEP-1391). Cleared in `remove()` so a listener never outlives its context.
+  #subscriptionUnsubscribes: Map<string, Array<() => void>> = new Map()
 
   get events(): EventEmitter<HostEvents> {
     return this._events
@@ -355,6 +382,7 @@ export class ContextHost extends Disposer {
 
     const context = createHostedContext<T>(hostedParams)
     this._contexts[key] = context as unknown as HostedContext
+    this.#wireContextSubscriptions(key, context.client as unknown as ContextClient)
     return context.client
   }
 
@@ -424,8 +452,94 @@ export class ContextHost extends Disposer {
     })
 
     this._contexts[key] = context as unknown as HostedContext
+    this.#wireContextSubscriptions(key, context.client as unknown as ContextClient)
 
     return context.client
+  }
+
+  /**
+   * Subscribes to a context client's `2026-07-28` subscription signals (SEP-1391) and turns them
+   * into {@link HostEvents}. These client events only ever fire on the `2026-07-28`
+   * `subscriptions/listen` stream — a `2025-11-25` client never emits them — so wiring every
+   * context is safe and only `2026-07-28` contexts ever react. On a `*ListChanged` signal the host
+   * re-discovers the affected list (refreshing the namespaced tool aggregate for tools) *before*
+   * emitting `<x>:changed`; on `resourceUpdated` it forwards `resource:updated` without re-reading.
+   */
+  #wireContextSubscriptions(key: string, client: ContextClient): void {
+    const unsubscribes = [
+      client.events.on('toolsListChanged', () => {
+        void this.#onListChanged(key, 'tools')
+      }),
+      client.events.on('promptsListChanged', () => {
+        void this.#onListChanged(key, 'prompts')
+      }),
+      client.events.on('resourcesListChanged', () => {
+        void this.#onListChanged(key, 'resources')
+      }),
+      client.events.on('resourceUpdated', ({ uri }) => {
+        void this._events.emit('resource:updated', { key, uri }).catch(() => {})
+      }),
+    ]
+    this.#subscriptionUnsubscribes.set(key, unsubscribes)
+  }
+
+  /**
+   * Re-lists the affected list for a context whose server signalled a change, then emits the
+   * matching `<kind>:changed` event. The re-list refreshes the host's namespaced aggregate for
+   * tools; prompts/resources have no host-side aggregate, so their re-list refreshes the client's
+   * discovery snapshot. The re-list is best-effort — a failure still emits the change signal, since
+   * the signal (not its payload) is what consumers act on. Bails if the context was removed while
+   * a frame was in flight.
+   */
+  async #onListChanged(key: string, kind: 'tools' | 'prompts' | 'resources'): Promise<void> {
+    const ctx = this._contexts[key]
+    if (ctx == null) {
+      return
+    }
+    try {
+      if (kind === 'tools') {
+        await this.#refreshContextTools(key)
+      } else if (kind === 'prompts') {
+        await ctx.client.listPrompts()
+      } else {
+        await ctx.client.listResources()
+      }
+    } catch {
+      // Best-effort re-list; still emit the change signal below.
+    }
+    if (this._contexts[key] == null) {
+      return
+    }
+    void this._events.emit(`${kind}:changed`, { key }).catch(() => {})
+  }
+
+  /**
+   * Re-lists a context's tools and rebuilds its namespaced aggregate, preserving each surviving
+   * tool's `enabled`/`allow` state by name, defaulting new tools to enabled, and dropping tools the
+   * server no longer advertises.
+   */
+  async #refreshContextTools(key: string): Promise<void> {
+    const ctx = this._contexts[key]
+    if (ctx == null) {
+      return
+    }
+    const { tools } = await ctx.client.listTools()
+    if (this._contexts[key] == null) {
+      return
+    }
+    const previous = new Map(ctx.tools.map((ct) => [ct.tool.name, ct]))
+    ctx.tools = tools.map((tool: Tool) => {
+      const prior = previous.get(tool.name)
+      const contextTool: ContextTool = {
+        id: getContextToolID(key, tool.name),
+        tool,
+        enabled: prior?.enabled ?? true,
+      }
+      if (prior?.allow != null) {
+        contextTool.allow = prior.allow
+      }
+      return contextTool
+    })
   }
 
   async setup(params: SetupParams): Promise<Array<ContextTool>> {
@@ -461,6 +575,12 @@ export class ContextHost extends Disposer {
     // Delete before the async dispose so a concurrent remove/dispose (e.g. an
     // onExit reap racing a user remove) sees null and exits — no double removal.
     delete this._contexts[key]
+
+    // Tear down the client subscription-event listeners (SEP-1391) before disposing the client.
+    for (const unsubscribe of this.#subscriptionUnsubscribes.get(key) ?? []) {
+      unsubscribe()
+    }
+    this.#subscriptionUnsubscribes.delete(key)
 
     await ctx.disposer.dispose()
     void this._events.emit('context:removed', { key }).catch(() => {})
