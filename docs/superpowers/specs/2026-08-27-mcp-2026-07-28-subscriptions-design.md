@@ -198,6 +198,15 @@ disposition with one authoritative state machine: **`running → detached → te
   `ContextServer._beforeTransportClose` calls `hub.endAllGracefully()` (only if it owns the hub). A
   bounded deadline (5s) covers drain **plus** terminal write; on timeout the single outcome is abrupt
   close. **Peer EOF stays abrupt** — the hook does not run when the read loop finds the peer gone.
+  **Accepted consequence (decided 2026-08-27):** because the flush runs *before* `#close`, the read
+  loop stays live during the ≤5s flush window, so a server that has begun `dispose()` keeps accepting
+  and serving new inbound requests (including new `subscriptions/listen`) until close. This is bounded
+  (≤5s) and benign — write-after-close is swallowed, the flush enumerates a snapshot taken before its
+  await, and `#close`'s `abortAll` sweeps any entry created during the window. It is a widening versus
+  the pre-subscriptions behavior (where `#dispose` called `#close` first). **Hardening follow-up
+  (deferred):** gate the inbound-request path on a `#disposing` flag so a disposing server stops
+  starting new work while still flushing held terminals — belongs in the deprecations/cleanup piece,
+  not this feature.
 
 ## Components
 
