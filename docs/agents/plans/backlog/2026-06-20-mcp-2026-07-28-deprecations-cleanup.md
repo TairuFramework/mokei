@@ -70,15 +70,8 @@ here alongside the disposal/cleanup changes.
   inbound-request path would stop a disposing server starting new work while still flushing held
   terminals. See the design spec's "Disposal ordering — Accepted consequence / Hardening follow-up"
   note (`docs/superpowers/specs/2026-08-27-mcp-2026-07-28-subscriptions-design.md`).
-- **Stateless borrower teardown on backpressure / write failure.** When a served listen's
-  `SubscriptionWriter` fails (256-frame backpressure bound, or a real write rejection), the abrupt
-  teardown rejects the held terminal and drops the hub entry, but does **not** close the stateless
-  per-POST borrower's SSE body or dispose its throwaway `ContextServer` — `SubscriptionSink.close`
-  is a no-op (the serving server owns the wire) and the exchange's `finish()` is only reachable via
-  the HTTP request signal or `handler.dispose()`. Result: a slow HTTP subscriber that trips
-  backpressure leaks one borrower server + SSE stream until handler shutdown. Blast radius is
-  bounded by `maxSubscriptionExchanges` (added 2026-08-27). The correct fix is a cross-layer
-  teardown-callback seam so a server-side listen failure drives the exchange's `finish()` — this
-  changes the `createServer` / `ServerParams` contract, so it was deliberately deferred out of the
-  review fix-wave. Owner transports (stdio, `2025-11-25` session HTTP) are unaffected: they have no
-  per-subscription wire to close, only the hub entry, which teardown already removes.
+
+(The stateless-borrower backpressure/write-failure teardown gap, originally listed here, was fixed
+in the review fix-wave: `SubscriptionSink.close` disposes a borrower server, whose transport
+disposal closes the exchange stream — the exchange's `close`/`abort` handlers then `finish()`. See
+`packages/context-server/src/server.ts` `#listen` and `packages/http-server/src/subscriptions.ts`.)

@@ -260,6 +260,52 @@ describe('handler.dispose() awaits in-flight listen disposal', () => {
   })
 })
 
+describe('subscriptions/listen writer-failure teardown', () => {
+  test('backpressure on a stalled subscriber disposes the borrower server and closes its stream', async () => {
+    const emitter = new EventEmitter<ServerEvents>()
+    const hub = createSubscriptionHub({ events: emitter })
+    let capturedServer: ContextServer | undefined
+
+    const handler = createHTTPHandler({
+      subscriptionHub: hub,
+      createServer: ({ transport, subscriptionHub, connectionID }) => {
+        const server = new ContextServer({
+          ...SERVER_CONFIG,
+          transport,
+          subscriptionHub,
+          connectionID,
+        })
+        capturedServer = server
+        return server
+      },
+    })
+
+    const response = await handler.handleRequest(
+      listenRequest(1, { resourceSubscriptions: ['file:///x'] }),
+    )
+    expect(response.status).toBe(200)
+    const frames = createSSEFrameReader(response)
+    await frames.next() // priming
+    await frames.next() // ack (registers the entry)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(capturedServer).toBeDefined()
+
+    // Stop reading the SSE body, then flood the subscribed URI: the stalled writer queues past its
+    // backpressure bound (256), fails, and — because this is a stateless borrower — tears down its
+    // own exchange rather than leaking the server and stream until handler shutdown. Fire-and-forget
+    // (fan-out swallows per-frame rejections via allSettled).
+    for (let i = 0; i < 600; i++) {
+      void emitter.emit('resourceUpdated', { uri: 'file:///x' })
+    }
+
+    // The borrower disposes itself; without the fix this never resolves (leak until dispose()).
+    await capturedServer?.disposed
+
+    await handler.dispose()
+    await hub.dispose()
+  })
+})
+
 describe('subscriptions/listen concurrency cap', () => {
   test('refuses a listen past maxSubscriptionExchanges with 503 + Retry-After', async () => {
     const { hub } = createStubDurableHub()

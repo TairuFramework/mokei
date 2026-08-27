@@ -744,9 +744,23 @@ export class ContextServer extends ContextRPC<ServerTypes> {
 
     const sink: SubscriptionSink = {
       writeNotification: (notification) => this._write(decorate(notification) as ServerMessage),
-      // The sink owns no transport of its own — the serving server owns the wire — so there is
-      // nothing to close here. Teardown flows through the held request instead.
-      close: () => {},
+      // Called only when the writer fails itself (backpressure bound hit, or a real write
+      // rejection) — never on an ordinary request-abort teardown, which the exchange's own request
+      // signal already tears down.
+      //
+      // Owner (stdio, `2025-11-25` session HTTP): the shared server owns the wire and serves many
+      // subscriptions on it, so a single writer failure must not close the transport — the abrupt
+      // teardown drops just this entry, and there is nothing else to close here.
+      //
+      // Borrower (the `2026-07-28` stateless per-POST server): the wire *is* this throwaway
+      // exchange, held open only for this one listen. A writer failure that only rejected the held
+      // terminal would leave the SSE body and this server alive until handler shutdown, so dispose
+      // the borrower — closing its transport, which the exchange observes and finishes.
+      close: () => {
+        if (this.#subscriptionHub != null && !this.#ownsHub) {
+          void this.dispose()
+        }
+      },
     }
 
     let handle: SubscriptionHandle | undefined

@@ -223,6 +223,16 @@ export function runSubscriptionExchange(params: SubscriptionExchangeParams): Pro
         throw error
       }
     },
+    // The serving server closes/aborts its writer when it disposes — which, for a borrower whose
+    // listen writer failed (backpressure or a write rejection), is how a server-side teardown
+    // reaches this exchange. Either way nothing more will be written, so finish the exchange:
+    // close the SSE body, dispose the (already-disposing) server, and settle any pending response.
+    close() {
+      finish()
+    },
+    abort() {
+      finish()
+    },
   })
 
   const transport = new Transport<ClientMessage, ServerMessage>({
