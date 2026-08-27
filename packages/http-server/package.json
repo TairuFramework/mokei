@@ -45,6 +45,7 @@
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/logger": "workspace:^",
+    "@sozai/runtime": "catalog:",
     "hono": "catalog:"
   },
   "devDependencies": {

@@ -57,6 +57,9 @@ catalogs:
     '@sozai/otel':
       specifier: ^0.3.2
       version: 0.3.2
+    '@sozai/runtime':
+      specifier: ^0.1.0
+      version: 0.1.0
     '@sozai/schema':
       specifier: ^0.1.1
       version: 0.1.1
@@ -795,6 +798,9 @@ importers:
       '@mokei/logger':
         specifier: workspace:^
         version: link:../logger
+      '@sozai/runtime':
+        specifier: 'catalog:'
+        version: 0.1.0
       hono:
         specifier: 'catalog:'
         version: 4.13.5
