@@ -4,8 +4,8 @@
 **Branch:** `feat/mcp-2026-07-28-subscriptions`
 **Source item:** `docs/agents/plans/next/2026-08-27-mcp-2026-07-28-subscriptions.md`
 **Milestone:** `docs/agents/plans/milestones/2026-06-08-mcp-2026-07-28-migration.md` (piece E / B4, SEP-2575)
-**Reviewed:** Codex pre-implementation design review, 2026-08-27 (8 findings, all folded in — see
-"Design-review resolutions").
+**Reviewed:** Codex pre-implementation design review, two passes, 2026-08-27 (8 findings + 7 second-pass
+tightenings, all folded in — see "Design-review resolutions").
 
 ## Summary
 
@@ -26,28 +26,43 @@ it). The work spans `context-protocol`, `context-rpc`, `context-client`, `contex
 1. **Revision scope:** `2026-07-28` only.
 2. **Breadth:** full — client-receive, server-serve, and server producers.
 3. **Producer API:** the server's existing `@sozai/event` `EventEmitter` (`server.events`). Producers
-   emit typed events; a `SubscriptionRegistry` subscribes via `events.on(...)` and fans out.
+   emit typed events; a `SubscriptionHub` subscribes via `events.on(...)` and fans out.
 4. **Consumer API:** the client auto-opens one listen stream after setup (iff `server/discover`
    advertises the relevant capabilities), routing frames to existing consumers; plus explicit
    `subscribeResource({ uri })` / `unsubscribeResource({ uri })`.
-5. **Stateless-HTTP lifetime:** persistent-server binding — refined by the review (#1) into a
-   `ServerSubscriptionBinding` owned by the durable server, with each listen POST kept
-   transport-isolated. See "Transport lifetime".
+5. **Stateless-HTTP lifetime:** a durable server owns a shared `SubscriptionHub`; each listen POST is
+   served by its own transport-isolated `ContextServer` that borrows the hub. See "Execution model".
 6. **Host integration (mechanism, not policy):** the host reacts by keeping its aggregate correct
    and emitting host events; it defines no agent behavior. Consumers drive reactions via
    `host.events.on(...)`.
+7. **Runtime primitives:** ids are minted with `getRandomID()` from `@sozai/runtime` (RN-safe;
+   consistent with the Node-free `-node` split), never `crypto.randomUUID()`.
 
 ## Design-review resolutions (Codex, 2026-08-27)
 
-| # | Finding | Resolution in this design |
-|---|---------|---------------------------|
-| 1 (blocker) | A shared durable `ContextServer` cannot multiplex stateless listen POSTs; `ContextServer` owns one transport and subscriptionId (== request id) is not unique across clients | `ServerSubscriptionBinding` owned by the durable server; each listen POST stays transport-isolated with its own SSE sink; registry keyed by an internal `connectionID` (`crypto.randomUUID`, never on the wire) + subscriptionId, nested-map. Fan-out writes to each entry's captured sink, never locating a response by subscriptionId. |
-| 2 (major) | "Hold response open" sentinel is incompatible with the RPC lifecycle (every request must resolve; scheduler slot held; disposal closes before terminal write) | First-class `HeldResponse` disposition + `_holdResponse` helper; scheduler moves the request to a `#detached` set and reclaims its concurrency slot; `ContextRPC` owns the terminal write; `_beforeTransportClose` hook flushes terminal results before transport close; `dispose()` becomes async with a bounded flush deadline. |
-| 3 (major) | An abrupt POST-SSE stream end neither closes the transport nor settles the exchange, so `endAll` cannot drive reconnect | Per-exchange stream-ended signal: `HTTPTransport` emits `streamEvents.closed{requestID}`; `ExchangeRegistry.close(id)` settles just that exchange (`'closed'`); reconnect reuses the same HTTP transport+client; stdio EOF stays a whole-client close (host rebuilds). |
-| 4 + 6 (major) | Backpressure named at the wrong layer; ack-first can race producer fan-out | Per-subscription `SubscriptionWriter` (serialized drain, hard 256-frame bound, disconnect-on-overflow via `SubscriptionBackpressureError`); ack enqueued **before** the registry entry is published, so producers can't target a not-yet-acknowledged stream. |
-| 5 (major) | "Tear down old, open new" leaves gaps/dupes and races under concurrent mutation | Generation-based `SubscriptionDriver` in `context-client`: open+ack the new filter before retiring the old, gate frames by generation, serialize mutations, settle each call on its generation's ack. |
-| 7 (major) | Capability could advertise `resources.subscribe` even where the HTTP deployment can't serve it | Advertise only when resources are configured **and** a `subscriptionBinding` is present; the `createServer` factory takes `{ transport, subscriptionBinding }` so the throwaway server answering `server/discover` reports the same effective availability. |
-| 8 (minor) | Bridge described loosely ("carrying" the id); needs strict extraction/validation | Optional `routeStreamNotification` correlator on `RPCParams` keeps protocol-specific extraction out of the generic branch; client extractor validates the value is a `RequestID`; malformed → `onError`, unknown → drop. Exact paths: notifications `params._meta`, terminal result `result._meta`. |
+### First pass (8 findings)
+
+| # | Finding | Resolution |
+|---|---------|------------|
+| 1 (blocker) | A shared durable `ContextServer` cannot multiplex stateless listen POSTs (one transport per server; subscriptionId == request id collides across clients) | **Unified execution model** (below): every listen is served by a normal `ContextServer` via `_holdResponse`; the durable server owns only a shared `SubscriptionHub` (registry + producer fan-out) that per-POST transport-isolated servers borrow. Registry keyed by an internal `connectionID` (`getRandomID()`, never on the wire) + subscriptionId. Fan-out routes through each serving server's own notify path; it never locates a response by subscriptionId. |
+| 2 (major) | "Hold response open" is incompatible with the RPC lifecycle | First-class `HeldResponse` disposition + explicit `running → detached → terminal-writing → removed` state machine (below). |
+| 3 (major) | Abrupt POST-SSE end neither closes the transport nor settles the exchange | Per-exchange `streamEvents.closed{requestID}` from `HTTPTransport`; `ExchangeRegistry.close(id)` settles just that exchange; reconnect reuses the same transport; stdio EOF stays a whole-client close. |
+| 4 + 6 (major) | Backpressure at the wrong layer; ack-first can race fan-out | Per-subscription serialized bounded `SubscriptionWriter` (256 cap, disconnect-on-overflow); ack **written** before the registry entry is published. |
+| 5 (major) | "Tear down old, open new" leaves gaps/dupes and races | Generation-based `SubscriptionDriver`; open+ack the new filter before retiring the old; frame gating; mutations and reconnect share one queue (below). |
+| 7 (major) | Capability could advertise where the deployment can't serve | Advertise only with resources configured **and** a hub present; owner/borrower construction (below). |
+| 8 (minor) | Bridge extraction described loosely | `routeStreamNotification` correlator; exact `_meta` paths; `RequestID` validation; malformed → `onError`, unknown → drop. |
+
+### Second pass (7 tightenings)
+
+| Area | Tightening |
+|------|------------|
+| HTTP execution seam (1/2) | The listen POST no longer calls a binding sink that writes the terminal itself. It runs a transport-isolated `ContextServer` (`runSubscriptionExchange`, no stateless timeout, no close-after-ack) that validates/dispatches; `_holdResponse` is the **single** terminal owner; the hub holds only registry/fan-out state; the sink has **no** `writeTerminalResult`. |
+| Held-request state machine (2) | One authoritative transition `running → detached → terminal-writing → removed`. The scheduler keeps duplicate-id + cancellation ownership until `completeDetached(id)`; `ContextRPC` owns only the terminal promise/write. cancel-vs-terminal is first-settlement-wins with exactly one cleanup path. `wrapResult` stays in `ContextServer`: the held `terminal` resolves to an already-wrapped server result; `ContextRPC` only builds the JSON-RPC envelope and writes it. |
+| Hub ownership (7) | `subscriptions: true` on the durable server **creates and owns** the hub, attaches producer listeners to its own `server.events`, and disposes it. A borrower gets `subscriptionHub` (affects capability advertising) and does **not** re-subscribe. `HTTPHandler.dispose()` asks the owner to end streams but never disposes a hub it does not own. |
+| Teardown/cancellation (4) | `hub.register(...)` returns a handle `{ close(reason?), acknowledged }`; `close` is idempotent. Both request abort and response-body cancellation call it. The 5s deadline covers queue drain **plus** terminal write; on timeout the single outcome is abrupt close. |
+| Reconnect × generation (5) | Reconnect is enqueued on the same mutation queue. A candidate reconnect retains its generation + filter snapshot; an active-stream reconnect must not overtake an unacknowledged candidate. The first candidate frame **must** be `acknowledged`; an ordinary frame before it is a protocol error (via `onError`), not a silent generation-drop. |
+| Ack contract (6) | `writer.enqueue(acknowledgement)` resolves only after `sink.writeNotification` **succeeds**, not merely on enqueue. |
+| Runtime + table (7) | connectionID uses `runtime.getRandomID()` everywhere; the table no longer mentions `crypto.randomUUID`. |
 
 ## Authoritative wire shape
 
@@ -56,295 +71,266 @@ Pinned against `@modelcontextprotocol/core@2.0.0` (vendored under
 Re-validate against the final spec text before implementing.
 
 - **`subscriptions/listen` request** — `params.notifications` is a `SubscriptionFilter`:
-  `{ toolsListChanged?: boolean, promptsListChanged?: boolean, resourcesListChanged?: boolean,
-  resourceSubscriptions?: string[] }`. Each type is opt-in; the server MUST NOT send a type the
-  client did not request.
-- **`notifications/subscriptions/acknowledged`** — the **first** message the server sends on the
-  stream, echoing the `notifications` filter it agreed to honor.
+  `{ toolsListChanged?, promptsListChanged?, resourcesListChanged?: boolean, resourceSubscriptions?: string[] }`.
+  Each type is opt-in; the server MUST NOT send a type the client did not request.
+- **`notifications/subscriptions/acknowledged`** — the **first** message on the stream, echoing the
+  filter the server agreed to honor.
 - **`notifications/resources/updated`** — `params.uri`; sent only for a URI in the filter's
   `resourceSubscriptions`.
-- **listChanged notifications** — `notifications/tools/list_changed`,
-  `notifications/prompts/list_changed`, `notifications/resources/list_changed` (already in the
-  `2026-07-28` `serverNotification` union).
-- **Subscription id** — every streamed notification carries
+- **listChanged notifications** — `notifications/{tools,prompts,resources}/list_changed` (already in
+  the `2026-07-28` `serverNotification` union).
+- **Subscription id** — streamed notifications carry
   `params._meta['io.modelcontextprotocol/subscriptionId']`; the terminal result carries it under
   `result._meta`. Its value **equals the listen request's JSON-RPC id**.
-- **Terminal `subscriptions/listen` result** — sent only on graceful server teardown, with
-  `resultType: 'complete'` under the `2026-07-28` result rules; an abrupt transport close carries
-  no response, and the client re-sends.
+- **Terminal `subscriptions/listen` result** — sent only on graceful teardown, with
+  `resultType: 'complete'`; an abrupt transport close carries no response and the client re-sends.
 
 ## Architecture
 
-### Core mechanism (client correlation)
+### Execution model (unified across transports)
 
-Because `subscriptionId == the listen request's JSON-RPC id`, the client models a listen stream as
-a stream exchange (`_registerStreamExchange('subscriptions/listen', { notifications }, handlers)`),
-and the streamed notifications feed that exchange's sink. The wire-feeder is added as an **optional
-correlator**, not inline protocol-sniffing in the generic branch (#8):
+**A listen request is always served by a normal `ContextServer`.** Validation, protocol resolution,
+method gating, `_meta` handling, `wrapResult`, and the decorated `notify` path all apply. The only
+new server behavior is that its `subscriptions/listen` handler returns `_holdResponse(...)` instead
+of a result body.
 
-- New optional `RPCParams.routeStreamNotification(notification) => { id, frame } | null`.
-  `ContextRPC._handleMessage`'s notification branch calls it; a non-null route calls
-  `#exchanges.routeStreamFrame(id, frame)`, a null route falls through to `_handleNotification`.
-  A throw from the correlator is reported via `#reportError` and the notification is consumed (not
-  passed through).
-- The client's extractor reads `notification.params._meta['io.modelcontextprotocol/subscriptionId']`,
-  validates it is a string or integer `RequestID`, and returns
-  `{ id, frame: { type: 'progress', value: notification } }`. The `acknowledged` notification is
-  simply the first such frame.
-- The terminal `subscriptions/listen` result settles the exchange via the existing `routeResponse`
-  path (correlated by JSON-RPC envelope `id`); the driver additionally verifies the result's
-  `result._meta` subscriptionId equals that envelope id — a mismatch is a protocol error, not a
-  graceful terminal.
-
-`ContinuationStore` stays unused (it remains the B-item that never found a consumer); the `stream`
-arm of the exchange registry gains its first real wire feeder.
-
-### Long-lived inbound requests (`context-rpc`)
-
-A `subscriptions/listen` handler must not resolve immediately. Today every scheduled request must
-produce a result (`null` → `INTERNAL_ERROR`, `rpc.ts:294`) and holds a scheduler slot
-(`maxConcurrentRequests`, default 100). Add a first-class held-response disposition (#2):
-
-- `HeldResponse<Result> = { kind: 'held', terminal: Promise<Result>, beforeTerminal?: () => Promise<void> }`
-  and a protected `_holdResponse({ terminal, beforeTerminal })` helper. `ContextServer._handleRequest`
-  returns `_holdResponse(...)` for a listen request; subclasses still return result bodies, never
-  write JSON-RPC responses.
-- **Scheduler:** track a `#detached: Map<RequestID, AbortController>`. On a `HeldResponse`, move the
-  controller out of `#running` into `#detached` and **reclaim the concurrency slot immediately** — a
-  listen counts against the cap only while it is being validated and registered. `cancel(id)` and
-  `abortAll` cover detached requests too.
-- **Terminal ownership:** `ContextRPC` tracks held requests; when `terminal` resolves it stops
-  accepting frames, awaits `beforeTerminal` (drains the subscription's serialized queue), wraps the
-  result through the normal server-result path, writes `{ id, result }`, and removes the held entry.
-  Cancellation aborts and removes without a result (existing cancellation semantics).
-- **Disposal ordering:** add a protected `_beforeTransportClose(reason)` hook. Explicit `#dispose`
-  runs `_beforeTransportClose` → flush held responses → `#close` → `transport.dispose()`, so terminal
-  results flush before the transport closes. `ContextServer._beforeTransportClose` calls
-  `subscriptions.endAllGracefully()`. **Peer EOF stays abrupt** — the hook does not run when the read
-  loop finds the peer already gone. A bounded flush deadline (smallest version: 5s) then closes
-  abruptly rather than hanging.
-
-**Breaking:** `dispose()` becomes async (`ContextRPC`, and therefore `ContextServer` and the HTTP
-handler) — a synchronous `dispose()` cannot promise terminal-result-on-teardown.
-
-### Transport lifetime + `ServerSubscriptionBinding`
-
-| Transport | Server lifetime | How the listen stream lives |
-|-----------|-----------------|-----------------------------|
-| stdio | persistent (one server per process) | The server lives; registry + `events` fan-out are natural. Terminal result on graceful `dispose`. |
-| `2025-11-25` HTTP | persistent (session) | The listen stream rides the session as any long-lived response. |
-| `2026-07-28` HTTP (stateless) | throwaway per POST | Listen POSTs delegate to a `ServerSubscriptionBinding` on a durable server; other POSTs stay throwaway. |
-
-**The binding (resolves blocker #1).** A shared durable `ContextServer` cannot back multiple listen
-POSTs — it owns one RPC transport, and subscriptionId (== request id) collides across clients. So:
-
-- Keep every listen POST **transport-isolated** (its own SSE response + sink + abort signal).
-- The durable server owns a `ServerSubscriptionBinding` holding the `SubscriptionRegistry` and
-  producer state. The HTTP handler mints an internal `connectionID = runtime.getRandomID()` per
-  listen POST (**never on the wire**) and registers under a nested map
-  `Map<connectionID, Map<RequestID, SubscriptionEntry>>`. Two clients using request id `0` become
-  `{A,0}` and `{B,0}` — distinct.
-- **Fan-out never locates a response by subscriptionId.** A producer event iterates matching registry
-  entries and writes to each entry's own captured sink.
+The **`SubscriptionHub`** is shared cross-connection state — nothing more:
 
 ```ts
 // context-server/src/subscriptions.ts
-export type SubscriptionSink = {
-  writeNotification(n: ServerNotification): Promise<void>
-  writeTerminalResult(r: SubscriptionsListenResult): Promise<void>
-  close(reason?: Error): void
+export type SubscriptionEntry = {
+  connectionID: string
+  subscriptionID: RequestID
+  filter: SubscriptionFilter
+  deliver: (n: ServerNotification) => Promise<void> // routes through the serving server's notify
 }
-export type ServerSubscriptionBinding = {
-  open(params: { connectionID: string; request: SubscriptionsListenRequest; signal: AbortSignal; sink: SubscriptionSink }): Promise<void>
+export type SubscriptionHandle = { close(reason?: Error): void; acknowledged: Promise<void> }
+export type SubscriptionHub = {
+  register(entry: SubscriptionEntry): SubscriptionHandle // nested Map<connectionID, Map<RequestID, …>>
   endAllGracefully(): Promise<void>
   dispose(): Promise<void>
 }
 ```
 
-Smallest correct version: one in-process binding per HTTP handler/deployment, no cross-process
-delivery (a multi-instance deployment would later need an external broker — out of scope).
+- The hub owner (`subscriptions: true`) subscribes once to its own `server.events`
+  (`resourceUpdated`/`toolsListChanged`/`promptsListChanged`/`resourcesListChanged`) and, on each
+  event, iterates matching entries and calls `entry.deliver(notification)` — a `resourceUpdated`
+  only for streams whose `resourceSubscriptions` include the URI; a listChanged only for streams
+  that opted in. **Fan-out never locates an HTTP response by subscriptionId**; it calls the
+  `deliver` the serving server registered.
+- `deliver` routes through the serving server's own per-subscription `SubscriptionWriter` (serialized,
+  bounded) and its decorated `notify`, so `_meta.subscriptionId` injection and revision decoration
+  are applied by the same server that owns the wire.
 
-**Runtime primitives.** The `connectionID` is minted with `getRandomID()` from `@sozai/runtime`,
-not `crypto.randomUUID()` — the latter is not guaranteed on every platform (React Native), and the
-`-node` split made `@mokei/host`/`context-server` deliberately Node-free. Relevant constructors and
-functions (`createHTTPHandler`, and any function that mints ids) accept an optional
-`runtime?: Partial<Runtime>` resolved once via `createRuntime(runtime)`, which fills `globalThis`
-defaults so downstream code always has a fully-resolved `Runtime` with no optional checks. Callers
-that need determinism (tests) pass an override; everyone else omits it.
+Per transport:
+
+| Transport | Hub owner | Serving server for a listen |
+|-----------|-----------|-----------------------------|
+| stdio | the single persistent server | the same server (owner == connection) |
+| `2025-11-25` HTTP | the session's persistent server | the same server |
+| `2026-07-28` HTTP (stateless) | a durable server the deployment supplies | a fresh transport-isolated `ContextServer` per listen POST, **borrowing** the hub |
+
+For `2026-07-28` HTTP a listen POST runs `runSubscriptionExchange` (a variant of
+`runStatelessExchange` with no response timeout and no close-after-ack): it builds a transport-isolated
+`ContextServer` on its own SSE bridge, injected with the shared hub and an internal
+`connectionID = runtime.getRandomID()`. That server validates and dispatches the listen; `_holdResponse`
+owns the terminal; the hub only records the entry and fans out. Other `2026-07-28` POSTs stay on
+`runStatelessExchange` unchanged. If no durable hub is configured, a listen POST gets
+`METHOD_NOT_FOUND` and `resources.subscribe` is not advertised.
+
+Smallest correct version: one in-process hub per HTTP handler/deployment; no cross-process delivery
+(a multi-instance deployment would later need an external broker — out of scope).
+
+### Client correlation
+
+`subscriptionId == the listen request's JSON-RPC id`, so the client models a listen as a stream
+exchange and the streamed notifications feed its sink through an **optional correlator** (not inline
+protocol-sniffing):
+
+- New optional `RPCParams.routeStreamNotification(notification) => { id, frame } | null`.
+  `_handleMessage`'s notification branch calls it; a non-null route → `#exchanges.routeStreamFrame`,
+  null → `_handleNotification`. A throw → `#reportError`, notification consumed.
+- The client extractor reads `notification.params._meta['io.modelcontextprotocol/subscriptionId']`,
+  validates a string/integer `RequestID`, returns `{ id, frame: { type: 'progress', value: n } }`.
+  The `acknowledged` notification is the first such frame.
+- The terminal result settles via `routeResponse` (correlated by envelope `id`); the driver also
+  verifies `result._meta` subscriptionId equals the envelope id — a mismatch is a protocol error,
+  not a graceful terminal.
+
+### Long-lived inbound requests (`context-rpc`) — held-request state machine
+
+A `subscriptions/listen` handler must not resolve immediately. Add a first-class held-response
+disposition with one authoritative state machine: **`running → detached → terminal-writing → removed`.**
+
+- `HeldResponse<Result> = { kind: 'held', terminal: Promise<Result>, beforeTerminal?: () => Promise<void> }`
+  and a protected `_holdResponse({ terminal, beforeTerminal })`. `ContextServer._handleRequest`
+  returns it for a listen; subclasses still return result bodies, never write responses.
+- **Scheduler** gains `#detached: Map<RequestID, AbortController>`. On a `HeldResponse` it atomically
+  moves the controller from `#running` to `#detached` and **reclaims the concurrency slot** — a listen
+  counts against the cap only while validating/registering. The scheduler retains **duplicate-id
+  protection and cancellation ownership** for a detached id until `completeDetached(id)`. `cancel(id)`
+  and `abortAll` cover detached requests.
+- **Terminal ownership:** `ContextRPC` owns only the terminal promise and write task. When `terminal`
+  resolves it awaits `beforeTerminal` (drains the subscription's queue), builds `{ id, result }` and
+  writes it, then calls `completeDetached(id)`. **`wrapResult` stays in `ContextServer`:** the held
+  `terminal` resolves to an already-wrapped server result; `ContextRPC` only envelopes and writes.
+- **cancel vs terminal = first-settlement-wins**, with exactly one cleanup path that removes both the
+  scheduler and RPC records. Cancellation aborts and removes without a result.
+- **Disposal ordering:** a protected `_beforeTransportClose(reason)` hook runs before close. Explicit
+  `#dispose` becomes `_beforeTransportClose` → flush held responses → `#close` → `transport.dispose()`.
+  `ContextServer._beforeTransportClose` calls `hub.endAllGracefully()` (only if it owns the hub). A
+  bounded deadline (5s) covers drain **plus** terminal write; on timeout the single outcome is abrupt
+  close. **Peer EOF stays abrupt** — the hook does not run when the read loop finds the peer gone.
 
 ## Components
 
 ### 1. `@mokei/context-protocol` — schema
 
-New `src/subscriptions.ts` (mirrors `resource.ts` + the MRTR precedent):
-- `subscriptionFilter` + `SubscriptionFilter`.
-- `subscriptionsListenRequest` (`method: 'subscriptions/listen'`, `params.notifications`), given
-  `forbidRetryParams` (it is not an MRTR-suspendable method).
-- `subscriptionsAcknowledgedNotification` (`method: 'notifications/subscriptions/acknowledged'`).
-- `subscriptionsListenResult` (terminal; `result._meta` carries the subscriptionId; requires
-  `resultType: 'complete'`).
-- `META_SUBSCRIPTION_ID = 'io.modelcontextprotocol/subscriptionId'` and a `subscriptionMetadata`
-  fragment (`requestId`, required). Acknowledgement + streamed notifications require it in
-  `params._meta`; the terminal result in `result._meta`. `wrapResult` must merge server-info
-  metadata **without** overwriting the subscriptionId.
-- Reuse existing `resourceUpdatedNotification` from `src/resource.ts`.
-
-Wire into `src/versions/2026-07-28.ts`: add `subscriptions/listen` to `clientMethods`;
-`subscriptionsAcknowledgedNotification` to the server notification union;
-`subscriptionsListenResult` to `serverResult`/`serverResponse`. Barrel + `versions/index.ts`
-re-exports; a `versions.test.ts` membership guard.
+New `src/subscriptions.ts`: `subscriptionFilter`; `subscriptionsListenRequest` (`forbidRetryParams`);
+`subscriptionsAcknowledgedNotification`; `subscriptionsListenResult` (terminal, `result._meta`
+subscriptionId, requires `resultType: 'complete'`); `META_SUBSCRIPTION_ID` +
+`subscriptionMetadata` (`requestId`, required) — required in `params._meta` for ack + streamed
+notifications, in `result._meta` for the terminal; `wrapResult` must merge server-info metadata
+**without** overwriting the subscriptionId. Reuse `resourceUpdatedNotification`. Wire into
+`versions/2026-07-28.ts` (`clientMethods` + server notification/result unions); barrel exports; a
+`versions.test.ts` membership guard.
 
 ### 2. `@mokei/context-rpc`
 
-- The held-response primitive, scheduler `#detached` handling, `_beforeTransportClose`, async
-  `dispose()` (see "Long-lived inbound requests").
-- `ExchangeRegistry.close(id, reason)` — settle exactly one stream exchange with `'closed'`.
-- `StreamSettle = { reason: SettleReason; error?: Error }`; `StreamHandlers.onSettle(settle)` gains
-  the error detail.
-- Optional `RPCParams.routeStreamNotification` correlator (see "Core mechanism").
-- Subscribe to a transport's optional `streamEvents.closed` capability when present, routing to
-  `ExchangeRegistry.close`.
+The held-response primitive + state machine + `_beforeTransportClose` (above); `ExchangeRegistry.close(id, reason)`
+(settle one stream exchange `'closed'`); `StreamSettle = { reason, error? }` on `onSettle`; the optional
+`routeStreamNotification` correlator; subscribe to a transport's optional `streamEvents.closed` capability.
 
 ### 3. `@mokei/context-client`
 
-- A focused `src/subscriptions.ts` `SubscriptionDriver` owning generations, the desired-URI set, and
-  the mutation queue (#5).
-- `subscribeResource({ uri, signal?, timeout? })` / `unsubscribeResource({ uri, signal?, timeout? })`
-  mutate `#desiredResources`, allocate a generation, open+ack the new filter **before** retiring the
-  previous exchange, promote on ack, then abort the old exchange; each call settles on its
-  generation's ack (or rejects on permanent failure). Mutations serialize through a `#mutationTail`.
-- Frame gating: each stream handler closes over its generation and drops frames when
-  `generation !== #activeGeneration` (the ack handler is the exception, needed to promote).
-- Auto-open one stream after setup iff `server/discover` advertises the caps (favor opting into only
-  the notification types a consumer is wired for, honoring "MUST NOT send un-requested types").
-- Route frames to existing consumers: listChanged → `_resetDiscovery()`/schema-cache clear;
-  resourceUpdated → per-URI subscribers + the `#notifications` buffer.
-- The subscription-id extractor (#8) supplied to `routeStreamNotification`.
-- Reconnect (#3): on a per-exchange `'closed'` settle that is not a terminal result, reconnect with
-  capped exponential backoff (1s base, 30s cap, no jitter) **reusing the same transport+client**,
-  resubscribing the current desired filter; emit a `subscriptionRetry { attempt, error, retryInMs }`
-  client event. Do not retry on terminal result, local cancellation, protocol/schema error, or a
-  server rejection (`METHOD_NOT_FOUND`). Auto-reconnect never fails post-setup client readiness.
+A `src/subscriptions.ts` `SubscriptionDriver` owning generations, the desired-URI set, and **one**
+mutation queue that also serializes reconnect:
+- `subscribeResource({ uri, signal?, timeout? })` / `unsubscribeResource(...)` mutate `#desiredResources`,
+  allocate a generation, open+ack the new filter **before** retiring the previous exchange, promote on
+  ack, then abort the old; each settles on its generation's ack (or rejects on permanent failure).
+- Frame gating by generation (the ack handler is the exception, needed to promote). The **first**
+  frame of a candidate must be `acknowledged`; an ordinary frame before it → `onError` protocol error.
+- Reconnect is enqueued on the same queue: a candidate reconnect keeps its generation + snapshot; an
+  active-stream reconnect must not overtake an unacknowledged candidate. Capped backoff (1s base, 30s
+  cap, no jitter), reusing the same transport+client, emitting `subscriptionRetry { attempt, error, retryInMs }`.
+  Do not retry on terminal result, local cancellation, protocol/schema error, or `METHOD_NOT_FOUND`.
+  Auto-reconnect never fails post-setup readiness.
+- Auto-open one stream after setup iff `server/discover` advertises the caps (opt into only the
+  notification types a consumer is wired for). Route frames: listChanged → `_resetDiscovery()`;
+  resourceUpdated → per-URI subscribers + `#notifications` buffer. Supplies the subscription-id extractor.
 
 ### 4. `@mokei/context-server`
 
-- `SubscriptionRegistry` + `ServerSubscriptionBinding` + filter matching + notification construction
-  in `src/subscriptions.ts`. The binding subscribes once to `server.events`
-  (`resourceUpdated`/`toolsListChanged`/`promptsListChanged`/`resourcesListChanged`) and fans out to
-  matching entries (a `resourceUpdated` only to streams whose `resourceSubscriptions` include the
-  URI; a listChanged only to streams that opted in).
-- **`SubscriptionWriter`** per subscription (#4/#6): a single serialized drain (one promise chain),
-  hard `maxPendingFrames` bound (256). On overflow: stop accepting, remove the entry, report
-  `SubscriptionBackpressureError` via the server `onError`, close the sink abruptly (no terminal) →
-  the client's reconnect re-establishes. `enqueue`/`flush`/`end(result)`/`abort(reason)` API. Never
-  issue concurrent `sink.writeNotification` for one subscription.
-- **Ack-first activation:** create the writer, `await writer.enqueue(acknowledgement)`, **then**
-  publish the registry entry. Producer events cannot target a not-yet-acknowledged stream. Graceful
-  teardown: remove entry → stop accepting → drain queued → write terminal result → close sink, under
-  a bounded flush deadline.
-- **Producers:** extend the server `Events` map with `resourceUpdated: { uri: string }` and dataless
-  `toolsListChanged` / `promptsListChanged` / `resourcesListChanged`. Deployments emit via
-  `server.events` (the `EventsSink` view can be handed to producers that must not subscribe).
-- **Dispatch:** `subscriptions/listen` returns `_holdResponse(...)`, bound to the registry entry's
-  terminal + flush.
-- **Capability (#7):** set `resources.subscribe: true` only when resources are configured **and** a
-  `subscriptionBinding` is available. The server factory receives `{ transport, subscriptionBinding }`
-  so a throwaway server answering `server/discover` reports the same effective availability;
-  capability ownership stays in `context-server` (do not mutate discover results in `http-server`).
+- `SubscriptionHub` + `SubscriptionEntry` + filter matching + notification construction in
+  `src/subscriptions.ts`. **Owner/borrower:** `subscriptions: true` creates and owns the hub, attaches
+  producer listeners to its own `server.events`, disposes it; a server given `subscriptionHub` borrows
+  it (affects capability advertising) and does not re-subscribe.
+- Per-subscription **`SubscriptionWriter`** (serialized single drain, 256 cap). Overflow → stop
+  accepting, unregister, `SubscriptionBackpressureError` via `onError`, abrupt sink close (no terminal)
+  → client reconnect re-establishes. `enqueue`/`flush`/`abort`. `enqueue(ack)` resolves only after the
+  underlying write **succeeds**. Never concurrent writes for one subscription.
+- **Ack-first:** create writer → `await writer.enqueue(acknowledgement)` (written) → **then**
+  `hub.register(entry)`. Producers cannot target a not-yet-acknowledged stream.
+- **Producers:** extend the server `Events` map with `resourceUpdated: { uri }` + dataless
+  `toolsListChanged`/`promptsListChanged`/`resourcesListChanged`; deployments emit via `server.events`.
+- **Dispatch:** `subscriptions/listen` returns `_holdResponse(...)` bound to the entry's terminal +
+  `beforeTerminal` drain. The `SubscriptionHandle.close(reason)` (idempotent) is wired to abort.
+- **Capability (#7):** set `resources.subscribe: true` only when resources are configured **and** a hub
+  is available. The server factory takes `{ transport, subscriptionHub }` so a throwaway server
+  answering `server/discover` reports the same effective availability; capability ownership stays in
+  `context-server`.
 
 ### 5. `@mokei/http-server`
 
-- `src/subscriptions.ts`: the HTTP/SSE `SubscriptionSink`, per-POST `connectionID`, lifecycle.
-- `handler.ts`: recognize a `subscriptions/listen` request POST, require the configured
-  `subscriptionBinding`, open a dedicated held-open SSE response + sink, call
-  `binding.open({ connectionID, request, signal, sink })`, return that response; on client abort
-  unregister `{connectionID, subscriptionID}` and close the sink. All other `2026-07-28` POSTs stay
-  on `runStatelessExchange`. If no binding is configured, a listen POST gets `METHOD_NOT_FOUND`.
-- `createHTTPHandler` gains an optional `runtime?: Partial<Runtime>` (`@sozai/runtime`), resolved
-  once via `createRuntime`, used to mint each listen POST's `connectionID` via `getRandomID()`.
-- **Breaking:** `createHTTPHandler` gains `subscriptionBinding?`; the `createServer` factory takes
-  `{ transport, subscriptionBinding }`; `HTTPHandler.dispose` becomes async (flush terminal SSE
-  results, bounded deadline).
+- `src/subscriptions.ts`: the HTTP/SSE sink (**no** `writeTerminalResult`), per-POST `connectionID`
+  via `runtime.getRandomID()`, lifecycle. `runSubscriptionExchange` (no timeout, no close-after-ack).
+- `handler.ts`: recognize a `subscriptions/listen` request POST, require the configured hub, run a
+  transport-isolated server via `runSubscriptionExchange` bound to a dedicated SSE response + the hub;
+  return that response; on request abort or response-body cancellation call the idempotent
+  `SubscriptionHandle.close`. Other `2026-07-28` POSTs stay on `runStatelessExchange`. No hub → listen
+  gets `METHOD_NOT_FOUND`.
+- `createHTTPHandler` gains `subscriptionHub?` and optional `runtime?: Partial<Runtime>` (`@sozai/runtime`,
+  resolved via `createRuntime`).
 
 ### 6. `@mokei/http-client`
 
-- `HTTPTransport` implements the optional `StreamLifecycleTransport` capability: emit
-  `streamEvents.closed { requestID }` when a POST SSE body ends **without** a terminal JSON-RPC
-  response for that id. Do **not** emit when the fetch was aborted by `notifications/cancelled`, when
-  the whole transport is disposing, or when a terminal response was observed. This is the per-exchange
-  signal that lets the RPC layer settle just the listen exchange and lets the client reconnect.
+`HTTPTransport` implements the optional `StreamLifecycleTransport` capability: emit
+`streamEvents.closed { requestID }` when a POST SSE body ends **without** a terminal response for that
+id. Do not emit on `notifications/cancelled` abort, whole-transport disposal, or after a terminal
+response.
 
 ### 7. `@mokei/host` — integration (mechanism, not policy)
 
-- The host subscribes to each `2026-07-28` context's client listen stream.
-- On listChanged: re-discover the affected list, update the namespaced aggregate, then emit a new
-  `HostEvents` member — `tools:changed` / `prompts:changed` / `resources:changed`, each `{ key }`.
-  Session/AgentSession read the aggregate per turn → turn-boundary semantics, no mid-turn swap logic.
-- On resourceUpdated: forward `resource:updated { key, uri }` (no auto re-read).
-- `Session` / `AgentSession` unchanged; consumers opt in via `host.events.on(...)`.
+The host subscribes to each `2026-07-28` context's listen stream. On listChanged: re-discover the
+affected list, update the namespaced aggregate, emit `HostEvents` `tools:changed`/`prompts:changed`/
+`resources:changed` `{ key }` (turn-boundary semantics via per-turn aggregate reads). On resourceUpdated:
+forward `resource:updated { key, uri }` (no auto re-read). `Session`/`AgentSession` unchanged.
 
 ### 8. Interop + tests
 
-- Unit per layer: schema (incl. `_meta` placement + `resultType: 'complete'`); the correlator
-  extraction + `RequestID` validation; `ExchangeRegistry.close`; held-response + scheduler-slot
-  release + disposal ordering; `SubscriptionWriter` overflow; registry fan-out + filter honoring;
-  ack-first ordering; generation gating; capability gating; per-exchange stream-close + reconnect.
-- Interop against SDK v2 (`integration-tests`), both directions, over stdio and HTTP:
-  - **mokei client ↔ SDK server:** open listen, receive `acknowledged` + listChanged +
-    resourceUpdated; assert filter honoring and terminal-result-on-teardown.
-  - **SDK client ↔ mokei server:** SDK opens listen against mokei; mokei acks, producers fan out;
-    assert the SDK receives them — including two concurrent SDK clients reusing request id `0` to
-    exercise the `connectionID` keying, over stateless HTTP.
+Unit per layer (schema incl. `_meta` placement + `resultType: 'complete'`; correlator + validation;
+`ExchangeRegistry.close`; held-response state machine incl. cancel-vs-terminal race + slot release +
+disposal ordering; `SubscriptionWriter` overflow + ack-written-before-publish; hub fan-out + filter
+honoring; owner/borrower capability gating; generation gating + reconnect-in-queue; per-exchange
+stream-close). Interop against SDK v2 both directions over stdio + HTTP, including **two concurrent SDK
+clients reusing request id `0`** to exercise `connectionID` keying on stateless HTTP.
 
 ## Out of scope
 
-- `2025-11-25` `resources/subscribe`/`unsubscribe` dispatch (deferred; separate item).
-- Any built-in `AgentSession`/`Session` reaction to changes — deliberately consumer-driven.
-- Dynamic tool/prompt/resource **list mutation** APIs beyond emitting listChanged.
-- Cross-process / multi-instance subscription delivery (single in-process binding only).
-- Notification **coalescing** (repeated list-changed or same-URI updates) — a later, separately
-  tested overflow policy; the smallest version disconnects on overflow.
+- `2025-11-25` `resources/subscribe`/`unsubscribe` dispatch (deferred).
+- Any built-in `AgentSession`/`Session` reaction (consumer-driven).
+- Dynamic tool/prompt/resource list-mutation APIs beyond emitting listChanged.
+- Cross-process / multi-instance subscription delivery.
+- Notification coalescing (a later overflow policy; smallest version disconnects).
 
 ## Breaking API changes
 
-- `ContextRPC.dispose()` / `ContextServer.dispose()` / `HTTPHandler.dispose()` become **async**.
-- The HTTP server factory changes from `createServer(transport)` to
-  `createServer({ transport, subscriptionBinding })`; `createHTTPHandler` gains `subscriptionBinding?`.
-- `StreamHandlers.onSettle` receives `{ reason, error }` instead of a bare reason (internal to
-  `context-rpc`, but noted).
+Distinguish **type breaks** from **semantic changes**:
 
-These land in the same fixed release group; the migration already plans a version bump for the
-`2026-07-28` work.
+- **Semantic only:** `ContextRPC.dispose()` / `ContextServer.dispose()` already return a promise via
+  `@sozai/async`'s `Disposer`; their teardown **ordering** changes (terminal flush before close) but
+  the public return type does not.
+- **Type break:** `HTTPHandler.dispose(): void → Promise<void>` (handler.ts:70).
+- **Type break:** `ServeHTTPResult.dispose(): void → Promise<void>` (serve.ts:15) — must await handler
+  teardown before closing the Node server.
+- **Type break:** `SessionManager.dispose()` / `SessionManager.delete()` `void → Promise<void>`
+  (session.ts:94) — they dispose session servers, so terminal flushing needs them awaited (or an
+  awaited internal variant if the exported signatures are kept).
+- **Type break:** the HTTP server factory `createServer(transport) → createServer({ transport, subscriptionHub })`;
+  `createHTTPHandler` gains `subscriptionHub?` + `runtime?`.
+- `StreamHandlers.onSettle(reason) → onSettle({ reason, error })` — internal to `context-rpc`; a public
+  break only if that type is exported.
+- Additive (not breaking): the optional `runtime`, `subscriptionHub`, client `subscribeResource`/
+  `unsubscribeResource`, and new event members.
+
+These land in the same fixed release group; the migration already plans a `2026-07-28` version bump.
 
 ## Error handling & teardown
 
 - Per-exchange abrupt POST-SSE close → `streamEvents.closed` → `ExchangeRegistry.close(id, 'closed')`
-  → client reconnect. Whole transport close → `endAll('closed')` settles all, no internal reconnect
-  (stdio EOF = host rebuilds).
-- Client disconnect (server side) → registry drops `{connectionID, subscriptionID}`, closes sink.
-- Graceful server shutdown → `_beforeTransportClose` → per-stream drain + terminal result, bounded
-  deadline, then close.
+  → client reconnect (in the mutation queue). Whole transport close → `endAll('closed')`, no internal
+  reconnect (stdio EOF = host rebuilds).
+- Client disconnect / response-body cancellation (server) → idempotent `SubscriptionHandle.close`,
+  unregister, cancel the held request (no terminal).
+- Graceful shutdown → `_beforeTransportClose` → per-stream drain + terminal result, 5s deadline
+  covering drain + write, then abrupt close.
 - Abort of a listen exchange (client) → `'cancel'`, sends `notifications/cancelled`.
-- Server backpressure → per-subscription serialized bounded writer; overflow disconnects with
-  `SubscriptionBackpressureError`. The client `NOTIFICATION_BUFFER_CAP` is a **separate** final-consumer
-  policy, not server backpressure.
-- Malformed subscription metadata → `onError` (not silent passthrough); valid-but-unknown
-  subscriptionId frames → dropped (late frame for a retired generation).
+- Server backpressure → serialized bounded writer; overflow disconnects with
+  `SubscriptionBackpressureError`. The client `NOTIFICATION_BUFFER_CAP` is a **separate** consumer policy.
+- Malformed subscription metadata → `onError`; valid-but-unknown subscriptionId → dropped.
 
 ## Testing strategy
 
-TDD per layer, bottom-up: protocol schema → RPC held-response + correlator + `ExchangeRegistry.close`
-→ client `SubscriptionDriver` → server registry/binding/writer → HTTP server binding + http-client
-stream-close signal → host events → interop. Each layer's unit tests land with it. Interop suites
-gate the whole feature against the SDK v2 reference peer, including the two-clients-same-id case.
+TDD per layer, bottom-up: protocol schema → RPC held-response state machine + correlator +
+`ExchangeRegistry.close` → client `SubscriptionDriver` → server hub/writer/owner-borrower → HTTP
+`runSubscriptionExchange` + http-client stream-close → host events → interop. Interop suites gate the
+feature against the SDK v2 peer, including the two-clients-same-id case.
 
 ## Open items for the plan
 
-- Exact `SubscriptionRegistry`/binding teardown ordering vs the HTTP sink lifecycle under the flush
-  deadline.
-- Whether the auto-open filter should include listChanged types the host will not act on (favor
-  opting into only what a consumer is wired for).
-- Re-validate all payload shapes and the `resultType: 'complete'` terminal rule against the final
-  `2026-07-28` spec text, not only SDK v2.
-- Confirm the scheduler `#detached` accounting interacts correctly with the existing bounded
-  concurrent-dispatch defect-wave changes.
+- Exact hub/handle teardown ordering vs the HTTP sink under the 5s deadline (drain-then-terminal).
+- Whether the auto-open filter should include listChanged types the host will not act on.
+- Re-validate all payload shapes and the `resultType: 'complete'` rule against the final `2026-07-28`
+  spec text, not only SDK v2.
+- Confirm scheduler `#detached` accounting interacts correctly with the bounded concurrent-dispatch
+  defect-wave changes.
