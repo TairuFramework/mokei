@@ -13,6 +13,8 @@
 export { RequestTimeoutError, RPCError, TransportClosedError } from './error.js'
 export {
   ContextRPC,
+  type HeldResponse,
+  isHeldResponse,
   type RequestOptions,
   type RPCParams,
   type RPCTypes,

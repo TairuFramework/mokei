@@ -515,6 +515,116 @@ describe('ContextRPC invalid inbound messages', () => {
   })
 })
 
+describe('ContextRPC held responses', () => {
+  test('a held response frees its slot and writes only when terminal resolves', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const terminal = defer<Record<string, unknown>>()
+    const beforeCalls: Array<string> = []
+    class TestRPC extends ContextRPC<TestTypes> {
+      _handleRequest(request: TestTypes['HandleRequest']): unknown {
+        if (request.method === 'subscriptions/listen') {
+          return this._holdResponse({
+            terminal: terminal.promise,
+            beforeTerminal: async () => {
+              beforeCalls.push('before')
+            },
+          })
+        }
+        return { echoed: request.method }
+      }
+    }
+    // maxConcurrent 1 makes the second request's answer proof the held request freed its slot.
+    const rpc = new TestRPC({
+      maxConcurrentRequests: 1,
+      transport: transports.client,
+      validateMessageIn: passthrough,
+    })
+    rpc._handle()
+
+    const responses: Array<{ id?: unknown; result?: unknown }> = []
+    void (async () => {
+      for await (const message of transports.server) {
+        responses.push(message as { id?: unknown; result?: unknown })
+      }
+    })()
+
+    await transports.server.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'subscriptions/listen',
+    } as AnyMessage)
+    await transports.server.write({ jsonrpc: '2.0', id: 2, method: 'quick' } as AnyMessage)
+
+    // The second request answers under a concurrency cap of 1 — only possible if the held
+    // first request released its slot.
+    await vi.waitFor(() =>
+      expect(responses).toContainEqual({ jsonrpc: '2.0', id: 2, result: { echoed: 'quick' } }),
+    )
+    // The held request has written nothing, and beforeTerminal has not run.
+    expect(responses.find((response) => response.id === 1)).toBeUndefined()
+    expect(beforeCalls).toEqual([])
+
+    terminal.resolve({ ok: true })
+    await vi.waitFor(() =>
+      expect(responses).toContainEqual({ jsonrpc: '2.0', id: 1, result: { ok: true } }),
+    )
+    // beforeTerminal ran before the terminal response was written.
+    expect(beforeCalls).toEqual(['before'])
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('cancelling a held request before terminal writes nothing', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const terminal = defer<Record<string, unknown>>()
+    class TestRPC extends ContextRPC<TestTypes> {
+      _handleRequest(request: TestTypes['HandleRequest']): unknown {
+        if (request.method === 'subscriptions/listen') {
+          return this._holdResponse({ terminal: terminal.promise })
+        }
+        return { echoed: request.method }
+      }
+    }
+    const rpc = new TestRPC({
+      maxConcurrentRequests: 1,
+      transport: transports.client,
+      validateMessageIn: passthrough,
+    })
+    rpc._handle()
+
+    const responses: Array<{ id?: unknown }> = []
+    void (async () => {
+      for await (const message of transports.server) {
+        responses.push(message as { id?: unknown })
+      }
+    })()
+
+    await transports.server.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'subscriptions/listen',
+    } as AnyMessage)
+    await transports.server.write({ jsonrpc: '2.0', id: 2, method: 'quick' } as AnyMessage)
+    // The quick answer proves the held request is detached before we cancel it.
+    await vi.waitFor(() => expect(responses.find((r) => r.id === 2)).toBeDefined())
+
+    await transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { requestId: 1 },
+    } as AnyMessage)
+    // Terminal resolves after the cancel — first-settlement-wins means no response is written.
+    terminal.resolve({ ok: true })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(responses.find((response) => response.id === 1)).toBeUndefined()
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+})
+
 describe('ContextRPC stream-notification correlator', () => {
   test('routeStreamNotification routes a matching notification to its stream exchange', async () => {
     const transports = new DirectTransports<AnyMessage, AnyMessage>()

@@ -27,6 +27,32 @@ function isRequestID(id: unknown): id is RequestID {
   return typeof id === 'string' || typeof id === 'number'
 }
 
+/**
+ * Marker a request handler returns to defer its JSON-RPC response indefinitely (SEP-1391
+ * `subscriptions/listen`): the request is validated, dispatched and slot-scheduled like any
+ * other, but instead of a result body the handler hands back a `terminal` promise. The
+ * request then releases its concurrency slot while keeping its cancellation/duplicate-id
+ * identity, and its response is written only when `terminal` resolves (on graceful teardown).
+ *
+ * `beforeTerminal`, if given, runs after `terminal` resolves and before the response is
+ * written — the hook where a subclass flushes any final stream state.
+ */
+export type HeldResponse<Result> = {
+  kind: 'held'
+  terminal: Promise<Result>
+  beforeTerminal?: () => Promise<void>
+}
+
+/** Narrows a handler's return value to a {@link HeldResponse}. */
+export function isHeldResponse(value: unknown): value is HeldResponse<unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { kind?: unknown }).kind === 'held' &&
+    (value as { terminal?: unknown }).terminal instanceof Promise
+  )
+}
+
 type RequestDefinition = {
   Params: unknown | undefined
   Result: unknown | undefined
@@ -130,6 +156,9 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #exchanges: ExchangeRegistry = new ExchangeRegistry()
   #continuations: ContinuationStore = new ContinuationStore()
   #scheduler: RequestScheduler
+  // Requests whose handler returned a held response, awaiting their `terminal` resolution.
+  // Keyed by id; the scheduler holds the matching detached controller.
+  #heldRequests: Map<RequestID, { signal: AbortSignal }> = new Map()
   #transport: TransportType<T['MessageIn'], T['MessageOut']>
   #validateMessageIn: Validator<T['MessageIn']>
   #onError?: (error: Error) => void
@@ -331,6 +360,15 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
           if (signal.aborted) {
             return null
           }
+          if (isHeldResponse(result)) {
+            // The response is deferred: register it, then free the concurrency slot while
+            // keeping the request's identity. Nothing is written now — `#holdRequest` writes
+            // when `terminal` resolves. The scheduler's own `reclaim` (on this `null`) is a
+            // no-op for an id already moved out of `#running` by `detach`.
+            this.#holdRequest(id, result, signal)
+            this.#scheduler.detach(id)
+            return null
+          }
           return result == null
             ? new RPCError(INTERNAL_ERROR, 'No result').toResponse(id)
             : { jsonrpc: '2.0' as const, id, result }
@@ -358,6 +396,73 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     _signal: AbortSignal,
   ): T['SendResult'] | Promise<T['SendResult']> {
     throw new Error('_handleRequest() method must be implemented')
+  }
+
+  /**
+   * @internal Returns from `_handleRequest` to defer this request's JSON-RPC response until
+   * `terminal` resolves, releasing the concurrency slot meanwhile. The resolved `terminal` is
+   * used as the response `result` verbatim — `ContextRPC` does not wrap it, so a subclass must
+   * hand back an already-wrapped server result. See {@link HeldResponse}.
+   */
+  _holdResponse<Result>(params: {
+    terminal: Promise<Result>
+    beforeTerminal?: () => Promise<void>
+  }): HeldResponse<Result> {
+    return { kind: 'held', terminal: params.terminal, beforeTerminal: params.beforeTerminal }
+  }
+
+  /**
+   * Tracks a held request and settles the cancel-vs-terminal race. Exactly one of two outcomes
+   * runs, whichever settles first (`#done` guards it): `terminal` resolves — the response is
+   * written (after `beforeTerminal`) — or the request's signal aborts (cancel/dispose) — nothing
+   * is written. Either way `#removeHeld` is the single cleanup path removing both records.
+   */
+  #holdRequest(id: RequestID, held: HeldResponse<unknown>, signal: AbortSignal): void {
+    let done = false
+    const onAbort = () => {
+      if (done) {
+        return
+      }
+      // Cancel won the race: a cancelled request answers nothing.
+      done = true
+      this.#removeHeld(id)
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    this.#heldRequests.set(id, { signal })
+
+    held.terminal.then(
+      async (result) => {
+        if (done) {
+          return
+        }
+        // Terminal won the race; claim it before the first `await` so a later cancel is ignored.
+        done = true
+        signal.removeEventListener('abort', onAbort)
+        try {
+          await held.beforeTerminal?.()
+        } catch (cause) {
+          this.#reportError(cause instanceof Error ? cause : new Error(String(cause)))
+        }
+        await this.#writeResponse({ jsonrpc: '2.0', id, result } as Response)
+        this.#removeHeld(id)
+      },
+      (cause) => {
+        if (done) {
+          return
+        }
+        // A rejected terminal has no result to write; surface it and clean up.
+        done = true
+        signal.removeEventListener('abort', onAbort)
+        this.#reportError(cause instanceof Error ? cause : new Error(String(cause)))
+        this.#removeHeld(id)
+      },
+    )
+  }
+
+  /** The single cleanup path for a held request: removes both the RPC and scheduler records. */
+  #removeHeld(id: RequestID): void {
+    this.#heldRequests.delete(id)
+    this.#scheduler.completeDetached(id)
   }
 
   async notify<Event extends keyof T['SendNotifications'] & string>(

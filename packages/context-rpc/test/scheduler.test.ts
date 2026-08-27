@@ -164,6 +164,79 @@ describe('RequestScheduler', () => {
     expect(second.calls).toHaveLength(0)
   })
 
+  test('detaching a running request frees its slot for a queued request', async () => {
+    const scheduler = new RequestScheduler({ maxConcurrentRequests: 1 })
+    const first = controllable()
+    const second = controllable()
+
+    void scheduler.schedule(1, first.run)
+    void scheduler.schedule(2, second.run)
+    expect(scheduler.queuedCount).toBe(1)
+    expect(second.calls).toHaveLength(0)
+
+    scheduler.detach(1)
+
+    await vi.waitFor(() => expect(second.calls).toHaveLength(1))
+    // The detached request no longer occupies a running slot; the queued one took it.
+    expect(scheduler.runningCount).toBe(1)
+    expect(scheduler.detachedCount).toBe(1)
+    expect(scheduler.queuedCount).toBe(0)
+
+    first.gate.resolve()
+    second.gate.resolve()
+  })
+
+  test('cancelling a detached request aborts its signal', () => {
+    const scheduler = new RequestScheduler()
+    const first = controllable()
+    void scheduler.schedule(1, first.run)
+    scheduler.detach(1)
+
+    scheduler.cancel(1)
+
+    expect(first.calls[0].aborted).toBe(true)
+    first.gate.resolve()
+  })
+
+  test('completeDetached removes the detached record', () => {
+    const scheduler = new RequestScheduler()
+    const first = controllable()
+    void scheduler.schedule(1, first.run)
+    scheduler.detach(1)
+    expect(scheduler.detachedCount).toBe(1)
+
+    scheduler.completeDetached(1)
+
+    expect(scheduler.detachedCount).toBe(0)
+    first.gate.resolve()
+  })
+
+  test('refuses a duplicate id while its original is detached', async () => {
+    const scheduler = new RequestScheduler()
+    const first = controllable()
+    const duplicate = controllable()
+
+    void scheduler.schedule(1, first.run)
+    scheduler.detach(1)
+    const refused = await scheduler.schedule(1, duplicate.run)
+
+    expect(duplicate.calls).toHaveLength(0)
+    expect(refused).toMatchObject({ jsonrpc: '2.0', id: 1, error: { code: -32600 } })
+    first.gate.resolve()
+  })
+
+  test('abortAll aborts detached signals', () => {
+    const scheduler = new RequestScheduler()
+    const first = controllable()
+    void scheduler.schedule(1, first.run)
+    scheduler.detach(1)
+
+    scheduler.abortAll(new Error('closed'))
+
+    expect(first.calls[0].aborted).toBe(true)
+    first.gate.resolve()
+  })
+
   test('an immediately-run handler that rejects settles to null', async () => {
     const scheduler = new RequestScheduler()
     const result = await scheduler.schedule(1, async () => {
