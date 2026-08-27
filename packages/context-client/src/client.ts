@@ -36,6 +36,7 @@ import type {
   ProtocolVersion,
   ReadResourceRequest,
   ReadResourceResult,
+  RequestID,
   Result,
   Root,
   ServerCapabilities,
@@ -43,6 +44,7 @@ import type {
   ServerNotification,
   ServerRequest,
   SetLevelRequest,
+  SubscriptionFilter,
 } from '@mokei/context-protocol'
 import {
   discoverResult,
@@ -51,6 +53,7 @@ import {
   INVALID_REQUEST,
   inferSchemaDraft,
   isSupportedProtocolVersion,
+  META_SUBSCRIPTION_ID,
   METHOD_NOT_FOUND,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
@@ -74,6 +77,16 @@ import {
   MRTR_METHODS,
   runInputRequiredFlow,
 } from './mrtr.js'
+import {
+  ACKNOWLEDGED_METHOD,
+  type ListenHandle,
+  type ListenHandlers,
+  type ListenSettle,
+  SubscriptionDriver,
+  type SubscriptionNotification,
+  SubscriptionProtocolError,
+  type SubscriptionRetry,
+} from './subscriptions.js'
 import { currentTraceMeta } from './trace.js'
 import type { ClientTransport } from './types.js'
 
@@ -170,6 +183,44 @@ const LIST_CHANGED_NOTIFICATIONS: ReadonlySet<string> = new Set([
   'notifications/resources/list_changed',
   'notifications/tools/list_changed',
 ])
+
+/**
+ * Bounds how long an auto-opened or reconnecting `subscriptions/listen` candidate waits for its
+ * `acknowledged` frame before failing, when a `subscribeResource`/`unsubscribeResource` caller
+ * passes no `timeout` of its own. Without a bound a server that opens the stream but never acks
+ * would wedge the driver's single mutation queue forever — a reconnect candidate especially, as
+ * no caller supplies its timeout. See {@link SubscriptionDriverParams.ackTimeoutMs}.
+ */
+const SUBSCRIPTION_ACK_TIMEOUT_MS = 30_000
+
+/**
+ * Correlator handed to the RPC base as `routeStreamNotification` (SEP-1391): a `2026-07-28` server
+ * fans subscription notifications out of band, each carrying the listen request's id in
+ * `params._meta['io.modelcontextprotocol/subscriptionId']`. A notification carrying that key is
+ * routed into the matching listen stream exchange as a `progress` frame; one without it falls
+ * through to normal notification handling (`null`); a present-but-wrong-typed id is a protocol
+ * error the RPC base reports and consumes.
+ *
+ * Verbatim from the design brief; the only adaptation is the inline `frame` type in place of the
+ * exported `StreamFrame` name (its `progress` member), to keep the change inside this package.
+ */
+function routeSubscriptionNotification(
+  notification: ServerNotification,
+): { id: RequestID; frame: { type: 'progress'; value: ServerNotification } } | null {
+  const meta = (notification as { params?: { _meta?: Record<string, unknown> } }).params?._meta
+  if (meta == null || !Object.hasOwn(meta, META_SUBSCRIPTION_ID)) {
+    return null
+  }
+  const value = (meta as Record<string, unknown>)[META_SUBSCRIPTION_ID]
+  if (typeof value !== 'string' && !(typeof value === 'number' && Number.isInteger(value))) {
+    throw new RPCError(INVALID_REQUEST, 'Invalid subscriptionId metadata')
+  }
+  return { id: value as RequestID, frame: { type: 'progress', value: notification } }
+}
+
+function toError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value))
+}
 
 export class UnsupportedProtocolVersionError extends Error {
   /**
@@ -337,6 +388,18 @@ export type ClientEvents = {
   closed: { error?: Error }
   initialized: InitializeResult
   log: Log
+  /** Emitted before each `subscriptions/listen` reconnect attempt (SEP-1391). */
+  subscriptionRetry: SubscriptionRetry
+}
+
+/** Parameters of {@link ContextClient.subscribeResource}/`unsubscribeResource`. */
+export type ResourceSubscriptionParams = {
+  /** The resource URI to subscribe to / unsubscribe from. */
+  uri: string
+  /** Aborts the mutation before its listen filter is acknowledged. */
+  signal?: AbortSignal
+  /** Bounds the wait for the new filter's acknowledgement (ms). */
+  timeout?: number
 }
 
 type HandleNotification = ProgressNotification | ServerNotification
@@ -445,6 +508,17 @@ export class ContextClient<
   #listMaxPages: number
   #listRoots?: Array<Root> | ListRootsHandler
   #logLevel?: LoggingLevel
+  // Passed to the RPC base and to the subscription driver / terminal verification so protocol
+  // errors on a listen stream reach the consumer. The RPC base keeps its own private copy for
+  // its own reporting; this is the client's handle on the same callback.
+  #onError?: (error: Error) => void
+  // Lazily created on auto-open (or a first `subscribeResource`), then reused. Owns the client's
+  // one `subscriptions/listen` state machine (SEP-1391).
+  #subscriptionDriver: SubscriptionDriver | null = null
+  // Per-URI `resources/updated` listeners registered via `onResourceUpdated`.
+  #resourceListeners: Map<string, Set<(notification: SubscriptionNotification) => void>> = new Map()
+  // The filter the server acknowledged on the most recent listen, from the `acknowledged` frame.
+  #honoredFilter: SubscriptionFilter | null = null
   #notificationBuffer: Array<HandleNotification> = []
   #notificationPull: (() => void) | null = null
   #hasNotificationReader = false
@@ -489,8 +563,11 @@ export class ContextClient<
       maxConcurrentRequests: params.maxConcurrentRequests,
       maxQueuedRequests: params.maxQueuedRequests,
       onError: params.onError,
+      routeStreamNotification: (notification) =>
+        routeSubscriptionNotification(notification as ServerNotification),
     })
 
+    this.#onError = params.onError
     this.#createMessage = params.createMessage
     this.#elicit = params.elicit
     this.#listRoots = params.listRoots
@@ -933,10 +1010,34 @@ export class ContextClient<
         await this.#setupDiscover()
       }
       this.#startReadLoop()
+      this.#maybeAutoOpenSubscriptions()
     } catch (cause) {
       await this.dispose()
       throw cause
     }
+  }
+
+  /**
+   * Auto-opens the one `subscriptions/listen` stream (SEP-1391) after setup, gated on the server
+   * actually advertising resource subscriptions. Opt-in is narrow: the base filter carries only
+   * the listChanged types this client acts on *and* the server advertises, so the client never
+   * asks to be woken for a notification it does nothing with.
+   *
+   * Fire-and-forget: the open is enqueued on the driver's mutation queue and its failure surfaces
+   * through the driver's `onError`/reconnect, never through setup readiness — a server that
+   * refuses the listen must not fail the connection.
+   */
+  #maybeAutoOpenSubscriptions(): void {
+    const protocol = this.#protocol
+    if (protocol == null || !protocol.clientMethods.has('subscriptions/listen')) {
+      return
+    }
+    if (this.#serverCapabilitySnapshot?.resources?.subscribe !== true) {
+      return
+    }
+    this.#ensureSubscriptionDriver()
+      .open()
+      .catch(() => {})
   }
 
   /**
@@ -1185,7 +1286,20 @@ export class ContextClient<
     return await super._read()
   }
 
+  /**
+   * Runs on an explicit `dispose()` before the transport closes: tears down the subscription
+   * driver (and any in-flight listen exchange) so no reconnect is scheduled as the outbound listen
+   * exchange is ended by the close that follows. Idempotent with the `_onTransportClosed` teardown
+   * that also covers a peer EOF.
+   */
+  _beforeTransportClose(_reason: Error): void {
+    this.#subscriptionDriver?.dispose()
+  }
+
   _onTransportClosed(reason?: Error): void {
+    // Covers a peer EOF (which never runs `_beforeTransportClose`): suppress reconnect so a dead
+    // transport is not retried. `dispose()` is idempotent.
+    this.#subscriptionDriver?.dispose()
     this.events.emit('closed', { error: reason })
   }
 
@@ -1211,6 +1325,11 @@ export class ContextClient<
     if (LIST_CHANGED_NOTIFICATIONS.has(notification.method)) {
       this.#resetDiscovery()
     }
+    this.#pushNotification(notification)
+  }
+
+  /** Buffers a notification for the `notifications` reader; drops until one attaches, keeps CAP. */
+  #pushNotification(notification: HandleNotification): void {
     // Drop until a reader attaches, then keep only the most recent CAP.
     if (!this.#hasNotificationReader) {
       return
@@ -1220,6 +1339,219 @@ export class ContextClient<
       this.#notificationBuffer.shift()
     }
     this.#notificationPull?.()
+  }
+
+  // --- subscriptions (SEP-1391) ----------------------------------------------
+
+  /**
+   * Subscribe to `resources/updated` for a URI over the `subscriptions/listen` stream. Resolves
+   * once the server acknowledges the updated filter. Delegates to the driver, which opens a new
+   * candidate carrying the URI, awaits its ack, and only then retires the previous stream.
+   */
+  async subscribeResource(params: ResourceSubscriptionParams): Promise<void> {
+    await this.#ready
+    const protocol = this.#requireProtocol()
+    if (!protocol.clientMethods.has('subscriptions/listen')) {
+      throw new MethodNotInRevisionError('subscriptions/listen', protocol.version)
+    }
+    await this.#ensureSubscriptionDriver().subscribeResource(params)
+  }
+
+  /** Unsubscribe from `resources/updated` for a URI. Resolves once the updated filter is acked. */
+  async unsubscribeResource(params: ResourceSubscriptionParams): Promise<void> {
+    await this.#ready
+    const protocol = this.#requireProtocol()
+    if (!protocol.clientMethods.has('subscriptions/listen')) {
+      throw new MethodNotInRevisionError('subscriptions/listen', protocol.version)
+    }
+    await this.#ensureSubscriptionDriver().unsubscribeResource(params)
+  }
+
+  /**
+   * Register a per-URI `resources/updated` listener. Returns an unsubscribe function. Independent
+   * of {@link ContextClient.subscribeResource}, which opens the server-side subscription: a
+   * listener only receives updates once its URI is actually subscribed (and the update arrives).
+   * Every delivered update also lands on the `notifications` stream.
+   */
+  onResourceUpdated(
+    uri: string,
+    listener: (notification: SubscriptionNotification) => void,
+  ): () => void {
+    let listeners = this.#resourceListeners.get(uri)
+    if (listeners == null) {
+      listeners = new Set()
+      this.#resourceListeners.set(uri, listeners)
+    }
+    listeners.add(listener)
+    return () => {
+      const set = this.#resourceListeners.get(uri)
+      if (set != null) {
+        set.delete(listener)
+        if (set.size === 0) {
+          this.#resourceListeners.delete(uri)
+        }
+      }
+    }
+  }
+
+  /** The notification filter the server acknowledged on the current listen, or `null`. */
+  get subscriptionFilter(): SubscriptionFilter | null {
+    return this.#honoredFilter
+  }
+
+  #ensureSubscriptionDriver(): SubscriptionDriver {
+    let driver = this.#subscriptionDriver
+    if (driver == null) {
+      driver = new SubscriptionDriver({
+        openListen: (filter, handlers) => this.#openListen(filter, handlers),
+        filter: this.#autoOpenFilter(),
+        onNotification: (notification) => this.#handleSubscriptionNotification(notification),
+        onError: (error) => this.#reportSubscriptionError(error),
+        onRetry: (retry) => {
+          void this.events.emit('subscriptionRetry', retry).catch(() => {})
+        },
+        ackTimeoutMs: SUBSCRIPTION_ACK_TIMEOUT_MS,
+      })
+      this.#subscriptionDriver = driver
+    }
+    return driver
+  }
+
+  /** Base listen filter: the listChanged types this client acts on that the server advertises. */
+  #autoOpenFilter(): SubscriptionFilter {
+    const caps = this.#serverCapabilitySnapshot
+    const filter: SubscriptionFilter = {}
+    if (caps?.tools?.listChanged === true) {
+      filter.toolsListChanged = true
+    }
+    if (caps?.prompts?.listChanged === true) {
+      filter.promptsListChanged = true
+    }
+    if (caps?.resources?.listChanged === true) {
+      filter.resourcesListChanged = true
+    }
+    return filter
+  }
+
+  /**
+   * The real `openListen` seam backing the driver: opens one `subscriptions/listen` stream
+   * exchange carrying `filter`, mapping the exchange's `progress`/`settle` frames onto the
+   * driver's `onNotification`/`onSettle`. Decorates the request with this revision's protocol
+   * envelope, exactly as `request()` does, so a real server sees the same `_meta`.
+   *
+   * Two things happen only here, at the layer that owns the wire id:
+   * - the `acknowledged` frame's subscriptionId (which equals this request's envelope id, or it
+   *   would not have routed to this exchange at all) is captured to verify the terminal result;
+   * - a terminal `result` settle is deferred by one microtask to read the terminal body off the
+   *   (already-resolved) exchange promise and confirm its `_meta` subscriptionId matches — a
+   *   mismatch is surfaced as a protocol error rather than accepted as a graceful teardown.
+   */
+  #openListen(filter: SubscriptionFilter, handlers: ListenHandlers): ListenHandle {
+    const protocol = this.#requireProtocol()
+    const trace = currentTraceMeta()
+    const base: Record<string, unknown> = { notifications: filter }
+    if (trace.traceparent != null) {
+      base._meta = { ...trace }
+    }
+    const params = protocol.decorateRequest(base, {
+      capabilities: this.#capabilities,
+      clientInfo: this.#clientInfo,
+      logLevel: this.#logLevel,
+    })
+
+    const controller = new AbortController()
+    let subscriptionId: RequestID | undefined
+    const exchange = this._registerStreamExchange(
+      'subscriptions/listen',
+      params,
+      {
+        onProgress: (value) => {
+          const notification = value as SubscriptionNotification
+          if ((notification as { method?: unknown }).method === ACKNOWLEDGED_METHOD) {
+            const meta = (notification as { params?: { _meta?: Record<string, unknown> } }).params
+              ?._meta
+            const id = meta?.[META_SUBSCRIPTION_ID]
+            if (typeof id === 'string' || typeof id === 'number') {
+              subscriptionId = id
+            }
+            const honored = (notification as { params?: { notifications?: SubscriptionFilter } })
+              .params?.notifications
+            if (honored != null) {
+              this.#honoredFilter = honored
+            }
+          }
+          handlers.onNotification(notification)
+        },
+        onSettle: (settle) => {
+          if (settle.reason === 'result') {
+            // The terminal body lives only on the exchange promise (resolved just before this
+            // settle fired); read it back to verify the subscriptionId before the driver treats
+            // the settle as a graceful teardown.
+            exchange.then(
+              (value) => handlers.onSettle(this.#verifyTerminal(value, subscriptionId)),
+              () => {},
+            )
+          } else {
+            handlers.onSettle(settle)
+          }
+        },
+      },
+      { signal: controller.signal },
+    )
+    exchange.catch(() => {})
+    return {
+      exchange,
+      abort: (reason?: Error) => controller.abort(reason),
+    }
+  }
+
+  /** Confirms a terminal listen result's `_meta` subscriptionId matches the listen request id. */
+  #verifyTerminal(value: unknown, subscriptionId: RequestID | undefined): ListenSettle {
+    const meta = (value as { _meta?: Record<string, unknown> } | null | undefined)?._meta
+    const id = meta?.[META_SUBSCRIPTION_ID]
+    if (subscriptionId != null && id !== subscriptionId) {
+      const error = new SubscriptionProtocolError(
+        `Terminal subscriptions/listen result subscriptionId (${String(id)}) does not match the listen request id (${String(subscriptionId)})`,
+      )
+      this.#reportSubscriptionError(error)
+      return { reason: 'error', error }
+    }
+    return { reason: 'result' }
+  }
+
+  /** Routes a delivered (non-`acknowledged`) subscription notification. */
+  #handleSubscriptionNotification(notification: SubscriptionNotification): void {
+    const method = (notification as { method?: string }).method
+    if (method === 'notifications/tools/list_changed') {
+      this.#toolOutputSchemas.clear()
+    }
+    if (method != null && LIST_CHANGED_NOTIFICATIONS.has(method)) {
+      this.#resetDiscovery()
+    }
+    if (method === 'notifications/resources/updated') {
+      const uri = (notification as { params?: { uri?: string } }).params?.uri
+      if (uri != null) {
+        const listeners = this.#resourceListeners.get(uri)
+        if (listeners != null) {
+          for (const listener of listeners) {
+            try {
+              listener(notification)
+            } catch (error) {
+              this.#reportSubscriptionError(toError(error))
+            }
+          }
+        }
+      }
+    }
+    this.#pushNotification(notification)
+  }
+
+  #reportSubscriptionError(error: Error): void {
+    try {
+      this.#onError?.(error)
+    } catch {
+      // A consumer's error handler must not break subscription handling.
+    }
   }
 
   /**

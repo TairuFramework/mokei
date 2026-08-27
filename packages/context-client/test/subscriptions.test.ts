@@ -286,4 +286,55 @@ describe('SubscriptionDriver', () => {
     expect(retries.map((r) => r.retryInMs)).toEqual(expected)
     expect(retries.map((r) => r.attempt)).toEqual([1, 2, 3, 4, 5, 6, 7])
   })
+
+  test('dispose() rejects and tears down an in-flight, unacknowledged candidate', async () => {
+    const { opens, openListen } = makeHarness()
+    const driver = new SubscriptionDriver({ openListen, delay: immediateDelay })
+
+    // A candidate opens but the (fake) server never acks it.
+    const p = driver.subscribeResource({ uri: 'file:///a' })
+    await flush()
+    expect(opens.length).toBe(1)
+
+    // Disposal must not hang on the never-arriving ack: it rejects the mutation and aborts the
+    // in-flight exchange.
+    driver.dispose()
+    await expect(p).rejects.toThrow()
+    expect(opens[0].aborted).toBe(true)
+  })
+
+  test('ackTimeoutMs fails an unacknowledged candidate so the queue cannot wedge', async () => {
+    const { opens, openListen } = makeHarness()
+    const driver = new SubscriptionDriver({ openListen, delay: immediateDelay, ackTimeoutMs: 10 })
+
+    const p = driver.subscribeResource({ uri: 'file:///a' })
+    await flush()
+    expect(opens.length).toBe(1)
+
+    // No ack ever arrives; the bound fires and rejects, aborting the candidate.
+    await expect(p).rejects.toThrow(/timed out/)
+    expect(opens[0].aborted).toBe(true)
+
+    // The queue is not wedged: a subsequent mutation runs on a fresh candidate.
+    const p2 = driver.subscribeResource({ uri: 'file:///b' })
+    await flush()
+    expect(opens.length).toBe(2)
+    opens[1].ack()
+    await p2
+  })
+
+  test('dispose() unblocks a mutation queued behind a hung candidate', async () => {
+    const { opens, openListen } = makeHarness()
+    const driver = new SubscriptionDriver({ openListen, delay: immediateDelay })
+
+    const p1 = driver.subscribeResource({ uri: 'file:///a' })
+    const p2 = driver.subscribeResource({ uri: 'file:///b' })
+    await flush()
+    // Only the first candidate has opened (serialized); it is never acked.
+    expect(opens.length).toBe(1)
+
+    driver.dispose()
+    await expect(p1).rejects.toThrow()
+    await expect(p2).rejects.toThrow()
+  })
 })

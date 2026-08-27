@@ -60,6 +60,15 @@ export type SubscriptionDriverParams = {
   backoffBaseMs?: number
   /** Backoff cap delay (ms). Defaults to {@link DEFAULT_BACKOFF_CAP_MS}. */
   backoffCapMs?: number
+  /**
+   * Bounds how long a candidate open (a mutation or a reconnect) waits for its `acknowledged`
+   * frame before failing, applied whenever a mutation passes no `timeout` of its own. Without it
+   * a silent server that opens the stream but never acks wedges the single mutation queue
+   * forever — a reconnect candidate especially, since no caller supplies its timeout. Unset means
+   * unbounded (the pre-hardening behavior); Task 16 wires a real value at the `ContextClient`
+   * layer.
+   */
+  ackTimeoutMs?: number
   /** Clock seam for backoff; injected in tests. Defaults to a real timer. */
   delay?: (ms: number) => Promise<void>
 }
@@ -126,11 +135,17 @@ export class SubscriptionDriver {
   #onRetry?: (retry: SubscriptionRetry) => void
   #backoffBaseMs: number
   #backoffCapMs: number
+  #ackTimeoutMs?: number
   #delay: (ms: number) => Promise<void>
   #listeners: Set<(notification: SubscriptionNotification) => void> = new Set()
 
   #desiredResources: Set<string> = new Set()
   #activeGeneration: Generation | null = null
+  // The candidate currently being opened and awaited by `#openAndPromote` (a mutation or a
+  // reconnect), before it is promoted to `#activeGeneration`. Tracked so `dispose()` can tear
+  // down an in-flight candidate that has opened but not yet acknowledged — otherwise a silent
+  // server leaves its ack promise pending forever, hanging the mutation and its queue.
+  #pendingGeneration: Generation | null = null
   #generationCounter = 0
   #reconnectAttempt = 0
   #mutationTail: Promise<void> = Promise.resolve()
@@ -143,6 +158,7 @@ export class SubscriptionDriver {
     this.#onRetry = params.onRetry
     this.#backoffBaseMs = params.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS
     this.#backoffCapMs = params.backoffCapMs ?? DEFAULT_BACKOFF_CAP_MS
+    this.#ackTimeoutMs = params.ackTimeoutMs
     this.#delay = params.delay ?? realDelay
     if (params.onNotification != null) {
       this.#listeners.add(params.onNotification)
@@ -175,9 +191,37 @@ export class SubscriptionDriver {
     }, params)
   }
 
-  /** Stop the driver: abort the active stream and suppress further reconnects. */
+  /**
+   * Open the base listen stream (the current desired filter with no change to the resource set),
+   * resolving once it is acknowledged. Used by the consumer's auto-open after setup to establish
+   * the listChanged stream before any resource subscription. Serializes on the same queue as the
+   * mutations, so an auto-open never races an in-flight subscribe.
+   */
+  open(options?: { signal?: AbortSignal; timeout?: number }): Promise<void> {
+    return this.#enqueue(() => {
+      if (this.#disposed) {
+        return Promise.reject(new Error('SubscriptionDriver disposed'))
+      }
+      return this.#openAndPromote(this.#desiredResources, options)
+    })
+  }
+
+  /**
+   * Stop the driver: tear down the in-flight candidate and the active stream, and suppress
+   * further reconnects.
+   *
+   * Failing the pending candidate (if any) is what keeps disposal from hanging: its
+   * `#openAndPromote` is awaiting an ack that a silent server may never send, and rejecting that
+   * ack both aborts the candidate's exchange and unblocks the single mutation queue, so every
+   * queued mutation behind it runs its own disposed-check and rejects rather than waiting forever.
+   */
   dispose(): void {
     this.#disposed = true
+    const pending = this.#pendingGeneration
+    this.#pendingGeneration = null
+    if (pending != null) {
+      this.#failGeneration(pending, new Error('SubscriptionDriver disposed'))
+    }
     const active = this.#activeGeneration
     this.#activeGeneration = null
     if (active != null && !active.retired) {
@@ -222,12 +266,20 @@ export class SubscriptionDriver {
     options?: { signal?: AbortSignal; timeout?: number },
   ): Promise<void> {
     const generation = this.#allocateGeneration(this.#filterFor(target), options)
+    // Publish the candidate so `dispose()` can tear it down while it is awaiting its ack.
+    this.#pendingGeneration = generation
     const handle = this.#openListen(generation.filter, generation.handlers)
     // The terminal promise is surfaced through `onSettle`; guard against unhandled rejection.
     handle.exchange.catch(noop)
     generation.abort = handle.abort
 
-    await generation.ack.promise
+    try {
+      await generation.ack.promise
+    } finally {
+      if (this.#pendingGeneration === generation) {
+        this.#pendingGeneration = null
+      }
+    }
 
     // The candidate may have been retired (transport dropped, or the driver disposed) in the
     // window between its ack resolving and this promotion running: never promote a dead stream.
@@ -282,7 +334,9 @@ export class SubscriptionDriver {
       }
     }
 
-    const timeout = options?.timeout
+    // A mutation's own `timeout` wins; otherwise the driver-wide ack timeout bounds the wait so a
+    // silent server cannot wedge the queue (a reconnect candidate carries no caller timeout).
+    const timeout = options?.timeout ?? this.#ackTimeoutMs
     if (timeout != null && timeout > 0) {
       const timer = setTimeout(() => {
         this.#failGeneration(

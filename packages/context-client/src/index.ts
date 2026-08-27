@@ -11,6 +11,7 @@
  */
 
 export type {
+  ClientEvents,
   ClientParams,
   ContextTypes,
   CreateMessageHandler,
@@ -19,6 +20,7 @@ export type {
   ListParams,
   ListRootsHandler,
   PromptParams,
+  ResourceSubscriptionParams,
   ToolParams,
   UnknownContextTypes,
   ValidationIssue,
@@ -44,5 +46,19 @@ export {
   isInputRequiredResult,
   REQUEST_STATE_ONLY_PACING_MS,
 } from './mrtr.js'
+export {
+  type ListenHandle,
+  type ListenHandlers,
+  type ListenSettle,
+  type ListenSettleReason,
+  type MutationOptions,
+  type OpenListen,
+  SubscriptionDriver,
+  type SubscriptionDriverParams,
+  type SubscriptionNotification,
+  SubscriptionProtocolError,
+  type SubscriptionRetry,
+  SubscriptionStreamError,
+} from './subscriptions.js'
 export { currentTraceMeta, type TraceMeta, traceMetaFromContext } from './trace.js'
 export type { ClientTransport } from './types.js'
