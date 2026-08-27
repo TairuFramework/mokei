@@ -124,7 +124,8 @@ export type SubscriptionHub = {
 
 `complete()` and `close(reason)` are the two mutually-exclusive terminal paths for one subscription,
 tied to the held response's first-settlement-wins rule: `complete()` resolves the held `terminal`
-with the `subscriptions/listen` result (`resultType: 'complete'`) and awaits `ContextRPC` writing it;
+with the `subscriptions/listen` result (only `result._meta[subscriptionId]`, no `resultType` — see
+"Authoritative wire shape") and awaits `ContextRPC` writing it;
 `close(reason)` cancels the held request with no terminal. Whichever settles first wins; the other is
 a no-op. `endAllGracefully()` calls and awaits `complete()` for every retained entry (5s deadline,
 then abrupt close). The abort/response-body-cancellation path calls `close(reason)`.
