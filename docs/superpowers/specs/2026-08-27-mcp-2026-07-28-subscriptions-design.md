@@ -82,8 +82,13 @@ Re-validate against the final spec text before implementing.
 - **Subscription id** — streamed notifications carry
   `params._meta['io.modelcontextprotocol/subscriptionId']`; the terminal result carries it under
   `result._meta`. Its value **equals the listen request's JSON-RPC id**.
-- **Terminal `subscriptions/listen` result** — sent only on graceful teardown, with
-  `resultType: 'complete'`; an abrupt transport close carries no response and the client re-sends.
+- **Terminal `subscriptions/listen` result** — sent only on graceful teardown. Its only structural
+  requirement is `result._meta['io.modelcontextprotocol/subscriptionId']` (== the listen request id);
+  `core@2.0.0` defines it as `ResultSchema.extend({ _meta: { subscriptionId } })` with **no**
+  `resultType` field. An abrupt transport close carries no response and the client re-sends.
+  (Verified 2026-08-27 against the vendored package: `resultType` appears nowhere in core@2.0.0.
+  An earlier `resultType: 'complete'` claim was a design error, now removed — see the plan's Task 1
+  ruling.)
 
 ## Architecture
 

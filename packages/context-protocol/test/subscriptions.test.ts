@@ -37,11 +37,9 @@ describe('subscriptions schemas', () => {
     ).toBeDefined()
   })
 
-  test('the terminal result requires the subscriptionId in result _meta and resultType complete', () => {
+  test('the terminal result requires the subscriptionId in result _meta', () => {
     const validate = createValidator(subscriptionsListenResult)
-    expect(
-      validate({ _meta: { [META_SUBSCRIPTION_ID]: 1 }, resultType: 'complete' }).issues,
-    ).toBeUndefined()
-    expect(validate({ resultType: 'complete' }).issues).toBeDefined()
+    expect(validate({ _meta: { [META_SUBSCRIPTION_ID]: 1 } }).issues).toBeUndefined()
+    expect(validate({}).issues).toBeDefined()
   })
 })

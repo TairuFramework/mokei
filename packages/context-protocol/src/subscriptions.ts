@@ -65,6 +65,7 @@ export const subscriptionMetadata = {
   required: [META_SUBSCRIPTION_ID],
   type: 'object',
 } as const satisfies Schema
+export type SubscriptionMetadata = FromSchema<typeof subscriptionMetadata>
 
 export const subscriptionsListenResult = {
   description: 'Terminal response to subscriptions/listen; sent only on graceful teardown.',
@@ -73,9 +74,8 @@ export const subscriptionsListenResult = {
     {
       properties: {
         _meta: subscriptionMetadata,
-        resultType: { const: 'complete', type: 'string' },
       },
-      required: ['_meta', 'resultType'],
+      required: ['_meta'],
       type: 'object',
     },
   ],
