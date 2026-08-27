@@ -36,6 +36,11 @@ import {
 } from '../rpc.js'
 import { createMessageRequestParams, createMessageResult } from '../sampling.js'
 import {
+  subscriptionsAcknowledgedNotification,
+  subscriptionsListenRequest,
+  subscriptionsListenResult,
+} from '../subscriptions.js'
+import {
   callToolRequest,
   callToolResult,
   listToolsRequest,
@@ -258,6 +263,7 @@ export const clientRequest = {
     withProtocolMeta(withRetryParams(readResourceRequest)),
     withProtocolMeta(forbidRetryParams(listToolsRequest)),
     withProtocolMeta(withRetryParams(callToolRequest)),
+    withProtocolMeta(forbidRetryParams(subscriptionsListenRequest)),
   ],
 } as const satisfies Schema
 export type ClientRequest = FromSchema<typeof clientRequest>
@@ -297,6 +303,7 @@ export const serverNotification = {
     resourceListChangedNotification,
     toolListChangedNotification,
     promptListChangedNotification,
+    subscriptionsAcknowledgedNotification,
   ],
 } as const satisfies Schema
 
@@ -403,12 +410,18 @@ export function isInputRequiredResult(value: unknown): value is InputRequiredRes
  * Results a server may return in this revision. No `initializeResult`: there is no handshake.
  * `discoverResult` is a member here, which is what lets a `server/discover` answer be
  * validated rather than cast.
+ *
+ * `subscriptionsListenResult` is deliberately not `withResultType(...)`: it carries no
+ * `resultType` at all, only `_meta[subscriptionId]`. It is sent once, on graceful teardown of a
+ * `subscriptions/listen` stream — everything the stream delivers before then arrives as
+ * out-of-band notifications, never as members of this union.
  */
 export const serverResult = {
   anyOf: [
     emptyResult,
     inputRequiredResult,
     discoverResult,
+    subscriptionsListenResult,
     withResultType(completeResult),
     withResultType(getPromptResult),
     withResultType(listPromptsResult),
@@ -464,6 +477,7 @@ export const PROTOCOL = {
     'resources/templates/list',
     'tools/call',
     'tools/list',
+    'subscriptions/listen',
   ]),
   // Mirrors `clientNotification` above: `notifications/initialized` and
   // `notifications/roots/list_changed` are gone with the handshake and with server-initiated

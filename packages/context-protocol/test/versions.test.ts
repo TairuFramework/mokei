@@ -162,6 +162,10 @@ describe('protocol records', () => {
     expect(protocol.serverMethods.size).toBe(0)
   })
 
+  test('2026-07-28 gates subscriptions/listen as a client method', () => {
+    expect(PROTOCOLS['2026-07-28'].clientMethods.has('subscriptions/listen')).toBe(true)
+  })
+
   // `requiresHandshake` and `requiresPerRequestLogLevel` are both strict functions of
   // `clientMethods`, and drift between them fails silently: a revision that drops
   // `logging/setLevel` while leaving `requiresPerRequestLogLevel: false` makes `ContextServer`
@@ -366,6 +370,49 @@ describe('per-version message validation', () => {
         jsonrpc: '2.0',
         method: 'notifications/elicitation/complete',
         params: { elicitationId: 'abc' },
+      }).issues,
+    ).toBeUndefined()
+  })
+
+  test('2026-07-28 accepts a subscriptions/listen request carrying protocol _meta', () => {
+    const validate = createValidator(PROTOCOLS['2026-07-28'].clientMessage)
+    expect(
+      validate({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'subscriptions/listen',
+        params: {
+          notifications: { toolsListChanged: true },
+          _meta: {
+            'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+            'io.modelcontextprotocol/clientCapabilities': {},
+          },
+        },
+      }).issues,
+    ).toBeUndefined()
+  })
+
+  test('2026-07-28 accepts notifications/subscriptions/acknowledged', () => {
+    const validate = createValidator(PROTOCOLS['2026-07-28'].serverMessage)
+    expect(
+      validate({
+        jsonrpc: '2.0',
+        method: 'notifications/subscriptions/acknowledged',
+        params: { notifications: { toolsListChanged: true } },
+      }).issues,
+    ).toBeUndefined()
+  })
+
+  // No `resultType` here, unlike every other terminal result on this revision: the terminal
+  // `subscriptions/listen` response is sent once, on graceful teardown of the stream, and Task 1's
+  // schema deliberately excludes `resultType` from it.
+  test('2026-07-28 accepts a subscriptions/listen terminal result with no resultType', () => {
+    const validate = createValidator(PROTOCOLS['2026-07-28'].serverMessage)
+    expect(
+      validate({
+        jsonrpc: '2.0',
+        id: 1,
+        result: { _meta: { 'io.modelcontextprotocol/subscriptionId': 'sub-1' } },
       }).issues,
     ).toBeUndefined()
   })
