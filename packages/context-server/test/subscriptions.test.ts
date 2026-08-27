@@ -165,8 +165,39 @@ describe('SubscriptionWriter', () => {
     )
     expect(onFailure).toHaveBeenCalledTimes(1)
 
+    // The in-flight frame cannot be un-sent -- it resolves normally once its write finally
+    // settles, even though the writer has already failed.
     gate.resolve()
-    await first
+    await expect(first).resolves.toBeUndefined()
+  })
+
+  test('a real writeNotification rejection fails the whole writer', async () => {
+    const writeError = new Error('sink write failed')
+    let writeCalls = 0
+    let closedWith: Error | undefined | 'not-closed' = 'not-closed'
+    const sink: SubscriptionSink = {
+      async writeNotification() {
+        writeCalls++
+        throw writeError
+      },
+      close(reason) {
+        closedWith = reason
+      },
+    }
+    const onFailure = vi.fn()
+    const writer = new SubscriptionWriter({ sink, onFailure })
+
+    await expect(writer.enqueue(resourceNotification('file:///a'))).rejects.toBe(writeError)
+
+    expect(onFailure).toHaveBeenCalledTimes(1)
+    expect(onFailure.mock.calls[0][0]).toBe(writeError)
+    expect(closedWith).toBe(writeError)
+
+    // A subsequent enqueue is refused -- and no further writeNotification is attempted on the
+    // now-dead sink.
+    await expect(writer.enqueue(resourceNotification('file:///b'))).rejects.toBe(writeError)
+    expect(writeCalls).toBe(1)
+    expect(onFailure).toHaveBeenCalledTimes(1)
   })
 
   test('flush resolves once the queue is fully drained', async () => {
@@ -217,7 +248,9 @@ describe('SubscriptionWriter', () => {
     expect(onFailure).not.toHaveBeenCalled()
     expect(close).not.toHaveBeenCalled()
 
+    // The in-flight frame cannot be un-sent -- it resolves normally once its write finally
+    // settles, even though the writer has already been aborted.
     gate.resolve()
-    await first
+    await expect(first).resolves.toBeUndefined()
   })
 })

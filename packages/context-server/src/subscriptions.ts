@@ -37,7 +37,8 @@ export type SubscriptionWriterParams = {
   sink: SubscriptionSink
   /** @default DEFAULT_MAX_PENDING_FRAMES */
   maxPendingFrames?: number
-  /** Called at most once, when the writer stops itself -- currently only on backpressure. */
+  /** Called at most once, when the writer stops itself: on backpressure, or when a write to
+   * the sink itself rejects. */
   onFailure: (error: Error) => void
 }
 
@@ -58,6 +59,10 @@ type QueuedFrame = {
  * Delivery is bounded by `maxPendingFrames`: a queue deeper than that means the subscriber isn't
  * draining fast enough, so the writer stops accepting further frames, reports a
  * `SubscriptionBackpressureError` through `onFailure`, and closes the sink.
+ *
+ * A real `writeNotification()` rejection is fatal too: the sink itself is broken, so the writer
+ * stops draining, reports the rejection through `onFailure`, and closes the sink -- the same
+ * path as backpressure, rather than silently looping forever against a dead sink.
  */
 export class SubscriptionWriter {
   #sink: SubscriptionSink
@@ -175,13 +180,20 @@ export class SubscriptionWriter {
         this.#drain()
       },
       (error: unknown) => {
+        // A real write failure is fatal to the whole writer: looping back into #drain() here
+        // would just keep calling writeNotification() on a sink that already proved broken.
+        // Route it through the same fatal path as backpressure -- onFailure + sink.close() +
+        // rejecting every still-queued frame -- then reject this in-flight frame's own promise
+        // with the same error. Unlike the overflow branch, this frame's write itself failed, so
+        // (unlike overflow, where an in-flight write is left to resolve normally) it rejects
+        // rather than resolving.
         this.#draining = false
         this.#pending--
-        next.reject(error)
-        if (this.#pending === 0) {
-          this.#settleIdle?.()
-        }
-        this.#drain()
+        const failure = error instanceof Error ? error : new Error(String(error))
+        next.reject(failure)
+        this.#fail(failure, { notify: true })
+        // No further #drain(): #fail() has already emptied and rejected whatever was left
+        // queued, and the writer refuses new frames from here on.
       },
     )
   }
