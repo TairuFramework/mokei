@@ -38,6 +38,15 @@ export type HTTPHandlerParams = {
    * `subscriptions/listen` POST is served against a transport-isolated per-POST server that
    * *borrows* this hub; without one, a listen POST gets `METHOD_NOT_FOUND`. The handler never
    * owns or disposes the hub it is handed — the caller does.
+   *
+   * Dispose ordering matters. The per-POST servers this handler creates are *borrowers* of the
+   * hub, not its owner: calling `dispose()` on the value returned by `serveHTTP(...)` (or on
+   * `handler.dispose()`) does NOT gracefully complete open subscriptions — it is the abrupt
+   * backstop only, and every open `subscriptions/listen` stream is torn down abruptly (no
+   * terminal frame written) if that's all that runs. To get graceful, terminal-writing teardown
+   * of open subscriptions, the caller must first gracefully complete/dispose the durable
+   * hub-owning `ContextServer` (or call `hub.endAllGracefully()` directly) — and only then call
+   * `serveHTTP(...).dispose()` / `handler.dispose()`.
    */
   subscriptionHub?: SubscriptionHub
   /**
