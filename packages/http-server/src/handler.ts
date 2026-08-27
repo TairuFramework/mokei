@@ -6,8 +6,9 @@ import {
   type ProtocolVersion,
   type ServerMessage,
 } from '@mokei/context-protocol'
-import type { ContextServer, ServerTransport } from '@mokei/context-server'
+import type { ContextServer, ServerTransport, SubscriptionHub } from '@mokei/context-server'
 import { getMokeiLogger, type Logger } from '@mokei/logger'
+import { createRuntime, type Runtime } from '@sozai/runtime'
 
 import { appendReplay, eventsAfter, type Session, SessionManager } from './session.js'
 import { createSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.js'
@@ -17,9 +18,34 @@ import {
   readRequestProtocolVersion,
   runStatelessExchange,
 } from './stateless.js'
+import { runSubscriptionExchange } from './subscriptions.js'
 
 export type HTTPHandlerParams = {
-  createServer: (transport: ServerTransport) => ContextServer
+  /**
+   * Builds a `ContextServer` for one connection. The object form threads the optional durable
+   * {@link HTTPHandlerParams.subscriptionHub} through so a server can borrow it, and — for a
+   * `subscriptions/listen` POST — the per-POST `connectionID` minted from {@link runtime}. Both
+   * are absent on the session/initialize path; a server that ignores them behaves as before.
+   */
+  createServer: (params: {
+    transport: ServerTransport
+    subscriptionHub?: SubscriptionHub
+    connectionID?: string
+  }) => ContextServer
+  /**
+   * A durable `SubscriptionHub` the caller owns (e.g. a long-lived `ContextServer` with
+   * `subscriptions: true`, or `createSubscriptionHub`). When present, a `2026-07-28`
+   * `subscriptions/listen` POST is served against a transport-isolated per-POST server that
+   * *borrows* this hub; without one, a listen POST gets `METHOD_NOT_FOUND`. The handler never
+   * owns or disposes the hub it is handed — the caller does.
+   */
+  subscriptionHub?: SubscriptionHub
+  /**
+   * RN-safe runtime primitives (`@sozai/runtime`). Resolved once via `createRuntime` and threaded
+   * to `runSubscriptionExchange`, which mints each listen POST's `connectionID` from its
+   * `getRandomID()`. Defaults are filled in when omitted.
+   */
+  runtime?: Partial<Runtime>
   /**
    * Controls Origin header validation:
    * - Unset (default): localhost-only. Requests without an Origin header (non-browser clients)
@@ -67,7 +93,12 @@ export const DEFAULT_MAX_STATELESS_EXCHANGES = 100
 
 export type HTTPHandler = {
   handleRequest: (request: Request) => Promise<Response>
-  dispose: () => void
+  /**
+   * Tears the handler down. Async because it disposes session servers and awaits every in-flight
+   * `subscriptions/listen` server's bounded disposal (its held-response flush), so an awaiting
+   * caller knows those terminals have been given their chance to write before proceeding.
+   */
+  dispose: () => Promise<void>
 }
 
 type TransportBridge = {
@@ -170,8 +201,15 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
     statelessTimeoutMs = DEFAULT_STATELESS_TIMEOUT_MS,
     maxStatelessExchanges = DEFAULT_MAX_STATELESS_EXCHANGES,
+    subscriptionHub,
+    runtime: runtimeOverrides,
     logger = getMokeiLogger('http-server'),
   } = params
+
+  // Resolved once and threaded to every listen exchange, which mints its per-POST `connectionID`
+  // from `getRandomID()`. A single shared instance is the "handler's own runtime" the subscription
+  // exchange doc refers to.
+  const runtime = createRuntime(runtimeOverrides)
 
   // Map session IDs to their transport bridges
   const bridges = new Map<string, TransportBridge>()
@@ -181,6 +219,13 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   // their callers waiting on the timeout. A keyless set on purpose: these handles are
   // shutdown bookkeeping, never addressable by anything a client sends.
   const statelessTeardowns = new Set<() => void>()
+
+  // The same, for in-flight `subscriptions/listen` exchanges — plus the per-POST servers they
+  // built, so `dispose()` can await each one's bounded held-response flush (not just fire its
+  // abrupt teardown). A listen holds its server open indefinitely, so it is tracked separately
+  // from `statelessTeardowns` and is not counted against `maxStatelessExchanges`.
+  const listenTeardowns = new Set<() => void>()
+  const listenServers = new Set<ContextServer>()
 
   // Map session IDs to promises that resolve when a specific request ID gets a response
   // Used for the initialize flow where we need to capture the response synchronously
@@ -410,6 +455,15 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     const requestID: string | number | null =
       typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
 
+    // A `subscriptions/listen` POST is the one stateless request served against a held-open
+    // stream rather than `runStatelessExchange`'s answer-then-close one — but only when a durable
+    // hub is configured for it to borrow. Without a hub it falls through to `runStatelessExchange`
+    // below, where the per-POST server (built with no hub) rejects the method with
+    // `METHOD_NOT_FOUND`, exactly as the spec requires — no special-casing of the error here.
+    if (body.method === 'subscriptions/listen' && subscriptionHub != null) {
+      return await handleListen(request, body, requestID)
+    }
+
     // Refused before dispatch, mirroring the session path's `maxSessions` gate —
     // `statelessTeardowns` holds exactly the exchanges currently in flight, and `Retry-After: 1`
     // because the condition is transient by construction: the cap frees as handlers return.
@@ -434,7 +488,10 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     return await runStatelessExchange({
       message: body as unknown as ClientMessage,
       requestID,
-      createServer,
+      // The stateless per-POST server borrows the durable hub (if any) so its advertised
+      // capabilities — `resources.subscribe` in particular — match the listen path's. It never
+      // registers a subscription itself, so no `connectionID` is threaded here.
+      createServer: (transport) => createServer({ transport, subscriptionHub }),
       replayBufferSize,
       timeoutMs: statelessTimeoutMs,
       // The client hanging up is a stateless exchange's only cancellation channel.
@@ -444,6 +501,46 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       },
       onEnd: (teardown) => {
         statelessTeardowns.delete(teardown)
+      },
+      logger,
+    })
+  }
+
+  /**
+   * Serves a `subscriptions/listen` POST against a transport-isolated per-POST `ContextServer`
+   * borrowing the durable {@link subscriptionHub}. Only reached with a hub configured (the caller
+   * gates on it). The per-POST server is tracked so `dispose()` can await its bounded held-response
+   * flush, and the exchange's abrupt teardown is tracked so a shutdown can end an idle listen; the
+   * request signal drives the client-disconnect / response-body-cancellation teardown.
+   */
+  async function handleListen(
+    request: Request,
+    body: Record<string, unknown>,
+    requestID: string | number | null,
+  ): Promise<Response> {
+    const hub = subscriptionHub as SubscriptionHub
+    return await runSubscriptionExchange({
+      message: body as unknown as ClientMessage,
+      requestID,
+      createServer: ({ transport, subscriptionHub: borrowed, connectionID }) => {
+        const server = createServer({ transport, subscriptionHub: borrowed, connectionID })
+        listenServers.add(server)
+        void server.disposed.finally(() => {
+          listenServers.delete(server)
+        })
+        return server
+      },
+      subscriptionHub: hub,
+      replayBufferSize,
+      // The handler's resolved runtime: the exchange mints its per-POST `connectionID` from it.
+      runtime,
+      // Client disconnect / response-body cancellation is a listen's teardown trigger.
+      signal: request.signal,
+      onStart: (teardown) => {
+        listenTeardowns.add(teardown)
+      },
+      onEnd: (teardown) => {
+        listenTeardowns.delete(teardown)
       },
       logger,
     })
@@ -461,11 +558,13 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     try {
       bridge = createTransportBridge(session)
       bridges.set(session.sessionID, bridge)
-      const server = createServer(bridge.transport)
+      // A session server manages its own subscription lifecycle (via its own config); the
+      // handler's durable hub is the stateless-path hub, so it is not threaded here.
+      const server = createServer({ transport: bridge.transport })
       session.server = server
     } catch {
       // Deleting the session fires onDelete, which tears down the bridge.
-      sessions.delete(session.sessionID)
+      await sessions.delete(session.sessionID)
       return new Response('Server initialization failed', { status: 500 })
     }
 
@@ -499,7 +598,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       response = await responsePromise
     } catch {
       // Deleting the session fires onDelete, which tears down the bridge.
-      sessions.delete(session.sessionID)
+      await sessions.delete(session.sessionID)
       return new Response('Initialize timed out', { status: 504 })
     }
 
@@ -579,7 +678,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     })
   }
 
-  function handleDELETE(request: Request): Response {
+  async function handleDELETE(request: Request): Promise<Response> {
     if (!validateOrigin(request)) {
       return new Response('Forbidden', { status: 403 })
     }
@@ -605,7 +704,8 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     }
 
     // Delete session (disposes server, closes all streams); onDelete releases the bridge.
-    sessions.delete(sessionID)
+    // Awaited so the 204 is not returned until the session server has actually been disposed.
+    await sessions.delete(sessionID)
 
     return new Response(null, { status: 204 })
   }
@@ -619,16 +719,22 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       case 'GET':
         return await handleGET(request)
       case 'DELETE':
-        return handleDELETE(request)
+        return await handleDELETE(request)
       default:
         return new Response('Method not allowed', { status: 405 })
     }
   }
 
-  function dispose(): void {
-    // Disposing the manager deletes every session, firing onDelete (closeBridge)
-    // for each — which releases its bridge and init waiter.
-    sessions.dispose()
+  async function dispose(): Promise<void> {
+    // Snapshot the in-flight listen servers before any teardown runs: each server's disposal
+    // removes it from the set (via its `disposed` handler), so the set is unsafe to await over
+    // once teardown has begun.
+    const listenServerSnapshot = [...listenServers]
+
+    // Disposing the manager deletes every session, firing onDelete (closeBridge) for each —
+    // which releases its bridge and init waiter. Awaited so each session server's disposal
+    // (and its own held-response flush) completes before the handler is considered torn down.
+    await sessions.dispose()
 
     // Backstop: release any bridge/waiter not tied to a live session.
     for (const sessionID of bridges.keys()) {
@@ -641,6 +747,17 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       teardown()
     }
     statelessTeardowns.clear()
+
+    // End every in-flight listen: fire its abrupt teardown, then await each per-POST server's
+    // bounded disposal. The server's own `_beforeTransportClose` + held-response flush (≤5s)
+    // gives any resolved terminal its chance to write; `dispose()` resolves only once every one
+    // of those has settled.
+    for (const teardown of [...listenTeardowns]) {
+      teardown()
+    }
+    listenTeardowns.clear()
+    await Promise.all(listenServerSnapshot.map((server) => server.disposed))
+    listenServers.clear()
   }
 
   return { handleRequest, dispose }

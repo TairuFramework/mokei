@@ -12,7 +12,12 @@ export type ServeHTTPParams = HTTPHandlerParams & {
 export type ServeHTTPResult = {
   handler: HTTPHandler
   server: ServerType
-  dispose: () => void
+  /**
+   * Tears everything down: awaits the handler's disposal (which flushes in-flight
+   * `subscriptions/listen` terminals, bounded) *before* closing the Node server, so the socket
+   * stays open long enough for those terminal writes to reach their clients.
+   */
+  dispose: () => Promise<void>
 }
 
 export function serveHTTP(params: ServeHTTPParams): ServeHTTPResult {
@@ -29,8 +34,8 @@ export function serveHTTP(params: ServeHTTPParams): ServeHTTPResult {
   return {
     handler,
     server,
-    dispose: () => {
-      handler.dispose()
+    dispose: async () => {
+      await handler.dispose()
       server.close()
     },
   }

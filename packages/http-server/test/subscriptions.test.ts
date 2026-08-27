@@ -3,13 +3,7 @@ import { ContextServer, createSubscriptionHub, type ServerEvents } from '@mokei/
 import { EventEmitter } from '@sozai/event'
 import { describe, expect, test } from 'vitest'
 
-import { createSSEStream } from '../src/sse-stream.js'
-import { SSEWriter } from '../src/sse-writer.js'
-import {
-  createSSESubscriptionSink,
-  runSubscriptionExchange,
-  type SubscriptionExchangeParams,
-} from '../src/subscriptions.js'
+import { runSubscriptionExchange, type SubscriptionExchangeParams } from '../src/subscriptions.js'
 
 const META = {
   'io.modelcontextprotocol/protocolVersion': '2026-07-28',
@@ -301,33 +295,5 @@ describe('runSubscriptionExchange', () => {
 
     abort.abort()
     await disposed
-  })
-})
-
-describe('createSSESubscriptionSink', () => {
-  test('writeNotification writes an SSE event; close closes the writer without a terminal write', async () => {
-    const { readable, writable } = createSSEStream()
-    const writer = new SSEWriter({ writable, streamID: 'sink-test', replayBufferSize: 4 })
-    const sink = createSSESubscriptionSink(writer)
-
-    // No `writeTerminalResult` on the sink's shape -- matching `@mokei/context-server`'s
-    // `SubscriptionSink` type, which has none either.
-    expect((sink as Record<string, unknown>).writeTerminalResult).toBeUndefined()
-
-    await sink.writeNotification({
-      jsonrpc: '2.0',
-      method: 'notifications/resources/updated',
-      params: { uri: 'file:///a' },
-    })
-    sink.close()
-
-    const text = await new Response(readable).text()
-    const dataLines = text
-      .split('\n\n')
-      .map((block) => block.split('\n').find((line) => line.startsWith('data: ')))
-      .filter((line): line is string => line != null && line.slice(6).trim() !== '')
-    expect(dataLines).toHaveLength(1)
-    const notification = JSON.parse(dataLines[0].slice(6)) as Record<string, unknown>
-    expect(notification.method).toBe('notifications/resources/updated')
   })
 })

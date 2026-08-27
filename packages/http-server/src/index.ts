@@ -27,8 +27,4 @@ export {
   runStatelessExchange,
   type StatelessExchangeParams,
 } from './stateless.js'
-export {
-  createSSESubscriptionSink,
-  runSubscriptionExchange,
-  type SubscriptionExchangeParams,
-} from './subscriptions.js'
+export { runSubscriptionExchange, type SubscriptionExchangeParams } from './subscriptions.js'

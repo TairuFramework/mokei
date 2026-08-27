@@ -31,7 +31,7 @@ describe('serveHTTP', () => {
 
   test('creates a server with handler and dispose', () => {
     server = serveHTTP({
-      createServer: (transport) => new ContextServer({ ...SERVER_CONFIG, transport }),
+      createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
       port: 0,
       hostname: '127.0.0.1',
     })

@@ -5,12 +5,7 @@ import {
   INVALID_PARAMS,
   type ServerMessage,
 } from '@mokei/context-protocol'
-import type {
-  ContextServer,
-  ServerTransport,
-  SubscriptionHub,
-  SubscriptionSink,
-} from '@mokei/context-server'
+import type { ContextServer, ServerTransport, SubscriptionHub } from '@mokei/context-server'
 import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { createRuntime, type Runtime } from '@sozai/runtime'
 
@@ -259,29 +254,4 @@ export function runSubscriptionExchange(params: SubscriptionExchangeParams): Pro
   controller.enqueue(message)
 
   return response
-}
-
-/**
- * Adapts an `SSEWriter` to the `@mokei/context-server` `SubscriptionSink` shape: each
- * notification becomes its own SSE event, and `close()` closes the underlying writer. No
- * `writeTerminalResult` -- matching `SubscriptionSink` itself, the terminal `subscriptions/listen`
- * result never flows through this sink.
- *
- * Not yet wired into `runSubscriptionExchange` above: `ContextServer#listen` currently builds
- * its own internal sink over `this._write()`, which already lands on this exchange's own
- * outgoing `WritableStream<ServerMessage>` -- and from there, this same `SSEWriter` -- so every
- * notification a listen exchange serves already reaches the client without this adapter's help.
- * It exists as the ready-made building block for whenever `ContextServer` (or a future
- * hub-delivery path) gains a hook to accept an externally-built sink directly; wiring that hook
- * is Task 13's seam to close, not guessed at here.
- */
-export function createSSESubscriptionSink(writer: SSEWriter): SubscriptionSink {
-  return {
-    async writeNotification(notification) {
-      await writer.writeEvent({ data: JSON.stringify(notification) })
-    },
-    close() {
-      writer.close()
-    },
-  }
 }

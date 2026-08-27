@@ -254,7 +254,7 @@ export async function startMokeiHTTPServer(
 ): Promise<RunningHTTPServer> {
   const config = createMokeiConfig(protocolVersions)
   const result = serveHTTP({
-    createServer: (transport) => new ContextServer({ ...config, transport }),
+    createServer: ({ transport }) => new ContextServer({ ...config, transport }),
     port: 0,
     hostname: '127.0.0.1',
   })
@@ -271,7 +271,7 @@ export async function startMokeiHTTPServer(
 export async function startMokeiMRTRHTTPServer(): Promise<RunningHTTPServer> {
   const config = createMokeiMRTRConfig(['2026-07-28'])
   const result = serveHTTP({
-    createServer: (transport) => new ContextServer({ ...config, transport }),
+    createServer: ({ transport }) => new ContextServer({ ...config, transport }),
     port: 0,
     hostname: '127.0.0.1',
   })
@@ -378,7 +378,7 @@ export async function startBlockingHTTPServer(): Promise<BlockingHTTPServer> {
   }
 
   const result = serveHTTP({
-    createServer: (transport) => {
+    createServer: ({ transport }) => {
       const server = new ContextServer({ ...config, transport })
       const dispose = server.dispose.bind(server)
       server.dispose = async () => {
