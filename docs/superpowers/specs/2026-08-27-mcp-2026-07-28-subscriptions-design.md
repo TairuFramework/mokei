@@ -140,8 +140,8 @@ POSTs — it owns one RPC transport, and subscriptionId (== request id) collides
 
 - Keep every listen POST **transport-isolated** (its own SSE response + sink + abort signal).
 - The durable server owns a `ServerSubscriptionBinding` holding the `SubscriptionRegistry` and
-  producer state. The HTTP handler mints an internal `connectionID = crypto.randomUUID()` per listen
-  POST (**never on the wire**) and registers under a nested map
+  producer state. The HTTP handler mints an internal `connectionID = runtime.getRandomID()` per
+  listen POST (**never on the wire**) and registers under a nested map
   `Map<connectionID, Map<RequestID, SubscriptionEntry>>`. Two clients using request id `0` become
   `{A,0}` and `{B,0}` — distinct.
 - **Fan-out never locates a response by subscriptionId.** A producer event iterates matching registry
@@ -163,6 +163,14 @@ export type ServerSubscriptionBinding = {
 
 Smallest correct version: one in-process binding per HTTP handler/deployment, no cross-process
 delivery (a multi-instance deployment would later need an external broker — out of scope).
+
+**Runtime primitives.** The `connectionID` is minted with `getRandomID()` from `@sozai/runtime`,
+not `crypto.randomUUID()` — the latter is not guaranteed on every platform (React Native), and the
+`-node` split made `@mokei/host`/`context-server` deliberately Node-free. Relevant constructors and
+functions (`createHTTPHandler`, and any function that mints ids) accept an optional
+`runtime?: Partial<Runtime>` resolved once via `createRuntime(runtime)`, which fills `globalThis`
+defaults so downstream code always has a fully-resolved `Runtime` with no optional checks. Callers
+that need determinism (tests) pass an override; everyone else omits it.
 
 ## Components
 
@@ -252,6 +260,8 @@ re-exports; a `versions.test.ts` membership guard.
   `binding.open({ connectionID, request, signal, sink })`, return that response; on client abort
   unregister `{connectionID, subscriptionID}` and close the sink. All other `2026-07-28` POSTs stay
   on `runStatelessExchange`. If no binding is configured, a listen POST gets `METHOD_NOT_FOUND`.
+- `createHTTPHandler` gains an optional `runtime?: Partial<Runtime>` (`@sozai/runtime`), resolved
+  once via `createRuntime`, used to mint each listen POST's `connectionID` via `getRandomID()`.
 - **Breaking:** `createHTTPHandler` gains `subscriptionBinding?`; the `createServer` factory takes
   `{ transport, subscriptionBinding }`; `HTTPHandler.dispose` becomes async (flush terminal SSE
   results, bounded deadline).
