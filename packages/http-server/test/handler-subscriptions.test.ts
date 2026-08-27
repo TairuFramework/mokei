@@ -260,6 +260,28 @@ describe('handler.dispose() awaits in-flight listen disposal', () => {
   })
 })
 
+describe('subscriptions/listen concurrency cap', () => {
+  test('refuses a listen past maxSubscriptionExchanges with 503 + Retry-After', async () => {
+    const { hub } = createStubDurableHub()
+    const handler = createHandler({ subscriptionHub: hub, maxSubscriptionExchanges: 1 })
+
+    // First listen occupies the only slot and stays held open.
+    const first = await handler.handleRequest(listenRequest(1))
+    expect(first.status).toBe(200)
+    const frames = createSSEFrameReader(first)
+    await frames.next() // priming
+    await frames.next() // ack
+
+    // Second listen is refused before anything is built for it.
+    const second = await handler.handleRequest(listenRequest(2))
+    expect(second.status).toBe(503)
+    expect(second.headers.get('Retry-After')).toBe('1')
+
+    await handler.dispose()
+    await hub.dispose()
+  })
+})
+
 describe('stateless server/discover capability reporting', () => {
   test('reports resources.subscribe when a hub is configured', async () => {
     const { hub } = createStubDurableHub()

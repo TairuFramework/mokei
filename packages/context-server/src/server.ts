@@ -784,8 +784,14 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       // Graceful teardown: resolve the held terminal with the wrapped `subscriptionsListenResult`
       // — only `result._meta[subscriptionId]`, deliberately no `resultType`. `beforeTerminal`
       // drains the writer first, then the RPC layer writes this verbatim (it does not re-wrap).
+      // Then await the actual write: the entry contract is "resolve the held terminal, await its
+      // write", so `hub.endAllGracefully()` does not report this subscription gracefully completed
+      // before its terminal result has reached the wire (critical for a stateless borrower, whose
+      // terminal is written by its own per-POST RPC layer, not the hub owner's). Bounded by the
+      // RPC layer's disposal deadline, so a stalled write cannot make disposal unbounded.
       complete: async () => {
         terminal.resolve({ _meta: { [META_SUBSCRIPTION_ID]: id } } as ServerResult)
+        await this._heldResponseWritten(id)
       },
     })
 

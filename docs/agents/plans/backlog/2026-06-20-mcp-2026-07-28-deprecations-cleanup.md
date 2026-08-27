@@ -55,3 +55,30 @@ Carried from the migration plan's own out-of-scope list. All hygiene, no defects
   the `/context add` slash command, which runs inside `chat`, where top-level `-p` means provider.
   No collision, since no two are reachable in the same argv position, but it is inconsistent enough
   to mislead. Renaming any of them is breaking, so this is a deliberate note rather than a proposal.
+
+## 3. Subscriptions (SEP-2575) hardening follow-ups
+
+Deferred from the subscriptions work (shipped 2026-08-27 on `feat/mcp-2026-07-28-subscriptions`);
+surfaced by the design spec's accepted-consequence notes and an independent Codex review of the
+implementation. Neither is a defect that blocks the feature; both are robustness work best done
+here alongside the disposal/cleanup changes.
+
+- **`#disposing` inbound-request gate.** A server that has begun `dispose()` keeps its read loop
+  live during the ≤5s held-response flush window, so it accepts and serves new inbound requests
+  (including new `subscriptions/listen`) until `#close`. Bounded and benign today
+  (`#close`'s `abortAll` sweeps anything created in the window), but a `#disposing` flag gating the
+  inbound-request path would stop a disposing server starting new work while still flushing held
+  terminals. See the design spec's "Disposal ordering — Accepted consequence / Hardening follow-up"
+  note (`docs/superpowers/specs/2026-08-27-mcp-2026-07-28-subscriptions-design.md`).
+- **Stateless borrower teardown on backpressure / write failure.** When a served listen's
+  `SubscriptionWriter` fails (256-frame backpressure bound, or a real write rejection), the abrupt
+  teardown rejects the held terminal and drops the hub entry, but does **not** close the stateless
+  per-POST borrower's SSE body or dispose its throwaway `ContextServer` — `SubscriptionSink.close`
+  is a no-op (the serving server owns the wire) and the exchange's `finish()` is only reachable via
+  the HTTP request signal or `handler.dispose()`. Result: a slow HTTP subscriber that trips
+  backpressure leaks one borrower server + SSE stream until handler shutdown. Blast radius is
+  bounded by `maxSubscriptionExchanges` (added 2026-08-27). The correct fix is a cross-layer
+  teardown-callback seam so a server-side listen failure drives the exchange's `finish()` — this
+  changes the `createServer` / `ServerParams` contract, so it was deliberately deferred out of the
+  review fix-wave. Owner transports (stdio, `2025-11-25` session HTTP) are unaffected: they have no
+  per-subscription wire to close, only the hub entry, which teardown already removes.

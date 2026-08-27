@@ -380,4 +380,50 @@ describe('SubscriptionDriver', () => {
     await expect(p1).rejects.toThrow()
     await expect(p2).rejects.toThrow()
   })
+
+  test('an already-aborted signal rejects without opening a listen', async () => {
+    const { opens, openListen } = makeHarness()
+    const driver = new SubscriptionDriver({ openListen, delay: immediateDelay })
+
+    const controller = new AbortController()
+    controller.abort(new Error('caller gone'))
+    const p = driver.subscribeResource({ uri: 'file:///a', signal: controller.signal })
+
+    await expect(p).rejects.toThrow('caller gone')
+    await flush()
+    // No orphan exchange: the candidate was retired synchronously, so no listen ever opened.
+    expect(opens.length).toBe(0)
+  })
+
+  test('a throwing onRetry callback still schedules the reconnect', async () => {
+    const { opens, openListen } = makeHarness()
+    const errors: Array<Error> = []
+    let firstRetry = true
+    const driver = new SubscriptionDriver({
+      openListen,
+      delay: immediateDelay,
+      onError: (error) => errors.push(error),
+      onRetry: () => {
+        if (firstRetry) {
+          firstRetry = false
+          throw new Error('onRetry blew up')
+        }
+      },
+    })
+
+    const p1 = driver.subscribeResource({ uri: 'file:///a' })
+    await flush()
+    opens[0].ack()
+    await p1
+    expect(opens.length).toBe(1)
+
+    // Transport drops: the throwing onRetry must not abort the reconnect (immediateDelay fires it).
+    opens[0].close()
+    await flush()
+    expect(opens.length).toBe(2)
+    opens[1].ack()
+    await flush()
+
+    expect(errors.some((error) => error.message === 'onRetry blew up')).toBe(true)
+  })
 })

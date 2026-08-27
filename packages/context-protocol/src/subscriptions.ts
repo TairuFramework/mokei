@@ -9,7 +9,10 @@ export const subscriptionFilter = {
     toolsListChanged: { type: 'boolean' },
     promptsListChanged: { type: 'boolean' },
     resourcesListChanged: { type: 'boolean' },
-    resourceSubscriptions: { type: 'array', items: { type: 'string', format: 'uri' } },
+    // `{ type: 'string' }`, not `format: 'uri'`: `@modelcontextprotocol/core@2.0.0` types these as
+    // plain strings (`z.array(z.string())`), so a URI-format constraint here would reject
+    // core-valid peer filters. Keep it a bare string to stay interoperable.
+    resourceSubscriptions: { type: 'array', items: { type: 'string' } },
   },
   type: 'object',
 } as const satisfies Schema

@@ -84,6 +84,17 @@ export type HTTPHandlerParams = {
    * throwaway `ContextServer`, transport and connection for as long as the caller keeps reading.
    */
   maxStatelessExchanges?: number
+  /**
+   * How many `subscriptions/listen` exchanges may be in flight at once (default:
+   * {@link DEFAULT_MAX_SUBSCRIPTION_EXCHANGES}). Past the cap a listen POST is refused with `503`
+   * before anything is built for it.
+   *
+   * Tracked separately from `maxStatelessExchanges`: a listen is meant to sit open indefinitely,
+   * so it is deliberately excluded from that cap — but each one still holds a whole per-POST
+   * `ContextServer`, its transport, an SSE response and a hub entry for its entire lifetime, so it
+   * needs a bound of its own or an unbounded number of open listens could exhaust the deployment.
+   */
+  maxSubscriptionExchanges?: number
   /** Optional logger (defaults to the `mokei:http-server` logger) */
   logger?: Logger
 }
@@ -99,6 +110,16 @@ export const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024
  * long as its handler runs. Raise it deliberately for a server fronting many concurrent callers.
  */
 export const DEFAULT_MAX_STATELESS_EXCHANGES = 100
+
+/**
+ * Default cap on concurrent `subscriptions/listen` exchanges.
+ *
+ * Each open listen holds a per-POST `ContextServer`, transport, SSE response and hub entry for as
+ * long as the subscription lives, so — like `maxStatelessExchanges`, and for the same
+ * one-request-holds-a-whole-server reason — it is bounded well below `maxSessions`. Raise it
+ * deliberately for a deployment that expects many simultaneous long-lived subscribers.
+ */
+export const DEFAULT_MAX_SUBSCRIPTION_EXCHANGES = 100
 
 export type HTTPHandler = {
   handleRequest: (request: Request) => Promise<Response>
@@ -210,6 +231,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
     statelessTimeoutMs = DEFAULT_STATELESS_TIMEOUT_MS,
     maxStatelessExchanges = DEFAULT_MAX_STATELESS_EXCHANGES,
+    maxSubscriptionExchanges = DEFAULT_MAX_SUBSCRIPTION_EXCHANGES,
     subscriptionHub,
     runtime: runtimeOverrides,
     logger = getMokeiLogger('http-server'),
@@ -470,6 +492,16 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     // below, where the per-POST server (built with no hub) rejects the method with
     // `METHOD_NOT_FOUND`, exactly as the spec requires — no special-casing of the error here.
     if (body.method === 'subscriptions/listen' && subscriptionHub != null) {
+      // Refuse before building anything, mirroring the `maxStatelessExchanges` gate below:
+      // `listenTeardowns` holds exactly the listens currently in flight, and `Retry-After: 1`
+      // because the condition frees as subscriptions end. A listen always carries an id, so an
+      // id-less frame (which occupies no long-lived slot) is left to fall through and be handled.
+      if (requestID != null && listenTeardowns.size >= maxSubscriptionExchanges) {
+        return new Response('Too many subscription exchanges', {
+          status: 503,
+          headers: { 'Retry-After': '1' },
+        })
+      }
       return await handleListen(request, body, requestID)
     }
 

@@ -162,7 +162,12 @@ export function createHostedContext<T extends ContextTypes = UnknownContextTypes
   const client = new ContextClient<T>({ protocolVersion, transport })
   const disposer = new Disposer({
     dispose: async () => {
-      await transport.dispose()
+      // Dispose via the client, not the transport directly: `ContextClient.dispose()` runs
+      // `_beforeTransportClose` (tearing down the subscription driver and suppressing any pending
+      // reconnect) before it closes the transport, then disposes the transport itself. Disposing
+      // the transport out from under the client would skip that hook and could leave a scheduled
+      // reconnect/error callback firing after the host has removed the context.
+      await client.dispose()
       await dispose?.()
     },
   })

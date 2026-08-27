@@ -266,12 +266,26 @@ export class SubscriptionDriver {
     options?: { signal?: AbortSignal; timeout?: number },
   ): Promise<void> {
     const generation = this.#allocateGeneration(this.#filterFor(target), options)
+    // `#allocateGeneration` retires the candidate synchronously when its signal is already aborted
+    // (or a zero timeout fires): opening a listen for it would strand an exchange nothing aborts,
+    // since `generation.abort` is still the initial no-op at that point. Await the already-rejected
+    // ack instead so the caller surfaces the abort, without ever opening the stream.
+    if (generation.retired) {
+      await generation.ack.promise
+      return
+    }
     // Publish the candidate so `dispose()` can tear it down while it is awaiting its ack.
     this.#pendingGeneration = generation
     const handle = this.#openListen(generation.filter, generation.handlers)
     // The terminal promise is surfaced through `onSettle`; guard against unhandled rejection.
     handle.exchange.catch(noop)
     generation.abort = handle.abort
+    // A signal that aborts in the window between the pre-open check and here retires the
+    // generation via `#failGeneration`, which called the old no-op abort; abort the real handle now
+    // so the just-opened exchange is not left running.
+    if (generation.retired) {
+      handle.abort(new Error('Subscription candidate aborted before open completed'))
+    }
 
     try {
       await generation.ack.promise
@@ -427,7 +441,12 @@ export class SubscriptionDriver {
     this.#reconnectAttempt += 1
     const attempt = this.#reconnectAttempt
     const retryInMs = Math.min(this.#backoffCapMs, this.#backoffBaseMs * 2 ** (attempt - 1))
-    this.#onRetry?.({ attempt, error: cause, retryInMs })
+    // A throwing consumer callback must not abort the reconnect: report it and still schedule.
+    try {
+      this.#onRetry?.({ attempt, error: cause, retryInMs })
+    } catch (error) {
+      this.#reportError(toError(error))
+    }
     this.#delay(retryInMs).then(() => {
       if (this.#disposed) {
         return
