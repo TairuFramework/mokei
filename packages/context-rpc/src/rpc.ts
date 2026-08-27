@@ -354,10 +354,20 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       return
     }
     const settling = Promise.all(Array.from(this.#heldRequests.values(), (held) => held.settled))
-    await Promise.race([
-      settling,
-      new Promise<void>((resolve) => setTimeout(resolve, HELD_RESPONSE_FLUSH_DEADLINE_MS)),
-    ])
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        settling,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, HELD_RESPONSE_FLUSH_DEADLINE_MS)
+        }),
+      ])
+    } finally {
+      // Without this, `settling` winning the race still leaves the deadline timer armed -- it
+      // keeps the event loop (and any spawned child process) alive for up to
+      // `HELD_RESPONSE_FLUSH_DEADLINE_MS` after disposal has otherwise finished.
+      clearTimeout(timer)
+    }
   }
 
   /** @internal Called once when the read loop terminates. Subclasses may override to surface it. */
