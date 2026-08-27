@@ -145,6 +145,14 @@ export type ServerEvents = {
   initialize: ClientInitialize
   initialized: undefined
   log: Log
+  /** Signals that a subscribed resource's content changed. Consumed by the subscription hub. */
+  resourceUpdated: { uri: string }
+  /** Signals that the resources list changed. Consumed by the subscription hub. */
+  resourcesListChanged: undefined
+  /** Signals that the prompts list changed. Consumed by the subscription hub. */
+  promptsListChanged: undefined
+  /** Signals that the tools list changed. Consumed by the subscription hub. */
+  toolsListChanged: undefined
 }
 
 type HandleNotification = ProgressNotification | ClientNotification
