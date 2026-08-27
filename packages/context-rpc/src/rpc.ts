@@ -28,6 +28,14 @@ function isRequestID(id: unknown): id is RequestID {
 }
 
 /**
+ * Bounds how long an explicit `dispose()` waits, in `#flushHeldResponses`, for held
+ * `subscriptions/listen` responses to write their graceful terminal result before the
+ * transport closes. A real bound: a handler that never resolves `terminal` must not hang
+ * disposal forever.
+ */
+const HELD_RESPONSE_FLUSH_DEADLINE_MS = 5000
+
+/**
  * Marker a request handler returns to defer its JSON-RPC response indefinitely (SEP-1391
  * `subscriptions/listen`): the request is validated, dispatched and slot-scheduled like any
  * other, but instead of a result body the handler hands back a `terminal` promise. The
@@ -157,8 +165,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #continuations: ContinuationStore = new ContinuationStore()
   #scheduler: RequestScheduler
   // Requests whose handler returned a held response, awaiting their `terminal` resolution.
-  // Keyed by id; the scheduler holds the matching detached controller.
-  #heldRequests: Map<RequestID, { signal: AbortSignal }> = new Map()
+  // Keyed by id; the scheduler holds the matching detached controller. `settled` resolves once
+  // the entry is removed (terminal written, terminal rejected, or the request was cancelled) —
+  // `#flushHeldResponses` awaits it on disposal.
+  #heldRequests: Map<RequestID, { signal: AbortSignal; settled: Promise<void> }> = new Map()
   #transport: TransportType<T['MessageIn'], T['MessageOut']>
   #validateMessageIn: Validator<T['MessageIn']>
   #onError?: (error: Error) => void
@@ -289,8 +299,40 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   }
 
   async #dispose(): Promise<void> {
-    this.#close(new TransportClosedError('Transport disposed'))
+    const reason = new TransportClosedError('Transport disposed')
+    // Explicit dispose only: gives a subclass a chance to resolve any held
+    // `subscriptions/listen` terminals so their graceful result can still be written. A peer
+    // EOF runs `#close()` directly and never reaches this hook.
+    await this._beforeTransportClose(reason)
+    await this.#flushHeldResponses()
+    this.#close(reason)
     await this.#transport.dispose()
+  }
+
+  /**
+   * @internal Called once on an explicit `dispose()`, before the transport closes and before
+   * held responses are flushed — the hook where a server subclass resolves any held
+   * `subscriptions/listen` terminals so their graceful result gets a chance to be written before
+   * the transport goes away. Default no-op. Not called on a peer EOF, which stays abrupt.
+   */
+  _beforeTransportClose(_reason: Error): void | Promise<void> {}
+
+  /**
+   * Waits for every currently held request's terminal to settle and its response to be written,
+   * bounded by {@link HELD_RESPONSE_FLUSH_DEADLINE_MS}. A terminal that never resolves (or is
+   * still running once the deadline elapses) is abandoned so disposal can still complete — a
+   * held request left over at that point is torn down like any other by `#close`'s
+   * `abortAll`.
+   */
+  async #flushHeldResponses(): Promise<void> {
+    if (this.#heldRequests.size === 0) {
+      return
+    }
+    const settling = Promise.all(Array.from(this.#heldRequests.values(), (held) => held.settled))
+    await Promise.race([
+      settling,
+      new Promise<void>((resolve) => setTimeout(resolve, HELD_RESPONSE_FLUSH_DEADLINE_MS)),
+    ])
   }
 
   /** @internal Called once when the read loop terminates. Subclasses may override to surface it. */
@@ -413,11 +455,14 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
 
   /**
    * Tracks a held request and settles the cancel-vs-terminal race. Exactly one of two outcomes
-   * runs, whichever settles first (`#done` guards it): `terminal` resolves — the response is
-   * written (after `beforeTerminal`) — or the request's signal aborts (cancel/dispose) — nothing
-   * is written. Either way `#removeHeld` is the single cleanup path removing both records.
+   * runs, whichever settles first (a local `done` flag guards it): `terminal` resolves — the
+   * response is written (after `beforeTerminal`) — or the request's signal aborts (cancel/
+   * dispose) — nothing is written. Either way `#removeHeld` is the single cleanup path removing
+   * both records, and `settled` (stored alongside `signal` in `#heldRequests`) resolves once it
+   * has run — `#flushHeldResponses` awaits it on disposal.
    */
   #holdRequest(id: RequestID, held: HeldResponse<unknown>, signal: AbortSignal): void {
+    const settled = defer<void>()
     let done = false
     const onAbort = () => {
       if (done) {
@@ -426,9 +471,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       // Cancel won the race: a cancelled request answers nothing.
       done = true
       this.#removeHeld(id)
+      settled.resolve()
     }
     signal.addEventListener('abort', onAbort, { once: true })
-    this.#heldRequests.set(id, { signal })
+    this.#heldRequests.set(id, { signal, settled: settled.promise })
 
     held.terminal.then(
       async (result) => {
@@ -445,6 +491,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         }
         await this.#writeResponse({ jsonrpc: '2.0', id, result } as Response)
         this.#removeHeld(id)
+        settled.resolve()
       },
       (cause) => {
         if (done) {
@@ -455,6 +502,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         signal.removeEventListener('abort', onAbort)
         this.#reportError(cause instanceof Error ? cause : new Error(String(cause)))
         this.#removeHeld(id)
+        settled.resolve()
       },
     )
   }

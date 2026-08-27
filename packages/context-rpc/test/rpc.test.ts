@@ -625,6 +625,96 @@ describe('ContextRPC held responses', () => {
   })
 })
 
+describe('ContextRPC pre-close flush', () => {
+  test('_beforeTransportClose lets a held terminal write before the transport is disposed', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const terminal = defer<Record<string, unknown>>()
+    class TestRPC extends ContextRPC<TestTypes> {
+      _handleRequest(request: TestTypes['HandleRequest']): unknown {
+        if (request.method === 'subscriptions/listen') {
+          return this._holdResponse({ terminal: terminal.promise })
+        }
+        return { echoed: request.method }
+      }
+      // Resolving the held terminal here proves the hook runs — and is awaited — before the
+      // transport is disposed on an explicit `dispose()`.
+      _beforeTransportClose(): void {
+        terminal.resolve({ ok: true })
+      }
+    }
+    const rpc = new TestRPC({
+      maxConcurrentRequests: 1,
+      transport: transports.client,
+      validateMessageIn: passthrough,
+    })
+    rpc._handle()
+
+    const writeSpy = vi.spyOn(transports.client, 'write')
+    const disposeSpy = vi.spyOn(transports.client, 'dispose')
+
+    const responses: Array<{ id?: unknown; result?: unknown }> = []
+    void (async () => {
+      for await (const message of transports.server) {
+        responses.push(message as { id?: unknown; result?: unknown })
+      }
+    })()
+
+    await transports.server.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'subscriptions/listen',
+    } as AnyMessage)
+    await transports.server.write({ jsonrpc: '2.0', id: 2, method: 'quick' } as AnyMessage)
+    // The second request answering under a concurrency cap of 1 proves the first is already
+    // held/detached — nothing left racing `dispose()` for it to still be scheduled.
+    await vi.waitFor(() => expect(responses.find((r) => r.id === 2)).toBeDefined())
+
+    await rpc.dispose()
+
+    // The held terminal's response reached the peer.
+    expect(responses).toContainEqual({ jsonrpc: '2.0', id: 1, result: { ok: true } })
+
+    // And it was written to the transport strictly before the transport itself was disposed.
+    const writeCallIndex = writeSpy.mock.calls.findIndex(
+      ([message]) => (message as { id?: unknown }).id === 1,
+    )
+    expect(writeCallIndex).toBeGreaterThanOrEqual(0)
+    expect(disposeSpy).toHaveBeenCalledTimes(1)
+    expect(writeSpy.mock.invocationCallOrder[writeCallIndex]).toBeLessThan(
+      disposeSpy.mock.invocationCallOrder[0],
+    )
+
+    await transports.dispose()
+  })
+
+  test('a peer EOF does not invoke _beforeTransportClose', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const calls: Array<string> = []
+    class TestRPC extends ContextRPC<TestTypes> {
+      _beforeTransportClose(): void {
+        calls.push('beforeTransportClose')
+      }
+      override _onTransportClosed(): void {
+        calls.push('closed')
+      }
+    }
+    const rpc = new TestRPC({ transport: transports.client, validateMessageIn: passthrough })
+    rpc._handle()
+
+    // A write initializes the server-side stream so `dispose()` below actually closes its
+    // writer — otherwise the client's read stays pending forever instead of seeing EOF.
+    await transports.server.write({ jsonrpc: '2.0', method: 'notifications/ping' } as AnyMessage)
+    // A peer hanging up drives the abrupt `#close()` path, not `dispose()`.
+    await transports.server.dispose()
+
+    await vi.waitFor(() => expect(calls).toContain('closed'))
+    expect(calls).toEqual(['closed'])
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+})
+
 describe('ContextRPC stream-notification correlator', () => {
   test('routeStreamNotification routes a matching notification to its stream exchange', async () => {
     const transports = new DirectTransports<AnyMessage, AnyMessage>()
