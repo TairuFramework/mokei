@@ -339,9 +339,18 @@ export class SubscriptionDriver {
     const timeout = options?.timeout ?? this.#ackTimeoutMs
     if (timeout != null && timeout > 0) {
       const timer = setTimeout(() => {
+        // Retryable so a reconnect candidate that times out backs off and retries rather than
+        // giving up: `#runReconnect` only re-schedules on a `SubscriptionStreamError` whose
+        // `retryable` is set (`isRetryable`). It still rejects a user mutation's awaited promise —
+        // `#openAndPromote` throws this out of the ack await either way — so a
+        // `subscribeResource`/`unsubscribeResource` caller still surfaces the timeout; the
+        // `retryable` flag only governs the automatic reconnect path, which no caller awaits.
         this.#failGeneration(
           generation,
-          new Error(`Subscription acknowledgement timed out after ${timeout}ms`),
+          new SubscriptionStreamError(
+            `Subscription acknowledgement timed out after ${timeout}ms`,
+            true,
+          ),
         )
       }, timeout)
       ack.promise.then(

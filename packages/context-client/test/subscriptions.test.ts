@@ -323,6 +323,49 @@ describe('SubscriptionDriver', () => {
     await p2
   })
 
+  test('a reconnect candidate whose ack times out backs off and retries', async () => {
+    const { opens, openListen } = makeHarness()
+    const retries: Array<number> = []
+    let release: () => void = () => {}
+    const delay = () =>
+      new Promise<void>((resolve) => {
+        release = resolve
+      })
+    const driver = new SubscriptionDriver({
+      openListen,
+      delay,
+      ackTimeoutMs: 30,
+      onRetry: ({ attempt }) => retries.push(attempt),
+    })
+
+    // Establish an active, acknowledged stream (acked well within the 30ms bound).
+    const p1 = driver.subscribeResource({ uri: 'file:///a' })
+    await flush()
+    opens[0].ack()
+    await p1
+
+    // The active stream drops → a reconnect is scheduled (attempt 1) and parks on the backoff.
+    opens[0].close()
+    await flush()
+    expect(retries).toEqual([1])
+
+    // Fire the backoff: the reconnect candidate opens...
+    release()
+    await flush()
+    expect(opens.length).toBe(2)
+
+    // ...but its ack never arrives, so the ack-timeout fires. A silent server here MUST NOT kill
+    // the stream: the timeout is retryable, so a second reconnect (attempt 2) is scheduled.
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    await flush()
+    expect(retries).toEqual([1, 2])
+
+    // Firing the next backoff opens yet another candidate — the stream is still trying, not dead.
+    release()
+    await flush()
+    expect(opens.length).toBe(3)
+  })
+
   test('dispose() unblocks a mutation queued behind a hung candidate', async () => {
     const { opens, openListen } = makeHarness()
     const driver = new SubscriptionDriver({ openListen, delay: immediateDelay })
