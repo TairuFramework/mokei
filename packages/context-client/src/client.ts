@@ -185,6 +185,20 @@ const LIST_CHANGED_NOTIFICATIONS: ReadonlySet<string> = new Set([
 ])
 
 /**
+ * Maps each `*_list_changed` subscription-stream method onto the dataless `ClientEvents` member
+ * it surfaces, so a consumer can observe a list changing without inspecting raw frames. Keyed by
+ * the wire method; every member of {@link LIST_CHANGED_NOTIFICATIONS} appears here.
+ */
+const LIST_CHANGED_EVENTS: Record<
+  string,
+  'toolsListChanged' | 'promptsListChanged' | 'resourcesListChanged'
+> = {
+  'notifications/tools/list_changed': 'toolsListChanged',
+  'notifications/prompts/list_changed': 'promptsListChanged',
+  'notifications/resources/list_changed': 'resourcesListChanged',
+}
+
+/**
  * Bounds how long an auto-opened or reconnecting `subscriptions/listen` candidate waits for its
  * `acknowledged` frame before failing, when a `subscribeResource`/`unsubscribeResource` caller
  * passes no `timeout` of its own. Without a bound a server that opens the stream but never acks
@@ -388,8 +402,29 @@ export type ClientEvents = {
   closed: { error?: Error }
   initialized: InitializeResult
   log: Log
+  /**
+   * Emitted when the server signals its prompts list changed over the `subscriptions/listen`
+   * stream (SEP-1391), alongside the existing internal `_resetDiscovery()` routing. Dataless.
+   */
+  promptsListChanged: undefined
+  /**
+   * Emitted when the server signals a subscribed resource's content changed over the
+   * `subscriptions/listen` stream (SEP-1391), carrying the changed resource's URI. Emitted in
+   * addition to the per-URI `onResourceUpdated` listeners and the `notifications` buffer push.
+   */
+  resourceUpdated: { uri: string }
+  /**
+   * Emitted when the server signals its resources list changed over the `subscriptions/listen`
+   * stream (SEP-1391), alongside the existing internal `_resetDiscovery()` routing. Dataless.
+   */
+  resourcesListChanged: undefined
   /** Emitted before each `subscriptions/listen` reconnect attempt (SEP-1391). */
   subscriptionRetry: SubscriptionRetry
+  /**
+   * Emitted when the server signals its tools list changed over the `subscriptions/listen`
+   * stream (SEP-1391), alongside the existing internal `_resetDiscovery()` routing. Dataless.
+   */
+  toolsListChanged: undefined
 }
 
 /** Parameters of {@link ContextClient.subscribeResource}/`unsubscribeResource`. */
@@ -1527,6 +1562,14 @@ export class ContextClient<
     }
     if (method != null && LIST_CHANGED_NOTIFICATIONS.has(method)) {
       this.#resetDiscovery()
+      // Surface the internal `_resetDiscovery()` routing as an observable client event so a
+      // consumer (e.g. `@mokei/host`) can react to a list changing. Additive: `#resetDiscovery()`
+      // above still runs. Fire-and-forget like `subscriptionRetry`, so a listener failure never
+      // breaks subscription frame handling.
+      const listChangedEvent = LIST_CHANGED_EVENTS[method]
+      if (listChangedEvent != null) {
+        void this.events.emit(listChangedEvent).catch(() => {})
+      }
     }
     if (method === 'notifications/resources/updated') {
       const uri = (notification as { params?: { uri?: string } }).params?.uri
@@ -1541,6 +1584,9 @@ export class ContextClient<
             }
           }
         }
+        // Emitted in addition to the per-URI listeners above and the `#notifications` buffer push
+        // below, so a consumer wiring on the client rather than per-URI still sees every update.
+        void this.events.emit('resourceUpdated', { uri }).catch(() => {})
       }
     }
     this.#pushNotification(notification)

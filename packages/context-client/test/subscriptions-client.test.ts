@@ -207,6 +207,73 @@ describe('ContextClient subscriptions wiring', () => {
     await client.dispose()
   })
 
+  test('list_changed frames on the listen stream emit dataless client events (SEP-1391)', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      protocolVersion: '2026-07-28',
+      transport: transports.client,
+    })
+    const sub = startServer(transports.server)
+
+    const events: Array<string> = []
+    client.events.on('toolsListChanged', () => {
+      events.push('tools')
+    })
+    client.events.on('promptsListChanged', () => {
+      events.push('prompts')
+    })
+    client.events.on('resourcesListChanged', () => {
+      events.push('resources')
+    })
+
+    await client.listTools()
+    await sub.firstAcked
+
+    for (const which of ['tools', 'prompts', 'resources'] as const) {
+      sub.emit({
+        jsonrpc: '2.0',
+        method: `notifications/${which}/list_changed`,
+        params: { _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenId } },
+      })
+    }
+    await flush()
+
+    // Each list_changed frame surfaced an observable client event, in addition to the existing
+    // internal `_resetDiscovery()` routing.
+    expect(events).toEqual(['tools', 'prompts', 'resources'])
+
+    await client.dispose()
+  })
+
+  test('a resources/updated frame emits a resourceUpdated client event carrying the uri', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      protocolVersion: '2026-07-28',
+      transport: transports.client,
+    })
+    const sub = startServer(transports.server)
+
+    const updated: Array<{ uri: string }> = []
+    client.events.on('resourceUpdated', (data) => {
+      updated.push(data)
+    })
+
+    await client.listTools()
+    await sub.firstAcked
+    await client.subscribeResource({ uri: 'file:///z' })
+
+    sub.emit({
+      jsonrpc: '2.0',
+      method: 'notifications/resources/updated',
+      params: { uri: 'file:///z', _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenId } },
+    })
+    await flush()
+
+    expect(updated).toEqual([{ uri: 'file:///z' }])
+
+    await client.dispose()
+  })
+
   test('a resources/updated for a subscribed URI reaches a subscribeResource consumer', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
