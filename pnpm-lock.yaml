@@ -208,10 +208,10 @@ importers:
     dependencies:
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@mokei/anthropic-provider':
         specifier: workspace:^
         version: link:../packages/anthropic-provider
@@ -303,10 +303,10 @@ importers:
     devDependencies:
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../../packages/context-client
@@ -331,7 +331,7 @@ importers:
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../../packages/context-client
@@ -349,7 +349,7 @@ importers:
         version: 0.21.0(@logtape/logtape@2.3.0)
       '@enkaku/http-fetch':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@mantine/core':
         specifier: 'catalog:'
         version: 9.5.2(@mantine/hooks@9.5.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -456,7 +456,7 @@ importers:
     dependencies:
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@inkjs/ui':
         specifier: 'catalog:'
         version: 2.0.0(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))
@@ -550,7 +550,7 @@ importers:
     dependencies:
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -572,7 +572,7 @@ importers:
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
 
   packages/context-protocol:
     devDependencies:
@@ -590,11 +590,11 @@ importers:
         version: 0.2.1
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.3
+        version: 0.1.3(@logtape/logtape@2.3.0)
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.1
@@ -610,6 +610,9 @@ importers:
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.2.1
+      '@sozai/event':
+        specifier: 'catalog:'
+        version: 0.1.3(@logtape/logtape@2.3.0)
       '@sozai/otel':
         specifier: 'catalog:'
         version: 0.3.2
@@ -619,7 +622,7 @@ importers:
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -631,7 +634,7 @@ importers:
     dependencies:
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -647,7 +650,7 @@ importers:
     dependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -668,7 +671,7 @@ importers:
         version: 0.2.1
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.3
+        version: 0.1.3(@logtape/logtape@2.3.0)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -681,7 +684,7 @@ importers:
         version: 0.21.0
       '@enkaku/socket':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
@@ -706,13 +709,13 @@ importers:
         version: 0.21.0(@logtape/logtape@2.3.0)
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@enkaku/server':
         specifier: 'catalog:'
         version: 0.21.2(@logtape/logtape@2.3.0)
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -758,7 +761,7 @@ importers:
     dependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -779,7 +782,7 @@ importers:
     dependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.1.1(hono@4.13.5)
@@ -907,14 +910,14 @@ importers:
         version: 0.2.1
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.3
+        version: 0.1.3(@logtape/logtape@2.3.0)
       '@sozai/generator':
         specifier: 'catalog:'
         version: 0.2.0
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.0(@logtape/logtape@2.3.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.3.0
@@ -12362,7 +12365,7 @@ snapshots:
       '@enkaku/otel': 0.21.0
       '@kokuin/token': 0.4.0
       '@sozai/async': 0.2.1
-      '@sozai/event': 0.1.3
+      '@sozai/event': 0.1.3(@logtape/logtape@2.3.0)
       '@sozai/execution': 0.2.1
       '@sozai/log': 0.3.1(@logtape/logtape@2.3.0)
       '@sozai/otel': 0.3.2
@@ -12371,30 +12374,36 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/http-fetch@0.21.0':
+  '@enkaku/http-fetch@0.21.0(@logtape/logtape@2.3.0)':
     dependencies:
       '@enkaku/otel': 0.21.0
       '@enkaku/protocol': 0.21.0
-      '@enkaku/transport': 0.21.0
+      '@enkaku/transport': 0.21.0(@logtape/logtape@2.3.0)
       '@sozai/otel': 0.3.2
       '@sozai/runtime': 0.1.0
       '@sozai/stream': 0.2.0
       eventsource-parser: 3.1.0
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
   '@enkaku/http-serve@0.21.0':
     dependencies:
       '@enkaku/otel': 0.21.0
       '@enkaku/protocol': 0.21.0
-      '@enkaku/transport': 0.21.0
+      '@enkaku/transport': 0.21.0(@logtape/logtape@2.3.0)
       '@sozai/async': 0.2.1
       '@sozai/otel': 0.3.2
       '@sozai/runtime': 0.1.0
       '@sozai/stream': 0.2.0
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
-  '@enkaku/node-streams@0.21.0':
+  '@enkaku/node-streams@0.21.0(@logtape/logtape@2.3.0)':
     dependencies:
-      '@enkaku/transport': 0.21.0
+      '@enkaku/transport': 0.21.0(@logtape/logtape@2.3.0)
       '@sozai/stream': 0.2.0
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
   '@enkaku/otel@0.21.0':
     dependencies:
@@ -12412,7 +12421,7 @@ snapshots:
       '@kokuin/capability': 0.3.0
       '@kokuin/token': 0.5.0
       '@sozai/async': 0.2.1
-      '@sozai/event': 0.1.3
+      '@sozai/event': 0.1.3(@logtape/logtape@2.3.0)
       '@sozai/log': 0.3.1(@logtape/logtape@2.3.0)
       '@sozai/otel': 0.3.2
       '@sozai/runtime': 0.1.0
@@ -12421,18 +12430,22 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/socket@0.21.0':
+  '@enkaku/socket@0.21.0(@logtape/logtape@2.3.0)':
     dependencies:
       '@enkaku/otel': 0.21.0
-      '@enkaku/transport': 0.21.0
+      '@enkaku/transport': 0.21.0(@logtape/logtape@2.3.0)
       '@sozai/otel': 0.3.2
       '@sozai/stream': 0.2.0
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
-  '@enkaku/transport@0.21.0':
+  '@enkaku/transport@0.21.0(@logtape/logtape@2.3.0)':
     dependencies:
       '@sozai/async': 0.2.1
-      '@sozai/event': 0.1.3
+      '@sozai/event': 0.1.3(@logtape/logtape@2.3.0)
       '@sozai/stream': 0.2.0
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
   '@esbuild/aix-ppc64@0.28.1':
     optional: true
@@ -13688,10 +13701,12 @@ snapshots:
     dependencies:
       '@sozai/json': 0.1.1
 
-  '@sozai/event@0.1.3':
+  '@sozai/event@0.1.3(@logtape/logtape@2.3.0)':
     dependencies:
       '@sozai/async': 0.2.1
-      '@sozai/log': 0.3.0
+      '@sozai/log': 0.3.1(@logtape/logtape@2.3.0)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
   '@sozai/execution@0.2.1':
     dependencies:
@@ -14198,7 +14213,7 @@ snapshots:
       '@enkaku/client': 0.21.0(@logtape/logtape@2.3.0)
       '@enkaku/protocol': 0.21.0
       '@enkaku/server': 0.21.2(@logtape/logtape@2.3.0)
-      '@enkaku/socket': 0.21.0
+      '@enkaku/socket': 0.21.0(@logtape/logtape@2.3.0)
       '@sozai/lock': 0.1.0
       '@tejika/env': 0.5.0
       nano-spawn: 2.1.0
@@ -14212,6 +14227,8 @@ snapshots:
       '@hono/node-server': 2.1.0(hono@4.13.1)
       '@tejika/env': 0.5.0
       hono: 4.13.1
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
   '@tejika/ui@0.4.1(@types/react@19.2.18)':
     dependencies:
@@ -17032,7 +17049,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 26.2.0
+      '@types/node': 26.3.0
       merge-stream: 2.0.0
       supports-color: 8.1.1
 

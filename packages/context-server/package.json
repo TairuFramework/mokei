@@ -43,6 +43,7 @@
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^",
     "@sozai/async": "catalog:",
+    "@sozai/event": "catalog:",
     "@sozai/otel": "catalog:",
     "@sozai/schema": "catalog:"
   },

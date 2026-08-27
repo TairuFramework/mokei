@@ -1,9 +1,13 @@
 import type { ServerNotification } from '@mokei/context-protocol'
 import { defer } from '@sozai/async'
+import { EventEmitter } from '@sozai/event'
 import { describe, expect, test, vi } from 'vitest'
 
+import type { ServerEvents } from '../src/index.js'
 import {
+  createSubscriptionHub,
   SubscriptionBackpressureError,
+  type SubscriptionEntry,
   type SubscriptionSink,
   SubscriptionWriter,
 } from '../src/subscriptions.js'
@@ -252,5 +256,172 @@ describe('SubscriptionWriter', () => {
     // settles, even though the writer has already been aborted.
     gate.resolve()
     await expect(first).resolves.toBeUndefined()
+  })
+})
+
+function toolsListChangedNotification(): ServerNotification {
+  return { jsonrpc: '2.0', method: 'notifications/tools/list_changed' }
+}
+
+function createEntry(
+  overrides: Partial<SubscriptionEntry> &
+    Pick<SubscriptionEntry, 'connectionID' | 'subscriptionID'>,
+): {
+  entry: SubscriptionEntry
+  deliver: ReturnType<typeof vi.fn>
+  complete: ReturnType<typeof vi.fn>
+} {
+  const deliver = vi.fn(async () => {})
+  const complete = vi.fn(async () => {})
+  const entry: SubscriptionEntry = {
+    filter: {},
+    deliver,
+    complete,
+    ...overrides,
+  }
+  return { entry, deliver, complete }
+}
+
+describe('SubscriptionHub', () => {
+  test('resourceUpdated delivers only to entries subscribed to that uri', async () => {
+    const events = new EventEmitter<ServerEvents>()
+    const hub = createSubscriptionHub({ events })
+
+    const subscribed = createEntry({
+      connectionID: 'A',
+      subscriptionID: 0,
+      filter: { resourceSubscriptions: ['file:///a'] },
+    })
+    const other = createEntry({
+      connectionID: 'B',
+      subscriptionID: 0,
+      filter: { resourceSubscriptions: ['file:///other'] },
+    })
+    hub.register(subscribed.entry)
+    hub.register(other.entry)
+
+    await events.emit('resourceUpdated', { uri: 'file:///a' })
+
+    expect(subscribed.deliver).toHaveBeenCalledTimes(1)
+    expect(subscribed.deliver).toHaveBeenCalledWith({
+      jsonrpc: '2.0',
+      method: 'notifications/resources/updated',
+      params: { uri: 'file:///a' },
+    })
+    expect(other.deliver).not.toHaveBeenCalled()
+
+    await hub.dispose()
+  })
+
+  test('toolsListChanged delivers only to entries with filter.toolsListChanged === true', async () => {
+    const events = new EventEmitter<ServerEvents>()
+    const hub = createSubscriptionHub({ events })
+
+    const subscribed = createEntry({
+      connectionID: 'A',
+      subscriptionID: 0,
+      filter: { toolsListChanged: true },
+    })
+    const notSubscribed = createEntry({
+      connectionID: 'B',
+      subscriptionID: 0,
+      filter: { toolsListChanged: false },
+    })
+    hub.register(subscribed.entry)
+    hub.register(notSubscribed.entry)
+
+    await events.emit('toolsListChanged')
+
+    expect(subscribed.deliver).toHaveBeenCalledTimes(1)
+    expect(subscribed.deliver).toHaveBeenCalledWith(toolsListChangedNotification())
+    expect(notSubscribed.deliver).not.toHaveBeenCalled()
+
+    await hub.dispose()
+  })
+
+  test('entries with the same subscriptionID but different connectionID are distinct and both receive matching events', async () => {
+    const events = new EventEmitter<ServerEvents>()
+    const hub = createSubscriptionHub({ events })
+
+    const a = createEntry({
+      connectionID: 'A',
+      subscriptionID: 0,
+      filter: { toolsListChanged: true },
+    })
+    const b = createEntry({
+      connectionID: 'B',
+      subscriptionID: 0,
+      filter: { toolsListChanged: true },
+    })
+    hub.register(a.entry)
+    hub.register(b.entry)
+
+    await events.emit('toolsListChanged')
+
+    expect(a.deliver).toHaveBeenCalledTimes(1)
+    expect(b.deliver).toHaveBeenCalledTimes(1)
+
+    await hub.dispose()
+  })
+
+  test('endAllGracefully calls and awaits every entry complete()', async () => {
+    const events = new EventEmitter<ServerEvents>()
+    const hub = createSubscriptionHub({ events })
+
+    const gate = defer<void>()
+    let completedFirst = false
+    const slow = createEntry({ connectionID: 'A', subscriptionID: 0 })
+    slow.complete.mockImplementation(async () => {
+      await gate.promise
+      completedFirst = true
+    })
+    const fast = createEntry({ connectionID: 'B', subscriptionID: 1 })
+    hub.register(slow.entry)
+    hub.register(fast.entry)
+
+    const done = hub.endAllGracefully().then(() => {
+      expect(completedFirst).toBe(true)
+    })
+
+    expect(slow.complete).toHaveBeenCalledTimes(1)
+    expect(fast.complete).toHaveBeenCalledTimes(1)
+
+    gate.resolve()
+    await done
+
+    // Entries were removed -- a subsequent event no longer reaches them.
+    await events.emit('toolsListChanged')
+    expect(slow.deliver).not.toHaveBeenCalled()
+    expect(fast.deliver).not.toHaveBeenCalled()
+
+    await hub.dispose()
+  })
+
+  test('handle.close and handle.complete are mutually exclusive, first-settlement-wins', async () => {
+    const events = new EventEmitter<ServerEvents>()
+    const hub = createSubscriptionHub({ events })
+
+    // close() first -- complete() becomes a no-op and never calls entry.complete().
+    const closedFirst = createEntry({ connectionID: 'A', subscriptionID: 0 })
+    const handle1 = hub.register(closedFirst.entry)
+    const reason = new Error('cancelled')
+    handle1.close(reason)
+    await handle1.complete()
+    expect(closedFirst.complete).not.toHaveBeenCalled()
+
+    // complete() first -- close() becomes a no-op.
+    const completedFirst = createEntry({ connectionID: 'B', subscriptionID: 0 })
+    const handle2 = hub.register(completedFirst.entry)
+    const completion = handle2.complete()
+    handle2.close(new Error('too late'))
+    await completion
+    expect(completedFirst.complete).toHaveBeenCalledTimes(1)
+
+    // Both entries were removed on first settlement -- no double delivery, no leaks.
+    await events.emit('toolsListChanged')
+    expect(closedFirst.deliver).not.toHaveBeenCalled()
+    expect(completedFirst.deliver).not.toHaveBeenCalled()
+
+    await hub.dispose()
   })
 })

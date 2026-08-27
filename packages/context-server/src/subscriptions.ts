@@ -1,5 +1,8 @@
-import type { ServerNotification } from '@mokei/context-protocol'
+import type { RequestID, ServerNotification, SubscriptionFilter } from '@mokei/context-protocol'
 import { defer } from '@sozai/async'
+import type { EventsSource, UnsubscribeFunction } from '@sozai/event'
+
+import type { ServerEvents } from './server.js'
 
 /**
  * Pending frames a `SubscriptionWriter` accepts before it treats the subscriber as too slow to
@@ -197,4 +200,183 @@ export class SubscriptionWriter {
       },
     )
   }
+}
+
+/**
+ * What a served `subscriptions/listen` stream registers with the hub. Built by the serving
+ * server: `deliver`/`complete` route through *its own* notify/held-request machinery, not the
+ * hub's -- the hub only decides *whether* and *what* to send, never *how*.
+ */
+export type SubscriptionEntry = {
+  connectionID: string
+  subscriptionID: RequestID
+  filter: SubscriptionFilter
+  /** Routes the notification through the serving server's own notify path. */
+  deliver: (notification: ServerNotification) => Promise<void>
+  /** Graceful teardown for *this* subscription: resolve the held terminal, await its write. */
+  complete: () => Promise<void>
+}
+
+/**
+ * Returned by `hub.register()`. `complete()` (graceful) and `close()` (abrupt) are the two
+ * mutually-exclusive terminal paths for one subscription -- whichever is called first wins, the
+ * other becomes a no-op. Both are idempotent and both remove the entry from the hub.
+ */
+export type SubscriptionHandle = {
+  /**
+   * Resolves once this subscription is safe to target for delivery. Callers are expected to
+   * write (and await) the `notifications/subscriptions/acknowledged` frame *before* calling
+   * `register()` -- so by the time a handle exists, the ack has already succeeded and this is
+   * already resolved. It's exposed on the handle purely so callers have one place to await
+   * subscription-readiness, without having to remember that invariant themselves.
+   */
+  acknowledged: Promise<void>
+  /** Graceful teardown: calls `entry.complete()`, resolves once it does. Idempotent. */
+  complete(): Promise<void>
+  /** Abrupt cancellation: no terminal write. Idempotent. */
+  close(reason?: Error): void
+}
+
+export type SubscriptionHub = {
+  /** Registers `entry` and starts routing matching producer events to it. */
+  register(entry: SubscriptionEntry): SubscriptionHandle
+  /** Awaits `handle.complete()` for every currently-registered entry. */
+  endAllGracefully(): Promise<void>
+  /** Unsubscribes from the producer events and drops every registered entry. */
+  dispose(): Promise<void>
+}
+
+export type CreateSubscriptionHubParams = {
+  events: EventsSource<ServerEvents>
+}
+
+type SubscriptionRecord = {
+  entry: SubscriptionEntry
+  handle: SubscriptionHandle
+}
+
+/**
+ * Shared cross-connection registry + producer fan-out. Nothing more: it decides *whether* a
+ * given entry should see a given event and builds the base wire notification, then hands off to
+ * `entry.deliver()` -- decoration (`subscriptionId`, `_meta`) and actual transport writes are the
+ * serving server's job, not the hub's.
+ *
+ * Keyed `connectionID` then `subscriptionID`: two different connections can reuse the same
+ * JSON-RPC id (e.g. both `0`) without colliding.
+ */
+export function createSubscriptionHub(params: CreateSubscriptionHubParams): SubscriptionHub {
+  const connections: Map<string, Map<RequestID, SubscriptionRecord>> = new Map()
+
+  function removeEntry(entry: SubscriptionEntry): void {
+    const bySubscription = connections.get(entry.connectionID)
+    if (bySubscription == null) {
+      return
+    }
+    bySubscription.delete(entry.subscriptionID)
+    if (bySubscription.size === 0) {
+      connections.delete(entry.connectionID)
+    }
+  }
+
+  function allRecords(): Array<SubscriptionRecord> {
+    const records: Array<SubscriptionRecord> = []
+    for (const bySubscription of connections.values()) {
+      for (const record of bySubscription.values()) {
+        records.push(record)
+      }
+    }
+    return records
+  }
+
+  async function fanOut(
+    notification: ServerNotification,
+    matches: (filter: SubscriptionFilter) => boolean,
+  ): Promise<void> {
+    const targets = allRecords().filter((record) => matches(record.entry.filter))
+    // allSettled: one subscriber's delivery failure must not stop delivery to the others, and
+    // must not surface as an unhandled rejection on the producer's emit() -- a broken delivery
+    // path is the writer's own failure to report (onFailure), not the fan-out's.
+    await Promise.allSettled(targets.map((record) => record.entry.deliver(notification)))
+  }
+
+  const unsubscribes: Array<UnsubscribeFunction> = [
+    params.events.on('resourceUpdated', async ({ uri }) => {
+      await fanOut(
+        { jsonrpc: '2.0', method: 'notifications/resources/updated', params: { uri } },
+        (filter) => filter.resourceSubscriptions?.includes(uri) ?? false,
+      )
+    }),
+    params.events.on('toolsListChanged', async () => {
+      await fanOut(
+        { jsonrpc: '2.0', method: 'notifications/tools/list_changed' },
+        (filter) => filter.toolsListChanged === true,
+      )
+    }),
+    params.events.on('promptsListChanged', async () => {
+      await fanOut(
+        { jsonrpc: '2.0', method: 'notifications/prompts/list_changed' },
+        (filter) => filter.promptsListChanged === true,
+      )
+    }),
+    params.events.on('resourcesListChanged', async () => {
+      await fanOut(
+        { jsonrpc: '2.0', method: 'notifications/resources/list_changed' },
+        (filter) => filter.resourcesListChanged === true,
+      )
+    }),
+  ]
+
+  function register(entry: SubscriptionEntry): SubscriptionHandle {
+    // Shared first-settlement-wins guard between complete() and close(): whichever is *invoked*
+    // first sets this synchronously, so a same-tick race is resolved by call order, not by which
+    // one's own work happens to finish first.
+    let settled = false
+    let settlement: Promise<void> = Promise.resolve()
+
+    const handle: SubscriptionHandle = {
+      acknowledged: Promise.resolve(),
+      complete(): Promise<void> {
+        if (settled) {
+          return settlement
+        }
+        settled = true
+        removeEntry(entry)
+        settlement = entry.complete()
+        return settlement
+      },
+      // `reason` (unused here) is for the caller's own cancellation plumbing -- e.g. aborting
+      // the held request -- the hub has nothing to do with it beyond accepting the call.
+      close(_reason?: Error): void {
+        if (settled) {
+          return
+        }
+        settled = true
+        removeEntry(entry)
+        // Abrupt path: no terminal write -- entry.complete() is never called.
+      },
+    }
+
+    let bySubscription = connections.get(entry.connectionID)
+    if (bySubscription == null) {
+      bySubscription = new Map()
+      connections.set(entry.connectionID, bySubscription)
+    }
+    bySubscription.set(entry.subscriptionID, { entry, handle })
+
+    return handle
+  }
+
+  async function endAllGracefully(): Promise<void> {
+    const records = allRecords()
+    await Promise.all(records.map((record) => record.handle.complete()))
+  }
+
+  async function dispose(): Promise<void> {
+    for (const unsubscribe of unsubscribes) {
+      unsubscribe()
+    }
+    connections.clear()
+  }
+
+  return { register, endAllGracefully, dispose }
 }
