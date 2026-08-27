@@ -790,6 +790,114 @@ describe('HTTPTransport', () => {
     })
   })
 
+  describe('streamEvents.closed signal', () => {
+    test('emits closed when a POST SSE body ends without a terminal response', async () => {
+      const notif: ServerMessage = {
+        jsonrpc: '2.0',
+        method: 'notifications/progress',
+        params: { progressToken: 'tok', progress: 1 },
+      } as ServerMessage
+      fetchMock.mockResolvedValueOnce(sseResponse([{ data: JSON.stringify(notif) }]))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const closed = vi.fn()
+      transport.streamEvents.on('closed', closed)
+
+      await transport.write(request20260728(7))
+      // The notification itself, correlated to nothing since it carries no matching id.
+      await transport.read()
+
+      await vi.waitFor(() => {
+        expect(closed).toHaveBeenCalledWith({ requestID: 7 })
+      })
+
+      await transport.dispose()
+    })
+
+    test('does not emit closed when the SSE body ends right after a terminal response', async () => {
+      const result: ServerMessage = { jsonrpc: '2.0', id: 7, result: {} } as ServerMessage
+      fetchMock.mockResolvedValueOnce(sseResponse([{ data: JSON.stringify(result) }]))
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      const closed = vi.fn()
+      transport.streamEvents.on('closed', closed)
+
+      await transport.write(request20260728(7))
+      // The terminal response itself.
+      await transport.read()
+
+      // Give the backgrounded SSE consumption a chance to finish (and, incorrectly, emit).
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(closed).not.toHaveBeenCalled()
+
+      await transport.dispose()
+    })
+
+    test('does not emit closed for a cancelled exchange whose body then ends', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      let sseController!: ReadableStreamDefaultController<Uint8Array>
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          sseController = controller
+        },
+      })
+      fetchMock.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+      // The cancellation notification's own POST.
+      fetchMock.mockResolvedValueOnce(acceptedResponse())
+
+      const closed = vi.fn()
+      transport.streamEvents.on('closed', closed)
+
+      await transport.write(request20260728(7))
+      await transport.write({
+        jsonrpc: '2.0',
+        method: 'notifications/cancelled',
+        params: { requestId: 7, _meta: { ...requestMeta20260728 } },
+      } as ClientMessage)
+
+      // A real server closes the connection once it reads the disconnect this cancel caused.
+      sseController.close()
+
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(closed).not.toHaveBeenCalled()
+
+      await transport.dispose()
+    })
+
+    test('does not emit closed for an in-flight exchange when the transport disposes', async () => {
+      const transport = new HTTPTransport({ url: TEST_URL })
+      let sseController!: ReadableStreamDefaultController<Uint8Array>
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          sseController = controller
+        },
+      })
+      fetchMock.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        }),
+      )
+
+      const closed = vi.fn()
+      transport.streamEvents.on('closed', closed)
+
+      await transport.write(request20260728(7))
+      await transport.dispose()
+
+      // Simulate the peer observing dispose's abort and closing its side of the connection.
+      sseController.close()
+
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(closed).not.toHaveBeenCalled()
+    })
+  })
+
   describe('SSE response does not serialize outgoing traffic', () => {
     test('a still-streaming SSE response does not block subsequent sends', async () => {
       // First POST returns a long-lived SSE stream that never completes on its own.
