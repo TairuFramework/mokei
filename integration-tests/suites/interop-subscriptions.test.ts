@@ -1,6 +1,13 @@
 /**
- * mokei's `subscriptions/listen` CLIENT (SEP-1391 / SEP-2575, `2026-07-28`) against the official
- * SDK v2 SERVER, over stdio and Streamable HTTP.
+ * `subscriptions/listen` (SEP-1391 / SEP-2575, `2026-07-28`) interop between mokei and the official
+ * SDK v2, in BOTH directions, over stdio and Streamable HTTP:
+ *
+ * 1. mokei's `subscriptions/listen` CLIENT against the SDK v2 SERVER.
+ * 2. The SDK v2 CLIENT against mokei's `subscriptions/listen` SERVER (Task 19) — including the
+ *    two-clients-same-id case that exercises a stateless-HTTP durable hub's `(connectionID,
+ *    subscriptionID)` keying: two concurrent SDK v2 clients both mint the same JSON-RPC request id
+ *    for their listen (`listen:0`, each client's own first-call id), served by two per-POST
+ *    `ContextServer`s that borrow one durable hub under two different `connectionID`s.
  *
  * The SDK v2 server implements `subscriptions/listen` server-side on both transports — ack-first,
  * capability-narrowed filtering, per-frame subscription-id stamping, and a graceful terminal result
@@ -21,15 +28,31 @@
  * stream), so both rows assert it directly on the wire — the SDK server's own frames, tapped where
  * they cross into mokei's transport — proving the terminal's `result._meta[subscriptionId]` matches
  * the active subscription that delivered the notifications.
+ *
+ * The mokei-server-under-test rows (2) instead drive the SDK v2 CLIENT's own public
+ * `McpSubscription` surface — `honoredFilter`, notification handlers, and `closed` (which resolves
+ * `'graceful'` on a server-written terminal result) — no wire tap needed there: unlike mokei's own
+ * client, the SDK client surfaces a graceful-teardown signal directly.
  */
+import {
+  type Client,
+  type ResourceUpdatedNotificationParams,
+  StreamableHTTPClientTransport,
+  SUBSCRIPTION_ID_META_KEY,
+} from '@modelcontextprotocol/client'
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import type { ContextClient } from '@mokei/context-client'
 import { META_SUBSCRIPTION_ID } from '@mokei/context-protocol'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import {
   connectMokeiHTTPClient,
+  createSDKClient,
+  MOKEI_STDIO_SERVER_SUBSCRIPTIONS_PATH,
+  type MokeiSubscriptionsHTTPServer,
   SDK_STDIO_SERVER_SUBSCRIPTIONS_PATH,
   spawnMokeiStdioSubscriptionClient,
+  startMokeiSubscriptionsHTTPServer,
   startSDKSubscriptionsHTTPServer,
 } from '../support/interop/servers.ts'
 import { EMIT_TOOL_NAME, WATCHED_URI } from '../support/interop/subscriptions-fixture.ts'
@@ -257,5 +280,200 @@ describe.each(ROWS)('mokei subscriptions client against the SDK v2 server $name'
     const terminal = terminals[0]
     expect(terminal.result?._meta?.[META_SUBSCRIPTION_ID]).toBe(deliveredSubscriptionId)
     expect(terminal.id).toBe(deliveredSubscriptionId)
+  })
+})
+
+/**
+ * The other direction (Task 19): the official SDK v2 CLIENT against mokei's `subscriptions/listen`
+ * SERVER, over stdio (`subscriptions: true`, mokei owns the hub) and stateless Streamable HTTP
+ * (`createMokeiSubscriptionConfig` served with a durable hub each per-POST server borrows).
+ */
+type MokeiServerHarness = {
+  client: Client
+  /** Triggers exactly one `notifications/resources/updated` for {@link WATCHED_URI} and one
+   * `notifications/resources/list_changed`. */
+  emit: () => Promise<void>
+  /** Triggers the server-side graceful close that writes the terminal listen result. */
+  gracefulTeardown: () => Promise<void>
+  dispose: () => Promise<void>
+}
+
+type MokeiServerRow = {
+  name: string
+  setup: () => Promise<MokeiServerHarness>
+}
+
+const MOKEI_SERVER_ROWS: ReadonlyArray<MokeiServerRow> = [
+  {
+    name: 'over stdio',
+    setup: async () => {
+      const client = createSDKClient('2026-07-28')
+      await client.connect(
+        new StdioClientTransport({
+          command: process.execPath,
+          args: [MOKEI_STDIO_SERVER_SUBSCRIPTIONS_PATH],
+        }),
+      )
+      return {
+        client,
+        emit: async () => {
+          await client.callTool({ name: EMIT_TOOL_NAME, arguments: {} })
+        },
+        // `StdioClientTransport#close()` ends the child's stdin before ever signalling it, which
+        // `mokei-stdio-server-subscriptions.ts` turns into a graceful `ContextServer#dispose()` —
+        // flushing the terminal listen result before the process actually exits.
+        gracefulTeardown: () => client.close(),
+        dispose: () => client.close(),
+      }
+    },
+  },
+  {
+    name: 'over Streamable HTTP',
+    setup: async () => {
+      const httpServer = await startMokeiSubscriptionsHTTPServer()
+      const client = createSDKClient('2026-07-28')
+      await client.connect(new StreamableHTTPClientTransport(new URL(httpServer.url)))
+      return {
+        client,
+        emit: async () => {
+          httpServer.notify.resourceUpdated(WATCHED_URI)
+          httpServer.notify.resourcesListChanged()
+        },
+        gracefulTeardown: () => httpServer.endAllGracefully(),
+        dispose: async () => {
+          await client.close()
+          await httpServer.dispose()
+        },
+      }
+    },
+  },
+]
+
+describe.each(MOKEI_SERVER_ROWS)('SDK v2 client against the mokei server $name', (row) => {
+  let harness: MokeiServerHarness | null = null
+
+  afterEach(async () => {
+    if (harness != null) {
+      await harness.dispose()
+      harness = null
+    }
+  })
+
+  test('opens a listen, receives notifications, and observes the graceful terminal', async () => {
+    harness = await row.setup()
+    const { client } = harness
+
+    // The server advertises resource subscriptions; without it the SDK client would refuse to
+    // open a listen at all (`listen()` itself does not gate on the capability, but a real
+    // consumer would check this the same way the mokei-client rows do on the other side).
+    expect(client.getServerCapabilities()?.resources).toMatchObject({
+      subscribe: true,
+      listChanged: true,
+    })
+
+    const resourceUpdated = new Promise<ResourceUpdatedNotificationParams>((resolve) => {
+      client.setNotificationHandler('notifications/resources/updated', (notification) => {
+        resolve(notification.params)
+      })
+    })
+    const listChanged = new Promise<void>((resolve) => {
+      client.setNotificationHandler('notifications/resources/list_changed', () => {
+        resolve()
+      })
+    })
+
+    const subscription = await client.listen({
+      resourceSubscriptions: [WATCHED_URI],
+      resourcesListChanged: true,
+    })
+    // The whole filter, not a subset: mokei echoes `params.notifications` back verbatim (no
+    // capability-based narrowing), so an exact match is what proves the request was honored.
+    expect(subscription.honoredFilter).toEqual({
+      resourceSubscriptions: [WATCHED_URI],
+      resourcesListChanged: true,
+    })
+
+    await harness.emit()
+
+    expect(await resourceUpdated).toMatchObject({ uri: WATCHED_URI })
+    await listChanged
+
+    // Graceful teardown: mokei writes the terminal listen result (a JSON-RPC RESULT response for
+    // the listen request's own id), which the SDK client's transport-level demux recognizes and
+    // settles `closed` to `'graceful'` — no wire tap needed, unlike the mokei-client rows above.
+    await harness.gracefulTeardown()
+    expect(await subscription.closed).toBe('graceful')
+  })
+})
+
+/**
+ * THE key case: two concurrent SDK v2 clients, both minting the same JSON-RPC request id for their
+ * `subscriptions/listen` (`Client#listen`'s own `` `listen:${this._nextListenId++}` `` counter —
+ * each fresh `Client` instance's FIRST listen call is `listen:0`), against ONE mokei
+ * stateless-HTTP server with a durable hub. Every `subscriptions/listen` POST on `2026-07-28` is
+ * served by its own transport-isolated per-POST `ContextServer` that borrows the durable hub and
+ * mints its own `connectionID` (`runSubscriptionExchange`) — so this is exactly two subscriptions
+ * sharing one `subscriptionID` value under two different `connectionID`s, the case the hub's
+ * `Map<connectionID, Map<subscriptionID, …>>` keying (`createSubscriptionHub`) exists for.
+ */
+describe('two SDK v2 clients sharing a JSON-RPC request id (stateless HTTP, durable hub)', () => {
+  test('each subscriber receives exactly its own delivery — no cross-delivery, no duplication', async () => {
+    let httpServer: MokeiSubscriptionsHTTPServer | null = null
+    let clientA: Client | null = null
+    let clientB: Client | null = null
+
+    try {
+      httpServer = await startMokeiSubscriptionsHTTPServer()
+      clientA = createSDKClient('2026-07-28')
+      clientB = createSDKClient('2026-07-28')
+      await clientA.connect(new StreamableHTTPClientTransport(new URL(httpServer.url)))
+      await clientB.connect(new StreamableHTTPClientTransport(new URL(httpServer.url)))
+
+      const receivedA: Array<ResourceUpdatedNotificationParams> = []
+      const receivedB: Array<ResourceUpdatedNotificationParams> = []
+      const firstA = new Promise<void>((resolve) => {
+        clientA?.setNotificationHandler('notifications/resources/updated', (notification) => {
+          receivedA.push(notification.params)
+          resolve()
+        })
+      })
+      const firstB = new Promise<void>((resolve) => {
+        clientB?.setNotificationHandler('notifications/resources/updated', (notification) => {
+          receivedB.push(notification.params)
+          resolve()
+        })
+      })
+
+      // Overlapping filters: both watch the same URI, so one emission matches both.
+      const filter = { resourceSubscriptions: [WATCHED_URI] }
+      const subscriptionA = await clientA.listen(filter)
+      const subscriptionB = await clientB.listen(filter)
+
+      // Emit ONE `resourceUpdated` matching both filters.
+      httpServer.notify.resourceUpdated(WATCHED_URI)
+
+      await firstA
+      await firstB
+
+      // Exactly one copy each: no duplication (a second copy on its own stream) and no
+      // cross-delivery (the other client's copy) from this single emission.
+      expect(receivedA).toHaveLength(1)
+      expect(receivedB).toHaveLength(1)
+      expect(receivedA[0]).toMatchObject({ uri: WATCHED_URI })
+      expect(receivedB[0]).toMatchObject({ uri: WATCHED_URI })
+
+      // Both notifications carry the SAME subscription id — proof the two subscriptions really do
+      // share one `subscriptionID` (not that the test accidentally picked distinct ones) and still
+      // route correctly to their own stream, distinguished only by the per-POST `connectionID`.
+      expect(receivedA[0]._meta?.[SUBSCRIPTION_ID_META_KEY]).toBe('listen:0')
+      expect(receivedB[0]._meta?.[SUBSCRIPTION_ID_META_KEY]).toBe('listen:0')
+
+      await subscriptionA.close()
+      await subscriptionB.close()
+    } finally {
+      await clientA?.close()
+      await clientB?.close()
+      await httpServer?.dispose()
+    }
   })
 })

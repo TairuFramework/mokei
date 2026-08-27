@@ -4,12 +4,19 @@ import { createServer } from 'node:http'
 import { PassThrough, type Readable, type Writable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { NodeStreamsTransport } from '@enkaku/node-streams'
+import { Transport } from '@enkaku/transport'
 import { Client, type ClientCapabilities } from '@modelcontextprotocol/client'
 import { NodeStreamableHTTPServerTransport, toNodeHandler } from '@modelcontextprotocol/node'
 import { createMcpHandler, type ServerNotifier } from '@modelcontextprotocol/server'
 import { type ClientParams, type ClientTransport, ContextClient } from '@mokei/context-client'
-import type { ProtocolVersion } from '@mokei/context-protocol'
-import { ContextServer, createTool, type ServerConfig } from '@mokei/context-server'
+import type { ClientMessage, ProtocolVersion, ServerMessage } from '@mokei/context-protocol'
+import {
+  ContextServer,
+  createSubscriptionHub,
+  createTool,
+  type ServerConfig,
+  type ServerTransport,
+} from '@mokei/context-server'
 import { createHTTPClient } from '@mokei/http-client'
 import { serveHTTP } from '@mokei/http-server'
 
@@ -20,6 +27,7 @@ import {
   SERVER_NAME,
   SERVER_VERSION,
 } from './fixture.ts'
+import { createMokeiSubscriptionConfig } from './mokei-subscriptions-fixture.ts'
 import { createMokeiMRTRConfig, createSDKMRTRServer } from './mrtr-fixture.ts'
 import { createSDKSubscriptionServer } from './subscriptions-fixture.ts'
 
@@ -73,6 +81,13 @@ export const SDK_STDIO_SERVER_MRTR_PATH = fileURLToPath(
 /** Serves the subscribe-capable subscriptions fixture on `2026-07-28`, via the SDK v2 server. */
 export const SDK_STDIO_SERVER_SUBSCRIPTIONS_PATH = fileURLToPath(
   new URL('./sdk-stdio-server-subscriptions.ts', import.meta.url),
+)
+/**
+ * Serves the subscribe-capable subscriptions fixture on `2026-07-28`, via `@mokei/context-server`
+ * (`subscriptions: true`, owning its own hub).
+ */
+export const MOKEI_STDIO_SERVER_SUBSCRIPTIONS_PATH = fileURLToPath(
+  new URL('./mokei-stdio-server-subscriptions.ts', import.meta.url),
 )
 
 export type RunningHTTPServer = {
@@ -575,6 +590,77 @@ export async function startSDKSubscriptionsHTTPServer(): Promise<SubscriptionsHT
     dispose: async () => {
       await handler.close()
       await closeServer()
+    },
+  }
+}
+
+export type MokeiSubscriptionsHTTPServer = RunningHTTPServer & {
+  /**
+   * Emits change events directly onto the durable hub's events — the mokei-owned counterpart to
+   * {@link SubscriptionsHTTPServer.notify} (the SDK v2 handler's `notify` facade). Delivered to
+   * every open `subscriptions/listen` stream (across every `connectionID`) whose filter matches.
+   */
+  notify: {
+    resourceUpdated: (uri: string) => void
+    resourcesListChanged: () => void
+  }
+  /**
+   * Gracefully completes every open subscription against the durable hub — the mokei-owned
+   * counterpart to {@link SubscriptionsHTTPServer.closeHandler}.
+   */
+  endAllGracefully: () => Promise<void>
+}
+
+/**
+ * Serves the mokei-owned subscribe-capable fixture over Streamable HTTP on `2026-07-28`, wiring a
+ * durable `SubscriptionHub` per Task 13's stateless-HTTP model: each POST is served by its own
+ * transport-isolated per-POST `ContextServer`, which *borrows* this hub via `subscriptionHub` and
+ * mints its own `connectionID` — exactly the setup the two-clients-same-id interop case exercises.
+ *
+ * The hub is driven by `eventsSource`, a `ContextServer` that never serves a request of its own
+ * (its transport is wired to two streams nothing ever reads from or writes anything meaningful
+ * to) — built purely so its public `.events` getter can back `createSubscriptionHub` without this
+ * package needing its own dependency on `@sozai/event` (whose `EventEmitter` that getter returns)
+ * just to construct one.
+ */
+export async function startMokeiSubscriptionsHTTPServer(): Promise<MokeiSubscriptionsHTTPServer> {
+  const inertReadable = new ReadableStream<ClientMessage>({})
+  const inertWritable = new WritableStream<ServerMessage>({ write() {} })
+  const eventsSource = new ContextServer({
+    name: 'interop-subscriptions-durable-events',
+    version: '1.0.0',
+    protocolVersions: ['2026-07-28'],
+    transport: new Transport<ClientMessage, ServerMessage>({
+      stream: { readable: inertReadable, writable: inertWritable },
+    }) as ServerTransport,
+  })
+  const hub = createSubscriptionHub({ events: eventsSource.events })
+
+  const config = createMokeiSubscriptionConfig()
+  const result = serveHTTP({
+    createServer: ({ transport, subscriptionHub, connectionID }) =>
+      new ContextServer({ ...config, transport, subscriptionHub, connectionID }),
+    subscriptionHub: hub,
+    port: 0,
+    hostname: '127.0.0.1',
+  })
+  const port = await listening(result.server, '127.0.0.1')
+
+  return {
+    url: `http://127.0.0.1:${port}/mcp`,
+    notify: {
+      resourceUpdated: (uri) => {
+        eventsSource.events.emit('resourceUpdated', { uri })
+      },
+      resourcesListChanged: () => {
+        eventsSource.events.emit('resourcesListChanged', undefined)
+      },
+    },
+    endAllGracefully: () => hub.endAllGracefully(),
+    dispose: async () => {
+      await result.dispose()
+      await hub.dispose()
+      await eventsSource.dispose()
     },
   }
 }
