@@ -56,7 +56,7 @@ Carried from the migration plan's own out-of-scope list. All hygiene, no defects
   No collision, since no two are reachable in the same argv position, but it is inconsistent enough
   to mislead. Renaming any of them is breaking, so this is a deliberate note rather than a proposal.
 
-## 3. Subscriptions (SEP-2575) hardening follow-ups
+## 4. Subscriptions (SEP-2575) hardening follow-ups
 
 Deferred from the subscriptions work (shipped 2026-08-27 on `feat/mcp-2026-07-28-subscriptions`);
 surfaced by the design spec's accepted-consequence notes and an independent Codex review of the
@@ -75,3 +75,15 @@ here alongside the disposal/cleanup changes.
 in the review fix-wave: `SubscriptionSink.close` disposes a borrower server, whose transport
 disposal closes the exchange stream — the exchange's `close`/`abort` handlers then `finish()`. See
 `packages/context-server/src/server.ts` `#listen` and `packages/http-server/src/subscriptions.ts`.)
+
+- **SSE stream does not propagate reader backpressure.** `createSSEStream`
+  (`packages/http-server/src/sse-stream.ts`) enqueues into the response `ReadableStream`
+  synchronously without consulting `desiredSize` / awaiting `pull()`, so `SSEWriter.writeEvent()`
+  resolves as soon as data enters the internal queue. A genuinely slow *network reader* therefore
+  grows that queue unbounded rather than applying backpressure upstream — and for subscriptions it
+  means `SubscriptionWriter`'s 256-frame bound only trips on a fast *producer* burst, not a slow
+  reader. This is shared SSE infrastructure (session GET streams, post streams, stateless
+  exchanges, and subscriptions all use it), so a fix — a backpressure-aware writable (await reader
+  demand) or a bounded `TransformStream` — must be validated across every consumer for
+  head-of-line-blocking/hang regressions that fast-reader tests will not surface. Surfaced by the
+  independent Codex review of the subscriptions implementation (2026-08-27).

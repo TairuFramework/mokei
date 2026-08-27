@@ -290,10 +290,9 @@ describe('subscriptions/listen writer-failure teardown', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(capturedServer).toBeDefined()
 
-    // Stop reading the SSE body, then flood the subscribed URI: the stalled writer queues past its
-    // backpressure bound (256), fails, and — because this is a stateless borrower — tears down its
-    // own exchange rather than leaking the server and stream until handler shutdown. Fire-and-forget
-    // (fan-out swallows per-frame rejections via allSettled).
+    // Synchronous burst: all 600 enqueue before the writer drains one, so `#pending` blows past its
+    // 256 bound and the writer fails — the borrower then tears down its own exchange. (Exercises a
+    // fast producer, not a slow reader: the SSE stream doesn't yet propagate reader backpressure.)
     for (let i = 0; i < 600; i++) {
       void emitter.emit('resourceUpdated', { uri: 'file:///x' })
     }

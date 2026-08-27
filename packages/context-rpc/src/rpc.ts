@@ -9,7 +9,7 @@ import type {
   Response,
 } from '@mokei/context-protocol'
 import { INTERNAL_ERROR, INVALID_REQUEST } from '@mokei/context-protocol'
-import { Disposer, defer, toPromise } from '@sozai/async'
+import { type Deferred, Disposer, defer, toPromise } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 import type { Validator } from '@sozai/schema'
 
@@ -49,6 +49,12 @@ export type HeldResponse<Result> = {
   kind: 'held'
   terminal: Promise<Result>
   beforeTerminal?: () => Promise<void>
+  /**
+   * @internal Settles once this response is written (or torn down by cancel/dispose). Created by
+   * {@link ContextRPC._holdResponse}, so a subclass can `await held.written.promise` before
+   * `#holdRequest` runs. `ContextRPC` settles it.
+   */
+  written: Deferred<void>
 }
 
 /** Narrows a handler's return value to a {@link HeldResponse}. */
@@ -342,27 +348,26 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   _beforeTransportClose(_reason: Error): void | Promise<void> {}
 
   /**
-   * Runs the pre-close teardown under a single deadline ({@link HELD_RESPONSE_FLUSH_DEADLINE_MS}):
-   * first `_beforeTransportClose` (where a server subclass resolves held `subscriptions/listen`
-   * terminals — and may itself await their writes, e.g. `hub.endAllGracefully()`), then a backstop
-   * wait for any still-held response's terminal to settle and be written. Both are inside the same
-   * deadline on purpose: a graceful teardown that awaits terminal writes must not be able to make
-   * disposal unbounded, so the hook is bounded alongside the flush rather than awaited before it.
-   *
-   * Best-effort: an error in the hook is reported but never blocks disposal, and a terminal that
-   * never resolves (or is still running once the deadline elapses) is abandoned so `#close`'s
-   * `abortAll` tears it down like any other. The deadline timer is always cleared so it cannot keep
-   * the event loop (or a spawned child process) alive after disposal has otherwise finished.
+   * Pre-close teardown under one deadline ({@link HELD_RESPONSE_FLUSH_DEADLINE_MS}):
+   * `_beforeTransportClose` (which may await terminal writes, e.g. `hub.endAllGracefully()`), then a
+   * backstop wait for any still-held terminal to settle and write. The hook is inside the deadline
+   * so a graceful teardown can't make disposal unbounded; anything unfinished at the deadline is
+   * left for `#close`'s `abortAll`. Best-effort — errors are reported, never block disposal.
    */
   async #flushBeforeClose(reason: Error): Promise<void> {
     const flush = (async () => {
+      // Caught separately so a throwing hook does not skip the held-response flush.
       try {
         await this._beforeTransportClose(reason)
-        if (this.#heldRequests.size > 0) {
-          await Promise.all(Array.from(this.#heldRequests.values(), (held) => held.settled))
-        }
       } catch (cause) {
         this.#reportError(cause instanceof Error ? cause : new Error(String(cause)))
+      }
+      if (this.#heldRequests.size > 0) {
+        try {
+          await Promise.all(Array.from(this.#heldRequests.values(), (held) => held.settled))
+        } catch (cause) {
+          this.#reportError(cause instanceof Error ? cause : new Error(String(cause)))
+        }
       }
     })()
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -376,17 +381,6 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     } finally {
       clearTimeout(timer)
     }
-  }
-
-  /**
-   * @internal Resolves once the held response for `id` has been written (or its held request was
-   * otherwise torn down). Returns an already-resolved promise when no held request is tracked for
-   * `id` — either it was never held, or its terminal already wrote and cleaned up. A server
-   * subclass's graceful `complete()` awaits this after resolving the terminal so it never reports a
-   * subscription completed before its terminal result has reached the wire.
-   */
-  _heldResponseWritten(id: RequestID): Promise<void> {
-    return this.#heldRequests.get(id)?.settled ?? Promise.resolve()
   }
 
   /** @internal Called once when the read loop terminates. Subclasses may override to surface it. */
@@ -504,7 +498,13 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     terminal: Promise<Result>
     beforeTerminal?: () => Promise<void>
   }): HeldResponse<Result> {
-    return { kind: 'held', terminal: params.terminal, beforeTerminal: params.beforeTerminal }
+    return {
+      kind: 'held',
+      terminal: params.terminal,
+      beforeTerminal: params.beforeTerminal,
+      // Created before the caller registers/awaits, so there is no window to miss it.
+      written: defer<void>(),
+    }
   }
 
   /**
@@ -516,7 +516,8 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
    * has run — `#flushHeldResponses` awaits it on disposal.
    */
   #holdRequest(id: RequestID, held: HeldResponse<unknown>, signal: AbortSignal): void {
-    const settled = defer<void>()
+    // Settling the deferred `_holdResponse` created is what a subclass's `complete()` awaits.
+    const settled = held.written
     let done = false
     const onAbort = () => {
       if (done) {

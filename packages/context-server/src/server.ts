@@ -744,18 +744,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
 
     const sink: SubscriptionSink = {
       writeNotification: (notification) => this._write(decorate(notification) as ServerMessage),
-      // Called only when the writer fails itself (backpressure bound hit, or a real write
-      // rejection) — never on an ordinary request-abort teardown, which the exchange's own request
-      // signal already tears down.
-      //
-      // Owner (stdio, `2025-11-25` session HTTP): the shared server owns the wire and serves many
-      // subscriptions on it, so a single writer failure must not close the transport — the abrupt
-      // teardown drops just this entry, and there is nothing else to close here.
-      //
-      // Borrower (the `2026-07-28` stateless per-POST server): the wire *is* this throwaway
-      // exchange, held open only for this one listen. A writer failure that only rejected the held
-      // terminal would leave the SSE body and this server alive until handler shutdown, so dispose
-      // the borrower — closing its transport, which the exchange observes and finishes.
+      // Fires only on writer failure (backpressure/write rejection), never on request-abort.
+      // A borrower's wire is this one throwaway exchange, so dispose it (closing the transport
+      // finishes the exchange); an owner shares its wire across subscriptions, so keep it open.
       close: () => {
         if (this.#subscriptionHub != null && !this.#ownsHub) {
           void this.dispose()
@@ -790,22 +781,24 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       params: { notifications: filter },
     } as unknown as ServerNotification)
 
+    // Build the held response before registering, so `held.written` exists before the entry can be
+    // completed (avoids a race with `#holdRequest`, which runs only after `#listen` returns).
+    const held = this._holdResponse({
+      terminal: terminal.promise,
+      beforeTerminal: () => writer.flush(),
+    })
+
     handle = hub.register({
       connectionID: this.#connectionID,
       subscriptionID: id,
       filter,
       deliver: (notification) => writer.enqueue(notification),
-      // Graceful teardown: resolve the held terminal with the wrapped `subscriptionsListenResult`
-      // — only `result._meta[subscriptionId]`, deliberately no `resultType`. `beforeTerminal`
-      // drains the writer first, then the RPC layer writes this verbatim (it does not re-wrap).
-      // Then await the actual write: the entry contract is "resolve the held terminal, await its
-      // write", so `hub.endAllGracefully()` does not report this subscription gracefully completed
-      // before its terminal result has reached the wire (critical for a stateless borrower, whose
-      // terminal is written by its own per-POST RPC layer, not the hub owner's). Bounded by the
-      // RPC layer's disposal deadline, so a stalled write cannot make disposal unbounded.
+      // Graceful teardown: resolve the terminal (only `result._meta[subscriptionId]`, no
+      // `resultType`), then await its write so `endAllGracefully()` never reports completion before
+      // the result reaches the wire. Bounded by the RPC disposal deadline.
       complete: async () => {
         terminal.resolve({ _meta: { [META_SUBSCRIPTION_ID]: id } } as ServerResult)
-        await this._heldResponseWritten(id)
+        await held.written.promise
       },
     })
 
@@ -824,7 +817,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       teardown(signal.reason as Error)
     }
 
-    return this._holdResponse({ terminal: terminal.promise, beforeTerminal: () => writer.flush() })
+    return held
   }
 
   /**

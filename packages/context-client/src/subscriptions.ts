@@ -266,10 +266,8 @@ export class SubscriptionDriver {
     options?: { signal?: AbortSignal; timeout?: number },
   ): Promise<void> {
     const generation = this.#allocateGeneration(this.#filterFor(target), options)
-    // `#allocateGeneration` retires the candidate synchronously when its signal is already aborted
-    // (or a zero timeout fires): opening a listen for it would strand an exchange nothing aborts,
-    // since `generation.abort` is still the initial no-op at that point. Await the already-rejected
-    // ack instead so the caller surfaces the abort, without ever opening the stream.
+    // Already retired (signal pre-aborted, or zero timeout): don't open — `generation.abort` is
+    // still the no-op, so the exchange would leak. Await the rejected ack to surface the abort.
     if (generation.retired) {
       await generation.ack.promise
       return
@@ -280,9 +278,7 @@ export class SubscriptionDriver {
     // The terminal promise is surfaced through `onSettle`; guard against unhandled rejection.
     handle.exchange.catch(noop)
     generation.abort = handle.abort
-    // A signal that aborts in the window between the pre-open check and here retires the
-    // generation via `#failGeneration`, which called the old no-op abort; abort the real handle now
-    // so the just-opened exchange is not left running.
+    // Aborted in the window before the real abort was installed: tear the just-opened exchange down.
     if (generation.retired) {
       handle.abort(new Error('Subscription candidate aborted before open completed'))
     }
@@ -441,7 +437,7 @@ export class SubscriptionDriver {
     this.#reconnectAttempt += 1
     const attempt = this.#reconnectAttempt
     const retryInMs = Math.min(this.#backoffCapMs, this.#backoffBaseMs * 2 ** (attempt - 1))
-    // A throwing consumer callback must not abort the reconnect: report it and still schedule.
+    // A throwing callback must not abort the reconnect.
     try {
       this.#onRetry?.({ attempt, error: cause, retryInMs })
     } catch (error) {

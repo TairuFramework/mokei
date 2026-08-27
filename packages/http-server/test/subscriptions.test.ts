@@ -162,12 +162,10 @@ describe('runSubscriptionExchange', () => {
     await hub.dispose()
   })
 
-  // `ContextServer#listen`'s held terminal write does satisfy `isOwnResponse` -- unlike the ack
-  // and every notification before it, which never do (they carry `method`). This is the case the
-  // brief calls out by name: the exchange must not treat that write as its cue to close either --
-  // closing on it is Task 13's seam (the durable side decides when nothing more will ever come),
-  // not something this fork guesses at.
-  test('does not close the stream when the held terminal is written either', async () => {
+  // The held terminal is the subscription's own response (`isOwnResponse`) and its definitive end,
+  // so writing it closes the exchange — keeping a standalone `endAllGracefully()` from leaking the
+  // borrower until handler shutdown.
+  test('closes the stream once the held terminal is written', async () => {
     const { hub } = createStubDurableHub()
 
     const response = await runSubscriptionExchange({
@@ -190,8 +188,8 @@ describe('runSubscriptionExchange', () => {
     await frames.next() // priming
     await frames.next() // ack
 
-    // Graceful completion, driven from the durable side (Task 13's territory): resolves the
-    // held terminal, which the RPC layer then writes as this request's own response.
+    // Graceful completion, driven from the durable side: resolves the held terminal, which the RPC
+    // layer writes as this request's own response.
     await settle()
     await hub.endAllGracefully()
 
@@ -204,9 +202,9 @@ describe('runSubscriptionExchange', () => {
     expect(terminal.id).toBe(1)
     expect(terminal.result).toBeDefined()
 
-    // Even now, the exchange has not closed the stream on its own initiative.
-    const result = await raceTimeout(frames.next(), 100)
-    expect(result).toBe('timeout')
+    // Writing the terminal ends the exchange: the stream closes rather than staying open.
+    const next = await raceTimeout(frames.next(), 500)
+    expect(next).toBeUndefined()
 
     await hub.dispose()
   })

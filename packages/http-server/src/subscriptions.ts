@@ -84,17 +84,11 @@ export type SubscriptionExchangeParams = {
  * - No response timeout. `runStatelessExchange`'s `DEFAULT_STATELESS_TIMEOUT_MS` timer exists
  *   because a stateless request is expected to answer promptly; a listen has no such deadline --
  *   it is meant to sit open for as long as the subscription lives, which can be indefinitely.
- * - No close-after-ack, and no close-on-terminal either. `runStatelessExchange` calls `finish()`
- *   (which closes the SSE stream and disposes the server) the moment it writes what it
- *   recognises as the request's own response. For a listen, the acknowledgement is a
- *   *notification*, not the response, so it was never `isOwnResponse` to begin with -- but even
- *   the eventual held terminal (`ContextServer#listen`'s `_holdResponse`, which *does* satisfy
- *   `isOwnResponse` once it writes) must not trigger `finish()` here: the terminal result flows
- *   through the serving server's own RPC write path, same as every notification before it, and
- *   this exchange has no business intercepting it to decide the stream is now done. Closing the
- *   stream once nothing more will ever be written is Task 13's seam (it owns the durable-side
- *   routing that knows when that is true) -- this fork deliberately leaves it open rather than
- *   guessing.
+ * - No close-after-ack. The acknowledgement is a notification, not the response, so it does not
+ *   close the stream -- it stays open for the life of the subscription. The held terminal *is* the
+ *   response (`isOwnResponse`) and the end of the subscription, so writing it finishes the exchange.
+ *   The terminal comes only from graceful teardown (`hub.endAllGracefully()`); abrupt teardown
+ *   (disconnect, backpressure/write failure) writes no terminal and tears down via abort/dispose.
  * - Abort/finish wiring is otherwise unchanged: a client disconnect or request abort still tears
  *   the exchange down, disposes its throwaway server, and settles a `503` for anyone still
  *   awaiting the response promise (which, in practice, nobody is once the SSE stream has opened).
@@ -215,18 +209,19 @@ export function runSubscriptionExchange(params: SubscriptionExchangeParams): Pro
         }
 
         await writer.writeEvent({ data: JSON.stringify(outgoing) })
-        // Deliberately no `finish()` here, even when `isOwnResponse` -- see this function's doc
-        // comment for why the held terminal writing is not, by itself, reason to close the
-        // stream.
+        // The terminal (own response) is the definitive end of the subscription: close the exchange
+        // so a standalone `endAllGracefully()` doesn't leak the borrower until handler shutdown.
+        // Ack/notifications carry a `method` and are never `isOwnResponse`; `finish()` is idempotent.
+        if (isOwnResponse) {
+          finish()
+        }
       } catch (error) {
         finish()
         throw error
       }
     },
-    // The serving server closes/aborts its writer when it disposes — which, for a borrower whose
-    // listen writer failed (backpressure or a write rejection), is how a server-side teardown
-    // reaches this exchange. Either way nothing more will be written, so finish the exchange:
-    // close the SSE body, dispose the (already-disposing) server, and settle any pending response.
+    // A borrower disposes itself on writer failure, closing its transport's writer — that reaches
+    // here, so finish the exchange (close the SSE body, settle the response).
     close() {
       finish()
     },

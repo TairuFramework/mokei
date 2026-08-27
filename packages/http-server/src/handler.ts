@@ -86,13 +86,9 @@ export type HTTPHandlerParams = {
   maxStatelessExchanges?: number
   /**
    * How many `subscriptions/listen` exchanges may be in flight at once (default:
-   * {@link DEFAULT_MAX_SUBSCRIPTION_EXCHANGES}). Past the cap a listen POST is refused with `503`
-   * before anything is built for it.
-   *
-   * Tracked separately from `maxStatelessExchanges`: a listen is meant to sit open indefinitely,
-   * so it is deliberately excluded from that cap — but each one still holds a whole per-POST
-   * `ContextServer`, its transport, an SSE response and a hub entry for its entire lifetime, so it
-   * needs a bound of its own or an unbounded number of open listens could exhaust the deployment.
+   * {@link DEFAULT_MAX_SUBSCRIPTION_EXCHANGES}). Past the cap a listen POST is refused `503`.
+   * Separate from `maxStatelessExchanges` (a listen sits open indefinitely, so it is excluded from
+   * that cap) but each still holds a whole per-POST server, so it needs a bound of its own.
    */
   maxSubscriptionExchanges?: number
   /** Optional logger (defaults to the `mokei:http-server` logger) */
@@ -112,12 +108,9 @@ export const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024
 export const DEFAULT_MAX_STATELESS_EXCHANGES = 100
 
 /**
- * Default cap on concurrent `subscriptions/listen` exchanges.
- *
- * Each open listen holds a per-POST `ContextServer`, transport, SSE response and hub entry for as
- * long as the subscription lives, so — like `maxStatelessExchanges`, and for the same
- * one-request-holds-a-whole-server reason — it is bounded well below `maxSessions`. Raise it
- * deliberately for a deployment that expects many simultaneous long-lived subscribers.
+ * Default cap on concurrent `subscriptions/listen` exchanges. Each holds a whole per-POST server
+ * for the life of the subscription, so — like `maxStatelessExchanges` — it is bounded well below
+ * `maxSessions`. Raise it for a deployment expecting many simultaneous subscribers.
  */
 export const DEFAULT_MAX_SUBSCRIPTION_EXCHANGES = 100
 
@@ -492,10 +485,8 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     // below, where the per-POST server (built with no hub) rejects the method with
     // `METHOD_NOT_FOUND`, exactly as the spec requires — no special-casing of the error here.
     if (body.method === 'subscriptions/listen' && subscriptionHub != null) {
-      // Refuse before building anything, mirroring the `maxStatelessExchanges` gate below:
-      // `listenTeardowns` holds exactly the listens currently in flight, and `Retry-After: 1`
-      // because the condition frees as subscriptions end. A listen always carries an id, so an
-      // id-less frame (which occupies no long-lived slot) is left to fall through and be handled.
+      // Refuse before building anything (mirrors the `maxStatelessExchanges` gate below);
+      // `listenTeardowns` counts in-flight listens. An id-less frame holds no slot, so let it pass.
       if (requestID != null && listenTeardowns.size >= maxSubscriptionExchanges) {
         return new Response('Too many subscription exchanges', {
           status: 503,
