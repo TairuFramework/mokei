@@ -42,6 +42,7 @@
   "dependencies": {
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^",
+    "@sozai/async": "catalog:",
     "@sozai/otel": "catalog:",
     "@sozai/schema": "catalog:"
   },
