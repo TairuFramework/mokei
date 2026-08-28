@@ -199,6 +199,7 @@ export function runSubscriptionExchange(params: SubscriptionExchangeParams): Pro
           const stream = createSSEStream()
           writer = new SSEWriter({
             writable: stream.writable,
+            release: stream.release,
             streamID: `subscription-${requestID ?? 'notification'}`,
             replayBufferSize,
             logger,

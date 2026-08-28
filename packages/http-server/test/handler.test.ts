@@ -776,6 +776,46 @@ describe('createHTTPHandler', () => {
     }
   })
 
+  test('GET resumption replaying more events than the stream buffer does not deadlock', async () => {
+    const handler = createHandler({ replayBufferSize: 100 })
+
+    try {
+      const sessionID = await initializeSession(handler)
+
+      // Buffer well over the SSE stream's backpressure high-water mark of replay events: each
+      // tool call records its result event (priming events are not logged), so 24 calls buffer
+      // 24 replay events — comfortably past the ~17-frame in-flight budget the stream buffers
+      // before a write parks for a reader.
+      for (let i = 0; i < 24; i++) {
+        const res = await handler.handleRequest(toolCallRequest(sessionID, `evt-${i}`, i + 2))
+        await res.text() // drain so the events land in the replay log
+      }
+
+      // Resume with an unknown Last-Event-ID: handleGET replays every buffered event. If it
+      // awaits those writes before returning the Response, the writes past the high-water mark
+      // park for a reader that cannot exist yet — the request hangs forever.
+      const getPromise = handler.handleRequest(
+        new Request('http://localhost/mcp', {
+          method: 'GET',
+          headers: {
+            Accept: 'text/event-stream',
+            'Mcp-Session-Id': sessionID,
+            'Last-Event-ID': 'bogus-0',
+          },
+        }),
+      )
+      getPromise.catch(() => {}) // keep a hang from surfacing as an unhandled rejection on dispose
+
+      const timeout = new Promise<'timeout'>((resolve) =>
+        setTimeout(() => resolve('timeout'), 1000),
+      )
+      const outcome = await Promise.race([getPromise.then((res) => res.status), timeout])
+      expect(outcome).toBe(200)
+    } finally {
+      handler.dispose()
+    }
+  })
+
   test('GET resumption with an unknown Last-Event-ID replays all buffered events', async () => {
     const handler = createHandler({ replayBufferSize: 100 })
 
