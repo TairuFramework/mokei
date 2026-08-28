@@ -54,6 +54,11 @@ export const log = {
 } as const satisfies Schema
 export type Log = FromSchema<typeof log>
 
+// Logging (logging/setLevel and notifications/message) is deprecated on 2026-07-28 (SEP-2577),
+// current on 2025-11-25. These types are shared across both revisions and remain fully
+// supported through the deprecation window; the tag is deliberately omitted so current
+// 2025-11-25 consumers are not warned.
+//
 // https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.json#L1071
 export const loggingMessageNotification = {
   description:

@@ -10,33 +10,18 @@
  * @module context-client
  */
 
-export type {
-  ClientEvents,
-  ClientParams,
-  ContextTypes,
-  CreateMessageHandler,
-  ElicitHandler,
-  ListOptions,
-  ListParams,
-  ListRootsHandler,
-  PromptParams,
-  ResourceSubscriptionParams,
-  ToolParams,
-  UnknownContextTypes,
-  ValidationIssue,
-} from './client.js'
+export type { ClientEvents } from './client.js'
+export { ContextClient, DEFAULT_LIST_MAX_PAGES } from './client.js'
 export {
   CapabilityNotDeclaredError,
-  ContextClient,
-  DEFAULT_LIST_MAX_PAGES,
   InputRequiredNotSupportedError,
   ListMaxPagesError,
   MethodNotInRevisionError,
   MRTRNotSupportedError,
   StructuredContentValidationError,
-  splitListOptions,
   UnsupportedProtocolVersionError,
-} from './client.js'
+  type ValidationIssue,
+} from './errors.js'
 export {
   DEFAULT_MAX_ROUNDS,
   type InputRequiredResult,
@@ -61,4 +46,19 @@ export {
   SubscriptionStreamError,
 } from './subscriptions.js'
 export { currentTraceMeta, type TraceMeta, traceMetaFromContext } from './trace.js'
-export type { ClientTransport } from './types.js'
+export type {
+  ClientHandlerRequest,
+  ClientParams,
+  ClientTransport,
+  ContextTypes,
+  CreateMessageHandler,
+  ElicitHandler,
+  ListOptions,
+  ListParams,
+  ListRootsHandler,
+  PromptParams,
+  ResourceSubscriptionParams,
+  ToolParams,
+  UnknownContextTypes,
+} from './types.js'
+export { splitListOptions } from './types.js'

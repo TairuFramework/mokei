@@ -91,6 +91,7 @@ export {
   type RequestID,
   type Response,
   type Result,
+  SERVER_SHUTTING_DOWN,
   UNSUPPORTED_PROTOCOL_VERSION,
   URL_ELICITATION_REQUIRED,
 } from './rpc.js'
@@ -150,7 +151,9 @@ export {
   inputRequests,
   inputResponse,
   inputResponses,
+  isHandshakeRequired,
   isInputRequiredResult,
+  isPerRequestLogLevel,
   isSupportedProtocolVersion,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,

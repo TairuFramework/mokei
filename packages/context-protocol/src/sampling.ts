@@ -114,6 +114,8 @@ export const toolChoice = {
 
 export const createMessageRequestParams = {
   properties: {
+    // Deprecated on 2026-07-28 (SEP-2577); current on 2025-11-25. Parsed and supported on both
+    // revisions — retained for the ≥12-month deprecation window and for interop.
     includeContext: {
       description:
         'A request to include context from one or more MCP servers (including the caller), to be attached to the prompt. The client MAY ignore this request.',

@@ -44,6 +44,12 @@ const initialized = await client.initialize()
 const { tools } = await client.listTools()
 ```
 
+The `2025-11-25` session GET/SSE stream (opened to receive server-initiated notifications
+outside a request/response cycle) is deprecated on `2026-07-28` (SEP-2577), though it remains
+fully supported here for the deprecation window. On `2026-07-28` notifications travel on the
+POST response instead, so there's no equivalent session stream on that revision — this note
+does not apply to, and does not deprecate, the `2026-07-28` Streamable HTTP transport itself.
+
 Pass `'auto'` to probe the server and speak whichever revision it supports. The result is
 cached for the life of the client:
 

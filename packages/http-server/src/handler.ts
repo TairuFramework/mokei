@@ -1,6 +1,7 @@
 import { Transport } from '@enkaku/transport'
 import {
   type ClientMessage,
+  isHandshakeRequired,
   isSupportedProtocolVersion,
   PROTOCOLS,
   type ProtocolVersion,
@@ -656,7 +657,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     // unrecognised or absent header leaves `protocol` nullish and falls through to the
     // session lookup below, which is what keeps a header-less `2025-11-25` GET working.
     const protocol = PROTOCOLS[request.headers.get('MCP-Protocol-Version') as ProtocolVersion]
-    if (protocol != null && !protocol.requiresHandshake) {
+    if (protocol != null && !isHandshakeRequired(protocol)) {
       return new Response('Method not allowed', { status: 405 })
     }
 
@@ -721,7 +722,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     // establishes: a revision without one never creates anything to terminate. Nullish for
     // an unrecognised or absent header, which falls through to the session lookup below.
     const protocol = PROTOCOLS[request.headers.get('MCP-Protocol-Version') as ProtocolVersion]
-    if (protocol != null && !protocol.requiresHandshake) {
+    if (protocol != null && !isHandshakeRequired(protocol)) {
       return new Response('Method not allowed', { status: 405 })
     }
 

@@ -28,19 +28,10 @@ export type ServerResultContext = {
 
 export type ProtocolDefinition = {
   version: ProtocolVersion
-  /** True when the client must complete `initialize`/`initialized` before other traffic. */
-  requiresHandshake: boolean
   /** True when every request must carry protocol version and client capabilities in `_meta`. */
   requiresRequestMeta: boolean
   /** True when `complete` results of cacheable methods must carry `ttlMs`/`cacheScope`. */
   requiresCacheHints: boolean
-  /**
-   * True when log level is scoped to the individual request — read via `readRequestMeta` off
-   * each request's own `_meta` — rather than session-scoped through a standing
-   * `logging/setLevel` call. Always mirrors whether `logging/setLevel` is absent from
-   * `clientMethods`.
-   */
-  requiresPerRequestLogLevel: boolean
   /** Request methods a client may send in this revision. */
   clientMethods: ReadonlySet<string>
   /**

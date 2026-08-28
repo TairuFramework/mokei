@@ -48,9 +48,11 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **MCP `2026-07-28` — resource subscriptions** (`next/2026-08-27-mcp-2026-07-28-subscriptions.md`)
-  — B4 `subscriptions/listen` (+ the `2025-11-25` `resources/subscribe` branch). The last
-  capability gap in the migration; promoted from backlog 2026-08-27. Large. No enkaku blockers.
+Nothing in `next/` — the `2026-07-28` migration's last capability gap, B4 `subscriptions/listen`
+(+ the `2025-11-25` `resources/subscribe` branch), shipped 2026-08-27 (SEP-2575, PR #46); see
+`completed/2026-08-27-mcp-2026-07-28-subscriptions.complete.md`. Nearest active pointer:
+`backlog/2026-08-28-mcp-2026-07-28-cleanup-deferrals.md` (five small items deferred out of the
+2026-08-28 cleanup cycle).
 
 ## Recently shipped (completed/)
 
@@ -102,18 +104,21 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 ## Milestones (milestones/)
 
 - **MCP `2026-07-28` spec migration** (`milestones/2026-06-08-mcp-2026-07-28-migration.md`) —
-  in progress. Phase 0 groundwork (G1–G4, G6, G7) shipped on `2025-11-25`
+  complete. Phase 0 groundwork (G1–G4, G6, G7) shipped on `2025-11-25`
   (PR #23). The `2026-07-28` revision then shipped as opt-in coexistence: stateless core
   (PR #40), defect wave (PR #41), interop peer matrix against SDK `2.0.0` (PR #42),
-  G7 part 5's stale-schema retry (PR #43), and MRTR (`feat/mcp-mrtr`) — both revisions now at
-  capability parity. Remaining: the roots half of B6 (not applicable — `2026-07-28` has no
-  `notifications/roots/list_changed` at all), and B4 (`subscriptions/listen`) + D1–D3. See the
-  backlog entries below.
+  G7 part 5's stale-schema retry (PR #43), MRTR (`feat/mcp-mrtr`), B4 `subscriptions/listen`
+  (SEP-2575, PR #46), and D1–D3 (SEP-2577, documentation-only) — both revisions now at
+  capability parity, and nothing in the Phase 1 table remains open. The roots half of B6 stays
+  not applicable (`2026-07-28` has no `notifications/roots/list_changed` at all). A handful of
+  hygiene items deliberately left undone are tracked in the backlog entries below.
 
 ## Near-term (backlog/)
 
-- **MCP `2026-07-28` — deprecations + cleanup** (`backlog/2026-06-20-mcp-2026-07-28-deprecations-cleanup.md`)
-  — piece F: D1–D3 deprecation handling plus the §3.4 tidy-ups and deferred design notes. Medium.
+- **MCP `2026-07-28` — cleanup deferrals** (`backlog/2026-08-28-mcp-2026-07-28-cleanup-deferrals.md`)
+  — the deprecations + cleanup cycle (D1–D3 plus the §3.4 tidy-ups, `#disposing` gate, and the
+  `SetupReader` extraction) shipped 2026-08-28; five hygiene/design items it deliberately left
+  undone are tracked here. Small.
 - **MCP SDK v2 — selective adoption** (`backlog/2026-07-02-mcp-sdk-v2-adoption.md`) —
   outcome of the 2026-07-02 SDK v2 evaluation. Decision: keep the custom MCP core
   (SDK's engine is private/unimportable; Zod hard dep; bespoke typed-client value).
