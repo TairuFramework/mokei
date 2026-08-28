@@ -1,6 +1,6 @@
 import { StatusMessage } from '@inkjs/ui'
 import type { ContextClient } from '@mokei/context-client'
-import { PROTOCOLS, type ProtocolVersion } from '@mokei/context-protocol'
+import { isHandshakeRequired, PROTOCOLS, type ProtocolVersion } from '@mokei/context-protocol'
 import type { HostedContext } from '@mokei/host'
 import { spawnHostedContext } from '@mokei/host-node'
 import { renderStatic } from '@tejika/cli'
@@ -50,7 +50,7 @@ async function describeContext(client: ContextClient): Promise<{ title: string; 
     // Derived from the revision's own definition rather than a version literal, matching how
     // the client and both transports gate: every revision with a handshake answers
     // `initialize`, and one added later inherits the fallback instead of silently losing it.
-    if (resolved != null && PROTOCOLS[resolved].requiresHandshake) {
+    if (resolved != null && isHandshakeRequired(PROTOCOLS[resolved])) {
       return { title: 'initialized', data: await client.initialize() }
     }
     throw cause

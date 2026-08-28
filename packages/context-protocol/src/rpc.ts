@@ -18,6 +18,11 @@ export const HEADER_MISMATCH = -32020
 export const MISSING_REQUIRED_CLIENT_CAPABILITY = -32021
 export const UNSUPPORTED_PROTOCOL_VERSION = -32022
 
+// mokei extension, not an MCP-reserved code: the reserved band is -32020..-32099 (above), so
+// -32000 is free. Emitted by ContextRPC to reject a new inbound request received while the
+// server is disposing, so a peer can tell "retry elsewhere" from a generic internal error.
+export const SERVER_SHUTTING_DOWN = -32000
+
 /**
  * Key an `INVALID_PARAMS` error's `data` carries, set to `true`, when the request failed
  * before reaching any handler because it violated the transport envelope itself — missing a

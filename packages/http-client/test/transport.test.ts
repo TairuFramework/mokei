@@ -3,7 +3,7 @@ import { META_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { isSessionExpiredCode, SESSION_EXPIRED_CODE } from '../src/errors.js'
-import { HTTPTransport } from '../src/transport.js'
+import { DEFAULT_HTTP_REFRESH_TIMEOUT, HTTPTransport } from '../src/transport.js'
 
 type ErrorFrame = { id?: string | number; error?: { code?: number; message?: string } }
 
@@ -1847,6 +1847,38 @@ describe('HTTPTransport', () => {
       expect(posts(fetchMock.mock.calls)).toHaveLength(3)
 
       await transport.dispose()
+    })
+
+    test('schema refresh aborts on refreshTimeout, not the full request timeout', async () => {
+      // The refresh must own a shorter budget than the caller's `timeout`, or a firing
+      // stale-schema retry chains three full request-timeout budgets (original POST + this
+      // refresh + re-send). Advancing fake timers only to `DEFAULT_HTTP_REFRESH_TIMEOUT` — well
+      // short of `timeout: 30_000` below — must already be enough to abort the refresh fetch.
+      vi.useFakeTimers()
+      try {
+        fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
+        // The internal tools/list refresh: hangs until its own signal aborts.
+        fetchMock.mockImplementationOnce((_url: string, init: RequestInit) => {
+          return new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => {
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+            })
+          })
+        })
+
+        const transport = new HTTPTransport({ url: TEST_URL, timeout: 30_000 })
+        const write = transport.write(callRequest)
+
+        await vi.advanceTimersByTimeAsync(DEFAULT_HTTP_REFRESH_TIMEOUT)
+        await write
+
+        const refreshCall = posts(fetchMock.mock.calls)[1]
+        expect(refreshCall[1].signal?.aborted).toBe(true)
+
+        await transport.dispose()
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 

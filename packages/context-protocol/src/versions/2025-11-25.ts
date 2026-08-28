@@ -76,10 +76,8 @@ export type ClientMessage = FromSchema<typeof clientMessage>
 
 export const PROTOCOL = {
   version: PROTOCOL_VERSION,
-  requiresHandshake: true,
   requiresRequestMeta: false,
   requiresCacheHints: false,
-  requiresPerRequestLogLevel: false,
   clientMethods: new Set([
     'ping',
     'initialize',

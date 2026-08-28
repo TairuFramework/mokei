@@ -20,6 +20,7 @@ export {
 export {
   type CreateHTTPClientParams,
   createHTTPClient,
+  DEFAULT_HTTP_REFRESH_TIMEOUT,
   DEFAULT_HTTP_TIMEOUT,
   HTTPTransport,
   type HTTPTransportParams,

@@ -3,6 +3,8 @@ import { describe, expect, test, vi } from 'vitest'
 
 import {
   HEADER_MISMATCH,
+  isHandshakeRequired,
+  isPerRequestLogLevel,
   isSupportedProtocolVersion,
   LATEST_PROTOCOL_VERSION,
   MISSING_REQUIRED_CLIENT_CAPABILITY,
@@ -75,6 +77,16 @@ describe('protocol versions', () => {
     expect(MISSING_REQUIRED_CLIENT_CAPABILITY).toBe(-32021)
     expect(UNSUPPORTED_PROTOCOL_VERSION).toBe(-32022)
   })
+
+  test('isHandshakeRequired derives from clientMethods', () => {
+    expect(isHandshakeRequired(PROTOCOLS['2025-11-25'])).toBe(true)
+    expect(isHandshakeRequired(PROTOCOLS['2026-07-28'])).toBe(false)
+  })
+
+  test('isPerRequestLogLevel derives from clientMethods', () => {
+    expect(isPerRequestLogLevel(PROTOCOLS['2025-11-25'])).toBe(false)
+    expect(isPerRequestLogLevel(PROTOCOLS['2026-07-28'])).toBe(true)
+  })
 })
 
 describe('2026-07-28 envelope', () => {
@@ -137,10 +149,8 @@ describe('2026-07-28 envelope', () => {
 describe('protocol records', () => {
   test('2025-11-25 keeps ping, initialize and logging/setLevel', () => {
     const protocol = PROTOCOLS['2025-11-25']
-    expect(protocol.requiresHandshake).toBe(true)
     expect(protocol.requiresRequestMeta).toBe(false)
     expect(protocol.requiresCacheHints).toBe(false)
-    expect(protocol.requiresPerRequestLogLevel).toBe(false)
     expect(protocol.clientMethods.has('ping')).toBe(true)
     expect(protocol.clientMethods.has('initialize')).toBe(true)
     expect(protocol.clientMethods.has('logging/setLevel')).toBe(true)
@@ -150,10 +160,8 @@ describe('protocol records', () => {
 
   test('2026-07-28 drops ping, initialize and logging/setLevel, adds server/discover', () => {
     const protocol = PROTOCOLS['2026-07-28']
-    expect(protocol.requiresHandshake).toBe(false)
     expect(protocol.requiresRequestMeta).toBe(true)
     expect(protocol.requiresCacheHints).toBe(true)
-    expect(protocol.requiresPerRequestLogLevel).toBe(true)
     expect(protocol.clientMethods.has('ping')).toBe(false)
     expect(protocol.clientMethods.has('initialize')).toBe(false)
     expect(protocol.clientMethods.has('logging/setLevel')).toBe(false)
@@ -166,18 +174,9 @@ describe('protocol records', () => {
     expect(PROTOCOLS['2026-07-28'].clientMethods.has('subscriptions/listen')).toBe(true)
   })
 
-  // `requiresHandshake` and `requiresPerRequestLogLevel` are both strict functions of
-  // `clientMethods`, and drift between them fails silently: a revision that drops
-  // `logging/setLevel` while leaving `requiresPerRequestLogLevel: false` makes `ContextServer`
-  // discard every `notifications/message` for the lifetime of the connection, with no error
-  // anywhere. Asserted over every registered revision so a new one cannot land inconsistent.
-  test('the derivable flags and notification stamping match their method table on every revision', () => {
+  test('notification stamping matches requiresRequestMeta on every revision', () => {
     for (const version of PROTOCOL_VERSIONS) {
       const protocol = PROTOCOLS[version]
-      expect(protocol.requiresHandshake, version).toBe(protocol.clientMethods.has('initialize'))
-      expect(protocol.requiresPerRequestLogLevel, version).toBe(
-        !protocol.clientMethods.has('logging/setLevel'),
-      )
       // A revision whose peer routes on per-request `_meta` routes notifications on it too, so
       // `decorateNotification` must stamp the version exactly when `requiresRequestMeta` is set —
       // and stamp nothing else, since the request envelope does not belong on a notification.

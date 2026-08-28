@@ -8,11 +8,7 @@ import type {
   ClientResult,
   CompleteRequest,
   CompleteResult,
-  CreateMessageRequest,
-  CreateMessageResult,
   DiscoverResult,
-  ElicitRequest,
-  ElicitResult,
   GetPromptRequest,
   GetPromptResult,
   Implementation,
@@ -30,7 +26,6 @@ import type {
   ListToolsResult,
   Log,
   LoggingLevel,
-  Metadata,
   ProgressNotification,
   ProtocolDefinition,
   ProtocolVersion,
@@ -47,11 +42,10 @@ import type {
   SubscriptionFilter,
 } from '@mokei/context-protocol'
 import {
-  discoverResult,
-  type ErrorResponse,
   INPUT_REQUEST_CAPABILITIES,
   INVALID_REQUEST,
   inferSchemaDraft,
+  isHandshakeRequired,
   isSupportedProtocolVersion,
   META_SUBSCRIPTION_ID,
   METHOD_NOT_FOUND,
@@ -63,7 +57,6 @@ import {
 import {
   ContextRPC,
   type RequestOptions,
-  RequestTimeoutError,
   RPCError,
   splitRequestOptions,
   type WithRequestOptions,
@@ -72,11 +65,21 @@ import { lazy } from '@sozai/async'
 import { createValidator, type Schema, type Validator } from '@sozai/schema'
 
 import {
+  CapabilityNotDeclaredError,
+  InputRequiredNotSupportedError,
+  ListMaxPagesError,
+  MethodNotInRevisionError,
+  MRTRNotSupportedError,
+  StructuredContentValidationError,
+  UnsupportedProtocolVersionError,
+} from './errors.js'
+import {
   DEFAULT_MAX_ROUNDS,
   isInputRequiredResult,
   MRTR_METHODS,
   runInputRequiredFlow,
 } from './mrtr.js'
+import { SetupReader } from './setup-reader.js'
 import {
   ACKNOWLEDGED_METHOD,
   type ListenHandle,
@@ -88,7 +91,19 @@ import {
   type SubscriptionRetry,
 } from './subscriptions.js'
 import { currentTraceMeta } from './trace.js'
-import type { ClientTransport } from './types.js'
+import {
+  type ClientParams,
+  type ContextTypes,
+  type CreateMessageHandler,
+  type ElicitHandler,
+  type ListParams,
+  type ListRootsHandler,
+  type PromptParams,
+  type ResourceSubscriptionParams,
+  splitListOptions,
+  type ToolParams,
+  type UnknownContextTypes,
+} from './types.js'
 
 /**
  * Inbound wire validators, one per revision. Which one applies is decided per connection by
@@ -116,15 +131,6 @@ const SERVER_MESSAGE_VALIDATORS: Record<ProtocolVersion, Validator<ServerMessage
  */
 const validateAnyServerMessage = createValidator(serverMessage)
 
-/**
- * Validates a `server/discover` result against `2026-07-28`'s own schema, replacing the cast
- * `#sendDiscover()` used to return through. `discoverResult` is not a member of `2025-11-25`'s
- * `serverResult` — `server/discover` does not exist on that revision, and `#sendDiscover()` is
- * only ever called once a handshake-less revision is known or being probed — so one validator
- * covers every caller.
- */
-const validateDiscoverResult = createValidator(discoverResult)
-
 export const DEFAULT_CLIENT_INFO: Implementation = {
   name: 'Mokei',
   version: '0.4.0',
@@ -132,9 +138,9 @@ export const DEFAULT_CLIENT_INFO: Implementation = {
 
 // '2025-11-25' rather than the latest protocol version: it is the only supported revision
 // that has an `initialize` handshake at all. '2026-07-28' has no `initialize` request
-// (`requiresHandshake: false`), so declaring it here would describe a handshake no revision
-// can legitimately send. `#initialize()` always overrides this with the resolved protocol's
-// own version before sending, so this default is never sent as-is.
+// (`isHandshakeRequired` is `false`), so declaring it here would describe a handshake no
+// revision can legitimately send. `#initialize()` always overrides this with the resolved
+// protocol's own version before sending, so this default is never sent as-is.
 export const DEFAULT_INITIALIZE_PARAMS: InitializeRequest['params'] = {
   capabilities: {},
   clientInfo: DEFAULT_CLIENT_INFO,
@@ -172,7 +178,7 @@ const NOTIFICATION_BUFFER_CAP = 256
 const PROBE_PROTOCOL: ProtocolDefinition | null = (() => {
   const version = PROTOCOL_VERSIONS.find((candidate) => {
     const protocol = PROTOCOLS[candidate]
-    return !protocol.requiresHandshake && protocol.clientMethods.has('server/discover')
+    return !isHandshakeRequired(protocol) && protocol.clientMethods.has('server/discover')
   })
   return version == null ? null : PROTOCOLS[version]
 })()
@@ -236,168 +242,6 @@ function toError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value))
 }
 
-export class UnsupportedProtocolVersionError extends Error {
-  /**
-   * `expected` is only known when this is raised against a server's handshake response (the
-   * negotiated version has to match the one the client asked for). A rejected config-time pin
-   * (`ClientParams.protocolVersion`) has no single "expected" value to name, so it's omitted
-   * there and the message drops the clause instead of naming an arbitrary revision.
-   */
-  constructor(received: string, expected?: ProtocolVersion) {
-    super(
-      expected == null
-        ? `Unsupported protocolVersion "${received}"`
-        : `Server responded with unsupported protocolVersion "${received}"; expected "${expected}"`,
-    )
-    this.name = 'UnsupportedProtocolVersionError'
-  }
-}
-
-export class CapabilityNotDeclaredError extends Error {
-  constructor(capability: string) {
-    super(`Server did not declare the "${capability}" capability`)
-    this.name = 'CapabilityNotDeclaredError'
-  }
-}
-
-/**
- * Thrown when a method is absent from a protocol revision's `clientMethods` — derived from that
- * table, not a version literal, so this fires exactly when the method itself is gone (as
- * opposed to, say, a rejected parameter value).
- *
- * `request()` throws it for any method at all, which is what covers a caller reaching past the
- * typed wrappers. `setLoggingLevel()` throws it earlier, before its capability check, and passes
- * `hint` to say where the log level went on `2026-07-28`.
- */
-export class MethodNotInRevisionError extends Error {
-  constructor(method: string, version: ProtocolVersion, hint?: string) {
-    super(
-      `${method} does not exist in protocol version ${version}${hint == null ? '' : `: ${hint}`}`,
-    )
-    this.name = 'MethodNotInRevisionError'
-  }
-}
-
-/**
- * Thrown when a client is configured with a `createMessage`/`elicit`/`listRoots` handler on a
- * protocol revision that can invoke it neither as a server-initiated request nor as an MRTR input
- * request — the client-side mirror of `@mokei/context-server`'s `MRTRNotSupportedError`.
- */
-export class MRTRNotSupportedError extends Error {
-  constructor(handler: string, version: ProtocolVersion) {
-    super(
-      `The "${handler}" handler is not supported on protocol version ${version}: the revision carries its method neither as a server-initiated request nor as a multi round-trip input request (MRTR, SEP-2322)`,
-    )
-    this.name = 'MRTRNotSupportedError'
-  }
-}
-
-/**
- * Thrown when a server returns an `input_required` result the client will not fulfil: either
- * auto-fulfilment is off and the call did not pass `allowInputRequired`, or no handler is
- * configured for one of the embedded methods.
- */
-export class InputRequiredNotSupportedError extends Error {
-  constructor(reason: string) {
-    super(`The server returned an "input_required" result: ${reason}`)
-    this.name = 'InputRequiredNotSupportedError'
-  }
-}
-
-/** Thrown when a paginated list walk fetches more pages than its cap allows. */
-export class ListMaxPagesError extends Error {
-  /** The list method that exceeded the cap, e.g. `tools/list`. */
-  method: string
-  /** Number of pages fetched before giving up. */
-  pages: number
-  /** Cursor of the page that would have been fetched next. */
-  cursor: string
-  /** Items collected across the pages that were fetched. */
-  results: Array<unknown>
-
-  constructor(method: string, pages: number, cursor: string, results: Array<unknown>) {
-    super(`Listing ${method} exceeded the maximum of ${pages} pages`)
-    this.name = 'ListMaxPagesError'
-    this.method = method
-    this.pages = pages
-    this.cursor = cursor
-    this.results = results
-  }
-}
-
-/**
- * Pagination and transport options accepted by the paginated list methods, alongside the
- * request's own params.
- *
- * `signal` aborts the walk, cancelling the request in flight; `timeout` applies to each
- * page request, not to the walk as a whole.
- */
-export type ListOptions = RequestOptions & {
-  /** Overrides `ClientParams.listMaxPages` for this call. */
-  maxPages?: number
-}
-
-/** Params of a paginated list method: its wire params plus {@link ListOptions}. */
-export type ListParams<Params> = Params & ListOptions
-
-/**
- * Splits a list method's parameters into the params sent on the wire and the options kept
- * local to this process.
- *
- * The counterpart to `splitRequestOptions` for the paginated methods, which carry one
- * local-only option it does not know about: `maxPages`. Any paginated method must split
- * here rather than there, or the cap is serialized into the request sent to the peer.
- */
-export function splitListOptions<Params>(
-  params: ListParams<Params>,
-): [Params, ListOptions & RequestOptions] {
-  const { maxPages, ...rest } = params as ListParams<Record<string, unknown>>
-  const [wireParams, options] = splitRequestOptions(rest)
-  return [wireParams as Params, { ...options, maxPages }]
-}
-
-/** A validation issue, matching the shape `createTool` produces for input errors. */
-export type ValidationIssue = {
-  message: string
-  path?: ReadonlyArray<PropertyKey>
-}
-
-/** Thrown when a tool result's structuredContent violates the tool's advertised outputSchema. */
-export class StructuredContentValidationError extends Error {
-  toolName: string
-  issues: Array<ValidationIssue>
-
-  constructor(toolName: string, issues: Array<ValidationIssue>) {
-    super(`Invalid structuredContent returned by tool ${toolName}`)
-    this.name = 'StructuredContentValidationError'
-    this.toolName = toolName
-    this.issues = issues
-  }
-}
-
-/**
- * A server-initiated request handed to a client handler: the request's params, plus the
- * signal that aborts if the server cancels it.
- *
- * Mirrors `HandlerRequest` on the server side, so a handler is one object either way.
- */
-export type ClientHandlerRequest<Params = Record<string, never>> = {
-  params: Params
-  signal: AbortSignal
-}
-
-export type ElicitHandler = (
-  request: ClientHandlerRequest<ElicitRequest['params']>,
-) => ElicitResult | Promise<ElicitResult>
-
-export type CreateMessageHandler = (
-  request: ClientHandlerRequest<CreateMessageRequest['params']>,
-) => CreateMessageResult | Promise<CreateMessageResult>
-
-export type ListRootsHandler = (
-  request: Omit<ClientHandlerRequest, 'params'>,
-) => Array<Root> | Promise<Array<Root>>
-
 export type ClientEvents = {
   closed: { error?: Error }
   initialized: InitializeResult
@@ -427,16 +271,6 @@ export type ClientEvents = {
   toolsListChanged: undefined
 }
 
-/** Parameters of {@link ContextClient.subscribeResource}/`unsubscribeResource`. */
-export type ResourceSubscriptionParams = {
-  /** The resource URI to subscribe to / unsubscribe from. */
-  uri: string
-  /** Aborts the mutation before its listen filter is acknowledged. */
-  signal?: AbortSignal
-  /** Bounds the wait for the new filter's acknowledgement (ms). */
-  timeout?: number
-}
-
 type HandleNotification = ProgressNotification | ServerNotification
 
 type ClientTypes = {
@@ -448,83 +282,6 @@ type ClientTypes = {
   SendNotifications: ClientNotifications
   SendRequests: ClientRequests
   SendResult: ClientResult
-}
-
-export type ContextTypes = {
-  Prompts?: Record<string, Record<string, unknown> | never>
-  Tools?: Record<string, Record<string, unknown>>
-}
-
-export type UnknownContextTypes = {
-  Prompts: Record<string, Record<string, unknown>>
-  Tools: Record<string, Record<string, unknown>>
-}
-
-/**
- * Params of a named call, as a union of one member per name — so `arguments` is the type of
- * *that* name's arguments.
- *
- * The obvious shape, `{ name: keyof M & string; arguments: M[keyof M] }`, is wrong: it takes
- * the union of every entry's arguments and correlates it with nothing, so calling tool `a`
- * with tool `b`'s arguments type-checks. Distributing over the keys keeps the two tied.
- */
-type NamedParams<M> = {
-  [K in keyof M & string]: {
-    name: K
-    arguments: M[K] extends undefined ? never : M[K]
-    _meta?: Metadata
-  }
-}[keyof M & string]
-
-export type PromptParams<T extends ContextTypes> = NamedParams<T['Prompts']>
-
-export type ToolParams<T extends ContextTypes> = NamedParams<T['Tools']>
-
-export type ClientParams = {
-  /** Revision to speak. `'auto'` probes the server, then caches the result. */
-  protocolVersion: ProtocolVersion | 'auto'
-  clientInfo?: Implementation
-  createMessage?: CreateMessageHandler
-  elicit?: ElicitHandler
-  listMaxPages?: number
-  listRoots?: Array<Root> | ListRootsHandler
-  logLevel?: LoggingLevel
-  /**
-   * Multi round-trip request behavior (MRTR, SEP-2322). `autoFulfill` (default `true`) dispatches
-   * a server's embedded input requests to this client's own `createMessage`/`elicit`/`listRoots`
-   * handlers and retries, so callers of `callTool`/`getPrompt`/`readResource` receive the same
-   * result type they do on `2025-11-25`. `maxRounds` (default 10) caps a single call's rounds.
-   */
-  inputRequired?: { autoFulfill?: boolean; maxRounds?: number }
-  /**
-   * Server-initiated request handlers (`sampling/createMessage`, `elicitation/create`,
-   * `roots/list` on `2025-11-25`) allowed to run at once (default 100). Symmetric with
-   * `@mokei/context-server`'s `ServerParams.maxConcurrentRequests`.
-   */
-  maxConcurrentRequests?: number
-  /** Server-initiated requests allowed to wait for a slot before further ones are refused (default 1000). */
-  maxQueuedRequests?: number
-  /**
-   * Called for an inbound frame that could neither be validated nor routed to anything —
-   * an invalid notification, or a malformed frame naming an id nobody is waiting on — and
-   * for server-initiated request handlers that failed. Without it such frames vanish silently.
-   */
-  onError?: (error: Error) => void
-  /**
-   * Default timeout for every request after setup. Unset means unbounded — `tools/call` can
-   * legitimately run for minutes, and `@mokei/session` already bounds tool calls itself.
-   * `setupTimeout` covers connection setup regardless of this value.
-   */
-  requestTimeout?: number
-  /**
-   * Bounds every setup-time round trip: the `2025-11-25` handshake, the `'auto'` probe, and the
-   * `server/discover` a revision without a handshake sends in their place. It is the only thing
-   * that fails a connection to a server that is spawned but never answers.
-   */
-  setupTimeout?: number
-  /** @deprecated Renamed to `setupTimeout`. */
-  initializeTimeout?: number
-  transport: ClientTransport
 }
 
 type PagedResult = { nextCursor?: string } & Record<string, unknown>
@@ -559,15 +316,15 @@ export class ContextClient<
   #hasNotificationReader = false
   #notifications: ReadableStream<HandleNotification>
   // The one outstanding low-level read shared by `#sendDiscover()` and `#initialize()` via
-  // `#readUntil()`. See `#readUntil()`'s own comment for why this must not become two
-  // independent `reader.read()` calls.
+  // `SetupReader`'s `#readMatching()`. See that method's own comment in `setup-reader.ts` for why
+  // this must not become two independent `reader.read()` calls.
   #pendingSetupRead: Promise<ReadableStreamReadResult<ServerMessage>> | null = null
   #protocol: ProtocolDefinition | null
   #reading = false
   #ready: PromiseLike<void>
   #serverCapabilities: InitializeResult['capabilities'] = {}
   // Session-lifetime snapshot of the discovered server capabilities, used only for gating on a
-  // revision without a handshake (`requiresHandshake: false`). Populated once by
+  // revision without a handshake (`isHandshakeRequired` is `false`). Populated once by
   // `#requireServerCapabilityAsync` and never re-fetched afterward: without a handshake, a live
   // connection's *declared* capabilities cannot change except via a `*_list_changed`
   // notification — which `_handleNotification` acts on, so the exception is enforced rather
@@ -578,11 +335,15 @@ export class ContextClient<
   // Whatever clears one must clear the other, so neither outlives the connection state that
   // produced it — see `#resetDiscovery()`.
   #serverCapabilitySnapshot: ServerCapabilities | null = null
+  // Drives the `initialize` / `server/discover` setup exchanges over the narrow `SetupIO`
+  // adapter constructed below, which closes over `#setupBuffer` / `#pendingSetupRead` — see
+  // `setup-reader.ts`'s own class comment for the split of responsibility.
+  #setupReader: SetupReader
   #setupTimeout: number
   // Messages read during setup (probe and/or handshake) that didn't match the waiter that read
   // them — buffered here rather than dropped, so a later waiter with a different predicate
   // (e.g. the handshake reading past a message the probe already consumed) can still claim
-  // them. See `#readUntil()`. Anything still here once setup finishes (e.g. a notification that
+  // them. See `setup-reader.ts`'s `#readMatching()`. Anything still here once setup finishes (e.g. a notification that
   // arrived mid-setup and matched no setup-phase waiter) is drained by the overridden `_read()`
   // as the read loop's first reads, so nothing buffered here is retained past that point.
   #setupBuffer: Array<ServerMessage> = []
@@ -650,6 +411,37 @@ export class ContextClient<
     this.#ready = lazy(() => this.#setup())
     this.#setupTimeout =
       params.setupTimeout ?? params.initializeTimeout ?? DEFAULT_INITIALIZE_TIMEOUT
+    // The `SetupIO` closures are the only place `#setupBuffer` / `#pendingSetupRead` are touched
+    // outside the `_read()` override below — see `setup-reader.ts`'s `SetupIO` comment for why
+    // each closure is shaped the way it is.
+    this.#setupReader = new SetupReader(
+      {
+        allocateId: () => this._getNextRequestID(),
+        write: (message) => super._write(message),
+        takeBuffered: (matches) => {
+          const index = this.#setupBuffer.findIndex(matches)
+          if (index === -1) {
+            return undefined
+          }
+          const [message] = this.#setupBuffer.splice(index, 1)
+          return message
+        },
+        readNextFrame: () => {
+          // Reuse a still-pending read left behind by an earlier, timed-out waiter rather than
+          // issuing a fresh one -- see `setup-reader.ts`'s `SetupIO.readNextFrame` comment for
+          // why a second concurrent read here would risk stealing the message this or a later
+          // waiter needs.
+          this.#pendingSetupRead ??= super._read().finally(() => {
+            this.#pendingSetupRead = null
+          })
+          return this.#pendingSetupRead
+        },
+        handBackFrame: (message) => {
+          this.#setupBuffer.push(message)
+        },
+      },
+      this.#setupTimeout,
+    )
     this.#notifications = new ReadableStream<HandleNotification>(
       {
         pull: (controller) => {
@@ -727,8 +519,9 @@ export class ContextClient<
   // `callTool` call `request()` directly with no `#ready` await of their own, so under
   // `protocolVersion: 'auto'` this is the only thing that runs the probe before they'd
   // otherwise throw "not resolved yet". Safe against `#initialize()`, which never calls
-  // `request()` — it writes/reads the transport directly via `super._write`/`#readUntil` — so
-  // awaiting `#ready` here cannot deadlock against the handshake `#ready` itself is waiting on.
+  // `request()` — it writes/reads the transport directly via `super._write`/`SetupReader`'s
+  // `#readMatching` — so awaiting `#ready` here cannot deadlock against the handshake `#ready`
+  // itself is waiting on.
   //
   // Behavior change this introduces, deliberately not reverted: `ContextRPC.request()`
   // allocates the request ID synchronously, so awaiting `#ready` first means the *first* call
@@ -871,137 +664,30 @@ export class ContextClient<
   }
 
   /**
-   * Reads messages off the transport until one satisfies `matches`, bounded by `deadline`.
-   * `label` names the request this bounded read is waiting on (`'initialize'` or
-   * `'server/discover'`), used only in the closed-connection error message below.
-   *
-   * Shared by `#sendDiscover()` and `#initialize()` so both funnel through one outstanding
-   * low-level read (`#pendingSetupRead`) instead of each issuing its own. `@enkaku/transport`'s
-   * `Transport#read()` obtains the stream's reader once (`_getReader()`) and shares it, and per
-   * the Streams spec, concurrent `reader.read()` calls on one reader are served FIFO — the
-   * first pending read gets the next chunk, regardless of which caller issued it.
-   *
-   * That matters here because a probe can time out with its own `_read()` still pending (a
-   * timed-out `Promise.race` doesn't cancel the loser). If the handshake that follows then
-   * issued a *second*, independent `_read()`, the two would queue FIFO behind the reader: the
-   * handshake's response would resolve the abandoned probe read first — silently discarded —
-   * while the handshake's own read waits for a message that will never come, and dies with
-   * `RequestTimeoutError`. Routing every setup-phase read through this one method avoids ever
-   * having two outstanding low-level reads: a timed-out waiter leaves `#pendingSetupRead` in
-   * place, and the next waiter (its own deadline, its own `matches`) awaits that *same* promise
-   * instead of starting a new one — so whatever answers it, answers whichever waiter is
-   * currently asking, in order. Messages that don't satisfy the current waiter's `matches` are
-   * buffered (`#setupBuffer`), not dropped, so a later waiter with a different predicate can
-   * still claim them, and so `_read()`'s override (see below) can hand them to the read loop
-   * once setup finishes.
-   *
-   * Deliberately reads fresh data via `super._read()`, not `this._read()`: `_read()` is
-   * overridden below to serve buffered leftovers first, which is exactly right for a caller
-   * (`ContextRPC`'s read loop) that has no predicate of its own and just wants "the next
-   * message, buffered or live" — but wrong here. This loop already scans the *entire*
-   * `#setupBuffer` above for a match before ever asking for more data; if that scan finds
-   * nothing, every buffered entry is confirmed non-matching. Calling the overridden `this._read()`
-   * at that point would hand back one of those same confirmed-non-matching entries instead of
-   * genuinely new data, which this loop would then push right back onto `#setupBuffer` — and
-   * since the push never shrinks the buffer, the next iteration finds it non-empty again and
-   * repeats forever, never once reaching the transport for the response this call is actually
-   * waiting on. `super._read()` always performs a real transport read, sidestepping that.
+   * Drives the `initialize` handshake via `#setupReader`, then applies the parts of the
+   * original `#initialize()` that are `ContextClient`'s own job to interpret, not
+   * `SetupReader`'s: does the negotiated revision match the one this client is configured to
+   * speak, and — if not — dispose the transport before rejecting. `SetupReader.driveInitialize`
+   * only reads and shapes the response; the send/wait loop it replaces (`#readMatching`,
+   * `#setupDeadline`) now lives entirely in `setup-reader.ts`, phrased over the `SetupIO`
+   * closures constructed in the constructor above instead of these private fields directly.
    */
-  async #readUntil(
-    matches: (message: ServerMessage) => boolean,
-    deadline: Promise<never>,
-    label: string,
-  ): Promise<ServerMessage> {
-    while (true) {
-      const index = this.#setupBuffer.findIndex(matches)
-      if (index !== -1) {
-        const [message] = this.#setupBuffer.splice(index, 1)
-        return message
-      }
-      // Reuse a still-pending read left behind by an earlier, timed-out waiter rather than
-      // issuing a fresh one — see the method comment above for why a second concurrent read
-      // here would risk stealing the message this or a later waiter needs.
-      this.#pendingSetupRead ??= super._read().finally(() => {
-        this.#pendingSetupRead = null
-      })
-      const next = await Promise.race([this.#pendingSetupRead, deadline])
-      if (next.done) {
-        throw new Error(`Server closed the connection during ${label}`)
-      }
-      this.#setupBuffer.push(next.value)
-    }
-  }
-
-  /**
-   * A deadline rejecting with `RequestTimeoutError` once `#setupTimeout` elapses, for a request
-   * named `method` (used only in the error message). Built once per bounded read, not per
-   * iteration of `#readUntil`'s loop, so reading past stray messages doesn't accumulate abort
-   * listeners on the underlying signal.
-   *
-   * Attaches a no-op `.catch()` to itself before returning: `#readUntil` can return via a
-   * buffer hit (a match already sitting in `#setupBuffer`) without ever entering the
-   * `Promise.race` that would otherwise be this promise's only listener. When that happens,
-   * this deadline is still armed and rejects later, unattached — an unhandled rejection. Not
-   * reachable today (the very first `#readUntil` call of a fresh setup always finds an empty
-   * buffer), but cheap to close off now rather than wait for it to become reachable.
-   */
-  #setupDeadline(method: string): Promise<never> {
-    const timeoutMs = this.#setupTimeout
-    const deadline = AbortSignal.timeout(timeoutMs)
-    const promise = new Promise<never>((_resolve, reject) => {
-      const fail = () =>
-        reject(
-          new RequestTimeoutError(
-            `Server did not respond to ${method} request within ${timeoutMs}ms`,
-          ),
-        )
-      if (deadline.aborted) {
-        fail()
-      } else {
-        deadline.addEventListener('abort', fail, { once: true })
-      }
-    })
-    promise.catch(() => {})
-    return promise
-  }
-
   async #initialize(): Promise<InitializeResult> {
-    const id = this._getNextRequestID()
     // The revision this client is configured to speak — not `LATEST_PROTOCOL_VERSION`: this
     // client implements exactly one revision's wire behavior, so declaring anything else in
     // the handshake would misrepresent what it can actually speak.
     const protocol = this.#requireProtocol()
-    // Send initialize request
-    await super._write({
-      jsonrpc: '2.0',
-      id,
-      method: 'initialize',
-      params: {
-        ...DEFAULT_INITIALIZE_PARAMS,
-        clientInfo: this.#clientInfo,
-        capabilities: this.#capabilities,
-        protocolVersion: protocol.version,
-      },
+    const { result, negotiatedRevision } = await this.#setupReader.driveInitialize({
+      protocolVersion: protocol.version,
+      clientInfo: this.#clientInfo,
+      capabilities: this.#capabilities,
     })
-    const deadline = this.#setupDeadline('initialize')
-    // Drops anything that isn't the initialize response by construction: `matches` only
-    // accepts this request's own id, so pre-init notifications and server requests are left in
-    // `#setupBuffer` rather than handled here — they can't be, before the session exists.
-    const message = await this.#readUntil(
-      (candidate) => candidate.id === id,
-      deadline,
-      'initialize',
-    )
-    if ('error' in message) {
-      throw RPCError.fromResponse(message as ErrorResponse)
-    }
-    const result = message.result as InitializeResult
     // Reject a negotiated version other than the one this client is configured to speak. This
     // `dispose()` runs twice — the throw propagates into `#setup()`'s blanket catch, which
     // disposes again — but `Disposer.dispose()` is idempotent.
-    if (result.protocolVersion !== protocol.version) {
+    if (negotiatedRevision !== protocol.version) {
       await this.dispose()
-      throw new UnsupportedProtocolVersionError(result.protocolVersion, protocol.version)
+      throw new UnsupportedProtocolVersionError(negotiatedRevision, protocol.version)
     }
     // Store server capabilities for client-side gating.
     this.#serverCapabilities = result.capabilities
@@ -1037,7 +723,7 @@ export class ContextClient<
       const protocol = this.#protocol ?? (await this.#probe())
       this.#protocol = protocol
       this.#refuseUnsupportedHandlers(protocol)
-      if (protocol.requiresHandshake) {
+      if (isHandshakeRequired(protocol)) {
         await this.#initialized
         return
       }
@@ -1140,12 +826,12 @@ export class ContextClient<
    * `2025-11-25` outright.
    *
    * Invariant this relies on, enforced by the assertion in `#startReadLoop()`: whatever
-   * revision this method falls back to must have `requiresHandshake: true`. `#initialize()` is
+   * revision this method falls back to must have `isHandshakeRequired` `true`. `#initialize()` is
    * the only setup path that calls `#startReadLoop()` *after* consuming the one outstanding
    * `#pendingSetupRead` down to `null` — a fallback landing on a revision without a handshake
    * would instead go straight to `#setup()`'s own `#startReadLoop()` call with no guarantee
-   * `#pendingSetupRead` has settled, reopening the original FIFO-steal bug `#readUntil()`
-   * exists to prevent. Every revision this function can fall back to today requires a
+   * `#pendingSetupRead` has settled, reopening the original FIFO-steal bug `setup-reader.ts`'s
+   * `#readMatching()` exists to prevent. Every revision this function can fall back to today requires a
    * handshake, so the invariant currently holds by construction, not by choice made here.
    */
   async #probe(): Promise<ProtocolDefinition> {
@@ -1198,12 +884,14 @@ export class ContextClient<
   }
 
   /**
-   * Sends `server/discover` directly on the transport (`super._write`), bypassing
-   * `ContextRPC`'s request/exchange machinery: `#startReadLoop()` hasn't run yet — resolving
-   * whether it should is the point of the probe that is one of this method's two callers — so
-   * there is no read loop to route a response through yet. Reads the response via
-   * `#readUntil()`, sharing its bounded-read state with `#initialize()` so a probe timeout can't
-   * cause the handshake that follows to lose its response (see `#readUntil()`'s comment).
+   * Drives one `server/discover` exchange via `#setupReader`, bypassing `ContextRPC`'s
+   * request/exchange machinery the same way the original method did: `#startReadLoop()` hasn't
+   * run yet — resolving whether it should is the point of the probe that is one of this
+   * method's two callers — so there is no read loop to route a response through yet.
+   * `SetupReader.driveDiscover` shares its bounded-read state with `driveInitialize` (both
+   * funnel through the same `SetupIO` closures, which close over `#pendingSetupRead`), so a
+   * probe timeout can't cause the handshake that follows to lose its response — see
+   * `setup-reader.ts`'s `SetupIO.readNextFrame` comment.
    *
    * `protocol` is the revision whose envelope stamps the outgoing frame, and it is a parameter
    * rather than a constant because the two callers know different things. `#setupDiscover()`
@@ -1211,46 +899,15 @@ export class ContextClient<
    * revision is known and passes {@link PROBE_PROTOCOL}, a registry-derived guess. Hardcoding
    * either here would stamp a future handshake-less revision's setup frame with an older
    * revision's version — a version literal standing in for a capability.
-   *
-   * Sends the same `clientInfo`/`logLevel` context `request()` sends with every other request,
-   * plus the same W3C trace context (SEP-414) `request()` injects into `_meta` via
-   * `currentTraceMeta()`: the spec says a client SHOULD send `clientInfo`, and there's no reason
-   * for the one-off setup request to present a different envelope to the server than any request
-   * that follows it — a server keying logs, metrics or trace correlation off
-   * `clientInfo`/`traceparent` shouldn't see a gap for the request that established the
-   * connection.
    */
   async #sendDiscover(protocol: ProtocolDefinition): Promise<DiscoverResult> {
-    const id = this._getNextRequestID()
-    const trace = currentTraceMeta()
-    const base: Record<string, unknown> = {}
-    if (trace.traceparent != null) {
-      base._meta = { ...trace }
-    }
-    await super._write({
-      jsonrpc: '2.0',
-      id,
-      method: 'server/discover',
-      params: protocol.decorateRequest(base, {
-        capabilities: this.#capabilities,
-        clientInfo: this.#clientInfo,
-        logLevel: this.#logLevel,
-      }),
-    } as ClientMessage)
-    const deadline = this.#setupDeadline('server/discover')
-    const message = await this.#readUntil(
-      (candidate) => candidate.id === id,
-      deadline,
-      'server/discover',
-    )
-    if ('error' in message) {
-      throw RPCError.fromResponse(message as ErrorResponse)
-    }
-    const discovered = validateDiscoverResult(message.result)
-    if (discovered.issues != null) {
-      throw new RPCError(INVALID_REQUEST, 'Invalid server/discover result')
-    }
-    return discovered.value
+    const { result } = await this.#setupReader.driveDiscover({
+      protocol,
+      clientInfo: this.#clientInfo,
+      capabilities: this.#capabilities,
+      logLevel: this.#logLevel,
+    })
+    return result
   }
 
   /**
@@ -1278,9 +935,10 @@ export class ContextClient<
   /**
    * Starts `ContextRPC`'s read loop exactly once, across probe and handshake.
    *
-   * Asserts `#pendingSetupRead == null`: the read loop and `#readUntil()` must never have an
-   * outstanding low-level read in flight at the same time, or the FIFO-steal bug `#readUntil()`
-   * exists to prevent returns — a read meant for `#readUntil()`'s caller could instead resolve
+   * Asserts `#pendingSetupRead == null`: the read loop and `setup-reader.ts`'s `#readMatching()`
+   * must never have an outstanding low-level read in flight at the same time, or the FIFO-steal
+   * bug `#readMatching()` exists to prevent returns — a read meant for `#readMatching()`'s caller
+   * could instead resolve
    * whichever `_read()` call `ContextRPC`'s read loop just issued, and vice versa. Every setup
    * path that reaches here has already consumed `#pendingSetupRead` down to `null` via the
    * response that unblocked its own bounded read — the initialize response for `#initialize()`,
@@ -1310,8 +968,9 @@ export class ContextClient<
    * notification or server request that arrived during the probe/handshake window and matched
    * no setup-phase waiter's predicate) is drained here as the read loop's first reads, in
    * arrival order, before it ever reaches `super._read()` for genuinely new data. This is the
-   * single place `#setupBuffer` is drained for that purpose — `#readUntil()` deliberately does
-   * not call this override for its own reads (see its comment for why doing so would deadlock).
+   * single place `#setupBuffer` is drained for that purpose — `setup-reader.ts`'s `#readMatching()`
+   * deliberately does not call this override for its own reads (see its comment for why doing so
+   * would deadlock).
    */
   async _read(): Promise<ReadableStreamReadResult<ServerMessage>> {
     if (this.#setupBuffer.length > 0) {
@@ -1696,7 +1355,7 @@ export class ContextClient<
   ): Promise<void> {
     const protocol = this.#requireProtocol()
     let capabilities: ServerCapabilities
-    if (protocol.requiresHandshake) {
+    if (isHandshakeRequired(protocol)) {
       capabilities = this.#serverCapabilities
     } else {
       if (this.#serverCapabilitySnapshot == null) {
@@ -1734,7 +1393,7 @@ export class ContextClient<
   async initialize(): Promise<InitializeResult> {
     await this.#ready
     const protocol = this.#requireProtocol()
-    if (!protocol.requiresHandshake) {
+    if (!isHandshakeRequired(protocol)) {
       throw new Error(
         `initialize() is not applicable to protocol version ${protocol.version}: it does not require a handshake`,
       )
@@ -1760,7 +1419,7 @@ export class ContextClient<
   async discover(options?: RequestOptions): Promise<DiscoverResult> {
     await this.#ready
     const protocol = this.#requireProtocol()
-    if (protocol.requiresHandshake) {
+    if (isHandshakeRequired(protocol)) {
       throw new Error(
         `server/discover does not exist in protocol version ${protocol.version}; use initialize()`,
       )

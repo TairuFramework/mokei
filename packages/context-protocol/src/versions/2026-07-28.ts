@@ -271,9 +271,9 @@ export type ClientRequest = FromSchema<typeof clientRequest>
 /**
  * Notifications a client may send in this revision. `2025-11-25`'s `initialized` and
  * `roots/list_changed` are excluded: the former only means something as part of the
- * handshake this revision drops (`requiresHandshake: false`), and the latter only means
- * something if a server can ask for the roots list back, which no `2026-07-28` server can
- * (`serverMethods` carries no `roots/list`).
+ * handshake this revision drops (`isHandshakeRequired` is `false` here, since `initialize` is
+ * absent from `clientMethods`), and the latter only means something if a server can ask for the
+ * roots list back, which no `2026-07-28` server can (`serverMethods` carries no `roots/list`).
  *
  * Both members that remain build on `notification`, whose `params` already admits the `_meta`
  * that `decorateNotification` stamps below.
@@ -461,12 +461,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 export const PROTOCOL = {
   version: PROTOCOL_VERSION,
-  requiresHandshake: false,
   requiresRequestMeta: true,
   requiresCacheHints: true,
   // `logging/setLevel` is absent from `clientMethods` below: there is no session-level opt-in
   // left, so log level travels per request in `_meta` instead (`readRequestMeta().logLevel`).
-  requiresPerRequestLogLevel: true,
   clientMethods: new Set([
     'server/discover',
     'completion/complete',

@@ -9,6 +9,7 @@ import type {
 } from '@mokei/context-protocol'
 import {
   HEADER_MISMATCH,
+  isHandshakeRequired,
   isSupportedProtocolVersion,
   META_PROTOCOL_VERSION,
   PROTOCOLS,
@@ -132,6 +133,8 @@ export type HTTPTransportParams = {
   auth?: HTTPAuthOptions
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number
+  /** Budget for the internal schema-refresh `tools/list` (default: 10000). */
+  refreshTimeout?: number
   /** Optional logger (defaults to the `mokei:http-client` logger) */
   logger?: Logger
   /**
@@ -163,11 +166,18 @@ function hasSession(version: string | null): boolean {
   if (version == null || !isSupportedProtocolVersion(version)) {
     return true
   }
-  return PROTOCOLS[version].requiresHandshake
+  return isHandshakeRequired(PROTOCOLS[version])
 }
 
 /** Default HTTP request timeout in milliseconds. */
 export const DEFAULT_HTTP_TIMEOUT = 30_000
+
+/**
+ * Default budget for the internal schema-refresh `tools/list`, in milliseconds. Independent of
+ * {@link HTTPTransportParams.timeout} so a firing stale-schema retry cannot triple the caller's
+ * clock (original POST + refresh + re-send).
+ */
+export const DEFAULT_HTTP_REFRESH_TIMEOUT = 10_000
 
 /** Base delay before reconnecting the GET notification stream, when the server gives no `retry`. */
 export const DEFAULT_GET_RECONNECT_BASE_MS = 1_000
@@ -194,6 +204,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #url: string
   #headers: Record<string, string>
   #timeout: number
+  #refreshTimeout: number
   #sessionID: string | null = null
   #lastEventID: string | null = null
   #retryMs: number | null = null
@@ -321,7 +332,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     const params: Record<string, unknown> = Object.keys(meta).length > 0 ? { _meta: meta } : {}
 
     const controller = new AbortController()
-    const timeoutID = setTimeout(() => controller.abort(), this.#timeout)
+    const timeoutID = setTimeout(() => controller.abort(), this.#refreshTimeout)
     this.#untrackedControllers.add(controller)
     try {
       const response = await fetch(this.#url, {
@@ -434,6 +445,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#url = params.url
     this.#headers = buildHTTPHeaders({ headers: params.headers, auth: params.auth })
     this.#timeout = params.timeout ?? DEFAULT_HTTP_TIMEOUT
+    this.#refreshTimeout = params.refreshTimeout ?? DEFAULT_HTTP_REFRESH_TIMEOUT
     this.#protocolVersion = params.protocolVersionHeader ?? null
     this.#logger = params.logger ?? getMokeiLogger('http-client')
   }
@@ -1126,6 +1138,7 @@ const HTTP_TRANSPORT_PARAM_KEYS = {
   headers: true,
   auth: true,
   timeout: true,
+  refreshTimeout: true,
   logger: true,
   protocolVersionHeader: true,
 } satisfies Record<keyof HTTPTransportParams, true>

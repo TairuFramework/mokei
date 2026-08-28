@@ -8,7 +8,7 @@ import type {
   RequestID,
   Response,
 } from '@mokei/context-protocol'
-import { INTERNAL_ERROR, INVALID_REQUEST } from '@mokei/context-protocol'
+import { INTERNAL_ERROR, INVALID_REQUEST, SERVER_SHUTTING_DOWN } from '@mokei/context-protocol'
 import { type Deferred, Disposer, defer, toPromise } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 import type { Validator } from '@sozai/schema'
@@ -177,6 +177,7 @@ export type RPCParams<T extends RPCTypes> = {
  */
 export class ContextRPC<T extends RPCTypes> extends Disposer {
   #closed = false
+  #disposing = false
   #defaultRequestTimeout?: number
   #events: EventEmitter<T['Events']>
   #requestID = 0
@@ -188,6 +189,12 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   // the entry is removed (terminal written, terminal rejected, or the request was cancelled) —
   // `#flushHeldResponses` awaits it on disposal.
   #heldRequests: Map<RequestID, { signal: AbortSignal; settled: Promise<void> }> = new Map()
+  // In-flight `#writeResponse` calls, tracked so disposal can await them before the transport
+  // tears down — otherwise a response write racing `#dispose()` (e.g. the synchronous
+  // SERVER_SHUTTING_DOWN rejection written from the read loop) can be cut off mid-flight and
+  // the peer sees EOF instead of the frame. Every added promise is removed on settle via
+  // `.finally()`, and it never rejects — `#writeResponse` already swallows write errors.
+  #pendingWrites: Set<Promise<void>> = new Set()
   #transport: TransportType<T['MessageIn'], T['MessageOut']> & Partial<StreamEventsTransport>
   #validateMessageIn: Validator<T['MessageIn']>
   #onError?: (error: Error) => void
@@ -303,11 +310,31 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   }
 
   async #writeResponse(response: Response): Promise<void> {
-    try {
-      await this._write(response as T['MessageOut'])
-    } catch {
-      // A failed response write is not fatal; transport death surfaces on next read.
+    const write = (async () => {
+      try {
+        await this._write(response as T['MessageOut'])
+      } catch {
+        // A failed response write is not fatal; transport death surfaces on next read.
+      }
+    })()
+    const tracked = write.finally(() => {
+      this.#pendingWrites.delete(tracked)
+    })
+    this.#pendingWrites.add(tracked)
+    await tracked
+  }
+
+  /**
+   * Awaits every response write currently in flight. Snapshots to an array first: iterating a
+   * `Set` that a concurrent `.finally()` mutates mid-loop is not safe to do directly, and new
+   * writes started after the snapshot are not this call's concern — a later caller waits for
+   * those.
+   */
+  async #flushPendingWrites(): Promise<void> {
+    if (this.#pendingWrites.size === 0) {
+      return
     }
+    await Promise.allSettled(Array.from(this.#pendingWrites))
   }
 
   #close(reason?: Error): void {
@@ -330,12 +357,20 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   }
 
   async #dispose(): Promise<void> {
+    this.#disposing = true
     const reason = new TransportClosedError('Transport disposed')
     // Explicit dispose only: gives a subclass a chance to resolve any held
     // `subscriptions/listen` terminals so their graceful result can still be written. A peer
     // EOF runs `#close()` directly and never reaches this hook.
     await this.#flushBeforeClose(reason)
     this.#close(reason)
+    // Backstop: a response write can start just after `#flushBeforeClose` checked
+    // `#pendingWrites` (most commonly the synchronous SERVER_SHUTTING_DOWN rejection the
+    // read loop writes for a request rejected while disposing) and so miss that flush's own
+    // await. Catching it here, as the last step before the transport tears down, is what
+    // keeps that write from being cut off mid-flight. Bounded by the same deadline as
+    // `#flushBeforeClose` so disposal as a whole stays bounded.
+    await this.#awaitPendingWritesWithDeadline()
     await this.#transport.dispose()
   }
 
@@ -369,11 +404,40 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
           this.#reportError(cause instanceof Error ? cause : new Error(String(cause)))
         }
       }
+      // Also let any response write already in flight land — most commonly the synchronous
+      // SERVER_SHUTTING_DOWN rejection the read loop writes for a request that arrived after
+      // `#disposing` flipped true, which races this very flush. `#dispose`'s own backstop
+      // await (after `#close()`) catches anything that starts too late to be seen here.
+      await this.#flushPendingWrites()
     })()
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       await Promise.race([
         flush,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, HELD_RESPONSE_FLUSH_DEADLINE_MS)
+        }),
+      ])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  /**
+   * Bounded backstop wait for any response write still in flight, used by `#dispose` as the
+   * last step before the transport tears down. A fresh {@link HELD_RESPONSE_FLUSH_DEADLINE_MS}
+   * bound, separate from `#flushBeforeClose`'s — keeping this step bounded on its own is what
+   * keeps disposal as a whole bounded, since it runs after that flush's own deadline race has
+   * already resolved.
+   */
+  async #awaitPendingWritesWithDeadline(): Promise<void> {
+    if (this.#pendingWrites.size === 0) {
+      return
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        this.#flushPendingWrites(),
         new Promise<void>((resolve) => {
           timer = setTimeout(resolve, HELD_RESPONSE_FLUSH_DEADLINE_MS)
         }),
@@ -441,6 +505,11 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       return null
     }
 
+    // Message is a request — reject it if we have begun disposing; the read loop stays live
+    // during the held-response flush, but a disposing server must not start new work.
+    if (this.#disposing) {
+      return new RPCError(SERVER_SHUTTING_DOWN, 'Server is shutting down').toResponse(id)
+    }
     // Message is a request — the scheduler owns its signal and decides when it runs.
     return this.#scheduler.schedule(id, (signal) => {
       return toPromise(() => {

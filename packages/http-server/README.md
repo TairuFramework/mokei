@@ -19,6 +19,12 @@ resumable GET stream, `DELETE` to terminate); a `2026-07-28` client is handled s
 no session is minted, `GET` and `DELETE` return `405`, and each request is answered by its
 own short-lived `ContextServer`. List both revisions in `protocolVersions` to reach both.
 
+The `2025-11-25` session GET/SSE stream is deprecated on `2026-07-28` (SEP-2577): on
+`2026-07-28`, notifications travel on the POST response of the request that triggered them, so
+there is no equivalent stream to deprecate on that revision — it simply doesn't apply there. The
+`2025-11-25` session GET stream itself remains fully supported for the deprecation window. This
+does not affect the `2026-07-28` Streamable HTTP transport, which is current and not deprecated.
+
 `serveHTTP` starts an HTTP server (via `@hono/node-server`) that bridges each session
 to a `ContextServer` you create per connection:
 

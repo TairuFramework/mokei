@@ -61,6 +61,29 @@ export function isSupportedProtocolVersion(version: string): version is Protocol
   return (PROTOCOL_VERSIONS as ReadonlyArray<string>).includes(version)
 }
 
+/**
+ * Whether a revision requires the `initialize`/`initialized` handshake before other traffic.
+ * Derived from `clientMethods`; replaces the former `ProtocolDefinition.requiresHandshake` field.
+ */
+export function isHandshakeRequired(protocol: ProtocolDefinition): boolean {
+  return protocol.clientMethods.has('initialize')
+}
+
+/**
+ * Whether log level is scoped per request (read from each request's `_meta`) rather than set
+ * session-wide via `logging/setLevel`. Derived from `clientMethods`; replaces the former
+ * `ProtocolDefinition.requiresPerRequestLogLevel` field.
+ *
+ * This derivation relies on an invariant that any future revision must satisfy: a revision omits
+ * `logging/setLevel` from `clientMethods` only when it scopes log level per request. A revision
+ * that dropped `logging/setLevel` for some other reason -- e.g. because it removed logging
+ * support entirely -- would be misread by this helper as using per-request log levels, so adding
+ * such a revision must revisit this function rather than rely on the derivation as-is.
+ */
+export function isPerRequestLogLevel(protocol: ProtocolDefinition): boolean {
+  return !protocol.clientMethods.has('logging/setLevel')
+}
+
 export const PROTOCOLS: Record<ProtocolVersion, ProtocolDefinition> = {
   '2025-11-25': PROTOCOL_2025_11_25,
   '2026-07-28': PROTOCOL_2026_07_28,

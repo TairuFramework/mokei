@@ -1,5 +1,6 @@
 import { DirectTransports, type TransportType } from '@enkaku/transport'
 import type { AnyMessage } from '@mokei/context-protocol'
+import { SERVER_SHUTTING_DOWN } from '@mokei/context-protocol'
 import { defer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 import type { Validator } from '@sozai/schema'
@@ -784,6 +785,116 @@ describe('ContextRPC pre-close flush', () => {
     expect(writeSpy.mock.invocationCallOrder[writeCallIndex]).toBeLessThan(
       disposeSpy.mock.invocationCallOrder[0],
     )
+
+    await transports.dispose()
+  })
+
+  test('rejects a new inbound request while disposing with SERVER_SHUTTING_DOWN', async () => {
+    const gate = defer<void>()
+    class TestRPC extends ContextRPC<TestTypes> {
+      _beforeTransportClose(): Promise<void> {
+        return gate.promise // hold the flush window open
+      }
+      async _handleRequest(): Promise<Record<string, never>> {
+        return {}
+      }
+    }
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = new TestRPC({ transport: transports.client, validateMessageIn: passthrough })
+    rpc._handle()
+
+    const disposed = rpc.dispose() // sets #disposing synchronously, then awaits _beforeTransportClose
+    await Promise.resolve()
+
+    // A new inbound request arrives during the disposal window.
+    await transports.server.write({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'tools/list',
+      params: {},
+    } as AnyMessage)
+    const response = (await transports.server.read()).value as {
+      id: unknown
+      error?: { code: number }
+    }
+    expect(response.id).toBe(7)
+    expect(response.error?.code).toBe(SERVER_SHUTTING_DOWN)
+
+    gate.resolve()
+    await disposed
+    await transports.dispose()
+  })
+
+  test('a pending SERVER_SHUTTING_DOWN write is not cut off by the transport disposing', async () => {
+    const beforeCloseGate = defer<void>()
+    class TestRPC extends ContextRPC<TestTypes> {
+      _beforeTransportClose(): Promise<void> {
+        return beforeCloseGate.promise // hold the flush window open
+      }
+      async _handleRequest(): Promise<Record<string, never>> {
+        return {}
+      }
+    }
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = new TestRPC({ transport: transports.client, validateMessageIn: passthrough })
+    rpc._handle()
+
+    // Delay the write that carries the SERVER_SHUTTING_DOWN rejection so the test can observe
+    // whether the transport gets disposed before or after that write actually lands.
+    const writeGate = defer<void>()
+    let shuttingDownWriteStarted = false
+    const realWrite = transports.client.write.bind(transports.client)
+    const writeSpy = vi.spyOn(transports.client, 'write').mockImplementation(async (message) => {
+      const isShuttingDown =
+        (message as { error?: { code: number } }).error?.code === SERVER_SHUTTING_DOWN
+      if (isShuttingDown) {
+        shuttingDownWriteStarted = true
+        await writeGate.promise
+      }
+      return realWrite(message)
+    })
+    const disposeSpy = vi.spyOn(transports.client, 'dispose')
+
+    const disposed = rpc.dispose() // sets #disposing synchronously, then awaits _beforeTransportClose
+    await Promise.resolve()
+
+    // A new inbound request arrives during the disposal window: the gate in `_handleMessage`
+    // rejects it synchronously with SERVER_SHUTTING_DOWN, and the read loop starts writing that
+    // response — which is now pending on the delayed transport write.
+    await transports.server.write({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'tools/list',
+      params: {},
+    } as AnyMessage)
+    await vi.waitFor(() => expect(shuttingDownWriteStarted).toBe(true))
+
+    // Release the disposal gate so `#dispose` proceeds toward `#close()` / `#transport.dispose()`.
+    beforeCloseGate.resolve()
+    // Give `#dispose` a real turn to run ahead — long enough for the current (buggy) code to
+    // have already called `#transport.dispose()`, since that call is not gated on the pending
+    // write.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    // The SERVER_SHUTTING_DOWN write has not resolved yet, so the transport must not have been
+    // disposed — disposing it now would tear the connection down before the peer ever receives
+    // the rejection, and the peer would see EOF instead of -32000.
+    expect(disposeSpy).not.toHaveBeenCalled()
+
+    // Let the pending write complete.
+    writeGate.resolve()
+    await disposed
+
+    expect(disposeSpy).toHaveBeenCalledTimes(1)
+    expect(writeSpy).toHaveBeenCalled()
+
+    // The peer actually received the -32000 rejection, not EOF.
+    const response = (await transports.server.read()).value as {
+      id: unknown
+      error?: { code: number }
+    }
+    expect(response.id).toBe(7)
+    expect(response.error?.code).toBe(SERVER_SHUTTING_DOWN)
 
     await transports.dispose()
   })

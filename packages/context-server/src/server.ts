@@ -37,6 +37,8 @@ import {
   INPUT_REQUEST_CAPABILITIES,
   INTERNAL_ERROR,
   INVALID_PARAMS,
+  isHandshakeRequired,
+  isPerRequestLogLevel,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
   META_SUBSCRIPTION_ID,
@@ -325,8 +327,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
 
   /**
    * Session-scoped log: delivered when the client opted in through `logging/setLevel`
-   * (`2025-11-25`). Also the `log` a handler gets on any revision without
-   * `requiresPerRequestLogLevel`.
+   * (`2025-11-25`). Also the `log` a handler gets on any revision where `isPerRequestLogLevel`
+   * is `false`.
    */
   log(params: LogParams) {
     this.#emitLog(params, this.#clientLoggingLevel)
@@ -385,8 +387,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
    */
   #resolveProtocol(request: ClientRequest): ProtocolDefinition {
     if (request.method === 'initialize') {
-      const handshake = this.#protocolVersions.find(
-        (version) => PROTOCOLS[version].requiresHandshake,
+      const handshake = this.#protocolVersions.find((version) =>
+        isHandshakeRequired(PROTOCOLS[version]),
       )
       if (handshake == null) {
         throw new RPCError(
@@ -441,12 +443,12 @@ export class ContextServer extends ContextRPC<ServerTypes> {
    * replaces server-initiated requests with multi round-trip requests (MRTR, SEP-2322) — a
    * handler on it reaches the client by suspending (`inputRequired()`) and being re-invoked with
    * `inputResponses`, not by awaiting one of these three. `log` is gated on the independent
-   * `requiresPerRequestLogLevel`: when true it scopes emission to the level this request opted
-   * into via `_meta`, instead of a standing session level.
+   * `isPerRequestLogLevel(protocol)`: when true it scopes emission to the level this request
+   * opted into via `_meta`, instead of a standing session level.
    *
-   * `2025-11-25` has all three methods in `serverMethods` and `requiresPerRequestLogLevel:
-   * false`, so this returns the constructor-built, session-scoped `#client` unchanged — its
-   * `log` is `ContextServer.log`, gated by `#clientLoggingLevel` (`logging/setLevel`). Any other
+   * `2025-11-25` has all three methods in `serverMethods` and `isPerRequestLogLevel` `false`,
+   * so this returns the constructor-built, session-scoped `#client` unchanged — its `log` is
+   * `ContextServer.log`, gated by `#clientLoggingLevel` (`logging/setLevel`). Any other
    * combination builds a fresh client per request, so it can close over the request's resolved
    * `logLevel`.
    */
@@ -458,7 +460,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       supportsCreateMessage &&
       supportsElicit &&
       supportsListRoots &&
-      !protocol.requiresPerRequestLogLevel
+      !isPerRequestLogLevel(protocol)
     ) {
       return this.#client
     }
@@ -475,7 +477,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       // Delivered only when this request opted in via `_meta`, at or above its level — but the
       // `log` event is raised either way, so `server.events.on('log')` sees handler logs on
       // every revision.
-      log: protocol.requiresPerRequestLogLevel
+      log: isPerRequestLogLevel(protocol)
         ? (params: LogParams) => this.#emitLog(params, logLevel)
         : this.log.bind(this),
     }
