@@ -7,9 +7,8 @@
 Clears the two actionable items deferred out of the `2026-07-28` deprecations cleanup (see
 `2026-08-28-mcp-2026-07-28-deprecations-cleanup.complete.md`): the SSE reader-backpressure fix
 (§1) and the per-revision `ServerRequest`/`ServerNotification` split (§2). The three remaining
-deferrals were decided against rather than scheduled — §3 host-level `'auto'` cache is YAGNI, and
-§4 is two deliberate design notes — and stay recorded in
-`docs/agents/plans/backlog/2026-08-28-mcp-2026-07-28-cleanup-deferrals.md`.
+deferrals were decided against rather than scheduled (see _Not scheduled_ below); no backlog item
+is carried forward.
 
 ## What was built
 
@@ -68,3 +67,25 @@ regression test: the original deadlock and transport-poisoning; a cursor-corrupt
 interleave and a parked-write teardown leak; a live-message drop during replay and a concurrent-GET
 orphan race; and a gated-write loss on GET supersession. `@mokei/http-server` 91 tests and
 `@mokei/context-protocol` 151 tests pass; types and Biome clean.
+
+## Not scheduled
+
+Three items from the original deferral list were decided against, not deferred again. Recorded
+here so the reasoning is not rediscovered; section numbers carried over from the retired deferrals
+file.
+
+- **§3 — host-level caching of `'auto'` revision resolution (YAGNI).** `ContextClient` already
+  caches its resolved revision for the transport's lifetime, and each context owns exactly one
+  transport, so a host-level cache would only add reuse *across* contexts sharing a config — which
+  needs a registry keyed by structural config identity, invalidated on a signal nobody has
+  specified. Speculative work for one saved round trip. Not planned.
+- **§4a — `-32020` `HEADER_MISMATCH` has no emitter.** The constant has a reachable *consumer*
+  (the HTTP client's stale-schema retry recognises a peer's `-32020`) but no emitter, and will not
+  get one here: mokei's HTTP server does not read `Mcp-Param-*`, `Mcp-Method`, or `Mcp-Name` at
+  all, so nothing in mokei is positioned to reject a request for a header/body disagreement. An
+  emitter would need server-side header validation, which is not scheduled.
+- **§4b — the CLI's `-p` means three different things.** `--provider` on `chat`, `--port` on
+  `monitor`, `--protocol` on `inspect` — and `-p` is *also* `--protocol` inside the `/context add`
+  slash command, which runs inside `chat` where top-level `-p` means provider. No collision (no two
+  are reachable in the same argv position), but inconsistent enough to mislead. Renaming any is
+  breaking, so this is a deliberate note rather than a proposal.
