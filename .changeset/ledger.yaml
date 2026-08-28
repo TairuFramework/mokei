@@ -6,6 +6,10 @@
   dir: packages/context-client
   intents:
     - mcp-mrtr-header-retry
+"@mokei/context-client@0.13.1":
+  dir: packages/context-client
+  intents:
+    - public-geese-fail
 "@mokei/context-protocol@0.11.0":
   dir: packages/context-protocol
   intents:
@@ -14,6 +18,10 @@
   dir: packages/context-protocol
   intents:
     - mcp-mrtr-header-retry
+"@mokei/context-protocol@0.13.1":
+  dir: packages/context-protocol
+  intents:
+    - public-geese-fail
 "@mokei/context-rpc@0.11.0":
   dir: packages/context-rpc
   intents:
@@ -22,6 +30,10 @@
   dir: packages/context-rpc
   intents:
     - mcp-mrtr-header-retry
+"@mokei/context-rpc@0.13.1":
+  dir: packages/context-rpc
+  intents:
+    - public-geese-fail
 "@mokei/context-server@0.11.0":
   dir: packages/context-server
   intents:
@@ -30,6 +42,10 @@
   dir: packages/context-server
   intents:
     - mcp-mrtr-header-retry
+"@mokei/context-server@0.13.1":
+  dir: packages/context-server
+  intents:
+    - public-geese-fail
 "@mokei/host@0.11.0":
   dir: packages/host
   intents:
@@ -50,10 +66,18 @@
   dir: packages/http-client
   intents:
     - mcp-mrtr-header-retry
+"@mokei/http-client@0.13.1":
+  dir: packages/http-client
+  intents:
+    - public-geese-fail
 "@mokei/http-server@0.11.0":
   dir: packages/http-server
   intents:
     - mcp-2026-07-28
+"@mokei/http-server@0.13.1":
+  dir: packages/http-server
+  intents:
+    - public-geese-fail
 "@mokei/openai-provider@0.11.0":
   dir: packages/openai-provider
   intents:
@@ -66,3 +90,7 @@ mokei@0.11.0:
   dir: packages/cli
   intents:
     - mcp-2026-07-28
+mokei@0.13.1:
+  dir: packages/cli
+  intents:
+    - public-geese-fail

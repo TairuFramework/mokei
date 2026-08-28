@@ -25,7 +25,7 @@ publicHoistPattern:
 
 catalog:
   '@biomejs/biome': ^2.5.0
-  '@enkaku/client': ^0.21.0
+  '@enkaku/client': ^0.21.1
   '@enkaku/http-fetch': ^0.21.0
   '@enkaku/http-serve': ^0.21.0
   '@enkaku/node-streams': ^0.21.0
@@ -58,7 +58,7 @@ catalog:
   '@tanstack/router-devtools': ^1.167.1
   '@tanstack/router-plugin': ^1.168.35
   '@types/luxon': ^3.7.5
-  '@types/node': ^26.3.0
+  '@types/node': ^26.4.0
   '@types/react': ^19.2.18
   '@types/react-dom': ^19.2.5
   '@types/turndown': ^5.0.6
