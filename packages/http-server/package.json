@@ -1,6 +1,6 @@
 {
   "name": "@mokei/http-server",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "description": "Mokei MCP HTTP server handler",
   "keywords": [
     "model",

@@ -12,7 +12,7 @@ import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { createRuntime, type Runtime } from '@sozai/runtime'
 
 import { appendReplay, eventsAfter, type Session, SessionManager } from './session.js'
-import { createSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.js'
+import { createSSEStream, SSE_RESPONSE_HEADERS, SSE_STREAM_HIGH_WATER_MARK } from './sse-stream.js'
 import { type SSEEvent, SSEWriter } from './sse-writer.js'
 import {
   DEFAULT_STATELESS_TIMEOUT_MS,
@@ -449,9 +449,10 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       bridge.controller.enqueue(body as unknown as ClientMessage)
 
       // Open SSE stream for the response
-      const { readable, writable } = createSSEStream()
+      const { readable, writable, release } = createSSEStream()
       const sseWriter = new SSEWriter({
         writable,
+        release,
         streamID: `post-${requestID}`,
         replayBufferSize,
         onEvent: (event) => appendReplay(session, event, replayBufferSize),
@@ -685,24 +686,41 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       session.getStream = null
     }
 
-    const { readable, writable } = createSSEStream()
+    // Size the stream to hold the priming frame plus the whole replay snapshot, so those writes
+    // never park for a reader that only attaches once the Response is returned — replaying a
+    // buffer larger than a fixed high-water mark would otherwise deadlock. Live traffic after
+    // resumption is then bounded by this same mark, which is never below the default.
+    const highWaterMark = Math.max(SSE_STREAM_HIGH_WATER_MARK, replayEvents.length + 1)
+    const { readable, writable, release } = createSSEStream(highWaterMark)
     const sseWriter = new SSEWriter({
       writable,
+      release,
       streamID: `get-${sessionID}`,
       replayBufferSize,
       onEvent: (event) => appendReplay(session, event, replayBufferSize),
       logger,
     })
 
+    // Publish the stream up front, but gate live writes behind the replay. Publishing before any
+    // `await` (a) closes a superseding GET deterministically — a second resumption sees this
+    // stream rather than racing a null slot and orphaning it — and (b) routes any live server
+    // message that arrives during replay to this stream instead of dropping it. The gate holds
+    // those live writes until the snapshot is written, so they land after it, never interleaved.
+    let releaseLiveWrites!: () => void
+    sseWriter.deferLiveWritesUntil(new Promise<void>((resolve) => (releaseLiveWrites = resolve)))
     session.getStream = sseWriter
 
-    // Send priming event
-    await sseWriter.writePrimingEvent()
-
-    // Replay buffered events from across the session's streams, preserving
-    // their original ids so the client's resumption cursor stays consistent.
-    for (const event of replayEvents) {
-      await sseWriter.writeRawEvent(event)
+    // Priming frame first, then the replay snapshot — buffered up front (the stream is sized to
+    // fit) so neither parks. Original event ids are preserved so the client's resumption cursor
+    // stays consistent. `finally` releases gated live writes even if a write throws, so they are
+    // never wedged.
+    try {
+      await sseWriter.writePrimingEvent()
+      for (const event of replayEvents) {
+        await sseWriter.writeRawEvent(event)
+      }
+    } finally {
+      releaseLiveWrites()
     }
 
     return new Response(readable, {

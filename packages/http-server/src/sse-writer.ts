@@ -12,6 +12,11 @@ export type SSEWriterParams = {
   onEvent?: (event: SSEEvent) => void
   /** Optional logger (defaults to the `mokei:http-server` logger) */
   logger?: Logger
+  /**
+   * Optional teardown hook from {@link createSSEStream}, called by {@link close} to release a
+   * write parked on backpressure so closing does not wedge behind it.
+   */
+  release?: () => void
 }
 
 export class SSEWriter {
@@ -25,6 +30,12 @@ export class SSEWriter {
   #closed = false
   #onEvent: ((event: SSEEvent) => void) | undefined
   #logger: Logger
+  #release: (() => void) | undefined
+  // While set, live events ({@link writeEvent}) wait on this before writing. A resuming GET
+  // stream is published to the session before its replay snapshot finishes; the gate holds any
+  // live server message that arrives in that window so it lands after the replay, never
+  // interleaved into it and never dropped.
+  #liveGate: Promise<void> | undefined
 
   constructor(params: SSEWriterParams) {
     this.#writer = params.writable.getWriter()
@@ -33,10 +44,25 @@ export class SSEWriter {
     this.#buffer = new Array<SSEEvent>(params.replayBufferSize)
     this.#onEvent = params.onEvent
     this.#logger = params.logger ?? getMokeiLogger('http-server')
+    this.#release = params.release
   }
 
   get streamID(): string {
     return this.#streamID
+  }
+
+  /**
+   * Hold back live events ({@link writeEvent}) until `gate` settles, without holding back priming
+   * or replay ({@link writeRawEvent}) writes. Lets a resuming GET stream be published to the
+   * session up front — so it closes a superseding GET and receives (rather than drops) live
+   * traffic — while still ordering that traffic after the replay snapshot. The gate's rejection is
+   * swallowed: a failed replay releases live traffic rather than wedging the stream.
+   */
+  deferLiveWritesUntil(gate: Promise<unknown>): void {
+    this.#liveGate = gate.then(
+      () => {},
+      () => {},
+    )
   }
 
   #nextID(): string {
@@ -66,10 +92,19 @@ export class SSEWriter {
 
   async writeEvent(params: { data: string }): Promise<void> {
     if (this.#closed) return
+    // Assign the id and record the event (replay buffer + session replay index) BEFORE the gate.
+    // A resuming GET publishes its stream and gates live writes until its replay snapshot is
+    // written; if that stream is superseded and closed while this write is still gated, its wire
+    // delivery is dropped. Recording here keeps the event recoverable by a later resumption
+    // regardless. The id is fixed now so the wire frame (if it lands) matches the recorded entry.
     const id = this.#nextID()
     const event: SSEEvent = { id, data: params.data }
     this.#pushToBuffer(event)
     this.#onEvent?.(event)
+    if (this.#liveGate != null) {
+      await this.#liveGate
+      if (this.#closed) return
+    }
     await this.#writer.write(`id: ${id}\ndata: ${params.data}\n\n`)
   }
 
@@ -120,6 +155,9 @@ export class SSEWriter {
   close(): void {
     if (this.#closed) return
     this.#closed = true
+    // Release a write parked on backpressure first, so `writer.close()` is not serialized behind
+    // one that no reader will ever wake.
+    this.#release?.()
     void this.#writer.close().catch((error: unknown) => {
       this.#logger.warn('Failed to close SSE stream', {
         streamID: this.#streamID,

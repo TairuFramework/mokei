@@ -94,3 +94,11 @@ mokei@0.13.1:
   dir: packages/cli
   intents:
     - public-geese-fail
+"@mokei/context-protocol@0.13.2":
+  dir: packages/context-protocol
+  intents:
+    - sse-backpressure-server-unions
+"@mokei/http-server@0.13.2":
+  dir: packages/http-server
+  intents:
+    - sse-backpressure-server-unions

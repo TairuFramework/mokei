@@ -249,6 +249,7 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
           // a stateless exchange — the buffer is simply unused.
           writer = new SSEWriter({
             writable: stream.writable,
+            release: stream.release,
             streamID: `stateless-${requestID ?? 'notification'}`,
             replayBufferSize,
             logger,

@@ -13,7 +13,11 @@ import {
   type ProtocolVersion,
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '../src/index.js'
-import { clientNotification as CLIENT_NOTIFICATION_2025_11_25 } from '../src/versions/2025-11-25.js'
+import {
+  clientNotification as CLIENT_NOTIFICATION_2025_11_25,
+  serverNotification as SERVER_NOTIFICATION_2025_11_25,
+  serverRequest as SERVER_REQUEST_2025_11_25,
+} from '../src/versions/2025-11-25.js'
 import {
   clientNotification as CLIENT_NOTIFICATION_2026_07_28,
   PROTOCOL as PROTOCOL_2026_07_28,
@@ -244,6 +248,31 @@ describe('protocol records', () => {
         expect(validate(frame).issues, `${version} admits undeclared ${method}`).toBeDefined()
       }
     }
+  })
+
+  // The server side mirrors the client split: 2025-11-25 owns its own `serverRequest` /
+  // `serverNotification` unions rather than borrowing the cross-revision ones from `server.js`.
+  // `serverMethods` is what the request union has to agree with — driven off the union so a
+  // revision that changes one and not the other fails here.
+  test('2025-11-25 serverMethods names exactly the members of its own serverRequest union', () => {
+    const declared = [...PROTOCOLS['2025-11-25'].serverMethods].sort()
+    expect(declared).toEqual([...unionMethods(SERVER_REQUEST_2025_11_25)].sort())
+  })
+
+  test('2025-11-25 serverNotification keeps elicitation/complete and no 2026 members', () => {
+    const methods = unionMethods(SERVER_NOTIFICATION_2025_11_25)
+    expect([...methods].sort()).toEqual(
+      [
+        'notifications/cancelled',
+        'notifications/elicitation/complete',
+        'notifications/message',
+        'notifications/progress',
+        'notifications/prompts/list_changed',
+        'notifications/resources/list_changed',
+        'notifications/resources/updated',
+        'notifications/tools/list_changed',
+      ].sort(),
+    )
   })
 
   test('2025-11-25 leaves requests and results untouched', () => {

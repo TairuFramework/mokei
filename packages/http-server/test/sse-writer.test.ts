@@ -17,6 +17,51 @@ function createWritableAndChunks(): {
 }
 
 describe('SSEWriter', () => {
+  test('holds live writes behind the gate but lets replay/priming through, ordered', async () => {
+    const { writable, chunks } = createWritableAndChunks()
+    const writer = new SSEWriter({ writable, streamID: 'gated', replayBufferSize: 10 })
+
+    let openGate!: () => void
+    writer.deferLiveWritesUntil(new Promise<void>((resolve) => (openGate = resolve)))
+
+    // Replay bypasses the gate — the resumption snapshot is written first.
+    await writer.writeRawEvent({ id: 'r1', data: 'replay' })
+    // A live event submitted during replay must not reach the stream until the gate opens.
+    const livePromise = writer.writeEvent({ data: 'live' })
+    await Promise.resolve()
+
+    expect(chunks.some((c) => c.includes('replay'))).toBe(true)
+    expect(chunks.some((c) => c.includes('live'))).toBe(false)
+
+    openGate()
+    await livePromise
+
+    expect(chunks.some((c) => c.includes('live'))).toBe(true)
+    expect(chunks.findIndex((c) => c.includes('replay'))).toBeLessThan(
+      chunks.findIndex((c) => c.includes('live')),
+    )
+  })
+
+  test('records a gated live event to the replay index even before the gate opens', async () => {
+    const { writable } = createWritableAndChunks()
+    const recorded: Array<{ id: string; data: string }> = []
+    const writer = new SSEWriter({
+      writable,
+      streamID: 'gated',
+      replayBufferSize: 10,
+      onEvent: (event) => recorded.push(event),
+    })
+
+    // A gate that never opens: models a live write held while the stream is superseded and closed
+    // before its replay finishes. The wire write is dropped, but the event must still be recorded
+    // so a later resumption can recover it.
+    writer.deferLiveWritesUntil(new Promise<void>(() => {}))
+    void writer.writeEvent({ data: 'held' })
+    await Promise.resolve()
+
+    expect(recorded.some((e) => e.data === 'held')).toBe(true)
+  })
+
   test('formats and writes SSE events to a stream', async () => {
     const { writable, chunks } = createWritableAndChunks()
     const writer = new SSEWriter({
