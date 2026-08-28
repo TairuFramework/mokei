@@ -112,11 +112,11 @@ import {
  * `notifications/elicitation/complete`, and the wire parser is where a peer producing something
  * its own revision forbids has to be refused.
  *
- * `2025-11-25`'s entry is built from the package's unqualified `serverMessage`, which is that
- * revision's own union and still lives outside `versions/`. Moving it in is a wider change than
- * this validator wiring — the package exports it as the unqualified `ServerMessage` /
- * `ServerRequest` / `ServerResult` types that both peers are typed against — so it stays put and
- * is referenced here by the revision it belongs to.
+ * Both entries read the revision's own `serverMessage` off its `ProtocolDefinition`: each
+ * revision now owns its server-side unions under `versions/`. The package still exports the
+ * unqualified `ServerMessage` / `ServerRequest` / `ServerResult` types from `server.js` as a
+ * cross-revision convenience, but the per-connection validator is wired from the resolved
+ * revision, never from those.
  */
 const SERVER_MESSAGE_VALIDATORS: Record<ProtocolVersion, Validator<ServerMessage>> = {
   '2025-11-25': createValidator<Schema, ServerMessage>(PROTOCOLS['2025-11-25'].serverMessage),

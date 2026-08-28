@@ -25,6 +25,13 @@ import { createMessageRequest } from './sampling.js'
 import { callToolResult, listToolsResult, toolListChangedNotification } from './tool.js'
 
 // Server messages from https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.ts#L1089
+//
+// These are the package's unqualified, cross-revision server unions, re-exported from the index
+// as `ServerRequest` / `ServerNotification` / `ServerResult` / `ServerMessage` for callers that
+// are not revision-specific. Each revision now owns its own server unions under `versions/`
+// (`2025-11-25.ts`, `2026-07-28.ts`); per-connection wire validation goes through
+// `PROTOCOLS[version].serverMessage`, never these. They coincide with `2025-11-25`'s members
+// today — that is convenience overlap, not a coupling: the revision union is the source of truth.
 
 export const serverRequest = {
   anyOf: [pingRequest, createMessageRequest, listRootsRequest, elicitRequest],
