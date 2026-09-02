@@ -1370,6 +1370,17 @@ describe('protocol version selection', () => {
     // reach `resultType` after narrowing.
     expectTypeOf(result).toEqualTypeOf<CallToolResult | InputRequiredResult>()
     expect(isInputRequiredResult(result)).toBe(true)
+
+    // A non-literal `boolean` flag (e.g. spread from a caller's options) still resolves an
+    // overload rather than falling through to an uncallable implementation signature; it takes the
+    // widened return, since the value may be `true`.
+    const optIn: boolean = true
+    const dynamic = await client.callTool({
+      name: 'echo',
+      arguments: {},
+      allowInputRequired: optIn,
+    })
+    expectTypeOf(dynamic).toEqualTypeOf<CallToolResult | InputRequiredResult>()
   })
 
   // `maxTotalTimeout` is documented as covering the leg that produced the first suspension, not

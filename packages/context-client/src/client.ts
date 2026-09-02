@@ -1543,6 +1543,9 @@ export class ContextClient<
     params: WithRequestOptions<PromptParams<T>> & { allowInputRequired: true },
   ): Promise<GetPromptResult | InputRequiredResult>
   getPrompt(
+    params: WithRequestOptions<PromptParams<T>> & { allowInputRequired: boolean },
+  ): Promise<GetPromptResult | InputRequiredResult>
+  getPrompt(
     params: WithRequestOptions<PromptParams<T>>,
   ): Promise<GetPromptResult | InputRequiredResult> {
     const [wireParams, options] = splitRequestOptions(params)
@@ -1590,6 +1593,9 @@ export class ContextClient<
     params: WithRequestOptions<ReadResourceRequest['params']> & { allowInputRequired: true },
   ): Promise<ReadResourceResult | InputRequiredResult>
   readResource(
+    params: WithRequestOptions<ReadResourceRequest['params']> & { allowInputRequired: boolean },
+  ): Promise<ReadResourceResult | InputRequiredResult>
+  readResource(
     params: WithRequestOptions<ReadResourceRequest['params']>,
   ): Promise<ReadResourceResult | InputRequiredResult> {
     const [wireParams, options] = splitRequestOptions(params)
@@ -1635,6 +1641,9 @@ export class ContextClient<
   ): Promise<CallToolResult>
   callTool(
     params: WithRequestOptions<ToolParams<T>> & { allowInputRequired: true },
+  ): Promise<CallToolResult | InputRequiredResult>
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { allowInputRequired: boolean },
   ): Promise<CallToolResult | InputRequiredResult>
   async callTool(
     params: WithRequestOptions<ToolParams<T>>,
