@@ -63,6 +63,7 @@ import { applyCacheHints } from './cache.js'
 import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
 import { buildDiscoverResult } from './discover.js'
 import {
+  defaultMintRequestState,
   type InputRequiredResult,
   isInputRequiredResult,
   liftRetryParams,
@@ -249,18 +250,23 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this.#cache = params.cache
     this.#completeHandler = params.complete
     this.#protocolVersions = params.protocolVersions
+    // Freeze a copy up front so the guard below and every later `resolveRequestState` see the exact
+    // hooks configured at construction: a caller holding the original object cannot mutate a
+    // `verify` in after passing the guard with `mint` alone.
+    const requestState =
+      params.requestState == null ? undefined : Object.freeze({ ...params.requestState })
     // `verify` without `mint` is a silently broken configuration, not a legitimate one: a handler
     // that mints with the default `JSON.stringify` (there being no custom `mint` to use instead)
     // produces a string the custom `verify` was never written to accept, so every MRTR flow on
     // this server fails on its second round with no clue pointing at the missing `mint`. `mint`
     // without `verify` is fine and stays unchecked — it is documented as the raw-passthrough mode
     // (`RequestStateHooks`), just without the default JSON encoding.
-    if (params.requestState?.verify != null && params.requestState.mint == null) {
+    if (requestState?.verify != null && requestState.mint == null) {
       throw new Error(
         'requestState.verify is configured without requestState.mint: pass a matching `mint` (or drop `verify`)',
       )
     }
-    this.#requestState = params.requestState
+    this.#requestState = requestState
     this.#serverInfo = { name: params.name, version: params.version }
 
     // Logging is always supported (the server can emit notifications/message).
@@ -520,7 +526,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const mrtr: MRTRContext = {
       inputResponses: lifted.inputResponses,
       requestState,
-      mintRequestState: this.#requestState?.mint ?? ((payload: unknown) => JSON.stringify(payload)),
+      mintRequestState: this.#requestState?.mint ?? defaultMintRequestState,
     }
     const liftedRequest = { ...request, params: liftedParams } as ClientRequest
     const client = this.#createClient(protocol, protocol.readRequestMeta(request).logLevel)

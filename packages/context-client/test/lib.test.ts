@@ -9,15 +9,21 @@ import type {
   ElicitResult,
   InitializeRequest,
   InitializeResult,
+  InputRequiredResult,
   Log,
   ProtocolVersion,
   Root,
   ServerMessage,
   ServerRequest,
 } from '@mokei/context-protocol'
-import { INVALID_REQUEST, METHOD_NOT_FOUND, PROTOCOLS } from '@mokei/context-protocol'
+import {
+  INVALID_REQUEST,
+  isInputRequiredResult,
+  METHOD_NOT_FOUND,
+  PROTOCOLS,
+} from '@mokei/context-protocol'
 import { createValidator } from '@sozai/schema'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 
 import { DEFAULT_INITIALIZE_PARAMS } from '../src/client.js'
 import {
@@ -1360,7 +1366,21 @@ describe('protocol version selection', () => {
       arguments: {},
       allowInputRequired: true,
     })
-    expect((result as unknown as { resultType: string }).resultType).toBe('input_required')
+    // Opting in widens the static return type to include the suspension, so no cast is needed to
+    // reach `resultType` after narrowing.
+    expectTypeOf(result).toEqualTypeOf<CallToolResult | InputRequiredResult>()
+    expect(isInputRequiredResult(result)).toBe(true)
+
+    // A non-literal `boolean` flag (e.g. spread from a caller's options) still resolves an
+    // overload rather than falling through to an uncallable implementation signature; it takes the
+    // widened return, since the value may be `true`.
+    const optIn: boolean = true
+    const dynamic = await client.callTool({
+      name: 'echo',
+      arguments: {},
+      allowInputRequired: optIn,
+    })
+    expectTypeOf(dynamic).toEqualTypeOf<CallToolResult | InputRequiredResult>()
   })
 
   // `maxTotalTimeout` is documented as covering the leg that produced the first suspension, not

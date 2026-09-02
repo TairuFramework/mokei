@@ -229,9 +229,16 @@ export const inputRequest = {
 } as const satisfies Schema
 export type InputRequest = FromSchema<typeof inputRequest>
 
-/** A map of embedded input requests, keyed by server-assigned identifiers unique to one request. */
+/**
+ * A map of embedded input requests, keyed by server-assigned identifiers unique to one request.
+ *
+ * `minProperties: 1` rejects an empty map on the wire. The `inputRequiredResult` `anyOf` only
+ * asserts key *presence*, so `{ inputRequests: {} }` would otherwise validate and drive the client
+ * into a `requestState`-less retry loop that repeats byte-identically until the round cap trips.
+ */
 export const inputRequests = {
   additionalProperties: inputRequest,
+  minProperties: 1,
   type: 'object',
 } as const satisfies Schema
 
@@ -432,7 +439,27 @@ export const serverResult = {
     withResultType(listToolsResult),
   ],
 } as const satisfies Schema
-export type ServerResult = FromSchema<typeof serverResult>
+/**
+ * Spelled as a union of per-member `FromSchema`s rather than `FromSchema<typeof serverResult>`.
+ * The two are equivalent (`FromSchema` distributes over `anyOf` and over `allOf`), but deriving the
+ * whole union in one instantiation tips `FromSchema` past its recursion-depth ceiling once a
+ * downstream package type-checks this revision's emitted `.d.ts` without `skipLibCheck` (TS2589).
+ * Per member each derivation stays shallow, so the union assembles without blowing the limit.
+ */
+type CompleteResultOf<S extends Schema> = FromSchema<S> & { resultType: 'complete' }
+export type ServerResult =
+  | FromSchema<typeof emptyResult>
+  | FromSchema<typeof inputRequiredResult>
+  | FromSchema<typeof discoverResult>
+  | FromSchema<typeof subscriptionsListenResult>
+  | CompleteResultOf<typeof completeResult>
+  | CompleteResultOf<typeof getPromptResult>
+  | CompleteResultOf<typeof listPromptsResult>
+  | CompleteResultOf<typeof listResourcesResult>
+  | CompleteResultOf<typeof listResourceTemplatesResult>
+  | CompleteResultOf<typeof readResourceResult>
+  | CompleteResultOf<typeof callToolResult>
+  | CompleteResultOf<typeof listToolsResult>
 
 export const serverResponse = {
   anyOf: [

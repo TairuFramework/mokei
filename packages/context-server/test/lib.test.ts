@@ -24,6 +24,7 @@ import {
   type GenericToolDefinition,
   inputRequired,
   MRTRNotSupportedError,
+  type RequestStateHooks,
   type Schema,
   type ServerParams,
 } from '../src/index.js'
@@ -1634,6 +1635,135 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
         _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
       },
     )
+  })
+
+  // A stand-in for the HMAC-signed state a real deployment would use: `mint` appends a signature
+  // over the encoded payload; `verify` authenticates it and hands the handler back the *decoded
+  // payload object*, never the raw wire string. Deterministic and dependency-free, so the test
+  // stays a unit test while exercising the exact seam a signed-state integration relies on.
+  const signPayload = (body: string): string =>
+    `${[...body].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) % 1_000_003, 7)}`
+  const signedHooks: RequestStateHooks = {
+    mint: (payload) => {
+      const body = JSON.stringify(payload)
+      return `${body}.${signPayload(body)}`
+    },
+    verify: (raw) => {
+      const dot = raw.lastIndexOf('.')
+      const body = raw.slice(0, dot)
+      if (raw.slice(dot + 1) !== signPayload(body)) {
+        throw new Error('signature mismatch')
+      }
+      return JSON.parse(body)
+    },
+  }
+
+  const signedTool = createTool({
+    description: 'Suspends with signed state, resumes on the verified payload',
+    inputSchema: { type: 'object' },
+    handler: ({ inputResponses, mintRequestState, requestState }) => {
+      if (inputResponses == null) {
+        return inputRequired({
+          inputRequests: { roots: { method: 'roots/list', params: {} } },
+          requestState: mintRequestState({ step: 7 }),
+        })
+      }
+      // On resume `requestState` is the object `verify` returned, not the wire string.
+      const state = requestState as { step?: number } | undefined
+      return { content: [{ type: 'text', text: `resumed at step ${state?.step}` }] }
+    },
+  })
+
+  test('drives a matched mint/verify pair through suspend, echo and verified resume', async () => {
+    const { transports } = createTestContext({
+      protocolVersions: ['2026-07-28'],
+      requestState: signedHooks,
+      tools: { ask: signedTool },
+    })
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        _meta: { ...NEW_META, 'io.modelcontextprotocol/clientCapabilities': { roots: {} } },
+        name: 'ask',
+        arguments: {},
+      },
+    } as ClientRequest)
+    const suspended = await transports.client.read()
+    const minted = (suspended.value as unknown as { result: { requestState: string } }).result
+      .requestState
+    // The signature `mint` produced actually rode out on the wire, not the bare JSON.
+    expect(minted).toBe(`{"step":7}.${signPayload('{"step":7}')}`)
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        _meta: NEW_META,
+        name: 'ask',
+        arguments: {},
+        inputResponses: { roots: { roots: [] } },
+        requestState: minted,
+      },
+    } as ClientRequest)
+    const resumed = await transports.client.read()
+    expect(resumed.value).toMatchObject({
+      id: 2,
+      result: { content: [{ type: 'text', text: 'resumed at step 7' }], resultType: 'complete' },
+    })
+
+    await transports.dispose()
+  })
+
+  test('a verify added after construction does not gate a resume (hooks are frozen)', async () => {
+    const hooks: RequestStateHooks = { mint: signedHooks.mint }
+    const { transports } = createTestContext({
+      protocolVersions: ['2026-07-28'],
+      requestState: hooks,
+      tools: { ask: signedTool },
+    })
+    // Mutating the caller's object after construction must not reach the server: the guard that
+    // refused `verify`-without-`mint` reads the hooks once, so a `verify` slipped in here would
+    // otherwise start rejecting every resume on the wire.
+    hooks.verify = () => {
+      throw new Error('a mutated-in verify must never run')
+    }
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        _meta: { ...NEW_META, 'io.modelcontextprotocol/clientCapabilities': { roots: {} } },
+        name: 'ask',
+        arguments: {},
+      },
+    } as ClientRequest)
+    const suspended = await transports.client.read()
+    const minted = (suspended.value as unknown as { result: { requestState: string } }).result
+      .requestState
+
+    transports.client.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        _meta: NEW_META,
+        name: 'ask',
+        arguments: {},
+        inputResponses: { roots: { roots: [] } },
+        requestState: minted,
+      },
+    } as ClientRequest)
+    const resumed = await transports.client.read()
+    // The injected `verify` never ran, so the resume answers rather than failing with -32602.
+    expect(resumed.value).toMatchObject({ id: 2, result: { resultType: 'complete' } })
+    expect(resumed.value).not.toHaveProperty('error')
+
+    await transports.dispose()
   })
 })
 

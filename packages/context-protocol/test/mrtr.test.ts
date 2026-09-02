@@ -88,6 +88,17 @@ describe('2026-07-28 input_required results', () => {
     ).toBeUndefined()
   })
 
+  test('rejects an empty inputRequests map', () => {
+    expect(validateResult({ resultType: 'input_required', inputRequests: {} }).issues).toBeDefined()
+    expect(
+      validateResult({
+        resultType: 'input_required',
+        inputRequests: {},
+        requestState: 'opaque',
+      }).issues,
+    ).toBeDefined()
+  })
+
   test('rejects a suspended result carrying an unknown embedded method', () => {
     expect(
       validateResult({

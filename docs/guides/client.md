@@ -116,20 +116,21 @@ server's embedded requests and the call retries on its own, so the caller just `
 result it would get on `2025-11-25`.
 
 To drive rounds yourself instead — for example to show a progress indicator per round — pass
-`allowInputRequired: true`. `callTool`/`getPrompt`/`readResource` keep their ordinary result
-type, so a suspension needs a cast to check `resultType`:
+`allowInputRequired: true`. That widens the return type of `callTool`/`getPrompt`/`readResource` to
+include the suspension, so `isInputRequiredResult` narrows it with no cast:
 
 ```typescript
+import { isInputRequiredResult } from '@mokei/context-client'
+
 const result = await client.callTool({
   name: 'long_operation',
   arguments: { data: '...' },
   allowInputRequired: true,
 })
 
-const suspended = result as unknown as { resultType: string; inputRequests?: unknown; requestState?: string }
-if (suspended.resultType === 'input_required') {
-  // suspended.inputRequests holds the embedded requests to fulfil; suspended.requestState (if
-  // present) must be echoed back on the retry, unchanged, alongside inputResponses.
+if (isInputRequiredResult(result)) {
+  // result.inputRequests holds the embedded requests to fulfil; result.requestState (if present)
+  // must be echoed back on the retry, unchanged, alongside inputResponses.
 }
 ```
 
