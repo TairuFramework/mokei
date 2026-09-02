@@ -15,6 +15,7 @@ import type {
   InitializeRequest,
   InitializeResult,
   InputRequest,
+  InputRequiredResult,
   InputResponse,
   ListPromptsRequest,
   ListPromptsResult,
@@ -1535,7 +1536,15 @@ export class ContextClient<
     return result as ListPromptsResult
   }
 
-  getPrompt(params: WithRequestOptions<PromptParams<T>>): Promise<GetPromptResult> {
+  getPrompt(
+    params: WithRequestOptions<PromptParams<T>> & { allowInputRequired?: false },
+  ): Promise<GetPromptResult>
+  getPrompt(
+    params: WithRequestOptions<PromptParams<T>> & { allowInputRequired: true },
+  ): Promise<GetPromptResult | InputRequiredResult>
+  getPrompt(
+    params: WithRequestOptions<PromptParams<T>>,
+  ): Promise<GetPromptResult | InputRequiredResult> {
     const [wireParams, options] = splitRequestOptions(params)
     return this.request('prompts/get', wireParams as GetPromptRequest['params'], options)
   }
@@ -1575,8 +1584,14 @@ export class ContextClient<
   }
 
   readResource(
+    params: WithRequestOptions<ReadResourceRequest['params']> & { allowInputRequired?: false },
+  ): Promise<ReadResourceResult>
+  readResource(
+    params: WithRequestOptions<ReadResourceRequest['params']> & { allowInputRequired: true },
+  ): Promise<ReadResourceResult | InputRequiredResult>
+  readResource(
     params: WithRequestOptions<ReadResourceRequest['params']>,
-  ): Promise<ReadResourceResult> {
+  ): Promise<ReadResourceResult | InputRequiredResult> {
     const [wireParams, options] = splitRequestOptions(params)
     return this.request('resources/read', wireParams, options)
   }
@@ -1615,7 +1630,15 @@ export class ContextClient<
     }
   }
 
-  async callTool(params: WithRequestOptions<ToolParams<T>>): Promise<CallToolResult> {
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { allowInputRequired?: false },
+  ): Promise<CallToolResult>
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { allowInputRequired: true },
+  ): Promise<CallToolResult | InputRequiredResult>
+  async callTool(
+    params: WithRequestOptions<ToolParams<T>>,
+  ): Promise<CallToolResult | InputRequiredResult> {
     const [wireParams, options] = splitRequestOptions(params)
     const result = await this.request(
       'tools/call',

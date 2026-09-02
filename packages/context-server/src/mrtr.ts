@@ -41,6 +41,13 @@ export type RequestStateHooks = {
   verify?: (raw: string) => unknown
 }
 
+/**
+ * The `mintRequestState` a handler gets when no custom `mint` hook is configured: a plain JSON
+ * encoding, matched by the default `verify`-less passthrough on the way back. Shared by
+ * `ContextServer` and `@mokei/host`'s local-tool runner so both fall back to the same encoder.
+ */
+export const defaultMintRequestState = (payload: unknown): string => JSON.stringify(payload)
+
 export type LiftedRetryParams = {
   inputResponses?: Record<string, InputResponse>
   requestState?: string

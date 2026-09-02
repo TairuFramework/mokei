@@ -229,9 +229,16 @@ export const inputRequest = {
 } as const satisfies Schema
 export type InputRequest = FromSchema<typeof inputRequest>
 
-/** A map of embedded input requests, keyed by server-assigned identifiers unique to one request. */
+/**
+ * A map of embedded input requests, keyed by server-assigned identifiers unique to one request.
+ *
+ * `minProperties: 1` rejects an empty map on the wire. The `inputRequiredResult` `anyOf` only
+ * asserts key *presence*, so `{ inputRequests: {} }` would otherwise validate and drive the client
+ * into a `requestState`-less retry loop that repeats byte-identically until the round cap trips.
+ */
 export const inputRequests = {
   additionalProperties: inputRequest,
+  minProperties: 1,
   type: 'object',
 } as const satisfies Schema
 

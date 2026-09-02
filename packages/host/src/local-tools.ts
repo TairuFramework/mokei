@@ -1,6 +1,6 @@
 import type { CallToolResult, InputSchema, Tool, ToolAnnotations } from '@mokei/context-protocol'
 import type { GenericToolDefinition, ServerClient, ToolDefinitions } from '@mokei/context-server'
-import { isInputRequiredResult } from '@mokei/context-server'
+import { defaultMintRequestState, isInputRequiredResult } from '@mokei/context-server'
 
 /**
  * Request handed to a local tool's execute function: the validated `input` — the thing the
@@ -182,7 +182,7 @@ export function toolToLocalTool(params: ToolToLocalToolParams): LocalToolDefinit
         // round-trip a `requestState` over — but `mintRequestState` is a pure encoder a
         // handler may still call while building an `inputRequired()` result, so it gets the
         // same default `ContextServer` falls back to rather than a throwing stub.
-        mintRequestState: (payload: unknown) => JSON.stringify(payload),
+        mintRequestState: defaultMintRequestState,
       })
       // A handler suspends (MRTR, SEP-2322) by returning rather than awaiting, so there is no
       // exception to catch here the way `createStubClient` catches a direct `client` call. Local
