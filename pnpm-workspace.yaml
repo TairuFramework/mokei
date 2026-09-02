@@ -25,11 +25,11 @@ publicHoistPattern:
 
 catalog:
   '@biomejs/biome': ^2.5.0
-  '@enkaku/client': ^0.21.1
+  '@enkaku/client': ^0.21.2
   '@enkaku/http-fetch': ^0.21.0
   '@enkaku/http-serve': ^0.21.0
   '@enkaku/node-streams': ^0.21.0
-  '@enkaku/protocol': ^0.21.0
+  '@enkaku/protocol': ^0.21.1
   '@enkaku/server': ^0.21.2
   '@enkaku/socket': ^0.21.0
   '@enkaku/transport': ^0.21.0
@@ -39,17 +39,17 @@ catalog:
   '@sozai/log': ^0.3.1
   '@sozai/otel': ^0.3.2
   '@sozai/runtime': ^0.1.0
-  '@sozai/schema': ^0.1.1
+  '@sozai/schema': ^0.1.2
   '@sozai/stream': ^0.2.0
   '@tejika/cli': ^0.4.1
   '@tejika/env': ^0.5.0
-  '@tejika/process': ^0.5.0
+  '@tejika/process': ^0.5.1
   '@tejika/server': ^0.4.1
   '@tejika/ui': ^0.4.1
   '@hono/node-server': ^2.1.1
   '@inkjs/ui': ^2.0.0
-  '@mantine/core': ^9.5.2
-  '@mantine/hooks': ^9.5.2
+  '@mantine/core': ^9.6.0
+  '@mantine/hooks': ^9.6.0
   '@swc/cli': ^0.8.1
   '@swc/core': ^1.15.41
   '@tabler/icons-react': ^3.46.0
@@ -62,7 +62,7 @@ catalog:
   '@types/react': ^19.2.18
   '@types/react-dom': ^19.2.5
   '@types/turndown': ^5.0.6
-  '@vitejs/plugin-react': ^6.1.0
+  '@vitejs/plugin-react': ^6.1.1
   '@vitest/ui': ^4.1.9
   ansi-colors: ^4.1.3
   del-cli: ^7.0.0
@@ -74,7 +74,7 @@ catalog:
   ink-testing-library: ^4.0.0
   jotai: ^2.20.3
   jsdom: ^30.0.1
-  ky: ^2.0.2
+  ky: ^2.1.0
   luxon: ^3.7.2
   nano-spawn: ^2.1.0
   parse-sse: ^0.1.0

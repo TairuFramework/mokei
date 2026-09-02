@@ -1,8 +1,9 @@
 # HTTP transport auth — OAuth + JWT
 
 **Status:** backlog
-**Origin:** SDK v2 evaluation, 2026-07-02 (`2026-07-02-mcp-sdk-v2-adoption.md`, follow-up
-item 2, promoted to a dedicated item). Supersedes the bare roadmap P3 line
+**Origin:** SDK v2 evaluation, 2026-07-02 (the **SDK v2 — selective adoption** section of
+`../milestones/2026-06-08-mcp-2026-07-28-migration.md`, follow-up item 2, promoted to a dedicated
+item). Supersedes the bare roadmap P3 line
 "OAuth / auth helpers for remote MCP servers".
 
 ## Current state
@@ -65,6 +66,7 @@ an OAuth server. Separate design question; capture only.
 
 ## Links
 
-- `2026-07-02-mcp-sdk-v2-adoption.md` — evaluation + SDK v2 package shape.
+- `../milestones/2026-06-08-mcp-2026-07-28-migration.md`, **SDK v2 — selective adoption** section —
+  evaluation + SDK v2 package shape.
 - SDK v2 docs: `docs/clients/oauth.md`, `docs/clients/machine-auth.md`,
   `docs/serving/authorization.md` at https://ts.sdk.modelcontextprotocol.io/v2/.

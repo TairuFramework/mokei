@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-08-27
+**Last updated:** 2026-08-28
 
 ## Vision
 
@@ -48,14 +48,37 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-Nothing in `next/` — the `2026-07-28` migration's last capability gap, B4 `subscriptions/listen`
-(+ the `2025-11-25` `resources/subscribe` branch), shipped 2026-08-27 (SEP-2575, PR #46); see
-`completed/2026-08-27-mcp-2026-07-28-subscriptions.complete.md`. Nearest active pointer:
-`backlog/2026-08-28-mcp-2026-07-28-cleanup-deferrals.md` (five small items deferred out of the
-2026-08-28 cleanup cycle).
+Nothing in `next/`. The **MCP `2026-07-28` spec migration is complete** — the last pieces shipped
+2026-08-27/28: B4 `subscriptions/listen` (SEP-2575, PR #46), D1–D3 deprecations (SEP-2577, PR #47),
+and the cleanup deferrals — SSE reader-backpressure + per-revision server unions (PR #48), with the
+other three deferred items decided against rather than rescheduled. No active pointer; pick the next
+item from `backlog/` below.
 
 ## Recently shipped (completed/)
 
+- **MCP SDK v2 — selective adoption closed** (2026-08-28) — the 2026-07-02 evaluation, now a
+  decision record folded into the migration milestone. Decision (final): keep the custom MCP core
+  (SDK's engine is private/unimportable; Zod hard dep; bespoke typed-client value). Its last open
+  item — multi-page cursor-walk interop — shipped as a paginating SDK-v2 `tools/list` fixture that
+  mokei walks whole on both revisions. The Standard Schema bridge was upstream work, not mokei's: it
+  landed in `@sozai/schema` (sozai `ff25eb1`) as the `StandardJSONSchemaV1` converter, so a sozai
+  schema drops into an SDK-based server with no mokei shim. Sampling-deprecation watch and
+  conformance-oracle ideas discarded (see the record for why). OAuth/JWT split to its own backlog
+  item. See the **SDK v2 — selective adoption** section of
+  `milestones/2026-06-08-mcp-2026-07-28-migration.md`.
+- **MCP `2026-07-28` cleanup deferrals** (2026-08-28, PR #48) — SSE reader-backpressure fix in
+  `@mokei/http-server` (`createSSEStream` is now demand-aware, bounding a slow reader instead of
+  only fast producers) and the per-revision `ServerRequest`/`ServerNotification` split in
+  `@mokei/context-protocol` (the last unsplit `2025-11-25` seam). The other three deferrals were
+  decided against, not rescheduled — no backlog item carried forward. See
+  `completed/2026-08-28-mcp-2026-07-28-cleanup-deferrals.complete.md`.
+- **MCP `2026-07-28` deprecations (D1–D3)** (2026-08-28, PR #47) — Roots/Sampling/Logging,
+  the `2025-11-25` session GET/SSE stream, and `includeContext` marked deprecated on `2026-07-28`
+  per SEP-2577; documentation-only, all surfaces stay fully supported on `2025-11-25`. See
+  `completed/2026-08-28-mcp-2026-07-28-deprecations-cleanup.complete.md`.
+- **MCP `2026-07-28` `subscriptions/listen` (B4)** (2026-08-27, PR #46) — SEP-2575, replaces the
+  session GET stream + `resources/subscribe`; closed the migration's last capability gap. See
+  `completed/2026-08-27-mcp-2026-07-28-subscriptions.complete.md`.
 - **Host RN/Metro-safe `-node` split** (2026-08-25, PR #45) — `@mokei/host` and
   `@mokei/context-server` trimmed of Node built-ins so they bundle under React Native / Metro;
   Node stdio + daemon entries moved to new `@mokei/host-node` and `@mokei/context-server-node`.
@@ -110,21 +133,12 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
   G7 part 5's stale-schema retry (PR #43), MRTR (`feat/mcp-mrtr`), B4 `subscriptions/listen`
   (SEP-2575, PR #46), and D1–D3 (SEP-2577, documentation-only) — both revisions now at
   capability parity, and nothing in the Phase 1 table remains open. The roots half of B6 stays
-  not applicable (`2026-07-28` has no `notifications/roots/list_changed` at all). A handful of
-  hygiene items deliberately left undone are tracked in the backlog entries below.
+  not applicable (`2026-07-28` has no `notifications/roots/list_changed` at all). The final hygiene
+  items shipped in PR #48 (SSE backpressure + per-revision server unions); three further deferrals
+  were decided against rather than scheduled. Nothing open.
 
 ## Near-term (backlog/)
 
-- **MCP `2026-07-28` — cleanup deferrals** (`backlog/2026-08-28-mcp-2026-07-28-cleanup-deferrals.md`)
-  — the deprecations + cleanup cycle (D1–D3 plus the §3.4 tidy-ups, `#disposing` gate, and the
-  `SetupReader` extraction) shipped 2026-08-28; five hygiene/design items it deliberately left
-  undone are tracked here. Small.
-- **MCP SDK v2 — selective adoption** (`backlog/2026-07-02-mcp-sdk-v2-adoption.md`) —
-  outcome of the 2026-07-02 SDK v2 evaluation. Decision: keep the custom MCP core
-  (SDK's engine is private/unimportable; Zod hard dep; bespoke typed-client value).
-  The interop harness it proposed shipped (see Recently shipped). Open follow-ups:
-  multi-page cursor-walk interop, a Standard Schema bridge (consider), and the
-  sampling-deprecation watch (SEP-2577). OAuth/JWT split out below.
 - **HTTP transport auth — OAuth + JWT** (`backlog/2026-07-02-http-auth-oauth.md`) —
   client OAuth 2.1 + PKCE for remote MCP servers (wrap SDK v2 `withOAuth` fetch
   middleware first, native `@kokuin/token` port later), server-side bearer verification +
@@ -141,6 +155,11 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 - **Llama provider follow-ups** (`backlog/2026-06-20-llama-provider-follow-ups.md`) — optional
   local-inference tuning (`gpu` / `contextSize` flags) and a positive tool-call assertion in
   the gated GGUF suite. Nothing depends on either.
+- **MRTR follow-ups** (`backlog/2026-08-08-mrtr-followups.md`) — four non-blocking items left after
+  MRTR shipped: type `allowInputRequired`'s runtime `InputRequiredResult` return (currently lies as
+  `CallToolResult`), reject/short-circuit an empty `inputRequests` map from a foreign peer (burns the
+  round cap), hoist the duplicated default `requestState` minter, and add an end-to-end
+  custom-`mint`→echo→`verify` round-trip test. Small.
 
 ## Planned — P2
 
@@ -170,8 +189,8 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 - `@sozai/schema` for JSON Schema validation over Zod.
 - Custom MCP core over official SDK v2 (2026-07-02 evaluation) — SDK's protocol engine
   is unimportable (`core-internal` private), Zod is a hard dep, and mokei's typed-client
-  generics + Enkaku transports have no SDK equivalent. Adopt narrowly instead
-  (`backlog/2026-07-02-mcp-sdk-v2-adoption.md`).
+  generics + Enkaku transports have no SDK equivalent. Adopt narrowly instead (decision record in
+  the **SDK v2 — selective adoption** section of `milestones/2026-06-08-mcp-2026-07-28-migration.md`).
 - Revision coexistence over a hard cut — mokei is a library, so `2025-11-25` and
   `2026-07-28` are both served and spoken, selected per context. Dropping the older revision
   later is a branch deletion, not a rewrite (ADR in

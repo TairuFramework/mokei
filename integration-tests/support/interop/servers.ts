@@ -78,6 +78,10 @@ export const MOKEI_STDIO_SERVER_MRTR_PATH = fileURLToPath(
 export const SDK_STDIO_SERVER_MRTR_PATH = fileURLToPath(
   new URL('./sdk-stdio-server-mrtr.ts', import.meta.url),
 )
+/** Serves the multi-page `tools/list` pagination fixture via the SDK v2 server, on both revisions. */
+export const SDK_STDIO_SERVER_PAGINATION_PATH = fileURLToPath(
+  new URL('./sdk-stdio-server-pagination.ts', import.meta.url),
+)
 /** Serves the subscribe-capable subscriptions fixture on `2026-07-28`, via the SDK v2 server. */
 export const SDK_STDIO_SERVER_SUBSCRIPTIONS_PATH = fileURLToPath(
   new URL('./sdk-stdio-server-subscriptions.ts', import.meta.url),

@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     '@enkaku/client':
-      specifier: ^0.21.1
-      version: 0.21.1
+      specifier: ^0.21.2
+      version: 0.21.2
     '@enkaku/http-fetch':
       specifier: ^0.21.0
       version: 0.21.0
@@ -19,8 +19,8 @@ catalogs:
       specifier: ^0.21.0
       version: 0.21.0
     '@enkaku/protocol':
-      specifier: ^0.21.0
-      version: 0.21.0
+      specifier: ^0.21.1
+      version: 0.21.1
     '@enkaku/server':
       specifier: ^0.21.2
       version: 0.21.2
@@ -37,11 +37,11 @@ catalogs:
       specifier: ^2.0.0
       version: 2.0.0
     '@mantine/core':
-      specifier: ^9.5.2
-      version: 9.5.2
+      specifier: ^9.6.0
+      version: 9.6.0
     '@mantine/hooks':
-      specifier: ^9.5.2
-      version: 9.5.2
+      specifier: ^9.6.0
+      version: 9.6.0
     '@sozai/async':
       specifier: ^0.2.1
       version: 0.2.1
@@ -61,8 +61,8 @@ catalogs:
       specifier: ^0.1.0
       version: 0.1.0
     '@sozai/schema':
-      specifier: ^0.1.1
-      version: 0.1.1
+      specifier: ^0.1.2
+      version: 0.1.2
     '@sozai/stream':
       specifier: ^0.2.0
       version: 0.2.0
@@ -88,8 +88,8 @@ catalogs:
       specifier: ^0.5.0
       version: 0.5.0
     '@tejika/process':
-      specifier: ^0.5.0
-      version: 0.5.0
+      specifier: ^0.5.1
+      version: 0.5.1
     '@tejika/server':
       specifier: ^0.4.1
       version: 0.4.1
@@ -112,8 +112,8 @@ catalogs:
       specifier: ^5.0.6
       version: 5.0.6
     '@vitejs/plugin-react':
-      specifier: ^6.1.0
-      version: 6.1.0
+      specifier: ^6.1.1
+      version: 6.1.1
     commander:
       specifier: ^15.0.0
       version: 15.0.0
@@ -139,8 +139,8 @@ catalogs:
       specifier: ^30.0.1
       version: 30.0.1
     ky:
-      specifier: ^2.0.2
-      version: 2.0.2
+      specifier: ^2.1.0
+      version: 2.1.0
     luxon:
       specifier: ^3.7.2
       version: 3.7.2
@@ -349,16 +349,16 @@ importers:
     dependencies:
       '@enkaku/client':
         specifier: 'catalog:'
-        version: 0.21.1(@logtape/logtape@2.3.0)
+        version: 0.21.2(@logtape/logtape@2.3.0)
       '@enkaku/http-fetch':
         specifier: 'catalog:'
         version: 0.21.0(@logtape/logtape@2.3.0)
       '@mantine/core':
         specifier: 'catalog:'
-        version: 9.5.2(@mantine/hooks@9.5.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.6.0(@mantine/hooks@9.6.0(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@mantine/hooks':
         specifier: 'catalog:'
-        version: 9.5.2(react@19.2.8)
+        version: 9.6.0(react@19.2.8)
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../packages/host-protocol
@@ -386,13 +386,13 @@ importers:
     devDependencies:
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.1
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../packages/context-protocol
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.1
+        version: 0.1.2
       '@tanstack/router-devtools':
         specifier: 'catalog:'
         version: 1.167.1(@tanstack/react-router@1.170.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@tanstack/router-core@1.171.27)(csstype@3.2.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -413,7 +413,7 @@ importers:
         version: 19.2.5(@types/react@19.2.18)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
-        version: 6.1.0(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.1)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.26))(terser@5.49.0)(tsx@4.23.10)(yaml@2.9.0))
+        version: 6.1.1(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.1)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.26))(terser@5.49.0)(tsx@4.23.10)(yaml@2.9.0))
       globals:
         specifier: 'catalog:'
         version: 17.11.0
@@ -443,13 +443,13 @@ importers:
         version: link:../model-provider
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.1
+        version: 0.1.2
       eventsource-parser:
         specifier: 'catalog:'
         version: 4.1.0
       ky:
         specifier: 'catalog:'
-        version: 2.0.2
+        version: 2.1.0
     devDependencies:
       vitest:
         specifier: 'catalog:'
@@ -516,7 +516,7 @@ importers:
         version: 7.1.1(@types/react@19.2.18)(react@19.2.8)
       ky:
         specifier: 'catalog:'
-        version: 2.0.2
+        version: 2.1.0
       nano-spawn:
         specifier: 'catalog:'
         version: 2.1.0
@@ -568,7 +568,7 @@ importers:
         version: 0.3.2
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.1
+        version: 0.1.2
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.0
@@ -581,7 +581,7 @@ importers:
     devDependencies:
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.1
+        version: 0.1.2
 
   packages/context-rpc:
     dependencies:
@@ -600,7 +600,7 @@ importers:
         version: 0.21.0(@logtape/logtape@2.3.0)
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.1
+        version: 0.1.2
 
   packages/context-server:
     dependencies:
@@ -621,7 +621,7 @@ importers:
         version: 0.3.2
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.1
+        version: 0.1.2
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
@@ -709,7 +709,7 @@ importers:
     dependencies:
       '@enkaku/client':
         specifier: 'catalog:'
-        version: 0.21.1(@logtape/logtape@2.3.0)
+        version: 0.21.2(@logtape/logtape@2.3.0)
       '@enkaku/node-streams':
         specifier: 'catalog:'
         version: 0.21.0(@logtape/logtape@2.3.0)
@@ -736,7 +736,7 @@ importers:
         version: 0.2.0
       '@tejika/process':
         specifier: 'catalog:'
-        version: 0.5.0(@logtape/logtape@2.3.0)
+        version: 0.5.1(@logtape/logtape@2.3.0)
       nano-spawn:
         specifier: 'catalog:'
         version: 2.1.0
@@ -755,10 +755,10 @@ importers:
     dependencies:
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.21.0
+        version: 0.21.1
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.1
+        version: 0.1.2
 
   packages/http-client:
     dependencies:
@@ -828,7 +828,7 @@ importers:
         version: 0.2.1
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.1
+        version: 0.1.2
       node-llama-cpp:
         specifier: '>=3.0.0'
         version: 3.19.0(supports-color@8.1.1)(typescript@6.0.3)
@@ -847,7 +847,7 @@ importers:
     dependencies:
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.1
+        version: 0.1.2
     devDependencies:
       '@mokei/context-protocol':
         specifier: workspace:^
@@ -866,13 +866,13 @@ importers:
         version: link:../model-provider
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.1
+        version: 0.1.2
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.0
       ky:
         specifier: 'catalog:'
-        version: 2.0.2
+        version: 2.1.0
     devDependencies:
       vitest:
         specifier: 'catalog:'
@@ -888,13 +888,13 @@ importers:
         version: link:../model-provider
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.1
+        version: 0.1.2
       eventsource-parser:
         specifier: 'catalog:'
         version: 4.1.0
       ky:
         specifier: 'catalog:'
-        version: 2.0.2
+        version: 2.1.0
     devDependencies:
       vitest:
         specifier: 'catalog:'
@@ -2337,8 +2337,8 @@ packages:
   '@emnapi/wasi-threads@1.2.2':
     resolution: {integrity: sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA==}
 
-  '@enkaku/client@0.21.1':
-    resolution: {integrity: sha512-arXj3/QpWqHpYPfiUXafvCFGES0VGRppViIWkzwjE7+HIHBWwXZDqR9qw3laZ8IDYpJlY258tCkwJk5UcySkLQ==}
+  '@enkaku/client@0.21.2':
+    resolution: {integrity: sha512-KMgYd0szlJoqLwbGeh7ak4UZwOzygmNvqSlQ+XfpRbshZlKNxFf3l7nCZuGghjrDUuc4FFfmbzM2OVS3Db3CdA==}
 
   '@enkaku/http-fetch@0.21.0':
     resolution: {integrity: sha512-d+UGjhGm5lngA9XbEM3ZnGQQ6wT76vq7EgM3aegFffcKpl/aBxCJntNCuc2dYHwWTMHCteL7AgrFNnIljjKE+Q==}
@@ -2354,6 +2354,9 @@ packages:
 
   '@enkaku/protocol@0.21.0':
     resolution: {integrity: sha512-ihr2btoqWj7GHFrHcGhizqmwnAg4nBxXeSJy4Tq33MllRb6Pwt7jbqlIzV1mCKMGShdqcronipB3cz6XOJj/Zg==}
+
+  '@enkaku/protocol@0.21.1':
+    resolution: {integrity: sha512-c961LzIwmDHn1D1HDVAFPCJw4B3FY/w1KngESS/DcWpMOHUVCe9uq+zt/nNGcBb6hSpBflW69n9eGtHo1UrIZA==}
 
   '@enkaku/server@0.21.2':
     resolution: {integrity: sha512-HLn5YjXBXAMyHpwe/aphFCE1yu9InEk9HPFd6Hyz2KGzEeCl39hZPr54Tm1P+A5/cb/TKB9AZFDeBVJNJzTZlQ==}
@@ -2839,15 +2842,15 @@ packages:
   '@logtape/logtape@2.3.0':
     resolution: {integrity: sha512-s/pxCgf9Gg75ypTV/bRUq355Dy/JP/zUJWfgJQPO5pTkXC23X2AXBcmBBgFiWH+bSi4yiX/G06qGV8CdAWD3SA==}
 
-  '@mantine/core@9.5.2':
-    resolution: {integrity: sha512-yhnR+XVGmy7S66abvj/tF9SxzNJ+k60w+UZlC/vGOztrU2Cxpbr95gtrBrin4fpWyiE80qzVC2AY0WzaHPufWw==}
+  '@mantine/core@9.6.0':
+    resolution: {integrity: sha512-WpdtSv9q2k4RrAVUxBlABMyEul4vv94EkjoVuQglBBC7jVmLhBBgI64HltE6di/l6zvj9D7k1vgkbVjyxQsn1g==}
     peerDependencies:
-      '@mantine/hooks': 9.5.2
+      '@mantine/hooks': 9.6.0
       react: ^19.2.0
       react-dom: ^19.2.0
 
-  '@mantine/hooks@9.5.2':
-    resolution: {integrity: sha512-CsANdaF07VRhcvDCupIvAPtIqU1NxYSc+bhFCCasDHpgJOUQxmqeMOGCCGSjtOOEIs+E+pt2ZbbdfnygDYPybA==}
+  '@mantine/hooks@9.6.0':
+    resolution: {integrity: sha512-r+1RWxc0F2XK9exKIk3Cxc17eyDTEtRqvomeQMCqI4S2Z3A78ObAGuNS8WXn8aqDGN66MJlO+WV7oCgQn2iQfQ==}
     peerDependencies:
       react: ^19.2.0
 
@@ -3537,8 +3540,8 @@ packages:
   '@scure/base@2.2.0':
     resolution: {integrity: sha512-b8XEupJibegiXV+tDUseI8oLQc8ei3d/4Jkb2RpbHh3MfE054ov3uIz2dhFkB3FI8iwYkEh0gGCApkrYggkPNg==}
 
-  '@scure/base@2.3.0':
-    resolution: {integrity: sha512-NsG6Y03tY6R5BUis4FdVtHVkur0U6FOzskgs9ZXNl78CUc9fkZ78HmENUle1nSOkCasDmbubmWD9qwB7mm4PZA==}
+  '@scure/base@2.4.0':
+    resolution: {integrity: sha512-thZ1TuJwFwBblOhgsjDKvvGirBxNp+wSvY/DR6tJBJOTDhdAAcHJ8Vbr2eFnqaxeca4+t0i9KBf+uHYGWwZORg==}
 
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
@@ -3666,6 +3669,9 @@ packages:
 
   '@sozai/schema@0.1.1':
     resolution: {integrity: sha512-al9/4564WGYvyBqnXN9ehTnk2epr8ITi0e8feuy59tRZ3srhYg4XPAkSi3ppd+Kh/PyPYcPT4rXo256v/rDO+g==}
+
+  '@sozai/schema@0.1.2':
+    resolution: {integrity: sha512-axdurlOUu9prryrFnuZ1CS3KPYucAXAw2wy55dwgKpE2n4r7KVX6AJ9F24qAAjHsnbzonMRXzzAYRPJS1YG/Yw==}
 
   '@sozai/stream@0.2.0':
     resolution: {integrity: sha512-wMtP+YBNb6SOHCBgwv0BNhaGyTbvsGBSdrT7Jz3zG5auAq3RGFYQmApdtTcKF7QpbKr5kKX1YABJIiKaAY3mGA==}
@@ -4160,8 +4166,8 @@ packages:
   '@tejika/env@0.5.0':
     resolution: {integrity: sha512-ww+4H7bQi+9iCbOcmOZfjv/3ZNF2phBWEXZyILN1jfUb6wgx+X7FkPm+Vqx0Z6ChnHeTz7uYhh725WqxescIbw==}
 
-  '@tejika/process@0.5.0':
-    resolution: {integrity: sha512-Ax8IKhQPrbNw9CR+xZMiSnJLVacBhs3nrq1tDJdZRmf+C3K5YZz/14mSnaTyM9G8S5vi0/AC4wXbbPFTqljkrg==}
+  '@tejika/process@0.5.1':
+    resolution: {integrity: sha512-OzXgzmeUdeM+ZZAuEvoRQ2Na2/GoIDwk4RH0j+CZOcXBamTfBLYoX2uxKafOXHx2j2OsQuLQfCKBxc02CdXJug==}
 
   '@tejika/server@0.4.1':
     resolution: {integrity: sha512-JDUiWRSabhLGq2uNQG40s9RubOgmxDPBMRdoR95m49mMaRMPRrhdG8L+WtyWkpEGGWFxuOAwQR9gMaRitNnetg==}
@@ -4395,8 +4401,8 @@ packages:
   '@ungap/structured-clone@1.3.3':
     resolution: {integrity: sha512-60YRaenCQcVjYEKOcG824+DRGGIQ3VKErcBoAEDJZz5bKIs2ZG+X/H9Nk+Q6EVkwJk5QNApxbrc5QtBSwtrXAg==}
 
-  '@vitejs/plugin-react@6.1.0':
-    resolution: {integrity: sha512-qd2BzUBehkov86WFhg0JkEFEYyCLG9uPCe6qWTY/kRlss9OvJrOF2UbIWT7p+8IzZHkEu0DNGHc4HSv+JdDLsw==}
+  '@vitejs/plugin-react@6.1.1':
+    resolution: {integrity: sha512-yxLaQV9gkhS8ezJqCM6+ndU7mDY6gqAg75NQ+0IjwEI8IYOmQCgkRwHKVSfWXW076DsqMo0Dk+0FK1U+M5RgFw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
       '@rolldown/plugin-babel': ^0.1.7 || ^0.2.0
@@ -5825,8 +5831,8 @@ packages:
   fast-json-stable-stringify@2.1.0:
     resolution: {integrity: sha512-lhd/wF+Lk98HZoTCtlVraHtfh5XYijIjalXck7saUtuanSDyLMxnHhSXEDJqHxD7msR8D0uCmqlkwjCV8xvwHw==}
 
-  fast-uri@3.1.3:
-    resolution: {integrity: sha512-i70LwGWUduXqzicKXWshooq+sWL1K3WUU5rKZNG/0i3a1OSoX3HqhH5WbWwTmqWfor4urUakGPiRQcleRZTwOg==}
+  fast-uri@3.1.6:
+    resolution: {integrity: sha512-7Ical1vFEMr0onbVzEDIreM22I4khW+fzyQPwvAFWBp1iwdshSZRsL4jjRvPG9JP1uiqMHRto+YU6R2/CzDz5Q==}
 
   fastq@1.20.1:
     resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
@@ -6766,8 +6772,8 @@ packages:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
 
-  ky@2.0.2:
-    resolution: {integrity: sha512-/GmXpo9F9W+f8n4Ivr2iH+7h7wL7jLbLKWkMlpflcCRb6kGjBfTlASEXaZ9qUgNTn4VgS0P2pwxxzQ4EM6Ulgg==}
+  ky@2.1.0:
+    resolution: {integrity: sha512-nIKwelw+7qVqKOlX4Eht6GXfEXlDHcdIjyLWV3s119kYt5s+70ayTnYS+0fRNmtgGRRAfqdeWQbh8YizqkS0ng==}
     engines: {node: '>=22'}
 
   latest-version@7.0.0:
@@ -9370,6 +9376,10 @@ packages:
 
   type-fest@5.8.0:
     resolution: {integrity: sha512-YGYEVz3Fm5iy/AybuA0oyNFq7H4CgQNfRp/qfe8nurE1kuCeNm3/vfm9X4Mtl+qLyaKJUh5xrFZwogr41SMjYA==}
+    engines: {node: '>=20'}
+
+  type-fest@5.9.0:
+    resolution: {integrity: sha512-yANm3Jr3GiJ1qgJlxGAVxTOIcEOk1rhQHamlXtnrCK7EHP4HeM9OGxtMg/W7HFdrVzw/ZWJKGVIJusVH85sLtw==}
     engines: {node: '>=20'}
 
   type-is@1.6.18:
@@ -12380,7 +12390,7 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@enkaku/client@0.21.1(@logtape/logtape@2.3.0)':
+  '@enkaku/client@0.21.2(@logtape/logtape@2.3.0)':
     dependencies:
       '@enkaku/otel': 0.21.0
       '@kokuin/token': 0.5.0
@@ -12397,7 +12407,7 @@ snapshots:
   '@enkaku/http-fetch@0.21.0(@logtape/logtape@2.3.0)':
     dependencies:
       '@enkaku/otel': 0.21.0
-      '@enkaku/protocol': 0.21.0
+      '@enkaku/protocol': 0.21.1
       '@enkaku/transport': 0.21.0(@logtape/logtape@2.3.0)
       '@sozai/otel': 0.3.2
       '@sozai/runtime': 0.1.0
@@ -12433,6 +12443,10 @@ snapshots:
   '@enkaku/protocol@0.21.0':
     dependencies:
       '@kokuin/token': 0.4.0
+
+  '@enkaku/protocol@0.21.1':
+    dependencies:
+      '@kokuin/token': 0.5.0
 
   '@enkaku/server@0.21.2(@logtape/logtape@2.3.0)':
     dependencies:
@@ -12929,17 +12943,17 @@ snapshots:
       '@scure/base': 2.2.0
       '@sozai/codec': 0.4.0
       '@sozai/otel': 0.3.2
-      '@sozai/schema': 0.1.1
+      '@sozai/schema': 0.1.2
 
   '@kokuin/token@0.5.0':
     dependencies:
       '@kokuin/otel': 0.3.0
       '@noble/curves': 2.4.0
       '@noble/hashes': 2.4.0
-      '@scure/base': 2.3.0
+      '@scure/base': 2.4.0
       '@sozai/codec': 0.4.0
       '@sozai/otel': 0.3.2
-      '@sozai/schema': 0.1.1
+      '@sozai/schema': 0.1.2
 
   '@kwsites/file-exists@1.1.1(supports-color@8.1.1)':
     dependencies:
@@ -12965,20 +12979,20 @@ snapshots:
 
   '@logtape/logtape@2.3.0': {}
 
-  '@mantine/core@9.5.2(@mantine/hooks@9.5.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@mantine/core@9.6.0(@mantine/hooks@9.6.0(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@floating-ui/react': 0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@mantine/hooks': 9.5.2(react@19.2.8)
+      '@mantine/hooks': 9.6.0(react@19.2.8)
       clsx: 2.1.1
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
       react-number-format: 5.4.5(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react-remove-scroll: 2.7.2(@types/react@19.2.18)(react@19.2.8)
-      type-fest: 5.8.0
+      type-fest: 5.9.0
     transitivePeerDependencies:
       - '@types/react'
 
-  '@mantine/hooks@9.5.2(react@19.2.8)':
+  '@mantine/hooks@9.6.0(react@19.2.8)':
     dependencies:
       react: 19.2.8
 
@@ -13624,7 +13638,7 @@ snapshots:
 
   '@scure/base@2.2.0': {}
 
-  '@scure/base@2.3.0': {}
+  '@scure/base@2.4.0': {}
 
   '@sec-ant/readable-stream@0.4.1': {}
 
@@ -13774,6 +13788,13 @@ snapshots:
   '@sozai/runtime@0.1.0': {}
 
   '@sozai/schema@0.1.1':
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+      json-schema-to-ts: 3.1.1
+
+  '@sozai/schema@0.1.2':
     dependencies:
       '@standard-schema/spec': 1.1.0
       ajv: 8.20.0
@@ -14238,10 +14259,10 @@ snapshots:
       env-paths: 4.0.0
       get-port: 7.2.0
 
-  '@tejika/process@0.5.0(@logtape/logtape@2.3.0)':
+  '@tejika/process@0.5.1(@logtape/logtape@2.3.0)':
     dependencies:
-      '@enkaku/client': 0.21.1(@logtape/logtape@2.3.0)
-      '@enkaku/protocol': 0.21.0
+      '@enkaku/client': 0.21.2(@logtape/logtape@2.3.0)
+      '@enkaku/protocol': 0.21.1
       '@enkaku/server': 0.21.2(@logtape/logtape@2.3.0)
       '@enkaku/socket': 0.21.0(@logtape/logtape@2.3.0)
       '@sozai/lock': 0.1.0
@@ -14515,7 +14536,7 @@ snapshots:
 
   '@ungap/structured-clone@1.3.3': {}
 
-  '@vitejs/plugin-react@6.1.0(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.1)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.26))(terser@5.49.0)(tsx@4.23.10)(yaml@2.9.0))':
+  '@vitejs/plugin-react@6.1.1(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.1)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.26))(terser@5.49.0)(tsx@4.23.10)(yaml@2.9.0))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.2.2(@types/node@26.4.0)(esbuild@0.28.1)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.26))(terser@5.49.0)(tsx@4.23.10)(yaml@2.9.0)
@@ -14841,7 +14862,7 @@ snapshots:
   ajv@8.20.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.3
+      fast-uri: 3.1.6
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -16109,7 +16130,7 @@ snapshots:
 
   fast-json-stable-stringify@2.1.0: {}
 
-  fast-uri@3.1.3: {}
+  fast-uri@3.1.6: {}
 
   fastq@1.20.1:
     dependencies:
@@ -17079,7 +17100,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 26.3.0
+      '@types/node': 26.4.0
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -17213,7 +17234,7 @@ snapshots:
 
   kleur@4.1.5: {}
 
-  ky@2.0.2: {}
+  ky@2.1.0: {}
 
   latest-version@7.0.0:
     dependencies:
@@ -20450,6 +20471,10 @@ snapshots:
   type-fest@4.41.0: {}
 
   type-fest@5.8.0:
+    dependencies:
+      tagged-tag: 1.0.0
+
+  type-fest@5.9.0:
     dependencies:
       tagged-tag: 1.0.0
 
