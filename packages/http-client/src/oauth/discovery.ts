@@ -52,7 +52,7 @@ export async function discover(params: {
   const allowLoopback = isLoopbackHost(new URL(params.resource).hostname)
   const prmUrl = params.resourceMetadataUrl ?? wellKnownPRM(params.resource)
   requireHttps(prmUrl, allowLoopback)
-  const prmRes = await params.fetch(prmUrl)
+  const prmRes = await params.fetch(prmUrl, { redirect: 'error' })
   if (!prmRes.ok) throw new Error(`protected-resource metadata HTTP ${prmRes.status}`)
   const prm = (await prmRes.json()) as ProtectedResourceMetadata
   if (prm.resource !== params.resource) {
@@ -64,7 +64,7 @@ export async function discover(params: {
   const issuer = (params.selectAuthServer ?? ((s) => s[0]))(prm.authorization_servers)
   requireHttps(issuer, allowLoopback)
   const asUrl = wellKnownAS(issuer)
-  const asRes = await params.fetch(asUrl)
+  const asRes = await params.fetch(asUrl, { redirect: 'error' })
   if (!asRes.ok) throw new Error(`authorization-server metadata HTTP ${asRes.status}`)
   const as = (await asRes.json()) as AuthServerMetadata
   if (as.issuer !== issuer) throw new Error(`AS issuer ${as.issuer} != ${issuer}`)

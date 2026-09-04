@@ -63,6 +63,7 @@ export async function exchangeRefresh(
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
+    redirect: 'error',
   })
   if (!response.ok) {
     throw new Error(`Token refresh HTTP ${response.status}`)
@@ -130,6 +131,7 @@ async function exchangeAuthorizationCode(
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
+    redirect: 'error',
   })
   if (!response.ok) {
     throw new Error(`Token exchange HTTP ${response.status}`)

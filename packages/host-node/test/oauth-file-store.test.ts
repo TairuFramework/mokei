@@ -36,6 +36,22 @@ test('concurrent sets for different keys do not clobber each other', async () =>
   expect((await store.get('https://b.example.com/mcp'))?.accessToken).toBe('b')
 })
 
+test('two independent stores sharing the same path serialize through one mutex (H3)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'tokens.json')
+  const storeA = createFileTokenStore(file)
+  const storeB = createFileTokenStore(file)
+
+  await Promise.all([
+    storeA.set('a', { accessToken: 'a', tokenType: 'Bearer' }),
+    storeB.set('b', { accessToken: 'b', tokenType: 'Bearer' }),
+  ])
+
+  const reader = createFileTokenStore(file)
+  expect((await reader.get('a'))?.accessToken).toBe('a')
+  expect((await reader.get('b'))?.accessToken).toBe('b')
+})
+
 test('treats corrupt file as empty', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
   const file = join(dir, 'tokens.json')

@@ -217,6 +217,7 @@ describe('footer + selects + help', () => {
     const { lastFrame } = render(<HelpCard onClose={() => {}} />)
     expect(lastFrame()).toContain('/help')
     expect(lastFrame()).toContain('/context')
+    expect(lastFrame()).toContain('/context add-http')
     expect(lastFrame()).toContain('/model')
     expect(lastFrame()).toContain('/tools')
     expect(lastFrame()).toContain('/quit')

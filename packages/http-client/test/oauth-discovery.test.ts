@@ -88,6 +88,30 @@ test('allows loopback-http metadata when the protected resource itself is loopba
   expect(as.issuer).toBe('http://localhost:4000')
 })
 
+test('H5: PRM and AS metadata fetches are made with redirect: "error" (SSRF/redirect guard)', async () => {
+  const inits: Array<RequestInit | undefined> = []
+  const fetch = async (url: string, init?: RequestInit): Promise<Response> => {
+    inits.push(init)
+    if (url.includes('oauth-protected-resource')) {
+      return json({ resource, authorization_servers: ['https://as.example.com'] })
+    }
+    if (url === 'https://as.example.com/.well-known/oauth-authorization-server') {
+      return json({
+        issuer: 'https://as.example.com',
+        authorization_endpoint: 'https://as.example.com/authorize',
+        token_endpoint: 'https://as.example.com/token',
+        code_challenge_methods_supported: ['S256'],
+      })
+    }
+    throw new Error(`unexpected ${url}`)
+  }
+  await discover({ resource, fetch })
+  expect(inits.length).toBe(2)
+  for (const init of inits) {
+    expect(init?.redirect).toBe('error')
+  }
+})
+
 test('RFC 8414 discovery inserts the well-known segment before a path-bearing issuer', async () => {
   const pathIssuer = 'https://as.example/tenant1'
   let fetchedAsUrl: string | undefined

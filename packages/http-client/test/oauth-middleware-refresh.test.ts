@@ -196,6 +196,32 @@ test('falls through to interactive authorize when the refresh exchange itself fa
   expect((await store.get(resource))?.accessToken).toBe('fresh')
 })
 
+test('H5: the token-refresh fetch is made with redirect: "error" (SSRF/redirect guard)', async () => {
+  const store = createMemoryTokenStore()
+  await store.set(resource, {
+    accessToken: 'old',
+    tokenType: 'Bearer',
+    refreshToken: 'r1',
+    expiresAt: 1000,
+    tokenEndpoint: 'https://as.example.com/token',
+    issuer: 'https://as.example.com',
+  })
+  let seenRedirect: RequestRedirect | undefined
+  const next = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (url.endsWith('/token')) {
+      seenRedirect = init?.redirect
+      return new Response(
+        JSON.stringify({ access_token: 'new', token_type: 'Bearer', expires_in: 3600 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 999 })
+  await mw(next)(resource, { method: 'POST', body: '{}' })
+  expect(seenRedirect).toBe('error')
+})
+
 test('a failed pre-emptive refresh does not fail the outbound request', async () => {
   const store = createMemoryTokenStore()
   await store.set(resource, {

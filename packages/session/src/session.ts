@@ -226,6 +226,10 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   async #setupHTTPContext(params: AddHTTPContextParams): Promise<Array<ContextTool>> {
     const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware, enableTools } =
       params
+    // `ContextHost.addHTTPContext` registers the context synchronously (unlike stdio's
+    // async-spawning `addLocalContext`), and rejects with "already exists" for a duplicate key
+    // BEFORE registering anything. Awaiting it outside the try means a duplicate-key rejection
+    // never enters the catch below, so it can never remove a pre-existing context.
     await this.#contextHost.addHTTPContext({
       key,
       url,
@@ -235,34 +239,24 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       protocolVersion,
       fetchMiddleware,
     })
-    const tools = await this.#contextHost.setup({ key, enableTools, signal: params.signal })
-    this.#events.emit('context-added', { key, tools })
-    return tools
+    try {
+      const tools = await this.#contextHost.setup({ key, enableTools, signal: params.signal })
+      this.#events.emit('context-added', { key, tools })
+      return tools
+    } catch (err) {
+      // Only this call registered the context (the duplicate case threw above), so removing it
+      // on a setup failure or abort cannot destroy a pre-existing context and leaves nothing
+      // orphaned.
+      await this.#contextHost.remove(key).catch(() => {})
+      throw err
+    }
   }
 
   addHTTPContext(params: AddHTTPContextParams): Promise<Array<ContextTool>> {
     if (!params.signal) {
       return this.#setupHTTPContext(params)
     }
-    const setupPromise = this.#setupHTTPContext(params)
-    return raceSignal(setupPromise, params.signal).catch(async (err) => {
-      // A late-registering spawn may complete after the abort wins the race.
-      // If the key is not yet registered, wait until it appears (context:added)
-      // or until setupPromise settles without registering — then remove either
-      // way so no orphaned child is left behind.
-      if (!this.#contextHost.getContextKeys().includes(params.key)) {
-        const ac = new AbortController()
-        await Promise.race([
-          this.#contextHost.events.once('context:added', {
-            filter: (data) => data.key === params.key,
-            signal: ac.signal,
-          }),
-          setupPromise.catch(() => {}),
-        ]).finally(() => ac.abort())
-      }
-      await this.#contextHost.remove(params.key).catch(() => {})
-      throw err
-    })
+    return raceSignal(this.#setupHTTPContext(params), params.signal)
   }
 
   async removeContext(key: string): Promise<boolean> {

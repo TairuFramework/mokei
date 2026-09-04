@@ -30,6 +30,7 @@ const ALG_PARAMS: Record<string, AlgParams> = {
 const DEFAULT_JWKS_TTL_SECONDS = 300
 const MAX_JWKS_KEYS = 50
 const DEFAULT_TOLERANCE_SECONDS = 30
+const DEFAULT_MIN_REFRESH_INTERVAL_SECONDS = 30
 
 /** `JsonWebKey` per lib.dom.d.ts omits `kid`, which JWKS keys carry per RFC 7517. */
 type Jwk = JsonWebKey & { kid?: string }
@@ -43,6 +44,8 @@ export type JWKSVerifierConfig = {
   fetch?: FetchLike
   /** Clock-skew tolerance for `exp`/`nbf` checks, in seconds. Defaults to 30. */
   toleranceSeconds?: number
+  /** Minimum seconds between forced JWKS refreshes (unknown-kid rotation recovery). Defaults to 30. */
+  minRefreshIntervalSeconds?: number
   /** Clock source, returning epoch seconds. Defaults to `Date.now()`-based. */
   now?: () => number
 }
@@ -110,18 +113,21 @@ async function parseJsonResponse(res: Response, url: string): Promise<unknown> {
 export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifier {
   const fetchFn: FetchLike = config.fetch ?? (globalThis.fetch as FetchLike)
   const toleranceSeconds = config.toleranceSeconds ?? DEFAULT_TOLERANCE_SECONDS
+  const minRefreshInterval =
+    config.minRefreshIntervalSeconds ?? DEFAULT_MIN_REFRESH_INTERVAL_SECONDS
   const now = config.now ?? defaultNow
 
   let cache: CachedJwks | undefined
   let inflight: Promise<CachedJwks> | undefined
   let resolvedJwksUri: string | undefined
+  let lastForcedRefreshAt = 0
 
   async function discoverJwksUri(): Promise<string> {
     if (config.jwksUri != null) return config.jwksUri
     if (resolvedJwksUri != null) return resolvedJwksUri
     const metadataUrl = wellKnownAS(config.issuer)
     requireHttps(metadataUrl)
-    const res = await fetchFn(metadataUrl)
+    const res = await fetchFn(metadataUrl, { redirect: 'error' })
     if (!res.ok) {
       throw new TokenVerificationError(
         'invalid_token',
@@ -148,7 +154,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
   async function fetchJwks(): Promise<CachedJwks> {
     const uri = await discoverJwksUri()
     requireHttps(uri)
-    const res = await fetchFn(uri)
+    const res = await fetchFn(uri, { redirect: 'error' })
     if (!res.ok) {
       throw new TokenVerificationError(
         'invalid_token',
@@ -169,12 +175,25 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     return { keys: body.keys as Array<Jwk>, fetchedAt: now(), ttlSeconds }
   }
 
-  /** Get the cached JWKS, refreshing it (single-flight) if absent, expired, or forced. */
+  /**
+   * Get the cached JWKS, refreshing it (single-flight) if absent, expired, or forced.
+   *
+   * A forced refresh (unknown-kid rotation recovery) is rate-limited to at most one per
+   * `minRefreshInterval` once a cache exists: an attacker sending tokens each with a different,
+   * never-seen `kid` would otherwise force one network fetch per request. A cold cache (no
+   * `cache` yet) is always allowed to populate, and the first forced refresh in a window is
+   * always allowed too — only a second forced refresh within the same window is suppressed,
+   * returning the (still-)cached JWKS instead of refetching.
+   */
   async function getJwks(forceRefresh: boolean): Promise<CachedJwks> {
     if (!forceRefresh && cache != null && now() - cache.fetchedAt < cache.ttlSeconds) {
       return cache
     }
+    if (forceRefresh && cache != null && now() - lastForcedRefreshAt < minRefreshInterval) {
+      return cache
+    }
     if (inflight != null) return inflight
+    if (forceRefresh) lastForcedRefreshAt = now()
     const promise = fetchJwks()
       .then((fetched) => {
         cache = fetched

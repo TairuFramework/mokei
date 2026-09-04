@@ -1,7 +1,13 @@
 import { randomBytes } from 'node:crypto'
 import { readFile, rename, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import type { StoredTokens, TokenStore } from '@mokei/http-client'
+
+// Shared serialization chain per resolved absolute path, at module scope: two
+// `createFileTokenStore` instances pointing at the same file (e.g. two HTTP contexts sharing an
+// `--oauth-tokens` file within one process) must serialize their reads/writes against each other,
+// or one instance's read-modify-write can race and clobber the other's.
+const pathTails = new Map<string, Promise<unknown>>()
 
 async function readAll(path: string): Promise<Record<string, StoredTokens>> {
   let raw: string
@@ -27,31 +33,38 @@ async function writeAll(path: string, data: Record<string, StoredTokens>): Promi
 }
 
 export function createFileTokenStore(path: string): TokenStore {
-  // Serializes every operation on this store instance through a tail-promise chain (a simple
-  // in-process mutex), so concurrent `get`/`set`/`clear` calls can't interleave their
-  // read-modify-write and clobber each other.
-  let tail: Promise<unknown> = Promise.resolve()
+  // Serializes every operation through a tail-promise chain shared, by resolved absolute path,
+  // across every store instance pointing at the same file (a simple in-process mutex) — so
+  // concurrent `get`/`set`/`clear` calls, even from different `createFileTokenStore` instances,
+  // can't interleave their read-modify-write and clobber each other. Resolving once here also
+  // means equivalent-but-differently-spelled paths (`./t.json` vs its absolute form) share the
+  // same chain.
+  const resolved = resolve(path)
   const serialize = <T>(op: () => Promise<T>): Promise<T> => {
-    const run = tail.then(op, op)
-    tail = run.catch(() => {})
+    const prev = pathTails.get(resolved) ?? Promise.resolve()
+    const run = prev.then(op, op)
+    pathTails.set(
+      resolved,
+      run.catch(() => {}),
+    )
     return run
   }
   return {
     get(key) {
-      return serialize(async () => (await readAll(path))[key])
+      return serialize(async () => (await readAll(resolved))[key])
     },
     set(key, tokens) {
       return serialize(async () => {
-        const all = await readAll(path)
+        const all = await readAll(resolved)
         all[key] = tokens
-        await writeAll(path, all)
+        await writeAll(resolved, all)
       })
     },
     clear(key) {
       return serialize(async () => {
-        const all = await readAll(path)
+        const all = await readAll(resolved)
         delete all[key]
-        await writeAll(path, all)
+        await writeAll(resolved, all)
       })
     },
   }

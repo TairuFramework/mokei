@@ -64,4 +64,41 @@ describe('Session.addHTTPContext', () => {
 
     expect(addHTTPContextSpy).toHaveBeenCalledWith(expect.objectContaining({ fetchMiddleware }))
   })
+
+  test('H1: removes the context it just registered when setup() rejects (no signal)', async () => {
+    session = new Session()
+    vi.spyOn(session.contextHost, 'addHTTPContext').mockResolvedValue({} as never)
+    vi.spyOn(session.contextHost, 'setup').mockRejectedValue(new Error('setup failed'))
+
+    await expect(session.addHTTPContext({ key: 'k', url: 'https://x/mcp' })).rejects.toThrow(
+      'setup failed',
+    )
+
+    expect(session.contextHost.getContextKeys()).not.toContain('k')
+  })
+
+  test('H2: a duplicate-key rejection from addHTTPContext must not remove the pre-existing context', async () => {
+    session = new Session()
+    const addHTTPContextSpy = vi.spyOn(session.contextHost, 'addHTTPContext')
+    const setupSpy = vi.spyOn(session.contextHost, 'setup')
+
+    // Register the pre-existing context under key 'dup'.
+    addHTTPContextSpy.mockResolvedValueOnce({} as never)
+    setupSpy.mockResolvedValueOnce([])
+    await session.addHTTPContext({ key: 'dup', url: 'https://x/mcp' })
+
+    // Now simulate a duplicate add: the host rejects because 'dup' already exists.
+    addHTTPContextSpy.mockRejectedValueOnce(new Error('Context dup already exists'))
+    const removeSpy = vi.spyOn(session.contextHost, 'remove')
+
+    await expect(
+      session.addHTTPContext({
+        key: 'dup',
+        url: 'https://x/mcp',
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow('Context dup already exists')
+
+    expect(removeSpy).not.toHaveBeenCalledWith('dup')
+  })
 })

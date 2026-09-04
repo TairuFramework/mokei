@@ -289,6 +289,53 @@ test('RFC 8414 discovery inserts the well-known segment before a path-bearing is
   expect(fetchedMetadataUrl).toBe(metadataUrl)
 })
 
+test('H4: two different unknown kids within the cooldown window force at most one extra JWKS refresh', async () => {
+  const { token: knownToken, jwk } = await makeToken()
+  let fetchCalls = 0
+  const fetchJwks = async (): Promise<Response> => {
+    fetchCalls += 1
+    return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
+  }
+  const nowValue = Math.floor(Date.now() / 1000)
+  const verifier = createJWKSVerifier({
+    issuer,
+    jwksUri: `${issuer}/jwks`,
+    fetch: fetchJwks as never,
+    now: () => nowValue,
+    minRefreshIntervalSeconds: 30,
+  })
+
+  // Warm the cache with a successful verify first.
+  await verifier.verifyAccessToken(knownToken, { resource })
+  expect(fetchCalls).toBe(1)
+
+  const { token: unknown1 } = await makeToken({ header: { kid: 'unknown-kid-1' } })
+  await expect(verifier.verifyAccessToken(unknown1, { resource })).rejects.toThrow()
+  const { token: unknown2 } = await makeToken({ header: { kid: 'unknown-kid-2' } })
+  await expect(verifier.verifyAccessToken(unknown2, { resource })).rejects.toThrow()
+
+  // At most one extra fetch across both unknown-kid attempts within the cooldown window.
+  expect(fetchCalls).toBeLessThanOrEqual(2)
+})
+
+test('H5: the JWKS metadata and keys fetches are made with redirect: "error" (SSRF/redirect guard)', async () => {
+  const { token, jwk } = await makeToken()
+  const redirects: Array<string | undefined> = []
+  const fetchFn = async (url: string, init?: RequestInit): Promise<Response> => {
+    redirects.push(init?.redirect)
+    if (url === `${issuer}/.well-known/oauth-authorization-server`) {
+      return new Response(JSON.stringify({ issuer, jwks_uri: `${issuer}/jwks` }), { status: 200 })
+    }
+    return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
+  }
+  const verifier = createJWKSVerifier({ issuer, fetch: fetchFn as never })
+  await verifier.verifyAccessToken(token, { resource })
+  expect(redirects.length).toBeGreaterThan(0)
+  for (const redirect of redirects) {
+    expect(redirect).toBe('error')
+  }
+})
+
 test('an unknown kid still forces exactly one JWKS refresh and retry', async () => {
   // The token's `kid` never appears in the JWKS at all, so verification still fails overall —
   // what this test pins down is the *fetch count*: the first (cache-populating) fetch, plus
