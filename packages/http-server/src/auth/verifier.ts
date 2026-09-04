@@ -5,18 +5,13 @@ export type AuthInfo = { subject: string; scopes: Array<string>; expiresAt?: num
 /**
  * A pluggable verifier for OAuth 2.0 bearer access tokens.
  *
- * Error-typing contract: `verifyAccessToken` MUST throw {@link TokenVerificationError} for
- * every *credential-validation* failure -- a bad signature, an expired/not-yet-valid/malformed
- * token, a wrong audience or issuer, or any other reason the *token itself* is invalid. Any other
- * thrown error is treated as an *operational* failure (e.g. a network/DNS error reaching a
- * JWKS/introspection endpoint, or an unexpected crypto exception) and is left to propagate as-is
- * -- `createBearerAuthGate` rethrows anything that is not a `TokenVerificationError`, which
- * surfaces as an HTTP 500. That fail-closed default is deliberate: normalizing every thrown error
- * to a 401 would mask an operational outage (can't reach the AS, a bug in the verifier) as an
- * ordinary authentication failure, hiding it from monitoring that watches for 5xxs. Implementers
- * of a custom verifier must therefore catch operational errors they can positively identify as
- * credential problems and re-throw them as `TokenVerificationError`, but must NOT blanket-convert
- * every caught error to one.
+ * Error-typing contract: `verifyAccessToken` MUST throw {@link TokenVerificationError} for every
+ * credential-validation failure (bad signature, expired/malformed token, wrong audience/issuer).
+ * Any other thrown error is treated as operational (network/DNS, an unexpected crypto exception)
+ * and propagates as-is: `createBearerAuthGate` rethrows non-`TokenVerificationError`s as HTTP 500.
+ * This fail-closed default is deliberate — normalizing every error to 401 would mask an AS outage
+ * or verifier bug as an ordinary auth failure. A custom verifier must re-throw positively
+ * identified credential problems as `TokenVerificationError`, but must not blanket-convert.
  */
 export type OAuthTokenVerifier = {
   verifyAccessToken(token: string, ctx: { resource: string }): Promise<AuthInfo>

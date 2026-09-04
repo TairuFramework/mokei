@@ -19,12 +19,9 @@ function concatUint8(chunks: Array<Uint8Array>): Uint8Array {
 }
 
 /**
- * Read `res`'s body up to `maxBytes`, throwing before any oversized body is fully buffered, then
- * parse it as JSON.
- *
- * The `content-length` header (when present) is checked first as a cheap fast-path; the running
- * total is checked again on every chunk since a response can omit or lie about that header (e.g.
- * chunked transfer-encoding).
+ * Read `res`'s body up to `maxBytes`, throwing before an oversized body is fully buffered, then
+ * parse as JSON. `content-length` is a cheap fast-path; the running total is re-checked per chunk
+ * since a response can omit or lie about that header (e.g. chunked transfer-encoding).
  */
 async function readCappedJSON(res: Response, url: string, maxBytes: number): Promise<unknown> {
   const contentLength = Number(res.headers.get('content-length'))
@@ -57,16 +54,10 @@ async function readCappedJSON(res: Response, url: string, maxBytes: number): Pro
 }
 
 /**
- * Fetch an OAuth endpoint (protected-resource/AS metadata, a token endpoint) with a bounded
- * deadline and a response-size cap, then parse the body as JSON.
- *
- * `redirect: 'error'` is always set (every caller already relies on this SSRF/redirect guard). A
- * caller-supplied `signal`, when given, is combined with the timeout via `AbortSignal.any` so an
- * aborted outer request cancels this OAuth subrequest too, without ever loosening the deadline.
- *
- * Throws `Error(\`${errorLabel} HTTP ${status}\`)` on a non-ok response, so a caller's existing
- * message (e.g. `Token refresh HTTP 401`, `protected-resource metadata HTTP 404`) is reproduced
- * exactly by choosing `errorLabel` to match.
+ * Fetch an OAuth endpoint with a bounded deadline and a response-size cap, then parse as JSON.
+ * `redirect: 'error'` guards against SSRF/redirects. A caller `signal` is combined with the
+ * timeout via `AbortSignal.any`, so an aborted outer request cancels this one without loosening
+ * the deadline. Throws `Error(\`${errorLabel} HTTP ${status}\`)` on a non-ok response.
  */
 export async function fetchOAuthJSON(
   fetch: FetchLike,

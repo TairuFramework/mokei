@@ -148,10 +148,9 @@ async function readCappedText(res: Response, url: string, maxBytes: number): Pro
 }
 
 /**
- * Parse a fetch `Response` body -- capped at `maxBytes` -- as JSON, converting a non-JSON body
- * into a `TokenVerificationError` instead of letting a raw `SyntaxError` escape — callers that
- * only catch `TokenVerificationError` for verification failures should never see an unrelated
- * parse error type. The byte cap runs before parsing, so an oversized body is never buffered.
+ * Parse a capped `Response` body as JSON, converting a non-JSON body into a
+ * `TokenVerificationError` so callers that only catch that type never see a raw `SyntaxError`.
+ * The byte cap runs before parsing, so an oversized body is never buffered.
  */
 async function parseJSONResponse(res: Response, url: string, maxBytes: number): Promise<unknown> {
   const text = await readCappedText(res, url, maxBytes)
@@ -247,12 +246,10 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
   /**
    * Get the cached JWKS, refreshing it (single-flight) if absent, expired, or forced.
    *
-   * A forced refresh (unknown-kid rotation recovery) is rate-limited to at most one per
-   * `minRefreshInterval` once a cache exists: an attacker sending tokens each with a different,
-   * never-seen `kid` would otherwise force one network fetch per request. A cold cache (no
-   * `cache` yet) is always allowed to populate, and the first forced refresh in a window is
-   * always allowed too — only a second forced refresh within the same window is suppressed,
-   * returning the (still-)cached JWKS instead of refetching.
+   * A forced refresh (unknown-kid rotation recovery) is rate-limited to one per
+   * `minRefreshInterval` once a cache exists, so an attacker sending tokens with ever-changing
+   * `kid`s cannot force a network fetch per request. A cold cache and the first forced refresh in
+   * a window are always allowed; a second within the window returns the cached JWKS.
    */
   async function getJWKS(forceRefresh: boolean): Promise<CachedJWKS> {
     if (!forceRefresh && cache != null && now() - cache.fetchedAt < cache.ttlSeconds) {
@@ -297,11 +294,10 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
   }
 
   /**
-   * Verify against the cached (or freshly-refreshed) JWKS, reporting separately whether a
-   * matching key was `found` at all. A signature failure against a `found` key is a genuine bad
-   * signature, not a rotation signal — the caller must not force a refetch for it, or an
-   * attacker sending garbage-signed tokens bearing a valid `kid` could force one
-   * unauthenticated network fetch to the AS per request.
+   * Verify against the cached (or refreshed) JWKS, reporting separately whether a matching key was
+   * `found`. A signature failure against a `found` key is a genuine bad signature, not a rotation
+   * signal: the caller must not refetch for it, or an attacker could force one unauthenticated
+   * JWKS fetch per request by sending garbage signed with a valid `kid`.
    */
   async function findKeyAndVerify(
     header: Record<string, unknown>,
@@ -314,27 +310,18 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     const jwks = await getJWKS(forceRefresh)
     const jwk = selectJWK(jwks.keys, header.kid)
     if (jwk == null) return { found: false, verified: false }
-    // The `kid` resolved to a key, so this is NOT a rotation signal: a rotated key would
-    // carry a new `kid` (RFC 7517 kids are unique per key). An alg/kty mismatch on a found
-    // `kid` is therefore a bad token, not a stale cache — report it as `found` so the caller
-    // rejects immediately without a refetch. Forcing a refetch here would let an attacker who
-    // knows any published `kid` amplify unauthenticated JWKS fetches to the AS per request.
+    // A resolved `kid` is not a rotation signal (rotated keys carry a new `kid`, RFC 7517), so an
+    // alg/kty mismatch is a bad token, not a stale cache: report `found: true` so the caller
+    // rejects without a refetch.
     if (!matchesAlg(jwk, alg)) return { found: true, verified: false }
-    // a structurally malformed JWK (missing/invalid `n`/`e` on an RSA key, a bad `x`/`y` on an
-    // EC key, etc.) makes `importKey`/`verify` throw a raw `DOMException`/`Error` instead of
-    // returning false. Left uncaught, that would escape as an unrelated error type and — via
-    // `createBearerAuthGate`'s fail-closed default for anything that isn't a
-    // `TokenVerificationError` — surface as an HTTP 500 for what is actually just a bad token.
-    // Treat any import/verify throw the same as a normal signature-verify failure: `found: true`
-    // (the `kid` did resolve to a key), `verified: false`. `found: true` is what keeps the
-    // amplification guard intact — the caller only forces a JWKS refetch when `found` is false,
-    // so a crypto failure here, like a bad signature, must never trigger one.
+    // A malformed JWK makes `importKey`/`verify` throw instead of returning false. Treat that like
+    // a signature failure (`found: true`, `verified: false`): it must not escape as an HTTP 500,
+    // and `found: true` keeps the amplification guard intact — the caller only refetches when no
+    // key is found.
     try {
       const key = await importVerifyKey(jwk, algParams)
-      // `decodeJWT` yields Uint8Array views over freshly allocated ArrayBuffers (never
-      // SharedArrayBuffer); the cast below only reconciles a typed-array generics
-      // mismatch between this package's `lib` setting and `@sozai/codec`'s declared
-      // return type, not an actual buffer-kind narrowing.
+      // The BufferSource casts below only reconcile a typed-array generics mismatch between this
+      // package's `lib` setting and `@sozai/codec`; the buffers are always plain ArrayBuffers.
       const verified = await crypto.subtle.verify(
         algParams,
         key,
@@ -362,10 +349,8 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
 
       let result = await findKeyAndVerify(header, algParams, alg, signingInput, signature, false)
       if (!result.found) {
-        // Unknown kid: possibly a key rotation. Force exactly one JWKS refresh and retry
-        // before giving up. A *found* key that fails verification is not retried here — that
-        // is a bad signature, not a rotation signal, and retrying it would let an attacker
-        // force a JWKS refetch per request just by sending garbage signed with a valid kid.
+        // Unknown kid: possibly a rotation. Force one JWKS refresh and retry. (A found-but-failed
+        // key is not retried — see findKeyAndVerify.)
         result = await findKeyAndVerify(header, algParams, alg, signingInput, signature, true)
       }
       if (!result.verified) {
@@ -383,9 +368,8 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
         throw new TokenVerificationError('invalid_token', 'token missing sub')
       }
 
-      // `assertStandardClaims` only enforces expiry when `exp` is present; this verifier
-      // requires `exp` on every token (unlike the DID verifier, which has its own
-      // @kokuin/token time backstop).
+      // `assertStandardClaims` enforces expiry only when `exp` is present; this verifier requires
+      // `exp` on every token (unlike the DID verifier's own @kokuin/token backstop).
       if (typeof payload.exp !== 'number') {
         throw new TokenVerificationError('invalid_token', 'token missing exp')
       }

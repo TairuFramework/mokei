@@ -3,10 +3,9 @@ import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type { StoredTokens, TokenStore } from '@mokei/http-client'
 
-// Shared serialization chain per resolved absolute path, at module scope: two
-// `createFileTokenStore` instances pointing at the same file (e.g. two HTTP contexts sharing an
-// `--oauth-tokens` file within one process) must serialize their reads/writes against each other,
-// or one instance's read-modify-write can race and clobber the other's.
+// Serialization chain per resolved absolute path, at module scope so every store instance
+// pointing at the same file shares it: an in-process mutex that stops concurrent
+// read-modify-write from interleaving and clobbering. See `serialize` below.
 const pathTails = new Map<string, Promise<unknown>>()
 
 async function readAll(path: string): Promise<Record<string, StoredTokens>> {
@@ -32,32 +31,23 @@ async function writeAll(path: string, data: Record<string, StoredTokens>): Promi
   try {
     await rename(tmp, path)
   } catch (err) {
-    // a failed rename (e.g. the target's directory vanished, or a permission/EXDEV error)
-    // must not leave the plaintext temp file (mode 0o600, but still a second copy of every
-    // stored token) behind on disk indefinitely.
+    // A failed rename must not leave the temp file (a second on-disk copy of every token) behind.
     await rm(tmp, { force: true }).catch(() => {})
     throw err
   }
 }
 
 export function createFileTokenStore(path: string): TokenStore {
-  // Serializes every operation through a tail-promise chain shared, by resolved absolute path,
-  // across every store instance pointing at the same file (a simple in-process mutex) — so
-  // concurrent `get`/`set`/`clear` calls, even from different `createFileTokenStore` instances,
-  // can't interleave their read-modify-write and clobber each other. Resolving once here also
-  // means equivalent-but-differently-spelled paths (`./t.json` vs its absolute form) share the
-  // same chain.
+  // Resolve once so differently-spelled paths (`./t.json` vs its absolute form) share one chain.
   const resolved = resolve(path)
   const serialize = <T>(op: () => Promise<T>): Promise<T> => {
     const prev = pathTails.get(resolved) ?? Promise.resolve()
     const run = prev.then(op, op)
     const tail = run.catch(() => {})
     pathTails.set(resolved, tail)
-    // Reclaim the entry once its tail settles, but only if it's still the live chain: a
-    // concurrent op reads `pathTails.get(resolved)` (this `tail`) and chains onto it, then
-    // replaces the map entry with its own tail, before this one settles -- so the identity check
-    // below fails for it and the still-live chain is never deleted out from under it. Without
-    // this, `pathTails` would grow one entry per distinct resolved path for the process lifetime.
+    // Reclaim the entry once its tail settles, but only if it is still the live chain — the
+    // identity check prevents deleting a chain a concurrent op has already extended. Without it,
+    // `pathTails` would grow one permanent entry per distinct resolved path.
     void tail.then(() => {
       if (pathTails.get(resolved) === tail) pathTails.delete(resolved)
     })

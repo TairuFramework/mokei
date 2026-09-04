@@ -4,15 +4,13 @@ import type { AuthorizationHandler } from '@mokei/http-client'
 import spawn from 'nano-spawn'
 
 /**
- * Picks the OS-appropriate command/args to open `url` in a browser, as a pure function so the
- * choice is unit-testable without actually spawning anything.
+ * Picks the OS-appropriate command/args to open `url` in a browser. Pure, so the choice is
+ * unit-testable without spawning.
  *
- * The win32 case deliberately avoids `cmd.exe /c start`: `start` is a cmd.exe builtin, and cmd
- * re-parses metacharacters (`&`, `|`, `^`, `%`, `<`, `>`) in the command line regardless of
- * nano-spawn's array args. OAuth authorization URLs always contain `&` (query-param separators),
- * so that form both breaks legitimate URLs and lets a malicious `authorization_endpoint`
- * (returned from AS discovery) inject shell commands. `rundll32`'s `FileProtocolHandler` takes
- * the URL as a single, non-shell-interpreted argv element instead.
+ * The win32 case avoids `cmd.exe /c start`: `start` is a cmd builtin and cmd re-parses
+ * metacharacters (`&`, `|`, `%`, …) regardless of array args. OAuth URLs always contain `&`, so
+ * that form breaks legitimate URLs and lets a malicious `authorization_endpoint` inject shell
+ * commands. `rundll32`'s `FileProtocolHandler` takes the URL as a single non-shell argv element.
  */
 export function browserOpenCommand(
   platform: NodeJS.Platform,
@@ -97,10 +95,9 @@ export function createLoopbackAuthorizationHandler(
           }
           settled = true
           clearTimeout(timer)
-          // Idempotent and covers every settle path (timeout, OAuth error, state mismatch, bind
-          // failure, browser-open failure, abort) -- removing the abort listener here (a no-op if
-          // it never fired, e.g. `{ once: true }` already removed it) means a signal that outlives
-          // this flow can never re-trigger `onAbort` against a closed server.
+          // Idempotent, covering every settle path (timeout, error, mismatch, bind/open failure,
+          // abort). Removing the abort listener here stops a signal that outlives this flow from
+          // re-triggering `onAbort` against a closed server.
           signal?.removeEventListener('abort', onAbort)
           server.close()
           run()
@@ -115,9 +112,7 @@ export function createLoopbackAuthorizationHandler(
 
         if (signal != null) {
           if (signal.aborted) {
-            // No 'abort' event fires for a signal that was already aborted before the listener
-            // was attached -- settle immediately instead of waiting for an event that will never
-            // come.
+            // No 'abort' event fires for an already-aborted signal — settle immediately.
             onAbort()
           } else {
             signal.addEventListener('abort', onAbort, { once: true })
@@ -128,10 +123,9 @@ export function createLoopbackAuthorizationHandler(
           settle(() => reject(err))
         })
 
-        // Already settled before we bind (e.g. the signal was aborted before `authorize` ran):
-        // do NOT open a listening socket. `settle`'s earlier `server.close()` is a no-op while the
-        // server is not yet listening, and the timer is already cleared, so binding here would
-        // leak a listening server that nothing ever closes.
+        // Already settled before binding (e.g. aborted before `authorize` ran): do NOT open a
+        // socket. `settle`'s `server.close()` is a no-op while not listening, so binding here
+        // would leak a server nothing closes.
         if (settled) {
           return
         }
