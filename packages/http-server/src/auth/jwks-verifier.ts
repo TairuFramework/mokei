@@ -198,9 +198,12 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     const jwks = await getJwks(forceRefresh)
     const jwk = selectJwk(jwks.keys, header.kid)
     if (jwk == null) return { found: false, verified: false }
-    // An alg mismatch on the matched kid is treated as not-found so a rotation that also
-    // changed the key type can still trigger the one-time refresh below.
-    if (!matchesAlg(jwk, alg)) return { found: false, verified: false }
+    // The `kid` resolved to a key, so this is NOT a rotation signal: a rotated key would
+    // carry a new `kid` (RFC 7517 kids are unique per key). An alg/kty mismatch on a found
+    // `kid` is therefore a bad token, not a stale cache — report it as `found` so the caller
+    // rejects immediately without a refetch. Forcing a refetch here would let an attacker who
+    // knows any published `kid` amplify unauthenticated JWKS fetches to the AS per request.
+    if (!matchesAlg(jwk, alg)) return { found: true, verified: false }
     const key = await importVerifyKey(jwk, algParams)
     // `decodeJwt` yields Uint8Array views over freshly allocated ArrayBuffers (never
     // SharedArrayBuffer); the cast below only reconciles a typed-array generics

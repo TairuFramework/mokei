@@ -203,6 +203,26 @@ test('a bad signature on a known kid does not force a JWKS refetch (amplificatio
   expect(fetchCalls).toBe(1)
 })
 
+test('an alg mismatch on a known kid does not force a JWKS refetch (amplification guard)', async () => {
+  // The token's header claims RS256 (an allowlisted alg) while its `kid` resolves to the
+  // cached EC (ES256) key. The `kid` is found, so this is a bad token, not a rotation — it
+  // must be rejected with no forced refetch. Otherwise anyone knowing a published `kid`
+  // could amplify unauthenticated JWKS fetches by flipping the header `alg`.
+  const { token, jwk } = await makeToken({ header: { alg: 'RS256' } })
+  let fetchCalls = 0
+  const fetchJwks = async (): Promise<Response> => {
+    fetchCalls += 1
+    return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
+  }
+  const verifier = createJWKSVerifier({
+    issuer,
+    jwksUri: `${issuer}/jwks`,
+    fetch: fetchJwks as never,
+  })
+  await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow()
+  expect(fetchCalls).toBe(1)
+})
+
 test('an unknown kid still forces exactly one JWKS refresh and retry', async () => {
   // The token's `kid` never appears in the JWKS at all, so verification still fails overall —
   // what this test pins down is the *fetch count*: the first (cache-populating) fetch, plus
