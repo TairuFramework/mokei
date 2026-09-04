@@ -4,6 +4,7 @@ import {
   type AuthorizationHandler,
   createOAuthMiddleware,
   exchangeRefresh,
+  parseTokenResponse,
 } from '../src/oauth/middleware.js'
 import { createMemoryTokenStore } from '../src/oauth/store.js'
 
@@ -283,6 +284,62 @@ test('M1: exchangeRefresh rejects a token response with a non-numeric expires_in
       () => 1000,
     ),
   ).rejects.toThrow(/expires_in/)
+})
+
+test('M1: parseTokenResponse rejects a negative expires_in', () => {
+  expect(() =>
+    parseTokenResponse({ access_token: 'a', token_type: 'Bearer', expires_in: -5 }),
+  ).toThrow(/expires_in/)
+})
+
+test('M1: parseTokenResponse rejects a non-finite expires_in (Infinity)', () => {
+  expect(() =>
+    parseTokenResponse({
+      access_token: 'a',
+      token_type: 'Bearer',
+      expires_in: Number.POSITIVE_INFINITY,
+    }),
+  ).toThrow(/expires_in/)
+})
+
+// J2: an unbounded or SSE 401 body left open while the refresh/authorize recovery runs
+// (potentially an interactive, multi-minute flow) retains its socket for that whole time. The
+// middleware must cancel it up front, before starting recovery.
+test('J2: the 401 response body is cancelled before the refresh retry starts', async () => {
+  const store = createMemoryTokenStore()
+  await store.set(resource, {
+    accessToken: 'stale',
+    tokenType: 'Bearer',
+    refreshToken: 'r1',
+    // Not near expiry: only the 401 path (not the pre-emptive refresh block) exercises this.
+    expiresAt: 9_999_999_999,
+    tokenEndpoint: 'https://as.example.com/token',
+    issuer: 'https://as.example.com',
+  })
+  let cancelled = false
+  let sawCancelBeforeTokenCall = false
+  const next = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (url.endsWith('/token')) {
+      sawCancelBeforeTokenCall = cancelled
+      return new Response(
+        JSON.stringify({ access_token: 'refreshed', token_type: 'Bearer', expires_in: 3600 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    const auth = new Headers(init?.headers).get('Authorization')
+    if (auth === 'Bearer refreshed') return json({ ok: true })
+    const body = new ReadableStream({
+      cancel() {
+        cancelled = true
+      },
+    })
+    return new Response(body, { status: 401 })
+  }
+  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 1000 })
+  const response = await mw(next)(resource, { method: 'POST', body: '{}' })
+  expect(response.status).toBe(200)
+  expect(cancelled).toBe(true)
+  expect(sawCancelBeforeTokenCall).toBe(true)
 })
 
 test('M1: a malformed token response during pre-emptive refresh is not persisted (falls back to the stale token)', async () => {

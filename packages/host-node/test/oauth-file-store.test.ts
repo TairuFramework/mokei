@@ -1,9 +1,16 @@
-import { mkdir, mkdtemp, readFile, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 import { createFileTokenStore } from '../src/oauth/file-store.js'
+
+// M2: `rename` is spied (delegating to the real implementation by default) so a single test can
+// force it to fail once, without disturbing every other test's real filesystem behavior.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, rename: vi.fn(actual.rename) }
+})
 
 test('persists tokens to disk, owner-only, and round-trips', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
@@ -107,6 +114,28 @@ test('M3: repeated sequential ops against the same path keep working after the t
   ])
   expect((await store.get('k3'))?.accessToken).toBe('third')
   expect((await store.get('k4'))?.accessToken).toBe('fourth')
+})
+
+test('M2: the temp file is removed if rename fails, and the error propagates', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'tokens.json')
+  const store = createFileTokenStore(file)
+
+  vi.mocked(rename).mockImplementationOnce(async () => {
+    throw new Error('simulated rename failure')
+  })
+
+  await expect(
+    store.set('https://mcp.example.com/mcp', { accessToken: 'a', tokenType: 'Bearer' }),
+  ).rejects.toThrow(/simulated rename failure/)
+
+  const entries = await readdir(dir)
+  const leftoverTmp = entries.filter((name) => name.endsWith('.tmp'))
+  expect(leftoverTmp).toEqual([])
+
+  // The store must still be usable afterwards (the mock only fails the one call).
+  await store.set('https://mcp.example.com/mcp', { accessToken: 'b', tokenType: 'Bearer' })
+  expect((await store.get('https://mcp.example.com/mcp'))?.accessToken).toBe('b')
 })
 
 test('a non-ENOENT read error propagates instead of being masked as empty', async () => {

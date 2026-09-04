@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { readFile, rename, writeFile } from 'node:fs/promises'
+import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type { StoredTokens, TokenStore } from '@mokei/http-client'
 
@@ -29,7 +29,15 @@ async function readAll(path: string): Promise<Record<string, StoredTokens>> {
 async function writeAll(path: string, data: Record<string, StoredTokens>): Promise<void> {
   const tmp = join(dirname(path), `.${randomBytes(6).toString('hex')}.tmp`)
   await writeFile(tmp, JSON.stringify(data), { mode: 0o600 })
-  await rename(tmp, path)
+  try {
+    await rename(tmp, path)
+  } catch (err) {
+    // M2: a failed rename (e.g. the target's directory vanished, or a permission/EXDEV error)
+    // must not leave the plaintext temp file (mode 0o600, but still a second copy of every
+    // stored token) behind on disk indefinitely.
+    await rm(tmp, { force: true }).catch(() => {})
+    throw err
+  }
 }
 
 export function createFileTokenStore(path: string): TokenStore {

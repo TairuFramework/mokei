@@ -32,6 +32,12 @@ const MAX_JWKS_KEYS = 50
 const DEFAULT_TOLERANCE_SECONDS = 30
 const DEFAULT_MIN_REFRESH_INTERVAL_SECONDS = 30
 
+/** Default deadline for the AS-metadata/JWKS fetches, in milliseconds. */
+const DEFAULT_FETCH_TIMEOUT_MS = 30_000
+
+/** Default cap on the AS-metadata/JWKS response bodies, in bytes. */
+const DEFAULT_MAX_RESPONSE_BYTES = 1_000_000
+
 /** `JsonWebKey` per lib.dom.d.ts omits `kid`, which JWKS keys carry per RFC 7517. */
 type Jwk = JsonWebKey & { kid?: string }
 
@@ -48,6 +54,10 @@ export type JWKSVerifierConfig = {
   minRefreshIntervalSeconds?: number
   /** Clock source, returning epoch seconds. Defaults to `Date.now()`-based. */
   now?: () => number
+  /** Deadline for the AS-metadata/JWKS fetches, in milliseconds. Defaults to 30,000. */
+  fetchTimeoutMs?: number
+  /** Cap on the AS-metadata/JWKS response bodies, in bytes. Defaults to 1,000,000. */
+  maxResponseBytes?: number
 }
 
 type CachedJwks = {
@@ -87,15 +97,66 @@ function parseMaxAge(cacheControl: string | null): number | undefined {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined
 }
 
+/** Concatenate a list of `Uint8Array` chunks into one contiguous buffer. */
+function concatUint8(chunks: Array<Uint8Array>): Uint8Array {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)
+  const out = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return out
+}
+
 /**
- * Parse a fetch `Response` body as JSON, converting a non-JSON body into a
- * `TokenVerificationError` instead of letting a raw `SyntaxError` escape —
- * callers that only catch `TokenVerificationError` for verification failures
- * should never see an unrelated parse error type.
+ * Read `res`'s body up to `maxBytes`, throwing before any oversized body is fully buffered.
+ *
+ * The `content-length` header (when present) is checked first as a cheap fast-path; the running
+ * total is checked again on every chunk since a response can omit or lie about that header (e.g.
+ * chunked transfer-encoding).
  */
-async function parseJsonResponse(res: Response, url: string): Promise<unknown> {
+async function readCappedText(res: Response, url: string, maxBytes: number): Promise<string> {
+  const contentLength = Number(res.headers.get('content-length'))
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new TokenVerificationError(
+      'invalid_token',
+      `response from ${url} exceeds ${maxBytes} bytes`,
+    )
+  }
+  const body = res.body
+  if (body == null) return ''
+  const reader = body.getReader()
+  const chunks: Array<Uint8Array> = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value != null) {
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {})
+        throw new TokenVerificationError(
+          'invalid_token',
+          `response from ${url} exceeds ${maxBytes} bytes`,
+        )
+      }
+      chunks.push(value)
+    }
+  }
+  return new TextDecoder().decode(concatUint8(chunks))
+}
+
+/**
+ * Parse a fetch `Response` body -- capped at `maxBytes` -- as JSON, converting a non-JSON body
+ * into a `TokenVerificationError` instead of letting a raw `SyntaxError` escape — callers that
+ * only catch `TokenVerificationError` for verification failures should never see an unrelated
+ * parse error type. The byte cap runs before parsing, so an oversized body is never buffered.
+ */
+async function parseJsonResponse(res: Response, url: string, maxBytes: number): Promise<unknown> {
+  const text = await readCappedText(res, url, maxBytes)
   try {
-    return await res.json()
+    return JSON.parse(text)
   } catch (cause) {
     const error = new TokenVerificationError(
       'invalid_token',
@@ -116,6 +177,8 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
   const minRefreshInterval =
     config.minRefreshIntervalSeconds ?? DEFAULT_MIN_REFRESH_INTERVAL_SECONDS
   const now = config.now ?? defaultNow
+  const fetchTimeoutMs = config.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS
+  const maxResponseBytes = config.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES
 
   let cache: CachedJwks | undefined
   let inflight: Promise<CachedJwks> | undefined
@@ -127,14 +190,17 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     if (resolvedJwksUri != null) return resolvedJwksUri
     const metadataUrl = wellKnownAS(config.issuer)
     requireHttps(metadataUrl)
-    const res = await fetchFn(metadataUrl, { redirect: 'error' })
+    const res = await fetchFn(metadataUrl, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(fetchTimeoutMs),
+    })
     if (!res.ok) {
       throw new TokenVerificationError(
         'invalid_token',
         `failed to discover JWKS URI from ${metadataUrl}: HTTP ${res.status}`,
       )
     }
-    const metadata = (await parseJsonResponse(res, metadataUrl)) as {
+    const metadata = (await parseJsonResponse(res, metadataUrl, maxResponseBytes)) as {
       issuer?: unknown
       jwks_uri?: unknown
     }
@@ -154,14 +220,17 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
   async function fetchJwks(): Promise<CachedJwks> {
     const uri = await discoverJwksUri()
     requireHttps(uri)
-    const res = await fetchFn(uri, { redirect: 'error' })
+    const res = await fetchFn(uri, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(fetchTimeoutMs),
+    })
     if (!res.ok) {
       throw new TokenVerificationError(
         'invalid_token',
         `failed to fetch JWKS from ${uri}: HTTP ${res.status}`,
       )
     }
-    const body = (await parseJsonResponse(res, uri)) as { keys?: unknown }
+    const body = (await parseJsonResponse(res, uri, maxResponseBytes)) as { keys?: unknown }
     if (!Array.isArray(body.keys)) {
       throw new TokenVerificationError('invalid_token', 'JWKS response is missing a keys array')
     }
@@ -251,18 +320,31 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     // rejects immediately without a refetch. Forcing a refetch here would let an attacker who
     // knows any published `kid` amplify unauthenticated JWKS fetches to the AS per request.
     if (!matchesAlg(jwk, alg)) return { found: true, verified: false }
-    const key = await importVerifyKey(jwk, algParams)
-    // `decodeJwt` yields Uint8Array views over freshly allocated ArrayBuffers (never
-    // SharedArrayBuffer); the cast below only reconciles a typed-array generics
-    // mismatch between this package's `lib` setting and `@sozai/codec`'s declared
-    // return type, not an actual buffer-kind narrowing.
-    const verified = await crypto.subtle.verify(
-      algParams,
-      key,
-      signature as BufferSource,
-      signingInput as BufferSource,
-    )
-    return { found: true, verified }
+    // J5: a structurally malformed JWK (missing/invalid `n`/`e` on an RSA key, a bad `x`/`y` on an
+    // EC key, etc.) makes `importKey`/`verify` throw a raw `DOMException`/`Error` instead of
+    // returning false. Left uncaught, that would escape as an unrelated error type and — via
+    // `createBearerAuthGate`'s fail-closed default for anything that isn't a
+    // `TokenVerificationError` — surface as an HTTP 500 for what is actually just a bad token.
+    // Treat any import/verify throw the same as a normal signature-verify failure: `found: true`
+    // (the `kid` did resolve to a key), `verified: false`. `found: true` is what keeps the
+    // amplification guard intact — the caller only forces a JWKS refetch when `found` is false,
+    // so a crypto failure here, like a bad signature, must never trigger one.
+    try {
+      const key = await importVerifyKey(jwk, algParams)
+      // `decodeJwt` yields Uint8Array views over freshly allocated ArrayBuffers (never
+      // SharedArrayBuffer); the cast below only reconciles a typed-array generics
+      // mismatch between this package's `lib` setting and `@sozai/codec`'s declared
+      // return type, not an actual buffer-kind narrowing.
+      const verified = await crypto.subtle.verify(
+        algParams,
+        key,
+        signature as BufferSource,
+        signingInput as BufferSource,
+      )
+      return { found: true, verified }
+    } catch {
+      return { found: true, verified: false }
+    }
   }
 
   return {

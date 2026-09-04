@@ -2,6 +2,7 @@ import { toB64U } from '@sozai/codec'
 import { expect, test } from 'vitest'
 
 import { createJWKSVerifier } from '../src/auth/jwks-verifier.js'
+import { TokenVerificationError } from '../src/auth/verifier.js'
 
 const issuer = 'https://as.example.com'
 const resource = 'https://mcp.example.com/mcp'
@@ -334,6 +335,51 @@ test('H5: the JWKS metadata and keys fetches are made with redirect: "error" (SS
   for (const redirect of redirects) {
     expect(redirect).toBe('error')
   }
+})
+
+test('J3: an oversized JWKS response is rejected before being fully buffered', async () => {
+  const { token, jwk } = await makeToken()
+  const fetchJwks = async (): Promise<Response> =>
+    // No `Content-Length` header: forces the streamed-byte-count path (rather than the
+    // content-length fast path) to be what catches the oversized body.
+    new Response(JSON.stringify({ keys: [jwk], padding: 'x'.repeat(2_000_000) }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  const verifier = createJWKSVerifier({
+    issuer,
+    jwksUri: `${issuer}/jwks`,
+    fetch: fetchJwks as never,
+  })
+  await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow(/exceeds/i)
+})
+
+test('J5: a structurally malformed JWK (matching kid) rejects as invalid_token, not a raw crypto error, with no extra fetch', async () => {
+  const { token, jwk } = await makeToken()
+  // Corrupt the EC public point so `crypto.subtle.importKey`/`verify` throws instead of
+  // returning false.
+  const malformedJwk = { ...jwk, x: 'not-valid-base64url-coordinate-data', y: undefined }
+  let fetchCalls = 0
+  const fetchJwks = async (): Promise<Response> => {
+    fetchCalls += 1
+    return new Response(JSON.stringify({ keys: [malformedJwk] }), { status: 200 })
+  }
+  const verifier = createJWKSVerifier({
+    issuer,
+    jwksUri: `${issuer}/jwks`,
+    fetch: fetchJwks as never,
+  })
+  let caught: unknown
+  try {
+    await verifier.verifyAccessToken(token, { resource })
+  } catch (err) {
+    caught = err
+  }
+  expect(caught).toBeInstanceOf(TokenVerificationError)
+  expect((caught as TokenVerificationError).code).toBe('invalid_token')
+  // The `kid` matched: a crypto failure on it must not force a refetch (amplification guard),
+  // same as an ordinary bad-signature failure.
+  expect(fetchCalls).toBe(1)
 })
 
 test('an unknown kid still forces exactly one JWKS refresh and retry', async () => {

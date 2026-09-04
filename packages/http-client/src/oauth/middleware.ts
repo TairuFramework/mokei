@@ -2,6 +2,7 @@ import { toB64U } from '@sozai/codec'
 
 import type { FetchLike, FetchMiddleware } from '../transport.js'
 import { discover, parseResourceMetadataUrl } from './discovery.js'
+import { fetchOAuthJson } from './fetch.js'
 import { createPKCE } from './pkce.js'
 import { canonicalResource } from './resource.js'
 import type { StoredTokens, TokenStore } from './store.js'
@@ -13,6 +14,9 @@ export type AuthorizationHandler = {
   authorize(params: {
     buildAuthorizationUrl(redirectUri: string): string
     state: string
+    /** Aborts the interactive flow when the originating request is aborted. Additive and
+     * optional: a handler that ignores it behaves exactly as before. */
+    signal?: AbortSignal
   }): Promise<{ code: string; state: string; redirectUri: string }>
 }
 
@@ -39,7 +43,7 @@ export function nearExpiry(tokens: StoredTokens, now: () => number, skew: number
 /** Shape a validated token-endpoint response must have before it is turned into `StoredTokens`.
  * Guards against a malformed response (missing/non-string `access_token`, non-numeric
  * `expires_in`, non-string `refresh_token`/`scope`) being persisted as a poisoned credential. */
-function parseTokenResponse(raw: unknown): {
+export function parseTokenResponse(raw: unknown): {
   access_token: string
   token_type: string
   expires_in?: number
@@ -51,8 +55,14 @@ function parseTokenResponse(raw: unknown): {
   if (typeof r.access_token !== 'string' || r.access_token.length === 0)
     throw new Error('token response missing access_token')
   if (typeof r.token_type !== 'string') throw new Error('token response missing token_type')
-  if (r.expires_in != null && typeof r.expires_in !== 'number')
-    throw new Error('token response has non-numeric expires_in')
+  // M1: a non-finite or negative expires_in (e.g. -5, Infinity, NaN) is not a valid delta-seconds
+  // value and must not be turned into a bogus `expiresAt` -- reject it the same as a non-numeric
+  // value rather than silently persisting a poisoned/garbage expiry.
+  if (
+    r.expires_in != null &&
+    (typeof r.expires_in !== 'number' || !Number.isFinite(r.expires_in) || r.expires_in < 0)
+  )
+    throw new Error('token response has invalid expires_in')
   if (r.refresh_token != null && typeof r.refresh_token !== 'string')
     throw new Error('token response has non-string refresh_token')
   if (r.scope != null && typeof r.scope !== 'string')
@@ -77,6 +87,7 @@ export async function exchangeRefresh(
   tokenEndpoint: string,
   params: { clientId: string; resource?: string; refreshToken: string; scopes?: Array<string> },
   now: () => number,
+  signal?: AbortSignal,
 ): Promise<StoredTokens> {
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
@@ -89,16 +100,14 @@ export async function exchangeRefresh(
   if (params.scopes != null && params.scopes.length > 0) {
     body.set('scope', params.scopes.join(' '))
   }
-  const response = await fetchUnwrapped(tokenEndpoint, {
+  const json = await fetchOAuthJson(fetchUnwrapped, tokenEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
-    redirect: 'error',
+    signal,
+    errorLabel: 'Token refresh',
   })
-  if (!response.ok) {
-    throw new Error(`Token refresh HTTP ${response.status}`)
-  }
-  const data = parseTokenResponse(await response.json())
+  const data = parseTokenResponse(json)
   if (String(data.token_type).toLowerCase() !== 'bearer') {
     throw new Error(`Unsupported token_type: ${data.token_type}`)
   }
@@ -142,6 +151,7 @@ async function exchangeAuthorizationCode(
     codeVerifier: string
   },
   now: () => number,
+  signal?: AbortSignal,
 ): Promise<StoredTokens> {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
@@ -151,16 +161,14 @@ async function exchangeAuthorizationCode(
     code_verifier: params.codeVerifier,
     resource: params.resource,
   })
-  const response = await fetchUnwrapped(tokenEndpoint, {
+  const json = await fetchOAuthJson(fetchUnwrapped, tokenEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
-    redirect: 'error',
+    signal,
+    errorLabel: 'Token exchange',
   })
-  if (!response.ok) {
-    throw new Error(`Token exchange HTTP ${response.status}`)
-  }
-  const data = parseTokenResponse(await response.json())
+  const data = parseTokenResponse(json)
   if (String(data.token_type).toLowerCase() !== 'bearer') {
     throw new Error(`Unsupported token_type: ${data.token_type}`)
   }
@@ -199,6 +207,17 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
   // canonical resource strings coincide, since a shared flight would let instance A's config
   // (clientId/PKCE/handler) decide instance B's outcome, and B's own `store.set` — closing over
   // B's own store — would never run.
+  //
+  // J4 (deferred, tracked follow-up, not fixed here): being per-instance also means two
+  // `createOAuthMiddleware` instances that happen to share one `TokenStore` file for the *same*
+  // resource have no cross-instance coordination at all -- each runs its own single-flight
+  // refresh/authorize independently, so a rotating refresh token can in principle be redeemed
+  // twice (double-redemption) across instances. File writes are already serialized by the
+  // shared-path mutex in `createFileTokenStore` (no corruption), so the residual is a possible
+  // redundant refresh or interactive re-authorization in that narrow scenario, not data loss.
+  // Fixing this properly needs an atomic compare-and-set/lease on the `TokenStore` interface --
+  // a behavioral contract change to a pluggable interface, and a distinct feature outside this
+  // wave.
   const authFlights = new Map<string, Promise<StoredTokens>>()
 
   /** Runs (or joins) the single-flight refresh/authorize for `resource`, re-checking the store
@@ -252,6 +271,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
     resource: string,
     store: TokenStore,
     wwwAuthenticate: string | null,
+    signal?: AbortSignal,
   ): Promise<StoredTokens> {
     const resourceMetadataUrl = parseResourceMetadataUrl(wwwAuthenticate) ?? undefined
     const { as } = await discover({
@@ -259,6 +279,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       resourceMetadataUrl,
       fetch: next,
       selectAuthServer: config.selectAuthServer,
+      signal,
     })
 
     const pkce = await createPKCE()
@@ -279,7 +300,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       return authUrl.toString()
     }
 
-    const result = await config.handler.authorize({ buildAuthorizationUrl, state })
+    const result = await config.handler.authorize({ buildAuthorizationUrl, state, signal })
     if (result.state !== state) {
       throw new Error('OAuth authorize: state mismatch')
     }
@@ -295,6 +316,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         codeVerifier: pkce.verifier,
       },
       now,
+      signal,
     )
     const tokens: StoredTokens = {
       ...exchanged,
@@ -307,6 +329,11 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
 
   return (next) => {
     return async (url, init) => {
+      // J1: captured once per outbound call and threaded through every OAuth subrequest below
+      // (pre-emptive refresh, discovery, the interactive handler, and the code exchange) so
+      // aborting the caller's own request cancels the whole recovery flow instead of leaving it
+      // to run to completion in the background.
+      const signal = init?.signal ?? undefined
       const u = new URL(url)
       const loopback = isLoopbackHost(u.hostname)
       if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loopback)) {
@@ -342,6 +369,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
                 scopes: config.scopes,
               },
               now,
+              signal,
             ).then(async (r) => {
               const merged = { ...r, tokenEndpoint: refreshTokenEndpoint, issuer: refreshIssuer }
               await store.set(resource, merged)
@@ -364,6 +392,12 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       const response = await next(url, tokens != null ? attach(init) : init)
       if (response.status !== 401) return response
 
+      // J2: drain (cancel) the 401 response body before starting recovery. An unbounded or SSE
+      // body left open here retains the underlying socket/connection for as long as the
+      // refresh-then-authorize recovery below takes -- which can be an interactive, multi-minute
+      // flow -- so it must be released up front rather than left to the garbage collector.
+      await response.body?.cancel().catch(() => {})
+
       // Prefer a refresh over full re-authorization when a refresh token is available: it is
       // cheaper and does not require the interactive handler. Only fall through to `authorize`
       // when there is no refresh token/endpoint, or the refresh itself fails.
@@ -383,6 +417,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
                 scopes: config.scopes,
               },
               now,
+              signal,
             ).then(async (r) => {
               const merged = { ...r, tokenEndpoint: refreshTokenEndpoint, issuer: refreshIssuer }
               await store.set(resource, merged)
@@ -397,7 +432,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       }
 
       const authorized = await withSingleFlight(resource, store, tokens?.accessToken, () =>
-        authorize(next, resource, store, response.headers.get('WWW-Authenticate')),
+        authorize(next, resource, store, response.headers.get('WWW-Authenticate'), signal),
       )
       tokens = authorized
       return next(url, attach(init))

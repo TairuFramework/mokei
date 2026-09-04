@@ -46,6 +46,51 @@ test('rejects on OAuth error response', async () => {
   ).rejects.toThrow(/access_denied/)
 })
 
+// J1: an already-aborted signal must reject the flow immediately -- without ever opening a
+// browser -- and leave no loopback server behind (settle() closes it idempotently).
+test('J1: an already-aborted signal rejects immediately without opening the browser', async () => {
+  let openBrowserCalls = 0
+  const handler = createLoopbackAuthorizationHandler({
+    openBrowser: async () => {
+      openBrowserCalls += 1
+    },
+  })
+  const controller = new AbortController()
+  controller.abort(new Error('cancelled by caller'))
+  await expect(
+    handler.authorize({
+      state: 's',
+      signal: controller.signal,
+      buildAuthorizationUrl: (r) =>
+        `https://as.example.com/authorize?redirect_uri=${encodeURIComponent(r)}`,
+    }),
+  ).rejects.toThrow(/cancelled by caller/)
+  // Give the (already-settled) flow's listen callback a turn to run, if it was going to.
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  expect(openBrowserCalls).toBe(0)
+})
+
+// J1: a signal that aborts mid-flight (after the loopback server is already listening and
+// waiting on the redirect) must also reject, rather than hanging until `timeoutMs`.
+test('J1: a signal aborted mid-flight rejects the in-progress authorization', async () => {
+  const controller = new AbortController()
+  const handler = createLoopbackAuthorizationHandler({
+    openBrowser: async () => {
+      // Simulate the user cancelling instead of completing the browser flow: abort once the
+      // server is listening (buildAuthorizationUrl was already called to get here).
+      controller.abort(new Error('user cancelled'))
+    },
+  })
+  await expect(
+    handler.authorize({
+      state: 's',
+      signal: controller.signal,
+      buildAuthorizationUrl: (r) =>
+        `https://as.example.com/authorize?redirect_uri=${encodeURIComponent(r)}`,
+    }),
+  ).rejects.toThrow(/user cancelled/)
+})
+
 // C1: the win32 browser opener must never route through cmd.exe -- `cmd.exe /c start` is a
 // shell builtin that re-parses metacharacters (&, |, ^, %) in the command line, and OAuth
 // authorization URLs always contain `&` (query-param separators). Assert rundll32 receives the

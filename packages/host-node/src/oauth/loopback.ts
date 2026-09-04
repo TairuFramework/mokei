@@ -50,7 +50,7 @@ export function createLoopbackAuthorizationHandler(
   const openBrowser = options.openBrowser ?? defaultOpenBrowser
 
   return {
-    authorize({ buildAuthorizationUrl, state }) {
+    authorize({ buildAuthorizationUrl, state, signal }) {
       return new Promise((resolve, reject) => {
         const path = `/cb/${randomBytes(8).toString('hex')}`
         let redirectUri = ''
@@ -97,8 +97,32 @@ export function createLoopbackAuthorizationHandler(
           }
           settled = true
           clearTimeout(timer)
+          // J1: idempotent and already covers every settle path (timeout, OAuth error, state
+          // mismatch, bind failure, browser-open failure, and now abort) -- removing the abort
+          // listener here (it's a no-op if it never fired, e.g. `{ once: true }` already removed
+          // it) means a signal that outlives this flow can never re-trigger `onAbort` against a
+          // closed server.
+          signal?.removeEventListener('abort', onAbort)
           server.close()
           run()
+        }
+
+        // J1: lets an in-flight (or not-yet-started) authorization be cancelled from outside,
+        // e.g. when the outbound request it belongs to is aborted. `settle` already closes the
+        // server and clears the timer idempotently, so this only needs to supply the rejection.
+        function onAbort(): void {
+          settle(() => reject(signal?.reason ?? new Error('aborted')))
+        }
+
+        if (signal != null) {
+          if (signal.aborted) {
+            // No 'abort' event fires for a signal that was already aborted before the listener
+            // was attached -- settle immediately instead of waiting for an event that will never
+            // come.
+            onAbort()
+          } else {
+            signal.addEventListener('abort', onAbort, { once: true })
+          }
         }
 
         server.on('error', (err) => {
@@ -106,6 +130,11 @@ export function createLoopbackAuthorizationHandler(
         })
 
         server.listen(0, '127.0.0.1', () => {
+          // Already settled (e.g. an abort raced the listen callback): don't bind further state
+          // or open a browser for a flow that has already been rejected.
+          if (settled) {
+            return
+          }
           const addr = server.address()
           if (addr == null || typeof addr === 'string') {
             settle(() => reject(new Error('Failed to bind loopback server')))

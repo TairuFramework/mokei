@@ -163,6 +163,46 @@ test('proceeds normally for a loopback http transport URL', async () => {
   expect(res.status).toBe(200)
 })
 
+// J1: `init.signal` is threaded through discovery and into `config.handler.authorize` so an
+// aborted outbound request cancels the whole interactive recovery flow instead of leaving it to
+// run to completion in the background.
+test('J1: init.signal is threaded through to config.handler.authorize', async () => {
+  const store = createMemoryTokenStore()
+  let receivedSignal: AbortSignal | undefined
+  const handler: AuthorizationHandler = {
+    async authorize({ buildAuthorizationUrl, signal }): Promise<never> {
+      receivedSignal = signal
+      buildAuthorizationUrl('http://127.0.0.1:5555/cb')
+      throw new Error('abort observed by handler')
+    },
+  }
+  const next = async (url: string): Promise<Response> => {
+    if (url.includes('oauth-protected-resource'))
+      return json({ resource, authorization_servers: ['https://as.example.com'] })
+    if (url.endsWith('/.well-known/oauth-authorization-server'))
+      return json({
+        issuer: 'https://as.example.com',
+        authorization_endpoint: 'https://as.example.com/authorize',
+        token_endpoint: 'https://as.example.com/token',
+      })
+    return new Response('unauth', {
+      status: 401,
+      headers: {
+        'WWW-Authenticate':
+          'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"',
+      },
+    })
+  }
+  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store })
+  const controller = new AbortController()
+  controller.abort()
+  await expect(
+    mw(next)(resource, { method: 'POST', body: '{}', signal: controller.signal }),
+  ).rejects.toThrow(/abort observed/)
+  expect(receivedSignal).toBe(controller.signal)
+  expect(receivedSignal?.aborted).toBe(true)
+})
+
 test('rejects a state mismatch from the handler', async () => {
   const store = createMemoryTokenStore()
   const handler: AuthorizationHandler = {
