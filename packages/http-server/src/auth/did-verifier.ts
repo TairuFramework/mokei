@@ -8,9 +8,14 @@ import {
   TokenVerificationError,
 } from './verifier.js'
 
-export function createDIDVerifier(
-  config: { toleranceSeconds?: number; now?: () => number } = {},
-): OAuthTokenVerifier {
+export type DIDVerifierConfig = {
+  /** Clock-skew tolerance for `exp`/`nbf` checks, in seconds. Defaults to 30. */
+  toleranceSeconds?: number
+  /** Clock source, returning epoch seconds. Defaults to `Date.now()`-based. */
+  now?: () => number
+}
+
+export function createDIDVerifier(config: DIDVerifierConfig = {}): OAuthTokenVerifier {
   const toleranceSeconds = config.toleranceSeconds ?? 30
   const now = config.now ?? (() => Math.floor(Date.now() / 1000))
   return {

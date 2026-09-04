@@ -151,6 +151,18 @@ test('rejects an HS256 algorithm claim (alg-confusion defense)', async () => {
   await expect(verifier.verifyAccessToken(forgedToken, { resource })).rejects.toThrow()
 })
 
+test('rejects a token with no exp claim', async () => {
+  const { token, jwk } = await makeToken({ payload: { exp: undefined } })
+  const fetchJwks = async (): Promise<Response> =>
+    new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
+  const verifier = createJWKSVerifier({
+    issuer,
+    jwksUri: `${issuer}/jwks`,
+    fetch: fetchJwks as never,
+  })
+  await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow(/exp/i)
+})
+
 test('rejects a token with a wrong signature', async () => {
   const { token, jwk } = await makeToken()
   const parts = token.split('.')

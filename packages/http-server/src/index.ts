@@ -10,8 +10,8 @@
  * @module http-server
  */
 
-export { createDIDVerifier } from './auth/did-verifier.js'
-export { createJWKSVerifier } from './auth/jwks-verifier.js'
+export { createDIDVerifier, type DIDVerifierConfig } from './auth/did-verifier.js'
+export { createJWKSVerifier, type JWKSVerifierConfig } from './auth/jwks-verifier.js'
 export {
   type ProtectedResourceMetadataConfig,
   protectedResourceMetadataPath,

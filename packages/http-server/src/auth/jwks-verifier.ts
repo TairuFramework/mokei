@@ -239,11 +239,17 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
         throw new TokenVerificationError('invalid_token', 'token missing sub')
       }
 
-      const expiresAt = typeof payload.exp === 'number' ? payload.exp : undefined
+      // `assertStandardClaims` only enforces expiry when `exp` is present; this verifier
+      // requires `exp` on every token (unlike the DID verifier, which has its own
+      // @kokuin/token time backstop).
+      if (typeof payload.exp !== 'number') {
+        throw new TokenVerificationError('invalid_token', 'token missing exp')
+      }
+
       return {
         subject: payload.sub,
         scopes: scopesFromClaim(payload),
-        expiresAt,
+        expiresAt: payload.exp,
         raw: payload,
       }
     },
