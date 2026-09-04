@@ -98,9 +98,10 @@ key is this canonical resource string.
 
 - Authorization request (browser URL): `response_type=code`, `client_id`, `redirect_uri`,
   `code_challenge`, `code_challenge_method=S256`, `state`, `scope` (space-joined), `resource`.
-- Token request (code exchange): `grant_type=authorization_code`, `code`, `redirect_uri`,
-  `client_id`, `code_verifier`, `resource`. Public client — `token_endpoint_auth_method=none`
-  (no client secret).
+- Token request (code exchange): `grant_type=authorization_code`, `code`, `redirect_uri`
+  (the exact URI the handler used), `client_id`, `code_verifier`, `resource`. Public client: the
+  exchange sends **no client secret and no client-authentication header**
+  (`token_endpoint_auth_method=none` is client configuration, not a request field).
 - Refresh request: `grant_type=refresh_token`, `refresh_token`, `client_id`, `resource`, and
   `scope` only to narrow.
 
@@ -122,8 +123,9 @@ key is this canonical resource string.
   single-use `state`, passes it to the handler, compares the returned value itself, consumes it
   once, and rejects any mismatch **before** the code exchange. The handler only captures the
   redirect result.
-- Invoke `AuthorizationHandler.authorize(...)`, receive `{ code, state }` (or an OAuth `error`),
-  validate `state`, exchange the code, persist through `TokenStore`.
+- Invoke `AuthorizationHandler.authorize(...)`, receive `{ code, state, redirectUri }` (or an
+  OAuth `error`), validate `state`, exchange the code (reusing the returned `redirectUri`), persist
+  through `TokenStore`.
 
 **Token lifecycle.**
 
@@ -153,13 +155,19 @@ single auth retry.
 
 Exported interfaces:
 
+The handler chooses its own `redirect_uri` — a loopback handler only knows it after binding
+`127.0.0.1:0` — so the core cannot pre-build the authorization URL (which must embed
+`redirect_uri`). The core therefore hands the handler a **URL builder** rather than a finished URL:
+the core still owns every other parameter (`client_id`, `scope`, PKCE, `resource`, `state`), the
+handler supplies its `redirectUri`, and returns it for reuse at the token endpoint.
+
 ```ts
 interface AuthorizationHandler {
   authorize(params: {
-    authorizationUrl: string
-    redirectUri: string
+    // Stamps the handler's redirect_uri into the core-built authorization URL.
+    buildAuthorizationUrl(redirectUri: string): string
     state: string
-  }): Promise<{ code: string; state: string }>
+  }): Promise<{ code: string; state: string; redirectUri: string }>
 }
 
 interface TokenStore {
@@ -175,15 +183,16 @@ interface TokenStore {
 ### Unit C — Node handler and store (`@mokei/host-node`)
 
 - `createLoopbackAuthorizationHandler(options?)` returns an `AuthorizationHandler` that:
-  - binds an `http.createServer` to `127.0.0.1:0` on a **random single-use callback path**;
-  - opens the system browser at the authorization URL via `nano-spawn` — `open` (macOS),
+  - binds an `http.createServer` to `127.0.0.1:0` on a **random single-use callback path**, then
+    calls `buildAuthorizationUrl(redirectUri)` with its now-known `http://127.0.0.1:<port>/<path>`;
+  - opens the system browser at the built authorization URL via `nano-spawn` — `open` (macOS),
     `xdg-open` (Linux), `cmd.exe /c start ""` (Windows; `start` is a `cmd` builtin and cannot be
     spawned directly);
   - captures the redirect, propagating an OAuth `error`/`error_description` as a rejection;
   - enforces a bounded **timeout** and cancellation, serves a small success/error page, and
     **guarantees server shutdown** on every path;
-  - returns `{ code, state }` (state is validated by the OAuth core, and the exact `redirect_uri`
-    is reused at the token endpoint).
+  - returns `{ code, state, redirectUri }` (state is validated by the OAuth core, and the exact
+    `redirectUri` is reused at the token endpoint).
 - `createFileTokenStore(path)` returns a file-backed `TokenStore`: owner-only permissions where
   the platform supports it, atomic replace (temp file + rename), strict JSON parsing (corruption
   → treat as empty), and **no token values in logs**. Plaintext-at-rest is documented; an OS
@@ -214,11 +223,16 @@ interface TokenStore {
     simply absent);
   - insufficient scope → **`403`** with
     `WWW-Authenticate: Bearer error="insufficient_scope", scope="<needed>"`;
-  - success → attaches `AuthInfo`.
-- `createJWKSVerifier({ issuer | jwksUri, audience })` — resolves the JWKS (RFC 8414 discovery from
-  `issuer`, or explicit `jwksUri`), verifies with `crypto.subtle` under a **strict `alg` allowlist**
-  (RS256, ES256) with JWK `kty`/`use`/`key_ops` compatibility checks (no algorithm confusion), and
-  enforces `iss`/`aud`/`exp`/`nbf`. JWKS cache: honour HTTP cache-control/TTL; on an unknown `kid`
+  - success → the gate **passes** (returns `undefined`; the request proceeds). The gate does not by
+    itself surface `AuthInfo` to MCP handlers — see Identity propagation for that separate,
+    deferred channel.
+- `createJWKSVerifier({ issuer, jwksUri? })` — `issuer` is **required in all modes** (a JWKS URI
+  alone does not identify the accepted issuer); `jwksUri` optionally overrides the JWKS location,
+  else it comes from RFC 8414 discovery on `issuer`. Verifies with `crypto.subtle` under a **strict
+  `alg` allowlist** (RS256, ES256) with JWK `kty`/`use`/`key_ops` compatibility checks (no algorithm
+  confusion), and enforces `iss` (= configured `issuer`), `aud` (= the `ctx.resource` passed to
+  `verifyAccessToken`, the single authoritative audience — there is no separate config `audience`),
+  `exp`, and `nbf`. JWKS cache: honour HTTP cache-control/TTL; on an unknown `kid`
   or a rotation-related verification failure force **one** refresh; single-flight the fetch; bound
   the key set.
 - `createDIDVerifier(options)` — wraps `@kokuin/token` `verifyToken` (ES256/EdDSA, DID issuer) for
@@ -237,24 +251,30 @@ interface TokenStore {
 - `serveHTTP` gains an `auth` option that installs the gate as hono middleware ahead of the MCP
   route.
 
-**Metadata route.** `protectedResourceMetadata(config)` serves the RFC 9728 document at
-`/.well-known/oauth-protected-resource` (well-known path derived from the resource URL's path per
-RFC 9728), advertising a correct `resource` identifier and a non-empty `authorization_servers`.
-It mounts in `serveHTTP` alongside the MCP route and is exposed as a `Request → Response` handler
-for the raw mode. The advertised `resource` must equal the canonical resource the verifier
-enforces and the client sends.
+**Metadata route.** `protectedResourceMetadata(config)` serves the RFC 9728 document, advertising
+a correct `resource` identifier and a non-empty `authorization_servers`. The exact path uses RFC
+9728 §3.1 **path-insertion**: the well-known segment goes after the host and before the resource's
+own path. A root resource (`https://host/`) is served at `/.well-known/oauth-protected-resource`;
+a path-bearing resource (`https://host/mcp`) is served at
+`/.well-known/oauth-protected-resource/mcp`. `serveHTTP` registers `app.get(<that computed path>,
+…)` alongside the MCP route (`serve.ts:23`); raw mode exposes the same as a `Request → Response`
+handler. The advertised `resource` must equal the canonical resource the verifier enforces and the
+client sends.
 
-**Identity propagation.** This iteration treats auth primarily as a **gate**. If `AuthInfo` is to
-be visible to MCP handlers, it is propagated into `createServer` (currently receives
-transport/hub/connection id only, `handler.ts:24` / `serve.ts:28`), and a session is **bound to a
-single subject** so its POST/GET/DELETE requests cannot switch tokens/subjects. Whether identity
-is exposed beyond the gate is decided in planning; the gate itself is the committed surface.
+**Identity propagation.** The committed surface this iteration is the **gate only**: it allows or
+rejects the request and returns no value on success, so it needs no attach channel. Making
+`AuthInfo` visible to MCP handlers is a **separate, deferred** decision (taken in planning): the
+current `createServer` contract carries transport/hub/connection id only (`handler.ts:24` /
+`serve.ts:28`) and has **no auth field**, so exposing identity would add one and would **bind a
+session to a single subject** across its POST/GET/DELETE requests. Not built unless planning elects
+it.
 
 ### Seam threading (host)
 
 `HTTPContextParams` (consumed by `addHTTPContext`, `host.ts:436`) gains the `fetchMiddleware`
-field and forwards it into the `HTTPTransport` it constructs; `createHostedContext` passes it
-through unchanged.
+field; `addHTTPContext` passes it into the `new HTTPTransport(...)` it constructs. This is the
+only forwarding site: `createHostedContext` (`host.ts:112`) receives an already-constructed
+`transport` and is unchanged.
 
 ## Data flow
 
@@ -267,8 +287,8 @@ only when refresh fails. All discovery/token/refresh calls use the unwrapped fet
 single-flighted per resource.
 
 **Server verify:** request → `requireBearerAuth` → `verifier.verifyAccessToken(token, { resource })`
-→ on success attach `AuthInfo` and continue; on missing/invalid → `401`, on insufficient scope →
-`403`, each with the correct `WWW-Authenticate` challenge. The metadata endpoint advertises the
+→ on success the gate passes and the request proceeds; on missing/invalid → `401`, on insufficient
+scope → `403`, each with the correct `WWW-Authenticate` challenge. The metadata endpoint advertises the
 authorization server and the canonical `resource`.
 
 ## Testing
