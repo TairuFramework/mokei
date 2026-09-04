@@ -40,7 +40,8 @@ test('rejects on OAuth error response', async () => {
   await expect(
     handler.authorize({
       state: 's',
-      buildAuthorizationUrl: (r) => `https://as.example.com/authorize?redirect_uri=${encodeURIComponent(r)}`,
+      buildAuthorizationUrl: (r) =>
+        `https://as.example.com/authorize?redirect_uri=${encodeURIComponent(r)}`,
     }),
   ).rejects.toThrow(/access_denied/)
 })

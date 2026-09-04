@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:http'
-
 import type { AuthorizationHandler } from '@mokei/http-client'
 import spawn from 'nano-spawn'
 
