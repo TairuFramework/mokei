@@ -24,13 +24,20 @@ export function decodeJwt(token: string): {
   const parts = token.split('.')
   if (parts.length !== 3) throw new TokenVerificationError('invalid_token', 'malformed JWT')
   const [h, p, s] = parts
-  const header = JSON.parse(new TextDecoder().decode(fromB64U(h))) as Record<string, unknown>
-  const payload = JSON.parse(new TextDecoder().decode(fromB64U(p))) as Record<string, unknown>
-  return {
-    header,
-    payload,
-    signingInput: new TextEncoder().encode(`${h}.${p}`),
-    signature: fromB64U(s),
+  try {
+    const header = JSON.parse(new TextDecoder().decode(fromB64U(h))) as Record<string, unknown>
+    const payload = JSON.parse(new TextDecoder().decode(fromB64U(p))) as Record<string, unknown>
+    return {
+      header,
+      payload,
+      signingInput: new TextEncoder().encode(`${h}.${p}`),
+      signature: fromB64U(s),
+    }
+  } catch (cause) {
+    if (cause instanceof TokenVerificationError) throw cause
+    const error = new TokenVerificationError('invalid_token', 'malformed JWT')
+    error.cause = cause
+    throw error
   }
 }
 
@@ -50,10 +57,10 @@ export function assertStandardClaims(
   if (issuer != null && payload.iss !== issuer)
     throw new TokenVerificationError('invalid_token', 'issuer mismatch')
   const exp = payload.exp
-  if (typeof exp === 'number' && exp + toleranceSeconds < now)
+  if (typeof exp === 'number' && exp + toleranceSeconds <= now)
     throw new TokenVerificationError('invalid_token', 'token expired')
   const nbf = payload.nbf
-  if (typeof nbf === 'number' && nbf - toleranceSeconds > now)
+  if (typeof nbf === 'number' && nbf - toleranceSeconds >= now)
     throw new TokenVerificationError('invalid_token', 'token not yet valid')
 }
 

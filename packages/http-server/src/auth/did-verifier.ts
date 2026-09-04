@@ -34,6 +34,11 @@ export function createDIDVerifier(config: DIDVerifierConfig = {}): OAuthTokenVer
       const payload = verified.payload as Record<string, unknown>
       // iss is enforced by verifyToken (the DID that signed it); apply the shared aud/exp/nbf checks.
       assertStandardClaims(payload, { resource: ctx.resource, now: now(), toleranceSeconds })
+      // `assertStandardClaims` only enforces expiry when `exp` is present; every verifier must
+      // enforce expiry, so a token with no `exp` at all is rejected here (mirrors jwks-verifier.ts).
+      if (typeof payload.exp !== 'number') {
+        throw new TokenVerificationError('invalid_token', 'token missing exp')
+      }
       return {
         subject: String(payload.iss),
         scopes: scopesFromClaim(payload),

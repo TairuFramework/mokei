@@ -5,6 +5,7 @@ import { discover, parseResourceMetadataUrl } from './discovery.js'
 import { createPKCE } from './pkce.js'
 import { canonicalResource } from './resource.js'
 import type { StoredTokens, TokenStore } from './store.js'
+import { createMemoryTokenStore } from './store.js'
 
 /** Completes the authorization-code exchange for a resource: the core owns all authorization-URL
  * params and the PKCE/state bookkeeping; the handler only supplies (and returns) `redirectUri`. */
@@ -157,6 +158,9 @@ async function exchangeAuthorizationCode(
 export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddleware {
   const now = config.now ?? (() => Math.floor(Date.now() / 1000))
   const skew = config.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS
+  // Created once, here, at middleware construction — not per-request: a per-request default
+  // store would be empty on every call and never actually retain a token.
+  const store = config.store ?? createMemoryTokenStore()
 
   // Per-instance, not module-level: two `createOAuthMiddleware` calls (different clientId,
   // handler, or store — e.g. one per host context) must never share a flight even when their
@@ -182,13 +186,13 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
    * execution guarantees the first joiner to react always wins the race). */
   function withSingleFlight(
     resource: string,
-    store: TokenStore | undefined,
+    store: TokenStore,
     staleAccessToken: string | undefined,
     run: () => Promise<StoredTokens>,
   ): Promise<StoredTokens> {
     function start(): Promise<StoredTokens> {
       const flight = (async () => {
-        const current = await store?.get(resource)
+        const current = await store.get(resource)
         if (current != null && current.accessToken !== staleAccessToken) return current
         return run()
       })()
@@ -214,7 +218,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
   async function authorize(
     next: FetchLike,
     resource: string,
-    store: TokenStore | undefined,
+    store: TokenStore,
     wwwAuthenticate: string | null,
   ): Promise<StoredTokens> {
     const resourceMetadataUrl = parseResourceMetadataUrl(wwwAuthenticate) ?? undefined
@@ -265,15 +269,14 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       tokenEndpoint: as.token_endpoint,
       issuer: as.issuer,
     }
-    await store?.set(resource, tokens)
+    await store.set(resource, tokens)
     return tokens
   }
 
   return (next) => {
     return async (url, init) => {
-      const store = config.store
       const resource = canonicalResource(config.resource ?? url)
-      let tokens = await store?.get(resource)
+      let tokens = await store.get(resource)
 
       if (
         tokens != null &&
@@ -301,7 +304,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
               now,
             ).then(async (r) => {
               const merged = { ...r, tokenEndpoint: refreshTokenEndpoint, issuer: refreshIssuer }
-              await store?.set(resource, merged)
+              await store.set(resource, merged)
               return merged
             }),
           )
@@ -320,6 +323,38 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
 
       const response = await next(url, tokens != null ? attach(init) : init)
       if (response.status !== 401) return response
+
+      // Prefer a refresh over full re-authorization when a refresh token is available: it is
+      // cheaper and does not require the interactive handler. Only fall through to `authorize`
+      // when there is no refresh token/endpoint, or the refresh itself fails.
+      if (tokens?.refreshToken != null && tokens.tokenEndpoint != null) {
+        const refreshTokenEndpoint = tokens.tokenEndpoint
+        const refreshToken = tokens.refreshToken
+        const refreshIssuer = tokens.issuer
+        try {
+          const refreshed = await withSingleFlight(resource, store, tokens.accessToken, () =>
+            exchangeRefresh(
+              next,
+              refreshTokenEndpoint,
+              {
+                clientId: config.clientId,
+                resource,
+                refreshToken,
+                scopes: config.scopes,
+              },
+              now,
+            ).then(async (r) => {
+              const merged = { ...r, tokenEndpoint: refreshTokenEndpoint, issuer: refreshIssuer }
+              await store.set(resource, merged)
+              return merged
+            }),
+          )
+          tokens = refreshed
+          return next(url, attach(init))
+        } catch {
+          // Fall through to full authorization below.
+        }
+      }
 
       const authorized = await withSingleFlight(resource, store, tokens?.accessToken, () =>
         authorize(next, resource, store, response.headers.get('WWW-Authenticate')),

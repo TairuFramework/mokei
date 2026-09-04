@@ -63,6 +63,60 @@ test('runs full authorize on 401 then retries with the new token', async () => {
   expect(protectedCalls).toBe(2)
 })
 
+test('with no store in config, a default in-memory store retains the token across requests', async () => {
+  let authorizeCalls = 0
+  const handler: AuthorizationHandler = {
+    async authorize({ buildAuthorizationUrl, state }) {
+      authorizeCalls += 1
+      buildAuthorizationUrl('http://127.0.0.1:5555/cb')
+      return { code: 'auth-code', state, redirectUri: 'http://127.0.0.1:5555/cb' }
+    },
+  }
+
+  let protectedCalls = 0
+  const next = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (url.includes('oauth-protected-resource'))
+      return json({ resource, authorization_servers: ['https://as.example.com'] })
+    if (url.endsWith('/.well-known/oauth-authorization-server')) {
+      return json({
+        issuer: 'https://as.example.com',
+        authorization_endpoint: 'https://as.example.com/authorize',
+        token_endpoint: 'https://as.example.com/token',
+        code_challenge_methods_supported: ['S256'],
+      })
+    }
+    if (url.endsWith('/token'))
+      return json({ access_token: 'fresh', token_type: 'Bearer', expires_in: 3600 })
+    protectedCalls += 1
+    const auth = new Headers(init?.headers).get('Authorization')
+    if (auth === 'Bearer fresh') return json({ ok: true })
+    return new Response('unauth', {
+      status: 401,
+      headers: {
+        'WWW-Authenticate':
+          'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"',
+      },
+    })
+  }
+
+  // No `store` in config: the middleware must create a default in-memory store once, at
+  // construction, and reuse it across every request from this middleware instance.
+  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler })
+  const fetch = mw(next)
+
+  const first = await fetch(resource, { method: 'POST', body: '{}' })
+  expect(first.status).toBe(200)
+  expect(authorizeCalls).toBe(1)
+  expect(protectedCalls).toBe(2)
+
+  // Second request reuses the token the default store retained: no second authorize, and the
+  // request succeeds on the first attempt (no 401 round trip).
+  const second = await fetch(resource, { method: 'POST', body: '{}' })
+  expect(second.status).toBe(200)
+  expect(authorizeCalls).toBe(1)
+  expect(protectedCalls).toBe(3)
+})
+
 test('rejects a state mismatch from the handler', async () => {
   const store = createMemoryTokenStore()
   const handler: AuthorizationHandler = {

@@ -179,3 +179,45 @@ test('rejects a token with a wrong signature', async () => {
   })
   await expect(verifier.verifyAccessToken(forgedToken, { resource })).rejects.toThrow()
 })
+
+test('a bad signature on a known kid does not force a JWKS refetch (amplification guard)', async () => {
+  const { token, jwk } = await makeToken()
+  const parts = token.split('.')
+  const sig = parts[2]
+  const corrupted = sig.slice(0, -4) + (sig.at(-4) === 'A' ? 'B' : 'A') + sig.slice(-3)
+  const forgedToken = `${parts[0]}.${parts[1]}.${corrupted}`
+  let fetchCalls = 0
+  const fetchJwks = async (): Promise<Response> => {
+    fetchCalls += 1
+    return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
+  }
+  const verifier = createJWKSVerifier({
+    issuer,
+    jwksUri: `${issuer}/jwks`,
+    fetch: fetchJwks as never,
+  })
+  await expect(verifier.verifyAccessToken(forgedToken, { resource })).rejects.toThrow()
+  // The `kid` matched a cached key; a bad signature against it must not trigger a forced
+  // refetch — otherwise an attacker sending garbage signed with a valid kid could force one
+  // unauthenticated JWKS fetch per request.
+  expect(fetchCalls).toBe(1)
+})
+
+test('an unknown kid still forces exactly one JWKS refresh and retry', async () => {
+  // The token's `kid` never appears in the JWKS at all, so verification still fails overall —
+  // what this test pins down is the *fetch count*: the first (cache-populating) fetch, plus
+  // exactly one forced refresh for the not-found kid, and no more.
+  const { token, jwk } = await makeToken({ header: { kid: 'nonexistent-kid' } })
+  let fetchCalls = 0
+  const fetchJwks = async (): Promise<Response> => {
+    fetchCalls += 1
+    return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
+  }
+  const verifier = createJWKSVerifier({
+    issuer,
+    jwksUri: `${issuer}/jwks`,
+    fetch: fetchJwks as never,
+  })
+  await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow()
+  expect(fetchCalls).toBe(2)
+})

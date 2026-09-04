@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 
 import {
   assertStandardClaims,
+  decodeJwt,
   scopesFromClaim,
   TokenVerificationError,
 } from '../src/auth/verifier.js'
@@ -37,4 +38,33 @@ test('rejects an expired token', () => {
 
 test('extracts space-delimited scopes', () => {
   expect(scopesFromClaim({ scope: 'a b c' })).toEqual(['a', 'b', 'c'])
+})
+
+test('rejects a token whose exp + tolerance exactly equals now (boundary is inclusive)', () => {
+  expect(() =>
+    assertStandardClaims(
+      { aud: resource, exp: 970, iss: 'https://as' },
+      { resource, now: 1000, toleranceSeconds: 30 },
+    ),
+  ).toThrow(/expired|exp/i)
+})
+
+test('rejects a token whose nbf - tolerance exactly equals now (boundary is inclusive)', () => {
+  expect(() =>
+    assertStandardClaims(
+      { aud: resource, nbf: 1030, iss: 'https://as' },
+      { resource, now: 1000, toleranceSeconds: 30 },
+    ),
+  ).toThrow(/not yet valid/i)
+})
+
+test('malformed base64url/JSON in the payload segment throws invalid_token, not a raw decode error', () => {
+  let caught: unknown
+  try {
+    decodeJwt('aaa.!!!.bbb')
+  } catch (error) {
+    caught = error
+  }
+  expect(caught).toBeInstanceOf(TokenVerificationError)
+  expect((caught as TokenVerificationError).code).toBe('invalid_token')
 })

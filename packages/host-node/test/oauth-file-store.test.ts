@@ -22,6 +22,20 @@ test('persists tokens to disk, owner-only, and round-trips', async () => {
   JSON.parse(await readFile(file, 'utf8'))
 })
 
+test('concurrent sets for different keys do not clobber each other', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'tokens.json')
+  const store = createFileTokenStore(file)
+
+  await Promise.all([
+    store.set('https://a.example.com/mcp', { accessToken: 'a', tokenType: 'Bearer' }),
+    store.set('https://b.example.com/mcp', { accessToken: 'b', tokenType: 'Bearer' }),
+  ])
+
+  expect((await store.get('https://a.example.com/mcp'))?.accessToken).toBe('a')
+  expect((await store.get('https://b.example.com/mcp'))?.accessToken).toBe('b')
+})
+
 test('treats corrupt file as empty', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
   const file = join(dir, 'tokens.json')

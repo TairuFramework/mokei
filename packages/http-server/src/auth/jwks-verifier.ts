@@ -180,6 +180,13 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     return crypto.subtle.importKey('jwk', jwk, algParams, false, ['verify'])
   }
 
+  /**
+   * Verify against the cached (or freshly-refreshed) JWKS, reporting separately whether a
+   * matching key was `found` at all. A signature failure against a `found` key is a genuine bad
+   * signature, not a rotation signal — the caller must not force a refetch for it, or an
+   * attacker sending garbage-signed tokens bearing a valid `kid` could force one
+   * unauthenticated network fetch to the AS per request.
+   */
   async function findKeyAndVerify(
     header: Record<string, unknown>,
     algParams: AlgParams,
@@ -187,22 +194,25 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     signingInput: Uint8Array,
     signature: Uint8Array,
     forceRefresh: boolean,
-  ): Promise<boolean> {
+  ): Promise<{ found: boolean; verified: boolean }> {
     const jwks = await getJwks(forceRefresh)
     const jwk = selectJwk(jwks.keys, header.kid)
-    if (jwk == null) return false
-    if (!matchesAlg(jwk, alg)) return false
+    if (jwk == null) return { found: false, verified: false }
+    // An alg mismatch on the matched kid is treated as not-found so a rotation that also
+    // changed the key type can still trigger the one-time refresh below.
+    if (!matchesAlg(jwk, alg)) return { found: false, verified: false }
     const key = await importVerifyKey(jwk, algParams)
     // `decodeJwt` yields Uint8Array views over freshly allocated ArrayBuffers (never
     // SharedArrayBuffer); the cast below only reconciles a typed-array generics
     // mismatch between this package's `lib` setting and `@sozai/codec`'s declared
     // return type, not an actual buffer-kind narrowing.
-    return crypto.subtle.verify(
+    const verified = await crypto.subtle.verify(
       algParams,
       key,
       signature as BufferSource,
       signingInput as BufferSource,
     )
+    return { found: true, verified }
   }
 
   return {
@@ -218,13 +228,15 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
       }
       const algParams = ALG_PARAMS[alg]
 
-      let verified = await findKeyAndVerify(header, algParams, alg, signingInput, signature, false)
-      if (!verified) {
-        // Unknown kid or a failed verification could indicate key rotation: force
-        // exactly one JWKS refresh and retry before giving up.
-        verified = await findKeyAndVerify(header, algParams, alg, signingInput, signature, true)
+      let result = await findKeyAndVerify(header, algParams, alg, signingInput, signature, false)
+      if (!result.found) {
+        // Unknown kid: possibly a key rotation. Force exactly one JWKS refresh and retry
+        // before giving up. A *found* key that fails verification is not retried here — that
+        // is a bad signature, not a rotation signal, and retrying it would let an attacker
+        // force a JWKS refetch per request just by sending garbage signed with a valid kid.
+        result = await findKeyAndVerify(header, algParams, alg, signingInput, signature, true)
       }
-      if (!verified) {
+      if (!result.verified) {
         throw new TokenVerificationError('invalid_token', 'JWT signature verification failed')
       }
 

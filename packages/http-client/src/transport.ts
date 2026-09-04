@@ -447,12 +447,23 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   constructor(params: HTTPTransportParams) {
     // Static `auth` of type `bearer`/`basic` sets `Authorization`, same as an OAuth
     // `fetchMiddleware` would — sending both leaves it ambiguous which one wins on the wire.
-    // A `header`-type static auth does not necessarily set `Authorization`, so it is allowed
-    // alongside a middleware.
-    if (params.fetchMiddleware && params.auth && params.auth.type !== 'header') {
-      throw new Error(
-        'Static `auth` and `fetchMiddleware` are mutually exclusive (both set Authorization)',
-      )
+    // A `header`-type static auth does not necessarily set `Authorization` (it is allowed
+    // alongside a middleware unless its own name is `Authorization`, case-insensitively), and
+    // plain `params.headers` can set `Authorization` too, so both are checked below.
+    if (params.fetchMiddleware) {
+      const auth = params.auth
+      const authSetsAuthorization =
+        auth != null &&
+        (auth.type !== 'header' ||
+          (auth.name != null && auth.name.toLowerCase() === 'authorization'))
+      const headerSetsAuthorization =
+        params.headers != null &&
+        Object.keys(params.headers).some((k) => k.toLowerCase() === 'authorization')
+      if (authSetsAuthorization || headerSetsAuthorization) {
+        throw new Error(
+          'Static `auth`/`headers` setting `Authorization` and `fetchMiddleware` are mutually exclusive (both set Authorization)',
+        )
+      }
     }
 
     const [readable, controller] = createReadable<ServerMessage>()

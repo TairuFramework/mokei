@@ -18,19 +18,32 @@ async function writeAll(path: string, data: Record<string, StoredTokens>): Promi
 }
 
 export function createFileTokenStore(path: string): TokenStore {
+  // Serializes every operation on this store instance through a tail-promise chain (a simple
+  // in-process mutex), so concurrent `get`/`set`/`clear` calls can't interleave their
+  // read-modify-write and clobber each other.
+  let tail: Promise<unknown> = Promise.resolve()
+  const serialize = <T>(op: () => Promise<T>): Promise<T> => {
+    const run = tail.then(op, op)
+    tail = run.catch(() => {})
+    return run
+  }
   return {
-    async get(key) {
-      return (await readAll(path))[key]
+    get(key) {
+      return serialize(async () => (await readAll(path))[key])
     },
-    async set(key, tokens) {
-      const all = await readAll(path)
-      all[key] = tokens
-      await writeAll(path, all)
+    set(key, tokens) {
+      return serialize(async () => {
+        const all = await readAll(path)
+        all[key] = tokens
+        await writeAll(path, all)
+      })
     },
-    async clear(key) {
-      const all = await readAll(path)
-      delete all[key]
-      await writeAll(path, all)
+    clear(key) {
+      return serialize(async () => {
+        const all = await readAll(path)
+        delete all[key]
+        await writeAll(path, all)
+      })
     },
   }
 }
