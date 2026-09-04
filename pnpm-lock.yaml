@@ -734,6 +734,9 @@ importers:
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
+      '@mokei/http-client':
+        specifier: workspace:^
+        version: link:../http-client
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.0
