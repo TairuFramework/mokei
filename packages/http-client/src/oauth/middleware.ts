@@ -1,4 +1,5 @@
 import type { FetchLike, FetchMiddleware } from '../transport.js'
+import { canonicalResource } from './resource.js'
 import type { StoredTokens, TokenStore } from './store.js'
 
 /** Completes the authorization-code exchange for a resource; the 401/authorize flow (later task). */
@@ -64,7 +65,7 @@ export async function exchangeRefresh(
     refresh_token?: string
     scope?: string
   }
-  if (data.token_type.toLowerCase() !== 'bearer') {
+  if (String(data.token_type).toLowerCase() !== 'bearer') {
     throw new Error(`Unsupported token_type: ${data.token_type}`)
   }
   return {
@@ -94,7 +95,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
   return (next) => {
     return async (url, init) => {
       const store = config.store
-      const resource = config.resource ?? url
+      const resource = canonicalResource(config.resource ?? url)
       let tokens = await store?.get(resource)
 
       if (
@@ -103,19 +104,26 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         tokens.tokenEndpoint != null &&
         nearExpiry(tokens, now, skew)
       ) {
-        const refreshed = await exchangeRefresh(
-          next,
-          tokens.tokenEndpoint,
-          {
-            clientId: config.clientId,
-            resource: config.resource,
-            refreshToken: tokens.refreshToken,
-            scopes: config.scopes,
-          },
-          now,
-        )
-        tokens = { ...refreshed, tokenEndpoint: tokens.tokenEndpoint, issuer: tokens.issuer }
-        await store?.set(resource, tokens)
+        // Best-effort: a failed refresh (network error, non-2xx, non-bearer token_type) must
+        // not fail the outbound request outright — it proceeds on the current, possibly-stale
+        // token, and a later 401 path (not built here) recovers.
+        try {
+          const refreshed = await exchangeRefresh(
+            next,
+            tokens.tokenEndpoint,
+            {
+              clientId: config.clientId,
+              resource: config.resource,
+              refreshToken: tokens.refreshToken,
+              scopes: config.scopes,
+            },
+            now,
+          )
+          tokens = { ...refreshed, tokenEndpoint: tokens.tokenEndpoint, issuer: tokens.issuer }
+          await store?.set(resource, tokens)
+        } catch {
+          // Swallow: keep the stale tokens already read above.
+        }
       }
 
       if (tokens != null) {

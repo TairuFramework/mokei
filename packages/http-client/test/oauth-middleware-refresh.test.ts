@@ -58,3 +58,60 @@ test('pre-emptively refreshes an access token near expiry', async () => {
   expect((await store.get(resource))?.accessToken).toBe('new')
   expect((await store.get(resource))?.refreshToken).toBe('r2')
 })
+
+test('reads and writes the token store under the canonical resource key', async () => {
+  const store = createMemoryTokenStore()
+  const canonicalKey = 'https://mcp.example.com/mcp'
+  await store.set(canonicalKey, {
+    accessToken: 'old',
+    tokenType: 'Bearer',
+    refreshToken: 'r1',
+    expiresAt: 1000,
+    tokenEndpoint: 'https://as.example.com/token',
+    issuer: 'https://as.example.com',
+  })
+  const next = async (url: string): Promise<Response> => {
+    if (url.endsWith('/token')) {
+      return new Response(
+        JSON.stringify({
+          access_token: 'new',
+          token_type: 'Bearer',
+          expires_in: 3600,
+          refresh_token: 'r2',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  // resource omitted: derived from the request URL, which carries a query the store key must not.
+  const mw = createOAuthMiddleware({ clientId: 'c', handler, store, now: () => 999 })
+  await mw(next)('https://mcp.example.com/mcp?x=1', { method: 'POST', body: '{}' })
+  expect((await store.get(canonicalKey))?.accessToken).toBe('new')
+  expect((await store.get(canonicalKey))?.refreshToken).toBe('r2')
+})
+
+test('a failed pre-emptive refresh does not fail the outbound request', async () => {
+  const store = createMemoryTokenStore()
+  await store.set(resource, {
+    accessToken: 'old',
+    tokenType: 'Bearer',
+    refreshToken: 'r1',
+    expiresAt: 1000,
+    tokenEndpoint: 'https://as.example.com/token',
+    issuer: 'https://as.example.com',
+  })
+  let seenAuth: string | null = null
+  const next = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (url.endsWith('/token')) {
+      return new Response('server error', { status: 500 })
+    }
+    seenAuth = new Headers(init?.headers).get('Authorization')
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 999 })
+  const response = await mw(next)(resource, { method: 'POST', body: '{}' })
+  expect(response.status).toBe(200)
+  expect(seenAuth).toBe('Bearer old')
+  expect((await store.get(resource))?.accessToken).toBe('old')
+})
