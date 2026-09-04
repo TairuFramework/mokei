@@ -22,6 +22,8 @@ export {
   createHTTPClient,
   DEFAULT_HTTP_REFRESH_TIMEOUT,
   DEFAULT_HTTP_TIMEOUT,
+  type FetchLike,
+  type FetchMiddleware,
   HTTPTransport,
   type HTTPTransportParams,
 } from './transport.js'
