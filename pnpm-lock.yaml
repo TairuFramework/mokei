@@ -826,6 +826,9 @@ importers:
         specifier: 'catalog:'
         version: 4.13.5
     devDependencies:
+      '@mokei/http-client':
+        specifier: workspace:^
+        version: link:../http-client
       '@sozai/event':
         specifier: 'catalog:'
         version: 0.1.3(@logtape/logtape@2.3.0)

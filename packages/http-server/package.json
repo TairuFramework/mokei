@@ -51,6 +51,7 @@
     "hono": "catalog:"
   },
   "devDependencies": {
+    "@mokei/http-client": "workspace:^",
     "@sozai/event": "catalog:",
     "@types/node": "catalog:"
   }
