@@ -14,6 +14,11 @@ export function HelpCard({ onClose }: HelpCardProps) {
       <Text>/help show this help</Text>
       <Text>/context list contexts</Text>
       <Text>/context add [-p VER] KEY CMD ... add MCP context</Text>
+      <Text>
+        /context add-http [--protocol V] KEY URL [--oauth-client-id ID] [--oauth-resource RES]
+        [--oauth-scope S] [--oauth-tokens PATH] attach a remote MCP server over HTTP, with optional
+        OAuth
+      </Text>
       <Text>/context remove KEY remove context</Text>
       <Text>/model [id] pick or switch model</Text>
       <Text>/tools enable/disable tools</Text>

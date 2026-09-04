@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-08-28
+**Last updated:** 2026-09-03
 
 ## Vision
 
@@ -48,14 +48,24 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-Nothing in `next/`. The **MCP `2026-07-28` spec migration is complete** — the last pieces shipped
-2026-08-27/28: B4 `subscriptions/listen` (SEP-2575, PR #46), D1–D3 deprecations (SEP-2577, PR #47),
-and the cleanup deferrals — SSE reader-backpressure + per-revision server unions (PR #48), with the
-other three deferred items decided against rather than rescheduled. No active pointer; pick the next
-item from `backlog/` below.
+- **HTTP transport auth — OAuth + JWT** (`next/2026-07-02-http-auth-oauth.md`) — active priority
+  (promoted from backlog 2026-09-03). Client OAuth 2.1 + PKCE for remote MCP servers (wrap SDK v2
+  `withOAuth` fetch middleware first, native `@kokuin/token` port later), server-side bearer
+  verification + protected-resource metadata for `@mokei/http-server` (hono middleware, not SDK's
+  Express-only helpers), JWT machine auth (SEP-991 grants / `@kokuin/token` DID tokens). The first
+  concrete feature since the spec migration closed.
+
+The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) — both
+revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **MRTR follow-ups** (2026-09-02, PR TBD) — the four non-blocking items left after MRTR shipped:
+  typed `allowInputRequired` overloads on `callTool`/`getPrompt`/`readResource` (removing the
+  `as unknown` casts), `minProperties: 1` on the `2026-07-28` `inputRequests` schema so an empty map
+  is rejected at the wire instead of burning the round cap, a hoisted exported `defaultMintRequestState`,
+  and an end-to-end custom-`mint`→echo→`verify` test. See
+  `completed/2026-09-02-mcp-mrtr-followups.complete.md`.
 - **MCP SDK v2 — selective adoption closed** (2026-08-28) — the 2026-07-02 evaluation, now a
   decision record folded into the migration milestone. Decision (final): keep the custom MCP core
   (SDK's engine is private/unimportable; Zod hard dep; bespoke typed-client value). Its last open
@@ -65,7 +75,7 @@ item from `backlog/` below.
   schema drops into an SDK-based server with no mokei shim. Sampling-deprecation watch and
   conformance-oracle ideas discarded (see the record for why). OAuth/JWT split to its own backlog
   item. See the **SDK v2 — selective adoption** section of
-  `milestones/2026-06-08-mcp-2026-07-28-migration.md`.
+  `completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md`.
 - **MCP `2026-07-28` cleanup deferrals** (2026-08-28, PR #48) — SSE reader-backpressure fix in
   `@mokei/http-server` (`createSSEStream` is now demand-aware, bounding a slow reader instead of
   only fast producers) and the per-revision `ServerRequest`/`ServerNotification` split in
@@ -124,9 +134,12 @@ conformance, provider robustness, HTTP transport resilience, host/session lifecy
 llama wiring, the U1 `PendingExchange` refactor and the stack migration — is recorded in
 `completed/`, with pre-2026-04 history in `archive/`.
 
-## Milestones (milestones/)
+## Milestones
 
-- **MCP `2026-07-28` spec migration** (`milestones/2026-06-08-mcp-2026-07-28-migration.md`) —
+No active milestone. `milestones/` is empty — the one completed milestone was moved to `completed/`
+once the migration closed.
+
+- **MCP `2026-07-28` spec migration** (`completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md`) —
   complete. Phase 0 groundwork (G1–G4, G6, G7) shipped on `2025-11-25`
   (PR #23). The `2026-07-28` revision then shipped as opt-in coexistence: stateless core
   (PR #40), defect wave (PR #41), interop peer matrix against SDK `2.0.0` (PR #42),
@@ -139,12 +152,6 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 
 ## Near-term (backlog/)
 
-- **HTTP transport auth — OAuth + JWT** (`backlog/2026-07-02-http-auth-oauth.md`) —
-  client OAuth 2.1 + PKCE for remote MCP servers (wrap SDK v2 `withOAuth` fetch
-  middleware first, native `@kokuin/token` port later), server-side bearer verification +
-  protected-resource metadata for `@mokei/http-server` (hono middleware, not SDK's
-  Express-only helpers), JWT machine auth (SEP-991 grants / `@kokuin/token` DID tokens).
-  Replaces the former P3 "OAuth / auth helpers" line.
 - **CLI reasoning coverage** (`backlog/2026-07-27-cli-reasoning-coverage.md`) — two coverage
   gaps, no defect: assert reasoning separation where the backend provides it, and verify the
   OpenAI-compatible `reasoning_content` / `reasoning` mapping against a server that actually
@@ -155,11 +162,6 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 - **Llama provider follow-ups** (`backlog/2026-06-20-llama-provider-follow-ups.md`) — optional
   local-inference tuning (`gpu` / `contextSize` flags) and a positive tool-call assertion in
   the gated GGUF suite. Nothing depends on either.
-- **MRTR follow-ups** (`backlog/2026-08-08-mrtr-followups.md`) — four non-blocking items left after
-  MRTR shipped: type `allowInputRequired`'s runtime `InputRequiredResult` return (currently lies as
-  `CallToolResult`), reject/short-circuit an empty `inputRequests` map from a foreign peer (burns the
-  round cap), hoist the duplicated default `requestState` minter, and add an end-to-end
-  custom-`mint`→echo→`verify` round-trip test. Small.
 
 ## Planned — P2
 
@@ -190,10 +192,11 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 - Custom MCP core over official SDK v2 (2026-07-02 evaluation) — SDK's protocol engine
   is unimportable (`core-internal` private), Zod is a hard dep, and mokei's typed-client
   generics + Enkaku transports have no SDK equivalent. Adopt narrowly instead (decision record in
-  the **SDK v2 — selective adoption** section of `milestones/2026-06-08-mcp-2026-07-28-migration.md`).
+  the **SDK v2 — selective adoption** section of
+  `completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md`).
 - Revision coexistence over a hard cut — mokei is a library, so `2025-11-25` and
   `2026-07-28` are both served and spoken, selected per context. Dropping the older revision
   later is a branch deletion, not a rewrite (ADR in
-  `milestones/2026-06-08-mcp-2026-07-28-migration.md`).
+  `completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md`).
 - Provider pattern: `client.ts` + `provider.ts` + `config.ts` + `types.ts`.
 - Streaming via `TransformStream` → `MessagePart<>`.

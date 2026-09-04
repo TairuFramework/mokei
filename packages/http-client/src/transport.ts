@@ -121,6 +121,12 @@ const MCP_NAME_HEADER_SOURCE: ReadonlyMap<string, string> = new Map([
   ['resources/read', 'uri'],
 ])
 
+/** A `fetch`-shaped function: the unit a {@link FetchMiddleware} wraps and produces. */
+export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
+
+/** Wraps a {@link FetchLike} with another, e.g. to inject an OAuth `Authorization` header. */
+export type FetchMiddleware = (next: FetchLike) => FetchLike
+
 /**
  * Parameters for creating an MCP HTTP transport.
  */
@@ -152,6 +158,8 @@ export type HTTPTransportParams = {
    * the paragraph above says not to do.
    */
   protocolVersionHeader?: string
+  /** Wraps the transport's fetch (e.g. OAuth). Composed once over globalThis.fetch. */
+  fetchMiddleware?: FetchMiddleware
 }
 
 /**
@@ -335,7 +343,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     const timeoutID = setTimeout(() => controller.abort(), this.#refreshTimeout)
     this.#untrackedControllers.add(controller)
     try {
-      const response = await fetch(this.#url, {
+      const response = await this.#fetch(this.#url, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -434,8 +442,30 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    */
   #protocolVersion: string | null
   #logger: Logger
+  #fetch: FetchLike
 
   constructor(params: HTTPTransportParams) {
+    // Static `auth` of type `bearer`/`basic` sets `Authorization`, same as an OAuth
+    // `fetchMiddleware` would — sending both leaves it ambiguous which one wins on the wire.
+    // A `header`-type static auth does not necessarily set `Authorization` (it is allowed
+    // alongside a middleware unless its own name is `Authorization`, case-insensitively), and
+    // plain `params.headers` can set `Authorization` too, so both are checked below.
+    if (params.fetchMiddleware) {
+      const auth = params.auth
+      const authSetsAuthorization =
+        auth != null &&
+        (auth.type !== 'header' ||
+          (auth.name != null && auth.name.toLowerCase() === 'authorization'))
+      const headerSetsAuthorization =
+        params.headers != null &&
+        Object.keys(params.headers).some((k) => k.toLowerCase() === 'authorization')
+      if (authSetsAuthorization || headerSetsAuthorization) {
+        throw new Error(
+          'Static `auth`/`headers` setting `Authorization` and `fetchMiddleware` are mutually exclusive (both set Authorization)',
+        )
+      }
+    }
+
     const [readable, controller] = createReadable<ServerMessage>()
     const writable = writeTo<ClientMessage>(async (message) => {
       await this.#sendMessage(message)
@@ -448,6 +478,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#refreshTimeout = params.refreshTimeout ?? DEFAULT_HTTP_REFRESH_TIMEOUT
     this.#protocolVersion = params.protocolVersionHeader ?? null
     this.#logger = params.logger ?? getMokeiLogger('http-client')
+    const baseFetch: FetchLike = (url, init) => globalThis.fetch(url, init)
+    this.#fetch = params.fetchMiddleware ? params.fetchMiddleware(baseFetch) : baseFetch
   }
 
   /**
@@ -679,7 +711,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
     let response: Response
     try {
-      response = await fetch(this.#url, {
+      response = await this.#fetch(this.#url, {
         method: 'POST',
         headers,
         body: JSON.stringify(message),
@@ -975,7 +1007,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           headers['Last-Event-ID'] = this.#lastEventID
         }
 
-        const response = await fetch(this.#url, { method: 'GET', headers, signal })
+        const response = await this.#fetch(this.#url, { method: 'GET', headers, signal })
 
         if (response.status === 405 || response.status === 404) {
           // 405: server does not offer a GET notification stream. 404: session gone.
@@ -1078,7 +1110,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         if (this.#protocolVersion != null) {
           headers['MCP-Protocol-Version'] = this.#protocolVersion
         }
-        await fetch(this.#url, {
+        await this.#fetch(this.#url, {
           method: 'DELETE',
           headers,
           signal: AbortSignal.timeout(DEFAULT_DISPOSE_TIMEOUT),
@@ -1141,6 +1173,7 @@ const HTTP_TRANSPORT_PARAM_KEYS = {
   refreshTimeout: true,
   logger: true,
   protocolVersionHeader: true,
+  fetchMiddleware: true,
 } satisfies Record<keyof HTTPTransportParams, true>
 
 /**

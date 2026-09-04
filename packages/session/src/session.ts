@@ -1,5 +1,10 @@
 import type { CallToolResult, ProtocolVersion } from '@mokei/context-protocol'
-import type { ContextTool, EnableToolsArg, LocalToolDefinition } from '@mokei/host'
+import type {
+  ContextTool,
+  EnableToolsArg,
+  HTTPContextParams,
+  LocalToolDefinition,
+} from '@mokei/host'
 import { NodeContextHost } from '@mokei/host-node'
 import type {
   AggregatedMessage,
@@ -37,6 +42,11 @@ export type AddContextParams = {
    * `NodeContextHost` picks its default.
    */
   protocolVersion?: ProtocolVersion | 'auto'
+}
+
+export type AddHTTPContextParams = HTTPContextParams & {
+  signal?: AbortSignal
+  enableTools?: EnableToolsArg
 }
 
 export type ChatParams<T extends ProviderTypes = ProviderTypes> = {
@@ -211,6 +221,52 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       await this.#contextHost.remove(params.key).catch(() => {})
       throw err
     })
+  }
+
+  async #setupHTTPContext(params: AddHTTPContextParams): Promise<Array<ContextTool>> {
+    const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware, enableTools } =
+      params
+    // `ContextHost.addHTTPContext` registers the context synchronously (unlike stdio's
+    // async-spawning `addLocalContext`), and rejects with "already exists" for a duplicate key
+    // BEFORE registering anything. Awaiting it outside the try means a duplicate-key rejection
+    // never enters the catch below, so it can never remove a pre-existing context.
+    const client = await this.#contextHost.addHTTPContext({
+      key,
+      url,
+      headers,
+      auth,
+      timeout,
+      protocolVersion,
+      fetchMiddleware,
+    })
+    try {
+      const tools = await this.#contextHost.setup({ key, enableTools, signal: params.signal })
+      this.#events.emit('context-added', { key, tools })
+      return tools
+    } catch (err) {
+      // Remove only the context THIS call registered. On abort, `raceSignal` can reject to the
+      // caller before this catch runs; if the caller removes and re-adds the same key in that
+      // window, a plain `remove(key)` here would delete the NEW context instead of ours. Compare
+      // client identity against whatever is currently registered under `key` -- `getContext`
+      // throws when the key is missing (already removed), which also means "not ours" here.
+      let stillOurs = false
+      try {
+        stillOurs = this.#contextHost.getContext(key).client === client
+      } catch {
+        stillOurs = false
+      }
+      if (stillOurs) {
+        await this.#contextHost.remove(key).catch(() => {})
+      }
+      throw err
+    }
+  }
+
+  addHTTPContext(params: AddHTTPContextParams): Promise<Array<ContextTool>> {
+    if (!params.signal) {
+      return this.#setupHTTPContext(params)
+    }
+    return raceSignal(this.#setupHTTPContext(params), params.signal)
   }
 
   async removeContext(key: string): Promise<boolean> {

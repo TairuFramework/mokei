@@ -18,10 +18,18 @@ export {
   SessionExpiredError,
 } from './errors.js'
 export {
+  type AuthorizationHandler,
+  createOAuthMiddleware,
+  type OAuthClientConfig,
+} from './oauth/middleware.js'
+export { createMemoryTokenStore, type StoredTokens, type TokenStore } from './oauth/store.js'
+export {
   type CreateHTTPClientParams,
   createHTTPClient,
   DEFAULT_HTTP_REFRESH_TIMEOUT,
   DEFAULT_HTTP_TIMEOUT,
+  type FetchLike,
+  type FetchMiddleware,
   HTTPTransport,
   type HTTPTransportParams,
 } from './transport.js'

@@ -42,13 +42,16 @@
   "dependencies": {
     "@enkaku/transport": "catalog:",
     "@hono/node-server": "catalog:",
+    "@kokuin/token": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/logger": "workspace:^",
+    "@sozai/codec": "catalog:",
     "@sozai/runtime": "catalog:",
     "hono": "catalog:"
   },
   "devDependencies": {
+    "@mokei/http-client": "workspace:^",
     "@sozai/event": "catalog:",
     "@types/node": "catalog:"
   }

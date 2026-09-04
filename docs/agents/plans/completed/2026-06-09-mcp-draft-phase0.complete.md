@@ -5,7 +5,7 @@
 **Branch:** feat/mcp-spec-update → PR #23
 **Origin specs/plans (ephemeral, removed):** mcp-draft-migration-design,
 mcp-draft-upstream-findings, mcp-draft-phase0 (all 2026-06-08/09).
-**Ongoing milestone:** `milestones/2026-06-08-mcp-draft-migration.md` (breaking cut + deferred groundwork).
+**Ongoing milestone:** `completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md` (breaking cut + deferred groundwork).
 
 ## Goal
 

@@ -5,7 +5,7 @@
 **Branch / PR:** `feat/mcp-sdk-v2-interop` (not yet opened)
 **Relates to:** `backlog/2026-07-02-mcp-sdk-v2-adoption.md` (adopt item 1) ·
 `backlog/2026-06-20-mcp-draft-remaining.md` (G7 part 5 needs this peer) ·
-`milestones/2026-06-08-mcp-draft-migration.md` (the draft-era half plugs in with B-wiring)
+`completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md` (the draft-era half plugs in with B-wiring)
 
 ## Goal
 

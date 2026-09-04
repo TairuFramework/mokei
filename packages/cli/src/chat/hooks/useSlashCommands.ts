@@ -1,7 +1,9 @@
 import type { ProtocolVersion } from '@mokei/context-protocol'
+import { createNodeOAuthMiddleware } from '@mokei/host-node'
 import type { Session } from '@mokei/session'
 import { useCallback } from 'react'
 
+import { resolvePath } from '../../fs.js'
 import { parseProtocolOption } from '../../options.js'
 import { parseSlash } from '../slash.js'
 import type { PushEntry } from '../transcript.js'
@@ -18,6 +20,9 @@ export type UseSlashCommandsParams = {
   pushEntry: PushEntry
   contexts: Array<string>
   addContext: (params: Parameters<Session['addContext']>[0]) => ReturnType<Session['addContext']>
+  addHTTPContext: (
+    params: Parameters<Session['addHTTPContext']>[0],
+  ) => ReturnType<Session['addHTTPContext']>
   submit: (text: string) => Promise<void>
   exit: () => void
   showReasoning: boolean
@@ -39,6 +44,7 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
     pushEntry,
     contexts,
     addContext,
+    addHTTPContext,
     submit,
     exit,
     showReasoning,
@@ -121,6 +127,91 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
             }
             try {
               const tools = await addContext({ key, command, args: cmdArgs, protocolVersion })
+              pushEntry({
+                kind: 'notice',
+                variant: 'success',
+                text: `context ${key} added (${tools.length} tool(s) enabled — deselect any below)`,
+              })
+              if (tools.length > 0) {
+                setModal('tools')
+              }
+            } catch (err) {
+              pushEntry({ kind: 'notice', variant: 'error', text: (err as Error).message })
+            }
+          } else if (sub === 'add-http') {
+            // Same leading `--protocol`/`-p` parsing as `add`.
+            let positional = rest
+            let protocolVersion: ProtocolVersion | 'auto' = 'auto'
+            if (positional[0] === '--protocol' || positional[0] === '-p') {
+              try {
+                protocolVersion = parseProtocolOption(positional[1] ?? '')
+              } catch (err) {
+                pushEntry({ kind: 'notice', variant: 'error', text: (err as Error).message })
+                break
+              }
+              positional = positional.slice(2)
+            }
+            const [key, url, ...oauthArgs] = positional
+            if (!key || !url) {
+              pushEntry({
+                kind: 'notice',
+                variant: 'error',
+                text: 'usage: /context add-http [--protocol <version>] <key> <url> [--oauth-client-id <id>] [--oauth-resource <res>] [--oauth-scope <scope>] [--oauth-tokens <path>]',
+              })
+              break
+            }
+
+            let clientID: string | undefined
+            let resource: string | undefined
+            let tokensPath: string | undefined
+            const scopes: Array<string> = []
+            let error: string | null = null
+            for (let i = 0; i < oauthArgs.length; i += 2) {
+              const flag = oauthArgs[i]
+              const value = oauthArgs[i + 1]
+              if (value == null) {
+                error = `missing value for ${flag}`
+                break
+              }
+              switch (flag) {
+                case '--oauth-client-id':
+                  clientID = value
+                  break
+                case '--oauth-resource':
+                  resource = value
+                  break
+                case '--oauth-scope':
+                  scopes.push(value)
+                  break
+                case '--oauth-tokens':
+                  tokensPath = resolvePath(value)
+                  break
+                default:
+                  error = `unknown option: ${flag}`
+              }
+              if (error != null) {
+                break
+              }
+            }
+            if (error == null && oauthArgs.length > 0 && clientID == null) {
+              error = '--oauth-client-id is required when using OAuth options'
+            }
+            if (error != null) {
+              pushEntry({ kind: 'notice', variant: 'error', text: error })
+              break
+            }
+
+            const fetchMiddleware =
+              clientID != null
+                ? createNodeOAuthMiddleware({
+                    clientID,
+                    resource,
+                    scopes: scopes.length ? scopes : undefined,
+                    tokensPath,
+                  })
+                : undefined
+            try {
+              const tools = await addHTTPContext({ key, url, protocolVersion, fetchMiddleware })
               pushEntry({
                 kind: 'notice',
                 variant: 'success',
@@ -223,6 +314,7 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
       pushEntry,
       contexts,
       addContext,
+      addHTTPContext,
       submit,
       exit,
       showReasoning,

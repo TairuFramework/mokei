@@ -4,7 +4,7 @@
 **Date:** 2026-06-20
 **Branch:** `feat/mcp-deferred-groundwork` (commits `2c078ba`..`8cd605c`)
 **Origin:** the 2026-06-09 MCP-draft deferred-groundwork backlog item (retired by this
-work), `milestones/2026-06-08-mcp-draft-migration.md`
+work), `completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md`
 
 ## What shipped
 

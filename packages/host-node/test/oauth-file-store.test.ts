@@ -1,0 +1,148 @@
+import { mkdir, mkdtemp, readdir, readFile, rename, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { expect, test, vi } from 'vitest'
+
+import { createFileTokenStore } from '../src/oauth/file-store.js'
+
+// `rename` is spied (delegating to the real implementation by default) so a single test can
+// force it to fail once, without disturbing every other test's real filesystem behavior.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, rename: vi.fn(actual.rename) }
+})
+
+test('persists tokens to disk, owner-only, and round-trips', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'tokens.json')
+  const store = createFileTokenStore(file)
+  await store.set('https://mcp.example.com/mcp', { accessToken: 'a', tokenType: 'Bearer' })
+
+  const reopened = createFileTokenStore(file)
+  expect((await reopened.get('https://mcp.example.com/mcp'))?.accessToken).toBe('a')
+
+  if (process.platform !== 'win32') {
+    const mode = (await stat(file)).mode & 0o777
+    expect(mode).toBe(0o600)
+  }
+  // no plaintext key names leaked beyond the token value structure is fine; just assert JSON parses
+  JSON.parse(await readFile(file, 'utf8'))
+})
+
+test('concurrent sets for different keys do not clobber each other', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'tokens.json')
+  const store = createFileTokenStore(file)
+
+  await Promise.all([
+    store.set('https://a.example.com/mcp', { accessToken: 'a', tokenType: 'Bearer' }),
+    store.set('https://b.example.com/mcp', { accessToken: 'b', tokenType: 'Bearer' }),
+  ])
+
+  expect((await store.get('https://a.example.com/mcp'))?.accessToken).toBe('a')
+  expect((await store.get('https://b.example.com/mcp'))?.accessToken).toBe('b')
+})
+
+test('two independent stores sharing the same path serialize through one mutex', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'tokens.json')
+  const storeA = createFileTokenStore(file)
+  const storeB = createFileTokenStore(file)
+
+  await Promise.all([
+    storeA.set('a', { accessToken: 'a', tokenType: 'Bearer' }),
+    storeB.set('b', { accessToken: 'b', tokenType: 'Bearer' }),
+  ])
+
+  const reader = createFileTokenStore(file)
+  expect((await reader.get('a'))?.accessToken).toBe('a')
+  expect((await reader.get('b'))?.accessToken).toBe('b')
+})
+
+test('treats corrupt file as empty', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'tokens.json')
+  await (await import('node:fs/promises')).writeFile(file, 'not json', 'utf8')
+  const store = createFileTokenStore(file)
+  expect(await store.get('anything')).toBeUndefined()
+})
+
+test('reading a nonexistent path returns undefined for any key (ENOENT -> {})', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'does-not-exist.json')
+  const store = createFileTokenStore(file)
+  expect(await store.get('anything')).toBeUndefined()
+})
+
+test('a top-level JSON array is treated as empty', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'tokens.json')
+  await (await import('node:fs/promises')).writeFile(file, '[]', 'utf8')
+  const store = createFileTokenStore(file)
+  expect(await store.get('anything')).toBeUndefined()
+})
+
+// `pathTails` reclaims its per-path entry once the tail settles (instead of retaining one
+// entry per distinct resolved path for the process lifetime). The map is module-private and not
+// part of the public API, so this can't assert on the map directly without widening that surface
+// -- instead it exercises the case the reclamation must not break: a `set` that fully settles,
+// then further `get`/`set` calls against the *same* resolved path (which would share a stale
+// entry were it ever wrongly deleted mid-flight) must still read/write correctly. The companion
+// "two independent stores sharing the same path serialize through one mutex" test above
+// covers the concurrent-chaining half: the second `set` must observe the first op's tail via
+// `pathTails.get(resolved)` *before* it settles, so the identity-checked delete in `serialize`
+// must not remove a still-live chain out from under a racing op.
+test('repeated sequential ops against the same path keep working after the tail entry is reclaimed', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'tokens.json')
+  const store = createFileTokenStore(file)
+
+  await store.set('k1', { accessToken: 'first', tokenType: 'Bearer' })
+  // By now the first op's tail has settled and, per the reclamation, its `pathTails` entry
+  // should have been deleted (or at least is no longer required for correctness) -- a fresh
+  // `serialize` call for this path must fall back to `Promise.resolve()` and still behave.
+  await new Promise((r) => setTimeout(r, 0))
+
+  await store.set('k2', { accessToken: 'second', tokenType: 'Bearer' })
+  expect((await store.get('k1'))?.accessToken).toBe('first')
+  expect((await store.get('k2'))?.accessToken).toBe('second')
+
+  // A later concurrent pair against the same path must still serialize correctly post-reclamation.
+  await Promise.all([
+    store.set('k3', { accessToken: 'third', tokenType: 'Bearer' }),
+    store.set('k4', { accessToken: 'fourth', tokenType: 'Bearer' }),
+  ])
+  expect((await store.get('k3'))?.accessToken).toBe('third')
+  expect((await store.get('k4'))?.accessToken).toBe('fourth')
+})
+
+test('the temp file is removed if rename fails, and the error propagates', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'tokens.json')
+  const store = createFileTokenStore(file)
+
+  vi.mocked(rename).mockImplementationOnce(async () => {
+    throw new Error('simulated rename failure')
+  })
+
+  await expect(
+    store.set('https://mcp.example.com/mcp', { accessToken: 'a', tokenType: 'Bearer' }),
+  ).rejects.toThrow(/simulated rename failure/)
+
+  const entries = await readdir(dir)
+  const leftoverTmp = entries.filter((name) => name.endsWith('.tmp'))
+  expect(leftoverTmp).toEqual([])
+
+  // The store must still be usable afterwards (the mock only fails the one call).
+  await store.set('https://mcp.example.com/mcp', { accessToken: 'b', tokenType: 'Bearer' })
+  expect((await store.get('https://mcp.example.com/mcp'))?.accessToken).toBe('b')
+})
+
+test('a non-ENOENT read error propagates instead of being masked as empty', async () => {
+  // Point the store at a directory path so `readFile` throws EISDIR rather than ENOENT.
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const dirAsFile = join(dir, 'a-directory')
+  await mkdir(dirAsFile)
+  const store = createFileTokenStore(dirAsFile)
+  await expect(store.get('anything')).rejects.toThrow()
+})

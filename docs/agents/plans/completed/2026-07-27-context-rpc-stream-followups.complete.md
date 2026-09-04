@@ -3,7 +3,7 @@
 **Status:** complete
 **Date:** 2026-07-27
 **Branch / PR:** `feat/context-rpc-stream-followups` (uncommitted at time of writing)
-**Relates to:** `completed/2026-06-20-pendingexchange-refactor.complete.md` (built the seam this hardens) · `backlog/2026-06-20-mcp-draft-remaining.md` (B7 section, now marked done) · `milestones/2026-06-08-mcp-draft-migration.md` (U1 correlation model)
+**Relates to:** `completed/2026-06-20-pendingexchange-refactor.complete.md` (built the seam this hardens) · `backlog/2026-06-20-mcp-draft-remaining.md` (B7 section, now marked done) · `completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md` (U1 correlation model)
 
 ## Goal
 

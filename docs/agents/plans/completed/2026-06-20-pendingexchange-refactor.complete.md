@@ -3,7 +3,7 @@
 **Status:** complete
 **Date:** 2026-06-20
 **Branch / PR:** `refactor/context-rpc-pending-exchange` → [PR #32](https://github.com/TairuFramework/mokei/pull/32) (bundled with G5 baggage + the U1/coexistence ADR)
-**Relates to:** `milestones/2026-06-08-mcp-draft-migration.md` (Architecture decision / ADR) · `backlog/2026-06-20-mcp-draft-remaining.md` (B7 plugs into this seam)
+**Relates to:** `completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md` (Architecture decision / ADR) · `backlog/2026-06-20-mcp-draft-remaining.md` (B7 plugs into this seam)
 
 ## Goal
 

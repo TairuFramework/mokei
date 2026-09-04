@@ -3,7 +3,11 @@ import { META_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { isSessionExpiredCode, SESSION_EXPIRED_CODE } from '../src/errors.js'
-import { DEFAULT_HTTP_REFRESH_TIMEOUT, HTTPTransport } from '../src/transport.js'
+import {
+  DEFAULT_HTTP_REFRESH_TIMEOUT,
+  type FetchMiddleware,
+  HTTPTransport,
+} from '../src/transport.js'
 
 type ErrorFrame = { id?: string | number; error?: { code?: number; message?: string } }
 
@@ -157,6 +161,54 @@ describe('HTTPTransport', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  describe('constructor guard: static auth/headers must not coexist with fetchMiddleware', () => {
+    const middleware: FetchMiddleware = (next) => next
+
+    test('a header-type auth named Authorization throws', () => {
+      expect(
+        () =>
+          new HTTPTransport({
+            url: TEST_URL,
+            auth: { type: 'header', name: 'Authorization', value: 'x' },
+            fetchMiddleware: middleware,
+          }),
+      ).toThrow(/mutually exclusive|both/i)
+    })
+
+    test('a header-type auth named Authorization case-insensitively throws', () => {
+      expect(
+        () =>
+          new HTTPTransport({
+            url: TEST_URL,
+            auth: { type: 'header', name: 'authorization', value: 'x' },
+            fetchMiddleware: middleware,
+          }),
+      ).toThrow(/mutually exclusive|both/i)
+    })
+
+    test('params.headers containing an Authorization key throws', () => {
+      expect(
+        () =>
+          new HTTPTransport({
+            url: TEST_URL,
+            headers: { authorization: 'Bearer x' },
+            fetchMiddleware: middleware,
+          }),
+      ).toThrow(/mutually exclusive|both/i)
+    })
+
+    test('a header-type auth named X-API-Key does NOT throw', () => {
+      expect(
+        () =>
+          new HTTPTransport({
+            url: TEST_URL,
+            auth: { type: 'header', name: 'X-API-Key', value: 'x' },
+            fetchMiddleware: middleware,
+          }),
+      ).not.toThrow()
+    })
   })
 
   describe('POST sends correct headers and body', () => {

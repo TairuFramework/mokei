@@ -25,6 +25,7 @@ function mockSession(): SessionLike & { emit: (name: string, payload: unknown) =
       },
     } as unknown as SessionLike['events'],
     addContext: vi.fn(async () => []) as unknown as SessionLike['addContext'],
+    addHTTPContext: vi.fn(async () => []) as unknown as SessionLike['addHTTPContext'],
     removeContext: vi.fn() as unknown as SessionLike['removeContext'],
     contextHost: {
       getContextKeys: () => [] as Array<string>,

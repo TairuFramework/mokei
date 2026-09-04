@@ -33,7 +33,9 @@ catalog:
   '@enkaku/server': ^0.21.2
   '@enkaku/socket': ^0.21.0
   '@enkaku/transport': ^0.21.0
+  '@kokuin/token': ^0.5.0
   '@sozai/async': ^0.2.1
+  '@sozai/codec': ^0.4.0
   '@sozai/event': ^0.1.3
   '@sozai/generator': ^0.2.0
   '@sozai/log': ^0.3.1
@@ -58,7 +60,7 @@ catalog:
   '@tanstack/router-devtools': ^1.167.1
   '@tanstack/router-plugin': ^1.168.35
   '@types/luxon': ^3.7.5
-  '@types/node': ^26.4.0
+  '@types/node': ^26.4.1
   '@types/react': ^19.2.18
   '@types/react-dom': ^19.2.5
   '@types/turndown': ^5.0.6
@@ -67,7 +69,7 @@ catalog:
   ansi-colors: ^4.1.3
   del-cli: ^7.0.0
   eventsource-parser: ^4.1.0
-  globals: ^17.11.0
+  globals: ^17.12.0
   hono: ^4.13.5
   ink: ^7.1.1
   commander: ^15.0.0
