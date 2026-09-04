@@ -140,11 +140,6 @@ async function exchangeAuthorizationCode(
   }
 }
 
-/** Single-flight locks for the 401 authorize/refresh path, keyed by canonical resource, shared
- * across all `createOAuthMiddleware` instances so concurrent requests for the same resource never
- * launch overlapping authorization flows even when raised from different middleware instances. */
-const authFlights = new Map<string, Promise<StoredTokens>>()
-
 /**
  * Attaches the stored access token as `Authorization: Bearer …` and, best-effort, refreshes it
  * pre-emptively when near expiry. Refresh needs a token endpoint: when `tokens.tokenEndpoint` is
@@ -154,43 +149,64 @@ const authFlights = new Map<string, Promise<StoredTokens>>()
  * On a 401 (and only once per outbound call, to bound retries): discovers the resource's
  * authorization server from the `WWW-Authenticate` header, runs a PKCE authorization-code flow
  * through `config.handler`, stores the resulting tokens, and retries the request exactly once
- * with the fresh `Authorization` header. Concurrent callers for the same resource share a single
- * in-flight authorization (`authFlights`), keyed by the same canonical resource used as the token
- * store key.
+ * with the fresh `Authorization` header. Concurrent callers created from the *same*
+ * `createOAuthMiddleware(config)` call for the same resource share a single in-flight
+ * refresh/authorization (`authFlights`, one map per instance — see below), keyed by the same
+ * canonical resource used as the token store key.
  */
 export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddleware {
   const now = config.now ?? (() => Math.floor(Date.now() / 1000))
   const skew = config.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS
+
+  // Per-instance, not module-level: two `createOAuthMiddleware` calls (different clientId,
+  // handler, or store — e.g. one per host context) must never share a flight even when their
+  // canonical resource strings coincide, since a shared flight would let instance A's config
+  // (clientId/PKCE/handler) decide instance B's outcome, and B's own `store.set` — closing over
+  // B's own store — would never run.
+  const authFlights = new Map<string, Promise<StoredTokens>>()
 
   /** Runs (or joins) the single-flight refresh/authorize for `resource`, re-checking the store
    * first since a concurrent flight may already have populated it. Reuse is decided by comparing
    * token identity (`staleAccessToken`, the token that was in use when the failure was observed)
    * rather than `nearExpiry`, since an access token need not carry `expiresAt` and a 401 can be
    * caused by something other than expiry — either would make an expiry-based check wrongly
-   * "reuse" the very token that just failed. */
+   * "reuse" the very token that just failed.
+   *
+   * A joiner that adopts an in-flight promise which then *rejects* does not propagate that
+   * rejection onto itself: pre-emptive refresh (best-effort) and the 401-authorize path share the
+   * same flight slot per resource, so without this a failed background refresh from one caller
+   * could hard-fail a concurrent caller's independently-fixable 401. Instead, the joiner re-checks
+   * the store and, if still unauthenticated, runs its own recovery attempt — deduplicated with any
+   * other joiners racing the same rejection so at most one recovery flight runs (checked
+   * synchronously against `authFlights` with no `await` in between, so JS's single-threaded
+   * execution guarantees the first joiner to react always wins the race). */
   function withSingleFlight(
     resource: string,
     store: TokenStore | undefined,
     staleAccessToken: string | undefined,
     run: () => Promise<StoredTokens>,
   ): Promise<StoredTokens> {
+    function start(): Promise<StoredTokens> {
+      const flight = (async () => {
+        const current = await store?.get(resource)
+        if (current != null && current.accessToken !== staleAccessToken) return current
+        return run()
+      })()
+      authFlights.set(resource, flight)
+      // A second, derived promise chain so cleanup runs regardless of outcome without attaching
+      // an additional unhandled-rejection-prone consumer to `flight` itself (its other consumers —
+      // the leader's own caller, and any joiner's recovery below — already handle/propagate it).
+      flight
+        .finally(() => {
+          if (authFlights.get(resource) === flight) authFlights.delete(resource)
+        })
+        .catch(() => {})
+      return flight
+    }
+
     const inFlight = authFlights.get(resource)
-    if (inFlight != null) return inFlight
-    const flight = (async () => {
-      const current = await store?.get(resource)
-      if (current != null && current.accessToken !== staleAccessToken) return current
-      return run()
-    })()
-    authFlights.set(resource, flight)
-    // A second, derived promise chain so cleanup runs regardless of outcome without attaching an
-    // additional unhandled-rejection-prone consumer to `flight` itself (the caller below already
-    // handles/propagates its rejection).
-    flight
-      .finally(() => {
-        if (authFlights.get(resource) === flight) authFlights.delete(resource)
-      })
-      .catch(() => {})
-    return flight
+    if (inFlight == null) return start()
+    return inFlight.catch(() => authFlights.get(resource) ?? start())
   }
 
   /** Discovers the authorization server, runs PKCE + `config.handler.authorize`, exchanges the
