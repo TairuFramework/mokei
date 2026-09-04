@@ -161,7 +161,7 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
               break
             }
 
-            let clientId: string | undefined
+            let clientID: string | undefined
             let resource: string | undefined
             let tokensPath: string | undefined
             const scopes: Array<string> = []
@@ -175,7 +175,7 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
               }
               switch (flag) {
                 case '--oauth-client-id':
-                  clientId = value
+                  clientID = value
                   break
                 case '--oauth-resource':
                   resource = value
@@ -193,7 +193,7 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
                 break
               }
             }
-            if (error == null && oauthArgs.length > 0 && clientId == null) {
+            if (error == null && oauthArgs.length > 0 && clientID == null) {
               error = '--oauth-client-id is required when using OAuth options'
             }
             if (error != null) {
@@ -202,9 +202,9 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
             }
 
             const fetchMiddleware =
-              clientId != null
+              clientID != null
                 ? createNodeOAuthMiddleware({
-                    clientId,
+                    clientID,
                     resource,
                     scopes: scopes.length ? scopes : undefined,
                     tokensPath,

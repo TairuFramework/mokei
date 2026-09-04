@@ -50,10 +50,10 @@ export function createLoopbackAuthorizationHandler(
   const openBrowser = options.openBrowser ?? defaultOpenBrowser
 
   return {
-    authorize({ buildAuthorizationUrl, state, signal }) {
+    authorize({ buildAuthorizationURL, state, signal }) {
       return new Promise((resolve, reject) => {
         const path = `/cb/${randomBytes(8).toString('hex')}`
-        let redirectUri = ''
+        let redirectURI = ''
         let settled = false
 
         const server = createServer((req, res) => {
@@ -79,7 +79,7 @@ export function createLoopbackAuthorizationHandler(
           if (error) {
             settle(() => reject(new Error(`OAuth error: ${error}`)))
           } else if (code && returnedState != null && returnedState === state) {
-            settle(() => resolve({ code, state: returnedState, redirectUri }))
+            settle(() => resolve({ code, state: returnedState, redirectURI }))
           } else if (returnedState != null && returnedState !== state) {
             settle(() => reject(new Error('Loopback callback state mismatch')))
           } else {
@@ -150,8 +150,8 @@ export function createLoopbackAuthorizationHandler(
             return
           }
 
-          redirectUri = `http://127.0.0.1:${addr.port}${path}`
-          openBrowser(buildAuthorizationUrl(redirectUri)).catch((err: unknown) => {
+          redirectURI = `http://127.0.0.1:${addr.port}${path}`
+          openBrowser(buildAuthorizationURL(redirectURI)).catch((err: unknown) => {
             settle(() => reject(err instanceof Error ? err : new Error(String(err))))
           })
         })

@@ -56,7 +56,7 @@ describe('serveHTTP auth', () => {
       auth: {
         verifier,
         resource: 'http://127.0.0.1/mcp',
-        resourceMetadataUrl: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
+        resourceMetadataURL: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
         authorizationServers: ['https://as.example'],
       },
     })
@@ -73,7 +73,7 @@ describe('serveHTTP auth', () => {
       auth: {
         verifier,
         resource: 'http://127.0.0.1/mcp',
-        resourceMetadataUrl: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
+        resourceMetadataURL: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
         authorizationServers: ['https://as.example'],
       },
     })
@@ -93,7 +93,7 @@ describe('serveHTTP auth', () => {
       auth: {
         verifier,
         resource: 'http://127.0.0.1/mcp',
-        resourceMetadataUrl: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
+        resourceMetadataURL: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
         authorizationServers: ['https://as.example'],
       },
     })

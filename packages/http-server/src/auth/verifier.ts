@@ -31,7 +31,7 @@ export class TokenVerificationError extends Error {
   }
 }
 
-export function decodeJwt(token: string): {
+export function decodeJWT(token: string): {
   header: Record<string, unknown>
   payload: Record<string, unknown>
   signingInput: Uint8Array

@@ -26,7 +26,7 @@ function concatUint8(chunks: Array<Uint8Array>): Uint8Array {
  * total is checked again on every chunk since a response can omit or lie about that header (e.g.
  * chunked transfer-encoding).
  */
-async function readCappedJson(res: Response, url: string, maxBytes: number): Promise<unknown> {
+async function readCappedJSON(res: Response, url: string, maxBytes: number): Promise<unknown> {
   const contentLength = Number(res.headers.get('content-length'))
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
     throw new Error(`OAuth response from ${url} exceeds ${maxBytes} bytes`)
@@ -68,7 +68,7 @@ async function readCappedJson(res: Response, url: string, maxBytes: number): Pro
  * message (e.g. `Token refresh HTTP 401`, `protected-resource metadata HTTP 404`) is reproduced
  * exactly by choosing `errorLabel` to match.
  */
-export async function fetchOAuthJson(
+export async function fetchOAuthJSON(
   fetch: FetchLike,
   url: string,
   opts: {
@@ -95,5 +95,5 @@ export async function fetchOAuthJson(
   if (!res.ok) {
     throw new Error(`${opts.errorLabel} HTTP ${res.status}`)
   }
-  return readCappedJson(res, url, maxBytes)
+  return readCappedJSON(res, url, maxBytes)
 }

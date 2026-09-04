@@ -7,7 +7,7 @@ import { TokenVerificationError } from '../src/auth/verifier.js'
 const issuer = 'https://as.example.com'
 const resource = 'https://mcp.example.com/mcp'
 
-function b64uJson(obj: unknown): string {
+function b64uJSON(obj: unknown): string {
   return toB64U(new TextEncoder().encode(JSON.stringify(obj)))
 }
 
@@ -30,7 +30,7 @@ async function makeToken(overrides?: {
     scope: 'read',
     ...overrides?.payload,
   }
-  const signingInput = `${b64uJson(header)}.${b64uJson(payload)}`
+  const signingInput = `${b64uJSON(header)}.${b64uJSON(payload)}`
   const sig = await crypto.subtle.sign(
     { name: 'ECDSA', hash: 'SHA-256' },
     pair.privateKey,
@@ -60,7 +60,7 @@ async function makeRS256Token(): Promise<{ token: string; jwk: JsonWebKey & { ki
     exp: Math.floor(Date.now() / 1000) + 3600,
     scope: 'read write',
   }
-  const signingInput = `${b64uJson(header)}.${b64uJson(payload)}`
+  const signingInput = `${b64uJSON(header)}.${b64uJSON(payload)}`
   const sig = await crypto.subtle.sign(
     { name: 'RSASSA-PKCS1-v1_5' },
     pair.privateKey,
@@ -71,15 +71,15 @@ async function makeRS256Token(): Promise<{ token: string; jwk: JsonWebKey & { ki
 
 test('verifies an RS256 JWT against a JWKS', async () => {
   const { token, jwk } = await makeRS256Token()
-  const fetchJwks = async (): Promise<Response> =>
+  const fetchJWKS = async (): Promise<Response> =>
     new Response(JSON.stringify({ keys: [jwk] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   const info = await verifier.verifyAccessToken(token, { resource })
   expect(info.subject).toBe('user-2')
@@ -88,15 +88,15 @@ test('verifies an RS256 JWT against a JWKS', async () => {
 
 test('verifies an ES256 JWT against a JWKS', async () => {
   const { token, jwk } = await makeToken()
-  const fetchJwks = async (): Promise<Response> =>
+  const fetchJWKS = async (): Promise<Response> =>
     new Response(JSON.stringify({ keys: [jwk] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   const info = await verifier.verifyAccessToken(token, { resource })
   expect(info.subject).toBe('user-1')
@@ -105,12 +105,12 @@ test('verifies an ES256 JWT against a JWKS', async () => {
 
 test('rejects a token for the wrong resource', async () => {
   const { token, jwk } = await makeToken()
-  const fetchJwks = async (): Promise<Response> =>
+  const fetchJWKS = async (): Promise<Response> =>
     new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   await expect(
     verifier.verifyAccessToken(token, { resource: 'https://other.test' }),
@@ -125,12 +125,12 @@ test('rejects a disallowed algorithm (alg-confusion defense)', async () => {
     new TextEncoder().encode(JSON.stringify({ alg: 'none', typ: 'JWT', kid: 'test-key' })),
   )
   const forgedToken = `${forgedHeader}.${parts[1]}.${parts[2]}`
-  const fetchJwks = async (): Promise<Response> =>
+  const fetchJWKS = async (): Promise<Response> =>
     new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   await expect(verifier.verifyAccessToken(forgedToken, { resource })).rejects.toThrow()
 })
@@ -142,24 +142,24 @@ test('rejects an HS256 algorithm claim (alg-confusion defense)', async () => {
     new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: 'test-key' })),
   )
   const forgedToken = `${forgedHeader}.${parts[1]}.${parts[2]}`
-  const fetchJwks = async (): Promise<Response> =>
+  const fetchJWKS = async (): Promise<Response> =>
     new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   await expect(verifier.verifyAccessToken(forgedToken, { resource })).rejects.toThrow()
 })
 
 test('rejects a token with no exp claim', async () => {
   const { token, jwk } = await makeToken({ payload: { exp: undefined } })
-  const fetchJwks = async (): Promise<Response> =>
+  const fetchJWKS = async (): Promise<Response> =>
     new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow(/exp/i)
 })
@@ -171,12 +171,12 @@ test('rejects a token with a wrong signature', async () => {
   const sig = parts[2]
   const corrupted = sig.slice(0, -4) + (sig.at(-4) === 'A' ? 'B' : 'A') + sig.slice(-3)
   const forgedToken = `${parts[0]}.${parts[1]}.${corrupted}`
-  const fetchJwks = async (): Promise<Response> =>
+  const fetchJWKS = async (): Promise<Response> =>
     new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   await expect(verifier.verifyAccessToken(forgedToken, { resource })).rejects.toThrow()
 })
@@ -188,14 +188,14 @@ test('a bad signature on a known kid does not force a JWKS refetch (amplificatio
   const corrupted = sig.slice(0, -4) + (sig.at(-4) === 'A' ? 'B' : 'A') + sig.slice(-3)
   const forgedToken = `${parts[0]}.${parts[1]}.${corrupted}`
   let fetchCalls = 0
-  const fetchJwks = async (): Promise<Response> => {
+  const fetchJWKS = async (): Promise<Response> => {
     fetchCalls += 1
     return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
   }
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   await expect(verifier.verifyAccessToken(forgedToken, { resource })).rejects.toThrow()
   // The `kid` matched a cached key; a bad signature against it must not trigger a forced
@@ -211,14 +211,14 @@ test('an alg mismatch on a known kid does not force a JWKS refetch (amplificatio
   // could amplify unauthenticated JWKS fetches by flipping the header `alg`.
   const { token, jwk } = await makeToken({ header: { alg: 'RS256' } })
   let fetchCalls = 0
-  const fetchJwks = async (): Promise<Response> => {
+  const fetchJWKS = async (): Promise<Response> => {
     fetchCalls += 1
     return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
   }
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow()
   expect(fetchCalls).toBe(1)
@@ -228,14 +228,14 @@ test('a JWK carrying alg RS256 is rejected against an ES256 JWT header (matching
   const { token, jwk } = await makeToken()
   const jwkWithAlg = { ...jwk, alg: 'RS256' }
   let fetchCalls = 0
-  const fetchJwks = async (): Promise<Response> => {
+  const fetchJWKS = async (): Promise<Response> => {
     fetchCalls += 1
     return new Response(JSON.stringify({ keys: [jwkWithAlg] }), { status: 200 })
   }
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow()
   expect(fetchCalls).toBe(1)
@@ -272,11 +272,11 @@ test('discovery rejects a non-loopback http jwks_uri returned by AS metadata', a
 
 test('RFC 8414 discovery inserts the well-known segment before a path-bearing issuer', async () => {
   const pathIssuer = 'https://as.example.com/tenant1'
-  const metadataUrl = 'https://as.example.com/.well-known/oauth-authorization-server/tenant1'
-  let fetchedMetadataUrl: string | undefined
+  const metadataURL = 'https://as.example.com/.well-known/oauth-authorization-server/tenant1'
+  let fetchedMetadataURL: string | undefined
   const fetchFn = async (url: string): Promise<Response> => {
-    if (url === metadataUrl) {
-      fetchedMetadataUrl = url
+    if (url === metadataURL) {
+      fetchedMetadataURL = url
       return new Response(JSON.stringify({ issuer: pathIssuer, jwks_uri: `${pathIssuer}/jwks` }), {
         status: 200,
       })
@@ -287,21 +287,21 @@ test('RFC 8414 discovery inserts the well-known segment before a path-bearing is
   const { token } = await makeToken({ payload: { iss: pathIssuer } })
   // Verification itself fails (empty JWKS) — only the discovery URL is asserted below.
   await verifier.verifyAccessToken(token, { resource }).catch(() => {})
-  expect(fetchedMetadataUrl).toBe(metadataUrl)
+  expect(fetchedMetadataURL).toBe(metadataURL)
 })
 
 test('H4: two different unknown kids within the cooldown window force at most one extra JWKS refresh', async () => {
   const { token: knownToken, jwk } = await makeToken()
   let fetchCalls = 0
-  const fetchJwks = async (): Promise<Response> => {
+  const fetchJWKS = async (): Promise<Response> => {
     fetchCalls += 1
     return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
   }
   const nowValue = Math.floor(Date.now() / 1000)
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
     now: () => nowValue,
     minRefreshIntervalSeconds: 30,
   })
@@ -339,7 +339,7 @@ test('H5: the JWKS metadata and keys fetches are made with redirect: "error" (SS
 
 test('J3: an oversized JWKS response is rejected before being fully buffered', async () => {
   const { token, jwk } = await makeToken()
-  const fetchJwks = async (): Promise<Response> =>
+  const fetchJWKS = async (): Promise<Response> =>
     // No `Content-Length` header: forces the streamed-byte-count path (rather than the
     // content-length fast path) to be what catches the oversized body.
     new Response(JSON.stringify({ keys: [jwk], padding: 'x'.repeat(2_000_000) }), {
@@ -348,8 +348,8 @@ test('J3: an oversized JWKS response is rejected before being fully buffered', a
     })
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow(/exceeds/i)
 })
@@ -358,16 +358,16 @@ test('J5: a structurally malformed JWK (matching kid) rejects as invalid_token, 
   const { token, jwk } = await makeToken()
   // Corrupt the EC public point so `crypto.subtle.importKey`/`verify` throws instead of
   // returning false.
-  const malformedJwk = { ...jwk, x: 'not-valid-base64url-coordinate-data', y: undefined }
+  const malformedJWK = { ...jwk, x: 'not-valid-base64url-coordinate-data', y: undefined }
   let fetchCalls = 0
-  const fetchJwks = async (): Promise<Response> => {
+  const fetchJWKS = async (): Promise<Response> => {
     fetchCalls += 1
-    return new Response(JSON.stringify({ keys: [malformedJwk] }), { status: 200 })
+    return new Response(JSON.stringify({ keys: [malformedJWK] }), { status: 200 })
   }
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   let caught: unknown
   try {
@@ -388,14 +388,14 @@ test('an unknown kid still forces exactly one JWKS refresh and retry', async () 
   // exactly one forced refresh for the not-found kid, and no more.
   const { token, jwk } = await makeToken({ header: { kid: 'nonexistent-kid' } })
   let fetchCalls = 0
-  const fetchJwks = async (): Promise<Response> => {
+  const fetchJWKS = async (): Promise<Response> => {
     fetchCalls += 1
     return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
   }
   const verifier = createJWKSVerifier({
     issuer,
-    jwksUri: `${issuer}/jwks`,
-    fetch: fetchJwks as never,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
   })
   await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow()
   expect(fetchCalls).toBe(2)

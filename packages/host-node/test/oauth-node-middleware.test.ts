@@ -4,7 +4,7 @@ import { expect, test } from 'vitest'
 import { createNodeOAuthMiddleware } from '../src/oauth/node-middleware.js'
 
 test('returns a FetchMiddleware that composes into a callable fetch-like function', () => {
-  const middleware = createNodeOAuthMiddleware({ clientId: 'c' })
+  const middleware = createNodeOAuthMiddleware({ clientID: 'c' })
   expect(typeof middleware).toBe('function')
 
   const next = async () => new Response('ok', { status: 200 })
@@ -24,7 +24,7 @@ test('wires a pre-seeded store into the middleware without invoking the handler'
   }
 
   const middleware = createNodeOAuthMiddleware({
-    clientId: 'c',
+    clientID: 'c',
     resource,
     store,
     handler,
@@ -45,7 +45,7 @@ test('wires a pre-seeded store into the middleware without invoking the handler'
 
 test('tokensPath produces a file-backed store', async () => {
   const middleware = createNodeOAuthMiddleware({
-    clientId: 'c',
+    clientID: 'c',
     tokensPath: '/tmp/mokei-oauth-node-middleware-test-tokens.json',
   })
   expect(typeof middleware).toBe('function')

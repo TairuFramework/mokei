@@ -34,7 +34,7 @@ const SERVER_CONFIG: ServerConfig = {
 }
 
 /**
- * `resource`/`resourceMetadataUrl` are baked into the Hono app at `serveHTTP()` call time, but
+ * `resource`/`resourceMetadataURL` are baked into the Hono app at `serveHTTP()` call time, but
  * `port: 0` only resolves an actual port once the socket is listening — after the app (and its
  * auth config) already exists. Rather than a bind-then-rebind dance to learn the port first, both
  * sides simply agree on a port-less identifier for the resource; the fake-AS `fetch` shim below is
@@ -101,7 +101,7 @@ describe('OAuth client<->server interop', () => {
       auth: {
         verifier,
         resource: RESOURCE,
-        resourceMetadataUrl: RESOURCE_METADATA_URL,
+        resourceMetadataURL: RESOURCE_METADATA_URL,
         authorizationServers: [AS_ISSUER],
       },
     })
@@ -109,12 +109,12 @@ describe('OAuth client<->server interop', () => {
 
     let authorizeCalls = 0
     const handler: AuthorizationHandler = {
-      async authorize({ buildAuthorizationUrl, state }) {
+      async authorize({ buildAuthorizationURL, state }) {
         authorizeCalls += 1
-        const url = new URL(buildAuthorizationUrl('http://127.0.0.1:1/cb'))
+        const url = new URL(buildAuthorizationURL('http://127.0.0.1:1/cb'))
         expect(url.searchParams.get('resource')).toBe(RESOURCE)
         expect(url.searchParams.get('state')).toBe(state)
-        return { code: 'e2e-code', state, redirectUri: 'http://127.0.0.1:1/cb' }
+        return { code: 'e2e-code', state, redirectURI: 'http://127.0.0.1:1/cb' }
       },
     }
 
@@ -147,7 +147,7 @@ describe('OAuth client<->server interop', () => {
     transport = new HTTPTransport({
       url: RESOURCE,
       fetchMiddleware: createOAuthMiddleware({
-        clientId: 'e2e-client',
+        clientID: 'e2e-client',
         resource: RESOURCE,
         handler,
         store: createMemoryTokenStore(),

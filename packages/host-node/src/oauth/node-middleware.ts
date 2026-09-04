@@ -9,7 +9,7 @@ import { createFileTokenStore } from './file-store.js'
 import { createLoopbackAuthorizationHandler } from './loopback.js'
 
 export type NodeOAuthOptions = {
-  clientId: string
+  clientID: string
   scopes?: Array<string>
   resource?: string
   /** File path for the persistent token store. Omit to keep tokens in-memory only. */
@@ -33,7 +33,7 @@ export function createNodeOAuthMiddleware(options: NodeOAuthOptions): FetchMiddl
     options.store ?? (options.tokensPath ? createFileTokenStore(options.tokensPath) : undefined)
 
   return createOAuthMiddleware({
-    clientId: options.clientId,
+    clientID: options.clientID,
     scopes: options.scopes,
     resource: options.resource,
     handler,

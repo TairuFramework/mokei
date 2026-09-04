@@ -26,11 +26,11 @@ test('two concurrent 401s dedupe to a single authorize/token-exchange, both requ
   const store = createMemoryTokenStore()
   let authorizeCalls = 0
   const handler: AuthorizationHandler = {
-    async authorize({ buildAuthorizationUrl, state }) {
+    async authorize({ buildAuthorizationURL, state }) {
       authorizeCalls += 1
-      const redirectUri = 'http://127.0.0.1:5555/cb'
-      buildAuthorizationUrl(redirectUri)
-      return { code: 'auth-code', state, redirectUri }
+      const redirectURI = 'http://127.0.0.1:5555/cb'
+      buildAuthorizationURL(redirectURI)
+      return { code: 'auth-code', state, redirectURI }
     },
   }
 
@@ -54,7 +54,7 @@ test('two concurrent 401s dedupe to a single authorize/token-exchange, both requ
     return unauthorized()
   }
 
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store })
   const [resA, resB] = await Promise.all([
     mw(next)(resource, { method: 'POST', body: '{}' }),
     mw(next)(resource, { method: 'POST', body: '{}' }),
@@ -79,11 +79,11 @@ test('a rejected pre-emptive-refresh leader does not hard-fail a concurrent 401 
 
   let authorizeCalls = 0
   const handler: AuthorizationHandler = {
-    async authorize({ buildAuthorizationUrl, state }) {
+    async authorize({ buildAuthorizationURL, state }) {
       authorizeCalls += 1
-      const redirectUri = 'http://127.0.0.1:5555/cb'
-      buildAuthorizationUrl(redirectUri)
-      return { code: 'auth-code', state, redirectUri }
+      const redirectURI = 'http://127.0.0.1:5555/cb'
+      buildAuthorizationURL(redirectURI)
+      return { code: 'auth-code', state, redirectURI }
     },
   }
 
@@ -113,7 +113,7 @@ test('a rejected pre-emptive-refresh leader does not hard-fail a concurrent 401 
     return unauthorized()
   }
 
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 999 })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 999 })
 
   // Two concurrent callers share the near-expiry token: both may attempt a pre-emptive refresh
   // (which always fails), and both must still converge on exactly one recovery authorize instead
@@ -140,19 +140,19 @@ test('two createOAuthMiddleware instances never share a single-flight lock', asy
   let authorizeCallsB = 0
 
   const handlerA: AuthorizationHandler = {
-    async authorize({ buildAuthorizationUrl, state }) {
+    async authorize({ buildAuthorizationURL, state }) {
       authorizeCallsA += 1
-      const redirectUri = 'http://127.0.0.1:5555/cb'
-      buildAuthorizationUrl(redirectUri)
-      return { code: 'code-a', state, redirectUri }
+      const redirectURI = 'http://127.0.0.1:5555/cb'
+      buildAuthorizationURL(redirectURI)
+      return { code: 'code-a', state, redirectURI }
     },
   }
   const handlerB: AuthorizationHandler = {
-    async authorize({ buildAuthorizationUrl, state }) {
+    async authorize({ buildAuthorizationURL, state }) {
       authorizeCallsB += 1
-      const redirectUri = 'http://127.0.0.1:5555/cb'
-      buildAuthorizationUrl(redirectUri)
-      return { code: 'code-b', state, redirectUri }
+      const redirectURI = 'http://127.0.0.1:5555/cb'
+      buildAuthorizationURL(redirectURI)
+      return { code: 'code-b', state, redirectURI }
     },
   }
 
@@ -181,13 +181,13 @@ test('two createOAuthMiddleware instances never share a single-flight lock', asy
   }
 
   const mwA = createOAuthMiddleware({
-    clientId: 'client-a',
+    clientID: 'client-a',
     resource,
     handler: handlerA,
     store: storeA,
   })
   const mwB = createOAuthMiddleware({
-    clientId: 'client-b',
+    clientID: 'client-b',
     resource,
     handler: handlerB,
     store: storeB,

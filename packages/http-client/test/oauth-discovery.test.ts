@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { discover, parseResourceMetadataUrl } from '../src/oauth/discovery.js'
+import { discover, parseResourceMetadataURL } from '../src/oauth/discovery.js'
 
 const resource = 'https://mcp.example.com/mcp'
 
@@ -14,7 +14,7 @@ function json(body: unknown): Response {
 test('parses resource_metadata from WWW-Authenticate', () => {
   const header =
     'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"'
-  expect(parseResourceMetadataUrl(header)).toBe(
+  expect(parseResourceMetadataURL(header)).toBe(
     'https://mcp.example.com/.well-known/oauth-protected-resource/mcp',
   )
 })
@@ -45,7 +45,7 @@ test('rejects PRM whose resource does not match', async () => {
   await expect(
     discover({
       resource,
-      resourceMetadataUrl: 'https://mcp.example.com/.well-known/oauth-protected-resource/mcp',
+      resourceMetadataURL: 'https://mcp.example.com/.well-known/oauth-protected-resource/mcp',
       fetch,
     }),
   ).rejects.toThrow(/resource/i)
@@ -58,7 +58,7 @@ test('rejects a loopback-http resource_metadata challenge when the resource itse
   await expect(
     discover({
       resource,
-      resourceMetadataUrl: 'http://localhost:9200/x',
+      resourceMetadataURL: 'http://localhost:9200/x',
       fetch,
     }),
   ).rejects.toThrow(/https/i)
@@ -152,12 +152,12 @@ test('J1: an already-aborted signal is passed through to the metadata fetch and 
 
 test('RFC 8414 discovery inserts the well-known segment before a path-bearing issuer', async () => {
   const pathIssuer = 'https://as.example/tenant1'
-  let fetchedAsUrl: string | undefined
+  let fetchedAsURL: string | undefined
   const fetch = async (url: string): Promise<Response> => {
     if (url.includes('oauth-protected-resource')) {
       return json({ resource, authorization_servers: [pathIssuer] })
     }
-    fetchedAsUrl = url
+    fetchedAsURL = url
     return json({
       issuer: pathIssuer,
       authorization_endpoint: `${pathIssuer}/authorize`,
@@ -166,5 +166,5 @@ test('RFC 8414 discovery inserts the well-known segment before a path-bearing is
     })
   }
   await discover({ resource, fetch })
-  expect(fetchedAsUrl).toBe('https://as.example/.well-known/oauth-authorization-server/tenant1')
+  expect(fetchedAsURL).toBe('https://as.example/.well-known/oauth-authorization-server/tenant1')
 })

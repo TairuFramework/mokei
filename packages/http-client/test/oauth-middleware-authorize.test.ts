@@ -16,15 +16,15 @@ test('runs full authorize on 401 then retries with the new token', async () => {
   const store = createMemoryTokenStore()
   let capturedState = ''
   const handler: AuthorizationHandler = {
-    async authorize({ buildAuthorizationUrl, state }) {
+    async authorize({ buildAuthorizationURL, state }) {
       capturedState = state
-      const url = new URL(buildAuthorizationUrl('http://127.0.0.1:5555/cb'))
+      const url = new URL(buildAuthorizationURL('http://127.0.0.1:5555/cb'))
       // assert the core stamped the required params
       expect(url.searchParams.get('response_type')).toBe('code')
       expect(url.searchParams.get('code_challenge_method')).toBe('S256')
       expect(url.searchParams.get('resource')).toBe(resource)
       expect(url.searchParams.get('state')).toBe(state)
-      return { code: 'auth-code', state, redirectUri: 'http://127.0.0.1:5555/cb' }
+      return { code: 'auth-code', state, redirectURI: 'http://127.0.0.1:5555/cb' }
     },
   }
 
@@ -55,7 +55,7 @@ test('runs full authorize on 401 then retries with the new token', async () => {
     })
   }
 
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store })
   const res = await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(res.status).toBe(200)
   expect(capturedState).not.toBe('')
@@ -66,10 +66,10 @@ test('runs full authorize on 401 then retries with the new token', async () => {
 test('with no store in config, a default in-memory store retains the token across requests', async () => {
   let authorizeCalls = 0
   const handler: AuthorizationHandler = {
-    async authorize({ buildAuthorizationUrl, state }) {
+    async authorize({ buildAuthorizationURL, state }) {
       authorizeCalls += 1
-      buildAuthorizationUrl('http://127.0.0.1:5555/cb')
-      return { code: 'auth-code', state, redirectUri: 'http://127.0.0.1:5555/cb' }
+      buildAuthorizationURL('http://127.0.0.1:5555/cb')
+      return { code: 'auth-code', state, redirectURI: 'http://127.0.0.1:5555/cb' }
     },
   }
 
@@ -101,7 +101,7 @@ test('with no store in config, a default in-memory store retains the token acros
 
   // No `store` in config: the middleware must create a default in-memory store once, at
   // construction, and reuse it across every request from this middleware instance.
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler })
   const fetch = mw(next)
 
   const first = await fetch(resource, { method: 'POST', body: '{}' })
@@ -130,7 +130,7 @@ test('refuses to attach a bearer token over cleartext non-loopback HTTP', async 
     called = true
     return json({ ok: true })
   }
-  const mw = createOAuthMiddleware({ clientId: 'c', handler, store })
+  const mw = createOAuthMiddleware({ clientID: 'c', handler, store })
   await expect(mw(next)('http://evil.example/mcp', { method: 'POST' })).rejects.toThrow(
     /https|loopback/i,
   )
@@ -145,7 +145,7 @@ test('proceeds normally for an https transport URL', async () => {
     },
   }
   const next = async (): Promise<Response> => json({ ok: true })
-  const mw = createOAuthMiddleware({ clientId: 'c', handler, store })
+  const mw = createOAuthMiddleware({ clientID: 'c', handler, store })
   const res = await mw(next)('https://api.example/mcp', { method: 'POST' })
   expect(res.status).toBe(200)
 })
@@ -158,7 +158,7 @@ test('proceeds normally for a loopback http transport URL', async () => {
     },
   }
   const next = async (): Promise<Response> => json({ ok: true })
-  const mw = createOAuthMiddleware({ clientId: 'c', handler, store })
+  const mw = createOAuthMiddleware({ clientID: 'c', handler, store })
   const res = await mw(next)('http://localhost:3000/mcp', { method: 'POST' })
   expect(res.status).toBe(200)
 })
@@ -170,9 +170,9 @@ test('J1: init.signal is threaded through to config.handler.authorize', async ()
   const store = createMemoryTokenStore()
   let receivedSignal: AbortSignal | undefined
   const handler: AuthorizationHandler = {
-    async authorize({ buildAuthorizationUrl, signal }): Promise<never> {
+    async authorize({ buildAuthorizationURL, signal }): Promise<never> {
       receivedSignal = signal
-      buildAuthorizationUrl('http://127.0.0.1:5555/cb')
+      buildAuthorizationURL('http://127.0.0.1:5555/cb')
       throw new Error('abort observed by handler')
     },
   }
@@ -193,7 +193,7 @@ test('J1: init.signal is threaded through to config.handler.authorize', async ()
       },
     })
   }
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store })
   const controller = new AbortController()
   controller.abort()
   await expect(
@@ -206,9 +206,9 @@ test('J1: init.signal is threaded through to config.handler.authorize', async ()
 test('rejects a state mismatch from the handler', async () => {
   const store = createMemoryTokenStore()
   const handler: AuthorizationHandler = {
-    async authorize({ buildAuthorizationUrl }) {
-      buildAuthorizationUrl('http://127.0.0.1:1/cb')
-      return { code: 'c', state: 'WRONG', redirectUri: 'http://127.0.0.1:1/cb' }
+    async authorize({ buildAuthorizationURL }) {
+      buildAuthorizationURL('http://127.0.0.1:1/cb')
+      return { code: 'c', state: 'WRONG', redirectURI: 'http://127.0.0.1:1/cb' }
     },
   }
   const next = async (url: string): Promise<Response> => {
@@ -228,6 +228,6 @@ test('rejects a state mismatch from the handler', async () => {
       },
     })
   }
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store })
   await expect(mw(next)(resource, { method: 'POST', body: '{}' })).rejects.toThrow(/state/i)
 })

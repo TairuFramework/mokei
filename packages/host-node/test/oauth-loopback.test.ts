@@ -5,8 +5,8 @@ import { browserOpenCommand, createLoopbackAuthorizationHandler } from '../src/o
 test('captures code+state from the loopback redirect', async () => {
   const handler = createLoopbackAuthorizationHandler({
     // Instead of opening a real browser, immediately GET the redirect URI with a fake code.
-    openBrowser: async (authUrl) => {
-      const url = new URL(authUrl)
+    openBrowser: async (authURL) => {
+      const url = new URL(authURL)
       const redirect = new URL(url.searchParams.get('redirect_uri') as string)
       redirect.searchParams.set('code', 'the-code')
       redirect.searchParams.set('state', url.searchParams.get('state') as string)
@@ -17,22 +17,22 @@ test('captures code+state from the loopback redirect', async () => {
   const state = 'st-123'
   const result = await handler.authorize({
     state,
-    buildAuthorizationUrl: (redirectUri) => {
+    buildAuthorizationURL: (redirectURI) => {
       const u = new URL('https://as.example.com/authorize')
-      u.searchParams.set('redirect_uri', redirectUri)
+      u.searchParams.set('redirect_uri', redirectURI)
       u.searchParams.set('state', state)
       return u.toString()
     },
   })
   expect(result.code).toBe('the-code')
   expect(result.state).toBe(state)
-  expect(result.redirectUri).toMatch(/^http:\/\/127\.0\.0\.1:\d+\//)
+  expect(result.redirectURI).toMatch(/^http:\/\/127\.0\.0\.1:\d+\//)
 })
 
 test('rejects on OAuth error response', async () => {
   const handler = createLoopbackAuthorizationHandler({
-    openBrowser: async (authUrl) => {
-      const redirect = new URL(new URL(authUrl).searchParams.get('redirect_uri') as string)
+    openBrowser: async (authURL) => {
+      const redirect = new URL(new URL(authURL).searchParams.get('redirect_uri') as string)
       redirect.searchParams.set('error', 'access_denied')
       await fetch(redirect.toString())
     },
@@ -40,7 +40,7 @@ test('rejects on OAuth error response', async () => {
   await expect(
     handler.authorize({
       state: 's',
-      buildAuthorizationUrl: (r) =>
+      buildAuthorizationURL: (r) =>
         `https://as.example.com/authorize?redirect_uri=${encodeURIComponent(r)}`,
     }),
   ).rejects.toThrow(/access_denied/)
@@ -72,7 +72,7 @@ test('J1: an already-aborted signal rejects immediately without opening the brow
     handler.authorize({
       state: 's',
       signal: controller.signal,
-      buildAuthorizationUrl: (r) =>
+      buildAuthorizationURL: (r) =>
         `https://as.example.com/authorize?redirect_uri=${encodeURIComponent(r)}`,
     }),
   ).rejects.toThrow(/cancelled by caller/)
@@ -89,7 +89,7 @@ test('J1: a signal aborted mid-flight rejects the in-progress authorization', as
   const handler = createLoopbackAuthorizationHandler({
     openBrowser: async () => {
       // Simulate the user cancelling instead of completing the browser flow: abort once the
-      // server is listening (buildAuthorizationUrl was already called to get here).
+      // server is listening (buildAuthorizationURL was already called to get here).
       controller.abort(new Error('user cancelled'))
     },
   })
@@ -97,7 +97,7 @@ test('J1: a signal aborted mid-flight rejects the in-progress authorization', as
     handler.authorize({
       state: 's',
       signal: controller.signal,
-      buildAuthorizationUrl: (r) =>
+      buildAuthorizationURL: (r) =>
         `https://as.example.com/authorize?redirect_uri=${encodeURIComponent(r)}`,
     }),
   ).rejects.toThrow(/user cancelled/)

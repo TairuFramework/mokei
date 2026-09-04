@@ -1,7 +1,7 @@
 import {
   type AuthInfo,
   assertStandardClaims,
-  decodeJwt,
+  decodeJWT,
   type OAuthTokenVerifier,
   scopesFromClaim,
   TokenVerificationError,
@@ -42,10 +42,10 @@ const DEFAULT_MAX_RESPONSE_BYTES = 1_000_000
 type Jwk = JsonWebKey & { kid?: string }
 
 export type JWKSVerifierConfig = {
-  /** Expected token issuer. Also used for RFC 8414 discovery when `jwksUri` is not set. */
+  /** Expected token issuer. Also used for RFC 8414 discovery when `jwksURI` is not set. */
   issuer: string
   /** JWKS endpoint URI. When omitted, discovered via RFC 8414 metadata on `issuer`. */
-  jwksUri?: string
+  jwksURI?: string
   /** Injectable fetch, defaults to `globalThis.fetch`. */
   fetch?: FetchLike
   /** Clock-skew tolerance for `exp`/`nbf` checks, in seconds. Defaults to 30. */
@@ -60,7 +60,7 @@ export type JWKSVerifierConfig = {
   maxResponseBytes?: number
 }
 
-type CachedJwks = {
+type CachedJWKS = {
   keys: Array<Jwk>
   fetchedAt: number
   ttlSeconds: number
@@ -75,7 +75,7 @@ function isLoopbackHost(hostname: string): boolean {
 }
 
 /** Requires `url` to be https, allowing http only for a loopback host. */
-function requireHttps(url: string): void {
+function requireHTTPS(url: string): void {
   const u = new URL(url)
   if (u.protocol === 'https:') return
   if (u.protocol === 'http:' && isLoopbackHost(u.hostname)) return
@@ -153,7 +153,7 @@ async function readCappedText(res: Response, url: string, maxBytes: number): Pro
  * only catch `TokenVerificationError` for verification failures should never see an unrelated
  * parse error type. The byte cap runs before parsing, so an oversized body is never buffered.
  */
-async function parseJsonResponse(res: Response, url: string, maxBytes: number): Promise<unknown> {
+async function parseJSONResponse(res: Response, url: string, maxBytes: number): Promise<unknown> {
   const text = await readCappedText(res, url, maxBytes)
   try {
     return JSON.parse(text)
@@ -180,27 +180,27 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
   const fetchTimeoutMs = config.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS
   const maxResponseBytes = config.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES
 
-  let cache: CachedJwks | undefined
-  let inflight: Promise<CachedJwks> | undefined
-  let resolvedJwksUri: string | undefined
+  let cache: CachedJWKS | undefined
+  let inflight: Promise<CachedJWKS> | undefined
+  let resolvedJWKSURI: string | undefined
   let lastForcedRefreshAt = 0
 
-  async function discoverJwksUri(): Promise<string> {
-    if (config.jwksUri != null) return config.jwksUri
-    if (resolvedJwksUri != null) return resolvedJwksUri
-    const metadataUrl = wellKnownAS(config.issuer)
-    requireHttps(metadataUrl)
-    const res = await fetchFn(metadataUrl, {
+  async function discoverJWKSURI(): Promise<string> {
+    if (config.jwksURI != null) return config.jwksURI
+    if (resolvedJWKSURI != null) return resolvedJWKSURI
+    const metadataURL = wellKnownAS(config.issuer)
+    requireHTTPS(metadataURL)
+    const res = await fetchFn(metadataURL, {
       redirect: 'error',
       signal: AbortSignal.timeout(fetchTimeoutMs),
     })
     if (!res.ok) {
       throw new TokenVerificationError(
         'invalid_token',
-        `failed to discover JWKS URI from ${metadataUrl}: HTTP ${res.status}`,
+        `failed to discover JWKS URI from ${metadataURL}: HTTP ${res.status}`,
       )
     }
-    const metadata = (await parseJsonResponse(res, metadataUrl, maxResponseBytes)) as {
+    const metadata = (await parseJSONResponse(res, metadataURL, maxResponseBytes)) as {
       issuer?: unknown
       jwks_uri?: unknown
     }
@@ -210,16 +210,16 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     if (typeof metadata.jwks_uri !== 'string' || metadata.jwks_uri.length === 0) {
       throw new TokenVerificationError(
         'invalid_token',
-        `authorization server metadata at ${metadataUrl} is missing jwks_uri`,
+        `authorization server metadata at ${metadataURL} is missing jwks_uri`,
       )
     }
-    resolvedJwksUri = metadata.jwks_uri
-    return resolvedJwksUri
+    resolvedJWKSURI = metadata.jwks_uri
+    return resolvedJWKSURI
   }
 
-  async function fetchJwks(): Promise<CachedJwks> {
-    const uri = await discoverJwksUri()
-    requireHttps(uri)
+  async function fetchJWKS(): Promise<CachedJWKS> {
+    const uri = await discoverJWKSURI()
+    requireHTTPS(uri)
     const res = await fetchFn(uri, {
       redirect: 'error',
       signal: AbortSignal.timeout(fetchTimeoutMs),
@@ -230,7 +230,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
         `failed to fetch JWKS from ${uri}: HTTP ${res.status}`,
       )
     }
-    const body = (await parseJsonResponse(res, uri, maxResponseBytes)) as { keys?: unknown }
+    const body = (await parseJSONResponse(res, uri, maxResponseBytes)) as { keys?: unknown }
     if (!Array.isArray(body.keys)) {
       throw new TokenVerificationError('invalid_token', 'JWKS response is missing a keys array')
     }
@@ -254,7 +254,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
    * always allowed too — only a second forced refresh within the same window is suppressed,
    * returning the (still-)cached JWKS instead of refetching.
    */
-  async function getJwks(forceRefresh: boolean): Promise<CachedJwks> {
+  async function getJWKS(forceRefresh: boolean): Promise<CachedJWKS> {
     if (!forceRefresh && cache != null && now() - cache.fetchedAt < cache.ttlSeconds) {
       return cache
     }
@@ -263,7 +263,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     }
     if (inflight != null) return inflight
     if (forceRefresh) lastForcedRefreshAt = now()
-    const promise = fetchJwks()
+    const promise = fetchJWKS()
       .then((fetched) => {
         cache = fetched
         return fetched
@@ -275,7 +275,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     return promise
   }
 
-  function selectJwk(keys: Array<Jwk>, kid: unknown): Jwk | undefined {
+  function selectJWK(keys: Array<Jwk>, kid: unknown): Jwk | undefined {
     if (typeof kid === 'string') {
       return keys.find((key) => key.kid === kid)
     }
@@ -311,8 +311,8 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     signature: Uint8Array,
     forceRefresh: boolean,
   ): Promise<{ found: boolean; verified: boolean }> {
-    const jwks = await getJwks(forceRefresh)
-    const jwk = selectJwk(jwks.keys, header.kid)
+    const jwks = await getJWKS(forceRefresh)
+    const jwk = selectJWK(jwks.keys, header.kid)
     if (jwk == null) return { found: false, verified: false }
     // The `kid` resolved to a key, so this is NOT a rotation signal: a rotated key would
     // carry a new `kid` (RFC 7517 kids are unique per key). An alg/kty mismatch on a found
@@ -331,7 +331,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     // so a crypto failure here, like a bad signature, must never trigger one.
     try {
       const key = await importVerifyKey(jwk, algParams)
-      // `decodeJwt` yields Uint8Array views over freshly allocated ArrayBuffers (never
+      // `decodeJWT` yields Uint8Array views over freshly allocated ArrayBuffers (never
       // SharedArrayBuffer); the cast below only reconciles a typed-array generics
       // mismatch between this package's `lib` setting and `@sozai/codec`'s declared
       // return type, not an actual buffer-kind narrowing.
@@ -349,7 +349,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
 
   return {
     async verifyAccessToken(token: string, ctx: { resource: string }): Promise<AuthInfo> {
-      const { header, payload, signingInput, signature } = decodeJwt(token)
+      const { header, payload, signingInput, signature } = decodeJWT(token)
 
       // Algorithm allowlist gate MUST run before any key import/lookup, to prevent
       // algorithm-confusion attacks (e.g. `alg: none` or an HMAC alg used against

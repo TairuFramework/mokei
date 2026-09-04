@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 
 import {
   assertStandardClaims,
-  decodeJwt,
+  decodeJWT,
   scopesFromClaim,
   TokenVerificationError,
 } from '../src/auth/verifier.js'
@@ -77,7 +77,7 @@ test('rejects a token whose nbf - tolerance is one second beyond now', () => {
 test('malformed base64url/JSON in the payload segment throws invalid_token, not a raw decode error', () => {
   let caught: unknown
   try {
-    decodeJwt('aaa.!!!.bbb')
+    decodeJWT('aaa.!!!.bbb')
   } catch (error) {
     caught = error
   }
@@ -91,7 +91,7 @@ test('a non-object (null) header segment throws invalid_token, not a raw TypeErr
   const signature = b64u('sig')
   let caught: unknown
   try {
-    decodeJwt(`${header}.${payload}.${signature}`)
+    decodeJWT(`${header}.${payload}.${signature}`)
   } catch (error) {
     caught = error
   }
@@ -105,7 +105,7 @@ test('a non-object (array) payload segment throws invalid_token, not a raw TypeE
   const signature = b64u('sig')
   let caught: unknown
   try {
-    decodeJwt(`${header}.${payload}.${signature}`)
+    decodeJWT(`${header}.${payload}.${signature}`)
   } catch (error) {
     caught = error
   }

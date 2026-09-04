@@ -1,27 +1,27 @@
 import { toB64U } from '@sozai/codec'
 
 import type { FetchLike, FetchMiddleware } from '../transport.js'
-import { discover, parseResourceMetadataUrl } from './discovery.js'
-import { fetchOAuthJson } from './fetch.js'
+import { discover, parseResourceMetadataURL } from './discovery.js'
+import { fetchOAuthJSON } from './fetch.js'
 import { createPKCE } from './pkce.js'
 import { canonicalResource } from './resource.js'
 import type { StoredTokens, TokenStore } from './store.js'
 import { createMemoryTokenStore } from './store.js'
 
 /** Completes the authorization-code exchange for a resource: the core owns all authorization-URL
- * params and the PKCE/state bookkeeping; the handler only supplies (and returns) `redirectUri`. */
+ * params and the PKCE/state bookkeeping; the handler only supplies (and returns) `redirectURI`. */
 export type AuthorizationHandler = {
   authorize(params: {
-    buildAuthorizationUrl(redirectUri: string): string
+    buildAuthorizationURL(redirectURI: string): string
     state: string
     /** Aborts the interactive flow when the originating request is aborted. Additive and
      * optional: a handler that ignores it behaves exactly as before. */
     signal?: AbortSignal
-  }): Promise<{ code: string; state: string; redirectUri: string }>
+  }): Promise<{ code: string; state: string; redirectURI: string }>
 }
 
 export type OAuthClientConfig = {
-  clientId: string
+  clientID: string
   scopes?: Array<string>
   resource?: string
   handler: AuthorizationHandler
@@ -76,23 +76,24 @@ export function parseTokenResponse(raw: unknown): {
   }
 }
 
-/**
- * Exchange a refresh token for a new access token via `grant_type=refresh_token`.
- *
- * Uses the caller-supplied unwrapped `fetch` (never the OAuth middleware itself) so a refresh
- * can never re-enter this middleware and loop.
- */
-export async function exchangeRefresh(
-  fetchUnwrapped: FetchLike,
-  tokenEndpoint: string,
-  params: { clientId: string; resource?: string; refreshToken: string; scopes?: Array<string> },
-  now: () => number,
-  signal?: AbortSignal,
-): Promise<StoredTokens> {
+export type ExchangeRefreshParams = {
+  /** Unwrapped `fetch` (never the OAuth middleware itself) so a refresh cannot re-enter and loop. */
+  fetchUnwrapped: FetchLike
+  tokenEndpoint: string
+  clientID: string
+  resource?: string
+  refreshToken: string
+  scopes?: Array<string>
+  now: () => number
+  signal?: AbortSignal
+}
+
+/** Exchange a refresh token for a new access token via `grant_type=refresh_token`. */
+export async function exchangeRefresh(params: ExchangeRefreshParams): Promise<StoredTokens> {
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: params.refreshToken,
-    client_id: params.clientId,
+    client_id: params.clientID,
   })
   if (params.resource != null) {
     body.set('resource', params.resource)
@@ -100,11 +101,11 @@ export async function exchangeRefresh(
   if (params.scopes != null && params.scopes.length > 0) {
     body.set('scope', params.scopes.join(' '))
   }
-  const json = await fetchOAuthJson(fetchUnwrapped, tokenEndpoint, {
+  const json = await fetchOAuthJSON(params.fetchUnwrapped, params.tokenEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
-    signal,
+    signal: params.signal,
     errorLabel: 'Token refresh',
   })
   const data = parseTokenResponse(json)
@@ -115,7 +116,7 @@ export async function exchangeRefresh(
     accessToken: data.access_token,
     tokenType: data.token_type,
     refreshToken: data.refresh_token ?? params.refreshToken,
-    expiresAt: data.expires_in == null ? undefined : now() + data.expires_in,
+    expiresAt: data.expires_in == null ? undefined : params.now() + data.expires_in,
     scope: data.scope,
   }
 }
@@ -140,32 +141,35 @@ function isLoopbackHost(hostname: string): boolean {
  * `as.token_endpoint` using the caller-supplied unwrapped `fetch` — never the OAuth middleware
  * itself, so this can never re-enter the middleware and loop.
  */
+type ExchangeAuthorizationCodeParams = {
+  /** Unwrapped `fetch` (never the OAuth middleware itself) so this cannot re-enter and loop. */
+  fetchUnwrapped: FetchLike
+  tokenEndpoint: string
+  clientID: string
+  resource: string
+  code: string
+  redirectURI: string
+  codeVerifier: string
+  now: () => number
+  signal?: AbortSignal
+}
+
 async function exchangeAuthorizationCode(
-  fetchUnwrapped: FetchLike,
-  tokenEndpoint: string,
-  params: {
-    clientId: string
-    resource: string
-    code: string
-    redirectUri: string
-    codeVerifier: string
-  },
-  now: () => number,
-  signal?: AbortSignal,
+  params: ExchangeAuthorizationCodeParams,
 ): Promise<StoredTokens> {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code: params.code,
-    redirect_uri: params.redirectUri,
-    client_id: params.clientId,
+    redirect_uri: params.redirectURI,
+    client_id: params.clientID,
     code_verifier: params.codeVerifier,
     resource: params.resource,
   })
-  const json = await fetchOAuthJson(fetchUnwrapped, tokenEndpoint, {
+  const json = await fetchOAuthJSON(params.fetchUnwrapped, params.tokenEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
-    signal,
+    signal: params.signal,
     errorLabel: 'Token exchange',
   })
   const data = parseTokenResponse(json)
@@ -176,7 +180,7 @@ async function exchangeAuthorizationCode(
     accessToken: data.access_token,
     tokenType: data.token_type,
     refreshToken: data.refresh_token,
-    expiresAt: data.expires_in == null ? undefined : now() + data.expires_in,
+    expiresAt: data.expires_in == null ? undefined : params.now() + data.expires_in,
     scope: data.scope,
   }
 }
@@ -202,10 +206,10 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
   // store would be empty on every call and never actually retain a token.
   const store = config.store ?? createMemoryTokenStore()
 
-  // Per-instance, not module-level: two `createOAuthMiddleware` calls (different clientId,
+  // Per-instance, not module-level: two `createOAuthMiddleware` calls (different clientID,
   // handler, or store — e.g. one per host context) must never share a flight even when their
   // canonical resource strings coincide, since a shared flight would let instance A's config
-  // (clientId/PKCE/handler) decide instance B's outcome, and B's own `store.set` — closing over
+  // (clientID/PKCE/handler) decide instance B's outcome, and B's own `store.set` — closing over
   // B's own store — would never run.
   //
   // J4 (deferred, tracked follow-up, not fixed here): being per-instance also means two
@@ -273,10 +277,10 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
     wwwAuthenticate: string | null,
     signal?: AbortSignal,
   ): Promise<StoredTokens> {
-    const resourceMetadataUrl = parseResourceMetadataUrl(wwwAuthenticate) ?? undefined
+    const resourceMetadataURL = parseResourceMetadataURL(wwwAuthenticate) ?? undefined
     const { as } = await discover({
       resource,
-      resourceMetadataUrl,
+      resourceMetadataURL,
       fetch: next,
       selectAuthServer: config.selectAuthServer,
       signal,
@@ -285,39 +289,37 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
     const pkce = await createPKCE()
     const state = toB64U(crypto.getRandomValues(new Uint8Array(16)))
 
-    function buildAuthorizationUrl(redirectUri: string): string {
-      const authUrl = new URL(as.authorization_endpoint)
-      authUrl.searchParams.set('response_type', 'code')
-      authUrl.searchParams.set('client_id', config.clientId)
-      authUrl.searchParams.set('redirect_uri', redirectUri)
-      authUrl.searchParams.set('code_challenge', pkce.challenge)
-      authUrl.searchParams.set('code_challenge_method', 'S256')
-      authUrl.searchParams.set('state', state)
+    function buildAuthorizationURL(redirectURI: string): string {
+      const authURL = new URL(as.authorization_endpoint)
+      authURL.searchParams.set('response_type', 'code')
+      authURL.searchParams.set('client_id', config.clientID)
+      authURL.searchParams.set('redirect_uri', redirectURI)
+      authURL.searchParams.set('code_challenge', pkce.challenge)
+      authURL.searchParams.set('code_challenge_method', 'S256')
+      authURL.searchParams.set('state', state)
       if (config.scopes != null && config.scopes.length > 0) {
-        authUrl.searchParams.set('scope', config.scopes.join(' '))
+        authURL.searchParams.set('scope', config.scopes.join(' '))
       }
-      authUrl.searchParams.set('resource', resource)
-      return authUrl.toString()
+      authURL.searchParams.set('resource', resource)
+      return authURL.toString()
     }
 
-    const result = await config.handler.authorize({ buildAuthorizationUrl, state, signal })
+    const result = await config.handler.authorize({ buildAuthorizationURL, state, signal })
     if (result.state !== state) {
       throw new Error('OAuth authorize: state mismatch')
     }
 
-    const exchanged = await exchangeAuthorizationCode(
-      next,
-      as.token_endpoint,
-      {
-        clientId: config.clientId,
-        resource,
-        code: result.code,
-        redirectUri: result.redirectUri,
-        codeVerifier: pkce.verifier,
-      },
+    const exchanged = await exchangeAuthorizationCode({
+      fetchUnwrapped: next,
+      tokenEndpoint: as.token_endpoint,
+      clientID: config.clientID,
+      resource,
+      code: result.code,
+      redirectURI: result.redirectURI,
+      codeVerifier: pkce.verifier,
       now,
       signal,
-    )
+    })
     const tokens: StoredTokens = {
       ...exchanged,
       tokenEndpoint: as.token_endpoint,
@@ -359,18 +361,16 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
           const refreshToken = tokens.refreshToken
           const refreshIssuer = tokens.issuer
           const refreshed = await withSingleFlight(resource, store, tokens.accessToken, () =>
-            exchangeRefresh(
-              next,
-              refreshTokenEndpoint,
-              {
-                clientId: config.clientId,
-                resource,
-                refreshToken,
-                scopes: config.scopes,
-              },
+            exchangeRefresh({
+              fetchUnwrapped: next,
+              tokenEndpoint: refreshTokenEndpoint,
+              clientID: config.clientID,
+              resource,
+              refreshToken,
+              scopes: config.scopes,
               now,
               signal,
-            ).then(async (r) => {
+            }).then(async (r) => {
               const merged = { ...r, tokenEndpoint: refreshTokenEndpoint, issuer: refreshIssuer }
               await store.set(resource, merged)
               return merged
@@ -407,18 +407,16 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         const refreshIssuer = tokens.issuer
         try {
           const refreshed = await withSingleFlight(resource, store, tokens.accessToken, () =>
-            exchangeRefresh(
-              next,
-              refreshTokenEndpoint,
-              {
-                clientId: config.clientId,
-                resource,
-                refreshToken,
-                scopes: config.scopes,
-              },
+            exchangeRefresh({
+              fetchUnwrapped: next,
+              tokenEndpoint: refreshTokenEndpoint,
+              clientID: config.clientID,
+              resource,
+              refreshToken,
+              scopes: config.scopes,
               now,
               signal,
-            ).then(async (r) => {
+            }).then(async (r) => {
               const merged = { ...r, tokenEndpoint: refreshTokenEndpoint, issuer: refreshIssuer }
               await store.set(resource, merged)
               return merged

@@ -5,11 +5,11 @@ export type BearerAuthOptions = {
   verifier: OAuthTokenVerifier
   resource: string
   requiredScopes?: Array<string>
-  resourceMetadataUrl: string
+  resourceMetadataURL: string
 }
 
-function challenge(metadataUrl: string, error?: string, extra?: Record<string, string>): string {
-  const parts = [`Bearer resource_metadata="${metadataUrl}"`]
+function challenge(metadataURL: string, error?: string, extra?: Record<string, string>): string {
+  const parts = [`Bearer resource_metadata="${metadataURL}"`]
   if (error) parts.push(`error="${error}"`)
   for (const [k, v] of Object.entries(extra ?? {})) parts.push(`${k}="${v}"`)
   return parts.join(', ')
@@ -22,19 +22,19 @@ function unauthorized(status: number, header: string): Response {
 export function createBearerAuthGate(
   options: BearerAuthOptions,
 ): (request: Request) => Promise<{ response?: Response; authInfo?: AuthInfo }> {
-  const { verifier, resource, requiredScopes = [], resourceMetadataUrl } = options
+  const { verifier, resource, requiredScopes = [], resourceMetadataURL } = options
   return async (request) => {
     const header = request.headers.get('Authorization')
     const match = header ? /^Bearer (.+)$/i.exec(header) : null
     if (!match) {
-      return { response: unauthorized(401, challenge(resourceMetadataUrl)) }
+      return { response: unauthorized(401, challenge(resourceMetadataURL)) }
     }
     let authInfo: AuthInfo
     try {
       authInfo = await verifier.verifyAccessToken(match[1], { resource })
     } catch (err) {
       if (err instanceof TokenVerificationError) {
-        return { response: unauthorized(401, challenge(resourceMetadataUrl, 'invalid_token')) }
+        return { response: unauthorized(401, challenge(resourceMetadataURL, 'invalid_token')) }
       }
       throw err
     }
@@ -43,7 +43,7 @@ export function createBearerAuthGate(
       return {
         response: unauthorized(
           403,
-          challenge(resourceMetadataUrl, 'insufficient_scope', { scope: requiredScopes.join(' ') }),
+          challenge(resourceMetadataURL, 'insufficient_scope', { scope: requiredScopes.join(' ') }),
         ),
       }
     }

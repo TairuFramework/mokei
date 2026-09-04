@@ -25,7 +25,7 @@ function json(body: unknown): Response {
 test('attaches the stored access token as Bearer', async () => {
   const store = createMemoryTokenStore()
   await store.set(resource, { accessToken: 'tok', tokenType: 'Bearer', expiresAt: 9_999_999_999 })
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 1000 })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 1000 })
   let seenAuth: string | null = null
   const next = async (_url: string, init?: RequestInit): Promise<Response> => {
     seenAuth = new Headers(init?.headers).get('Authorization')
@@ -64,7 +64,7 @@ test('pre-emptively refreshes an access token near expiry', async () => {
       headers: { 'Content-Type': 'application/json', Authorization: '' },
     })
   }
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 999 })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 999 })
   await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(tokenCalls).toBe(1)
   expect((await store.get(resource))?.accessToken).toBe('new')
@@ -97,7 +97,7 @@ test('reads and writes the token store under the canonical resource key', async 
     return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
   // resource omitted: derived from the request URL, which carries a query the store key must not.
-  const mw = createOAuthMiddleware({ clientId: 'c', handler, store, now: () => 999 })
+  const mw = createOAuthMiddleware({ clientID: 'c', handler, store, now: () => 999 })
   await mw(next)('https://mcp.example.com/mcp?x=1', { method: 'POST', body: '{}' })
   expect((await store.get(canonicalKey))?.accessToken).toBe('new')
   expect((await store.get(canonicalKey))?.refreshToken).toBe('r2')
@@ -134,7 +134,7 @@ test('a 401 with a usable refresh token refreshes instead of calling authorize',
     if (auth === 'Bearer refreshed') return json({ ok: true })
     return new Response('unauth', { status: 401, headers: {} })
   }
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 1000 })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 1000 })
   const response = await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(response.status).toBe(200)
   expect(tokenCalls).toBe(1)
@@ -154,10 +154,10 @@ test('falls through to interactive authorize when the refresh exchange itself fa
   })
   let authorizeCalls = 0
   const authorizingHandler: AuthorizationHandler = {
-    async authorize({ buildAuthorizationUrl, state }) {
+    async authorize({ buildAuthorizationURL, state }) {
       authorizeCalls += 1
-      buildAuthorizationUrl('http://127.0.0.1:5555/cb')
-      return { code: 'auth-code', state, redirectUri: 'http://127.0.0.1:5555/cb' }
+      buildAuthorizationURL('http://127.0.0.1:5555/cb')
+      return { code: 'auth-code', state, redirectURI: 'http://127.0.0.1:5555/cb' }
     },
   }
   const next = async (url: string, init?: RequestInit): Promise<Response> => {
@@ -189,7 +189,7 @@ test('falls through to interactive authorize when the refresh exchange itself fa
     })
   }
   const mw = createOAuthMiddleware({
-    clientId: 'c',
+    clientID: 'c',
     resource,
     handler: authorizingHandler,
     store,
@@ -222,7 +222,7 @@ test('H5: the token-refresh fetch is made with redirect: "error" (SSRF/redirect 
     }
     return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 999 })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 999 })
   await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(seenRedirect).toBe('error')
 })
@@ -245,7 +245,7 @@ test('a failed pre-emptive refresh does not fail the outbound request', async ()
     seenAuth = new Headers(init?.headers).get('Authorization')
     return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 999 })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 999 })
   const response = await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(response.status).toBe(200)
   expect(seenAuth).toBe('Bearer old')
@@ -261,12 +261,13 @@ test('M1: exchangeRefresh rejects a token response missing access_token', async 
       headers: { 'Content-Type': 'application/json' },
     })
   await expect(
-    exchangeRefresh(
+    exchangeRefresh({
       fetchUnwrapped,
-      'https://as.example.com/token',
-      { clientId: 'c', refreshToken: 'r1' },
-      () => 1000,
-    ),
+      tokenEndpoint: 'https://as.example.com/token',
+      clientID: 'c',
+      refreshToken: 'r1',
+      now: () => 1000,
+    }),
   ).rejects.toThrow(/access_token/)
 })
 
@@ -277,12 +278,13 @@ test('M1: exchangeRefresh rejects a token response with a non-numeric expires_in
       headers: { 'Content-Type': 'application/json' },
     })
   await expect(
-    exchangeRefresh(
+    exchangeRefresh({
       fetchUnwrapped,
-      'https://as.example.com/token',
-      { clientId: 'c', refreshToken: 'r1' },
-      () => 1000,
-    ),
+      tokenEndpoint: 'https://as.example.com/token',
+      clientID: 'c',
+      refreshToken: 'r1',
+      now: () => 1000,
+    }),
   ).rejects.toThrow(/expires_in/)
 })
 
@@ -335,7 +337,7 @@ test('J2: the 401 response body is cancelled before the refresh retry starts', a
     })
     return new Response(body, { status: 401 })
   }
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 1000 })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 1000 })
   const response = await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(response.status).toBe(200)
   expect(cancelled).toBe(true)
@@ -364,7 +366,7 @@ test('M1: a malformed token response during pre-emptive refresh is not persisted
     seenAuth = new Headers(init?.headers).get('Authorization')
     return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
-  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 999 })
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 999 })
   const response = await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(response.status).toBe(200)
   expect(seenAuth).toBe('Bearer old')
