@@ -5,6 +5,14 @@ import { act, createElement, useEffect, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
+// `@mokei/host-node`'s barrel re-exports `daemon.js`, whose top-level `fileURLToPath(new
+// URL('./server.js', import.meta.url))` throws under the jsdom pool (`import.meta.url` there
+// isn't a `file:` URL). Mocked here since this suite only exercises the slash-command parsing
+// that composes `createNodeOAuthMiddleware`, not the middleware itself.
+vi.mock('@mokei/host-node', () => ({
+  createNodeOAuthMiddleware: vi.fn(() => (next: unknown) => next),
+}))
+
 import {
   type UseSlashCommandsParams,
   useSlashCommands,
@@ -16,6 +24,7 @@ type Dispatch = (raw: string) => Promise<void>
 type Harness = {
   dispatch: Dispatch
   addContext: ReturnType<typeof vi.fn>
+  addHTTPContext: ReturnType<typeof vi.fn>
   entries: Array<TranscriptEntry>
   unmount: () => void
 }
@@ -26,6 +35,7 @@ function renderSlashCommands(): Harness {
 
   const entries: Array<TranscriptEntry> = []
   const addContext = vi.fn(async () => [])
+  const addHTTPContext = vi.fn(async () => [])
   const params: UseSlashCommandsParams = {
     model: 'test-model',
     setModel: () => {},
@@ -38,6 +48,7 @@ function renderSlashCommands(): Harness {
     },
     contexts: [],
     addContext: addContext as unknown as UseSlashCommandsParams['addContext'],
+    addHTTPContext: addHTTPContext as unknown as UseSlashCommandsParams['addHTTPContext'],
     submit: async () => {},
     exit: () => {},
     showReasoning: false,
@@ -69,6 +80,7 @@ function renderSlashCommands(): Harness {
       return current(raw)
     },
     addContext,
+    addHTTPContext,
     entries,
     unmount() {
       act(() => {
@@ -148,6 +160,65 @@ describe('useSlashCommands — /context add', () => {
       kind: 'notice',
       variant: 'error',
       text: 'usage: /context add [--protocol <version>] <key> <cmd> [args...]',
+    })
+  })
+})
+
+describe('useSlashCommands — /context add-http', () => {
+  const handles: Array<Harness> = []
+  afterEach(() => {
+    while (handles.length) handles.pop()?.unmount()
+  })
+
+  function harness(): Harness {
+    const handle = renderSlashCommands()
+    handles.push(handle)
+    return handle
+  }
+
+  test('attaches a plain HTTP context with no OAuth options', async () => {
+    const { dispatch, addHTTPContext } = harness()
+    await dispatch('/context add-http db https://mcp.example.com/mcp')
+    expect(addHTTPContext).toHaveBeenCalledWith({
+      key: 'db',
+      url: 'https://mcp.example.com/mcp',
+      protocolVersion: 'auto',
+      fetchMiddleware: undefined,
+    })
+  })
+
+  test('composes the Node OAuth middleware when OAuth options are given', async () => {
+    const { dispatch, addHTTPContext } = harness()
+    await dispatch(
+      '/context add-http --protocol 2025-11-25 db https://mcp.example.com/mcp --oauth-client-id cid --oauth-resource https://mcp.example.com/mcp --oauth-scope a --oauth-scope b --oauth-tokens ./toks.json',
+    )
+    expect(addHTTPContext).toHaveBeenCalledWith({
+      key: 'db',
+      url: 'https://mcp.example.com/mcp',
+      protocolVersion: '2025-11-25',
+      fetchMiddleware: expect.any(Function),
+    })
+  })
+
+  test('reports a usage error and skips the attach when the url is missing', async () => {
+    const { dispatch, addHTTPContext, entries } = harness()
+    await dispatch('/context add-http db')
+    expect(addHTTPContext).not.toHaveBeenCalled()
+    expect(entries.at(-1)).toMatchObject({
+      kind: 'notice',
+      variant: 'error',
+      text: expect.stringContaining('usage: /context add-http'),
+    })
+  })
+
+  test('requires --oauth-client-id when other OAuth flags are given', async () => {
+    const { dispatch, addHTTPContext, entries } = harness()
+    await dispatch('/context add-http db https://mcp.example.com/mcp --oauth-resource x')
+    expect(addHTTPContext).not.toHaveBeenCalled()
+    expect(entries.at(-1)).toMatchObject({
+      kind: 'notice',
+      variant: 'error',
+      text: '--oauth-client-id is required when using OAuth options',
     })
   })
 })

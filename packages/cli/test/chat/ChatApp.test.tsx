@@ -8,6 +8,7 @@ describe('ChatApp', () => {
     const stubSession = {
       events: { on: () => () => {} },
       addContext: vi.fn(),
+      addHTTPContext: vi.fn(),
       removeContext: vi.fn(),
       contextHost: {
         events: { on: () => () => {} },

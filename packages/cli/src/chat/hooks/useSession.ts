@@ -1,7 +1,10 @@
 import type { Session } from '@mokei/session'
 import { useCallback, useEffect, useState } from 'react'
 
-export type SessionLike = Pick<Session, 'addContext' | 'removeContext' | 'contextHost' | 'events'>
+export type SessionLike = Pick<
+  Session,
+  'addContext' | 'addHTTPContext' | 'removeContext' | 'contextHost' | 'events'
+>
 
 export function useSession(session: SessionLike) {
   const [contexts, setContexts] = useState<Array<string>>(() =>
@@ -25,10 +28,14 @@ export function useSession(session: SessionLike) {
     (params: Parameters<Session['addContext']>[0]) => session.addContext(params),
     [session],
   )
+  const addHTTPContext = useCallback(
+    (params: Parameters<Session['addHTTPContext']>[0]) => session.addHTTPContext(params),
+    [session],
+  )
   const removeContext = useCallback(
     (key: string): Promise<boolean> => session.removeContext(key),
     [session],
   )
 
-  return { contexts, addContext, removeContext }
+  return { contexts, addContext, addHTTPContext, removeContext }
 }

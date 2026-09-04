@@ -1,5 +1,10 @@
 import type { CallToolResult, ProtocolVersion } from '@mokei/context-protocol'
-import type { ContextTool, EnableToolsArg, LocalToolDefinition } from '@mokei/host'
+import type {
+  ContextTool,
+  EnableToolsArg,
+  HTTPContextParams,
+  LocalToolDefinition,
+} from '@mokei/host'
 import { NodeContextHost } from '@mokei/host-node'
 import type {
   AggregatedMessage,
@@ -37,6 +42,11 @@ export type AddContextParams = {
    * `NodeContextHost` picks its default.
    */
   protocolVersion?: ProtocolVersion | 'auto'
+}
+
+export type AddHTTPContextParams = HTTPContextParams & {
+  signal?: AbortSignal
+  enableTools?: EnableToolsArg
 }
 
 export type ChatParams<T extends ProviderTypes = ProviderTypes> = {
@@ -193,6 +203,48 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       return this.#setupContext(params)
     }
     const setupPromise = this.#setupContext(params)
+    return raceSignal(setupPromise, params.signal).catch(async (err) => {
+      // A late-registering spawn may complete after the abort wins the race.
+      // If the key is not yet registered, wait until it appears (context:added)
+      // or until setupPromise settles without registering — then remove either
+      // way so no orphaned child is left behind.
+      if (!this.#contextHost.getContextKeys().includes(params.key)) {
+        const ac = new AbortController()
+        await Promise.race([
+          this.#contextHost.events.once('context:added', {
+            filter: (data) => data.key === params.key,
+            signal: ac.signal,
+          }),
+          setupPromise.catch(() => {}),
+        ]).finally(() => ac.abort())
+      }
+      await this.#contextHost.remove(params.key).catch(() => {})
+      throw err
+    })
+  }
+
+  async #setupHTTPContext(params: AddHTTPContextParams): Promise<Array<ContextTool>> {
+    const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware, enableTools } =
+      params
+    await this.#contextHost.addHTTPContext({
+      key,
+      url,
+      headers,
+      auth,
+      timeout,
+      protocolVersion,
+      fetchMiddleware,
+    })
+    const tools = await this.#contextHost.setup({ key, enableTools, signal: params.signal })
+    this.#events.emit('context-added', { key, tools })
+    return tools
+  }
+
+  addHTTPContext(params: AddHTTPContextParams): Promise<Array<ContextTool>> {
+    if (!params.signal) {
+      return this.#setupHTTPContext(params)
+    }
+    const setupPromise = this.#setupHTTPContext(params)
     return raceSignal(setupPromise, params.signal).catch(async (err) => {
       // A late-registering spawn may complete after the abort wins the race.
       // If the key is not yet registered, wait until it appears (context:added)

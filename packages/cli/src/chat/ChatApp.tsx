@@ -67,7 +67,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
     })
   }, [loadModels])
 
-  const { contexts, addContext, removeContext } = useSession(session)
+  const { contexts, addContext, addHTTPContext, removeContext } = useSession(session)
   const { pending, approve, deny, toolApprovalFn } = useToolApproval()
 
   const getToolCount = useCallback(
@@ -116,6 +116,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
     pushEntry,
     contexts,
     addContext,
+    addHTTPContext,
     submit: turn.submit,
     exit,
     showReasoning,
