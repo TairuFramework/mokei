@@ -43,10 +43,16 @@ export function createFileTokenStore(path: string): TokenStore {
   const serialize = <T>(op: () => Promise<T>): Promise<T> => {
     const prev = pathTails.get(resolved) ?? Promise.resolve()
     const run = prev.then(op, op)
-    pathTails.set(
-      resolved,
-      run.catch(() => {}),
-    )
+    const tail = run.catch(() => {})
+    pathTails.set(resolved, tail)
+    // Reclaim the entry once its tail settles, but only if it's still the live chain: a
+    // concurrent op reads `pathTails.get(resolved)` (this `tail`) and chains onto it, then
+    // replaces the map entry with its own tail, before this one settles -- so the identity check
+    // below fails for it and the still-live chain is never deleted out from under it. Without
+    // this, `pathTails` would grow one entry per distinct resolved path for the process lifetime.
+    void tail.then(() => {
+      if (pathTails.get(resolved) === tail) pathTails.delete(resolved)
+    })
     return run
   }
   return {

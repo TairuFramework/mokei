@@ -72,7 +72,12 @@ describe('Session.addHTTPContext', () => {
     // transport is not orphaned. Spy `remove` call-through and assert it ran for the key: the
     // pre-fix `#setupHTTPContext` had no try/catch and never called `remove` here, so this
     // assertion fails on the regression and passes on the fix.
-    vi.spyOn(session.contextHost, 'addHTTPContext').mockResolvedValue({} as never)
+    const client = {}
+    vi.spyOn(session.contextHost, 'addHTTPContext').mockResolvedValue(client as never)
+    // I1: cleanup is identity-aware -- it only removes when the context currently registered
+    // under the key is still the one this call created. `getContext` isn't backed by a real
+    // registration here (addHTTPContext is mocked), so spy it to report the same client back.
+    vi.spyOn(session.contextHost, 'getContext').mockReturnValue({ client } as never)
     vi.spyOn(session.contextHost, 'setup').mockRejectedValue(new Error('setup failed'))
     const removeSpy = vi.spyOn(session.contextHost, 'remove')
 
@@ -107,5 +112,56 @@ describe('Session.addHTTPContext', () => {
     ).rejects.toThrow('Context dup already exists')
 
     expect(removeSpy).not.toHaveBeenCalledWith('dup')
+  })
+
+  test('I1: does not remove a concurrently re-added context when the registered client differs', async () => {
+    session = new Session()
+    const clientA = { id: 'A' }
+    const clientB = { id: 'B' }
+    // This call's addHTTPContext resolves with client A, then setup() fails. Meanwhile (in the
+    // fiction this simulates) the caller removed key 'k' and re-added it with a different
+    // client, B -- so by the time our catch runs, `getContext('k')` reports B, not A.
+    vi.spyOn(session.contextHost, 'addHTTPContext').mockResolvedValue(clientA as never)
+    vi.spyOn(session.contextHost, 'getContext').mockReturnValue({ client: clientB } as never)
+    vi.spyOn(session.contextHost, 'setup').mockRejectedValue(new Error('setup failed'))
+    const removeSpy = vi.spyOn(session.contextHost, 'remove')
+
+    await expect(session.addHTTPContext({ key: 'k', url: 'https://x/mcp' })).rejects.toThrow(
+      'setup failed',
+    )
+
+    expect(removeSpy).not.toHaveBeenCalled()
+  })
+
+  test('I1: removes the context when the registered client is still this call\'s (getContext throwing counts as "not ours")', async () => {
+    session = new Session()
+    const clientA = { id: 'A' }
+    vi.spyOn(session.contextHost, 'addHTTPContext').mockResolvedValue(clientA as never)
+    vi.spyOn(session.contextHost, 'getContext').mockReturnValue({ client: clientA } as never)
+    vi.spyOn(session.contextHost, 'setup').mockRejectedValue(new Error('setup failed'))
+    const removeSpy = vi.spyOn(session.contextHost, 'remove')
+
+    await expect(session.addHTTPContext({ key: 'k', url: 'https://x/mcp' })).rejects.toThrow(
+      'setup failed',
+    )
+
+    expect(removeSpy).toHaveBeenCalledWith('k')
+  })
+
+  test('I1: does not remove when getContext throws (key already gone) instead of returning undefined', async () => {
+    session = new Session()
+    const clientA = { id: 'A' }
+    vi.spyOn(session.contextHost, 'addHTTPContext').mockResolvedValue(clientA as never)
+    vi.spyOn(session.contextHost, 'getContext').mockImplementation(() => {
+      throw new Error('Context k does not exist')
+    })
+    vi.spyOn(session.contextHost, 'setup').mockRejectedValue(new Error('setup failed'))
+    const removeSpy = vi.spyOn(session.contextHost, 'remove')
+
+    await expect(session.addHTTPContext({ key: 'k', url: 'https://x/mcp' })).rejects.toThrow(
+      'setup failed',
+    )
+
+    expect(removeSpy).not.toHaveBeenCalled()
   })
 })

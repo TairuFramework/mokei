@@ -13,6 +13,7 @@ export {
 } from './node-host.js'
 export { createFileTokenStore } from './oauth/file-store.js'
 export {
+  browserOpenCommand,
   createLoopbackAuthorizationHandler,
   type LoopbackAuthorizationHandlerOptions,
 } from './oauth/loopback.js'

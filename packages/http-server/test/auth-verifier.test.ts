@@ -54,10 +54,21 @@ test('rejects a token whose exp + tolerance exactly equals now (boundary is incl
   ).toThrow(/expired|exp/i)
 })
 
-test('rejects a token whose nbf - tolerance exactly equals now (boundary is inclusive)', () => {
+// M2: `nbf` is an inclusive lower bound -- a token is valid AT `nbf` -- unlike `exp`'s exclusive
+// upper bound above, so the boundary case (nbf - tolerance === now) must be ACCEPTED, not rejected.
+test('accepts a token whose nbf - tolerance exactly equals now (nbf boundary is inclusive)', () => {
   expect(() =>
     assertStandardClaims(
       { aud: resource, nbf: 1030, iss: 'https://as' },
+      { resource, now: 1000, toleranceSeconds: 30 },
+    ),
+  ).not.toThrow()
+})
+
+test('rejects a token whose nbf - tolerance is one second beyond now', () => {
+  expect(() =>
+    assertStandardClaims(
+      { aud: resource, nbf: 1031, iss: 'https://as' },
       { resource, now: 1000, toleranceSeconds: 30 },
     ),
   ).toThrow(/not yet valid/i)

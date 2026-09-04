@@ -230,7 +230,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     // async-spawning `addLocalContext`), and rejects with "already exists" for a duplicate key
     // BEFORE registering anything. Awaiting it outside the try means a duplicate-key rejection
     // never enters the catch below, so it can never remove a pre-existing context.
-    await this.#contextHost.addHTTPContext({
+    const client = await this.#contextHost.addHTTPContext({
       key,
       url,
       headers,
@@ -244,10 +244,20 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       this.#events.emit('context-added', { key, tools })
       return tools
     } catch (err) {
-      // Only this call registered the context (the duplicate case threw above), so removing it
-      // on a setup failure or abort cannot destroy a pre-existing context and leaves nothing
-      // orphaned.
-      await this.#contextHost.remove(key).catch(() => {})
+      // Remove only the context THIS call registered. On abort, `raceSignal` can reject to the
+      // caller before this catch runs; if the caller removes and re-adds the same key in that
+      // window, a plain `remove(key)` here would delete the NEW context instead of ours. Compare
+      // client identity against whatever is currently registered under `key` -- `getContext`
+      // throws when the key is missing (already removed), which also means "not ours" here.
+      let stillOurs = false
+      try {
+        stillOurs = this.#contextHost.getContext(key).client === client
+      } catch {
+        stillOurs = false
+      }
+      if (stillOurs) {
+        await this.#contextHost.remove(key).catch(() => {})
+      }
       throw err
     }
   }

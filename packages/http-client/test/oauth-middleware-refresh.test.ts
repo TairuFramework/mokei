@@ -1,6 +1,10 @@
 import { expect, test } from 'vitest'
 
-import { type AuthorizationHandler, createOAuthMiddleware } from '../src/oauth/middleware.js'
+import {
+  type AuthorizationHandler,
+  createOAuthMiddleware,
+  exchangeRefresh,
+} from '../src/oauth/middleware.js'
 import { createMemoryTokenStore } from '../src/oauth/store.js'
 
 const resource = 'https://mcp.example.com/mcp'
@@ -236,6 +240,69 @@ test('a failed pre-emptive refresh does not fail the outbound request', async ()
   const next = async (url: string, init?: RequestInit): Promise<Response> => {
     if (url.endsWith('/token')) {
       return new Response('server error', { status: 500 })
+    }
+    seenAuth = new Headers(init?.headers).get('Authorization')
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  const mw = createOAuthMiddleware({ clientId: 'c', resource, handler, store, now: () => 999 })
+  const response = await mw(next)(resource, { method: 'POST', body: '{}' })
+  expect(response.status).toBe(200)
+  expect(seenAuth).toBe('Bearer old')
+  expect((await store.get(resource))?.accessToken).toBe('old')
+})
+
+// M1: exchangeRefresh must validate the token-endpoint JSON before it's turned into StoredTokens,
+// so a malformed response can never be persisted as a poisoned credential.
+test('M1: exchangeRefresh rejects a token response missing access_token', async () => {
+  const fetchUnwrapped = async () =>
+    new Response(JSON.stringify({ token_type: 'bearer' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  await expect(
+    exchangeRefresh(
+      fetchUnwrapped,
+      'https://as.example.com/token',
+      { clientId: 'c', refreshToken: 'r1' },
+      () => 1000,
+    ),
+  ).rejects.toThrow(/access_token/)
+})
+
+test('M1: exchangeRefresh rejects a token response with a non-numeric expires_in', async () => {
+  const fetchUnwrapped = async () =>
+    new Response(JSON.stringify({ access_token: 'a', token_type: 'bearer', expires_in: 'soon' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  await expect(
+    exchangeRefresh(
+      fetchUnwrapped,
+      'https://as.example.com/token',
+      { clientId: 'c', refreshToken: 'r1' },
+      () => 1000,
+    ),
+  ).rejects.toThrow(/expires_in/)
+})
+
+test('M1: a malformed token response during pre-emptive refresh is not persisted (falls back to the stale token)', async () => {
+  const store = createMemoryTokenStore()
+  await store.set(resource, {
+    accessToken: 'old',
+    tokenType: 'Bearer',
+    refreshToken: 'r1',
+    expiresAt: 1000,
+    tokenEndpoint: 'https://as.example.com/token',
+    issuer: 'https://as.example.com',
+  })
+  let seenAuth: string | null = null
+  const next = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (url.endsWith('/token')) {
+      // Malformed: no access_token.
+      return new Response(JSON.stringify({ token_type: 'Bearer' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
     seenAuth = new Headers(init?.headers).get('Authorization')
     return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })

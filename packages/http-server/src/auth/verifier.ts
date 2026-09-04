@@ -64,8 +64,10 @@ export function assertStandardClaims(
   const exp = payload.exp
   if (typeof exp === 'number' && exp + toleranceSeconds <= now)
     throw new TokenVerificationError('invalid_token', 'token expired')
+  // `nbf` is an inclusive lower bound (a token is valid AT `nbf`), unlike `exp`'s exclusive upper
+  // bound above -- so this uses `>`, not `>=`.
   const nbf = payload.nbf
-  if (typeof nbf === 'number' && nbf - toleranceSeconds >= now)
+  if (typeof nbf === 'number' && nbf - toleranceSeconds > now)
     throw new TokenVerificationError('invalid_token', 'token not yet valid')
 }
 

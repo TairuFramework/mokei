@@ -3,18 +3,33 @@ import { createServer } from 'node:http'
 import type { AuthorizationHandler } from '@mokei/http-client'
 import spawn from 'nano-spawn'
 
-async function defaultOpenBrowser(url: string): Promise<void> {
-  const platform = process.platform
+/**
+ * Picks the OS-appropriate command/args to open `url` in a browser, as a pure function so the
+ * choice is unit-testable without actually spawning anything.
+ *
+ * The win32 case deliberately avoids `cmd.exe /c start`: `start` is a cmd.exe builtin, and cmd
+ * re-parses metacharacters (`&`, `|`, `^`, `%`, `<`, `>`) in the command line regardless of
+ * nano-spawn's array args. OAuth authorization URLs always contain `&` (query-param separators),
+ * so that form both breaks legitimate URLs and lets a malicious `authorization_endpoint`
+ * (returned from AS discovery) inject shell commands. `rundll32`'s `FileProtocolHandler` takes
+ * the URL as a single, non-shell-interpreted argv element instead.
+ */
+export function browserOpenCommand(
+  platform: NodeJS.Platform,
+  url: string,
+): { command: string; args: Array<string> } {
   if (platform === 'darwin') {
-    await spawn('open', [url])
-  } else if (platform === 'win32') {
-    // `start` is a cmd.exe builtin, not a directly spawnable executable, so it must be invoked
-    // via `cmd.exe /c`. The empty string argument is the `start` title parameter -- without it,
-    // a quoted URL would be consumed as the title instead of being opened.
-    await spawn('cmd.exe', ['/c', 'start', '', url])
-  } else {
-    await spawn('xdg-open', [url])
+    return { command: 'open', args: [url] }
   }
+  if (platform === 'win32') {
+    return { command: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', url] }
+  }
+  return { command: 'xdg-open', args: [url] }
+}
+
+async function defaultOpenBrowser(url: string): Promise<void> {
+  const { command, args } = browserOpenCommand(process.platform, url)
+  await spawn(command, args)
 }
 
 export type LoopbackAuthorizationHandlerOptions = {

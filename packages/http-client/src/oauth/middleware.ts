@@ -36,6 +36,36 @@ export function nearExpiry(tokens: StoredTokens, now: () => number, skew: number
   return tokens.expiresAt != null && tokens.expiresAt - skew <= now()
 }
 
+/** Shape a validated token-endpoint response must have before it is turned into `StoredTokens`.
+ * Guards against a malformed response (missing/non-string `access_token`, non-numeric
+ * `expires_in`, non-string `refresh_token`/`scope`) being persisted as a poisoned credential. */
+function parseTokenResponse(raw: unknown): {
+  access_token: string
+  token_type: string
+  expires_in?: number
+  refresh_token?: string
+  scope?: string
+} {
+  if (typeof raw !== 'object' || raw === null) throw new Error('token response is not an object')
+  const r = raw as Record<string, unknown>
+  if (typeof r.access_token !== 'string' || r.access_token.length === 0)
+    throw new Error('token response missing access_token')
+  if (typeof r.token_type !== 'string') throw new Error('token response missing token_type')
+  if (r.expires_in != null && typeof r.expires_in !== 'number')
+    throw new Error('token response has non-numeric expires_in')
+  if (r.refresh_token != null && typeof r.refresh_token !== 'string')
+    throw new Error('token response has non-string refresh_token')
+  if (r.scope != null && typeof r.scope !== 'string')
+    throw new Error('token response has non-string scope')
+  return r as {
+    access_token: string
+    token_type: string
+    expires_in?: number
+    refresh_token?: string
+    scope?: string
+  }
+}
+
 /**
  * Exchange a refresh token for a new access token via `grant_type=refresh_token`.
  *
@@ -68,13 +98,7 @@ export async function exchangeRefresh(
   if (!response.ok) {
     throw new Error(`Token refresh HTTP ${response.status}`)
   }
-  const data = (await response.json()) as {
-    access_token: string
-    token_type: string
-    expires_in?: number
-    refresh_token?: string
-    scope?: string
-  }
+  const data = parseTokenResponse(await response.json())
   if (String(data.token_type).toLowerCase() !== 'bearer') {
     throw new Error(`Unsupported token_type: ${data.token_type}`)
   }
@@ -136,13 +160,7 @@ async function exchangeAuthorizationCode(
   if (!response.ok) {
     throw new Error(`Token exchange HTTP ${response.status}`)
   }
-  const data = (await response.json()) as {
-    access_token: string
-    token_type: string
-    expires_in?: number
-    refresh_token?: string
-    scope?: string
-  }
+  const data = parseTokenResponse(await response.json())
   if (String(data.token_type).toLowerCase() !== 'bearer') {
     throw new Error(`Unsupported token_type: ${data.token_type}`)
   }
