@@ -54,7 +54,7 @@ test('rejects a token whose exp + tolerance exactly equals now (boundary is incl
   ).toThrow(/expired|exp/i)
 })
 
-// M2: `nbf` is an inclusive lower bound -- a token is valid AT `nbf` -- unlike `exp`'s exclusive
+// `nbf` is an inclusive lower bound -- a token is valid AT `nbf` -- unlike `exp`'s exclusive
 // upper bound above, so the boundary case (nbf - tolerance === now) must be ACCEPTED, not rejected.
 test('accepts a token whose nbf - tolerance exactly equals now (nbf boundary is inclusive)', () => {
   expect(() =>

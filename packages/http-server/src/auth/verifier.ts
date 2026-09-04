@@ -5,7 +5,7 @@ export type AuthInfo = { subject: string; scopes: Array<string>; expiresAt?: num
 /**
  * A pluggable verifier for OAuth 2.0 bearer access tokens.
  *
- * Error-typing contract (J5): `verifyAccessToken` MUST throw {@link TokenVerificationError} for
+ * Error-typing contract: `verifyAccessToken` MUST throw {@link TokenVerificationError} for
  * every *credential-validation* failure -- a bad signature, an expired/not-yet-valid/malformed
  * token, a wrong audience or issuer, or any other reason the *token itself* is invalid. Any other
  * thrown error is treated as an *operational* failure (e.g. a network/DNS error reaching a

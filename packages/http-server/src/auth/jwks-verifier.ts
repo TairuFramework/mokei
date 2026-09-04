@@ -320,7 +320,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     // rejects immediately without a refetch. Forcing a refetch here would let an attacker who
     // knows any published `kid` amplify unauthenticated JWKS fetches to the AS per request.
     if (!matchesAlg(jwk, alg)) return { found: true, verified: false }
-    // J5: a structurally malformed JWK (missing/invalid `n`/`e` on an RSA key, a bad `x`/`y` on an
+    // a structurally malformed JWK (missing/invalid `n`/`e` on an RSA key, a bad `x`/`y` on an
     // EC key, etc.) makes `importKey`/`verify` throw a raw `DOMException`/`Error` instead of
     // returning false. Left uncaught, that would escape as an unrelated error type and — via
     // `createBearerAuthGate`'s fail-closed default for anything that isn't a

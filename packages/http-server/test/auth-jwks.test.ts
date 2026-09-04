@@ -290,7 +290,7 @@ test('RFC 8414 discovery inserts the well-known segment before a path-bearing is
   expect(fetchedMetadataURL).toBe(metadataURL)
 })
 
-test('H4: two different unknown kids within the cooldown window force at most one extra JWKS refresh', async () => {
+test('two different unknown kids within the cooldown window force at most one extra JWKS refresh', async () => {
   const { token: knownToken, jwk } = await makeToken()
   let fetchCalls = 0
   const fetchJWKS = async (): Promise<Response> => {
@@ -319,7 +319,7 @@ test('H4: two different unknown kids within the cooldown window force at most on
   expect(fetchCalls).toBeLessThanOrEqual(2)
 })
 
-test('H5: the JWKS metadata and keys fetches are made with redirect: "error" (SSRF/redirect guard)', async () => {
+test('the JWKS metadata and keys fetches are made with redirect: "error" (SSRF/redirect guard)', async () => {
   const { token, jwk } = await makeToken()
   const redirects: Array<string | undefined> = []
   const fetchFn = async (url: string, init?: RequestInit): Promise<Response> => {
@@ -337,7 +337,7 @@ test('H5: the JWKS metadata and keys fetches are made with redirect: "error" (SS
   }
 })
 
-test('J3: an oversized JWKS response is rejected before being fully buffered', async () => {
+test('an oversized JWKS response is rejected before being fully buffered', async () => {
   const { token, jwk } = await makeToken()
   const fetchJWKS = async (): Promise<Response> =>
     // No `Content-Length` header: forces the streamed-byte-count path (rather than the
@@ -354,7 +354,7 @@ test('J3: an oversized JWKS response is rejected before being fully buffered', a
   await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow(/exceeds/i)
 })
 
-test('J5: a structurally malformed JWK (matching kid) rejects as invalid_token, not a raw crypto error, with no extra fetch', async () => {
+test('a structurally malformed JWK (matching kid) rejects as invalid_token, not a raw crypto error, with no extra fetch', async () => {
   const { token, jwk } = await makeToken()
   // Corrupt the EC public point so `crypto.subtle.importKey`/`verify` throws instead of
   // returning false.

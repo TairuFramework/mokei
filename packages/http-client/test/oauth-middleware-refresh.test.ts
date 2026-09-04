@@ -201,7 +201,7 @@ test('falls through to interactive authorize when the refresh exchange itself fa
   expect((await store.get(resource))?.accessToken).toBe('fresh')
 })
 
-test('H5: the token-refresh fetch is made with redirect: "error" (SSRF/redirect guard)', async () => {
+test('the token-refresh fetch is made with redirect: "error" (SSRF/redirect guard)', async () => {
   const store = createMemoryTokenStore()
   await store.set(resource, {
     accessToken: 'old',
@@ -252,9 +252,9 @@ test('a failed pre-emptive refresh does not fail the outbound request', async ()
   expect((await store.get(resource))?.accessToken).toBe('old')
 })
 
-// M1: exchangeRefresh must validate the token-endpoint JSON before it's turned into StoredTokens,
+// exchangeRefresh must validate the token-endpoint JSON before it's turned into StoredTokens,
 // so a malformed response can never be persisted as a poisoned credential.
-test('M1: exchangeRefresh rejects a token response missing access_token', async () => {
+test('exchangeRefresh rejects a token response missing access_token', async () => {
   const fetchUnwrapped = async () =>
     new Response(JSON.stringify({ token_type: 'bearer' }), {
       status: 200,
@@ -271,7 +271,7 @@ test('M1: exchangeRefresh rejects a token response missing access_token', async 
   ).rejects.toThrow(/access_token/)
 })
 
-test('M1: exchangeRefresh rejects a token response with a non-numeric expires_in', async () => {
+test('exchangeRefresh rejects a token response with a non-numeric expires_in', async () => {
   const fetchUnwrapped = async () =>
     new Response(JSON.stringify({ access_token: 'a', token_type: 'bearer', expires_in: 'soon' }), {
       status: 200,
@@ -288,13 +288,13 @@ test('M1: exchangeRefresh rejects a token response with a non-numeric expires_in
   ).rejects.toThrow(/expires_in/)
 })
 
-test('M1: parseTokenResponse rejects a negative expires_in', () => {
+test('parseTokenResponse rejects a negative expires_in', () => {
   expect(() =>
     parseTokenResponse({ access_token: 'a', token_type: 'Bearer', expires_in: -5 }),
   ).toThrow(/expires_in/)
 })
 
-test('M1: parseTokenResponse rejects a non-finite expires_in (Infinity)', () => {
+test('parseTokenResponse rejects a non-finite expires_in (Infinity)', () => {
   expect(() =>
     parseTokenResponse({
       access_token: 'a',
@@ -304,10 +304,10 @@ test('M1: parseTokenResponse rejects a non-finite expires_in (Infinity)', () => 
   ).toThrow(/expires_in/)
 })
 
-// J2: an unbounded or SSE 401 body left open while the refresh/authorize recovery runs
+// an unbounded or SSE 401 body left open while the refresh/authorize recovery runs
 // (potentially an interactive, multi-minute flow) retains its socket for that whole time. The
 // middleware must cancel it up front, before starting recovery.
-test('J2: the 401 response body is cancelled before the refresh retry starts', async () => {
+test('the 401 response body is cancelled before the refresh retry starts', async () => {
   const store = createMemoryTokenStore()
   await store.set(resource, {
     accessToken: 'stale',
@@ -344,7 +344,7 @@ test('J2: the 401 response body is cancelled before the refresh retry starts', a
   expect(sawCancelBeforeTokenCall).toBe(true)
 })
 
-test('M1: a malformed token response during pre-emptive refresh is not persisted (falls back to the stale token)', async () => {
+test('a malformed token response during pre-emptive refresh is not persisted (falls back to the stale token)', async () => {
   const store = createMemoryTokenStore()
   await store.set(resource, {
     accessToken: 'old',

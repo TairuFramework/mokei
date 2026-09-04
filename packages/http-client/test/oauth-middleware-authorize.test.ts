@@ -163,10 +163,10 @@ test('proceeds normally for a loopback http transport URL', async () => {
   expect(res.status).toBe(200)
 })
 
-// J1: `init.signal` is threaded through discovery and into `config.handler.authorize` so an
+// `init.signal` is threaded through discovery and into `config.handler.authorize` so an
 // aborted outbound request cancels the whole interactive recovery flow instead of leaving it to
 // run to completion in the background.
-test('J1: init.signal is threaded through to config.handler.authorize', async () => {
+test('init.signal is threaded through to config.handler.authorize', async () => {
   const store = createMemoryTokenStore()
   let receivedSignal: AbortSignal | undefined
   const handler: AuthorizationHandler = {

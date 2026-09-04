@@ -5,7 +5,7 @@ import { expect, test, vi } from 'vitest'
 
 import { createFileTokenStore } from '../src/oauth/file-store.js'
 
-// M2: `rename` is spied (delegating to the real implementation by default) so a single test can
+// `rename` is spied (delegating to the real implementation by default) so a single test can
 // force it to fail once, without disturbing every other test's real filesystem behavior.
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
@@ -43,7 +43,7 @@ test('concurrent sets for different keys do not clobber each other', async () =>
   expect((await store.get('https://b.example.com/mcp'))?.accessToken).toBe('b')
 })
 
-test('two independent stores sharing the same path serialize through one mutex (H3)', async () => {
+test('two independent stores sharing the same path serialize through one mutex', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
   const file = join(dir, 'tokens.json')
   const storeA = createFileTokenStore(file)
@@ -82,17 +82,17 @@ test('a top-level JSON array is treated as empty', async () => {
   expect(await store.get('anything')).toBeUndefined()
 })
 
-// M3: `pathTails` reclaims its per-path entry once the tail settles (instead of retaining one
+// `pathTails` reclaims its per-path entry once the tail settles (instead of retaining one
 // entry per distinct resolved path for the process lifetime). The map is module-private and not
 // part of the public API, so this can't assert on the map directly without widening that surface
 // -- instead it exercises the case the reclamation must not break: a `set` that fully settles,
 // then further `get`/`set` calls against the *same* resolved path (which would share a stale
 // entry were it ever wrongly deleted mid-flight) must still read/write correctly. The companion
-// "two independent stores sharing the same path serialize through one mutex (H3)" test above
+// "two independent stores sharing the same path serialize through one mutex" test above
 // covers the concurrent-chaining half: the second `set` must observe the first op's tail via
 // `pathTails.get(resolved)` *before* it settles, so the identity-checked delete in `serialize`
 // must not remove a still-live chain out from under a racing op.
-test('M3: repeated sequential ops against the same path keep working after the tail entry is reclaimed', async () => {
+test('repeated sequential ops against the same path keep working after the tail entry is reclaimed', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
   const file = join(dir, 'tokens.json')
   const store = createFileTokenStore(file)
@@ -116,7 +116,7 @@ test('M3: repeated sequential ops against the same path keep working after the t
   expect((await store.get('k4'))?.accessToken).toBe('fourth')
 })
 
-test('M2: the temp file is removed if rename fails, and the error propagates', async () => {
+test('the temp file is removed if rename fails, and the error propagates', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
   const file = join(dir, 'tokens.json')
   const store = createFileTokenStore(file)

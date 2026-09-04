@@ -46,9 +46,9 @@ test('rejects on OAuth error response', async () => {
   ).rejects.toThrow(/access_denied/)
 })
 
-// J1: an already-aborted signal must reject the flow immediately -- without ever opening a
+// an already-aborted signal must reject the flow immediately -- without ever opening a
 // browser -- and leave no loopback server behind (settle() closes it idempotently).
-test('J1: an already-aborted signal rejects immediately without opening the browser', async () => {
+test('an already-aborted signal rejects immediately without opening the browser', async () => {
   let openBrowserCalls = 0
   const handler = createLoopbackAuthorizationHandler({
     openBrowser: async () => {
@@ -82,9 +82,9 @@ test('J1: an already-aborted signal rejects immediately without opening the brow
   expect(listeningServers()).toBe(before)
 })
 
-// J1: a signal that aborts mid-flight (after the loopback server is already listening and
+// a signal that aborts mid-flight (after the loopback server is already listening and
 // waiting on the redirect) must also reject, rather than hanging until `timeoutMs`.
-test('J1: a signal aborted mid-flight rejects the in-progress authorization', async () => {
+test('a signal aborted mid-flight rejects the in-progress authorization', async () => {
   const controller = new AbortController()
   const handler = createLoopbackAuthorizationHandler({
     openBrowser: async () => {

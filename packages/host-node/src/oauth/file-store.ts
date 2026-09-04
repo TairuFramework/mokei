@@ -32,7 +32,7 @@ async function writeAll(path: string, data: Record<string, StoredTokens>): Promi
   try {
     await rename(tmp, path)
   } catch (err) {
-    // M2: a failed rename (e.g. the target's directory vanished, or a permission/EXDEV error)
+    // a failed rename (e.g. the target's directory vanished, or a permission/EXDEV error)
     // must not leave the plaintext temp file (mode 0o600, but still a second copy of every
     // stored token) behind on disk indefinitely.
     await rm(tmp, { force: true }).catch(() => {})

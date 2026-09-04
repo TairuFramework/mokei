@@ -65,7 +65,7 @@ describe('Session.addHTTPContext', () => {
     expect(addHTTPContextSpy).toHaveBeenCalledWith(expect.objectContaining({ fetchMiddleware }))
   })
 
-  test('H1: removes the context it just registered when setup() rejects (no signal)', async () => {
+  test('removes the context it just registered when setup() rejects (no signal)', async () => {
     session = new Session()
     // addHTTPContext resolves (the context is registered), then setup() fails. The fix must
     // remove the context THIS call registered so a retry does not hit "already exists" and the
@@ -89,7 +89,7 @@ describe('Session.addHTTPContext', () => {
     expect(session.contextHost.getContextKeys()).not.toContain('k')
   })
 
-  test('H2: a duplicate-key rejection from addHTTPContext must not remove the pre-existing context', async () => {
+  test('a duplicate-key rejection from addHTTPContext must not remove the pre-existing context', async () => {
     session = new Session()
     const addHTTPContextSpy = vi.spyOn(session.contextHost, 'addHTTPContext')
     const setupSpy = vi.spyOn(session.contextHost, 'setup')

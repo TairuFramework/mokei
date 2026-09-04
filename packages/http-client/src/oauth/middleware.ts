@@ -55,7 +55,7 @@ export function parseTokenResponse(raw: unknown): {
   if (typeof r.access_token !== 'string' || r.access_token.length === 0)
     throw new Error('token response missing access_token')
   if (typeof r.token_type !== 'string') throw new Error('token response missing token_type')
-  // M1: a non-finite or negative expires_in (e.g. -5, Infinity, NaN) is not a valid delta-seconds
+  // a non-finite or negative expires_in (e.g. -5, Infinity, NaN) is not a valid delta-seconds
   // value and must not be turned into a bogus `expiresAt` -- reject it the same as a non-numeric
   // value rather than silently persisting a poisoned/garbage expiry.
   if (
@@ -136,11 +136,6 @@ function isLoopbackHost(hostname: string): boolean {
   )
 }
 
-/**
- * Runs the authorization-code exchange (PKCE, form-encoded, no client secret) against
- * `as.token_endpoint` using the caller-supplied unwrapped `fetch` — never the OAuth middleware
- * itself, so this can never re-enter the middleware and loop.
- */
 type ExchangeAuthorizationCodeParams = {
   /** Unwrapped `fetch` (never the OAuth middleware itself) so this cannot re-enter and loop. */
   fetchUnwrapped: FetchLike
@@ -154,6 +149,11 @@ type ExchangeAuthorizationCodeParams = {
   signal?: AbortSignal
 }
 
+/**
+ * Runs the authorization-code exchange (PKCE, form-encoded, no client secret) against
+ * `as.token_endpoint` using the caller-supplied unwrapped `fetch` — never the OAuth middleware
+ * itself, so this can never re-enter the middleware and loop.
+ */
 async function exchangeAuthorizationCode(
   params: ExchangeAuthorizationCodeParams,
 ): Promise<StoredTokens> {
@@ -212,7 +212,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
   // (clientID/PKCE/handler) decide instance B's outcome, and B's own `store.set` — closing over
   // B's own store — would never run.
   //
-  // J4 (deferred, tracked follow-up, not fixed here): being per-instance also means two
+  // (deferred, tracked follow-up, not fixed here): being per-instance also means two
   // `createOAuthMiddleware` instances that happen to share one `TokenStore` file for the *same*
   // resource have no cross-instance coordination at all -- each runs its own single-flight
   // refresh/authorize independently, so a rotating refresh token can in principle be redeemed
@@ -331,7 +331,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
 
   return (next) => {
     return async (url, init) => {
-      // J1: captured once per outbound call and threaded through every OAuth subrequest below
+      // captured once per outbound call and threaded through every OAuth subrequest below
       // (pre-emptive refresh, discovery, the interactive handler, and the code exchange) so
       // aborting the caller's own request cancels the whole recovery flow instead of leaving it
       // to run to completion in the background.
@@ -392,7 +392,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       const response = await next(url, tokens != null ? attach(init) : init)
       if (response.status !== 401) return response
 
-      // J2: drain (cancel) the 401 response body before starting recovery. An unbounded or SSE
+      // drain (cancel) the 401 response body before starting recovery. An unbounded or SSE
       // body left open here retains the underlying socket/connection for as long as the
       // refresh-then-authorize recovery below takes -- which can be an interactive, multi-minute
       // flow -- so it must be released up front rather than left to the garbage collector.

@@ -97,19 +97,18 @@ export function createLoopbackAuthorizationHandler(
           }
           settled = true
           clearTimeout(timer)
-          // J1: idempotent and already covers every settle path (timeout, OAuth error, state
-          // mismatch, bind failure, browser-open failure, and now abort) -- removing the abort
-          // listener here (it's a no-op if it never fired, e.g. `{ once: true }` already removed
-          // it) means a signal that outlives this flow can never re-trigger `onAbort` against a
-          // closed server.
+          // Idempotent and covers every settle path (timeout, OAuth error, state mismatch, bind
+          // failure, browser-open failure, abort) -- removing the abort listener here (a no-op if
+          // it never fired, e.g. `{ once: true }` already removed it) means a signal that outlives
+          // this flow can never re-trigger `onAbort` against a closed server.
           signal?.removeEventListener('abort', onAbort)
           server.close()
           run()
         }
 
-        // J1: lets an in-flight (or not-yet-started) authorization be cancelled from outside,
-        // e.g. when the outbound request it belongs to is aborted. `settle` already closes the
-        // server and clears the timer idempotently, so this only needs to supply the rejection.
+        // Lets an in-flight (or not-yet-started) authorization be cancelled from outside, e.g.
+        // when the outbound request it belongs to is aborted. `settle` already closes the server
+        // and clears the timer idempotently, so this only needs to supply the rejection.
         function onAbort(): void {
           settle(() => reject(signal?.reason ?? new Error('aborted')))
         }

@@ -88,7 +88,7 @@ test('allows loopback-http metadata when the protected resource itself is loopba
   expect(as.issuer).toBe('http://localhost:4000')
 })
 
-test('H5: PRM and AS metadata fetches are made with redirect: "error" (SSRF/redirect guard)', async () => {
+test('PRM and AS metadata fetches are made with redirect: "error" (SSRF/redirect guard)', async () => {
   const inits: Array<RequestInit | undefined> = []
   const fetch = async (url: string, init?: RequestInit): Promise<Response> => {
     inits.push(init)
@@ -112,7 +112,7 @@ test('H5: PRM and AS metadata fetches are made with redirect: "error" (SSRF/redi
   }
 })
 
-test('J3: an oversized metadata response is rejected before being fully buffered', async () => {
+test('an oversized metadata response is rejected before being fully buffered', async () => {
   const inits: Array<RequestInit | undefined> = []
   const fetch = async (url: string, init?: RequestInit): Promise<Response> => {
     inits.push(init)
@@ -127,7 +127,7 @@ test('J3: an oversized metadata response is rejected before being fully buffered
     throw new Error(`unexpected ${url}`)
   }
   await expect(discover({ resource, fetch })).rejects.toThrow(/exceeds/i)
-  // J1: every OAuth subrequest carries a signal (the fetch's own deadline at minimum, combined
+  // every OAuth subrequest carries a signal (the fetch's own deadline at minimum, combined
   // with a caller signal when one is given), so a hung metadata endpoint can't stall discovery
   // forever.
   expect(inits.length).toBeGreaterThan(0)
@@ -136,7 +136,7 @@ test('J3: an oversized metadata response is rejected before being fully buffered
   }
 })
 
-test('J1: an already-aborted signal is passed through to the metadata fetch and observed there', async () => {
+test('an already-aborted signal is passed through to the metadata fetch and observed there', async () => {
   const controller = new AbortController()
   controller.abort(new Error('cancelled'))
   const fetch = async (url: string, init?: RequestInit): Promise<Response> => {
