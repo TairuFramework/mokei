@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Stage:** planning
+**Stage:** executing
 **Mode:** tasks
 
 **Goal:** Add OAuth 2.1 authorization to mokei's HTTP transport — a native client-side flow (discovery → PKCE → token → refresh → 401 re-auth) and server-side bearer verification for `@mokei/http-server`.
@@ -18,6 +18,7 @@
 - **Conventions:** the `kigu:conventions` skill (canonical). Match surrounding code style.
 - **Package manager:** `pnpm`/`pnpx` only — never `npm`/`npx`. New workspace deps use `catalog:` or `workspace:^`.
 - **No new package.** Client OAuth core → `@mokei/http-client`; Node interactive → `@mokei/host-node`; server auth → `@mokei/http-server`.
+- **Catalog additions (verified missing, add once to `pnpm-workspace.yaml` under `catalog:`):** `'@sozai/codec': ^0.4.0` (Tasks 2, 9) and `'@kokuin/token': ^0.5.0` (Task 11). Then reference as `"@sozai/codec": "catalog:"` / `"@kokuin/token": "catalog:"` in the package's dependencies and run `pnpm install`. `@kokuin/token`'s `verifyToken(token)` returns `Token<Payload>` with `.payload` (a record carrying `.iss`) — confirmed against `../kokuin/packages/token/src/token.ts`.
 - **No new client JWT dependency.** The client flow signs nothing. Client uses only WebCrypto + `@sozai/codec`. `@kokuin/token` is a `@mokei/http-server` dependency (DID verifier) only.
 - **Running tests:** run vitest directly to avoid the `rtk` shim — `cd packages/<pkg> && pnpm exec vitest run test/<file>.test.ts`. Do **not** use `pnpm run test` for a single file.
 - **Lint/format:** `rtk proxy pnpm run lint` (never bare `pnpm lint`), or `pnpm exec biome check --write <files>`.
