@@ -129,10 +129,19 @@ export function createLoopbackAuthorizationHandler(
           settle(() => reject(err))
         })
 
+        // Already settled before we bind (e.g. the signal was aborted before `authorize` ran):
+        // do NOT open a listening socket. `settle`'s earlier `server.close()` is a no-op while the
+        // server is not yet listening, and the timer is already cleared, so binding here would
+        // leak a listening server that nothing ever closes.
+        if (settled) {
+          return
+        }
+
         server.listen(0, '127.0.0.1', () => {
-          // Already settled (e.g. an abort raced the listen callback): don't bind further state
-          // or open a browser for a flow that has already been rejected.
+          // An abort raced the listen callback: the socket is now open, so close it here (a bare
+          // `return` would leave it listening with no timer left to reap it).
           if (settled) {
+            server.close()
             return
           }
           const addr = server.address()

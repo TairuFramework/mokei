@@ -55,6 +55,17 @@ test('J1: an already-aborted signal rejects immediately without opening the brow
       openBrowserCalls += 1
     },
   })
+  // Count listening loopback servers so we can prove none is leaked. A pre-aborted flow must not
+  // bind a socket at all: settle()'s server.close() is a no-op while the server is not yet
+  // listening, so if the code fell through to server.listen() the socket would stay open forever
+  // (the timer is already cleared) -- exactly the leak this guards against.
+  const listeningServers = (): number =>
+    (process as unknown as { _getActiveHandles(): Array<unknown> })
+      ._getActiveHandles()
+      .filter(
+        (h): h is { listening?: boolean } => (h as { listening?: boolean }).listening === true,
+      ).length
+  const before = listeningServers()
   const controller = new AbortController()
   controller.abort(new Error('cancelled by caller'))
   await expect(
@@ -68,6 +79,7 @@ test('J1: an already-aborted signal rejects immediately without opening the brow
   // Give the (already-settled) flow's listen callback a turn to run, if it was going to.
   await new Promise((resolve) => setTimeout(resolve, 10))
   expect(openBrowserCalls).toBe(0)
+  expect(listeningServers()).toBe(before)
 })
 
 // J1: a signal that aborts mid-flight (after the loopback server is already listening and
