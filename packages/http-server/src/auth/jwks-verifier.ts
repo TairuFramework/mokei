@@ -66,6 +66,25 @@ function parseMaxAge(cacheControl: string | null): number | undefined {
 }
 
 /**
+ * Parse a fetch `Response` body as JSON, converting a non-JSON body into a
+ * `TokenVerificationError` instead of letting a raw `SyntaxError` escape —
+ * callers that only catch `TokenVerificationError` for verification failures
+ * should never see an unrelated parse error type.
+ */
+async function parseJsonResponse(res: Response, url: string): Promise<unknown> {
+  try {
+    return await res.json()
+  } catch (cause) {
+    const error = new TokenVerificationError(
+      'invalid_token',
+      `response from ${url} is not valid JSON`,
+    )
+    error.cause = cause
+    throw error
+  }
+}
+
+/**
  * A verifier for OAuth 2.0 access tokens (JWTs) signed with RS256 or ES256,
  * verified against a JWKS fetched from the authorization server.
  */
@@ -89,7 +108,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
         `failed to discover JWKS URI from ${metadataUrl}: HTTP ${res.status}`,
       )
     }
-    const metadata = (await res.json()) as { jwks_uri?: unknown }
+    const metadata = (await parseJsonResponse(res, metadataUrl)) as { jwks_uri?: unknown }
     if (typeof metadata.jwks_uri !== 'string' || metadata.jwks_uri.length === 0) {
       throw new TokenVerificationError(
         'invalid_token',
@@ -109,7 +128,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
         `failed to fetch JWKS from ${uri}: HTTP ${res.status}`,
       )
     }
-    const body = (await res.json()) as { keys?: unknown }
+    const body = (await parseJsonResponse(res, uri)) as { keys?: unknown }
     if (!Array.isArray(body.keys)) {
       throw new TokenVerificationError('invalid_token', 'JWKS response is missing a keys array')
     }
@@ -216,9 +235,13 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
         toleranceSeconds,
       })
 
+      if (typeof payload.sub !== 'string') {
+        throw new TokenVerificationError('invalid_token', 'token missing sub')
+      }
+
       const expiresAt = typeof payload.exp === 'number' ? payload.exp : undefined
       return {
-        subject: payload.sub as string,
+        subject: payload.sub,
         scopes: scopesFromClaim(payload),
         expiresAt,
         raw: payload,
