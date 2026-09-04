@@ -67,13 +67,20 @@ describe('Session.addHTTPContext', () => {
 
   test('H1: removes the context it just registered when setup() rejects (no signal)', async () => {
     session = new Session()
+    // addHTTPContext resolves (the context is registered), then setup() fails. The fix must
+    // remove the context THIS call registered so a retry does not hit "already exists" and the
+    // transport is not orphaned. Spy `remove` call-through and assert it ran for the key: the
+    // pre-fix `#setupHTTPContext` had no try/catch and never called `remove` here, so this
+    // assertion fails on the regression and passes on the fix.
     vi.spyOn(session.contextHost, 'addHTTPContext').mockResolvedValue({} as never)
     vi.spyOn(session.contextHost, 'setup').mockRejectedValue(new Error('setup failed'))
+    const removeSpy = vi.spyOn(session.contextHost, 'remove')
 
     await expect(session.addHTTPContext({ key: 'k', url: 'https://x/mcp' })).rejects.toThrow(
       'setup failed',
     )
 
+    expect(removeSpy).toHaveBeenCalledWith('k')
     expect(session.contextHost.getContextKeys()).not.toContain('k')
   })
 
