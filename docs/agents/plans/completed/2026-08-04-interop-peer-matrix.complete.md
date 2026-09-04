@@ -6,7 +6,7 @@
 **Scope:** §3.2.1, §3.2.3 and part of §3.2.4 from
 `docs/agents/plans/backlog/2026-06-20-mcp-draft-remaining.md` — piece A of that file's six
 independent sub-projects
-**Milestone:** `docs/agents/plans/milestones/2026-06-08-mcp-draft-migration.md`
+**Milestone:** `docs/agents/plans/completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md`
 
 ## Goal
 

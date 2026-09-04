@@ -7,7 +7,7 @@
 `docs/agents/plans/backlog/2026-06-20-mcp-draft-remaining.md` — pieces B and C of that file's six
 independent sub-projects, following piece A
 (`completed/2026-08-04-interop-peer-matrix.complete.md`)
-**Milestone:** `docs/agents/plans/milestones/2026-06-08-mcp-draft-migration.md`
+**Milestone:** `docs/agents/plans/completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md`
 
 ## Goal
 
