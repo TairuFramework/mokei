@@ -4,6 +4,10 @@ export type StoredTokens = {
   refreshToken?: string
   expiresAt?: number
   scope?: string
+  /** Token endpoint to use for a pre-emptive or 401-triggered refresh, set on authorize. */
+  tokenEndpoint?: string
+  /** Authorization server issuer this token was obtained from, set on authorize. */
+  issuer?: string
 }
 
 export type TokenStore = {
