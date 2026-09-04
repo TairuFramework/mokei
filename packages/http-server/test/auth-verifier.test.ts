@@ -1,3 +1,4 @@
+import { toB64U } from '@sozai/codec'
 import { expect, test } from 'vitest'
 
 import {
@@ -6,6 +7,10 @@ import {
   scopesFromClaim,
   TokenVerificationError,
 } from '../src/auth/verifier.js'
+
+function b64u(text: string): string {
+  return toB64U(new TextEncoder().encode(text))
+}
 
 const resource = 'https://mcp.example.com/mcp'
 
@@ -62,6 +67,34 @@ test('malformed base64url/JSON in the payload segment throws invalid_token, not 
   let caught: unknown
   try {
     decodeJwt('aaa.!!!.bbb')
+  } catch (error) {
+    caught = error
+  }
+  expect(caught).toBeInstanceOf(TokenVerificationError)
+  expect((caught as TokenVerificationError).code).toBe('invalid_token')
+})
+
+test('a non-object (null) header segment throws invalid_token, not a raw TypeError', () => {
+  const header = b64u('null')
+  const payload = b64u(JSON.stringify({ aud: resource, exp: 2000 }))
+  const signature = b64u('sig')
+  let caught: unknown
+  try {
+    decodeJwt(`${header}.${payload}.${signature}`)
+  } catch (error) {
+    caught = error
+  }
+  expect(caught).toBeInstanceOf(TokenVerificationError)
+  expect((caught as TokenVerificationError).code).toBe('invalid_token')
+})
+
+test('a non-object (array) payload segment throws invalid_token, not a raw TypeError', () => {
+  const header = b64u(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+  const payload = b64u('[]')
+  const signature = b64u('sig')
+  let caught: unknown
+  try {
+    decodeJwt(`${header}.${payload}.${signature}`)
   } catch (error) {
     caught = error
   }

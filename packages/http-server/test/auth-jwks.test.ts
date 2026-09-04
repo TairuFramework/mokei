@@ -223,6 +223,72 @@ test('an alg mismatch on a known kid does not force a JWKS refetch (amplificatio
   expect(fetchCalls).toBe(1)
 })
 
+test('a JWK carrying alg RS256 is rejected against an ES256 JWT header (matching kid), with no extra fetch', async () => {
+  const { token, jwk } = await makeToken()
+  const jwkWithAlg = { ...jwk, alg: 'RS256' }
+  let fetchCalls = 0
+  const fetchJwks = async (): Promise<Response> => {
+    fetchCalls += 1
+    return new Response(JSON.stringify({ keys: [jwkWithAlg] }), { status: 200 })
+  }
+  const verifier = createJWKSVerifier({
+    issuer,
+    jwksUri: `${issuer}/jwks`,
+    fetch: fetchJwks as never,
+  })
+  await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow()
+  expect(fetchCalls).toBe(1)
+})
+
+test('discovery rejects AS metadata whose issuer differs from config.issuer', async () => {
+  const fetchFn = async (url: string): Promise<Response> => {
+    if (url === `${issuer}/.well-known/oauth-authorization-server`) {
+      return new Response(
+        JSON.stringify({ issuer: 'https://attacker.example', jwks_uri: `${issuer}/jwks` }),
+        { status: 200 },
+      )
+    }
+    throw new Error(`unexpected ${url}`)
+  }
+  const verifier = createJWKSVerifier({ issuer, fetch: fetchFn as never })
+  const { token } = await makeToken()
+  await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow(/issuer/i)
+})
+
+test('discovery rejects a non-loopback http jwks_uri returned by AS metadata', async () => {
+  const fetchFn = async (url: string): Promise<Response> => {
+    if (url === `${issuer}/.well-known/oauth-authorization-server`) {
+      return new Response(JSON.stringify({ issuer, jwks_uri: 'http://as.example.com/jwks' }), {
+        status: 200,
+      })
+    }
+    throw new Error(`unexpected fetch of ${url}`)
+  }
+  const verifier = createJWKSVerifier({ issuer, fetch: fetchFn as never })
+  const { token } = await makeToken()
+  await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow(/https/i)
+})
+
+test('RFC 8414 discovery inserts the well-known segment before a path-bearing issuer', async () => {
+  const pathIssuer = 'https://as.example.com/tenant1'
+  const metadataUrl = 'https://as.example.com/.well-known/oauth-authorization-server/tenant1'
+  let fetchedMetadataUrl: string | undefined
+  const fetchFn = async (url: string): Promise<Response> => {
+    if (url === metadataUrl) {
+      fetchedMetadataUrl = url
+      return new Response(JSON.stringify({ issuer: pathIssuer, jwks_uri: `${pathIssuer}/jwks` }), {
+        status: 200,
+      })
+    }
+    return new Response(JSON.stringify({ keys: [] }), { status: 200 })
+  }
+  const verifier = createJWKSVerifier({ issuer: pathIssuer, fetch: fetchFn as never })
+  const { token } = await makeToken({ payload: { iss: pathIssuer } })
+  // Verification itself fails (empty JWKS) — only the discovery URL is asserted below.
+  await verifier.verifyAccessToken(token, { resource }).catch(() => {})
+  expect(fetchedMetadataUrl).toBe(metadataUrl)
+})
+
 test('an unknown kid still forces exactly one JWKS refresh and retry', async () => {
   // The token's `kid` never appears in the JWKS at all, so verification still fails overall —
   // what this test pins down is the *fetch count*: the first (cache-populating) fetch, plus

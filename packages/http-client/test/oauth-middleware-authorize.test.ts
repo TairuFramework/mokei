@@ -117,6 +117,52 @@ test('with no store in config, a default in-memory store retains the token acros
   expect(protectedCalls).toBe(3)
 })
 
+test('refuses to attach a bearer token over cleartext non-loopback HTTP', async () => {
+  const store = createMemoryTokenStore()
+  await store.set('http://evil.example/mcp', { accessToken: 'secret', tokenType: 'Bearer' })
+  const handler: AuthorizationHandler = {
+    async authorize(): Promise<never> {
+      throw new Error('should not authorize')
+    },
+  }
+  let called = false
+  const next = async (): Promise<Response> => {
+    called = true
+    return json({ ok: true })
+  }
+  const mw = createOAuthMiddleware({ clientId: 'c', handler, store })
+  await expect(mw(next)('http://evil.example/mcp', { method: 'POST' })).rejects.toThrow(
+    /https|loopback/i,
+  )
+  expect(called).toBe(false)
+})
+
+test('proceeds normally for an https transport URL', async () => {
+  const store = createMemoryTokenStore()
+  const handler: AuthorizationHandler = {
+    async authorize(): Promise<never> {
+      throw new Error('should not authorize')
+    },
+  }
+  const next = async (): Promise<Response> => json({ ok: true })
+  const mw = createOAuthMiddleware({ clientId: 'c', handler, store })
+  const res = await mw(next)('https://api.example/mcp', { method: 'POST' })
+  expect(res.status).toBe(200)
+})
+
+test('proceeds normally for a loopback http transport URL', async () => {
+  const store = createMemoryTokenStore()
+  const handler: AuthorizationHandler = {
+    async authorize(): Promise<never> {
+      throw new Error('should not authorize')
+    },
+  }
+  const next = async (): Promise<Response> => json({ ok: true })
+  const mw = createOAuthMiddleware({ clientId: 'c', handler, store })
+  const res = await mw(next)('http://localhost:3000/mcp', { method: 'POST' })
+  expect(res.status).toBe(200)
+})
+
 test('rejects a state mismatch from the handler', async () => {
   const store = createMemoryTokenStore()
   const handler: AuthorizationHandler = {

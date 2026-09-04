@@ -57,6 +57,25 @@ function defaultNow(): number {
   return Math.floor(Date.now() / 1000)
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+}
+
+/** Requires `url` to be https, allowing http only for a loopback host. */
+function requireHttps(url: string): void {
+  const u = new URL(url)
+  if (u.protocol === 'https:') return
+  if (u.protocol === 'http:' && isLoopbackHost(u.hostname)) return
+  throw new TokenVerificationError('invalid_token', `OAuth endpoint must be https: ${url}`)
+}
+
+/** RFC 8414: insert the well-known segment before the issuer's own path, not append it. */
+function wellKnownAS(issuer: string): string {
+  const u = new URL(issuer)
+  const path = u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '')
+  return `${u.origin}/.well-known/oauth-authorization-server${path}`
+}
+
 function parseMaxAge(cacheControl: string | null): number | undefined {
   if (cacheControl == null) return undefined
   const match = /(?:^|,)\s*max-age=(\d+)/i.exec(cacheControl)
@@ -100,7 +119,8 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
   async function discoverJwksUri(): Promise<string> {
     if (config.jwksUri != null) return config.jwksUri
     if (resolvedJwksUri != null) return resolvedJwksUri
-    const metadataUrl = `${config.issuer}/.well-known/oauth-authorization-server`
+    const metadataUrl = wellKnownAS(config.issuer)
+    requireHttps(metadataUrl)
     const res = await fetchFn(metadataUrl)
     if (!res.ok) {
       throw new TokenVerificationError(
@@ -108,7 +128,13 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
         `failed to discover JWKS URI from ${metadataUrl}: HTTP ${res.status}`,
       )
     }
-    const metadata = (await parseJsonResponse(res, metadataUrl)) as { jwks_uri?: unknown }
+    const metadata = (await parseJsonResponse(res, metadataUrl)) as {
+      issuer?: unknown
+      jwks_uri?: unknown
+    }
+    if (metadata.issuer !== config.issuer) {
+      throw new TokenVerificationError('invalid_token', 'issuer mismatch in AS metadata')
+    }
     if (typeof metadata.jwks_uri !== 'string' || metadata.jwks_uri.length === 0) {
       throw new TokenVerificationError(
         'invalid_token',
@@ -121,6 +147,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
 
   async function fetchJwks(): Promise<CachedJwks> {
     const uri = await discoverJwksUri()
+    requireHttps(uri)
     const res = await fetchFn(uri)
     if (!res.ok) {
       throw new TokenVerificationError(
@@ -173,6 +200,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     if (alg === 'ES256' && (jwk.kty !== 'EC' || jwk.crv !== 'P-256')) return false
     if (jwk.use != null && jwk.use !== 'sig') return false
     if (jwk.key_ops != null && !jwk.key_ops.includes('verify')) return false
+    if (jwk.alg != null && jwk.alg !== alg) return false
     return true
   }
 

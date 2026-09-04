@@ -50,3 +50,59 @@ test('rejects PRM whose resource does not match', async () => {
     }),
   ).rejects.toThrow(/resource/i)
 })
+
+test('rejects a loopback-http resource_metadata challenge when the resource itself is https (SSRF guard)', async () => {
+  const fetch = async (url: string): Promise<Response> => {
+    throw new Error(`should not fetch ${url}`)
+  }
+  await expect(
+    discover({
+      resource,
+      resourceMetadataUrl: 'http://localhost:9200/x',
+      fetch,
+    }),
+  ).rejects.toThrow(/https/i)
+})
+
+test('allows loopback-http metadata when the protected resource itself is loopback', async () => {
+  const loopbackResource = 'http://localhost:3000/mcp'
+  const fetch = async (url: string): Promise<Response> => {
+    if (url.includes('oauth-protected-resource')) {
+      return json({
+        resource: loopbackResource,
+        authorization_servers: ['http://localhost:4000'],
+      })
+    }
+    if (url === 'http://localhost:4000/.well-known/oauth-authorization-server') {
+      return json({
+        issuer: 'http://localhost:4000',
+        authorization_endpoint: 'http://localhost:4000/authorize',
+        token_endpoint: 'http://localhost:4000/token',
+        code_challenge_methods_supported: ['S256'],
+      })
+    }
+    throw new Error(`unexpected ${url}`)
+  }
+  const { prm, as } = await discover({ resource: loopbackResource, fetch })
+  expect(prm.resource).toBe(loopbackResource)
+  expect(as.issuer).toBe('http://localhost:4000')
+})
+
+test('RFC 8414 discovery inserts the well-known segment before a path-bearing issuer', async () => {
+  const pathIssuer = 'https://as.example/tenant1'
+  let fetchedAsUrl: string | undefined
+  const fetch = async (url: string): Promise<Response> => {
+    if (url.includes('oauth-protected-resource')) {
+      return json({ resource, authorization_servers: [pathIssuer] })
+    }
+    fetchedAsUrl = url
+    return json({
+      issuer: pathIssuer,
+      authorization_endpoint: `${pathIssuer}/authorize`,
+      token_endpoint: `${pathIssuer}/token`,
+      code_challenge_methods_supported: ['S256'],
+    })
+  }
+  await discover({ resource, fetch })
+  expect(fetchedAsUrl).toBe('https://as.example/.well-known/oauth-authorization-server/tenant1')
+})

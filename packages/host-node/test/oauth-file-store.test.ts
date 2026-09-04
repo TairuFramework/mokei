@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
@@ -42,4 +42,28 @@ test('treats corrupt file as empty', async () => {
   await (await import('node:fs/promises')).writeFile(file, 'not json', 'utf8')
   const store = createFileTokenStore(file)
   expect(await store.get('anything')).toBeUndefined()
+})
+
+test('reading a nonexistent path returns undefined for any key (ENOENT -> {})', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'does-not-exist.json')
+  const store = createFileTokenStore(file)
+  expect(await store.get('anything')).toBeUndefined()
+})
+
+test('a top-level JSON array is treated as empty', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const file = join(dir, 'tokens.json')
+  await (await import('node:fs/promises')).writeFile(file, '[]', 'utf8')
+  const store = createFileTokenStore(file)
+  expect(await store.get('anything')).toBeUndefined()
+})
+
+test('a non-ENOENT read error propagates instead of being masked as empty', async () => {
+  // Point the store at a directory path so `readFile` throws EISDIR rather than ENOENT.
+  const dir = await mkdtemp(join(tmpdir(), 'mokei-oauth-'))
+  const dirAsFile = join(dir, 'a-directory')
+  await mkdir(dirAsFile)
+  const store = createFileTokenStore(dirAsFile)
+  await expect(store.get('anything')).rejects.toThrow()
 })

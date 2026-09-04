@@ -89,6 +89,18 @@ export async function exchangeRefresh(
 /** Default refresh window before actual token expiry, in seconds. */
 const DEFAULT_CLOCK_SKEW_SECONDS = 60
 
+/** Whether `hostname` names a loopback address, kept local rather than imported from
+ * `discovery.js` to keep this module's boundary independent. */
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]' ||
+    hostname.endsWith('.localhost')
+  )
+}
+
 /**
  * Runs the authorization-code exchange (PKCE, form-encoded, no client secret) against
  * `as.token_endpoint` using the caller-supplied unwrapped `fetch` — never the OAuth middleware
@@ -275,6 +287,14 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
 
   return (next) => {
     return async (url, init) => {
+      const u = new URL(url)
+      const loopback = isLoopbackHost(u.hostname)
+      if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loopback)) {
+        throw new Error(
+          `OAuth requires an https (or loopback) transport URL, got: ${u.protocol}//${u.host}`,
+        )
+      }
+
       const resource = canonicalResource(config.resource ?? url)
       let tokens = await store.get(resource)
 

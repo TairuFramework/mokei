@@ -4,10 +4,19 @@ import { dirname, join } from 'node:path'
 import type { StoredTokens, TokenStore } from '@mokei/http-client'
 
 async function readAll(path: string): Promise<Record<string, StoredTokens>> {
+  let raw: string
   try {
-    return JSON.parse(await readFile(path, 'utf8')) as Record<string, StoredTokens>
+    raw = await readFile(path, 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {}
+    throw err
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
+    return parsed as Record<string, StoredTokens>
   } catch {
-    return {}
+    return {} // corrupt JSON -> treat as empty (a subsequent write repairs it)
   }
 }
 

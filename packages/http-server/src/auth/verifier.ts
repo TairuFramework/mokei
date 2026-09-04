@@ -27,6 +27,11 @@ export function decodeJwt(token: string): {
   try {
     const header = JSON.parse(new TextDecoder().decode(fromB64U(h))) as Record<string, unknown>
     const payload = JSON.parse(new TextDecoder().decode(fromB64U(p))) as Record<string, unknown>
+    const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+      typeof v === 'object' && v !== null && !Array.isArray(v)
+    if (!isPlainObject(header) || !isPlainObject(payload)) {
+      throw new TokenVerificationError('invalid_token', 'malformed JWT')
+    }
     return {
       header,
       payload,
