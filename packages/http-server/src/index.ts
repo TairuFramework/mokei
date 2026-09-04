@@ -10,6 +10,15 @@
  * @module http-server
  */
 
+export { createDIDVerifier } from './auth/did-verifier.js'
+export { createJWKSVerifier } from './auth/jwks-verifier.js'
+export {
+  type ProtectedResourceMetadataConfig,
+  protectedResourceMetadataPath,
+  protectedResourceMetadataResponse,
+} from './auth/metadata.js'
+export { type BearerAuthOptions, createBearerAuthGate } from './auth/require-bearer.js'
+export { type AuthInfo, type OAuthTokenVerifier, TokenVerificationError } from './auth/verifier.js'
 export {
   createHTTPHandler,
   DEFAULT_MAX_STATELESS_EXCHANGES,
