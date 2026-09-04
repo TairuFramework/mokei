@@ -19,7 +19,7 @@ import type {
 } from '@mokei/context-protocol'
 import type { WithRequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
-import { type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
+import { type FetchMiddleware, type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 
@@ -201,6 +201,8 @@ export type HTTPContextParams = {
    * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
    */
   protocolVersion?: ProtocolVersion | 'auto'
+  /** Fetch middleware (e.g. OAuth from createOAuthMiddleware) applied to the transport. */
+  fetchMiddleware?: FetchMiddleware
 }
 
 export class ContextHost extends Disposer {
@@ -436,7 +438,7 @@ export class ContextHost extends Disposer {
   async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
     params: HTTPContextParams,
   ): Promise<ContextClient<T>> {
-    const { key, url, headers, auth, timeout, protocolVersion } = params
+    const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware } = params
 
     if (this._contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
@@ -447,7 +449,13 @@ export class ContextHost extends Disposer {
     // pattern this revision's work set out to remove, and a one-sided change to it would be a
     // behavior difference between two entry points that read as siblings.
     const context = createHostedContext<T>({
-      transport: new HTTPTransport({ url, headers, auth, timeout }) as ClientTransport,
+      transport: new HTTPTransport({
+        url,
+        headers,
+        auth,
+        timeout,
+        fetchMiddleware,
+      }) as ClientTransport,
       protocolVersion,
     })
 
