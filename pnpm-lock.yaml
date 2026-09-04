@@ -810,6 +810,9 @@ importers:
       '@mokei/logger':
         specifier: workspace:^
         version: link:../logger
+      '@sozai/codec':
+        specifier: 'catalog:'
+        version: 0.4.0
       '@sozai/runtime':
         specifier: 'catalog:'
         version: 0.1.0
