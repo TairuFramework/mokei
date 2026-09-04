@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Stage:** executing
+**Stage:** qa
 **Mode:** tasks
 
 **Goal:** Add OAuth 2.1 authorization to mokei's HTTP transport — a native client-side flow (discovery → PKCE → token → refresh → 401 re-auth) and server-side bearer verification for `@mokei/http-server`.
