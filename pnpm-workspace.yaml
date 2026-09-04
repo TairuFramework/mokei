@@ -33,6 +33,7 @@ catalog:
   '@enkaku/server': ^0.21.2
   '@enkaku/socket': ^0.21.0
   '@enkaku/transport': ^0.21.0
+  '@kokuin/token': ^0.5.0
   '@sozai/async': ^0.2.1
   '@sozai/codec': ^0.4.0
   '@sozai/event': ^0.1.3
