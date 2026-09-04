@@ -1,8 +1,13 @@
+import { toB64U } from '@sozai/codec'
+
 import type { FetchLike, FetchMiddleware } from '../transport.js'
+import { discover, parseResourceMetadataUrl } from './discovery.js'
+import { createPKCE } from './pkce.js'
 import { canonicalResource } from './resource.js'
 import type { StoredTokens, TokenStore } from './store.js'
 
-/** Completes the authorization-code exchange for a resource; the 401/authorize flow (later task). */
+/** Completes the authorization-code exchange for a resource: the core owns all authorization-URL
+ * params and the PKCE/state bookkeeping; the handler only supplies (and returns) `redirectUri`. */
 export type AuthorizationHandler = {
   authorize(params: {
     buildAuthorizationUrl(redirectUri: string): string
@@ -20,6 +25,9 @@ export type OAuthClientConfig = {
   clockSkewSeconds?: number
   /** Current time in seconds; defaults to the wall clock. */
   now?: () => number
+  /** Picks an authorization server when the protected-resource metadata lists more than one;
+   * defaults to the first. */
+  selectAuthServer?: (servers: Array<string>) => string
 }
 
 /** Whether `tokens` is at or past `now() + skew` (all in seconds). */
@@ -81,16 +89,169 @@ export async function exchangeRefresh(
 const DEFAULT_CLOCK_SKEW_SECONDS = 60
 
 /**
+ * Runs the authorization-code exchange (PKCE, form-encoded, no client secret) against
+ * `as.token_endpoint` using the caller-supplied unwrapped `fetch` — never the OAuth middleware
+ * itself, so this can never re-enter the middleware and loop.
+ */
+async function exchangeAuthorizationCode(
+  fetchUnwrapped: FetchLike,
+  tokenEndpoint: string,
+  params: {
+    clientId: string
+    resource: string
+    code: string
+    redirectUri: string
+    codeVerifier: string
+  },
+  now: () => number,
+): Promise<StoredTokens> {
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code: params.code,
+    redirect_uri: params.redirectUri,
+    client_id: params.clientId,
+    code_verifier: params.codeVerifier,
+    resource: params.resource,
+  })
+  const response = await fetchUnwrapped(tokenEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  })
+  if (!response.ok) {
+    throw new Error(`Token exchange HTTP ${response.status}`)
+  }
+  const data = (await response.json()) as {
+    access_token: string
+    token_type: string
+    expires_in?: number
+    refresh_token?: string
+    scope?: string
+  }
+  if (String(data.token_type).toLowerCase() !== 'bearer') {
+    throw new Error(`Unsupported token_type: ${data.token_type}`)
+  }
+  return {
+    accessToken: data.access_token,
+    tokenType: data.token_type,
+    refreshToken: data.refresh_token,
+    expiresAt: data.expires_in == null ? undefined : now() + data.expires_in,
+    scope: data.scope,
+  }
+}
+
+/** Single-flight locks for the 401 authorize/refresh path, keyed by canonical resource, shared
+ * across all `createOAuthMiddleware` instances so concurrent requests for the same resource never
+ * launch overlapping authorization flows even when raised from different middleware instances. */
+const authFlights = new Map<string, Promise<StoredTokens>>()
+
+/**
  * Attaches the stored access token as `Authorization: Bearer …` and, best-effort, refreshes it
  * pre-emptively when near expiry. Refresh needs a token endpoint: when `tokens.tokenEndpoint` is
  * unknown (not yet set by an authorize flow) the refresh is skipped and the request proceeds with
- * the possibly-stale token — a later 401 path (not built here) recovers from that.
+ * the possibly-stale token, recovered by the 401 path below.
  *
- * The 401 discovery/authorize/PKCE/single-flight flow is a later addition.
+ * On a 401 (and only once per outbound call, to bound retries): discovers the resource's
+ * authorization server from the `WWW-Authenticate` header, runs a PKCE authorization-code flow
+ * through `config.handler`, stores the resulting tokens, and retries the request exactly once
+ * with the fresh `Authorization` header. Concurrent callers for the same resource share a single
+ * in-flight authorization (`authFlights`), keyed by the same canonical resource used as the token
+ * store key.
  */
 export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddleware {
   const now = config.now ?? (() => Math.floor(Date.now() / 1000))
   const skew = config.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS
+
+  /** Runs (or joins) the single-flight refresh/authorize for `resource`, re-checking the store
+   * first since a concurrent flight may already have populated it. Reuse is decided by comparing
+   * token identity (`staleAccessToken`, the token that was in use when the failure was observed)
+   * rather than `nearExpiry`, since an access token need not carry `expiresAt` and a 401 can be
+   * caused by something other than expiry — either would make an expiry-based check wrongly
+   * "reuse" the very token that just failed. */
+  function withSingleFlight(
+    resource: string,
+    store: TokenStore | undefined,
+    staleAccessToken: string | undefined,
+    run: () => Promise<StoredTokens>,
+  ): Promise<StoredTokens> {
+    const inFlight = authFlights.get(resource)
+    if (inFlight != null) return inFlight
+    const flight = (async () => {
+      const current = await store?.get(resource)
+      if (current != null && current.accessToken !== staleAccessToken) return current
+      return run()
+    })()
+    authFlights.set(resource, flight)
+    // A second, derived promise chain so cleanup runs regardless of outcome without attaching an
+    // additional unhandled-rejection-prone consumer to `flight` itself (the caller below already
+    // handles/propagates its rejection).
+    flight
+      .finally(() => {
+        if (authFlights.get(resource) === flight) authFlights.delete(resource)
+      })
+      .catch(() => {})
+    return flight
+  }
+
+  /** Discovers the authorization server, runs PKCE + `config.handler.authorize`, exchanges the
+   * returned code for tokens, and persists them under `resource`. */
+  async function authorize(
+    next: FetchLike,
+    resource: string,
+    store: TokenStore | undefined,
+    wwwAuthenticate: string | null,
+  ): Promise<StoredTokens> {
+    const resourceMetadataUrl = parseResourceMetadataUrl(wwwAuthenticate) ?? undefined
+    const { as } = await discover({
+      resource,
+      resourceMetadataUrl,
+      fetch: next,
+      selectAuthServer: config.selectAuthServer,
+    })
+
+    const pkce = await createPKCE()
+    const state = toB64U(crypto.getRandomValues(new Uint8Array(16)))
+
+    function buildAuthorizationUrl(redirectUri: string): string {
+      const authUrl = new URL(as.authorization_endpoint)
+      authUrl.searchParams.set('response_type', 'code')
+      authUrl.searchParams.set('client_id', config.clientId)
+      authUrl.searchParams.set('redirect_uri', redirectUri)
+      authUrl.searchParams.set('code_challenge', pkce.challenge)
+      authUrl.searchParams.set('code_challenge_method', 'S256')
+      authUrl.searchParams.set('state', state)
+      if (config.scopes != null && config.scopes.length > 0) {
+        authUrl.searchParams.set('scope', config.scopes.join(' '))
+      }
+      authUrl.searchParams.set('resource', resource)
+      return authUrl.toString()
+    }
+
+    const result = await config.handler.authorize({ buildAuthorizationUrl, state })
+    if (result.state !== state) {
+      throw new Error('OAuth authorize: state mismatch')
+    }
+
+    const exchanged = await exchangeAuthorizationCode(
+      next,
+      as.token_endpoint,
+      {
+        clientId: config.clientId,
+        resource,
+        code: result.code,
+        redirectUri: result.redirectUri,
+        codeVerifier: pkce.verifier,
+      },
+      now,
+    )
+    const tokens: StoredTokens = {
+      ...exchanged,
+      tokenEndpoint: as.token_endpoint,
+      issuer: as.issuer,
+    }
+    await store?.set(resource, tokens)
+    return tokens
+  }
 
   return (next) => {
     return async (url, init) => {
@@ -106,32 +267,49 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       ) {
         // Best-effort: a failed refresh (network error, non-2xx, non-bearer token_type) must
         // not fail the outbound request outright — it proceeds on the current, possibly-stale
-        // token, and a later 401 path (not built here) recovers.
+        // token, and the 401 path below recovers.
         try {
-          const refreshed = await exchangeRefresh(
-            next,
-            tokens.tokenEndpoint,
-            {
-              clientId: config.clientId,
-              resource: config.resource,
-              refreshToken: tokens.refreshToken,
-              scopes: config.scopes,
-            },
-            now,
+          const refreshTokenEndpoint = tokens.tokenEndpoint
+          const refreshToken = tokens.refreshToken
+          const refreshIssuer = tokens.issuer
+          const refreshed = await withSingleFlight(resource, store, tokens.accessToken, () =>
+            exchangeRefresh(
+              next,
+              refreshTokenEndpoint,
+              {
+                clientId: config.clientId,
+                resource,
+                refreshToken,
+                scopes: config.scopes,
+              },
+              now,
+            ).then(async (r) => {
+              const merged = { ...r, tokenEndpoint: refreshTokenEndpoint, issuer: refreshIssuer }
+              await store?.set(resource, merged)
+              return merged
+            }),
           )
-          tokens = { ...refreshed, tokenEndpoint: tokens.tokenEndpoint, issuer: tokens.issuer }
-          await store?.set(resource, tokens)
+          tokens = refreshed
         } catch {
           // Swallow: keep the stale tokens already read above.
         }
       }
 
-      if (tokens != null) {
-        const headers = new Headers(init?.headers)
-        headers.set('Authorization', `${tokens.tokenType} ${tokens.accessToken}`)
-        return next(url, { ...init, headers })
+      const attach = (requestInit: RequestInit | undefined): RequestInit => {
+        const headers = new Headers(requestInit?.headers)
+        if (tokens != null)
+          headers.set('Authorization', `${tokens.tokenType} ${tokens.accessToken}`)
+        return { ...requestInit, headers }
       }
-      return next(url, init)
+
+      const response = await next(url, tokens != null ? attach(init) : init)
+      if (response.status !== 401) return response
+
+      const authorized = await withSingleFlight(resource, store, tokens?.accessToken, () =>
+        authorize(next, resource, store, response.headers.get('WWW-Authenticate')),
+      )
+      tokens = authorized
+      return next(url, attach(init))
     }
   }
 }
