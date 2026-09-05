@@ -145,9 +145,9 @@ describe('LlamaProvider streamChat', () => {
       toolCalls: Array<{ name: string; arguments: string; id: string; raw: ToolCall }>
     }
     expect(toolCallPart.toolCalls).toHaveLength(1)
-    expect(toolCallPart.toolCalls[0].name).toBe('get_weather')
-    expect(JSON.parse(toolCallPart.toolCalls[0].arguments)).toEqual({ city: 'London' })
-    expect(toolCallPart.toolCalls[0].id).toBeDefined()
+    expect(toolCallPart.toolCalls[0]?.name).toBe('get_weather')
+    expect(JSON.parse(toolCallPart.toolCalls[0]?.arguments ?? '')).toEqual({ city: 'London' })
+    expect(toolCallPart.toolCalls[0]?.id).toBeDefined()
 
     const donePart = parts.find((p) => p.type === 'done') as {
       type: 'done'
@@ -322,7 +322,7 @@ describe('LlamaProvider streamChat', () => {
 
     // Verify functions were NOT passed
     const lastCallIdx = mockPromptWithMeta.mock.calls.length - 1
-    const callArgs = mockPromptWithMeta.mock.calls[lastCallIdx][1] as Record<string, unknown>
+    const callArgs = mockPromptWithMeta.mock.calls[lastCallIdx]?.[1] as Record<string, unknown>
     expect(callArgs).not.toHaveProperty('functions')
   })
 
@@ -356,7 +356,7 @@ describe('LlamaProvider streamChat', () => {
     }
 
     // Verify grammar was NOT passed
-    const callArgs = mockPromptWithMeta.mock.calls[0][1] as Record<string, unknown>
+    const callArgs = mockPromptWithMeta.mock.calls[0]?.[1] as Record<string, unknown>
     expect(callArgs).not.toHaveProperty('grammar')
   })
 

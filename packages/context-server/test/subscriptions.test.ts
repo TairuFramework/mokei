@@ -145,7 +145,7 @@ describe('SubscriptionWriter', () => {
         started.push(uri)
         const gate = gates[call]
         call++
-        await gate.promise
+        await gate?.promise
       },
       close: vi.fn(),
     }
@@ -159,13 +159,13 @@ describe('SubscriptionWriter', () => {
     // Only the first frame should have reached the sink -- the second is still queued behind it.
     expect(started).toEqual(['file:///a'])
 
-    gates[0].resolve()
+    gates[0]?.resolve()
     await first
     await Promise.resolve()
     await Promise.resolve()
     expect(started).toEqual(['file:///a', 'file:///b'])
 
-    gates[1].resolve()
+    gates[1]?.resolve()
     await second
   })
 
@@ -198,7 +198,7 @@ describe('SubscriptionWriter', () => {
     )
 
     expect(onFailure).toHaveBeenCalledTimes(1)
-    expect(onFailure.mock.calls[0][0]).toBeInstanceOf(SubscriptionBackpressureError)
+    expect(onFailure.mock.calls[0]?.[0]).toBeInstanceOf(SubscriptionBackpressureError)
     expect(closedWith).toBeInstanceOf(SubscriptionBackpressureError)
 
     // The already-queued (not yet dispatched) second frame is rejected too.
@@ -235,7 +235,7 @@ describe('SubscriptionWriter', () => {
     await expect(writer.enqueue(resourceNotification('file:///a'))).rejects.toBe(writeError)
 
     expect(onFailure).toHaveBeenCalledTimes(1)
-    expect(onFailure.mock.calls[0][0]).toBe(writeError)
+    expect(onFailure.mock.calls[0]?.[0]).toBe(writeError)
     expect(closedWith).toBe(writeError)
 
     // A subsequent enqueue is refused -- and no further writeNotification is attempted on the
@@ -667,7 +667,7 @@ describe('ContextServer subscriptions/listen', () => {
     await settle()
     await settle()
     expect(onError).toHaveBeenCalledTimes(1)
-    expect(onError.mock.calls[0][0]).toBe(writeError)
+    expect(onError.mock.calls[0]?.[0]).toBe(writeError)
 
     // The subscription is gone: a second matching event reaches no sink, so no further failure.
     await server.events.emit('resourceUpdated', { uri: 'file:///a' })

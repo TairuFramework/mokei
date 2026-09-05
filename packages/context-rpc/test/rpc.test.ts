@@ -475,7 +475,8 @@ describe('ContextRPC invalid inbound messages', () => {
     await transports.server.write({ jsonrpc: '2.0', id: 99, result: {} } as AnyMessage)
 
     await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1))
-    expect((onError.mock.calls[0][0] as Error).message).toBe('Invalid message')
+    const firstErrorArg = onError.mock.calls[0]?.[0]
+    expect((firstErrorArg as Error).message).toBe('Invalid message')
 
     await rpc.dispose()
     await transports.dispose()
@@ -782,9 +783,12 @@ describe('ContextRPC pre-close flush', () => {
     )
     expect(writeCallIndex).toBeGreaterThanOrEqual(0)
     expect(disposeSpy).toHaveBeenCalledTimes(1)
-    expect(writeSpy.mock.invocationCallOrder[writeCallIndex]).toBeLessThan(
-      disposeSpy.mock.invocationCallOrder[0],
-    )
+    const writeOrder = writeSpy.mock.invocationCallOrder[writeCallIndex]
+    const disposeOrder = disposeSpy.mock.invocationCallOrder[0]
+    if (writeOrder == null || disposeOrder == null) {
+      throw new Error('expected invocation order to be recorded')
+    }
+    expect(writeOrder).toBeLessThan(disposeOrder)
 
     await transports.dispose()
   })
@@ -997,7 +1001,8 @@ describe('ContextRPC stream-notification correlator', () => {
     } as AnyMessage)
 
     await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1))
-    expect((onError.mock.calls[0][0] as Error).message).toBe('correlator failed')
+    const correlatorErrorArg = onError.mock.calls[0]?.[0]
+    expect((correlatorErrorArg as Error).message).toBe('correlator failed')
     expect(notified).toEqual([])
 
     await rpc.dispose()

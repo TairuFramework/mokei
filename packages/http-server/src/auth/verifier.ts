@@ -33,8 +33,10 @@ export function decodeJWT(token: string): {
   signature: Uint8Array
 } {
   const parts = token.split('.')
-  if (parts.length !== 3) throw new TokenVerificationError('invalid_token', 'malformed JWT')
   const [h, p, s] = parts
+  if (parts.length !== 3 || h == null || p == null || s == null) {
+    throw new TokenVerificationError('invalid_token', 'malformed JWT')
+  }
   try {
     const header = JSON.parse(new TextDecoder().decode(fromB64U(h))) as Record<string, unknown>
     const payload = JSON.parse(new TextDecoder().decode(fromB64U(p))) as Record<string, unknown>

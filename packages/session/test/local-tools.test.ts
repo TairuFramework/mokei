@@ -61,7 +61,7 @@ describe('Session Local Tools', () => {
 
       expect(tools).toHaveLength(1)
       // toolFromMCP is called with (tool, index, array) from map
-      expect(mockProvider.toolFromMCP.mock.calls[0][0]).toMatchObject({
+      expect(mockProvider.toolFromMCP.mock.calls[0]?.[0]).toMatchObject({
         name: 'local:myTool',
       })
     })

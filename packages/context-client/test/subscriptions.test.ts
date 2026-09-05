@@ -91,7 +91,7 @@ describe('SubscriptionDriver', () => {
     await flush()
     // A candidate listen opened carrying the URI.
     expect(opens.length).toBe(1)
-    expect(opens[0].filter.resourceSubscriptions).toEqual(['file:///a'])
+    expect(opens[0]?.filter.resourceSubscriptions).toEqual(['file:///a'])
 
     // The mutation does not settle before the ack.
     let settled1 = false
@@ -101,7 +101,7 @@ describe('SubscriptionDriver', () => {
     await flush()
     expect(settled1).toBe(false)
 
-    opens[0].ack()
+    opens[0]?.ack()
     await p1
     expect(settled1).toBe(true)
 
@@ -109,14 +109,14 @@ describe('SubscriptionDriver', () => {
     const p2 = driver.subscribeResource({ uri: 'file:///b' })
     await flush()
     expect(opens.length).toBe(2)
-    expect(opens[1].filter.resourceSubscriptions).toEqual(['file:///a', 'file:///b'])
+    expect(opens[1]?.filter.resourceSubscriptions).toEqual(['file:///a', 'file:///b'])
     // Open-before-retire: the previous stream is NOT aborted before the new one acks.
-    expect(opens[0].aborted).toBe(false)
+    expect(opens[0]?.aborted).toBe(false)
 
-    opens[1].ack()
+    opens[1]?.ack()
     await p2
     // Now, and only now, the previous stream is retired.
-    expect(opens[0].aborted).toBe(true)
+    expect(opens[0]?.aborted).toBe(true)
     expect(log).toEqual(['open:1', 'ack:1', 'open:2', 'ack:2', 'abort:1'])
   })
 
@@ -128,20 +128,20 @@ describe('SubscriptionDriver', () => {
 
     const p1 = driver.subscribeResource({ uri: 'file:///a' })
     await flush()
-    opens[0].ack()
+    opens[0]?.ack()
     await p1
 
     const p2 = driver.subscribeResource({ uri: 'file:///b' })
     await flush()
-    opens[1].ack()
+    opens[1]?.ack()
     await p2
 
     // gen1 is retired; a late frame on it must be dropped.
-    opens[0].notify(updatedNotification('file:///a'))
+    opens[0]?.notify(updatedNotification('file:///a'))
     expect(received).toEqual([])
 
     // A frame on the active generation is delivered.
-    opens[1].notify(updatedNotification('file:///b'))
+    opens[1]?.notify(updatedNotification('file:///b'))
     expect(received.length).toBe(1)
   })
 
@@ -157,12 +157,12 @@ describe('SubscriptionDriver', () => {
     const p = driver.subscribeResource({ uri: 'file:///a' })
     await flush()
     // First frame is an ordinary notification, not the acknowledgement.
-    opens[0].notify(updatedNotification('file:///a'))
+    opens[0]?.notify(updatedNotification('file:///a'))
 
     await expect(p).rejects.toThrow()
     expect(errors.length).toBe(1)
     // The bad candidate is torn down.
-    expect(opens[0].aborted).toBe(true)
+    expect(opens[0]?.aborted).toBe(true)
   })
 
   test('concurrent subscribeResource calls serialize, each on its own generation', async () => {
@@ -175,19 +175,19 @@ describe('SubscriptionDriver', () => {
 
     // Serialized: only the first candidate has opened.
     expect(opens.length).toBe(1)
-    expect(opens[0].filter.resourceSubscriptions).toEqual(['file:///a'])
+    expect(opens[0]?.filter.resourceSubscriptions).toEqual(['file:///a'])
 
-    opens[0].ack()
+    opens[0]?.ack()
     await p1
     await flush()
 
     // The second mutation runs on its own generation, carrying the accumulated filter.
     expect(opens.length).toBe(2)
-    expect(opens[1].filter.resourceSubscriptions).toEqual(['file:///a', 'file:///b'])
+    expect(opens[1]?.filter.resourceSubscriptions).toEqual(['file:///a', 'file:///b'])
 
-    opens[1].ack()
+    opens[1]?.ack()
     await p2
-    expect(opens[0].aborted).toBe(true)
+    expect(opens[0]?.aborted).toBe(true)
   })
 
   test('a mid-flight stream close reconnects on the same queue, retaining the desired filter', async () => {
@@ -196,24 +196,24 @@ describe('SubscriptionDriver', () => {
 
     const p1 = driver.subscribeResource({ uri: 'file:///a' })
     await flush()
-    opens[0].ack()
+    opens[0]?.ack()
     await p1
 
     // The active stream drops.
-    opens[0].close()
+    opens[0]?.close()
     await flush()
 
     // A reconnect candidate opened on the same queue, retaining the desired filter.
     expect(opens.length).toBe(2)
-    expect(opens[1].filter.resourceSubscriptions).toEqual(['file:///a'])
+    expect(opens[1]?.filter.resourceSubscriptions).toEqual(['file:///a'])
 
-    opens[1].ack()
+    opens[1]?.ack()
     await flush()
 
     // The reconnected stream is now the active one: a frame on it is delivered.
     const received: Array<unknown> = []
     driver.onNotification((n) => received.push(n))
-    opens[1].notify(updatedNotification('file:///a'))
+    opens[1]?.notify(updatedNotification('file:///a'))
     expect(received.length).toBe(1)
   })
 
@@ -223,7 +223,7 @@ describe('SubscriptionDriver', () => {
 
     const p1 = driver.subscribeResource({ uri: 'file:///a' })
     await flush()
-    opens[0].ack()
+    opens[0]?.ack()
     await p1
 
     // A user mutation is in flight (candidate gen2 not yet acked)...
@@ -232,19 +232,19 @@ describe('SubscriptionDriver', () => {
     expect(opens.length).toBe(2)
 
     // ...meanwhile the active stream drops, scheduling a reconnect on the same queue.
-    opens[0].close()
+    opens[0]?.close()
     await flush()
     // The reconnect must NOT open a new stream ahead of the pending candidate.
     expect(opens.length).toBe(2)
 
     // The candidate acks and is promoted.
-    opens[1].ack()
+    opens[1]?.ack()
     await pB
     await flush()
 
     // The queued reconnect runs, sees a healthy active stream, and opens nothing new.
     expect(opens.length).toBe(2)
-    expect(opens[1].filter.resourceSubscriptions).toEqual(['file:///a', 'file:///b'])
+    expect(opens[1]?.filter.resourceSubscriptions).toEqual(['file:///a', 'file:///b'])
   })
 
   test('reconnect backoff grows from 1s and caps at 30s', async () => {
@@ -266,12 +266,12 @@ describe('SubscriptionDriver', () => {
 
     const p1 = driver.subscribeResource({ uri: 'file:///a' })
     await flush()
-    opens[0].ack()
+    opens[0]?.ack()
     await p1
 
     const expected = [1000, 2000, 4000, 8000, 16000, 30000, 30000]
     // Trigger the first reconnect by dropping the active stream.
-    opens[0].close()
+    opens[0]?.close()
 
     for (let i = 0; i < expected.length; i++) {
       await flush()
@@ -280,7 +280,7 @@ describe('SubscriptionDriver', () => {
       release()
       await flush()
       // ...then drop it before it acks, forcing the next (larger) backoff.
-      opens[opens.length - 1].close()
+      opens[opens.length - 1]?.close()
     }
 
     expect(retries.map((r) => r.retryInMs)).toEqual(expected)
@@ -300,7 +300,7 @@ describe('SubscriptionDriver', () => {
     // in-flight exchange.
     driver.dispose()
     await expect(p).rejects.toThrow()
-    expect(opens[0].aborted).toBe(true)
+    expect(opens[0]?.aborted).toBe(true)
   })
 
   test('ackTimeoutMs fails an unacknowledged candidate so the queue cannot wedge', async () => {
@@ -313,13 +313,13 @@ describe('SubscriptionDriver', () => {
 
     // No ack ever arrives; the bound fires and rejects, aborting the candidate.
     await expect(p).rejects.toThrow(/timed out/)
-    expect(opens[0].aborted).toBe(true)
+    expect(opens[0]?.aborted).toBe(true)
 
     // The queue is not wedged: a subsequent mutation runs on a fresh candidate.
     const p2 = driver.subscribeResource({ uri: 'file:///b' })
     await flush()
     expect(opens.length).toBe(2)
-    opens[1].ack()
+    opens[1]?.ack()
     await p2
   })
 
@@ -341,11 +341,11 @@ describe('SubscriptionDriver', () => {
     // Establish an active, acknowledged stream (acked well within the 30ms bound).
     const p1 = driver.subscribeResource({ uri: 'file:///a' })
     await flush()
-    opens[0].ack()
+    opens[0]?.ack()
     await p1
 
     // The active stream drops → a reconnect is scheduled (attempt 1) and parks on the backoff.
-    opens[0].close()
+    opens[0]?.close()
     await flush()
     expect(retries).toEqual([1])
 
@@ -413,15 +413,15 @@ describe('SubscriptionDriver', () => {
 
     const p1 = driver.subscribeResource({ uri: 'file:///a' })
     await flush()
-    opens[0].ack()
+    opens[0]?.ack()
     await p1
     expect(opens.length).toBe(1)
 
     // Transport drops: the throwing onRetry must not abort the reconnect (immediateDelay fires it).
-    opens[0].close()
+    opens[0]?.close()
     await flush()
     expect(opens.length).toBe(2)
-    opens[1].ack()
+    opens[1]?.ack()
     await flush()
 
     expect(errors.some((error) => error.message === 'onRetry blew up')).toBe(true)

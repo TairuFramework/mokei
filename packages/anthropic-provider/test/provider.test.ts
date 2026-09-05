@@ -67,9 +67,12 @@ describe('AnthropicProvider', () => {
           created_at: '2024-10-22T00:00:00Z',
         },
       ]
-      const spy = vi
-        .spyOn(AnthropicClient.prototype, 'listModels')
-        .mockResolvedValue({ data, first_id: data[0].id, has_more: false, last_id: data[1].id })
+      const spy = vi.spyOn(AnthropicClient.prototype, 'listModels').mockResolvedValue({
+        data,
+        first_id: data[0]?.id ?? '',
+        has_more: false,
+        last_id: data[1]?.id ?? '',
+      })
 
       const provider = new AnthropicProvider({ client: { apiKey: 'test-key' } })
       const models = await provider.listModels()
@@ -175,8 +178,8 @@ describe('AnthropicProvider', () => {
       const result = provider.aggregateMessage(parts)
 
       expect(result.toolCalls).toHaveLength(1)
-      expect(result.toolCalls[0].name).toBe('get_weather')
-      expect(result.toolCalls[0].arguments).toBe('{"city":"London"}')
+      expect(result.toolCalls[0]?.name).toBe('get_weather')
+      expect(result.toolCalls[0]?.arguments).toBe('{"city":"London"}')
     })
 
     test('handles done reason', () => {

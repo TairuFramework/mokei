@@ -31,11 +31,11 @@ describe('AnthropicProvider sampling params', () => {
       providerOptions: { top_k: 5 },
     })
     const body = calls[0]
-    expect(body.temperature).toBe(0.4)
-    expect(body.top_p).toBe(0.7)
-    expect(body.max_tokens).toBe(4096) // falls back when maxTokens unset
+    expect(body?.temperature).toBe(0.4)
+    expect(body?.top_p).toBe(0.7)
+    expect(body?.max_tokens).toBe(4096) // falls back when maxTokens unset
     // Raw bag forwarded intact as a field; client owns the spread into the JSON body
-    expect(body.providerOptions).toEqual({ top_k: 5 })
+    expect(body?.providerOptions).toEqual({ top_k: 5 })
   })
 
   test('fromConfig accepts maxTokens without throwing', () => {

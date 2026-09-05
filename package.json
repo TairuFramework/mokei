@@ -8,17 +8,19 @@
     "build": "pnpm run build:types && pnpm run build:js",
     "build:ci": "pnpm run build:types:ci && pnpm run build:js",
     "build:js": "turbo run build:js",
-    "build:types": "pnpm run -r build:types",
+    "build:types": "turbo run build:types",
     "build:types:ci": "pnpm run -r build:types:ci",
+    "format": "biome format --write .",
     "postinstall": "node scripts/fix-node-pty-permissions.mjs",
     "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./website",
     "prepare": "git config core.hooksPath .githooks",
     "test": "pnpm run --filter './packages/**' --filter './mcp-servers/**' test && pnpm run test:integration",
-    "test:integration": "pnpm run --filter mokei-integration-tests test"
+    "test:integration": "pnpm run --filter mokei-integration-tests test",
+    "test:types": "turbo run test:types"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
-    "@kigu/dev": "^0.2.1",
+    "@kigu/dev": "^0.3.1",
     "typedoc": "catalog:",
     "typedoc-plugin-markdown": "catalog:"
   },

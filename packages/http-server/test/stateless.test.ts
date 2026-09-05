@@ -189,7 +189,7 @@ describe('stateless 2026-07-28 POST path', () => {
 
       const messages = await readSSEData(response)
       expect(messages).toHaveLength(1)
-      const result = messages[0].result as Record<string, unknown>
+      const result = messages[0]?.result as Record<string, unknown>
       expect(result.resultType).toBe('complete')
       expect(result.tools).toEqual([expect.objectContaining({ name: 'echo' })])
     } finally {
@@ -207,8 +207,8 @@ describe('stateless 2026-07-28 POST path', () => {
       expect(response.status).toBe(200)
       const messages = await readSSEData(response)
       expect(messages).toHaveLength(1)
-      expect(messages[0].id).toBe(7)
-      const result = messages[0].result as Record<string, unknown>
+      expect(messages[0]?.id).toBe(7)
+      const result = messages[0]?.result as Record<string, unknown>
       expect(result.content).toEqual([{ type: 'text', text: 'hi' }])
     } finally {
       handler.dispose()
@@ -231,9 +231,13 @@ describe('stateless 2026-07-28 POST path', () => {
         readSSEData(first),
         readSSEData(second),
       ])
-      const texts = [firstMessages, secondMessages].map(
-        (messages) => (messages[0].result as { content: Array<{ text: string }> }).content[0].text,
-      )
+      const texts = [firstMessages, secondMessages].map((messages) => {
+        const first = messages[0]
+        if (first == null) {
+          throw new Error('expected a message')
+        }
+        return (first.result as { content: Array<{ text: string }> }).content[0]?.text
+      })
       expect(texts.sort()).toEqual(['first', 'second'])
     } finally {
       handler.dispose()
@@ -255,8 +259,8 @@ describe('stateless 2026-07-28 POST path', () => {
       const response = await responsePromise
       expect(response.status).toBe(503)
       expect(servers).toHaveLength(1)
-      await servers[0].disposed
-      expect(servers[0].signal.aborted).toBe(true)
+      await servers[0]?.disposed
+      expect(servers[0]?.signal?.aborted).toBe(true)
     } finally {
       releaseTool()
       handler.dispose()
@@ -281,8 +285,8 @@ describe('stateless 2026-07-28 POST path', () => {
       expect(servers).toHaveLength(1)
       // The throwaway server must go down with the handler, not linger until its client
       // disconnects or its timer expires.
-      await servers[0].disposed
-      expect(servers[0].signal.aborted).toBe(true)
+      await servers[0]?.disposed
+      expect(servers[0]?.signal?.aborted).toBe(true)
     } finally {
       releaseTool()
     }
@@ -372,8 +376,8 @@ describe('stateless 2026-07-28 POST path', () => {
           await next.text()
         })
         // And the throwaway server went down with it rather than being left running.
-        await servers[0].disposed
-        expect(servers[0].signal.aborted).toBe(true)
+        await servers[0]?.disposed
+        expect(servers[0]?.signal?.aborted).toBe(true)
       } finally {
         handler.dispose()
       }
@@ -454,8 +458,8 @@ describe('stateless 2026-07-28 POST path', () => {
       // still built — and it is torn down with the acknowledgement rather than left holding
       // the connection open for a reply that is never coming.
       expect(servers).toHaveLength(1)
-      await servers[0].disposed
-      expect(servers[0].signal.aborted).toBe(true)
+      await servers[0]?.disposed
+      expect(servers[0]?.signal?.aborted).toBe(true)
     } finally {
       handler.dispose()
     }
@@ -544,8 +548,8 @@ describe('stateless 2026-07-28 POST path', () => {
       expect(response.status).toBe(200)
       const messages = await readSSEData(response)
       expect(messages).toHaveLength(1)
-      expect(messages[0].id).toBe(2)
-      const result = messages[0].result as Record<string, unknown>
+      expect(messages[0]?.id).toBe(2)
+      const result = messages[0]?.result as Record<string, unknown>
       expect(result.content).toEqual([{ type: 'text', text: 'session' }])
       expect(serversCreated).toBe(1)
     } finally {
@@ -660,7 +664,8 @@ describe('stateless 2026-07-28 POST path', () => {
       // normal JSON-RPC error inside a normal response.
       expect(response.status).toBe(200)
       const messages = await readSSEData(response)
-      expect((messages[0].error as { code: number }).code).toBe(-32602)
+      const errorCode = (messages[0]?.error as { code: number } | undefined)?.code
+      expect(errorCode).toBe(-32602)
     } finally {
       handler.dispose()
     }
@@ -680,7 +685,8 @@ describe('stateless 2026-07-28 POST path', () => {
       )
       expect(response.status).toBe(200)
       const messages = await readSSEData(response)
-      expect((messages[0].error as { code: number }).code).toBe(-32602)
+      const errorCode = (messages[0]?.error as { code: number } | undefined)?.code
+      expect(errorCode).toBe(-32602)
     } finally {
       handler.dispose()
     }

@@ -346,6 +346,9 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
         throw new TokenVerificationError('invalid_token', `unsupported JWT alg: ${String(alg)}`)
       }
       const algParams = ALG_PARAMS[alg]
+      if (algParams == null) {
+        throw new TokenVerificationError('invalid_token', `unsupported JWT alg: ${alg}`)
+      }
 
       let result = await findKeyAndVerify(header, algParams, alg, signingInput, signature, false)
       if (!result.found) {

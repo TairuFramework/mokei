@@ -64,6 +64,9 @@ test.skipIf(!hasChatBackend)(
       const aggregatedMessage = provider.aggregateMessage(toolChunks)
 
       const toolCall = aggregatedMessage.toolCalls[0]
+      if (toolCall == null) {
+        throw new Error('expected a tool call')
+      }
       expect(toolCall).toMatchObject({
         name: 'fetch:get_markdown',
         arguments: expect.stringContaining('https://mokei.dev'),
@@ -124,6 +127,9 @@ test.skipIf(!hasChatBackend)(
       const aggregatedMessage = provider.aggregateMessage(toolChunks)
 
       const toolCall = aggregatedMessage.toolCalls[0]
+      if (toolCall == null) {
+        throw new Error('expected a tool call')
+      }
       expect(toolCall).toMatchObject({
         name: 'fetch:get_markdown',
         arguments: expect.stringContaining('https://mokei.dev'),

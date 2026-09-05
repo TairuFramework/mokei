@@ -219,7 +219,11 @@ describe('HTTPTransport', () => {
       await transport.write(initializeRequest)
 
       expect(fetchMock).toHaveBeenCalledOnce()
-      const [url, options] = fetchMock.mock.calls[0]
+      const firstCall = fetchMock.mock.calls[0]
+      if (firstCall == null) {
+        throw new Error('expected a fetch call')
+      }
+      const [url, options] = firstCall
       expect(url).toBe(TEST_URL)
       expect(options.method).toBe('POST')
       expect(options.headers['Content-Type']).toBe('application/json')
@@ -256,11 +260,13 @@ describe('HTTPTransport', () => {
       // revision it speaks yet, and the request itself does not declare one.
       await transport.write(initializeRequest)
       await transport.read()
-      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBeUndefined()
+      expect(fetchMock.mock.calls[0]?.[1]?.headers?.['MCP-Protocol-Version']).toBeUndefined()
 
       // A subsequent request must use the negotiated version captured from the initialize response
       await transport.write(pingRequest)
-      expect(fetchMock.mock.calls[1][1].headers['MCP-Protocol-Version']).toBe(negotiatedVersion)
+      expect(fetchMock.mock.calls[1]?.[1]?.headers?.['MCP-Protocol-Version']).toBe(
+        negotiatedVersion,
+      )
 
       await transport.dispose()
     })
@@ -273,7 +279,7 @@ describe('HTTPTransport', () => {
       const transport = new HTTPTransport({ url: TEST_URL })
       await transport.write(initializeRequest)
 
-      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBeUndefined()
+      expect(fetchMock.mock.calls[0]?.[1]?.headers?.['MCP-Protocol-Version']).toBeUndefined()
 
       await transport.dispose()
     })
@@ -284,7 +290,7 @@ describe('HTTPTransport', () => {
       const transport = new HTTPTransport({ url: TEST_URL, protocolVersionHeader: '2024-11-05' })
       await transport.write(initializeRequest)
 
-      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe('2024-11-05')
+      expect(fetchMock.mock.calls[0]?.[1]?.headers?.['MCP-Protocol-Version']).toBe('2024-11-05')
 
       await transport.dispose()
     })
@@ -295,7 +301,7 @@ describe('HTTPTransport', () => {
       const transport = new HTTPTransport({ url: TEST_URL })
       await transport.write(request20260728(1))
 
-      expect(fetchMock.mock.calls[0][1].headers['MCP-Protocol-Version']).toBe('2026-07-28')
+      expect(fetchMock.mock.calls[0]?.[1]?.headers?.['MCP-Protocol-Version']).toBe('2026-07-28')
 
       await transport.dispose()
     })
@@ -321,7 +327,7 @@ describe('HTTPTransport', () => {
       await transport.read()
       await transport.write(request20260728(2))
 
-      expect(fetchMock.mock.calls[1][1].headers['MCP-Protocol-Version']).toBe('2026-07-28')
+      expect(fetchMock.mock.calls[1]?.[1]?.headers?.['MCP-Protocol-Version']).toBe('2026-07-28')
 
       await transport.dispose()
     })
@@ -338,7 +344,7 @@ describe('HTTPTransport', () => {
       await transport.write(request20260728(1))
       await transport.write(request20260728(2))
 
-      expect(fetchMock.mock.calls[1][1].headers['Mcp-Session-Id']).toBeUndefined()
+      expect(fetchMock.mock.calls[1]?.[1]?.headers?.['Mcp-Session-Id']).toBeUndefined()
 
       await transport.dispose()
     })
@@ -367,8 +373,8 @@ describe('HTTPTransport', () => {
       await transport.write(request20260728(3))
       await transport.write(pingRequest)
 
-      expect(fetchMock.mock.calls[1][1].headers['Mcp-Session-Id']).toBeUndefined()
-      expect(fetchMock.mock.calls[2][1].headers['Mcp-Session-Id']).toBe('session-kept')
+      expect(fetchMock.mock.calls[1]?.[1]?.headers?.['Mcp-Session-Id']).toBeUndefined()
+      expect(fetchMock.mock.calls[2]?.[1]?.headers?.['Mcp-Session-Id']).toBe('session-kept')
 
       await transport.dispose()
     })
@@ -400,7 +406,7 @@ describe('HTTPTransport', () => {
       // stopped sending altogether cannot pass.
       expect(calls.length).toBe(3)
       expect(calls.every((call) => call[1].method === 'POST')).toBe(true)
-      expect(calls.every((call) => call[1].headers['Last-Event-ID'] == null)).toBe(true)
+      expect(calls.every((call) => call?.[1]?.headers?.['Last-Event-ID'] == null)).toBe(true)
 
       await transport.dispose()
     })
@@ -752,13 +758,13 @@ describe('HTTPTransport', () => {
       // First request - no session ID yet
       await transport.write(initializeRequest)
       const firstCall = fetchMock.mock.calls[0]
-      expect(firstCall[1].headers['Mcp-Session-Id']).toBeUndefined()
+      expect(firstCall?.[1]?.headers?.['Mcp-Session-Id']).toBeUndefined()
       expect(transport.sessionID).toBe('session-abc')
 
       // Second request - should include session ID
       await transport.write(pingRequest)
       const secondCall = fetchMock.mock.calls[1]
-      expect(secondCall[1].headers['Mcp-Session-Id']).toBe('session-abc')
+      expect(secondCall?.[1]?.headers?.['Mcp-Session-Id']).toBe('session-abc')
 
       await transport.dispose()
     })
@@ -782,7 +788,7 @@ describe('HTTPTransport', () => {
       const deleteCall = getCallByMethod(fetchMock.mock.calls, 'DELETE')
       expect(deleteCall[0]).toBe(TEST_URL)
       expect(deleteCall[1].method).toBe('DELETE')
-      expect(deleteCall[1].headers['Mcp-Session-Id']).toBe('session-del')
+      expect(deleteCall?.[1]?.headers?.['Mcp-Session-Id']).toBe('session-del')
     })
 
     test('does not send DELETE when no session ID exists', async () => {
@@ -1014,7 +1020,7 @@ describe('HTTPTransport', () => {
         params: { requestId: 7, _meta: { ...requestMeta20260728 } },
       } as ClientMessage)
 
-      expect(post[1].signal?.aborted).toBe(true)
+      expect(post?.[1]?.signal?.aborted).toBe(true)
 
       await transport.dispose()
     })
@@ -1043,7 +1049,7 @@ describe('HTTPTransport', () => {
         params: { requestId: 8 },
       } as ClientMessage)
 
-      expect(post[1].signal?.aborted).toBe(false)
+      expect(post?.[1]?.signal?.aborted).toBe(false)
 
       await transport.dispose()
     })
@@ -1078,8 +1084,8 @@ describe('HTTPTransport', () => {
         params: { requestId: 9, _meta: { ...requestMeta20260728 } },
       } as ClientMessage)
 
-      expect(postB[1].signal?.aborted).toBe(true)
-      expect(postA[1].signal?.aborted).toBe(false)
+      expect(postB?.[1]?.signal?.aborted).toBe(true)
+      expect(postA?.[1]?.signal?.aborted).toBe(false)
 
       await transport.dispose()
     })
@@ -1170,7 +1176,7 @@ describe('HTTPTransport', () => {
         params: { requestId: 0, _meta: { ...requestMeta20260728 } },
       } as ClientMessage)
 
-      expect(requestPost[1].signal?.aborted).toBe(true)
+      expect(requestPost?.[1]?.signal?.aborted).toBe(true)
 
       await transport.dispose()
     })
@@ -1201,7 +1207,7 @@ describe('HTTPTransport', () => {
 
       await transport.write(request20260728(0))
       const post = getCallByMethod(fetchMock.mock.calls, 'POST')
-      expect(post[1].signal?.aborted).toBe(false)
+      expect(post?.[1]?.signal?.aborted).toBe(false)
 
       // A server-initiated request reusing id 0, from the server's own id space, arrives on
       // the same stream before the client's own request has a response.
@@ -1225,7 +1231,7 @@ describe('HTTPTransport', () => {
         params: { requestId: 0, _meta: { ...requestMeta20260728 } },
       } as ClientMessage)
 
-      expect(post[1].signal?.aborted).toBe(true)
+      expect(post?.[1]?.signal?.aborted).toBe(true)
 
       sseController.close()
       await transport.dispose()
@@ -1248,7 +1254,7 @@ describe('HTTPTransport', () => {
 
       await transport.dispose()
 
-      expect(post[1].signal?.aborted).toBe(true)
+      expect(post?.[1]?.signal?.aborted).toBe(true)
     })
   })
 
@@ -1272,11 +1278,11 @@ describe('HTTPTransport', () => {
         expect(fetchMock.mock.calls.length).toBe(1)
       })
       const post = fetchMock.mock.calls[0] as FetchCall
-      expect(post[1].signal?.aborted).toBe(false)
+      expect(post?.[1]?.signal?.aborted).toBe(false)
 
       await transport.dispose()
 
-      expect(post[1].signal?.aborted).toBe(true)
+      expect(post?.[1]?.signal?.aborted).toBe(true)
       await writePromise
     })
 
@@ -1304,19 +1310,19 @@ describe('HTTPTransport', () => {
       })
 
       const [firstPost, secondPost, thirdPost] = fetchMock.mock.calls as Array<FetchCall>
-      expect(firstPost[1].signal?.aborted).toBe(false)
-      expect(secondPost[1].signal?.aborted).toBe(false)
+      expect(firstPost?.[1]?.signal?.aborted).toBe(false)
+      expect(secondPost?.[1]?.signal?.aborted).toBe(false)
 
       await transport.dispose()
 
       // The still-open exchange is aborted...
-      expect(thirdPost[1].signal?.aborted).toBe(true)
+      expect(thirdPost?.[1]?.signal?.aborted).toBe(true)
       // ...but the two that already completed are not touched a second time. If their
       // untracked controllers had leaked into the set instead of being reclaimed on
       // completion, dispose's loop would call abort() on them too, flipping these back to
       // true — proof the set does not grow for the life of the transport.
-      expect(firstPost[1].signal?.aborted).toBe(false)
-      expect(secondPost[1].signal?.aborted).toBe(false)
+      expect(firstPost?.[1]?.signal?.aborted).toBe(false)
+      expect(secondPost?.[1]?.signal?.aborted).toBe(false)
       await writePromise
     })
   })
@@ -1523,7 +1529,7 @@ describe('HTTPTransport', () => {
 
       const calls = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit).method === 'POST')
       const callPost = calls[calls.length - 1]
-      expect(callPost[1].headers['Mcp-Param-Region']).toBe('us-east-1')
+      expect(callPost?.[1]?.headers?.['Mcp-Param-Region']).toBe('us-east-1')
 
       await transport.dispose()
     })
@@ -1697,10 +1703,10 @@ describe('HTTPTransport', () => {
 
       const sent = posts(fetchMock.mock.calls)
       expect(sent).toHaveLength(4)
-      expect(sent[1][1].headers['Mcp-Param-Region']).toBeUndefined()
-      expect(sent[2][1].headers['Mcp-Method']).toBe('tools/list')
-      expect(sent[2][1].headers.Accept).toBe('application/json, text/event-stream')
-      expect(sent[3][1].headers['Mcp-Param-Region']).toBe('us-east-1')
+      expect(sent[1]?.[1]?.headers?.['Mcp-Param-Region']).toBeUndefined()
+      expect(sent[2]?.[1]?.headers?.['Mcp-Method']).toBe('tools/list')
+      expect(sent[2]?.[1]?.headers?.Accept).toBe('application/json, text/event-stream')
+      expect(sent[3]?.[1]?.headers?.['Mcp-Param-Region']).toBe('us-east-1')
 
       await transport.dispose()
     })
@@ -1855,8 +1861,8 @@ describe('HTTPTransport', () => {
       expect(value).toEqual({ jsonrpc: '2.0', id: 6, result: { content: [] } })
 
       const sent = posts(fetchMock.mock.calls)
-      expect(sent[2][1].headers['MCP-Protocol-Version']).toBe('2026-07-28')
-      const refreshBody = JSON.parse(sent[2][1].body as string) as {
+      expect(sent[2]?.[1]?.headers?.['MCP-Protocol-Version']).toBe('2026-07-28')
+      const refreshBody = JSON.parse(sent[2]?.[1]?.body as string) as {
         params: { _meta: Record<string, unknown> }
       }
       expect(refreshBody.params._meta).toEqual(requestMeta)
@@ -1925,7 +1931,7 @@ describe('HTTPTransport', () => {
         await write
 
         const refreshCall = posts(fetchMock.mock.calls)[1]
-        expect(refreshCall[1].signal?.aborted).toBe(true)
+        expect(refreshCall?.[1]?.signal?.aborted).toBe(true)
 
         await transport.dispose()
       } finally {
@@ -1988,9 +1994,9 @@ describe('HTTPTransport', () => {
       })
 
       const getCall = getCallByMethod(fetchMock.mock.calls, 'GET')
-      expect(getCall[1].headers.Accept).toBe('text/event-stream')
-      expect(getCall[1].headers['MCP-Protocol-Version']).toBe('2025-11-25')
-      expect(getCall[1].headers['Mcp-Session-Id']).toBe('session-hdr')
+      expect(getCall?.[1]?.headers?.Accept).toBe('text/event-stream')
+      expect(getCall?.[1]?.headers?.['MCP-Protocol-Version']).toBe('2025-11-25')
+      expect(getCall?.[1]?.headers?.['Mcp-Session-Id']).toBe('session-hdr')
 
       await transport.dispose()
     })
@@ -2020,7 +2026,7 @@ describe('HTTPTransport', () => {
       })
 
       const getCall = getCallByMethod(fetchMock.mock.calls, 'GET')
-      expect(getCall[1].headers['Last-Event-ID']).toBe('evt-99')
+      expect(getCall?.[1]?.headers?.['Last-Event-ID']).toBe('evt-99')
 
       await transport.dispose()
     })
@@ -2055,7 +2061,7 @@ describe('HTTPTransport', () => {
 
       // Verify an AbortSignal was passed to the GET request
       const getCall = getCallByMethod(fetchMock.mock.calls, 'GET')
-      const signal = getCall[1].signal
+      const signal = getCall?.[1]?.signal
       expect(signal).toBeInstanceOf(AbortSignal)
       expect(signal?.aborted).toBe(false)
 
@@ -2102,7 +2108,7 @@ describe('HTTPTransport', () => {
       })
 
       const gets = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit).method === 'GET')
-      expect(gets[1][1].headers['Last-Event-ID']).toBe('e1')
+      expect(gets[1]?.[1]?.headers?.['Last-Event-ID']).toBe('e1')
 
       await transport.dispose()
     })
@@ -2145,7 +2151,7 @@ describe('HTTPTransport', () => {
       await transport.dispose()
 
       const del = getCallByMethod(fetchMock.mock.calls, 'DELETE')
-      expect(del[1].signal).toBeInstanceOf(AbortSignal)
+      expect(del?.[1]?.signal).toBeInstanceOf(AbortSignal)
     })
   })
 })

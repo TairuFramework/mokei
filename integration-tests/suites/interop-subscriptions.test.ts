@@ -278,8 +278,8 @@ describe.each(ROWS)('mokei subscriptions client against the SDK v2 server $name'
     const terminals = await poll(() => terminalFrames(harness?.frames() ?? []))
     expect(terminals).toHaveLength(1)
     const terminal = terminals[0]
-    expect(terminal.result?._meta?.[META_SUBSCRIPTION_ID]).toBe(deliveredSubscriptionId)
-    expect(terminal.id).toBe(deliveredSubscriptionId)
+    expect(terminal?.result?._meta?.[META_SUBSCRIPTION_ID]).toBe(deliveredSubscriptionId)
+    expect(terminal?.id).toBe(deliveredSubscriptionId)
   })
 })
 
@@ -465,8 +465,8 @@ describe('two SDK v2 clients sharing a JSON-RPC request id (stateless HTTP, dura
       // Both notifications carry the SAME subscription id — proof the two subscriptions really do
       // share one `subscriptionID` (not that the test accidentally picked distinct ones) and still
       // route correctly to their own stream, distinguished only by the per-POST `connectionID`.
-      expect(receivedA[0]._meta?.[SUBSCRIPTION_ID_META_KEY]).toBe('listen:0')
-      expect(receivedB[0]._meta?.[SUBSCRIPTION_ID_META_KEY]).toBe('listen:0')
+      expect(receivedA[0]?._meta?.[SUBSCRIPTION_ID_META_KEY]).toBe('listen:0')
+      expect(receivedB[0]?._meta?.[SUBSCRIPTION_ID_META_KEY]).toBe('listen:0')
 
       await subscriptionA.close()
       await subscriptionB.close()

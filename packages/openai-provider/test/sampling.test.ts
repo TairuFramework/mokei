@@ -31,10 +31,10 @@ describe('OpenAIProvider sampling params', () => {
     })
     const body = calls[0]
     // Typed fields are forwarded mapped
-    expect(body.temperature).toBe(0.3)
-    expect(body.top_p).toBe(0.8)
-    expect(body.max_tokens).toBe(256)
+    expect(body?.temperature).toBe(0.3)
+    expect(body?.top_p).toBe(0.8)
+    expect(body?.max_tokens).toBe(256)
     // Raw bag forwarded intact as a field; client owns the spread into the JSON body
-    expect(body.providerOptions).toEqual({ seed: 7, temperature: 0.9 })
+    expect(body?.providerOptions).toEqual({ seed: 7, temperature: 0.9 })
   })
 })

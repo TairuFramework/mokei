@@ -72,7 +72,7 @@ describe('HTTP transport end-to-end', () => {
     // List tools
     const { tools } = await client.listTools()
     expect(tools).toHaveLength(1)
-    expect(tools[0].name).toBe('echo')
+    expect(tools[0]?.name).toBe('echo')
 
     // Call tool
     const result = await client.callTool({ name: 'echo', arguments: { text: 'hello world' } })

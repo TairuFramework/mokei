@@ -76,6 +76,9 @@ describe.skipIf(!hasChatBackend)('Session', { retry: TOOL_CALL_RETRY }, () => {
       })
 
       const toolCall = reply.toolCalls[0]
+      if (toolCall == null) {
+        throw new Error('expected a tool call')
+      }
       expect(toolCall).toMatchObject({
         name: 'fetch:get_markdown',
         arguments: expect.stringContaining('https://mokei.dev'),

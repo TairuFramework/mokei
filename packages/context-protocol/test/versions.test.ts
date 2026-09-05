@@ -99,9 +99,9 @@ describe('2026-07-28 envelope', () => {
       { name: 'echo', arguments: { text: 'hi' } },
       { capabilities: {}, clientInfo: { name: 'Mokei', version: '0.4.0' } },
     ) as Record<string, Record<string, unknown>>
-    expect(params._meta['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
-    expect(params._meta['io.modelcontextprotocol/clientCapabilities']).toEqual({})
-    expect(params._meta['io.modelcontextprotocol/clientInfo']).toEqual({
+    expect(params._meta?.['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
+    expect(params._meta?.['io.modelcontextprotocol/clientCapabilities']).toEqual({})
+    expect(params._meta?.['io.modelcontextprotocol/clientInfo']).toEqual({
       name: 'Mokei',
       version: '0.4.0',
     })
@@ -113,8 +113,8 @@ describe('2026-07-28 envelope', () => {
       { _meta: { traceparent: '00-abc-def-01' } },
       { capabilities: {}, logLevel: 'debug' },
     ) as Record<string, Record<string, unknown>>
-    expect(params._meta.traceparent).toBe('00-abc-def-01')
-    expect(params._meta['io.modelcontextprotocol/logLevel']).toBe('debug')
+    expect(params._meta?.traceparent).toBe('00-abc-def-01')
+    expect(params._meta?.['io.modelcontextprotocol/logLevel']).toBe('debug')
   })
 
   test('readRequestMeta reads the protocol fields back', () => {

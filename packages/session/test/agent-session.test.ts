@@ -823,9 +823,9 @@ describe('AgentSession', () => {
 
         expect(result.iterations).toBe(4)
         expect(result.toolCalls).toHaveLength(3)
-        expect(result.toolCalls[0].call.name).toBe('mock:create_table')
-        expect(result.toolCalls[1].call.name).toBe('mock:insert')
-        expect(result.toolCalls[2].call.name).toBe('mock:query')
+        expect(result.toolCalls[0]?.call?.name).toBe('mock:create_table')
+        expect(result.toolCalls[1]?.call?.name).toBe('mock:insert')
+        expect(result.toolCalls[2]?.call?.name).toBe('mock:query')
         expect(result.toolCalls.every((tc) => tc.approved)).toBe(true)
         expect(result.finishReason).toBe('complete')
         expect(result.inputTokens).toBe(115) // 20+30+25+40
@@ -932,7 +932,7 @@ describe('AgentSession', () => {
           result: { toolCalls: Array<{ result?: { isError?: boolean } }> }
         }
         expect(result).toBeDefined()
-        expect(result.result.toolCalls[0].result?.isError).toBe(true)
+        expect(result.result.toolCalls[0]?.result?.isError).toBe(true)
 
         await session.dispose()
       })
@@ -1167,7 +1167,7 @@ describe('AgentSession', () => {
 
         // Verify streamChat was called with system message
         expect(provider.streamChat).toHaveBeenCalled()
-        const callArgs = (provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0][0]
+        const callArgs = (provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
 
         // First call should have system prompt + user message
         expect(callArgs.messages.length).toBeGreaterThanOrEqual(2)
@@ -1196,7 +1196,7 @@ describe('AgentSession', () => {
 
         await agent.run({ prompt: 'Hello' })
 
-        const callArgs = (provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0][0]
+        const callArgs = (provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
 
         // Should only have user message, no system message
         expect(callArgs.messages[0]).toEqual({
@@ -1367,7 +1367,11 @@ describe('AgentSession', () => {
 
         // First call should have fewer history events than second
         expect(iterations).toEqual([1, 2])
-        expect(historyLengths[1]).toBeGreaterThan(historyLengths[0])
+        const [firstLength, secondLength] = historyLengths
+        if (firstLength == null || secondLength == null) {
+          throw new Error('expected two history lengths')
+        }
+        expect(secondLength).toBeGreaterThan(firstLength)
 
         await session.dispose()
       })
@@ -1418,7 +1422,12 @@ describe('AgentSession', () => {
 
         // Timestamps should be non-decreasing
         for (let i = 1; i < events.length; i++) {
-          expect(events[i].timestamp).toBeGreaterThanOrEqual(events[i - 1].timestamp)
+          const current = events[i]
+          const previous = events[i - 1]
+          if (current == null || previous == null) {
+            throw new Error('expected consecutive events')
+          }
+          expect(current.timestamp).toBeGreaterThanOrEqual(previous.timestamp)
         }
       })
     })
@@ -1512,7 +1521,7 @@ describe('AgentSession', () => {
         const result = await agent.run({ prompt: 'Process large data' })
 
         expect(result.finishReason).toBe('complete')
-        expect(result.toolCalls[0].approved).toBe(true)
+        expect(result.toolCalls[0]?.approved).toBe(true)
 
         await session.dispose()
       })
@@ -1609,7 +1618,7 @@ describe('AgentSession', () => {
         const result = await agent.run({ prompt: 'Generate an image' })
 
         expect(result.finishReason).toBe('complete')
-        expect(result.toolCalls[0].result?.content[0].type).toBe('image')
+        expect(result.toolCalls[0]?.result?.content[0]?.type).toBe('image')
 
         await session.dispose()
       })
@@ -1652,7 +1661,7 @@ describe('AgentSession', () => {
 
         const result = await agent.run({ prompt: 'Analyze data' })
 
-        expect(result.toolCalls[0].result?.content).toHaveLength(2)
+        expect(result.toolCalls[0]?.result?.content).toHaveLength(2)
 
         await session.dispose()
       })
@@ -1699,8 +1708,8 @@ describe('AgentSession', () => {
         }>
 
         expect(iterCompletes).toHaveLength(2)
-        expect(iterCompletes[0].hasToolCalls).toBe(true) // First iteration had tool calls
-        expect(iterCompletes[1].hasToolCalls).toBe(false) // Second iteration completed
+        expect(iterCompletes[0]?.hasToolCalls).toBe(true) // First iteration had tool calls
+        expect(iterCompletes[1]?.hasToolCalls).toBe(false) // Second iteration completed
 
         await session.dispose()
       })

@@ -1440,7 +1440,7 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
       response.value as { result: { isError: boolean; content: Array<{ text: string }> } }
     ).result
     expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('2026-07-28')
+    expect(result.content[0]?.text).toContain('2026-07-28')
     await transports.dispose()
   })
 

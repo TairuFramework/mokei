@@ -82,7 +82,7 @@ describe('RequestScheduler', () => {
 
     scheduler.cancel(1)
 
-    expect(first.calls[0].aborted).toBe(true)
+    expect(first.calls[0]?.aborted).toBe(true)
   })
 
   test('refuses a duplicate id while its original is running, without touching the original', async () => {
@@ -146,7 +146,7 @@ describe('RequestScheduler', () => {
     scheduler.abortAll(new Error('closed'))
 
     expect(first.calls).toHaveLength(1)
-    expect(first.calls[0].aborted).toBe(true)
+    expect(first.calls[0]?.aborted).toBe(true)
     expect(duplicate.calls).toHaveLength(0)
   })
 
@@ -159,7 +159,7 @@ describe('RequestScheduler', () => {
 
     scheduler.abortAll(new Error('closed'))
 
-    expect(first.calls[0].aborted).toBe(true)
+    expect(first.calls[0]?.aborted).toBe(true)
     await expect(queued).resolves.toBeNull()
     expect(second.calls).toHaveLength(0)
   })
@@ -194,7 +194,7 @@ describe('RequestScheduler', () => {
 
     scheduler.cancel(1)
 
-    expect(first.calls[0].aborted).toBe(true)
+    expect(first.calls[0]?.aborted).toBe(true)
     first.gate.resolve()
   })
 
@@ -233,7 +233,7 @@ describe('RequestScheduler', () => {
 
     scheduler.abortAll(new Error('closed'))
 
-    expect(first.calls[0].aborted).toBe(true)
+    expect(first.calls[0]?.aborted).toBe(true)
     first.gate.resolve()
   })
 

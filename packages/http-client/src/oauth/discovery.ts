@@ -12,7 +12,7 @@ export type AuthServerMetadata = {
 export function parseResourceMetadataURL(header: string | null): string | null {
   if (!header) return null
   const match = /resource_metadata="([^"]+)"/.exec(header)
-  return match ? match[1] : null
+  return match?.[1] ?? null
 }
 
 function isLoopbackHost(hostname: string): boolean {
@@ -66,6 +66,9 @@ export async function discover(params: {
     throw new Error('metadata has no authorization_servers')
   }
   const issuer = (params.selectAuthServer ?? ((s) => s[0]))(prm.authorization_servers)
+  if (issuer == null) {
+    throw new Error('no authorization server selected')
+  }
   requireHTTPS(issuer, allowLoopback)
   const asURL = wellKnownAS(issuer)
   const as = (await fetchOAuthJSON(params.fetch, asURL, {

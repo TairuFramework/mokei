@@ -142,8 +142,8 @@ describe('structured output', () => {
       expect(error.name).toBe('StructuredOutputError')
       expect(error.message).toBe('Test error')
       expect(error.issues).toHaveLength(2)
-      expect(error.issues[0].message).toBe('Field is required')
-      expect(error.issues[0].path).toEqual(['name'])
+      expect(error.issues[0]?.message).toBe('Field is required')
+      expect(error.issues[0]?.path).toEqual(['name'])
     })
   })
 

@@ -1,0 +1,15 @@
+{
+  "$schema": "../node_modules/turbo/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build:types": {
+      "dependsOn": ["^build:types"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/tsconfig.build.json"
+      ],
+      "outputs": []
+    }
+  }
+}

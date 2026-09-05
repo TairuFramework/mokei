@@ -50,6 +50,9 @@ function reachableSpecifiers(entry: string): { specs: Set<string>; visited: numb
     const src = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
     for (const m of src.matchAll(/(?:from|import)\s*['"]([^'"]+)['"]/g)) {
       const spec = m[1]
+      if (spec == null) {
+        continue
+      }
       specs.add(spec)
       if (spec.startsWith('.')) {
         stack.push(resolveRelative(file, spec))

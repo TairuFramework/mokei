@@ -212,8 +212,8 @@ describe('ContextHost Local Tools', () => {
 
       const tools = host.getCallableTools()
       expect(tools).toHaveLength(1)
-      expect(tools[0].name).toBe('local:calculate')
-      expect(tools[0].description).toBe('Calculate')
+      expect(tools[0]?.name).toBe('local:calculate')
+      expect(tools[0]?.description).toBe('Calculate')
     })
 
     test('includes both context and local tools', async () => {
@@ -463,10 +463,10 @@ describe('Server Tool to Local Tool Conversion', () => {
       const localTools = toolsToLocalTools(tools)
 
       expect(localTools).toHaveLength(2)
-      expect(localTools[0].name).toBe('tool_one')
-      expect(localTools[0].description).toBe('First tool')
-      expect(localTools[1].name).toBe('tool_two')
-      expect(localTools[1].description).toBe('Second tool')
+      expect(localTools[0]?.name).toBe('tool_one')
+      expect(localTools[0]?.description).toBe('First tool')
+      expect(localTools[1]?.name).toBe('tool_two')
+      expect(localTools[1]?.description).toBe('Second tool')
     })
 
     test('converted tools execute correctly', async () => {
@@ -485,7 +485,11 @@ describe('Server Tool to Local Tool Conversion', () => {
       } satisfies ToolDefinitions
 
       const localTools = toolsToLocalTools(tools)
-      const result = await localTools[0].execute({ input: { name: 'World' } })
+      const firstLocal = localTools[0]
+      if (firstLocal == null) {
+        throw new Error('expected a converted tool')
+      }
+      const result = await firstLocal.execute({ input: { name: 'World' } })
 
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello, World!' })
     })

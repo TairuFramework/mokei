@@ -249,7 +249,7 @@ describe('SetupReader.driveDiscover', () => {
     expect(outcome).toEqual({ result: response.result, negotiatedRevision: '2026-07-28' })
     expect(written).toHaveLength(1)
     const [sent] = written as Array<{ method: string; id: number }>
-    expect(sent.method).toBe('server/discover')
+    expect(sent?.method).toBe('server/discover')
   })
 
   test('throws RPCError on an invalid discover result', async () => {

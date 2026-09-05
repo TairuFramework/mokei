@@ -26,12 +26,13 @@ export function createBearerAuthGate(
   return async (request) => {
     const header = request.headers.get('Authorization')
     const match = header ? /^Bearer (.+)$/i.exec(header) : null
-    if (!match) {
+    const token = match?.[1]
+    if (token == null) {
       return { response: unauthorized(401, challenge(resourceMetadataURL)) }
     }
     let authInfo: AuthInfo
     try {
-      authInfo = await verifier.verifyAccessToken(match[1], { resource })
+      authInfo = await verifier.verifyAccessToken(token, { resource })
     } catch (err) {
       if (err instanceof TokenVerificationError) {
         return { response: unauthorized(401, challenge(resourceMetadataURL, 'invalid_token')) }

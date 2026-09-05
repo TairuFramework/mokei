@@ -135,7 +135,10 @@ export class SSEWriter {
   #getBufferedEvents(): Array<SSEEvent> {
     const result: Array<SSEEvent> = []
     for (let i = 0; i < this.#bufferCount; i++) {
-      result.push(this.#buffer[(this.#bufferStart + i) % this.#bufferSize])
+      const event = this.#buffer[(this.#bufferStart + i) % this.#bufferSize]
+      if (event != null) {
+        result.push(event)
+      }
     }
     return result
   }

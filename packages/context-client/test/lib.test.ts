@@ -1143,7 +1143,11 @@ async function createReady20260728Transports(): Promise<
 describe('protocol version selection', () => {
   /** The `_meta` of the last request the harness recorded. */
   const lastMeta = (sent: Array<ClientRequest>): Record<string, unknown> => {
-    return (sent[sent.length - 1].params as { _meta: Record<string, unknown> })._meta
+    const last = sent[sent.length - 1]
+    if (last == null) {
+      throw new Error('no request recorded')
+    }
+    return (last.params as { _meta: Record<string, unknown> })._meta
   }
 
   // `listPrompts` is deliberate: it is not capability-gated, so these tests exercise
@@ -1157,7 +1161,7 @@ describe('protocol version selection', () => {
     // `server/discover` is setup's bounded liveness round trip, standing in for the handshake
     // this revision does not have — never `initialize`.
     expect(sent.map((message) => message.method)).toEqual(['server/discover', 'prompts/list'])
-    const params = sent[1].params as { _meta: Record<string, unknown> }
+    const params = sent[1]?.params as { _meta: Record<string, unknown> }
     expect(params._meta['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
     expect(params._meta['io.modelcontextprotocol/clientCapabilities']).toEqual({})
   })
@@ -1194,7 +1198,7 @@ describe('protocol version selection', () => {
       'notifications/initialized',
       'prompts/list',
     ])
-    const params = sent[2].params as { _meta?: Record<string, unknown> } | undefined
+    const params = sent[2]?.params as { _meta?: Record<string, unknown> } | undefined
     expect(params?._meta?.['io.modelcontextprotocol/protocolVersion']).toBeUndefined()
   })
 
@@ -1230,7 +1234,7 @@ describe('protocol version selection', () => {
       throw new Error('tools/call was not sent')
     }
     expect(
-      (call.params as Record<string, Record<string, Record<string, unknown>>>)._meta[
+      (call.params as Record<string, Record<string, Record<string, unknown>>>)._meta?.[
         'io.modelcontextprotocol/clientCapabilities'
       ],
     ).toEqual({ sampling: {} })
@@ -1276,10 +1280,14 @@ describe('protocol version selection', () => {
     expect(result.content).toEqual([{ type: 'text', text: 'done' }])
     const calls = sent.filter((message) => message.method === 'tools/call')
     expect(calls).toHaveLength(2)
-    expect((calls[1].params as Record<string, unknown>).inputResponses).toEqual({
+    const secondCall = calls[1]
+    if (secondCall == null) {
+      throw new Error('expected a second tools/call')
+    }
+    expect((secondCall.params as Record<string, unknown>).inputResponses).toEqual({
       ask: { roots: [{ uri: 'file:///work', name: 'work' }] },
     })
-    expect((calls[1].params as Record<string, unknown>).requestState).toBe('state-1')
+    expect((secondCall.params as Record<string, unknown>).requestState).toBe('state-1')
   })
 
   test('refuses an input_required result when no handler can fulfil it', async () => {
@@ -1613,7 +1621,11 @@ describe('outbound requests and notifications on the resolved revision', () => {
     await vi.waitFor(() => {
       expect(methodsSent(sent)).toContain('notifications/cancelled')
     })
-    return sent[sent.length - 1]
+    const last = sent[sent.length - 1]
+    if (last == null) {
+      throw new Error('no request recorded')
+    }
+    return last
   }
 
   // The cancellation has to reach the peer on *every* transport, not just the ones that can read

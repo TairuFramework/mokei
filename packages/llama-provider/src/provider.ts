@@ -462,6 +462,9 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     let lastUserIdx = -1
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
+      if (msg == null) {
+        continue
+      }
       if (msg.source === 'client' && msg.role === 'user') {
         lastUserIdx = i
         break
@@ -470,6 +473,9 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
 
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i]
+      if (msg == null) {
+        continue
+      }
 
       if (msg.source === 'client' && msg.role === 'system') {
         history.push({ type: 'system', text: msg.text } as ChatHistoryItem)

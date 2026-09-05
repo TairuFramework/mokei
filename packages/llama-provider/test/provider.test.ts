@@ -68,7 +68,7 @@ describe('LlamaProvider', () => {
         },
       })
       const models = await provider.listModels()
-      expect(models[0].raw).toEqual({ name: 'test-model', path: '/models/test.gguf' })
+      expect(models[0]?.raw).toEqual({ name: 'test-model', path: '/models/test.gguf' })
     })
   })
 
@@ -167,7 +167,7 @@ describe('LlamaProvider', () => {
 
       expect(result.text).toBe('Let me check')
       expect(result.toolCalls).toHaveLength(1)
-      expect(result.toolCalls[0].name).toBe('get_weather')
+      expect(result.toolCalls[0]?.name).toBe('get_weather')
     })
 
     test('handles done reason', () => {

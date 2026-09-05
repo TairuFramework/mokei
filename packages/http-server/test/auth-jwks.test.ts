@@ -169,6 +169,9 @@ test('rejects a token with a wrong signature', async () => {
   const parts = token.split('.')
   // Corrupt the signature bytes (flip a character in the base64url string).
   const sig = parts[2]
+  if (sig == null) {
+    throw new Error('malformed token')
+  }
   const corrupted = sig.slice(0, -4) + (sig.at(-4) === 'A' ? 'B' : 'A') + sig.slice(-3)
   const forgedToken = `${parts[0]}.${parts[1]}.${corrupted}`
   const fetchJWKS = async (): Promise<Response> =>
@@ -185,6 +188,9 @@ test('a bad signature on a known kid does not force a JWKS refetch (amplificatio
   const { token, jwk } = await makeToken()
   const parts = token.split('.')
   const sig = parts[2]
+  if (sig == null) {
+    throw new Error('malformed token')
+  }
   const corrupted = sig.slice(0, -4) + (sig.at(-4) === 'A' ? 'B' : 'A') + sig.slice(-3)
   const forgedToken = `${parts[0]}.${parts[1]}.${corrupted}`
   let fetchCalls = 0
