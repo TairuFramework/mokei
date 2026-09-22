@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { serveProcess } from '@mokei/context-server-node'
 
-import { createLayaConfig } from './config.js'
+import { createSystemOneConfig } from './config.js'
 
-const config = createLayaConfig()
+const config = createSystemOneConfig()
 
 serveProcess(config)

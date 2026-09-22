@@ -1,17 +1,22 @@
 import ky, { HTTPError, type KyInstance } from 'ky'
 
 import type {
-  LayaBackend,
-  LayaBackendBatchParams,
-  LayaBackendListModelsParams,
-  LayaBackendPredictParams,
-  LayaResult,
+  SystemOneBackend,
+  SystemOneBackendBatchParams,
+  SystemOneBackendListModelsParams,
+  SystemOneBackendPredictParams,
+  SystemOneResult,
 } from './backend.js'
-import { LayaAuthError, LayaConnectionError, LayaModelError, LayaResponseError } from './errors.js'
-import type { LayaModel } from './types.js'
+import {
+  SystemOneAuthError,
+  SystemOneConnectionError,
+  SystemOneModelError,
+  SystemOneResponseError,
+} from './errors.js'
+import type { SystemOneModel } from './types.js'
 import { validateModels } from './validation.js'
 
-export type LayaHTTPClientOptions = {
+export type SystemOneHTTPClientOptions = {
   url: string
   apiKey?: string
   headers?: Record<string, string>
@@ -21,13 +26,13 @@ export type LayaHTTPClientOptions = {
   /**
    * Enable the `/v1/decide/batch` endpoint. It is available on the local
    * `laya.cpp` backend only -- a hosted backend without this endpoint 404s,
-   * so it defaults to unset/false and `LayaClient.predictBatch` falls back
+   * so it defaults to unset/false and `SystemOneClient.predictBatch` falls back
    * to sequential `predict` calls.
    */
   batch?: boolean
 }
 
-export type HTTPLayaBackendParams = Omit<LayaHTTPClientOptions, 'defaultModel'>
+export type HTTPSystemOneBackendParams = Omit<SystemOneHTTPClientOptions, 'defaultModel'>
 
 async function mapError<T>(run: () => Promise<T>): Promise<T> {
   try {
@@ -36,12 +41,12 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
     if (cause instanceof HTTPError) {
       const status = cause.response.status
       if (status === 401 || status === 403) {
-        throw new LayaAuthError('Laya sidecar rejected the API key', { cause })
+        throw new SystemOneAuthError('System One backend rejected the API key', { cause })
       }
       if (status === 404) {
-        throw new LayaModelError('Model or endpoint not found', { cause })
+        throw new SystemOneModelError('Model or endpoint not found', { cause })
       }
-      throw new LayaConnectionError(`Sidecar returned ${status}`, { cause })
+      throw new SystemOneConnectionError(`Sidecar returned ${status}`, { cause })
     }
     if (
       typeof DOMException !== 'undefined' &&
@@ -50,23 +55,23 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
     ) {
       throw cause
     }
-    throw new LayaConnectionError('Failed to reach Laya sidecar', { cause })
+    throw new SystemOneConnectionError('Failed to reach System One backend', { cause })
   }
 }
 
-export class HTTPLayaBackend implements LayaBackend {
+export class HTTPSystemOneBackend implements SystemOneBackend {
   #http: KyInstance
 
   /**
    * Present only when the backend is constructed with `batch: true`. The
    * `/v1/decide/batch` endpoint is local-only, so a hosted backend must not
-   * advertise this capability -- `LayaClient.predictBatch` checks
+   * advertise this capability -- `SystemOneClient.predictBatch` checks
    * `backend.batch != null` and falls back to sequential `predict` calls
    * when it is absent.
    */
-  batch?: (params: LayaBackendBatchParams) => Promise<Array<LayaResult>>
+  batch?: (params: SystemOneBackendBatchParams) => Promise<Array<SystemOneResult>>
 
-  constructor(params: HTTPLayaBackendParams) {
+  constructor(params: HTTPSystemOneBackendParams) {
     const headers = new Headers(params.headers)
     if (params.apiKey != null && params.apiKey !== '') {
       headers.set('Authorization', `Bearer ${params.apiKey}`)
@@ -79,7 +84,9 @@ export class HTTPLayaBackend implements LayaBackend {
     })
 
     if (params.batch === true) {
-      this.batch = async (batchParams: LayaBackendBatchParams): Promise<Array<LayaResult>> => {
+      this.batch = async (
+        batchParams: SystemOneBackendBatchParams,
+      ): Promise<Array<SystemOneResult>> => {
         const body = await mapError(() =>
           this.#http
             .post('v1/decide/batch', {
@@ -97,13 +104,13 @@ export class HTTPLayaBackend implements LayaBackend {
           typeof body !== 'object' ||
           !Array.isArray((body as { results?: unknown }).results)
         ) {
-          throw new LayaResponseError('Batch response missing a results array', [
+          throw new SystemOneResponseError('Batch response missing a results array', [
             { message: 'results must be an array', path: ['results'] },
           ])
         }
-        const results = (body as { results: Array<LayaResult> }).results
+        const results = (body as { results: Array<SystemOneResult> }).results
         if (results.length !== batchParams.states.length) {
-          throw new LayaResponseError('Batch result count does not match states', [
+          throw new SystemOneResponseError('Batch result count does not match states', [
             {
               message: `expected ${batchParams.states.length} results, got ${results.length}`,
               path: ['results'],
@@ -115,18 +122,18 @@ export class HTTPLayaBackend implements LayaBackend {
     }
   }
 
-  async predict(params: LayaBackendPredictParams): Promise<LayaResult> {
+  async predict(params: SystemOneBackendPredictParams): Promise<SystemOneResult> {
     return mapError(() =>
       this.#http
         .post('v1/systemone', {
           json: { state: params.state, model: params.model, questions: params.questions },
           signal: params.signal,
         })
-        .json<LayaResult>(),
+        .json<SystemOneResult>(),
     )
   }
 
-  async listModels(params?: LayaBackendListModelsParams): Promise<Array<LayaModel>> {
+  async listModels(params?: SystemOneBackendListModelsParams): Promise<Array<SystemOneModel>> {
     const raw = await mapError(() => this.#http.get('v1/models', { signal: params?.signal }).json())
     return validateModels({ raw })
   }

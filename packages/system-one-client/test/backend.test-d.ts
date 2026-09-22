@@ -1,16 +1,16 @@
 import { expectTypeOf, test } from 'vitest'
 
-import type { LayaBackend, LayaResult } from '../src/backend.js'
+import type { SystemOneBackend, SystemOneResult } from '../src/backend.js'
 
 test('a minimal backend needs only predict', () => {
-  const backend: LayaBackend = {
+  const backend: SystemOneBackend = {
     predict: async () =>
       ({
         model: 'english',
         answers: {},
         usage: { input_tokens: 0, output_tokens: 0 },
-      }) satisfies LayaResult,
+      }) satisfies SystemOneResult,
   }
   expectTypeOf(backend.predict).toBeFunction()
-  expectTypeOf(backend.batch).toEqualTypeOf<LayaBackend['batch']>()
+  expectTypeOf(backend.batch).toEqualTypeOf<SystemOneBackend['batch']>()
 })

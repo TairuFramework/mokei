@@ -5,15 +5,15 @@
       "args": ["mcp-servers/fetch/lib/serve.js"],
       "env": {}
     },
-    "laya": {
-      "command": "node",
-      "args": ["mcp-servers/laya/lib/serve.js"],
-      "env": { "LAYA_URL": "http://localhost:8000" }
-    },
     "sqlite": {
       "command": "node",
       "args": ["mcp-servers/sqlite/lib/serve.js"],
       "env": {}
+    },
+    "system-one": {
+      "command": "node",
+      "args": ["mcp-servers/system-one/lib/serve.js"],
+      "env": { "SYSTEM_ONE_URL": "http://localhost:8000" }
     }
   }
 }

@@ -127,16 +127,16 @@ versioning:
       - '@mokei/host-protocol'
       - '@mokei/http-client'
       - '@mokei/http-server'
-      - '@mokei/laya-client'
       - '@mokei/llama-provider'
       - '@mokei/logger'
       - '@mokei/mcp-fetch'
-      - '@mokei/mcp-laya'
       - '@mokei/mcp-sqlite'
+      - '@mokei/mcp-system-one'
       - '@mokei/model-provider'
       - '@mokei/ollama-provider'
       - '@mokei/openai-provider'
       - '@mokei/session'
+      - '@mokei/system-one-client'
       - 'mokei'
 
 supportedArchitectures:

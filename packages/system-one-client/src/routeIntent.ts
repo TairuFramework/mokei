@@ -1,4 +1,4 @@
-import type { LayaClient } from './client.js'
+import type { SystemOneClient } from './client.js'
 import type { ChoiceQuestion, State } from './types.js'
 
 export type IntentRoute = {
@@ -8,7 +8,7 @@ export type IntentRoute = {
 }
 
 export type RouteIntentParams = {
-  client: LayaClient
+  client: SystemOneClient
   state: State
   question: ChoiceQuestion
   model?: string

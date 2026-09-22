@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { createLayaClient } from '../src/client.js'
+import { createSystemOneClient } from '../src/client.js'
 import {
-  LayaAuthError,
-  LayaConnectionError,
-  LayaModelError,
-  LayaResponseError,
+  SystemOneAuthError,
+  SystemOneConnectionError,
+  SystemOneModelError,
+  SystemOneResponseError,
 } from '../src/errors.js'
-import { HTTPLayaBackend } from '../src/http.js'
+import { HTTPSystemOneBackend } from '../src/http.js'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -29,7 +29,7 @@ function stubJSON(body: unknown, init: { status?: number } = {}) {
 
 const questions = { dept: { type: 'choice', criteria: { billing: 'x' } } } as const
 
-describe('HTTPLayaBackend', () => {
+describe('HTTPSystemOneBackend', () => {
   test('predict posts to /v1/systemone with a Bearer header and returns the raw envelope', async () => {
     stubJSON({
       model: 'english',
@@ -43,7 +43,7 @@ describe('HTTPLayaBackend', () => {
       },
       usage: { input_tokens: 1, output_tokens: 1 },
     })
-    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000', apiKey: 'secret' })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000', apiKey: 'secret' })
     const res = await backend.predict({ state: 'hi', questions, model: 'english' })
     const req = (globalThis as Record<string, unknown>).__lastRequest as Request
     expect(req.url).toBe('http://localhost:8000/v1/systemone')
@@ -51,35 +51,35 @@ describe('HTTPLayaBackend', () => {
     expect(res.model).toBe('english')
   })
 
-  test('maps 401 to LayaAuthError', async () => {
+  test('maps 401 to SystemOneAuthError', async () => {
     stubJSON({ error: 'unauthorized' }, { status: 401 })
-    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
     await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
-      LayaAuthError,
+      SystemOneAuthError,
     )
   })
 
-  test('maps 403 to LayaAuthError', async () => {
+  test('maps 403 to SystemOneAuthError', async () => {
     stubJSON({ error: 'forbidden' }, { status: 403 })
-    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
     await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
-      LayaAuthError,
+      SystemOneAuthError,
     )
   })
 
-  test('maps 404 to LayaModelError', async () => {
+  test('maps 404 to SystemOneModelError', async () => {
     stubJSON({ error: 'not found' }, { status: 404 })
-    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
     await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
-      LayaModelError,
+      SystemOneModelError,
     )
   })
 
-  test('maps 500 to LayaConnectionError', async () => {
+  test('maps 500 to SystemOneConnectionError', async () => {
     stubJSON({ error: 'boom' }, { status: 500 })
-    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
     await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
-      LayaConnectionError,
+      SystemOneConnectionError,
     )
   })
 
@@ -97,7 +97,7 @@ describe('HTTPLayaBackend', () => {
         })
       }),
     )
-    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
     const controller = new AbortController()
     const pending = backend.predict({
       state: 'hi',
@@ -110,14 +110,14 @@ describe('HTTPLayaBackend', () => {
   })
 })
 
-describe('HTTPLayaBackend batch opt-in', () => {
+describe('HTTPSystemOneBackend batch opt-in', () => {
   test('batch is undefined by default', () => {
-    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
     expect(backend.batch).toBeUndefined()
   })
 
   test('batch is defined when constructed with batch: true', () => {
-    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000', batch: true })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000', batch: true })
     expect(backend.batch).toBeDefined()
   })
 
@@ -145,7 +145,7 @@ describe('HTTPLayaBackend batch opt-in', () => {
         )
       }),
     )
-    const client = createLayaClient({ url: 'http://localhost:8000', defaultModel: 'english' })
+    const client = createSystemOneClient({ url: 'http://localhost:8000', defaultModel: 'english' })
     const results = await client.predictBatch({ states: ['a', 'b'], questions })
     expect(results).toHaveLength(2)
     expect(urls).toHaveLength(2)
@@ -155,7 +155,7 @@ describe('HTTPLayaBackend batch opt-in', () => {
   })
 })
 
-describe('HTTPLayaBackend headers', () => {
+describe('HTTPSystemOneBackend headers', () => {
   test('a caller-supplied lowercase authorization header is replaced, not appended to, by apiKey', async () => {
     stubJSON({
       model: 'english',
@@ -169,7 +169,7 @@ describe('HTTPLayaBackend headers', () => {
       },
       usage: { input_tokens: 1, output_tokens: 1 },
     })
-    const backend = new HTTPLayaBackend({
+    const backend = new HTTPSystemOneBackend({
       url: 'http://localhost:8000',
       apiKey: 'secret',
       headers: { authorization: 'custom' },
@@ -180,16 +180,16 @@ describe('HTTPLayaBackend headers', () => {
   })
 })
 
-describe('HTTPLayaBackend batch envelope validation', () => {
-  test('rejects with LayaResponseError when the batch body has no results array', async () => {
+describe('HTTPSystemOneBackend batch envelope validation', () => {
+  test('rejects with SystemOneResponseError when the batch body has no results array', async () => {
     stubJSON({})
-    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000', batch: true })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000', batch: true })
     await expect(
       backend.batch?.({ states: ['a', 'b'], questions, model: 'english' }),
-    ).rejects.toThrow(LayaResponseError)
+    ).rejects.toThrow(SystemOneResponseError)
   })
 
-  test('rejects with LayaResponseError when the result count does not match the states count', async () => {
+  test('rejects with SystemOneResponseError when the result count does not match the states count', async () => {
     stubJSON({
       results: [
         {
@@ -206,9 +206,9 @@ describe('HTTPLayaBackend batch envelope validation', () => {
         },
       ],
     })
-    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000', batch: true })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000', batch: true })
     await expect(
       backend.batch?.({ states: ['a', 'b'], questions, model: 'english' }),
-    ).rejects.toThrow(LayaResponseError)
+    ).rejects.toThrow(SystemOneResponseError)
   })
 })

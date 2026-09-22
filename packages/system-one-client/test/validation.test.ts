@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { LayaInputError, LayaResponseError } from '../src/errors.js'
+import { SystemOneInputError, SystemOneResponseError } from '../src/errors.js'
 import type { ChoiceQuestion, NoulQuestion, ScoreQuestion } from '../src/types.js'
 import {
   validateModels,
@@ -21,26 +21,26 @@ describe('validateQuestions / validateState', () => {
     expect(validateState({ state: { body: 'hi' } })).toEqual({ body: 'hi' })
   })
 
-  test('throws LayaInputError on a malformed question (missing criteria)', () => {
+  test('throws SystemOneInputError on a malformed question (missing criteria)', () => {
     expect(() => validateQuestions({ questions: { dept: { type: 'choice' } } })).toThrow(
-      LayaInputError,
+      SystemOneInputError,
     )
   })
 
-  test('throws LayaInputError on an empty question map', () => {
-    expect(() => validateQuestions({ questions: {} })).toThrow(LayaInputError)
+  test('throws SystemOneInputError on an empty question map', () => {
+    expect(() => validateQuestions({ questions: {} })).toThrow(SystemOneInputError)
   })
 
-  test('throws LayaInputError on a score question with fewer than 2 criteria levels', () => {
+  test('throws SystemOneInputError on a score question with fewer than 2 criteria levels', () => {
     expect(() =>
       validateQuestions({ questions: { urgency: { type: 'score', criteria: ['only-one'] } } }),
-    ).toThrow(LayaInputError)
+    ).toThrow(SystemOneInputError)
   })
 
-  test('throws LayaInputError on a choice question with empty criteria', () => {
+  test('throws SystemOneInputError on a choice question with empty criteria', () => {
     expect(() =>
       validateQuestions({ questions: { dept: { type: 'choice', criteria: {} } } }),
-    ).toThrow(LayaInputError)
+    ).toThrow(SystemOneInputError)
   })
 })
 
@@ -73,22 +73,22 @@ describe('validateResult', () => {
     expect(result.extras).toEqual({ family: 'english' })
   })
 
-  test('throws LayaResponseError when answers is missing', () => {
+  test('throws SystemOneResponseError when answers is missing', () => {
     expect(() =>
       validateResult({
         questions,
         raw: { model: 'english', usage: { input_tokens: 0, output_tokens: 0 } },
       }),
-    ).toThrow(LayaResponseError)
+    ).toThrow(SystemOneResponseError)
   })
 
-  test('throws LayaResponseError when an answer has the wrong shape', () => {
+  test('throws SystemOneResponseError when an answer has the wrong shape', () => {
     const raw = {
       model: 'english',
       answers: { dept: { type: 'choice', confidence: 0.9 }, urgency: {}, churn: {} },
       usage: { input_tokens: 0, output_tokens: 0 },
     }
-    expect(() => validateResult({ questions, raw })).toThrow(LayaResponseError)
+    expect(() => validateResult({ questions, raw })).toThrow(SystemOneResponseError)
   })
 })
 
@@ -100,7 +100,7 @@ describe('validateModels', () => {
     expect(models).toEqual([{ name: 'english', description: undefined, releaseDate: '2025-01-01' }])
   })
 
-  test('throws LayaResponseError on a bad models list', () => {
-    expect(() => validateModels({ raw: { models: 'x' } })).toThrow(LayaResponseError)
+  test('throws SystemOneResponseError on a bad models list', () => {
+    expect(() => validateModels({ raw: { models: 'x' } })).toThrow(SystemOneResponseError)
   })
 })

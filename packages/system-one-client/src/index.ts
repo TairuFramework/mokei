@@ -1,36 +1,39 @@
 export type {
-  LayaBackend,
-  LayaBackendBatchParams,
-  LayaBackendListModelsParams,
-  LayaBackendPredictParams,
-  LayaResult,
+  SystemOneBackend,
+  SystemOneBackendBatchParams,
+  SystemOneBackendListModelsParams,
+  SystemOneBackendPredictParams,
+  SystemOneResult,
 } from './backend.js'
 export {
-  type CreateLayaClientOptions,
-  createLayaClient,
-  type LayaBackendClientOptions,
-  LayaClient,
-  type LayaListModelsParams,
-  type LayaPredictBatchParams,
-  type LayaPredictParams,
+  type CreateSystemOneClientOptions,
+  createSystemOneClient,
+  type SystemOneBackendClientOptions,
+  SystemOneClient,
+  type SystemOneListModelsParams,
+  type SystemOnePredictBatchParams,
+  type SystemOnePredictParams,
 } from './client.js'
 export {
-  LayaAuthError,
-  LayaConnectionError,
-  LayaError,
-  LayaInputError,
-  LayaModelError,
-  LayaResponseError,
+  SystemOneAuthError,
+  SystemOneConnectionError,
+  SystemOneError,
+  SystemOneInputError,
+  SystemOneModelError,
+  SystemOneResponseError,
   type ValidationIssue,
 } from './errors.js'
-export { HTTPLayaBackend, type HTTPLayaBackendParams, type LayaHTTPClientOptions } from './http.js'
+export {
+  HTTPSystemOneBackend,
+  type HTTPSystemOneBackendParams,
+  type SystemOneHTTPClientOptions,
+} from './http.js'
 export { guardQuestions, moderationQuestions, routerQuestions, triageQuestions } from './presets.js'
 export { type IntentRoute, type RouteIntentParams, routeIntent } from './routeIntent.js'
 export type {
   AnswerFor,
   ChoiceAnswer,
   ChoiceQuestion,
-  LayaModel,
   NoulAnswer,
   NoulQuestion,
   PredictResult,
@@ -39,6 +42,7 @@ export type {
   ScoreAnswer,
   ScoreQuestion,
   State,
+  SystemOneModel,
   Usage,
 } from './types.js'
 export {

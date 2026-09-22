@@ -1,32 +1,32 @@
-import { guardQuestions, type LayaClient } from '@mokei/laya-client'
+import { guardQuestions, type SystemOneClient } from '@mokei/system-one-client'
 import { describe, expect, test, vi } from 'vitest'
 
-import { createLayaTools } from '../src/config.js'
+import { createSystemOneTools } from '../src/config.js'
 
-function fakeClient(answers: Record<string, unknown>): LayaClient {
+function fakeClient(answers: Record<string, unknown>): SystemOneClient {
   return {
     predict: vi.fn(async () => ({
       model: 'english',
       answers,
       usage: { inputTokens: 1, outputTokens: 1 },
     })),
-  } as unknown as LayaClient
+  } as unknown as SystemOneClient
 }
 
-function abortingClient(): LayaClient {
+function abortingClient(): SystemOneClient {
   return {
     predict: vi.fn(async () => {
       throw new DOMException('aborted', 'AbortError')
     }),
-  } as unknown as LayaClient
+  } as unknown as SystemOneClient
 }
 
-describe('createLayaTools', () => {
+describe('createSystemOneTools', () => {
   test('predict tool calls the client and returns JSON text', async () => {
     const client = fakeClient({
       dept: { type: 'choice', choice: 'billing', confidence: 0.9, probabilities: { billing: 0.9 } },
     })
-    const tools = createLayaTools({ client })
+    const tools = createSystemOneTools({ client })
     const res = (await tools.predict.handler({
       input: { state: 'hi', questions: { dept: { type: 'choice', criteria: { billing: 'x' } } } },
       signal: new AbortController().signal,
@@ -38,7 +38,7 @@ describe('createLayaTools', () => {
 
   test('preset tools classify with a fixed question set', async () => {
     const client = fakeClient({ jailbreak: { type: 'noul', noul: 0.1 } })
-    const tools = createLayaTools({ client })
+    const tools = createSystemOneTools({ client })
     const res = (await tools.guard.handler({
       input: { state: 'hello' },
       signal: new AbortController().signal,
@@ -52,7 +52,7 @@ describe('createLayaTools', () => {
 
   test('predict tool rethrows when the request was cancelled instead of returning isError', async () => {
     const client = abortingClient()
-    const tools = createLayaTools({ client })
+    const tools = createSystemOneTools({ client })
     const controller = new AbortController()
     controller.abort()
     await expect(
@@ -65,7 +65,7 @@ describe('createLayaTools', () => {
 
   test('preset tool rethrows when the request was cancelled instead of returning isError', async () => {
     const client = abortingClient()
-    const tools = createLayaTools({ client })
+    const tools = createSystemOneTools({ client })
     const controller = new AbortController()
     controller.abort()
     await expect(

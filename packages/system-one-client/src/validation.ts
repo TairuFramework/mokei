@@ -1,9 +1,8 @@
 import { createValidator, type Validator } from '@sozai/schema'
 
-import { LayaInputError, LayaResponseError, type ValidationIssue } from './errors.js'
+import { SystemOneInputError, SystemOneResponseError, type ValidationIssue } from './errors.js'
 import {
   choiceAnswerSchema,
-  type LayaModel,
   modelsResponseSchema,
   noulAnswerSchema,
   type PredictResult,
@@ -11,6 +10,7 @@ import {
   type QuestionMap,
   questionMapSchema,
   type State,
+  type SystemOneModel,
   scoreAnswerSchema,
   stateSchema,
   type Usage,
@@ -40,7 +40,7 @@ function run<T>(validator: Validator<T>, value: unknown, prefix: string): Array<
 export function validateQuestions(params: { questions: unknown }): QuestionMap {
   const issues = run(questionMapValidator, params.questions, 'questions')
   if (issues.length > 0) {
-    throw new LayaInputError('Invalid question map', issues)
+    throw new SystemOneInputError('Invalid question map', issues)
   }
   return params.questions as QuestionMap
 }
@@ -48,7 +48,7 @@ export function validateQuestions(params: { questions: unknown }): QuestionMap {
 export function validateState(params: { state: unknown }): State {
   const issues = run(stateValidator, params.state, 'state')
   if (issues.length > 0) {
-    throw new LayaInputError('Invalid state', issues)
+    throw new SystemOneInputError('Invalid state', issues)
   }
   return params.state as State
 }
@@ -70,17 +70,17 @@ export function validateResult<TQuestions extends QuestionMap>(params: {
 }): PredictResult<TQuestions> {
   const { questions, raw } = params
   if (raw == null || typeof raw !== 'object') {
-    throw new LayaResponseError('Response is not an object')
+    throw new SystemOneResponseError('Response is not an object')
   }
   const record = raw as Record<string, unknown>
   const { answers, usage, model, ...extras } = record
   if (answers == null || typeof answers !== 'object') {
-    throw new LayaResponseError('Response is missing answers', [
+    throw new SystemOneResponseError('Response is missing answers', [
       { message: 'answers must be an object', path: ['answers'] },
     ])
   }
   if (typeof model !== 'string') {
-    throw new LayaResponseError('Response is missing model', [
+    throw new SystemOneResponseError('Response is missing model', [
       { message: 'model must be a string', path: ['model'] },
     ])
   }
@@ -98,7 +98,7 @@ export function validateResult<TQuestions extends QuestionMap>(params: {
   const usageIssues = run(usageValidator, usage, 'usage')
   issues.push(...usageIssues)
   if (issues.length > 0) {
-    throw new LayaResponseError('Response failed validation', issues)
+    throw new SystemOneResponseError('Response failed validation', issues)
   }
   const wireUsage = usage as { input_tokens: number; output_tokens: number }
   const mappedUsage: Usage = {
@@ -113,10 +113,10 @@ export function validateResult<TQuestions extends QuestionMap>(params: {
   } as PredictResult<TQuestions>
 }
 
-export function validateModels(params: { raw: unknown }): Array<LayaModel> {
+export function validateModels(params: { raw: unknown }): Array<SystemOneModel> {
   const issues = run(modelsValidator, params.raw, 'models')
   if (issues.length > 0) {
-    throw new LayaResponseError('Invalid models list', issues)
+    throw new SystemOneResponseError('Invalid models list', issues)
   }
   const wire = params.raw as {
     models: Array<{ name: string; description?: string; release_date?: string }>

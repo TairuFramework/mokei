@@ -1,9 +1,9 @@
 {
   "manifest_version": "0.2",
-  "name": "@mokei/mcp-laya",
-  "display_name": "Mokei Laya",
+  "name": "@mokei/mcp-system-one",
+  "display_name": "Mokei System One",
   "version": "0.13.1",
-  "description": "Laya classification MCP server",
+  "description": "System One classification MCP server",
   "author": { "name": "Paul Le Cam" },
   "server": {
     "type": "node",
@@ -11,11 +11,11 @@
     "mcp_config": {
       "command": "node",
       "args": ["${__dirname}/lib/index.js"],
-      "env": { "LAYA_URL": "http://localhost:8000" }
+      "env": { "SYSTEM_ONE_URL": "http://localhost:8000" }
     }
   },
   "tools": [
-    { "name": "predict", "description": "Classify text with Laya typed questions" },
+    { "name": "predict", "description": "Classify text with System One typed questions" },
     { "name": "route", "description": "Route to a model tier" },
     { "name": "guard", "description": "Detect jailbreak / prompt-injection attempts" },
     { "name": "moderate", "description": "Moderate content for safety" },

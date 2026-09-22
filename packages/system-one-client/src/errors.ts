@@ -3,14 +3,14 @@ export type ValidationIssue = {
   path?: ReadonlyArray<unknown>
 }
 
-export class LayaError extends Error {
+export class SystemOneError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)
-    this.name = 'LayaError'
+    this.name = 'SystemOneError'
   }
 }
 
-class ValidationError extends LayaError {
+class ValidationError extends SystemOneError {
   #issues: Array<ValidationIssue>
 
   constructor(message: string, issues: Array<ValidationIssue>, options?: ErrorOptions) {
@@ -24,41 +24,41 @@ class ValidationError extends LayaError {
 }
 
 /** Caller-supplied questions or state failed schema validation. Thrown before any request. */
-export class LayaInputError extends ValidationError {
+export class SystemOneInputError extends ValidationError {
   constructor(message: string, issues: Array<ValidationIssue> = [], options?: ErrorOptions) {
     super(message, issues, options)
-    this.name = 'LayaInputError'
+    this.name = 'SystemOneInputError'
   }
 }
 
 /** The sidecar could not be reached, or returned an unmapped non-2xx status. */
-export class LayaConnectionError extends LayaError {
+export class SystemOneConnectionError extends SystemOneError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)
-    this.name = 'LayaConnectionError'
+    this.name = 'SystemOneConnectionError'
   }
 }
 
 /** 401 or 403: a missing or rejected Bearer key. */
-export class LayaAuthError extends LayaError {
+export class SystemOneAuthError extends SystemOneError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)
-    this.name = 'LayaAuthError'
+    this.name = 'SystemOneAuthError'
   }
 }
 
 /** The sidecar response was malformed or failed schema validation. */
-export class LayaResponseError extends ValidationError {
+export class SystemOneResponseError extends ValidationError {
   constructor(message: string, issues: Array<ValidationIssue> = [], options?: ErrorOptions) {
     super(message, issues, options)
-    this.name = 'LayaResponseError'
+    this.name = 'SystemOneResponseError'
   }
 }
 
 /** 404, or an unknown or unavailable model. */
-export class LayaModelError extends LayaError {
+export class SystemOneModelError extends SystemOneError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)
-    this.name = 'LayaModelError'
+    this.name = 'SystemOneModelError'
   }
 }

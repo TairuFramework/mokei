@@ -1,13 +1,14 @@
 {
-  "name": "@mokei/mcp-laya",
+  "name": "@mokei/mcp-system-one",
   "version": "0.13.1",
-  "description": "Laya classification MCP server",
+  "description": "System One classification MCP server",
   "keywords": [
     "model",
     "context",
     "protocol",
     "mcp",
     "server",
+    "system-one",
     "laya",
     "classification"
   ],
@@ -15,7 +16,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "mcp-servers/laya"
+    "directory": "mcp-servers/system-one"
   },
   "license": "MIT",
   "sideEffects": false,
@@ -26,7 +27,7 @@
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "bin": {
-    "mcp-laya": "./lib/serve.js"
+    "mcp-system-one": "./lib/serve.js"
   },
   "files": [
     "lib/*"
@@ -45,7 +46,7 @@
   "dependencies": {
     "@mokei/context-server": "workspace:^",
     "@mokei/context-server-node": "workspace:^",
-    "@mokei/laya-client": "workspace:^"
+    "@mokei/system-one-client": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "catalog:"

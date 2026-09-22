@@ -120,7 +120,7 @@ export const modelsResponseSchema = {
   additionalProperties: true,
 } as const satisfies Schema
 
-export type LayaModel = { name: string; description?: string; releaseDate?: string }
+export type SystemOneModel = { name: string; description?: string; releaseDate?: string }
 
 export type AnswerFor<TQuestion> = TQuestion extends ChoiceQuestion
   ? ChoiceAnswer

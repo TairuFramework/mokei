@@ -6,20 +6,20 @@ import {
   type ToolDefinitions,
 } from '@mokei/context-server'
 import {
-  createLayaClient,
+  createSystemOneClient,
   guardQuestions,
-  type LayaClient,
   moderationQuestions,
   type QuestionMap,
   questionMapSchema,
   routerQuestions,
   type State,
+  type SystemOneClient,
   stateSchema,
   triageQuestions,
-} from '@mokei/laya-client'
+} from '@mokei/system-one-client'
 
-export type LayaToolsOptions = {
-  client?: LayaClient
+export type SystemOneToolsOptions = {
+  client?: SystemOneClient
   url?: string
   apiKey?: string
   defaultModel?: string
@@ -27,23 +27,23 @@ export type LayaToolsOptions = {
 
 const questionsInputSchema = {
   ...questionMapSchema,
-  description: 'A Laya question map: each key maps to a choice/score/noul question',
+  description: 'A System One question map: each key maps to a choice/score/noul question',
 } as const satisfies Schema
 
 const env = (v?: string): string | undefined => (v != null && v !== '' ? v : undefined)
 
-function resolveClient(options: LayaToolsOptions): LayaClient {
+function resolveClient(options: SystemOneToolsOptions): SystemOneClient {
   return (
     options.client ??
-    createLayaClient({
-      url: options.url ?? env(process.env.LAYA_URL) ?? 'http://localhost:8000',
-      apiKey: options.apiKey ?? env(process.env.LAYA_API_KEY),
-      defaultModel: options.defaultModel ?? env(process.env.LAYA_MODEL),
+    createSystemOneClient({
+      url: options.url ?? env(process.env.SYSTEM_ONE_URL) ?? 'http://localhost:8000',
+      apiKey: options.apiKey ?? env(process.env.SYSTEM_ONE_API_KEY),
+      defaultModel: options.defaultModel ?? env(process.env.SYSTEM_ONE_MODEL),
     })
   )
 }
 
-export function createLayaTools(options: LayaToolsOptions = {}) {
+export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
   const client = resolveClient(options)
 
   function presetTool(description: string, questions: QuestionMap) {
@@ -79,13 +79,13 @@ export function createLayaTools(options: LayaToolsOptions = {}) {
 
   return {
     predict: createTool({
-      description: 'Classify text with Laya typed questions (choice/score/noul)',
+      description: 'Classify text with System One typed questions (choice/score/noul)',
       inputSchema: {
         type: 'object',
         properties: {
           state: stateSchema,
           questions: questionsInputSchema,
-          model: { type: 'string', description: 'Model name; overrides LAYA_MODEL' },
+          model: { type: 'string', description: 'Model name; overrides SYSTEM_ONE_MODEL' },
         },
         required: ['state', 'questions'],
         additionalProperties: false,
@@ -117,13 +117,13 @@ export function createLayaTools(options: LayaToolsOptions = {}) {
   } satisfies ToolDefinitions
 }
 
-export function createLayaConfig(options: LayaToolsOptions = {}) {
+export function createSystemOneConfig(options: SystemOneToolsOptions = {}) {
   return {
-    name: 'laya',
+    name: 'system-one',
     version: '0.13.1',
     protocolVersions: ['2026-07-28', '2025-11-25'],
-    tools: createLayaTools(options),
+    tools: createSystemOneTools(options),
   } as const satisfies ServerConfig
 }
 
-export type LayaServerTypes = ExtractServerTypes<ReturnType<typeof createLayaConfig>>
+export type SystemOneServerTypes = ExtractServerTypes<ReturnType<typeof createSystemOneConfig>>

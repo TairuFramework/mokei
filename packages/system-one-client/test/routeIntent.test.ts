@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { LayaClient } from '../src/client.js'
+import { SystemOneClient } from '../src/client.js'
 import { routeIntent } from '../src/routeIntent.js'
 import type { ChoiceQuestion } from '../src/types.js'
 
@@ -12,7 +12,7 @@ const question: ChoiceQuestion = {
 
 describe('routeIntent', () => {
   test('returns the top label, confidence, and model', async () => {
-    const client = new LayaClient({
+    const client = new SystemOneClient({
       backend: {
         predict: vi.fn(async () => ({
           model: 'english',

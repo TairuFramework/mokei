@@ -1,12 +1,13 @@
 {
-  "name": "@mokei/laya-client",
+  "name": "@mokei/system-one-client",
   "version": "0.13.1",
-  "description": "Mokei Laya classification client",
+  "description": "Mokei System One classification client",
   "keywords": [
     "model",
     "context",
     "protocol",
     "mcp",
+    "system-one",
     "laya",
     "classification",
     "typesafe"
@@ -15,7 +16,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "packages/laya-client"
+    "directory": "packages/system-one-client"
   },
   "license": "MIT",
   "sideEffects": false,
