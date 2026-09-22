@@ -1,4 +1,4 @@
-import type { LayaClient } from '@mokei/laya-client'
+import { guardQuestions, type LayaClient } from '@mokei/laya-client'
 import { describe, expect, test, vi } from 'vitest'
 
 import { createLayaTools } from '../src/config.js'
@@ -37,5 +37,8 @@ describe('createLayaTools', () => {
     } as never)) as { isError: boolean; content: Array<{ text?: string }> }
     expect(res.isError).toBe(false)
     expect(res.content[0]?.text).toContain('jailbreak')
+    expect(vi.mocked(client.predict)).toHaveBeenCalledWith(
+      expect.objectContaining({ questions: guardQuestions() }),
+    )
   })
 })
