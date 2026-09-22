@@ -1,7 +1,5 @@
 import type { FromSchema, Schema } from '@sozai/schema'
 
-export type Instructions = string | Record<string, unknown> | Array<unknown> | null
-
 const instructionsSchema = {} as const satisfies Schema
 
 export const choiceQuestionSchema = {

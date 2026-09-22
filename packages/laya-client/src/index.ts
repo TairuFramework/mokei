@@ -23,14 +23,13 @@ export {
   LayaResponseError,
   type ValidationIssue,
 } from './errors.js'
-export { HttpLayaBackend, type HttpLayaBackendParams, type LayaHTTPClientOptions } from './http.js'
+export { HTTPLayaBackend, type HTTPLayaBackendParams, type LayaHTTPClientOptions } from './http.js'
 export { guardQuestions, moderationQuestions, routerQuestions, triageQuestions } from './presets.js'
 export { type IntentRoute, type RouteIntentParams, routeIntent } from './routeIntent.js'
 export type {
   AnswerFor,
   ChoiceAnswer,
   ChoiceQuestion,
-  Instructions,
   LayaModel,
   NoulAnswer,
   NoulQuestion,

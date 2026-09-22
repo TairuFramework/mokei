@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "@mokei/mcp-laya",
   "display_name": "Mokei Laya",
-  "version": "0.1.0",
+  "version": "0.13.1",
   "description": "Laya classification MCP server",
   "author": { "name": "Paul Le Cam" },
   "server": {
@@ -11,7 +11,7 @@
     "mcp_config": {
       "command": "node",
       "args": ["${__dirname}/lib/index.js"],
-      "env": { "LAYA_URL": "http://localhost:8000", "LAYA_MODEL": "", "LAYA_API_KEY": "" }
+      "env": { "LAYA_URL": "http://localhost:8000" }
     }
   },
   "tools": [

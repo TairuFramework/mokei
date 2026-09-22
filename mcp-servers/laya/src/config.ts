@@ -11,7 +11,7 @@ import {
   type LayaClient,
   moderationQuestions,
   type QuestionMap,
-  questionSchema,
+  questionMapSchema,
   routerQuestions,
   type State,
   stateSchema,
@@ -26,19 +26,19 @@ export type LayaToolsOptions = {
 }
 
 const questionsInputSchema = {
-  type: 'object',
-  additionalProperties: questionSchema,
-  minProperties: 1,
+  ...questionMapSchema,
   description: 'A Laya question map: each key maps to a choice/score/noul question',
 } as const satisfies Schema
+
+const env = (v?: string): string | undefined => (v != null && v !== '' ? v : undefined)
 
 function resolveClient(options: LayaToolsOptions): LayaClient {
   return (
     options.client ??
     createLayaClient({
-      url: options.url ?? process.env.LAYA_URL ?? 'http://localhost:8000',
-      apiKey: options.apiKey ?? process.env.LAYA_API_KEY,
-      defaultModel: options.defaultModel ?? process.env.LAYA_MODEL,
+      url: options.url ?? env(process.env.LAYA_URL) ?? 'http://localhost:8000',
+      apiKey: options.apiKey ?? env(process.env.LAYA_API_KEY),
+      defaultModel: options.defaultModel ?? env(process.env.LAYA_MODEL),
     })
   )
 }
@@ -114,7 +114,7 @@ export function createLayaTools(options: LayaToolsOptions = {}) {
 export function createLayaConfig(options: LayaToolsOptions = {}) {
   return {
     name: 'laya',
-    version: '0.1.0',
+    version: '0.13.1',
     protocolVersions: ['2026-07-28', '2025-11-25'],
     tools: createLayaTools(options),
   } as const satisfies ServerConfig

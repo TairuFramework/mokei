@@ -20,7 +20,7 @@ export type LayaHTTPClientOptions = {
   defaultModel?: string
 }
 
-export type HttpLayaBackendParams = Omit<LayaHTTPClientOptions, 'defaultModel'>
+export type HTTPLayaBackendParams = Omit<LayaHTTPClientOptions, 'defaultModel'>
 
 async function mapError<T>(run: () => Promise<T>): Promise<T> {
   try {
@@ -36,19 +36,23 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
       }
       throw new LayaConnectionError(`Sidecar returned ${status}`, { cause })
     }
-    if (cause instanceof DOMException && cause.name === 'AbortError') {
+    if (
+      typeof DOMException !== 'undefined' &&
+      cause instanceof DOMException &&
+      cause.name === 'AbortError'
+    ) {
       throw cause
     }
     throw new LayaConnectionError('Failed to reach Laya sidecar', { cause })
   }
 }
 
-export class HttpLayaBackend implements LayaBackend {
+export class HTTPLayaBackend implements LayaBackend {
   #http: KyInstance
 
-  constructor(params: HttpLayaBackendParams) {
+  constructor(params: HTTPLayaBackendParams) {
     const headers = { ...params.headers }
-    if (params.apiKey != null) {
+    if (params.apiKey != null && params.apiKey !== '') {
       headers.Authorization = `Bearer ${params.apiKey}`
     }
     this.#http = ky.create({

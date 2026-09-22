@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { LayaAuthError, LayaConnectionError, LayaModelError } from '../src/errors.js'
-import { HttpLayaBackend } from '../src/http.js'
+import { HTTPLayaBackend } from '../src/http.js'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -23,7 +23,7 @@ function stubJSON(body: unknown, init: { status?: number } = {}) {
 
 const questions = { dept: { type: 'choice', criteria: { billing: 'x' } } } as const
 
-describe('HttpLayaBackend', () => {
+describe('HTTPLayaBackend', () => {
   test('predict posts to /v1/systemone with a Bearer header and returns the raw envelope', async () => {
     stubJSON({
       model: 'english',
@@ -37,7 +37,7 @@ describe('HttpLayaBackend', () => {
       },
       usage: { input_tokens: 1, output_tokens: 1 },
     })
-    const backend = new HttpLayaBackend({ url: 'http://localhost:8000', apiKey: 'secret' })
+    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000', apiKey: 'secret' })
     const res = await backend.predict({ state: 'hi', questions, model: 'english' })
     const req = (globalThis as Record<string, unknown>).__lastRequest as Request
     expect(req.url).toBe('http://localhost:8000/v1/systemone')
@@ -47,7 +47,7 @@ describe('HttpLayaBackend', () => {
 
   test('maps 401 to LayaAuthError', async () => {
     stubJSON({ error: 'unauthorized' }, { status: 401 })
-    const backend = new HttpLayaBackend({ url: 'http://localhost:8000' })
+    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
     await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
       LayaAuthError,
     )
@@ -55,7 +55,7 @@ describe('HttpLayaBackend', () => {
 
   test('maps 403 to LayaAuthError', async () => {
     stubJSON({ error: 'forbidden' }, { status: 403 })
-    const backend = new HttpLayaBackend({ url: 'http://localhost:8000' })
+    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
     await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
       LayaAuthError,
     )
@@ -63,7 +63,7 @@ describe('HttpLayaBackend', () => {
 
   test('maps 404 to LayaModelError', async () => {
     stubJSON({ error: 'not found' }, { status: 404 })
-    const backend = new HttpLayaBackend({ url: 'http://localhost:8000' })
+    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
     await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
       LayaModelError,
     )
@@ -71,7 +71,7 @@ describe('HttpLayaBackend', () => {
 
   test('maps 500 to LayaConnectionError', async () => {
     stubJSON({ error: 'boom' }, { status: 500 })
-    const backend = new HttpLayaBackend({ url: 'http://localhost:8000' })
+    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
     await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
       LayaConnectionError,
     )
@@ -91,7 +91,7 @@ describe('HttpLayaBackend', () => {
         })
       }),
     )
-    const backend = new HttpLayaBackend({ url: 'http://localhost:8000' })
+    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
     const controller = new AbortController()
     const pending = backend.predict({
       state: 'hi',
