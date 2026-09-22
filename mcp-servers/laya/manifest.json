@@ -1,0 +1,20 @@
+{
+  "manifest_version": "0.2",
+  "name": "@mokei/mcp-laya",
+  "display_name": "Mokei Laya",
+  "version": "0.1.0",
+  "description": "Laya classification MCP server",
+  "author": { "name": "Paul Le Cam" },
+  "server": {
+    "type": "node",
+    "entry_point": "lib/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/lib/index.js"],
+      "env": { "LAYA_URL": "http://localhost:8000", "LAYA_MODEL": "", "LAYA_API_KEY": "" }
+    }
+  },
+  "tools": [{ "name": "predict", "description": "Classify text with Laya typed questions" }],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/TairuFramework/mokei" }
+}
