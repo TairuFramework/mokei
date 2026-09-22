@@ -80,6 +80,29 @@ with the core kept generic so guardrails, moderation and ticket triage share the
 - **MCP cancellation:** tool handlers rethrow on an aborted request signal instead of mapping the
   abort to a tool-error result.
 
+## System One rename
+
+The packages first landed as `@mokei/laya-client` and `@mokei/mcp-laya`, with a `Laya`-prefixed
+API. Before release they were renamed to the generic System One name, because Laya is one model
+family and runtime behind a more general contract, and a Laya-branded surface would misname the
+hosted TypeSafe backend and any future runtime.
+
+- **Clean rename, no aliases.** Neither package was published, so there are no deprecation aliases
+  or compatibility re-exports. Wire contract, behavior, schemas and version are unchanged.
+- **Rename rule.** The `Laya` prefix became `SystemOne` (`HTTPLaya` became `HTTPSystemOne`), the MCP
+  env vars moved from `LAYA_*` to `SYSTEM_ONE_*`, and the MCP server name and bin became
+  `system-one` / `mcp-system-one`. Names that were already generic (question/answer types,
+  `PredictResult`, `Usage`, schemas, presets, `routeIntent`) did not change. Each error class's
+  runtime `name` follows its class name, and a test now pins all six.
+- **Where Laya survives.** Only on `laya.cpp`-specific pieces: the `batch` option's documentation
+  (`/v1/decide/batch` is a `laya.cpp` extension), the `laya serve` / GGUF setup section of the
+  reference doc, the backlog item for in-process `laya-ggml-*` backends, and the `laya` package
+  keyword.
+- **Rejected:** merging first and renaming on a follow-up branch. That would have put Laya names on
+  `main` and churned history for nothing, since nothing had been published.
+- **Follow-up polish.** Client error text and docs that said "sidecar" now say "System One
+  backend", since the same client also reaches the hosted API.
+
 ## Verification
 
 All implementation tasks passed per-task review (spec compliance + quality), a whole-branch final
