@@ -1,3 +1,10 @@
+export type {
+  LayaBackend,
+  LayaBackendBatchParams,
+  LayaBackendListModelsParams,
+  LayaBackendPredictParams,
+  LayaResult,
+} from './backend.js'
 export {
   LayaAuthError,
   LayaConnectionError,
