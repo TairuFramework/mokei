@@ -7,7 +7,7 @@ export const choiceQuestionSchema = {
   properties: {
     type: { enum: ['choice'] },
     instructions: instructionsSchema,
-    criteria: { type: 'object', additionalProperties: { type: 'string' } },
+    criteria: { type: 'object', additionalProperties: { type: 'string' }, minProperties: 1 },
   },
   required: ['type', 'criteria'],
   additionalProperties: false,
@@ -18,7 +18,7 @@ export const scoreQuestionSchema = {
   properties: {
     type: { enum: ['score'] },
     instructions: instructionsSchema,
-    criteria: { type: 'array', items: { type: 'string' }, minItems: 1 },
+    criteria: { type: 'array', items: { type: 'string' }, minItems: 2 },
   },
   required: ['type', 'criteria'],
   additionalProperties: false,

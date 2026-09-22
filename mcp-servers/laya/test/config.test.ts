@@ -13,6 +13,14 @@ function fakeClient(answers: Record<string, unknown>): LayaClient {
   } as unknown as LayaClient
 }
 
+function abortingClient(): LayaClient {
+  return {
+    predict: vi.fn(async () => {
+      throw new DOMException('aborted', 'AbortError')
+    }),
+  } as unknown as LayaClient
+}
+
 describe('createLayaTools', () => {
   test('predict tool calls the client and returns JSON text', async () => {
     const client = fakeClient({
@@ -40,5 +48,28 @@ describe('createLayaTools', () => {
     expect(vi.mocked(client.predict)).toHaveBeenCalledWith(
       expect.objectContaining({ questions: guardQuestions() }),
     )
+  })
+
+  test('predict tool rethrows when the request was cancelled instead of returning isError', async () => {
+    const client = abortingClient()
+    const tools = createLayaTools({ client })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      tools.predict.handler({
+        input: { state: 'hi', questions: { dept: { type: 'choice', criteria: { billing: 'x' } } } },
+        signal: controller.signal,
+      } as never),
+    ).rejects.toThrow(DOMException)
+  })
+
+  test('preset tool rethrows when the request was cancelled instead of returning isError', async () => {
+    const client = abortingClient()
+    const tools = createLayaTools({ client })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      tools.guard.handler({ input: { state: 'hello' }, signal: controller.signal } as never),
+    ).rejects.toThrow(DOMException)
   })
 })

@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { LayaAuthError, LayaConnectionError, LayaModelError } from '../src/errors.js'
+import { createLayaClient } from '../src/client.js'
+import {
+  LayaAuthError,
+  LayaConnectionError,
+  LayaModelError,
+  LayaResponseError,
+} from '../src/errors.js'
 import { HTTPLayaBackend } from '../src/http.js'
 
 afterEach(() => {
@@ -101,5 +107,108 @@ describe('HTTPLayaBackend', () => {
     })
     controller.abort()
     await expect(pending).rejects.toThrow(DOMException)
+  })
+})
+
+describe('HTTPLayaBackend batch opt-in', () => {
+  test('batch is undefined by default', () => {
+    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000' })
+    expect(backend.batch).toBeUndefined()
+  })
+
+  test('batch is defined when constructed with batch: true', () => {
+    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000', batch: true })
+    expect(backend.batch).toBeDefined()
+  })
+
+  test('predictBatch falls back to sequential /v1/systemone calls when batch is not enabled', async () => {
+    const urls: Array<string> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: Request | string) => {
+        const req = input instanceof Request ? input : new Request(input)
+        urls.push(req.url)
+        return new Response(
+          JSON.stringify({
+            model: 'english',
+            answers: {
+              dept: {
+                type: 'choice',
+                choice: 'billing',
+                confidence: 0.9,
+                probabilities: { billing: 0.9 },
+              },
+            },
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }),
+    )
+    const client = createLayaClient({ url: 'http://localhost:8000', defaultModel: 'english' })
+    const results = await client.predictBatch({ states: ['a', 'b'], questions })
+    expect(results).toHaveLength(2)
+    expect(urls).toHaveLength(2)
+    for (const url of urls) {
+      expect(url).toBe('http://localhost:8000/v1/systemone')
+    }
+  })
+})
+
+describe('HTTPLayaBackend headers', () => {
+  test('a caller-supplied lowercase authorization header is replaced, not appended to, by apiKey', async () => {
+    stubJSON({
+      model: 'english',
+      answers: {
+        dept: {
+          type: 'choice',
+          choice: 'billing',
+          confidence: 0.9,
+          probabilities: { billing: 0.9 },
+        },
+      },
+      usage: { input_tokens: 1, output_tokens: 1 },
+    })
+    const backend = new HTTPLayaBackend({
+      url: 'http://localhost:8000',
+      apiKey: 'secret',
+      headers: { authorization: 'custom' },
+    })
+    await backend.predict({ state: 'hi', questions, model: 'english' })
+    const req = (globalThis as Record<string, unknown>).__lastRequest as Request
+    expect(req.headers.get('authorization')).toBe('Bearer secret')
+  })
+})
+
+describe('HTTPLayaBackend batch envelope validation', () => {
+  test('rejects with LayaResponseError when the batch body has no results array', async () => {
+    stubJSON({})
+    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000', batch: true })
+    await expect(
+      backend.batch?.({ states: ['a', 'b'], questions, model: 'english' }),
+    ).rejects.toThrow(LayaResponseError)
+  })
+
+  test('rejects with LayaResponseError when the result count does not match the states count', async () => {
+    stubJSON({
+      results: [
+        {
+          model: 'english',
+          answers: {
+            dept: {
+              type: 'choice',
+              choice: 'billing',
+              confidence: 0.9,
+              probabilities: { billing: 0.9 },
+            },
+          },
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      ],
+    })
+    const backend = new HTTPLayaBackend({ url: 'http://localhost:8000', batch: true })
+    await expect(
+      backend.batch?.({ states: ['a', 'b'], questions, model: 'english' }),
+    ).rejects.toThrow(LayaResponseError)
   })
 })

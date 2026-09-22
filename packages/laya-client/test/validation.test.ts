@@ -30,6 +30,18 @@ describe('validateQuestions / validateState', () => {
   test('throws LayaInputError on an empty question map', () => {
     expect(() => validateQuestions({ questions: {} })).toThrow(LayaInputError)
   })
+
+  test('throws LayaInputError on a score question with fewer than 2 criteria levels', () => {
+    expect(() =>
+      validateQuestions({ questions: { urgency: { type: 'score', criteria: ['only-one'] } } }),
+    ).toThrow(LayaInputError)
+  })
+
+  test('throws LayaInputError on a choice question with empty criteria', () => {
+    expect(() =>
+      validateQuestions({ questions: { dept: { type: 'choice', criteria: {} } } }),
+    ).toThrow(LayaInputError)
+  })
 })
 
 describe('validateResult', () => {

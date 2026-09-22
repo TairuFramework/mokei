@@ -65,6 +65,9 @@ export function createLayaTools(options: LayaToolsOptions = {}) {
           })
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
         } catch (err) {
+          if (req.signal?.aborted) {
+            throw err
+          }
           return {
             content: [{ type: 'text', text: (err as Error).message ?? 'Unknown error' }],
             isError: true,
@@ -97,6 +100,9 @@ export function createLayaTools(options: LayaToolsOptions = {}) {
           })
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
         } catch (err) {
+          if (req.signal?.aborted) {
+            throw err
+          }
           return {
             content: [{ type: 'text', text: (err as Error).message ?? 'Unknown error' }],
             isError: true,

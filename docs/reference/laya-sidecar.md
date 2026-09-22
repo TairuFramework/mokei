@@ -21,7 +21,12 @@ All endpoints use `application/json` for request and response bodies. The server
 | GET | `/v1/models` | (empty) | `{ models: [{ name, description, release_date }] }` |
 | POST | `/v1/decide/batch` | `{ states: [...], model, questions }` | `{ results: [{ model, answers, usage }] }` |
 
-The `/v1/decide/batch` endpoint is available on the local backend (`laya.cpp`) only.
+The `/v1/decide/batch` endpoint is available on the local backend (`laya.cpp`) only. The hosted
+backend does not implement it and returns `404` if called. The client only calls it when the
+`HTTPLayaBackend` is constructed with `batch: true` (pass `{ ..., batch: true }` to
+`createLayaClient` when connecting to a local `laya serve` instance); by default -- and always
+against the hosted backend -- `LayaClient.predictBatch` falls back to sequential `/v1/systemone`
+calls, one per state.
 
 ## Answer Shapes
 
@@ -125,6 +130,9 @@ import { createLayaClient } from '@mokei/laya-client'
 const local = createLayaClient({
   url: 'http://localhost:8000',
   defaultModel: 'english',
+  // Opt in to /v1/decide/batch for predictBatch -- local-only, so omit this
+  // against the hosted backend and predictBatch falls back to sequential calls.
+  batch: true,
 })
 
 const result = await local.predict({

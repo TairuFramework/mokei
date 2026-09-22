@@ -9,7 +9,6 @@ export type LayaResult = {
   model: string
   answers: Record<string, unknown>
   usage: { input_tokens: number; output_tokens: number }
-  extras?: Record<string, unknown>
 }
 
 export type LayaBackendPredictParams = {
