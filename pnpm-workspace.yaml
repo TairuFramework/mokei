@@ -127,6 +127,7 @@ versioning:
       - '@mokei/host-protocol'
       - '@mokei/http-client'
       - '@mokei/http-server'
+      - '@mokei/laya-client'
       - '@mokei/llama-provider'
       - '@mokei/logger'
       - '@mokei/mcp-fetch'
