@@ -8,7 +8,7 @@ test('a minimal backend needs only predict', () => {
       ({
         model: 'english',
         answers: {},
-        usage: { inputTokens: 0, outputTokens: 0 },
+        usage: { input_tokens: 0, output_tokens: 0 },
       }) satisfies LayaResult,
   }
   expectTypeOf(backend.predict).toBeFunction()

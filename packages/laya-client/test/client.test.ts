@@ -11,7 +11,7 @@ function result(answers: Record<string, unknown>): LayaResult {
     model: 'english',
     answers,
     usage: { input_tokens: 1, output_tokens: 1 },
-  } as unknown as LayaResult
+  }
 }
 
 describe('LayaClient.predict', () => {

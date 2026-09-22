@@ -1,9 +1,14 @@
-import type { LayaModel, QuestionMap, State, Usage } from './types.js'
+import type { LayaModel, QuestionMap, State } from './types.js'
 
+/**
+ * Raw result as returned by a backend, before the client validates and maps it.
+ * `answers` and `usage` carry the wire shapes (snake_case usage); the client's
+ * `validateResult` validates them and maps `usage` to the camelCase `Usage`.
+ */
 export type LayaResult = {
   model: string
   answers: Record<string, unknown>
-  usage: Usage
+  usage: { input_tokens: number; output_tokens: number }
   extras?: Record<string, unknown>
 }
 
