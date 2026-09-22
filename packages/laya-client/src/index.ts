@@ -1,3 +1,12 @@
+export {
+  LayaAuthError,
+  LayaConnectionError,
+  LayaError,
+  LayaInputError,
+  LayaModelError,
+  LayaResponseError,
+  type ValidationIssue,
+} from './errors.js'
 export type {
   AnswerFor,
   ChoiceAnswer,
