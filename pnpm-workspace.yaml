@@ -131,6 +131,7 @@ versioning:
       - '@mokei/llama-provider'
       - '@mokei/logger'
       - '@mokei/mcp-fetch'
+      - '@mokei/mcp-laya'
       - '@mokei/mcp-sqlite'
       - '@mokei/model-provider'
       - '@mokei/ollama-provider'

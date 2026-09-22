@@ -14,7 +14,13 @@
       "env": { "LAYA_URL": "http://localhost:8000", "LAYA_MODEL": "", "LAYA_API_KEY": "" }
     }
   },
-  "tools": [{ "name": "predict", "description": "Classify text with Laya typed questions" }],
+  "tools": [
+    { "name": "predict", "description": "Classify text with Laya typed questions" },
+    { "name": "route", "description": "Route to a model tier" },
+    { "name": "guard", "description": "Detect jailbreak / prompt-injection attempts" },
+    { "name": "moderate", "description": "Moderate content for safety" },
+    { "name": "triage", "description": "Triage a support request" }
+  ],
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/TairuFramework/mokei" }
 }

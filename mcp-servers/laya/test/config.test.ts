@@ -27,4 +27,15 @@ describe('createLayaTools', () => {
     expect(res.content.length).toBeGreaterThan(0)
     expect(res.content[0]?.text).toContain('billing')
   })
+
+  test('preset tools classify with a fixed question set', async () => {
+    const client = fakeClient({ jailbreak: { type: 'noul', noul: 0.1 } })
+    const tools = createLayaTools({ client })
+    const res = (await tools.guard.handler({
+      input: { state: 'hello' },
+      signal: new AbortController().signal,
+    } as never)) as { isError: boolean; content: Array<{ text?: string }> }
+    expect(res.isError).toBe(false)
+    expect(res.content[0]?.text).toContain('jailbreak')
+  })
 })

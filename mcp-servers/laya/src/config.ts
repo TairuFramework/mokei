@@ -7,11 +7,15 @@ import {
 } from '@mokei/context-server'
 import {
   createLayaClient,
+  guardQuestions,
   type LayaClient,
+  moderationQuestions,
   type QuestionMap,
   questionSchema,
+  routerQuestions,
   type State,
   stateSchema,
+  triageQuestions,
 } from '@mokei/laya-client'
 
 export type LayaToolsOptions = {
@@ -42,6 +46,34 @@ function resolveClient(options: LayaToolsOptions): LayaClient {
 export function createLayaTools(options: LayaToolsOptions = {}) {
   const client = resolveClient(options)
 
+  function presetTool(description: string, questions: QuestionMap) {
+    return createTool({
+      description,
+      inputSchema: {
+        type: 'object',
+        properties: { state: stateSchema, model: { type: 'string' } },
+        required: ['state'],
+        additionalProperties: false,
+      } as const satisfies Schema,
+      handler: async (req) => {
+        try {
+          const result = await client.predict({
+            state: req.input.state as State,
+            questions,
+            model: req.input.model as string | undefined,
+            signal: req.signal,
+          })
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
+        } catch (err) {
+          return {
+            content: [{ type: 'text', text: (err as Error).message ?? 'Unknown error' }],
+            isError: true,
+          }
+        }
+      },
+    })
+  }
+
   return {
     predict: createTool({
       description: 'Classify text with Laya typed questions (choice/score/noul)',
@@ -65,10 +97,17 @@ export function createLayaTools(options: LayaToolsOptions = {}) {
           })
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
         } catch (err) {
-          return { content: [{ type: 'text', text: (err as Error).message }], isError: true }
+          return {
+            content: [{ type: 'text', text: (err as Error).message ?? 'Unknown error' }],
+            isError: true,
+          }
         }
       },
     }),
+    route: presetTool('Route to a model tier', routerQuestions()),
+    guard: presetTool('Detect jailbreak / prompt-injection attempts', guardQuestions()),
+    moderate: presetTool('Moderate content for safety', moderationQuestions()),
+    triage: presetTool('Triage a support request', triageQuestions()),
   } satisfies ToolDefinitions
 }
 
