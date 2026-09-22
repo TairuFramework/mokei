@@ -1,13 +1,13 @@
-# Laya TypeSafe Wire Contract and Sidecar Setup
+# System One Wire Contract and Backend Setup
 
-`@mokei/laya-client` speaks the TypeSafe System One HTTP API, served by two interchangeable backends. This document describes the wire contract and how to run each backend.
+`@mokei/system-one-client` speaks the TypeSafe System One HTTP API, a typed-question classification contract. Two interchangeable backends serve it today: `laya.cpp` (the `laya serve` binary from ggmlc, local) and the hosted TypeSafe API. This document describes the wire contract and how to run each backend.
 
 ## Backends
 
-The Laya client connects to one of two backends:
+The System One client connects to one of two backends:
 
-- **Local backend**: the `laya serve` binary from [ggmlc](https://github.com/monatis/ggmlc) releases, running on your machine.
-- **Hosted backend**: the TypeSafe AI API at `https://api.typesafe.ai`, using a Bearer token for authentication.
+- **laya.cpp (local)**: the `laya serve` binary from [ggmlc](https://github.com/monatis/ggmlc) releases, running a Laya GGUF model on your machine.
+- **Hosted TypeSafe**: the TypeSafe AI API at `https://api.typesafe.ai`, using a Bearer token for authentication.
 
 Both backends speak the same protocol, so client code is identical regardless of which you choose.
 
@@ -21,12 +21,7 @@ All endpoints use `application/json` for request and response bodies. The server
 | GET | `/v1/models` | (empty) | `{ models: [{ name, description, release_date }] }` |
 | POST | `/v1/decide/batch` | `{ states: [...], model, questions }` | `{ results: [{ model, answers, usage }] }` |
 
-The `/v1/decide/batch` endpoint is available on the local backend (`laya.cpp`) only. The hosted
-backend does not implement it and returns `404` if called. The client only calls it when the
-`HTTPLayaBackend` is constructed with `batch: true` (pass `{ ..., batch: true }` to
-`createLayaClient` when connecting to a local `laya serve` instance); by default -- and always
-against the hosted backend -- `LayaClient.predictBatch` falls back to sequential `/v1/systemone`
-calls, one per state.
+The `/v1/decide/batch` endpoint is a `laya.cpp` extension, available on the local backend only. The HTTP backend only calls it when created with `batch: true`; otherwise `predictBatch` issues sequential `/v1/systemone` requests.
 
 ## Answer Shapes
 
@@ -92,9 +87,9 @@ All responses include a `usage` object:
 }
 ```
 
-## Local Setup
+## Local Setup (laya.cpp)
 
-To run the local Laya backend, you need the GGUF model file and the `laya serve` binary.
+To run the local backend, you need a Laya GGUF model file and the `laya serve` binary.
 
 ### Step 1: Compile the GGUF Model
 
@@ -124,15 +119,13 @@ The server listens on `http://localhost:8000` by default. Omit `--port` to use p
 ### Against the Local Backend
 
 ```ts
-import { createLayaClient } from '@mokei/laya-client'
+import { createSystemOneClient } from '@mokei/system-one-client'
 
 // Local laya serve
-const local = createLayaClient({
+const local = createSystemOneClient({
   url: 'http://localhost:8000',
-  defaultModel: 'english',
-  // Opt in to /v1/decide/batch for predictBatch -- local-only, so omit this
-  // against the hosted backend and predictBatch falls back to sequential calls.
   batch: true,
+  defaultModel: 'english',
 })
 
 const result = await local.predict({
@@ -154,10 +147,10 @@ const result = await local.predict({
 ### Against the Hosted Backend
 
 ```ts
-import { createLayaClient } from '@mokei/laya-client'
+import { createSystemOneClient } from '@mokei/system-one-client'
 
 // Hosted TypeSafe
-const hosted = createLayaClient({
+const hosted = createSystemOneClient({
   url: 'https://api.typesafe.ai',
   apiKey: process.env.TYPESAFE_API_KEY,
   defaultModel: 'english',
@@ -181,23 +174,23 @@ const result = await hosted.predict({
 
 ## MCP Server Environment Variables
 
-When running the Laya MCP server, configure the backend connection via environment variables:
+When running the System One MCP server, configure the backend connection via environment variables:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `LAYA_URL` | Backend URL (required) | `http://localhost:8000` or `https://api.typesafe.ai` |
-| `LAYA_API_KEY` | Bearer token for hosted backend (optional) | `sk-...` |
-| `LAYA_MODEL` | Default model name | `english` |
+| `SYSTEM_ONE_URL` | Backend URL (defaults to `http://localhost:8000`) | `http://localhost:8000` or `https://api.typesafe.ai` |
+| `SYSTEM_ONE_API_KEY` | Bearer token for hosted backend (optional) | `sk-...` |
+| `SYSTEM_ONE_MODEL` | Default model name | `english` |
 
 Example startup:
 
 ```bash
-export LAYA_URL="https://api.typesafe.ai"
-export LAYA_API_KEY="sk-your-key-here"
-export LAYA_MODEL="english"
-node mcp-servers/laya/lib/serve.js
+export SYSTEM_ONE_URL="https://api.typesafe.ai"
+export SYSTEM_ONE_API_KEY="sk-your-key-here"
+export SYSTEM_ONE_MODEL="english"
+node mcp-servers/system-one/lib/serve.js
 ```
 
 ## Future: In-Process Backend
 
-A future version will support an in-process backend that binds ggml or `laya.cpp` (native or WebAssembly) behind the same `LayaBackend` interface. This will remove the sidecar requirement and eliminate the network round-trip. The ONNX path via external binaries is superseded by this direction.
+A future version will support an in-process backend that binds ggml or `laya.cpp` (native or WebAssembly) behind the same `SystemOneBackend` interface. This will remove the sidecar requirement and eliminate the network round-trip. The ONNX path via external binaries is superseded by this direction.
