@@ -1,5 +1,6 @@
 import type { LayaBackend } from './backend.js'
 import { LayaError } from './errors.js'
+import { HttpLayaBackend, type LayaHTTPClientOptions } from './http.js'
 import type { LayaModel, PredictResult, QuestionMap, State } from './types.js'
 import { validateQuestions, validateResult, validateState } from './validation.js'
 
@@ -97,4 +98,16 @@ export class LayaClient {
     }
     return this.#backend.listModels(params)
   }
+}
+
+export type CreateLayaClientOptions = LayaHTTPClientOptions | LayaBackendClientOptions
+
+export function createLayaClient(options: CreateLayaClientOptions): LayaClient {
+  if ('backend' in options) {
+    return new LayaClient(options)
+  }
+  return new LayaClient({
+    backend: new HttpLayaBackend(options),
+    defaultModel: options.defaultModel,
+  })
 }

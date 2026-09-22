@@ -6,6 +6,8 @@ export type {
   LayaResult,
 } from './backend.js'
 export {
+  type CreateLayaClientOptions,
+  createLayaClient,
   type LayaBackendClientOptions,
   LayaClient,
   type LayaListModelsParams,
@@ -21,6 +23,7 @@ export {
   LayaResponseError,
   type ValidationIssue,
 } from './errors.js'
+export { HttpLayaBackend, type HttpLayaBackendParams, type LayaHTTPClientOptions } from './http.js'
 export type {
   AnswerFor,
   ChoiceAnswer,
