@@ -31,7 +31,7 @@ export class SystemOneInputError extends ValidationError {
   }
 }
 
-/** The sidecar could not be reached, or returned an unmapped non-2xx status. */
+/** The System One backend could not be reached, or returned an unmapped non-2xx status. */
 export class SystemOneConnectionError extends SystemOneError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)
@@ -47,7 +47,7 @@ export class SystemOneAuthError extends SystemOneError {
   }
 }
 
-/** The sidecar response was malformed or failed schema validation. */
+/** The System One backend response was malformed or failed schema validation. */
 export class SystemOneResponseError extends ValidationError {
   constructor(message: string, issues: Array<ValidationIssue> = [], options?: ErrorOptions) {
     super(message, issues, options)

@@ -78,9 +78,9 @@ describe('HTTPSystemOneBackend', () => {
   test('maps 500 to SystemOneConnectionError', async () => {
     stubJSON({ error: 'boom' }, { status: 500 })
     const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
-    await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
-      SystemOneConnectionError,
-    )
+    const request = backend.predict({ state: 'hi', questions, model: 'english' })
+    await expect(request).rejects.toThrow(SystemOneConnectionError)
+    await expect(request).rejects.toThrow('System One backend returned 500')
   })
 
   test('an aborted request rejects and does not hang', async () => {

@@ -46,7 +46,7 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
       if (status === 404) {
         throw new SystemOneModelError('Model or endpoint not found', { cause })
       }
-      throw new SystemOneConnectionError(`Sidecar returned ${status}`, { cause })
+      throw new SystemOneConnectionError(`System One backend returned ${status}`, { cause })
     }
     if (
       typeof DOMException !== 'undefined' &&
