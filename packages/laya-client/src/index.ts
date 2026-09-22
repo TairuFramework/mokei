@@ -24,6 +24,7 @@ export {
   type ValidationIssue,
 } from './errors.js'
 export { HttpLayaBackend, type HttpLayaBackendParams, type LayaHTTPClientOptions } from './http.js'
+export { guardQuestions, moderationQuestions, routerQuestions, triageQuestions } from './presets.js'
 export type {
   AnswerFor,
   ChoiceAnswer,
