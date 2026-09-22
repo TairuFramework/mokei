@@ -8,6 +8,7 @@ import type {
   LayaResult,
 } from './backend.js'
 import { LayaAuthError, LayaConnectionError, LayaModelError } from './errors.js'
+import type { LayaModel } from './types.js'
 import { validateModels } from './validation.js'
 
 export type LayaHTTPClientOptions = {
@@ -81,7 +82,7 @@ export class HttpLayaBackend implements LayaBackend {
     return body.results
   }
 
-  async listModels(params?: LayaBackendListModelsParams) {
+  async listModels(params?: LayaBackendListModelsParams): Promise<Array<LayaModel>> {
     const raw = await mapError(() => this.#http.get('v1/models', { signal: params?.signal }).json())
     return validateModels({ raw })
   }

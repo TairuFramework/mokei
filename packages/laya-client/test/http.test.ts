@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { LayaAuthError, LayaConnectionError } from '../src/errors.js'
+import { LayaAuthError, LayaConnectionError, LayaModelError } from '../src/errors.js'
 import { HttpLayaBackend } from '../src/http.js'
 
 afterEach(() => {
@@ -53,6 +53,22 @@ describe('HttpLayaBackend', () => {
     )
   })
 
+  test('maps 403 to LayaAuthError', async () => {
+    stubJSON({ error: 'forbidden' }, { status: 403 })
+    const backend = new HttpLayaBackend({ url: 'http://localhost:8000' })
+    await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
+      LayaAuthError,
+    )
+  })
+
+  test('maps 404 to LayaModelError', async () => {
+    stubJSON({ error: 'not found' }, { status: 404 })
+    const backend = new HttpLayaBackend({ url: 'http://localhost:8000' })
+    await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
+      LayaModelError,
+    )
+  })
+
   test('maps 500 to LayaConnectionError', async () => {
     stubJSON({ error: 'boom' }, { status: 500 })
     const backend = new HttpLayaBackend({ url: 'http://localhost:8000' })
@@ -84,6 +100,6 @@ describe('HttpLayaBackend', () => {
       signal: controller.signal,
     })
     controller.abort()
-    await expect(pending).rejects.toThrow()
+    await expect(pending).rejects.toThrow(DOMException)
   })
 })
