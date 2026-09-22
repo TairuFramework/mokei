@@ -6,6 +6,13 @@ export type {
   LayaResult,
 } from './backend.js'
 export {
+  type LayaBackendClientOptions,
+  LayaClient,
+  type LayaListModelsParams,
+  type LayaPredictBatchParams,
+  type LayaPredictParams,
+} from './client.js'
+export {
   LayaAuthError,
   LayaConnectionError,
   LayaError,
