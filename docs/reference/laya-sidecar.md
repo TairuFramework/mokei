@@ -25,7 +25,7 @@ The `/v1/decide/batch` endpoint is available on the local backend (`laya.cpp`) o
 
 ## Answer Shapes
 
-The `answers` array in responses contains one answer per question. Each answer includes a `type` field identifying the primitive.
+The `answers` object in responses contains one entry per question, keyed by the same names as the `questions` map. Each answer includes a `type` field identifying the primitive.
 
 ### Choice Primitive
 
@@ -62,6 +62,8 @@ The `answers` array in responses contains one answer per question. Each answer i
   }
 }
 ```
+
+The `legend` object is defined by the server and describes the score scale -- the example shows a typical scale definition, but servers may use different properties.
 
 ### Noul Primitive
 
@@ -126,12 +128,19 @@ const local = createLayaClient({
 })
 
 const result = await local.predict({
-  state: 'User is interested in technology',
+  state: 'I was double charged on my last invoice',
   model: 'english',
-  questions: [
-    { id: 'q1', type: 'choice', text: 'Choose an option:', options: ['A', 'B'] },
-  ],
+  questions: {
+    department: {
+      type: 'choice',
+      instructions: 'Which department should handle this?',
+      criteria: { billing: 'invoices and payments', technical: 'bugs and outages' },
+    },
+  },
 })
+
+// Access the answer via the keyed object:
+// result.answers.department.choice, .confidence, .probabilities
 ```
 
 ### Against the Hosted Backend
@@ -147,12 +156,19 @@ const hosted = createLayaClient({
 })
 
 const result = await hosted.predict({
-  state: 'User is interested in technology',
+  state: 'I was double charged on my last invoice',
   model: 'english',
-  questions: [
-    { id: 'q1', type: 'choice', text: 'Choose an option:', options: ['A', 'B'] },
-  ],
+  questions: {
+    department: {
+      type: 'choice',
+      instructions: 'Which department should handle this?',
+      criteria: { billing: 'invoices and payments', technical: 'bugs and outages' },
+    },
+  },
 })
+
+// Access the answer via the keyed object:
+// result.answers.department.choice, .confidence, .probabilities
 ```
 
 ## MCP Server Environment Variables
@@ -171,7 +187,7 @@ Example startup:
 export LAYA_URL="https://api.typesafe.ai"
 export LAYA_API_KEY="sk-your-key-here"
 export LAYA_MODEL="english"
-node packages/mcp-laya/dist/server.js
+node mcp-servers/laya/lib/serve.js
 ```
 
 ## Future: In-Process Backend
