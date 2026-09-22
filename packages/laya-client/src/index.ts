@@ -37,3 +37,4 @@ export {
   stateSchema,
   wireUsageSchema,
 } from './types.js'
+export { validateModels, validateQuestions, validateResult, validateState } from './validation.js'

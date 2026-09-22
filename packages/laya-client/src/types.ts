@@ -51,11 +51,15 @@ export const stateSchema = {
   anyOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }, { type: 'array' }],
 } as const satisfies Schema
 
-export type ChoiceQuestion = FromSchema<typeof choiceQuestionSchema>
-export type ScoreQuestion = FromSchema<typeof scoreQuestionSchema>
-export type NoulQuestion = FromSchema<typeof noulQuestionSchema>
+export type ChoiceQuestion = Readonly<FromSchema<typeof choiceQuestionSchema>>
+export type ScoreQuestion = Readonly<{
+  instructions?: unknown
+  type: 'score'
+  criteria: ReadonlyArray<string>
+}>
+export type NoulQuestion = Readonly<FromSchema<typeof noulQuestionSchema>>
 export type Question = ChoiceQuestion | ScoreQuestion | NoulQuestion
-export type QuestionMap = Record<string, Question>
+export type QuestionMap = Readonly<Record<string, Question>>
 export type State = string | Record<string, unknown> | Array<unknown>
 
 export const choiceAnswerSchema = {
