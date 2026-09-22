@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { LayaInputError, LayaResponseError } from '../src/errors.js'
+import type { ChoiceQuestion, NoulQuestion, ScoreQuestion } from '../src/types.js'
 import {
   validateModels,
   validateQuestions,
@@ -9,10 +10,10 @@ import {
 } from '../src/validation.js'
 
 const questions = {
-  dept: { type: 'choice', criteria: { billing: 'x', tech: 'y' } },
-  urgency: { type: 'score', criteria: ['low', 'high'] },
-  churn: { type: 'noul' },
-} as const
+  dept: { type: 'choice', criteria: { billing: 'x', tech: 'y' } } as ChoiceQuestion,
+  urgency: { type: 'score', criteria: ['low', 'high'] } as ScoreQuestion,
+  churn: { type: 'noul' } as NoulQuestion,
+}
 
 describe('validateQuestions / validateState', () => {
   test('accepts a valid question map and state', () => {
