@@ -2,12 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import { SystemOneInputError, SystemOneResponseError } from '../src/errors.js'
 import type { ChoiceQuestion, NoulQuestion, ScoreQuestion } from '../src/types.js'
-import {
-  validateModels,
-  validateQuestions,
-  validateResult,
-  validateState,
-} from '../src/validation.js'
+import { validateQuestions, validateResult, validateState } from '../src/validation.js'
 
 const questions = {
   dept: {
@@ -175,18 +170,5 @@ describe('validateResult', () => {
       usage: { input_tokens: 0, output_tokens: 0 },
     }
     expect(() => validateResult({ questions, raw })).toThrow(SystemOneResponseError)
-  })
-})
-
-describe('validateModels', () => {
-  test('maps release_date to releaseDate', () => {
-    const models = validateModels({
-      raw: { models: [{ name: 'english', release_date: '2025-01-01' }] },
-    })
-    expect(models).toEqual([{ name: 'english', description: undefined, releaseDate: '2025-01-01' }])
-  })
-
-  test('throws SystemOneResponseError on a bad models list', () => {
-    expect(() => validateModels({ raw: { models: 'x' } })).toThrow(SystemOneResponseError)
   })
 })

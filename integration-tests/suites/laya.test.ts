@@ -1,4 +1,3 @@
-import { createServer } from 'node:net'
 import {
   createSystemOneClient,
   HTTPSystemOneBackend,
@@ -6,8 +5,8 @@ import {
   type QuestionMap,
   SystemOneAuthError,
   SystemOneConnectionError,
-  SystemOneModelError,
 } from '@mokei/system-one-client'
+import getPort from 'get-port'
 import spawn, { type Subprocess } from 'nano-spawn'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
@@ -50,18 +49,6 @@ function expectWellFormed(result: PredictResult<typeof questions>): void {
   expect(result.usage.inputTokens).toBeGreaterThan(0)
 }
 
-async function freePort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = createServer()
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address()
-      const port = typeof address === 'object' && address != null ? address.port : 0
-      server.close(() => resolve(port))
-    })
-  })
-}
-
 async function waitForHealth(url: string, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -81,7 +68,7 @@ describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
   let url = ''
 
   beforeAll(async () => {
-    const port = await freePort()
+    const port = await getPort()
     url = `http://127.0.0.1:${port}`
     server = spawn(BIN as string, [], {
       env: {
@@ -114,15 +101,13 @@ describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
     expect(result.extras?.routing).toMatchObject({ model: 'english' })
   })
 
-  test('predictBatch answers every state in order', async () => {
+  test('predict routes billing and technical messages', async () => {
     const client = createSystemOneClient({ url, apiKey: API_KEY, defaultModel: 'english' })
-    const results = await client.predictBatch({ states: [BILLING, CRASH, THANKS], questions })
-    expect(results).toHaveLength(3)
-    for (const result of results) {
-      expectWellFormed(result)
-    }
-    expect(results[0]?.answers.department.choice).toBe('billing')
-    expect(results[1]?.answers.department.choice).toBe('technical')
+    const billing = await client.predict({ state: BILLING, questions })
+    const crash = await client.predict({ state: CRASH, questions })
+    expectWellFormed(crash)
+    expect(billing.answers.department.choice).toBe('billing')
+    expect(crash.answers.department.choice).toBe('technical')
   })
 
   test('a wrong API key rejects with SystemOneAuthError', async () => {
@@ -140,10 +125,5 @@ describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
     })
     await expect(request).rejects.toThrow(SystemOneConnectionError)
     await expect(request).rejects.toThrow(/returned 422: .*instructions/)
-  })
-
-  test('listModels rejects: laya-serve has no /v1/models', async () => {
-    const client = createSystemOneClient({ url, apiKey: API_KEY })
-    await expect(client.listModels()).rejects.toThrow(SystemOneModelError)
   })
 })

@@ -284,6 +284,9 @@ catalogs:
     eventsource-parser:
       specifier: ^4.1.1
       version: 4.1.1
+    get-port:
+      specifier: ^7.2.0
+      version: 7.2.0
     globals:
       specifier: ^17.12.0
       version: 17.12.0
@@ -427,6 +430,9 @@ importers:
       '@mokei/system-one-client':
         specifier: workspace:^
         version: link:../packages/system-one-client
+      get-port:
+        specifier: 'catalog:'
+        version: 7.2.0
       mokei:
         specifier: workspace:^
         version: link:../packages/cli

@@ -119,26 +119,6 @@ export const wireUsageSchema = {
 
 export type Usage = { inputTokens: number; outputTokens: number }
 
-export const modelMetadataSchema = {
-  type: 'object',
-  properties: {
-    name: { type: 'string' },
-    description: { type: 'string' },
-    release_date: { type: 'string' },
-  },
-  required: ['name'],
-  additionalProperties: true,
-} as const satisfies Schema
-
-export const modelsResponseSchema = {
-  type: 'object',
-  properties: { models: { type: 'array', items: modelMetadataSchema } },
-  required: ['models'],
-  additionalProperties: true,
-} as const satisfies Schema
-
-export type SystemOneModel = { name: string; description?: string; releaseDate?: string }
-
 export type AnswerFor<TQuestion> = TQuestion extends ChoiceQuestion
   ? ChoiceAnswer
   : TQuestion extends ScoreQuestion

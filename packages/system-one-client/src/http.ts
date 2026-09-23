@@ -1,14 +1,7 @@
 import ky, { HTTPError, type KyInstance } from 'ky'
 
-import type {
-  SystemOneBackend,
-  SystemOneBackendListModelsParams,
-  SystemOneBackendPredictParams,
-  SystemOneResult,
-} from './backend.js'
+import type { SystemOneBackend, SystemOneBackendPredictParams, SystemOneResult } from './backend.js'
 import { SystemOneAuthError, SystemOneConnectionError, SystemOneModelError } from './errors.js'
-import type { SystemOneModel } from './types.js'
-import { validateModels } from './validation.js'
 
 export type SystemOneHTTPClientOptions = {
   url: string
@@ -106,10 +99,5 @@ export class HTTPSystemOneBackend implements SystemOneBackend {
         })
         .json<SystemOneResult>(),
     )
-  }
-
-  async listModels(params?: SystemOneBackendListModelsParams): Promise<Array<SystemOneModel>> {
-    const raw = await mapError(() => this.#http.get('v1/models', { signal: params?.signal }).json())
-    return validateModels({ raw })
   }
 }

@@ -28,7 +28,7 @@ sidecar requirement and the network round-trip for local inference. This matches
 
 - New per-platform packages (`packages/laya-ggml-*` or similar) each carrying native or WASM
   dependencies, split by platform so the neutral `system-one-client` stays free of `node:*` and native
-  deps. Each implements `SystemOneBackend` (`predict`, optional `listModels` and `close`).
+  deps. Each implements `SystemOneBackend` (`predict`, optional `close`).
 - Wire them into `createSystemOneClient` via the existing `SystemOneBackendClientOptions` (custom-backend)
   form — no change to `SystemOneClient` or the HTTP path.
 - GGUF loading/lifecycle owned by the backend package; GGUF *compilation* tooling

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { createSystemOneClient } from '../src/client.js'
 import { SystemOneAuthError, SystemOneConnectionError, SystemOneModelError } from '../src/errors.js'
 import { HTTPSystemOneBackend } from '../src/http.js'
 
@@ -146,41 +145,6 @@ describe('HTTPSystemOneBackend', () => {
     })
     controller.abort()
     await expect(pending).rejects.toThrow(DOMException)
-  })
-})
-
-describe('HTTPSystemOneBackend predictBatch', () => {
-  test('predictBatch sends one /v1/systemone request per state', async () => {
-    const urls: Array<string> = []
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: Request | string) => {
-        const req = input instanceof Request ? input : new Request(input)
-        urls.push(req.url)
-        return new Response(
-          JSON.stringify({
-            model: 'english',
-            answers: {
-              dept: {
-                type: 'choice',
-                choice: 'billing',
-                confidence: 0.9,
-                probabilities: { billing: 0.9 },
-              },
-            },
-            usage: { input_tokens: 1, output_tokens: 1 },
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        )
-      }),
-    )
-    const client = createSystemOneClient({ url: 'http://localhost:8000', defaultModel: 'english' })
-    const results = await client.predictBatch({ states: ['a', 'b'], questions })
-    expect(results).toHaveLength(2)
-    expect(urls).toHaveLength(2)
-    for (const url of urls) {
-      expect(url).toBe('http://localhost:8000/v1/systemone')
-    }
   })
 })
 

@@ -23,11 +23,8 @@ references); both are required. `choice` questions take a `criteria` map of opti
 questions take a `criteria` list of 2 to 10 ordered levels, and `noul` questions take optional
 `criteria`. The client validates this before sending.
 
-`predictBatch` has no endpoint of its own: it issues one `/v1/systemone` request per state, at
-most `concurrency` at a time (default 4), and aborts the rest on the first failure.
-
-`listModels` calls `GET /v1/models`, which is not part of the contract: neither `laya-serve` nor
-the hosted API serves it, and the call rejects with `SystemOneModelError`.
+The client exposes this endpoint only, as `predict`. There is no batch or model-listing endpoint:
+classify several states with one `predict` call each.
 
 ### Errors
 
