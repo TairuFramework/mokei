@@ -36,7 +36,7 @@ if (start === 'fail') {
   process.exit(1)
 }
 if (start === 'hang') {
-  process.stderr.write('loading model\n')
+  process.stderr.write(`loading model (pid ${process.pid})\n`)
   setInterval(() => {}, 1000)
 } else {
   write({ status: 'ready', model: 'laya' })
