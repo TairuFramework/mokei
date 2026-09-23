@@ -1,6 +1,6 @@
 {
   "name": "@mokei/mcp-system-one",
-  "version": "0.13.1",
+  "version": "0.13.0",
   "description": "System One classification MCP server",
   "keywords": [
     "model",
