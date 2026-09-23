@@ -120,7 +120,7 @@ export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
 export function createSystemOneConfig(options: SystemOneToolsOptions = {}) {
   return {
     name: 'system-one',
-    version: '0.13.1',
+    version: '0.13.0',
     protocolVersions: ['2026-07-28', '2025-11-25'],
     tools: createSystemOneTools(options),
   } as const satisfies ServerConfig

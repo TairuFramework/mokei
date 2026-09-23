@@ -7,11 +7,11 @@
   "author": { "name": "Paul Le Cam" },
   "server": {
     "type": "node",
-    "entry_point": "lib/index.js",
+    "entry_point": "lib/serve.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/lib/index.js"],
-      "env": { "SYSTEM_ONE_URL": "http://localhost:8000" }
+      "args": ["${__dirname}/lib/serve.js"],
+      "env": { "SYSTEM_ONE_URL": "http://localhost:8000", "SYSTEM_ONE_MODEL": "english" }
     }
   },
   "tools": [
