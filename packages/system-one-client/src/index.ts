@@ -46,6 +46,7 @@ export type {
   Usage,
 } from './types.js'
 export {
+  answerActionSchema,
   choiceAnswerSchema,
   choiceQuestionSchema,
   modelMetadataSchema,

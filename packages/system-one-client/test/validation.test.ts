@@ -73,6 +73,56 @@ describe('validateResult', () => {
     expect(result.extras).toEqual({ family: 'english' })
   })
 
+  test('accepts laya.cpp answers carrying action and a noul confidence', () => {
+    const result = validateResult({
+      questions,
+      raw: {
+        model: 'laya',
+        family: 'english',
+        route: 'english: ascii',
+        answers: {
+          dept: {
+            type: 'choice',
+            choice: 'billing',
+            confidence: 0.9,
+            probabilities: { billing: 0.9, tech: 0.1 },
+            action: { act_probability: 0.8 },
+          },
+          urgency: {
+            type: 'score',
+            score: 0.3,
+            confidence: 0.7,
+            legend: { '0': 'low', '1': 'high' },
+            probabilities: { '0': 0.7, '1': 0.3 },
+            action: { act_probability: 0.5 },
+          },
+          churn: { type: 'noul', noul: 0.2, confidence: 0.8, action: { act_probability: 0.1 } },
+        },
+        usage: { input_tokens: 12, output_tokens: 0, latency_ms: 4.2 },
+      },
+    })
+    expect(result.answers.dept.action?.act_probability).toBe(0.8)
+    expect(result.answers.churn.confidence).toBe(0.8)
+    expect(result.extras).toEqual({ family: 'english', route: 'english: ascii' })
+  })
+
+  test('still rejects an unknown answer field', () => {
+    expect(() =>
+      validateResult({
+        questions,
+        raw: {
+          model: 'laya',
+          answers: {
+            dept: { type: 'choice', choice: 'billing', confidence: 1, probabilities: {}, extra: 1 },
+            urgency: { type: 'score', score: 0, confidence: 1, legend: {}, probabilities: {} },
+            churn: { type: 'noul', noul: 0.5 },
+          },
+          usage: { input_tokens: 1, output_tokens: 0 },
+        },
+      }),
+    ).toThrow(SystemOneResponseError)
+  })
+
   test('throws SystemOneResponseError when answers is missing', () => {
     expect(() =>
       validateResult({

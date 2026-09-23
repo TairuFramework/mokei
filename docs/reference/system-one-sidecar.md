@@ -74,6 +74,9 @@ The `legend` object is defined by the server and describes the score scale -- th
 }
 ```
 
+`laya.cpp` also returns `action: { "act_probability": 0.81 }` on every answer, and `confidence` on
+noul answers. The client accepts both as optional fields.
+
 ### Usage
 
 All responses include a `usage` object:
