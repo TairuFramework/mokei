@@ -1,0 +1,26 @@
+{
+  "manifest_version": "0.2",
+  "name": "@mokei/mcp-system-one",
+  "display_name": "Mokei System One",
+  "version": "0.13.0",
+  "description": "System One classification MCP server",
+  "author": { "name": "Paul Le Cam" },
+  "server": {
+    "type": "node",
+    "entry_point": "lib/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/lib/index.js"],
+      "env": { "SYSTEM_ONE_URL": "http://localhost:8000" }
+    }
+  },
+  "tools": [
+    { "name": "predict", "description": "Classify text with System One typed questions" },
+    { "name": "route", "description": "Route to a model tier" },
+    { "name": "guard", "description": "Detect jailbreak / prompt-injection attempts" },
+    { "name": "moderate", "description": "Moderate content for safety" },
+    { "name": "triage", "description": "Triage a support request" }
+  ],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/TairuFramework/mokei" }
+}
