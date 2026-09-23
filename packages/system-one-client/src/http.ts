@@ -27,7 +27,7 @@ export type SystemOneHTTPClientOptions = {
    * Enable the `/v1/decide/batch` endpoint. It is available on the local
    * `laya.cpp` backend only -- a hosted backend without this endpoint 404s,
    * so it defaults to unset/false and `SystemOneClient.predictBatch` falls back
-   * to sequential `predict` calls.
+   * to individual `predict` calls with bounded concurrency.
    */
   batch?: boolean
 }
@@ -66,7 +66,7 @@ export class HTTPSystemOneBackend implements SystemOneBackend {
    * Present only when the backend is constructed with `batch: true`. The
    * `/v1/decide/batch` endpoint is local-only, so a hosted backend must not
    * advertise this capability -- `SystemOneClient.predictBatch` checks
-   * `backend.batch != null` and falls back to sequential `predict` calls
+   * `backend.batch != null` and falls back to individual `predict` calls
    * when it is absent.
    */
   batch?: (params: SystemOneBackendBatchParams) => Promise<Array<SystemOneResult>>

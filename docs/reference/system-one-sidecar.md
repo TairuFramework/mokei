@@ -21,7 +21,7 @@ All endpoints use `application/json` for request and response bodies. The server
 | GET | `/v1/models` | (empty) | `{ models: [{ name, description, release_date }] }` |
 | POST | `/v1/decide/batch` | `{ states: [...], model, questions }` | `{ results: [{ model, answers, usage }] }` |
 
-The `/v1/decide/batch` endpoint is a `laya.cpp` extension, available on the local backend only. The HTTP backend only calls it when created with `batch: true`; otherwise `predictBatch` issues sequential `/v1/systemone` requests.
+The `/v1/decide/batch` endpoint is a `laya.cpp` extension, available on the local backend only. The HTTP backend only calls it when created with `batch: true`; otherwise `predictBatch` issues individual `/v1/systemone` requests, at most `concurrency` at a time (default 4), and aborts the rest on the first failure.
 
 ## Answer Shapes
 

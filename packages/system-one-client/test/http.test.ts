@@ -121,7 +121,7 @@ describe('HTTPSystemOneBackend batch opt-in', () => {
     expect(backend.batch).toBeDefined()
   })
 
-  test('predictBatch falls back to sequential /v1/systemone calls when batch is not enabled', async () => {
+  test('predictBatch falls back to individual /v1/systemone calls when batch is not enabled', async () => {
     const urls: Array<string> = []
     vi.stubGlobal(
       'fetch',

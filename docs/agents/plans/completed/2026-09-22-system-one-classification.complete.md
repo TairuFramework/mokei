@@ -69,7 +69,9 @@ with the core kept generic so guardrails, moderation and ticket triage share the
   Laya-branded names before release.
 - **Batch is opt-in.** `/v1/decide/batch` is a `laya.cpp` extension absent from the hosted API, so
   the HTTP backend only advertises `batch` when a `batch: true` option is set; otherwise
-  `predictBatch` falls back to sequential `/v1/systemone` calls. The backend also validates the
+  `predictBatch` falls back to individual `/v1/systemone` calls, run with bounded concurrency
+  (`concurrency`, default 4) in input order; the first failure aborts in-flight siblings and starts
+  no more. The backend also validates the
   batch response envelope (results is an array, count matches input) and throws
   `SystemOneResponseError` on mismatch.
 - **Schema tightening:** a `score` question requires at least 2 `criteria` levels; a `choice`
