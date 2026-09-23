@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "@mokei/mcp-system-one",
   "display_name": "Mokei System One",
-  "version": "0.13.1",
+  "version": "0.13.0",
   "description": "System One classification MCP server",
   "author": { "name": "Paul Le Cam" },
   "server": {
