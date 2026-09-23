@@ -1,1 +1,1 @@
-export { type DaemonLine, PendingRequests, parseDaemonLine } from './protocol.js'
+export { LayaDaemonBackend, type LayaDaemonBackendParams } from './backend.js'
