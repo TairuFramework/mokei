@@ -95,6 +95,10 @@ describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
     })
     server.catch(() => {})
     await waitForHealth(url, 300_000)
+    // The first inference pays one-off costs (device kernels, tokenizer), so warm up here and
+    // keep per-test durations close to steady-state latency.
+    const client = createSystemOneClient({ url, apiKey: API_KEY, defaultModel: 'english' })
+    await client.predict({ state: THANKS, questions })
   }, 330_000)
 
   afterAll(async () => {
