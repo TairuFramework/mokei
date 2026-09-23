@@ -21,7 +21,6 @@
     "@mokei/host-node": "workspace:^",
     "@mokei/http-client": "workspace:^",
     "@mokei/http-server": "workspace:^",
-    "@mokei/laya-backend": "workspace:^",
     "@mokei/llama-provider": "workspace:^",
     "@mokei/mcp-fetch": "workspace:^",
     "@mokei/model-provider": "workspace:^",

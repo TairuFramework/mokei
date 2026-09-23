@@ -1,5 +1,9 @@
 # Laya Daemon Backend Implementation Plan
 
+> **Superseded 2026-09-23.** `@mokei/laya-backend` was dropped before release. `laya-serve` (the
+> Python HTTP server from https://github.com/NandhaKishorM/laya) is the canonical local backend; see
+> `docs/reference/system-one-sidecar.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add `@mokei/laya-backend`, a `SystemOneBackend` that drives `laya daemon` over stdio, plus

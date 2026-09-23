@@ -1,6 +1,9 @@
 import type { FromSchema, Schema } from '@sozai/schema'
 
-const instructionsSchema = {} as const satisfies Schema
+/** The question text, or a structured object or array carrying it with the data it references. */
+const instructionsSchema = {
+  anyOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }, { type: 'array' }],
+} as const satisfies Schema
 
 export const choiceQuestionSchema = {
   type: 'object',
@@ -9,7 +12,7 @@ export const choiceQuestionSchema = {
     instructions: instructionsSchema,
     criteria: { type: 'object', additionalProperties: { type: 'string' }, minProperties: 1 },
   },
-  required: ['type', 'criteria'],
+  required: ['type', 'instructions', 'criteria'],
   additionalProperties: false,
 } as const satisfies Schema
 
@@ -20,7 +23,7 @@ export const scoreQuestionSchema = {
     instructions: instructionsSchema,
     criteria: { type: 'array', items: { type: 'string' }, minItems: 2 },
   },
-  required: ['type', 'criteria'],
+  required: ['type', 'instructions', 'criteria'],
   additionalProperties: false,
 } as const satisfies Schema
 
@@ -31,7 +34,7 @@ export const noulQuestionSchema = {
     instructions: instructionsSchema,
     criteria: {},
   },
-  required: ['type'],
+  required: ['type', 'instructions'],
   additionalProperties: false,
 } as const satisfies Schema
 
@@ -56,7 +59,7 @@ export type Question = ChoiceQuestion | ScoreQuestion | NoulQuestion
 export type QuestionMap = Record<string, Question>
 export type State = string | Record<string, unknown> | Array<unknown>
 
-/** laya.cpp adds this to every answer: the probability that the answer should be acted on. */
+/** Laya adds this to every answer: the probability that the answer should be acted on. */
 export const answerActionSchema = {
   type: 'object',
   properties: { act_probability: { type: 'number' } },

@@ -1,6 +1,5 @@
 export type {
   SystemOneBackend,
-  SystemOneBackendBatchParams,
   SystemOneBackendListModelsParams,
   SystemOneBackendPredictParams,
   SystemOneResult,

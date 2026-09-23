@@ -12,5 +12,8 @@ test('a minimal backend needs only predict', () => {
       }) satisfies SystemOneResult,
   }
   expectTypeOf(backend.predict).toBeFunction()
-  expectTypeOf(backend.batch).toEqualTypeOf<SystemOneBackend['batch']>()
+})
+
+test('a backend has no batch capability', () => {
+  expectTypeOf<keyof SystemOneBackend>().toEqualTypeOf<'predict' | 'listModels' | 'close'>()
 })

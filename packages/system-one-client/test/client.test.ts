@@ -4,7 +4,9 @@ import type { SystemOneBackend, SystemOneResult } from '../src/backend.js'
 import { SystemOneClient } from '../src/client.js'
 import { SystemOneError, SystemOneInputError } from '../src/errors.js'
 
-const questions = { dept: { type: 'choice', criteria: { billing: 'x' } } } as const
+const questions = {
+  dept: { type: 'choice', instructions: 'Which team?', criteria: { billing: 'x' } },
+} as const
 
 function result(answers: Record<string, unknown>): SystemOneResult {
   return {
@@ -76,17 +78,7 @@ describe('SystemOneClient.predictBatch', () => {
     expect(predict).not.toHaveBeenCalled()
   })
 
-  test('uses backend.batch when present', async () => {
-    const batch = vi.fn(async () => [result(answer), result(answer)])
-    const client = new SystemOneClient({
-      backend: { predict: vi.fn(), batch },
-      defaultModel: 'english',
-    })
-    expect(await client.predictBatch({ states: ['a', 'b'], questions })).toHaveLength(2)
-    expect(batch).toHaveBeenCalledOnce()
-  })
-
-  test('falls back to concurrent predict calls when batch is absent', async () => {
+  test('sends one predict call per state', async () => {
     const predict = vi.fn(async () => result(answer))
     const client = new SystemOneClient({ backend: { predict }, defaultModel: 'english' })
     expect(await client.predictBatch({ states: ['a', 'b'], questions })).toHaveLength(2)

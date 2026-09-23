@@ -1,5 +1,9 @@
 # Laya daemon backend design
 
+> **Superseded 2026-09-23.** `@mokei/laya-backend` was dropped before release. `laya-serve` (the
+> Python HTTP server from https://github.com/NandhaKishorM/laya) is the canonical local backend; see
+> `docs/reference/system-one-sidecar.md`.
+
 Date: 2026-09-23
 Branch: `feat/laya-backend`
 Status: approved design, pending plan

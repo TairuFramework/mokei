@@ -11,7 +11,7 @@ export type SystemOnePredictParams<TQuestions extends QuestionMap> = {
   signal?: AbortSignal
 }
 
-/** Maximum concurrent predict calls when the backend has no batch endpoint. */
+/** Maximum concurrent predict calls in `predictBatch`. */
 const DEFAULT_BATCH_CONCURRENCY = 4
 
 export type SystemOnePredictBatchParams<TQuestions extends QuestionMap> = {
@@ -19,7 +19,7 @@ export type SystemOnePredictBatchParams<TQuestions extends QuestionMap> = {
   questions: TQuestions
   model?: string
   signal?: AbortSignal
-  /** Maximum concurrent predict calls when the backend has no batch endpoint. Defaults to 4. */
+  /** Maximum concurrent predict calls. Defaults to 4. */
   concurrency?: number
 }
 
@@ -83,23 +83,6 @@ export class SystemOneClient {
       ])
     }
     const model = this.#resolveModel(params.model)
-    if (this.#backend.batch != null) {
-      const raws = await this.#backend.batch({
-        states: params.states,
-        questions: params.questions,
-        model,
-        signal: params.signal,
-      })
-      return raws.map((raw) => validateResult({ questions: params.questions, raw }))
-    }
-    return await this.#predictConcurrently(params, model)
-  }
-
-  /** Fallback when the backend has no batch endpoint: bounded concurrent predict calls, in input order. */
-  async #predictConcurrently<TQuestions extends QuestionMap>(
-    params: SystemOnePredictBatchParams<TQuestions>,
-    model: string,
-  ): Promise<Array<PredictResult<TQuestions>>> {
     const { states, questions } = params
     // Aborted on the first failure so in-flight siblings stop. Linked to the caller's signal by hand
     // rather than with AbortSignal.any, which React Native runtimes may lack.

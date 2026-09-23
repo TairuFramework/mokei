@@ -18,20 +18,12 @@ export type SystemOneBackendPredictParams = {
   signal?: AbortSignal
 }
 
-export type SystemOneBackendBatchParams = {
-  states: Array<State>
-  questions: QuestionMap
-  model: string
-  signal?: AbortSignal
-}
-
 export type SystemOneBackendListModelsParams = {
   signal?: AbortSignal
 }
 
 export type SystemOneBackend = {
   predict: (params: SystemOneBackendPredictParams) => Promise<SystemOneResult>
-  batch?: (params: SystemOneBackendBatchParams) => Promise<Array<SystemOneResult>>
   listModels?: (params?: SystemOneBackendListModelsParams) => Promise<Array<SystemOneModel>>
   close?: () => Promise<void>
 }

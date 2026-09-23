@@ -10,9 +10,17 @@ import {
 } from '../src/validation.js'
 
 const questions = {
-  dept: { type: 'choice', criteria: { billing: 'x', tech: 'y' } } as ChoiceQuestion,
-  urgency: { type: 'score', criteria: ['low', 'high'] } as ScoreQuestion,
-  churn: { type: 'noul' } as NoulQuestion,
+  dept: {
+    type: 'choice',
+    instructions: 'Which team?',
+    criteria: { billing: 'x', tech: 'y' },
+  } as ChoiceQuestion,
+  urgency: {
+    type: 'score',
+    instructions: 'How urgent?',
+    criteria: ['low', 'high'],
+  } as ScoreQuestion,
+  churn: { type: 'noul', instructions: 'Will they churn?' } as NoulQuestion,
 }
 
 describe('validateQuestions / validateState', () => {
@@ -25,6 +33,34 @@ describe('validateQuestions / validateState', () => {
     expect(() => validateQuestions({ questions: { dept: { type: 'choice' } } })).toThrow(
       SystemOneInputError,
     )
+  })
+
+  test.each([
+    ['choice', { type: 'choice', criteria: { billing: 'x' } }],
+    ['score', { type: 'score', criteria: ['low', 'high'] }],
+    ['noul', { type: 'noul' }],
+  ])('throws SystemOneInputError on a %s question without instructions', (_type, question) => {
+    expect(() => validateQuestions({ questions: { q: question } })).toThrow(SystemOneInputError)
+  })
+
+  test('accepts object and array instructions', () => {
+    expect(() =>
+      validateQuestions({
+        questions: {
+          a: {
+            type: 'noul',
+            instructions: { question: 'Refund?', policy: 'refund within 30 days' },
+          },
+          b: { type: 'noul', instructions: ['Refund?', 'Only for duplicate charges'] },
+        },
+      }),
+    ).not.toThrow()
+  })
+
+  test('throws SystemOneInputError on instructions that are not a string, object or array', () => {
+    expect(() =>
+      validateQuestions({ questions: { q: { type: 'noul', instructions: 42 } } }),
+    ).toThrow(SystemOneInputError)
   })
 
   test('throws SystemOneInputError on an empty question map', () => {
@@ -73,7 +109,7 @@ describe('validateResult', () => {
     expect(result.extras).toEqual({ family: 'english' })
   })
 
-  test('accepts laya.cpp answers carrying action and a noul confidence', () => {
+  test('accepts Laya answers carrying action and a noul confidence', () => {
     const result = validateResult({
       questions,
       raw: {

@@ -148,7 +148,6 @@ packages/
 +-- ollama-provider/      # Ollama integration
 +-- llama-provider/       # Local GGUF inference via node-llama-cpp
 +-- system-one-client/    # System One typed-question classification client (platform-neutral)
-+-- laya-backend/         # System One backend running laya.cpp through `laya daemon`
 +-- logger/               # Shared logger utility
 +-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
 ```
