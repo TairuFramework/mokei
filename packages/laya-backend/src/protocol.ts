@@ -41,12 +41,18 @@ type Entry = {
  */
 export class PendingRequests {
   #entries = new Map<string, Entry>()
+  #closed: { error: unknown } | undefined
 
   get size(): number {
     return this.#entries.size
   }
 
   add(id: string): Promise<SystemOneResult> {
+    const closed = this.#closed
+    if (closed != null) {
+      // The daemon already exited: nothing would ever answer this call.
+      return Promise.reject(closed.error)
+    }
     return new Promise<SystemOneResult>((resolve, reject) => {
       this.#entries.set(id, { resolve, reject, discarded: false })
     })
@@ -91,6 +97,7 @@ export class PendingRequests {
   }
 
   rejectAll(error: unknown): void {
+    this.#closed = { error }
     for (const entry of this.#entries.values()) {
       if (!entry.discarded) {
         entry.reject(error)

@@ -113,6 +113,19 @@ describe('LayaDaemonBackend', () => {
     expect((await next).route).toBe('next')
   })
 
+  test('a state that cannot be serialized rejects and leaves no orphan call', async () => {
+    const backend = makeBackend()
+    await expect(backend.predict({ state: { n: 1n }, questions, model: 'laya' })).rejects.toThrow(
+      TypeError,
+    )
+    const [noID, ok] = await Promise.allSettled([
+      predict(backend, 'error-no-id'),
+      predict(backend, 'ok'),
+    ])
+    expect(noID.status === 'rejected' && noID.reason).toBeInstanceOf(SystemOneResponseError)
+    expect(ok.status === 'fulfilled' && ok.value.route).toBe('ok')
+  })
+
   test('an already-aborted signal rejects without a request', async () => {
     const controller = new AbortController()
     controller.abort()

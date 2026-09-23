@@ -100,6 +100,14 @@ describe('PendingRequests', () => {
     await expect(second).resolves.toEqual(result)
   })
 
+  test('a call added after rejectAll rejects with the same error', async () => {
+    const pending = new PendingRequests()
+    const error = new Error('exited')
+    pending.rejectAll(error)
+    await expect(pending.add('1')).rejects.toBe(error)
+    expect(pending.size).toBe(0)
+  })
+
   test('rejectAll rejects every live call and empties the map', async () => {
     const pending = new PendingRequests()
     const first = pending.add('1')

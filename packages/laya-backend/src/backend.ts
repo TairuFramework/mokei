@@ -130,13 +130,14 @@ export class LayaDaemonBackend implements SystemOneBackend {
     signal?.throwIfAborted()
     // The daemon ignores `model`: its router picks the family from the loaded GGUF(s).
     const id = String(++this.#nextID)
+    // Serialize before registering: a state JSON cannot encode must not leave an orphan entry
+    // that would take the next id-less response.
+    const line = `${JSON.stringify({ id, state: params.state, questions: params.questions })}\n`
     const response = daemon.pending.add(id)
     const onAbort = () => daemon.pending.discard(id, signal?.reason)
     signal?.addEventListener('abort', onAbort, { once: true })
     try {
-      daemon.stdin.write(
-        `${JSON.stringify({ id, state: params.state, questions: params.questions })}\n`,
-      )
+      daemon.stdin.write(line)
       return await response
     } finally {
       signal?.removeEventListener('abort', onAbort)
