@@ -4,10 +4,11 @@
 
 ## Backends
 
-The System One client connects to one of two backends:
+The System One client connects to one of three backends:
 
 - **laya.cpp (local)**: the `laya serve` binary from [ggmlc](https://github.com/monatis/ggmlc) releases, running a Laya GGUF model on your machine.
 - **Hosted TypeSafe**: the TypeSafe AI API at `https://api.typesafe.ai`, using a Bearer token for authentication.
+- **laya.cpp daemon (local, no server)**: `@mokei/laya-backend` starts `laya daemon` itself and talks to it over stdio, with no port to manage.
 
 Both backends speak the same protocol, so client code is identical regardless of which you choose.
 
@@ -194,6 +195,38 @@ export SYSTEM_ONE_MODEL="english"
 node mcp-servers/system-one/lib/serve.js
 ```
 
+## Daemon Backend (laya.cpp)
+
+`@mokei/laya-backend` runs the same `laya` binary in `daemon` mode and talks to it over stdio: one
+JSON request per line, one response per line. The process starts on the first call, restarts if it
+exits, and stops on `close()`. It needs Node.js.
+
+```ts
+import { LayaDaemonBackend } from '@mokei/laya-backend'
+import { createSystemOneClient } from '@mokei/system-one-client'
+
+const backend = new LayaDaemonBackend({ model: 'english-f16.gguf', device: 'auto' })
+const client = createSystemOneClient({ backend, defaultModel: 'laya' })
+
+const result = await client.predict({
+  state: 'I was double charged on my last invoice',
+  questions: {
+    department: {
+      type: 'choice',
+      criteria: { billing: 'invoices and payments', technical: 'bugs and outages' },
+    },
+  },
+})
+
+await backend.close()
+```
+
+The daemon picks the model family from the loaded GGUF, so the `model` passed to the client is not
+forwarded; any value works. Pass `modelsDir` instead of `model` to let `laya` route between english
+and multilingual GGUFs. `binary` defaults to `laya` on `PATH`.
+
 ## Future: In-Process Backend
 
-A future version will support an in-process backend that binds ggml or `laya.cpp` (native or WebAssembly) behind the same `SystemOneBackend` interface. This will remove the sidecar requirement and eliminate the network round-trip. The ONNX path via external binaries is superseded by this direction.
+A future version may bind ggml or `laya.cpp` directly (N-API or WebAssembly) behind the same
+`SystemOneBackend` interface, removing the separate process. `laya.cpp` currently ships as an
+executable only, with no library target.

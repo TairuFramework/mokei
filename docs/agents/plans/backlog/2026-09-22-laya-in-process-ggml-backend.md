@@ -10,6 +10,11 @@ which speaks the TypeSafe System One contract to a `laya serve` sidecar or the h
 `api.typesafe.ai`. The seam was designed precisely so an in-process backend can slot in without
 changing any client consumer. See `docs/agents/plans/completed/2026-09-22-system-one-classification.complete.md`.
 
+`@mokei/laya-backend` (2026-09-23) already removes the separately managed sidecar: it runs
+`laya daemon` as a child process over stdio. What remains here is a true in-process binding. Note
+that `laya.cpp` ships as an executable only (no library target or C API), so a binding means
+building a C API around the `examples/laya` sources.
+
 ## Goal
 
 Bind ggml / `laya.cpp` (the zero-dependency C++ runtime for GGUF-compiled Laya models from
