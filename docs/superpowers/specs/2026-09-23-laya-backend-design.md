@@ -46,6 +46,14 @@ That binding (N-API or WASM) stays in the backlog.
 - An exception inside `router.decide` is not caught in daemon mode: the process terminates.
 - There is no batch or model-listing request.
 
+### Client answer schemas
+
+Real `laya.cpp` answers (`answer_to_json` in `examples/laya/src/questions.cpp`) carry
+`action: { act_probability }` on every answer and `confidence` on noul answers. The client's answer
+schemas are closed (`additionalProperties: false`), so `validateResult` rejects every real
+`laya serve` or daemon response today. The client schemas gain both as optional fields, staying
+closed to anything else.
+
 ## Package
 
 New package `packages/laya-backend`, published as `@mokei/laya-backend`, joining the
@@ -102,7 +110,8 @@ start the process.
   fresh process.
 - **`close()`.** Ends stdin, waits for the subprocess to settle, and sends `SIGTERM` after a grace
   period if it has not. A `SIGTERM`/`SIGINT` exit counts as clean (as in host-node's
-  `isSubprocessExit`). Pending calls reject with `SystemOneConnectionError`. `close()` on a backend
+  `isSubprocessExit`). The daemon drains stdin before exiting, so calls already written are normally
+  answered; any still unanswered at exit reject with `SystemOneConnectionError`. `close()` on a backend
   that never started resolves immediately. A `predict` after `close()` starts a new process.
 
 ### Requests and responses
