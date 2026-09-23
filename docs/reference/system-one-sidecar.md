@@ -18,10 +18,16 @@ The contract is one endpoint. Request and response bodies are `application/json`
 | POST | `/v1/systemone` | `{ state, model, questions }` | `{ model, answers, usage }` |
 
 `state` is a string, object or array. Each question has a `type` (`choice`, `score` or `noul`) and
-`instructions` (a string, or an object or array that carries the question with the data it
-references); both are required. `choice` questions take a `criteria` map of options, `score`
-questions take a `criteria` list of 2 to 10 ordered levels, and `noul` questions take optional
-`criteria`. The client validates this before sending.
+`instructions`, both required. `instructions` and every criterion description are a string, or an
+object or array that carries the text with the data it references.
+
+| Question | `criteria` |
+|----------|------------|
+| `choice` | Required map of 1 to 255 options, each with a description or `null` |
+| `score` | Required list of 2 to 10 ordered level descriptions |
+| `noul` | Optional `{ true, false }` descriptions of what yes and no mean |
+
+The client validates this before sending.
 
 The client exposes this endpoint only, as `predict`. There is no batch or model-listing endpoint:
 classify several states with one `predict` call each.
@@ -32,11 +38,13 @@ classify several states with one `predict` call each.
 |--------|--------------|
 | `401`, `403` | `SystemOneAuthError` |
 | `404` | `SystemOneModelError` |
-| other (`422` validation, `429` rate limit, `529` overloaded, `5xx`) | `SystemOneConnectionError` |
+| `422` | `SystemOneInputError`, the same class the client throws on local validation |
+| other (`429` rate limit, `529` overloaded, `5xx`) | `SystemOneConnectionError` |
 
-When the error body carries a reason (a FastAPI `detail`, a `message`, an `error` string or
-`{ message }`, or plain text), the client appends it to the message, for example
-`System One backend returned 422: question 'dept': no 'instructions'; add the text the model should answer`.
+When the error body carries a reason (a FastAPI `detail` string or `{ loc, msg }` list, a `message`,
+an `error` string or `{ message }`, or plain text), the client appends it to the message. On a
+`422` the reasons are also in `error.issues`, for example
+`System One backend rejected the request (422): question 'dept': no 'instructions'; add the text the model should answer`.
 
 ## Answer Shapes
 

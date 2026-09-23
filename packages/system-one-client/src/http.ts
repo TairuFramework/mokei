@@ -1,7 +1,13 @@
 import ky, { HTTPError, type KyInstance } from 'ky'
 
 import type { SystemOneBackend, SystemOneBackendPredictParams, SystemOneResult } from './backend.js'
-import { SystemOneAuthError, SystemOneConnectionError, SystemOneModelError } from './errors.js'
+import {
+  SystemOneAuthError,
+  SystemOneConnectionError,
+  SystemOneInputError,
+  SystemOneModelError,
+  type ValidationIssue,
+} from './errors.js'
 
 export type SystemOneHTTPClientOptions = {
   url: string
@@ -19,30 +25,37 @@ function stringOrNull(value: unknown): string | null {
 }
 
 /**
- * Pull a readable reason out of an error body. Covers FastAPI (`laya-serve`: `detail` as a string
- * or a validation list of `{ msg }`), a top-level `message`, an `error` string or `{ message }`,
+ * Pull the reasons out of an error body. Covers FastAPI (`laya-serve`: `detail` as a string or a
+ * validation list of `{ loc, msg }`), a top-level `message`, an `error` string or `{ message }`,
  * and plain text.
  */
-function errorDetail(data: unknown): string | null {
+function errorIssues(data: unknown): Array<ValidationIssue> {
   if (typeof data === 'string') {
-    return stringOrNull(data.trim())
+    const text = stringOrNull(data.trim())
+    return text == null ? [] : [{ message: text }]
   }
   if (data == null || typeof data !== 'object') {
-    return null
+    return []
   }
   const { detail, message, error } = data as Record<string, unknown>
   if (Array.isArray(detail)) {
-    const messages = detail
-      .map((item) => stringOrNull((item as { msg?: unknown } | null)?.msg))
-      .filter((msg) => msg != null)
-    return messages.length === 0 ? null : messages.join('; ')
+    return detail.flatMap((item) => {
+      const { loc, msg } = (item ?? {}) as { loc?: unknown; msg?: unknown }
+      const text = stringOrNull(msg)
+      if (text == null) return []
+      return [Array.isArray(loc) ? { message: text, path: loc } : { message: text }]
+    })
   }
-  return (
+  const text =
     stringOrNull(detail) ??
     stringOrNull(message) ??
     stringOrNull(error) ??
     stringOrNull((error as { message?: unknown } | null)?.message)
-  )
+  return text == null ? [] : [{ message: text }]
+}
+
+function withReason(message: string, issues: Array<ValidationIssue>): string {
+  return issues.length === 0 ? message : `${message}: ${issues.map((i) => i.message).join('; ')}`
 }
 
 async function mapError<T>(run: () => Promise<T>): Promise<T> {
@@ -57,11 +70,16 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
       if (status === 404) {
         throw new SystemOneModelError('Model or endpoint not found', { cause })
       }
-      const detail = errorDetail(cause.data)
-      const message = `System One backend returned ${status}`
-      throw new SystemOneConnectionError(detail == null ? message : `${message}: ${detail}`, {
-        cause,
-      })
+      const issues = errorIssues(cause.data)
+      if (status === 422) {
+        const message = withReason('System One backend rejected the request (422)', issues)
+        // biome-ignore lint/style/useErrorCause: cause is passed in the third argument, after issues
+        throw new SystemOneInputError(message, issues, { cause })
+      }
+      throw new SystemOneConnectionError(
+        withReason(`System One backend returned ${status}`, issues),
+        { cause },
+      )
     }
     if (
       typeof DOMException !== 'undefined' &&

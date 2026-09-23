@@ -23,7 +23,10 @@ class ValidationError extends SystemOneError {
   }
 }
 
-/** Caller-supplied questions or state failed schema validation. Thrown before any request. */
+/**
+ * Caller-supplied questions or state failed validation: in the client before any request, or in
+ * the backend (a 422 response).
+ */
 export class SystemOneInputError extends ValidationError {
   constructor(message: string, issues: Array<ValidationIssue> = [], options?: ErrorOptions) {
     super(message, issues, options)

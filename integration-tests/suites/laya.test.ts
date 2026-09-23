@@ -4,7 +4,7 @@ import {
   type PredictResult,
   type QuestionMap,
   SystemOneAuthError,
-  SystemOneConnectionError,
+  SystemOneInputError,
 } from '@mokei/system-one-client'
 import getPort from 'get-port'
 import spawn, { type Subprocess } from 'nano-spawn'
@@ -110,12 +110,45 @@ describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
     expect(crash.answers.department.choice).toBe('technical')
   })
 
+  test('predict accepts structured instructions and criteria', async () => {
+    const client = createSystemOneClient({ url, apiKey: API_KEY, defaultModel: 'english' })
+    const result = await client.predict({
+      state: { channel: 'email', body: BILLING },
+      questions: {
+        department: {
+          type: 'choice',
+          instructions: {
+            question: 'Which department should handle this?',
+            policy: 'refunds go to billing',
+          },
+          criteria: {
+            billing: { handles: ['invoices', 'refunds'] },
+            technical: ['bugs', 'outages'],
+            other: null,
+          },
+        },
+        urgency: {
+          type: 'score',
+          instructions: ['How urgent is this message?', 'Duplicate charges are urgent.'],
+          criteria: ['not urgent', { level: 'urgent', within: 'a day' }],
+        },
+        refund: {
+          type: 'noul',
+          instructions: 'Does the customer want a refund?',
+          criteria: { true: 'asks for money back', false: 'anything else' },
+        },
+      },
+    })
+    expect(Object.keys(result.answers)).toEqual(['department', 'urgency', 'refund'])
+    expect(['billing', 'technical', 'other']).toContain(result.answers.department.choice)
+  })
+
   test('a wrong API key rejects with SystemOneAuthError', async () => {
     const client = createSystemOneClient({ url, apiKey: 'wrong', defaultModel: 'english' })
     await expect(client.predict({ state: BILLING, questions })).rejects.toThrow(SystemOneAuthError)
   })
 
-  test('a 422 carries the server detail in the error message', async () => {
+  test('a 422 rejects with SystemOneInputError carrying the server reason', async () => {
     // The backend skips client validation, so the server sees the missing instructions.
     const backend = new HTTPSystemOneBackend({ url, apiKey: API_KEY })
     const request = backend.predict({
@@ -123,7 +156,7 @@ describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
       questions: { department: { type: 'noul' } } as unknown as QuestionMap,
       model: 'english',
     })
-    await expect(request).rejects.toThrow(SystemOneConnectionError)
-    await expect(request).rejects.toThrow(/returned 422: .*instructions/)
+    await expect(request).rejects.toThrow(SystemOneInputError)
+    await expect(request).rejects.toThrow(/rejected the request \(422\): .*instructions/)
   })
 })

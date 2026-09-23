@@ -5,12 +5,20 @@ const instructionsSchema = {
   anyOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }, { type: 'array' }],
 } as const satisfies Schema
 
+/** A criterion description: plain text, or a structured object or array. */
+const descriptionSchema = instructionsSchema
+
 export const choiceQuestionSchema = {
   type: 'object',
   properties: {
     type: { enum: ['choice'] },
     instructions: instructionsSchema,
-    criteria: { type: 'object', additionalProperties: { type: 'string' }, minProperties: 1 },
+    criteria: {
+      type: 'object',
+      additionalProperties: { anyOf: [...descriptionSchema.anyOf, { type: 'null' }] },
+      minProperties: 1,
+      maxProperties: 255,
+    },
   },
   required: ['type', 'instructions', 'criteria'],
   additionalProperties: false,
@@ -21,7 +29,7 @@ export const scoreQuestionSchema = {
   properties: {
     type: { enum: ['score'] },
     instructions: instructionsSchema,
-    criteria: { type: 'array', items: { type: 'string' }, minItems: 2 },
+    criteria: { type: 'array', items: descriptionSchema, minItems: 2, maxItems: 10 },
   },
   required: ['type', 'instructions', 'criteria'],
   additionalProperties: false,
@@ -32,7 +40,11 @@ export const noulQuestionSchema = {
   properties: {
     type: { enum: ['noul'] },
     instructions: instructionsSchema,
-    criteria: {},
+    criteria: {
+      type: 'object',
+      properties: { true: descriptionSchema, false: descriptionSchema },
+      additionalProperties: false,
+    },
   },
   required: ['type', 'instructions'],
   additionalProperties: false,

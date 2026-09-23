@@ -64,14 +64,92 @@ describe('validateQuestions / validateState', () => {
 
   test('throws SystemOneInputError on a score question with fewer than 2 criteria levels', () => {
     expect(() =>
-      validateQuestions({ questions: { urgency: { type: 'score', criteria: ['only-one'] } } }),
+      validateQuestions({
+        questions: {
+          urgency: { type: 'score', instructions: 'How urgent?', criteria: ['only-one'] },
+        },
+      }),
     ).toThrow(SystemOneInputError)
   })
 
   test('throws SystemOneInputError on a choice question with empty criteria', () => {
     expect(() =>
-      validateQuestions({ questions: { dept: { type: 'choice', criteria: {} } } }),
+      validateQuestions({
+        questions: { dept: { type: 'choice', instructions: 'Which team?', criteria: {} } },
+      }),
     ).toThrow(SystemOneInputError)
+  })
+})
+
+describe('question criteria', () => {
+  const valid = (question: unknown) => () => validateQuestions({ questions: { q: question } })
+
+  test('choice options take a string, object, array or null description', () => {
+    expect(
+      valid({
+        type: 'choice',
+        instructions: 'Which team?',
+        criteria: {
+          billing: 'invoices',
+          tech: { scope: 'bugs', examples: ['crash'] },
+          sales: ['pricing', 'upgrades'],
+          other: null,
+        },
+      }),
+    ).not.toThrow()
+  })
+
+  test('choice rejects a numeric option description', () => {
+    expect(valid({ type: 'choice', instructions: 'Which team?', criteria: { a: 1 } })).toThrow(
+      SystemOneInputError,
+    )
+  })
+
+  test('choice rejects more than 255 options', () => {
+    const criteria = Object.fromEntries(Array.from({ length: 256 }, (_, i) => [`o${i}`, null]))
+    expect(valid({ type: 'choice', instructions: 'Which?', criteria })).toThrow(SystemOneInputError)
+  })
+
+  test('score levels take a string, object or array', () => {
+    expect(
+      valid({
+        type: 'score',
+        instructions: 'How urgent?',
+        criteria: ['low', { level: 'medium', hint: 'this week' }, ['high', 'today']],
+      }),
+    ).not.toThrow()
+  })
+
+  test('score rejects a null level and more than 10 levels', () => {
+    expect(valid({ type: 'score', instructions: 'How urgent?', criteria: ['low', null] })).toThrow(
+      SystemOneInputError,
+    )
+    const criteria = Array.from({ length: 11 }, (_, i) => `level ${i}`)
+    expect(valid({ type: 'score', instructions: 'How urgent?', criteria })).toThrow(
+      SystemOneInputError,
+    )
+  })
+
+  test('noul criteria describe true and false', () => {
+    expect(
+      valid({
+        type: 'noul',
+        instructions: 'Refund?',
+        criteria: { true: 'asks for money back', false: { note: 'anything else' } },
+      }),
+    ).not.toThrow()
+    expect(
+      valid({ type: 'noul', instructions: 'Refund?', criteria: { true: 'yes' } }),
+    ).not.toThrow()
+  })
+
+  test('noul rejects criteria other than true and false', () => {
+    expect(valid({ type: 'noul', instructions: 'Refund?', criteria: { maybe: 'x' } })).toThrow(
+      SystemOneInputError,
+    )
+    expect(valid({ type: 'noul', instructions: 'Refund?', criteria: 'yes or no' })).toThrow(
+      SystemOneInputError,
+    )
   })
 })
 

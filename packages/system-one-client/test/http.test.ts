@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { SystemOneAuthError, SystemOneConnectionError, SystemOneModelError } from '../src/errors.js'
+import {
+  SystemOneAuthError,
+  SystemOneConnectionError,
+  SystemOneInputError,
+  SystemOneModelError,
+} from '../src/errors.js'
 import { HTTPSystemOneBackend } from '../src/http.js'
 
 afterEach(() => {
@@ -84,6 +89,7 @@ describe('HTTPSystemOneBackend', () => {
       'a FastAPI detail string',
       { detail: "question 'dept': no 'instructions'" },
       "question 'dept': no 'instructions'",
+      [{ message: "question 'dept': no 'instructions'" }],
     ],
     [
       'a FastAPI validation list',
@@ -94,20 +100,50 @@ describe('HTTPSystemOneBackend', () => {
         ],
       },
       'Field required; Input should be a string',
+      [
+        { message: 'Field required', path: ['body', 'state'] },
+        { message: 'Input should be a string' },
+      ],
     ],
     [
       'a message field',
       { message: 'criteria must have 2 to 10 levels' },
       'criteria must have 2 to 10 levels',
+      [{ message: 'criteria must have 2 to 10 levels' }],
     ],
-    ['an error object', { error: { message: 'unknown model' } }, 'unknown model'],
-    ['an error string', { error: 'unknown model' }, 'unknown model'],
-  ])('includes %s from a 422 body in the error message', async (_label, body, detail) => {
+    [
+      'an error object',
+      { error: { message: 'unknown model' } },
+      'unknown model',
+      [{ message: 'unknown model' }],
+    ],
+    [
+      'an error string',
+      { error: 'unknown model' },
+      'unknown model',
+      [{ message: 'unknown model' }],
+    ],
+    ['an empty body', {}, null, []],
+  ])('maps a 422 with %s to SystemOneInputError', async (_label, body, detail, issues) => {
     stubJSON(body, { status: 422 })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+    const error = await backend
+      .predict({ state: 'hi', questions, model: 'english' })
+      .catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(SystemOneInputError)
+    const message = 'System One backend rejected the request (422)'
+    expect((error as SystemOneInputError).message).toBe(
+      detail == null ? message : `${message}: ${detail}`,
+    )
+    expect((error as SystemOneInputError).issues).toEqual(issues)
+  })
+
+  test('includes an error body reason in other non-2xx messages', async () => {
+    stubJSON({ detail: 'model crashed' }, { status: 500 })
     const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
     const request = backend.predict({ state: 'hi', questions, model: 'english' })
     await expect(request).rejects.toThrow(SystemOneConnectionError)
-    await expect(request).rejects.toThrow(`System One backend returned 422: ${detail}`)
+    await expect(request).rejects.toThrow('System One backend returned 500: model crashed')
   })
 
   test('includes a plain-text error body in the error message', async () => {
