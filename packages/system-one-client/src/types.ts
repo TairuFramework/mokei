@@ -78,6 +78,8 @@ export const answerActionSchema = {
   additionalProperties: true,
 } as const satisfies Schema
 
+// Answers allow unknown fields, kept on the answer, so a backend can add one without breaking
+// every predict call. Known fields are still type-checked.
 export const choiceAnswerSchema = {
   type: 'object',
   properties: {
@@ -88,7 +90,7 @@ export const choiceAnswerSchema = {
     action: answerActionSchema,
   },
   required: ['type', 'choice', 'confidence', 'probabilities'],
-  additionalProperties: false,
+  additionalProperties: true,
 } as const satisfies Schema
 
 export const scoreAnswerSchema = {
@@ -102,7 +104,7 @@ export const scoreAnswerSchema = {
     action: answerActionSchema,
   },
   required: ['type', 'score', 'confidence', 'legend', 'probabilities'],
-  additionalProperties: false,
+  additionalProperties: true,
 } as const satisfies Schema
 
 export const noulAnswerSchema = {
@@ -114,7 +116,7 @@ export const noulAnswerSchema = {
     action: answerActionSchema,
   },
   required: ['type', 'noul'],
-  additionalProperties: false,
+  additionalProperties: true,
 } as const satisfies Schema
 
 export type ChoiceAnswer = FromSchema<typeof choiceAnswerSchema>

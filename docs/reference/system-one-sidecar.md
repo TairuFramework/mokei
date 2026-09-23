@@ -106,7 +106,8 @@ The `legend` object is defined by the server and describes the score scale -- th
 ```
 
 Laya also returns `action: { "act_probability": 0.81 }` on every answer, and `confidence` on
-noul answers. The client accepts both as optional fields. `laya-serve` adds a top-level `routing`
+noul answers. The client accepts both as optional fields, and keeps any other unknown answer
+field on the answer rather than rejecting the response. `laya-serve` adds a top-level `routing`
 object (the checkpoint it picked and why), which the client keeps in `result.extras`.
 
 ### Usage

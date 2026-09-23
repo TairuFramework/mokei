@@ -33,7 +33,8 @@ added maintenance for no capability. The package was deleted along with its lock
 - **The question schemas follow the published API.** `instructions` is required on every question
   and may be a string, object or array. Choice criteria take 1 to 255 options, each a description
   or `null`. Score criteria take 2 to 10 levels. Noul criteria are an optional `{ true, false }`.
-  Answers accept Laya's optional `action.act_probability` and a noul `confidence`.
+  Answers accept Laya's optional `action.act_probability` and a noul `confidence`, and keep any
+  other unknown field instead of rejecting the response.
 - **HTTP errors map to typed classes:**
 
   | Status | Error |
@@ -74,5 +75,3 @@ added maintenance for no capability. The package was deleted along with its lock
 
 - `docs/agents/plans/backlog/2026-09-22-laya-in-process-ggml-backend.md` covers an in-process
   runtime behind the same `SystemOneBackend` interface.
-- `docs/agents/plans/backlog/2026-09-23-system-one-answer-field-tolerance.md` covers relaxing the
-  strict per-answer schemas.

@@ -215,14 +215,45 @@ describe('validateResult', () => {
     expect(result.extras).toEqual({ family: 'english', route: 'english: ascii' })
   })
 
-  test('still rejects an unknown answer field', () => {
+  test('keeps unknown answer fields on the answer', () => {
+    const result = validateResult({
+      questions,
+      raw: {
+        model: 'laya',
+        answers: {
+          dept: {
+            type: 'choice',
+            choice: 'billing',
+            confidence: 1,
+            probabilities: {},
+            rationale: 'mentions a charge',
+          },
+          urgency: {
+            type: 'score',
+            score: 0,
+            confidence: 1,
+            legend: {},
+            probabilities: {},
+            calibrated: true,
+          },
+          churn: { type: 'noul', noul: 0.5, threshold: 0.4 },
+        },
+        usage: { input_tokens: 1, output_tokens: 0 },
+      },
+    })
+    expect(result.answers.dept).toMatchObject({ rationale: 'mentions a charge' })
+    expect(result.answers.urgency).toMatchObject({ calibrated: true })
+    expect(result.answers.churn).toMatchObject({ threshold: 0.4 })
+  })
+
+  test('still rejects a known answer field with the wrong type', () => {
     expect(() =>
       validateResult({
         questions,
         raw: {
           model: 'laya',
           answers: {
-            dept: { type: 'choice', choice: 'billing', confidence: 1, probabilities: {}, extra: 1 },
+            dept: { type: 'choice', choice: 'billing', confidence: 'high', probabilities: {} },
             urgency: { type: 'score', score: 0, confidence: 1, legend: {}, probabilities: {} },
             churn: { type: 'noul', noul: 0.5 },
           },
