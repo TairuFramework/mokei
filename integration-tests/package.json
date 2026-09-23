@@ -21,13 +21,16 @@
     "@mokei/host-node": "workspace:^",
     "@mokei/http-client": "workspace:^",
     "@mokei/http-server": "workspace:^",
+    "@mokei/laya-backend": "workspace:^",
     "@mokei/llama-provider": "workspace:^",
     "@mokei/mcp-fetch": "workspace:^",
     "@mokei/model-provider": "workspace:^",
     "@mokei/ollama-provider": "workspace:^",
     "@mokei/openai-provider": "workspace:^",
     "@mokei/session": "workspace:^",
-    "mokei": "workspace:^"
+    "@mokei/system-one-client": "workspace:^",
+    "mokei": "workspace:^",
+    "nano-spawn": "catalog:"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.0.0",

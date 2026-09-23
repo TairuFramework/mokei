@@ -27,6 +27,7 @@ assumption that the environment has one.
 | `session`, `agent`, `host`, `cli-chat*` | a chat backend (below) |
 | `cli-*` | the CLI built (`pnpm build` — the dev binary loads from `lib/`) and a working PTY |
 | `llama-provider`, `cli-chat-llama` | `MOKEI_LLAMA_GGUF` |
+| `laya` | `MOKEI_LAYA_GGUF`, and the `laya` binary on `PATH` (or `MOKEI_LAYA_BIN`) |
 
 ## Chat backend
 
@@ -76,6 +77,11 @@ deterministic suite cannot quietly become flaky.
 `MOKEI_LLAMA_GGUF` is separate: it points at a local GGUF **file** for `@mokei/llama-provider`,
 which runs inference in-process via node-llama-cpp rather than over HTTP.
 
+`MOKEI_LAYA_GGUF` points at a Laya GGUF for the `laya` suite, which drives `laya.cpp` two ways:
+`@mokei/laya-backend` over `laya daemon` stdio, and `HTTPSystemOneBackend` against a `laya serve`
+the suite starts on a free port. Get a GGUF from `https://huggingface.co/mys/laya-GGUF` and the
+binary from `https://github.com/monatis/ggmlc/releases/latest`.
+
 ## Environment variables
 
 The server URLs are deliberately unprefixed: `OLLAMA_HOST` is ollama's own variable, and
@@ -87,3 +93,5 @@ needs no mokei-specific setup. `MOKEI_*` is reserved for things only mokei defin
 | `LLAMA_SERVER_URL` | llama.cpp `llama-server` URL (scheme optional). Unset, the default `http://127.0.0.1:8080` is probed |
 | `OLLAMA_HOST` | Ollama base URL (scheme optional). Set it to use ollama instead; unset, ollama is the fallback at `http://127.0.0.1:11434` |
 | `MOKEI_LLAMA_GGUF` | Local GGUF path enabling the in-process llama-provider suites |
+| `MOKEI_LAYA_GGUF` | Laya GGUF path enabling the `laya` suite |
+| `MOKEI_LAYA_BIN` | `laya` executable for the `laya` suite. Unset, `laya` is resolved on `PATH` |

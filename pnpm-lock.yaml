@@ -406,6 +406,9 @@ importers:
       '@mokei/http-server':
         specifier: workspace:^
         version: link:../packages/http-server
+      '@mokei/laya-backend':
+        specifier: workspace:^
+        version: link:../packages/laya-backend
       '@mokei/llama-provider':
         specifier: workspace:^
         version: link:../packages/llama-provider
@@ -424,9 +427,15 @@ importers:
       '@mokei/session':
         specifier: workspace:^
         version: link:../packages/session
+      '@mokei/system-one-client':
+        specifier: workspace:^
+        version: link:../packages/system-one-client
       mokei:
         specifier: workspace:^
         version: link:../packages/cli
+      nano-spawn:
+        specifier: 'catalog:'
+        version: 2.1.0
     devDependencies:
       '@modelcontextprotocol/client':
         specifier: 2.0.0
