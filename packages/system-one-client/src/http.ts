@@ -6,6 +6,8 @@ import {
   SystemOneConnectionError,
   SystemOneInputError,
   SystemOneModelError,
+  SystemOneOverloadedError,
+  SystemOneRateLimitError,
   type ValidationIssue,
 } from './errors.js'
 
@@ -54,8 +56,22 @@ function errorIssues(data: unknown): Array<ValidationIssue> {
   return text == null ? [] : [{ message: text }]
 }
 
+// Keeps a proxy's HTML error page or a stack trace out of error messages (and MCP tool output).
+const MAX_REASON_LENGTH = 300
+
 function withReason(message: string, issues: Array<ValidationIssue>): string {
-  return issues.length === 0 ? message : `${message}: ${issues.map((i) => i.message).join('; ')}`
+  if (issues.length === 0) return message
+  const reason = issues.map((i) => i.message).join('; ')
+  return `${message}: ${reason.length > MAX_REASON_LENGTH ? `${reason.slice(0, MAX_REASON_LENGTH)}…` : reason}`
+}
+
+/** `Retry-After` as delay-seconds or an HTTP date, in milliseconds. */
+function retryAfterMs(response: Response): number | undefined {
+  const value = response.headers.get('retry-after')?.trim()
+  if (value == null || value === '') return undefined
+  if (/^\d+$/.test(value)) return Number(value) * 1000
+  const at = Date.parse(value)
+  return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now())
 }
 
 async function mapError<T>(run: () => Promise<T>): Promise<T> {
@@ -76,10 +92,16 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
         // biome-ignore lint/style/useErrorCause: cause is passed in the third argument, after issues
         throw new SystemOneInputError(message, issues, { cause })
       }
-      throw new SystemOneConnectionError(
-        withReason(`System One backend returned ${status}`, issues),
-        { cause },
-      )
+      const message = withReason(`System One backend returned ${status}`, issues)
+      if (status === 429 || status === 529) {
+        const ErrorClass = status === 429 ? SystemOneRateLimitError : SystemOneOverloadedError
+        throw new ErrorClass(message, {
+          cause,
+          status,
+          retryAfterMs: retryAfterMs(cause.response),
+        })
+      }
+      throw new SystemOneConnectionError(message, { cause, status })
     }
     if (
       typeof DOMException !== 'undefined' &&

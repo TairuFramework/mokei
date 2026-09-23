@@ -49,9 +49,9 @@ function expectWellFormed(result: PredictResult<typeof questions>): void {
   expect(result.usage.inputTokens).toBeGreaterThan(0)
 }
 
-async function waitForHealth(url: string, timeoutMs: number): Promise<void> {
+async function waitForHealth(url: string, timeoutMs: number, signal: AbortSignal): Promise<void> {
   const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && !signal.aborted) {
     try {
       const response = await fetch(`${url}/health`)
       if (response.ok) return
@@ -80,12 +80,30 @@ describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
       },
       stdio: ['ignore', 'ignore', 'pipe'],
     })
-    server.catch(() => {})
-    await waitForHealth(url, 300_000)
+    // Fail fast with the server's stderr if it exits before answering /health (bad binary,
+    // port clash, import error) instead of waiting out the health timeout.
+    const stopPolling = new AbortController()
+    const exited = server.then(
+      (result) => {
+        throw new Error(`laya-serve exited before it was ready:\n${result.stderr}`)
+      },
+      (error: unknown) => {
+        const stderr = (error as { stderr?: string }).stderr ?? ''
+        throw new Error(`laya-serve failed before it was ready:\n${stderr}`, { cause: error })
+      },
+    )
+    exited.catch(() => stopPolling.abort())
+    await Promise.race([waitForHealth(url, 300_000, stopPolling.signal), exited])
     // The first inference pays one-off costs (device kernels, tokenizer), so warm up here and
-    // keep per-test durations close to steady-state latency.
-    const client = createSystemOneClient({ url, apiKey: API_KEY, defaultModel: 'english' })
-    await client.predict({ state: THANKS, questions })
+    // keep per-test durations close to steady-state latency. On CPU that first call can take
+    // longer than ky's 10s default timeout.
+    const warmup = createSystemOneClient({
+      url,
+      apiKey: API_KEY,
+      defaultModel: 'english',
+      timeout: 120_000,
+    })
+    await warmup.predict({ state: THANKS, questions })
   }, 330_000)
 
   afterAll(async () => {
@@ -101,6 +119,8 @@ describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
     expect(result.extras?.routing).toMatchObject({ model: 'english' })
   })
 
+  // Unlike the structural checks, this pins the english checkpoint's answers on two unambiguous
+  // messages, so a checkpoint regression shows up here.
   test('predict routes billing and technical messages', async () => {
     const client = createSystemOneClient({ url, apiKey: API_KEY, defaultModel: 'english' })
     const billing = await client.predict({ state: BILLING, questions })

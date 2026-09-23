@@ -5,6 +5,8 @@ import {
   SystemOneConnectionError,
   SystemOneInputError,
   SystemOneModelError,
+  SystemOneOverloadedError,
+  SystemOneRateLimitError,
 } from '../src/errors.js'
 import { HTTPSystemOneBackend } from '../src/http.js'
 
@@ -136,6 +138,99 @@ describe('HTTPSystemOneBackend', () => {
       detail == null ? message : `${message}: ${detail}`,
     )
     expect((error as SystemOneInputError).issues).toEqual(issues)
+  })
+
+  test.each([
+    [429, SystemOneRateLimitError, 'SystemOneRateLimitError', 'rate limited'],
+    [529, SystemOneOverloadedError, 'SystemOneOverloadedError', 'overloaded'],
+  ] as const)(
+    'maps %i to %s with status and Retry-After',
+    async (status, ErrorClass, name, detail) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify({ detail }), {
+              status,
+              headers: { 'content-type': 'application/json', 'retry-after': '7' },
+            }),
+        ),
+      )
+      const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+      const error = await backend
+        .predict({ state: 'hi', questions, model: 'english' })
+        .catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(ErrorClass)
+      // Both stay catchable as connection errors.
+      expect(error).toBeInstanceOf(SystemOneConnectionError)
+      const e = error as SystemOneRateLimitError
+      expect(e.name).toBe(name)
+      expect(e.status).toBe(status)
+      expect(e.retryAfterMs).toBe(7000)
+      expect(e.message).toBe(`System One backend returned ${status}: ${detail}`)
+    },
+  )
+
+  test('parses an HTTP-date Retry-After and ignores an invalid one', async () => {
+    const at = new Date(Date.now() + 60_000).toUTCString()
+    for (const [header, expected] of [
+      [at, 'positive'],
+      ['soon', undefined],
+    ] as const) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () => new Response('busy', { status: 429, headers: { 'retry-after': header } }),
+        ),
+      )
+      const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+      const error = (await backend
+        .predict({ state: 'hi', questions, model: 'english' })
+        .catch((e: unknown) => e)) as SystemOneRateLimitError
+      if (expected == null) {
+        expect(error.retryAfterMs).toBeUndefined()
+      } else {
+        expect(error.retryAfterMs).toBeGreaterThan(50_000)
+        expect(error.retryAfterMs).toBeLessThanOrEqual(60_000)
+      }
+    }
+  })
+
+  test('sets status on other HTTP connection errors, not on network failures', async () => {
+    stubJSON({ error: 'boom' }, { status: 500 })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+    const httpError = (await backend
+      .predict({ state: 'hi', questions, model: 'english' })
+      .catch((e: unknown) => e)) as SystemOneConnectionError
+    expect(httpError).not.toBeInstanceOf(SystemOneRateLimitError)
+    expect(httpError.status).toBe(500)
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('fetch failed')
+      }),
+    )
+    const networkError = (await backend
+      .predict({ state: 'hi', questions, model: 'english' })
+      .catch((e: unknown) => e)) as SystemOneConnectionError
+    expect(networkError).toBeInstanceOf(SystemOneConnectionError)
+    expect(networkError.status).toBeUndefined()
+  })
+
+  test('truncates a long error body in the message', async () => {
+    const page = `<html><body>${'x'.repeat(5000)}</body></html>`
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(page, { status: 502 })),
+    )
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+    const error = (await backend
+      .predict({ state: 'hi', questions, model: 'english' })
+      .catch((e: unknown) => e)) as SystemOneConnectionError
+    expect(error.message.length).toBeLessThan(400)
+    expect(error.message.startsWith('System One backend returned 502: <html>')).toBe(true)
+    expect(error.message.endsWith('…')).toBe(true)
   })
 
   test('includes an error body reason in other non-2xx messages', async () => {

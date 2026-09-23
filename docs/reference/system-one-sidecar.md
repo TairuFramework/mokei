@@ -39,11 +39,19 @@ classify several states with one `predict` call each.
 | `401`, `403` | `SystemOneAuthError` |
 | `404` | `SystemOneModelError` |
 | `422` | `SystemOneInputError`, the same class the client throws on local validation |
-| other (`429` rate limit, `529` overloaded, `5xx`) | `SystemOneConnectionError` |
+| `429` | `SystemOneRateLimitError` |
+| `529` | `SystemOneOverloadedError` |
+| other (`5xx`, ...) or no response | `SystemOneConnectionError` |
+
+`SystemOneRateLimitError` and `SystemOneOverloadedError` extend `SystemOneConnectionError`, so a
+catch for connection errors still sees them. A connection error raised from an HTTP response
+carries its `status`; one with no `status` means the backend was not reached. The two retryable
+errors also carry `retryAfterMs` when the response sends a `Retry-After` header (seconds or an HTTP
+date).
 
 When the error body carries a reason (a FastAPI `detail` string or `{ loc, msg }` list, a `message`,
-an `error` string or `{ message }`, or plain text), the client appends it to the message. On a
-`422` the reasons are also in `error.issues`, for example
+an `error` string or `{ message }`, or plain text), the client appends it to the message, cut to
+300 characters. On a `422` the reasons are also in `error.issues`, for example
 `System One backend rejected the request (422): question 'dept': no 'instructions'; add the text the model should answer`.
 
 ## Answer Shapes

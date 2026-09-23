@@ -13,10 +13,14 @@ export {
 export {
   SystemOneAuthError,
   SystemOneConnectionError,
+  type SystemOneConnectionErrorOptions,
   SystemOneError,
   SystemOneInputError,
   SystemOneModelError,
+  SystemOneOverloadedError,
+  SystemOneRateLimitError,
   SystemOneResponseError,
+  type SystemOneRetryableErrorOptions,
   type ValidationIssue,
 } from './errors.js'
 export {
