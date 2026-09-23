@@ -196,6 +196,9 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
    * `hang`'s handler is still pending, and its `signal` aborts before the handler's own deadline
    * would otherwise settle it.
    */
+  // Every wait here crosses a process boundary, so it gets CI headroom rather than the 1s default.
+  const WaitOptions = { timeout: 30_000, interval: 20 }
+
   test('a cancelled tool call sends a stamped cancellation the server can place', async () => {
     spawned = await spawnMokeiStdioClient(MOKEI_STDIO_SERVER_CANCELLATION_PATH, PROTOCOL_VERSION)
     const { client, sent } = spawned
@@ -210,9 +213,11 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
 
     // Cancelling before the call is on the wire would cancel nothing and pass for the wrong
     // reason: `request()` rejects a pre-aborted signal without writing anything at all.
+    // `tools/call` goes out only after the `server/discover` round trip to a freshly spawned
+    // Node process (about 250ms locally, past `vi.waitFor`'s 1s default on a loaded CI runner).
     await vi.waitFor(() => {
       expect(sent.some((message) => message.method === 'tools/call')).toBe(true)
-    })
+    }, WaitOptions)
     controller.abort()
     await expect(pending).rejects.toThrow()
 
@@ -221,7 +226,7 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
     const findCancelled = () => sent.find((message) => message.method === 'notifications/cancelled')
     await vi.waitFor(() => {
       expect(findCancelled()).toBeDefined()
-    })
+    }, WaitOptions)
     const cancellation = findCancelled()
     // The stamp a peer places the frame's revision by. It has no other source: there is no
     // handshake to have agreed it and no session to have recorded it.
@@ -242,7 +247,7 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
     // waits for it to settle first.
     await vi.waitFor(async () => {
       expect(await callText(client, 'aborted')).toBe('true')
-    })
+    }, WaitOptions)
   })
 
   test('mokei client against the mokei server', async () => {
