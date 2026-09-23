@@ -27,7 +27,10 @@
     "@mokei/ollama-provider": "workspace:^",
     "@mokei/openai-provider": "workspace:^",
     "@mokei/session": "workspace:^",
-    "mokei": "workspace:^"
+    "@mokei/system-one-client": "workspace:^",
+    "get-port": "catalog:",
+    "mokei": "workspace:^",
+    "nano-spawn": "catalog:"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.0.0",

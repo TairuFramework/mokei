@@ -1,5 +1,9 @@
 # System One classification support (Laya runtime)
 
+> **Superseded in part 2026-09-23:** `predictBatch`, `listModels`, the backend `batch` option,
+> `GET /v1/models` and `/v1/decide/batch` were removed to match the published System One API, and
+> `laya-serve` replaced laya.cpp as the local backend. See `docs/reference/system-one-sidecar.md`.
+
 Date: 2026-09-22
 Status: complete
 Branch: `feat/laya-classification`

@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { createSystemOneClient } from '../src/client.js'
 import {
   SystemOneAuthError,
   SystemOneConnectionError,
+  SystemOneInputError,
   SystemOneModelError,
-  SystemOneResponseError,
+  SystemOneOverloadedError,
+  SystemOneRateLimitError,
 } from '../src/errors.js'
 import { HTTPSystemOneBackend } from '../src/http.js'
 
@@ -27,7 +28,9 @@ function stubJSON(body: unknown, init: { status?: number } = {}) {
   )
 }
 
-const questions = { dept: { type: 'choice', criteria: { billing: 'x' } } } as const
+const questions = {
+  dept: { type: 'choice', instructions: 'Which team?', criteria: { billing: 'x' } },
+} as const
 
 describe('HTTPSystemOneBackend', () => {
   test('predict posts to /v1/systemone with a Bearer header and returns the raw envelope', async () => {
@@ -83,6 +86,172 @@ describe('HTTPSystemOneBackend', () => {
     await expect(request).rejects.toThrow('System One backend returned 500')
   })
 
+  test.each([
+    [
+      'a FastAPI detail string',
+      { detail: "question 'dept': no 'instructions'" },
+      "question 'dept': no 'instructions'",
+      [{ message: "question 'dept': no 'instructions'" }],
+    ],
+    [
+      'a FastAPI validation list',
+      {
+        detail: [
+          { loc: ['body', 'state'], msg: 'Field required' },
+          { msg: 'Input should be a string' },
+        ],
+      },
+      'Field required; Input should be a string',
+      [
+        { message: 'Field required', path: ['body', 'state'] },
+        { message: 'Input should be a string' },
+      ],
+    ],
+    [
+      'a message field',
+      { message: 'criteria must have 2 to 10 levels' },
+      'criteria must have 2 to 10 levels',
+      [{ message: 'criteria must have 2 to 10 levels' }],
+    ],
+    [
+      'an error object',
+      { error: { message: 'unknown model' } },
+      'unknown model',
+      [{ message: 'unknown model' }],
+    ],
+    [
+      'an error string',
+      { error: 'unknown model' },
+      'unknown model',
+      [{ message: 'unknown model' }],
+    ],
+    ['an empty body', {}, null, []],
+  ])('maps a 422 with %s to SystemOneInputError', async (_label, body, detail, issues) => {
+    stubJSON(body, { status: 422 })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+    const error = await backend
+      .predict({ state: 'hi', questions, model: 'english' })
+      .catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(SystemOneInputError)
+    const message = 'System One backend rejected the request (422)'
+    expect((error as SystemOneInputError).message).toBe(
+      detail == null ? message : `${message}: ${detail}`,
+    )
+    expect((error as SystemOneInputError).issues).toEqual(issues)
+  })
+
+  test.each([
+    [429, SystemOneRateLimitError, 'SystemOneRateLimitError', 'rate limited'],
+    [529, SystemOneOverloadedError, 'SystemOneOverloadedError', 'overloaded'],
+  ] as const)(
+    'maps %i to %s with status and Retry-After',
+    async (status, ErrorClass, name, detail) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify({ detail }), {
+              status,
+              headers: { 'content-type': 'application/json', 'retry-after': '7' },
+            }),
+        ),
+      )
+      const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+      const error = await backend
+        .predict({ state: 'hi', questions, model: 'english' })
+        .catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(ErrorClass)
+      // Both stay catchable as connection errors.
+      expect(error).toBeInstanceOf(SystemOneConnectionError)
+      const e = error as SystemOneRateLimitError
+      expect(e.name).toBe(name)
+      expect(e.status).toBe(status)
+      expect(e.retryAfterMs).toBe(7000)
+      expect(e.message).toBe(`System One backend returned ${status}: ${detail}`)
+    },
+  )
+
+  test('parses an HTTP-date Retry-After and ignores an invalid one', async () => {
+    const at = new Date(Date.now() + 60_000).toUTCString()
+    for (const [header, expected] of [
+      [at, 'positive'],
+      ['soon', undefined],
+    ] as const) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () => new Response('busy', { status: 429, headers: { 'retry-after': header } }),
+        ),
+      )
+      const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+      const error = (await backend
+        .predict({ state: 'hi', questions, model: 'english' })
+        .catch((e: unknown) => e)) as SystemOneRateLimitError
+      if (expected == null) {
+        expect(error.retryAfterMs).toBeUndefined()
+      } else {
+        expect(error.retryAfterMs).toBeGreaterThan(50_000)
+        expect(error.retryAfterMs).toBeLessThanOrEqual(60_000)
+      }
+    }
+  })
+
+  test('sets status on other HTTP connection errors, not on network failures', async () => {
+    stubJSON({ error: 'boom' }, { status: 500 })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+    const httpError = (await backend
+      .predict({ state: 'hi', questions, model: 'english' })
+      .catch((e: unknown) => e)) as SystemOneConnectionError
+    expect(httpError).not.toBeInstanceOf(SystemOneRateLimitError)
+    expect(httpError.status).toBe(500)
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('fetch failed')
+      }),
+    )
+    const networkError = (await backend
+      .predict({ state: 'hi', questions, model: 'english' })
+      .catch((e: unknown) => e)) as SystemOneConnectionError
+    expect(networkError).toBeInstanceOf(SystemOneConnectionError)
+    expect(networkError.status).toBeUndefined()
+  })
+
+  test('truncates a long error body in the message', async () => {
+    const page = `<html><body>${'x'.repeat(5000)}</body></html>`
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(page, { status: 502 })),
+    )
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+    const error = (await backend
+      .predict({ state: 'hi', questions, model: 'english' })
+      .catch((e: unknown) => e)) as SystemOneConnectionError
+    expect(error.message.length).toBeLessThan(400)
+    expect(error.message.startsWith('System One backend returned 502: <html>')).toBe(true)
+    expect(error.message.endsWith('…')).toBe(true)
+  })
+
+  test('includes an error body reason in other non-2xx messages', async () => {
+    stubJSON({ detail: 'model crashed' }, { status: 500 })
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+    const request = backend.predict({ state: 'hi', questions, model: 'english' })
+    await expect(request).rejects.toThrow(SystemOneConnectionError)
+    await expect(request).rejects.toThrow('System One backend returned 500: model crashed')
+  })
+
+  test('includes a plain-text error body in the error message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('model is loading', { status: 503 })),
+    )
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+    await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
+      'System One backend returned 503: model is loading',
+    )
+  })
+
   test('an aborted request rejects and does not hang', async () => {
     vi.stubGlobal(
       'fetch',
@@ -110,51 +279,6 @@ describe('HTTPSystemOneBackend', () => {
   })
 })
 
-describe('HTTPSystemOneBackend batch opt-in', () => {
-  test('batch is undefined by default', () => {
-    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
-    expect(backend.batch).toBeUndefined()
-  })
-
-  test('batch is defined when constructed with batch: true', () => {
-    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000', batch: true })
-    expect(backend.batch).toBeDefined()
-  })
-
-  test('predictBatch falls back to individual /v1/systemone calls when batch is not enabled', async () => {
-    const urls: Array<string> = []
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: Request | string) => {
-        const req = input instanceof Request ? input : new Request(input)
-        urls.push(req.url)
-        return new Response(
-          JSON.stringify({
-            model: 'english',
-            answers: {
-              dept: {
-                type: 'choice',
-                choice: 'billing',
-                confidence: 0.9,
-                probabilities: { billing: 0.9 },
-              },
-            },
-            usage: { input_tokens: 1, output_tokens: 1 },
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        )
-      }),
-    )
-    const client = createSystemOneClient({ url: 'http://localhost:8000', defaultModel: 'english' })
-    const results = await client.predictBatch({ states: ['a', 'b'], questions })
-    expect(results).toHaveLength(2)
-    expect(urls).toHaveLength(2)
-    for (const url of urls) {
-      expect(url).toBe('http://localhost:8000/v1/systemone')
-    }
-  })
-})
-
 describe('HTTPSystemOneBackend headers', () => {
   test('a caller-supplied lowercase authorization header is replaced, not appended to, by apiKey', async () => {
     stubJSON({
@@ -177,38 +301,5 @@ describe('HTTPSystemOneBackend headers', () => {
     await backend.predict({ state: 'hi', questions, model: 'english' })
     const req = (globalThis as Record<string, unknown>).__lastRequest as Request
     expect(req.headers.get('authorization')).toBe('Bearer secret')
-  })
-})
-
-describe('HTTPSystemOneBackend batch envelope validation', () => {
-  test('rejects with SystemOneResponseError when the batch body has no results array', async () => {
-    stubJSON({})
-    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000', batch: true })
-    await expect(
-      backend.batch?.({ states: ['a', 'b'], questions, model: 'english' }),
-    ).rejects.toThrow(SystemOneResponseError)
-  })
-
-  test('rejects with SystemOneResponseError when the result count does not match the states count', async () => {
-    stubJSON({
-      results: [
-        {
-          model: 'english',
-          answers: {
-            dept: {
-              type: 'choice',
-              choice: 'billing',
-              confidence: 0.9,
-              probabilities: { billing: 0.9 },
-            },
-          },
-          usage: { input_tokens: 1, output_tokens: 1 },
-        },
-      ],
-    })
-    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000', batch: true })
-    await expect(
-      backend.batch?.({ states: ['a', 'b'], questions, model: 'english' }),
-    ).rejects.toThrow(SystemOneResponseError)
   })
 })

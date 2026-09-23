@@ -1,15 +1,26 @@
 import type { FromSchema, Schema } from '@sozai/schema'
 
-const instructionsSchema = {} as const satisfies Schema
+/** The question text, or a structured object or array carrying it with the data it references. */
+const instructionsSchema = {
+  anyOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }, { type: 'array' }],
+} as const satisfies Schema
+
+/** A criterion description: plain text, or a structured object or array. */
+const descriptionSchema = instructionsSchema
 
 export const choiceQuestionSchema = {
   type: 'object',
   properties: {
     type: { enum: ['choice'] },
     instructions: instructionsSchema,
-    criteria: { type: 'object', additionalProperties: { type: 'string' }, minProperties: 1 },
+    criteria: {
+      type: 'object',
+      additionalProperties: { anyOf: [...descriptionSchema.anyOf, { type: 'null' }] },
+      minProperties: 1,
+      maxProperties: 255,
+    },
   },
-  required: ['type', 'criteria'],
+  required: ['type', 'instructions', 'criteria'],
   additionalProperties: false,
 } as const satisfies Schema
 
@@ -18,9 +29,9 @@ export const scoreQuestionSchema = {
   properties: {
     type: { enum: ['score'] },
     instructions: instructionsSchema,
-    criteria: { type: 'array', items: { type: 'string' }, minItems: 2 },
+    criteria: { type: 'array', items: descriptionSchema, minItems: 2, maxItems: 10 },
   },
-  required: ['type', 'criteria'],
+  required: ['type', 'instructions', 'criteria'],
   additionalProperties: false,
 } as const satisfies Schema
 
@@ -29,9 +40,13 @@ export const noulQuestionSchema = {
   properties: {
     type: { enum: ['noul'] },
     instructions: instructionsSchema,
-    criteria: {},
+    criteria: {
+      type: 'object',
+      properties: { true: descriptionSchema, false: descriptionSchema },
+      additionalProperties: false,
+    },
   },
-  required: ['type'],
+  required: ['type', 'instructions'],
   additionalProperties: false,
 } as const satisfies Schema
 
@@ -56,6 +71,15 @@ export type Question = ChoiceQuestion | ScoreQuestion | NoulQuestion
 export type QuestionMap = Record<string, Question>
 export type State = string | Record<string, unknown> | Array<unknown>
 
+/** Laya adds this to every answer: the probability that the answer should be acted on. */
+export const answerActionSchema = {
+  type: 'object',
+  properties: { act_probability: { type: 'number' } },
+  additionalProperties: true,
+} as const satisfies Schema
+
+// Answers allow unknown fields, kept on the answer, so a backend can add one without breaking
+// every predict call. Known fields are still type-checked.
 export const choiceAnswerSchema = {
   type: 'object',
   properties: {
@@ -63,9 +87,10 @@ export const choiceAnswerSchema = {
     choice: { type: 'string' },
     confidence: { type: 'number' },
     probabilities: { type: 'object', additionalProperties: { type: 'number' } },
+    action: answerActionSchema,
   },
   required: ['type', 'choice', 'confidence', 'probabilities'],
-  additionalProperties: false,
+  additionalProperties: true,
 } as const satisfies Schema
 
 export const scoreAnswerSchema = {
@@ -76,16 +101,22 @@ export const scoreAnswerSchema = {
     confidence: { type: 'number' },
     legend: { type: 'object', additionalProperties: true },
     probabilities: { type: 'object', additionalProperties: { type: 'number' } },
+    action: answerActionSchema,
   },
   required: ['type', 'score', 'confidence', 'legend', 'probabilities'],
-  additionalProperties: false,
+  additionalProperties: true,
 } as const satisfies Schema
 
 export const noulAnswerSchema = {
   type: 'object',
-  properties: { type: { enum: ['noul'] }, noul: { type: 'number' } },
+  properties: {
+    type: { enum: ['noul'] },
+    noul: { type: 'number' },
+    confidence: { type: 'number' },
+    action: answerActionSchema,
+  },
   required: ['type', 'noul'],
-  additionalProperties: false,
+  additionalProperties: true,
 } as const satisfies Schema
 
 export type ChoiceAnswer = FromSchema<typeof choiceAnswerSchema>
@@ -101,26 +132,6 @@ export const wireUsageSchema = {
 } as const satisfies Schema
 
 export type Usage = { inputTokens: number; outputTokens: number }
-
-export const modelMetadataSchema = {
-  type: 'object',
-  properties: {
-    name: { type: 'string' },
-    description: { type: 'string' },
-    release_date: { type: 'string' },
-  },
-  required: ['name'],
-  additionalProperties: true,
-} as const satisfies Schema
-
-export const modelsResponseSchema = {
-  type: 'object',
-  properties: { models: { type: 'array', items: modelMetadataSchema } },
-  required: ['models'],
-  additionalProperties: true,
-} as const satisfies Schema
-
-export type SystemOneModel = { name: string; description?: string; releaseDate?: string }
 
 export type AnswerFor<TQuestion> = TQuestion extends ChoiceQuestion
   ? ChoiceAnswer

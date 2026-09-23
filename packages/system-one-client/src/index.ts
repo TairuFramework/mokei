@@ -1,7 +1,5 @@
 export type {
   SystemOneBackend,
-  SystemOneBackendBatchParams,
-  SystemOneBackendListModelsParams,
   SystemOneBackendPredictParams,
   SystemOneResult,
 } from './backend.js'
@@ -10,17 +8,19 @@ export {
   createSystemOneClient,
   type SystemOneBackendClientOptions,
   SystemOneClient,
-  type SystemOneListModelsParams,
-  type SystemOnePredictBatchParams,
   type SystemOnePredictParams,
 } from './client.js'
 export {
   SystemOneAuthError,
   SystemOneConnectionError,
+  type SystemOneConnectionErrorOptions,
   SystemOneError,
   SystemOneInputError,
   SystemOneModelError,
+  SystemOneOverloadedError,
+  SystemOneRateLimitError,
   SystemOneResponseError,
+  type SystemOneRetryableErrorOptions,
   type ValidationIssue,
 } from './errors.js'
 export {
@@ -42,14 +42,12 @@ export type {
   ScoreAnswer,
   ScoreQuestion,
   State,
-  SystemOneModel,
   Usage,
 } from './types.js'
 export {
+  answerActionSchema,
   choiceAnswerSchema,
   choiceQuestionSchema,
-  modelMetadataSchema,
-  modelsResponseSchema,
   noulAnswerSchema,
   noulQuestionSchema,
   questionMapSchema,
@@ -59,4 +57,4 @@ export {
   stateSchema,
   wireUsageSchema,
 } from './types.js'
-export { validateModels, validateQuestions, validateResult, validateState } from './validation.js'
+export { validateQuestions, validateResult, validateState } from './validation.js'

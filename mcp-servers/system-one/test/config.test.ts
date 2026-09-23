@@ -28,7 +28,12 @@ describe('createSystemOneTools', () => {
     })
     const tools = createSystemOneTools({ client })
     const res = (await tools.predict.handler({
-      input: { state: 'hi', questions: { dept: { type: 'choice', criteria: { billing: 'x' } } } },
+      input: {
+        state: 'hi',
+        questions: {
+          dept: { type: 'choice', instructions: 'Which team?', criteria: { billing: 'x' } },
+        },
+      },
       signal: new AbortController().signal,
     } as never)) as { isError: boolean; content: Array<{ text?: string }> }
     expect(res.isError).toBe(false)
@@ -57,7 +62,12 @@ describe('createSystemOneTools', () => {
     controller.abort()
     await expect(
       tools.predict.handler({
-        input: { state: 'hi', questions: { dept: { type: 'choice', criteria: { billing: 'x' } } } },
+        input: {
+          state: 'hi',
+          questions: {
+            dept: { type: 'choice', instructions: 'Which team?', criteria: { billing: 'x' } },
+          },
+        },
         signal: controller.signal,
       } as never),
     ).rejects.toThrow(DOMException)

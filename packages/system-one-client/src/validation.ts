@@ -3,14 +3,12 @@ import { createValidator, type Validator } from '@sozai/schema'
 import { SystemOneInputError, SystemOneResponseError, type ValidationIssue } from './errors.js'
 import {
   choiceAnswerSchema,
-  modelsResponseSchema,
   noulAnswerSchema,
   type PredictResult,
   type Question,
   type QuestionMap,
   questionMapSchema,
   type State,
-  type SystemOneModel,
   scoreAnswerSchema,
   stateSchema,
   type Usage,
@@ -23,7 +21,6 @@ const choiceAnswerValidator = createValidator(choiceAnswerSchema)
 const scoreAnswerValidator = createValidator(scoreAnswerSchema)
 const noulAnswerValidator = createValidator(noulAnswerSchema)
 const usageValidator = createValidator(wireUsageSchema)
-const modelsValidator = createValidator(modelsResponseSchema)
 
 function toIssues(prefix: string, issues: ReadonlyArray<{ message: string; path?: unknown }>) {
   return issues.map((issue) => ({
@@ -111,19 +108,4 @@ export function validateResult<TQuestions extends QuestionMap>(params: {
     usage: mappedUsage,
     extras: Object.keys(extras).length > 0 ? extras : undefined,
   } as PredictResult<TQuestions>
-}
-
-export function validateModels(params: { raw: unknown }): Array<SystemOneModel> {
-  const issues = run(modelsValidator, params.raw, 'models')
-  if (issues.length > 0) {
-    throw new SystemOneResponseError('Invalid models list', issues)
-  }
-  const wire = params.raw as {
-    models: Array<{ name: string; description?: string; release_date?: string }>
-  }
-  return wire.models.map((entry) => ({
-    name: entry.name,
-    description: entry.description,
-    releaseDate: entry.release_date,
-  }))
 }

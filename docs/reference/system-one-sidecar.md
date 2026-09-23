@@ -1,27 +1,58 @@
 # System One Wire Contract and Backend Setup
 
-`@mokei/system-one-client` speaks the TypeSafe System One HTTP API, a typed-question classification contract. Two interchangeable backends serve it today: `laya.cpp` (the `laya serve` binary from ggmlc, local) and the hosted TypeSafe API. This document describes the wire contract and how to run each backend.
+`@mokei/system-one-client` speaks the TypeSafe System One HTTP API, a typed-question classification contract. Two interchangeable backends serve it: `laya-serve` (the Python HTTP server from [laya](https://github.com/NandhaKishorM/laya), local) and the hosted TypeSafe API. This document describes the wire contract and how to run each backend.
 
 ## Backends
 
-The System One client connects to one of two backends:
-
-- **laya.cpp (local)**: the `laya serve` binary from [ggmlc](https://github.com/monatis/ggmlc) releases, running a Laya GGUF model on your machine.
+- **laya-serve (local)**: `laya-serve` from the `laya[serve]` Python package, running the Laya checkpoints on your machine (CPU, CUDA or Apple Silicon).
 - **Hosted TypeSafe**: the TypeSafe AI API at `https://api.typesafe.ai`, using a Bearer token for authentication.
 
 Both backends speak the same protocol, so client code is identical regardless of which you choose.
 
-## API Endpoints
+## API Endpoint
 
-All endpoints use `application/json` for request and response bodies. The server returns HTTP status `401` or `403` for authentication failures and `404` when a model or endpoint is not found.
+The contract is one endpoint. Request and response bodies are `application/json`.
 
 | Method | Path | Request | Response |
 |--------|------|---------|----------|
 | POST | `/v1/systemone` | `{ state, model, questions }` | `{ model, answers, usage }` |
-| GET | `/v1/models` | (empty) | `{ models: [{ name, description, release_date }] }` |
-| POST | `/v1/decide/batch` | `{ states: [...], model, questions }` | `{ results: [{ model, answers, usage }] }` |
 
-The `/v1/decide/batch` endpoint is a `laya.cpp` extension, available on the local backend only. The HTTP backend only calls it when created with `batch: true`; otherwise `predictBatch` issues individual `/v1/systemone` requests, at most `concurrency` at a time (default 4), and aborts the rest on the first failure.
+`state` is a string, object or array. Each question has a `type` (`choice`, `score` or `noul`) and
+`instructions`, both required. `instructions` and every criterion description are a string, or an
+object or array that carries the text with the data it references.
+
+| Question | `criteria` |
+|----------|------------|
+| `choice` | Required map of 1 to 255 options, each with a description or `null` |
+| `score` | Required list of 2 to 10 ordered level descriptions |
+| `noul` | Optional `{ true, false }` descriptions of what yes and no mean |
+
+The client validates this before sending.
+
+The client exposes this endpoint only, as `predict`. There is no batch or model-listing endpoint:
+classify several states with one `predict` call each.
+
+### Errors
+
+| Status | Client error |
+|--------|--------------|
+| `401`, `403` | `SystemOneAuthError` |
+| `404` | `SystemOneModelError` |
+| `422` | `SystemOneInputError`, the same class the client throws on local validation |
+| `429` | `SystemOneRateLimitError` |
+| `529` | `SystemOneOverloadedError` |
+| other (`5xx`, ...) or no response | `SystemOneConnectionError` |
+
+`SystemOneRateLimitError` and `SystemOneOverloadedError` extend `SystemOneConnectionError`, so a
+catch for connection errors still sees them. A connection error raised from an HTTP response
+carries its `status`; one with no `status` means the backend was not reached. The two retryable
+errors also carry `retryAfterMs` when the response sends a `Retry-After` header (seconds or an HTTP
+date).
+
+When the error body carries a reason (a FastAPI `detail` string or `{ loc, msg }` list, a `message`,
+an `error` string or `{ message }`, or plain text), the client appends it to the message, cut to
+300 characters. On a `422` the reasons are also in `error.issues`, for example
+`System One backend rejected the request (422): question 'dept': no 'instructions'; add the text the model should answer`.
 
 ## Answer Shapes
 
@@ -74,6 +105,11 @@ The `legend` object is defined by the server and describes the score scale -- th
 }
 ```
 
+Laya also returns `action: { "act_probability": 0.81 }` on every answer, and `confidence` on
+noul answers. The client accepts both as optional fields, and keeps any other unknown answer
+field on the answer rather than rejecting the response. `laya-serve` adds a top-level `routing`
+object (the checkpoint it picked and why), which the client keeps in `result.extras`.
+
 ### Usage
 
 All responses include a `usage` object:
@@ -87,32 +123,33 @@ All responses include a `usage` object:
 }
 ```
 
-## Local Setup (laya.cpp)
+## Local Setup (laya-serve)
 
-To run the local backend, you need a Laya GGUF model file and the `laya serve` binary.
-
-### Step 1: Compile the GGUF Model
-
-This requires Python and the `uv` package manager:
+Install `laya[serve]` into a Python environment (Python 3.12 works on macOS and Linux) and start the
+server:
 
 ```bash
-# Compile a GGUF once (one-off step)
-uv pip install laya
-python examples/laya/compile_laya.py --family english --quantize f16
+uv venv --python 3.12
+uv pip install "laya[serve]"
+LAYA_HOST=127.0.0.1 LAYA_MODELS=english .venv/bin/laya-serve
 ```
 
-This produces `english-f16.gguf`.
+The server listens on `http://127.0.0.1:8000`. The first start downloads the checkpoints from
+Hugging Face. `LAYA_DEVICE` is picked automatically (CUDA, then Apple Silicon MPS, then CPU); on
+an M-series Mac a warm request takes about 50 ms.
 
-### Step 2: Run the Server
+| Variable | Meaning | Default |
+|----------|---------|---------|
+| `LAYA_HOST` / `LAYA_PORT` | Bind address and port | `0.0.0.0` / `8000` |
+| `LAYA_MODELS` | Comma list of checkpoints to preload (`english`, `multilingual`, `typed-decisions`) | all |
+| `LAYA_PRELOAD` | Load the checkpoints at startup rather than on first use | `1` |
+| `LAYA_DEVICE` | Torch device (`cuda`, `mps`, `cpu`) | auto |
+| `LAYA_THREADS` | Cap torch threads for CPU inference; keep at or below physical cores | torch default |
+| `LAYA_API_KEY` | Require `Authorization: Bearer <key>` | none |
 
-Download a `ggmlc` release binary and start the server:
-
-```bash
-# Run the server from a ggmlc release binary
-laya serve english-f16.gguf --port 8000 --device auto
-```
-
-The server listens on `http://localhost:8000` by default. Omit `--port` to use port 8000; set `--device` to `cpu`, `gpu`, or `auto` (recommended).
+The request `model` is honoured when it names a checkpoint (`english`, `multilingual`,
+`typed-decisions`); any other value lets `laya-serve` pick the checkpoint from the text's script
+and language.
 
 ## Client Usage
 
@@ -121,10 +158,9 @@ The server listens on `http://localhost:8000` by default. Omit `--port` to use p
 ```ts
 import { createSystemOneClient } from '@mokei/system-one-client'
 
-// Local laya serve
+// Local laya-serve
 const local = createSystemOneClient({
   url: 'http://localhost:8000',
-  batch: true,
   defaultModel: 'english',
 })
 
@@ -153,12 +189,12 @@ import { createSystemOneClient } from '@mokei/system-one-client'
 const hosted = createSystemOneClient({
   url: 'https://api.typesafe.ai',
   apiKey: process.env.TYPESAFE_API_KEY,
-  defaultModel: 'english',
+  defaultModel: 'jev-latest',
 })
 
 const result = await hosted.predict({
   state: 'I was double charged on my last invoice',
-  model: 'english',
+  model: 'jev-latest',
   questions: {
     department: {
       type: 'choice',
@@ -180,17 +216,19 @@ When running the System One MCP server, configure the backend connection via env
 |----------|-------------|---------|
 | `SYSTEM_ONE_URL` | Backend URL (defaults to `http://localhost:8000`) | `http://localhost:8000` or `https://api.typesafe.ai` |
 | `SYSTEM_ONE_API_KEY` | Bearer token for hosted backend (optional) | `sk-...` |
-| `SYSTEM_ONE_MODEL` | Default model name | `english` |
+| `SYSTEM_ONE_MODEL` | Default model name | `english` (laya-serve) or `jev-latest` (hosted) |
 
 Example startup:
 
 ```bash
 export SYSTEM_ONE_URL="https://api.typesafe.ai"
 export SYSTEM_ONE_API_KEY="sk-your-key-here"
-export SYSTEM_ONE_MODEL="english"
+export SYSTEM_ONE_MODEL="jev-latest"
 node mcp-servers/system-one/lib/serve.js
 ```
 
 ## Future: In-Process Backend
 
-A future version will support an in-process backend that binds ggml or `laya.cpp` (native or WebAssembly) behind the same `SystemOneBackend` interface. This will remove the sidecar requirement and eliminate the network round-trip. The ONNX path via external binaries is superseded by this direction.
+A future version may bind a Laya runtime directly (N-API or WebAssembly) behind the same
+`SystemOneBackend` interface, removing the separate process. See
+`docs/agents/plans/backlog/2026-09-22-laya-in-process-ggml-backend.md`.

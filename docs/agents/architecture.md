@@ -147,6 +147,7 @@ packages/
 +-- anthropic-provider/   # Anthropic Claude integration
 +-- ollama-provider/      # Ollama integration
 +-- llama-provider/       # Local GGUF inference via node-llama-cpp
++-- system-one-client/    # System One typed-question classification client (platform-neutral)
 +-- logger/               # Shared logger utility
 +-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
 ```
@@ -161,6 +162,7 @@ Other workspaces:
 ```
 mcp-servers/fetch/        # published MCP server: HTTP fetch
 mcp-servers/sqlite/       # published MCP server: SQLite access
+mcp-servers/system-one/   # published MCP server: System One classification
 integration-tests/        # cross-package + official SDK interop suites (private)
 monitor/                  # monitor UI frontend (private)
 website/                  # documentation site (private)

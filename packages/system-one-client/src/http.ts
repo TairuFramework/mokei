@@ -1,20 +1,15 @@
 import ky, { HTTPError, type KyInstance } from 'ky'
 
-import type {
-  SystemOneBackend,
-  SystemOneBackendBatchParams,
-  SystemOneBackendListModelsParams,
-  SystemOneBackendPredictParams,
-  SystemOneResult,
-} from './backend.js'
+import type { SystemOneBackend, SystemOneBackendPredictParams, SystemOneResult } from './backend.js'
 import {
   SystemOneAuthError,
   SystemOneConnectionError,
+  SystemOneInputError,
   SystemOneModelError,
-  SystemOneResponseError,
+  SystemOneOverloadedError,
+  SystemOneRateLimitError,
+  type ValidationIssue,
 } from './errors.js'
-import type { SystemOneModel } from './types.js'
-import { validateModels } from './validation.js'
 
 export type SystemOneHTTPClientOptions = {
   url: string
@@ -23,16 +18,61 @@ export type SystemOneHTTPClientOptions = {
   fetch?: typeof fetch
   timeout?: number
   defaultModel?: string
-  /**
-   * Enable the `/v1/decide/batch` endpoint. It is available on the local
-   * `laya.cpp` backend only -- a hosted backend without this endpoint 404s,
-   * so it defaults to unset/false and `SystemOneClient.predictBatch` falls back
-   * to individual `predict` calls with bounded concurrency.
-   */
-  batch?: boolean
 }
 
 export type HTTPSystemOneBackendParams = Omit<SystemOneHTTPClientOptions, 'defaultModel'>
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
+/**
+ * Pull the reasons out of an error body. Covers FastAPI (`laya-serve`: `detail` as a string or a
+ * validation list of `{ loc, msg }`), a top-level `message`, an `error` string or `{ message }`,
+ * and plain text.
+ */
+function errorIssues(data: unknown): Array<ValidationIssue> {
+  if (typeof data === 'string') {
+    const text = stringOrNull(data.trim())
+    return text == null ? [] : [{ message: text }]
+  }
+  if (data == null || typeof data !== 'object') {
+    return []
+  }
+  const { detail, message, error } = data as Record<string, unknown>
+  if (Array.isArray(detail)) {
+    return detail.flatMap((item) => {
+      const { loc, msg } = (item ?? {}) as { loc?: unknown; msg?: unknown }
+      const text = stringOrNull(msg)
+      if (text == null) return []
+      return [Array.isArray(loc) ? { message: text, path: loc } : { message: text }]
+    })
+  }
+  const text =
+    stringOrNull(detail) ??
+    stringOrNull(message) ??
+    stringOrNull(error) ??
+    stringOrNull((error as { message?: unknown } | null)?.message)
+  return text == null ? [] : [{ message: text }]
+}
+
+// Keeps a proxy's HTML error page or a stack trace out of error messages (and MCP tool output).
+const MAX_REASON_LENGTH = 300
+
+function withReason(message: string, issues: Array<ValidationIssue>): string {
+  if (issues.length === 0) return message
+  const reason = issues.map((i) => i.message).join('; ')
+  return `${message}: ${reason.length > MAX_REASON_LENGTH ? `${reason.slice(0, MAX_REASON_LENGTH)}…` : reason}`
+}
+
+/** `Retry-After` as delay-seconds or an HTTP date, in milliseconds. */
+function retryAfterMs(response: Response): number | undefined {
+  const value = response.headers.get('retry-after')?.trim()
+  if (value == null || value === '') return undefined
+  if (/^\d+$/.test(value)) return Number(value) * 1000
+  const at = Date.parse(value)
+  return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now())
+}
 
 async function mapError<T>(run: () => Promise<T>): Promise<T> {
   try {
@@ -46,7 +86,22 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
       if (status === 404) {
         throw new SystemOneModelError('Model or endpoint not found', { cause })
       }
-      throw new SystemOneConnectionError(`System One backend returned ${status}`, { cause })
+      const issues = errorIssues(cause.data)
+      if (status === 422) {
+        const message = withReason('System One backend rejected the request (422)', issues)
+        // biome-ignore lint/style/useErrorCause: cause is passed in the third argument, after issues
+        throw new SystemOneInputError(message, issues, { cause })
+      }
+      const message = withReason(`System One backend returned ${status}`, issues)
+      if (status === 429 || status === 529) {
+        const ErrorClass = status === 429 ? SystemOneRateLimitError : SystemOneOverloadedError
+        throw new ErrorClass(message, {
+          cause,
+          status,
+          retryAfterMs: retryAfterMs(cause.response),
+        })
+      }
+      throw new SystemOneConnectionError(message, { cause, status })
     }
     if (
       typeof DOMException !== 'undefined' &&
@@ -62,15 +117,6 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
 export class HTTPSystemOneBackend implements SystemOneBackend {
   #http: KyInstance
 
-  /**
-   * Present only when the backend is constructed with `batch: true`. The
-   * `/v1/decide/batch` endpoint is local-only, so a hosted backend must not
-   * advertise this capability -- `SystemOneClient.predictBatch` checks
-   * `backend.batch != null` and falls back to individual `predict` calls
-   * when it is absent.
-   */
-  batch?: (params: SystemOneBackendBatchParams) => Promise<Array<SystemOneResult>>
-
   constructor(params: HTTPSystemOneBackendParams) {
     const headers = new Headers(params.headers)
     if (params.apiKey != null && params.apiKey !== '') {
@@ -82,44 +128,6 @@ export class HTTPSystemOneBackend implements SystemOneBackend {
       fetch: params.fetch,
       timeout: params.timeout,
     })
-
-    if (params.batch === true) {
-      this.batch = async (
-        batchParams: SystemOneBackendBatchParams,
-      ): Promise<Array<SystemOneResult>> => {
-        const body = await mapError(() =>
-          this.#http
-            .post('v1/decide/batch', {
-              json: {
-                states: batchParams.states,
-                model: batchParams.model,
-                questions: batchParams.questions,
-              },
-              signal: batchParams.signal,
-            })
-            .json<unknown>(),
-        )
-        if (
-          body == null ||
-          typeof body !== 'object' ||
-          !Array.isArray((body as { results?: unknown }).results)
-        ) {
-          throw new SystemOneResponseError('Batch response missing a results array', [
-            { message: 'results must be an array', path: ['results'] },
-          ])
-        }
-        const results = (body as { results: Array<SystemOneResult> }).results
-        if (results.length !== batchParams.states.length) {
-          throw new SystemOneResponseError('Batch result count does not match states', [
-            {
-              message: `expected ${batchParams.states.length} results, got ${results.length}`,
-              path: ['results'],
-            },
-          ])
-        }
-        return results
-      }
-    }
   }
 
   async predict(params: SystemOneBackendPredictParams): Promise<SystemOneResult> {
@@ -131,10 +139,5 @@ export class HTTPSystemOneBackend implements SystemOneBackend {
         })
         .json<SystemOneResult>(),
     )
-  }
-
-  async listModels(params?: SystemOneBackendListModelsParams): Promise<Array<SystemOneModel>> {
-    const raw = await mapError(() => this.#http.get('v1/models', { signal: params?.signal }).json())
-    return validateModels({ raw })
   }
 }
