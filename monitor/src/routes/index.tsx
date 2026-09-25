@@ -15,7 +15,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { DateTime } from 'luxon'
 import { useMemo, useState } from 'react'
 
-import EventBadge from '../components/EventBadge.js'
+import EventBadge from '../components/event-badge.js'
 import { useEnvironment } from '../enkaku/context.js'
 import { useHostEvents } from '../hooks.js'
 

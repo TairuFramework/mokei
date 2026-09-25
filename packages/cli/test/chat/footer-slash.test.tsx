@@ -1,7 +1,7 @@
 import { render } from 'ink-testing-library'
 import { describe, expect, test } from 'vitest'
 
-import { Footer } from '../../src/chat/components/Footer.js'
+import { Footer } from '../../src/chat/components/footer.js'
 
 describe('Footer slash suggestions', () => {
   test('shows filtered commands after typing "/"', async () => {

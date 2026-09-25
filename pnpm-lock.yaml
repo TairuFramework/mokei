@@ -1137,6 +1137,9 @@ importers:
       '@enkaku/transport':
         specifier: 'catalog:'
         version: 0.21.0(@logtape/logtape@2.3.0)
+      '@mokei/http-client':
+        specifier: workspace:^
+        version: link:../http-client
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.2

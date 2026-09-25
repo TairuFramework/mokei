@@ -432,7 +432,7 @@ describe('per-version message validation', () => {
   })
 
   // No `resultType` here, unlike every other terminal result on this revision: the terminal
-  // `subscriptions/listen` response is sent once, on graceful teardown of the stream, and Task 1's
+  // `subscriptions/listen` response is sent once, on graceful teardown of the stream, and its
   // schema deliberately excludes `resultType` from it.
   test('2026-07-28 accepts a subscriptions/listen terminal result with no resultType', () => {
     const validate = createValidator(PROTOCOLS['2026-07-28'].serverMessage)

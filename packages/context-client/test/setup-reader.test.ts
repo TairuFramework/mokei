@@ -18,7 +18,7 @@ function createFakeIO(frames: Array<ServerMessage>): {
   readNextFrame: ReturnType<typeof vi.fn>
   written: Array<unknown>
 } {
-  let nextId = 0
+  let nextID = 0
   const buffer: Array<ServerMessage> = []
   const queue = [...frames]
   const written: Array<unknown> = []
@@ -30,7 +30,7 @@ function createFakeIO(frames: Array<ServerMessage>): {
     return { done: false, value }
   })
   const io: SetupIO = {
-    allocateId: (): RequestID => nextId++,
+    allocateID: (): RequestID => nextID++,
     write: async (message) => {
       written.push(message)
     },
@@ -206,7 +206,7 @@ describe('SetupReader.driveInitialize', () => {
 
   test('rejects once the setup deadline elapses with no matching frame', async () => {
     const io: SetupIO = {
-      allocateId: () => 0,
+      allocateID: () => 0,
       write: async () => {},
       takeBuffered: () => undefined,
       readNextFrame: () =>

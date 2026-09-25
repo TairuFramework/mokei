@@ -4,8 +4,8 @@ import { useMemo, useState } from 'react'
 
 import { matchSlashCommands, SLASH_COMMANDS } from '../slash.js'
 import type { TurnStateName } from '../turn-reducer.js'
-import { SlashSuggestions } from './SlashSuggestions.js'
-import { StatusLine } from './StatusLine.js'
+import { SlashSuggestions } from './slash-suggestions.js'
+import { StatusLine } from './status-line.js'
 
 export type FooterProps = {
   model: string

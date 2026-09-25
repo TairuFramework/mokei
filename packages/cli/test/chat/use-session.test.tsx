@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, test, vi } from 'vitest'
 
-import { type SessionLike, useSession } from '../../src/chat/hooks/useSession.js'
+import { type SessionLike, useSession } from '../../src/chat/hooks/use-session.js'
 
 type Listener = (e: unknown) => void
 

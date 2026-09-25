@@ -43,8 +43,7 @@ function providerReplaying(chunks: Array<ChatCompletionChunk>): OpenAIProvider {
     abort: () => {},
     signal: new AbortController().signal,
   })
-  // biome-ignore lint/suspicious/noExplicitAny: replaces an overloaded method on a test double
-  ;(client as any).chat = () => request
+  Object.assign(client, { chat: () => request })
   return new OpenAIProvider({ client })
 }
 

@@ -131,13 +131,13 @@ export class HTTPSystemOneBackend implements SystemOneBackend {
   }
 
   async predict(params: SystemOneBackendPredictParams): Promise<SystemOneResult> {
-    return mapError(() =>
-      this.#http
+    return mapError(() => {
+      return this.#http
         .post('v1/systemone', {
           json: { state: params.state, model: params.model, questions: params.questions },
           signal: params.signal,
         })
-        .json<SystemOneResult>(),
-    )
+        .json<SystemOneResult>()
+    })
   }
 }

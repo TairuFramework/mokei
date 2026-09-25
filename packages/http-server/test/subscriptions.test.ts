@@ -80,7 +80,7 @@ const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve,
 
 /**
  * A hub bound to its own `EventEmitter`, standing in for the "durable" business-logic side of
- * subscriptions (Task 13's territory): something else, elsewhere, owns the hub and fires
+ * subscriptions: something else owns the hub and fires
  * producer events into it. `runSubscriptionExchange`'s throwaway server only ever borrows it.
  */
 function createStubDurableHub() {

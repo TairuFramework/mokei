@@ -1,4 +1,5 @@
 import type { ContextTool } from '@mokei/host'
+import type { FetchMiddleware } from '@mokei/http-client'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { Session } from '../src/session.js'
@@ -53,13 +54,12 @@ describe('Session.addHTTPContext', () => {
       .mockResolvedValue({} as never)
     vi.spyOn(session.contextHost, 'setup').mockResolvedValue([])
 
-    const fetchMiddleware = (next: unknown) => next
+    const fetchMiddleware: FetchMiddleware = (next) => next
     await session.addHTTPContext({
       key: 'remote',
       url: 'https://mcp.example.com/mcp',
       protocolVersion: 'auto',
-      // biome-ignore lint/suspicious/noExplicitAny: minimal middleware stand-in for the test
-      fetchMiddleware: fetchMiddleware as any,
+      fetchMiddleware,
     })
 
     expect(addHTTPContextSpy).toHaveBeenCalledWith(expect.objectContaining({ fetchMiddleware }))

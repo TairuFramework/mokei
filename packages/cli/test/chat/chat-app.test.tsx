@@ -1,7 +1,7 @@
 import { render } from 'ink-testing-library'
 import { describe, expect, test, vi } from 'vitest'
 
-import { ChatApp } from '../../src/chat/ChatApp.js'
+import { ChatApp } from '../../src/chat/chat-app.js'
 
 describe('ChatApp', () => {
   test('renders footer with the supplied model', () => {

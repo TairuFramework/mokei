@@ -360,8 +360,9 @@ export class ContextClient<
       maxConcurrentRequests: params.maxConcurrentRequests,
       maxQueuedRequests: params.maxQueuedRequests,
       onError: params.onError,
-      routeStreamNotification: (notification) =>
-        routeSubscriptionNotification(notification as ServerNotification),
+      routeStreamNotification: (notification) => {
+        return routeSubscriptionNotification(notification as ServerNotification)
+      },
     })
 
     this.#onError = params.onError
@@ -417,7 +418,7 @@ export class ContextClient<
     // each closure is shaped the way it is.
     this.#setupReader = new SetupReader(
       {
-        allocateId: () => this._getNextRequestID(),
+        allocateID: () => this._getNextRequestID(),
         write: (message) => super._write(message),
         takeBuffered: (matches) => {
           const index = this.#setupBuffer.findIndex(matches)
@@ -494,8 +495,9 @@ export class ContextClient<
    * dropped one would otherwise silently accept a handler it can never invoke.
    */
   #refuseUnsupportedHandlers(protocol: ProtocolDefinition): void {
-    const reachable = (method: string): boolean =>
-      protocol.serverMethods.has(method) || protocol.inputRequestMethods.has(method)
+    const reachable = (method: string): boolean => {
+      return protocol.serverMethods.has(method) || protocol.inputRequestMethods.has(method)
+    }
     if (this.#createMessage != null && !reachable('sampling/createMessage')) {
       throw new MRTRNotSupportedError('createMessage', protocol.version)
     }
@@ -611,12 +613,13 @@ export class ContextClient<
       startedAt,
       signal: options?.signal,
       dispatch: (key, inputRequest, signal) => this.#fulfilInputRequest(key, inputRequest, signal),
-      retry: (retryParams, timeout) =>
-        this.request(method, { ...(params as object), ...retryParams } as typeof params, {
+      retry: (retryParams, timeout) => {
+        return this.request(method, { ...(params as object), ...retryParams } as typeof params, {
           ...options,
           allowInputRequired: true,
           timeout,
-        }),
+        })
+      },
     })) as ClientTypes['SendRequests'][Method]['Result']
   }
 
@@ -1525,12 +1528,13 @@ export class ContextClient<
     const result = await this.#listPaged(
       'prompts/list',
       'prompts',
-      (pageParams, options) =>
-        this.request(
+      (pageParams, options) => {
+        return this.request(
           'prompts/list',
           pageParams as ListPromptsRequest['params'],
           options,
-        ) as Promise<PagedResult>,
+        ) as Promise<PagedResult>
+      },
       params,
     )
     return result as ListPromptsResult
@@ -1558,12 +1562,13 @@ export class ContextClient<
     const result = await this.#listPaged(
       'resources/list',
       'resources',
-      (pageParams, options) =>
-        this.request(
+      (pageParams, options) => {
+        return this.request(
           'resources/list',
           pageParams as ListResourcesRequest['params'],
           options,
-        ) as Promise<PagedResult>,
+        ) as Promise<PagedResult>
+      },
       params,
     )
     return result as ListResourcesResult
@@ -1575,12 +1580,13 @@ export class ContextClient<
     const result = await this.#listPaged(
       'resources/templates/list',
       'resourceTemplates',
-      (pageParams, options) =>
-        this.request(
+      (pageParams, options) => {
+        return this.request(
           'resources/templates/list',
           pageParams as ListResourceTemplatesRequest['params'],
           options,
-        ) as Promise<PagedResult>,
+        ) as Promise<PagedResult>
+      },
       params,
     )
     return result as ListResourceTemplatesResult
@@ -1609,12 +1615,13 @@ export class ContextClient<
     const result = (await this.#listPaged(
       'tools/list',
       'tools',
-      (pageParams, options) =>
-        this.request(
+      (pageParams, options) => {
+        return this.request(
           'tools/list',
           pageParams as ListToolsRequest['params'],
           options,
-        ) as Promise<PagedResult>,
+        ) as Promise<PagedResult>
+      },
       params,
     )) as ListToolsResult
     this._cacheToolOutputSchemas(result.tools)
@@ -1662,12 +1669,14 @@ export class ContextClient<
     if (outcome.issues != null) {
       throw new StructuredContentValidationError(
         params.name,
-        outcome.issues.map((issue) => ({
-          message: issue.message,
-          path: issue.path?.map((segment) =>
-            typeof segment === 'object' && segment != null ? segment.key : segment,
-          ),
-        })),
+        outcome.issues.map((issue) => {
+          return {
+            message: issue.message,
+            path: issue.path?.map((segment) => {
+              return typeof segment === 'object' && segment != null ? segment.key : segment
+            }),
+          }
+        }),
       )
     }
     return result

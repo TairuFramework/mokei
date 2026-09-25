@@ -14,7 +14,7 @@ export type SubscriptionNotification = ServerNotification
 
 /**
  * How a listen stream settled. Mirrors `context-rpc`'s `StreamSettle` so the driver stays
- * decoupled from the transport: Task 16's real `openListen` maps one to the other verbatim.
+ * decoupled from the transport: `ContextClient`'s `openListen` maps one to the other verbatim.
  * - `result`: a terminal `subscriptions/listen` result arrived (graceful teardown).
  * - `error`: a terminal error, or a protocol/schema failure.
  * - `cancel`: the exchange was aborted locally.
@@ -39,7 +39,7 @@ export type ListenHandle = {
 
 /**
  * Injected seam that opens one `subscriptions/listen` exchange carrying `filter`, routing
- * frames to `handlers`. Task 16 backs it with `_registerStreamExchange`; tests supply a fake.
+ * frames to `handlers`. `ContextClient` backs it with `_registerStreamExchange`; tests supply a fake.
  */
 export type OpenListen = (filter: SubscriptionFilter, handlers: ListenHandlers) => ListenHandle
 
@@ -65,7 +65,7 @@ export type SubscriptionDriverParams = {
    * frame before failing, applied whenever a mutation passes no `timeout` of its own. Without it
    * a silent server that opens the stream but never acks wedges the single mutation queue
    * forever — a reconnect candidate especially, since no caller supplies its timeout. Unset means
-   * unbounded (the pre-hardening behavior); Task 16 wires a real value at the `ContextClient`
+   * unbounded (the pre-hardening behavior); the configured default is wired at the `ContextClient`
    * layer.
    */
   ackTimeoutMs?: number

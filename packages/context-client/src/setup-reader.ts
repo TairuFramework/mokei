@@ -32,7 +32,7 @@ const validateDiscoverResult = createValidator(discoverResult)
  */
 export type SetupIO = {
   /** Allocates the next outgoing request id. Backed by `ContextRPC#_getNextRequestID`. */
-  allocateId(): RequestID
+  allocateID(): RequestID
 
   /** Writes a frame straight to the transport, bypassing RPC correlation. Backed by `super._write`. */
   write(message: ClientMessage): Promise<void>
@@ -95,12 +95,13 @@ export class SetupReader {
     const timeoutMs = this.#setupTimeout
     const deadline = AbortSignal.timeout(timeoutMs)
     const promise = new Promise<never>((_resolve, reject) => {
-      const fail = () =>
-        reject(
+      const fail = () => {
+        return reject(
           new RequestTimeoutError(
             `Server did not respond to ${method} request within ${timeoutMs}ms`,
           ),
         )
+      }
       if (deadline.aborted) {
         fail()
       } else {
@@ -143,7 +144,7 @@ export class SetupReader {
     clientInfo: Implementation
     capabilities: ClientCapabilities
   }): Promise<{ result: InitializeResult; negotiatedRevision: ProtocolVersion }> {
-    const id = this.#io.allocateId()
+    const id = this.#io.allocateID()
     await this.#io.write({
       jsonrpc: '2.0',
       id,
@@ -178,7 +179,7 @@ export class SetupReader {
     logLevel?: LoggingLevel
   }): Promise<{ result: DiscoverResult; negotiatedRevision: ProtocolVersion }> {
     const { protocol } = request
-    const id = this.#io.allocateId()
+    const id = this.#io.allocateID()
     // Sends the same `clientInfo`/`logLevel` context every other request sends, plus the same
     // W3C trace context (SEP-414) `ContextClient#request` injects into `_meta` via
     // `currentTraceMeta()`: the spec says a client SHOULD send `clientInfo`, and there's no

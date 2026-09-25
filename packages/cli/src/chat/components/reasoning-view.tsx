@@ -2,7 +2,7 @@ import { Spinner } from '@inkjs/ui'
 import { IconLine } from '@tejika/ui'
 import { Box, Text } from 'ink'
 
-import { HANG_WARN_MS } from './ToolCallStatus.js'
+import { HANG_WARN_MS } from './tool-call-status.js'
 
 /** Number of trailing reasoning lines kept visible (bounds the live height). */
 export const MAX_REASONING_LINES = 6

@@ -46,7 +46,7 @@ async function flush(times = 6): Promise<void> {
 }
 
 type ServerState = {
-  listenId: RequestID | undefined
+  listenID: RequestID | undefined
   listenFilter: unknown
   discoverCount: number
 }
@@ -66,7 +66,7 @@ function startServer(
   server: DirectTransports<ServerMessage, ClientMessage>['server'],
   options: ServerOptions = {},
 ) {
-  const state: ServerState = { listenId: undefined, listenFilter: undefined, discoverCount: 0 }
+  const state: ServerState = { listenID: undefined, listenFilter: undefined, discoverCount: 0 }
   const firstAck = deferred()
   let acks = 0
 
@@ -93,7 +93,7 @@ function startServer(
           if (options.ackOnlyFirst && acks > 1) {
             break
           }
-          state.listenId = message.id
+          state.listenID = message.id
           state.listenFilter = filter
           server.write({
             jsonrpc: '2.0',
@@ -172,7 +172,7 @@ describe('ContextClient subscriptions wiring', () => {
 
     await client.listTools()
     await flush()
-    expect(sub.state.listenId).toBeUndefined()
+    expect(sub.state.listenID).toBeUndefined()
 
     await client.dispose()
   })
@@ -196,7 +196,7 @@ describe('ContextClient subscriptions wiring', () => {
     sub.emit({
       jsonrpc: '2.0',
       method: 'notifications/resources/list_changed',
-      params: { _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenId } },
+      params: { _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenID } },
     })
     await flush()
 
@@ -233,7 +233,7 @@ describe('ContextClient subscriptions wiring', () => {
       sub.emit({
         jsonrpc: '2.0',
         method: `notifications/${which}/list_changed`,
-        params: { _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenId } },
+        params: { _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenID } },
       })
     }
     await flush()
@@ -265,7 +265,7 @@ describe('ContextClient subscriptions wiring', () => {
     sub.emit({
       jsonrpc: '2.0',
       method: 'notifications/resources/updated',
-      params: { uri: 'file:///z', _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenId } },
+      params: { uri: 'file:///z', _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenID } },
     })
     await flush()
 
@@ -298,7 +298,7 @@ describe('ContextClient subscriptions wiring', () => {
     sub.emit({
       jsonrpc: '2.0',
       method: 'notifications/resources/updated',
-      params: { uri: 'file:///x', _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenId } },
+      params: { uri: 'file:///x', _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenID } },
     })
 
     // Reaches the per-URI listener...
@@ -329,7 +329,7 @@ describe('ContextClient subscriptions wiring', () => {
     // subscriptionId in its `_meta`.
     sub.emit({
       jsonrpc: '2.0',
-      id: sub.state.listenId,
+      id: sub.state.listenID,
       result: { _meta: { [META_SUBSCRIPTION_ID]: 999999 } },
     })
     await flush()

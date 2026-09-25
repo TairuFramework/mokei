@@ -2,11 +2,12 @@ import { DirectTransports } from '@enkaku/transport'
 import { ContextClient } from '@mokei/context-client'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { ContextServer } from '@mokei/context-server'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 import { createFetchConfig, type FetchServerTypes } from '../src/config.js'
 
 test('run server', async () => {
+  const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<h1>Mokei</h1>'))
   const config = createFetchConfig()
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const server = new ContextServer({ ...config, transport: transports.server })
@@ -16,12 +17,16 @@ test('run server', async () => {
     transport: transports.client,
   })
 
-  await expect(
-    client.callTool({ name: 'get_markdown', arguments: { url: 'https://mokei.dev' } }),
-  ).resolves.toMatchObject({
-    content: [{ type: 'text', text: expect.stringContaining('Mokei') }],
-    isError: false,
-  })
-
-  await server.dispose()
+  try {
+    await expect(
+      client.callTool({ name: 'get_markdown', arguments: { url: 'https://mokei.dev' } }),
+    ).resolves.toMatchObject({
+      content: [{ type: 'text', text: expect.stringContaining('Mokei') }],
+      isError: false,
+    })
+    expect(fetchSpy).toHaveBeenCalledWith('https://mokei.dev')
+  } finally {
+    fetchSpy.mockRestore()
+    await server.dispose()
+  }
 })
