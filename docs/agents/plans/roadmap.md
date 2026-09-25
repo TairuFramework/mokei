@@ -60,6 +60,13 @@ revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **OAuth hardening** (2026-09-25) -- the refresh path clears the token store when the token
+  endpoint answers `invalid_grant`, JWKS and AS-metadata fetch failures surface as HTTP 500
+  instead of 401, non-2xx OAuth bodies are drained, and the server's loopback check matches
+  `[::1]` and `*.localhost` like the client's.
+- **Node-free `@mokei/session`** (2026-09-25, PR #56) -- `Session` and `AgentSession` run on the
+  portable `ContextHost`; stdio `addContext` moved to `NodeSession` in the new
+  `@mokei/session-node`. **BREAKING.** See `completed/2026-09-25-session-rn-safe-split.complete.md`.
 - **OAuth server-gate integration tests** (2026-09-25) -- real RS256/ES256 JWKS and DID tokens
   verified behind `serveHTTP`, covering 401/403 challenges and ungated protected-resource metadata.
   See `completed/2026-09-04-oauth-server-gate-integration-tests.complete.md`.
@@ -174,10 +181,8 @@ once the migration closed.
 
 ## Near-term (backlog/)
 
-- **OAuth hardening follow-ups** (`backlog/2026-09-04-oauth-hardening-followups.md`) -- pass the
-  gate's verified `AuthInfo` to handlers, clear the store on `invalid_grant`, identity-guard the
-  stdio `addContext` abort path, broaden loopback detection, and DCR/CIMD if a target server needs
-  it.
+- **OAuth follow-ups** (`backlog/2026-09-04-oauth-hardening-followups.md`) -- pass the gate's
+  verified `AuthInfo` to handlers, and DCR/CIMD if a target server needs it.
 - **Multi-context OAuth token coordination**
   (`backlog/2026-09-04-oauth-multi-context-token-coordination.md`) -- one refresh flight per
   resource across contexts sharing a token store; needs a `TokenStore` contract design pass.

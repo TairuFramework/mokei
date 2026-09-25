@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 
 import { discover, parseResourceMetadataURL } from '../src/oauth/discovery.js'
+import { fetchOAuthJSON, OAuthResponseError } from '../src/oauth/fetch.js'
 
 const resource = 'https://mcp.example.com/mcp'
 
@@ -167,4 +168,32 @@ test('RFC 8414 discovery inserts the well-known segment before a path-bearing is
   }
   await discover({ resource, fetch })
   expect(fetchedAsURL).toBe('https://as.example/.well-known/oauth-authorization-server/tenant1')
+})
+
+test('a non-2xx OAuth response body is drained and its error code surfaced', async () => {
+  let cancelled = false
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('x'.repeat(20_000)))
+    },
+    cancel() {
+      cancelled = true
+    },
+  })
+  const fetchFn = async (): Promise<Response> => new Response(body, { status: 500 })
+  await expect(
+    fetchOAuthJSON(fetchFn as never, 'https://as.example.com/token', { errorLabel: 'Token' }),
+  ).rejects.toThrow('Token HTTP 500')
+  expect(cancelled).toBe(true)
+
+  const coded = async (): Promise<Response> =>
+    new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 })
+  const caught = await fetchOAuthJSON(coded as never, 'https://as.example.com/token', {
+    errorLabel: 'Token refresh',
+  }).catch((err: unknown) => err)
+  expect(caught).toBeInstanceOf(OAuthResponseError)
+  if (!(caught instanceof OAuthResponseError)) return
+  expect(caught.status).toBe(400)
+  expect(caught.oauthError).toBe('invalid_grant')
+  expect(caught.message).toBe('Token refresh HTTP 400 (invalid_grant)')
 })
