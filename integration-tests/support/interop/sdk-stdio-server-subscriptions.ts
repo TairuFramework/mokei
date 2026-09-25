@@ -7,17 +7,26 @@
  * and `2025-11-25` has no `subscriptions/listen` at all.
  *
  * `serveStdio` only writes the graceful terminal `subscriptions/listen` results (its
- * `StdioListenRouter.teardownAll()`) when the returned handle's `close()` runs — the stdio
- * transport does not tie closing to a stdin `end`. So the terminal-on-teardown case is driven by
- * the parent closing this child's stdin: the `end` handler below calls `handle.close()`, which
- * flushes the terminal frames to stdout before the wire closes, and the mokei client — still
+ * `StdioListenRouter.teardownAll()`) when the returned handle's `close()` runs. Since SDK 2.1.0 the
+ * `StdioServerTransport` also closes itself on stdin end-of-file, and that path tears the
+ * connection down WITHOUT writing the terminal results — and its `end` listener runs before any
+ * listener added here, turning a later `handle.close()` into a no-op. So the transport reads from a
+ * proxy of stdin that never sees end-of-file, and the real stdin `end` calls `handle.close()`,
+ * which flushes the terminal frames to stdout before closing the wire; the mokei client — still
  * reading — observes them.
  */
-import { serveStdio } from '@modelcontextprotocol/server/stdio'
+import { PassThrough } from 'node:stream'
+import { StdioServerTransport, serveStdio } from '@modelcontextprotocol/server/stdio'
 
 import { createSDKSubscriptionServer } from './subscriptions-fixture.ts'
 
-const handle = serveStdio(() => createSDKSubscriptionServer(), { legacy: 'reject' })
+const input = new PassThrough()
+process.stdin.pipe(input, { end: false })
+
+const handle = serveStdio(() => createSDKSubscriptionServer(), {
+  legacy: 'reject',
+  transport: new StdioServerTransport(input, process.stdout),
+})
 
 process.stdin.on('end', () => {
   void handle.close()
