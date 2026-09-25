@@ -1,5 +1,7 @@
 # OAuth: end-to-end server-gate integration tests (real verifiers behind a real serveHTTP)
 
+**Status:** complete (2026-09-25)
+
 **Origin:** follow-up from the OAuth 2.1 HTTP-transport work
 (`docs/agents/plans/completed/2026-09-04-http-auth-oauth.complete.md`).
 
@@ -27,3 +29,14 @@ exercise the verifiers in isolation from the HTTP gate.
 For each verifier, a real `serveHTTP` server with the bearer gate accepts a valid signed token and
 returns the correct 401/403 for the invalid cases, with the protected-resource metadata endpoint
 reachable unauthenticated.
+
+## Outcome
+
+- `packages/http-server/test/serve-auth-jwks.test.ts` exercises RS256 and ES256 tokens against a
+  loopback authorization server that serves RFC 8414 metadata and JWKS. Both algorithms cover valid
+  MCP dispatch, wrong audience, expiry, bad signature, and insufficient scope.
+- `packages/http-server/test/serve-auth-did.test.ts` exercises signed DID tokens through the same
+  HTTP gate: valid dispatch, tampering, expiry, wrong audience, and insufficient scope.
+- Both suites check missing-token challenges and unauthenticated RFC 9728 metadata. Shared HTTP
+  setup and response assertions live in `packages/http-server/test/serve-auth-fixture.ts`.
+- No gate or verifier source defect was found.

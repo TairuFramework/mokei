@@ -53,14 +53,16 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **OAuth server-gate integration tests** (`next/2026-09-04-oauth-server-gate-integration-tests.md`)
-  -- real JWKS and DID verifiers behind a real `serveHTTP`; today's tests stub the verifier.
+No active items.
 
 The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) -- both
 revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **OAuth server-gate integration tests** (2026-09-25) -- real RS256/ES256 JWKS and DID tokens
+  verified behind `serveHTTP`, covering 401/403 challenges and ungated protected-resource metadata.
+  See `completed/2026-09-04-oauth-server-gate-integration-tests.complete.md`.
 - **Conventions and docs pass** (2026-09-25) -- error classes and positional constructors now take
   one `<ClassName>Params` object with `#private` fields and getters; `ContextHost` keeps its state
   private behind a narrow subclass API; source files are kebab-case (React components and hooks
