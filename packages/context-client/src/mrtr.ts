@@ -49,27 +49,54 @@ export type InputRequiredRetryParams = {
 
 /** Thrown when a single call still needs input after its round cap is spent. */
 export class InputRequiredRoundsExceededError extends Error {
+  #method: string
+  #rounds: number
+  #lastResult: InputRequiredResult
+
+  constructor(params: InputRequiredRoundsExceededErrorParams) {
+    super(
+      `Multi round-trip request "${params.method}" still required input after ${params.rounds} rounds`,
+      { cause: params.cause },
+    )
+    this.name = 'InputRequiredRoundsExceededError'
+    this.#method = params.method
+    this.#rounds = params.rounds
+    this.#lastResult = params.lastResult
+  }
+
+  get method(): string {
+    return this.#method
+  }
+  get rounds(): number {
+    return this.#rounds
+  }
+  get lastResult(): InputRequiredResult {
+    return this.#lastResult
+  }
+}
+
+export type InputRequiredRoundsExceededErrorParams = {
   method: string
   rounds: number
   lastResult: InputRequiredResult
-
-  constructor(method: string, rounds: number, lastResult: InputRequiredResult) {
-    super(`Multi round-trip request "${method}" still required input after ${rounds} rounds`)
-    this.name = 'InputRequiredRoundsExceededError'
-    this.method = method
-    this.rounds = rounds
-    this.lastResult = lastResult
-  }
+  cause?: unknown
 }
 
 /** Thrown when `maxTotalTimeout` is spent before the flow reaches a complete result. */
 export class InputRequiredTotalTimeoutError extends Error {
-  constructor(maxTotalTimeout: number, elapsed: number) {
+  constructor(params: InputRequiredTotalTimeoutErrorParams) {
     super(
-      `Multi round-trip request exceeded its maximum total timeout of ${maxTotalTimeout}ms after ${elapsed}ms`,
+      `Multi round-trip request exceeded its maximum total timeout of ${params.maxTotalTimeout}ms after ${params.elapsed}ms`,
+      { cause: params.cause },
     )
     this.name = 'InputRequiredTotalTimeoutError'
   }
+}
+
+export type InputRequiredTotalTimeoutErrorParams = {
+  maxTotalTimeout: number
+  elapsed: number
+  cause?: unknown
 }
 
 export type RunInputRequiredFlowParams = {
@@ -152,10 +179,14 @@ export async function runInputRequiredFlow(params: RunInputRequiredFlowParams): 
       // the type level — but it always originates from a wire-validated `InputRequiredResult`
       // (`params.first`, or a prior round's checked `result`), so the schema's at-least-one
       // invariant already holds here at runtime.
-      throw new InputRequiredRoundsExceededError(method, maxRounds, {
-        resultType: 'input_required',
-        ...payload,
-      } as InputRequiredResult)
+      throw new InputRequiredRoundsExceededError({
+        method: method,
+        rounds: maxRounds,
+        lastResult: {
+          resultType: 'input_required',
+          ...payload,
+        } as InputRequiredResult,
+      })
     }
 
     const entries = Object.entries(payload.inputRequests ?? {})
@@ -187,7 +218,10 @@ export async function runInputRequiredFlow(params: RunInputRequiredFlowParams): 
       const elapsed = now() - startedAt
       const remaining = maxTotalTimeout - elapsed
       if (remaining <= 0) {
-        throw new InputRequiredTotalTimeoutError(maxTotalTimeout, elapsed)
+        throw new InputRequiredTotalTimeoutError({
+          maxTotalTimeout: maxTotalTimeout,
+          elapsed: elapsed,
+        })
       }
       legTimeout = timeout == null ? remaining : Math.min(timeout, remaining)
     }

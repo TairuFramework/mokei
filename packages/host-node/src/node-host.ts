@@ -57,7 +57,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
     protocolVersion !== 'auto' &&
     !isSupportedProtocolVersion(protocolVersion)
   ) {
-    throw new UnsupportedProtocolVersionError(protocolVersion)
+    throw new UnsupportedProtocolVersionError({ received: protocolVersion })
   }
   const { childProcess, streams, subprocess } = await spawnContextServer(spawnParams)
   if (onExit != null) {
@@ -128,7 +128,7 @@ export class NodeContextHost extends ContextHost {
     params: AddLocalContextParams,
   ): Promise<ContextClient<T>> {
     const { key, ...spawnParams } = params
-    if (this._contexts[key] != null) {
+    if (this.hasContext({ key })) {
       throw new Error(`Context ${key} already exists`)
     }
 
@@ -150,11 +150,11 @@ export class NodeContextHost extends ContextHost {
         // that lands after the entry is already gone (disposal, or the
         // re-rejection our own remove() causes) is noise, not a fault — this is
         // what keeps a clean remove() from emitting a bogus context:failed.
-        if (this._contexts[key] == null) {
+        if (!this.hasContext({ key })) {
           return
         }
         framingError = error
-        void this._events.emit('context:failed', { key, error }).catch(() => {})
+        void this.events.emit('context:failed', { key, error }).catch(() => {})
         void this.remove(key).catch(() => {})
       },
       onExit: (error) => {
@@ -162,13 +162,13 @@ export class NodeContextHost extends ContextHost {
           return
         }
         if (error != null && !isSubprocessExit(error)) {
-          void this._events.emit('context:failed', { key, error }).catch(() => {})
+          void this.events.emit('context:failed', { key, error }).catch(() => {})
         }
         void this.remove(key).catch(() => {})
       },
     })
-    this._contexts[key] = context as unknown as HostedContext
-    void this._events.emit('context:added', { key }).catch(() => {})
+    this.registerHostedContext({ key, context: context as unknown as HostedContext })
+    void this.events.emit('context:added', { key }).catch(() => {})
     return context.client
   }
 }

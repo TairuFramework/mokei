@@ -71,13 +71,15 @@ export type SetupIO = {
  * of what comes back — whether the negotiated revision matches the one the caller asked for,
  * whether the transport should be disposed on failure — see `ContextClient#initialize`.
  */
+export type SetupReaderParams = { io: SetupIO; setupTimeout: number }
+
 export class SetupReader {
   #io: SetupIO
   #setupTimeout: number
 
-  constructor(io: SetupIO, setupTimeout: number) {
-    this.#io = io
-    this.#setupTimeout = setupTimeout
+  constructor(params: SetupReaderParams) {
+    this.#io = params.io
+    this.#setupTimeout = params.setupTimeout
   }
 
   /**
@@ -97,9 +99,9 @@ export class SetupReader {
     const promise = new Promise<never>((_resolve, reject) => {
       const fail = () =>
         reject(
-          new RequestTimeoutError(
-            `Server did not respond to ${method} request within ${timeoutMs}ms`,
-          ),
+          new RequestTimeoutError({
+            message: `Server did not respond to ${method} request within ${timeoutMs}ms`,
+          }),
         )
       if (deadline.aborted) {
         fail()
@@ -210,7 +212,7 @@ export class SetupReader {
     }
     const discovered = validateDiscoverResult(message.result)
     if (discovered.issues != null) {
-      throw new RPCError(INVALID_REQUEST, 'Invalid server/discover result')
+      throw new RPCError({ code: INVALID_REQUEST, message: 'Invalid server/discover result' })
     }
     return { result: discovered.value, negotiatedRevision: protocol.version }
   }

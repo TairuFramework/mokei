@@ -16,6 +16,7 @@ export {
   SESSION_EXPIRED_CODE,
   SESSION_EXPIRED_MESSAGE,
   SessionExpiredError,
+  type SessionExpiredErrorParams,
 } from './errors.js'
 export {
   type AuthorizationHandler,

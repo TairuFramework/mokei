@@ -418,7 +418,10 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
             // of valid tools back so the model can retry with a real name,
             // rather than letting execution throw an opaque "Invalid context
             // tool ID" deep in the host.
-            const error = new UnknownToolError(toolCall.name, [...callableToolNames])
+            const error = new UnknownToolError({
+              toolName: toolCall.name,
+              availableTools: [...callableToolNames],
+            })
             const errorEvent = emitEvent({
               type: 'tool-call-error',
               toolCall,
@@ -652,9 +655,12 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       if (signal.aborted) {
         err = error instanceof Error ? error : new Error(String(error))
       } else if (callController.signal.reason === TOOL_TIMEOUT_REASON) {
-        err = new ToolCallTimeoutError(toolCall.name, this.#params.toolTimeout)
+        err = new ToolCallTimeoutError({
+          toolName: toolCall.name,
+          timeoutMs: this.#params.toolTimeout,
+        })
       } else if (callController.signal.reason === TOOL_CANCEL_REASON) {
-        err = new ToolCallCancelledError(toolCall.name)
+        err = new ToolCallCancelledError({ toolName: toolCall.name })
       } else {
         err = error instanceof Error ? error : new Error(String(error))
       }

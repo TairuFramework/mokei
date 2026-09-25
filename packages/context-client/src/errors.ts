@@ -1,5 +1,11 @@
 import type { ProtocolVersion } from '@mokei/context-protocol'
 
+export type UnsupportedProtocolVersionErrorParams = {
+  received: string
+  expected?: ProtocolVersion
+  cause?: unknown
+}
+
 export class UnsupportedProtocolVersionError extends Error {
   /**
    * `expected` is only known when this is raised against a server's handshake response (the
@@ -7,22 +13,25 @@ export class UnsupportedProtocolVersionError extends Error {
    * (`ClientParams.protocolVersion`) has no single "expected" value to name, so it's omitted
    * there and the message drops the clause instead of naming an arbitrary revision.
    */
-  constructor(received: string, expected?: ProtocolVersion) {
+  constructor(params: UnsupportedProtocolVersionErrorParams) {
     super(
-      expected == null
-        ? `Unsupported protocolVersion "${received}"`
-        : `Server responded with unsupported protocolVersion "${received}"; expected "${expected}"`,
+      params.expected == null
+        ? `Unsupported protocolVersion "${params.received}"`
+        : `Server responded with unsupported protocolVersion "${params.received}"; expected "${params.expected}"`,
+      { cause: params.cause },
     )
     this.name = 'UnsupportedProtocolVersionError'
   }
 }
 
 export class CapabilityNotDeclaredError extends Error {
-  constructor(capability: string) {
-    super(`Server did not declare the "${capability}" capability`)
+  constructor(params: CapabilityNotDeclaredErrorParams) {
+    super(`Server did not declare the "${params.capability}" capability`, { cause: params.cause })
     this.name = 'CapabilityNotDeclaredError'
   }
 }
+
+export type CapabilityNotDeclaredErrorParams = { capability: string; cause?: unknown }
 
 /**
  * Thrown when a method is absent from a protocol revision's `clientMethods` — derived from that
@@ -34,12 +43,20 @@ export class CapabilityNotDeclaredError extends Error {
  * `hint` to say where the log level went on `2026-07-28`.
  */
 export class MethodNotInRevisionError extends Error {
-  constructor(method: string, version: ProtocolVersion, hint?: string) {
+  constructor(params: MethodNotInRevisionErrorParams) {
     super(
-      `${method} does not exist in protocol version ${version}${hint == null ? '' : `: ${hint}`}`,
+      `${params.method} does not exist in protocol version ${params.version}${params.hint == null ? '' : `: ${params.hint}`}`,
+      { cause: params.cause },
     )
     this.name = 'MethodNotInRevisionError'
   }
+}
+
+export type MethodNotInRevisionErrorParams = {
+  method: string
+  version: ProtocolVersion
+  hint?: string
+  cause?: unknown
 }
 
 /**
@@ -48,12 +65,19 @@ export class MethodNotInRevisionError extends Error {
  * request — the client-side mirror of `@mokei/context-server`'s `MRTRNotSupportedError`.
  */
 export class MRTRNotSupportedError extends Error {
-  constructor(handler: string, version: ProtocolVersion) {
+  constructor(params: MRTRNotSupportedErrorParams) {
     super(
-      `The "${handler}" handler is not supported on protocol version ${version}: the revision carries its method neither as a server-initiated request nor as a multi round-trip input request (MRTR, SEP-2322)`,
+      `The "${params.handler}" handler is not supported on protocol version ${params.version}: the revision carries its method neither as a server-initiated request nor as a multi round-trip input request (MRTR, SEP-2322)`,
+      { cause: params.cause },
     )
     this.name = 'MRTRNotSupportedError'
   }
+}
+
+export type MRTRNotSupportedErrorParams = {
+  handler: string
+  version: ProtocolVersion
+  cause?: unknown
 }
 
 /**
@@ -62,31 +86,58 @@ export class MRTRNotSupportedError extends Error {
  * configured for one of the embedded methods.
  */
 export class InputRequiredNotSupportedError extends Error {
-  constructor(reason: string) {
-    super(`The server returned an "input_required" result: ${reason}`)
+  constructor(params: InputRequiredNotSupportedErrorParams) {
+    super(`The server returned an "input_required" result: ${params.reason}`, {
+      cause: params.cause,
+    })
     this.name = 'InputRequiredNotSupportedError'
   }
 }
 
+export type InputRequiredNotSupportedErrorParams = { reason: string; cause?: unknown }
+
 /** Thrown when a paginated list walk fetches more pages than its cap allows. */
 export class ListMaxPagesError extends Error {
   /** The list method that exceeded the cap, e.g. `tools/list`. */
-  method: string
+  #method: string
   /** Number of pages fetched before giving up. */
-  pages: number
+  #pages: number
   /** Cursor of the page that would have been fetched next. */
-  cursor: string
+  #cursor: string
   /** Items collected across the pages that were fetched. */
-  results: Array<unknown>
+  #results: Array<unknown>
 
-  constructor(method: string, pages: number, cursor: string, results: Array<unknown>) {
-    super(`Listing ${method} exceeded the maximum of ${pages} pages`)
+  constructor(params: ListMaxPagesErrorParams) {
+    super(`Listing ${params.method} exceeded the maximum of ${params.pages} pages`, {
+      cause: params.cause,
+    })
     this.name = 'ListMaxPagesError'
-    this.method = method
-    this.pages = pages
-    this.cursor = cursor
-    this.results = results
+    this.#method = params.method
+    this.#pages = params.pages
+    this.#cursor = params.cursor
+    this.#results = params.results
   }
+
+  get method(): string {
+    return this.#method
+  }
+  get pages(): number {
+    return this.#pages
+  }
+  get cursor(): string {
+    return this.#cursor
+  }
+  get results(): Array<unknown> {
+    return this.#results
+  }
+}
+
+export type ListMaxPagesErrorParams = {
+  method: string
+  pages: number
+  cursor: string
+  results: Array<unknown>
+  cause?: unknown
 }
 
 /** A validation issue, matching the shape `createTool` produces for input errors. */
@@ -97,13 +148,26 @@ export type ValidationIssue = {
 
 /** Thrown when a tool result's structuredContent violates the tool's advertised outputSchema. */
 export class StructuredContentValidationError extends Error {
+  #toolName: string
+  #issues: Array<ValidationIssue>
+
+  constructor(params: StructuredContentValidationErrorParams) {
+    super(`Invalid structuredContent returned by tool ${params.toolName}`, { cause: params.cause })
+    this.name = 'StructuredContentValidationError'
+    this.#toolName = params.toolName
+    this.#issues = params.issues
+  }
+
+  get toolName(): string {
+    return this.#toolName
+  }
+  get issues(): Array<ValidationIssue> {
+    return this.#issues
+  }
+}
+
+export type StructuredContentValidationErrorParams = {
   toolName: string
   issues: Array<ValidationIssue>
-
-  constructor(toolName: string, issues: Array<ValidationIssue>) {
-    super(`Invalid structuredContent returned by tool ${toolName}`)
-    this.name = 'StructuredContentValidationError'
-    this.toolName = toolName
-    this.issues = issues
-  }
+  cause?: unknown
 }

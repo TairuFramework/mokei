@@ -53,7 +53,8 @@ const ACCESS_TOKEN = 'e2e-access'
 
 const verifier: OAuthTokenVerifier = {
   async verifyAccessToken(token) {
-    if (token !== ACCESS_TOKEN) throw new TokenVerificationError('invalid_token', 'no')
+    if (token !== ACCESS_TOKEN)
+      throw new TokenVerificationError({ code: 'invalid_token', message: 'no' })
     return { subject: 'u', scopes: ['read'] }
   },
 }

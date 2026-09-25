@@ -135,7 +135,7 @@ describe('ProxyHost protocol version', () => {
       dispose: async () => {},
     }
     return {
-      proxy: new ProxyHost(client as unknown as HostClient),
+      proxy: new ProxyHost({ client: client as unknown as HostClient }),
       getSpawnParam: () => spawnParam,
     }
   }
@@ -194,5 +194,21 @@ describe('spawnHostedContext protocol version validation', () => {
     ).rejects.toThrow(UnsupportedProtocolVersionError)
 
     expect(spawnSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('ProxyHost disposal', () => {
+  test('disposes the daemon client on dispose() and on abort', async () => {
+    for (const teardown of ['dispose', 'abort'] as const) {
+      const dispose = vi.fn(async () => {})
+      const proxy = new ProxyHost({ client: { dispose } as unknown as HostClient })
+      if (teardown === 'dispose') {
+        await proxy.dispose()
+      } else {
+        proxy.abort('test')
+        await proxy.disposed
+      }
+      expect(dispose).toHaveBeenCalledOnce()
+    }
   })
 })

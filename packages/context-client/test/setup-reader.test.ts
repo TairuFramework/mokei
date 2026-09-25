@@ -64,7 +64,7 @@ describe('SetupReader.driveInitialize', () => {
       },
     }
     const { io, written } = createFakeIO([response as unknown as ServerMessage])
-    const reader = new SetupReader(io, 1000)
+    const reader = new SetupReader({ io: io, setupTimeout: 1000 })
 
     const outcome = await reader.driveInitialize({
       protocolVersion: '2025-11-25',
@@ -118,7 +118,7 @@ describe('SetupReader.driveInitialize', () => {
     // call rejects instead of resolving -- which is what the assertions below would catch.
     const { buffer, io, readNextFrame } = createFakeIO([])
     buffer.push(stray, match)
-    const reader = new SetupReader(io, 1000)
+    const reader = new SetupReader({ io: io, setupTimeout: 1000 })
 
     const outcome = await reader.driveInitialize({
       protocolVersion: '2025-11-25',
@@ -159,7 +159,7 @@ describe('SetupReader.driveInitialize', () => {
     }
     const { buffer, io, readNextFrame } = createFakeIO([response as unknown as ServerMessage])
     buffer.push(stray)
-    const reader = new SetupReader(io, 1000)
+    const reader = new SetupReader({ io: io, setupTimeout: 1000 })
 
     const outcome = await Promise.race([
       reader.driveInitialize({
@@ -193,7 +193,7 @@ describe('SetupReader.driveInitialize', () => {
       error: { code: -32600, message: 'boom' },
     }
     const { io } = createFakeIO([errorResponse as unknown as ServerMessage])
-    const reader = new SetupReader(io, 1000)
+    const reader = new SetupReader({ io: io, setupTimeout: 1000 })
 
     await expect(
       reader.driveInitialize({
@@ -213,7 +213,7 @@ describe('SetupReader.driveInitialize', () => {
         NEVER_DEADLINE as unknown as Promise<ReadableStreamReadResult<ServerMessage>>,
       handBackFrame: () => {},
     }
-    const reader = new SetupReader(io, 10)
+    const reader = new SetupReader({ io: io, setupTimeout: 10 })
 
     await expect(
       reader.driveInitialize({
@@ -238,7 +238,7 @@ describe('SetupReader.driveDiscover', () => {
       },
     }
     const { io, written } = createFakeIO([response as unknown as ServerMessage])
-    const reader = new SetupReader(io, 1000)
+    const reader = new SetupReader({ io: io, setupTimeout: 1000 })
 
     const outcome = await reader.driveDiscover({
       protocol,
@@ -260,7 +260,7 @@ describe('SetupReader.driveDiscover', () => {
       result: { resultType: 'complete' as const },
     }
     const { io } = createFakeIO([response as unknown as ServerMessage])
-    const reader = new SetupReader(io, 1000)
+    const reader = new SetupReader({ io: io, setupTimeout: 1000 })
 
     await expect(
       reader.driveDiscover({

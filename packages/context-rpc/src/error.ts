@@ -27,7 +27,11 @@ export function isErrorResponse(response: Response): response is ErrorResponse {
 
 export class RPCError extends Error {
   static fromResponse(response: ErrorResponse): RPCError {
-    return new RPCError(response.error.code, response.error.message, response.error.data)
+    return new RPCError({
+      code: response.error.code,
+      message: response.error.message,
+      data: response.error.data,
+    })
   }
 
   #code: number
@@ -36,10 +40,10 @@ export class RPCError extends Error {
   // here would have made this class unable to carry what the wire schema now admits.
   #data?: unknown
 
-  constructor(code: number, message: string, data?: unknown) {
-    super(message)
-    this.#code = code
-    this.#data = data
+  constructor(params: RPCErrorParams) {
+    super(params.message, { cause: params.cause })
+    this.#code = params.code
+    this.#data = params.data
   }
 
   get code(): number {
@@ -75,6 +79,8 @@ export class RPCError extends Error {
   }
 }
 
+export type RPCErrorParams = { code: number; message: string; data?: unknown; cause?: unknown }
+
 export function errorResponse(id: RequestID, cause: unknown): ErrorResponse {
   if (cause instanceof RPCError) {
     return cause.toResponse(id)
@@ -90,12 +96,19 @@ export function errorResponse(id: RequestID, cause: unknown): ErrorResponse {
 }
 
 export class TransportClosedError extends Error {
-  name = 'TransportClosedError'
-  constructor(message = 'Transport closed', options?: { cause?: unknown }) {
-    super(message, options)
+  constructor(params: TransportClosedErrorParams = {}) {
+    super(params.message ?? 'Transport closed', { cause: params.cause })
+    this.name = 'TransportClosedError'
   }
 }
 
+export type TransportClosedErrorParams = { message?: string; cause?: unknown }
+
 export class RequestTimeoutError extends Error {
-  name = 'RequestTimeoutError'
+  constructor(params: RequestTimeoutErrorParams) {
+    super(params.message, { cause: params.cause })
+    this.name = 'RequestTimeoutError'
+  }
 }
+
+export type RequestTimeoutErrorParams = { message: string; cause?: unknown }

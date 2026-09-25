@@ -90,9 +90,10 @@ export class RequestScheduler {
   schedule(id: RequestID, run: RunRequest): Promise<Response | null> {
     if (this.#running.has(id) || this.#queued.has(id) || this.#detached.has(id)) {
       return Promise.resolve(
-        new RPCError(INVALID_REQUEST, `Request id ${String(id)} is already in flight`).toResponse(
-          id,
-        ),
+        new RPCError({
+          code: INVALID_REQUEST,
+          message: `Request id ${String(id)} is already in flight`,
+        }).toResponse(id),
       )
     }
     if (this.#running.size < this.#maxConcurrent) {
@@ -101,7 +102,9 @@ export class RequestScheduler {
     if (this.#queued.size >= this.#maxQueued) {
       // INTERNAL_ERROR rather than a new code: mokei's custom codes all come from SEPs, so
       // inventing one here risks colliding with a future spec assignment.
-      return Promise.resolve(new RPCError(INTERNAL_ERROR, 'Server busy').toResponse(id))
+      return Promise.resolve(
+        new RPCError({ code: INTERNAL_ERROR, message: 'Server busy' }).toResponse(id),
+      )
     }
     const { promise, resolve } = defer<Response | null>()
     this.#queued.set(id, { controller: new AbortController(), resolve, run })

@@ -397,11 +397,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         isHandshakeRequired(PROTOCOLS[version]),
       )
       if (handshake == null) {
-        throw new RPCError(
-          UNSUPPORTED_PROTOCOL_VERSION,
-          `This server supports ${this.#protocolVersions.join(', ')}`,
-          { supported: this.#protocolVersions, requested: 'initialize' },
-        )
+        throw new RPCError({
+          code: UNSUPPORTED_PROTOCOL_VERSION,
+          message: `This server supports ${this.#protocolVersions.join(', ')}`,
+          data: { supported: this.#protocolVersions, requested: 'initialize' },
+        })
       }
       return PROTOCOLS[handshake]
     }
@@ -417,23 +417,35 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         (version) => !PROTOCOLS[version].requiresRequestMeta,
       )
       if (fallback == null) {
-        throw new RPCError(INVALID_PARAMS, `Missing "${META_PROTOCOL_VERSION}" in request _meta`, {
-          [ENVELOPE_VIOLATION]: true,
+        throw new RPCError({
+          code: INVALID_PARAMS,
+          message: `Missing "${META_PROTOCOL_VERSION}" in request _meta`,
+          data: {
+            [ENVELOPE_VIOLATION]: true,
+          },
         })
       }
       protocol = PROTOCOLS[fallback]
     } else if (!this.#protocolVersions.includes(requested as ProtocolVersion)) {
-      throw new RPCError(UNSUPPORTED_PROTOCOL_VERSION, 'Unsupported protocol version', {
-        supported: this.#protocolVersions,
-        requested,
+      throw new RPCError({
+        code: UNSUPPORTED_PROTOCOL_VERSION,
+        message: 'Unsupported protocol version',
+        data: {
+          supported: this.#protocolVersions,
+          requested,
+        },
       })
     } else {
       protocol = PROTOCOLS[requested as ProtocolVersion]
     }
 
     if (protocol.requiresRequestMeta && meta?.[META_CLIENT_CAPABILITIES] == null) {
-      throw new RPCError(INVALID_PARAMS, `Missing "${META_CLIENT_CAPABILITIES}" in request _meta`, {
-        [ENVELOPE_VIOLATION]: true,
+      throw new RPCError({
+        code: INVALID_PARAMS,
+        message: `Missing "${META_CLIENT_CAPABILITIES}" in request _meta`,
+        data: {
+          [ENVELOPE_VIOLATION]: true,
+        },
       })
     }
     return protocol
@@ -473,13 +485,22 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return {
       createMessage: supportsCreateMessage
         ? this.createMessage.bind(this)
-        : () => Promise.reject(new MRTRNotSupportedError('createMessage', protocol.version)),
+        : () =>
+            Promise.reject(
+              new MRTRNotSupportedError({ method: 'createMessage', version: protocol.version }),
+            ),
       elicit: supportsElicit
         ? this.elicit.bind(this)
-        : () => Promise.reject(new MRTRNotSupportedError('elicit', protocol.version)),
+        : () =>
+            Promise.reject(
+              new MRTRNotSupportedError({ method: 'elicit', version: protocol.version }),
+            ),
       listRoots: supportsListRoots
         ? this.listRoots.bind(this)
-        : () => Promise.reject(new MRTRNotSupportedError('listRoots', protocol.version)),
+        : () =>
+            Promise.reject(
+              new MRTRNotSupportedError({ method: 'listRoots', version: protocol.version }),
+            ),
       // Delivered only when this request opted in via `_meta`, at or above its level — but the
       // `log` event is raised either way, so `server.events.on('log')` sees handler logs on
       // every revision.
@@ -495,7 +516,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   ): Promise<ServerResult | HeldResponse<ServerResult>> {
     const protocol = this.#resolveProtocol(request)
     if (!protocol.clientMethods.has(request.method)) {
-      throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
+      throw new RPCError({
+        code: METHOD_NOT_FOUND,
+        message: `Unsupported method: ${request.method}`,
+      })
     }
     if (request.method === 'ping') {
       return {}
@@ -521,7 +545,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       requestStateError = cause instanceof Error ? cause.message : String(cause)
     }
     if (requestStateError != null) {
-      throw new RPCError(INVALID_PARAMS, `Invalid requestState: ${requestStateError}`)
+      throw new RPCError({
+        code: INVALID_PARAMS,
+        message: `Invalid requestState: ${requestStateError}`,
+      })
     }
     const mrtr: MRTRContext = {
       inputResponses: lifted.inputResponses,
@@ -542,13 +569,16 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     if (isInputRequiredResult(result)) {
       if (protocol.inputRequestMethods.size === 0) {
-        throw new RPCError(
-          INTERNAL_ERROR,
-          `A handler suspended on protocol version ${protocol.version}, which has no multi round-trip requests`,
-        )
+        throw new RPCError({
+          code: INTERNAL_ERROR,
+          message: `A handler suspended on protocol version ${protocol.version}, which has no multi round-trip requests`,
+        })
       }
       if (!MRTR_METHODS.has(request.method)) {
-        throw new RPCError(INTERNAL_ERROR, `${request.method} cannot suspend on input`)
+        throw new RPCError({
+          code: INTERNAL_ERROR,
+          message: `${request.method} cannot suspend on input`,
+        })
       }
       const missing = missingInputCapabilities(
         result.inputRequests,
@@ -558,11 +588,15 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         const [key, embedded] = Object.entries(result.inputRequests ?? {}).find(
           ([, value]) => missing[INPUT_REQUEST_CAPABILITIES[value.method]] != null,
         ) as [string, InputRequest]
-        throw new RPCError(
-          MISSING_REQUIRED_CLIENT_CAPABILITY,
-          new MissingRequiredClientCapabilityError(key, embedded.method, missing).message,
-          { requiredCapabilities: missing },
-        )
+        throw new RPCError({
+          code: MISSING_REQUIRED_CLIENT_CAPABILITY,
+          message: new MissingRequiredClientCapabilityError({
+            key,
+            method: embedded.method,
+            requiredCapabilities: missing,
+          }).message,
+          data: { requiredCapabilities: missing },
+        })
       }
       // Deliberately not through `applyCacheHints`: a suspension is not an answer, so there is
       // nothing to cache and a `ttlMs` on it would tell the client to reuse a half-finished call.
@@ -639,7 +673,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       case 'tools/list':
         return { tools: this.#toolsList, ...this.#cache }
     }
-    throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
+    throw new RPCError({ code: METHOD_NOT_FOUND, message: `Unsupported method: ${request.method}` })
   }
 
   async #callTool(
@@ -652,7 +686,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const handler = Object.hasOwn(this.#toolHandlers, name) ? this.#toolHandlers[name] : undefined
     if (handler == null) {
       // "Errors in finding the tool" are MCP protocol errors, per the spec.
-      throw new RPCError(INVALID_PARAMS, `Tool ${name} not found`)
+      throw new RPCError({ code: INVALID_PARAMS, message: `Tool ${name} not found` })
     }
     const progressToken = request.params._meta?.progressToken
     const progress =
@@ -700,7 +734,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       ? this.#promptHandlers[name]
       : undefined
     if (handler == null) {
-      throw new RPCError(INVALID_PARAMS, `Prompt ${name} not found`)
+      throw new RPCError({ code: INVALID_PARAMS, message: `Prompt ${name} not found` })
     }
     return await handler({ input: request.params.arguments, client, signal, ...mrtr })
   }

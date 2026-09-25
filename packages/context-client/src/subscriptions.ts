@@ -77,30 +77,36 @@ export type MutationOptions = { uri: string; signal?: AbortSignal; timeout?: num
 
 /** Protocol-level failure on a listen stream (never retried). */
 export class SubscriptionProtocolError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options)
+  constructor(params: SubscriptionProtocolErrorParams) {
+    super(params.message, { cause: params.cause })
     this.name = 'SubscriptionProtocolError'
   }
 }
+export type SubscriptionProtocolErrorParams = { message: string; cause?: unknown }
 
 /** A listen stream settled abnormally. `retryable` gates auto-reconnect. */
 export class SubscriptionStreamError extends Error {
-  retryable: boolean
-  constructor(message: string, retryable: boolean, options?: { cause?: unknown }) {
-    super(message, options)
+  #retryable: boolean
+  constructor(params: SubscriptionStreamErrorParams) {
+    super(params.message, { cause: params.cause })
     this.name = 'SubscriptionStreamError'
-    this.retryable = retryable
+    this.#retryable = params.retryable
+  }
+
+  get retryable(): boolean {
+    return this.#retryable
   }
 }
+export type SubscriptionStreamErrorParams = { message: string; retryable: boolean; cause?: unknown }
 
 type Generation = {
-  readonly number: number
-  readonly filter: SubscriptionFilter
+  number: number
+  filter: SubscriptionFilter
   acknowledged: boolean
   retired: boolean
   abort: (reason?: Error) => void
-  readonly ack: Deferred<void>
-  readonly handlers: ListenHandlers
+  ack: Deferred<void>
+  handlers: ListenHandlers
 }
 
 const noop = () => {}
@@ -298,7 +304,10 @@ export class SubscriptionDriver {
         generation.retired = true
         generation.abort(new Error('SubscriptionDriver disposed'))
       }
-      throw new SubscriptionStreamError('Candidate retired before promotion', true)
+      throw new SubscriptionStreamError({
+        message: 'Candidate retired before promotion',
+        retryable: true,
+      })
     }
 
     // Promotion: install the candidate, commit the desired set, then retire the old stream.
@@ -357,10 +366,10 @@ export class SubscriptionDriver {
         // `retryable` flag only governs the automatic reconnect path, which no caller awaits.
         this.#failGeneration(
           generation,
-          new SubscriptionStreamError(
-            `Subscription acknowledgement timed out after ${timeout}ms`,
-            true,
-          ),
+          new SubscriptionStreamError({
+            message: `Subscription acknowledgement timed out after ${timeout}ms`,
+            retryable: true,
+          }),
         )
       }, timeout)
       ack.promise.then(
@@ -393,9 +402,9 @@ export class SubscriptionDriver {
         generation.ack.resolve()
       } else {
         // Ack-first contract: the first frame must be `acknowledged`.
-        const error = new SubscriptionProtocolError(
-          'First subscription frame was not an acknowledgement',
-        )
+        const error = new SubscriptionProtocolError({
+          message: 'First subscription frame was not an acknowledgement',
+        })
         generation.retired = true
         this.#reportError(error)
         generation.ack.reject(error)
@@ -425,7 +434,10 @@ export class SubscriptionDriver {
       this.#activeGeneration = null
       if (settle.reason === 'closed') {
         // Transport dropped: reconnect (do not retry graceful result, cancel, or error).
-        this.#scheduleReconnect(settle.error ?? new SubscriptionStreamError('Stream closed', true))
+        this.#scheduleReconnect(
+          settle.error ??
+            new SubscriptionStreamError({ message: 'Stream closed', retryable: true }),
+        )
       }
     }
   }
@@ -501,13 +513,18 @@ function isRetryable(error: Error): boolean {
 
 function settleErrorBeforeAck(settle: ListenSettle): Error {
   if (settle.reason === 'closed') {
-    return new SubscriptionStreamError('Stream closed before acknowledgement', true, {
+    return new SubscriptionStreamError({
+      message: 'Stream closed before acknowledgement',
+      retryable: true,
       cause: settle.error,
     })
   }
   return (
     settle.error ??
-    new SubscriptionStreamError(`Stream settled (${settle.reason}) before acknowledgement`, false)
+    new SubscriptionStreamError({
+      message: `Stream settled (${settle.reason}) before acknowledgement`,
+      retryable: false,
+    })
   )
 }
 

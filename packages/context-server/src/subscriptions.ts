@@ -17,14 +17,15 @@ export const DEFAULT_MAX_PENDING_FRAMES = 256
  * up with the stream.
  */
 export class SubscriptionBackpressureError extends Error {
-  name = 'SubscriptionBackpressureError'
-
-  constructor(maxPendingFrames: number) {
+  constructor(params: SubscriptionBackpressureErrorParams) {
     super(
-      `Subscription writer exceeded its backpressure bound of ${maxPendingFrames} pending frame(s)`,
+      `Subscription writer exceeded its backpressure bound of ${params.maxPendingFrames} pending frame(s)`,
+      { cause: params.cause },
     )
+    this.name = 'SubscriptionBackpressureError'
   }
 }
+export type SubscriptionBackpressureErrorParams = { maxPendingFrames: number; cause?: unknown }
 
 /**
  * Where a `SubscriptionWriter` delivers notifications. Deliberately has no `writeTerminalResult`:
@@ -104,7 +105,7 @@ export class SubscriptionWriter {
       return Promise.reject(this.#failure)
     }
     if (this.#pending >= this.#maxPendingFrames) {
-      const error = new SubscriptionBackpressureError(this.#maxPendingFrames)
+      const error = new SubscriptionBackpressureError({ maxPendingFrames: this.#maxPendingFrames })
       this.#fail(error, { notify: true })
       return Promise.reject(error)
     }

@@ -24,27 +24,23 @@ export type ProxySpawnParams = {
   protocolVersion?: ProtocolVersion | 'auto'
 }
 
+export type ProxyHostParams = { client: HostClient }
+
 export class ProxyHost extends NodeContextHost {
   static async forDaemon(options?: DaemonOptions): Promise<ProxyHost> {
     const client = await runDaemon(options)
-    return new ProxyHost(client)
+    return new ProxyHost({ client })
   }
 
   #client: HostClient
 
-  constructor(client: HostClient) {
-    super()
-    this.#client = client
+  constructor(params: ProxyHostParams) {
+    super({ dispose: () => params.client.dispose() })
+    this.#client = params.client
   }
 
   get client(): HostClient {
     return this.#client
-  }
-
-  /** @internal */
-  async _dispose(): Promise<void> {
-    await super._dispose()
-    await this.#client.dispose()
   }
 
   async spawn<T extends ContextTypes = UnknownContextTypes>(
@@ -53,7 +49,7 @@ export class ProxyHost extends NodeContextHost {
     // `spawnParam` is forwarded verbatim to the daemon channel, so `protocolVersion` is
     // destructured out here: it belongs to the local client, not to the daemon's spawn param.
     const { key, env, protocolVersion, ...spawnParam } = params
-    if (this._contexts[key] != null) {
+    if (this.hasContext({ key })) {
       throw new Error(`Context ${key} already exists`)
     }
 

@@ -125,6 +125,14 @@ export type CreateContextParams = CreateHostedContextParams & {
   key: string
 }
 
+export type ContextHostParams = {
+  /** Subclass teardown, run after every context is removed. */
+  dispose?: () => Promise<void>
+}
+
+export type HasContextParams = { key: string }
+export type RegisterHostedContextParams = { key: string; context: HostedContext }
+
 export type HostEvents = {
   'context:added': { key: string }
   'context:removed': { key: string }
@@ -206,51 +214,64 @@ export type HTTPContextParams = {
 }
 
 export class ContextHost extends Disposer {
-  /** @internal */
-  _contexts: Record<string, HostedContext> = {}
-  /** @internal */
-  _localTools: Map<string, LocalTool> = new Map()
-  /** @internal */
-  _events: EventEmitter<HostEvents> = new EventEmitter<HostEvents>()
+  #contexts: Record<string, HostedContext> = {}
+  #localTools: Map<string, LocalTool> = new Map()
+  #events: EventEmitter<HostEvents> = new EventEmitter<HostEvents>()
   // Per-context teardown for the client subscription-event listeners wired on `2026-07-28`
   // contexts (SEP-1391). Cleared in `remove()` so a listener never outlives its context.
   #subscriptionUnsubscribes: Map<string, Array<() => void>> = new Map()
 
+  /** Observe context lifecycle and subscription events. */
   get events(): EventEmitter<HostEvents> {
-    return this._events
+    return this.#events
   }
 
-  constructor() {
-    // Wire `_dispose()` into the Disposer lifecycle: the base only runs the
-    // `dispose` function it is given, so without this `_dispose()` (which tears
-    // down contexts and, in the `ProxyHost` subclass, the daemon client) would
-    // never run.
-    super({ dispose: () => this._dispose() })
+  constructor(params: ContextHostParams = {}) {
+    // Wire host cleanup into the Disposer lifecycle, so it runs on `dispose()` and on abort alike.
+    super({
+      dispose: async () => {
+        await this.#disposeHost()
+        await params.dispose?.()
+      },
+    })
   }
 
   get contexts(): Record<string, HostedContext> {
-    return this._contexts
+    return this.#contexts
   }
 
   /**
    * Get the map of registered local tools.
    */
   get localTools(): Map<string, LocalTool> {
-    return this._localTools
+    return this.#localTools
   }
 
-  /** @internal */
-  async _dispose(): Promise<void> {
-    this._localTools.clear()
-    await Promise.all(Object.keys(this._contexts).map((key) => this.remove(key)))
+  async #disposeHost(): Promise<void> {
+    this.#localTools.clear()
+    await Promise.all(Object.keys(this.#contexts).map((key) => this.remove(key)))
+  }
+
+  /** Check whether a context key is already registered. */
+  hasContext(params: HasContextParams): boolean {
+    return this.#contexts[params.key] != null
+  }
+
+  /** Register a hosted context created by a subclass. */
+  registerHostedContext(params: RegisterHostedContextParams): void {
+    if (this.hasContext({ key: params.key })) {
+      throw new Error(`Context ${params.key} already exists`)
+    }
+    this.#contexts[params.key] = params.context
+    this.#wireContextSubscriptions(params.key, params.context.client)
   }
 
   getContextKeys(): Array<string> {
-    return Object.keys(this._contexts)
+    return Object.keys(this.#contexts)
   }
 
   getContext<T extends ContextTypes = UnknownContextTypes>(key: string): HostedContext<T> {
-    const ctx = this._contexts[key]
+    const ctx = this.#contexts[key]
     if (ctx == null) {
       throw new Error(`Context ${key} does not exist`)
     }
@@ -288,7 +309,7 @@ export class ContextHost extends Disposer {
   }
 
   getEnabledTools(): Array<ContextTool> {
-    return Object.values(this._contexts)
+    return Object.values(this.#contexts)
       .flatMap((ctx) => ctx.tools)
       .filter((tool) => tool.enabled)
   }
@@ -297,7 +318,7 @@ export class ContextHost extends Disposer {
     const tools: Array<Tool> = []
 
     // Add context tools
-    for (const ctx of Object.values(this._contexts)) {
+    for (const ctx of Object.values(this.#contexts)) {
       for (const ct of ctx.tools) {
         if (ct.enabled) {
           tools.push({ ...ct.tool, name: ct.id })
@@ -306,7 +327,7 @@ export class ContextHost extends Disposer {
     }
 
     // Add local tools (always enabled)
-    for (const [name, localTool] of this._localTools) {
+    for (const [name, localTool] of this.#localTools) {
       tools.push({ ...localTool.tool, name: createLocalToolID(name) })
     }
 
@@ -335,10 +356,10 @@ export class ContextHost extends Disposer {
    * ```
    */
   addLocalTool(definition: LocalToolDefinition): void {
-    if (this._localTools.has(definition.name)) {
+    if (this.#localTools.has(definition.name)) {
       throw new Error(`Local tool "${definition.name}" already exists`)
     }
-    this._localTools.set(definition.name, {
+    this.#localTools.set(definition.name, {
       tool: createToolFromDefinition(definition),
       execute: definition.execute,
     })
@@ -357,33 +378,33 @@ export class ContextHost extends Disposer {
    * Remove a local tool by name.
    */
   removeLocalTool(name: string): boolean {
-    return this._localTools.delete(name)
+    return this.#localTools.delete(name)
   }
 
   /**
    * Check if a local tool exists.
    */
   hasLocalTool(name: string): boolean {
-    return this._localTools.has(name)
+    return this.#localTools.has(name)
   }
 
   /**
    * Get a local tool by name.
    */
   getLocalTool(name: string): LocalTool | undefined {
-    return this._localTools.get(name)
+    return this.#localTools.get(name)
   }
 
   createContext<T extends ContextTypes = UnknownContextTypes>(
     params: CreateContextParams,
   ): ContextClient<T> {
     const { key, ...hostedParams } = params
-    if (this._contexts[key] != null) {
+    if (this.#contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
 
     const context = createHostedContext<T>(hostedParams)
-    this._contexts[key] = context as unknown as HostedContext
+    this.#contexts[key] = context as unknown as HostedContext
     this.#wireContextSubscriptions(key, context.client as unknown as ContextClient)
     return context.client
   }
@@ -392,7 +413,7 @@ export class ContextHost extends Disposer {
     params: AddDirectContextParams,
   ): ContextClient<T> {
     const { key, config, tools, protocolVersion } = params
-    if (this._contexts[key] != null) {
+    if (this.#contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
 
@@ -440,7 +461,7 @@ export class ContextHost extends Disposer {
   ): Promise<ContextClient<T>> {
     const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware } = params
 
-    if (this._contexts[key] != null) {
+    if (this.#contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
 
@@ -459,7 +480,7 @@ export class ContextHost extends Disposer {
       protocolVersion,
     })
 
-    this._contexts[key] = context as unknown as HostedContext
+    this.#contexts[key] = context as unknown as HostedContext
     this.#wireContextSubscriptions(key, context.client as unknown as ContextClient)
 
     return context.client
@@ -485,7 +506,7 @@ export class ContextHost extends Disposer {
         void this.#onListChanged(key, 'resources')
       }),
       client.events.on('resourceUpdated', ({ uri }) => {
-        void this._events.emit('resource:updated', { key, uri }).catch(() => {})
+        void this.#events.emit('resource:updated', { key, uri }).catch(() => {})
       }),
     ]
     this.#subscriptionUnsubscribes.set(key, unsubscribes)
@@ -500,7 +521,7 @@ export class ContextHost extends Disposer {
    * a frame was in flight.
    */
   async #onListChanged(key: string, kind: 'tools' | 'prompts' | 'resources'): Promise<void> {
-    const ctx = this._contexts[key]
+    const ctx = this.#contexts[key]
     if (ctx == null) {
       return
     }
@@ -515,10 +536,10 @@ export class ContextHost extends Disposer {
     } catch {
       // Best-effort re-list; still emit the change signal below.
     }
-    if (this._contexts[key] == null) {
+    if (this.#contexts[key] == null) {
       return
     }
-    void this._events.emit(`${kind}:changed`, { key }).catch(() => {})
+    void this.#events.emit(`${kind}:changed`, { key }).catch(() => {})
   }
 
   /**
@@ -527,12 +548,12 @@ export class ContextHost extends Disposer {
    * server no longer advertises.
    */
   async #refreshContextTools(key: string): Promise<void> {
-    const ctx = this._contexts[key]
+    const ctx = this.#contexts[key]
     if (ctx == null) {
       return
     }
     const { tools } = await ctx.client.listTools()
-    if (this._contexts[key] == null) {
+    if (this.#contexts[key] == null) {
       return
     }
     const previous = new Map(ctx.tools.map((ct) => [ct.tool.name, ct]))
@@ -556,7 +577,7 @@ export class ContextHost extends Disposer {
       .client.listTools(listOptions)
       .catch((err: unknown) => {
         // If the context was removed while listTools was in flight, surface a clear error.
-        if (this._contexts[key] == null) {
+        if (this.#contexts[key] == null) {
           throw new Error(`Context ${key} was removed during setup`)
         }
         throw err
@@ -568,21 +589,21 @@ export class ContextHost extends Disposer {
       return { id: getContextToolID(key, tool.name), tool, enabled }
     })
     // The context may have been removed while listTools / enableTools awaited.
-    if (this._contexts[key] == null) {
+    if (this.#contexts[key] == null) {
       throw new Error(`Context ${key} was removed during setup`)
     }
-    this._contexts[key].tools = contextTools
+    this.#contexts[key].tools = contextTools
     return contextTools
   }
 
   async remove(key: string): Promise<void> {
-    const ctx = this._contexts[key]
+    const ctx = this.#contexts[key]
     if (ctx == null) {
       return
     }
     // Delete before the async dispose so a concurrent remove/dispose (e.g. an
     // onExit reap racing a user remove) sees null and exits — no double removal.
-    delete this._contexts[key]
+    delete this.#contexts[key]
 
     // Tear down the client subscription-event listeners (SEP-1391) before disposing the client.
     for (const unsubscribe of this.#subscriptionUnsubscribes.get(key) ?? []) {
@@ -591,7 +612,7 @@ export class ContextHost extends Disposer {
     this.#subscriptionUnsubscribes.delete(key)
 
     await ctx.disposer.dispose()
-    void this._events.emit('context:removed', { key }).catch(() => {})
+    void this.#events.emit('context:removed', { key }).catch(() => {})
   }
 
   getPrompt<T extends ContextTypes = UnknownContextTypes>(
@@ -624,7 +645,7 @@ export class ContextHost extends Disposer {
   async callLocalTool(params: LocalToolParams): Promise<CallToolResult> {
     const { name, arguments: args = {}, signal } = params
 
-    const localTool = this._localTools.get(name)
+    const localTool = this.#localTools.get(name)
     if (localTool == null) {
       throw new Error(`Local tool "${name}" does not exist`)
     }
