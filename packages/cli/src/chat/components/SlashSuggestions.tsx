@@ -10,12 +10,14 @@ export function SlashSuggestions({ items }: SlashSuggestionsProps) {
   if (items.length === 0) return null
   return (
     <Box flexDirection="column" paddingX={1}>
-      {items.map((c) => (
-        <Box key={c.name}>
-          <Text color="cyan">/{c.name}</Text>
-          <Text dimColor> — {c.description}</Text>
-        </Box>
-      ))}
+      {items.map((c) => {
+        return (
+          <Box key={c.name}>
+            <Text color="cyan">/{c.name}</Text>
+            <Text dimColor> — {c.description}</Text>
+          </Box>
+        )
+      })}
     </Box>
   )
 }

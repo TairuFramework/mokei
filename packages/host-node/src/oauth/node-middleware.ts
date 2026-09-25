@@ -14,7 +14,7 @@ export type NodeOAuthOptions = {
   resource?: string
   /** File path for the persistent token store. Omit to keep tokens in-memory only. */
   tokensPath?: string
-  /** Override the authorization handler (default: loopback browser handler). */
+  /** Override the authorisation handler (default: loopback browser handler). */
   handler?: AuthorizationHandler
   /** Override the token store (default: file store at tokensPath, else the middleware's in-memory default). */
   store?: TokenStore
@@ -24,7 +24,7 @@ export type NodeOAuthOptions = {
 
 /**
  * Composes {@link createOAuthMiddleware} with Node-specific defaults: a loopback browser
- * authorization handler (RFC 8252) and, when `tokensPath` is given, a file-backed token store.
+ * authorisation handler (RFC 8252) and, when `tokensPath` is given, a file-backed token store.
  */
 export function createNodeOAuthMiddleware(options: NodeOAuthOptions): FetchMiddleware {
   const handler =

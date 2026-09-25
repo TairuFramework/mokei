@@ -117,7 +117,7 @@ const LOGGING_LEVELS: Record<LoggingLevel, number> = {
  * Accepts any message shape known to any registered revision, not just the revisions this
  * instance is configured to serve: an unsupported-but-well-formed request (e.g. a `ping` on a
  * `2026-07-28`-only server) must fail with `METHOD_NOT_FOUND`/`UNSUPPORTED_PROTOCOL_VERSION`
- * from `#resolveProtocol` — a semantic decision — rather than `INVALID_REQUEST` from the wire
+ * from `#resolveProtocol` -- a semantic decision -- rather than `INVALID_REQUEST` from the wire
  * parser, which cannot tell "malformed" from "not what this server was configured to speak."
  */
 const validateClientMessage = createValidator<Schema, ClientMessage>({
@@ -148,11 +148,11 @@ export type ServerParams = ServerConfig & {
   /**
    * Owns resource subscriptions (SEP-1391 `subscriptions/listen`): creates and owns a
    * {@link SubscriptionHub} bound to this server's own `events`, disposing it on teardown.
-   * Mutually exclusive with `subscriptionHub` — pass one or the other, never both.
+   * Mutually exclusive with `subscriptionHub` -- pass one or the other, never both.
    */
   subscriptions?: boolean
   /**
-   * Borrows an externally-owned {@link SubscriptionHub} (the stateless-HTTP path, Task 13): the
+   * Borrows an externally-owned {@link SubscriptionHub} for stateless HTTP: the
    * server serves `subscriptions/listen` against it but neither re-subscribes its producers nor
    * disposes it. Affects capability advertising the same way `subscriptions: true` does.
    */
@@ -168,8 +168,8 @@ export type ServerParams = ServerConfig & {
   /** Requests allowed to wait for a slot before further requests are refused (default 1000). */
   maxQueuedRequests?: number
   /**
-   * Called for an inbound frame that could neither be validated nor routed to anything —
-   * an invalid notification, or a malformed frame naming an id nobody is waiting on — and
+   * Called for an inbound frame that could neither be validated nor routed to anything --
+   * an invalid notification, or a malformed frame naming an id nobody is waiting on -- and
    * for request handlers that failed. Without it such frames vanish silently.
    */
   onError?: (error: Error) => void
@@ -208,7 +208,7 @@ type ServerTypes = {
 /**
  * Process-unique id distinguishing one server's subscriptions from another's inside a shared
  * hub. A plain (stdio) server owns its own hub, so any stable value would do; a counter keeps it
- * RN-safe (no `crypto`) and lets Task 13's HTTP per-POST server inject its own via `connectionID`.
+ * RN-safe (no `crypto`) and lets the HTTP per-POST server inject its own via `connectionID`.
  */
 let nextConnectionID = 0
 
@@ -259,7 +259,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     // that mints with the default `JSON.stringify` (there being no custom `mint` to use instead)
     // produces a string the custom `verify` was never written to accept, so every MRTR flow on
     // this server fails on its second round with no clue pointing at the missing `mint`. `mint`
-    // without `verify` is fine and stays unchecked — it is documented as the raw-passthrough mode
+    // without `verify` is fine and stays unchecked -- it is documented as the raw-passthrough mode
     // (`RequestStateHooks`), just without the default JSON encoding.
     if (requestState?.verify != null && requestState.mint == null) {
       throw new Error(
@@ -293,7 +293,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
 
     // Owner (`subscriptions: true`) creates and owns a hub bound to its own `events`; a borrower
     // is handed one and neither re-subscribes producers to it nor disposes it. Passing both is a
-    // configuration error — the owned hub would shadow the borrowed one silently.
+    // configuration error -- the owned hub would shadow the borrowed one silently.
     if (params.subscriptions === true && params.subscriptionHub != null) {
       throw new Error(
         'Pass either `subscriptions: true` (own a hub) or `subscriptionHub` (borrow one), not both',
@@ -344,7 +344,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
    * Raises the `log` event, and writes `notifications/message` when `level` admits it.
    *
    * Emission and transmission are one call rather than an `events.on('log')` bridge because the
-   * two revisions decide delivery from different sources — a standing `logging/setLevel` on
+   * two revisions decide delivery from different sources -- a standing `logging/setLevel` on
    * `2025-11-25`, the request's own `_meta` on `2026-07-28`. With a bridge, the per-request
    * writer would have to emit the event to stay observable and would then get a *second*,
    * session-scoped write on a server serving both revisions. Here every `client.log()` produces
@@ -389,19 +389,19 @@ export class ContextServer extends ContextRPC<ServerTypes> {
    * anything else is resolved from the request's own `_meta`
    * (specification/2026-07-28/basic/versioning). When `_meta` carries no protocol version,
    * resolution falls back to the one configured revision that does not require it
-   * (`2025-11-25`) — a revision that requires `_meta` can never be inferred silently.
+   * (`2025-11-25`) -- a revision that requires `_meta` can never be inferred silently.
    */
   #resolveProtocol(request: ClientRequest): ProtocolDefinition {
     if (request.method === 'initialize') {
-      const handshake = this.#protocolVersions.find((version) =>
-        isHandshakeRequired(PROTOCOLS[version]),
-      )
+      const handshake = this.#protocolVersions.find((version) => {
+        return isHandshakeRequired(PROTOCOLS[version])
+      })
       if (handshake == null) {
-        throw new RPCError(
-          UNSUPPORTED_PROTOCOL_VERSION,
-          `This server supports ${this.#protocolVersions.join(', ')}`,
-          { supported: this.#protocolVersions, requested: 'initialize' },
-        )
+        throw new RPCError({
+          code: UNSUPPORTED_PROTOCOL_VERSION,
+          message: `This server supports ${this.#protocolVersions.join(', ')}`,
+          data: { supported: this.#protocolVersions, requested: 'initialize' },
+        })
       }
       return PROTOCOLS[handshake]
     }
@@ -417,23 +417,35 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         (version) => !PROTOCOLS[version].requiresRequestMeta,
       )
       if (fallback == null) {
-        throw new RPCError(INVALID_PARAMS, `Missing "${META_PROTOCOL_VERSION}" in request _meta`, {
-          [ENVELOPE_VIOLATION]: true,
+        throw new RPCError({
+          code: INVALID_PARAMS,
+          message: `Missing "${META_PROTOCOL_VERSION}" in request _meta`,
+          data: {
+            [ENVELOPE_VIOLATION]: true,
+          },
         })
       }
       protocol = PROTOCOLS[fallback]
     } else if (!this.#protocolVersions.includes(requested as ProtocolVersion)) {
-      throw new RPCError(UNSUPPORTED_PROTOCOL_VERSION, 'Unsupported protocol version', {
-        supported: this.#protocolVersions,
-        requested,
+      throw new RPCError({
+        code: UNSUPPORTED_PROTOCOL_VERSION,
+        message: 'Unsupported protocol version',
+        data: {
+          supported: this.#protocolVersions,
+          requested,
+        },
       })
     } else {
       protocol = PROTOCOLS[requested as ProtocolVersion]
     }
 
     if (protocol.requiresRequestMeta && meta?.[META_CLIENT_CAPABILITIES] == null) {
-      throw new RPCError(INVALID_PARAMS, `Missing "${META_CLIENT_CAPABILITIES}" in request _meta`, {
-        [ENVELOPE_VIOLATION]: true,
+      throw new RPCError({
+        code: INVALID_PARAMS,
+        message: `Missing "${META_CLIENT_CAPABILITIES}" in request _meta`,
+        data: {
+          [ENVELOPE_VIOLATION]: true,
+        },
       })
     }
     return protocol
@@ -444,16 +456,16 @@ export class ContextServer extends ContextRPC<ServerTypes> {
    *
    * `createMessage`/`elicit`/`listRoots` are gated individually on whether their own method
    * (`sampling/createMessage`/`elicitation/create`/`roots/list`) is in `protocol.serverMethods`
-   * — the method the call would actually need to send. A revision missing one rejects it with
+   * -- the method the call would actually need to send. A revision missing one rejects it with
    * `MRTRNotSupportedError`: there is nothing on the wire to send it as, because that revision
-   * replaces server-initiated requests with multi round-trip requests (MRTR, SEP-2322) — a
+   * replaces server-initiated requests with multi round-trip requests (MRTR, SEP-2322) -- a
    * handler on it reaches the client by suspending (`inputRequired()`) and being re-invoked with
    * `inputResponses`, not by awaiting one of these three. `log` is gated on the independent
    * `isPerRequestLogLevel(protocol)`: when true it scopes emission to the level this request
    * opted into via `_meta`, instead of a standing session level.
    *
    * `2025-11-25` has all three methods in `serverMethods` and `isPerRequestLogLevel` `false`,
-   * so this returns the constructor-built, session-scoped `#client` unchanged — its `log` is
+   * so this returns the constructor-built, session-scoped `#client` unchanged -- its `log` is
    * `ContextServer.log`, gated by `#clientLoggingLevel` (`logging/setLevel`). Any other
    * combination builds a fresh client per request, so it can close over the request's resolved
    * `logLevel`.
@@ -473,14 +485,23 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return {
       createMessage: supportsCreateMessage
         ? this.createMessage.bind(this)
-        : () => Promise.reject(new MRTRNotSupportedError('createMessage', protocol.version)),
+        : () =>
+            Promise.reject(
+              new MRTRNotSupportedError({ method: 'createMessage', version: protocol.version }),
+            ),
       elicit: supportsElicit
         ? this.elicit.bind(this)
-        : () => Promise.reject(new MRTRNotSupportedError('elicit', protocol.version)),
+        : () =>
+            Promise.reject(
+              new MRTRNotSupportedError({ method: 'elicit', version: protocol.version }),
+            ),
       listRoots: supportsListRoots
         ? this.listRoots.bind(this)
-        : () => Promise.reject(new MRTRNotSupportedError('listRoots', protocol.version)),
-      // Delivered only when this request opted in via `_meta`, at or above its level — but the
+        : () =>
+            Promise.reject(
+              new MRTRNotSupportedError({ method: 'listRoots', version: protocol.version }),
+            ),
+      // Delivered only when this request opted in via `_meta`, at or above its level -- but the
       // `log` event is raised either way, so `server.events.on('log')` sees handler logs on
       // every revision.
       log: isPerRequestLogLevel(protocol)
@@ -495,7 +516,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   ): Promise<ServerResult | HeldResponse<ServerResult>> {
     const protocol = this.#resolveProtocol(request)
     if (!protocol.clientMethods.has(request.method)) {
-      throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
+      throw new RPCError({
+        code: METHOD_NOT_FOUND,
+        message: `Unsupported method: ${request.method}`,
+      })
     }
     if (request.method === 'ping') {
       return {}
@@ -510,7 +534,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         ? liftRetryParams(request.params)
         : { params: request.params, lifted: {} }
     // `verify` runs before the handler and its refusal must answer the request with -32602
-    // rather than throw past this dispatch loop — but the throw sits outside the `catch` so it
+    // rather than throw past this dispatch loop -- but the throw sits outside the `catch` so it
     // is a fresh, unchained error: the hook's own error may carry internals (secrets, stack
     // frames) that must not ride along on `.cause` into a response a peer can read.
     let requestStateError: string | undefined
@@ -521,7 +545,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       requestStateError = cause instanceof Error ? cause.message : String(cause)
     }
     if (requestStateError != null) {
-      throw new RPCError(INVALID_PARAMS, `Invalid requestState: ${requestStateError}`)
+      throw new RPCError({
+        code: INVALID_PARAMS,
+        message: `Invalid requestState: ${requestStateError}`,
+      })
     }
     const mrtr: MRTRContext = {
       inputResponses: lifted.inputResponses,
@@ -530,25 +557,28 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     const liftedRequest = { ...request, params: liftedParams } as ClientRequest
     const client = this.#createClient(protocol, protocol.readRequestMeta(request).logLevel)
-    const result = await withRequestMeta(meta, () =>
-      this.#dispatchRequest(liftedRequest, protocol, client, signal, mrtr),
-    )
+    const result = await withRequestMeta(meta, () => {
+      return this.#dispatchRequest(liftedRequest, protocol, client, signal, mrtr)
+    })
     // A held `subscriptions/listen` response is already the wrapped terminal (or, more precisely,
     // its `terminal` promise resolves to one): the RPC layer writes it verbatim without wrapping,
-    // so it must skip `wrapResult` here — passing it through `applyCacheHints`/`wrapResult` would
+    // so it must skip `wrapResult` here -- passing it through `applyCacheHints`/`wrapResult` would
     // stamp a `resultType`/serverInfo the terminal must not carry.
     if (isHeldResponse(result)) {
       return result
     }
     if (isInputRequiredResult(result)) {
       if (protocol.inputRequestMethods.size === 0) {
-        throw new RPCError(
-          INTERNAL_ERROR,
-          `A handler suspended on protocol version ${protocol.version}, which has no multi round-trip requests`,
-        )
+        throw new RPCError({
+          code: INTERNAL_ERROR,
+          message: `A handler suspended on protocol version ${protocol.version}, which has no multi round-trip requests`,
+        })
       }
       if (!MRTR_METHODS.has(request.method)) {
-        throw new RPCError(INTERNAL_ERROR, `${request.method} cannot suspend on input`)
+        throw new RPCError({
+          code: INTERNAL_ERROR,
+          message: `${request.method} cannot suspend on input`,
+        })
       }
       const missing = missingInputCapabilities(
         result.inputRequests,
@@ -558,11 +588,15 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         const [key, embedded] = Object.entries(result.inputRequests ?? {}).find(
           ([, value]) => missing[INPUT_REQUEST_CAPABILITIES[value.method]] != null,
         ) as [string, InputRequest]
-        throw new RPCError(
-          MISSING_REQUIRED_CLIENT_CAPABILITY,
-          new MissingRequiredClientCapabilityError(key, embedded.method, missing).message,
-          { requiredCapabilities: missing },
-        )
+        throw new RPCError({
+          code: MISSING_REQUIRED_CLIENT_CAPABILITY,
+          message: new MissingRequiredClientCapabilityError({
+            key,
+            method: embedded.method,
+            requiredCapabilities: missing,
+          }).message,
+          data: { requiredCapabilities: missing },
+        })
       }
       // Deliberately not through `applyCacheHints`: a suspension is not an answer, so there is
       // nothing to cache and a `ttlMs` on it would tell the client to reuse a half-finished call.
@@ -639,7 +673,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       case 'tools/list':
         return { tools: this.#toolsList, ...this.#cache }
     }
-    throw new RPCError(METHOD_NOT_FOUND, `Unsupported method: ${request.method}`)
+    throw new RPCError({ code: METHOD_NOT_FOUND, message: `Unsupported method: ${request.method}` })
   }
 
   async #callTool(
@@ -652,7 +686,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const handler = Object.hasOwn(this.#toolHandlers, name) ? this.#toolHandlers[name] : undefined
     if (handler == null) {
       // "Errors in finding the tool" are MCP protocol errors, per the spec.
-      throw new RPCError(INVALID_PARAMS, `Tool ${name} not found`)
+      throw new RPCError({ code: INVALID_PARAMS, message: `Tool ${name} not found` })
     }
     const progressToken = request.params._meta?.progressToken
     const progress =
@@ -700,14 +734,14 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       ? this.#promptHandlers[name]
       : undefined
     if (handler == null) {
-      throw new RPCError(INVALID_PARAMS, `Prompt ${name} not found`)
+      throw new RPCError({ code: INVALID_PARAMS, message: `Prompt ${name} not found` })
     }
     return await handler({ input: request.params.arguments, client, signal, ...mrtr })
   }
 
   /**
    * Serves one `subscriptions/listen` request (SEP-1391). Returns a held response: no result body
-   * is written now — the stream stays open, the acknowledgement is the first frame on it, and the
+   * is written now -- the stream stays open, the acknowledgement is the first frame on it, and the
    * terminal result is written only on graceful teardown.
    *
    * Ack-first: the `notifications/subscriptions/acknowledged` frame is *written* (awaited) before
@@ -727,7 +761,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const terminal = defer<ServerResult>()
     // Suppress unhandled-rejection in the narrow window before `#holdRequest` attaches its own
     // handler (an `onFailure` firing between `register` and the `_holdResponse` return). It does
-    // not replace that handler — both fire; `#holdRequest`'s is what actually cleans up.
+    // not replace that handler -- both fire; `#holdRequest`'s is what actually cleans up.
     terminal.promise.catch(() => {})
 
     // Every frame the writer sends is stamped with the per-subscription id (under `params._meta`)
@@ -831,7 +865,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   /**
    * On an explicit `dispose()`, before the transport closes: if this server owns its subscription
    * hub, resolve every held `subscriptions/listen` terminal (their writes are then awaited by the
-   * RPC layer's held-response flush) and release the hub. A borrower does neither — the hub's
+   * RPC layer's held-response flush) and release the hub. A borrower does neither -- the hub's
    * owner drives graceful teardown.
    */
   async _beforeTransportClose(_reason: Error): Promise<void> {

@@ -11,7 +11,7 @@ export type SystemOnePredictParams<TQuestions extends QuestionMap> = {
   signal?: AbortSignal
 }
 
-export type SystemOneBackendClientOptions = {
+export type SystemOneClientParams = {
   backend: SystemOneBackend
   defaultModel?: string
 }
@@ -20,15 +20,17 @@ export class SystemOneClient {
   #backend: SystemOneBackend
   #defaultModel?: string
 
-  constructor(options: SystemOneBackendClientOptions) {
-    this.#backend = options.backend
-    this.#defaultModel = options.defaultModel
+  constructor(params: SystemOneClientParams) {
+    this.#backend = params.backend
+    this.#defaultModel = params.defaultModel
   }
 
   #resolveModel(model?: string): string {
     const resolved = model ?? this.#defaultModel
     if (resolved == null) {
-      throw new SystemOneError('A model is required: pass `model` or set `defaultModel`')
+      throw new SystemOneError({
+        message: 'A model is required: pass `model` or set `defaultModel`',
+      })
     }
     return resolved
   }
@@ -49,9 +51,7 @@ export class SystemOneClient {
   }
 }
 
-export type CreateSystemOneClientOptions =
-  | SystemOneHTTPClientOptions
-  | SystemOneBackendClientOptions
+export type CreateSystemOneClientOptions = SystemOneHTTPClientOptions | SystemOneClientParams
 
 export function createSystemOneClient(options: CreateSystemOneClientOptions): SystemOneClient {
   if ('backend' in options) {

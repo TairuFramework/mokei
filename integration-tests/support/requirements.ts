@@ -3,11 +3,11 @@
  * them instead of failing them. Two backends are supported, both serving OpenAI-
  * (`/v1/chat/completions`) and Anthropic-compatible (`/v1/messages`) endpoints:
  *
- * - **llama.cpp** — the default, probed at `LLAMA_SERVER_URL` or `http://127.0.0.1:8080`.
+ * - **llama.cpp** -- the default, probed at `LLAMA_SERVER_URL` or `http://127.0.0.1:8080`.
  *   Start it with `--jinja`, without which it parses no tool calls and the suites that
  *   assert one fail. Suites reach it through `OpenAIProvider` / `AnthropicProvider`, and
  *   the CLI through `--provider openai --api-url`.
- * - **ollama** — the alternative, used when `OLLAMA_HOST` is set or when no llama-server
+ * - **ollama** -- the alternative, used when `OLLAMA_HOST` is set or when no llama-server
  *   answers. Adds its own native API, which llama-server has no equivalent of.
  *
  * Resolution order: `LLAMA_SERVER_URL` (explicit) → `OLLAMA_HOST` (explicit) → a
@@ -26,7 +26,7 @@ export type ChatProviderTypes = AnthropicTypes | OllamaTypes | OpenAITypes
 
 export type ChatBackend = {
   kind: 'llama-server' | 'ollama'
-  /** Whether the server answered — suites skip when false. */
+  /** Whether the server answered -- suites skip when false. */
   available: boolean
   /** Root URL of the server. */
   baseURL: string
@@ -49,12 +49,12 @@ const DEFAULT_LLAMA_SERVER_URL = 'http://127.0.0.1:8080'
 
 const DEFAULT_OLLAMA_HOST = 'http://127.0.0.1:11434'
 
-/** Fixed ollama model — small, tool-capable, and what the suites' assertions assume. */
+/** Fixed ollama model -- small, tool-capable, and what the suites' assertions assume. */
 const OLLAMA_MODEL = 'lfm2.5:latest'
 
 /**
  * Default llama-server model: the same LFM2.5 the ollama runs use. `llama-server -hf
- * LiquidAI/LFM2.5-1.2B-Thinking-GGUF` reports this id, so discovery normally matches it —
+ * LiquidAI/LFM2.5-1.2B-Thinking-GGUF` reports this id, so discovery normally matches it --
  * it is the fallback when the server does not advertise one.
  */
 const LLAMA_SERVER_MODEL = 'LiquidAI/LFM2.5-1.2B-Thinking-GGUF'

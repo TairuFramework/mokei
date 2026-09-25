@@ -3,6 +3,9 @@
 **Origin:** follow-up from the OAuth 2.1 HTTP-transport work
 (`docs/agents/plans/completed/2026-09-04-http-auth-oauth.complete.md`).
 
+**Status:** backlog (demoted from next 2026-09-25 -- narrow same-resource, same-token-file case;
+needs a `TokenStore` contract design pass)
+
 ## Problem
 
 The OAuth client middleware's single-flight authorize/refresh map (`authFlights` in

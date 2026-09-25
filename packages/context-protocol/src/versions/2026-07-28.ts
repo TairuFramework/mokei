@@ -83,7 +83,7 @@ export function withProtocolMeta<S extends Schema>(schema: S) {
       {
         // `type: 'object'` on the inner `params` is required, not decorative: without it Ajv's
         // `strictTypes` warns for every `properties`/`required` here, and those warnings go to
-        // stderr — the log channel of every stdio MCP server that loads this package.
+        // stderr -- the log channel of every stdio MCP server that loads this package.
         properties: {
           params: {
             properties: { _meta: requestMeta },
@@ -106,7 +106,7 @@ export function withProtocolMeta<S extends Schema>(schema: S) {
  * `tools/list` carrying `inputResponses` is a client bug, not a retry. Enforced on the wire by
  * `forbidRetryParams` below, applied to every other member of `clientRequest`.
  *
- * Both are optional — round one carries neither.
+ * Both are optional -- round one carries neither.
  */
 export function withRetryParams<S extends Schema>(schema: S) {
   return {
@@ -138,7 +138,7 @@ function forbidRetryParams<S extends Schema>(schema: S) {
       schema,
       {
         properties: {
-          // `type: 'object'` on each `not` branch is required, not decorative — see
+          // `type: 'object'` on each `not` branch is required, not decorative -- see
           // `withProtocolMeta` above for why an untyped `required` warns under Ajv's strictTypes.
           params: {
             not: {
@@ -192,7 +192,7 @@ export type DiscoverResult = FromSchema<typeof discoverResult>
  * elicitation or roots request carried in-band as `{ method, params }`.
  *
  * Deliberately not `createMessageRequest`/`elicitRequest`/`listRootsRequest`: those build on
- * `request`, which requires `jsonrpc` and `id`. An embedded request is de-JSON-RPC'd — it never
+ * `request`, which requires `jsonrpc` and `id`. An embedded request is de-JSON-RPC'd -- it never
  * travels as a JSON-RPC request in this revision, because this revision has no server-initiated
  * requests at all. `additionalProperties: false` so the envelope cannot be smuggled back in.
  */
@@ -244,7 +244,7 @@ export const inputRequests = {
 
 /**
  * A single embedded input response: the *bare* result for its request, never wrapped in a
- * `{ method, result }` envelope and never carrying this revision's `resultType` — a suspended
+ * `{ method, result }` envelope and never carrying this revision's `resultType` -- a suspended
  * exchange's sub-answers are not themselves protocol results.
  */
 export const inputResponse = {
@@ -317,7 +317,7 @@ export const serverNotification = {
 /**
  * Every result on this revision carries a `resultType`: `'complete'` for a terminal answer,
  * `'input_required'` for one suspended on MRTR input. Applied per union member rather than once
- * around the union, so a result must be both a known shape *and* be labelled complete — a
+ * around the union, so a result must be both a known shape *and* be labelled complete -- a
  * suspended result is `inputRequiredResult` below, never a terminal shape wearing a different
  * label.
  */
@@ -337,7 +337,7 @@ function withResultType<S extends Schema>(schema: S) {
 /**
  * An empty result on this revision: `_meta` and the mandatory `resultType`, nothing else.
  *
- * Purpose-built rather than `withResultType(emptyResult)` — `additionalProperties: false` in
+ * Purpose-built rather than `withResultType(emptyResult)` -- `additionalProperties: false` in
  * one `allOf` branch rejects the `resultType` the other branch adds, so the two cannot be
  * composed.
  */
@@ -377,7 +377,7 @@ export const inputRequiredResult = {
 } as const satisfies Schema
 
 /**
- * `Omit` over a union type is not distributive — it collapses to a single object built from the
+ * `Omit` over a union type is not distributive -- it collapses to a single object built from the
  * union's *common* keys, which would erase the `anyOf`-derived at-least-one-of constraint below.
  * Distributing over `T` first (`T extends unknown ? ... : never`) applies `Omit` to each union
  * member individually and re-unions the results, keeping the constraint intact.
@@ -390,13 +390,13 @@ type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : n
  * runtime and on the wire. `_meta` is excluded: no handler constructs one, and admitting it here
  * would only widen what a consumer may assume is present.
  *
- * The two places that construct this type directly — `@mokei/context-server`'s `inputRequired()`
- * and `@mokei/context-client`'s `InputRequiredRoundsExceededError` construction in `mrtr.ts` —
+ * The two places that construct this type directly -- `@mokei/context-server`'s `inputRequired()`
+ * and `@mokei/context-client`'s `InputRequiredRoundsExceededError` construction in `mrtr.ts` --
  * assemble the object through conditional spreads or an already-validated rest object, which
  * TypeScript cannot narrow to a specific union member. Both assert `as InputRequiredResult`, and
  * the invariant is enforced before each: `inputRequired()` throws on the empty case in the
  * statement directly above its assertion, while the client's value arrives from the wire, where
- * the RPC read loop has already validated it against this schema — `anyOf` included — and failed
+ * the RPC read loop has already validated it against this schema -- `anyOf` included -- and failed
  * the exchange rather than resolving it if it did not hold.
  */
 export type InputRequiredResult = DistributiveOmit<FromSchema<typeof inputRequiredResult>, '_meta'>
@@ -420,7 +420,7 @@ export function isInputRequiredResult(value: unknown): value is InputRequiredRes
  *
  * `subscriptionsListenResult` is deliberately not `withResultType(...)`: it carries no
  * `resultType` at all, only `_meta[subscriptionId]`. It is sent once, on graceful teardown of a
- * `subscriptions/listen` stream — everything the stream delivers before then arrives as
+ * `subscriptions/listen` stream -- everything the stream delivers before then arrives as
  * out-of-band notifications, never as members of this union.
  */
 export const serverResult = {
@@ -477,7 +477,7 @@ export const serverResponse = {
   ],
 } as const satisfies Schema
 
-/** A server sends no requests in this revision — only notifications and responses. */
+/** A server sends no requests in this revision -- only notifications and responses. */
 export const serverMessage = {
   anyOf: [serverNotification, serverResponse],
 } as const satisfies Schema
@@ -533,11 +533,11 @@ export const PROTOCOL = {
   },
   // Only the version key, never the `clientInfo`/`clientCapabilities`/`logLevel` that
   // `decorateRequest` adds: those describe a request, and a notification is not one. The version
-  // is what a peer needs and the one thing it cannot infer — there is no handshake to have
+  // is what a peer needs and the one thing it cannot infer -- there is no handshake to have
   // agreed it and, on a transport that carries each exchange separately, no session to have
   // recorded it, so an unstamped notification is unroutable and cannot cancel anything.
   // `clientNotification` above admits this: both members build on `notification`, whose
-  // `params` declares `_meta: metadata` (open) and `additionalProperties: {}` — unlike a
+  // `params` declares `_meta: metadata` (open) and `additionalProperties: {}` -- unlike a
   // request's `withProtocolMeta`, which would additionally *require* the request envelope.
   decorateNotification: (params: unknown): unknown => {
     const base = asRecord(params)
@@ -561,9 +561,11 @@ export const PROTOCOL = {
   wrapResult: (
     value: Record<string, unknown>,
     context: ServerResultContext,
-  ): Record<string, unknown> => ({
-    ...value,
-    resultType: value.resultType === 'input_required' ? 'input_required' : 'complete',
-    _meta: { ...asRecord(value._meta), [META_SERVER_INFO]: context.serverInfo },
-  }),
+  ): Record<string, unknown> => {
+    return {
+      ...value,
+      resultType: value.resultType === 'input_required' ? 'input_required' : 'complete',
+      _meta: { ...asRecord(value._meta), [META_SERVER_INFO]: context.serverInfo },
+    }
+  },
 } satisfies ProtocolDefinition

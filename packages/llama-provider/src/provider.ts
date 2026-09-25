@@ -251,10 +251,9 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
   }
 
   async listModels(_params?: RequestParams): Promise<Array<Model<ModelInfo>>> {
-    return Array.from(this.#registry.entries()).map(([name, config]) => ({
-      id: name,
-      raw: { name, path: config.path },
-    }))
+    return Array.from(this.#registry.entries()).map(([name, config]) => {
+      return { id: name, raw: { name, path: config.path } }
+    })
   }
 
   async embed(params: EmbedParams): Promise<EmbedResponse> {
@@ -320,17 +319,15 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
         session.setChatHistory(history)
       }
 
-      const onTextChunk =
-        (
-          streamController: ReadableStreamDefaultController<
-            MessagePart<ChatResponseChunk, ToolCall>
-          >,
-        ) =>
-        (chunk: string) => {
+      const onTextChunk = (
+        streamController: ReadableStreamDefaultController<MessagePart<ChatResponseChunk, ToolCall>>,
+      ) => {
+        return (chunk: string) => {
           if (cancelled) return
           const raw: ChatResponseChunk = { text: chunk, done: false }
           streamController.enqueue({ type: 'text-delta', text: chunk, raw })
         }
+      }
 
       const sampling = resolveSamplingParams(params)
       const samplingOptions: Record<string, unknown> = {}

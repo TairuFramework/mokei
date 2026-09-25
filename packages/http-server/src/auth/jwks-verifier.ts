@@ -79,7 +79,10 @@ function requireHTTPS(url: string): void {
   const u = new URL(url)
   if (u.protocol === 'https:') return
   if (u.protocol === 'http:' && isLoopbackHost(u.hostname)) return
-  throw new TokenVerificationError('invalid_token', `OAuth endpoint must be https: ${url}`)
+  throw new TokenVerificationError({
+    code: 'invalid_token',
+    message: `OAuth endpoint must be https: ${url}`,
+  })
 }
 
 /** RFC 8414: insert the well-known segment before the issuer's own path, not append it. */
@@ -119,10 +122,10 @@ function concatUint8(chunks: Array<Uint8Array>): Uint8Array {
 async function readCappedText(res: Response, url: string, maxBytes: number): Promise<string> {
   const contentLength = Number(res.headers.get('content-length'))
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    throw new TokenVerificationError(
-      'invalid_token',
-      `response from ${url} exceeds ${maxBytes} bytes`,
-    )
+    throw new TokenVerificationError({
+      code: 'invalid_token',
+      message: `response from ${url} exceeds ${maxBytes} bytes`,
+    })
   }
   const body = res.body
   if (body == null) return ''
@@ -136,10 +139,10 @@ async function readCappedText(res: Response, url: string, maxBytes: number): Pro
       total += value.byteLength
       if (total > maxBytes) {
         await reader.cancel().catch(() => {})
-        throw new TokenVerificationError(
-          'invalid_token',
-          `response from ${url} exceeds ${maxBytes} bytes`,
-        )
+        throw new TokenVerificationError({
+          code: 'invalid_token',
+          message: `response from ${url} exceeds ${maxBytes} bytes`,
+        })
       }
       chunks.push(value)
     }
@@ -157,10 +160,10 @@ async function parseJSONResponse(res: Response, url: string, maxBytes: number): 
   try {
     return JSON.parse(text)
   } catch (cause) {
-    const error = new TokenVerificationError(
-      'invalid_token',
-      `response from ${url} is not valid JSON`,
-    )
+    const error = new TokenVerificationError({
+      code: 'invalid_token',
+      message: `response from ${url} is not valid JSON`,
+    })
     error.cause = cause
     throw error
   }
@@ -168,7 +171,7 @@ async function parseJSONResponse(res: Response, url: string, maxBytes: number): 
 
 /**
  * A verifier for OAuth 2.0 access tokens (JWTs) signed with RS256 or ES256,
- * verified against a JWKS fetched from the authorization server.
+ * verified against a JWKS fetched from the authorisation server.
  */
 export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifier {
   const fetchFn: FetchLike = config.fetch ?? (globalThis.fetch as FetchLike)
@@ -194,23 +197,26 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
       signal: AbortSignal.timeout(fetchTimeoutMs),
     })
     if (!res.ok) {
-      throw new TokenVerificationError(
-        'invalid_token',
-        `failed to discover JWKS URI from ${metadataURL}: HTTP ${res.status}`,
-      )
+      throw new TokenVerificationError({
+        code: 'invalid_token',
+        message: `failed to discover JWKS URI from ${metadataURL}: HTTP ${res.status}`,
+      })
     }
     const metadata = (await parseJSONResponse(res, metadataURL, maxResponseBytes)) as {
       issuer?: unknown
       jwks_uri?: unknown
     }
     if (metadata.issuer !== config.issuer) {
-      throw new TokenVerificationError('invalid_token', 'issuer mismatch in AS metadata')
+      throw new TokenVerificationError({
+        code: 'invalid_token',
+        message: 'issuer mismatch in AS metadata',
+      })
     }
     if (typeof metadata.jwks_uri !== 'string' || metadata.jwks_uri.length === 0) {
-      throw new TokenVerificationError(
-        'invalid_token',
-        `authorization server metadata at ${metadataURL} is missing jwks_uri`,
-      )
+      throw new TokenVerificationError({
+        code: 'invalid_token',
+        message: `authorization server metadata at ${metadataURL} is missing jwks_uri`,
+      })
     }
     resolvedJWKSURI = metadata.jwks_uri
     return resolvedJWKSURI
@@ -224,20 +230,23 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
       signal: AbortSignal.timeout(fetchTimeoutMs),
     })
     if (!res.ok) {
-      throw new TokenVerificationError(
-        'invalid_token',
-        `failed to fetch JWKS from ${uri}: HTTP ${res.status}`,
-      )
+      throw new TokenVerificationError({
+        code: 'invalid_token',
+        message: `failed to fetch JWKS from ${uri}: HTTP ${res.status}`,
+      })
     }
     const body = (await parseJSONResponse(res, uri, maxResponseBytes)) as { keys?: unknown }
     if (!Array.isArray(body.keys)) {
-      throw new TokenVerificationError('invalid_token', 'JWKS response is missing a keys array')
+      throw new TokenVerificationError({
+        code: 'invalid_token',
+        message: 'JWKS response is missing a keys array',
+      })
     }
     if (body.keys.length > MAX_JWKS_KEYS) {
-      throw new TokenVerificationError(
-        'invalid_token',
-        `JWKS contains too many keys (${body.keys.length} > ${MAX_JWKS_KEYS})`,
-      )
+      throw new TokenVerificationError({
+        code: 'invalid_token',
+        message: `JWKS contains too many keys (${body.keys.length} > ${MAX_JWKS_KEYS})`,
+      })
     }
     const ttlSeconds = parseMaxAge(res.headers.get('cache-control')) ?? DEFAULT_JWKS_TTL_SECONDS
     return { keys: body.keys as Array<Jwk>, fetchedAt: now(), ttlSeconds }
@@ -316,7 +325,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     if (!matchesAlg(jwk, alg)) return { found: true, verified: false }
     // A malformed JWK makes `importKey`/`verify` throw instead of returning false. Treat that like
     // a signature failure (`found: true`, `verified: false`): it must not escape as an HTTP 500,
-    // and `found: true` keeps the amplification guard intact — the caller only refetches when no
+    // and `found: true` keeps the amplification guard intact -- the caller only refetches when no
     // key is found.
     try {
       const key = await importVerifyKey(jwk, algParams)
@@ -343,21 +352,30 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
       // an RSA/EC public key material).
       const alg = header.alg
       if (typeof alg !== 'string' || !(alg === 'RS256' || alg === 'ES256')) {
-        throw new TokenVerificationError('invalid_token', `unsupported JWT alg: ${String(alg)}`)
+        throw new TokenVerificationError({
+          code: 'invalid_token',
+          message: `unsupported JWT alg: ${String(alg)}`,
+        })
       }
       const algParams = ALG_PARAMS[alg]
       if (algParams == null) {
-        throw new TokenVerificationError('invalid_token', `unsupported JWT alg: ${alg}`)
+        throw new TokenVerificationError({
+          code: 'invalid_token',
+          message: `unsupported JWT alg: ${alg}`,
+        })
       }
 
       let result = await findKeyAndVerify(header, algParams, alg, signingInput, signature, false)
       if (!result.found) {
         // Unknown kid: possibly a rotation. Force one JWKS refresh and retry. (A found-but-failed
-        // key is not retried — see findKeyAndVerify.)
+        // key is not retried -- see findKeyAndVerify.)
         result = await findKeyAndVerify(header, algParams, alg, signingInput, signature, true)
       }
       if (!result.verified) {
-        throw new TokenVerificationError('invalid_token', 'JWT signature verification failed')
+        throw new TokenVerificationError({
+          code: 'invalid_token',
+          message: 'JWT signature verification failed',
+        })
       }
 
       assertStandardClaims(payload, {
@@ -368,13 +386,13 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
       })
 
       if (typeof payload.sub !== 'string') {
-        throw new TokenVerificationError('invalid_token', 'token missing sub')
+        throw new TokenVerificationError({ code: 'invalid_token', message: 'token missing sub' })
       }
 
       // `assertStandardClaims` enforces expiry only when `exp` is present; this verifier requires
       // `exp` on every token (unlike the DID verifier's own @kokuin/token backstop).
       if (typeof payload.exp !== 'number') {
-        throw new TokenVerificationError('invalid_token', 'token missing exp')
+        throw new TokenVerificationError({ code: 'invalid_token', message: 'token missing exp' })
       }
 
       return {

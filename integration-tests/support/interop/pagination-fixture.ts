@@ -3,16 +3,16 @@
  * to drive mokei's client-side cursor walk (`ContextClient.listTools`, `@mokei/context-client`'s
  * `#listPaged`) against a real paginating peer.
  *
- * The high-level `McpServer` returns its whole registered tool set in one page — it does not
- * server-side paginate a registry — so this fixture never calls `registerTool`. It overrides the
+ * The high-level `McpServer` returns its whole registered tool set in one page -- it does not
+ * server-side paginate a registry -- so this fixture never calls `registerTool`. It overrides the
  * underlying low-level server's `tools/list` handler (`McpServer.server.setRequestHandler`) with
  * one that slices a fixed tool list into `PAGE_SIZE`-sized pages behind an opaque cursor. Going
  * through `McpServer` (rather than a bare low-level `Server`) keeps the SDK's era negotiation and
  * `serveStdio` compatibility, so the same fixture serves both `2025-11-25` and `2026-07-28`.
  *
  * The interop gap this closes: the SDK-peer matrix (`interop-sdk-client.test.ts` et al.) only ever
- * served single-page results, so mokei's multi-page walk — the exact path whose first-page
- * truncation was a real bug once (PR #36) — was never exercised against the SDK.
+ * served single-page results, so mokei's multi-page walk -- the exact path whose first-page
+ * truncation was a real bug once (PR #36) -- was never exercised against the SDK.
  */
 import { McpServer } from '@modelcontextprotocol/server'
 
@@ -22,7 +22,7 @@ export const TOOL_COUNT = 5
 /** Tools per page. `TOOL_COUNT = 5` over `PAGE_SIZE = 2` yields three pages: 2 + 2 + 1. */
 export const PAGE_SIZE = 2
 
-/** The tool name at a given index — `tool-0` … `tool-4`. */
+/** The tool name at a given index -- `tool-0` … `tool-4`. */
 export function toolName(index: number): string {
   return `tool-${index}`
 }
@@ -39,7 +39,7 @@ const TOOL_INPUT_SCHEMA = {
 } as const
 
 /**
- * The opaque cursor for the page that starts at `start`. Base64 of the start index — opaque to the
+ * The opaque cursor for the page that starts at `start`. Base64 of the start index -- opaque to the
  * client, which only ever echoes it back verbatim.
  */
 function encodeCursor(start: number): string {
@@ -60,7 +60,7 @@ function decodeCursor(cursor: string | undefined): number {
 
 /**
  * The SDK v2 server for the pagination fixture. `paginate` defaults to `true`; a test can pass
- * `false` to serve every tool in a single page (no `nextCursor`) — the non-vacuity check that a
+ * `false` to serve every tool in a single page (no `nextCursor`) -- the non-vacuity check that a
  * walk which stops after page one is actually caught.
  */
 export function createSDKPaginationServer({

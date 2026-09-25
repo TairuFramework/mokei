@@ -24,8 +24,8 @@ export class SessionExpiredError extends Error {
   /** JSON-RPC error code, matching {@link SESSION_EXPIRED_CODE}. */
   #code = SESSION_EXPIRED_CODE
 
-  constructor() {
-    super(SESSION_EXPIRED_MESSAGE)
+  constructor(params: SessionExpiredErrorParams = {}) {
+    super(SESSION_EXPIRED_MESSAGE, { cause: params.cause })
     this.name = 'SessionExpiredError'
   }
 
@@ -33,6 +33,7 @@ export class SessionExpiredError extends Error {
     return this.#code
   }
 }
+export type SessionExpiredErrorParams = { cause?: unknown }
 
 /** True when a JSON-RPC error code marks an expired/gone MCP session. */
 export function isSessionExpiredCode(code: unknown): boolean {

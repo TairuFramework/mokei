@@ -1,33 +1,13 @@
 /**
- * A single MCP surface, defined twice: once with mokei's server API and once with the
- * official SDK v2 API. Both sides expose identical prompts, so every interop test can assert the
- * same prompt expectations regardless of which implementation serves. Tools and resources are
- * both asymmetric — see the `MOKEI_TOOL_NAMES`/`SDK_TOOL_NAMES` comment below for the tool split
- * (`headerEcho` is SDK-only) and the rest of this header for the resource split.
+ * Shared MCP fixture with matching prompts on mokei and SDK v2 servers.
+ * Tools differ (`headerEcho` is SDK-only; see names below). Mokei alone
+ * serves `ITEM_TEMPLATE_URI` and `complete` for the `2026-07-28` schema
+ * tests; no `2025-11-25` suite calls either method.
  *
- * Resources are asymmetric, deliberately: `createMokeiConfig()` also serves a resource template
- * (`ITEM_TEMPLATE_URI`) and a `complete` handler, but `createSDKServer()` has neither. Both were
- * added to exercise schemas that only the `2026-07-28` conformance suite
- * (`interop-2026-07-28-stdio.test.ts`) checks — `ListResourceTemplatesResultSchema` and
- * `CompleteResultSchema` — and no `2025-11-25` suite (SDK-client-against-mokei,
- * mokei-client-against-SDK, or either HTTP combo) calls `listResourceTemplates` or `complete`,
- * so the extra surface is inert there. `createSDKServer()` was intentionally left without a
- * matching template/`complete` handler: no suite exercises it on that side either, and adding it
- * would be unused surface for its own sake.
- *
- * They live in the *shared* `createMokeiConfig()` rather than a `2026-07-28`-only fixture
- * because `createMokeiConfig` is already parameterized by `protocolVersions` and reused
- * verbatim by every `2025-11-25` mokei-server suite; a second config function would duplicate
- * every tool/prompt/resource definition in this file for the sake of two extra fields. The one
- * side effect worth knowing about: enabling `complete` flips on the `completions` server
- * capability for *both* revisions (`packages/context-server/src/server.ts:162-165` — the
- * capability is set whenever `params.complete != null`, unconditional on protocol version).
- * That's harmless today because no `2025-11-25` suite asserts the capability set, but the next
- * person adding one should know why `completions` shows up.
- *
- * If a future change needs the SDK side to expose a template, `complete` handler, or a matching
- * tool set too (e.g. a shared "both sides have identical surface" assertion), extend
- * `createSDKServer()` explicitly rather than assuming this asymmetry is accidental — it isn't.
+ * `createMokeiConfig()` is shared across revisions, so enabling `complete`
+ * also advertises `completions` on `2025-11-25`. No current suite asserts
+ * that capability. Add matching SDK features explicitly if a future test
+ * requires identical surfaces.
  */
 import { fromJsonSchema, McpServer } from '@modelcontextprotocol/server'
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv'
@@ -43,7 +23,7 @@ export const GREETING_TEXT = 'Hello from the interop fixture'
 /**
  * A resource URI carrying characters no HTTP header value can hold raw: the `Mcp-Name` header
  * mirrors `params.uri` for `resources/read`, and a header value is a ByteString. Served by
- * `createSDKServer()` only — the point of it is to put the Base64 sentinel in front of a
+ * `createSDKServer()` only -- the point of it is to put the Base64 sentinel in front of a
  * conformant *decoder*, which is the SDK's, and mokei's own server never reads the header back.
  */
 export const NON_ASCII_RESOURCE_URI = 'test://notes/文書.md'
@@ -54,7 +34,7 @@ export const NON_ASCII_RESOURCE_URI = 'test://notes/文書.md'
  * SDK `2.0.0` lists a resource under the string it was registered with but looks a read up by
  * `new URL(params.uri).href`, so registering the raw URI above makes every read of it miss with
  * "Resource not found". Registering the percent-encoded form makes the two agree. What the
- * client sends — and therefore what the header carries and the server cross-checks — is still
+ * client sends -- and therefore what the header carries and the server cross-checks -- is still
  * the raw URI.
  */
 export const NON_ASCII_RESOURCE_REGISTERED_URI = 'test://notes/%E6%96%87%E6%9B%B8.md'
@@ -62,9 +42,9 @@ export const NON_ASCII_RESOURCE_REGISTERED_URI = 'test://notes/%E6%96%87%E6%9B%B
 export const NON_ASCII_RESOURCE_TEXT = 'Notes filed under a non-ASCII URI'
 
 /**
- * The exact resource set each fixture serves. They differ — only the SDK side carries the
+ * The exact resource set each fixture serves. They differ -- only the SDK side carries the
  * non-ASCII resource, since the point of it is a conformant `Mcp-Name` decoder and mokei's own
- * server never reads that header back — so an assertion shared across both stacks has to be told
+ * server never reads that header back -- so an assertion shared across both stacks has to be told
  * which one it is looking at rather than weakened to a subset check.
  */
 export const MOKEI_RESOURCE_URIS: ReadonlyArray<string> = [GREETING_URI]
@@ -136,7 +116,7 @@ export const HEADER_ECHO_INPUT_SCHEMA = {
 /**
  * `HEADER_ECHO_INPUT_SCHEMA` with the annotations stripped and nothing else changed.
  *
- * A client that cached this form sends the same body with no `Mcp-Param-*` header — what a peer
+ * A client that cached this form sends the same body with no `Mcp-Param-*` header -- what a peer
  * whose schema gained an annotation since the last `tools/list` answers `param-header-missing`.
  */
 export const HEADER_ECHO_UNANNOTATED_SCHEMA = {
@@ -187,7 +167,7 @@ export function greetingMessage(name: string): string {
  * The fixture served by `@mokei/context-server`.
  *
  * `protocolVersions` defaults to both revisions, matching what mokei's own bundled servers
- * declare. Suites that need a single-revision server — the version-detection cases — pass
+ * declare. Suites that need a single-revision server -- the version-detection cases -- pass
  * an explicit one-element list.
  */
 export function createMokeiConfig(

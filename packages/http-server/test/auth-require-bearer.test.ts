@@ -55,7 +55,7 @@ test('passes (no response) and returns authInfo on success', async () => {
 test('401 invalid_token when the verifier rejects', async () => {
   const badVerifier: OAuthTokenVerifier = {
     async verifyAccessToken() {
-      throw new TokenVerificationError('invalid_token', 'bad')
+      throw new TokenVerificationError({ code: 'invalid_token', message: 'bad' })
     },
   }
   const gate = createBearerAuthGate({

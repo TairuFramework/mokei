@@ -10,7 +10,7 @@ import { RPCError } from './error.js'
 
 /**
  * Request handlers allowed to run at once. An order of magnitude below nothing in
- * particular — it matches `DEFAULT_MAX_STATELESS_EXCHANGES` in `@mokei/http-server`, the
+ * particular -- it matches `DEFAULT_MAX_STATELESS_EXCHANGES` in `@mokei/http-server`, the
  * only other place mokei bounds concurrent work.
  */
 export const DEFAULT_MAX_CONCURRENT_REQUESTS = 100
@@ -75,24 +75,25 @@ export class RequestScheduler {
    * An id currently running or queued is refused outright, without ever calling `run`: MCP
    * forbids reusing a request id within a session, and `#running`/`#queued` are keyed by id
    * with no other way to tell two requests apart. Without this check a reused id overwrites
-   * the original's map entry — `runningCount` stays flat while every duplicate still runs its
+   * the original's map entry -- `runningCount` stays flat while every duplicate still runs its
    * handler, a queued duplicate's `resolve` is silently orphaned, and `abortAll` later aborts
    * only whichever entry happens to occupy the slot.
    *
    * The refusal response is written to the wire carrying the reused id, so the peer's
    * `ExchangeRegistry.routeResponse` matches it to the *original*, still-in-flight exchange
-   * and rejects that one with `INVALID_REQUEST` — the original handler keeps running and its
+   * and rejects that one with `INVALID_REQUEST` -- the original handler keeps running and its
    * real response is later dropped as unroutable. A peer that reuses an id therefore loses
-   * the original request too, not just the duplicate. This is defensible — reuse violates
+   * the original request too, not just the duplicate. This is defensible -- reuse violates
    * "a request ID MUST NOT be reused within a session", and mokei's own monotonic counter
-   * cannot produce it — but it is a real consequence of the refusal, not just of the reuse.
+   * cannot produce it -- but it is a real consequence of the refusal, not just of the reuse.
    */
   schedule(id: RequestID, run: RunRequest): Promise<Response | null> {
     if (this.#running.has(id) || this.#queued.has(id) || this.#detached.has(id)) {
       return Promise.resolve(
-        new RPCError(INVALID_REQUEST, `Request id ${String(id)} is already in flight`).toResponse(
-          id,
-        ),
+        new RPCError({
+          code: INVALID_REQUEST,
+          message: `Request id ${String(id)} is already in flight`,
+        }).toResponse(id),
       )
     }
     if (this.#running.size < this.#maxConcurrent) {
@@ -101,7 +102,9 @@ export class RequestScheduler {
     if (this.#queued.size >= this.#maxQueued) {
       // INTERNAL_ERROR rather than a new code: mokei's custom codes all come from SEPs, so
       // inventing one here risks colliding with a future spec assignment.
-      return Promise.resolve(new RPCError(INTERNAL_ERROR, 'Server busy').toResponse(id))
+      return Promise.resolve(
+        new RPCError({ code: INTERNAL_ERROR, message: 'Server busy' }).toResponse(id),
+      )
     }
     const { promise, resolve } = defer<Response | null>()
     this.#queued.set(id, { controller: new AbortController(), resolve, run })
@@ -133,7 +136,7 @@ export class RequestScheduler {
       controller.abort(reason)
     }
     // A copy: aborting a detached controller can drive `completeDetached`, which deletes from
-    // `#detached` — mutating the map we would otherwise be iterating.
+    // `#detached` -- mutating the map we would otherwise be iterating.
     for (const controller of Array.from(this.#detached.values())) {
       controller.abort(reason)
     }

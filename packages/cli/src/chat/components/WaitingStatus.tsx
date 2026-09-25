@@ -9,7 +9,7 @@ export type WaitingStatusProps = {
 
 /**
  * Spinner shown while waiting for the model's first token. Surfaces elapsed
- * seconds and a hang warning so a slow or stuck generation is visible — the
+ * seconds and a hang warning so a slow or stuck generation is visible -- the
  * model-streaming counterpart to ToolCallStatus.
  */
 export function WaitingStatus({ elapsedMs }: WaitingStatusProps) {

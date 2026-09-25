@@ -18,7 +18,12 @@ export {
   protectedResourceMetadataResponse,
 } from './auth/metadata.js'
 export { type BearerAuthOptions, createBearerAuthGate } from './auth/require-bearer.js'
-export { type AuthInfo, type OAuthTokenVerifier, TokenVerificationError } from './auth/verifier.js'
+export {
+  type AuthInfo,
+  type OAuthTokenVerifier,
+  TokenVerificationError,
+  type TokenVerificationErrorParams,
+} from './auth/verifier.js'
 export {
   createHTTPHandler,
   DEFAULT_MAX_STATELESS_EXCHANGES,

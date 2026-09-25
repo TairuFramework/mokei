@@ -152,7 +152,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 
     // Set up timeout
     const timeoutController = new AbortController()
-    const timeoutId = setTimeout(() => timeoutController.abort(), timeout)
+    const timeoutID = setTimeout(() => timeoutController.abort(), timeout)
     // Tracks the in-flight chat turn so the outer finally can return it if the
     // consumer abandons this generator mid-stream.
     let activeChatTurn: ChatTurn<T> | null = null
@@ -375,7 +375,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         const toolMessages: Array<ClientToolMessage> = []
 
         for (const toolCall of toolCalls) {
-          // Handle approval. Stream its events as they happen — the
+          // Handle approval. Stream its events as they happen -- the
           // `tool-call-pending` event must reach the UI *before* the approval
           // resolves so an interactive prompt can render and the turn signal can
           // interrupt the wait, rather than buffering every event until after
@@ -418,7 +418,10 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
             // of valid tools back so the model can retry with a real name,
             // rather than letting execution throw an opaque "Invalid context
             // tool ID" deep in the host.
-            const error = new UnknownToolError(toolCall.name, [...callableToolNames])
+            const error = new UnknownToolError({
+              toolName: toolCall.name,
+              availableTools: [...callableToolNames],
+            })
             const errorEvent = emitEvent({
               type: 'tool-call-error',
               toolCall,
@@ -514,7 +517,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       }
       throw err
     } finally {
-      clearTimeout(timeoutId)
+      clearTimeout(timeoutID)
       // A consumer that breaks out of this generator leaves the current turn's
       // provider stream open; return it so the provider releases the reader.
       void activeChatTurn?.return(undefined as never).catch(() => {})
@@ -558,7 +561,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     }
 
     if (strategy === 'ask') {
-      // No async approval bridge wired — refuse so host does not execute a tool
+      // No async approval bridge wired -- refuse so host does not execute a tool
       // the user never approved. Callers supply a ToolApprovalFn to interactively approve.
       const reason = 'Tool approval required but no handler configured'
       yield emitEvent({ type: 'tool-call-pending', toolCall, timestamp: Date.now() })
@@ -652,9 +655,12 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       if (signal.aborted) {
         err = error instanceof Error ? error : new Error(String(error))
       } else if (callController.signal.reason === TOOL_TIMEOUT_REASON) {
-        err = new ToolCallTimeoutError(toolCall.name, this.#params.toolTimeout)
+        err = new ToolCallTimeoutError({
+          toolName: toolCall.name,
+          timeoutMs: this.#params.toolTimeout,
+        })
       } else if (callController.signal.reason === TOOL_CANCEL_REASON) {
-        err = new ToolCallCancelledError(toolCall.name)
+        err = new ToolCallCancelledError({ toolName: toolCall.name })
       } else {
         err = error instanceof Error ? error : new Error(String(error))
       }

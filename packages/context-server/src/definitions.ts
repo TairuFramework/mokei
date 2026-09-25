@@ -6,7 +6,7 @@ import {
   type InputSchema as ToolInputSchema,
   type OutputSchema as ToolOutputSchema,
 } from '@mokei/context-protocol'
-import { RPCError } from '@mokei/context-rpc'
+import { RPCError, type RPCErrorParams } from '@mokei/context-rpc'
 import { createValidator, type FromSchema, type Schema } from '@sozai/schema'
 
 import { type InputRequiredResult, isInputRequiredResult } from './mrtr.js'
@@ -18,6 +18,8 @@ import { type InputRequiredResult, isInputRequiredResult } from './mrtr.js'
  * as a JSON-RPC error rather than converting it to an `isError` result.
  */
 export class ToolOutputValidationError extends RPCError {}
+
+export type ToolOutputValidationErrorParams = RPCErrorParams
 
 import type {
   GenericToolDefinition,
@@ -77,8 +79,12 @@ export function createPrompt<
         mintRequestState: request.mintRequestState,
       })
     }
-    throw new RPCError(INVALID_PARAMS, 'Invalid prompt arguments', {
-      issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
+    throw new RPCError({
+      code: INVALID_PARAMS,
+      message: 'Invalid prompt arguments',
+      data: {
+        issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
+      },
     })
   }
 
@@ -124,14 +130,22 @@ export function createTool<
       return result
     }
     if (result.structuredContent == null) {
-      throw new ToolOutputValidationError(INTERNAL_ERROR, 'Invalid tool output', {
-        issues: [{ message: 'Tool declares an outputSchema but returned no structuredContent' }],
+      throw new ToolOutputValidationError({
+        code: INTERNAL_ERROR,
+        message: 'Invalid tool output',
+        data: {
+          issues: [{ message: 'Tool declares an outputSchema but returned no structuredContent' }],
+        },
       })
     }
     const validated = validateOutput(result.structuredContent)
     if (validated.issues != null) {
-      throw new ToolOutputValidationError(INTERNAL_ERROR, 'Invalid tool output', {
-        issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
+      throw new ToolOutputValidationError({
+        code: INTERNAL_ERROR,
+        message: 'Invalid tool output',
+        data: {
+          issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
+        },
       })
     }
     if (result.content == null) {
@@ -148,8 +162,12 @@ export function createTool<
   ): Promise<CallToolResult | InputRequiredResult> => {
     const validated = validateInput(request.input)
     if (validated.issues != null) {
-      throw new RPCError(INVALID_PARAMS, 'Invalid tool input', {
-        issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
+      throw new RPCError({
+        code: INVALID_PARAMS,
+        message: 'Invalid tool input',
+        data: {
+          issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
+        },
       })
     }
     const result = await handler({
@@ -161,7 +179,7 @@ export function createTool<
       requestState: request.requestState,
       mintRequestState: request.mintRequestState,
     })
-    // A suspension carries no `structuredContent` by construction — it is not an answer, so it
+    // A suspension carries no `structuredContent` by construction -- it is not an answer, so it
     // must never reach output-schema validation. Pass it through untouched.
     if (isInputRequiredResult(result)) {
       return result

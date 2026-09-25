@@ -195,7 +195,7 @@ export type SpawnedMokeiClient = {
   client: ContextClient
   /**
    * Every JSON-RPC request object the client wrote to the wire, captured by tapping the raw
-   * stdin bytes before they reach the child — independent of whatever `ContextClient`'s own
+   * stdin bytes before they reach the child -- independent of whatever `ContextClient`'s own
    * typed surface exposes back to the caller, since a request's decorated `_meta` never comes
    * back through the client's public API.
    */
@@ -290,7 +290,7 @@ export type SpawnedMokeiSubscriptionClient = {
  *
  * A sibling of {@link spawnMokeiStdioClient} that taps the READ side rather than the write side:
  * the subscriptions suite needs to observe the server-sent frames the client's public surface does
- * not re-expose — chiefly the graceful terminal listen result. It also owns `endInput`, the
+ * not re-expose -- chiefly the graceful terminal listen result. It also owns `endInput`, the
  * graceful-teardown trigger, which `spawnMokeiStdioClient` has no need for.
  */
 export async function spawnMokeiStdioSubscriptionClient(
@@ -397,7 +397,7 @@ export async function startMokeiMRTRHTTPServer(): Promise<RunningHTTPServer> {
 
 /**
  * Connects a mokei `ContextClient` to `url` over Streamable HTTP at `protocolVersion`, via
- * `createHTTPClient` — the one-call helper every existing suite is on, now that it forwards
+ * `createHTTPClient` -- the one-call helper every existing suite is on, now that it forwards
  * `clientOptions` (a `listRoots`/`elicit`/`createMessage` handler included) straight through to
  * the `ContextClient` it builds.
  */
@@ -414,13 +414,13 @@ const SDK_CLIENT_INFO = { name: 'mokei-interop-test', version: '1.0.0' }
 /**
  * An SDK v2 `Client` for `protocolVersion`.
  *
- * `2025-11-25` is the SDK's default negotiation mode — a plain `new Client(info)`, byte-identical
+ * `2025-11-25` is the SDK's default negotiation mode -- a plain `new Client(info)`, byte-identical
  * to a client carrying no negotiation option at all. `2026-07-28` pins: the connect-time
  * `server/discover` must offer exactly that revision, and anything else fails loudly rather than
  * falling back to the `initialize` handshake.
  *
  * `capabilities` is what the SDK stamps into every `2026-07-28` request's `_meta` envelope under
- * `io.modelcontextprotocol/clientCapabilities` — it derives that from `ClientOptions` alone, never
+ * `io.modelcontextprotocol/clientCapabilities` -- it derives that from `ClientOptions` alone, never
  * from the handlers registered on the instance. A client meant to fulfil an embedded input request
  * therefore has to declare the matching capability here *and* register the handler; the SDK's own
  * `setRequestHandler` refuses the second without the first. Omitted, `new Client(info)` stays
@@ -453,7 +453,7 @@ export type BlockingHTTPServer = RunningHTTPServer & {
 /**
  * Serves a single tool that never returns on its own, over Streamable HTTP on `2026-07-28`.
  *
- * Used to observe what a stateless exchange does while a request is genuinely in flight —
+ * Used to observe what a stateless exchange does while a request is genuinely in flight --
  * principally whether the throwaway `ContextServer` is torn down when the caller hangs up.
  * `dispose()` releases the blocked handler so the exchange cannot outlive the test.
  */
@@ -519,11 +519,11 @@ export async function startBlockingHTTPServer(): Promise<BlockingHTTPServer> {
  * entry mounted on `node:http` through `toNodeHandler`.
  *
  * `legacy: 'reject'` makes the endpoint serve `2026-07-28` and nothing else. It changes nothing
- * about today's result — mokei declares the revision on every request either way — so it is
+ * about today's result -- mokei declares the revision on every request either way -- so it is
  * there against a *partial* regression: were mokei to stop declaring it on, say, `tools/call`
  * but not `server/discover`, the default fallback would answer those calls from the SDK's
  * `2025-11-25` path and every assertion here would still pass, silently testing the wrong
- * revision. The factory runs per request, as that entry requires — `createSDKServer()` builds a
+ * revision. The factory runs per request, as that entry requires -- `createSDKServer()` builds a
  * fresh instance each time.
  */
 export async function startSDK20260728HTTPServer(
@@ -551,7 +551,7 @@ export async function startSDK20260728HTTPServer(
 export type SubscriptionsHTTPServer = RunningHTTPServer & {
   /**
    * The handler's publish-side facade. `resourceUpdated(uri)` / `resourcesChanged()` publish onto
-   * the listen bus every open subscription that opted in subscribes to — the HTTP counterpart to a
+   * the listen bus every open subscription that opted in subscribes to -- the HTTP counterpart to a
    * pinned stdio instance's `sendResourceUpdated` / `sendResourceListChanged`.
    */
   notify: ServerNotifier
@@ -571,7 +571,7 @@ export type SubscriptionsHTTPServer = RunningHTTPServer & {
  * Beyond `url`/`dispose` it exposes the handler's `notify` facade and a `closeHandler`, the two
  * seams the suite drives: `notify.*` to emit change events onto the listen bus on demand, and
  * `closeHandler()` to trigger the graceful terminal listen result. The default in-process
- * `InMemoryServerEventBus` backs the bus — the per-request factory (a fresh instance each POST) is
+ * `InMemoryServerEventBus` backs the bus -- the per-request factory (a fresh instance each POST) is
  * fine because subscription delivery is bus-mediated, not instance-mediated, on this transport.
  */
 export async function startSDKSubscriptionsHTTPServer(): Promise<SubscriptionsHTTPServer> {
@@ -600,7 +600,7 @@ export async function startSDKSubscriptionsHTTPServer(): Promise<SubscriptionsHT
 
 export type MokeiSubscriptionsHTTPServer = RunningHTTPServer & {
   /**
-   * Emits change events directly onto the durable hub's events — the mokei-owned counterpart to
+   * Emits change events directly onto the durable hub's events -- the mokei-owned counterpart to
    * {@link SubscriptionsHTTPServer.notify} (the SDK v2 handler's `notify` facade). Delivered to
    * every open `subscriptions/listen` stream (across every `connectionID`) whose filter matches.
    */
@@ -609,7 +609,7 @@ export type MokeiSubscriptionsHTTPServer = RunningHTTPServer & {
     resourcesListChanged: () => void
   }
   /**
-   * Gracefully completes every open subscription against the durable hub — the mokei-owned
+   * Gracefully completes every open subscription against the durable hub -- the mokei-owned
    * counterpart to {@link SubscriptionsHTTPServer.closeHandler}.
    */
   endAllGracefully: () => Promise<void>
@@ -617,13 +617,13 @@ export type MokeiSubscriptionsHTTPServer = RunningHTTPServer & {
 
 /**
  * Serves the mokei-owned subscribe-capable fixture over Streamable HTTP on `2026-07-28`, wiring a
- * durable `SubscriptionHub` per Task 13's stateless-HTTP model: each POST is served by its own
+ * durable `SubscriptionHub` for stateless HTTP: each POST is served by its own
  * transport-isolated per-POST `ContextServer`, which *borrows* this hub via `subscriptionHub` and
- * mints its own `connectionID` — exactly the setup the two-clients-same-id interop case exercises.
+ * mints its own `connectionID` -- exactly the setup the two-clients-same-id interop case exercises.
  *
  * The hub is driven by `eventsSource`, a `ContextServer` that never serves a request of its own
  * (its transport is wired to two streams nothing ever reads from or writes anything meaningful
- * to) — built purely so its public `.events` getter can back `createSubscriptionHub` without this
+ * to) -- built purely so its public `.events` getter can back `createSubscriptionHub` without this
  * package needing its own dependency on `@sozai/event` (whose `EventEmitter` that getter returns)
  * just to construct one.
  */

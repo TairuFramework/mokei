@@ -80,7 +80,7 @@ describe('protocol version detection over stdio', () => {
   // serve (ContextServer#resolveProtocol). A 2026-07-28-pinned client decorates every request
   // with that `_meta`, so the rejection here is deterministic and precisely identifiable. A
   // third-party handshake-only server that ignores `_meta` instead of validating it might fail
-  // differently (or not at all) — that's a property of this fixture, not of the protocol.
+  // differently (or not at all) -- that's a property of this fixture, not of the protocol.
   test('a 2026-07-28-pinned client fails actionably against a handshake-only server', async () => {
     const context = await spawnHostedContext({
       command: process.execPath,
@@ -98,7 +98,7 @@ describe('protocol version detection over stdio', () => {
     }
   })
 
-  // A failed setup rejects `#ready`, which is `lazy()` — the client is unusable from that point
+  // A failed setup rejects `#ready`, which is `lazy()` -- the client is unusable from that point
   // on and nothing will call `dispose()` for the caller. If the client does not dispose itself,
   // the spawned server process outlives it. Note the test never disposes before asserting: the
   // exit has to come from the client's own teardown.

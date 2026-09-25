@@ -109,7 +109,7 @@ export type ServerRequest = FromSchema<typeof serverRequest>
 
 /**
  * Notifications a server may send in this revision. Includes `elicitation/complete`, the tail
- * end of an `elicitation/create` request — which a `2025-11-25` server can send but a
+ * end of an `elicitation/create` request -- which a `2025-11-25` server can send but a
  * `2026-07-28` one cannot, so that revision's own union omits it.
  */
 export const serverNotification = {

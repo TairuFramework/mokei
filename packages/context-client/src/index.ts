@@ -14,12 +14,19 @@ export type { ClientEvents } from './client.js'
 export { ContextClient, DEFAULT_LIST_MAX_PAGES } from './client.js'
 export {
   CapabilityNotDeclaredError,
+  type CapabilityNotDeclaredErrorParams,
   InputRequiredNotSupportedError,
+  type InputRequiredNotSupportedErrorParams,
   ListMaxPagesError,
+  type ListMaxPagesErrorParams,
   MethodNotInRevisionError,
+  type MethodNotInRevisionErrorParams,
   MRTRNotSupportedError,
+  type MRTRNotSupportedErrorParams,
   StructuredContentValidationError,
+  type StructuredContentValidationErrorParams,
   UnsupportedProtocolVersionError,
+  type UnsupportedProtocolVersionErrorParams,
   type ValidationIssue,
 } from './errors.js'
 export {
@@ -27,7 +34,9 @@ export {
   type InputRequiredResult,
   type InputRequiredRetryParams,
   InputRequiredRoundsExceededError,
+  type InputRequiredRoundsExceededErrorParams,
   InputRequiredTotalTimeoutError,
+  type InputRequiredTotalTimeoutErrorParams,
   isInputRequiredResult,
   REQUEST_STATE_ONLY_PACING_MS,
 } from './mrtr.js'
@@ -42,8 +51,10 @@ export {
   type SubscriptionDriverParams,
   type SubscriptionNotification,
   SubscriptionProtocolError,
+  type SubscriptionProtocolErrorParams,
   type SubscriptionRetry,
   SubscriptionStreamError,
+  type SubscriptionStreamErrorParams,
 } from './subscriptions.js'
 export { currentTraceMeta, type TraceMeta, traceMetaFromContext } from './trace.js'
 export type {

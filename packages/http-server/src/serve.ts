@@ -36,12 +36,12 @@ export function serveHTTP(params: ServeHTTPParams): ServeHTTPResult {
     const auth = params.auth
     const gate = createBearerAuthGate(auth)
     const metaPath = protectedResourceMetadataPath(auth.resource)
-    app.get(metaPath, () =>
-      protectedResourceMetadataResponse({
+    app.get(metaPath, () => {
+      return protectedResourceMetadataResponse({
         resource: auth.resource,
         authorizationServers: auth.authorizationServers,
-      }),
-    )
+      })
+    })
     app.all(path, async (ctx) => {
       const { response } = await gate(ctx.req.raw)
       if (response) return response

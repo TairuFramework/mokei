@@ -57,7 +57,7 @@ const EXPECTATIONS = { resourceURIs: SDK_RESOURCE_URIS, toolNames: SDK_TOOL_NAME
  * `match` accepts, in send order. Restores the original `fetch` even if `body` throws.
  *
  * Patching a global is safe only because vitest runs the tests within a file serially; under
- * `test.concurrent` this would capture — and restore under — its neighbours.
+ * `test.concurrent` this would capture -- and restore under -- its neighbours.
  */
 async function captureFetch(
   match: (body: string) => boolean,
@@ -102,7 +102,7 @@ describe.each(ROWS)('mokei client against the SDK v2 server on $protocolVersion'
       // exactly one revision, so `'auto'` would make a probe failure look like a successful
       // fallback; the `2025-11-25` row's server (`sdk-stdio-server.ts`, the SDK default) answers
       // both revisions, so what actually makes that row sound is `checkMokeiClient`'s own
-      // assertion that `initResult.protocolVersion === '2025-11-25'` — a silent fallback there
+      // assertion that `initResult.protocolVersion === '2025-11-25'` -- a silent fallback there
       // would fail the assertion instead of the connect.
       protocolVersion: row.protocolVersion,
     })
@@ -127,8 +127,8 @@ describe.each(ROWS)('mokei client against the SDK v2 server on $protocolVersion'
  * Assertions that exist on `2026-07-28` and have no `2025-11-25` counterpart, so they stay out of
  * the table above rather than becoming configuration.
  *
- * `checkMokeiClient` skips its `initialize()` block on this revision — there is no handshake to
- * assert — so `server/discover` is asserted here instead.
+ * `checkMokeiClient` skips its `initialize()` block on this revision -- there is no handshake to
+ * assert -- so `server/discover` is asserted here instead.
  */
 describe('mokei client against the SDK v2 server on 2026-07-28', () => {
   let httpServer: RunningHTTPServer | null = null
@@ -220,7 +220,7 @@ describe('mokei client against the SDK v2 server on 2026-07-28', () => {
    * Each case calls `listTools()` first, and must: mokei's transport reads the `x-mcp-header`
    * annotations off a tool `inputSchema` it caches from a `tools/list` result
    * (`packages/http-client/src/transport.ts:571-599`). Without that call no header is sent, the
-   * SDK sees a body value with no header, and the case fails as `param-header-missing` — which
+   * SDK sees a body value with no header, and the case fails as `param-header-missing` -- which
    * would be the right failure for the wrong reason.
    */
   test('mirrors a plain x-mcp-header argument into Mcp-Param-*', async () => {
@@ -246,7 +246,7 @@ describe('mokei client against the SDK v2 server on 2026-07-28', () => {
   })
 
   // An integer-typed declaration is compared numerically on the SDK side and written as canonical
-  // decimal on mokei's — a distinct path from the string comparison above.
+  // decimal on mokei's -- a distinct path from the string comparison above.
   test('writes an integer x-mcp-header argument as canonical decimal', async () => {
     httpServer = await startSDK20260728HTTPServer()
     client = connectMokeiHTTPClient(httpServer.url, '2026-07-28')
@@ -286,7 +286,7 @@ describe('mokei client against the SDK v2 server on 2026-07-28', () => {
   /**
    * The absence case, and the one case the peer cannot fail for us: when the body value is absent
    * the SDK MUST NOT expect the header, and a header sent anyway is *ignored*. So this is asserted
-   * on the outgoing request instead, by wrapping `globalThis.fetch` — the technique the
+   * on the outgoing request instead, by wrapping `globalThis.fetch` -- the technique the
    * `Mcp-Session-Id` tripwire in `interop-2026-07-28-http.test.ts` already uses.
    *
    * Patching a global is safe only because vitest runs the tests within a file serially; under
@@ -314,7 +314,7 @@ describe('mokei client against the SDK v2 server on 2026-07-28', () => {
   test('retries a tools/call after the peer schema gains an annotation', async () => {
     // The acceptance case for the stale-schema retry. The client lists an annotation-free
     // `headerEcho`, the peer gains the annotation behind its back, and the call that follows
-    // carries a body value with no header — which the SDK answers `param-header-missing`.
+    // carries a body value with no header -- which the SDK answers `param-header-missing`.
     let schema: HeaderEchoSchema = HEADER_ECHO_UNANNOTATED_SCHEMA
     httpServer = await startSDK20260728HTTPServer({ headerEchoSchema: () => schema })
     client = connectMokeiHTTPClient(httpServer.url, '2026-07-28')

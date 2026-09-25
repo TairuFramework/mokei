@@ -1,21 +1,11 @@
 /**
- * A subscribe-capable MCP surface served by the official SDK v2 `McpServer`, purpose-built for the
- * `subscriptions/listen` interop suite (SEP-1391 / SEP-2575).
+ * SDK v2 fixture for `subscriptions/listen` interop (SEP-1391 / SEP-2575).
+ * `resources.subscribe` enables mokei's listen and `resourceSubscriptions` filter;
+ * three `listChanged` bits enable the corresponding notifications.
  *
- * The server advertises `resources.subscribe` (so a mokei client auto-opens the listen and honors a
- * `resourceSubscriptions` filter) plus the three `listChanged` bits (so the acknowledged base
- * filter carries them and a `list_changed` is deliverable). It exposes one readable resource
- * ({@link WATCHED_URI}) and one `emitUpdates` tool.
- *
- * The tool exists for the STDIO transport only. `serveStdio` owns the per-connection listen router
- * and rewrites the pinned instance's outbound change notifications onto the open subscriptions
- * (`StdioListenRouter.routeOutbound`), so the way to make a spawned stdio server emit on demand is
- * to have the pinned instance itself emit — which a tool handler, running inside that instance,
- * can do via `server.server.sendResourceUpdated(...)` and `server.sendResourceListChanged()`. Over
- * HTTP the emission path is entirely different (`createMcpHandler`'s returned `notify` facade
- * publishes onto the handler's bus; a per-request tool instance cannot reach it), so the HTTP suite
- * drives `handler.notify.*` directly and never calls this tool. One fixture, two trigger seams —
- * each matching how the transport actually delivers subscription notifications.
+ * The `emitUpdates` tool makes the pinned stdio server emit through
+ * `StdioListenRouter.routeOutbound`. HTTP instead uses `createMcpHandler`'s
+ * shared `notify` bus; a per-request tool instance cannot reach it.
  */
 import { fromJsonSchema, McpServer } from '@modelcontextprotocol/server'
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv'
@@ -37,14 +27,9 @@ const EMIT_INPUT_SCHEMA = {
 } as const
 
 /**
- * Builds the subscribe-capable SDK v2 server.
- *
- * `resources.subscribe` gates mokei's auto-open and its honoring of a `resourceSubscriptions`
- * filter; `resources.listChanged` / `tools.listChanged` / `prompts.listChanged` are what let the
- * acknowledged base filter carry the corresponding opt-ins (mokei's `#autoOpenFilter` only requests
- * a `listChanged` type the server advertises). The capabilities are advertised verbatim on both
- * transports — `createMcpHandler`'s listen router and `serveStdio`'s both narrow the honored filter
- * against exactly this set.
+ * Build the SDK v2 server. Both transports narrow the acknowledged filter to
+ * advertised `resources.subscribe` and the three `listChanged` capabilities;
+ * mokei's `#autoOpenFilter` requests only advertised types.
  */
 export function createSDKSubscriptionServer(): McpServer {
   const validator = new AjvJsonSchemaValidator()

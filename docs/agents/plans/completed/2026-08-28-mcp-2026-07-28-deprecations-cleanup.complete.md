@@ -39,7 +39,7 @@ changes a runtime record shape but no runtime behaviour.
   `SetupReader` unit that drives the `initialize` / `server/discover` handshake behind a narrow
   five-method I/O adapter. The public export surface is unchanged throughout.
 - **Bookkeeping.** Retired the piece-F backlog file, folded its still-open items into a deferrals
-  backlog (see `2026-08-28-mcp-2026-07-28-cleanup-deferrals.md`), and marked the migration
+  follow-on (see `2026-08-28-mcp-2026-07-28-cleanup-deferrals.complete.md`), and marked the migration
   milestone's Phase 1 table (D1–D3, and the already-shipped B4 subscriptions) as complete.
 
 ## Key design decisions
@@ -84,9 +84,9 @@ and the `SetupReader` predicate-scan suite (with the stray-buffered-frame case).
 
 ## Follow-on
 
-Deferred items are tracked in `docs/agents/plans/backlog/2026-08-28-mcp-2026-07-28-cleanup-deferrals.md`:
-the SSE reader-backpressure fix, the full per-revision `ServerRequest`/`ServerNotification` split,
-the speculative host-level `auto`-resolution cache, and the two design notes (`-32020` has no
-emitter; the CLI `-p` overload). Four cosmetic minor findings (a logging-note placement, a docblock
-phrasing, a split import, plus the SetupReader doc-comment refs — the last already fixed) were
-triaged as acceptable-to-defer by the whole-branch review.
+PR #48 (`c47c85a`) shipped SSE reader backpressure and the per-revision
+`ServerRequest`/`ServerNotification` split. The host-level `auto` cache and two design notes
+(`-32020` emitter and CLI `-p`) were decided against. See
+`completed/2026-08-28-mcp-2026-07-28-cleanup-deferrals.complete.md`. Four cosmetic minor
+findings (a logging-note placement, a docblock phrasing, a split import, and the SetupReader
+doc-comment refs -- the last already fixed) were accepted by the whole-branch review.

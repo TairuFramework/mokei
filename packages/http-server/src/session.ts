@@ -15,7 +15,7 @@ export type SessionManagerParams = {
   maxSessions: number
   sessionTimeoutMs: number
   /**
-   * Called whenever a session is removed — by the idle-cleanup timer, explicit
+   * Called whenever a session is removed -- by the idle-cleanup timer, explicit
    * deletion, or {@link SessionManager.dispose}. Lets the handler release the
    * matching transport bridge so timed-out sessions don't leak it.
    */
@@ -123,7 +123,7 @@ export function appendReplay(session: Session, event: SSEEvent, cap: number): vo
 export function eventsAfter(session: Session, lastEventID: string): Array<SSEEvent> {
   const index = session.replayLog.findIndex((e) => e.id === lastEventID)
   // When the id is unknown (e.g. trimmed beyond the cap), fall back to replaying
-  // every buffered event rather than silently delivering nothing — the client
+  // every buffered event rather than silently delivering nothing -- the client
   // can dedupe by id, but it cannot recover events it never receives.
   return index === -1 ? session.replayLog.slice() : session.replayLog.slice(index + 1)
 }

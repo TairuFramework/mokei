@@ -37,7 +37,7 @@ export function ChatLauncher({ initialProvider, chatOptions, lifecycle }: ChatLa
     buildChat(provider, opts).then(
       (built) => {
         if (cancelled) {
-          // Quit happened while connecting — dispose the orphaned session.
+          // Quit happened while connecting -- dispose the orphaned session.
           void built.dispose()
           return
         }

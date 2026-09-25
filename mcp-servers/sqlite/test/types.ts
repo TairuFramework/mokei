@@ -1,7 +1,7 @@
 /**
  * Type-level tests for the typed client (`ExtractServerTypes`).
  *
- * No runtime assertions — vitest does not pick this file up (it matches `*.test.ts`). It is
+ * No runtime assertions -- vitest does not pick this file up (it matches `*.test.ts`). It is
  * compiled by `tsc -p tsconfig.test.json`, and the `@ts-expect-error` lines fail the build if
  * the call they mark ever starts compiling.
  *

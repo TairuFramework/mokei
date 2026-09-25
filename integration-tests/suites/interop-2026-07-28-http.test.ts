@@ -1,9 +1,9 @@
 /**
  * `2026-07-28` over Streamable HTTP, mokei against mokei.
  *
- * The cross-stack half of this revision — a mokei client against a real SDK peer — lives in
+ * The cross-stack half of this revision -- a mokei client against a real SDK peer -- lives in
  * `interop-sdk-server.test.ts`, alongside the `2025-11-25` rows of the same direction, so the
- * organizing axis of the interop suites is direction rather than revision.
+ * organising axis of the interop suites is direction rather than revision.
  */
 import type { ContextClient } from '@mokei/context-client'
 import { META_CLIENT_CAPABILITIES, META_PROTOCOL_VERSION } from '@mokei/context-protocol'
@@ -67,7 +67,7 @@ describe('mokei over Streamable HTTP on 2026-07-28', () => {
   // at the unit level by `packages/http-server/test/stateless.test.ts`, which can construct the
   // response directly; this test cannot fail unless something starts inventing the header out
   // of a path nothing currently takes. Keep it for that, do not read it as evidence that
-  // sessionless operation is enforced, and do not "strengthen" it — the public API offers
+  // sessionless operation is enforced, and do not "strengthen" it -- the public API offers
   // nothing here that the unit test does not already cover better.
   test('no response on the exchange carries Mcp-Session-Id', async () => {
     server = await startMokeiHTTPServer(['2026-07-28'])
@@ -94,12 +94,12 @@ describe('mokei over Streamable HTTP on 2026-07-28', () => {
 
   test('tears the exchange down when the caller hangs up', async () => {
     // Hanging up is a stateless exchange's only cancellation channel, and the whole chain that
-    // carries it — `@hono/node-server` closing the socket, `serveHTTP` passing `ctx.req.raw`
-    // through, `runStatelessExchange` listening on `request.signal` — has no other coverage.
+    // carries it -- `@hono/node-server` closing the socket, `serveHTTP` passing `ctx.req.raw`
+    // through, `runStatelessExchange` listening on `request.signal` -- has no other coverage.
     // Driven with a raw `fetch` rather than a `ContextClient` so the abort is a genuine client
     // disconnect and nothing else is sent on the way out. A `ContextClient` cannot stand in
-    // here: aborting one does not hang up on the exchange at all — the transport's own
-    // `AbortController` covers time-to-headers and is discarded before the SSE body is read —
+    // here: aborting one does not hang up on the exchange at all -- the transport's own
+    // `AbortController` covers time-to-headers and is discarded before the SSE body is read --
     // so there would be no disconnect to observe, only the `notifications/cancelled` the client
     // emits instead, which this revision has no channel to act on. Leave the raw `fetch`.
     //

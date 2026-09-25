@@ -38,7 +38,7 @@ export type ListParams<Params> = Params & ListOptions
  *
  * The counterpart to `splitRequestOptions` for the paginated methods, which carry one
  * local-only option it does not know about: `maxPages`. Any paginated method must split
- * here rather than there, or the cap is serialized into the request sent to the peer.
+ * here rather than there, or the cap is serialised into the request sent to the peer.
  */
 export function splitListOptions<Params>(
   params: ListParams<Params>,
@@ -96,7 +96,7 @@ export type UnknownContextTypes = {
 }
 
 /**
- * Params of a named call, as a union of one member per name — so `arguments` is the type of
+ * Params of a named call, as a union of one member per name -- so `arguments` is the type of
  * *that* name's arguments.
  *
  * The obvious shape, `{ name: keyof M & string; arguments: M[keyof M] }`, is wrong: it takes
@@ -125,7 +125,7 @@ export type ClientParams = {
   listRoots?: Array<Root> | ListRootsHandler
   logLevel?: LoggingLevel
   /**
-   * Multi round-trip request behavior (MRTR, SEP-2322). `autoFulfill` (default `true`) dispatches
+   * Multi round-trip request behaviour (MRTR, SEP-2322). `autoFulfill` (default `true`) dispatches
    * a server's embedded input requests to this client's own `createMessage`/`elicit`/`listRoots`
    * handlers and retries, so callers of `callTool`/`getPrompt`/`readResource` receive the same
    * result type they do on `2025-11-25`. `maxRounds` (default 10) caps a single call's rounds.
@@ -140,13 +140,13 @@ export type ClientParams = {
   /** Server-initiated requests allowed to wait for a slot before further ones are refused (default 1000). */
   maxQueuedRequests?: number
   /**
-   * Called for an inbound frame that could neither be validated nor routed to anything —
-   * an invalid notification, or a malformed frame naming an id nobody is waiting on — and
+   * Called for an inbound frame that could neither be validated nor routed to anything --
+   * an invalid notification, or a malformed frame naming an id nobody is waiting on -- and
    * for server-initiated request handlers that failed. Without it such frames vanish silently.
    */
   onError?: (error: Error) => void
   /**
-   * Default timeout for every request after setup. Unset means unbounded — `tools/call` can
+   * Default timeout for every request after setup. Unset means unbounded -- `tools/call` can
    * legitimately run for minutes, and `@mokei/session` already bounds tool calls itself.
    * `setupTimeout` covers connection setup regardless of this value.
    */

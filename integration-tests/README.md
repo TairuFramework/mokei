@@ -29,6 +29,9 @@ assumption that the environment has one.
 | `llama-provider`, `cli-chat-llama` | `MOKEI_LLAMA_GGUF` |
 | `laya` | `MOKEI_LAYA_SERVE_BIN` |
 
+The `test:types` script also typechecks the published declarations as a consumer
+(`dts-consumer/`), with `skipLibCheck: false`. Build the packages first.
+
 ## Chat backend
 
 The model-facing suites resolve one backend, in `support/requirements.ts`. Both serve

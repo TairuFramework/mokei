@@ -124,7 +124,7 @@ describe('ContextServer – inbound trace propagation', () => {
           description: 'probe context',
           inputSchema: { type: 'object' },
           handler: async () => {
-            // Reads the OTel active context — will only be defined if withRequestMeta
+            // Reads the OTel active context -- will only be defined if withRequestMeta
             // correctly activated the remote span context on the way in.
             observedTraceID = getActiveTraceContext()?.traceID
             return { content: [{ type: 'text', text: 'ok' }] }

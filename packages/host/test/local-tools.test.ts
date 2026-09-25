@@ -307,8 +307,8 @@ describe('ContextHost Local Tools', () => {
     })
   })
 
-  describe('_dispose', () => {
-    test('clears local tools when _dispose is called directly', async () => {
+  describe('dispose', () => {
+    test('clears local tools when disposed', async () => {
       const host = new ContextHost()
 
       host.addLocalTool({
@@ -319,9 +319,7 @@ describe('ContextHost Local Tools', () => {
 
       expect(host.localTools.size).toBe(1)
 
-      // Note: _dispose is intended to be called by subclasses or internal cleanup
-      // The public dispose() method from Disposer doesn't automatically call _dispose
-      await host._dispose()
+      await host.dispose()
 
       expect(host.localTools.size).toBe(0)
     })

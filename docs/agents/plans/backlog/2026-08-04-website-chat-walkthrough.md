@@ -12,11 +12,11 @@ The website quick-start documents a CLI that no longer exists. It shows an inqui
 `mokei chat ollama` invocation. The CLI is an Ink TUI driven by slash commands, and the command
 is `mokei chat --provider ollama`.
 
-## Why it is still open
+## Approach
 
-Rewriting it needs a real PTY run to capture accurate output. Hand-written terminal transcripts
-drift again within a release, which is how this one rotted. `integration-tests/` already drives
-the CLI over a PTY (`support/chat-driver.ts`), so the capture path exists.
+Capture output from a real PTY run, not a hand-written transcript -- hand-written transcripts
+drift within a release, which is how this one rotted. `integration-tests/support/chat-driver.ts`
+already drives the CLI over a PTY, so nothing blocks the rewrite.
 
 ## Scope
 

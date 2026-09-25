@@ -234,7 +234,7 @@ describe('handler.dispose() awaits in-flight listen disposal', () => {
     expect(capturedServer).toBeDefined()
 
     // Registration into the hub is chained after the ack write (ack-first), so let that
-    // microtask/macrotask settle before completing — otherwise the entry is not yet retained.
+    // microtask/macrotask settle before completing -- otherwise the entry is not yet retained.
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     // The durable side gracefully completes the subscription, resolving the held terminal and
@@ -291,7 +291,7 @@ describe('subscriptions/listen writer-failure teardown', () => {
     expect(capturedServer).toBeDefined()
 
     // Synchronous burst: all 600 enqueue before the writer drains one, so `#pending` blows past its
-    // 256 bound and the writer fails — the borrower then tears down its own exchange. (Exercises a
+    // 256 bound and the writer fails -- the borrower then tears down its own exchange. (Exercises a
     // fast producer, not a slow reader: the SSE stream doesn't yet propagate reader backpressure.)
     for (let i = 0; i < 600; i++) {
       void emitter.emit('resourceUpdated', { uri: 'file:///x' })

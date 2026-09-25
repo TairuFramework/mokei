@@ -60,10 +60,13 @@ export function validateWithSchema<S extends Schema, T = FromSchema<S>>(
   }
   return {
     success: false,
-    error: new StructuredOutputError(
-      'Validation failed',
-      result.issues.map((i) => ({ message: i.message, path: i.path as ReadonlyArray<unknown> })),
-    ),
+    error: new StructuredOutputError({
+      message: 'Validation failed',
+      issues: result.issues.map((i) => ({
+        message: i.message,
+        path: i.path as ReadonlyArray<unknown>,
+      })),
+    }),
   }
 }
 
@@ -73,15 +76,20 @@ export function validateWithSchema<S extends Schema, T = FromSchema<S>>(
 export class StructuredOutputError extends Error {
   #issues: Array<ValidationIssue>
 
-  constructor(message: string, issues: Array<ValidationIssue>) {
-    super(message)
+  constructor(params: StructuredOutputErrorParams) {
+    super(params.message, { cause: params.cause })
     this.name = 'StructuredOutputError'
-    this.#issues = issues
+    this.#issues = params.issues
   }
 
   get issues(): Array<ValidationIssue> {
     return this.#issues
   }
+}
+export type StructuredOutputErrorParams = {
+  message: string
+  issues: Array<ValidationIssue>
+  cause?: unknown
 }
 
 /**
@@ -226,7 +234,7 @@ export type SamplingParams = {
   topP?: number
   /**
    * Raw backend options merged last into the request body (escape hatch; overrides typed params).
-   * Intended for sampling/tuning keys only — these keys are spread last into the request body, so
+   * Intended for sampling/tuning keys only -- these keys are spread last into the request body, so
    * structural fields (e.g. `model`, `messages`) will be overridden if present here.
    * Note: `signal` and `stream` are automatically stripped before the bag reaches the provider;
    * those keys are reserved for the transport/stream machinery and cannot be overridden here.

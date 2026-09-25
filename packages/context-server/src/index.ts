@@ -18,6 +18,7 @@ export {
   createPrompt,
   createTool,
   ToolOutputValidationError,
+  type ToolOutputValidationErrorParams,
 } from './definitions.js'
 export {
   defaultMintRequestState,
@@ -37,6 +38,7 @@ export {
   type CreateSubscriptionHubParams,
   createSubscriptionHub,
   SubscriptionBackpressureError,
+  type SubscriptionBackpressureErrorParams,
   type SubscriptionEntry,
   type SubscriptionHandle,
   type SubscriptionHub,

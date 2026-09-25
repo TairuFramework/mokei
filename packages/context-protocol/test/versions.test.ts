@@ -26,7 +26,7 @@ import {
 /**
  * Each revision's `clientNotification` union, keyed by revision. Imported from the version
  * modules rather than read off `ProtocolDefinition`, which carries only the whole-message
- * `clientMessage` union — a notification union is what `clientNotifications` has to agree with,
+ * `clientMessage` union -- a notification union is what `clientNotifications` has to agree with,
  * so the guard below compares against the union itself and not against a copy of it.
  */
 const CLIENT_NOTIFICATION_UNIONS: Record<ProtocolVersion, { anyOf: ReadonlyArray<unknown> }> = {
@@ -182,7 +182,7 @@ describe('protocol records', () => {
     for (const version of PROTOCOL_VERSIONS) {
       const protocol = PROTOCOLS[version]
       // A revision whose peer routes on per-request `_meta` routes notifications on it too, so
-      // `decorateNotification` must stamp the version exactly when `requiresRequestMeta` is set —
+      // `decorateNotification` must stamp the version exactly when `requiresRequestMeta` is set --
       // and stamp nothing else, since the request envelope does not belong on a notification.
       expect(protocol.decorateNotification({ requestId: 1 }), version).toEqual(
         protocol.requiresRequestMeta
@@ -211,7 +211,7 @@ describe('protocol records', () => {
   // revision's *own* `clientMessage` validator accepts, and a name it does not declare has to
   // produce one that validator rejects. The undeclared names are taken from every other
   // registered revision's union rather than hardcoded, so this stays honest as revisions come
-  // and go — with the set-equality test above, that covers union ⊄ set for every name, not just
+  // and go -- with the set-equality test above, that covers union ⊄ set for every name, not just
   // for a list somebody remembered to update.
   test('every declared client notification validates, and no undeclared one does', () => {
     // The minimum params each notification's own schema requires; anything not listed has none.
@@ -252,7 +252,7 @@ describe('protocol records', () => {
 
   // The server side mirrors the client split: 2025-11-25 owns its own `serverRequest` /
   // `serverNotification` unions rather than borrowing the cross-revision ones from `server.js`.
-  // `serverMethods` is what the request union has to agree with — driven off the union so a
+  // `serverMethods` is what the request union has to agree with -- driven off the union so a
   // revision that changes one and not the other fails here.
   test('2025-11-25 serverMethods names exactly the members of its own serverRequest union', () => {
     const declared = [...PROTOCOLS['2025-11-25'].serverMethods].sort()
@@ -291,7 +291,7 @@ describe('protocol records', () => {
 
 describe('per-version message validation', () => {
   // Ajv reports strict-mode violations through `console.warn`, which on a stdio MCP server is
-  // the log channel the host captures — so a schema that trips `strictTypes` prints protocol
+  // the log channel the host captures -- so a schema that trips `strictTypes` prints protocol
   // internals over every server's own logs at startup.
   test('building the validators emits no strict-mode warnings', () => {
     // Reached through `globalThis` rather than the bare `console` global: this package's tests
@@ -432,7 +432,7 @@ describe('per-version message validation', () => {
   })
 
   // No `resultType` here, unlike every other terminal result on this revision: the terminal
-  // `subscriptions/listen` response is sent once, on graceful teardown of the stream, and Task 1's
+  // `subscriptions/listen` response is sent once, on graceful teardown of the stream, and its
   // schema deliberately excludes `resultType` from it.
   test('2026-07-28 accepts a subscriptions/listen terminal result with no resultType', () => {
     const validate = createValidator(PROTOCOLS['2026-07-28'].serverMessage)

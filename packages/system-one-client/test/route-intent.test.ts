@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 
 import { SystemOneClient } from '../src/client.js'
-import { routeIntent } from '../src/routeIntent.js'
+import { routeIntent } from '../src/route-intent.js'
 import type { ChoiceQuestion } from '../src/types.js'
 
 const question: ChoiceQuestion = {

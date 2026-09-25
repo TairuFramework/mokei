@@ -46,12 +46,18 @@ export type LogFunction = (params: LogParams) => void
 
 /** Thrown when a handler reaches for a client capability that this revision routes through MRTR. */
 export class MRTRNotSupportedError extends Error {
-  constructor(method: string, version: ProtocolVersion) {
+  constructor(params: MRTRNotSupportedErrorParams) {
     super(
-      `${method} cannot be called on protocol version ${version}: server-initiated requests are replaced by multi round-trip requests (SEP-2322) — return \`inputRequired({ inputRequests: { <key>: { method, params } } })\` from the handler and read \`inputResponses[<key>]\` when it is re-invoked`,
+      `${params.method} cannot be called on protocol version ${params.version}: server-initiated requests are replaced by multi round-trip requests (SEP-2322) — return \`inputRequired({ inputRequests: { <key>: { method, params } } })\` from the handler and read \`inputResponses[<key>]\` when it is re-invoked`,
+      { cause: params.cause },
     )
     this.name = 'MRTRNotSupportedError'
   }
+}
+export type MRTRNotSupportedErrorParams = {
+  method: string
+  version: ProtocolVersion
+  cause?: unknown
 }
 
 /**
@@ -59,19 +65,26 @@ export class MRTRNotSupportedError extends Error {
  * Answered on the wire as `-32021`, carrying the missing capabilities in `data`.
  */
 export class MissingRequiredClientCapabilityError extends Error {
-  requiredCapabilities: Record<string, Record<string, never>>
+  #requiredCapabilities: Record<string, Record<string, never>>
 
-  constructor(
-    key: string,
-    method: string,
-    requiredCapabilities: Record<string, Record<string, never>>,
-  ) {
+  constructor(params: MissingRequiredClientCapabilityErrorParams) {
     super(
-      `Cannot request input "${key}" (${method}): the request's client capabilities do not declare ${Object.keys(requiredCapabilities).join(', ')}`,
+      `Cannot request input "${params.key}" (${params.method}): the request's client capabilities do not declare ${Object.keys(params.requiredCapabilities).join(', ')}`,
+      { cause: params.cause },
     )
     this.name = 'MissingRequiredClientCapabilityError'
-    this.requiredCapabilities = requiredCapabilities
+    this.#requiredCapabilities = params.requiredCapabilities
   }
+
+  get requiredCapabilities(): Record<string, Record<string, never>> {
+    return this.#requiredCapabilities
+  }
+}
+export type MissingRequiredClientCapabilityErrorParams = {
+  key: string
+  method: string
+  requiredCapabilities: Record<string, Record<string, never>>
+  cause?: unknown
 }
 
 export type ServerClient = {
@@ -103,8 +116,8 @@ export type HandlerRequest<C extends Record<string, unknown> = Record<string, ne
    * The state this handler minted on a previous round, echoed back by the client.
    *
    * The decoded payload when the server is configured with a `requestState.verify` hook; the raw
-   * string otherwise, in which case it is UNTRUSTED — it round-tripped through the client and any
-   * caller can forge it. Configure the hook before letting it influence authorization.
+   * string otherwise, in which case it is UNTRUSTED -- it round-tripped through the client and any
+   * caller can forge it. Configure the hook before letting it influence authorisation.
    */
   requestState?: unknown
   /** Encodes a payload into the opaque `requestState` string to send with an `inputRequired()`. */
@@ -203,10 +216,10 @@ export type GenericToolDefinition = {
  * What `createTool` returns: a runtime `GenericToolDefinition` carrying a phantom witness of
  * the argument type its `inputSchema` describes.
  *
- * The witness is type-level only — never present at runtime. It exists so
+ * The witness is type-level only -- never present at runtime. It exists so
  * {@link ExtractToolTypes} can recover a tool's argument type by reading one optional
- * property. The alternative — structurally matching the whole definition against a typed
- * one — forces TypeScript to compare `handler` types, which carry the large `CallToolResult`
+ * property. The alternative -- structurally matching the whole definition against a typed
+ * one -- forces TypeScript to compare `handler` types, which carry the large `CallToolResult`
  * union, and that exceeds the instantiation depth (TS2589/TS2590).
  */
 export type ToolDefinition<Arguments = Record<string, unknown>> = GenericToolDefinition & {
@@ -243,7 +256,7 @@ export type ExtractToolTypes<T extends ToolDefinitions> = {
  * schema TypeScript could not narrow).
  *
  * Reading one optional property is deliberate: matching the definition structurally would
- * drag its `handler` — and the `CallToolResult` union inside it — into the comparison.
+ * drag its `handler` -- and the `CallToolResult` union inside it -- into the comparison.
  */
 type ExtractArguments<Definition> = Definition extends { readonly _arguments?: infer Arguments }
   ? unknown extends Arguments

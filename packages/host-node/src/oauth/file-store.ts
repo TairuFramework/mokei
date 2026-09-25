@@ -45,7 +45,7 @@ export function createFileTokenStore(path: string): TokenStore {
     const run = prev.then(op, op)
     const tail = run.catch(() => {})
     pathTails.set(resolved, tail)
-    // Reclaim the entry once its tail settles, but only if it is still the live chain — the
+    // Reclaim the entry once its tail settles, but only if it is still the live chain -- the
     // identity check prevents deleting a chain a concurrent op has already extended. Without it,
     // `pathTails` would grow one permanent entry per distinct resolved path.
     void tail.then(() => {

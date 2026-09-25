@@ -54,8 +54,8 @@ export class SSEWriter {
   /**
    * Hold back live events ({@link writeEvent}) until `gate` settles, without holding back priming
    * or replay ({@link writeRawEvent}) writes. Lets a resuming GET stream be published to the
-   * session up front — so it closes a superseding GET and receives (rather than drops) live
-   * traffic — while still ordering that traffic after the replay snapshot. The gate's rejection is
+   * session up front -- so it closes a superseding GET and receives (rather than drops) live
+   * traffic -- while still ordering that traffic after the replay snapshot. The gate's rejection is
    * swallowed: a failed replay releases live traffic rather than wedging the stream.
    */
   deferLiveWritesUntil(gate: Promise<unknown>): void {
@@ -85,7 +85,7 @@ export class SSEWriter {
     const id = this.#nextID()
     const event: SSEEvent = { id, data: '' }
     // Priming events carry no payload and are not recorded in the session
-    // replay index (no #onEvent) — they exist only to open the stream.
+    // replay index (no #onEvent) -- they exist only to open the stream.
     this.#pushToBuffer(event)
     await this.#writer.write(`id: ${id}\ndata: \n\n`)
   }
@@ -111,7 +111,7 @@ export class SSEWriter {
   /**
    * Replay a previously-recorded event onto this stream, preserving its
    * original id. Does not buffer it or record it in the session replay
-   * index — the event already lives there under its original id.
+   * index -- the event already lives there under its original id.
    */
   async writeRawEvent(event: SSEEvent): Promise<void> {
     if (this.#closed) return
@@ -144,21 +144,13 @@ export class SSEWriter {
   }
 
   /**
-   * Closes the underlying stream. Synchronous by design — every caller is a teardown path with
-   * nothing left to await on — which makes the returned promise nobody's to handle.
-   *
-   * Hence the `catch`. `close()` on an already-errored writable rejects, and every route here is
-   * a route that reaches this method precisely because something went wrong: a client that hung
-   * up mid-stream, a sink that threw after its response was settled. Without it, closing a
-   * faulted stream raises an unhandled rejection in the server process — a crash under Node's
-   * default `--unhandled-rejections=throw`, from cleanup code whose failure has nobody to report
-   * to and nothing to retry. The rejection is logged rather than swallowed outright, so a
-   * genuinely diagnosable stream fault does not vanish.
+   * Close synchronously for teardown callers. An already-faulted writer can reject
+   * `close()`; catch and log it to avoid a Node unhandled-rejection crash.
    */
   close(): void {
     if (this.#closed) return
     this.#closed = true
-    // Release a write parked on backpressure first, so `writer.close()` is not serialized behind
+    // Release a write parked on backpressure first, so `writer.close()` is not serialised behind
     // one that no reader will ever wake.
     this.#release?.()
     void this.#writer.close().catch((error: unknown) => {

@@ -134,10 +134,13 @@ describe('structured output', () => {
 
   describe('StructuredOutputError', () => {
     test('has correct name and issues', () => {
-      const error = new StructuredOutputError('Test error', [
-        { message: 'Field is required', path: ['name'] },
-        { message: 'Must be a number', path: ['age'] },
-      ])
+      const error = new StructuredOutputError({
+        message: 'Test error',
+        issues: [
+          { message: 'Field is required', path: ['name'] },
+          { message: 'Must be a number', path: ['age'] },
+        ],
+      })
 
       expect(error.name).toBe('StructuredOutputError')
       expect(error.message).toBe('Test error')

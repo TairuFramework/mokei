@@ -41,7 +41,7 @@ function toError(value: unknown): Error {
 
 /**
  * Owns the outbound id → pending-exchange map and routes inbound frames to it.
- * A `once` exchange settles on the first matching response (current behavior); a
+ * A `once` exchange settles on the first matching response (current behaviour); a
  * `stream` exchange accepts interleaved frames and settles on a terminal one.
  */
 export class ExchangeRegistry {
@@ -93,14 +93,14 @@ export class ExchangeRegistry {
     } else {
       this.#settle(id, exchange, 'error', {
         ok: false,
-        error: new RPCError(INTERNAL_ERROR, 'Malformed response'),
+        error: new RPCError({ code: INTERNAL_ERROR, message: 'Malformed response' }),
       })
     }
   }
 
   /**
    * Routes a stream frame to a `stream` exchange. Frames for an unknown id, for a
-   * `once` exchange, or of an unknown type are dropped without settling — only the
+   * `once` exchange, or of an unknown type are dropped without settling -- only the
    * `result` and `error` frames are terminal.
    */
   routeStreamFrame(id: RequestID, frame: StreamFrame): void {
@@ -133,7 +133,7 @@ export class ExchangeRegistry {
   }
 
   /**
-   * Settles an exchange with a protocol-level failure — the peer sent something unusable.
+   * Settles an exchange with a protocol-level failure -- the peer sent something unusable.
    * Distinct from {@link ExchangeRegistry.cancel}, which means the local side gave up.
    */
   fail(id: RequestID, reason: Error): void {

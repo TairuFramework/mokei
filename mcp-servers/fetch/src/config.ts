@@ -98,7 +98,7 @@ export function createFetchConfig(options: FetchToolsOptions = {}) {
     name: 'fetch',
     version: '0.1.0',
     // Both revisions: these ship with mokei and are what its host and CLI point at by
-    // default, so they must answer a `2026-07-28` client — while still reaching every
+    // default, so they must answer a `2026-07-28` client -- while still reaching every
     // client that only speaks `2025-11-25`, including the current SDK release.
     protocolVersions: ['2026-07-28', '2025-11-25'],
     tools: createFetchTools(options),

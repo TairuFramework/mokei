@@ -31,7 +31,7 @@ import { callToolResult, listToolsResult, toolListChangedNotification } from './
 // are not revision-specific. Each revision now owns its own server unions under `versions/`
 // (`2025-11-25.ts`, `2026-07-28.ts`); per-connection wire validation goes through
 // `PROTOCOLS[version].serverMessage`, never these. They coincide with `2025-11-25`'s members
-// today — that is convenience overlap, not a coupling: the revision union is the source of truth.
+// today -- that is convenience overlap, not a coupling: the revision union is the source of truth.
 
 export const serverRequest = {
   anyOf: [pingRequest, createMessageRequest, listRootsRequest, elicitRequest],

@@ -1,38 +1,16 @@
 /**
- * `subscriptions/listen` (SEP-1391 / SEP-2575, `2026-07-28`) interop between mokei and the official
- * SDK v2, in BOTH directions, over stdio and Streamable HTTP:
+ * `subscriptions/listen` interop (SEP-1391 / SEP-2575, `2026-07-28`) in both
+ * client/server directions over stdio and Streamable HTTP.
  *
- * 1. mokei's `subscriptions/listen` CLIENT against the SDK v2 SERVER.
- * 2. The SDK v2 CLIENT against mokei's `subscriptions/listen` SERVER (Task 19) — including the
- *    two-clients-same-id case that exercises a stateless-HTTP durable hub's `(connectionID,
- *    subscriptionID)` keying: two concurrent SDK v2 clients both mint the same JSON-RPC request id
- *    for their listen (`listen:0`, each client's own first-call id), served by two per-POST
- *    `ContextServer`s that borrow one durable hub under two different `connectionID`s.
+ * Two SDK clients can both mint `listen:0`; the stateless HTTP hub must key
+ * subscriptions by `(connectionID, subscriptionID)` to avoid cross-delivery.
+ * On HTTP, `createMcpHandler.notify` publishes through its shared bus and
+ * `handler.close()` writes terminals. On stdio, `serveStdio` routes the pinned
+ * server's notifications; closing fixture stdin writes the terminal.
  *
- * The SDK v2 server implements `subscriptions/listen` server-side on both transports — ack-first,
- * capability-narrowed filtering, per-frame subscription-id stamping, and a graceful terminal result
- * — but through two different seams, and each transport here drives the one that matches how it
- * delivers:
- *
- * - **HTTP** (`createMcpHandler`): the returned handler owns a change-event bus. Its `notify`
- *   facade (`resourceUpdated(uri)` / `resourcesChanged()`) publishes onto that bus, and every open
- *   `subscriptions/listen` SSE stream that opted in gets a stamped copy. `handler.close()` writes
- *   the graceful terminal result to each open stream.
- * - **stdio** (`serveStdio`): no bus — the entry intercepts the pinned instance's outbound change
- *   notifications and reroutes them onto the open subscriptions. So the way to make a spawned stdio
- *   server emit is to have the pinned instance emit, which the fixture's `emitUpdates` tool does.
- *   The graceful terminal is written when the entry's `close()` runs, which the fixture ties to its
- *   stdin closing.
- *
- * The terminal listen result carries no client-side event (a graceful `result` settle just ends the
- * stream), so both rows assert it directly on the wire — the SDK server's own frames, tapped where
- * they cross into mokei's transport — proving the terminal's `result._meta[subscriptionId]` matches
- * the active subscription that delivered the notifications.
- *
- * The mokei-server-under-test rows (2) instead drive the SDK v2 CLIENT's own public
- * `McpSubscription` surface — `honoredFilter`, notification handlers, and `closed` (which resolves
- * `'graceful'` on a server-written terminal result) — no wire tap needed there: unlike mokei's own
- * client, the SDK client surfaces a graceful-teardown signal directly.
+ * Mokei-client rows tap wire frames to verify terminal subscription ids,
+ * since a graceful result has no client-side event. SDK-client rows assert
+ * its public `McpSubscription` filter, notifications, and `closed` result.
  */
 import {
   type Client,
@@ -235,9 +213,9 @@ describe.each(ROWS)('mokei subscriptions client against the SDK v2 server $name'
     const discovered = await client.discover()
     expect(discovered.capabilities.resources).toMatchObject({ subscribe: true, listChanged: true })
 
-    // Subscribe: resolves once the server acknowledges, and the honored filter it echoed back is
-    // exactly the requested one — the listChanged bits the server advertises plus the watched URI.
-    // Asserting the whole filter (not a subset) is what proves the server HONORED the request.
+    // Subscribe: resolves once the server acknowledges, and the honoured filter it echoed back is
+    // exactly the requested one -- the listChanged bits the server advertises plus the watched URI.
+    // Asserting the whole filter (not a subset) is what proves the server HONOURED the request.
     await client.subscribeResource({ uri: WATCHED_URI })
     expect(client.subscriptionFilter).toEqual({
       toolsListChanged: true,
@@ -251,10 +229,10 @@ describe.each(ROWS)('mokei subscriptions client against the SDK v2 server $name'
     // the terminal against), and the `resourcesListChanged` event.
     const resourceUpdatedEvent = client.events.once('resourceUpdated')
     const listChangedEvent = client.events.once('resourcesListChanged')
-    let deliveredSubscriptionId: unknown
+    let deliveredSubscriptionID: unknown
     const perUriDelivered = new Promise<void>((resolve) => {
       client.onResourceUpdated(WATCHED_URI, (notification) => {
-        deliveredSubscriptionId = (notification as { params?: { _meta?: Record<string, unknown> } })
+        deliveredSubscriptionID = (notification as { params?: { _meta?: Record<string, unknown> } })
           .params?._meta?.[META_SUBSCRIPTION_ID]
         resolve()
       })
@@ -267,7 +245,7 @@ describe.each(ROWS)('mokei subscriptions client against the SDK v2 server $name'
     await listChangedEvent
     // The delivered notification carried the active subscription's id in its `_meta`.
     expect(
-      typeof deliveredSubscriptionId === 'string' || typeof deliveredSubscriptionId === 'number',
+      typeof deliveredSubscriptionID === 'string' || typeof deliveredSubscriptionID === 'number',
     ).toBe(true)
 
     // Graceful teardown: the SDK server writes the terminal listen result, which carries no
@@ -278,13 +256,13 @@ describe.each(ROWS)('mokei subscriptions client against the SDK v2 server $name'
     const terminals = await poll(() => terminalFrames(harness?.frames() ?? []))
     expect(terminals).toHaveLength(1)
     const terminal = terminals[0]
-    expect(terminal?.result?._meta?.[META_SUBSCRIPTION_ID]).toBe(deliveredSubscriptionId)
-    expect(terminal?.id).toBe(deliveredSubscriptionId)
+    expect(terminal?.result?._meta?.[META_SUBSCRIPTION_ID]).toBe(deliveredSubscriptionID)
+    expect(terminal?.id).toBe(deliveredSubscriptionID)
   })
 })
 
 /**
- * The other direction (Task 19): the official SDK v2 CLIENT against mokei's `subscriptions/listen`
+ * The other direction: the official SDK v2 CLIENT against mokei's `subscriptions/listen`
  * SERVER, over stdio (`subscriptions: true`, mokei owns the hub) and stateless Streamable HTTP
  * (`createMokeiSubscriptionConfig` served with a durable hub each per-POST server borrows).
  */
@@ -320,7 +298,7 @@ const MOKEI_SERVER_ROWS: ReadonlyArray<MokeiServerRow> = [
           await client.callTool({ name: EMIT_TOOL_NAME, arguments: {} })
         },
         // `StdioClientTransport#close()` ends the child's stdin before ever signalling it, which
-        // `mokei-stdio-server-subscriptions.ts` turns into a graceful `ContextServer#dispose()` —
+        // `mokei-stdio-server-subscriptions.ts` turns into a graceful `ContextServer#dispose()` --
         // flushing the terminal listen result before the process actually exits.
         gracefulTeardown: () => client.close(),
         dispose: () => client.close(),
@@ -387,7 +365,7 @@ describe.each(MOKEI_SERVER_ROWS)('SDK v2 client against the mokei server $name',
       resourcesListChanged: true,
     })
     // The whole filter, not a subset: mokei echoes `params.notifications` back verbatim (no
-    // capability-based narrowing), so an exact match is what proves the request was honored.
+    // capability-based narrowing), so an exact match is what proves the request was honoured.
     expect(subscription.honoredFilter).toEqual({
       resourceSubscriptions: [WATCHED_URI],
       resourcesListChanged: true,
@@ -400,7 +378,7 @@ describe.each(MOKEI_SERVER_ROWS)('SDK v2 client against the mokei server $name',
 
     // Graceful teardown: mokei writes the terminal listen result (a JSON-RPC RESULT response for
     // the listen request's own id), which the SDK client's transport-level demux recognizes and
-    // settles `closed` to `'graceful'` — no wire tap needed, unlike the mokei-client rows above.
+    // settles `closed` to `'graceful'` -- no wire tap needed, unlike the mokei-client rows above.
     await harness.gracefulTeardown()
     expect(await subscription.closed).toBe('graceful')
   })
@@ -408,11 +386,11 @@ describe.each(MOKEI_SERVER_ROWS)('SDK v2 client against the mokei server $name',
 
 /**
  * THE key case: two concurrent SDK v2 clients, both minting the same JSON-RPC request id for their
- * `subscriptions/listen` (`Client#listen`'s own `` `listen:${this._nextListenId++}` `` counter —
+ * `subscriptions/listen` (`Client#listen`'s own `` `listen:${this._nextListenId++}` `` counter --
  * each fresh `Client` instance's FIRST listen call is `listen:0`), against ONE mokei
  * stateless-HTTP server with a durable hub. Every `subscriptions/listen` POST on `2026-07-28` is
  * served by its own transport-isolated per-POST `ContextServer` that borrows the durable hub and
- * mints its own `connectionID` (`runSubscriptionExchange`) — so this is exactly two subscriptions
+ * mints its own `connectionID` (`runSubscriptionExchange`) -- so this is exactly two subscriptions
  * sharing one `subscriptionID` value under two different `connectionID`s, the case the hub's
  * `Map<connectionID, Map<subscriptionID, …>>` keying (`createSubscriptionHub`) exists for.
  */
@@ -462,7 +440,7 @@ describe('two SDK v2 clients sharing a JSON-RPC request id (stateless HTTP, dura
       expect(receivedA[0]).toMatchObject({ uri: WATCHED_URI })
       expect(receivedB[0]).toMatchObject({ uri: WATCHED_URI })
 
-      // Both notifications carry the SAME subscription id — proof the two subscriptions really do
+      // Both notifications carry the SAME subscription id -- proof the two subscriptions really do
       // share one `subscriptionID` (not that the test accidentally picked distinct ones) and still
       // route correctly to their own stream, distinguished only by the per-POST `connectionID`.
       expect(receivedA[0]?._meta?.[SUBSCRIPTION_ID_META_KEY]).toBe('listen:0')

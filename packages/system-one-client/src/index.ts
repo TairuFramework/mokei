@@ -6,20 +6,28 @@ export type {
 export {
   type CreateSystemOneClientOptions,
   createSystemOneClient,
-  type SystemOneBackendClientOptions,
   SystemOneClient,
+  type SystemOneClientParams,
   type SystemOnePredictParams,
 } from './client.js'
 export {
   SystemOneAuthError,
+  type SystemOneAuthErrorParams,
   SystemOneConnectionError,
   type SystemOneConnectionErrorOptions,
+  type SystemOneConnectionErrorParams,
   SystemOneError,
+  type SystemOneErrorParams,
   SystemOneInputError,
+  type SystemOneInputErrorParams,
   SystemOneModelError,
+  type SystemOneModelErrorParams,
   SystemOneOverloadedError,
+  type SystemOneOverloadedErrorParams,
   SystemOneRateLimitError,
+  type SystemOneRateLimitErrorParams,
   SystemOneResponseError,
+  type SystemOneResponseErrorParams,
   type SystemOneRetryableErrorOptions,
   type ValidationIssue,
 } from './errors.js'
@@ -29,7 +37,7 @@ export {
   type SystemOneHTTPClientOptions,
 } from './http.js'
 export { guardQuestions, moderationQuestions, routerQuestions, triageQuestions } from './presets.js'
-export { type IntentRoute, type RouteIntentParams, routeIntent } from './routeIntent.js'
+export { type IntentRoute, type RouteIntentParams, routeIntent } from './route-intent.js'
 export type {
   AnswerFor,
   ChoiceAnswer,

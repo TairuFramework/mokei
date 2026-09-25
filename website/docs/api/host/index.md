@@ -342,13 +342,13 @@ npm install @mokei/host
 
 ##### Constructor
 
-> **new ProxyHost**(`client`): [`ProxyHost`](#proxyhost)
+> **new ProxyHost**(`params`): [`ProxyHost`](#proxyhost)
 
 ###### Parameters
 
-###### client
+###### params
 
-[`HostClient`](#hostclient)
+`ProxyHostParams`
 
 ###### Returns
 

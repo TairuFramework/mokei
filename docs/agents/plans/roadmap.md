@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-09-03
+**Last updated:** 2026-09-25
 
 ## Vision
 
@@ -9,10 +9,12 @@ runtime, provider abstraction across cloud + local models, and monitoring UI.
 
 ## Current state
 
-19 packages under `packages/`, plus two published MCP servers under `mcp-servers/`.
+20 packages under `packages/`, plus three MCP servers under `mcp-servers/` (`fetch`, `sqlite`,
+`system-one`).
 `@mokei/host` and `@mokei/context-server` are React Native / Metro-bundle-safe (no Node
 built-ins); their Node stdio/daemon entries live in `@mokei/host-node` and
-`@mokei/context-server-node`.
+`@mokei/context-server-node`. `@mokei/session` still depends on `@mokei/host-node`, so `Session`
+and `AgentSession` remain Node-only.
 Two MCP revisions are served and spoken side by side — `2025-11-25` and `2026-07-28` —
 selected per context, with `'auto'` probing the peer and negotiating the newest shared
 revision. Providers: OpenAI, Anthropic, Ollama, Llama (local GGUF).
@@ -21,6 +23,9 @@ Streamable HTTP transport shipped as standalone `@mokei/http-client` +
 flat command surface (`chat` / `inspect` / `monitor` / `proxy`): Ink chat UI on
 `@mokei/session` (multi-turn, inline tool-approval, per-tool timeout + cancel),
 commander routing. Replaced oclif + enquirer + ora.
+OAuth 2.1 on the HTTP transport (client middleware + server bearer gate). System One
+typed-question classification via `@mokei/system-one-client`, backed by a `laya-serve` sidecar or
+the hosted API.
 
 Stack: migrated to the post-split toolchain (PR #35) — `@kigu/dev` build/test
 tooling, the enkaku split (general utilities → `@sozai/*`, RPC/transport core
@@ -48,18 +53,33 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **HTTP transport auth — OAuth + JWT** (`next/2026-07-02-http-auth-oauth.md`) — active priority
-  (promoted from backlog 2026-09-03). Client OAuth 2.1 + PKCE for remote MCP servers (wrap SDK v2
-  `withOAuth` fetch middleware first, native `@kokuin/token` port later), server-side bearer
-  verification + protected-resource metadata for `@mokei/http-server` (hono middleware, not SDK's
-  Express-only helpers), JWT machine auth (SEP-991 grants / `@kokuin/token` DID tokens). The first
-  concrete feature since the spec migration closed.
+- **OAuth server-gate integration tests** (`next/2026-09-04-oauth-server-gate-integration-tests.md`)
+  -- real JWKS and DID verifiers behind a real `serveHTTP`; today's tests stub the verifier.
 
-The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) — both
+The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) -- both
 revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **Conventions and docs pass** (2026-09-25) -- error classes and positional constructors now take
+  one `<ClassName>Params` object with `#private` fields and getters; `ContextHost` keeps its state
+  private behind a narrow subclass API; source files are kebab-case (React components and hooks
+  keep PascalCase and camelCase); comment style aligned; the architecture doc caught up with OAuth,
+  subscriptions and System One. **BREAKING:** error constructors across the core packages,
+  `ProxyHost({ client })`, and the removed `ContextHost` underscore members.
+- **`.d.ts` consumer typecheck** (2026-09-25) -- `integration-tests/dts-consumer` imports every
+  published entry point and typechecks the built declarations with `skipLibCheck: false`, as part
+  of `test:types` and the CI build. See `completed/2026-09-25-dts-consumer-typecheck.complete.md`.
+- **laya-serve as the local System One backend** (2026-09-23, PR #52) -- replaced the laya.cpp
+  backend (superseded) and aligned the client with the published System One API. See
+  `docs/reference/system-one-sidecar.md`.
+- **System One classification** (2026-09-22, PR #51) -- `@mokei/system-one-client` plus the
+  `mcp-servers/system-one` server exposing predict, guard, moderate, route and triage. See
+  `completed/2026-09-22-system-one-classification.complete.md`.
+- **HTTP transport OAuth 2.1** (2026-09-04, PR #50) -- client PKCE + refresh middleware, Node file
+  token store and loopback authorisation, and a server bearer gate with JWKS and DID verifiers
+  plus protected-resource metadata. Native on the Kigu stack: no SDK or `jose` dependency. See
+  `completed/2026-09-04-http-auth-oauth.complete.md`.
 - **MRTR follow-ups** (2026-09-02, PR TBD) — the four non-blocking items left after MRTR shipped:
   typed `allowInputRequired` overloads on `callTool`/`getPrompt`/`readResource` (removing the
   `as unknown` casts), `minProperties: 1` on the `2026-07-28` `inputRequests` schema so an empty map
@@ -152,16 +172,30 @@ once the migration closed.
 
 ## Near-term (backlog/)
 
-- **CLI reasoning coverage** (`backlog/2026-07-27-cli-reasoning-coverage.md`) — two coverage
+- **OAuth hardening follow-ups** (`backlog/2026-09-04-oauth-hardening-followups.md`) -- pass the
+  gate's verified `AuthInfo` to handlers, clear the store on `invalid_grant`, identity-guard the
+  stdio `addContext` abort path, broaden loopback detection, and DCR/CIMD if a target server needs
+  it.
+- **Multi-context OAuth token coordination**
+  (`backlog/2026-09-04-oauth-multi-context-token-coordination.md`) -- one refresh flight per
+  resource across contexts sharing a token store; needs a `TokenStore` contract design pass.
+- **Node-free `@mokei/session`** (`backlog/2026-09-25-session-rn-safe-split.md`) -- split like
+  `@mokei/host` / `@mokei/host-node` so `Session`/`AgentSession` bundle under React Native.
+- **Server-minted handles convention** (`backlog/2026-09-25-server-minted-handles-convention.md`)
+  -- decide whether sessionless handles passed as tool args need a library convention.
+- **Website chat walkthrough** (`backlog/2026-08-04-website-chat-walkthrough.md`) -- the
+  website quick-start documents an inquirer-style menu and `mokei chat ollama`; rewrite from a
+  real PTY capture (`integration-tests/support/chat-driver.ts`).
+- **CLI reasoning coverage** (`backlog/2026-07-27-cli-reasoning-coverage.md`) -- two coverage
   gaps, no defect: assert reasoning separation where the backend provides it, and verify the
   OpenAI-compatible `reasoning_content` / `reasoning` mapping against a server that actually
-  splits reasoning. The mapping ships in 0.11.0 unit-tested only.
-- **Website chat walkthrough** (`backlog/2026-08-04-website-chat-walkthrough.md`) — the
-  website quick-start documents an inquirer-style menu and `mokei chat ollama`; the CLI is an
-  Ink TUI driven by slash commands. Needs a real PTY run to capture accurate output.
-- **Llama provider follow-ups** (`backlog/2026-06-20-llama-provider-follow-ups.md`) — optional
+  splits reasoning (still needs such a server).
+- **Llama provider follow-ups** (`backlog/2026-06-20-llama-provider-follow-ups.md`) -- optional
   local-inference tuning (`gpu` / `contextSize` flags) and a positive tool-call assertion in
   the gated GGUF suite. Nothing depends on either.
+- **In-process ggml System One backend** (`backlog/2026-09-22-laya-in-process-ggml-backend.md`)
+  -- only if a process-free binding is needed; blocked upstream (laya.cpp `std::regex_error`,
+  no library/C API).
 
 ## Planned — P2
 

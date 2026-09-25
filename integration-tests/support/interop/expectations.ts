@@ -21,7 +21,7 @@ export type CheckMokeiClientOptions = {
   /**
    * Revision to check the handshake for. `'2025-11-25'` (the default) asserts the
    * `initialize()` result; `'2026-07-28'` has no handshake to assert (`initialize()` throws
-   * on that revision — see `ContextClient#initialize`, `packages/context-client/src/client.ts`)
+   * on that revision -- see `ContextClient#initialize`, `packages/context-client/src/client.ts`)
    * so this block is skipped and the caller is expected to assert `discover()` itself, since
    * that assertion differs by what's driving it (a plain equality check vs. an SDK schema).
    */
@@ -49,7 +49,7 @@ export type CheckMokeiClientOptions = {
 
 /**
  * Drives a mokei `ContextClient` against a fixture server, whichever stack serves it. Every
- * tool, prompt and resource assertion below is identical across both revisions — only the
+ * tool, prompt and resource assertion below is identical across both revisions -- only the
  * handshake-specific block up front differs, gated by `options.protocolVersion`.
  */
 export async function checkMokeiClient(
@@ -104,7 +104,7 @@ export type CheckSDKClientOptions = {
 
 /**
  * Drives an SDK v2 `Client` against a fixture server. Both of its call sites serve the *mokei*
- * fixture, so its resource set is fixed rather than a parameter — add one the day an SDK client
+ * fixture, so its resource set is fixed rather than a parameter -- add one the day an SDK client
  * is pointed at the SDK fixture.
  */
 export async function checkSDKClient(

@@ -40,7 +40,7 @@ export function withChatOptions(cmd: Command): Command {
 
 /**
  * Add `-s, --socket-path <path>`, defaulting (lazily, at action time) to
- * `@tejika/env`'s socket path for app "mokei" — the same path the host daemon
+ * `@tejika/env`'s socket path for app "mokei" -- the same path the host daemon
  * binds by default. Delegates to `@tejika/cli`.
  */
 export function withSocketPath(cmd: Command): Command {

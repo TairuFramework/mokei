@@ -112,10 +112,11 @@ export class AnthropicClient {
     } = params
     const request = this.#api.post<StreamEvent>('messages', {
       json: {
-        // sampling / tuning (temperature, top_p, top_k, max_tokens, stop_sequences, metadata) — overridable
+        // sampling / tuning (temperature, top_p, top_k, max_tokens,
+        // stop_sequences, metadata) -- overridable
         ...samplingRest,
         ...providerOptions,
-        // structural / transport — asserted last so providerOptions cannot override them
+        // structural / transport -- asserted last so providerOptions cannot override them
         model,
         messages,
         tools,

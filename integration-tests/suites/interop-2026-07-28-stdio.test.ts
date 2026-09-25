@@ -1,74 +1,23 @@
 /**
- * mokei's `2026-07-28` wire output, checked against the official SDK's own zod schemas.
+ * Validate mokei's `2026-07-28` wire output against official SDK v2 zod schemas.
+ * The SDK's `LATEST_PROTOCOL_VERSION` still names the `2025-11-25` handshake,
+ * but its modern `2026-07-28` stdio path is reachable through `serveStdio`;
+ * live-peer coverage lives in `interop-sdk-client.test.ts` and
+ * `interop-sdk-server.test.ts`. This suite checks emitted fields directly.
  *
- * SDK `2.0.0`'s `LATEST_PROTOCOL_VERSION` is `'2025-11-25'`, but that constant only names the
- * revision its *handshake* negotiates. `2026-07-28` needs no handshake, and the SDK does
- * implement it: `FIRST_MODERN_PROTOCOL_VERSION = "2026-07-28"`,
- * `SUPPORTED_MODERN_PROTOCOL_VERSIONS`, `isModernProtocolVersion()`, a wire codec,
- * `validateEnvelopeMeta()` and a `server/discover` handler are all runtime code, not prose. Over
- * stdio that path is reached by `serveStdio` — verified by driving mokei's `ContextClient`,
- * pinned to `'2026-07-28'`, against `support/interop/sdk-stdio-server.ts`: `server/discover`
- * answers `supportedVersions: ['2026-07-28']`, and `tools/list` and `tools/call` both work.
+ * Oracle limits: the SDK's ten result schemas are zod `looseObject`s. They
+ * validate declared fields (tools, content, pagination, capabilities) but
+ * retain unknown keys without validating their presence or type. Thus
+ * `resultType`, `ttlMs`, `cacheScope`, and `_meta` server info need explicit
+ * mokei-only assertions. `ResultMetaObjectSchema` also catches malformed
+ * `serverInfo` as `undefined`, so assert the raw value before parsing.
  *
- * So a live SDK stdio peer *is* reachable on this revision, and driving one is the stronger
- * check. This suite does something narrower and complementary: it drives mokei's own server and
- * parses every result with the SDK's zod schemas, which pins mokei's *emitted* wire shape field
- * by field in a way a round trip against an SDK server does not — a peer that accepts a result
- * says nothing about which fields it looked at. Driving mokei against a live SDK peer, rather
- * than against itself, is covered separately, in `interop-sdk-client.test.ts` and
- * `interop-sdk-server.test.ts`.
+ * `_meta` key names and protocol versions use the SDK's independent
+ * `*_META_KEY` constants from its declared `/internal` export. If an SDK
+ * upgrade breaks that import, check its exports map and `dist/internal.d.mts`.
  *
- * ## How strong is this oracle? (read before trusting an assertion below)
- *
- * All ten schemas used here (`DiscoverResultSchema`, the `List*ResultSchema`s,
- * `ReadResourceResultSchema`, `CallToolResultSchema`, `CompleteResultSchema`,
- * `GetPromptResultSchema`, `ResultMetaObjectSchema`) are zod v4 `looseObject`s — confirmed by
- * reading `@modelcontextprotocol/core`'s own source (the `ResultSchema`/`PaginatedResultSchema`
- * base in its `auth-*.mjs` chunk) and empirically, by parsing sample objects: unknown keys
- * (`resultType`, `ttlMs`, `cacheScope`) are *retained*, not stripped — the opposite of the
- * strip-by-default risk this task was written to guard against. But "retained" is a weak
- * guarantee on its own: `.parse()` succeeds identically whether those keys are present or
- * absent, and when present their *type* is completely unconstrained (a numeric `resultType` or
- * a string `ttlMs` parses without error — verified, not assumed). So per schema:
- *
- * - **SDK-backed**: every field the schema actually declares a type for (tool/prompt/resource
- *   shape, content blocks, prompt messages, pagination, `supportedVersions`, `capabilities`) —
- *   a real structural check, and the reason this suite is worth having at all. Non-vacuity of
- *   this structural validation (as opposed to the `_meta` key-name check below) was confirmed
- *   separately by feeding the installed schemas adversarial input — a malformed tool
- *   (`{ name: 123 }`), a bogus content block (`{ type: 'bogus' }`), and a `DiscoverResult`
- *   missing `supportedVersions` — and observing all three rejected.
- * - **Mokei-only**: `resultType`, `ttlMs`, `cacheScope`, and the exact value under `_meta`'s
- *   `io.modelcontextprotocol/serverInfo` key. These are asserted directly against mokei's raw
- *   result (`toBe`/`typeof` checks on the *parsed* value, since the loose passthrough means the
- *   parsed value literally *is* mokei's value here) — not because the SDK schema required or
- *   validated them, since it did neither. Every such assertion below is marked `// mokei-only`.
- * - **`ResultMetaObjectSchema` caveat**: its `serverInfo` getter is
- *   `ImplementationSchema.optional().catch(void 0)` — a malformed `serverInfo` is silently
- *   replaced with `undefined` rather than raising, so a passing `.parse()` can't by itself
- *   distinguish "no serverInfo" from "malformed serverInfo". The mokei-only assertion on the
- *   raw (pre-parse) `_meta` object closes that gap.
- *
- * `_meta` key *names* (and, per method, the `protocolVersion` value carried under them) are the
- * one place this suite gets a genuinely independent check with no caveats: the SDK exports its
- * own `*_META_KEY` string constants (`@modelcontextprotocol/core/internal`), and comparing
- * mokei's emitted keys/values against those (rather than mokei's own `META_*` constants, which
- * could drift right alongside a bug) would catch a typo'd or stale key name, or a wrong
- * protocol-version string, that no amount of mokei-internal testing could. Durability note:
- * `/internal` is a genuinely declared subpath in the SDK's `exports` map, not a deep reach into
- * its build output — but it's still internal, so if this import ever breaks on an SDK bump,
- * start by checking `@modelcontextprotocol/core`'s `package.json#exports` and
- * `dist/internal.d.mts` for a renamed or relocated `*_META_KEY` export.
- *
- * ## Test structure
- *
- * One spawn drives all ten schema checks and nine method checks (`spawnMokeiStdioClient`
- * doesn't cleanly support more than one connection per test, and re-spawning per method would
- * multiply an already-slow process-spawn cost tenfold for no real isolation benefit — the
- * server is stateless per this revision anyway). To avoid one broken method hiding the rest
- * behind an aborted `test()`, each method's block below runs through `runIndependently`, which
- * converts a thrown failure into a soft one and keeps going; every block's own assertions use
- * `expect.soft` for the same reason.
+ * One spawn runs all methods because the fixture supports one connection;
+ * `runIndependently` and `expect.soft` keep one failure from hiding others.
  */
 import {
   CallToolResultSchema,
@@ -137,7 +86,7 @@ const EXPECTED_REQUEST_META_KEYS = [
 
 /**
  * Every request-carrying method on this revision must decorate `_meta` with exactly this key
- * set (checked against the SDK's own constants, not mokei's — see the module header), and the
+ * set (checked against the SDK's own constants, not mokei's -- see the module header), and the
  * `protocolVersion` entry must carry this revision's actual value, not just be present.
  */
 function expectRequestMeta(message: Record<string, unknown>): void {
@@ -188,7 +137,7 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
    * Cancellation is the one thing a client sends on this revision outside the request/response
    * path, and the reason a notification has to carry a protocol version at all: nothing else
    * tells a peer which revision an out-of-band frame belongs to. This drives it through a real
-   * process boundary — the stamp has to survive serialization, not just unit-level decoration.
+   * process boundary -- the stamp has to survive serialisation, not just unit-level decoration.
    *
    * This also covers the server-side handler actually aborting. `ContextRPC`'s read loop no
    * longer awaits each message's handler before reading the next
@@ -243,7 +192,7 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
     // also confirms the cancelled call was genuinely in flight when it was cancelled.
     expect(await callText(client, 'started')).toBe('true')
 
-    // The cancellation reaches the handler that is still running — the read loop no longer
+    // The cancellation reaches the handler that is still running -- the read loop no longer
     // waits for it to settle first.
     await vi.waitFor(async () => {
       expect(await callText(client, 'aborted')).toBe('true')
@@ -255,7 +204,7 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
     const { client, sent } = spawned
 
     await runIndependently('shared tool/prompt/resource assertions (checkMokeiClient)', () =>
-      // Shared tool/prompt/resource assertions, identical to the 2025-11-25 suites — no
+      // Shared tool/prompt/resource assertions, identical to the 2025-11-25 suites -- no
       // `initialize()` handshake to check on this revision (see `CheckMokeiClientOptions`).
       checkMokeiClient(client, { protocolVersion: PROTOCOL_VERSION }),
     )
@@ -268,7 +217,7 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
       // SDK-backed: `supportedVersions`/`capabilities` are typed fields the schema validates.
       expect.soft(discoverParsed.supportedVersions).toContain(PROTOCOL_VERSION)
       // SDK-backed: the fixture's actual capability set (`packages/context-server/src/server.ts`
-      // — `logging` is always on, `completions` because the fixture has a `complete` handler,
+      // -- `logging` is always on, `completions` because the fixture has a `complete` handler,
       // `prompts`/`resources`/`tools` because the fixture defines all three).
       expect.soft(discoverParsed.capabilities).toEqual({
         logging: {},
@@ -281,7 +230,7 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
       expectCacheHints(discoverParsed)
 
       // ResultMetaObjectSchema: SDK-backed shape check of `serverInfo` when present (validated
-      // against `ImplementationSchema`) — but see the module header's caveat about `.catch()`
+      // against `ImplementationSchema`) -- but see the module header's caveat about `.catch()`
       // swallowing a malformed value instead of failing, so also check the raw, unparsed object.
       const metaParsed = ResultMetaObjectSchema.parse(discovered._meta ?? {})
       expect.soft(metaParsed[SERVER_INFO_META_KEY]).toMatchObject({
@@ -391,7 +340,7 @@ describe('2026-07-28 over stdio, checked against the SDK schemas', () => {
     await runIndependently('_meta key names and protocolVersion value', async () => {
       // Genuinely independent: these come from `@modelcontextprotocol/core/internal`'s own
       // `*_META_KEY` exports, not from mokei's `META_*` literals in
-      // `packages/context-protocol/src/versions/2026-07-28.ts` — a typo'd or drifted key name
+      // `packages/context-protocol/src/versions/2026-07-28.ts` -- a typo'd or drifted key name
       // or protocol-version value in mokei would be caught here even though no mokei-internal
       // test could catch it.
       const requestMethods = new Set([

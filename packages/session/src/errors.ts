@@ -3,11 +3,13 @@ export class ToolCallTimeoutError extends Error {
   #toolName: string
   #timeoutMs: number
 
-  constructor(toolName: string, timeoutMs: number) {
-    super(`tool "${toolName}" timed out after ${timeoutMs}ms`)
+  constructor(params: ToolCallTimeoutErrorParams) {
+    super(`tool "${params.toolName}" timed out after ${params.timeoutMs}ms`, {
+      cause: params.cause,
+    })
     this.name = 'ToolCallTimeoutError'
-    this.#toolName = toolName
-    this.#timeoutMs = timeoutMs
+    this.#toolName = params.toolName
+    this.#timeoutMs = params.timeoutMs
   }
 
   get toolName(): string {
@@ -18,21 +20,23 @@ export class ToolCallTimeoutError extends Error {
     return this.#timeoutMs
   }
 }
+export type ToolCallTimeoutErrorParams = { toolName: string; timeoutMs: number; cause?: unknown }
 
 /** Signals that the user cancelled the tool call while it was executing. */
 export class ToolCallCancelledError extends Error {
   #toolName: string
 
-  constructor(toolName: string) {
-    super(`tool "${toolName}" cancelled by user`)
+  constructor(params: ToolCallCancelledErrorParams) {
+    super(`tool "${params.toolName}" cancelled by user`, { cause: params.cause })
     this.name = 'ToolCallCancelledError'
-    this.#toolName = toolName
+    this.#toolName = params.toolName
   }
 
   get toolName(): string {
     return this.#toolName
   }
 }
+export type ToolCallCancelledErrorParams = { toolName: string; cause?: unknown }
 
 /**
  * Signals that the model asked to call a tool that is not callable (unknown
@@ -43,12 +47,13 @@ export class UnknownToolError extends Error {
   #toolName: string
   #availableTools: Array<string>
 
-  constructor(toolName: string, availableTools: Array<string>) {
-    const list = availableTools.length > 0 ? availableTools.join(', ') : '(none available)'
-    super(`unknown tool "${toolName}". Available tools: ${list}`)
+  constructor(params: UnknownToolErrorParams) {
+    const list =
+      params.availableTools.length > 0 ? params.availableTools.join(', ') : '(none available)'
+    super(`unknown tool "${params.toolName}". Available tools: ${list}`, { cause: params.cause })
     this.name = 'UnknownToolError'
-    this.#toolName = toolName
-    this.#availableTools = availableTools
+    this.#toolName = params.toolName
+    this.#availableTools = params.availableTools
   }
 
   get toolName(): string {
@@ -58,4 +63,9 @@ export class UnknownToolError extends Error {
   get availableTools(): Array<string> {
     return this.#availableTools
   }
+}
+export type UnknownToolErrorParams = {
+  toolName: string
+  availableTools: Array<string>
+  cause?: unknown
 }

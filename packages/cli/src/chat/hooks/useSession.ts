@@ -7,9 +7,9 @@ export type SessionLike = Pick<
 >
 
 export function useSession(session: SessionLike) {
-  const [contexts, setContexts] = useState<Array<string>>(() =>
-    session.contextHost.getContextKeys(),
-  )
+  const [contexts, setContexts] = useState<Array<string>>(() => {
+    return session.contextHost.getContextKeys()
+  })
 
   useEffect(() => {
     const offAdd = session.events.on('context-added', (e) => {

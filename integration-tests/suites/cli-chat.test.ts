@@ -48,7 +48,7 @@ describe.skipIf(!hasChatBackend)('CLI chat — core', () => {
 
   // Regression: quitting must actually terminate the process. The session holds a
   // persistent daemon socket that keeps the event loop alive, so the command must
-  // exit explicitly — otherwise two Ctrl+C stop the app but the process hangs and
+  // exit explicitly -- otherwise two Ctrl+C stop the app but the process hangs and
   // needs a third (which pnpm reports as a command failure).
   test('two Ctrl+C quits and the process exits cleanly', async () => {
     const quitDriver = new ChatDriver()

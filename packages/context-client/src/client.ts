@@ -108,7 +108,7 @@ import {
 
 /**
  * Inbound wire validators, one per revision. Which one applies is decided per connection by
- * `#validateServerMessage` once the revision is resolved — a `2026-07-28` server cannot legally
+ * `#validateServerMessage` once the revision is resolved -- a `2026-07-28` server cannot legally
  * send `ping`, `sampling/createMessage`, `elicitation/create` or
  * `notifications/elicitation/complete`, and the wire parser is where a peer producing something
  * its own revision forbids has to be refused.
@@ -126,8 +126,8 @@ const SERVER_MESSAGE_VALIDATORS: Record<ProtocolVersion, Validator<ServerMessage
 
 /**
  * The cross-revision union, used only while `protocolVersion: 'auto'` is still unresolved: with
- * no revision there is no per-revision union to apply. Unreachable in practice — the read loop
- * only starts once `#setup()` has settled `#protocol` — but the fallback keeps the validator
+ * no revision there is no per-revision union to apply. Unreachable in practice -- the read loop
+ * only starts once `#setup()` has settled `#protocol` -- but the fallback keeps the validator
  * total rather than making the read loop depend on that ordering.
  */
 const validateAnyServerMessage = createValidator(serverMessage)
@@ -161,17 +161,17 @@ const NOTIFICATION_BUFFER_CAP = 256
  * registered revision that both needs no handshake and has `server/discover` to send.
  *
  * Derived from the registry rather than named, so a future handshake-less revision is probed
- * with its own envelope instead of an older one's — `PROTOCOL_VERSIONS` is newest-first.
+ * with its own envelope instead of an older one's -- `PROTOCOL_VERSIONS` is newest-first.
  *
  * The stamp this produces is a *guess*, and deliberately so: a probe is by definition sent
  * before the revision is agreed, and a server that speaks something else answers with an error,
  * which is precisely the signal `#probe()` falls back on. This is the one place in this file
- * where stamping a revision the peer may not speak is correct — every other outgoing frame
+ * where stamping a revision the peer may not speak is correct -- every other outgoing frame
  * stamps the revision that was actually resolved.
  *
  * `null` when no registered revision qualifies, rather than a throw. This is module-level, so
- * throwing here would crash the *import* of this package for every consumer — including one
- * pinned to a handshake revision that never probes — the moment the registry stopped carrying a
+ * throwing here would crash the *import* of this package for every consumer -- including one
+ * pinned to a handshake revision that never probes -- the moment the registry stopped carrying a
  * handshake-less revision. `#probe()` treats `null` as "nothing to probe with" and falls through
  * to the handshake, which is the same place a refused probe lands and is always a live option:
  * `'auto'` degrades to the behaviour of a pinned older client instead of taking the package down.
@@ -209,7 +209,7 @@ const LIST_CHANGED_EVENTS: Record<
  * Bounds how long an auto-opened or reconnecting `subscriptions/listen` candidate waits for its
  * `acknowledged` frame before failing, when a `subscribeResource`/`unsubscribeResource` caller
  * passes no `timeout` of its own. Without a bound a server that opens the stream but never acks
- * would wedge the driver's single mutation queue forever — a reconnect candidate especially, as
+ * would wedge the driver's single mutation queue forever -- a reconnect candidate especially, as
  * no caller supplies its timeout. See {@link SubscriptionDriverParams.ackTimeoutMs}.
  */
 const SUBSCRIPTION_ACK_TIMEOUT_MS = 30_000
@@ -234,7 +234,7 @@ function routeSubscriptionNotification(
   }
   const value = (meta as Record<string, unknown>)[META_SUBSCRIPTION_ID]
   if (typeof value !== 'string' && !(typeof value === 'number' && Number.isInteger(value))) {
-    throw new RPCError(INVALID_REQUEST, 'Invalid subscriptionId metadata')
+    throw new RPCError({ code: INVALID_REQUEST, message: 'Invalid subscriptionId metadata' })
   }
   return { id: value as RequestID, frame: { type: 'progress', value: notification } }
 }
@@ -328,21 +328,21 @@ export class ContextClient<
   // revision without a handshake (`isHandshakeRequired` is `false`). Populated once by
   // `#requireServerCapabilityAsync` and never re-fetched afterward: without a handshake, a live
   // connection's *declared* capabilities cannot change except via a `*_list_changed`
-  // notification — which `_handleNotification` acts on, so the exception is enforced rather
+  // notification -- which `_handleNotification` acts on, so the exception is enforced rather
   // than merely documented. That makes a connection-lifetime snapshot sound for gating even
   // though it ignores `discover()`'s own `ttlMs`. Distinct from `#discovered`, which still
-  // honors `ttlMs` for callers who explicitly want a fresh answer from `discover()` itself. Do
-  // not merge these two caches back together — that reintroduces the bug this split fixes.
+  // honours `ttlMs` for callers who explicitly want a fresh answer from `discover()` itself. Do
+  // not merge these two caches back together -- that reintroduces the bug this split fixes.
   // Whatever clears one must clear the other, so neither outlives the connection state that
-  // produced it — see `#resetDiscovery()`.
+  // produced it -- see `#resetDiscovery()`.
   #serverCapabilitySnapshot: ServerCapabilities | null = null
   // Drives the `initialize` / `server/discover` setup exchanges over the narrow `SetupIO`
-  // adapter constructed below, which closes over `#setupBuffer` / `#pendingSetupRead` — see
+  // adapter constructed below, which closes over `#setupBuffer` / `#pendingSetupRead` -- see
   // `setup-reader.ts`'s own class comment for the split of responsibility.
   #setupReader: SetupReader
   #setupTimeout: number
   // Messages read during setup (probe and/or handshake) that didn't match the waiter that read
-  // them — buffered here rather than dropped, so a later waiter with a different predicate
+  // them -- buffered here rather than dropped, so a later waiter with a different predicate
   // (e.g. the handshake reading past a message the probe already consumed) can still claim
   // them. See `setup-reader.ts`'s `#readMatching()`. Anything still here once setup finishes (e.g. a notification that
   // arrived mid-setup and matched no setup-phase waiter) is drained by the overridden `_read()`
@@ -360,8 +360,9 @@ export class ContextClient<
       maxConcurrentRequests: params.maxConcurrentRequests,
       maxQueuedRequests: params.maxQueuedRequests,
       onError: params.onError,
-      routeStreamNotification: (notification) =>
-        routeSubscriptionNotification(notification as ServerNotification),
+      routeStreamNotification: (notification) => {
+        return routeSubscriptionNotification(notification as ServerNotification)
+      },
     })
 
     this.#onError = params.onError
@@ -371,17 +372,17 @@ export class ContextClient<
 
     // `isSupportedProtocolVersion` before indexing: `PROTOCOLS[unknown]` is `undefined`, which
     // is nullish, so an unvalidated string used to skip the handler check below and reach
-    // `#setup()` as though `'auto'` had been asked for — silently probing instead of failing.
+    // `#setup()` as though `'auto'` had been asked for -- silently probing instead of failing.
     if (params.protocolVersion !== 'auto' && !isSupportedProtocolVersion(params.protocolVersion)) {
-      throw new UnsupportedProtocolVersionError(params.protocolVersion)
+      throw new UnsupportedProtocolVersionError({ received: params.protocolVersion })
     }
 
     // Derived from `serverMethods` and `inputRequestMethods`, not a hardcoded version check: a
     // handler is refused exactly when the configured revision can invoke its method neither
-    // way — the client-side mirror of what `@mokei/context-server` does per capability on the
+    // way -- the client-side mirror of what `@mokei/context-server` does per capability on the
     // server side. Skipped here when the revision is still `'auto'`: the revision isn't known
     // yet, so `#setup()` re-runs this same check (`#refuseUnsupportedHandlers`) once the probe
-    // resolves it — a handler accepted here because the revision was unknown must still be
+    // resolves it -- a handler accepted here because the revision was unknown must still be
     // refused if the probe lands on a revision that can reach its method neither way.
     const protocol = params.protocolVersion === 'auto' ? null : PROTOCOLS[params.protocolVersion]
     if (protocol != null) {
@@ -413,11 +414,11 @@ export class ContextClient<
     this.#setupTimeout =
       params.setupTimeout ?? params.initializeTimeout ?? DEFAULT_INITIALIZE_TIMEOUT
     // The `SetupIO` closures are the only place `#setupBuffer` / `#pendingSetupRead` are touched
-    // outside the `_read()` override below — see `setup-reader.ts`'s `SetupIO` comment for why
+    // outside the `_read()` override below -- see `setup-reader.ts`'s `SetupIO` comment for why
     // each closure is shaped the way it is.
-    this.#setupReader = new SetupReader(
-      {
-        allocateId: () => this._getNextRequestID(),
+    this.#setupReader = new SetupReader({
+      io: {
+        allocateID: () => this._getNextRequestID(),
         write: (message) => super._write(message),
         takeBuffered: (matches) => {
           const index = this.#setupBuffer.findIndex(matches)
@@ -441,8 +442,8 @@ export class ContextClient<
           this.#setupBuffer.push(message)
         },
       },
-      this.#setupTimeout,
-    )
+      setupTimeout: this.#setupTimeout,
+    })
     this.#notifications = new ReadableStream<HandleNotification>(
       {
         pull: (controller) => {
@@ -494,16 +495,17 @@ export class ContextClient<
    * dropped one would otherwise silently accept a handler it can never invoke.
    */
   #refuseUnsupportedHandlers(protocol: ProtocolDefinition): void {
-    const reachable = (method: string): boolean =>
-      protocol.serverMethods.has(method) || protocol.inputRequestMethods.has(method)
+    const reachable = (method: string): boolean => {
+      return protocol.serverMethods.has(method) || protocol.inputRequestMethods.has(method)
+    }
     if (this.#createMessage != null && !reachable('sampling/createMessage')) {
-      throw new MRTRNotSupportedError('createMessage', protocol.version)
+      throw new MRTRNotSupportedError({ handler: 'createMessage', version: protocol.version })
     }
     if (this.#elicit != null && !reachable('elicitation/create')) {
-      throw new MRTRNotSupportedError('elicit', protocol.version)
+      throw new MRTRNotSupportedError({ handler: 'elicit', version: protocol.version })
     }
     if (this.#listRoots != null && !reachable('roots/list')) {
-      throw new MRTRNotSupportedError('listRoots', protocol.version)
+      throw new MRTRNotSupportedError({ handler: 'listRoots', version: protocol.version })
     }
   }
 
@@ -520,13 +522,13 @@ export class ContextClient<
   // `callTool` call `request()` directly with no `#ready` await of their own, so under
   // `protocolVersion: 'auto'` this is the only thing that runs the probe before they'd
   // otherwise throw "not resolved yet". Safe against `#initialize()`, which never calls
-  // `request()` — it writes/reads the transport directly via `super._write`/`SetupReader`'s
-  // `#readMatching` — so awaiting `#ready` here cannot deadlock against the handshake `#ready`
+  // `request()` -- it writes/reads the transport directly via `super._write`/`SetupReader`'s
+  // `#readMatching` -- so awaiting `#ready` here cannot deadlock against the handshake `#ready`
   // itself is waiting on.
   //
-  // Behavior change this introduces, deliberately not reverted: `ContextRPC.request()`
+  // Behaviour change this introduces, deliberately not reverted: `ContextRPC.request()`
   // allocates the request ID synchronously, so awaiting `#ready` first means the *first* call
-  // through this method now gets a higher ID than `#initialize()`'s own request — e.g. a
+  // through this method now gets a higher ID than `#initialize()`'s own request -- e.g. a
   // `2025-11-25` client whose first call is `getPrompt()` now sends `initialize` as id 0 and
   // `prompts/get` as id 1, where it used to be the other way around. Frame *order* on the wire
   // is unaffected (that's still `initialize` then `prompts/get`); only which integer each frame
@@ -534,7 +536,7 @@ export class ContextClient<
   // correlators that any conforming server matches by value, not by magnitude, and monotonic
   // allocation (setup always first) is strictly better than the old, inverted numbering. The
   // same reordering also means a caller-supplied `options.timeout` now starts only after setup
-  // completes rather than covering it too — also fine, since `#setupTimeout` already bounds the
+  // completes rather than covering it too -- also fine, since `#setupTimeout` already bounds the
   // handshake/probe on its own, and a per-request timeout has no business being spent on
   // connection setup it didn't ask for. Hoisting this await into `getPrompt`/`readResource`/
   // `callTool` instead would not preserve the old numbering either: it would still await
@@ -558,7 +560,7 @@ export class ContextClient<
     // `#sendDiscover()` writes `server/discover` through `super._write` rather than through
     // this method.
     if (!protocol.clientMethods.has(method as string)) {
-      throw new MethodNotInRevisionError(method as string, protocol.version)
+      throw new MethodNotInRevisionError({ method: method as string, version: protocol.version })
     }
     const trace = currentTraceMeta()
     const base =
@@ -580,17 +582,18 @@ export class ContextClient<
       return result
     }
     // A suspension the resolved revision or this method can never legally produce is a
-    // nonconforming peer, not a suspension to drive or hand back — refused unconditionally, the
+    // nonconforming peer, not a suspension to drive or hand back -- refused unconditionally, the
     // same as every `input_required` result was refused before MRTR existed. Mirrors
     // `ContextServer._handleRequest`'s own two-part gate (`server.ts`'s `inputRequestMethods.size`
     // and `MRTR_METHODS` checks) so a `2025-11-25` peer or a non-MRTR method on `2026-07-28` (e.g.
     // `tools/list`) cannot talk this client into driving rounds `MRTR_METHODS` never grants it.
     if (protocol.inputRequestMethods.size === 0 || !MRTR_METHODS.has(method as string)) {
-      throw new InputRequiredNotSupportedError(
-        protocol.inputRequestMethods.size === 0
-          ? `protocol version ${protocol.version} has no multi round-trip requests`
-          : `${method as string} cannot suspend on input`,
-      )
+      throw new InputRequiredNotSupportedError({
+        reason:
+          protocol.inputRequestMethods.size === 0
+            ? `protocol version ${protocol.version} has no multi round-trip requests`
+            : `${method as string} cannot suspend on input`,
+      })
     }
     // The opt-in path: hand the suspension back and let the caller drive its own rounds. Also how
     // the driver below reads each retry leg, so the loop lives in exactly one place.
@@ -598,9 +601,10 @@ export class ContextClient<
       return result as ClientTypes['SendRequests'][Method]['Result']
     }
     if (!this.#inputRequired.autoFulfill) {
-      throw new InputRequiredNotSupportedError(
-        'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
-      )
+      throw new InputRequiredNotSupportedError({
+        reason:
+          'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
+      })
     }
     return (await runInputRequiredFlow({
       method: method as string,
@@ -611,35 +615,22 @@ export class ContextClient<
       startedAt,
       signal: options?.signal,
       dispatch: (key, inputRequest, signal) => this.#fulfilInputRequest(key, inputRequest, signal),
-      retry: (retryParams, timeout) =>
-        this.request(method, { ...(params as object), ...retryParams } as typeof params, {
+      retry: (retryParams, timeout) => {
+        return this.request(method, { ...(params as object), ...retryParams } as typeof params, {
           ...options,
           allowInputRequired: true,
           timeout,
-        }),
+        })
+      },
     })) as ClientTypes['SendRequests'][Method]['Result']
   }
 
   /**
-   * Stamps this revision's protocol `_meta` on an outgoing notification, the way `request()`
-   * above does for requests. `ContextRPC.notify()` writes straight to the transport, so without
-   * this a notification would name no revision at all.
-   *
-   * That matters most for `notifications/cancelled`, which `ContextRPC` emits itself when an
-   * exchange is aborted or times out. A peer that routes each exchange on the version in its
-   * body cannot place an unstamped one, and answers it with an error rather than acting on it —
-   * so on a revision without a handshake, an undecorated cancellation silently leaves the peer
-   * running a handler nobody is waiting for any more. Stamped, it routes, and a peer that has
-   * no session to cancel within still acknowledges it and falls back to disconnect as its
-   * cancellation signal.
-   *
-   * `decorateNotification` is the revision's own hook, not a version check here, and is identity
-   * on `2025-11-25` — which needs no stamp, having agreed its version in the handshake.
-   *
-   * Awaits `#ready` to resolve the revision to decorate with. Not a change in when anything is
-   * written: `_write` below already awaits `#ready`, so every notification already went out
-   * behind it. Safe against setup, which sends `notifications/initialized` through `super._write`
-   * rather than through here, so this await cannot be waiting on a handshake that waits on it.
+   * Stamp outgoing notifications with the resolved revision; `ContextRPC.notify()`
+   * bypasses request decoration. An unstamped `notifications/cancelled` on a
+   * handshake-free revision can leave the peer's handler running.
+   * `decorateNotification` is identity on `2025-11-25`. Awaiting `#ready` is safe:
+   * setup sends `notifications/initialized` through `super._write`.
    */
   async notify<Event extends keyof ClientTypes['SendNotifications'] & string>(
     event: Event,
@@ -647,35 +638,24 @@ export class ContextClient<
   ): Promise<void> {
     await this.#ready
     const protocol = this.#requireProtocol()
-    // The notification counterpart of `request()`'s `clientMethods` gate, and refused for the
-    // same reason: `ClientNotifications` spans both revisions, so `initialized` and
-    // `roots/list_changed` type-check on a `2026-07-28` client even though that revision's own
-    // `clientMessage` union rejects the frames they produce. Stamping such a frame and putting
-    // it on the wire buys nothing — a conformant peer refuses it — where a local error names the
-    // actual problem. Derived from the revision's notification table, never a version literal.
-    //
-    // Compared against the *wire* method: `ContextRPC.notify` takes the suffix and prefixes
-    // `notifications/` itself, and the protocol tables name methods as they appear on the wire.
+    // `ClientNotifications` spans revisions, so locally refuse unsupported methods
+    // (e.g. `initialized` on `2026-07-28`) before a peer rejects them. Compare
+    // the full wire name; `ContextRPC.notify` adds the `notifications/` prefix.
     const method = `notifications/${event}`
     if (!protocol.clientNotifications.has(method)) {
-      throw new MethodNotInRevisionError(method, protocol.version)
+      throw new MethodNotInRevisionError({ method: method, version: protocol.version })
     }
     const decorated = protocol.decorateNotification(params)
     await super.notify(event, decorated as typeof params)
   }
 
   /**
-   * Drives the `initialize` handshake via `#setupReader`, then applies the parts of the
-   * original `#initialize()` that are `ContextClient`'s own job to interpret, not
-   * `SetupReader`'s: does the negotiated revision match the one this client is configured to
-   * speak, and — if not — dispose the transport before rejecting. `SetupReader.driveInitialize`
-   * only reads and shapes the response; the send/wait loop it replaces (`#readMatching`,
-   * `#setupDeadline`) now lives entirely in `setup-reader.ts`, phrased over the `SetupIO`
-   * closures constructed in the constructor above instead of these private fields directly.
+   * After `SetupReader.driveInitialize` reads the handshake, reject and dispose
+   * if the negotiated revision differs from the one this client speaks.
    */
   async #initialize(): Promise<InitializeResult> {
-    // The revision this client is configured to speak — not `LATEST_PROTOCOL_VERSION`: this
-    // client implements exactly one revision's wire behavior, so declaring anything else in
+    // The revision this client is configured to speak -- not `LATEST_PROTOCOL_VERSION`: this
+    // client implements exactly one revision's wire behaviour, so declaring anything else in
     // the handshake would misrepresent what it can actually speak.
     const protocol = this.#requireProtocol()
     const { result, negotiatedRevision } = await this.#setupReader.driveInitialize({
@@ -684,37 +664,29 @@ export class ContextClient<
       capabilities: this.#capabilities,
     })
     // Reject a negotiated version other than the one this client is configured to speak. This
-    // `dispose()` runs twice — the throw propagates into `#setup()`'s blanket catch, which
-    // disposes again — but `Disposer.dispose()` is idempotent.
+    // `dispose()` runs twice -- the throw propagates into `#setup()`'s blanket catch, which
+    // disposes again -- but `Disposer.dispose()` is idempotent.
     if (negotiatedRevision !== protocol.version) {
       await this.dispose()
-      throw new UnsupportedProtocolVersionError(negotiatedRevision, protocol.version)
+      throw new UnsupportedProtocolVersionError({
+        received: negotiatedRevision,
+        expected: protocol.version,
+      })
     }
     // Store server capabilities for client-side gating.
     this.#serverCapabilities = result.capabilities
     // Start listening for incoming messages
     this.#startReadLoop()
-    // Notify server that client is initialized
+    // Notify the server with `notifications/initialized`.
     await super._write({ jsonrpc: '2.0', method: 'notifications/initialized' })
     this.events.emit('initialized', result)
     return result
   }
 
   /**
-   * One rule for every setup failure: dispose the transport, then rethrow.
-   *
-   * `#ready` is `lazy()`, so a rejection here is cached for the client's lifetime — every later
-   * `request()`/`_write()`/`discover()` gets the same error, the read loop never starts, and
-   * nothing else will ever call `dispose()` on the caller's behalf. By this point a stdio
-   * client's server process is already spawned, so leaving the transport open leaks that
-   * process. The blanket catch covers the handshake's own RPC error, the bounded-read deadline,
-   * a connection closed mid-setup, `#refuseUnsupportedHandlers` and `#startReadLoop()`'s
-   * invariant assertion, rather than leaving each to decide independently.
-   *
-   * The `#refuseUnsupportedHandlers` re-check inside is not redundant with the constructor's:
-   * under `protocolVersion: 'auto'` the revision wasn't known yet there, so a handler accepted
-   * then must still be refused if the probe lands on `2026-07-28`, whose `serverMethods` is
-   * always empty.
+   * Dispose on every setup failure: `#ready` caches rejection, so an open stdio
+   * transport would leak its spawned server. Recheck unsupported handlers after
+   * `'auto'` resolves, since the constructor could not know the revision.
    */
   async #setup(): Promise<void> {
     try {
@@ -746,7 +718,7 @@ export class ContextClient<
    * asks to be woken for a notification it does nothing with.
    *
    * Fire-and-forget: the open is enqueued on the driver's mutation queue and its failure surfaces
-   * through the driver's `onError`/reconnect, never through setup readiness — a server that
+   * through the driver's `onError`/reconnect, never through setup readiness -- a server that
    * refuses the listen must not fail the connection.
    */
   #maybeAutoOpenSubscriptions(): void {
@@ -763,33 +735,14 @@ export class ContextClient<
   }
 
   /**
-   * The setup-time liveness check for a revision with no handshake, and the counterpart to
-   * `#initialize()` on one that has it.
+   * Bound setup on handshake-free revisions: otherwise a silent server can hang
+   * forever because only handshake and `'auto'` probe paths use `#setupTimeout`.
+   * `#seedDiscovery` avoids a duplicate first gated call; ungated clients pay
+   * one extra request per connection.
    *
-   * Without it nothing in setup is bounded at all on such a revision — `#setupTimeout` covers
-   * only the handshake and the `'auto'` probe, and `ContextRPC.request` arms a timer only when
-   * the caller passes `options.timeout` — so a server that is spawned but never writes a byte
-   * hangs its host forever rather than failing in `#setupTimeout` the way the same server does
-   * on `2025-11-25`. One bounded round trip restores that bound.
-   *
-   * Not free, and not claimed to be. A client whose first call is capability-gated pays nothing:
-   * `#seedDiscovery` hands that call the answer it would have fetched itself. A client whose
-   * calls are all ungated — `prompts/list`, `resources/read`, `getPrompt` never consult
-   * capabilities — sends one request per connection it did not send before. That is the cost of
-   * having any liveness bound at all here, which is worth more than the request it costs.
-   *
-   * An error *response* is accepted, not raised: it proves the connection is live, which is the
-   * whole point of the round trip, and a revision that does not mandate discovery may be served
-   * by a peer that simply does not implement it. Refusing there would turn a working connection
-   * into a failed one. Only silence — a `#setupTimeout` expiry, or the connection closing —
-   * fails setup, which is exactly the "mute server" case this exists to catch. A caller that
-   * needs the result itself still gets the error, from its own `discover()`.
-   *
-   * Stamps with `#requireProtocol()`, not with {@link PROBE_PROTOCOL}: this runs *after* the
-   * revision is resolved, so the revision is known and there is nothing to guess. Reusing the
-   * probe's stamp here would label a future handshake-less revision's setup frame `2026-07-28`
-   * — a version literal standing in for a capability, which is what the capability-derived gate
-   * above it exists to avoid.
+   * An error response proves liveness even if discovery is unsupported; only
+   * silence or disconnect fails setup. Stamp the resolved `#requireProtocol()`
+   * revision, not {@link PROBE_PROTOCOL}, which may differ in future.
    */
   async #setupDiscover(): Promise<void> {
     let result: DiscoverResult
@@ -806,7 +759,7 @@ export class ContextClient<
 
   /**
    * Seeds both discover-derived caches from a `server/discover` answered during setup, so the
-   * first gated call does not issue a second identical request. `#discovered` honors the
+   * first gated call does not issue a second identical request. `#discovered` honours the
    * server's own `ttlMs` exactly as `discover()` would; `#serverCapabilitySnapshot` is seeded
    * unconditionally, per the connection-lifetime argument on that field.
    */
@@ -817,38 +770,26 @@ export class ContextClient<
   }
 
   /**
-   * Probes the server with `server/discover` to resolve `protocolVersion: 'auto'`, per
-   * `specification/2026-07-28/basic/transports/stdio#backward-compatibility`: a `DiscoverResult`
-   * identifies a `2026-07-28` server; anything else — an unrecognized-method error, a timeout,
-   * or any other failure — falls back to the `2025-11-25` handshake. A `-32022`
-   * (`UNSUPPORTED_PROTOCOL_VERSION`) response is the one exception that still carries useful
-   * information on the way down: its `data.supported` names the versions the server does speak,
-   * so the fallback negotiates the newest one both sides support instead of assuming
-   * `2025-11-25` outright.
+   * Resolve `'auto'` through `server/discover` per
+   * `specification/2026-07-28/basic/transports/stdio#backward-compatibility`.
+   * On failure, `-32022`'s `data.supported` selects the newest shared revision;
+   * otherwise use the `2025-11-25` handshake.
    *
-   * Invariant this relies on, enforced by the assertion in `#startReadLoop()`: whatever
-   * revision this method falls back to must have `isHandshakeRequired` `true`. `#initialize()` is
-   * the only setup path that calls `#startReadLoop()` *after* consuming the one outstanding
-   * `#pendingSetupRead` down to `null` — a fallback landing on a revision without a handshake
-   * would instead go straight to `#setup()`'s own `#startReadLoop()` call with no guarantee
-   * `#pendingSetupRead` has settled, reopening the original FIFO-steal bug `setup-reader.ts`'s
-   * `#readMatching()` exists to prevent. Every revision this function can fall back to today requires a
-   * handshake, so the invariant currently holds by construction, not by choice made here.
+   * Every fallback must require a handshake. It consumes `#pendingSetupRead`
+   * before `#startReadLoop()`; a handshake-free fallback could race that read
+   * and revive the FIFO-steal bug guarded by `SetupReader`.
    */
   async #probe(): Promise<ProtocolDefinition> {
     const candidate = PROBE_PROTOCOL
     if (candidate == null) {
-      // No registered revision is both handshake-less and able to send `server/discover`, so
-      // there is nothing to probe *with*. Not reachable with today's registry; the branch exists
-      // so that a registry which stops carrying such a revision degrades `'auto'` to the
-      // handshake rather than failing the connection — or, if this were computed eagerly at
-      // module scope, crashing the import for every consumer including those that never probe.
+      // Without a discover-capable revision, fall back to the handshake; an eager
+      // module-scope failure would also break consumers that never probe.
       return this.#fallBackFromProbe([], null)
     }
     try {
       // Seeded, not discarded: the probe's answer is a full `DiscoverResult`, and throwing it
       // away made every `'auto'` connection send `server/discover` a second time on its first
-      // gated call — a redundant POST per connection over HTTP.
+      // gated call -- a redundant POST per connection over HTTP.
       this.#seedDiscovery(await this.#sendDiscover(candidate))
       return candidate
     } catch (cause) {
@@ -865,7 +806,7 @@ export class ContextClient<
    *
    * `supported` is whatever the server named in a `-32022` (empty for any other failure);
    * `refused` is the revision the probe just tried, excluded from the result even if the
-   * server's own `data.supported` erroneously lists it — the caller only reaches here because
+   * server's own `data.supported` erroneously lists it -- the caller only reaches here because
    * the server rejected that exact version, so re-selecting it would hand back a revision with
    * no handshake that the server has already refused to speak, leaving every gated call
    * re-issuing `server/discover` forever with no way to make progress.
@@ -885,21 +826,10 @@ export class ContextClient<
   }
 
   /**
-   * Drives one `server/discover` exchange via `#setupReader`, bypassing `ContextRPC`'s
-   * request/exchange machinery the same way the original method did: `#startReadLoop()` hasn't
-   * run yet — resolving whether it should is the point of the probe that is one of this
-   * method's two callers — so there is no read loop to route a response through yet.
-   * `SetupReader.driveDiscover` shares its bounded-read state with `driveInitialize` (both
-   * funnel through the same `SetupIO` closures, which close over `#pendingSetupRead`), so a
-   * probe timeout can't cause the handshake that follows to lose its response — see
-   * `setup-reader.ts`'s `SetupIO.readNextFrame` comment.
-   *
-   * `protocol` is the revision whose envelope stamps the outgoing frame, and it is a parameter
-   * rather than a constant because the two callers know different things. `#setupDiscover()`
-   * runs once the revision is resolved and passes that revision. `#probe()` runs before any
-   * revision is known and passes {@link PROBE_PROTOCOL}, a registry-derived guess. Hardcoding
-   * either here would stamp a future handshake-less revision's setup frame with an older
-   * revision's version — a version literal standing in for a capability.
+   * Use `#setupReader` before `#startReadLoop()` exists. Its shared bounded-read
+   * state prevents a timed-out probe from stealing the following handshake frame.
+   * `protocol` is resolved for setup discovery but {@link PROBE_PROTOCOL} during
+   * probing; hardcoding either could stamp a future revision incorrectly.
    */
   async #sendDiscover(protocol: ProtocolDefinition): Promise<DiscoverResult> {
     const { result } = await this.#setupReader.driveDiscover({
@@ -917,7 +847,7 @@ export class ContextClient<
    * snapshot). Two callers: `#probe()`'s fallback path, so a result cached from the failed
    * `2026-07-28` probe attempt cannot leak into the `2025-11-25` connection that replaces it,
    * and `_handleNotification` on a `*_list_changed` notification, the one way a live
-   * connection's declared capabilities change — see the field comment on
+   * connection's declared capabilities change -- see the field comment on
    * `#serverCapabilitySnapshot`.
    */
   #resetDiscovery(): void {
@@ -938,12 +868,12 @@ export class ContextClient<
    *
    * Asserts `#pendingSetupRead == null`: the read loop and `setup-reader.ts`'s `#readMatching()`
    * must never have an outstanding low-level read in flight at the same time, or the FIFO-steal
-   * bug `#readMatching()` exists to prevent returns — a read meant for `#readMatching()`'s caller
+   * bug `#readMatching()` exists to prevent returns -- a read meant for `#readMatching()`'s caller
    * could instead resolve
    * whichever `_read()` call `ContextRPC`'s read loop just issued, and vice versa. Every setup
    * path that reaches here has already consumed `#pendingSetupRead` down to `null` via the
-   * response that unblocked its own bounded read — the initialize response for `#initialize()`,
-   * the `server/discover` response for `#setupDiscover()` and `#probe()` — each immediately
+   * response that unblocked its own bounded read -- the initialize response for `#initialize()`,
+   * the `server/discover` response for `#setupDiscover()` and `#probe()` -- each immediately
    * before this method runs. A bounded read that instead *times out* leaves the field set, but
    * also throws, so `#setup()` disposes rather than reaching here. See `#probe()`'s comment for
    * the one assumption this depends on.
@@ -964,12 +894,13 @@ export class ContextClient<
   /**
    * Serves `#setupBuffer`'s leftovers before touching the transport. `ContextRPC`'s read loop
    * (`#readLoop` in `rpc.ts`) calls `this._read()` in an unconditional loop once
-   * `#startReadLoop()` starts it, with no knowledge of `#setupBuffer`'s existence — this
+   * `#startReadLoop()` starts it, with no knowledge of `#setupBuffer`'s existence -- this
    * override is what makes that safe. Anything left in `#setupBuffer` once setup finishes (a
    * notification or server request that arrived during the probe/handshake window and matched
    * no setup-phase waiter's predicate) is drained here as the read loop's first reads, in
    * arrival order, before it ever reaches `super._read()` for genuinely new data. This is the
-   * single place `#setupBuffer` is drained for that purpose — `setup-reader.ts`'s `#readMatching()`
+   * single place `#setupBuffer` is drained for that purpose --
+   * `setup-reader.ts`'s `#readMatching()`
    * deliberately does not call this override for its own reads (see its comment for why doing so
    * would deadlock).
    */
@@ -1014,7 +945,7 @@ export class ContextClient<
       this.#toolOutputSchemas.clear()
     }
     // The one thing that can change a live connection's declared capabilities without a
-    // handshake — the exception `#serverCapabilitySnapshot`'s soundness argument rests on. Both
+    // handshake -- the exception `#serverCapabilitySnapshot`'s soundness argument rests on. Both
     // discover-derived caches go, or the gate and `discover()` disagree for the rest of the
     // connection.
     if (LIST_CHANGED_NOTIFICATIONS.has(notification.method)) {
@@ -1047,7 +978,10 @@ export class ContextClient<
     await this.#ready
     const protocol = this.#requireProtocol()
     if (!protocol.clientMethods.has('subscriptions/listen')) {
-      throw new MethodNotInRevisionError('subscriptions/listen', protocol.version)
+      throw new MethodNotInRevisionError({
+        method: 'subscriptions/listen',
+        version: protocol.version,
+      })
     }
     await this.#ensureSubscriptionDriver().subscribeResource(params)
   }
@@ -1057,7 +991,10 @@ export class ContextClient<
     await this.#ready
     const protocol = this.#requireProtocol()
     if (!protocol.clientMethods.has('subscriptions/listen')) {
-      throw new MethodNotInRevisionError('subscriptions/listen', protocol.version)
+      throw new MethodNotInRevisionError({
+        method: 'subscriptions/listen',
+        version: protocol.version,
+      })
     }
     await this.#ensureSubscriptionDriver().unsubscribeResource(params)
   }
@@ -1138,7 +1075,7 @@ export class ContextClient<
    * - the `acknowledged` frame's subscriptionId (which equals this request's envelope id, or it
    *   would not have routed to this exchange at all) is captured to verify the terminal result;
    * - a terminal `result` settle is deferred by one microtask to read the terminal body off the
-   *   (already-resolved) exchange promise and confirm its `_meta` subscriptionId matches — a
+   *   (already-resolved) exchange promise and confirm its `_meta` subscriptionId matches -- a
    *   mismatch is surfaced as a protocol error rather than accepted as a graceful teardown.
    */
   #openListen(filter: SubscriptionFilter, handlers: ListenHandlers): ListenHandle {
@@ -1205,9 +1142,9 @@ export class ContextClient<
     const meta = (value as { _meta?: Record<string, unknown> } | null | undefined)?._meta
     const id = meta?.[META_SUBSCRIPTION_ID]
     if (subscriptionId != null && id !== subscriptionId) {
-      const error = new SubscriptionProtocolError(
-        `Terminal subscriptions/listen result subscriptionId (${String(id)}) does not match the listen request id (${String(subscriptionId)})`,
-      )
+      const error = new SubscriptionProtocolError({
+        message: `Terminal subscriptions/listen result subscriptionId (${String(id)}) does not match the listen request id (${String(subscriptionId)})`,
+      })
       this.#reportSubscriptionError(error)
       return { reason: 'error', error }
     }
@@ -1263,7 +1200,7 @@ export class ContextClient<
   /**
    * Fulfils one embedded MRTR input request with this client's own handler.
    *
-   * The same three handlers `_handleRequest` uses for `2025-11-25`'s server-initiated requests —
+   * The same three handlers `_handleRequest` uses for `2025-11-25`'s server-initiated requests --
    * one handler, both revisions, which is the whole point of driving MRTR here rather than
    * exposing it to callers.
    */
@@ -1292,9 +1229,9 @@ export class ContextClient<
         }
         break
     }
-    throw new InputRequiredNotSupportedError(
-      `no handler is configured for the "${request.method}" input request "${key}" (declare the "${INPUT_REQUEST_CAPABILITIES[request.method]}" capability by passing its handler to the client)`,
-    )
+    throw new InputRequiredNotSupportedError({
+      reason: `no handler is configured for the "${request.method}" input request "${key}" (declare the "${INPUT_REQUEST_CAPABILITIES[request.method]}" capability by passing its handler to the client)`,
+    })
   }
 
   async _handleRequest(request: ServerRequest, signal: AbortSignal): Promise<ClientResult> {
@@ -1314,7 +1251,7 @@ export class ContextClient<
       }
       case 'roots/list': {
         if (this.#listRoots == null) {
-          throw new RPCError(METHOD_NOT_FOUND, 'roots capability not supported')
+          throw new RPCError({ code: METHOD_NOT_FOUND, message: 'roots capability not supported' })
         }
         const roots = Array.isArray(this.#listRoots)
           ? this.#listRoots
@@ -1326,7 +1263,7 @@ export class ContextClient<
           return await this.#createMessage({ params: request.params, signal })
         }
     }
-    throw new RPCError(METHOD_NOT_FOUND, 'Method not implemented')
+    throw new RPCError({ code: METHOD_NOT_FOUND, message: 'Method not implemented' })
   }
 
   // Guard: throws synchronously when the server did not declare the given capability.
@@ -1336,14 +1273,14 @@ export class ContextClient<
   // the discover-backed snapshot on a revision without a handshake.
   #requireServerCapability(capability: 'logging'): void {
     if (this.#serverCapabilities[capability] == null) {
-      throw new CapabilityNotDeclaredError(capability)
+      throw new CapabilityNotDeclaredError({ capability: capability })
     }
   }
 
   // Guard: throws when the server did not declare the given capability, reading from whichever
   // source this revision actually populates. `2025-11-25` has a handshake, so `#serverCapabilities`
   // is authoritative. `2026-07-28` has none, so the only way to learn what the server supports is
-  // `discover()` — but calling `discover()` on every gated call would mean sending
+  // `discover()` -- but calling `discover()` on every gated call would mean sending
   // `server/discover` before every `tools/list`/`completion/complete` forever (an unconfigured
   // server's `ttlMs` defaults to 0, so `discover()`'s own cache never hits). Since a revision
   // without a handshake also has no way for a live connection's declared capabilities to change
@@ -1366,7 +1303,7 @@ export class ContextClient<
       capabilities = this.#serverCapabilitySnapshot
     }
     if (capabilities[capability] == null) {
-      throw new CapabilityNotDeclaredError(capability)
+      throw new CapabilityNotDeclaredError({ capability: capability })
     }
   }
 
@@ -1381,11 +1318,11 @@ export class ContextClient<
   }
 
   /**
-   * The `2025-11-25` handshake result — server capabilities and identity.
+   * The `2025-11-25` handshake result -- server capabilities and identity.
    *
    * Awaits `#ready` like every other public method here: under `'auto'` the revision stays
    * unresolved until `#setup()` runs the probe, so without it `#requireProtocol()` threw "not
-   * resolved yet" on every first call. No deadlock — `#initialize()` writes and reads the
+   * resolved yet" on every first call. No deadlock -- `#initialize()` writes and reads the
    * transport directly rather than through `request()`.
    *
    * Two accepted costs: on a handshake-less revision setup runs before the throw below, and a
@@ -1403,11 +1340,11 @@ export class ContextClient<
   }
 
   /**
-   * Queries a server's supported protocol versions, capabilities and identity — the
+   * Queries a server's supported protocol versions, capabilities and identity -- the
    * `2026-07-28` replacement for the `initialize` handshake. Result is cached per the
    * server's own `ttlMs`; concurrent callers while a request is in flight collapse onto it.
    * `cacheScope` is read implicitly, not explicitly: this cache lives on one client instance,
-   * so it is inherently private, and `'private'` is honored by construction regardless of what
+   * so it is inherently private, and `'private'` is honoured by construction regardless of what
    * the server sends.
    *
    * Awaits `#ready` like every other public method here (`setLoggingLevel`, `complete`,
@@ -1415,7 +1352,7 @@ export class ContextClient<
    * than throwing "not resolved yet".
    *
    * This is the `ttlMs`-governed cache for direct callers. `#requireServerCapabilityAsync`
-   * does not use it for gating — see `#serverCapabilitySnapshot`.
+   * does not use it for gating -- see `#serverCapabilitySnapshot`.
    */
   async discover(options?: RequestOptions): Promise<DiscoverResult> {
     await this.#ready
@@ -1449,15 +1386,15 @@ export class ContextClient<
     const protocol = this.#requireProtocol()
     // Derived from `clientMethods`, not a version literal: refuses exactly when this
     // revision's method table has no `logging/setLevel` to send. Deliberately does not route
-    // through `discover()`'s capabilities — `2026-07-28` still advertises `logging: {}` even
+    // through `discover()`'s capabilities -- `2026-07-28` still advertises `logging: {}` even
     // though the method itself is gone, so gating on capabilities would let this through and
     // earn a METHOD_NOT_FOUND from the server instead of this clearer, client-side refusal.
     if (!protocol.clientMethods.has('logging/setLevel')) {
-      throw new MethodNotInRevisionError(
-        'logging/setLevel',
-        protocol.version,
-        'the log level travels per request via _meta instead (see ClientParams.logLevel)',
-      )
+      throw new MethodNotInRevisionError({
+        method: 'logging/setLevel',
+        version: protocol.version,
+        hint: 'the log level travels per request via _meta instead (see ClientParams.logLevel)',
+      })
     }
     this.#requireServerCapability('logging')
     const [wireParams, options] = splitRequestOptions(params)
@@ -1513,7 +1450,12 @@ export class ContextClient<
         return { ...rest, [key]: items }
       }
       if (pages >= maxPages) {
-        throw new ListMaxPagesError(method, pages, page.nextCursor, items)
+        throw new ListMaxPagesError({
+          method: method,
+          pages: pages,
+          cursor: page.nextCursor,
+          results: items,
+        })
       }
       cursor = page.nextCursor
     }
@@ -1525,12 +1467,13 @@ export class ContextClient<
     const result = await this.#listPaged(
       'prompts/list',
       'prompts',
-      (pageParams, options) =>
-        this.request(
+      (pageParams, options) => {
+        return this.request(
           'prompts/list',
           pageParams as ListPromptsRequest['params'],
           options,
-        ) as Promise<PagedResult>,
+        ) as Promise<PagedResult>
+      },
       params,
     )
     return result as ListPromptsResult
@@ -1558,12 +1501,13 @@ export class ContextClient<
     const result = await this.#listPaged(
       'resources/list',
       'resources',
-      (pageParams, options) =>
-        this.request(
+      (pageParams, options) => {
+        return this.request(
           'resources/list',
           pageParams as ListResourcesRequest['params'],
           options,
-        ) as Promise<PagedResult>,
+        ) as Promise<PagedResult>
+      },
       params,
     )
     return result as ListResourcesResult
@@ -1575,12 +1519,13 @@ export class ContextClient<
     const result = await this.#listPaged(
       'resources/templates/list',
       'resourceTemplates',
-      (pageParams, options) =>
-        this.request(
+      (pageParams, options) => {
+        return this.request(
           'resources/templates/list',
           pageParams as ListResourceTemplatesRequest['params'],
           options,
-        ) as Promise<PagedResult>,
+        ) as Promise<PagedResult>
+      },
       params,
     )
     return result as ListResourceTemplatesResult
@@ -1609,12 +1554,13 @@ export class ContextClient<
     const result = (await this.#listPaged(
       'tools/list',
       'tools',
-      (pageParams, options) =>
-        this.request(
+      (pageParams, options) => {
+        return this.request(
           'tools/list',
           pageParams as ListToolsRequest['params'],
           options,
-        ) as Promise<PagedResult>,
+        ) as Promise<PagedResult>
+      },
       params,
     )) as ListToolsResult
     this._cacheToolOutputSchemas(result.tools)
@@ -1660,15 +1606,17 @@ export class ContextClient<
     }
     const outcome = validate(result.structuredContent)
     if (outcome.issues != null) {
-      throw new StructuredContentValidationError(
-        params.name,
-        outcome.issues.map((issue) => ({
-          message: issue.message,
-          path: issue.path?.map((segment) =>
-            typeof segment === 'object' && segment != null ? segment.key : segment,
-          ),
-        })),
-      )
+      throw new StructuredContentValidationError({
+        toolName: params.name,
+        issues: outcome.issues.map((issue) => {
+          return {
+            message: issue.message,
+            path: issue.path?.map((segment) => {
+              return typeof segment === 'object' && segment != null ? segment.key : segment
+            }),
+          }
+        }),
+      })
     }
     return result
   }

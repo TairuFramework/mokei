@@ -261,7 +261,7 @@ describe('collectHeaderAnnotations', () => {
 
   test('errors on a $ref property that also declares an ineligible sibling type', () => {
     // 2020-12 allows keywords beside `$ref`, so a wrapper may carry its own `type`. When it
-    // does, that type is the property's — deferring to the target would let an object-typed
+    // does, that type is the property's -- deferring to the target would let an object-typed
     // argument through as a scalar header.
     const schema = {
       type: 'object',
@@ -274,7 +274,7 @@ describe('collectHeaderAnnotations', () => {
   })
 
   test('errors when a $ref wrapper defers to an object-typed target', () => {
-    // The wrapper declares no `type` of its own, so its eligibility check defers to the target —
+    // The wrapper declares no `type` of its own, so its eligibility check defers to the target --
     // and the target settles it: an object cannot be carried in a scalar header.
     const schema = {
       type: 'object',
@@ -317,7 +317,7 @@ describe('collectHeaderAnnotations', () => {
 
   test('errors when a chain of $refs re-declaring one name ends at an ineligible type', () => {
     // Each hop agrees on the name, so every sighting after the first is accepted as one
-    // declaration — but the deferral survives the hops and the terminal type still decides.
+    // declaration -- but the deferral survives the hops and the terminal type still decides.
     const schema = {
       type: 'object',
       properties: { region: { $ref: '#/$defs/Region', 'x-mcp-header': 'Region' } },

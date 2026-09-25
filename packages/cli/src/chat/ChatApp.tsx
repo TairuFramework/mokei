@@ -52,7 +52,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           return mapped
         },
         (err) => {
-          // Don't cache the failure — a later attempt should re-fetch.
+          // Don't cache the failure -- a later attempt should re-fetch.
           modelsPromiseRef.current = null
           throw err
         },
@@ -63,7 +63,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
 
   useEffect(() => {
     loadModels().catch(() => {
-      // Ignore — user will see the error when they attempt to pick a model.
+      // Ignore -- user will see the error when they attempt to pick a model.
     })
   }, [loadModels])
 
@@ -99,7 +99,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   }, [pendingPrompt, model, modal, pushEntry, turn])
 
   // If a turn ends (abort/timeout) while a tool approval is still pending, the
-  // approval promise's resolver is orphaned — deny it so useToolApproval clears.
+  // approval promise's resolver is orphaned -- deny it so useToolApproval clears.
   useEffect(() => {
     if (turn.state === 'idle' && pending != null) {
       deny()
@@ -180,12 +180,11 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
     }
   })
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    return () => {
       if (quitTimerRef.current) clearTimeout(quitTimerRef.current)
-    },
-    [],
-  )
+    }
+  }, [])
 
   return (
     <Box flexDirection="column">
@@ -242,15 +241,19 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
 
       {modal === 'tools' ? (
         <ToolSelectCard
-          groups={Object.entries(session.contextHost.contexts).map(([key, ctx]) => ({
-            contextKey: key,
-            tools: ctx.tools.map((t) => ({
-              id: t.id,
-              name: t.tool.name,
-              description: t.tool.description,
-              enabled: t.enabled,
-            })),
-          }))}
+          groups={Object.entries(session.contextHost.contexts).map(([key, ctx]) => {
+            return {
+              contextKey: key,
+              tools: ctx.tools.map((t) => {
+                return {
+                  id: t.id,
+                  name: t.tool.name,
+                  description: t.tool.description,
+                  enabled: t.enabled,
+                }
+              }),
+            }
+          })}
           onConfirm={(enabled) => {
             for (const [key, ctx] of Object.entries(session.contextHost.contexts)) {
               session.contextHost.setContextTools({

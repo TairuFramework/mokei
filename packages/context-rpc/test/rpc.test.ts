@@ -14,7 +14,7 @@ import {
   type StreamEventsTransport,
 } from '../src/rpc.js'
 
-// Passthrough validator — these tests exercise transport lifecycle, not schema.
+// Passthrough validator -- these tests exercise transport lifecycle, not schema.
 const passthrough = ((message: unknown) => ({ value: message })) as unknown as Validator<AnyMessage>
 
 type TestTypes = RPCTypes & {
@@ -573,7 +573,7 @@ describe('ContextRPC invalid inbound messages', () => {
         handlerRan = true
         started.resolve(signal)
         await gate.promise
-        // Mirrors a real handler that notices the abort and rejects instead of returning —
+        // Mirrors a real handler that notices the abort and rejects instead of returning --
         // the rejection `_handleMessage`'s abort branch must swallow without calling onError.
         signal.throwIfAborted()
         return {}
@@ -658,7 +658,7 @@ describe('ContextRPC held responses', () => {
     } as AnyMessage)
     await transports.server.write({ jsonrpc: '2.0', id: 2, method: 'quick' } as AnyMessage)
 
-    // The second request answers under a concurrency cap of 1 — only possible if the held
+    // The second request answers under a concurrency cap of 1 -- only possible if the held
     // first request released its slot.
     await vi.waitFor(() =>
       expect(responses).toContainEqual({ jsonrpc: '2.0', id: 2, result: { echoed: 'quick' } }),
@@ -717,7 +717,7 @@ describe('ContextRPC held responses', () => {
       method: 'notifications/cancelled',
       params: { requestId: 1 },
     } as AnyMessage)
-    // Terminal resolves after the cancel — first-settlement-wins means no response is written.
+    // Terminal resolves after the cancel -- first-settlement-wins means no response is written.
     terminal.resolve({ ok: true })
     await new Promise((resolve) => setTimeout(resolve, 20))
 
@@ -739,7 +739,7 @@ describe('ContextRPC pre-close flush', () => {
         }
         return { echoed: request.method }
       }
-      // Resolving the held terminal here proves the hook runs — and is awaited — before the
+      // Resolving the held terminal here proves the hook runs -- and is awaited -- before the
       // transport is disposed on an explicit `dispose()`.
       _beforeTransportClose(): void {
         terminal.resolve({ ok: true })
@@ -769,7 +769,7 @@ describe('ContextRPC pre-close flush', () => {
     } as AnyMessage)
     await transports.server.write({ jsonrpc: '2.0', id: 2, method: 'quick' } as AnyMessage)
     // The second request answering under a concurrency cap of 1 proves the first is already
-    // held/detached — nothing left racing `dispose()` for it to still be scheduled.
+    // held/detached -- nothing left racing `dispose()` for it to still be scheduled.
     await vi.waitFor(() => expect(responses.find((r) => r.id === 2)).toBeDefined())
 
     await rpc.dispose()
@@ -864,7 +864,7 @@ describe('ContextRPC pre-close flush', () => {
 
     // A new inbound request arrives during the disposal window: the gate in `_handleMessage`
     // rejects it synchronously with SERVER_SHUTTING_DOWN, and the read loop starts writing that
-    // response — which is now pending on the delayed transport write.
+    // response -- which is now pending on the delayed transport write.
     await transports.server.write({
       jsonrpc: '2.0',
       id: 7,
@@ -875,13 +875,13 @@ describe('ContextRPC pre-close flush', () => {
 
     // Release the disposal gate so `#dispose` proceeds toward `#close()` / `#transport.dispose()`.
     beforeCloseGate.resolve()
-    // Give `#dispose` a real turn to run ahead — long enough for the current (buggy) code to
+    // Give `#dispose` a real turn to run ahead -- long enough for the current (buggy) code to
     // have already called `#transport.dispose()`, since that call is not gated on the pending
     // write.
     await new Promise((resolve) => setTimeout(resolve, 20))
 
     // The SERVER_SHUTTING_DOWN write has not resolved yet, so the transport must not have been
-    // disposed — disposing it now would tear the connection down before the peer ever receives
+    // disposed -- disposing it now would tear the connection down before the peer ever receives
     // the rejection, and the peer would see EOF instead of -32000.
     expect(disposeSpy).not.toHaveBeenCalled()
 
@@ -918,7 +918,7 @@ describe('ContextRPC pre-close flush', () => {
     rpc._handle()
 
     // A write initializes the server-side stream so `dispose()` below actually closes its
-    // writer — otherwise the client's read stays pending forever instead of seeing EOF.
+    // writer -- otherwise the client's read stays pending forever instead of seeing EOF.
     await transports.server.write({ jsonrpc: '2.0', method: 'notifications/ping' } as AnyMessage)
     // A peer hanging up drives the abrupt `#close()` path, not `dispose()`.
     await transports.server.dispose()
@@ -958,7 +958,7 @@ describe('ContextRPC stream-notification correlator', () => {
     rpc._handle()
 
     const onProgress = vi.fn()
-    // Never settled by this test — a `progress` frame is not terminal — so it rejects with
+    // Never settled by this test -- a `progress` frame is not terminal -- so it rejects with
     // TransportClosedError on dispose below; the catch keeps that an expected non-event.
     rpc._registerStreamExchange('subscriptions/listen', {}, { onProgress }).catch(() => {})
 

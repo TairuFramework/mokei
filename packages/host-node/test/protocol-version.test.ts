@@ -94,7 +94,7 @@ describe('ContextHost protocol version', () => {
 
   // No request is issued, which is exactly what the default being `'auto'` looks like from
   // here: a pinned revision resolves at construction, an `'auto'` one only once the probe has
-  // reached the server — and nothing has, since the transport waits for a first request.
+  // reached the server -- and nothing has, since the transport waits for a first request.
   test('addHTTPContext defaults to auto, leaving the revision unresolved until a request', async () => {
     host = new NodeContextHost()
     const client = await host.addHTTPContext({
@@ -135,7 +135,7 @@ describe('ProxyHost protocol version', () => {
       dispose: async () => {},
     }
     return {
-      proxy: new ProxyHost(client as unknown as HostClient),
+      proxy: new ProxyHost({ client: client as unknown as HostClient }),
       getSpawnParam: () => spawnParam,
     }
   }
@@ -178,7 +178,7 @@ describe('spawnHostedContext protocol version validation', () => {
 
   // Filed scenario: a bad version string in a config file. Pre-fix, `ContextClient`'s
   // constructor rejected the pin only after `spawnContextServer` had already spawned the
-  // child (host.ts spawns, then constructs the client) — and since the throw happened before
+  // child (host.ts spawns, then constructs the client) -- and since the throw happened before
   // `spawnHostedContext` could hand back a disposer, the child was unreachable and leaked. The
   // fix validates with the same `isSupportedProtocolVersion` predicate the client uses, before
   // spawning anything.
@@ -194,5 +194,21 @@ describe('spawnHostedContext protocol version validation', () => {
     ).rejects.toThrow(UnsupportedProtocolVersionError)
 
     expect(spawnSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('ProxyHost disposal', () => {
+  test('disposes the daemon client on dispose() and on abort', async () => {
+    for (const teardown of ['dispose', 'abort'] as const) {
+      const dispose = vi.fn(async () => {})
+      const proxy = new ProxyHost({ client: { dispose } as unknown as HostClient })
+      if (teardown === 'dispose') {
+        await proxy.dispose()
+      } else {
+        proxy.abort('test')
+        await proxy.disposed
+      }
+      expect(dispose).toHaveBeenCalledOnce()
+    }
   })
 })

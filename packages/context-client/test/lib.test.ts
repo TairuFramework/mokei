@@ -60,7 +60,7 @@ async function handleServerInitialize(
   }
   // Server sends back initialize response
   transport.write({ jsonrpc: '2.0', id: 0, result })
-  // Server receives initialized notification
+  // Server receives `notifications/initialized`.
   await transport.read()
   // Return initialize request
   return request.value
@@ -178,7 +178,7 @@ type Respond = (message: ClientRequest) => Record<string, unknown> | typeof WITH
  *
  * A revision with no handshake still opens with one bounded round trip (`ContextClient`'s
  * `#setupDiscover`), so a harness that left it unanswered would stall every such client in setup
- * rather than exercising whatever the test is about — the exact counterpart of the `initialize`
+ * rather than exercising whatever the test is about -- the exact counterpart of the `initialize`
  * answer below it. Declares no capabilities: a test that needs one gated open says so through
  * `respond`, and a permissive default would let a broken gate pass unnoticed.
  */
@@ -551,7 +551,7 @@ describe('initialize hardening', () => {
     await transports.dispose()
   })
 
-  // `#setupBuffer` used to have only one reader — `#readUntil()`'s own loop, called at most
+  // `#setupBuffer` used to have only one reader -- `#readUntil()`'s own loop, called at most
   // twice per connection (probe, handshake) and never again once setup finishes. A notification that arrives during that window and doesn't match either setup
   // read's predicate (as here: it has no `id` at all) used to sit in `#setupBuffer` forever,
   // never reaching `_handleMessage`/the notification stream. This asserts the opposite: once the
@@ -581,8 +581,8 @@ describe('initialize hardening', () => {
       } as ServerMessage)
     })()
     // Attach the reader before the handshake even starts, so `#hasNotificationReader` is true
-    // by the time the buffered notification is drained — this test is about delivery through
-    // the buffer, not about the separate reader-attach-timing behavior of `#notificationBuffer`.
+    // by the time the buffered notification is drained -- this test is about delivery through
+    // the buffer, not about the separate reader-attach-timing behaviour of `#notificationBuffer`.
     const reader = client.notifications.getReader()
     await client.initialize()
     const { done, value } = await reader.read()
@@ -598,7 +598,7 @@ describe('initialize hardening', () => {
 
   // `#ready` is `lazy()`, so a setup rejection is cached for the client's lifetime: every later
   // call gets the same error and no read loop ever starts. Leaving the transport open there
-  // strands it — for stdio, that is the server child process.
+  // strands it -- for stdio, that is the server child process.
   test('disposes the transport when setup fails after the probe falls back', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({ protocolVersion: 'auto', transport: transports.client })
@@ -719,7 +719,7 @@ describe('capability gating', () => {
       transport: transports.client,
     })
 
-    // Drive the server side: handle init then answer tools/list — no client.initialize() call
+    // Drive the server side: handle init then answer tools/list -- no client.initialize() call
     const serverTask = (async () => {
       await handleServerInitialize(transports.server, initResult)
       const incoming = await transports.server.read()
@@ -742,7 +742,7 @@ describe('capability gating', () => {
       transport: transports.client,
     })
 
-    // Server declares no tools capability (default) — no client.initialize() call
+    // Server declares no tools capability (default) -- no client.initialize() call
     void handleServerInitialize(transports.server)
 
     await expect(client.listTools()).rejects.toThrow(CapabilityNotDeclaredError)
@@ -1058,7 +1058,7 @@ describe('structuredContent validation', () => {
     const request = await transports.server.read()
     const { id, params } = request.value as { id: number; params: unknown }
 
-    // An AbortSignal left in the params would be serialized as a request param.
+    // An AbortSignal left in the params would be serialised as a request param.
     expect(params).toEqual({ name: 'counter', arguments: { n: 1 } })
 
     transports.server.write({ jsonrpc: '2.0', id, result: { content: [] } } as ServerMessage)
@@ -1111,8 +1111,8 @@ describe('protocolVersion negotiation', () => {
 
 /**
  * A `2026-07-28` client whose read loop is running, with the transports it runs on. That
- * revision has no handshake, so the only way to settle `#ready` — and therefore start the read
- * loop a server-initiated frame needs — is to make a request first. Setup opens with its own
+ * revision has no handshake, so the only way to settle `#ready` -- and therefore start the read
+ * loop a server-initiated frame needs -- is to make a request first. Setup opens with its own
  * bounded `server/discover`, which has to be answered before the caller's request appears.
  */
 async function createReady20260728Transports(): Promise<
@@ -1151,7 +1151,7 @@ describe('protocol version selection', () => {
   }
 
   // `listPrompts` is deliberate: it is not capability-gated, so these tests exercise
-  // decoration and handshake behavior without depending on the discover-backed capability gate.
+  // decoration and handshake behaviour without depending on the discover-backed capability gate.
   test('2026-07-28 sends no initialize and decorates every request', async () => {
     const { client, sent } = createTestClient({
       protocolVersion: '2026-07-28',
@@ -1159,7 +1159,7 @@ describe('protocol version selection', () => {
     })
     await client.listPrompts()
     // `server/discover` is setup's bounded liveness round trip, standing in for the handshake
-    // this revision does not have — never `initialize`.
+    // this revision does not have -- never `initialize`.
     expect(sent.map((message) => message.method)).toEqual(['server/discover', 'prompts/list'])
     const params = sent[1]?.params as { _meta: Record<string, unknown> }
     expect(params._meta['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
@@ -1167,7 +1167,7 @@ describe('protocol version selection', () => {
   })
 
   // `2026-07-28` removes `logging/setLevel`, so `ClientParams.logLevel` is the only way to ask
-  // for logs — it has to reach the request `_meta` the server reads it from.
+  // for logs -- it has to reach the request `_meta` the server reads it from.
   test('2026-07-28 carries a configured logLevel in every request _meta', async () => {
     const { client, sent } = createTestClient({
       protocolVersion: '2026-07-28',
@@ -1254,7 +1254,9 @@ describe('protocol version selection', () => {
   // also drops the server-initiated requests. The message has to name that revision rather than
   // the one that happened to introduce the restriction.
   test('MRTRNotSupportedError names the revision it was raised for', () => {
-    expect(new MRTRNotSupportedError('createMessage', '2025-11-25').message).toContain('2025-11-25')
+    expect(
+      new MRTRNotSupportedError({ handler: 'createMessage', version: '2025-11-25' }).message,
+    ).toContain('2025-11-25')
   })
 
   test('auto-fulfils an input_required result through the configured handler', async () => {
@@ -1321,7 +1323,7 @@ describe('protocol version selection', () => {
   // `2025-11-25` has no MRTR: `server.ts`'s handler-side gate throws if a handler suspends there,
   // but nothing stopped a nonconforming (or malicious) `2025-11-25` peer from sending the frame
   // anyway. Before the client-side gate, this drove MRTR rounds against an unvalidated
-  // `createMessage` handler call — the createMessage spy asserts that path is not reached.
+  // `createMessage` handler call -- the createMessage spy asserts that path is not reached.
   test('refuses an input_required result on 2025-11-25, which has no MRTR', async () => {
     const createMessage = vi.fn()
     const { client } = createTestClient({
@@ -1345,7 +1347,7 @@ describe('protocol version selection', () => {
     expect(createMessage).not.toHaveBeenCalled()
   })
 
-  // `MRTR_METHODS` (SEP-2322) admits only `tools/call`, `prompts/get` and `resources/read` — a
+  // `MRTR_METHODS` (SEP-2322) admits only `tools/call`, `prompts/get` and `resources/read` -- a
   // `2026-07-28` peer suspending any other method, `tools/list` here, is a protocol violation the
   // client must refuse rather than drive rounds for. Mirrors `ContextServer`'s own handler-side
   // `MRTR_METHODS` gate (`server.ts`).
@@ -1483,7 +1485,7 @@ describe('protocol version selection', () => {
 
   // `ping` is in `2025-11-25`'s `serverMethods` and the spec makes answering it a MUST, so the
   // client must reply `{}`. `2026-07-28` removes the method, so the same frame must not be
-  // answered there — the counterpart of `@mokei/context-server`'s own ping pair.
+  // answered there -- the counterpart of `@mokei/context-server`'s own ping pair.
   test('answers ping on 2025-11-25', async () => {
     await expectClientResponse(
       { protocolVersion: '2025-11-25' },
@@ -1537,14 +1539,14 @@ describe('protocol version selection', () => {
 })
 
 describe('outbound requests and notifications on the resolved revision', () => {
-  // `sent` is typed as requests, but the harness records notifications too — this is how these
+  // `sent` is typed as requests, but the harness records notifications too -- this is how these
   // tests assert on the notification frames it captured.
   const methodsSent = (sent: Array<ClientRequest>): Array<string> =>
     sent.map((message) => message.method as string)
 
   // `setLoggingLevel()` and `initialize()` refuse the wrong revision in their own bodies, so
   // they prove nothing about `request()`. These call `request()` directly, which is exactly the
-  // surface a caller reaches past those wrappers on — and where the send would otherwise happen.
+  // surface a caller reaches past those wrappers on -- and where the send would otherwise happen.
   test('request() refuses a method absent from the resolved revision', async () => {
     const { client, sent } = createTestClient({ protocolVersion: '2026-07-28' })
     await expect(client.request('logging/setLevel', { level: 'debug' })).rejects.toThrow(
@@ -1560,7 +1562,7 @@ describe('outbound requests and notifications on the resolved revision', () => {
 
   // The notification counterpart. `ClientNotifications` spans both revisions, so both of these
   // type-check on a `2026-07-28` client even though that revision's own `clientMessage` union
-  // rejects the frames they produce — they would go out stamped and be refused by the peer.
+  // rejects the frames they produce -- they would go out stamped and be refused by the peer.
   test('notify() refuses a notification absent from the resolved revision', async () => {
     const { client, sent } = createTestClient({ protocolVersion: '2026-07-28' })
     await expect(client.notify('roots/list_changed', {})).rejects.toThrow(MethodNotInRevisionError)
@@ -1572,7 +1574,7 @@ describe('outbound requests and notifications on the resolved revision', () => {
   })
 
   // The gate must not start refusing the revision that still has these, and must not refuse the
-  // one notification `ContextRPC` emits by itself — `notifications/cancelled`, which both
+  // one notification `ContextRPC` emits by itself -- `notifications/cancelled`, which both
   // revisions keep and which routes through this same override.
   test('2025-11-25 keeps every notification its revision has', async () => {
     const { client, sent } = createTestClient({ protocolVersion: '2025-11-25' })
@@ -1631,10 +1633,10 @@ describe('outbound requests and notifications on the resolved revision', () => {
   // The cancellation has to reach the peer on *every* transport, not just the ones that can read
   // a revision off a session: `ContextRPC._handleMessage` routes `notifications/cancelled`
   // straight to `RequestScheduler.cancel`, which aborts the named request's handler signal if
-  // it is running (or drops it unstarted if it is still queued) — the only code path by which a
+  // it is running (or drops it unstarted if it is still queued) -- the only code path by which a
   // server could stop working on a call nobody is waiting for any more. The read loop dispatches
   // requests concurrently rather than awaiting each handler before reading the next frame, so a
-  // cancellation is read and acted on while the handler it names is genuinely still in flight —
+  // cancellation is read and acted on while the handler it names is genuinely still in flight --
   // the abort lands, it does not merely have the opportunity to. The stamp asserted below is
   // what a peer routes the frame on, which is what has to be right for that abort to land.
   test('2026-07-28 sends a cancellation stamped with its protocol version', async () => {
@@ -1650,7 +1652,7 @@ describe('outbound requests and notifications on the resolved revision', () => {
   })
 
   // `2025-11-25` agreed its version in the handshake, so its hook is identity and its frames
-  // must stay byte-identical — the guard on "this revision's behavior does not change".
+  // must stay byte-identical -- the guard on "this revision's behaviour does not change".
   test('2025-11-25 sends a cancellation with no protocol _meta', async () => {
     const cancelled = await cancelInFlight('2025-11-25')
     expect(cancelled.params).toEqual({ requestId: expect.anything() })
@@ -1726,7 +1728,7 @@ describe('discover()', () => {
   })
 
   // `2026-07-28` still advertises `logging: {}` in its capabilities even though
-  // `logging/setLevel` is gone from `clientMethods` — gating this on the discovered
+  // `logging/setLevel` is gone from `clientMethods` -- gating this on the discovered
   // capabilities would pass and send a method the server would answer with
   // METHOD_NOT_FOUND. It must refuse client-side instead, without ever calling discover().
   test('setLoggingLevel refuses client-side on 2026-07-28 without consulting discovered capabilities', async () => {
@@ -1746,7 +1748,7 @@ describe('discover()', () => {
     await expect(client.setLoggingLevel({ level: 'info' })).rejects.toThrow(
       MethodNotInRevisionError,
     )
-    // Exactly one `server/discover`, and it is setup's own — the refusal consulted no
+    // Exactly one `server/discover`, and it is setup's own -- the refusal consulted no
     // capabilities of its own, or a second one would appear here after it.
     expect(sent.map((message) => message.method)).toEqual(['server/discover'])
   })
@@ -1755,7 +1757,7 @@ describe('discover()', () => {
   // `server/discover` before every gated call, forever. The gate must snapshot the discovered
   // capabilities for the connection's lifetime instead, independent of `discover()`'s own
   // `ttlMs` cache. The one request counted below is setup's own liveness round trip, whose
-  // result seeds that snapshot — neither gated call adds one of its own.
+  // result seeds that snapshot -- neither gated call adds one of its own.
   test('the capability gate sends server/discover exactly once across two gated calls, even when ttlMs is 0', async () => {
     const { client, sent } = createTestClient({
       protocolVersion: '2026-07-28',
@@ -1776,7 +1778,7 @@ describe('discover()', () => {
   })
 
   // The gating snapshot is justified by "a live connection's declared capabilities cannot change
-  // except via a `*_list_changed` notification" — so that notification has to clear it, or
+  // except via a `*_list_changed` notification" -- so that notification has to clear it, or
   // `discover()` and the gate disagree permanently and `listTools()` never recovers.
   test('a tools/list_changed notification reopens the capability gate', async () => {
     let declaresTools = false
@@ -1837,7 +1839,7 @@ describe('discover()', () => {
         }
         calls += 1
         // The first two are setup's liveness round trip and the first explicit call. Setup
-        // tolerates an error answer — a live peer that refuses discovery is still usable — so
+        // tolerates an error answer -- a live peer that refuses discovery is still usable -- so
         // both fail here, and only the third succeeds.
         return calls <= 2
           ? { error: { code: -32000, message: 'discover failed' } }
@@ -1933,7 +1935,7 @@ describe('setup on a revision without a handshake', () => {
   // is what spends it. A revision with no handshake used to spend nothing at all: `#setup()`
   // reached `#startReadLoop()` and returned, and since `ContextRPC.request` arms a timer only
   // when the caller passes one, a server that is spawned but never writes a byte hung its caller
-  // forever. That is not a hypothetical shape — a crashed-on-startup child process produces it.
+  // forever. That is not a hypothetical shape -- a crashed-on-startup child process produces it.
   test('a mute server fails setup within setupTimeout instead of hanging', async () => {
     const { client, sent } = createTestClient({
       protocolVersion: '2026-07-28',
@@ -1950,7 +1952,7 @@ describe('setup on a revision without a handshake', () => {
   // The stamp comes from the *resolved* revision, not from the registry-derived guess the
   // `'auto'` probe uses: setup runs after resolution, so there is nothing to guess, and reusing
   // the probe's constant would label a future handshake-less revision's setup frame with an
-  // older revision's version — a version literal standing in for a capability.
+  // older revision's version -- a version literal standing in for a capability.
   test('the setup discover is stamped with the resolved revision', async () => {
     const { client, sent } = createTestClient({
       protocolVersion: '2026-07-28',
@@ -1966,7 +1968,7 @@ describe('setup on a revision without a handshake', () => {
 
   // The liveness check must not become a second, stricter handshake. `2026-07-28` does not
   // *require* a peer to implement discovery, so an error answer means "alive, but no discovery
-  // here" — a usable connection. Only silence is a dead peer.
+  // here" -- a usable connection. Only silence is a dead peer.
   test('a server that refuses server/discover still yields a usable connection', async () => {
     const { client, sent } = createTestClient({
       protocolVersion: '2026-07-28',
@@ -2008,7 +2010,7 @@ describe("'auto' probe", () => {
   })
 
   // The probe's answer *is* a `DiscoverResult`, so throwing it away made the first gated call
-  // ask for the same thing again — a redundant POST on every `'auto'` HTTP connection, and both
+  // ask for the same thing again -- a redundant POST on every `'auto'` HTTP connection, and both
   // CLI entry points default to `'auto'`. `ttlMs: 0` is the case that matters: it expires
   // `discover()`'s own cache immediately, so only the connection-lifetime capability snapshot
   // can keep the gate from re-requesting.
@@ -2053,7 +2055,7 @@ describe("'auto' probe", () => {
   // `_read()`, and that loses this race. The transport's reader is shared and reads are served
   // FIFO (@enkaku/transport's Transport#read() calls reader.read() on one
   // ReadableStreamDefaultReader obtained once via _getReader()): a probe that times out leaves
-  // its own `_read()` pending — a losing `Promise.race` branch doesn't cancel it — and a fresh,
+  // its own `_read()` pending -- a losing `Promise.race` branch doesn't cancel it -- and a fresh,
   // independent `_read()` issued by #initialize() afterward would queue FIFO behind it. The
   // initialize response would then resolve the *abandoned* probe read instead of #initialize()'s
   // own read, which would wait forever for a message that already arrived and silently went
@@ -2097,8 +2099,8 @@ describe("'auto' probe", () => {
     expect(client.protocolVersion).toBe('2025-11-25')
   })
 
-  // `initialize()` reaches neither `request()` nor a `#ready` await of its own — it writes and
-  // reads the transport directly — so the fix that covered the three methods below never covered
+  // `initialize()` reaches neither `request()` nor a `#ready` await of its own -- it writes and
+  // reads the transport directly -- so the fix that covered the three methods below never covered
   // it, and no test caught that. Under `'auto'` it threw "not resolved yet" synchronously, before
   // the probe that would resolve the revision had started, which made it unusable on every
   // `'auto'` client. Unworkable around, too: it is the only accessor for an `InitializeResult`,
@@ -2255,7 +2257,7 @@ describe('ContextRPC configuration surfaced through ClientParams', () => {
     } as ServerRequest)
 
     await vi.waitFor(() => expect(started).toContain('slow'))
-    // With the cap at 1, `quick` cannot start until `slow` frees its slot — the scheduler
+    // With the cap at 1, `quick` cannot start until `slow` frees its slot -- the scheduler
     // will not run it early no matter how long this assertion waits, so this is a real
     // invariant rather than a timing race.
     expect(started).toEqual(['slow'])
@@ -2270,7 +2272,7 @@ describe('ContextRPC configuration surfaced through ClientParams', () => {
     const onError = vi.fn()
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     // No `listRoots` configured, so an inbound `roots/list` throws METHOD_NOT_FOUND from
-    // `_handleRequest` — a genuine handler failure, which is what `RPCParams.onError` is
+    // `_handleRequest` -- a genuine handler failure, which is what `RPCParams.onError` is
     // documented to report.
     const client = new ContextClient({
       protocolVersion: '2025-11-25',

@@ -23,12 +23,14 @@ export function ToolSelectCard({ groups, onConfirm, onCancel }: ToolSelectCardPr
   useInput((_, key) => {
     if (key.escape) onCancel()
   })
-  const options = groups.flatMap((g) =>
-    g.tools.map((t) => ({
-      label: `${t.id} — ${t.description ?? t.name}`,
-      value: t.id,
-    })),
-  )
+  const options = groups.flatMap((g) => {
+    return g.tools.map((t) => {
+      return {
+        label: `${t.id} — ${t.description ?? t.name}`,
+        value: t.id,
+      }
+    })
+  })
   const defaultValue = groups.flatMap((g) => g.tools.filter((t) => t.enabled).map((t) => t.id))
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="blue">

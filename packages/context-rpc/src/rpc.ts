@@ -43,7 +43,7 @@ const HELD_RESPONSE_FLUSH_DEADLINE_MS = 5000
  * identity, and its response is written only when `terminal` resolves (on graceful teardown).
  *
  * `beforeTerminal`, if given, runs after `terminal` resolves and before the response is
- * written — the hook where a subclass flushes any final stream state.
+ * written -- the hook where a subclass flushes any final stream state.
  */
 export type HeldResponse<Result> = {
   kind: 'held'
@@ -94,7 +94,7 @@ export type RequestOptions = {
  * options that drive the exchange carrying them.
  *
  * The two are one object at the API surface and must be separated before the params
- * reach the wire — see {@link splitRequestOptions}. No MCP request declares a `signal`,
+ * reach the wire -- see {@link splitRequestOptions}. No MCP request declares a `signal`,
  * `timeout`, `allowInputRequired` or `maxTotalTimeout` param, so the merge is unambiguous.
  */
 export type WithRequestOptions<Params> = Params & RequestOptions
@@ -104,7 +104,7 @@ export type WithRequestOptions<Params> = Params & RequestOptions
  * options kept local to this process.
  *
  * `ContextRPC.request` passes its `params` straight to the peer, so an `AbortSignal` or
- * timeout left in that object would be serialized as a request param. Every public
+ * timeout left in that object would be serialised as a request param. Every public
  * method that accepts {@link WithRequestOptions} must split here first.
  */
 export function splitRequestOptions<Params>(
@@ -126,14 +126,15 @@ export type RPCTypes = {
   SendResult: unknown
 }
 
-/** Detail carried by a transport's `streamEvents` `closed` event — see {@link StreamEventsTransport}. */
+/** Detail carried by a transport's `streamEvents` `closed` event.
+ * See {@link StreamEventsTransport}. */
 export type StreamClosedEvent = { requestID: RequestID; error?: Error }
 
 /**
  * Optional transport capability (the HTTP client, later): fires `closed` when a per-request
  * stream body ends without a terminal response, naming the exchange that was left hanging so
  * `ContextRPC` can settle just that one instead of waiting forever. A transport without this
- * property behaves exactly as before — `ContextRPC` only subscribes when it is present.
+ * property behaves exactly as before -- `ContextRPC` only subscribes when it is present.
  */
 export type StreamEventsTransport = {
   streamEvents: EventEmitter<{ closed: StreamClosedEvent }>
@@ -142,7 +143,7 @@ export type StreamEventsTransport = {
 export type RPCParams<T extends RPCTypes> = {
   /**
    * Timeout applied to a request that passes none of its own. Unset means unbounded, which
-   * is the historical behavior: a blanket default would cut off a long-running `tools/call`.
+   * is the historical behaviour: a blanket default would cut off a long-running `tools/call`.
    */
   defaultRequestTimeout?: number
   /** Request handlers allowed to run at once (default 100). */
@@ -150,14 +151,14 @@ export type RPCParams<T extends RPCTypes> = {
   /** Requests allowed to wait for a slot before further requests are refused (default 1000). */
   maxQueuedRequests?: number
   /**
-   * Called for an inbound frame that could neither be validated nor routed to anything —
-   * an invalid notification, or a malformed frame naming an id nobody is waiting on — and
+   * Called for an inbound frame that could neither be validated nor routed to anything --
+   * an invalid notification, or a malformed frame naming an id nobody is waiting on -- and
    * for request handlers that failed. Without it such frames vanish silently.
    */
   onError?: (error: Error) => void
   /**
    * Diverts an inbound notification into an existing stream exchange instead of
-   * `_handleNotification` — used by `subscriptions/listen` (SEP-1391), where server
+   * `_handleNotification` -- used by `subscriptions/listen` (SEP-1391), where server
    * notifications carry a subscriptionId that maps back to the listen request's stream
    * exchange. Returning `null` leaves the notification to the normal handling path.
    */
@@ -172,7 +173,7 @@ export type RPCParams<T extends RPCTypes> = {
  * Message ordering:
  * - notifications and responses are handled in wire order, synchronously in the read loop;
  * - requests *start* in wire order and complete out of order;
- * - a request never delays a notification — which is what lets `notifications/cancelled`
+ * - a request never delays a notification -- which is what lets `notifications/cancelled`
  *   reach a handler that is still running.
  */
 export class ContextRPC<T extends RPCTypes> extends Disposer {
@@ -186,14 +187,14 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #scheduler: RequestScheduler
   // Requests whose handler returned a held response, awaiting their `terminal` resolution.
   // Keyed by id; the scheduler holds the matching detached controller. `settled` resolves once
-  // the entry is removed (terminal written, terminal rejected, or the request was cancelled) —
+  // the entry is removed (terminal written, terminal rejected, or the request was cancelled) --
   // `#flushHeldResponses` awaits it on disposal.
   #heldRequests: Map<RequestID, { signal: AbortSignal; settled: Promise<void> }> = new Map()
   // In-flight `#writeResponse` calls, tracked so disposal can await them before the transport
-  // tears down — otherwise a response write racing `#dispose()` (e.g. the synchronous
+  // tears down -- otherwise a response write racing `#dispose()` (e.g. the synchronous
   // SERVER_SHUTTING_DOWN rejection written from the read loop) can be cut off mid-flight and
   // the peer sees EOF instead of the frame. Every added promise is removed on settle via
-  // `.finally()`, and it never rejects — `#writeResponse` already swallows write errors.
+  // `.finally()`, and it never rejects -- `#writeResponse` already swallows write errors.
   #pendingWrites: Set<Promise<void>> = new Set()
   #transport: TransportType<T['MessageIn'], T['MessageOut']> & Partial<StreamEventsTransport>
   #validateMessageIn: Validator<T['MessageIn']>
@@ -201,7 +202,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   #routeStreamNotification?: (
     notification: ProgressNotification | T['HandleNotification'],
   ) => { id: RequestID; frame: StreamFrame } | null
-  // Unsubscribes from `transport.streamEvents` — set only when the transport exposes that
+  // Unsubscribes from `transport.streamEvents` -- set only when the transport exposes that
   // optional capability, called once from `#close` so the listener never outlives the RPC.
   #unsubscribeStreamEvents?: () => void
 
@@ -221,7 +222,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       this.#unsubscribeStreamEvents = params.transport.streamEvents.on(
         'closed',
         ({ requestID, error }) => {
-          this.#exchanges.close(requestID, error ?? new TransportClosedError('stream closed'))
+          this.#exchanges.close(
+            requestID,
+            error ?? new TransportClosedError({ message: 'stream closed' }),
+          )
         },
       )
     }
@@ -290,7 +294,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       this.#close(
         cause instanceof Error
           ? cause
-          : new TransportClosedError('Transport read failed', { cause }),
+          : new TransportClosedError({ message: 'Transport read failed', cause }),
       )
     }
   }
@@ -327,7 +331,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   /**
    * Awaits every response write currently in flight. Snapshots to an array first: iterating a
    * `Set` that a concurrent `.finally()` mutates mid-loop is not safe to do directly, and new
-   * writes started after the snapshot are not this call's concern — a later caller waits for
+   * writes started after the snapshot are not this call's concern -- a later caller waits for
    * those.
    */
   async #flushPendingWrites(): Promise<void> {
@@ -358,7 +362,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
 
   async #dispose(): Promise<void> {
     this.#disposing = true
-    const reason = new TransportClosedError('Transport disposed')
+    const reason = new TransportClosedError({ message: 'Transport disposed' })
     // Explicit dispose only: gives a subclass a chance to resolve any held
     // `subscriptions/listen` terminals so their graceful result can still be written. A peer
     // EOF runs `#close()` directly and never reaches this hook.
@@ -376,7 +380,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
 
   /**
    * @internal Called once on an explicit `dispose()`, before the transport closes and before
-   * held responses are flushed — the hook where a server subclass resolves any held
+   * held responses are flushed -- the hook where a server subclass resolves any held
    * `subscriptions/listen` terminals so their graceful result gets a chance to be written before
    * the transport goes away. Default no-op. Not called on a peer EOF, which stays abrupt.
    */
@@ -387,7 +391,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
    * `_beforeTransportClose` (which may await terminal writes, e.g. `hub.endAllGracefully()`), then a
    * backstop wait for any still-held terminal to settle and write. The hook is inside the deadline
    * so a graceful teardown can't make disposal unbounded; anything unfinished at the deadline is
-   * left for `#close`'s `abortAll`. Best-effort — errors are reported, never block disposal.
+   * left for `#close`'s `abortAll`. Best-effort -- errors are reported, never block disposal.
    */
   async #flushBeforeClose(reason: Error): Promise<void> {
     const flush = (async () => {
@@ -404,7 +408,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
           this.#reportError(cause instanceof Error ? cause : new Error(String(cause)))
         }
       }
-      // Also let any response write already in flight land — most commonly the synchronous
+      // Also let any response write already in flight land -- most commonly the synchronous
       // SERVER_SHUTTING_DOWN rejection the read loop writes for a request that arrived after
       // `#disposing` flipped true, which races this very flush. `#dispose`'s own backstop
       // await (after `#close()`) catches anything that starts too late to be seen here.
@@ -426,7 +430,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   /**
    * Bounded backstop wait for any response write still in flight, used by `#dispose` as the
    * last step before the transport tears down. A fresh {@link HELD_RESPONSE_FLUSH_DEADLINE_MS}
-   * bound, separate from `#flushBeforeClose`'s — keeping this step bounded on its own is what
+   * bound, separate from `#flushBeforeClose`'s -- keeping this step bounded on its own is what
    * keeps disposal as a whole bounded, since it runs after that flush's own deadline race has
    * already resolved.
    */
@@ -457,15 +461,18 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       const id = message.id
       if (message.method != null && isRequestID(id)) {
         // Send an error response if incoming message is a request
-        return new RPCError(INVALID_REQUEST, 'Invalid request').toResponse(id)
+        return new RPCError({ code: INVALID_REQUEST, message: 'Invalid request' }).toResponse(id)
       }
       if (isRequestID(id) && this.#exchanges.has(id)) {
         // A frame carrying an id and no method is a response. Dropping it left its caller's
         // promise pending forever, with nothing to time it out.
-        this.#exchanges.fail(id, new RPCError(INTERNAL_ERROR, 'Invalid response'))
+        this.#exchanges.fail(
+          id,
+          new RPCError({ code: INTERNAL_ERROR, message: 'Invalid response' }),
+        )
         return null
       }
-      this.#reportError(new RPCError(INVALID_REQUEST, 'Invalid message'))
+      this.#reportError(new RPCError({ code: INVALID_REQUEST, message: 'Invalid message' }))
       return null
     }
 
@@ -500,17 +507,20 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     }
 
     if (validated.value.method == null) {
-      // Message is a response — route to its pending exchange.
+      // Message is a response -- route to its pending exchange.
       this.#exchanges.routeResponse(id, validated.value as Response)
       return null
     }
 
-    // Message is a request — reject it if we have begun disposing; the read loop stays live
+    // Message is a request -- reject it if we have begun disposing; the read loop stays live
     // during the held-response flush, but a disposing server must not start new work.
     if (this.#disposing) {
-      return new RPCError(SERVER_SHUTTING_DOWN, 'Server is shutting down').toResponse(id)
+      return new RPCError({
+        code: SERVER_SHUTTING_DOWN,
+        message: 'Server is shutting down',
+      }).toResponse(id)
     }
-    // Message is a request — the scheduler owns its signal and decides when it runs.
+    // Message is a request -- the scheduler owns its signal and decides when it runs.
     return this.#scheduler.schedule(id, (signal) => {
       return toPromise(() => {
         return this._handleRequest(validated.value as T['HandleRequest'], signal)
@@ -521,7 +531,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
           }
           if (isHeldResponse(result)) {
             // The response is deferred: register it, then free the concurrency slot while
-            // keeping the request's identity. Nothing is written now — `#holdRequest` writes
+            // keeping the request's identity. Nothing is written now -- `#holdRequest` writes
             // when `terminal` resolves. The scheduler's own `reclaim` (on this `null`) is a
             // no-op for an id already moved out of `#running` by `detach`.
             this.#holdRequest(id, result, signal)
@@ -529,7 +539,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
             return null
           }
           return result == null
-            ? new RPCError(INTERNAL_ERROR, 'No result').toResponse(id)
+            ? new RPCError({ code: INTERNAL_ERROR, message: 'No result' }).toResponse(id)
             : { jsonrpc: '2.0' as const, id, result }
         },
         (cause) => {
@@ -560,7 +570,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
   /**
    * @internal Returns from `_handleRequest` to defer this request's JSON-RPC response until
    * `terminal` resolves, releasing the concurrency slot meanwhile. The resolved `terminal` is
-   * used as the response `result` verbatim — `ContextRPC` does not wrap it, so a subclass must
+   * used as the response `result` verbatim -- `ContextRPC` does not wrap it, so a subclass must
    * hand back an already-wrapped server result. See {@link HeldResponse}.
    */
   _holdResponse<Result>(params: {
@@ -578,11 +588,11 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
 
   /**
    * Tracks a held request and settles the cancel-vs-terminal race. Exactly one of two outcomes
-   * runs, whichever settles first (a local `done` flag guards it): `terminal` resolves — the
-   * response is written (after `beforeTerminal`) — or the request's signal aborts (cancel/
-   * dispose) — nothing is written. Either way `#removeHeld` is the single cleanup path removing
+   * runs, whichever settles first (a local `done` flag guards it): `terminal` resolves -- the
+   * response is written (after `beforeTerminal`) -- or the request's signal aborts (cancel/
+   * dispose) -- nothing is written. Either way `#removeHeld` is the single cleanup path removing
    * both records, and `settled` (stored alongside `signal` in `#heldRequests`) resolves once it
-   * has run — `#flushHeldResponses` awaits it on disposal.
+   * has run -- `#flushHeldResponses` awaits it on disposal.
    */
   #holdRequest(id: RequestID, held: HeldResponse<unknown>, signal: AbortSignal): void {
     // Settling the deferred `_holdResponse` created is what a subclass's `complete()` awaits.
@@ -700,7 +710,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         if (!this.#exchanges.has(id)) {
           return
         }
-        this.#exchanges.cancel(id, new RequestTimeoutError(`Request timed out after ${timeout}ms`))
+        this.#exchanges.cancel(
+          id,
+          new RequestTimeoutError({ message: `Request timed out after ${timeout}ms` }),
+        )
         this.notify('cancelled', { requestId: id }).catch(() => {})
       }, timeout)
       controller.promise.then(

@@ -452,6 +452,24 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.1.0
         version: 2.1.0
+      '@mokei/context-rpc':
+        specifier: workspace:^
+        version: link:../packages/context-rpc
+      '@mokei/host-monitor':
+        specifier: workspace:^
+        version: link:../packages/host-monitor
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../packages/host-protocol
+      '@mokei/logger':
+        specifier: workspace:^
+        version: link:../packages/logger
+      '@mokei/mcp-sqlite':
+        specifier: workspace:^
+        version: link:../mcp-servers/sqlite
+      '@mokei/mcp-system-one':
+        specifier: workspace:^
+        version: link:../mcp-servers/system-one
       '@sozai/generator':
         specifier: 'catalog:'
         version: 0.2.0
@@ -1137,6 +1155,9 @@ importers:
       '@enkaku/transport':
         specifier: 'catalog:'
         version: 0.21.0(@logtape/logtape@2.3.0)
+      '@mokei/http-client':
+        specifier: workspace:^
+        version: link:../http-client
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.2
@@ -13554,47 +13575,33 @@ snapshots:
 
   '@noble/hashes@2.4.0': {}
 
-  '@node-llama-cpp/linux-arm64@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-arm64@3.19.0': {}
 
-  '@node-llama-cpp/linux-armv7l@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-armv7l@3.19.0': {}
 
-  '@node-llama-cpp/linux-riscv64@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-riscv64@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64-cuda@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64-cuda@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64-vulkan@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64-vulkan@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64@3.19.0': {}
 
-  '@node-llama-cpp/mac-arm64-metal@3.19.0':
-    optional: true
+  '@node-llama-cpp/mac-arm64-metal@3.19.0': {}
 
-  '@node-llama-cpp/mac-x64@3.19.0':
-    optional: true
+  '@node-llama-cpp/mac-x64@3.19.0': {}
 
-  '@node-llama-cpp/win-arm64@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-arm64@3.19.0': {}
 
-  '@node-llama-cpp/win-x64-cuda-ext@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64-cuda-ext@3.19.0': {}
 
-  '@node-llama-cpp/win-x64-cuda@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64-cuda@3.19.0': {}
 
-  '@node-llama-cpp/win-x64-vulkan@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64-vulkan@3.19.0': {}
 
-  '@node-llama-cpp/win-x64@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64@3.19.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -13851,29 +13858,21 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@reflink/reflink-darwin-arm64@0.1.19':
-    optional: true
+  '@reflink/reflink-darwin-arm64@0.1.19': {}
 
-  '@reflink/reflink-darwin-x64@0.1.19':
-    optional: true
+  '@reflink/reflink-darwin-x64@0.1.19': {}
 
-  '@reflink/reflink-linux-arm64-gnu@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-arm64-gnu@0.1.19': {}
 
-  '@reflink/reflink-linux-arm64-musl@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-arm64-musl@0.1.19': {}
 
-  '@reflink/reflink-linux-x64-gnu@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-x64-gnu@0.1.19': {}
 
-  '@reflink/reflink-linux-x64-musl@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-x64-musl@0.1.19': {}
 
-  '@reflink/reflink-win32-arm64-msvc@0.1.19':
-    optional: true
+  '@reflink/reflink-win32-arm64-msvc@0.1.19': {}
 
-  '@reflink/reflink-win32-x64-msvc@0.1.19':
-    optional: true
+  '@reflink/reflink-win32-x64-msvc@0.1.19': {}
 
   '@reflink/reflink@0.1.19':
     optionalDependencies:
@@ -13885,7 +13884,6 @@ snapshots:
       '@reflink/reflink-linux-x64-musl': 0.1.19
       '@reflink/reflink-win32-arm64-msvc': 0.1.19
       '@reflink/reflink-win32-x64-msvc': 0.1.19
-    optional: true
 
   '@rolldown/binding-android-arm-eabi@1.2.5':
     optional: true

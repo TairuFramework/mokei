@@ -18,11 +18,11 @@ import { SSEWriter } from './sse-writer.js'
  * JSON-RPC error codes the specification maps to HTTP `400` on the Streamable HTTP
  * transport (specification/2026-07-28/basic/transports). A `2026-07-28` `'auto'` client
  * inspects the body of a `400` to tell a `2026-07-28` server from a `2025-11-25` one, so
- * these must arrive as a real `400` carrying the JSON-RPC error object — not tunnelled
+ * these must arrive as a real `400` carrying the JSON-RPC error object -- not tunnelled
  * inside a `200` SSE stream, which is where every other server-side error still goes.
  *
  * Not the whole rule: `isEnvelopeFailure` is the predicate the transport actually applies,
- * and it recognises one condition this set deliberately cannot express — see there. In
+ * and it recognises one condition this set deliberately cannot express -- see there. In
  * practice that condition is the one `ContextServer` raises, so nothing currently reaching a
  * client is classified by this set alone.
  */
@@ -33,11 +33,11 @@ export const BAD_REQUEST_CODES: ReadonlySet<number> = new Set([
 
 /**
  * `INVALID_PARAMS` is deliberately not in {@link BAD_REQUEST_CODES}: `ContextServer` raises
- * it both for an envelope violation (a missing required `_meta` key — an HTTP `400`) and for
- * an ordinary application error (an unknown tool name, invalid tool arguments — an HTTP
+ * it both for an envelope violation (a missing required `_meta` key -- an HTTP `400`) and for
+ * an ordinary application error (an unknown tool name, invalid tool arguments -- an HTTP
  * `200` carrying a JSON-RPC error, same as every other revision). Only the first is a
  * transport-level failure, and the two are told apart by {@link ENVELOPE_VIOLATION} on the
- * error's `data` — a structured marker `#resolveProtocol` (`packages/context-server/src/
+ * error's `data` -- a structured marker `#resolveProtocol` (`packages/context-server/src/
  * server.ts`) attaches at both its `INVALID_PARAMS` throw sites, rather than the message
  * text: a thrower in another package matching this transport's classification by opening its
  * message with the right words is a much easier invariant to break by accident than one
@@ -58,8 +58,8 @@ function isEnvelopeFailure(error: { code?: unknown; data?: unknown }): boolean {
 export const DEFAULT_STATELESS_TIMEOUT_MS = 30_000
 
 /**
- * Reads the revision a request declares in its own `_meta`. This — not the
- * `MCP-Protocol-Version` header — is what selects the stateless path, because it is what
+ * Reads the revision a request declares in its own `_meta`. This -- not the
+ * `MCP-Protocol-Version` header -- is what selects the stateless path, because it is what
  * `ContextServer` itself resolves the revision from, so the transport and the server can
  * never disagree about which revision a message belongs to.
  */
@@ -79,12 +79,12 @@ export function readRequestProtocolVersion(body: Record<string, unknown>): strin
 export type StatelessExchangeParams = {
   message: ClientMessage
   /**
-   * The `id` of the frame being exchanged, or `null` when it carries none — a notification.
+   * The `id` of the frame being exchanged, or `null` when it carries none -- a notification.
    *
    * Read off `body.id`, so it says nothing about the frame's *kind*: a JSON-RPC response also
-   * carries an id and would be treated as a request here. Unreachable rather than handled — the
+   * carries an id and would be treated as a request here. Unreachable rather than handled -- the
    * handler routes a POST here only on a `params._meta` protocol version, and a response has no
-   * `params` — but it is the id, not the kind, that this field reports.
+   * `params` -- but it is the id, not the kind, that this field reports.
    */
   requestID: string | number | null
   createServer: (transport: ServerTransport) => ContextServer
@@ -190,12 +190,12 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
       // The exchange is over either way; a dispose failure has nobody to report to.
     })
     // Settle unconditionally. When the exchange ends before the server has written anything
-    // — the client hung up, or the handler was disposed — whoever awaits this promise would
+    // -- the client hung up, or the handler was disposed -- whoever awaits this promise would
     // otherwise hang until the timeout fires. A no-op once a response is already settled,
     // which is every path that produced a real answer: `200` once the SSE stream opened,
     // `400` for a bad request, `504` on timeout. So `503` is only ever seen by a caller
-    // whose exchange ended with nothing written, and in both of those cases — disconnect
-    // and shutdown — there is no client left to read it.
+    // whose exchange ended with nothing written, and in both of those cases -- disconnect
+    // and shutdown -- there is no client left to read it.
     settle(new Response(null, { status: 503 }))
     onEnd?.(finish)
   }
@@ -224,8 +224,8 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
         let writer = sse
         if (writer == null) {
           if (finished) {
-            // The exchange already tore down — the client hung up, the handler was
-            // disposed, or the timeout fired — and whoever was waiting on `response` has
+            // The exchange already tore down -- the client hung up, the handler was
+            // disposed, or the timeout fired -- and whoever was waiting on `response` has
             // already gotten an answer. Building a fresh SSE stream here would create one
             // nobody will ever read.
             return
@@ -246,7 +246,7 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
           const stream = createSSEStream()
           // `replayBufferSize` is passed through rather than zeroed: `SSEWriter`'s ring
           // buffer indexes modulo its size, so 0 would produce a NaN index. Nothing replays
-          // a stateless exchange — the buffer is simply unused.
+          // a stateless exchange -- the buffer is simply unused.
           writer = new SSEWriter({
             writable: stream.writable,
             release: stream.release,
@@ -282,7 +282,7 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
   }
 
   if (requestID == null) {
-    // An id-less frame on a sessionless POST — in practice a notification. It is acknowledged
+    // An id-less frame on a sessionless POST -- in practice a notification. It is acknowledged
     // but never dispatched: the server that would receive it exists for this POST alone and is
     // discarded with it, so no state it could mutate outlives the exchange, and with no
     // request in flight there is nothing for it to correlate against either.

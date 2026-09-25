@@ -134,7 +134,7 @@ export class OpenAIClient {
       'chat/completions',
       {
         json: {
-          // sampling / tuning — overridable by providerOptions
+          // sampling / tuning -- overridable by providerOptions
           temperature: params.temperature,
           top_p: params.top_p,
           n: params.n,
@@ -142,7 +142,7 @@ export class OpenAIClient {
           presence_penalty: params.presence_penalty,
           frequency_penalty: params.frequency_penalty,
           ...params.providerOptions,
-          // structural / transport — asserted last so providerOptions cannot override them
+          // structural / transport -- asserted last so providerOptions cannot override them
           model: params.model,
           messages: params.messages,
           stream: params.stream,

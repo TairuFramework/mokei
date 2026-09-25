@@ -237,21 +237,13 @@ npm install @mokei/context-rpc
 
 ##### Constructor
 
-> **new RPCError**(`code`, `message`, `data?`): [`RPCError`](#rpcerror)
+> **new RPCError**(`params`): [`RPCError`](#rpcerror)
 
 ###### Parameters
 
-###### code
+###### params
 
-`number`
-
-###### message
-
-`string`
-
-###### data?
-
-`Record`\<`string`, `unknown`\>
+`RPCErrorParams`
 
 ###### Returns
 

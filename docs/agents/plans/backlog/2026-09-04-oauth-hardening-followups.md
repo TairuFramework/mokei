@@ -6,6 +6,13 @@ independent; none is a security bypass.
 
 ## Items
 
+- **Pass verified `AuthInfo` to MCP handlers.** `createBearerAuthGate` returns `authInfo` after
+  verification, but `serveHTTP` destructures only `response` and calls
+  `handler.handleRequest(ctx.req.raw)` without it. Neither `HTTPHandler` nor
+  `ContextServer`'s handler request carries verified identity. Design a per-request context
+  channel that preserves the gate's scope and makes subject/scopes available to tool and resource
+  handlers without treating client-supplied fields as authenticated data.
+
 - **Clear the token store on a definitive `invalid_grant`.** On a 401 the client attempts refresh
   before interactive re-authorization; when the refresh fails with a definitive OAuth
   `invalid_grant` (revoked/expired refresh token), the stale record is left in the store and only

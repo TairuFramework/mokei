@@ -1,5 +1,5 @@
 /**
- * Mokei Context host — Node stdio and daemon entry.
+ * Mokei Context host -- Node stdio and daemon entry.
  *
  * @module host-node
  */
@@ -18,5 +18,5 @@ export {
   type LoopbackAuthorizationHandlerOptions,
 } from './oauth/loopback.js'
 export { createNodeOAuthMiddleware, type NodeOAuthOptions } from './oauth/node-middleware.js'
-export { ProxyHost, type ProxySpawnParams } from './proxy.js'
+export { ProxyHost, type ProxyHostParams, type ProxySpawnParams } from './proxy.js'
 export type { SpawnContextServerParams, StderrOption } from './spawn.js'

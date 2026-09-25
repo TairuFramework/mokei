@@ -4,8 +4,8 @@
  * server, on both revisions.
  *
  * The SDK-peer interop matrix (`interop-sdk-client.test.ts` et al.) only ever served single-page
- * results, so the walk that spans pages — the exact path whose first-page truncation was a real bug
- * once (PR #36) — was never exercised against the SDK. The fixture serves `TOOL_COUNT` tools over
+ * results, so the walk that spans pages -- the path whose first-page truncation was a real bug
+ * once (PR #36) -- was never exercised against the SDK. The fixture serves `TOOL_COUNT` tools over
  * `PAGE_SIZE`-sized pages; a client that stopped after page one would return only the first
  * `PAGE_SIZE`, so the full-set assertion is non-vacuous. The walk itself is revision-agnostic, but
  * both revisions are covered because the negotiation and wire codec around it are not.

@@ -51,6 +51,7 @@
   },
   "devDependencies": {
     "@enkaku/transport": "catalog:",
+    "@mokei/http-client": "workspace:^",
     "@types/node": "catalog:"
   }
 }
