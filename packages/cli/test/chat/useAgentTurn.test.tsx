@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, test } from 'vitest'
 
-import { type AgentSessionLike, useAgentTurn } from '../../src/chat/hooks/use-agent-turn.js'
+import { type AgentSessionLike, useAgentTurn } from '../../src/chat/hooks/useAgentTurn.js'
 
 function mockAgent(events: Array<unknown>): AgentSessionLike {
   return {

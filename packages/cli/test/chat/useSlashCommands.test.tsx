@@ -16,7 +16,7 @@ vi.mock('@mokei/host-node', () => ({
 import {
   type UseSlashCommandsParams,
   useSlashCommands,
-} from '../../src/chat/hooks/use-slash-commands.js'
+} from '../../src/chat/hooks/useSlashCommands.js'
 import type { TranscriptEntry } from '../../src/chat/transcript.js'
 
 type Dispatch = (raw: string) => Promise<void>
@@ -125,7 +125,7 @@ describe('useSlashCommands — /context add', () => {
     })
   })
 
-  // Killing mutation: dropping the `= 'auto'` initializer in `use-slash-commands.ts`, which
+  // Killing mutation: dropping the `= 'auto'` initializer in `useSlashCommands.ts`, which
   // leaves `protocolVersion` `undefined` and defers to whatever the host defaults to. That is
   // `'auto'` today, so the mutation is currently silent on the wire -- this pins the CLI's own
   // contract instead, since `/context add` is the primary attach path for `2025-11-25`-only

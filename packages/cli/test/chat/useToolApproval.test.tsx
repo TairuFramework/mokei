@@ -5,7 +5,7 @@ import { act, createElement, useEffect, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, test } from 'vitest'
 
-import { useToolApproval } from '../../src/chat/hooks/use-tool-approval.js'
+import { useToolApproval } from '../../src/chat/hooks/useToolApproval.js'
 
 type HookAPI = ReturnType<typeof useToolApproval>
 

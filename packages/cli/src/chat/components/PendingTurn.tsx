@@ -1,7 +1,7 @@
 import { Box } from 'ink'
 
-import { useElapsed } from '../hooks/use-elapsed.js'
-import type { PendingApproval } from '../hooks/use-tool-approval.js'
+import { useElapsed } from '../hooks/useElapsed.js'
+import type { PendingApproval } from '../hooks/useToolApproval.js'
 import type { TurnState } from '../turn-reducer.js'
 import { AssistantMessage } from './AssistantMessage.js'
 import { ReasoningView } from './ReasoningView.js'

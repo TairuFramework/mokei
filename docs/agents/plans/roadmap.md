@@ -63,11 +63,10 @@ revisions at capability parity, nothing open.
 
 - **Conventions and docs pass** (2026-09-25) -- error classes and positional constructors now take
   one `<ClassName>Params` object with `#private` fields and getters; `ContextHost` keeps its state
-  private behind a narrow subclass API; source files are kebab-case (React components stay
-  PascalCase); comment style aligned; the architecture doc caught up with OAuth, subscriptions and
-  System One. **BREAKING:** error
-  constructors across the core packages, `ProxyHost({ client })`, and the removed `ContextHost`
-  underscore members.
+  private behind a narrow subclass API; source files are kebab-case (React components and hooks
+  keep PascalCase and camelCase); comment style aligned; the architecture doc caught up with OAuth,
+  subscriptions and System One. **BREAKING:** error constructors across the core packages,
+  `ProxyHost({ client })`, and the removed `ContextHost` underscore members.
 - **`.d.ts` consumer typecheck** (2026-09-25) -- `integration-tests/dts-consumer` imports every
   published entry point and typechecks the built declarations with `skipLibCheck: false`, as part
   of `test:types` and the CI build. See `completed/2026-09-25-dts-consumer-typecheck.complete.md`.
