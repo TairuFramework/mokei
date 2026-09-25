@@ -41,7 +41,7 @@ every public package, so one intent moves them all to the same version.
 See the `kigu:conventions` skill. Repo-specific only:
 
 - Never create a new package without checking with the user -- keep functionality in existing packages.
-- Use kebab-case file names everywhere; do not introduce camelCase file names.
+- Use kebab-case file names everywhere, except React component files, which use PascalCase (`ChatApp.tsx`). Do not introduce camelCase file names.
 - `pnpm` / `pnpx` only, never `npm` / `npx`.
 
 ## Additional Context

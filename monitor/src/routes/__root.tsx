@@ -13,7 +13,7 @@ import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { Provider as JotaiProvider } from 'jotai'
 import { lazy, Suspense } from 'react'
 
-import { EnkakuProvider } from '../enkaku/provider.js'
+import { EnkakuProvider } from '../enkaku/Provider.js'
 import { createHostClient, type HostClient } from '../host/client.js'
 
 const TanStackRouterDevtools =

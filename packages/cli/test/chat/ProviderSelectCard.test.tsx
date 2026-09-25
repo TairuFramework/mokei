@@ -2,7 +2,7 @@ import { render } from 'ink-testing-library'
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { ProviderSelectCard } from '../../src/chat/components/provider-select-card.js'
+import { ProviderSelectCard } from '../../src/chat/components/ProviderSelectCard.js'
 
 describe('ProviderSelectCard', () => {
   test('renders all provider options', () => {

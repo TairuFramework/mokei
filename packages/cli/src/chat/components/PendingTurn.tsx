@@ -3,11 +3,11 @@ import { Box } from 'ink'
 import { useElapsed } from '../hooks/use-elapsed.js'
 import type { PendingApproval } from '../hooks/use-tool-approval.js'
 import type { TurnState } from '../turn-reducer.js'
-import { AssistantMessage } from './assistant-message.js'
-import { ReasoningView } from './reasoning-view.js'
-import { ToolApprovalCard } from './tool-approval-card.js'
-import { ToolCallStatus } from './tool-call-status.js'
-import { WaitingStatus } from './waiting-status.js'
+import { AssistantMessage } from './AssistantMessage.js'
+import { ReasoningView } from './ReasoningView.js'
+import { ToolApprovalCard } from './ToolApprovalCard.js'
+import { ToolCallStatus } from './ToolCallStatus.js'
+import { WaitingStatus } from './WaitingStatus.js'
 
 export type PendingTurnProps = {
   turn: TurnState

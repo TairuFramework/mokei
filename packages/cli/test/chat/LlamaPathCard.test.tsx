@@ -2,7 +2,7 @@ import { render } from 'ink-testing-library'
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { LlamaPathCard } from '../../src/chat/components/llama-path-card.js'
+import { LlamaPathCard } from '../../src/chat/components/LlamaPathCard.js'
 
 describe('LlamaPathCard', () => {
   test('renders the path prompt', () => {

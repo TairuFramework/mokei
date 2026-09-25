@@ -1,7 +1,7 @@
 import { Spinner } from '@inkjs/ui'
 import { Box, Text } from 'ink'
 
-import { HANG_WARN_MS } from './tool-call-status.js'
+import { HANG_WARN_MS } from './ToolCallStatus.js'
 
 export type WaitingStatusProps = {
   elapsedMs?: number

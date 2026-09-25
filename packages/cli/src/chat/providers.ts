@@ -8,7 +8,7 @@ import { OpenAIProvider, type OpenAITypes } from '@mokei/openai-provider'
 import { Session } from '@mokei/session'
 import { createElement, type ReactNode } from 'react'
 
-import { ChatApp, type ChatAppProps } from './chat-app.js'
+import { ChatApp, type ChatAppProps } from './ChatApp.js'
 
 const API_KEY_ENV: Record<string, string> = {
   openai: 'OPENAI_API_KEY',

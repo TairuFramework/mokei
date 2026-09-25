@@ -7,7 +7,7 @@ vi.mock('../../src/chat/providers.js', () => ({
   buildChat,
 }))
 
-import { ChatLauncher } from '../../src/chat/chat-launcher.js'
+import { ChatLauncher } from '../../src/chat/ChatLauncher.js'
 
 const noopLifecycle = () => ({ dispose: null })
 

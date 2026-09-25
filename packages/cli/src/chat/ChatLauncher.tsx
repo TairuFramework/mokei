@@ -2,8 +2,8 @@ import { Spinner } from '@inkjs/ui'
 import { Box, Text, useApp } from 'ink'
 import { type ReactNode, useEffect, useState } from 'react'
 
-import { LlamaPathCard } from './components/llama-path-card.js'
-import { ProviderSelectCard } from './components/provider-select-card.js'
+import { LlamaPathCard } from './components/LlamaPathCard.js'
+import { ProviderSelectCard } from './components/ProviderSelectCard.js'
 import { type BuiltChat, buildChat, type ChatOptions } from './providers.js'
 
 // Mutable handle the command holds so it can await session disposal AFTER the
