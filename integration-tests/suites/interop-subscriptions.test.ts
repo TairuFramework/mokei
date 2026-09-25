@@ -3,7 +3,7 @@
  * SDK v2, in BOTH directions, over stdio and Streamable HTTP:
  *
  * 1. mokei's `subscriptions/listen` CLIENT against the SDK v2 SERVER.
- * 2. The SDK v2 CLIENT against mokei's `subscriptions/listen` SERVER (Task 19) — including the
+ * 2. The SDK v2 CLIENT against mokei's `subscriptions/listen` SERVER — including the
  *    two-clients-same-id case that exercises a stateless-HTTP durable hub's `(connectionID,
  *    subscriptionID)` keying: two concurrent SDK v2 clients both mint the same JSON-RPC request id
  *    for their listen (`listen:0`, each client's own first-call id), served by two per-POST
@@ -251,10 +251,10 @@ describe.each(ROWS)('mokei subscriptions client against the SDK v2 server $name'
     // the terminal against), and the `resourcesListChanged` event.
     const resourceUpdatedEvent = client.events.once('resourceUpdated')
     const listChangedEvent = client.events.once('resourcesListChanged')
-    let deliveredSubscriptionId: unknown
+    let deliveredSubscriptionID: unknown
     const perUriDelivered = new Promise<void>((resolve) => {
       client.onResourceUpdated(WATCHED_URI, (notification) => {
-        deliveredSubscriptionId = (notification as { params?: { _meta?: Record<string, unknown> } })
+        deliveredSubscriptionID = (notification as { params?: { _meta?: Record<string, unknown> } })
           .params?._meta?.[META_SUBSCRIPTION_ID]
         resolve()
       })
@@ -267,7 +267,7 @@ describe.each(ROWS)('mokei subscriptions client against the SDK v2 server $name'
     await listChangedEvent
     // The delivered notification carried the active subscription's id in its `_meta`.
     expect(
-      typeof deliveredSubscriptionId === 'string' || typeof deliveredSubscriptionId === 'number',
+      typeof deliveredSubscriptionID === 'string' || typeof deliveredSubscriptionID === 'number',
     ).toBe(true)
 
     // Graceful teardown: the SDK server writes the terminal listen result, which carries no
@@ -278,13 +278,13 @@ describe.each(ROWS)('mokei subscriptions client against the SDK v2 server $name'
     const terminals = await poll(() => terminalFrames(harness?.frames() ?? []))
     expect(terminals).toHaveLength(1)
     const terminal = terminals[0]
-    expect(terminal?.result?._meta?.[META_SUBSCRIPTION_ID]).toBe(deliveredSubscriptionId)
-    expect(terminal?.id).toBe(deliveredSubscriptionId)
+    expect(terminal?.result?._meta?.[META_SUBSCRIPTION_ID]).toBe(deliveredSubscriptionID)
+    expect(terminal?.id).toBe(deliveredSubscriptionID)
   })
 })
 
 /**
- * The other direction (Task 19): the official SDK v2 CLIENT against mokei's `subscriptions/listen`
+ * The other direction: the official SDK v2 CLIENT against mokei's `subscriptions/listen`
  * SERVER, over stdio (`subscriptions: true`, mokei owns the hub) and stateless Streamable HTTP
  * (`createMokeiSubscriptionConfig` served with a durable hub each per-POST server borrows).
  */

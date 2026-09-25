@@ -23,10 +23,12 @@ const noulAnswerValidator = createValidator(noulAnswerSchema)
 const usageValidator = createValidator(wireUsageSchema)
 
 function toIssues(prefix: string, issues: ReadonlyArray<{ message: string; path?: unknown }>) {
-  return issues.map((issue) => ({
-    message: `${prefix}: ${issue.message}`,
-    path: issue.path as ReadonlyArray<unknown>,
-  })) satisfies Array<ValidationIssue>
+  return issues.map((issue) => {
+    return {
+      message: `${prefix}: ${issue.message}`,
+      path: issue.path as ReadonlyArray<unknown>,
+    }
+  }) satisfies Array<ValidationIssue>
 }
 
 function run<T>(validator: Validator<T>, value: unknown, prefix: string): Array<ValidationIssue> {

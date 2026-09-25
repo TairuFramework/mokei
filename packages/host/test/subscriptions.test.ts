@@ -46,7 +46,7 @@ async function flush(times = 8): Promise<void> {
 }
 
 type ServerState = {
-  listenId: RequestID | undefined
+  listenID: RequestID | undefined
   resourceListCount: number
   resourceReadCount: number
   toolListCount: number
@@ -63,7 +63,7 @@ function startServer(
   getTools: () => Array<Tool>,
 ) {
   const state: ServerState = {
-    listenId: undefined,
+    listenID: undefined,
     resourceListCount: 0,
     resourceReadCount: 0,
     toolListCount: 0,
@@ -88,7 +88,7 @@ function startServer(
         }
         case 'subscriptions/listen': {
           const filter = (message.params as { notifications?: unknown }).notifications
-          state.listenId = message.id
+          state.listenID = message.id
           server.write({
             jsonrpc: '2.0',
             method: ACK_METHOD,
@@ -163,7 +163,7 @@ describe('ContextHost subscription events', () => {
     sub.emit({
       jsonrpc: '2.0',
       method: 'notifications/resources/list_changed',
-      params: { _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenId } },
+      params: { _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenID } },
     })
 
     expect(await changed).toEqual({ key: 'srv' })
@@ -193,7 +193,7 @@ describe('ContextHost subscription events', () => {
     sub.emit({
       jsonrpc: '2.0',
       method: 'notifications/resources/updated',
-      params: { uri: 'file:///x', _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenId } },
+      params: { uri: 'file:///x', _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenID } },
     })
 
     expect(await updated).toEqual({ key: 'srv', uri: 'file:///x' })
@@ -233,7 +233,7 @@ describe('ContextHost subscription events', () => {
     sub.emit({
       jsonrpc: '2.0',
       method: 'notifications/tools/list_changed',
-      params: { _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenId } },
+      params: { _meta: { [META_SUBSCRIPTION_ID]: sub.state.listenID } },
     })
 
     expect(await changed).toEqual({ key: 'srv' })

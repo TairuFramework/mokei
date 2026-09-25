@@ -118,11 +118,13 @@ export function createLocalToolID(name: string): string {
  * All methods throw errors explaining they're not available in local tool context.
  */
 function createStubClient(): ServerClient {
-  const notAvailable = (method: string) => () => {
-    throw new Error(
-      `${method}() is not available for local tools. ` +
-        'Local tools run outside of an MCP server context and cannot access client methods.',
-    )
+  const notAvailable = (method: string) => {
+    return () => {
+      throw new Error(
+        `${method}() is not available for local tools. ` +
+          'Local tools run outside of an MCP server context and cannot access client methods.',
+      )
+    }
   }
 
   return {

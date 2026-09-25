@@ -1957,11 +1957,11 @@ describe('HTTPTransport', () => {
 
       const transport = new HTTPTransport({ url: TEST_URL })
 
-      // Step 1: initialize
+      // Initialize the session.
       await transport.write(initializeRequest)
       await transport.read()
 
-      // Step 2: send initialized notification - triggers GET stream
+      // The initialized notification triggers the GET stream.
       await transport.write(initializedNotification)
 
       // Allow the GET stream to be opened (async)

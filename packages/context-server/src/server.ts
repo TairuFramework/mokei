@@ -152,7 +152,7 @@ export type ServerParams = ServerConfig & {
    */
   subscriptions?: boolean
   /**
-   * Borrows an externally-owned {@link SubscriptionHub} (the stateless-HTTP path, Task 13): the
+   * Borrows an externally-owned {@link SubscriptionHub} for stateless HTTP: the
    * server serves `subscriptions/listen` against it but neither re-subscribes its producers nor
    * disposes it. Affects capability advertising the same way `subscriptions: true` does.
    */
@@ -208,7 +208,7 @@ type ServerTypes = {
 /**
  * Process-unique id distinguishing one server's subscriptions from another's inside a shared
  * hub. A plain (stdio) server owns its own hub, so any stable value would do; a counter keeps it
- * RN-safe (no `crypto`) and lets Task 13's HTTP per-POST server inject its own via `connectionID`.
+ * RN-safe (no `crypto`) and lets the HTTP per-POST server inject its own via `connectionID`.
  */
 let nextConnectionID = 0
 
@@ -393,9 +393,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
    */
   #resolveProtocol(request: ClientRequest): ProtocolDefinition {
     if (request.method === 'initialize') {
-      const handshake = this.#protocolVersions.find((version) =>
-        isHandshakeRequired(PROTOCOLS[version]),
-      )
+      const handshake = this.#protocolVersions.find((version) => {
+        return isHandshakeRequired(PROTOCOLS[version])
+      })
       if (handshake == null) {
         throw new RPCError({
           code: UNSUPPORTED_PROTOCOL_VERSION,
@@ -557,9 +557,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     const liftedRequest = { ...request, params: liftedParams } as ClientRequest
     const client = this.#createClient(protocol, protocol.readRequestMeta(request).logLevel)
-    const result = await withRequestMeta(meta, () =>
-      this.#dispatchRequest(liftedRequest, protocol, client, signal, mrtr),
-    )
+    const result = await withRequestMeta(meta, () => {
+      return this.#dispatchRequest(liftedRequest, protocol, client, signal, mrtr)
+    })
     // A held `subscriptions/listen` response is already the wrapped terminal (or, more precisely,
     // its `terminal` promise resolves to one): the RPC layer writes it verbatim without wrapping,
     // so it must skip `wrapResult` here — passing it through `applyCacheHints`/`wrapResult` would

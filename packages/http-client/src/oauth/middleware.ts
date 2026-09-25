@@ -335,8 +335,8 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
           const refreshTokenEndpoint = tokens.tokenEndpoint
           const refreshToken = tokens.refreshToken
           const refreshIssuer = tokens.issuer
-          const refreshed = await withSingleFlight(resource, store, tokens.accessToken, () =>
-            exchangeRefresh({
+          const refreshed = await withSingleFlight(resource, store, tokens.accessToken, () => {
+            return exchangeRefresh({
               fetchUnwrapped: next,
               tokenEndpoint: refreshTokenEndpoint,
               clientID: config.clientID,
@@ -349,8 +349,8 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
               const merged = { ...r, tokenEndpoint: refreshTokenEndpoint, issuer: refreshIssuer }
               await store.set(resource, merged)
               return merged
-            }),
-          )
+            })
+          })
           tokens = refreshed
         } catch {
           // Swallow: keep the stale tokens already read above.
@@ -379,8 +379,8 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         const refreshToken = tokens.refreshToken
         const refreshIssuer = tokens.issuer
         try {
-          const refreshed = await withSingleFlight(resource, store, tokens.accessToken, () =>
-            exchangeRefresh({
+          const refreshed = await withSingleFlight(resource, store, tokens.accessToken, () => {
+            return exchangeRefresh({
               fetchUnwrapped: next,
               tokenEndpoint: refreshTokenEndpoint,
               clientID: config.clientID,
@@ -393,8 +393,8 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
               const merged = { ...r, tokenEndpoint: refreshTokenEndpoint, issuer: refreshIssuer }
               await store.set(resource, merged)
               return merged
-            }),
-          )
+            })
+          })
           tokens = refreshed
           return next(url, attach(init))
         } catch {
@@ -402,9 +402,9 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         }
       }
 
-      const authorized = await withSingleFlight(resource, store, tokens?.accessToken, () =>
-        authorize(next, resource, store, response.headers.get('WWW-Authenticate'), signal),
-      )
+      const authorized = await withSingleFlight(resource, store, tokens?.accessToken, () => {
+        return authorize(next, resource, store, response.headers.get('WWW-Authenticate'), signal)
+      })
       tokens = authorized
       return next(url, attach(init))
     }

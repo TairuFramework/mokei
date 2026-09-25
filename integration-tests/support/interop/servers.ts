@@ -617,7 +617,7 @@ export type MokeiSubscriptionsHTTPServer = RunningHTTPServer & {
 
 /**
  * Serves the mokei-owned subscribe-capable fixture over Streamable HTTP on `2026-07-28`, wiring a
- * durable `SubscriptionHub` per Task 13's stateless-HTTP model: each POST is served by its own
+ * durable `SubscriptionHub` for stateless HTTP: each POST is served by its own
  * transport-isolated per-POST `ContextServer`, which *borrows* this hub via `subscriptionHub` and
  * mints its own `connectionID` — exactly the setup the two-clients-same-id interop case exercises.
  *

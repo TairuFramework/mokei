@@ -1,8 +1,8 @@
 import { render } from 'ink-testing-library'
 import { describe, expect, test } from 'vitest'
 
-import { AssistantMessage } from '../../src/chat/components/AssistantMessage.js'
-import { UserMessage } from '../../src/chat/components/UserMessage.js'
+import { AssistantMessage } from '../../src/chat/components/assistant-message.js'
+import { UserMessage } from '../../src/chat/components/user-message.js'
 
 const LONG =
   'This is a fairly long line that should wrap across multiple lines and the continuation lines should hang-indent under the narrow icon column rather than leaving a wide empty gutter on the left.'

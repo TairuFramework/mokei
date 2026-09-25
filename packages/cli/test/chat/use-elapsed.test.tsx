@@ -2,7 +2,7 @@ import { render } from 'ink-testing-library'
 import { act, useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { useElapsed } from '../../src/chat/hooks/useElapsed.js'
+import { useElapsed } from '../../src/chat/hooks/use-elapsed.js'
 
 function Harness({ active, onTick }: { active: boolean; onTick: (now: number) => void }) {
   const now = useElapsed(active)

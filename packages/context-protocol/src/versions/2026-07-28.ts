@@ -561,9 +561,11 @@ export const PROTOCOL = {
   wrapResult: (
     value: Record<string, unknown>,
     context: ServerResultContext,
-  ): Record<string, unknown> => ({
-    ...value,
-    resultType: value.resultType === 'input_required' ? 'input_required' : 'complete',
-    _meta: { ...asRecord(value._meta), [META_SERVER_INFO]: context.serverInfo },
-  }),
+  ): Record<string, unknown> => {
+    return {
+      ...value,
+      resultType: value.resultType === 'input_required' ? 'input_required' : 'complete',
+      _meta: { ...asRecord(value._meta), [META_SERVER_INFO]: context.serverInfo },
+    }
+  },
 } satisfies ProtocolDefinition

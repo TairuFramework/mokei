@@ -5,19 +5,19 @@ import { ConfirmCard, IconLine, SystemNotice } from '@tejika/ui'
 import { Box, Static, Text, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { AssistantMessage } from './components/AssistantMessage.js'
-import { Footer } from './components/Footer.js'
-import { HelpCard } from './components/HelpCard.js'
-import { ModelSelectCard } from './components/ModelSelectCard.js'
-import { PendingTurn } from './components/PendingTurn.js'
-import { ToolResultCard } from './components/ToolResultCard.js'
-import { ToolSelectCard } from './components/ToolSelectCard.js'
-import { UserMessage } from './components/UserMessage.js'
-import { type AgentSessionLike, useAgentTurn } from './hooks/useAgentTurn.js'
-import { useChatEvents } from './hooks/useChatEvents.js'
-import { useSession } from './hooks/useSession.js'
-import { type ChatModal, useSlashCommands } from './hooks/useSlashCommands.js'
-import { useToolApproval } from './hooks/useToolApproval.js'
+import { AssistantMessage } from './components/assistant-message.js'
+import { Footer } from './components/footer.js'
+import { HelpCard } from './components/help-card.js'
+import { ModelSelectCard } from './components/model-select-card.js'
+import { PendingTurn } from './components/pending-turn.js'
+import { ToolResultCard } from './components/tool-result-card.js'
+import { ToolSelectCard } from './components/tool-select-card.js'
+import { UserMessage } from './components/user-message.js'
+import { type AgentSessionLike, useAgentTurn } from './hooks/use-agent-turn.js'
+import { useChatEvents } from './hooks/use-chat-events.js'
+import { useSession } from './hooks/use-session.js'
+import { type ChatModal, useSlashCommands } from './hooks/use-slash-commands.js'
+import { useToolApproval } from './hooks/use-tool-approval.js'
 import { useTranscript } from './transcript.js'
 
 export type ChatAppProps<T extends ProviderTypes> = {
@@ -180,12 +180,11 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
     }
   })
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    return () => {
       if (quitTimerRef.current) clearTimeout(quitTimerRef.current)
-    },
-    [],
-  )
+    }
+  }, [])
 
   return (
     <Box flexDirection="column">
@@ -242,15 +241,19 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
 
       {modal === 'tools' ? (
         <ToolSelectCard
-          groups={Object.entries(session.contextHost.contexts).map(([key, ctx]) => ({
-            contextKey: key,
-            tools: ctx.tools.map((t) => ({
-              id: t.id,
-              name: t.tool.name,
-              description: t.tool.description,
-              enabled: t.enabled,
-            })),
-          }))}
+          groups={Object.entries(session.contextHost.contexts).map(([key, ctx]) => {
+            return {
+              contextKey: key,
+              tools: ctx.tools.map((t) => {
+                return {
+                  id: t.id,
+                  name: t.tool.name,
+                  description: t.tool.description,
+                  enabled: t.enabled,
+                }
+              }),
+            }
+          })}
           onConfirm={(enabled) => {
             for (const [key, ctx] of Object.entries(session.contextHost.contexts)) {
               session.contextHost.setContextTools({

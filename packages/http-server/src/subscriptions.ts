@@ -35,9 +35,8 @@ export type SubscriptionExchangeParams = {
   requestID: string | number | null
   /**
    * Builds the transport-isolated `ContextServer` for this exchange. Takes the factory-object
-   * form deliberately: Task 13 owns the final factory signature (whatever else the HTTP layer
-   * ends up threading through), so this is kept to the minimal shape `ContextServer` itself
-   * already accepts today -- this exchange's isolated `transport`, the borrowed
+   * form deliberately, with the minimal shape `ContextServer` accepts for this exchange:
+   * its isolated `transport`, the borrowed
    * `subscriptionHub`, and the `connectionID` minted for it.
    */
   createServer: (params: {
@@ -47,14 +46,14 @@ export type SubscriptionExchangeParams = {
   }) => ContextServer
   /**
    * The shared hub this exchange's throwaway server borrows. Owned, and disposed, by whoever
-   * drives the durable side of subscriptions (Task 13) -- this exchange only ever registers
+   * drives the durable side of subscriptions -- this exchange only ever registers
    * against it via the server it builds, never creates or tears it down itself.
    */
   subscriptionHub: SubscriptionHub
   replayBufferSize: number
   /**
    * RN-safe id source (`@sozai/runtime`) this exchange mints its `connectionID` from. Defaults
-   * via `createRuntime()` when omitted; Task 13 threads its own instance from the handler.
+   * via `createRuntime()` when omitted; the handler threads its own instance through.
    */
   runtime?: Partial<Runtime>
   /**
