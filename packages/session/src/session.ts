@@ -206,7 +206,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     return raceSignal(setupPromise, params.signal).catch(async (err) => {
       // A late-registering spawn may complete after the abort wins the race.
       // If the key is not yet registered, wait until it appears (context:added)
-      // or until setupPromise settles without registering — then remove either
+      // or until setupPromise settles without registering -- then remove either
       // way so no orphaned child is left behind.
       if (!this.#contextHost.getContextKeys().includes(params.key)) {
         const ac = new AbortController()

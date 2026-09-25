@@ -51,7 +51,7 @@ describe('protocol version detection over HTTP', () => {
     server = await startMokeiHTTPServer(['2025-11-25'])
     client = connectMokeiHTTPClient(server.url, '2026-07-28')
 
-    // The server's own `-32022`, carried out of the HTTP `400` body — not a flattened
+    // The server's own `-32022`, carried out of the HTTP `400` body -- not a flattened
     // "HTTP 400: ..." internal error, which would tell the operator nothing actionable.
     // vitest's failure printer renders the received `RPCError` without its `code`/`data`
     // getters, but `subsetEquality` walks the prototype chain and does read them.

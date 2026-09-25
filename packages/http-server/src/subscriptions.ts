@@ -74,23 +74,11 @@ export type SubscriptionExchangeParams = {
 }
 
 /**
- * Runs one `subscriptions/listen` request against a throwaway, transport-isolated
- * `ContextServer` that borrows a shared `SubscriptionHub`, and returns its HTTP response.
- *
- * Forked from `runStatelessExchange` (`./stateless.ts`) rather than sharing it, because a listen
- * exchange's response lifecycle is fundamentally different from an ordinary stateless one:
- *
- * - No response timeout. `runStatelessExchange`'s `DEFAULT_STATELESS_TIMEOUT_MS` timer exists
- *   because a stateless request is expected to answer promptly; a listen has no such deadline --
- *   it is meant to sit open for as long as the subscription lives, which can be indefinitely.
- * - No close-after-ack. The acknowledgement is a notification, not the response, so it does not
- *   close the stream -- it stays open for the life of the subscription. The held terminal *is* the
- *   response (`isOwnResponse`) and the end of the subscription, so writing it finishes the exchange.
- *   The terminal comes only from graceful teardown (`hub.endAllGracefully()`); abrupt teardown
- *   (disconnect, backpressure/write failure) writes no terminal and tears down via abort/dispose.
- * - Abort/finish wiring is otherwise unchanged: a client disconnect or request abort still tears
- *   the exchange down, disposes its throwaway server, and settles a `503` for anyone still
- *   awaiting the response promise (which, in practice, nobody is once the SSE stream has opened).
+ * Run `subscriptions/listen` on a transport-isolated server borrowing the shared hub.
+ * Unlike `runStatelessExchange`, a listen has no response deadline: its ack is a
+ * notification, while only graceful teardown (`hub.endAllGracefully()`) writes
+ * the terminal response. Disconnects and write failures abort without a terminal;
+ * they dispose the server and settle any pending response promise with 503.
  */
 export function runSubscriptionExchange(params: SubscriptionExchangeParams): Promise<Response> {
   const {
@@ -220,7 +208,7 @@ export function runSubscriptionExchange(params: SubscriptionExchangeParams): Pro
         throw error
       }
     },
-    // A borrower disposes itself on writer failure, closing its transport's writer — that reaches
+    // A borrower disposes itself on writer failure, closing its transport's writer -- that reaches
     // here, so finish the exchange (close the SSE body, settle the response).
     close() {
       finish()

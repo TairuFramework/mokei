@@ -27,7 +27,7 @@ const verifier: OAuthTokenVerifier = {
 
 /**
  * `server.address()` is `null` until the underlying TCP socket finishes binding, which is
- * asynchronous even for an IP-literal hostname on port 0 — so callers must wait for the
+ * asynchronous even for an IP-literal hostname on port 0 -- so callers must wait for the
  * `listening` event before reading the assigned port.
  */
 async function getPort(server: ReturnType<typeof serveHTTP>['server']): Promise<number> {

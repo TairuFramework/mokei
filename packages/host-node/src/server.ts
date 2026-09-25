@@ -134,7 +134,7 @@ export function createHandlers({
 }
 
 // ---------------------------------------------------------------------------
-// Daemon entry — runs only when this module is the main process entry point.
+// Daemon entry -- runs only when this module is the main process entry point.
 // Spawned by @tejika/process spawnDaemon with `--socket-path <path>`.
 // The socket bind, chmod 0600, pidfile, and lifecycle are owned by
 // @tejika/process; this module only supplies the request handlers.

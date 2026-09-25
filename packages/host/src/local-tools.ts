@@ -3,12 +3,12 @@ import type { GenericToolDefinition, ServerClient, ToolDefinitions } from '@moke
 import { defaultMintRequestState, isInputRequiredResult } from '@mokei/context-server'
 
 /**
- * Request handed to a local tool's execute function: the validated `input` — the thing the
- * tool's `inputSchema` describes — plus the signal that aborts if the caller cancels.
+ * Request handed to a local tool's execute function: the validated `input` -- the thing the
+ * tool's `inputSchema` describes -- plus the signal that aborts if the caller cancels.
  *
  * Mirrors the `HandlerRequest` a `createTool` handler receives, so a tool is written the
  * same way whether it runs locally or behind an MCP server. The wire calls this field
- * `arguments`; handlers see `input`, which (unlike `arguments`) can be destructured — the
+ * `arguments`; handlers see `input`, which (unlike `arguments`) can be destructured -- the
  * latter is a reserved binding name in strict mode.
  */
 export type LocalToolRequest<TArgs = Record<string, unknown>> = {
@@ -54,7 +54,7 @@ export type LocalToolDefinition<TArgs = Record<string, unknown>> = {
   description?: string
   /** JSON Schema defining the expected input parameters */
   inputSchema: InputSchema
-  /** Optional annotations providing hints about tool behavior */
+  /** Optional annotations providing hints about tool behaviour */
   annotations?: ToolAnnotations
   /** Function to execute when the tool is called */
   execute: LocalToolExecute<TArgs>
@@ -181,7 +181,7 @@ export function toolToLocalTool(params: ToolToLocalToolParams): LocalToolDefinit
         // one when invoked outside callLocalTool's cancellation plumbing.
         signal: request.signal ?? new AbortController().signal,
         // Local tools run outside any MCP request/response cycle, so there is no wire to
-        // round-trip a `requestState` over — but `mintRequestState` is a pure encoder a
+        // round-trip a `requestState` over -- but `mintRequestState` is a pure encoder a
         // handler may still call while building an `inputRequired()` result, so it gets the
         // same default `ContextServer` falls back to rather than a throwing stub.
         mintRequestState: defaultMintRequestState,

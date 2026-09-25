@@ -171,7 +171,7 @@ async function parseJSONResponse(res: Response, url: string, maxBytes: number): 
 
 /**
  * A verifier for OAuth 2.0 access tokens (JWTs) signed with RS256 or ES256,
- * verified against a JWKS fetched from the authorization server.
+ * verified against a JWKS fetched from the authorisation server.
  */
 export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifier {
   const fetchFn: FetchLike = config.fetch ?? (globalThis.fetch as FetchLike)
@@ -325,7 +325,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
     if (!matchesAlg(jwk, alg)) return { found: true, verified: false }
     // A malformed JWK makes `importKey`/`verify` throw instead of returning false. Treat that like
     // a signature failure (`found: true`, `verified: false`): it must not escape as an HTTP 500,
-    // and `found: true` keeps the amplification guard intact — the caller only refetches when no
+    // and `found: true` keeps the amplification guard intact -- the caller only refetches when no
     // key is found.
     try {
       const key = await importVerifyKey(jwk, algParams)
@@ -368,7 +368,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
       let result = await findKeyAndVerify(header, algParams, alg, signingInput, signature, false)
       if (!result.found) {
         // Unknown kid: possibly a rotation. Force one JWKS refresh and retry. (A found-but-failed
-        // key is not retried — see findKeyAndVerify.)
+        // key is not retried -- see findKeyAndVerify.)
         result = await findKeyAndVerify(header, algParams, alg, signingInput, signature, true)
       }
       if (!result.verified) {

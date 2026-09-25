@@ -234,7 +234,7 @@ export type SamplingParams = {
   topP?: number
   /**
    * Raw backend options merged last into the request body (escape hatch; overrides typed params).
-   * Intended for sampling/tuning keys only — these keys are spread last into the request body, so
+   * Intended for sampling/tuning keys only -- these keys are spread last into the request body, so
    * structural fields (e.g. `model`, `messages`) will be overridden if present here.
    * Note: `signal` and `stream` are automatically stripped before the bag reaches the provider;
    * those keys are reserved for the transport/stream machinery and cannot be overridden here.

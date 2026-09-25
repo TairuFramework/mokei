@@ -51,7 +51,7 @@ describe('OllamaProvider sampling params', () => {
       providerOptions: { model: 'evil', stream: false, top_p: 0.95 },
     })
 
-    // top-level structural fields are safe — providerOptions go into options sub-object
+    // top-level structural fields are safe -- providerOptions go into options sub-object
     expect(calls[0]?.model).toBe('llama3') // NOT 'evil'
     expect(calls[0]?.stream).toBe(true) // NOT false
     const options = calls[0]?.options as Record<string, unknown>

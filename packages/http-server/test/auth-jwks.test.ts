@@ -205,14 +205,14 @@ test('a bad signature on a known kid does not force a JWKS refetch (amplificatio
   })
   await expect(verifier.verifyAccessToken(forgedToken, { resource })).rejects.toThrow()
   // The `kid` matched a cached key; a bad signature against it must not trigger a forced
-  // refetch — otherwise an attacker sending garbage signed with a valid kid could force one
+  // refetch -- otherwise an attacker sending garbage signed with a valid kid could force one
   // unauthenticated JWKS fetch per request.
   expect(fetchCalls).toBe(1)
 })
 
 test('an alg mismatch on a known kid does not force a JWKS refetch (amplification guard)', async () => {
   // The token's header claims RS256 (an allowlisted alg) while its `kid` resolves to the
-  // cached EC (ES256) key. The `kid` is found, so this is a bad token, not a rotation — it
+  // cached EC (ES256) key. The `kid` is found, so this is a bad token, not a rotation -- it
   // must be rejected with no forced refetch. Otherwise anyone knowing a published `kid`
   // could amplify unauthenticated JWKS fetches by flipping the header `alg`.
   const { token, jwk } = await makeToken({ header: { alg: 'RS256' } })
@@ -291,7 +291,7 @@ test('RFC 8414 discovery inserts the well-known segment before a path-bearing is
   }
   const verifier = createJWKSVerifier({ issuer: pathIssuer, fetch: fetchFn as never })
   const { token } = await makeToken({ payload: { iss: pathIssuer } })
-  // Verification itself fails (empty JWKS) — only the discovery URL is asserted below.
+  // Verification itself fails (empty JWKS) -- only the discovery URL is asserted below.
   await verifier.verifyAccessToken(token, { resource }).catch(() => {})
   expect(fetchedMetadataURL).toBe(metadataURL)
 })
@@ -389,7 +389,7 @@ test('a structurally malformed JWK (matching kid) rejects as invalid_token, not 
 })
 
 test('an unknown kid still forces exactly one JWKS refresh and retry', async () => {
-  // The token's `kid` never appears in the JWKS at all, so verification still fails overall —
+  // The token's `kid` never appears in the JWKS at all, so verification still fails overall --
   // what this test pins down is the *fetch count*: the first (cache-populating) fetch, plus
   // exactly one forced refresh for the not-found kid, and no more.
   const { token, jwk } = await makeToken({ header: { kid: 'nonexistent-kid' } })

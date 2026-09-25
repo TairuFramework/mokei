@@ -1,5 +1,5 @@
 /**
- * Mokei Context host — Node stdio and daemon entry.
+ * Mokei Context host -- Node stdio and daemon entry.
  *
  * @module host-node
  */

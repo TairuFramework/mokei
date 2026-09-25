@@ -105,7 +105,7 @@ test('a signal aborted mid-flight rejects the in-progress authorization', async 
 
 // C1: the win32 browser opener must never route through cmd.exe -- `cmd.exe /c start` is a
 // shell builtin that re-parses metacharacters (&, |, ^, %) in the command line, and OAuth
-// authorization URLs always contain `&` (query-param separators). Assert rundll32 receives the
+// authorisation URLs always contain `&` (query-param separators). Assert rundll32 receives the
 // full URL, `&`s intact, as a single discrete argv element.
 test('browserOpenCommand: win32 uses rundll32 FileProtocolHandler with the URL as one arg (not cmd.exe)', () => {
   const url = 'https://as.example/auth?a=1&b=2&state=x'

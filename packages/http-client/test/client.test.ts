@@ -19,8 +19,8 @@ type PostedMessage = { id?: number; method?: string }
  * A `fetch` implementation that answers setup's `server/discover` with a real result and hands
  * every other POST to `otherwise`, which receives the parsed request body so it can echo the id.
  *
- * A client on a revision with no handshake opens with one bounded `server/discover` — its
- * liveness check, standing in for the handshake — so a mock that leaves it unanswered stalls
+ * A client on a revision with no handshake opens with one bounded `server/discover` -- its
+ * liveness check, standing in for the handshake -- so a mock that leaves it unanswered stalls
  * setup and nothing the test is actually about ever reaches the wire.
  */
 function answerDiscover(
@@ -159,14 +159,14 @@ describe('createHTTPClient', () => {
     )
 
     const client = createHTTPClient({ url: TEST_URL, protocolVersion: '2026-07-28' })
-    // The server's own message, not the synthesized `HTTP 400:` fallback — the code and `data`
+    // The server's own message, not the synthesized `HTTP 400:` fallback -- the code and `data`
     // an `'auto'` client reads survive the trip.
     await expect(client.request('tools/list', {})).rejects.toThrow('Unsupported protocol version')
 
     await client.dispose()
   })
 
-  // Proves createHTTPClient forwards ClientParams fields beyond protocolVersion — a listRoots
+  // Proves createHTTPClient forwards ClientParams fields beyond protocolVersion -- a listRoots
   // handler is otherwise dropped silently, and MRTR (SEP-2322) needs it to answer a server's
   // embedded `roots/list` input request through this one-call helper.
   test('forwards a listRoots handler, declaring the roots capability on the handshake', async () => {
@@ -208,7 +208,7 @@ describe('createHTTPClient', () => {
   test('a 2026-07-28 cancellation is sent carrying its protocol version', async () => {
     // The POST that carries a cancellation has no session to be placed by, so the only thing
     // that tells a stateless server which revision it belongs to is the version in its own
-    // `_meta` — the same key the routing gate reads off a request. Without it the POST is
+    // `_meta` -- the same key the routing gate reads off a request. Without it the POST is
     // answered `400` instead of being routed; with it the server acknowledges it `202`.
     // Asserting the key here, rather than only that the POST happened, is the point: the send
     // existing proves nothing if it cannot be placed.
@@ -240,7 +240,7 @@ describe('createHTTPClient', () => {
     const body = JSON.parse(call[1].body as string) as { params?: Record<string, unknown> }
     const meta = body.params?._meta as Record<string, unknown> | undefined
     expect(meta?.['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
-    // The request envelope stays off it — only what the routing gate needs is stamped.
+    // The request envelope stays off it -- only what the routing gate needs is stamped.
     expect(meta).not.toHaveProperty('io.modelcontextprotocol/clientCapabilities')
     // The header is derived from that same key, so it now agrees rather than being absent.
     expect(call[1].headers['MCP-Protocol-Version']).toBe('2026-07-28')

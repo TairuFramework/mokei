@@ -23,12 +23,12 @@ export { isInputRequiredResult }
  * Hooks protecting the integrity of `requestState`.
  *
  * `requestState` round-trips through the client and re-enters the server as attacker-controlled
- * input. SEP-2322 requires a server that lets it influence authorization, resource access or
+ * input. SEP-2322 requires a server that lets it influence authorisation, resource access or
  * business logic to protect its integrity and to reject state that fails verification. mokei ships
  * no crypto and imposes no key management: with no `verify`, the raw string reaches the handler and
  * is untrusted; with one, the seam refuses state the hook rejects before the handler runs.
  *
- * `mint` alone is legitimate (a custom encoding with no verification — the handler gets back
+ * `mint` alone is legitimate (a custom encoding with no verification -- the handler gets back
  * exactly what it minted, still untrusted). `verify` alone is not: without a matching `mint`, a
  * handler mints with the default `JSON.stringify`, and a custom `verify` written for a different
  * encoding rejects that on every retry. `ContextServer`'s constructor throws for that combination
@@ -57,7 +57,7 @@ export type LiftedRetryParams = {
  * Splits the MRTR retry fields out of a request's params, so a handler sees exactly the shape it
  * sees on `2025-11-25`.
  *
- * Returns the original reference untouched when there is nothing to lift — the common case is a
+ * Returns the original reference untouched when there is nothing to lift -- the common case is a
  * round-one request, and copying every params object for it would be waste.
  */
 export function liftRetryParams(params: unknown): { params: unknown; lifted: LiftedRetryParams } {
@@ -116,7 +116,7 @@ export function inputRequired(params: {
     )
   }
   // The spreads above are conditional, so TypeScript can't narrow the result to a specific
-  // `InputRequiredResult` union member — the `if` above already enforces the same at-least-one
+  // `InputRequiredResult` union member -- the `if` above already enforces the same at-least-one
   // invariant the type derives from the schema's `anyOf`.
   return {
     resultType: 'input_required',

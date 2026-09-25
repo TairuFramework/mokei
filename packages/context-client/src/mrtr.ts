@@ -10,7 +10,7 @@ export { isInputRequiredResult }
  * MRTR is a request-level retry loop, not a stream: a server answers `tools/call`, `prompts/get`
  * or `resources/read` with a terminal `input_required` result, the client fulfils the embedded
  * requests, and the client re-sends the *same* request with `inputResponses` and the echoed
- * `requestState`. Nothing here touches the RPC layer's exchange registry — every round is an
+ * `requestState`. Nothing here touches the RPC layer's exchange registry -- every round is an
  * ordinary request.
  *
  * Every effect is injected. The module has no transport, no clock and no handler table of its own,
@@ -176,7 +176,7 @@ export async function runInputRequiredFlow(params: RunInputRequiredFlowParams): 
     round += 1
     if (round > maxRounds) {
       // `payload` is `Omit<InputRequiredResult, 'resultType'>`, so both its fields are optional at
-      // the type level — but it always originates from a wire-validated `InputRequiredResult`
+      // the type level -- but it always originates from a wire-validated `InputRequiredResult`
       // (`params.first`, or a prior round's checked `result`), so the schema's at-least-one
       // invariant already holds here at runtime.
       throw new InputRequiredRoundsExceededError({

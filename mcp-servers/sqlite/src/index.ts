@@ -87,13 +87,13 @@ export function createSQLiteTools(db: DatabaseSync) {
 export function createSQLiteConfig(db: DatabaseSync) {
   // `satisfies`, not a `: ServerConfig` annotation. The annotation widens `tools` to the
   // optional `ToolDefinitions | undefined`, which fails the `extends ToolDefinitions` check in
-  // ExtractServerTypes — collapsing SQLiteServerTypes to `Record<string, never>` and typing
+  // ExtractServerTypes -- collapsing SQLiteServerTypes to `Record<string, never>` and typing
   // every tool's arguments as `never`, so the typed client could not be called at all.
   return {
     name: 'sqlite',
     version: '0.1.0',
     // Both revisions: these ship with mokei and are what its host and CLI point at by
-    // default, so they must answer a `2026-07-28` client — while still reaching every
+    // default, so they must answer a `2026-07-28` client -- while still reaching every
     // client that only speaks `2025-11-25`, including the current SDK release.
     protocolVersions: ['2026-07-28', '2025-11-25'],
     tools: createSQLiteTools(db),

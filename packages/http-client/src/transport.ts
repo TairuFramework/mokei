@@ -32,17 +32,10 @@ import {
 const INTERNAL_ERROR_CODE = -32603
 
 /**
- * A JSON-RPC error response carried in a non-OK HTTP body, or `null` if the body is not one
- * — or names a different request, which would mean routing an error to the wrong caller.
- *
- * The accepted shape is deliberately no looser than what the RPC layer's inbound validator
- * admits: a response failing that validation is dropped there rather than rejected, and no
- * timeout covers an ordinary request, so an under-checked frame would leave its caller waiting
- * forever. It must be no *stricter* either, for the mirror-image reason: a frame refused here
- * comes back as a synthesized internal error whose message is the raw body, losing the code and
- * `data` an `'auto'` client reads. So the two checks below are exactly the constraints
- * `errorResponse` places on an error object, and `error.data` — whose value JSON-RPC leaves
- * entirely to the server — is checked here no more than it is there.
+ * Accept a JSON-RPC error in a failed HTTP response only for the matching request.
+ * Match `errorResponse` validation: a looser check could leave the RPC caller waiting
+ * forever; a stricter check would discard the code and `data` needed by `'auto'` clients.
+ * JSON-RPC leaves `error.data` unconstrained.
  */
 function parseJSONRPCError(
   body: string,
@@ -77,10 +70,9 @@ function parseJSONRPCError(
 }
 
 /**
- * Whether a carried JSON-RPC error is the peer rejecting an `Mcp-Param-*` header that disagrees
- * with the body — the only `-32020` a schema refresh can fix. The same code covers standard-header
- * cross-check failures (`Mcp-Method`, `Mcp-Name`, `MCP-Protocol-Version`), which it cannot, and
- * `error.data` is server-defined, so an absent or unexpected shape fails this check.
+ * Only an `Mcp-Param-*` mismatch can be fixed by refreshing the schema. The same
+ * `-32020` also covers `Mcp-Method`, `Mcp-Name`, and `MCP-Protocol-Version`; absent or
+ * unexpected server-defined `error.data` must not trigger a retry.
  */
 function isParamHeaderMismatch(carried: Record<string, unknown>): boolean {
   const error = carried.error as { code?: unknown; data?: unknown } | undefined
@@ -101,19 +93,9 @@ function sameParamHeaders(a: Record<string, string>, b: Record<string, string>):
 }
 
 /**
- * The methods whose `Mcp-Name` request header mirrors a field of the request body, and which
- * field supplies it (specification/2026-07-28/basic/transports, standard request headers).
- *
- * Keyed by method rather than read off whatever `name` a body happens to carry: the source
- * field is not the same for all three — `resources/read` names its subject in `uri` — and a
- * method outside this table must not acquire the header just because its params carry a `name`.
- * A method the specification adds later then arrives here as a missing entry, which a
- * conformant peer rejects visibly, rather than as a header quietly built from the wrong field.
- *
- * A `Map` rather than an object literal: methods come from a fixed table today, so nothing
- * currently reaches this as a plain property lookup, but an object literal is a lookup that
- * invites it — a body naming `constructor` or `__proto__` as its method would resolve to
- * `Object.prototype` machinery instead of `undefined`.
+ * Body fields used for `Mcp-Name` (specification/2026-07-28/basic/transports).
+ * `resources/read` uses `uri`; unknown methods must not inherit a `name` header.
+ * A `Map` avoids inherited `constructor`/`__proto__` lookups if methods become dynamic.
  */
 const MCP_NAME_HEADER_SOURCE: ReadonlyMap<string, string> = new Map([
   ['tools/call', 'name'],
@@ -144,18 +126,11 @@ export type HTTPTransportParams = {
   /** Optional logger (defaults to the `mokei:http-client` logger) */
   logger?: Logger
   /**
-   * Seeds the `MCP-Protocol-Version` header before any revision is known. Rarely needed:
-   * a `2026-07-28` request declares its revision in its own `_meta`, and a `2025-11-25`
-   * connection learns it from the `initialize` result. Left unset, the header is omitted
-   * until one of those two supplies a value — which is what the specification asks for on
-   * the `initialize` request itself.
-   *
-   * Distinct from {@link CreateHTTPClientParams.protocolVersion}, the revision the client
-   * speaks: this field is a raw header string, unconstrained to {@link ProtocolVersion} —
-   * the scenario it exists for is seeding a legacy revision such as `'2024-11-05'`, outside
-   * that union, before any handshake has run. `createHTTPClient` never derives it from the
-   * revision, since sending the header on the `initialize` request itself is exactly what
-   * the paragraph above says not to do.
+   * Raw seed for `MCP-Protocol-Version`, including legacy revisions outside
+   * {@link ProtocolVersion}. Omit it on `initialize` as the specification requires:
+   * `2025-11-25` learns the version from its result; `2026-07-28` declares it in `_meta`.
+   * Unlike {@link CreateHTTPClientParams.protocolVersion}, this does not select the
+   * revision the client speaks.
    */
   protocolVersionHeader?: string
   /** Wraps the transport's fetch (e.g. OAuth). Composed once over globalThis.fetch. */
@@ -165,10 +140,8 @@ export type HTTPTransportParams = {
 /**
  * Whether a revision has protocol sessions to name in an `Mcp-Session-Id` header.
  *
- * A session is established by the `initialize`/`initialized` handshake, so a revision that
- * does not require the handshake has no session at all. Unknown revisions are treated as
- * session-bearing: suppressing the header on a revision this build does not recognise would
- * break a connection that a pass-through server might otherwise handle.
+ * Handshake-free revisions have no session. Preserve the header for unknown revisions
+ * so a pass-through server can still handle a session-bearing revision.
  */
 function hasSession(version: string | null): boolean {
   if (version == null || !isSupportedProtocolVersion(version)) {
@@ -202,11 +175,7 @@ export const DEFAULT_DISPOSE_TIMEOUT = 5_000
 /**
  * MCP Streamable HTTP client transport.
  *
- * Implements the MCP Streamable HTTP transport specification:
- * - POST requests for sending JSON-RPC messages
- * - Handles JSON and SSE responses
- * - Manages Mcp-Session-Id lifecycle
- * - Opens a GET SSE stream for server-initiated messages after initialization
+ * Implements MCP Streamable HTTP with POST exchanges and a GET notification stream.
  */
 export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #url: string
@@ -222,35 +191,26 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   /** Method of each in-flight request, keyed by request id (for response correlation). */
   #pendingMethods = new Map<string | number, string>()
   /**
-   * The in-flight fetch of each request, keyed by request id. Retained past response headers —
-   * unlike the time-to-headers timer — so an outgoing `notifications/cancelled` can hang up on
-   * the exchange. `cancellable` is true only for a revision without protocol sessions, where
-   * the server handles each POST on its own and reads the disconnect as a cancellation.
+   * Retain fetch controllers past the header timeout so cancellation can abort an exchange.
+   * Only sessionless revisions treat a POST disconnect as cancellation.
    */
   #exchangeControllers = new Map<
     string | number,
     { cancelled: boolean; cancellable: boolean; controller: AbortController }
   >()
   /**
-   * Controllers for POSTs with no id in this client's own request space — an outgoing response
-   * or notification (`trackedID` is `null` for both). Such a POST is tracked in neither
-   * `#pendingMethods` nor `#exchangeControllers`, so without this it is bounded only by the
-   * time-to-headers timer and `dispose()` cannot abort it. `notifications/cancelled` never
-   * touches this set — a cancel names an id in this client's own request space, and these
-   * frames have none there; only `dispose()` does. Each entry is added when its POST is issued
-   * and removed on every exit path `#clearExchange` already covers for a tracked exchange, so
-   * this set cannot grow for the life of the transport.
+   * Outgoing responses and notifications have no id in this client's request space.
+   * Track their POST controllers here so `dispose()` can abort them after the header
+   * timeout. `notifications/cancelled` applies only to tracked requests; each POST
+   * removes its controller on settlement to prevent a lasting reference.
    */
   #untrackedControllers = new Set<AbortController>()
   /** Counter behind the request ids the stale-schema refresh mints for its own `tools/list`. */
   #internalRequestCount = 0
   /**
-   * Fires `closed` when a POST's SSE body ends without a terminal response ever having arrived
-   * on it — the abrupt-drop case a graceful terminal or a deliberate cancel must not trigger.
-   * Optional-capability shape (`Partial<StreamEventsTransport>` in `@mokei/context-rpc`):
-   * `ContextRPC` feature-detects this property and, when present, settles the matching stream
-   * exchange via `ExchangeRegistry.close` so a `subscriptions/listen` caller can reconnect
-   * instead of waiting forever. See `#handleSSEResponse`, the only emitter.
+   * Optional `StreamEventsTransport` capability: on abrupt SSE close, `ContextRPC`
+   * settles the exchange through `ExchangeRegistry.close` so `subscriptions/listen`
+   * can reconnect. Graceful terminals and deliberate cancellations must not fire it.
    */
   #streamEvents = new EventEmitter<{ closed: { requestID: RequestID; error?: Error } }>()
 
@@ -260,10 +220,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * Release the bookkeeping for one outgoing POST's controller once its fetch has settled — a
-   * tracked exchange (`trackedID != null`) reclaims its `#exchangeControllers`/`#pendingMethods`
-   * entry, while an untracked one (an outgoing response or notification) is removed from
-   * {@link #untrackedControllers}. Call at every exit path a POST can settle through.
+   * Reclaim the tracked exchange or {@link #untrackedControllers} entry on every
+   * POST settlement path; otherwise disposal retains completed controllers.
    */
   #releaseController(trackedID: string | number | null, controller: AbortController): void {
     if (trackedID != null) {
@@ -274,11 +232,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * Cache the `x-mcp-header` annotations of every valid tool in a `tools/list` result, and
-   * return the entries that passed. A tool whose annotations violate SEP-2243 is dropped rather
-   * than half-honoured: sending some of its headers and not others is what a peer rejects.
-   *
-   * Shared by the ordinary list path and the stale-schema refresh so the two cannot drift.
+   * Cache valid `x-mcp-header` annotations and filter invalid tools (SEP-2243).
+   * Partial headers would be rejected by the peer; ordinary lists and refreshes
+   * must apply the same filter.
    */
   #cacheToolAnnotations(tools: Array<unknown>): Array<unknown> {
     const kept: Array<unknown> = []
@@ -302,24 +258,15 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * Re-read the peer's tool list and refresh {@link #toolAnnotations} from it.
+   * Refresh annotations with an internal POST. Its response must not enter the RPC
+   * queue: no caller owns its id. Keep {@link #handleIncoming}'s return contract.
    *
-   * Runs its own POST and consumes the response directly rather than going through
-   * `#sendMessage`: a `tools/list` this transport minted has no caller in the RPC layer's id
-   * space, so enqueuing its response would deliver a frame nobody is waiting for. Reading it
-   * here keeps the refresh invisible above the transport and leaves `#handleIncoming`'s
-   * single-return contract intact.
-   *
-   * @param version the exchange's revision, derived by the caller the same way the ordinary send
-   * path derives it. Not read from `#protocolVersion` here: that field is seeded from an
-   * `initialize` result, and `2026-07-28` — the only revision SEP-2243 applies to — has no
-   * handshake, so it is always `null` there.
-   * @param requestMeta the originating request's `params._meta`, copied verbatim rather than
-   * rebuilt. `2026-07-28` requires capabilities and client identity in the envelope, which only
-   * `ContextClient.decorateRequest` knows; a conformant peer rejects a refresh missing them.
-   * Verbatim rather than key-by-key so it cannot break again when the envelope gains a field —
-   * worst case a duplicated progress token costs a spurious notification.
-   * @returns whether the annotations were refreshed.
+   * @param version Exchange revision, not `#protocolVersion`: handshake-free
+   * `2026-07-28` leaves that field null (SEP-2243).
+   * @param requestMeta Original `params._meta`, copied intact so required client
+   * identity and capabilities survive. A duplicated progress token is less harmful
+   * than dropping a future envelope field.
+   * @returns Whether the annotations were refreshed.
    */
   async #refreshToolAnnotations(version: string | null, requestMeta: unknown): Promise<boolean> {
     const headers = this.#baseHeaders(version, version)
@@ -378,14 +325,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * Refresh the tool annotations and, if that changes the `Mcp-Param-*` headers this call would
-   * carry, send it once more.
-   *
-   * Every refusal below surfaces the peer's own `-32020` instead: a retry that would send the
-   * headers just rejected, or that cannot be built at all, only replaces the server's diagnosis
-   * with a worse one.
-   *
-   * @returns whether the message was re-sent, and the original error therefore suppressed.
+   * Retry only if refreshed `Mcp-Param-*` headers differ; otherwise preserve the
+   * peer's `-32020` diagnosis.
+   * @returns Whether a resend suppressed the original error.
    */
   async #retryAfterSchemaRefresh(
     message: ClientMessage,
@@ -427,11 +369,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * Validated `x-mcp-header` annotations per tool name, populated from `tools/list` results.
-   *
-   * The collected annotations rather than the raw `inputSchema`: `#cacheToolAnnotations` walks
-   * every listed tool's schema for its validity filter anyway, so keeping that walk's output
-   * costs nothing there and spares `#sendMessage` a recompute on every single `tools/call`.
+   * Cache validated `x-mcp-header` annotations per tool. Keeping the collected
+   * values avoids rescanning schemas on every `tools/call`.
    */
   #toolAnnotations = new Map<string, Array<HeaderAnnotation>>()
   /**
@@ -445,11 +384,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #fetch: FetchLike
 
   constructor(params: HTTPTransportParams) {
-    // Static `auth` of type `bearer`/`basic` sets `Authorization`, same as an OAuth
-    // `fetchMiddleware` would — sending both leaves it ambiguous which one wins on the wire.
-    // A `header`-type static auth does not necessarily set `Authorization` (it is allowed
-    // alongside a middleware unless its own name is `Authorization`, case-insensitively), and
-    // plain `params.headers` can set `Authorization` too, so both are checked below.
+    // OAuth middleware and static `Authorization` must not compete. Check bearer/basic,
+    // header auth, and plain headers case-insensitively; other header auth may coexist.
     if (params.fetchMiddleware) {
       const auth = params.auth
       const authSetsAuthorization =
@@ -513,11 +449,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   /**
    * Surface a send failure to its originating request as a JSON-RPC error response.
    *
-   * Sink writes must never throw: the writable side caches a single writer, so a
-   * rejected sink permanently errors the stream and every later `request()` fails.
-   * Instead we enqueue an error frame correlated by request id — the RPC read loop
-   * rejects exactly that pending request, leaving the transport usable. Failed
-   * notifications (no id) have no originator to reject and are dropped with a log.
+   * A rejected sink poisons its shared writer and all later requests. Enqueue a
+   * correlated error instead; log failures for notifications without an id.
    */
   #failRequest(requestID: string | number | null, code: number, errorMessage: string): void {
     if (requestID == null) {
@@ -558,20 +491,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * The headers every POST carries: content negotiation, the revision the exchange belongs to,
-   * and the session id when the revision has one.
-   *
-   * A revision without the handshake has no protocol session. Sending a session id on such a
-   * request would ask a multi-revision server to route it into session state it must ignore, so
-   * the header is suppressed for exactly the requests that declare such a revision — a
-   * `2025-11-25` connection on the same transport keeps its session.
-   *
-   * The two version sources stay separate because `#sendMessage` stamps the header from the
-   * declared revision falling back to `#protocolVersion`, but suppresses the session from the
-   * declared revision alone — so an undeclared request keeps its session. The refresh has one
-   * version and passes it for both.
-   *
-   * Shared by the send path and the stale-schema refresh so the envelope cannot drift.
+   * Share the POST envelope with schema refresh. Suppress `Mcp-Session-Id` only when
+   * the message declares a sessionless revision; an undeclared request retains its
+   * session while `MCP-Protocol-Version` may fall back to `#protocolVersion`.
    */
   #baseHeaders(
     headerVersion: string | null,
@@ -594,25 +516,16 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   /**
    * Send a JSON-RPC message to the server via HTTP POST.
    *
-   * Never throws: per-message failures are routed to {@link #failRequest} so a
-   * single failed send cannot poison the shared writable stream.
-   *
-   * `retried` marks the one re-send `#retryAfterSchemaRefresh` issues, which bounds the
-   * stale-schema recovery at a single extra attempt. It is internal: the writable sink calls
-   * this with one argument.
+   * Route failures to {@link #failRequest} so one send cannot poison the shared
+   * writer. `retried` bounds stale-schema recovery to one extra attempt.
    */
   async #sendMessage(message: ClientMessage, retried = false): Promise<void> {
     // Determine the request id up front so any early failure can be correlated.
     const rawID = (message as { id?: unknown }).id
     const requestID: string | number | null =
       typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
-    // Only an outgoing *request* owns an exchange-tracking entry, a synthesized failure frame,
-    // or a carried HTTP-level error: a *response* also carries an `id`, but from the peer's own
-    // id space, which starts at 0 just like this client's own request ids. Keying any of that
-    // bookkeeping on a response's id risks registering, clearing, or failing whatever request
-    // happens to share the number instead. `trackedID` is `null` for a response (and for a
-    // notification, which already has no id), so every site below that used to key on
-    // `requestID` keys on `trackedID` instead.
+    // Only requests own exchanges. A response id belongs to the peer and may collide
+    // with one of ours, so never use it for tracking or failure correlation.
     const trackedID = requestID != null && 'method' in message ? requestID : null
 
     if (this.#disposed) {
@@ -650,13 +563,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       const params = (message as { params?: Record<string, unknown> }).params
       const nameValue = nameSourceField == null ? undefined : params?.[nameSourceField]
       if (typeof nameValue === 'string') {
-        // Encoded, never raw: a resource URI (and a tool or prompt name) is unconstrained text,
-        // while an HTTP header value is a ByteString — `new Headers()` throws on any character
-        // above U+00FF, which `fetch` does internally, so a raw assignment here turns
-        // `readResource({ uri: 'file:///文档/notes.md' })` into an opaque send failure. The
-        // `=?base64?…?=` sentinel is the specification's own encoding for header-carried values,
-        // and a conformant peer runs `Mcp-Name` through that decoder before cross-checking it
-        // against `params.name`/`params.uri`, so the encoded form is what it compares.
+        // Names and URIs may exceed the ByteString range accepted by `Headers`.
+        // Encode per the specification before the peer cross-checks `Mcp-Name`.
         headers['Mcp-Name'] = encodeHeaderValue(nameValue)
       }
       // Track in-flight requests so responses can be correlated back to their method.
@@ -695,7 +603,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     }
 
     // The timer guards time-to-headers only. The controller outlives it: once a response
-    // begins, a long streamed tool call must not be cut off by a timeout — but it must still
+    // begins, a long streamed tool call must not be cut off by a timeout -- but it must still
     // be cuttable by an explicit cancellation.
     const controller = new AbortController()
     const timeoutID = setTimeout(() => controller.abort(), this.#timeout)
@@ -756,19 +664,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       } catch {
         // Body may be unreadable; the status alone is enough to surface the failure.
       }
-      // Read before releasing: `#releaseController` drops the entry the cancelled flag lives on.
-      // `notifications/cancelled` cannot be the source — the writable sink runs serially, so
-      // nothing can process a cancel while this exchange's own fetch is in flight — but
-      // `dispose()` can land between the response headers and this point, and a torn-down
-      // transport must not have this exchange revived by a retry.
+      // Read cancellation before releasing its entry: `dispose()` may run after
+      // response headers, and must not let a torn-down exchange retry.
       const wasCancelled =
         trackedID != null && this.#exchangeControllers.get(trackedID)?.cancelled === true
       this.#releaseController(trackedID, controller)
-      // A `2026-07-28` server answers an envelope failure with a real HTTP `400` whose body
-      // is the JSON-RPC error itself (unsupported revision, missing required `_meta`). That
-      // body is the whole signal an `'auto'` client uses to tell a current server from an
-      // older one, and the only actionable message a pinned client can show — so pass it
-      // through verbatim rather than flattening it into an internal error.
+      // Preserve `2026-07-28` JSON-RPC errors inside HTTP 400: `'auto'` uses them
+      // for revision detection, and pinned clients need the peer's diagnosis.
       const carried = parseJSONRPCError(errorText, trackedID)
       if (carried != null) {
         // One exception: a `-32020` naming an `Mcp-Param-*` header means the peer's tool schema
@@ -811,10 +713,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       }
       this.#releaseController(trackedID, controller)
     } else if (contentType.includes('text/event-stream')) {
-      // Consume the SSE stream in the background so the sink unblocks as soon as the
-      // response headers arrive. Awaiting here would serialize all other outgoing
-      // traffic — including the notifications/cancelled meant to stop this very stream
-      // — behind it. The correlation entry is reclaimed once the stream ends.
+      // Consume SSE in the background so a long stream does not block outgoing
+      // traffic, including its own cancellation. Reclaim tracking when it ends.
       void this.#handleSSEResponse(response, trackedID)
         .catch((error) => {
           if (trackedID != null && this.#exchangeControllers.get(trackedID)?.cancelled) {
@@ -832,7 +732,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       this.#releaseController(trackedID, controller)
     }
 
-    // After sending notifications/initialized with a session, open GET stream
+    // After sending `notifications/initialized` with a session, open GET stream.
     if ('method' in message && message.method === 'notifications/initialized' && this.#sessionID) {
       this.#openGETStream()
     }
@@ -844,10 +744,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    * annotations are invalid, per SEP-2243.
    */
   #handleIncoming(message: ServerMessage): ServerMessage {
-    // A message carrying its own `method` is a server-initiated request or notification, never
-    // a response to one of ours — same invariant as `trackedID` gates on the outgoing side,
-    // above. Both id spaces start at 0, so without this a server-initiated request can collide
-    // with, and wipe, the client's own pending request sharing that id.
+    // A server-initiated method owns its id space; clearing a matching local id
+    // would lose the pending client request.
     if ('method' in message) {
       return message
     }
@@ -884,13 +782,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * Emit `streamEvents.closed` for a POST's SSE stream that just ended, unless one of the three
-   * exclusions holds — a graceful terminal already seen, a deliberate cancel, or whole-transport
-   * disposal. All three leave the exchange settled some other way, so signalling `closed` on top
-   * would tell `ContextRPC` to reconnect an exchange nobody is waiting to reconnect.
-   *
-   * `trackedID` is `null` for the GET notification stream, which belongs to no single request
-   * and never emits.
+   * Signal an abrupt POST SSE close only. A terminal, cancellation, or disposal
+   * already settles the exchange; GET has no request id to signal.
    */
   #emitStreamClosed(trackedID: string | number | null, terminalSeen: boolean, error?: Error): void {
     if (trackedID == null || terminalSeen || this.#disposed) {
@@ -906,13 +799,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * Handle an SSE response, parsing events and enqueuing messages.
-   *
-   * `trackedID` names the POST request this SSE body answers (`null` for the GET notification
-   * stream, which answers no single request). When it is set, the body's end is reported to
-   * {@link #streamEvents} via {@link #emitStreamClosed} unless a terminal response for that id
-   * — a JSON-RPC response frame carrying it, as opposed to a notification or a progress update —
-   * was seen on this same stream.
+   * Parse SSE messages. `trackedID` is the POST request id, or null for GET.
+   * Only a JSON-RPC response with that id counts as a terminal; notifications
+   * and progress updates must not suppress {@link #streamEvents} on abrupt close.
    */
   async #handleSSEResponse(
     response: Response,
@@ -972,7 +861,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #openGETStream(): void {
     if (this.#disposed) return
 
-    // Abort any prior loop (e.g. a duplicate notifications/initialized) so it can't
+    // Abort any prior loop (e.g. a duplicate `notifications/initialized`) so it can't
     // outlive its controller and keep reconnecting in the background.
     this.#getStreamAbortController?.abort()
     this.#getStreamAbortController = new AbortController()
@@ -982,11 +871,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * Maintain the GET SSE stream for server-initiated messages, reconnecting with
-   * capped exponential backoff after any disconnect. A single network blip must
-   * not permanently silence server notifications. Resumes from {@link #lastEventID}
-   * on each attempt and stops only on dispose/abort or a server signal that the
-   * stream is unsupported (405) or the session is gone (404).
+   * Reconnect GET with capped backoff and {@link #lastEventID} after a blip;
+   * stop on abort, disposal, unsupported GET (405), or an expired session (404).
    */
   async #runGETStream(signal: AbortSignal): Promise<void> {
     let attempt = 0
@@ -1011,7 +897,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
         if (response.status === 405 || response.status === 404) {
           // 405: server does not offer a GET notification stream. 404: session gone.
-          // Either way reconnecting cannot help — stop quietly.
+          // Either way reconnecting cannot help -- stop quietly.
           return
         }
         if (!response.ok) {
@@ -1077,25 +963,15 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       this.#getStreamAbortController = null
     }
 
-    // Abort every in-flight exchange. The #disposed guard above stops new sends, but an
-    // exchange already past it — including a POST whose SSE body never ends — must not
-    // outlive dispose: any transport close, dispose or peer EOF, aborts in-flight work, and
-    // leaving one running is the exact symptom cancellation exists to fix, one path over.
-    // Marking `cancelled` (rather than deleting the entry here) routes the resulting
-    // rejection through the same silent-return path a notifications/cancelled abort takes —
-    // each exchange reclaims its own entry via #clearExchange when its catch/finally runs,
-    // same as it already does for an explicit cancel. Deleting eagerly here would race that:
-    // a catch that fires after this loop but before #controller is closed below would find no
-    // entry, skip the cancelled check, and enqueue a spurious error frame.
+    // Abort in-flight exchanges, including endless SSE bodies. Keep entries marked
+    // cancelled until their own cleanup: eager deletion could race a catch handler
+    // and enqueue a spurious error before the controller closes.
     for (const entry of this.#exchangeControllers.values()) {
       entry.cancelled = true
       entry.controller.abort()
     }
 
-    // Same reasoning for a POST with no id in this client's own request space (an outgoing
-    // response or notification): it is bounded only by the time-to-headers timer otherwise.
-    // Left un-deleted here for the same reclaim-races-eager-delete reason as above — its own
-    // catch/finally removes it from the set once the abort is observed.
+    // Untracked POSTs also need abort; their catch/finally removes each controller.
     for (const controller of this.#untrackedControllers) {
       controller.abort()
     }
@@ -1133,13 +1009,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 }
 
 /**
- * Parameters for {@link createHTTPClient}: the transport's own params plus every
- * `ContextClient`-side {@link ClientParams} field except `transport`, which the helper
- * constructs itself.
- *
- * `protocolVersion` is re-declared here, rather than left to flow through from `ClientParams`,
- * solely to carry its own doc comment below — the type is identical either way, so this is not
- * a narrowing.
+ * {@link createHTTPClient} parameters: transport params plus {@link ClientParams},
+ * excluding the constructed transport. `protocolVersion` is redeclared for its
+ * separate contract below; its type is unchanged.
  */
 export type CreateHTTPClientParams = HTTPTransportParams &
   Omit<ClientParams, 'transport' | 'protocolVersion'> & {
@@ -1155,15 +1027,9 @@ export type CreateHTTPClientParams = HTTPTransportParams &
   }
 
 /**
- * Every field name {@link HTTPTransportParams} declares, asserted complete via `satisfies
- * Record<keyof HTTPTransportParams, true>`: `Record` requires a property for every key of the
- * mapped type regardless of whether that type itself marks it optional, so a field
- * `HTTPTransportParams` gains — realistically an optional one, as five of its current six
- * already are — fails this object literal to compile instead of silently falling into
- * `createHTTPClient`'s `ContextClient` spread below rather than reaching `HTTPTransport`. Fixing
- * that compile error means adding the key here, which is also what routes it correctly at
- * runtime: `createHTTPClient` reads this object's keys rather than repeating them in a second,
- * uncoupled list that could drift from it.
+ * `satisfies Record<keyof HTTPTransportParams, true>` forces new transport fields
+ * into this routing table. Without that check, a new field could silently reach
+ * `ContextClient` instead of `HTTPTransport`.
  */
 const HTTP_TRANSPORT_PARAM_KEYS = {
   url: true,
@@ -1179,21 +1045,10 @@ const HTTP_TRANSPORT_PARAM_KEYS = {
 /**
  * Create an MCP HTTP client with a single call.
  *
- * Instantiates an {@link HTTPTransport} from its own params and wires it to a
- * {@link ContextClient} carrying every other field — `clientInfo`, `createMessage`, `elicit`,
- * `listRoots`, `inputRequired`, and the rest of {@link ClientParams} — so an MRTR-capable
- * client (SEP-2322: one whose server-side suspensions are answered by a `createMessage`/
- * `elicit`/`listRoots` handler) can be built through this one-call helper.
- *
- * The split below names only {@link HTTPTransportParams}'s own fields, via
- * {@link HTTP_TRANSPORT_PARAM_KEYS}, and forwards everything else; it does not enumerate
- * `ClientParams` at all. That is deliberate: this file owns `HTTPTransportParams`, and the
- * `satisfies` check on that constant keeps its list complete under compiler pressure, while
- * `ClientParams` lives in `@mokei/context-client` and grows independently (`inputRequired`,
- * MRTR's own opt-out, arrived that way) — enumerating its keys here is exactly what caused this
- * helper to silently drop new client params before. Naming the small, locally-owned,
- * compile-checked side and spreading the rest into `ContextClient` means a `ClientParams`
- * addition reaches it with no change needed here at all.
+ * Pass transport fields to {@link HTTPTransport} and every other
+ * {@link ClientParams} field to {@link ContextClient}, including MRTR handlers
+ * (SEP-2322). Enumerating client fields here once dropped new options silently;
+ * {@link HTTP_TRANSPORT_PARAM_KEYS} is compile-checked instead.
  */
 export function createHTTPClient<T extends ContextTypes = UnknownContextTypes>(
   params: CreateHTTPClientParams,

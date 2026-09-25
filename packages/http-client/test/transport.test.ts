@@ -392,7 +392,7 @@ describe('HTTPTransport', () => {
       const transport = new HTTPTransport({ url: TEST_URL })
       await transport.write(request20260728(1))
       // Reading the streamed message proves the SSE handler ran, which is what records the
-      // event id — it does so before enqueuing.
+      // event id -- it does so before enqueuing.
       await transport.read()
       expect(transport.lastEventID).toBe('evt-1')
       for (const id of [2, 3]) {
@@ -456,7 +456,7 @@ describe('HTTPTransport', () => {
   describe('HTTP error handling', () => {
     test('routes an HTTP error to an error frame without killing the transport', async () => {
       // The failed POST must reject only its own request, not poison the writable
-      // stream — a subsequent request must still succeed.
+      // stream -- a subsequent request must still succeed.
       fetchMock.mockResolvedValueOnce(errorResponse(500, 'Internal Server Error'))
       fetchMock.mockResolvedValueOnce(jsonResponse(pingResult))
 
@@ -577,7 +577,7 @@ describe('HTTPTransport', () => {
       await transport.dispose()
     })
 
-    // `error.data` is whatever the answering server chose to put there — the SDK types it as
+    // `error.data` is whatever the answering server chose to put there -- the SDK types it as
     // `unknown` and JSON-RPC constrains it not at all. `parseJSONRPCError` must therefore accept
     // every shape the RPC layer's inbound validator does, or the frame is *dropped* there rather
     // than rejected and the caller of a `2026-07-28` `tools/call` waits forever, because nothing
@@ -662,7 +662,7 @@ describe('HTTPTransport', () => {
     })
 
     // A frame the RPC layer's inbound validator would reject is dropped there, not rejected,
-    // and no timeout covers an ordinary request — so enqueuing one strands its caller. Each of
+    // and no timeout covers an ordinary request -- so enqueuing one strands its caller. Each of
     // these bodies is a valid-looking error frame missing exactly one member that validator
     // requires, and each must come back as the synthesized fallback instead.
     test('a 400 whose error carries no code falls back', async () => {
@@ -976,7 +976,7 @@ describe('HTTPTransport', () => {
 
       const transport = new HTTPTransport({ url: TEST_URL })
 
-      // A streamed tools/call. With the old await-in-sink behavior this write would
+      // A streamed tools/call. With the old await-in-sink behaviour this write would
       // not resolve until the SSE stream closed.
       await transport.write({
         jsonrpc: '2.0',
@@ -1158,7 +1158,7 @@ describe('HTTPTransport', () => {
           headers: new Headers({ 'Content-Type': 'text/event-stream' }),
         }),
       )
-      // The outgoing response's own POST — a 202 with no body, like a real server's ack.
+      // The outgoing response's own POST -- a 202 with no body, like a real server's ack.
       fetchMock.mockResolvedValueOnce(acceptedResponse())
       // The cancellation notification's own POST.
       fetchMock.mockResolvedValueOnce(acceptedResponse())
@@ -1187,7 +1187,7 @@ describe('HTTPTransport', () => {
       const transport = new HTTPTransport({ url: TEST_URL })
 
       // The client's own pending request (id 0), answered on a still-open SSE stream so the
-      // exchange stays tracked while the server pushes its own request on the same stream —
+      // exchange stays tracked while the server pushes its own request on the same stream --
       // both id spaces start at 0, so this collision is the realistic case.
       const encoder = new TextEncoder()
       let sseController!: ReadableStreamDefaultController<Uint8Array>
@@ -1263,7 +1263,7 @@ describe('HTTPTransport', () => {
       const transport = new HTTPTransport({ url: TEST_URL })
 
       // The notification's POST hangs until its signal aborts, so it is still in flight when
-      // dispose() runs — like the connect-timeout test's abort-on-signal fetch mock.
+      // dispose() runs -- like the connect-timeout test's abort-on-signal fetch mock.
       fetchMock.mockImplementationOnce((_url: string, init: RequestInit) => {
         return new Promise((_resolve, reject) => {
           init.signal?.addEventListener('abort', () => {
@@ -1320,7 +1320,7 @@ describe('HTTPTransport', () => {
       // ...but the two that already completed are not touched a second time. If their
       // untracked controllers had leaked into the set instead of being reclaimed on
       // completion, dispose's loop would call abort() on them too, flipping these back to
-      // true — proof the set does not grow for the life of the transport.
+      // true -- proof the set does not grow for the life of the transport.
       expect(firstPost?.[1]?.signal?.aborted).toBe(false)
       expect(secondPost?.[1]?.signal?.aborted).toBe(false)
       await writePromise
@@ -1437,7 +1437,7 @@ describe('HTTPTransport', () => {
     // A resource URI is unconstrained text, but an HTTP header value is a ByteString: assigning
     // one raw makes the `new Headers()` that `fetch` builds internally throw, and the read comes
     // back as an opaque send failure instead of the resource. `fetchMock` never constructs a
-    // `Headers`, so this test builds one itself — without that, an ASCII-only fixture and a
+    // `Headers`, so this test builds one itself -- without that, an ASCII-only fixture and a
     // mocked `fetch` between them can assert the header's *value* while never exercising the one
     // constraint that makes the raw form illegal.
     const uri = 'file:///Users/paul/文档/notes.md'
@@ -1556,7 +1556,7 @@ describe('HTTPTransport', () => {
       await transport.write(listRequest)
       await transport.read()
 
-      // A non-integer value for the integer param makes encodeHeaderValue throw — before
+      // A non-integer value for the integer param makes encodeHeaderValue throw -- before
       // fetch, in the header-building block. It must not escape the sink.
       await transport.write({
         jsonrpc: '2.0',
@@ -1787,7 +1787,7 @@ describe('HTTPTransport', () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(false)])))
       fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
       // A refresh that answers HTML, or anything but a JSON tools/list result, is a failed
-      // refresh — not an error the caller ever hears about.
+      // refresh -- not an error the caller ever hears about.
       fetchMock.mockResolvedValueOnce(errorResponse(500, '<html>gateway</html>'))
 
       const transport = new HTTPTransport({ url: TEST_URL })
@@ -1824,12 +1824,12 @@ describe('HTTPTransport', () => {
     })
 
     test('carries the revision envelope through the refresh', async () => {
-      // A `2026-07-28` request has no `initialize` handshake to seed `#protocolVersion` from —
+      // A `2026-07-28` request has no `initialize` handshake to seed `#protocolVersion` from --
       // the refresh must derive its revision from the message's own `_meta`, same as an
       // ordinary send, or its own envelope goes out revision-less. And the envelope is more than
       // the version: `2026-07-28` also requires client capabilities, which only the layer above
       // the transport knows, so the refresh must copy the originating request's own `_meta`
-      // rather than rebuild it — a conformant peer rejects an envelope missing either key.
+      // rather than rebuild it -- a conformant peer rejects an envelope missing either key.
       const requestMeta = {
         [META_PROTOCOL_VERSION]: '2026-07-28',
         'io.modelcontextprotocol/clientCapabilities': {},
@@ -1872,7 +1872,7 @@ describe('HTTPTransport', () => {
 
     test('a re-encode that throws during the retry decision surfaces the original error', async () => {
       // The peer's schema, once refreshed, types the param as an integer this call's argument
-      // cannot satisfy — the retry's own re-encode throws, and that must not become the
+      // cannot satisfy -- the retry's own re-encode throws, and that must not become the
       // caller's error in place of the peer's `-32020`.
       function integerSearchTool(): unknown {
         return {
@@ -1910,8 +1910,8 @@ describe('HTTPTransport', () => {
     test('schema refresh aborts on refreshTimeout, not the full request timeout', async () => {
       // The refresh must own a shorter budget than the caller's `timeout`, or a firing
       // stale-schema retry chains three full request-timeout budgets (original POST + this
-      // refresh + re-send). Advancing fake timers only to `DEFAULT_HTTP_REFRESH_TIMEOUT` — well
-      // short of `timeout: 30_000` below — must already be enough to abort the refresh fetch.
+      // refresh + re-send). Advancing fake timers only to `DEFAULT_HTTP_REFRESH_TIMEOUT` -- well
+      // short of `timeout: 30_000` below -- must already be enough to abort the refresh fetch.
       vi.useFakeTimers()
       try {
         fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
@@ -1946,7 +1946,7 @@ describe('HTTPTransport', () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(initializeResult, { 'Mcp-Session-Id': 'session-get' }),
       )
-      // The initialized notification gets 202
+      // `notifications/initialized` gets 202.
       fetchMock.mockResolvedValueOnce(acceptedResponse())
       // The GET stream response
       const serverNotification: ServerMessage = {
@@ -1961,7 +1961,7 @@ describe('HTTPTransport', () => {
       await transport.write(initializeRequest)
       await transport.read()
 
-      // The initialized notification triggers the GET stream.
+      // `notifications/initialized` triggers the GET stream.
       await transport.write(initializedNotification)
 
       // Allow the GET stream to be opened (async)
@@ -2010,7 +2010,7 @@ describe('HTTPTransport', () => {
           'Mcp-Session-Id': 'session-lei',
         }),
       )
-      // The initialized notification gets 202
+      // `notifications/initialized` gets 202.
       fetchMock.mockResolvedValueOnce(acceptedResponse())
       // The GET stream
       fetchMock.mockResolvedValueOnce(sseResponse([]))

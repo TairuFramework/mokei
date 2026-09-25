@@ -109,7 +109,7 @@ test('with no store in config, a default in-memory store retains the token acros
   expect(authorizeCalls).toBe(1)
   expect(protectedCalls).toBe(2)
 
-  // Second request reuses the token the default store retained: no second authorize, and the
+  // Second request reuses the token the default store retained: no second authorise, and the
   // request succeeds on the first attempt (no 401 round trip).
   const second = await fetch(resource, { method: 'POST', body: '{}' })
   expect(second.status).toBe(200)

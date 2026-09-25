@@ -187,8 +187,8 @@ async function createMockSessionWithTools(
     // Mirrors `PROTOCOL.wrapResult` for whichever revision the client turns out to speak:
     // identity on `2025-11-25`, and on `2026-07-28` a `resultType` plus `_meta` serverInfo
     // stamped onto *every* result, not just the `server/discover` one. The first message the
-    // client sends settles it — `initialize` means `2025-11-25`, `server/discover` means
-    // `2026-07-28` — exactly as a real server's per-connection protocol does.
+    // client sends settles it -- `initialize` means `2025-11-25`, `server/discover` means
+    // `2026-07-28` -- exactly as a real server's per-connection protocol does.
     let wrapResult = (value: Record<string, unknown>): Record<string, unknown> => value
     const wrapForCurrentRevision = (value: Record<string, unknown>): Record<string, unknown> => ({
       ...value,
@@ -251,8 +251,8 @@ async function createMockSessionWithTools(
           break
         }
         // Without this, an unhandled method gets no reply at all and the client hangs to the
-        // suite timeout. A real JSON-RPC error turns any future desync — a revision that adds
-        // a method, say — into an immediate, legible failure instead of a mystery timeout.
+        // suite timeout. A real JSON-RPC error turns any future desync -- a revision that adds
+        // a method, say -- into an immediate, legible failure instead of a mystery timeout.
         default:
           transport.write({
             jsonrpc: '2.0',
@@ -1117,7 +1117,7 @@ describe('AgentSession', () => {
           { test: provider },
         )
 
-        // Approval that never resolves on its own — only the abort ends it.
+        // Approval that never resolves on its own -- only the abort ends it.
         const approvalFn = vi.fn(() => new Promise<boolean>(() => {}))
         const controller = new AbortController()
         const agent = new AgentSession({
@@ -1899,7 +1899,7 @@ describe('AgentSession', () => {
 
   describe('mid-stream abort (timeout while streaming)', () => {
     // A provider whose stream keeps yielding chunks and never reacts to the
-    // abort signal — mirrors a model (e.g. an ollama reasoning model) that keeps
+    // abort signal -- mirrors a model (e.g. an ollama reasoning model) that keeps
     // streaming after the turn signal aborts. The agent loop must stop consuming
     // on its own rather than wait for the stream to end.
     function createIgnoringStreamProvider(
@@ -1978,7 +1978,7 @@ describe('AgentSession', () => {
       expect(deltas).toBeLessThan(100)
     })
 
-    // A provider that emits a few chunks then stops yielding entirely — the
+    // A provider that emits a few chunks then stops yielding entirely -- the
     // read parks forever (model hung mid-stream). Unlike the actively-streaming
     // case above, the between-chunk abort check never runs because control never
     // returns from `await chatTurn.next()`. The turn must race the pending read

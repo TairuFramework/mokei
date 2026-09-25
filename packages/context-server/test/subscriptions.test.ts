@@ -32,7 +32,7 @@ const minimalResources = {
 
 /**
  * Yields one macrotask. Ack-first means the hub entry is registered *after* the ack write
- * succeeds — and on a pull-based transport the ack write resolves only once the client has read
+ * succeeds -- and on a pull-based transport the ack write resolves only once the client has read
  * the frame, so registration lands one macrotask after the client observes the ack. A real
  * producer event is not microtask-synchronized to that read; a test that emits immediately would
  * be, so it waits a tick for the subscription to become fully live first.

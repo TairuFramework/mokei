@@ -183,7 +183,7 @@ export function createTool<
       requestState: request.requestState,
       mintRequestState: request.mintRequestState,
     })
-    // A suspension carries no `structuredContent` by construction — it is not an answer, so it
+    // A suspension carries no `structuredContent` by construction -- it is not an answer, so it
     // must never reach output-schema validation. Pass it through untouched.
     if (isInputRequiredResult(result)) {
       return result

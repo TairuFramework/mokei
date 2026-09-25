@@ -52,7 +52,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
           return mapped
         },
         (err) => {
-          // Don't cache the failure — a later attempt should re-fetch.
+          // Don't cache the failure -- a later attempt should re-fetch.
           modelsPromiseRef.current = null
           throw err
         },
@@ -63,7 +63,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
 
   useEffect(() => {
     loadModels().catch(() => {
-      // Ignore — user will see the error when they attempt to pick a model.
+      // Ignore -- user will see the error when they attempt to pick a model.
     })
   }, [loadModels])
 
@@ -99,7 +99,7 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
   }, [pendingPrompt, model, modal, pushEntry, turn])
 
   // If a turn ends (abort/timeout) while a tool approval is still pending, the
-  // approval promise's resolver is orphaned — deny it so useToolApproval clears.
+  // approval promise's resolver is orphaned -- deny it so useToolApproval clears.
   useEffect(() => {
     if (turn.state === 'idle' && pending != null) {
       deny()

@@ -33,12 +33,12 @@ async function defaultOpenBrowser(url: string): Promise<void> {
 export type LoopbackAuthorizationHandlerOptions = {
   /** How long to wait for the browser redirect before rejecting. Defaults to 5 minutes. */
   timeoutMs?: number
-  /** Opens the given authorization URL in a browser. Defaults to the OS-appropriate opener. */
+  /** Opens the given authorisation URL in a browser. Defaults to the OS-appropriate opener. */
   openBrowser?: (url: string) => Promise<void>
 }
 
 /**
- * Creates an {@link AuthorizationHandler} that completes the OAuth authorization-code flow via a
+ * Creates an {@link AuthorizationHandler} that completes the OAuth authorisation-code flow via a
  * local loopback HTTP server, per RFC 8252 (OAuth for native apps).
  */
 export function createLoopbackAuthorizationHandler(
@@ -103,7 +103,7 @@ export function createLoopbackAuthorizationHandler(
           run()
         }
 
-        // Lets an in-flight (or not-yet-started) authorization be cancelled from outside, e.g.
+        // Lets an in-flight (or not-yet-started) authorisation be cancelled from outside, e.g.
         // when the outbound request it belongs to is aborted. `settle` already closes the server
         // and clears the timer idempotently, so this only needs to supply the rejection.
         function onAbort(): void {
@@ -112,7 +112,7 @@ export function createLoopbackAuthorizationHandler(
 
         if (signal != null) {
           if (signal.aborted) {
-            // No 'abort' event fires for an already-aborted signal — settle immediately.
+            // No 'abort' event fires for an already-aborted signal -- settle immediately.
             onAbort()
           } else {
             signal.addEventListener('abort', onAbort, { once: true })

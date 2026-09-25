@@ -12,8 +12,8 @@ import { ContextServer, createPrompt, createTool } from '../src/index.js'
 
 // The HTTP transport keys its `400` mapping off `error.data[ENVELOPE_VIOLATION]`
 // (`packages/http-server/src/stateless.ts`, `isEnvelopeFailure`), not off message text. Pinned
-// here so a thrower that stops attaching the marker — or one added later that should but
-// doesn't — is caught in this package rather than surfacing as a silently wrong HTTP status in
+// here so a thrower that stops attaching the marker -- or one added later that should but
+// doesn't -- is caught in this package rather than surfacing as a silently wrong HTTP status in
 // a different one.
 
 /** A well-formed `2026-07-28` request envelope, so only the call itself can fail. */
@@ -113,7 +113,7 @@ describe('envelope failure messages', () => {
 
 // The other half of the coupling. Every application-level `INVALID_PARAMS` that can reach a
 // client shares its code with the two envelope failures above, so none of them may carry the
-// `ENVELOPE_VIOLATION` marker in their `data` — including when the caller controls part of the
+// `ENVELOPE_VIOLATION` marker in their `data` -- including when the caller controls part of the
 // message, which it does for a tool or prompt name.
 describe('application errors sharing INVALID_PARAMS', () => {
   test('an unknown tool stays clear of the envelope marker', async () => {

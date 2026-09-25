@@ -28,7 +28,7 @@ export function createMonitorCommand(): Command {
     const url = `${monitor.url}/`
     // Rely on ink's own Ctrl+C handling (exitOnCtrlC) instead of a manual SIGINT
     // handler: when the user quits, waitUntilExit() resolves and we dispose below.
-    // A non-TTY signal (e.g. `kill -INT`) bypasses this — acceptable for an
+    // A non-TTY signal (e.g. `kill -INT`) bypasses this -- acceptable for an
     // interactive monitor.
     await runInk(<MonitorStatus url={url} />, { exitOnCtrlC: true })
     await monitor.disposer.dispose()

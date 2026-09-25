@@ -294,7 +294,7 @@ describe('stateless 2026-07-28 POST path', () => {
 
   describe('concurrency cap', () => {
     // The blocking tool writes nothing until released, so its exchange never opens an SSE
-    // response — `handleRequest` stays pending. What marks it as in flight is the throwaway
+    // response -- `handleRequest` stays pending. What marks it as in flight is the throwaway
     // server being built, which is the same synchronous step that registers its teardown, so
     // counting `servers` is how these tests wait for the cap to be occupied.
     const untilInFlight = (servers: Array<ContextServer>, count: number): Promise<void> => {
@@ -338,8 +338,8 @@ describe('stateless 2026-07-28 POST path', () => {
     // Every path out of the write sink has to reach `finish()`. `settle()` clears the timeout,
     // so a throw after the SSE stream has opened leaves nothing to end the exchange: before the
     // cap that was a stale teardown registration, and with it the slot is held for the life of
-    // the process. `BigInt` is the cheapest realistic trigger — `JSON.stringify` refuses it, and
-    // a tool returning one is an ordinary server-side bug — and it throws on the very write that
+    // the process. `BigInt` is the cheapest realistic trigger -- `JSON.stringify` refuses it, and
+    // a tool returning one is an ordinary server-side bug -- and it throws on the very write that
     // has just settled the response.
     test('a sink that throws after settling still releases its slot', async () => {
       const servers: Array<ContextServer> = []
@@ -383,8 +383,8 @@ describe('stateless 2026-07-28 POST path', () => {
       }
     })
 
-    // A notification occupies no slot — its exchange is acknowledged and finished before
-    // `onStart` ever registers a teardown — so refusing one at the cap would reject work the cap
+    // A notification occupies no slot -- its exchange is acknowledged and finished before
+    // `onStart` ever registers a teardown -- so refusing one at the cap would reject work the cap
     // is not protecting anything from. The check therefore sits after the id is parsed.
     test('a notification is still accepted while the cap is full', async () => {
       const { handler, servers, releaseTool } = createBlockingHandler({
@@ -455,7 +455,7 @@ describe('stateless 2026-07-28 POST path', () => {
       expect(response.status).toBe(202)
       expect(await response.text()).toBe('')
       // The exchange is stood up before the missing id is noticed, so one throwaway server is
-      // still built — and it is torn down with the acknowledgement rather than left holding
+      // still built -- and it is torn down with the acknowledgement rather than left holding
       // the connection open for a reply that is never coming.
       expect(servers).toHaveLength(1)
       await servers[0]?.disposed

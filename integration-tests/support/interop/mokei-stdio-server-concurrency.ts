@@ -2,7 +2,7 @@
  * Stdio entry point for the concurrency test, on `2026-07-28`.
  *
  * `slow` sleeps; `quick` returns at once. A server that reads one message at a time answers
- * `quick` only after `slow`'s sleep expires — which is what this fixture exists to detect.
+ * `quick` only after `slow`'s sleep expires -- which is what this fixture exists to detect.
  */
 import { createTool } from '@mokei/context-server'
 import { serveProcess } from '@mokei/context-server-node'

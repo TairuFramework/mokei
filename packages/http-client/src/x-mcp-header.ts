@@ -21,7 +21,7 @@ const PRIMITIVE_TYPES = new Set(['boolean', 'integer', 'string'])
 /**
  * Whether a JSON Schema `type` keyword is eligible for `x-mcp-header`: a single primitive
  * type, or a union (e.g. `["string", "null"]`) whose non-`null` members are all primitive
- * — nullable primitives are common and their `null` value is simply omitted at call time.
+ * -- nullable primitives are common and their `null` value is simply omitted at call time.
  */
 function isEligibleType(type: unknown): boolean {
   if (typeof type === 'string') {
@@ -90,8 +90,8 @@ function base64Utf8(value: string): string {
  * require Base64 wrapping (non-ASCII, control characters, surrounding whitespace, or a
  * sentinel collision).
  *
- * Both headers share this encoding because both carry values a caller chooses freely — a tool
- * argument, a tool/prompt name, a resource URI — into a field an HTTP header can only hold as a
+ * Both headers share this encoding because both carry values a caller chooses freely -- a tool
+ * argument, a tool/prompt name, a resource URI -- into a field an HTTP header can only hold as a
  * ByteString.
  *
  * @throws if given a non-integer number.
@@ -144,8 +144,8 @@ function resolveLocalRef(root: unknown, ref: string): unknown {
  * Traverses nested object `properties`, local `$ref` targets (`#/$defs/*`,
  * `#/definitions/*`, with circular-ref detection), and the `allOf`/`anyOf`/`oneOf`
  * composition keywords (branches share the parent's argument path). An `x-mcp-header`
- * found inside array element schemas (`items` / `prefixItems`) is an ERROR — a scalar
- * header cannot carry a multi-element array value — rather than a silent miss. The
+ * found inside array element schemas (`items` / `prefixItems`) is an ERROR -- a scalar
+ * header cannot carry a multi-element array value -- rather than a silent miss. The
  * argument-path model stays a flat `Array<string>` of object-property keys.
  */
 export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
@@ -154,7 +154,7 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
   const seen = new Set<string>()
   // The header name claimed at each argument path. A `$ref` target is walked at the *same* path
   // as the referencing property, so a name re-arriving at a claimed path is one declaration seen
-  // twice — not the two-properties-one-name collision `seen` guards.
+  // twice -- not the two-properties-one-name collision `seen` guards.
   const claimed = new Map<string, string>()
   // Paths whose eligibility check is deferred: a `$ref` wrapper declaring no `type` waits for a
   // node that supplies one at the same path.
@@ -174,7 +174,7 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
     const here = path.join('.') || '<root>'
 
     // Self-annotation check: applies when this node is reached as a named property
-    // (path non-empty) — either directly or via a resolved $ref / composition branch.
+    // (path non-empty) -- either directly or via a resolved $ref / composition branch.
     // Checking here rather than in the parent properties loop means $ref targets that
     // carry the annotation directly are processed correctly.
     if (path.length > 0) {
@@ -281,7 +281,7 @@ export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
 
   walk(inputSchema, [], new Set<string>(), false)
   // Still pending after the whole walk: no node ever declared a `type`. Unprovable is not
-  // eligible — better to report the tool invalid than offer a header this client cannot honour.
+  // eligible -- better to report the tool invalid than offer a header this client cannot honour.
   for (const [at, headerName] of pending) {
     errors.push(`x-mcp-header "${headerName}" at ${at} must annotate boolean/integer/string`)
   }

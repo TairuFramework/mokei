@@ -2,7 +2,7 @@
  * Proves requests are handled concurrently over stdio, on `2026-07-28`.
  *
  * `ContextRPC`'s read loop no longer awaits a message's handler before reading the next one
- * (`packages/context-rpc/src/rpc.ts`) — requests start in wire order but complete out of order,
+ * (`packages/context-rpc/src/rpc.ts`) -- requests start in wire order but complete out of order,
  * scheduled through `RequestScheduler` (`packages/context-rpc/src/scheduler.ts`). This drives
  * that through a real process boundary: a slow tool call must not block a quick one issued while
  * it is still pending.
@@ -41,7 +41,7 @@ describe('concurrent request handling over stdio', () => {
     const elapsed = Date.now() - startedAt
 
     expect(quick.content[0]).toMatchObject({ type: 'text', text: 'quick' })
-    // The slow tool sleeps 5s. Anything near that means the server serialized the two.
+    // The slow tool sleeps 5s. Anything near that means the server serialised the two.
     expect(elapsed).toBeLessThan(1_000)
 
     await slow

@@ -101,7 +101,7 @@ export async function buildChat(provider: string, opts: ChatOptions): Promise<Bu
       return build(session, p, 'anthropic')
     }
     case 'llama': {
-      // Trim to match LlamaPathCard's interactive trimming — a stray-whitespace
+      // Trim to match LlamaPathCard's interactive trimming -- a stray-whitespace
       // -m value should resolve to the same path either way.
       const path = (opts.model as string).trim()
       const name = llamaModelName(path)

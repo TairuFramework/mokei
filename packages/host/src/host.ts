@@ -154,7 +154,7 @@ export type HostEvents = {
   'resources:changed': { key: string }
   /**
    * A `2026-07-28` context's server signalled a subscribed resource's content changed (SEP-1391),
-   * carrying the resource URI. The host forwards it as-is and does not re-read the resource —
+   * carrying the resource URI. The host forwards it as-is and does not re-read the resource --
    * reacting is the consumer's policy.
    */
   'resource:updated': { key: string; uri: string }
@@ -468,7 +468,7 @@ export class ContextHost extends Disposer {
     // Built through `createHostedContext` rather than assembled here so the default revision is
     // named in exactly one place. Spelling it a second time is the literal-as-capability
     // pattern this revision's work set out to remove, and a one-sided change to it would be a
-    // behavior difference between two entry points that read as siblings.
+    // behaviour difference between two entry points that read as siblings.
     const context = createHostedContext<T>({
       transport: new HTTPTransport({
         url,
@@ -489,7 +489,7 @@ export class ContextHost extends Disposer {
   /**
    * Subscribes to a context client's `2026-07-28` subscription signals (SEP-1391) and turns them
    * into {@link HostEvents}. These client events only ever fire on the `2026-07-28`
-   * `subscriptions/listen` stream — a `2025-11-25` client never emits them — so wiring every
+   * `subscriptions/listen` stream -- a `2025-11-25` client never emits them -- so wiring every
    * context is safe and only `2026-07-28` contexts ever react. On a `*ListChanged` signal the host
    * re-discovers the affected list (refreshing the namespaced tool aggregate for tools) *before*
    * emitting `<x>:changed`; on `resourceUpdated` it forwards `resource:updated` without re-reading.
@@ -516,8 +516,8 @@ export class ContextHost extends Disposer {
    * Re-lists the affected list for a context whose server signalled a change, then emits the
    * matching `<kind>:changed` event. The re-list refreshes the host's namespaced aggregate for
    * tools; prompts/resources have no host-side aggregate, so their re-list refreshes the client's
-   * discovery snapshot. The re-list is best-effort — a failure still emits the change signal, since
-   * the signal (not its payload) is what consumers act on. Bails if the context was removed while
+   * discovery snapshot. The re-list is best-effort: even on failure, emit the
+   * change signal consumers act on. Bails if the context was removed while
    * a frame was in flight.
    */
   async #onListChanged(key: string, kind: 'tools' | 'prompts' | 'resources'): Promise<void> {
@@ -602,7 +602,7 @@ export class ContextHost extends Disposer {
       return
     }
     // Delete before the async dispose so a concurrent remove/dispose (e.g. an
-    // onExit reap racing a user remove) sees null and exits — no double removal.
+    // onExit reap racing a user remove) sees null and exits -- no double removal.
     delete this.#contexts[key]
 
     // Tear down the client subscription-event listeners (SEP-1391) before disposing the client.

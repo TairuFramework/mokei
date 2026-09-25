@@ -64,8 +64,8 @@ export type SubscriptionDriverParams = {
    * Bounds how long a candidate open (a mutation or a reconnect) waits for its `acknowledged`
    * frame before failing, applied whenever a mutation passes no `timeout` of its own. Without it
    * a silent server that opens the stream but never acks wedges the single mutation queue
-   * forever — a reconnect candidate especially, since no caller supplies its timeout. Unset means
-   * unbounded (the pre-hardening behavior); the configured default is wired at the `ContextClient`
+   * forever -- a reconnect candidate especially, since no caller supplies its timeout. Unset means
+   * unbounded (the pre-hardening behaviour); the configured default is wired at the `ContextClient`
    * layer.
    */
   ackTimeoutMs?: number
@@ -123,13 +123,13 @@ function realDelay(ms: number): Promise<void> {
  * drops. Invariants:
  *
  * - **Open-before-retire.** A mutation opens a new candidate carrying the updated filter and
- *   only aborts the previous exchange once the candidate's `acknowledged` frame arrives —
+ *   only aborts the previous exchange once the candidate's `acknowledged` frame arrives --
  *   never a window with no active listen.
  * - **Generation gating.** Each generation closes over its number; a frame from a superseded
  *   (retired) generation is dropped.
  * - **Ack-first contract.** A candidate's first frame MUST be `acknowledged`; any other first
  *   frame is a protocol error routed via the error sink, not a silent drop.
- * - **Single queue.** Mutations (subscribe/unsubscribe) and reconnects serialize on one queue,
+ * - **Single queue.** Mutations (subscribe/unsubscribe) and reconnects serialise on one queue,
  *   so each settles on its own generation's ack and a reconnect never overtakes an
  *   unacknowledged candidate.
  * - **Capped backoff.** Reconnects back off from 1s, doubling, capped at 30s.
@@ -149,7 +149,7 @@ export class SubscriptionDriver {
   #activeGeneration: Generation | null = null
   // The candidate currently being opened and awaited by `#openAndPromote` (a mutation or a
   // reconnect), before it is promoted to `#activeGeneration`. Tracked so `dispose()` can tear
-  // down an in-flight candidate that has opened but not yet acknowledged — otherwise a silent
+  // down an in-flight candidate that has opened but not yet acknowledged -- otherwise a silent
   // server leaves its ack promise pending forever, hanging the mutation and its queue.
   #pendingGeneration: Generation | null = null
   #generationCounter = 0
@@ -251,7 +251,7 @@ export class SubscriptionDriver {
     })
   }
 
-  /** Append a task to the single serialization queue and return its own settlement. */
+  /** Append a task to the single serialisation queue and return its own settlement. */
   #enqueue(task: () => Promise<void>): Promise<void> {
     const run = this.#mutationTail.then(task, task)
     // The tail must never reject, or later tasks would be skipped.
@@ -272,7 +272,7 @@ export class SubscriptionDriver {
     options?: { signal?: AbortSignal; timeout?: number },
   ): Promise<void> {
     const generation = this.#allocateGeneration(this.#filterFor(target), options)
-    // Already retired (signal pre-aborted, or zero timeout): don't open — `generation.abort` is
+    // Already retired (signal pre-aborted, or zero timeout): don't open -- `generation.abort` is
     // still the no-op, so the exchange would leak. Await the rejected ack to surface the abort.
     if (generation.retired) {
       await generation.ack.promise
@@ -360,8 +360,8 @@ export class SubscriptionDriver {
       const timer = setTimeout(() => {
         // Retryable so a reconnect candidate that times out backs off and retries rather than
         // giving up: `#runReconnect` only re-schedules on a `SubscriptionStreamError` whose
-        // `retryable` is set (`isRetryable`). It still rejects a user mutation's awaited promise —
-        // `#openAndPromote` throws this out of the ack await either way — so a
+        // `retryable` is set (`isRetryable`). It still rejects a user mutation's awaited promise --
+        // `#openAndPromote` throws this out of the ack await either way -- so a
         // `subscribeResource`/`unsubscribeResource` caller still surfaces the timeout; the
         // `retryable` flag only governs the automatic reconnect path, which no caller awaits.
         this.#failGeneration(

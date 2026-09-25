@@ -28,7 +28,7 @@ function InspectError({ message }: { message: string }) {
  * replaced it.
  *
  * Under `'auto'` the revision is not known until the client's probe settles, and the probe only
- * runs when a request is made — so `discover()` is tried first and, if it fails, the resolved
+ * runs when a request is made -- so `discover()` is tried first and, if it fails, the resolved
  * revision (readable by then, because the failed call ran the probe) decides whether to fall
  * back or to report the failure. The catch is narrowed by that check rather than swallowing
  * every error.

@@ -18,16 +18,16 @@ import { currentTraceMeta } from './trace.js'
 
 /**
  * Validates a `server/discover` result against `2026-07-28`'s own schema. `discoverResult` is not
- * a member of `2025-11-25`'s `serverResult` — `server/discover` does not exist on that revision,
+ * a member of `2025-11-25`'s `serverResult` -- `server/discover` does not exist on that revision,
  * and `driveDiscover` below is only ever called once a handshake-less revision is known or being
- * probed — so one validator covers every caller.
+ * probed -- so one validator covers every caller.
  */
 const validateDiscoverResult = createValidator(discoverResult)
 
 /**
  * Narrow I/O seam `SetupReader` uses to drive `initialize` / `server/discover`. Backed by
  * `ContextClient`'s private `#setupBuffer` / `#pendingSetupRead` fields, which stay inside
- * `ContextClient` — `SetupReader` never touches them directly, only through the closures below,
+ * `ContextClient` -- `SetupReader` never touches them directly, only through the closures below,
  * constructed by `ContextClient` (the only place that can reference its own `#`-private fields).
  */
 export type SetupIO = {
@@ -40,7 +40,7 @@ export type SetupIO = {
   /**
    * Scans the shared unmatched-frame buffer for an entry satisfying `matches`, removing and
    * returning it if found, else `undefined`. Must be tried on every loop iteration BEFORE
-   * `readNextFrame()` — draining the buffer FIFO-style instead of by predicate reintroduces an
+   * `readNextFrame()` -- draining the buffer FIFO-style instead of by predicate reintroduces an
    * infinite loop on a stray buffered frame (a non-matching entry handed back forever without a
    * fresh transport read ever being attempted). Buffer stays owned by `ContextClient`.
    */
@@ -48,7 +48,7 @@ export type SetupIO = {
 
   /**
    * One raw transport read, deduped against any already-outstanding low-level read (so two
-   * overlapping setup exchanges — e.g. a timed-out probe followed by the handshake — never issue
+   * overlapping setup exchanges -- e.g. a timed-out probe followed by the handshake -- never issue
    * two independent transport reads and risk the FIFO-steal bug the original `#readUntil()`'s
    * comment describes).
    */
@@ -68,8 +68,8 @@ export type SetupIO = {
  * request-building/response-parsing shape for both exchanges.
  *
  * What stays the caller's job: the `RPCError`/`UnsupportedProtocolVersionError` *interpretation*
- * of what comes back — whether the negotiated revision matches the one the caller asked for,
- * whether the transport should be disposed on failure — see `ContextClient#initialize`.
+ * of what comes back -- whether the negotiated revision matches the one the caller asked for,
+ * whether the transport should be disposed on failure -- see `ContextClient#initialize`.
  */
 export type SetupReaderParams = { io: SetupIO; setupTimeout: number }
 
@@ -91,7 +91,7 @@ export class SetupReader {
    * Attaches a no-op `.catch()` to itself before returning: `#readMatching` can return via a
    * buffer hit (a match already sitting in the shared buffer) without ever entering the
    * `Promise.race` that would otherwise be this promise's only listener. When that happens, this
-   * deadline is still armed and rejects later, unattached — an unhandled rejection otherwise.
+   * deadline is still armed and rejects later, unattached -- an unhandled rejection otherwise.
    */
   #setupDeadline(method: string): Promise<never> {
     const timeoutMs = this.#setupTimeout
@@ -116,10 +116,10 @@ export class SetupReader {
 
   /**
    * Reads frames until one satisfies `matches`, bounded by `deadline`. The shared primitive
-   * behind both `driveInitialize` and `driveDiscover` — mirrors the original `ContextClient`
+   * behind both `driveInitialize` and `driveDiscover` -- mirrors the original `ContextClient`
    * `#readUntil` loop exactly (buffer scan first, then a deduped raw read, then an unconditional
    * hand-back), just phrased over the `SetupIO` closures instead of `ContextClient`'s own private
-   * fields. The buffer scan is a distinct predicate-scored scan, not a FIFO pop — see
+   * fields. The buffer scan is a distinct predicate-scored scan, not a FIFO pop -- see
    * {@link SetupIO.takeBuffered}'s comment for why the two are not interchangeable.
    */
   async #readMatching(
@@ -160,7 +160,7 @@ export class SetupReader {
     const deadline = this.#setupDeadline('initialize')
     // Drops anything that isn't the initialize response by construction: `matches` only accepts
     // this request's own id, so pre-init notifications and server requests are left buffered
-    // rather than handled here — they can't be, before the session exists.
+    // rather than handled here -- they can't be, before the session exists.
     const message = await this.#readMatching(
       (candidate) => candidate.id === id,
       deadline,

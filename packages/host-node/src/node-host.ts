@@ -49,7 +49,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
     ...spawnParams
   } = params
   // Validated before spawning: `ContextClient`'s constructor also rejects an unsupported pin,
-  // but only after `createHostedContext` builds it below — by which point the child would
+  // but only after `createHostedContext` builds it below -- by which point the child would
   // already be running with no disposer wired up to reap it. Same predicate the client uses, so
   // the supported-version list is not duplicated here.
   if (
@@ -78,7 +78,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
     },
   })
   // Single seam: every fatal framing fault (invalid JSON or buffer overflow)
-  // surfaces here. No child kill — the host's reap disposes the transport (via
+  // surfaces here. No child kill -- the host's reap disposes the transport (via
   // the dispose below), which kills the child, so handling the fault here would
   // only duplicate that teardown.
   transport.events.on('readFailed', ({ error }) => {
@@ -88,7 +88,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
     transport: transport as ClientTransport,
     protocolVersion,
     dispose: async () => {
-      // Already exited — nothing to reap.
+      // Already exited -- nothing to reap.
       if (childProcess.exitCode != null || childProcess.signalCode != null) {
         return
       }
@@ -139,7 +139,7 @@ export class NodeContextHost extends ContextHost {
       ...spawnParams,
       onStreamError: (error) => {
         // A framing fault only occurs while the read loop is actively pulling
-        // the child's stdout — i.e. during a request the host drove (setup /
+        // the child's stdout -- i.e. during a request the host drove (setup /
         // callTool). At that point the entry is still registered, so a present
         // entry is the normal case here. An idle context never reaches this:
         // with no consumer, the child's output is held by OS pipe backpressure
@@ -148,7 +148,7 @@ export class NodeContextHost extends ContextHost {
         //
         // The `null` check guards the remaining teardown case: a `readFailed`
         // that lands after the entry is already gone (disposal, or the
-        // re-rejection our own remove() causes) is noise, not a fault — this is
+        // re-rejection our own remove() causes) is noise, not a fault -- this is
         // what keeps a clean remove() from emitting a bogus context:failed.
         if (!this.hasContext({ key })) {
           return

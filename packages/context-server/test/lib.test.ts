@@ -637,7 +637,7 @@ describe('ContextServer', () => {
       protocolVersion: LATEST_PROTOCOL_VERSION,
     }
 
-    // Server WITH a complete handler — logging and completions must both appear
+    // Server WITH a complete handler -- logging and completions must both appear
     const { transports: t1 } = createTestContext({
       protocolVersions: ['2025-11-25'],
       complete: async () => ({ completion: { values: [] } }),
@@ -655,7 +655,7 @@ describe('ContextServer', () => {
     expect(caps1.completions).toEqual({})
     await t1.dispose()
 
-    // Server WITHOUT a complete handler — logging present, completions absent
+    // Server WITHOUT a complete handler -- logging present, completions absent
     const { transports: t2 } = createTestContext({ protocolVersions: ['2025-11-25'] })
     t2.client.write({
       jsonrpc: '2.0' as const,
@@ -1126,7 +1126,7 @@ describe('ContextRPC configuration surfaced through ServerParams', () => {
     } as ClientRequest)
 
     await vi.waitFor(() => expect(started).toContain('slow'))
-    // With the cap at 1, `quick` cannot start until `slow` frees its slot — the scheduler
+    // With the cap at 1, `quick` cannot start until `slow` frees its slot -- the scheduler
     // will not run it early no matter how long this assertion waits, so this is a real
     // invariant rather than a timing race.
     expect(started).toEqual(['slow'])
@@ -1141,7 +1141,7 @@ describe('ContextRPC configuration surfaced through ServerParams', () => {
     const onError = vi.fn()
     // `completion/complete` is a real, schema-valid method on 2025-11-25 that this server was
     // not configured to serve (no `complete` handler passed to createTestContext), so it
-    // reaches `#dispatchRequest`'s fallthrough `RPCError(METHOD_NOT_FOUND)` — a genuine handler
+    // reaches `#dispatchRequest`'s fallthrough `RPCError(METHOD_NOT_FOUND)` -- a genuine handler
     // failure, which is what `RPCParams.onError` is documented to report.
     const { transports } = createTestContext({ protocolVersions: ['2025-11-25'], onError })
 
@@ -1625,7 +1625,7 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
   })
 
   test('a requestState-only suspension clears the capability check with none declared', async () => {
-    // `NEW_META` declares no client capabilities at all — this must never trip -32021 since the
+    // `NEW_META` declares no client capabilities at all -- this must never trip -32021 since the
     // suspension names no embedded request (a load-shedding leg, SEP-2322).
     await expectServerResult(
       { protocolVersions: ['2026-07-28'], tools: { ask: stateOnlyTool } },
@@ -2093,7 +2093,7 @@ describe('tool outputSchema', () => {
     })
   })
 
-  // A suspension carries no `structuredContent` by construction — it must never reach output-
+  // A suspension carries no `structuredContent` by construction -- it must never reach output-
   // schema validation, which would otherwise reject it as a missing/invalid structured result.
   test('a handler suspension bypasses output validation entirely', async () => {
     const definition = createTool({
@@ -2107,7 +2107,7 @@ describe('tool outputSchema', () => {
     })
     await expect(callHandler(definition)).resolves.toEqual({
       resultType: 'input_required',
-      // `callHandler`'s stub `mintRequestState` always returns `''` — its identity is not
+      // `callHandler`'s stub `mintRequestState` always returns `''` -- its identity is not
       // this test's concern, only that the suspension carries it through untouched.
       requestState: '',
     })

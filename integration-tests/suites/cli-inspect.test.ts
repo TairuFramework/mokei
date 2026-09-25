@@ -65,8 +65,8 @@ describe('CLI inspect', () => {
     expect(code).not.toBe(0)
     // Asserting the reason, not just the exit code: a pinned revision must report the
     // server's own refusal rather than fall back to a handshake it was told not to speak.
-    // Every wrong behavior here — falling back, or swallowing the error and reporting
-    // success — still exits non-zero or prints a different message, so the exit code alone
+    // Every wrong behaviour here -- falling back, or swallowing the error and reporting
+    // success -- still exits non-zero or prints a different message, so the exit code alone
     // would prove nothing.
     expect(stdout).toMatch(/unsupported protocol version/i)
     expect(stdout).not.toContain('discovered')
