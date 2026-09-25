@@ -1254,7 +1254,9 @@ describe('protocol version selection', () => {
   // also drops the server-initiated requests. The message has to name that revision rather than
   // the one that happened to introduce the restriction.
   test('MRTRNotSupportedError names the revision it was raised for', () => {
-    expect(new MRTRNotSupportedError('createMessage', '2025-11-25').message).toContain('2025-11-25')
+    expect(
+      new MRTRNotSupportedError({ handler: 'createMessage', version: '2025-11-25' }).message,
+    ).toContain('2025-11-25')
   })
 
   test('auto-fulfils an input_required result through the configured handler', async () => {

@@ -20,7 +20,7 @@ const SERVER_CONFIG: ServerConfig = {
 
 const verifier: OAuthTokenVerifier = {
   async verifyAccessToken(token) {
-    if (token !== 'good') throw new TokenVerificationError('invalid_token', 'no')
+    if (token !== 'good') throw new TokenVerificationError({ code: 'invalid_token', message: 'no' })
     return { subject: 'u', scopes: ['read'] }
   },
 }

@@ -18,12 +18,21 @@ export type OAuthTokenVerifier = {
 }
 
 export class TokenVerificationError extends Error {
-  code: 'invalid_token' | 'insufficient_scope'
-  constructor(code: 'invalid_token' | 'insufficient_scope', message: string) {
-    super(message)
+  #code: 'invalid_token' | 'insufficient_scope'
+  constructor(params: TokenVerificationErrorParams) {
+    super(params.message, { cause: params.cause })
     this.name = 'TokenVerificationError'
-    this.code = code
+    this.#code = params.code
   }
+
+  get code(): 'invalid_token' | 'insufficient_scope' {
+    return this.#code
+  }
+}
+export type TokenVerificationErrorParams = {
+  code: 'invalid_token' | 'insufficient_scope'
+  message: string
+  cause?: unknown
 }
 
 export function decodeJWT(token: string): {
@@ -35,7 +44,7 @@ export function decodeJWT(token: string): {
   const parts = token.split('.')
   const [h, p, s] = parts
   if (parts.length !== 3 || h == null || p == null || s == null) {
-    throw new TokenVerificationError('invalid_token', 'malformed JWT')
+    throw new TokenVerificationError({ code: 'invalid_token', message: 'malformed JWT' })
   }
   try {
     const header = JSON.parse(new TextDecoder().decode(fromB64U(h))) as Record<string, unknown>
@@ -43,7 +52,7 @@ export function decodeJWT(token: string): {
     const isPlainObject = (v: unknown): v is Record<string, unknown> =>
       typeof v === 'object' && v !== null && !Array.isArray(v)
     if (!isPlainObject(header) || !isPlainObject(payload)) {
-      throw new TokenVerificationError('invalid_token', 'malformed JWT')
+      throw new TokenVerificationError({ code: 'invalid_token', message: 'malformed JWT' })
     }
     return {
       header,
@@ -53,7 +62,7 @@ export function decodeJWT(token: string): {
     }
   } catch (cause) {
     if (cause instanceof TokenVerificationError) throw cause
-    const error = new TokenVerificationError('invalid_token', 'malformed JWT')
+    const error = new TokenVerificationError({ code: 'invalid_token', message: 'malformed JWT' })
     error.cause = cause
     throw error
   }
@@ -71,17 +80,20 @@ export function assertStandardClaims(
   const aud = payload.aud
   const audOk = aud === resource || (Array.isArray(aud) && aud.includes(resource))
   if (!audOk)
-    throw new TokenVerificationError('invalid_token', `token audience does not include ${resource}`)
+    throw new TokenVerificationError({
+      code: 'invalid_token',
+      message: `token audience does not include ${resource}`,
+    })
   if (issuer != null && payload.iss !== issuer)
-    throw new TokenVerificationError('invalid_token', 'issuer mismatch')
+    throw new TokenVerificationError({ code: 'invalid_token', message: 'issuer mismatch' })
   const exp = payload.exp
   if (typeof exp === 'number' && exp + toleranceSeconds <= now)
-    throw new TokenVerificationError('invalid_token', 'token expired')
+    throw new TokenVerificationError({ code: 'invalid_token', message: 'token expired' })
   // `nbf` is an inclusive lower bound (a token is valid AT `nbf`), unlike `exp`'s exclusive upper
   // bound above -- so this uses `>`, not `>=`.
   const nbf = payload.nbf
   if (typeof nbf === 'number' && nbf - toleranceSeconds > now)
-    throw new TokenVerificationError('invalid_token', 'token not yet valid')
+    throw new TokenVerificationError({ code: 'invalid_token', message: 'token not yet valid' })
 }
 
 export function scopesFromClaim(payload: Record<string, unknown>): Array<string> {

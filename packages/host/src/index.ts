@@ -22,6 +22,7 @@ export {
   type AddDirectContextParams,
   type AllowToolCalls,
   ContextHost,
+  type ContextHostParams,
   type ContextTool,
   type CreateContextParams,
   createHostedContext,
@@ -30,8 +31,10 @@ export {
   type EnableToolsFn,
   getContextToolID,
   getContextToolInfo,
+  type HasContextParams,
   type HostedContext,
   type HTTPContextParams,
+  type RegisterHostedContextParams,
 } from './host.js'
 export {
   createLocalToolID,

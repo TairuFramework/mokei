@@ -93,7 +93,7 @@ export class ExchangeRegistry {
     } else {
       this.#settle(id, exchange, 'error', {
         ok: false,
-        error: new RPCError(INTERNAL_ERROR, 'Malformed response'),
+        error: new RPCError({ code: INTERNAL_ERROR, message: 'Malformed response' }),
       })
     }
   }

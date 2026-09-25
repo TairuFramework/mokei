@@ -46,12 +46,18 @@ export type LogFunction = (params: LogParams) => void
 
 /** Thrown when a handler reaches for a client capability that this revision routes through MRTR. */
 export class MRTRNotSupportedError extends Error {
-  constructor(method: string, version: ProtocolVersion) {
+  constructor(params: MRTRNotSupportedErrorParams) {
     super(
-      `${method} cannot be called on protocol version ${version}: server-initiated requests are replaced by multi round-trip requests (SEP-2322) — return \`inputRequired({ inputRequests: { <key>: { method, params } } })\` from the handler and read \`inputResponses[<key>]\` when it is re-invoked`,
+      `${params.method} cannot be called on protocol version ${params.version}: server-initiated requests are replaced by multi round-trip requests (SEP-2322) — return \`inputRequired({ inputRequests: { <key>: { method, params } } })\` from the handler and read \`inputResponses[<key>]\` when it is re-invoked`,
+      { cause: params.cause },
     )
     this.name = 'MRTRNotSupportedError'
   }
+}
+export type MRTRNotSupportedErrorParams = {
+  method: string
+  version: ProtocolVersion
+  cause?: unknown
 }
 
 /**
@@ -59,19 +65,26 @@ export class MRTRNotSupportedError extends Error {
  * Answered on the wire as `-32021`, carrying the missing capabilities in `data`.
  */
 export class MissingRequiredClientCapabilityError extends Error {
-  requiredCapabilities: Record<string, Record<string, never>>
+  #requiredCapabilities: Record<string, Record<string, never>>
 
-  constructor(
-    key: string,
-    method: string,
-    requiredCapabilities: Record<string, Record<string, never>>,
-  ) {
+  constructor(params: MissingRequiredClientCapabilityErrorParams) {
     super(
-      `Cannot request input "${key}" (${method}): the request's client capabilities do not declare ${Object.keys(requiredCapabilities).join(', ')}`,
+      `Cannot request input "${params.key}" (${params.method}): the request's client capabilities do not declare ${Object.keys(params.requiredCapabilities).join(', ')}`,
+      { cause: params.cause },
     )
     this.name = 'MissingRequiredClientCapabilityError'
-    this.requiredCapabilities = requiredCapabilities
+    this.#requiredCapabilities = params.requiredCapabilities
   }
+
+  get requiredCapabilities(): Record<string, Record<string, never>> {
+    return this.#requiredCapabilities
+  }
+}
+export type MissingRequiredClientCapabilityErrorParams = {
+  key: string
+  method: string
+  requiredCapabilities: Record<string, Record<string, never>>
+  cause?: unknown
 }
 
 export type ServerClient = {

@@ -24,10 +24,10 @@ export function createDIDVerifier(config: DIDVerifierConfig = {}): OAuthTokenVer
       try {
         verified = await verifyToken(token)
       } catch (cause) {
-        const error = new TokenVerificationError(
-          'invalid_token',
-          `DID token verification failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-        )
+        const error = new TokenVerificationError({
+          code: 'invalid_token',
+          message: `DID token verification failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+        })
         error.cause = cause
         throw error
       }
@@ -37,7 +37,7 @@ export function createDIDVerifier(config: DIDVerifierConfig = {}): OAuthTokenVer
       // `assertStandardClaims` only enforces expiry when `exp` is present; every verifier must
       // enforce expiry, so a token with no `exp` at all is rejected here (mirrors jwks-verifier.ts).
       if (typeof payload.exp !== 'number') {
-        throw new TokenVerificationError('invalid_token', 'token missing exp')
+        throw new TokenVerificationError({ code: 'invalid_token', message: 'token missing exp' })
       }
       return {
         subject: String(payload.iss),

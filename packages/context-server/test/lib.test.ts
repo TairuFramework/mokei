@@ -1355,9 +1355,10 @@ describe('request-scoped logging and MRTR-deferred client calls (2026-07-28)', (
   // that also drops the server-initiated requests. The message has to name that revision rather
   // than the one that happened to introduce the restriction.
   test('MRTRNotSupportedError names the revision it was raised for', () => {
-    expect(new MRTRNotSupportedError('sampling/createMessage', '2025-11-25').message).toContain(
-      '2025-11-25',
-    )
+    expect(
+      new MRTRNotSupportedError({ method: 'sampling/createMessage', version: '2025-11-25' })
+        .message,
+    ).toContain('2025-11-25')
   })
 
   // `ServerEvents.log` is an exported observability surface: a handler's log has to reach it on

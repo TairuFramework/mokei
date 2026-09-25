@@ -221,7 +221,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       this.#unsubscribeStreamEvents = params.transport.streamEvents.on(
         'closed',
         ({ requestID, error }) => {
-          this.#exchanges.close(requestID, error ?? new TransportClosedError('stream closed'))
+          this.#exchanges.close(
+            requestID,
+            error ?? new TransportClosedError({ message: 'stream closed' }),
+          )
         },
       )
     }
@@ -290,7 +293,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       this.#close(
         cause instanceof Error
           ? cause
-          : new TransportClosedError('Transport read failed', { cause }),
+          : new TransportClosedError({ message: 'Transport read failed', cause }),
       )
     }
   }
@@ -358,7 +361,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
 
   async #dispose(): Promise<void> {
     this.#disposing = true
-    const reason = new TransportClosedError('Transport disposed')
+    const reason = new TransportClosedError({ message: 'Transport disposed' })
     // Explicit dispose only: gives a subclass a chance to resolve any held
     // `subscriptions/listen` terminals so their graceful result can still be written. A peer
     // EOF runs `#close()` directly and never reaches this hook.
@@ -457,15 +460,18 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       const id = message.id
       if (message.method != null && isRequestID(id)) {
         // Send an error response if incoming message is a request
-        return new RPCError(INVALID_REQUEST, 'Invalid request').toResponse(id)
+        return new RPCError({ code: INVALID_REQUEST, message: 'Invalid request' }).toResponse(id)
       }
       if (isRequestID(id) && this.#exchanges.has(id)) {
         // A frame carrying an id and no method is a response. Dropping it left its caller's
         // promise pending forever, with nothing to time it out.
-        this.#exchanges.fail(id, new RPCError(INTERNAL_ERROR, 'Invalid response'))
+        this.#exchanges.fail(
+          id,
+          new RPCError({ code: INTERNAL_ERROR, message: 'Invalid response' }),
+        )
         return null
       }
-      this.#reportError(new RPCError(INVALID_REQUEST, 'Invalid message'))
+      this.#reportError(new RPCError({ code: INVALID_REQUEST, message: 'Invalid message' }))
       return null
     }
 
@@ -508,7 +514,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     // Message is a request — reject it if we have begun disposing; the read loop stays live
     // during the held-response flush, but a disposing server must not start new work.
     if (this.#disposing) {
-      return new RPCError(SERVER_SHUTTING_DOWN, 'Server is shutting down').toResponse(id)
+      return new RPCError({
+        code: SERVER_SHUTTING_DOWN,
+        message: 'Server is shutting down',
+      }).toResponse(id)
     }
     // Message is a request — the scheduler owns its signal and decides when it runs.
     return this.#scheduler.schedule(id, (signal) => {
@@ -529,7 +538,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
             return null
           }
           return result == null
-            ? new RPCError(INTERNAL_ERROR, 'No result').toResponse(id)
+            ? new RPCError({ code: INTERNAL_ERROR, message: 'No result' }).toResponse(id)
             : { jsonrpc: '2.0' as const, id, result }
         },
         (cause) => {
@@ -700,7 +709,10 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
         if (!this.#exchanges.has(id)) {
           return
         }
-        this.#exchanges.cancel(id, new RequestTimeoutError(`Request timed out after ${timeout}ms`))
+        this.#exchanges.cancel(
+          id,
+          new RequestTimeoutError({ message: `Request timed out after ${timeout}ms` }),
+        )
         this.notify('cancelled', { requestId: id }).catch(() => {})
       }, timeout)
       controller.promise.then(

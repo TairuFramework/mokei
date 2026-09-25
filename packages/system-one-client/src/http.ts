@@ -81,27 +81,35 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
     if (cause instanceof HTTPError) {
       const status = cause.response.status
       if (status === 401 || status === 403) {
-        throw new SystemOneAuthError('System One backend rejected the API key', { cause })
+        const mapped = new SystemOneAuthError({
+          message: 'System One backend rejected the API key',
+          cause,
+        })
+        throw mapped
       }
       if (status === 404) {
-        throw new SystemOneModelError('Model or endpoint not found', { cause })
+        const mapped = new SystemOneModelError({ message: 'Model or endpoint not found', cause })
+        throw mapped
       }
       const issues = errorIssues(cause.data)
       if (status === 422) {
         const message = withReason('System One backend rejected the request (422)', issues)
-        // biome-ignore lint/style/useErrorCause: cause is passed in the third argument, after issues
-        throw new SystemOneInputError(message, issues, { cause })
+        const mapped = new SystemOneInputError({ message, issues, cause })
+        throw mapped
       }
       const message = withReason(`System One backend returned ${status}`, issues)
       if (status === 429 || status === 529) {
         const ErrorClass = status === 429 ? SystemOneRateLimitError : SystemOneOverloadedError
-        throw new ErrorClass(message, {
+        const mapped = new ErrorClass({
+          message,
           cause,
           status,
           retryAfterMs: retryAfterMs(cause.response),
         })
+        throw mapped
       }
-      throw new SystemOneConnectionError(message, { cause, status })
+      const mapped = new SystemOneConnectionError({ message, cause, status })
+      throw mapped
     }
     if (
       typeof DOMException !== 'undefined' &&
@@ -110,7 +118,11 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
     ) {
       throw cause
     }
-    throw new SystemOneConnectionError('Failed to reach System One backend', { cause })
+    const mapped = new SystemOneConnectionError({
+      message: 'Failed to reach System One backend',
+      cause,
+    })
+    throw mapped
   }
 }
 

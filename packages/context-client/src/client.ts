@@ -234,7 +234,7 @@ function routeSubscriptionNotification(
   }
   const value = (meta as Record<string, unknown>)[META_SUBSCRIPTION_ID]
   if (typeof value !== 'string' && !(typeof value === 'number' && Number.isInteger(value))) {
-    throw new RPCError(INVALID_REQUEST, 'Invalid subscriptionId metadata')
+    throw new RPCError({ code: INVALID_REQUEST, message: 'Invalid subscriptionId metadata' })
   }
   return { id: value as RequestID, frame: { type: 'progress', value: notification } }
 }
@@ -373,7 +373,7 @@ export class ContextClient<
     // is nullish, so an unvalidated string used to skip the handler check below and reach
     // `#setup()` as though `'auto'` had been asked for — silently probing instead of failing.
     if (params.protocolVersion !== 'auto' && !isSupportedProtocolVersion(params.protocolVersion)) {
-      throw new UnsupportedProtocolVersionError(params.protocolVersion)
+      throw new UnsupportedProtocolVersionError({ received: params.protocolVersion })
     }
 
     // Derived from `serverMethods` and `inputRequestMethods`, not a hardcoded version check: a
@@ -415,8 +415,8 @@ export class ContextClient<
     // The `SetupIO` closures are the only place `#setupBuffer` / `#pendingSetupRead` are touched
     // outside the `_read()` override below — see `setup-reader.ts`'s `SetupIO` comment for why
     // each closure is shaped the way it is.
-    this.#setupReader = new SetupReader(
-      {
+    this.#setupReader = new SetupReader({
+      io: {
         allocateId: () => this._getNextRequestID(),
         write: (message) => super._write(message),
         takeBuffered: (matches) => {
@@ -441,8 +441,8 @@ export class ContextClient<
           this.#setupBuffer.push(message)
         },
       },
-      this.#setupTimeout,
-    )
+      setupTimeout: this.#setupTimeout,
+    })
     this.#notifications = new ReadableStream<HandleNotification>(
       {
         pull: (controller) => {
@@ -497,13 +497,13 @@ export class ContextClient<
     const reachable = (method: string): boolean =>
       protocol.serverMethods.has(method) || protocol.inputRequestMethods.has(method)
     if (this.#createMessage != null && !reachable('sampling/createMessage')) {
-      throw new MRTRNotSupportedError('createMessage', protocol.version)
+      throw new MRTRNotSupportedError({ handler: 'createMessage', version: protocol.version })
     }
     if (this.#elicit != null && !reachable('elicitation/create')) {
-      throw new MRTRNotSupportedError('elicit', protocol.version)
+      throw new MRTRNotSupportedError({ handler: 'elicit', version: protocol.version })
     }
     if (this.#listRoots != null && !reachable('roots/list')) {
-      throw new MRTRNotSupportedError('listRoots', protocol.version)
+      throw new MRTRNotSupportedError({ handler: 'listRoots', version: protocol.version })
     }
   }
 
@@ -558,7 +558,7 @@ export class ContextClient<
     // `#sendDiscover()` writes `server/discover` through `super._write` rather than through
     // this method.
     if (!protocol.clientMethods.has(method as string)) {
-      throw new MethodNotInRevisionError(method as string, protocol.version)
+      throw new MethodNotInRevisionError({ method: method as string, version: protocol.version })
     }
     const trace = currentTraceMeta()
     const base =
@@ -586,11 +586,12 @@ export class ContextClient<
     // and `MRTR_METHODS` checks) so a `2025-11-25` peer or a non-MRTR method on `2026-07-28` (e.g.
     // `tools/list`) cannot talk this client into driving rounds `MRTR_METHODS` never grants it.
     if (protocol.inputRequestMethods.size === 0 || !MRTR_METHODS.has(method as string)) {
-      throw new InputRequiredNotSupportedError(
-        protocol.inputRequestMethods.size === 0
-          ? `protocol version ${protocol.version} has no multi round-trip requests`
-          : `${method as string} cannot suspend on input`,
-      )
+      throw new InputRequiredNotSupportedError({
+        reason:
+          protocol.inputRequestMethods.size === 0
+            ? `protocol version ${protocol.version} has no multi round-trip requests`
+            : `${method as string} cannot suspend on input`,
+      })
     }
     // The opt-in path: hand the suspension back and let the caller drive its own rounds. Also how
     // the driver below reads each retry leg, so the loop lives in exactly one place.
@@ -598,9 +599,10 @@ export class ContextClient<
       return result as ClientTypes['SendRequests'][Method]['Result']
     }
     if (!this.#inputRequired.autoFulfill) {
-      throw new InputRequiredNotSupportedError(
-        'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
-      )
+      throw new InputRequiredNotSupportedError({
+        reason:
+          'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
+      })
     }
     return (await runInputRequiredFlow({
       method: method as string,
@@ -658,7 +660,7 @@ export class ContextClient<
     // `notifications/` itself, and the protocol tables name methods as they appear on the wire.
     const method = `notifications/${event}`
     if (!protocol.clientNotifications.has(method)) {
-      throw new MethodNotInRevisionError(method, protocol.version)
+      throw new MethodNotInRevisionError({ method: method, version: protocol.version })
     }
     const decorated = protocol.decorateNotification(params)
     await super.notify(event, decorated as typeof params)
@@ -688,7 +690,10 @@ export class ContextClient<
     // disposes again — but `Disposer.dispose()` is idempotent.
     if (negotiatedRevision !== protocol.version) {
       await this.dispose()
-      throw new UnsupportedProtocolVersionError(negotiatedRevision, protocol.version)
+      throw new UnsupportedProtocolVersionError({
+        received: negotiatedRevision,
+        expected: protocol.version,
+      })
     }
     // Store server capabilities for client-side gating.
     this.#serverCapabilities = result.capabilities
@@ -1047,7 +1052,10 @@ export class ContextClient<
     await this.#ready
     const protocol = this.#requireProtocol()
     if (!protocol.clientMethods.has('subscriptions/listen')) {
-      throw new MethodNotInRevisionError('subscriptions/listen', protocol.version)
+      throw new MethodNotInRevisionError({
+        method: 'subscriptions/listen',
+        version: protocol.version,
+      })
     }
     await this.#ensureSubscriptionDriver().subscribeResource(params)
   }
@@ -1057,7 +1065,10 @@ export class ContextClient<
     await this.#ready
     const protocol = this.#requireProtocol()
     if (!protocol.clientMethods.has('subscriptions/listen')) {
-      throw new MethodNotInRevisionError('subscriptions/listen', protocol.version)
+      throw new MethodNotInRevisionError({
+        method: 'subscriptions/listen',
+        version: protocol.version,
+      })
     }
     await this.#ensureSubscriptionDriver().unsubscribeResource(params)
   }
@@ -1205,9 +1216,9 @@ export class ContextClient<
     const meta = (value as { _meta?: Record<string, unknown> } | null | undefined)?._meta
     const id = meta?.[META_SUBSCRIPTION_ID]
     if (subscriptionId != null && id !== subscriptionId) {
-      const error = new SubscriptionProtocolError(
-        `Terminal subscriptions/listen result subscriptionId (${String(id)}) does not match the listen request id (${String(subscriptionId)})`,
-      )
+      const error = new SubscriptionProtocolError({
+        message: `Terminal subscriptions/listen result subscriptionId (${String(id)}) does not match the listen request id (${String(subscriptionId)})`,
+      })
       this.#reportSubscriptionError(error)
       return { reason: 'error', error }
     }
@@ -1292,9 +1303,9 @@ export class ContextClient<
         }
         break
     }
-    throw new InputRequiredNotSupportedError(
-      `no handler is configured for the "${request.method}" input request "${key}" (declare the "${INPUT_REQUEST_CAPABILITIES[request.method]}" capability by passing its handler to the client)`,
-    )
+    throw new InputRequiredNotSupportedError({
+      reason: `no handler is configured for the "${request.method}" input request "${key}" (declare the "${INPUT_REQUEST_CAPABILITIES[request.method]}" capability by passing its handler to the client)`,
+    })
   }
 
   async _handleRequest(request: ServerRequest, signal: AbortSignal): Promise<ClientResult> {
@@ -1314,7 +1325,7 @@ export class ContextClient<
       }
       case 'roots/list': {
         if (this.#listRoots == null) {
-          throw new RPCError(METHOD_NOT_FOUND, 'roots capability not supported')
+          throw new RPCError({ code: METHOD_NOT_FOUND, message: 'roots capability not supported' })
         }
         const roots = Array.isArray(this.#listRoots)
           ? this.#listRoots
@@ -1326,7 +1337,7 @@ export class ContextClient<
           return await this.#createMessage({ params: request.params, signal })
         }
     }
-    throw new RPCError(METHOD_NOT_FOUND, 'Method not implemented')
+    throw new RPCError({ code: METHOD_NOT_FOUND, message: 'Method not implemented' })
   }
 
   // Guard: throws synchronously when the server did not declare the given capability.
@@ -1336,7 +1347,7 @@ export class ContextClient<
   // the discover-backed snapshot on a revision without a handshake.
   #requireServerCapability(capability: 'logging'): void {
     if (this.#serverCapabilities[capability] == null) {
-      throw new CapabilityNotDeclaredError(capability)
+      throw new CapabilityNotDeclaredError({ capability: capability })
     }
   }
 
@@ -1366,7 +1377,7 @@ export class ContextClient<
       capabilities = this.#serverCapabilitySnapshot
     }
     if (capabilities[capability] == null) {
-      throw new CapabilityNotDeclaredError(capability)
+      throw new CapabilityNotDeclaredError({ capability: capability })
     }
   }
 
@@ -1453,11 +1464,11 @@ export class ContextClient<
     // though the method itself is gone, so gating on capabilities would let this through and
     // earn a METHOD_NOT_FOUND from the server instead of this clearer, client-side refusal.
     if (!protocol.clientMethods.has('logging/setLevel')) {
-      throw new MethodNotInRevisionError(
-        'logging/setLevel',
-        protocol.version,
-        'the log level travels per request via _meta instead (see ClientParams.logLevel)',
-      )
+      throw new MethodNotInRevisionError({
+        method: 'logging/setLevel',
+        version: protocol.version,
+        hint: 'the log level travels per request via _meta instead (see ClientParams.logLevel)',
+      })
     }
     this.#requireServerCapability('logging')
     const [wireParams, options] = splitRequestOptions(params)
@@ -1513,7 +1524,12 @@ export class ContextClient<
         return { ...rest, [key]: items }
       }
       if (pages >= maxPages) {
-        throw new ListMaxPagesError(method, pages, page.nextCursor, items)
+        throw new ListMaxPagesError({
+          method: method,
+          pages: pages,
+          cursor: page.nextCursor,
+          results: items,
+        })
       }
       cursor = page.nextCursor
     }
@@ -1660,15 +1676,15 @@ export class ContextClient<
     }
     const outcome = validate(result.structuredContent)
     if (outcome.issues != null) {
-      throw new StructuredContentValidationError(
-        params.name,
-        outcome.issues.map((issue) => ({
+      throw new StructuredContentValidationError({
+        toolName: params.name,
+        issues: outcome.issues.map((issue) => ({
           message: issue.message,
           path: issue.path?.map((segment) =>
             typeof segment === 'object' && segment != null ? segment.key : segment,
           ),
         })),
-      )
+      })
     }
     return result
   }

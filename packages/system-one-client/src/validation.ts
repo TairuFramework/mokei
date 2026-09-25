@@ -37,7 +37,7 @@ function run<T>(validator: Validator<T>, value: unknown, prefix: string): Array<
 export function validateQuestions(params: { questions: unknown }): QuestionMap {
   const issues = run(questionMapValidator, params.questions, 'questions')
   if (issues.length > 0) {
-    throw new SystemOneInputError('Invalid question map', issues)
+    throw new SystemOneInputError({ message: 'Invalid question map', issues: issues })
   }
   return params.questions as QuestionMap
 }
@@ -45,7 +45,7 @@ export function validateQuestions(params: { questions: unknown }): QuestionMap {
 export function validateState(params: { state: unknown }): State {
   const issues = run(stateValidator, params.state, 'state')
   if (issues.length > 0) {
-    throw new SystemOneInputError('Invalid state', issues)
+    throw new SystemOneInputError({ message: 'Invalid state', issues: issues })
   }
   return params.state as State
 }
@@ -67,19 +67,21 @@ export function validateResult<TQuestions extends QuestionMap>(params: {
 }): PredictResult<TQuestions> {
   const { questions, raw } = params
   if (raw == null || typeof raw !== 'object') {
-    throw new SystemOneResponseError('Response is not an object')
+    throw new SystemOneResponseError({ message: 'Response is not an object' })
   }
   const record = raw as Record<string, unknown>
   const { answers, usage, model, ...extras } = record
   if (answers == null || typeof answers !== 'object') {
-    throw new SystemOneResponseError('Response is missing answers', [
-      { message: 'answers must be an object', path: ['answers'] },
-    ])
+    throw new SystemOneResponseError({
+      message: 'Response is missing answers',
+      issues: [{ message: 'answers must be an object', path: ['answers'] }],
+    })
   }
   if (typeof model !== 'string') {
-    throw new SystemOneResponseError('Response is missing model', [
-      { message: 'model must be a string', path: ['model'] },
-    ])
+    throw new SystemOneResponseError({
+      message: 'Response is missing model',
+      issues: [{ message: 'model must be a string', path: ['model'] }],
+    })
   }
   const answerRecord = answers as Record<string, unknown>
   const issues: Array<ValidationIssue> = []
@@ -95,7 +97,7 @@ export function validateResult<TQuestions extends QuestionMap>(params: {
   const usageIssues = run(usageValidator, usage, 'usage')
   issues.push(...usageIssues)
   if (issues.length > 0) {
-    throw new SystemOneResponseError('Response failed validation', issues)
+    throw new SystemOneResponseError({ message: 'Response failed validation', issues: issues })
   }
   const wireUsage = usage as { input_tokens: number; output_tokens: number }
   const mappedUsage: Usage = {
