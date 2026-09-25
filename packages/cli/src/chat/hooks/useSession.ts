@@ -1,8 +1,9 @@
 import type { Session } from '@mokei/session'
+import type { NodeSession } from '@mokei/session-node'
 import { useCallback, useEffect, useState } from 'react'
 
 export type SessionLike = Pick<
-  Session,
+  NodeSession,
   'addContext' | 'addHTTPContext' | 'removeContext' | 'contextHost' | 'events'
 >
 
@@ -25,7 +26,7 @@ export function useSession(session: SessionLike) {
   }, [session])
 
   const addContext = useCallback(
-    (params: Parameters<Session['addContext']>[0]) => session.addContext(params),
+    (params: Parameters<NodeSession['addContext']>[0]) => session.addContext(params),
     [session],
   )
   const addHTTPContext = useCallback(

@@ -573,15 +573,14 @@ export class ContextHost extends Disposer {
 
   async setup(params: SetupParams): Promise<Array<ContextTool>> {
     const { key, enableTools = true, ...listOptions } = params
-    const { tools } = await this.getContext(key)
-      .client.listTools(listOptions)
-      .catch((err: unknown) => {
-        // If the context was removed while listTools was in flight, surface a clear error.
-        if (this.#contexts[key] == null) {
-          throw new Error(`Context ${key} was removed during setup`)
-        }
-        throw err
-      })
+    const context = this.getContext(key)
+    const { tools } = await context.client.listTools(listOptions).catch((err: unknown) => {
+      // If the context was removed while listTools was in flight, surface a clear error.
+      if (this.#contexts[key] !== context) {
+        throw new Error(`Context ${key} was removed during setup`)
+      }
+      throw err
+    })
     const enabledTools = typeof enableTools === 'function' ? await enableTools(tools) : enableTools
     const contextTools = tools.map((tool: Tool) => {
       const enabled =
@@ -589,10 +588,10 @@ export class ContextHost extends Disposer {
       return { id: getContextToolID(key, tool.name), tool, enabled }
     })
     // The context may have been removed while listTools / enableTools awaited.
-    if (this.#contexts[key] == null) {
+    if (this.#contexts[key] !== context) {
       throw new Error(`Context ${key} was removed during setup`)
     }
-    this.#contexts[key].tools = contextTools
+    context.tools = contextTools
     return contextTools
   }
 

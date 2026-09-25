@@ -1,21 +1,21 @@
 {
-  "name": "@mokei/session",
+  "name": "@mokei/session-node",
   "version": "0.13.1",
-  "description": "Mokei session",
+  "description": "Mokei session Node stdio entry",
   "keywords": [
     "model",
     "context",
     "protocol",
     "mcp",
+    "session",
     "llm",
-    "ai",
-    "chat"
+    "ai"
   ],
   "homepage": "https://mokei.dev",
   "repository": {
     "type": "git",
     "url": "https://github.com/TairuFramework/mokei",
-    "directory": "packages/session"
+    "directory": "packages/session-node"
   },
   "license": "MIT",
   "sideEffects": false,
@@ -41,16 +41,15 @@
   },
   "dependencies": {
     "@mokei/context-protocol": "workspace:^",
-    "@mokei/context-rpc": "workspace:^",
     "@mokei/host": "workspace:^",
+    "@mokei/host-node": "workspace:^",
     "@mokei/model-provider": "workspace:^",
-    "@sozai/async": "catalog:",
-    "@sozai/event": "catalog:",
-    "@sozai/generator": "catalog:"
+    "@mokei/session": "workspace:^",
+    "@sozai/async": "catalog:"
   },
   "devDependencies": {
-    "@enkaku/transport": "catalog:",
-    "@mokei/http-client": "workspace:^",
+    "@mokei/context-server": "workspace:^",
+    "@mokei/context-server-node": "workspace:^",
     "@types/node": "catalog:"
   }
 }

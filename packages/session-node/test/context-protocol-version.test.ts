@@ -1,13 +1,12 @@
 import { fileURLToPath } from 'node:url'
-import { Session } from '@mokei/session'
 import { afterEach, describe, expect, test } from 'vitest'
 
-const ECHO_SERVER = fileURLToPath(
-  new URL('../../host-node/test/fixtures/echo-server.mjs', import.meta.url),
-)
+import { NodeSession } from '../src/node-session.js'
 
-describe('Session.addContext', () => {
-  let session: Session | null = null
+const ECHO_SERVER = fileURLToPath(new URL('./fixtures/echo-server.mjs', import.meta.url))
+
+describe('NodeSession.addContext', () => {
+  let session: NodeSession | null = null
 
   afterEach(async () => {
     await session?.contextHost.dispose()
@@ -15,7 +14,7 @@ describe('Session.addContext', () => {
   })
 
   test('passes the requested revision to the host', async () => {
-    session = new Session()
+    session = new NodeSession()
     await session.addContext({
       key: 'echo',
       command: process.execPath,
@@ -26,7 +25,7 @@ describe('Session.addContext', () => {
   })
 
   test('defaults to the host default', async () => {
-    session = new Session()
+    session = new NodeSession()
     await session.addContext({ key: 'echo', command: process.execPath, args: [ECHO_SERVER] })
     expect(session.contextHost.getContext('echo').client.protocolVersion).toBe('2026-07-28')
   })

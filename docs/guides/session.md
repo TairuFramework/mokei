@@ -1,16 +1,16 @@
 # Session Management
 
-Package: `@mokei/session`
+Packages: `@mokei/session` (portable) and `@mokei/session-node` (Node stdio)
 
 ## Installation
 
 ```bash
-npm install @mokei/session
+pnpm add @mokei/session @mokei/session-node
 ```
 
 ## Overview
 
-`Session` is a high-level abstraction that combines:
+`Session` is a portable abstraction for direct and HTTP contexts. `NodeSession` extends it with stdio process spawning. Both combine:
 - **ContextHost**: Managing multiple MCP server connections
 - **Model Providers**: AI model integration (OpenAI, Ollama)
 - **Chat**: Streaming conversations with tool calling
@@ -18,11 +18,11 @@ npm install @mokei/session
 ## Basic Usage
 
 ```typescript
-import { Session } from '@mokei/session'
+import { NodeSession } from '@mokei/session-node'
 import { OpenAIProvider } from '@mokei/openai-provider'
 
 // Create session with providers
-const session = new Session({
+const session = new NodeSession({
   providers: {
     openai: OpenAIProvider.fromConfig({ apiKey: process.env.OPENAI_API_KEY })
   }
@@ -31,8 +31,8 @@ const session = new Session({
 // Add MCP server context
 await session.addContext({
   key: 'sqlite',
-  command: 'npx',
-  args: ['-y', '@mokei/mcp-sqlite']
+  command: 'pnpm',
+  args: ['dlx', '@mokei/mcp-sqlite']
 })
 
 // Chat with tool access
@@ -65,8 +65,8 @@ const tools = await session.addContext({
 // Add with specific tools enabled
 const tools = await session.addContext({
   key: 'fs',
-  command: 'npx',
-  args: ['-y', '@modelcontextprotocol/server-filesystem', './'],
+  command: 'pnpm',
+  args: ['dlx', '@modelcontextprotocol/server-filesystem', './'],
   enableTools: ['read_file', 'list_directory']  // Only enable these
 })
 
@@ -262,7 +262,7 @@ session.removeLocalTool('getCurrentTime')
 Local tools work alongside MCP server tools:
 
 ```typescript
-const session = new Session({
+const session = new NodeSession({
   providers: { openai },
   localTools: [calculateTool]
 })
@@ -270,8 +270,8 @@ const session = new Session({
 // Add MCP server
 await session.addContext({
   key: 'sqlite',
-  command: 'npx',
-  args: ['-y', '@mokei/mcp-sqlite']
+  command: 'pnpm',
+  args: ['dlx', '@mokei/mcp-sqlite']
 })
 
 // Both tools available
@@ -508,13 +508,13 @@ const result = await host.callNamespacedTool({
 ## Complete Example
 
 ```typescript
-import { Session } from '@mokei/session'
+import { NodeSession } from '@mokei/session-node'
 import { OpenAIProvider } from '@mokei/openai-provider'
 import * as readline from 'node:readline'
 
 async function main() {
   // Create session
-  const session = new Session({
+  const session = new NodeSession({
     providers: {
       openai: OpenAIProvider.fromConfig({ 
         apiKey: process.env.OPENAI_API_KEY! 
@@ -525,8 +525,8 @@ async function main() {
   // Add MCP server
   await session.addContext({
     key: 'sqlite',
-    command: 'npx',
-    args: ['-y', '@mokei/mcp-sqlite']
+    command: 'pnpm',
+    args: ['dlx', '@mokei/mcp-sqlite']
   })
   
   // Stream message parts

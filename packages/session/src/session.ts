@@ -1,11 +1,12 @@
-import type { CallToolResult, ProtocolVersion } from '@mokei/context-protocol'
+import type { CallToolResult } from '@mokei/context-protocol'
 import type {
+  ContextHost,
   ContextTool,
   EnableToolsArg,
   HTTPContextParams,
   LocalToolDefinition,
 } from '@mokei/host'
-import { NodeContextHost } from '@mokei/host-node'
+import { ContextHost as DefaultContextHost } from '@mokei/host'
 import type {
   AggregatedMessage,
   FunctionToolCall,
@@ -28,20 +29,6 @@ export type ExecuteToolCallParams<T extends ProviderTypes = ProviderTypes> = {
   signal?: AbortSignal
   /** Rejects the tool call with a RequestTimeoutError after this many ms */
   timeout?: number
-}
-
-export type AddContextParams = {
-  key: string
-  command: string
-  args?: Array<string>
-  env?: Record<string, string>
-  signal?: AbortSignal
-  enableTools?: EnableToolsArg
-  /**
-   * Revision the context's client speaks, or `'auto'` to probe the server. Left unset,
-   * `NodeContextHost` picks its default.
-   */
-  protocolVersion?: ProtocolVersion | 'auto'
 }
 
 export type AddHTTPContextParams = HTTPContextParams & {
@@ -82,8 +69,8 @@ export type SessionEvents<T extends ProviderTypes = ProviderTypes> = {
 
 export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
   providers?: Record<string, ModelProvider<T>>
-  /** Pre-built NodeContextHost instance. If omitted, a fresh NodeContextHost is created. */
-  contextHost?: NodeContextHost
+  /** Pre-built ContextHost instance. If omitted, a fresh ContextHost is created. */
+  contextHost?: ContextHost
   /**
    * Local tools that can be called directly without setting up an MCP server.
    * These tools are registered with the `local:` namespace prefix.
@@ -155,7 +142,7 @@ function chunkToServerMessage<M, C>(chunk: MessagePart<M, C>): ServerMessage<M, 
 export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #activeChatRequest: StreamChatRequest<T['MessagePart'], T['ToolCall']> | null = null
   #events: EventEmitter<SessionEvents<T>>
-  #contextHost: NodeContextHost
+  #contextHost: ContextHost
   #providers: Map<string, ModelProvider<T>>
 
   constructor(params: SessionParams<T> = {}) {
@@ -165,7 +152,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       },
     })
     this.#events = new EventEmitter()
-    this.#contextHost = params.contextHost ?? new NodeContextHost()
+    this.#contextHost = params.contextHost ?? new DefaultContextHost()
     this.#providers = new Map(Object.entries(params.providers ?? {}))
 
     // Register local tools if provided
@@ -178,7 +165,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     return this.#activeChatRequest
   }
 
-  get contextHost(): NodeContextHost {
+  get contextHost(): ContextHost {
     return this.#contextHost
   }
 
@@ -188,39 +175,6 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
 
   get providers(): Map<string, ModelProvider<T>> {
     return this.#providers
-  }
-
-  async #setupContext(params: AddContextParams): Promise<Array<ContextTool>> {
-    const { key, command, args, env, enableTools, protocolVersion } = params
-    await this.#contextHost.addLocalContext({ key, command, args, env, protocolVersion })
-    const tools = await this.#contextHost.setup({ key, enableTools, signal: params.signal })
-    this.#events.emit('context-added', { key, tools })
-    return tools
-  }
-
-  addContext(params: AddContextParams): Promise<Array<ContextTool>> {
-    if (!params.signal) {
-      return this.#setupContext(params)
-    }
-    const setupPromise = this.#setupContext(params)
-    return raceSignal(setupPromise, params.signal).catch(async (err) => {
-      // A late-registering spawn may complete after the abort wins the race.
-      // If the key is not yet registered, wait until it appears (context:added)
-      // or until setupPromise settles without registering -- then remove either
-      // way so no orphaned child is left behind.
-      if (!this.#contextHost.getContextKeys().includes(params.key)) {
-        const ac = new AbortController()
-        await Promise.race([
-          this.#contextHost.events.once('context:added', {
-            filter: (data) => data.key === params.key,
-            signal: ac.signal,
-          }),
-          setupPromise.catch(() => {}),
-        ]).finally(() => ac.abort())
-      }
-      await this.#contextHost.remove(params.key).catch(() => {})
-      throw err
-    })
   }
 
   async #setupHTTPContext(params: AddHTTPContextParams): Promise<Array<ContextTool>> {

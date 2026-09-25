@@ -1,6 +1,6 @@
 import type { ModelProvider, ProviderTypes } from '@mokei/model-provider'
-import type { Session } from '@mokei/session'
 import { AgentSession } from '@mokei/session'
+import type { NodeSession } from '@mokei/session-node'
 import { ConfirmCard, IconLine, SystemNotice } from '@tejika/ui'
 import { Box, Static, Text, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -21,7 +21,7 @@ import { useToolApproval } from './hooks/useToolApproval.js'
 import { useTranscript } from './transcript.js'
 
 export type ChatAppProps<T extends ProviderTypes> = {
-  session: Session<T>
+  session: NodeSession<T>
   provider: ModelProvider<T>
   providerKey: string
   initialModel?: string

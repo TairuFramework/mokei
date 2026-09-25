@@ -19,13 +19,6 @@ independent; none is a security bypass.
   overwritten after the next authorize. Clear the record on definitive OAuth failures (keep it for
   transient/network failures). Needs the token-endpoint error code surfaced from the exchange path.
 
-- **`stdio` `addContext` duplicate-key cleanup twin.** `Session.addHTTPContext` was fixed so a
-  duplicate-key rejection never removes the pre-existing context and a failed `setup()` removes only
-  the context that call registered (identity-guarded). The older stdio `Session.addContext` /
-  `#setupContext` still carries the original pattern (an unconditional `remove(key)` on any abort
-  rejection, and no cleanup on a no-signal setup failure). Apply the same identity-aware cleanup
-  there for consistency.
-
 - **Size-cap error classification vs the verifier contract.** The JWKS verifier's fetch size-cap and
   HTTP-status failures are thrown as `TokenVerificationError('invalid_token', …)`, which the
   documented `OAuthTokenVerifier` contract classifies as *credential* failures (→ 401), though a

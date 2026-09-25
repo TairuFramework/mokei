@@ -5,7 +5,7 @@ import { LlamaProvider, type LlamaTypes } from '@mokei/llama-provider'
 import type { ModelProvider, ProviderTypes } from '@mokei/model-provider'
 import { OllamaProvider, type OllamaTypes } from '@mokei/ollama-provider'
 import { OpenAIProvider, type OpenAITypes } from '@mokei/openai-provider'
-import { Session } from '@mokei/session'
+import { NodeSession } from '@mokei/session-node'
 import { createElement, type ReactNode } from 'react'
 
 import { ChatApp, type ChatAppProps } from './ChatApp.js'
@@ -60,7 +60,7 @@ export async function buildChat(provider: string, opts: ChatOptions): Promise<Bu
   const timeoutMs = opts.timeoutMs
 
   function build<T extends ProviderTypes>(
-    session: Session<T>,
+    session: NodeSession<T>,
     providerInstance: ModelProvider<T>,
     providerKey: string,
     initialModel: string | undefined = opts.model,
@@ -80,21 +80,21 @@ export async function buildChat(provider: string, opts: ChatOptions): Promise<Bu
   switch (provider) {
     case 'ollama': {
       const p = new OllamaProvider({ client: { baseURL: opts.apiURL, timeout: false } })
-      const session = new Session<OllamaTypes>({ contextHost: host, providers: { ollama: p } })
+      const session = new NodeSession<OllamaTypes>({ contextHost: host, providers: { ollama: p } })
       return build(session, p, 'ollama')
     }
     case 'openai': {
       const p = new OpenAIProvider({
         client: { apiKey, baseURL: opts.apiURL, timeout: false },
       })
-      const session = new Session<OpenAITypes>({ contextHost: host, providers: { openai: p } })
+      const session = new NodeSession<OpenAITypes>({ contextHost: host, providers: { openai: p } })
       return build(session, p, 'openai')
     }
     case 'anthropic': {
       const p = new AnthropicProvider({
         client: { apiKey, baseURL: opts.apiURL, timeout: false },
       })
-      const session = new Session<AnthropicTypes>({
+      const session = new NodeSession<AnthropicTypes>({
         contextHost: host,
         providers: { anthropic: p },
       })
@@ -106,7 +106,7 @@ export async function buildChat(provider: string, opts: ChatOptions): Promise<Bu
       const path = (opts.model as string).trim()
       const name = llamaModelName(path)
       const p = new LlamaProvider({ models: { [name]: { path } } })
-      const session = new Session<LlamaTypes>({ contextHost: host, providers: { llama: p } })
+      const session = new NodeSession<LlamaTypes>({ contextHost: host, providers: { llama: p } })
       return build(session, p, 'llama', name)
     }
     default:

@@ -136,6 +136,7 @@ versioning:
       - '@mokei/ollama-provider'
       - '@mokei/openai-provider'
       - '@mokei/session'
+      - '@mokei/session-node'
       - '@mokei/system-one-client'
       - 'mokei'
 

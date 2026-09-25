@@ -1,11 +1,11 @@
 # Agent Session
 
-Package: `@mokei/session`
+Packages: `@mokei/session` and `@mokei/session-node` for stdio contexts
 
 ## Installation
 
 ```bash
-npm install @mokei/session
+pnpm add @mokei/session @mokei/session-node
 ```
 
 ## Overview
@@ -21,28 +21,22 @@ npm install @mokei/session
 ## Basic Usage
 
 ```typescript
-import { AgentSession, Session } from '@mokei/session'
-import { NodeContextHost } from '@mokei/host-node'
+import { AgentSession } from '@mokei/session'
+import { NodeSession } from '@mokei/session-node'
 import { OpenAIProvider } from '@mokei/openai-provider'
-
-// Set up host with MCP servers. `addLocalContext` takes an optional `protocolVersion`,
-// defaulting to 'auto', which speaks the newest revision both sides support — see the host
-// guide's Protocol Revisions section.
-const host = new NodeContextHost()
-await host.addLocalContext({
-  key: 'sqlite',
-  command: 'npx',
-  args: ['-y', '@mokei/mcp-sqlite']
-})
-await host.setup({ key: 'sqlite' })
 
 // Create provider
 const provider = OpenAIProvider.fromConfig({
   apiKey: process.env.OPENAI_API_KEY
 })
 
-// Wrap the host and providers in a Session
-const session = new Session({ contextHost: host, providers: { openai: provider } })
+// NodeSession adds stdio contexts. `protocolVersion` defaults to 'auto'.
+const session = new NodeSession({ providers: { openai: provider } })
+await session.addContext({
+  key: 'sqlite',
+  command: 'pnpm',
+  args: ['dlx', '@mokei/mcp-sqlite']
+})
 
 // Create agent
 const agent = new AgentSession({
@@ -346,26 +340,21 @@ await agent.run({ prompt: 'Do something' })
 ## Complete Example
 
 ```typescript
-import { AgentSession, Session } from '@mokei/session'
-import { NodeContextHost } from '@mokei/host-node'
+import { AgentSession } from '@mokei/session'
+import { NodeSession } from '@mokei/session-node'
 import { OpenAIProvider } from '@mokei/openai-provider'
 
 async function main() {
-  // Setup
-  const host = new NodeContextHost()
-  await host.addLocalContext({
-    key: 'sqlite',
-    command: 'npx',
-    args: ['-y', '@mokei/mcp-sqlite', '--db', ':memory:']
-  })
-  await host.setup({ key: 'sqlite' })
-
   const provider = OpenAIProvider.fromConfig({
     apiKey: process.env.OPENAI_API_KEY!
   })
 
-  // Wrap the host and providers in a Session
-  const session = new Session({ contextHost: host, providers: { openai: provider } })
+  const session = new NodeSession({ providers: { openai: provider } })
+  await session.addContext({
+    key: 'sqlite',
+    command: 'pnpm',
+    args: ['dlx', '@mokei/mcp-sqlite', '--db', ':memory:']
+  })
 
   // Create agent with custom approval
   const agent = new AgentSession({

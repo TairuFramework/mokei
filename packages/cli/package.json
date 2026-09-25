@@ -53,6 +53,7 @@
     "@mokei/ollama-provider": "workspace:^",
     "@mokei/openai-provider": "workspace:^",
     "@mokei/session": "workspace:^",
+    "@mokei/session-node": "workspace:^",
     "@tejika/cli": "catalog:",
     "@tejika/ui": "catalog:",
     "commander": "catalog:",
