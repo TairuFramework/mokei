@@ -5,7 +5,8 @@
 Mokei is a TypeScript toolkit for creating, interacting with, and monitoring clients and servers using the Model Context Protocol (MCP). It provides a comprehensive framework for building MCP-based applications with AI model integration.
 
 **Repository**: https://github.com/TairuFramework/mokei
-**Documentation**: `docs/guides/` for usage guides, `docs/agents/` for agent-facing docs
+**Documentation**: `docs/guides/` for usage guides, `docs/reference/` for reference material,
+`docs/agents/` for agent-facing docs
 
 ---
 
@@ -32,7 +33,8 @@ Mokei is a TypeScript toolkit for creating, interacting with, and monitoring cli
 
 ### Communication Flow
 
-1. Host spawns MCP server processes via stdio streams (or connects via HTTP)
+1. `NodeContextHost` (`@mokei/host-node`) spawns MCP server processes over stdio;
+   `ContextHost.addHTTPContext` connects over Streamable HTTP
 2. Client resolves the protocol revision, then discovers tools and prompts -- through an
    `initialize` handshake on `2025-11-25`, or lazily on the first call on `2026-07-28`
 3. Tools are namespaced as `contextKey:toolName` (or `local:toolName` for local tools)
@@ -55,7 +57,11 @@ revision to its definition.
   terminal `resultType: 'input_required'` result, and is re-invoked once the client answers with
   `inputResponses`. The client's `createMessage`/`elicit`/`listRoots` handlers are driven
   automatically by an auto-fulfilment loop, so callers see the same result type as on
-  `2025-11-25` by default. Both revisions are now at capability parity.
+  `2025-11-25` by default. Both revisions are now at capability parity. Resource and list-change
+  notifications arrive through a long-lived `subscriptions/listen` request, not session
+  `resources/subscribe`. The client uses `SubscriptionDriver`; servers use
+  `createSubscriptionHub` and `SubscriptionWriter`. Over HTTP, each listen is a streamed
+  exchange handled by `runSubscriptionExchange`.
 
 A client speaks one revision, fixed for the lifetime of its transport. `ContextClient` takes a
 `protocolVersion`: a revision, or `'auto'` to probe the server and settle on the newest revision
@@ -71,9 +77,22 @@ re-sent once if the header set changed. Callers see an ordinary successful call,
 to two extra round trips. The HTTP server does not read any of these headers; conformance of the
 encoder, and the retry itself, are covered by SDK interop tests instead.
 
+### HTTP Authorization
+
+`@mokei/http-client` provides OAuth 2.1 client middleware through `createOAuthMiddleware` and
+`TokenStore` (`createMemoryTokenStore`), including protected-resource metadata discovery, PKCE and
+token refresh. `@mokei/host-node` adds `createNodeOAuthMiddleware`, `createFileTokenStore` and
+`createLoopbackAuthorizationHandler` for Node consumers. `Session.addHTTPContext` accepts HTTP
+contexts; the CLI's `/context add-http` command accepts `--oauth-client-id`, `--oauth-resource`,
+`--oauth-scope` and `--oauth-tokens`.
+
+On the server, `@mokei/http-server` offers `serveHTTP` with `createBearerAuthGate`,
+`createJWKSVerifier` or `createDIDVerifier`, and `protectedResourceMetadataResponse`. The gate
+verifies requests before MCP dispatch; its returned `AuthInfo` is not yet passed to handlers.
+
 ---
 
-## Architecture Patterns
+## API Conventions
 
 ### Single Parameters Object
 - Every public method takes exactly one parameters object -- no positional arguments
@@ -94,35 +113,29 @@ encoder, and the retry itself, are covered by SDK interop tests instead.
   they are the wire boundary, and `splitRequestOptions` separates wire params from local
   transport options before reaching them
 
-### MCP Server Creation
-- Use `createTool` and `createPrompt` factory functions
-- Implement proper schema validation for all tools
-- Follow the transport abstraction pattern
+---
 
-### Tool System
-- Tools are namespaced as `contextKey:toolName`
-- Each context maintains its own tool registry
-- Use `callNamespacedTool` for routing tool calls
+## Feature Map
 
-### Context Management
-- Use `ContextHost` for managing multiple MCP server connections
-- Implement proper context lifecycle management
-- Handle context enable/disable states
+| Feature | Package | Entry point |
+|---------|---------|-------------|
+| Stdio server and spawned contexts | `@mokei/context-server-node`, `@mokei/host-node` | `serveProcess`, `NodeContextHost.addLocalContext` (`nano-spawn`, host-node only) |
+| Streamable HTTP | `@mokei/http-client`, `@mokei/http-server`, `@mokei/host` | `HTTPTransport`, `serveHTTP`, `ContextHost.addHTTPContext` |
+| OAuth 2.1 | `@mokei/http-client`, `@mokei/host-node`, `@mokei/http-server` | `createOAuthMiddleware`, `createNodeOAuthMiddleware`, `createBearerAuthGate` |
+| Revisions and negotiation | `@mokei/context-protocol`, `@mokei/context-client` | `PROTOCOLS`, `ContextClient` `protocolVersion: 'auto'` |
+| MRTR | `@mokei/context-client`, `@mokei/context-server` | `runInputRequiredFlow`, `inputRequired` |
+| Subscriptions | `@mokei/context-client`, `@mokei/context-server`, `@mokei/http-server` | `SubscriptionDriver`, `createSubscriptionHub`, `runSubscriptionExchange` |
+| Tool namespacing and per-context tool switches | `@mokei/host` | `ContextHost.callNamespacedTool`, `enableContextTools`, `disableContextTools` |
+| Local tools | `@mokei/host` | `ContextHost.callLocalTool`, `packages/host/src/local-tools.ts` |
+| Chat and agent loop | `@mokei/session` | `Session`, `AgentSession` |
+| Provider abstraction and adapters | `@mokei/model-provider`, `@mokei/{openai,anthropic,ollama,llama}-provider` | `ModelProvider`, each provider package's `src/index.ts` |
+| System One classification | `@mokei/system-one-client`, `@mokei/mcp-system-one` | `HTTPSystemOneBackend`, `createSystemOneTools` |
+| CLI | `mokei` | `packages/cli/src/program.ts` |
+| Monitor | `@mokei/host-monitor`, `monitor` | `packages/host-monitor/src/index.ts`, `monitor/src/main.tsx` |
 
-### Tool Registration
-- Register tools with proper schemas
-- Implement tool execution handlers
-- Handle tool discovery and listing
-
-### Error Handling
-- Implement comprehensive error propagation through the RPC layer
-- Ensure proper process cleanup on failures
-- Include signal handling for graceful shutdown
-
-### Resource Management
-- Use hierarchical disposal pattern for resource cleanup
-- Implement proper cleanup in `dispose()` methods
-- Handle process lifecycle correctly with `nano-spawn`
+`@mokei/session` currently depends on `@mokei/host-node`, so `Session` and `AgentSession` are
+Node-only. A Node-free split is planned in
+`docs/agents/plans/backlog/2026-09-25-session-rn-safe-split.md`.
 
 ---
 
@@ -139,15 +152,15 @@ packages/
 +-- host-node/            # Node stdio + daemon entry for host
 +-- host-protocol/        # Host <-> monitor protocol types
 +-- host-monitor/         # Monitor UI for host contexts
-+-- http-client/          # MCP Streamable HTTP client transport
-+-- http-server/          # MCP Streamable HTTP server transport
-+-- session/              # High-level chat + MCP abstraction
++-- http-client/          # Streamable HTTP, OAuth 2.1 client middleware, x-mcp-header encoding
++-- http-server/          # serveHTTP, bearer/JWKS/DID gate, stateless + subscription exchanges
++-- session/              # Node-only high-level chat + MCP abstraction
 +-- model-provider/       # Provider interface definitions
 +-- openai-provider/      # OpenAI integration
 +-- anthropic-provider/   # Anthropic Claude integration
 +-- ollama-provider/      # Ollama integration
 +-- llama-provider/       # Local GGUF inference via node-llama-cpp
-+-- system-one-client/    # System One typed-question classification client (platform-neutral)
++-- system-one-client/    # System One HTTP backend for laya-serve or hosted classification
 +-- logger/               # Shared logger utility
 +-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
 ```
@@ -156,6 +169,10 @@ packages/
 Metro. Node-only entry points live in the `-node` packages: `serveProcess` is in
 `@mokei/context-server-node`, and `addLocalContext` (now a method on `NodeContextHost`),
 `spawnHostedContext`, `createClient`, `runDaemon` and `ProxyHost` are in `@mokei/host-node`.
+File names use kebab-case throughout; do not introduce camelCase file names.
+`HTTPSystemOneBackend` speaks to a `laya-serve` sidecar or the hosted TypeSafe API (see
+`docs/reference/system-one-sidecar.md`). The bundled System One MCP server exposes `predict`,
+`guard`, `moderate`, `route` and `triage` tools.
 
 Other workspaces:
 
@@ -179,10 +196,14 @@ website/                  # documentation site (private)
 | Server creation | `packages/context-server/src/` |
 | Client implementation | `packages/context-client/src/` |
 | Host orchestration | `packages/host/src/` |
+| HTTP transports and OAuth | `packages/http-client/src/oauth/`, `packages/http-server/src/auth/`, `packages/host-node/src/oauth/` |
+| MRTR and subscriptions | `packages/context-client/src/{mrtr,subscriptions}.ts`, `packages/context-server/src/{mrtr,subscriptions}.ts` |
 | Session/Agent | `packages/session/src/` |
+| System One | `packages/system-one-client/src/`, `mcp-servers/system-one/`; see `docs/reference/system-one-sidecar.md` |
+| Bundled MCP servers | `mcp-servers/*/`, development config `mcp-servers/config.json` |
 | Provider interface | `packages/model-provider/src/` |
 | CLI commands | `packages/cli/src/commands/` |
-| Tests | `packages/*/test/` |
+| Package tests, where present | `packages/*/test/` (not every package has tests) |
 | Integration tests | `integration-tests/` |
 | SDK interop harness | `integration-tests/support/interop/` |
 

@@ -3,7 +3,6 @@ packages:
   - mcp-servers/*
   - monitor
   - packages/*
-  - tests/*
   - website
 
 # The toolchain (tsc, biome, swc, turbo, vitest, del) reaches this repo as dependencies of

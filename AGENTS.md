@@ -15,10 +15,12 @@ through a unified session and agent architecture built on typed MCP server/clien
 
 - **MCP Server/Client Architecture** -- Servers expose tools and prompts; clients connect and discover them. The `ContextHost` orchestrates multiple server connections simultaneously.
 - **Protocol Revisions** -- Two MCP revisions are served and spoken side by side, `2025-11-25` and `2026-07-28`, selected per context. See `docs/agents/architecture.md`.
+- **Transports** -- `@mokei/host-node` spawns stdio servers; `@mokei/http-client` and `@mokei/http-server` provide Streamable HTTP, with optional OAuth 2.1.
 - **Tool Namespacing** -- Tools are namespaced as `contextKey:toolName` (or `local:toolName` for local tools), enabling multiple contexts to coexist without name collisions.
-- **Context Management** -- `ContextHost` manages MCP server lifecycles, including spawning processes, setting up connections, and handling enable/disable states.
+- **Context Management** -- `ContextHost` manages direct and HTTP connections; `NodeContextHost` spawns stdio servers. `enableContextTools` and `disableContextTools` control tools per context.
 - **Provider Abstraction** -- A unified `ModelProvider` interface wraps OpenAI, Anthropic, Ollama, and Llama (local GGUF via node-llama-cpp), allowing the `Session` and `AgentSession` layers to work with any backend interchangeably.
 - **Session and Agent Layers** -- `Session` provides high-level chat + MCP abstraction; `AgentSession` adds an automatic agent loop with tool execution.
+- **System One** -- `@mokei/system-one-client` classifies typed questions; `mcp-servers/system-one` exposes predict, guard, moderate, route and triage tools.
 
 ## Quick Commands
 
@@ -39,6 +41,7 @@ every public package, so one intent moves them all to the same version.
 See the `kigu:conventions` skill. Repo-specific only:
 
 - Never create a new package without checking with the user -- keep functionality in existing packages.
+- Use kebab-case file names everywhere; do not introduce camelCase file names.
 - `pnpm` / `pnpx` only, never `npm` / `npx`.
 
 ## Additional Context
