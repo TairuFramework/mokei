@@ -6,6 +6,39 @@ export const DEFAULT_OAUTH_FETCH_TIMEOUT_MS = 30_000
 /** Default cap on an OAuth response body, in bytes. */
 export const DEFAULT_OAUTH_MAX_RESPONSE_BYTES = 1_000_000
 
+/** Cap on a non-2xx body read for its OAuth `error` code; larger bodies are dropped unread. */
+const MAX_ERROR_BODY_BYTES = 16_384
+
+/**
+ * A non-2xx OAuth response. `oauthError` is the RFC 6749 §5.2 `error` code when the body carried
+ * one, so callers can tell a definitive rejection (`invalid_grant`) from a transient failure.
+ */
+export class OAuthResponseError extends Error {
+  #status: number
+  #oauthError: string | undefined
+
+  constructor(params: OAuthResponseErrorParams) {
+    super(params.message, { cause: params.cause })
+    this.name = 'OAuthResponseError'
+    this.#status = params.status
+    this.#oauthError = params.oauthError
+  }
+
+  get status(): number {
+    return this.#status
+  }
+
+  get oauthError(): string | undefined {
+    return this.#oauthError
+  }
+}
+export type OAuthResponseErrorParams = {
+  message: string
+  status: number
+  oauthError?: string
+  cause?: unknown
+}
+
 /** Concatenate a list of `Uint8Array` chunks into one contiguous buffer. */
 function concatUint8(chunks: Array<Uint8Array>): Uint8Array {
   const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)
@@ -26,6 +59,7 @@ function concatUint8(chunks: Array<Uint8Array>): Uint8Array {
 async function readCappedJSON(res: Response, url: string, maxBytes: number): Promise<unknown> {
   const contentLength = Number(res.headers.get('content-length'))
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    await res.body?.cancel().catch(() => {})
     throw new Error(`OAuth response from ${url} exceeds ${maxBytes} bytes`)
   }
   const body = res.body
@@ -57,7 +91,7 @@ async function readCappedJSON(res: Response, url: string, maxBytes: number): Pro
  * Fetch an OAuth endpoint with a bounded deadline and a response-size cap, then parse as JSON.
  * `redirect: 'error'` guards against SSRF/redirects. A caller `signal` is combined with the
  * timeout via `AbortSignal.any`, so an aborted outer request cancels this one without loosening
- * the deadline. Throws `Error(\`${errorLabel} HTTP ${status}\`)` on a non-ok response.
+ * the deadline. Throws {@link OAuthResponseError} on a non-ok response.
  */
 export async function fetchOAuthJSON(
   fetch: FetchLike,
@@ -84,7 +118,15 @@ export async function fetchOAuthJSON(
     signal,
   })
   if (!res.ok) {
-    throw new Error(`${opts.errorLabel} HTTP ${res.status}`)
+    // Reading the body (capped) also releases the socket; an unread error body pins it.
+    const body = await readCappedJSON(res, url, MAX_ERROR_BODY_BYTES).catch(() => undefined)
+    const code = (body as { error?: unknown } | undefined)?.error
+    const oauthError = typeof code === 'string' ? code : undefined
+    throw new OAuthResponseError({
+      message: `${opts.errorLabel} HTTP ${res.status}${oauthError == null ? '' : ` (${oauthError})`}`,
+      status: res.status,
+      oauthError,
+    })
   }
   return readCappedJSON(res, url, maxBytes)
 }

@@ -2,7 +2,7 @@ import { toB64U } from '@sozai/codec'
 
 import type { FetchLike, FetchMiddleware } from '../transport.js'
 import { discover, parseResourceMetadataURL } from './discovery.js'
-import { fetchOAuthJSON } from './fetch.js'
+import { fetchOAuthJSON, OAuthResponseError } from './fetch.js'
 import { createPKCE } from './pkce.js'
 import { canonicalResource } from './resource.js'
 import type { StoredTokens, TokenStore } from './store.js'
@@ -135,6 +135,17 @@ function isLoopbackHost(hostname: string): boolean {
   )
 }
 
+function isRefreshable(
+  tokens: StoredTokens | undefined,
+): tokens is StoredTokens & { refreshToken: string; tokenEndpoint: string } {
+  return tokens?.refreshToken != null && tokens.tokenEndpoint != null
+}
+
+/** RFC 6749 §5.2: the refresh token is invalid, expired or revoked -- retrying cannot succeed. */
+function isInvalidGrant(error: unknown): boolean {
+  return error instanceof OAuthResponseError && error.oauthError === 'invalid_grant'
+}
+
 type ExchangeAuthorizationCodeParams = {
   /** Unwrapped `fetch` (never the OAuth middleware itself) so this cannot re-enter and loop. */
   fetchUnwrapped: FetchLike
@@ -228,6 +239,41 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
     return inFlight.catch(() => authFlights.get(resource) ?? start())
   }
 
+  /** Refresh `tokens` and persist the result. On a definitive `invalid_grant` the refresh token
+   * is dead, so clear the record -- unless another flight already replaced it -- rather than
+   * retrying it on every request until the next authorisation overwrites it. */
+  function refreshAndStore(
+    next: FetchLike,
+    resource: string,
+    tokens: StoredTokens & { refreshToken: string; tokenEndpoint: string },
+    signal?: AbortSignal,
+  ): Promise<StoredTokens> {
+    const { tokenEndpoint, refreshToken, issuer } = tokens
+    return withSingleFlight(resource, store, tokens.accessToken, async () => {
+      try {
+        const refreshed = await exchangeRefresh({
+          fetchUnwrapped: next,
+          tokenEndpoint,
+          clientID: config.clientID,
+          resource,
+          refreshToken,
+          scopes: config.scopes,
+          now,
+          signal,
+        })
+        const merged = { ...refreshed, tokenEndpoint, issuer }
+        await store.set(resource, merged)
+        return merged
+      } catch (error) {
+        if (isInvalidGrant(error)) {
+          const current = await store.get(resource)
+          if (current?.refreshToken === refreshToken) await store.clear(resource)
+        }
+        throw error
+      }
+    })
+  }
+
   /** Discovers the authorisation server, runs PKCE + `config.handler.authorize`, exchanges the
    * returned code for tokens, and persists them under `resource`. */
   async function authorize(
@@ -305,38 +351,16 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       const resource = canonicalResource(config.resource ?? url)
       let tokens = await store.get(resource)
 
-      if (
-        tokens != null &&
-        tokens.refreshToken != null &&
-        tokens.tokenEndpoint != null &&
-        nearExpiry(tokens, now, skew)
-      ) {
+      if (isRefreshable(tokens) && nearExpiry(tokens, now, skew)) {
         // Best-effort: a failed refresh (network error, non-2xx, non-bearer token_type) must
         // not fail the outbound request outright -- it proceeds on the current, possibly-stale
         // token, and the 401 path below recovers.
         try {
-          const refreshTokenEndpoint = tokens.tokenEndpoint
-          const refreshToken = tokens.refreshToken
-          const refreshIssuer = tokens.issuer
-          const refreshed = await withSingleFlight(resource, store, tokens.accessToken, () => {
-            return exchangeRefresh({
-              fetchUnwrapped: next,
-              tokenEndpoint: refreshTokenEndpoint,
-              clientID: config.clientID,
-              resource,
-              refreshToken,
-              scopes: config.scopes,
-              now,
-              signal,
-            }).then(async (r) => {
-              const merged = { ...r, tokenEndpoint: refreshTokenEndpoint, issuer: refreshIssuer }
-              await store.set(resource, merged)
-              return merged
-            })
-          })
-          tokens = refreshed
-        } catch {
-          // Swallow: keep the stale tokens already read above.
+          tokens = await refreshAndStore(next, resource, tokens, signal)
+        } catch (error) {
+          // A dead refresh token was cleared: send no stale token, so the 401 goes straight to
+          // authorisation instead of redeeming it again.
+          if (isInvalidGrant(error)) tokens = undefined
         }
       }
 
@@ -357,28 +381,9 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       // Prefer a refresh over full re-authorisation when a refresh token is available: it is
       // cheaper and does not require the interactive handler. Only fall through to `authorize`
       // when there is no refresh token/endpoint, or the refresh itself fails.
-      if (tokens?.refreshToken != null && tokens.tokenEndpoint != null) {
-        const refreshTokenEndpoint = tokens.tokenEndpoint
-        const refreshToken = tokens.refreshToken
-        const refreshIssuer = tokens.issuer
+      if (isRefreshable(tokens)) {
         try {
-          const refreshed = await withSingleFlight(resource, store, tokens.accessToken, () => {
-            return exchangeRefresh({
-              fetchUnwrapped: next,
-              tokenEndpoint: refreshTokenEndpoint,
-              clientID: config.clientID,
-              resource,
-              refreshToken,
-              scopes: config.scopes,
-              now,
-              signal,
-            }).then(async (r) => {
-              const merged = { ...r, tokenEndpoint: refreshTokenEndpoint, issuer: refreshIssuer }
-              await store.set(resource, merged)
-              return merged
-            })
-          })
-          tokens = refreshed
+          tokens = await refreshAndStore(next, resource, tokens, signal)
           return next(url, attach(init))
         } catch {
           // Fall through to full authorisation below.

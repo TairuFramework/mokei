@@ -69,3 +69,18 @@ test('401 invalid_token when the verifier rejects', async () => {
   expect(response?.status).toBe(401)
   expect(response?.headers.get('WWW-Authenticate')).toContain('invalid_token')
 })
+
+test('an operational verifier failure propagates instead of becoming a 401', async () => {
+  const gate = createBearerAuthGate({
+    verifier: {
+      async verifyAccessToken() {
+        throw new Error('failed to fetch JWKS: HTTP 503')
+      },
+    },
+    resource,
+    resourceMetadataURL: metadataURL,
+  })
+  await expect(
+    gate(new Request(resource, { method: 'POST', headers: { Authorization: 'Bearer x' } })),
+  ).rejects.toThrow(/HTTP 503/)
+})

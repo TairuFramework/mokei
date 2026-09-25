@@ -372,3 +372,120 @@ test('a malformed token response during pre-emptive refresh is not persisted (fa
   expect(seenAuth).toBe('Bearer old')
   expect((await store.get(resource))?.accessToken).toBe('old')
 })
+
+function oauthError(error: string, status = 400): Response {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+test('a pre-emptive refresh rejected with invalid_grant clears the store and re-authorises', async () => {
+  const store = createMemoryTokenStore()
+  await store.set(resource, {
+    accessToken: 'old',
+    tokenType: 'Bearer',
+    refreshToken: 'dead',
+    expiresAt: 1000,
+    tokenEndpoint: 'https://as.example.com/token',
+    issuer: 'https://as.example.com',
+  })
+  let refreshCalls = 0
+  let storeAfterRefresh: unknown = 'unset'
+  const sentAuth: Array<string | null> = []
+  const authorizingHandler: AuthorizationHandler = {
+    async authorize({ state }) {
+      storeAfterRefresh = await store.get(resource)
+      return { code: 'auth-code', state, redirectURI: 'http://127.0.0.1:5555/cb' }
+    },
+  }
+  const next = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (url.includes('oauth-protected-resource'))
+      return json({ resource, authorization_servers: ['https://as.example.com'] })
+    if (url.endsWith('/.well-known/oauth-authorization-server'))
+      return json({
+        issuer: 'https://as.example.com',
+        authorization_endpoint: 'https://as.example.com/authorize',
+        token_endpoint: 'https://as.example.com/token',
+        code_challenge_methods_supported: ['S256'],
+      })
+    if (url.endsWith('/token')) {
+      if (String(init?.body ?? '').includes('grant_type=refresh_token')) {
+        refreshCalls += 1
+        return oauthError('invalid_grant')
+      }
+      return json({ access_token: 'fresh', token_type: 'Bearer', expires_in: 3600 })
+    }
+    const auth = new Headers(init?.headers).get('Authorization')
+    sentAuth.push(auth)
+    if (auth === 'Bearer fresh') return json({ ok: true })
+    return new Response(null, { status: 401 })
+  }
+  const mw = createOAuthMiddleware({
+    clientID: 'c',
+    resource,
+    handler: authorizingHandler,
+    store,
+    now: () => 999,
+  })
+  const response = await mw(next)(resource, { method: 'POST', body: '{}' })
+  expect(response.status).toBe(200)
+  // The dead refresh token is redeemed once, never sent again, and the stale access token is
+  // not attached to the first attempt.
+  expect(refreshCalls).toBe(1)
+  expect(storeAfterRefresh).toBeUndefined()
+  expect(sentAuth).toEqual([null, 'Bearer fresh'])
+  expect((await store.get(resource))?.accessToken).toBe('fresh')
+})
+
+test('a transient refresh failure keeps the stored tokens', async () => {
+  const store = createMemoryTokenStore()
+  const stored = {
+    accessToken: 'old',
+    tokenType: 'Bearer',
+    refreshToken: 'r1',
+    expiresAt: 1000,
+    tokenEndpoint: 'https://as.example.com/token',
+    issuer: 'https://as.example.com',
+  }
+  await store.set(resource, stored)
+  const next = async (url: string): Promise<Response> => {
+    if (url.endsWith('/token')) return oauthError('temporarily_unavailable', 503)
+    return json({ ok: true })
+  }
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 999 })
+  const response = await mw(next)(resource, { method: 'POST', body: '{}' })
+  expect(response.status).toBe(200)
+  expect(await store.get(resource)).toEqual(stored)
+})
+
+test('invalid_grant does not clear a record another flight already replaced', async () => {
+  const store = createMemoryTokenStore()
+  await store.set(resource, {
+    accessToken: 'old',
+    tokenType: 'Bearer',
+    refreshToken: 'r1',
+    expiresAt: 1000,
+    tokenEndpoint: 'https://as.example.com/token',
+    issuer: 'https://as.example.com',
+  })
+  const replacement = {
+    accessToken: 'other',
+    tokenType: 'Bearer',
+    refreshToken: 'r2',
+    expiresAt: 9_999_999_999,
+    tokenEndpoint: 'https://as.example.com/token',
+    issuer: 'https://as.example.com',
+  }
+  const next = async (url: string): Promise<Response> => {
+    if (url.endsWith('/token')) {
+      // Another process rotated the token while this refresh was in flight.
+      await store.set(resource, replacement)
+      return oauthError('invalid_grant')
+    }
+    return json({ ok: true })
+  }
+  const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 999 })
+  await mw(next)(resource, { method: 'POST', body: '{}' })
+  expect(await store.get(resource)).toEqual(replacement)
+})

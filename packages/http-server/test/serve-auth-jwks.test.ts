@@ -144,6 +144,21 @@ describe('serveHTTP with JWKS verifier', () => {
     expectBearerChallenge(await requestToolsList(baseURL), 401)
   })
 
+  test('answers 500, not 401, when the JWKS cannot be fetched', async () => {
+    const outage = await startGatedMCP(
+      createJWKSVerifier({ issuer, jwksURI: `${issuer}/missing`, fetchTimeoutMs: 2_000 }),
+      issuer,
+    )
+    try {
+      const token = await mintToken('ES256', keys.ES256, issuer)
+      const response = await requestToolsList(outage.baseURL, token)
+      expect(response.status).toBe(500)
+      expect(response.headers.get('WWW-Authenticate')).toBeNull()
+    } finally {
+      await outage.server.dispose()
+    }
+  })
+
   test('serves protected-resource metadata without a token', async () => {
     const response = await fetch(`${baseURL}/.well-known/oauth-protected-resource/mcp`, {
       signal: AbortSignal.timeout(3_000),

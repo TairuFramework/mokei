@@ -406,3 +406,54 @@ test('an unknown kid still forces exactly one JWKS refresh and retry', async () 
   await expect(verifier.verifyAccessToken(token, { resource })).rejects.toThrow()
   expect(fetchCalls).toBe(2)
 })
+
+test('a JWKS fetch failure is operational: plain Error, body cancelled', async () => {
+  const { token } = await makeToken()
+  let cancelled = false
+  const body = new ReadableStream({
+    cancel() {
+      cancelled = true
+    },
+  })
+  const fetchJWKS = async (): Promise<Response> => new Response(body, { status: 503 })
+  const verifier = createJWKSVerifier({
+    issuer,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
+  })
+  const caught = await verifier.verifyAccessToken(token, { resource }).catch((err) => err)
+  expect(caught).toBeInstanceOf(Error)
+  expect(caught).not.toBeInstanceOf(TokenVerificationError)
+  expect((caught as Error).message).toMatch(/HTTP 503/)
+  expect(cancelled).toBe(true)
+})
+
+test('an oversized JWKS response is operational, not a credential failure', async () => {
+  const { token } = await makeToken()
+  const fetchJWKS = async (): Promise<Response> =>
+    new Response('x'.repeat(10), { status: 200, headers: { 'Content-Length': '2000000' } })
+  const verifier = createJWKSVerifier({
+    issuer,
+    jwksURI: `${issuer}/jwks`,
+    fetch: fetchJWKS as never,
+  })
+  const caught = await verifier.verifyAccessToken(token, { resource }).catch((err) => err)
+  expect(caught).not.toBeInstanceOf(TokenVerificationError)
+  expect((caught as Error).message).toMatch(/exceeds/)
+})
+
+test.each(['http://[::1]:8080/jwks', 'http://auth.localhost/jwks'])(
+  'an http jwks_uri on loopback host %s is allowed',
+  async (jwksURI) => {
+    const { token, jwk } = await makeToken()
+    const fetched: Array<string> = []
+    const fetchJWKS = async (url: string): Promise<Response> => {
+      fetched.push(url)
+      return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })
+    }
+    const verifier = createJWKSVerifier({ issuer, jwksURI, fetch: fetchJWKS as never })
+    const info = await verifier.verifyAccessToken(token, { resource })
+    expect(info.subject).toBe('user-1')
+    expect(fetched).toEqual([jwksURI])
+  },
+)

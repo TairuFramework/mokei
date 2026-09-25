@@ -70,8 +70,15 @@ function defaultNow(): number {
   return Math.floor(Date.now() / 1000)
 }
 
+/** `URL.hostname` keeps IPv6 brackets, so `[::1]` is the form a parsed URL yields. */
 function isLoopbackHost(hostname: string): boolean {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]' ||
+    hostname.endsWith('.localhost')
+  )
 }
 
 /** Requires `url` to be https, allowing http only for a loopback host. */
@@ -79,13 +86,14 @@ function requireHTTPS(url: string): void {
   const u = new URL(url)
   if (u.protocol === 'https:') return
   if (u.protocol === 'http:' && isLoopbackHost(u.hostname)) return
-  throw new TokenVerificationError({
-    code: 'invalid_token',
-    message: `OAuth endpoint must be https: ${url}`,
-  })
+  throw new Error(`OAuth endpoint must be https: ${url}`)
 }
 
-/** RFC 8414: insert the well-known segment before the issuer's own path, not append it. */
+/**
+ * RFC 8414 §3.1: insert the well-known segment before the issuer's own path, removing any
+ * terminating `/` from that path. The protected-resource builder keeps it (RFC 9728 §3.1 only
+ * drops the `/` directly after the host), so the two differ on purpose.
+ */
 function wellKnownAS(issuer: string): string {
   const u = new URL(issuer)
   const path = u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '')
@@ -122,10 +130,8 @@ function concatUint8(chunks: Array<Uint8Array>): Uint8Array {
 async function readCappedText(res: Response, url: string, maxBytes: number): Promise<string> {
   const contentLength = Number(res.headers.get('content-length'))
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    throw new TokenVerificationError({
-      code: 'invalid_token',
-      message: `response from ${url} exceeds ${maxBytes} bytes`,
-    })
+    await res.body?.cancel().catch(() => {})
+    throw new Error(`response from ${url} exceeds ${maxBytes} bytes`)
   }
   const body = res.body
   if (body == null) return ''
@@ -139,10 +145,7 @@ async function readCappedText(res: Response, url: string, maxBytes: number): Pro
       total += value.byteLength
       if (total > maxBytes) {
         await reader.cancel().catch(() => {})
-        throw new TokenVerificationError({
-          code: 'invalid_token',
-          message: `response from ${url} exceeds ${maxBytes} bytes`,
-        })
+        throw new Error(`response from ${url} exceeds ${maxBytes} bytes`)
       }
       chunks.push(value)
     }
@@ -150,28 +153,24 @@ async function readCappedText(res: Response, url: string, maxBytes: number): Pro
   return new TextDecoder().decode(concatUint8(chunks))
 }
 
-/**
- * Parse a capped `Response` body as JSON, converting a non-JSON body into a
- * `TokenVerificationError` so callers that only catch that type never see a raw `SyntaxError`.
- * The byte cap runs before parsing, so an oversized body is never buffered.
- */
+/** Parse a capped `Response` body as JSON. The byte cap runs first, so an oversized body is
+ * never buffered. */
 async function parseJSONResponse(res: Response, url: string, maxBytes: number): Promise<unknown> {
   const text = await readCappedText(res, url, maxBytes)
   try {
     return JSON.parse(text)
   } catch (cause) {
-    const error = new TokenVerificationError({
-      code: 'invalid_token',
-      message: `response from ${url} is not valid JSON`,
-    })
-    error.cause = cause
-    throw error
+    throw new Error(`response from ${url} is not valid JSON`, { cause })
   }
 }
 
 /**
  * A verifier for OAuth 2.0 access tokens (JWTs) signed with RS256 or ES256,
  * verified against a JWKS fetched from the authorisation server.
+ *
+ * Only token faults throw `TokenVerificationError` (HTTP 401). Failing to fetch or parse the AS
+ * metadata or JWKS, or a non-https endpoint, throws a plain `Error` (HTTP 500): an outage must
+ * not look like a bad credential and send clients into re-authorisation.
  */
 export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifier {
   const fetchFn: FetchLike = config.fetch ?? (globalThis.fetch as FetchLike)
@@ -197,26 +196,18 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
       signal: AbortSignal.timeout(fetchTimeoutMs),
     })
     if (!res.ok) {
-      throw new TokenVerificationError({
-        code: 'invalid_token',
-        message: `failed to discover JWKS URI from ${metadataURL}: HTTP ${res.status}`,
-      })
+      await res.body?.cancel().catch(() => {})
+      throw new Error(`failed to discover JWKS URI from ${metadataURL}: HTTP ${res.status}`)
     }
     const metadata = (await parseJSONResponse(res, metadataURL, maxResponseBytes)) as {
       issuer?: unknown
       jwks_uri?: unknown
     }
     if (metadata.issuer !== config.issuer) {
-      throw new TokenVerificationError({
-        code: 'invalid_token',
-        message: 'issuer mismatch in AS metadata',
-      })
+      throw new Error('issuer mismatch in AS metadata')
     }
     if (typeof metadata.jwks_uri !== 'string' || metadata.jwks_uri.length === 0) {
-      throw new TokenVerificationError({
-        code: 'invalid_token',
-        message: `authorization server metadata at ${metadataURL} is missing jwks_uri`,
-      })
+      throw new Error(`authorization server metadata at ${metadataURL} is missing jwks_uri`)
     }
     resolvedJWKSURI = metadata.jwks_uri
     return resolvedJWKSURI
@@ -230,23 +221,15 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
       signal: AbortSignal.timeout(fetchTimeoutMs),
     })
     if (!res.ok) {
-      throw new TokenVerificationError({
-        code: 'invalid_token',
-        message: `failed to fetch JWKS from ${uri}: HTTP ${res.status}`,
-      })
+      await res.body?.cancel().catch(() => {})
+      throw new Error(`failed to fetch JWKS from ${uri}: HTTP ${res.status}`)
     }
     const body = (await parseJSONResponse(res, uri, maxResponseBytes)) as { keys?: unknown }
     if (!Array.isArray(body.keys)) {
-      throw new TokenVerificationError({
-        code: 'invalid_token',
-        message: 'JWKS response is missing a keys array',
-      })
+      throw new Error('JWKS response is missing a keys array')
     }
     if (body.keys.length > MAX_JWKS_KEYS) {
-      throw new TokenVerificationError({
-        code: 'invalid_token',
-        message: `JWKS contains too many keys (${body.keys.length} > ${MAX_JWKS_KEYS})`,
-      })
+      throw new Error(`JWKS contains too many keys (${body.keys.length} > ${MAX_JWKS_KEYS})`)
     }
     const ttlSeconds = parseMaxAge(res.headers.get('cache-control')) ?? DEFAULT_JWKS_TTL_SECONDS
     return { keys: body.keys as Array<Jwk>, fetchedAt: now(), ttlSeconds }
