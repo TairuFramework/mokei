@@ -11,7 +11,7 @@ import {
   type ValidationIssue,
 } from './errors.js'
 
-export type SystemOneHTTPClientOptions = {
+export type SystemOneHTTPClientParams = {
   url: string
   apiKey?: string
   headers?: Record<string, string>
@@ -20,7 +20,7 @@ export type SystemOneHTTPClientOptions = {
   defaultModel?: string
 }
 
-export type HTTPSystemOneBackendParams = Omit<SystemOneHTTPClientOptions, 'defaultModel'>
+export type HTTPSystemOneBackendParams = Omit<SystemOneHTTPClientParams, 'defaultModel'>
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null

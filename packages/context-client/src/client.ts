@@ -148,7 +148,7 @@ export const DEFAULT_INITIALIZE_PARAMS: InitializeRequest['params'] = {
   protocolVersion: '2025-11-25',
 }
 
-export const DEFAULT_INITIALIZE_TIMEOUT = 30_000
+export const DEFAULT_SETUP_TIMEOUT = 30_000
 
 /** Default cap on pages fetched by a single list walk. */
 export const DEFAULT_LIST_MAX_PAGES = 100
@@ -411,8 +411,7 @@ export class ContextClient<
     this.#logLevel = params.logLevel
     this.#protocol = protocol
     this.#ready = lazy(() => this.#setup())
-    this.#setupTimeout =
-      params.setupTimeout ?? params.initializeTimeout ?? DEFAULT_INITIALIZE_TIMEOUT
+    this.#setupTimeout = params.setupTimeout ?? DEFAULT_SETUP_TIMEOUT
     // The `SetupIO` closures are the only place `#setupBuffer` / `#pendingSetupRead` are touched
     // outside the `_read()` override below -- see `setup-reader.ts`'s `SetupIO` comment for why
     // each closure is shaped the way it is.

@@ -37,7 +37,7 @@ export class SystemOneInputError extends ValidationError {
 }
 export type SystemOneInputErrorParams = SystemOneErrorParams & { issues?: Array<ValidationIssue> }
 
-export type SystemOneConnectionErrorOptions = ErrorOptions & {
+export type SystemOneConnectionErrorParams = SystemOneErrorParams & {
   /** HTTP status of the response; absent when the backend could not be reached. */
   status?: number
 }
@@ -56,9 +56,7 @@ export class SystemOneConnectionError extends SystemOneError {
     return this.#status
   }
 }
-export type SystemOneConnectionErrorParams = SystemOneErrorParams & SystemOneConnectionErrorOptions
-
-export type SystemOneRetryableErrorOptions = SystemOneConnectionErrorOptions & {
+export type SystemOneRetryableErrorParams = SystemOneConnectionErrorParams & {
   /** Delay the backend asked for in its `Retry-After` header, in milliseconds. */
   retryAfterMs?: number
 }
@@ -66,7 +64,7 @@ export type SystemOneRetryableErrorOptions = SystemOneConnectionErrorOptions & {
 class RetryableError extends SystemOneConnectionError {
   #retryAfterMs: number | undefined
 
-  constructor(params: RetryableErrorParams) {
+  constructor(params: SystemOneRetryableErrorParams) {
     super(params)
     this.#retryAfterMs = params.retryAfterMs
   }
@@ -75,8 +73,6 @@ class RetryableError extends SystemOneConnectionError {
     return this.#retryAfterMs
   }
 }
-type RetryableErrorParams = SystemOneConnectionErrorParams & SystemOneRetryableErrorOptions
-
 /** 429: the caller exceeded its rate limit. Retry after `retryAfterMs` when set. */
 export class SystemOneRateLimitError extends RetryableError {
   constructor(params: SystemOneRateLimitErrorParams) {
@@ -84,7 +80,7 @@ export class SystemOneRateLimitError extends RetryableError {
     this.name = 'SystemOneRateLimitError'
   }
 }
-export type SystemOneRateLimitErrorParams = RetryableErrorParams
+export type SystemOneRateLimitErrorParams = SystemOneRetryableErrorParams
 
 /** 529: the backend is overloaded. Retry later, after `retryAfterMs` when set. */
 export class SystemOneOverloadedError extends RetryableError {
@@ -93,7 +89,7 @@ export class SystemOneOverloadedError extends RetryableError {
     this.name = 'SystemOneOverloadedError'
   }
 }
-export type SystemOneOverloadedErrorParams = RetryableErrorParams
+export type SystemOneOverloadedErrorParams = SystemOneRetryableErrorParams
 
 /** 401 or 403: a missing or rejected Bearer key. */
 export class SystemOneAuthError extends SystemOneError {

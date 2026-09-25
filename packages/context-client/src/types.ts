@@ -157,7 +157,5 @@ export type ClientParams = {
    * that fails a connection to a server that is spawned but never answers.
    */
   setupTimeout?: number
-  /** @deprecated Renamed to `setupTimeout`. */
-  initializeTimeout?: number
   transport: ClientTransport
 }
