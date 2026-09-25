@@ -108,7 +108,7 @@ async function initializeSession(handler: ReturnType<typeof createHandler>): Pro
   if (sessionID == null) {
     throw new Error('No session ID in response')
   }
-  // Send initialized notification
+  // Send `notifications/initialized`.
   await handler.handleRequest(initializedNotification(sessionID))
   return sessionID
 }
@@ -438,7 +438,7 @@ describe('createHTTPHandler', () => {
         throw new Error('No session ID in response')
       }
 
-      // Send initialized notification with the allowed origin.
+      // Send `notifications/initialized` with the allowed origin.
       await handler.handleRequest(
         new Request('http://localhost/mcp', {
           method: 'POST',
@@ -697,7 +697,7 @@ describe('createHTTPHandler', () => {
     try {
       const sessionID = await initializeSession(handler)
 
-      // Make a tool call — the POST stream emits a priming event then the tool result
+      // Make a tool call -- the POST stream emits a priming event then the tool result
       const postResponse = await handler.handleRequest(toolCallRequest(sessionID, 'cross-stream'))
       expect(postResponse.status).toBe(200)
 
@@ -712,7 +712,7 @@ describe('createHTTPHandler', () => {
       const primingEventID = postEvents[0]?.id ?? ''
       expect(primingEventID).toMatch(/^post-/)
 
-      // The result event — this is what we want to see replayed on the GET stream
+      // The result event -- this is what we want to see replayed on the GET stream
       const resultEvent = postEvents.find((e) => e.data !== '')
       expect(resultEvent).toBeDefined()
       const resultData = resultEvent?.data ?? ''
@@ -784,7 +784,7 @@ describe('createHTTPHandler', () => {
 
       // Buffer well over the SSE stream's backpressure high-water mark of replay events: each
       // tool call records its result event (priming events are not logged), so 24 calls buffer
-      // 24 replay events — comfortably past the ~17-frame in-flight budget the stream buffers
+      // 24 replay events -- comfortably past the ~17-frame in-flight budget the stream buffers
       // before a write parks for a reader.
       for (let i = 0; i < 24; i++) {
         const res = await handler.handleRequest(toolCallRequest(sessionID, `evt-${i}`, i + 2))
@@ -793,7 +793,7 @@ describe('createHTTPHandler', () => {
 
       // Resume with an unknown Last-Event-ID: handleGET replays every buffered event. If it
       // awaits those writes before returning the Response, the writes past the high-water mark
-      // park for a reader that cannot exist yet — the request hangs forever.
+      // park for a reader that cannot exist yet -- the request hangs forever.
       const getPromise = handler.handleRequest(
         new Request('http://localhost/mcp', {
           method: 'GET',

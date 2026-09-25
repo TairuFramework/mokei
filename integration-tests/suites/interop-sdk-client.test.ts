@@ -15,7 +15,7 @@ import {
 
 /**
  * One row per protocol revision, carrying only *how to connect*. Assertions that exist on one
- * revision and not the other stay out of it — the shared body below is identical for both, and
+ * revision and not the other stay out of it -- the shared body below is identical for both, and
  * the revision-specific part of it is `checkSDKClient`'s own `protocolVersion` option.
  */
 type MokeiServerRow = {

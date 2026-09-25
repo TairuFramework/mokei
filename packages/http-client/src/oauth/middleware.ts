@@ -8,7 +8,7 @@ import { canonicalResource } from './resource.js'
 import type { StoredTokens, TokenStore } from './store.js'
 import { createMemoryTokenStore } from './store.js'
 
-/** Completes the authorization-code exchange for a resource: the core owns all authorization-URL
+/** Completes the authorisation-code exchange for a resource: the core owns all authorisation-URL
  * params and the PKCE/state bookkeeping; the handler only supplies (and returns) `redirectURI`. */
 export type AuthorizationHandler = {
   authorize(params: {
@@ -30,7 +30,7 @@ export type OAuthClientConfig = {
   clockSkewSeconds?: number
   /** Current time in seconds; defaults to the wall clock. */
   now?: () => number
-  /** Picks an authorization server when the protected-resource metadata lists more than one;
+  /** Picks an authorisation server when the protected-resource metadata lists more than one;
    * defaults to the first. */
   selectAuthServer?: (servers: Array<string>) => string
 }
@@ -148,7 +148,7 @@ type ExchangeAuthorizationCodeParams = {
   signal?: AbortSignal
 }
 
-/** Runs the PKCE authorization-code exchange (form-encoded, no client secret) against the token
+/** Runs the PKCE authorisation-code exchange (form-encoded, no client secret) against the token
  * endpoint. */
 async function exchangeAuthorizationCode(
   params: ExchangeAuthorizationCodeParams,
@@ -182,40 +182,25 @@ async function exchangeAuthorizationCode(
 }
 
 /**
- * Attaches `Authorization: Bearer …` from the token store and pre-emptively refreshes near expiry
- * (best-effort; skipped when no token endpoint is known yet, recovered by the 401 path).
- *
- * On a 401, once per outbound call: discovers the authorization server from `WWW-Authenticate`,
- * refreshes or runs a PKCE authorization-code flow via `config.handler`, stores the tokens, and
- * retries once. Concurrent callers of the same middleware instance share a single in-flight
- * refresh/authorize per resource (`authFlights`, keyed by canonical resource).
+ * Attach stored bearer tokens and refresh near expiry when the token endpoint is known.
+ * On 401, discover the authorisation server, refresh or run PKCE, then retry once.
+ * Callers of this instance share one in-flight recovery per canonical resource.
  */
 export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddleware {
   const now = config.now ?? (() => Math.floor(Date.now() / 1000))
   const skew = config.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS
-  // Created once, here, at middleware construction — not per-request: a per-request default
-  // store would be empty on every call and never actually retain a token.
+  // A per-request default store would never retain a token.
   const store = config.store ?? createMemoryTokenStore()
 
-  // Per-instance, not module-level: two instances (different clientID/handler/store) must never
-  // share a flight even when their canonical resource strings coincide, or one instance's config
-  // and store would decide the other's outcome.
-  //
-  // Consequence: two instances sharing one `TokenStore` file for the same resource don't
-  // coordinate, so a rotating refresh token can be redeemed twice across them. File writes are
-  // serialized by `createFileTokenStore`'s mutex (no corruption), so the residual is a redundant
-  // refresh/re-auth, not data loss. A proper fix needs atomic compare-and-set on `TokenStore`.
+  // Flights are per instance: sharing across configs would use another client's store.
+  // Separate instances sharing a file can redeem a rotating refresh token twice.
+  // `createFileTokenStore` serialises writes, but preventing redundant re-auth needs
+  // atomic compare-and-set on `TokenStore`.
   const authFlights = new Map<string, Promise<StoredTokens>>()
 
-  /** Runs (or joins) the single-flight refresh/authorize for `resource`, re-checking the store
-   * first in case a concurrent flight populated it. Reuse is decided by token identity
-   * (`staleAccessToken`), not `nearExpiry`: a token need not carry `expiresAt`, and a 401 can have
-   * causes other than expiry, so an expiry check could wrongly reuse the token that just failed.
-   *
-   * A joiner does not inherit a rejected flight. Pre-emptive refresh and the 401-authorize path
-   * share one slot per resource, so a failed background refresh must not hard-fail a caller's
-   * fixable 401. The joiner re-checks the store and, if still unauthenticated, starts its own
-   * recovery — deduplicated synchronously against `authFlights` so at most one runs. */
+  /** Recheck token identity before recovery: expiry alone could reuse a token that
+   * just failed with 401 or has no `expiresAt`. A joiner retries after a rejected
+   * pre-emptive flight so a fixable 401 is not lost; `authFlights` deduplicates it. */
   function withSingleFlight(
     resource: string,
     store: TokenStore,
@@ -229,9 +214,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         return run()
       })()
       authFlights.set(resource, flight)
-      // A second, derived promise chain so cleanup runs regardless of outcome without attaching
-      // an additional unhandled-rejection-prone consumer to `flight` itself (its other consumers —
-      // the leader's own caller, and any joiner's recovery below — already handle/propagate it).
+      // Handle rejection on this cleanup chain; an unhandled rejection could crash Node.
       flight
         .finally(() => {
           if (authFlights.get(resource) === flight) authFlights.delete(resource)
@@ -245,7 +228,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
     return inFlight.catch(() => authFlights.get(resource) ?? start())
   }
 
-  /** Discovers the authorization server, runs PKCE + `config.handler.authorize`, exchanges the
+  /** Discovers the authorisation server, runs PKCE + `config.handler.authorize`, exchanges the
    * returned code for tokens, and persists them under `resource`. */
   async function authorize(
     next: FetchLike,
@@ -329,7 +312,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         nearExpiry(tokens, now, skew)
       ) {
         // Best-effort: a failed refresh (network error, non-2xx, non-bearer token_type) must
-        // not fail the outbound request outright — it proceeds on the current, possibly-stale
+        // not fail the outbound request outright -- it proceeds on the current, possibly-stale
         // token, and the 401 path below recovers.
         try {
           const refreshTokenEndpoint = tokens.tokenEndpoint
@@ -368,10 +351,10 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       if (response.status !== 401) return response
 
       // Cancel the 401 body before recovery: an SSE/unbounded body would pin the socket for the
-      // whole refresh-then-authorize flow, which can be interactive and multi-minute.
+      // whole refresh-then-authorise flow, which can be interactive and multi-minute.
       await response.body?.cancel().catch(() => {})
 
-      // Prefer a refresh over full re-authorization when a refresh token is available: it is
+      // Prefer a refresh over full re-authorisation when a refresh token is available: it is
       // cheaper and does not require the interactive handler. Only fall through to `authorize`
       // when there is no refresh token/endpoint, or the refresh itself fails.
       if (tokens?.refreshToken != null && tokens.tokenEndpoint != null) {
@@ -398,7 +381,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
           tokens = refreshed
           return next(url, attach(init))
         } catch {
-          // Fall through to full authorization below.
+          // Fall through to full authorisation below.
         }
       }
 

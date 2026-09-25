@@ -3,15 +3,10 @@ import { fromB64U } from '@sozai/codec'
 export type AuthInfo = { subject: string; scopes: Array<string>; expiresAt?: number; raw?: unknown }
 
 /**
- * A pluggable verifier for OAuth 2.0 bearer access tokens.
- *
- * Error-typing contract: `verifyAccessToken` MUST throw {@link TokenVerificationError} for every
- * credential-validation failure (bad signature, expired/malformed token, wrong audience/issuer).
- * Any other thrown error is treated as operational (network/DNS, an unexpected crypto exception)
- * and propagates as-is: `createBearerAuthGate` rethrows non-`TokenVerificationError`s as HTTP 500.
- * This fail-closed default is deliberate — normalizing every error to 401 would mask an AS outage
- * or verifier bug as an ordinary auth failure. A custom verifier must re-throw positively
- * identified credential problems as `TokenVerificationError`, but must not blanket-convert.
+ * OAuth bearer verifier. Throw {@link TokenVerificationError} only for known
+ * credential failures (signature, expiry, format, audience, issuer).
+ * Operational failures must propagate: `createBearerAuthGate` returns HTTP 500
+ * for them, rather than masking an outage or verifier bug as HTTP 401.
  */
 export type OAuthTokenVerifier = {
   verifyAccessToken(token: string, ctx: { resource: string }): Promise<AuthInfo>

@@ -8,8 +8,8 @@
  * that cancelled it.
  *
  * **The abort is now observable.** `ContextRPC`'s read loop no longer awaits each message's
- * handler before reading the next, so `notifications/cancelled` is read — and the corresponding
- * handler's `signal` is aborted — while `hang` is still pending, instead of only after it has
+ * handler before reading the next, so `notifications/cancelled` is read -- and the corresponding
+ * handler's `signal` is aborted -- while `hang` is still pending, instead of only after it has
  * already settled on its deadline.
  */
 import { createTool } from '@mokei/context-server'

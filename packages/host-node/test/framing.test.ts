@@ -23,7 +23,7 @@ describe('ContextHost stdio framing', () => {
     })
 
     // Trigger the lazy initialize read so the framer pulls the flood. The child
-    // never speaks MCP, so setup() rejects — we assert on the event, not this.
+    // never speaks MCP, so setup() rejects -- we assert on the event, not this.
     await host.setup({ key: 'flood' }).catch(() => {})
 
     await vi.waitFor(() => {
@@ -131,7 +131,7 @@ describe('ContextHost stdio framing', () => {
     // NOT be treated as a framing fault: with no consumer pulling the stream,
     // the bytes sit in the OS pipe buffer (bounded by the kernel, not host
     // memory), so the framer never overflows. The context stays registered and
-    // healthy — the cap only engages once the host actively reads.
+    // healthy -- the cap only engages once the host actively reads.
     const host = new NodeContextHost()
     let failed = 0
     let removed = 0
@@ -146,7 +146,7 @@ describe('ContextHost stdio framing', () => {
       key: 'idle',
       command: process.execPath,
       // Flood far past the cap, then stay alive so nothing triggers a clean
-      // exit — isolating the "idle, unread flood" path.
+      // exit -- isolating the "idle, unread flood" path.
       args: ['-e', 'process.stdout.write("x".repeat(1_000_000)); setInterval(() => {}, 1000)'],
       maxBufferSize: 64 * 1024,
     })

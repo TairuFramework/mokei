@@ -24,8 +24,8 @@ import { runSubscriptionExchange } from './subscriptions.js'
 export type HTTPHandlerParams = {
   /**
    * Builds a `ContextServer` for one connection. The object form threads the optional durable
-   * {@link HTTPHandlerParams.subscriptionHub} through so a server can borrow it, and — for a
-   * `subscriptions/listen` POST — the per-POST `connectionID` minted from {@link runtime}. Both
+   * {@link HTTPHandlerParams.subscriptionHub} through so a server can borrow it, and -- for a
+   * `subscriptions/listen` POST -- the per-POST `connectionID` minted from {@link runtime}. Both
    * are absent on the session/initialize path; a server that ignores them behaves as before.
    */
   createServer: (params: {
@@ -38,15 +38,15 @@ export type HTTPHandlerParams = {
    * `subscriptions: true`, or `createSubscriptionHub`). When present, a `2026-07-28`
    * `subscriptions/listen` POST is served against a transport-isolated per-POST server that
    * *borrows* this hub; without one, a listen POST gets `METHOD_NOT_FOUND`. The handler never
-   * owns or disposes the hub it is handed — the caller does.
+   * owns or disposes the hub it is handed -- the caller does.
    *
    * Dispose ordering matters. The per-POST servers this handler creates are *borrowers* of the
    * hub, not its owner: calling `dispose()` on the value returned by `serveHTTP(...)` (or on
-   * `handler.dispose()`) does NOT gracefully complete open subscriptions — it is the abrupt
+   * `handler.dispose()`) does NOT gracefully complete open subscriptions -- it is the abrupt
    * backstop only, and every open `subscriptions/listen` stream is torn down abruptly (no
    * terminal frame written) if that's all that runs. To get graceful, terminal-writing teardown
    * of open subscriptions, the caller must first gracefully complete/dispose the durable
-   * hub-owning `ContextServer` (or call `hub.endAllGracefully()` directly) — and only then call
+   * hub-owning `ContextServer` (or call `hub.endAllGracefully()` directly) -- and only then call
    * `serveHTTP(...).dispose()` / `handler.dispose()`.
    */
   subscriptionHub?: SubscriptionHub
@@ -60,7 +60,7 @@ export type HTTPHandlerParams = {
    * Controls Origin header validation:
    * - Unset (default): localhost-only. Requests without an Origin header (non-browser clients)
    *   are allowed. Requests with a foreign Origin are rejected (DNS-rebinding protection).
-   * - `['*']`: Disable validation — all origins are accepted.
+   * - `['*']`: Disable validation -- all origins are accepted.
    * - Any other array: Exact-match allowlist. A missing Origin header is rejected.
    */
   allowedOrigins?: Array<string>
@@ -79,7 +79,7 @@ export type HTTPHandlerParams = {
    * {@link DEFAULT_MAX_STATELESS_EXCHANGES}). Past the cap a POST is refused with `503` before
    * anything is built for it.
    *
-   * The session path's `maxSessions` has no reach here — a stateless exchange has no session —
+   * The session path's `maxSessions` has no reach here -- a stateless exchange has no session --
    * and `statelessTimeoutMs` is not a substitute: that timer is cleared by the first thing the
    * server writes, so a tool that emits one progress notification and then blocks holds its
    * throwaway `ContextServer`, transport and connection for as long as the caller keeps reading.
@@ -110,7 +110,7 @@ export const DEFAULT_MAX_STATELESS_EXCHANGES = 100
 
 /**
  * Default cap on concurrent `subscriptions/listen` exchanges. Each holds a whole per-POST server
- * for the life of the subscription, so — like `maxStatelessExchanges` — it is bounded well below
+ * for the life of the subscription, so -- like `maxStatelessExchanges` -- it is bounded well below
  * `maxSessions`. Raise it for a deployment expecting many simultaneous subscribers.
  */
 export const DEFAULT_MAX_SUBSCRIPTION_EXCHANGES = 100
@@ -152,7 +152,7 @@ function isServerRequestOrNotification(message: Record<string, unknown>): boolea
 
 /**
  * Read a request body as text, enforcing a maximum byte size. Returns `null` when
- * the body exceeds `maxBytes` so the caller can respond 413 — without first
+ * the body exceeds `maxBytes` so the caller can respond 413 -- without first
  * buffering and parsing an unbounded payload (a cheap DoS otherwise). Checks the
  * declared Content-Length for a fast reject, then counts actual streamed bytes
  * (the header can be absent or wrong under chunked transfer).
@@ -245,7 +245,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   // shutdown bookkeeping, never addressable by anything a client sends.
   const statelessTeardowns = new Set<() => void>()
 
-  // The same, for in-flight `subscriptions/listen` exchanges — plus the per-POST servers they
+  // The same, for in-flight `subscriptions/listen` exchanges -- plus the per-POST servers they
   // built, so `dispose()` can await each one's bounded held-response flush (not just fire its
   // abrupt teardown). A listen holds its server open indefinitely, so it is tracked separately
   // from `statelessTeardowns` and is not counted against `maxStatelessExchanges`.
@@ -401,7 +401,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       const headerVersion = request.headers.get('MCP-Protocol-Version')
       // An absent header is accepted: the body's `_meta` is what `ContextServer` resolves
       // the revision from, so the header is redundant confirmation for intermediaries. A
-      // header that *contradicts* the body is rejected — one of the two is wrong, and
+      // header that *contradicts* the body is rejected -- one of the two is wrong, and
       // guessing which would let a stale proxy silently reroute a request.
       if (headerVersion != null && headerVersion !== requestVersion) {
         return new Response(
@@ -482,10 +482,10 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
 
     // A `subscriptions/listen` POST is the one stateless request served against a held-open
-    // stream rather than `runStatelessExchange`'s answer-then-close one — but only when a durable
+    // stream rather than `runStatelessExchange`'s answer-then-close one -- but only when a durable
     // hub is configured for it to borrow. Without a hub it falls through to `runStatelessExchange`
     // below, where the per-POST server (built with no hub) rejects the method with
-    // `METHOD_NOT_FOUND`, exactly as the spec requires — no special-casing of the error here.
+    // `METHOD_NOT_FOUND`, exactly as the spec requires -- no special-casing of the error here.
     if (body.method === 'subscriptions/listen' && subscriptionHub != null) {
       // Refuse before building anything (mirrors the `maxStatelessExchanges` gate below);
       // `listenTeardowns` counts in-flight listens. An id-less frame holds no slot, so let it pass.
@@ -498,7 +498,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       return await handleListen(request, body, requestID)
     }
 
-    // Refused before dispatch, mirroring the session path's `maxSessions` gate —
+    // Refused before dispatch, mirroring the session path's `maxSessions` gate --
     // `statelessTeardowns` holds exactly the exchanges currently in flight, and `Retry-After: 1`
     // because the condition is transient by construction: the cap frees as handlers return.
     //
@@ -509,7 +509,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     //
     // Note what `requestID` actually tests: the presence of `body.id`, not the frame's kind. A
     // *response* carries an id, so it would take a slot and hold it until the exchange times
-    // out. That is unreachable rather than handled — `handlePOST` routes here only on a
+    // out. That is unreachable rather than handled -- `handlePOST` routes here only on a
     // `params._meta` protocol version, and a response has no `params` at all, so one never
     // arrives. Anything that made responses routable would have to revisit this.
     if (requestID != null && statelessTeardowns.size >= maxStatelessExchanges) {
@@ -523,7 +523,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       message: body as unknown as ClientMessage,
       requestID,
       // The stateless per-POST server borrows the durable hub (if any) so its advertised
-      // capabilities — `resources.subscribe` in particular — match the listen path's. It never
+      // capabilities -- `resources.subscribe` in particular -- match the listen path's. It never
       // registers a subscription itself, so no `connectionID` is threaded here.
       createServer: (transport) => createServer({ transport, subscriptionHub }),
       replayBufferSize,
@@ -687,7 +687,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     }
 
     // Size the stream to hold the priming frame plus the whole replay snapshot, so those writes
-    // never park for a reader that only attaches once the Response is returned — replaying a
+    // never park for a reader that only attaches once the Response is returned -- replaying a
     // buffer larger than a fixed high-water mark would otherwise deadlock. Live traffic after
     // resumption is then bounded by this same mark, which is never below the default.
     const highWaterMark = Math.max(SSE_STREAM_HIGH_WATER_MARK, replayEvents.length + 1)
@@ -702,15 +702,15 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     })
 
     // Publish the stream up front, but gate live writes behind the replay. Publishing before any
-    // `await` (a) closes a superseding GET deterministically — a second resumption sees this
-    // stream rather than racing a null slot and orphaning it — and (b) routes any live server
+    // `await` (a) closes a superseding GET deterministically -- a second resumption sees this
+    // stream rather than racing a null slot and orphaning it -- and (b) routes any live server
     // message that arrives during replay to this stream instead of dropping it. The gate holds
     // those live writes until the snapshot is written, so they land after it, never interleaved.
     let releaseLiveWrites!: () => void
     sseWriter.deferLiveWritesUntil(new Promise<void>((resolve) => (releaseLiveWrites = resolve)))
     session.getStream = sseWriter
 
-    // Priming frame first, then the replay snapshot — buffered up front (the stream is sized to
+    // Priming frame first, then the replay snapshot -- buffered up front (the stream is sized to
     // fit) so neither parks. Original event ids are preserved so the client's resumption cursor
     // stays consistent. `finally` releases gated live writes even if a write throws, so they are
     // never wedged.
@@ -782,7 +782,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     // once teardown has begun.
     const listenServerSnapshot = [...listenServers]
 
-    // Disposing the manager deletes every session, firing onDelete (closeBridge) for each —
+    // Disposing the manager deletes every session, firing onDelete (closeBridge) for each --
     // which releases its bridge and init waiter. Awaited so each session server's disposal
     // (and its own held-response flush) completes before the handler is considered torn down.
     await sessions.dispose()

@@ -6,7 +6,7 @@ import { expect, test, vi } from 'vitest'
 import { createFileTokenStore } from '../src/oauth/file-store.js'
 
 // `rename` is spied (delegating to the real implementation by default) so a single test can
-// force it to fail once, without disturbing every other test's real filesystem behavior.
+// force it to fail once, without disturbing every other test's real filesystem behaviour.
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return { ...actual, rename: vi.fn(actual.rename) }
@@ -88,7 +88,7 @@ test('a top-level JSON array is treated as empty', async () => {
 // -- instead it exercises the case the reclamation must not break: a `set` that fully settles,
 // then further `get`/`set` calls against the *same* resolved path (which would share a stale
 // entry were it ever wrongly deleted mid-flight) must still read/write correctly. The companion
-// "two independent stores sharing the same path serialize through one mutex" test above
+// "two independent stores sharing the same path serialise through one mutex" test above
 // covers the concurrent-chaining half: the second `set` must observe the first op's tail via
 // `pathTails.get(resolved)` *before* it settles, so the identity-checked delete in `serialize`
 // must not remove a still-live chain out from under a racing op.
@@ -107,7 +107,7 @@ test('repeated sequential ops against the same path keep working after the tail 
   expect((await store.get('k1'))?.accessToken).toBe('first')
   expect((await store.get('k2'))?.accessToken).toBe('second')
 
-  // A later concurrent pair against the same path must still serialize correctly post-reclamation.
+  // A later concurrent pair against the same path must still serialise correctly post-reclamation.
   await Promise.all([
     store.set('k3', { accessToken: 'third', tokenType: 'Bearer' }),
     store.set('k4', { accessToken: 'fourth', tokenType: 'Bearer' }),

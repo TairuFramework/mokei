@@ -4,8 +4,8 @@
  * which a plain child_process pipe cannot provide.
  *
  * Requires the CLI to be built (`bin/dev.js` below imports `../lib/index.js`, so `lib/` must
- * be current — `packages/cli/dist/` is a stale artifact from an older build layout and is
- * gitignored), the built fetch MCP server, and a chat backend — ollama by default, or
+ * be current -- `packages/cli/dist/` is a stale artifact from an older build layout and is
+ * gitignored), the built fetch MCP server, and a chat backend -- ollama by default, or
  * llama-server via `LLAMA_SERVER_URL`, which the suites gate on with `hasChatBackend`.
  */
 import { dirname, resolve } from 'node:path'
@@ -157,7 +157,7 @@ export class ChatDriver {
   /**
    * Whether the *current* status line is idle. The buffer accumulates every
    * frame, so "back to idle" means the latest `idle` marker sits after the
-   * latest active-state marker — not merely that `idle` appears anywhere.
+   * latest active-state marker -- not merely that `idle` appears anywhere.
    */
   isIdle(): boolean {
     const s = this.screen()
@@ -172,7 +172,7 @@ export class ChatDriver {
 
   /**
    * Wait until a turn is in flight, whichever way it presents. `thinking…` only renders
-   * when the backend streams reasoning as a separate channel — ollama does, and so does any
+   * when the backend streams reasoning as a separate channel -- ollama does, and so does any
    * OpenAI-compatible server sending `reasoning_content`, but llama.cpp leaves `<think>`
    * tags inline in the content for templates it does not parse, so the turn goes straight
    * to `streaming`. Tests that just need an in-flight turn should wait on this.
@@ -216,7 +216,7 @@ export class ChatDriver {
     await delay(300)
     this.write('\r')
     const added = await this.waitFor(UI.contextAdded, timeoutMs)
-    // New flow: a tool-select card opens after add — accept defaults (all enabled).
+    // New flow: a tool-select card opens after add -- accept defaults (all enabled).
     if (await this.waitFor(UI.toolSelect, 5_000)) {
       this.write('\r')
     }

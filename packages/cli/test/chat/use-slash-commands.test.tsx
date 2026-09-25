@@ -127,7 +127,7 @@ describe('useSlashCommands — /context add', () => {
 
   // Killing mutation: dropping the `= 'auto'` initializer in `use-slash-commands.ts`, which
   // leaves `protocolVersion` `undefined` and defers to whatever the host defaults to. That is
-  // `'auto'` today, so the mutation is currently silent on the wire — this pins the CLI's own
+  // `'auto'` today, so the mutation is currently silent on the wire -- this pins the CLI's own
   // contract instead, since `/context add` is the primary attach path for `2025-11-25`-only
   // servers. `mokei inspect` passes `'auto'` to `.option()` for the same reason.
   test("defaults to 'auto' when no flag is given, rather than falling through to the host", async () => {

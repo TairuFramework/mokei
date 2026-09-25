@@ -171,7 +171,7 @@ test('falls through to interactive authorize when the refresh exchange itself fa
         code_challenge_methods_supported: ['S256'],
       })
     if (url.endsWith('/token')) {
-      // The refresh exchange itself 401s: the handler must fall through to authorize.
+      // The refresh exchange itself 401s: the handler must fall through to authorise.
       const body = String(init?.body ?? '')
       if (body.includes('grant_type=refresh_token')) {
         return new Response('invalid_grant', { status: 401 })
@@ -304,7 +304,7 @@ test('parseTokenResponse rejects a non-finite expires_in (Infinity)', () => {
   ).toThrow(/expires_in/)
 })
 
-// an unbounded or SSE 401 body left open while the refresh/authorize recovery runs
+// an unbounded or SSE 401 body left open while the refresh/authorise recovery runs
 // (potentially an interactive, multi-minute flow) retains its socket for that whole time. The
 // middleware must cancel it up front, before starting recovery.
 test('the 401 response body is cancelled before the refresh retry starts', async () => {

@@ -353,7 +353,7 @@ describe('ContextClient subscriptions wiring', () => {
     const pending = client.subscribeResource({ uri: 'file:///y' })
     await flush()
 
-    // Disposal tears down the in-flight candidate and rejects the pending mutation — no hang.
+    // Disposal tears down the in-flight candidate and rejects the pending mutation -- no hang.
     await client.dispose()
     await expect(pending).rejects.toThrow()
   })

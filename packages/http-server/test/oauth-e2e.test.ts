@@ -15,8 +15,8 @@ import { serveHTTP } from '../src/serve.js'
 /**
  * In-process end-to-end interop: a real `@mokei/http-server` protected by `requireBearerAuth`,
  * driven by a real `@mokei/http-client` `HTTPTransport` carrying the OAuth `fetchMiddleware`,
- * against a minimal fake authorization server. Proves the whole client<->server OAuth path works
- * together — discovery, 401, authorize, token exchange, retry, and token reuse — not just each
+ * against a minimal fake authorisation server. Proves the whole client<->server OAuth path works
+ * together -- discovery, 401, authorise, token exchange, retry, and token reuse -- not just each
  * side's unit behaviour in isolation.
  */
 
@@ -35,7 +35,7 @@ const SERVER_CONFIG: ServerConfig = {
 
 /**
  * `resource`/`resourceMetadataURL` are baked into the Hono app at `serveHTTP()` call time, but
- * `port: 0` only resolves an actual port once the socket is listening — after the app (and its
+ * `port: 0` only resolves an actual port once the socket is listening -- after the app (and its
  * auth config) already exists. Rather than a bind-then-rebind dance to learn the port first, both
  * sides simply agree on a port-less identifier for the resource; the fake-AS `fetch` shim below is
  * the one thing that ever dereferences a URL against the real socket, and it stamps in the real
@@ -68,7 +68,7 @@ function json(body: unknown): Response {
 
 /**
  * `server.address()` is `null` until the underlying TCP socket finishes binding, which is
- * asynchronous even for an IP-literal hostname on port 0 — so callers must wait for the
+ * asynchronous even for an IP-literal hostname on port 0 -- so callers must wait for the
  * `listening` event before reading the assigned port.
  */
 async function getPort(server: ReturnType<typeof serveHTTP>['server']): Promise<number> {
@@ -122,8 +122,8 @@ describe('OAuth client<->server interop', () => {
     let tokenCalls = 0
     const realFetch = globalThis.fetch.bind(globalThis)
 
-    // The fake authorization server, plus a pass-through to the REAL running http-server for
-    // everything else (protected-resource metadata included — the real server already serves
+    // The fake authorisation server, plus a pass-through to the REAL running http-server for
+    // everything else (protected-resource metadata included -- the real server already serves
     // that itself). The only rewrite this shim does is stamping the real, dynamically-assigned
     // port onto a port-less 127.0.0.1 URL before it actually hits the network.
     const fakeFetch = async (url: string, init?: RequestInit): Promise<Response> => {
@@ -155,7 +155,7 @@ describe('OAuth client<->server interop', () => {
       }),
     })
 
-    // First request: no stored token -> 401 -> discovery -> authorize -> token exchange -> retry.
+    // First request: no stored token -> 401 -> discovery -> authorise -> token exchange -> retry.
     const initializeRequest = {
       jsonrpc: '2.0',
       id: 1,
@@ -182,7 +182,7 @@ describe('OAuth client<->server interop', () => {
     } as ClientMessage
     await transport.write(initializedNotification)
 
-    // Second request: the stored token is reused directly — no second 401, no second authorize.
+    // Second request: the stored token is reused directly -- no second 401, no second authorise.
     const pingRequest = { jsonrpc: '2.0', id: 2, method: 'ping' } as ClientMessage
     await transport.write(pingRequest)
     const pingResult = await transport.read()

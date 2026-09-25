@@ -5,14 +5,14 @@
  * Every case drives the same fixture tool: it suspends its first round with an embedded
  * `roots/list` request plus a minted `requestState`, and answers `rootsAnswer(ROOTS.length)` only
  * once it has both the client's roots *and* its own state back verbatim. So the one text assertion
- * per case covers the whole loop — the suspension crossing the wire, the peer client fulfilling
+ * per case covers the whole loop -- the suspension crossing the wire, the peer client fulfilling
  * the embedded request from its own handler, the retry carrying `inputResponses` and the echoed
  * `requestState`, and the server resuming on them. Anything dropped or mangled along the way lands
  * as a different string, not as a silent pass.
  *
  * Both sides drive their own loop with no help from the test: mokei's `ContextClient` through its
  * `inputRequired.autoFulfill` driver, the SDK's `Client` through its own. Neither `callTool` call
- * below opts into `allowInputRequired`, so both keep their plain `CallToolResult` return type —
+ * below opts into `allowInputRequired`, so both keep their plain `CallToolResult` return type --
  * the interactive rounds happen inside the call.
  */
 import { type Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
@@ -43,7 +43,7 @@ const EXPECTED_CONTENT = [{ type: 'text', text: rootsAnswer(ROOTS.length) }]
  *
  * Both are needed, and the declaration is load-bearing twice over. `setRequestHandler('roots/list')`
  * itself throws `Client does not support roots capability` on an instance that did not declare it
- * (verified by dropping the argument) — so the handler cannot even be installed first. And the
+ * (verified by dropping the argument) -- so the handler cannot even be installed first. And the
  * declaration is what the SDK stamps into every request's `_meta` envelope, which is what mokei's
  * server reads before letting a suspension out; an undeclared capability there is what `-32021` is
  * for. The SDK never derives the envelope from the registered handlers, only from `ClientOptions`.

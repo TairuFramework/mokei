@@ -25,14 +25,14 @@ export const SERVER_SHUTTING_DOWN = -32000
 
 /**
  * Key an `INVALID_PARAMS` error's `data` carries, set to `true`, when the request failed
- * before reaching any handler because it violated the transport envelope itself — missing a
- * required `_meta` key on `2026-07-28` — as opposed to an ordinary application error that
+ * before reaching any handler because it violated the transport envelope itself -- missing a
+ * required `_meta` key on `2026-07-28` -- as opposed to an ordinary application error that
  * happens to share the same JSON-RPC code (an unknown tool name, invalid arguments).
  * `INVALID_PARAMS` alone cannot tell the two apart, since application errors use it too.
  *
  * Not an `io.modelcontextprotocol/…` `_meta` key: this is a mokei-internal signal between
  * `ContextServer`, which throws it, and the HTTP transport, which reads it to decide `400`
- * vs. `200` (`packages/http-server/src/stateless.ts`) — never something a peer is expected to
+ * vs. `200` (`packages/http-server/src/stateless.ts`) -- never something a peer is expected to
  * interpret.
  */
 export const ENVELOPE_VIOLATION = 'envelopeViolation'
@@ -240,7 +240,7 @@ export const result = {
 export type Result = FromSchema<typeof result>
 
 /**
- * An otherwise-empty result — `ping`, `logging/setLevel`, `resources/subscribe`.
+ * An otherwise-empty result -- `ping`, `logging/setLevel`, `resources/subscribe`.
  *
  * Closed on purpose. {@link result} is the open *base* every concrete result builds on, so
  * using it as a member of a result union makes that union match any object at all and the
@@ -265,7 +265,7 @@ export const paginatedResult = {
 } as const satisfies Schema
 export type PaginatedResult = FromSchema<typeof paginatedResult>
 
-// CacheableResult — MCP draft caching hints (additive on 2025-11-25).
+// CacheableResult -- MCP draft caching hints (additive on 2025-11-25).
 export const cacheableResult = {
   properties: {
     cacheScope: {
@@ -296,7 +296,7 @@ export type Response = FromSchema<typeof response>
 
 // `data` is unconstrained on purpose. JSON-RPC 2.0 says only that it "MAY be omitted" and that
 // its value is "defined by the Server", so a peer is free to send a string, a number, an array
-// or `null` there — the official SDK types it as `unknown`. Constraining it to an object made
+// or `null` there -- the official SDK types it as `unknown`. Constraining it to an object made
 // this validator stricter than the specification, and an inbound frame failing it is *dropped*
 // by the RPC read loop rather than rejected: the caller of the request it answers then waits
 // forever, since no timeout covers an ordinary request. Widening only ever accepts more, on

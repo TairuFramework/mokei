@@ -86,7 +86,7 @@ describe('ContextHost.setup race', () => {
     if (result instanceof Error) {
       expect(result.message).toContain('was removed during setup')
     }
-    // Either it raced and threw the clear error, or it finished before remove —
+    // Either it raced and threw the clear error, or it finished before remove --
     // in both cases there must be no leftover context and no TypeError.
     expect(host.getContextKeys()).not.toContain('racy')
 
@@ -115,7 +115,7 @@ describe('spawnHostedContext dispose escalation', () => {
     const elapsed = Date.now() - start
 
     // dispose must have waited for the kill deadline, then SIGKILLed and
-    // awaited the real exit — i.e. it did not resolve immediately.
+    // awaited the real exit -- i.e. it did not resolve immediately.
     expect(elapsed).toBeGreaterThanOrEqual(250)
   })
 
@@ -127,7 +127,7 @@ describe('spawnHostedContext dispose escalation', () => {
     })
     const start = Date.now()
     await ctx.disposer.dispose()
-    // Resolves well before the 2s deadline because SIGTERM is honored.
+    // Resolves well before the 2s deadline because SIGTERM is honoured.
     expect(Date.now() - start).toBeLessThan(1500)
   })
 })

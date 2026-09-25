@@ -116,7 +116,7 @@ test('a rejected pre-emptive-refresh leader does not hard-fail a concurrent 401 
   const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 999 })
 
   // Two concurrent callers share the near-expiry token: both may attempt a pre-emptive refresh
-  // (which always fails), and both must still converge on exactly one recovery authorize instead
+  // (which always fails), and both must still converge on exactly one recovery authorise instead
   // of either request throwing.
   const results = await Promise.allSettled([
     mw(next)(resource, { method: 'POST', body: '{}' }),

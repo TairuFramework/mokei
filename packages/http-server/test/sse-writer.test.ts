@@ -24,7 +24,7 @@ describe('SSEWriter', () => {
     let openGate!: () => void
     writer.deferLiveWritesUntil(new Promise<void>((resolve) => (openGate = resolve)))
 
-    // Replay bypasses the gate — the resumption snapshot is written first.
+    // Replay bypasses the gate -- the resumption snapshot is written first.
     await writer.writeRawEvent({ id: 'r1', data: 'replay' })
     // A live event submitted during replay must not reach the stream until the gate opens.
     const livePromise = writer.writeEvent({ data: 'live' })
@@ -251,8 +251,8 @@ describe('SSEWriter teardown on a faulted stream', () => {
 
   // `close()` is synchronous because every caller is a teardown path with nothing left to await,
   // so the promise it starts is nobody's to handle. Closing an *errored* writable rejects, and
-  // every route into this method — a client hanging up mid-stream, a stateless sink throwing
-  // after it settled — is a route taken because something already went wrong. Uncaught, that is
+  // every route into this method -- a client hanging up mid-stream, a stateless sink throwing
+  // after it settled -- is a route taken because something already went wrong. Uncaught, that is
   // a process-level crash originating in cleanup code.
   test('close() on an errored stream raises no unhandled rejection', async () => {
     const writable = new WritableStream<string>({
@@ -271,7 +271,7 @@ describe('SSEWriter teardown on a faulted stream', () => {
   })
 
   // The rejection must not just be swallowed: without a logger, a genuinely diagnosable
-  // stream fault vanishes. This is the boundary described in the backlog note — a faulted
+  // stream fault vanishes. This is the boundary described in the backlog note -- a faulted
   // writer is constructible here even though `createSSEStream`'s own sink never throws.
   test('close() on an errored stream logs the rejection', async () => {
     const writable = new WritableStream<string>({

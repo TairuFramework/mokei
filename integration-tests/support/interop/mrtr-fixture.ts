@@ -1,6 +1,6 @@
 /**
- * A minimal MCP surface exposing one multi round-trip tool (MRTR, SEP-2322), defined twice — once
- * with mokei's server API and once with the official SDK v2 API — so each implementation can be
+ * A minimal MCP surface exposing one multi round-trip tool (MRTR, SEP-2322), defined twice -- once
+ * with mokei's server API and once with the official SDK v2 API -- so each implementation can be
  * driven by the other's client.
  *
  * The tool suspends on its first round asking the client for its roots, then answers with the
@@ -31,7 +31,7 @@ const MRTR_TOOL_DESCRIPTION = 'Counts the roots the client reports'
 export const MRTR_INPUT_KEY = 'roots'
 
 /**
- * The payload the mokei fixture mints its `requestState` from, and — serialized — the exact
+ * The payload the mokei fixture mints its `requestState` from, and -- serialised -- the exact
  * string the SDK fixture mints. Neither server configures an integrity hook, so on both stacks the
  * value that comes back on the retry round is the raw wire string.
  */
@@ -94,7 +94,7 @@ export function createMokeiMRTRConfig(
  * validation entirely, which is exactly right for a tool taking none.
  *
  * `ctx.mcpReq.inputResponses` is a plain `Record<string, unknown>` of the *bare* responses, while
- * `ctx.mcpReq.requestState` is an *accessor function* (`RequestStateAccessor`), not a value —
+ * `ctx.mcpReq.requestState` is an *accessor function* (`RequestStateAccessor`), not a value --
  * without a `ServerOptions.requestState.verify` hook it returns the raw wire string.
  */
 export function createSDKMRTRServer(): McpServer {

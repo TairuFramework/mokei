@@ -116,8 +116,8 @@ export type HandlerRequest<C extends Record<string, unknown> = Record<string, ne
    * The state this handler minted on a previous round, echoed back by the client.
    *
    * The decoded payload when the server is configured with a `requestState.verify` hook; the raw
-   * string otherwise, in which case it is UNTRUSTED — it round-tripped through the client and any
-   * caller can forge it. Configure the hook before letting it influence authorization.
+   * string otherwise, in which case it is UNTRUSTED -- it round-tripped through the client and any
+   * caller can forge it. Configure the hook before letting it influence authorisation.
    */
   requestState?: unknown
   /** Encodes a payload into the opaque `requestState` string to send with an `inputRequired()`. */
@@ -216,10 +216,10 @@ export type GenericToolDefinition = {
  * What `createTool` returns: a runtime `GenericToolDefinition` carrying a phantom witness of
  * the argument type its `inputSchema` describes.
  *
- * The witness is type-level only — never present at runtime. It exists so
+ * The witness is type-level only -- never present at runtime. It exists so
  * {@link ExtractToolTypes} can recover a tool's argument type by reading one optional
- * property. The alternative — structurally matching the whole definition against a typed
- * one — forces TypeScript to compare `handler` types, which carry the large `CallToolResult`
+ * property. The alternative -- structurally matching the whole definition against a typed
+ * one -- forces TypeScript to compare `handler` types, which carry the large `CallToolResult`
  * union, and that exceeds the instantiation depth (TS2589/TS2590).
  */
 export type ToolDefinition<Arguments = Record<string, unknown>> = GenericToolDefinition & {
@@ -256,7 +256,7 @@ export type ExtractToolTypes<T extends ToolDefinitions> = {
  * schema TypeScript could not narrow).
  *
  * Reading one optional property is deliberate: matching the definition structurally would
- * drag its `handler` — and the `CallToolResult` union inside it — into the comparison.
+ * drag its `handler` -- and the `CallToolResult` union inside it -- into the comparison.
  */
 type ExtractArguments<Definition> = Definition extends { readonly _arguments?: infer Arguments }
   ? unknown extends Arguments

@@ -375,7 +375,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         const toolMessages: Array<ClientToolMessage> = []
 
         for (const toolCall of toolCalls) {
-          // Handle approval. Stream its events as they happen — the
+          // Handle approval. Stream its events as they happen -- the
           // `tool-call-pending` event must reach the UI *before* the approval
           // resolves so an interactive prompt can render and the turn signal can
           // interrupt the wait, rather than buffering every event until after
@@ -561,7 +561,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     }
 
     if (strategy === 'ask') {
-      // No async approval bridge wired — refuse so host does not execute a tool
+      // No async approval bridge wired -- refuse so host does not execute a tool
       // the user never approved. Callers supply a ToolApprovalFn to interactively approve.
       const reason = 'Tool approval required but no handler configured'
       yield emitEvent({ type: 'tool-call-pending', toolCall, timestamp: Date.now() })

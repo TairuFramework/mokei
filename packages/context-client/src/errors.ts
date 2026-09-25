@@ -34,7 +34,7 @@ export class CapabilityNotDeclaredError extends Error {
 export type CapabilityNotDeclaredErrorParams = { capability: string; cause?: unknown }
 
 /**
- * Thrown when a method is absent from a protocol revision's `clientMethods` — derived from that
+ * Thrown when a method is absent from a protocol revision's `clientMethods` -- derived from that
  * table, not a version literal, so this fires exactly when the method itself is gone (as
  * opposed to, say, a rejected parameter value).
  *
@@ -62,7 +62,7 @@ export type MethodNotInRevisionErrorParams = {
 /**
  * Thrown when a client is configured with a `createMessage`/`elicit`/`listRoots` handler on a
  * protocol revision that can invoke it neither as a server-initiated request nor as an MRTR input
- * request — the client-side mirror of `@mokei/context-server`'s `MRTRNotSupportedError`.
+ * request -- the client-side mirror of `@mokei/context-server`'s `MRTRNotSupportedError`.
  */
 export class MRTRNotSupportedError extends Error {
   constructor(params: MRTRNotSupportedErrorParams) {

@@ -163,7 +163,7 @@ describe('runSubscriptionExchange', () => {
   })
 
   // The held terminal is the subscription's own response (`isOwnResponse`) and its definitive end,
-  // so writing it closes the exchange — keeping a standalone `endAllGracefully()` from leaking the
+  // so writing it closes the exchange -- keeping a standalone `endAllGracefully()` from leaking the
   // borrower until handler shutdown.
   test('closes the stream once the held terminal is written', async () => {
     const { hub } = createStubDurableHub()

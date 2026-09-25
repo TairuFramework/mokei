@@ -35,7 +35,7 @@ export type ProtocolDefinition = {
   /** Request methods a client may send in this revision. */
   clientMethods: ReadonlySet<string>
   /**
-   * Notification methods a client may send in this revision — the notification counterpart of
+   * Notification methods a client may send in this revision -- the notification counterpart of
    * {@link ProtocolDefinition.clientMethods}, and kept separate from it so that gating requests
    * on the method table cannot accidentally admit a notification as a request.
    *
@@ -65,7 +65,7 @@ export type ProtocolDefinition = {
    * Adds this revision's protocol `_meta` to an outgoing notification's params.
    *
    * Separate from `decorateRequest` and deliberately context-free: a notification is not a
-   * request, so it carries only what a peer needs to route it to the right revision — never the
+   * request, so it carries only what a peer needs to route it to the right revision -- never the
    * `clientInfo`/`clientCapabilities`/`logLevel` envelope, which describes a request.
    */
   decorateNotification: (params: unknown) => unknown

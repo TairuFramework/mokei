@@ -173,7 +173,7 @@ describe('SubscriptionDriver', () => {
     const p2 = driver.subscribeResource({ uri: 'file:///b' })
     await flush()
 
-    // Serialized: only the first candidate has opened.
+    // Serialised: only the first candidate has opened.
     expect(opens.length).toBe(1)
     expect(opens[0]?.filter.resourceSubscriptions).toEqual(['file:///a'])
 
@@ -360,7 +360,7 @@ describe('SubscriptionDriver', () => {
     await flush()
     expect(retries).toEqual([1, 2])
 
-    // Firing the next backoff opens yet another candidate — the stream is still trying, not dead.
+    // Firing the next backoff opens yet another candidate -- the stream is still trying, not dead.
     release()
     await flush()
     expect(opens.length).toBe(3)
@@ -373,7 +373,7 @@ describe('SubscriptionDriver', () => {
     const p1 = driver.subscribeResource({ uri: 'file:///a' })
     const p2 = driver.subscribeResource({ uri: 'file:///b' })
     await flush()
-    // Only the first candidate has opened (serialized); it is never acked.
+    // Only the first candidate has opened (serialised); it is never acked.
     expect(opens.length).toBe(1)
 
     driver.dispose()

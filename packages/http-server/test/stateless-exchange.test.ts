@@ -23,8 +23,8 @@ const { runStatelessExchange } = await import('../src/index.js')
 describe('runStatelessExchange', () => {
   // The bug: a write arriving after the exchange has already torn down (client hung up,
   // handler disposed, or the timeout fired) used to fall into the same `writer == null`
-  // branch as a first-ever write, building a brand new SSE stream that nobody — the
-  // caller already got its 503 — will ever read. Guarded by checking `finished` before
+  // branch as a first-ever write, building a brand new SSE stream that nobody -- the
+  // caller already got its 503 -- will ever read. Guarded by checking `finished` before
   // building anything.
   test('a write arriving after teardown does not build an orphan SSE stream', async () => {
     let transport: ServerTransport | undefined
@@ -78,7 +78,7 @@ describe('runStatelessExchange', () => {
 describe('runStatelessExchange envelope-failure classification', () => {
   /**
    * Runs one exchange and immediately answers it with the given `error`, returning the HTTP
-   * response — same shape `#resolveProtocol`'s own throw sites produce, but built directly so
+   * response -- same shape `#resolveProtocol`'s own throw sites produce, but built directly so
    * the message and `data` can be varied independently of what the real thrower happens to
    * send today.
    */
@@ -111,7 +111,7 @@ describe('runStatelessExchange envelope-failure classification', () => {
   }
 
   // The classification the HTTP transport applies is `error.data[ENVELOPE_VIOLATION] === true`,
-  // not the message text — so an arbitrarily worded `INVALID_PARAMS` still gets `400` as long
+  // not the message text -- so an arbitrarily worded `INVALID_PARAMS` still gets `400` as long
   // as it carries the marker. This is what makes a third envelope-violation thrower safe to add
   // without it having to open its message with a particular prefix.
   test('an INVALID_PARAMS error with the envelope marker is 400 regardless of wording', async () => {

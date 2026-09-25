@@ -70,7 +70,7 @@ describe.skipIf(!hasChatBackend)('AgentSession', { retry: TOOL_CALL_RETRY }, () 
     // Tiny turn budget: the model cannot finish in time, so the turn must
     // abort the in-flight (possibly stalled) provider read and emit a timeout
     // rather than blocking until generation ends on its own. Regression guard
-    // for the parked-stream hang — if it regressed, this would block until the
+    // for the parked-stream hang -- if it regressed, this would block until the
     // suite timeout instead of resolving promptly.
     const agent = new AgentSession({ session, provider: CHAT_PROVIDER_KEY, model, timeout: 250 })
 
