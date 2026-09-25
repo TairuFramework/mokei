@@ -17,13 +17,9 @@ import { type InputRequiredResult, isInputRequiredResult } from './mrtr.js'
  * a tool telling the model it failed, so `ContextServer` lets it cross the wire
  * as a JSON-RPC error rather than converting it to an `isError` result.
  */
-export type ToolOutputValidationErrorParams = RPCErrorParams
+export class ToolOutputValidationError extends RPCError {}
 
-export class ToolOutputValidationError extends RPCError {
-  constructor(params: ToolOutputValidationErrorParams) {
-    super(params)
-  }
-}
+export type ToolOutputValidationErrorParams = RPCErrorParams
 
 import type {
   GenericToolDefinition,
