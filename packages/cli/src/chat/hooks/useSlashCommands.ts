@@ -1,6 +1,7 @@
 import type { ProtocolVersion } from '@mokei/context-protocol'
 import { createNodeOAuthMiddleware } from '@mokei/host-node'
 import type { Session } from '@mokei/session'
+import type { NodeSession } from '@mokei/session-node'
 import { useCallback } from 'react'
 
 import { resolvePath } from '../../fs.js'
@@ -19,7 +20,9 @@ export type UseSlashCommandsParams = {
   loadModels: () => Promise<Array<{ id: string }>>
   pushEntry: PushEntry
   contexts: Array<string>
-  addContext: (params: Parameters<Session['addContext']>[0]) => ReturnType<Session['addContext']>
+  addContext: (
+    params: Parameters<NodeSession['addContext']>[0],
+  ) => ReturnType<NodeSession['addContext']>
   addHTTPContext: (
     params: Parameters<Session['addHTTPContext']>[0],
   ) => ReturnType<Session['addHTTPContext']>

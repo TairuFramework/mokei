@@ -2,7 +2,7 @@ import { AnthropicProvider } from '@mokei/anthropic-provider'
 import type { ModelProvider } from '@mokei/model-provider'
 import { OllamaProvider } from '@mokei/ollama-provider'
 import { OpenAIProvider } from '@mokei/openai-provider'
-import { Session } from '@mokei/session'
+import { NodeSession } from '@mokei/session-node'
 import { beforeAll, describe, expect, test } from 'vitest'
 
 import {
@@ -47,7 +47,7 @@ if (chatBackend.kind === 'ollama') {
 }
 
 describe.skipIf(!hasChatBackend)('Session', { retry: TOOL_CALL_RETRY }, () => {
-  const session = new Session<ChatProviderTypes>()
+  const session = new NodeSession<ChatProviderTypes>()
 
   beforeAll(async () => {
     await session.addContext({

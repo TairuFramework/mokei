@@ -5,9 +5,7 @@ Get up and running with Mokei in minutes.
 ## Installation
 
 ```bash
-npm install @mokei/session @mokei/openai-provider
-# or
-pnpm add @mokei/session @mokei/openai-provider
+pnpm add @mokei/session @mokei/session-node @mokei/openai-provider
 ```
 
 ## Basic Usage
@@ -15,10 +13,10 @@ pnpm add @mokei/session @mokei/openai-provider
 ### 1. Create a Session with a Model Provider
 
 ```typescript
-import { Session } from '@mokei/session'
+import { NodeSession } from '@mokei/session-node'
 import { OpenAIProvider } from '@mokei/openai-provider'
 
-const session = new Session({
+const session = new NodeSession({
   providers: {
     openai: OpenAIProvider.fromConfig({
       apiKey: process.env.OPENAI_API_KEY
@@ -76,7 +74,7 @@ console.log(`Completed in ${result.iterations} iterations`)
 
 ## Creating an MCP Server
 
-A server declares the set of protocol revisions it serves. `session.addContext` above
+A server declares the set of protocol revisions it serves. `NodeSession.addContext` above
 probes the server and speaks the newest revision both sides support, so a server declaring
 only `2025-11-25` still connects. Declaring both, as here, serves clients on either revision;
 pass `protocolVersion` to `addContext` to pin one and skip the probe.
@@ -115,6 +113,8 @@ serveProcess({
 For simple tools that don't need a separate MCP server:
 
 ```typescript
+import { Session } from '@mokei/session'
+
 const session = new Session({
   providers: { openai: openaiProvider },
   localTools: [{

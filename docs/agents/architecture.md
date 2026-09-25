@@ -119,7 +119,7 @@ verifies requests before MCP dispatch; its returned `AuthInfo` is not yet passed
 
 | Feature | Package | Entry point |
 |---------|---------|-------------|
-| Stdio server and spawned contexts | `@mokei/context-server-node`, `@mokei/host-node` | `serveProcess`, `NodeContextHost.addLocalContext` (`nano-spawn`, host-node only) |
+| Stdio server and spawned contexts | `@mokei/context-server-node`, `@mokei/host-node`, `@mokei/session-node` | `serveProcess`, `NodeContextHost.addLocalContext`, `NodeSession.addContext` |
 | Streamable HTTP | `@mokei/http-client`, `@mokei/http-server`, `@mokei/host` | `HTTPTransport`, `serveHTTP`, `ContextHost.addHTTPContext` |
 | OAuth 2.1 | `@mokei/http-client`, `@mokei/host-node`, `@mokei/http-server` | `createOAuthMiddleware`, `createNodeOAuthMiddleware`, `createBearerAuthGate` |
 | Revisions and negotiation | `@mokei/context-protocol`, `@mokei/context-client` | `PROTOCOLS`, `ContextClient` `protocolVersion: 'auto'` |
@@ -127,15 +127,14 @@ verifies requests before MCP dispatch; its returned `AuthInfo` is not yet passed
 | Subscriptions | `@mokei/context-client`, `@mokei/context-server`, `@mokei/http-server` | `SubscriptionDriver`, `createSubscriptionHub`, `runSubscriptionExchange` |
 | Tool namespacing and per-context tool switches | `@mokei/host` | `ContextHost.callNamespacedTool`, `enableContextTools`, `disableContextTools` |
 | Local tools | `@mokei/host` | `ContextHost.callLocalTool`, `packages/host/src/local-tools.ts` |
-| Chat and agent loop | `@mokei/session` | `Session`, `AgentSession` |
+| Chat and agent loop | `@mokei/session`, `@mokei/session-node` | Portable `Session` and `AgentSession`; Node stdio `NodeSession.addContext` |
 | Provider abstraction and adapters | `@mokei/model-provider`, `@mokei/{openai,anthropic,ollama,llama}-provider` | `ModelProvider`, each provider package's `src/index.ts` |
 | System One classification | `@mokei/system-one-client`, `@mokei/mcp-system-one` | `HTTPSystemOneBackend`, `createSystemOneTools` |
 | CLI | `mokei` | `packages/cli/src/program.ts` |
 | Monitor | `@mokei/host-monitor`, `monitor` | `packages/host-monitor/src/index.ts`, `monitor/src/main.tsx` |
 
-`@mokei/session` currently depends on `@mokei/host-node`, so `Session` and `AgentSession` are
-Node-only. A Node-free split is planned in
-`docs/agents/plans/backlog/2026-09-25-session-rn-safe-split.md`.
+`@mokei/session` uses `ContextHost` and is React Native / Metro-safe. `@mokei/session-node`
+extends it with `NodeSession` and `NodeContextHost` for stdio contexts.
 
 ---
 
@@ -154,7 +153,8 @@ packages/
 +-- host-monitor/         # Monitor UI for host contexts
 +-- http-client/          # Streamable HTTP, OAuth 2.1 client middleware, x-mcp-header encoding
 +-- http-server/          # serveHTTP, bearer/JWKS/DID gate, stateless + subscription exchanges
-+-- session/              # Node-only high-level chat + MCP abstraction
++-- session/              # Portable high-level chat + MCP abstraction
++-- session-node/         # Node stdio session entry
 +-- model-provider/       # Provider interface definitions
 +-- openai-provider/      # OpenAI integration
 +-- anthropic-provider/   # Anthropic Claude integration
@@ -165,10 +165,11 @@ packages/
 +-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
 ```
 
-`@mokei/host` and `@mokei/context-server` are Node-free so they bundle under React Native /
+`@mokei/host`, `@mokei/context-server` and `@mokei/session` are Node-free so they bundle under React Native /
 Metro. Node-only entry points live in the `-node` packages: `serveProcess` is in
 `@mokei/context-server-node`, and `addLocalContext` (now a method on `NodeContextHost`),
 `spawnHostedContext`, `createClient`, `runDaemon` and `ProxyHost` are in `@mokei/host-node`.
+`NodeSession.addContext` and its Node-typed `contextHost` are in `@mokei/session-node`.
 File names use kebab-case throughout, except React component files (PascalCase, `ChatApp.tsx`) and React hook files (camelCase, `useSession.ts`).
 `HTTPSystemOneBackend` speaks to a `laya-serve` sidecar or the hosted TypeSafe API (see
 `docs/reference/system-one-sidecar.md`). The bundled System One MCP server exposes `predict`,
@@ -198,7 +199,7 @@ website/                  # documentation site (private)
 | Host orchestration | `packages/host/src/` |
 | HTTP transports and OAuth | `packages/http-client/src/oauth/`, `packages/http-server/src/auth/`, `packages/host-node/src/oauth/` |
 | MRTR and subscriptions | `packages/context-client/src/{mrtr,subscriptions}.ts`, `packages/context-server/src/{mrtr,subscriptions}.ts` |
-| Session/Agent | `packages/session/src/` |
+| Session/Agent | `packages/session/src/`, `packages/session-node/src/` |
 | System One | `packages/system-one-client/src/`, `mcp-servers/system-one/`; see `docs/reference/system-one-sidecar.md` |
 | Bundled MCP servers | `mcp-servers/*/`, development config `mcp-servers/config.json` |
 | Provider interface | `packages/model-provider/src/` |

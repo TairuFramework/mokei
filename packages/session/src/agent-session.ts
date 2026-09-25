@@ -44,7 +44,7 @@ export type AgentSessionEvents<T extends ProviderTypes = ProviderTypes> = {
  *
  * @example
  * ```typescript
- * const session = new Session({ providers: { openai: openaiProvider } })
+ * const session = new NodeSession({ providers: { openai: openaiProvider } })
  * await session.addContext({ key: 'db', command: 'mcp-sqlite' })
  *
  * const agent = new AgentSession({

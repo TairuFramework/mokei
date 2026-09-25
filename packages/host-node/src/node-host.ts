@@ -124,51 +124,74 @@ export type AddLocalContextParams = SpawnContextServerParams & {
 }
 
 export class NodeContextHost extends ContextHost {
+  #pendingKeys = new Set<string>()
+
   async addLocalContext<T extends ContextTypes = UnknownContextTypes>(
     params: AddLocalContextParams,
   ): Promise<ContextClient<T>> {
     const { key, ...spawnParams } = params
-    if (this.hasContext({ key })) {
+    if (this.hasContext({ key }) || this.#pendingKeys.has(key)) {
       throw new Error(`Context ${key} already exists`)
+    }
+    this.#pendingKeys.add(key)
+
+    let registeredClient: ContextClient<T> | undefined
+    const isCurrent = () => {
+      if (registeredClient == null) return false
+      try {
+        return this.getContext<T>(key).client === registeredClient
+      } catch {
+        return false
+      }
     }
 
     // Set once when a framing fault is handled, so the follow-up `onExit` (from
     // the kill during reap) doesn't emit a second `context:failed`.
     let framingError: Error | null = null
-    const context = await spawnHostedContext<T>({
-      ...spawnParams,
-      onStreamError: (error) => {
-        // A framing fault only occurs while the read loop is actively pulling
-        // the child's stdout -- i.e. during a request the host drove (setup /
-        // callTool). At that point the entry is still registered, so a present
-        // entry is the normal case here. An idle context never reaches this:
-        // with no consumer, the child's output is held by OS pipe backpressure
-        // (bounded by the kernel pipe buffer, not host memory), so a flood from
-        // an unused server cannot overflow the framer or exhaust the host.
-        //
-        // The `null` check guards the remaining teardown case: a `readFailed`
-        // that lands after the entry is already gone (disposal, or the
-        // re-rejection our own remove() causes) is noise, not a fault -- this is
-        // what keeps a clean remove() from emitting a bogus context:failed.
-        if (!this.hasContext({ key })) {
-          return
-        }
-        framingError = error
-        void this.events.emit('context:failed', { key, error }).catch(() => {})
-        void this.remove(key).catch(() => {})
-      },
-      onExit: (error) => {
-        if (framingError != null) {
-          return
-        }
-        if (error != null && !isSubprocessExit(error)) {
+    try {
+      const context = await spawnHostedContext<T>({
+        ...spawnParams,
+        onStreamError: (error) => {
+          // A framing fault only occurs while the read loop is actively pulling
+          // the child's stdout -- i.e. during a request the host drove (setup /
+          // callTool). At that point the entry is still registered, so a present
+          // entry is the normal case here. An idle context never reaches this:
+          // with no consumer, the child's output is held by OS pipe backpressure
+          // (bounded by the kernel pipe buffer, not host memory), so a flood from
+          // an unused server cannot overflow the framer or exhaust the host.
+          //
+          // The `null` check guards the remaining teardown case: a `readFailed`
+          // that lands after the entry is already gone (disposal, or the
+          // re-rejection our own remove() causes) is noise, not a fault -- this is
+          // what keeps a clean remove() from emitting a bogus context:failed.
+          if (!isCurrent()) {
+            return
+          }
+          framingError = error
           void this.events.emit('context:failed', { key, error }).catch(() => {})
-        }
-        void this.remove(key).catch(() => {})
-      },
-    })
-    this.registerHostedContext({ key, context: context as unknown as HostedContext })
-    void this.events.emit('context:added', { key }).catch(() => {})
-    return context.client
+          void this.remove(key).catch(() => {})
+        },
+        onExit: (error) => {
+          if (framingError != null || !isCurrent()) {
+            return
+          }
+          if (error != null && !isSubprocessExit(error)) {
+            void this.events.emit('context:failed', { key, error }).catch(() => {})
+          }
+          void this.remove(key).catch(() => {})
+        },
+      })
+      registeredClient = context.client
+      try {
+        this.registerHostedContext({ key, context: context as unknown as HostedContext })
+      } catch (error) {
+        await context.disposer.dispose()
+        throw error
+      }
+      void this.events.emit('context:added', { key }).catch(() => {})
+      return context.client
+    } finally {
+      this.#pendingKeys.delete(key)
+    }
   }
 }

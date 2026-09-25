@@ -43,6 +43,7 @@
     "@mokei/logger": "workspace:^",
     "@mokei/mcp-sqlite": "workspace:^",
     "@mokei/mcp-system-one": "workspace:^",
+    "@mokei/session-node": "workspace:^",
     "@sozai/generator": "catalog:",
     "@types/node": "catalog:",
     "node-pty": "^1.1.0",

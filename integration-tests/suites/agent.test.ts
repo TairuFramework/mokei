@@ -1,4 +1,5 @@
-import { type AgentEvent, AgentSession, Session } from '@mokei/session'
+import { type AgentEvent, AgentSession } from '@mokei/session'
+import { NodeSession } from '@mokei/session-node'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import {
@@ -17,7 +18,9 @@ const model = CHAT_MODEL
 const provider = createChatProvider()
 
 describe.skipIf(!hasChatBackend)('AgentSession', { retry: TOOL_CALL_RETRY }, () => {
-  const session = new Session<ChatProviderTypes>({ providers: { [CHAT_PROVIDER_KEY]: provider } })
+  const session = new NodeSession<ChatProviderTypes>({
+    providers: { [CHAT_PROVIDER_KEY]: provider },
+  })
 
   beforeAll(async () => {
     await session.addContext({

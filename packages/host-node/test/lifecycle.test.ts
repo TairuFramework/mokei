@@ -3,6 +3,48 @@ import { describe, expect, test, vi } from 'vitest'
 import { NodeContextHost, spawnHostedContext } from '../src/node-host.js'
 
 describe('ContextHost lifecycle', () => {
+  test('rejects a concurrent duplicate before spawning another child', async () => {
+    const host = new NodeContextHost()
+    const params = {
+      key: 'shared',
+      command: process.execPath,
+      args: ['-e', 'setTimeout(() => {}, 200)'],
+    }
+    const first = host.addLocalContext(params)
+    const second = host.addLocalContext(params)
+    let rejected = false
+    void second.catch(() => {
+      rejected = true
+    })
+
+    await Promise.resolve()
+    expect(rejected).toBe(true)
+    await first
+    await host.dispose()
+  })
+
+  test('old child exit cannot remove a replacement with the same key', async () => {
+    const host = new NodeContextHost()
+    await host.addLocalContext({
+      key: 'shared',
+      command: process.execPath,
+      args: ['-e', "process.on('SIGTERM', () => {}); setTimeout(() => process.exit(0), 500)"],
+    })
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    const oldRemoval = host.remove('shared')
+    const replacement = await host.addLocalContext({
+      key: 'shared',
+      command: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 1e9)'],
+    })
+    await oldRemoval
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(host.getContext('shared').client).toBe(replacement)
+    await host.dispose()
+  })
+
   test('reaps a context and emits context:failed when its child exits non-zero, with no unhandled rejection', async () => {
     const unhandled: Array<unknown> = []
     const onUnhandled = (reason: unknown) => unhandled.push(reason)

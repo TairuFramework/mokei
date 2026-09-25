@@ -31,7 +31,8 @@ Mokei provides a comprehensive framework for building MCP-based applications wit
 | `@mokei/host-monitor` | Monitor UI for host contexts |
 | `@mokei/http-client` | MCP Streamable HTTP client transport |
 | `@mokei/http-server` | MCP Streamable HTTP server transport |
-| `@mokei/session` | High-level session management combining hosts with model providers |
+| `@mokei/session` | Portable chat and agent sessions |
+| `@mokei/session-node` | Node stdio session support |
 | `@mokei/model-provider` | Model provider interface definitions |
 | `@mokei/openai-provider` | OpenAI model provider integration |
 | `@mokei/anthropic-provider` | Anthropic Claude model provider integration |

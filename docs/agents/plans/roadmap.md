@@ -9,12 +9,12 @@ runtime, provider abstraction across cloud + local models, and monitoring UI.
 
 ## Current state
 
-20 packages under `packages/`, plus three MCP servers under `mcp-servers/` (`fetch`, `sqlite`,
+21 packages under `packages/`, plus three MCP servers under `mcp-servers/` (`fetch`, `sqlite`,
 `system-one`).
 `@mokei/host` and `@mokei/context-server` are React Native / Metro-bundle-safe (no Node
 built-ins); their Node stdio/daemon entries live in `@mokei/host-node` and
-`@mokei/context-server-node`. `@mokei/session` still depends on `@mokei/host-node`, so `Session`
-and `AgentSession` remain Node-only.
+`@mokei/context-server-node`. `@mokei/session` is also React Native / Metro-safe;
+`@mokei/session-node` provides `NodeSession` for stdio contexts.
 Two MCP revisions are served and spoken side by side — `2025-11-25` and `2026-07-28` —
 selected per context, with `'auto'` probing the peer and negotiating the newest shared
 revision. Providers: OpenAI, Anthropic, Ollama, Llama (local GGUF).
@@ -181,8 +181,6 @@ once the migration closed.
 - **Multi-context OAuth token coordination**
   (`backlog/2026-09-04-oauth-multi-context-token-coordination.md`) -- one refresh flight per
   resource across contexts sharing a token store; needs a `TokenStore` contract design pass.
-- **Node-free `@mokei/session`** (`backlog/2026-09-25-session-rn-safe-split.md`) -- split like
-  `@mokei/host` / `@mokei/host-node` so `Session`/`AgentSession` bundle under React Native.
 - **Server-minted handles convention** (`backlog/2026-09-25-server-minted-handles-convention.md`)
   -- decide whether sessionless handles passed as tool args need a library convention.
 - **Website chat walkthrough** (`backlog/2026-08-04-website-chat-walkthrough.md`) -- the

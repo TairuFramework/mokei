@@ -1,4 +1,3 @@
-import { execPath } from 'node:process'
 import type {
   AggregatedMessage,
   MessagePart,
@@ -59,31 +58,5 @@ describe('Session.chat active-request guard', () => {
     // Cleanup: abort B.
     session.activeChatRequest?.abort()
     await Promise.all([chatA, chatB])
-  })
-})
-
-describe('Session.addContext abort', () => {
-  test('leaves no context behind when aborted mid-setup', async () => {
-    const session = new Session()
-    const controller = new AbortController()
-
-    const promise = session
-      .addContext({
-        key: 'aborted',
-        command: execPath,
-        args: ['-e', 'setInterval(() => {}, 1e9)'],
-        signal: controller.signal,
-      })
-      .catch(() => {})
-
-    // Abort almost immediately, racing the spawn/registration.
-    controller.abort()
-    await promise
-
-    // Give a late-registering spawn a chance to surface, then assert cleanup.
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    expect(session.contextHost.getContextKeys()).not.toContain('aborted')
-
-    await session.contextHost.dispose()
   })
 })

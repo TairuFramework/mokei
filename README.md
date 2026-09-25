@@ -16,14 +16,14 @@ TypeScript toolkit for creating, interacting with, and monitoring clients and se
 ## Quick Start
 
 ```bash
-pnpm add @mokei/session @mokei/openai-provider
+pnpm add @mokei/session @mokei/session-node @mokei/openai-provider
 ```
 
 ```typescript
-import { Session } from '@mokei/session'
+import { NodeSession } from '@mokei/session-node'
 import { OpenAIProvider } from '@mokei/openai-provider'
 
-const session = new Session({
+const session = new NodeSession({
   providers: {
     openai: OpenAIProvider.fromConfig({
       apiKey: process.env.OPENAI_API_KEY
@@ -59,7 +59,8 @@ const response = await session.chat({
 | `@mokei/context-server` | MCP server implementation |
 | `@mokei/context-client` | MCP client implementation |
 | `@mokei/host` | Multi-context orchestrator |
-| `@mokei/session` | High-level session management |
+| `@mokei/session` | Portable chat and agent sessions |
+| `@mokei/session-node` | Node stdio session support |
 | `@mokei/openai-provider` | OpenAI integration |
 | `@mokei/anthropic-provider` | Anthropic Claude integration |
 | `@mokei/ollama-provider` | Ollama integration |

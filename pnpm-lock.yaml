@@ -470,6 +470,9 @@ importers:
       '@mokei/mcp-system-one':
         specifier: workspace:^
         version: link:../mcp-servers/system-one
+      '@mokei/session-node':
+        specifier: workspace:^
+        version: link:../packages/session-node
       '@sozai/generator':
         specifier: 'catalog:'
         version: 0.2.0
@@ -709,6 +712,9 @@ importers:
       '@mokei/session':
         specifier: workspace:^
         version: link:../session
+      '@mokei/session-node':
+        specifier: workspace:^
+        version: link:../session-node
       '@tejika/cli':
         specifier: 'catalog:'
         version: 0.4.1(@types/react@19.3.0)
@@ -1136,9 +1142,6 @@ importers:
       '@mokei/host':
         specifier: workspace:^
         version: link:../host
-      '@mokei/host-node':
-        specifier: workspace:^
-        version: link:../host-node
       '@mokei/model-provider':
         specifier: workspace:^
         version: link:../model-provider
@@ -1158,6 +1161,37 @@ importers:
       '@mokei/http-client':
         specifier: workspace:^
         version: link:../http-client
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.2
+
+  packages/session-node:
+    dependencies:
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+      '@mokei/host':
+        specifier: workspace:^
+        version: link:../host
+      '@mokei/host-node':
+        specifier: workspace:^
+        version: link:../host-node
+      '@mokei/model-provider':
+        specifier: workspace:^
+        version: link:../model-provider
+      '@mokei/session':
+        specifier: workspace:^
+        version: link:../session
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.2.1
+    devDependencies:
+      '@mokei/context-server':
+        specifier: workspace:^
+        version: link:../context-server
+      '@mokei/context-server-node':
+        specifier: workspace:^
+        version: link:../context-server-node
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.2
