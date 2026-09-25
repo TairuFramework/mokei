@@ -1,6 +1,6 @@
 # Typecheck published declarations as a consumer
 
-**Status:** backlog
+**Status:** next (promoted 2026-09-25)
 **Origin:** `completed/2026-09-02-mcp-mrtr-followups.complete.md` records a TS2589 error in an
 emitted declaration that package builds missed because they use `--skipLibCheck`.
 
