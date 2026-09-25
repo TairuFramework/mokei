@@ -4,7 +4,7 @@ export type {
   SystemOneResult,
 } from './backend.js'
 export {
-  type CreateSystemOneClientOptions,
+  type CreateSystemOneClientParams,
   createSystemOneClient,
   SystemOneClient,
   type SystemOneClientParams,
@@ -14,7 +14,6 @@ export {
   SystemOneAuthError,
   type SystemOneAuthErrorParams,
   SystemOneConnectionError,
-  type SystemOneConnectionErrorOptions,
   type SystemOneConnectionErrorParams,
   SystemOneError,
   type SystemOneErrorParams,
@@ -28,13 +27,13 @@ export {
   type SystemOneRateLimitErrorParams,
   SystemOneResponseError,
   type SystemOneResponseErrorParams,
-  type SystemOneRetryableErrorOptions,
+  type SystemOneRetryableErrorParams,
   type ValidationIssue,
 } from './errors.js'
 export {
   HTTPSystemOneBackend,
   type HTTPSystemOneBackendParams,
-  type SystemOneHTTPClientOptions,
+  type SystemOneHTTPClientParams,
 } from './http.js'
 export { guardQuestions, moderationQuestions, routerQuestions, triageQuestions } from './presets.js'
 export { type IntentRoute, type RouteIntentParams, routeIntent } from './route-intent.js'

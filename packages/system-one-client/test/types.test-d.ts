@@ -1,6 +1,30 @@
 import { expectTypeOf, test } from 'vitest'
 
+import type {
+  CreateSystemOneClientParams,
+  SystemOneConnectionErrorParams,
+  SystemOneHTTPClientParams,
+  SystemOneOverloadedErrorParams,
+  SystemOneRateLimitErrorParams,
+  SystemOneRetryableErrorParams,
+} from '../src/index.js'
 import type { ChoiceAnswer, NoulAnswer, PredictResult, ScoreAnswer } from '../src/types.js'
+
+test('public System One params include HTTP and error fields', () => {
+  expectTypeOf<SystemOneHTTPClientParams>().toHaveProperty('url').toEqualTypeOf<string>()
+  expectTypeOf<CreateSystemOneClientParams>().toExtend<
+    SystemOneHTTPClientParams | { backend: unknown }
+  >()
+  expectTypeOf<SystemOneConnectionErrorParams>().toHaveProperty('cause').toEqualTypeOf<unknown>()
+  expectTypeOf<SystemOneConnectionErrorParams>()
+    .toHaveProperty('status')
+    .toEqualTypeOf<number | undefined>()
+  expectTypeOf<SystemOneRetryableErrorParams>()
+    .toHaveProperty('retryAfterMs')
+    .toEqualTypeOf<number | undefined>()
+  expectTypeOf<SystemOneRateLimitErrorParams>().toEqualTypeOf<SystemOneRetryableErrorParams>()
+  expectTypeOf<SystemOneOverloadedErrorParams>().toEqualTypeOf<SystemOneRetryableErrorParams>()
+})
 
 test('PredictResult infers answer shape per question type', () => {
   type DeptQuestion = { type: 'choice'; instructions: 'Which team?'; criteria: { a: 'x' } }

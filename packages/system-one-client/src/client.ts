@@ -1,6 +1,6 @@
 import type { SystemOneBackend } from './backend.js'
 import { SystemOneError } from './errors.js'
-import { HTTPSystemOneBackend, type SystemOneHTTPClientOptions } from './http.js'
+import { HTTPSystemOneBackend, type SystemOneHTTPClientParams } from './http.js'
 import type { PredictResult, QuestionMap, State } from './types.js'
 import { validateQuestions, validateResult, validateState } from './validation.js'
 
@@ -51,14 +51,14 @@ export class SystemOneClient {
   }
 }
 
-export type CreateSystemOneClientOptions = SystemOneHTTPClientOptions | SystemOneClientParams
+export type CreateSystemOneClientParams = SystemOneHTTPClientParams | SystemOneClientParams
 
-export function createSystemOneClient(options: CreateSystemOneClientOptions): SystemOneClient {
-  if ('backend' in options) {
-    return new SystemOneClient(options)
+export function createSystemOneClient(params: CreateSystemOneClientParams): SystemOneClient {
+  if ('backend' in params) {
+    return new SystemOneClient(params)
   }
   return new SystemOneClient({
-    backend: new HTTPSystemOneBackend(options),
-    defaultModel: options.defaultModel,
+    backend: new HTTPSystemOneBackend(params),
+    defaultModel: params.defaultModel,
   })
 }
