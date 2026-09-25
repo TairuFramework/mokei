@@ -495,7 +495,7 @@ describe('initialize hardening', () => {
     const client = new ContextClient({
       protocolVersion: '2025-11-25',
       transport: transports.client,
-      initializeTimeout: 50,
+      setupTimeout: 50,
     })
     // Drain the client's initialize request but never reply.
     void transports.server.read()
