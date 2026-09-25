@@ -6,7 +6,6 @@ export type {
 export {
   type CreateSystemOneClientOptions,
   createSystemOneClient,
-  type SystemOneBackendClientOptions,
   SystemOneClient,
   type SystemOneClientParams,
   type SystemOnePredictParams,

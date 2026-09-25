@@ -15,8 +15,6 @@ export type SystemOneClientParams = {
   backend: SystemOneBackend
   defaultModel?: string
 }
-/** @deprecated Use SystemOneClientParams. */
-export type SystemOneBackendClientOptions = SystemOneClientParams
 
 export class SystemOneClient {
   #backend: SystemOneBackend
