@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.build.json",
+  "compilerOptions": {
+    "lib": ["es2025", "dom"],
+    "noEmit": true,
+    "skipLibCheck": false,
+    "types": ["node"]
+  },
+  "include": ["./index.ts"]
+}

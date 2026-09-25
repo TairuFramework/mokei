@@ -55,9 +55,6 @@ published package in one `versioning.fixed` lockstep group.
 
 - **OAuth server-gate integration tests** (`next/2026-09-04-oauth-server-gate-integration-tests.md`)
   -- real JWKS and DID verifiers behind a real `serveHTTP`; today's tests stub the verifier.
-- **`.d.ts` consumer typecheck** (`next/2026-09-25-dts-consumer-typecheck.md`) -- a consumer
-  fixture that typechecks the published declarations without `--skipLibCheck`, so errors like the
-  MRTR TS2589 cannot hide.
 
 The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) -- both
 revisions at capability parity, nothing open.
@@ -66,10 +63,14 @@ revisions at capability parity, nothing open.
 
 - **Conventions and docs pass** (2026-09-25) -- error classes and positional constructors now take
   one `<ClassName>Params` object with `#private` fields and getters; `ContextHost` keeps its state
-  private behind a narrow subclass API; source files are kebab-case; comment style aligned; the
-  architecture doc caught up with OAuth, subscriptions and System One. **BREAKING:** error
+  private behind a narrow subclass API; source files are kebab-case (React components stay
+  PascalCase); comment style aligned; the architecture doc caught up with OAuth, subscriptions and
+  System One. **BREAKING:** error
   constructors across the core packages, `ProxyHost({ client })`, and the removed `ContextHost`
   underscore members.
+- **`.d.ts` consumer typecheck** (2026-09-25) -- `integration-tests/dts-consumer` imports every
+  published entry point and typechecks the built declarations with `skipLibCheck: false`, as part
+  of `test:types` and the CI build. See `completed/2026-09-25-dts-consumer-typecheck.complete.md`.
 - **laya-serve as the local System One backend** (2026-09-23, PR #52) -- replaced the laya.cpp
   backend (superseded) and aligned the client with the published System One API. See
   `docs/reference/system-one-sidecar.md`.

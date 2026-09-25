@@ -7,7 +7,7 @@
     "build:types": "pnpm run test:types",
     "build:types:ci": "pnpm run test:types",
     "test": "vitest run",
-    "test:types": "tsc --noEmit --skipLibCheck"
+    "test:types": "tsc --noEmit --skipLibCheck && node dts-consumer/check.mjs"
   },
   "dependencies": {
     "@enkaku/node-streams": "catalog:",
@@ -37,6 +37,12 @@
     "@modelcontextprotocol/core": "2.1.0",
     "@modelcontextprotocol/node": "2.1.0",
     "@modelcontextprotocol/server": "2.1.0",
+    "@mokei/context-rpc": "workspace:^",
+    "@mokei/host-monitor": "workspace:^",
+    "@mokei/host-protocol": "workspace:^",
+    "@mokei/logger": "workspace:^",
+    "@mokei/mcp-sqlite": "workspace:^",
+    "@mokei/mcp-system-one": "workspace:^",
     "@sozai/generator": "catalog:",
     "@types/node": "catalog:",
     "node-pty": "^1.1.0",
