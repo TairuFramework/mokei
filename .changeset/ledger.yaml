@@ -10,6 +10,12 @@
   dir: packages/context-client
   intents:
     - public-geese-fail
+"@mokei/context-client@0.14.0":
+  dir: packages/context-client
+  intents:
+    - brave-owls-rename
+    - quick-cats-prove
+    - tidy-setup-timeout
 "@mokei/context-protocol@0.11.0":
   dir: packages/context-protocol
   intents:
@@ -22,6 +28,14 @@
   dir: packages/context-protocol
   intents:
     - public-geese-fail
+"@mokei/context-protocol@0.13.2":
+  dir: packages/context-protocol
+  intents:
+    - sse-backpressure-server-unions
+"@mokei/context-protocol@0.14.0":
+  dir: packages/context-protocol
+  intents:
+    - quick-cats-prove
 "@mokei/context-rpc@0.11.0":
   dir: packages/context-rpc
   intents:
@@ -34,6 +48,10 @@
   dir: packages/context-rpc
   intents:
     - public-geese-fail
+"@mokei/context-rpc@0.14.0":
+  dir: packages/context-rpc
+  intents:
+    - brave-owls-rename
 "@mokei/context-server@0.11.0":
   dir: packages/context-server
   intents:
@@ -46,6 +64,16 @@
   dir: packages/context-server
   intents:
     - public-geese-fail
+"@mokei/context-server@0.14.0":
+  dir: packages/context-server
+  intents:
+    - brave-owls-rename
+    - quick-cats-prove
+"@mokei/host-node@0.14.0":
+  dir: packages/host-node
+  intents:
+    - brave-owls-rename
+    - calm-otters-split
 "@mokei/host@0.11.0":
   dir: packages/host
   intents:
@@ -58,6 +86,12 @@
   dir: packages/host
   intents:
     - olive-terms-pull
+"@mokei/host@0.14.0":
+  dir: packages/host
+  intents:
+    - brave-owls-rename
+    - calm-otters-split
+    - quick-cats-prove
 "@mokei/http-client@0.11.0":
   dir: packages/http-client
   intents:
@@ -70,6 +104,11 @@
   dir: packages/http-client
   intents:
     - public-geese-fail
+"@mokei/http-client@0.14.0":
+  dir: packages/http-client
+  intents:
+    - brave-owls-rename
+    - firm-oauth-edges
 "@mokei/http-server@0.11.0":
   dir: packages/http-server
   intents:
@@ -78,14 +117,41 @@
   dir: packages/http-server
   intents:
     - public-geese-fail
+"@mokei/http-server@0.13.2":
+  dir: packages/http-server
+  intents:
+    - sse-backpressure-server-unions
+"@mokei/http-server@0.14.0":
+  dir: packages/http-server
+  intents:
+    - brave-owls-rename
+    - firm-oauth-edges
+"@mokei/model-provider@0.14.0":
+  dir: packages/model-provider
+  intents:
+    - brave-owls-rename
 "@mokei/openai-provider@0.11.0":
   dir: packages/openai-provider
   intents:
     - mcp-2026-07-28
+"@mokei/session-node@0.14.0":
+  dir: packages/session-node
+  intents:
+    - calm-otters-split
 "@mokei/session@0.11.0":
   dir: packages/session
   intents:
     - mcp-2026-07-28
+"@mokei/session@0.14.0":
+  dir: packages/session
+  intents:
+    - brave-owls-rename
+    - calm-otters-split
+"@mokei/system-one-client@0.14.0":
+  dir: packages/system-one-client
+  intents:
+    - brave-owls-rename
+    - tidy-system-one-names
 mokei@0.11.0:
   dir: packages/cli
   intents:
@@ -94,11 +160,3 @@ mokei@0.13.1:
   dir: packages/cli
   intents:
     - public-geese-fail
-"@mokei/context-protocol@0.13.2":
-  dir: packages/context-protocol
-  intents:
-    - sse-backpressure-server-unions
-"@mokei/http-server@0.13.2":
-  dir: packages/http-server
-  intents:
-    - sse-backpressure-server-unions

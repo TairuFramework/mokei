@@ -1,6 +1,6 @@
 {
   "name": "@mokei/session-node",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "description": "Mokei session Node stdio entry",
   "keywords": [
     "model",

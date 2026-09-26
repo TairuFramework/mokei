@@ -1,6 +1,6 @@
 {
   "name": "@mokei/context-server",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "description": "Mokei MCP server",
   "keywords": [
     "model",
