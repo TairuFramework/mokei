@@ -7,11 +7,15 @@ import {
   retryPolicySchema,
   type Value,
 } from '@sozai/flow-graph'
+import { createTracerFactory, SpanStatusCode } from '@sozai/otel'
 import type { Schema } from '@sozai/schema'
 
+import packageJSON from '../package.json' with { type: 'json' }
 import { checkDecide, decideTargets } from './check-decide.js'
 import { describeDecisionError, retryableDecision } from './decide-error.js'
 import { decideResultSchema } from './result-schema.js'
+
+const tracer = createTracerFactory('mokei', packageJSON.version)('decision-flow')
 
 export type DecideNode = {
   kind: 'decide'
@@ -55,12 +59,47 @@ export function decideKind(params: { client: SystemOneClient }): NodeKind<Decide
         throw new InvalidDecisionStateError()
       }
 
-      const result = await params.client.predict({
-        state,
-        questions: node.questions,
-        model: node.model,
-        signal: ctx.signal,
+      const result = await tracer.startActiveSpan('decision.predict', async (span) => {
+        span.setAttribute('system_one.question.count', Object.keys(node.questions).length)
+        try {
+          const prediction = await params.client.predict({
+            state,
+            questions: node.questions,
+            model: node.model,
+            signal: ctx.signal,
+          })
+          span.setAttribute('system_one.model', prediction.model)
+          span.setAttribute('system_one.usage.input_tokens', prediction.usage.inputTokens)
+          span.setAttribute('system_one.usage.output_tokens', prediction.usage.outputTokens)
+          return prediction
+        } catch (error) {
+          const metadata = describeDecisionError(error)
+          span.setAttribute('error.type', metadata.type)
+          if (metadata.status !== undefined) span.setAttribute('http.status_code', metadata.status)
+          if (metadata.retryAfterMs !== undefined) {
+            span.setAttribute('system_one.retry_after_ms', metadata.retryAfterMs)
+          }
+          span.setStatus({ code: SpanStatusCode.ERROR })
+          throw error
+        } finally {
+          span.end()
+        }
       })
+
+      for (const [question, answer] of Object.entries(result.answers)) {
+        const attributes: Record<string, string | number | boolean> = {
+          'decision.question': question,
+          'decision.type': answer.type,
+        }
+        if (answer.type === 'choice') attributes['decision.choice'] = answer.choice
+        if (answer.type === 'score') attributes['decision.score'] = answer.score
+        if (answer.type === 'noul') attributes['decision.noul'] = answer.noul
+        if ('confidence' in answer && answer.confidence !== undefined) {
+          attributes['decision.confidence'] = answer.confidence
+        }
+        ctx.span.addEvent('decision.answer', attributes)
+      }
+
       ctx.setResult({
         ...result.answers,
         $meta: { model: result.model, usage: result.usage },
