@@ -84,6 +84,49 @@ describe('describeDecisionError', () => {
     expect(metadata).not.toHaveProperty('cause')
   })
 
+  test.each([
+    [
+      'SystemOneInputError',
+      new SystemOneInputError({
+        message: 'secret input message',
+        cause: new Error('secret cause'),
+      }),
+      { type: 'SystemOneInputError' },
+    ],
+    [
+      'SystemOneAuthError',
+      new SystemOneAuthError({ message: 'secret auth message', cause: new Error('secret cause') }),
+      { type: 'SystemOneAuthError' },
+    ],
+    [
+      'SystemOneModelError',
+      new SystemOneModelError({
+        message: 'secret model message',
+        cause: new Error('secret cause'),
+      }),
+      { type: 'SystemOneModelError' },
+    ],
+    [
+      'SystemOneResponseError',
+      new SystemOneResponseError({
+        message: 'secret response message',
+        cause: new Error('secret cause'),
+      }),
+      { type: 'SystemOneResponseError' },
+    ],
+    [
+      'SystemOneError',
+      new SystemOneError({ message: 'secret generic message', cause: new Error('secret cause') }),
+      { type: 'SystemOneError' },
+    ],
+  ])('describes %s without its message or cause', (_name, error, expectedMetadata) => {
+    const metadata = describeDecisionError(error)
+
+    expect(metadata).toEqual(expectedMetadata)
+    expect(metadata).not.toHaveProperty('message')
+    expect(metadata).not.toHaveProperty('cause')
+  })
+
   test('bounds finite retry-after metadata', () => {
     const error = new SystemOneRateLimitError({
       message: 'secret',
