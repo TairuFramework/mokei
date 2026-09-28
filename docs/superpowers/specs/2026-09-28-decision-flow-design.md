@@ -158,12 +158,14 @@ answer schemas (which allow extra fields):
 
 Plus `$meta.model`, `$meta.usage.inputTokens`, `$meta.usage.outputTokens`. Every object is
 `additionalProperties: false` except the two marked open. Extra fields a backend adds are kept in
-the result at runtime but cannot be referenced by flows. The engine's cross-node
+the result at runtime but cannot be referenced by flows. For a node with `onError`, the engine adds
+the handled-error shape (`error.type`, `error.code`, `error.status`, `error.reason`,
+`error.attempts`); `decide` does not declare it, and `error` joins `$meta` as a reserved question key. The engine's cross-node
 `invalid_result_path` check then covers reads of `decide` results from any node.
 
 **Check** (kind hook, on top of schema and result-path validation):
 
-- `questions` valid per `questionMapSchema`; no question key named `$meta`.
+- `questions` valid per `questionMapSchema`; no question key named `$meta` or `error`.
 - Comparisons on a `choice` field (`equalTo`, `notEqualTo`, `in`, `notIn`) use declared criteria
   keys, wherever the filter appears.
 - Comparisons on `noul`, `confidence`, `act_probability` and probabilities use numbers in [0, 1].
@@ -174,7 +176,8 @@ maps every unmapped non-2xx status (including a plain 400) to `SystemOneConnecti
 
 - Retryable: `SystemOneConnectionError` with no `status` (backend not reached), or with status
   408, 429, 500, 502, 503, 504 or 529. This covers `SystemOneRateLimitError` (429) and
-  `SystemOneOverloadedError` (529). Returns `{ afterMs: retryAfterMs }` when the error carries one,
+  `SystemOneOverloadedError` (529). Returns `{ afterMs: retryAfterMs }` when the error carries a finite one (the HTTP backend yields
+  `Infinity` for an oversized `Retry-After`),
   else `true`.
 - Not retryable: any other status, and `SystemOneInputError`, `SystemOneAuthError`,
   `SystemOneModelError`, `SystemOneResponseError`, `invalid_state`.
@@ -183,7 +186,7 @@ maps every unmapped non-2xx status (including a plain 400) to `SystemOneConnecti
 `suspendAfterMs: 30000`), overridable per node.
 
 **`describeError(error)`.** Returns `ErrorMetadata`: `type` (System One error class name, or
-`invalid_state`), `status` when present, `retryAfterMs` when present. Never the message. The engine
+`invalid_state`), `status` when present, `retryAfterMs` when finite, clamped to `MAX_DELAY_MS`. Never the message. The engine
 uses it for `lastFailure`, its log records and span attributes.
 
 **Errors.** After retries: `onError` if set, else run `error` with code `node_failed`, recording the
@@ -303,8 +306,9 @@ handled or unhandled). `createDecisionFlowGraph` defaults the engine's `logger` 
 per retried attempt and per `onError`-handled failure, `error` when the run fails. Records carry
 `describeError`'s System One class, `status` and `retryAfterMs`, never the error object or its
 message unless `recordErrorMessages` is true. The engine applies `traceLogger` per record inside
-the active span, so records carry the node span's trace and span IDs. `decide` itself does not
-log.
+the active span, so records carry the node span's trace and span IDs. When logging is not set up,
+the engine still prints run errors to the console with the same safe fields, so the Mokei default
+logger never makes them silent. `decide` itself does not log.
 
 Spans follow the engine rule: `decision.predict` is started with the tracer directly, not
 `withSpan`, so no exception message is recorded by default.
@@ -326,7 +330,9 @@ Spans follow the engine rule: `decision.predict` is started with the tracer dire
   events with fixed attribute names, and no payload or message leakage by default. Logging: logtape
   test sink asserting one record per event under `mokei.decision-flow`, carrying `describeError`
   fields and the node span's trace IDs.
-- `describeError`: each System One error class maps to type, status and `retryAfterMs`; no message.
+- `describeError`: each System One error class maps to type, status and `retryAfterMs`; no message;
+  an oversized `Retry-After` (`Infinity`) omitted from both `describeError` and `retryable`.
+- `onError` target reading `results.<id>.error.type` passes the checker.
 - Type tests on the public API.
 
 ## Follow-on
