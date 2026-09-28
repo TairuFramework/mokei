@@ -10,12 +10,11 @@ import {
 import { createTracerFactory, SpanStatusCode } from '@sozai/otel'
 import type { Schema } from '@sozai/schema'
 
-import packageJSON from '../package.json' with { type: 'json' }
 import { checkDecide, decideTargets } from './check-decide.js'
 import { describeDecisionError, retryableDecision } from './decide-error.js'
 import { decideResultSchema } from './result-schema.js'
 
-const tracer = createTracerFactory('mokei', packageJSON.version)('decision-flow')
+const tracer = createTracerFactory('mokei')('decision-flow')
 
 export type DecideNode = {
   kind: 'decide'
@@ -60,7 +59,22 @@ export function decideKind(params: { client: SystemOneClient }): NodeKind<Decide
       }
 
       const result = await tracer.startActiveSpan('decision.predict', async (span) => {
+        let ended = false
+        const endSpan = () => {
+          if (ended) return
+          ended = true
+          span.end()
+        }
+        const onAbort = () => {
+          if (ended) return
+          span.setAttribute('error.type', 'TimeoutInterruption')
+          span.setStatus({ code: SpanStatusCode.ERROR })
+          endSpan()
+        }
+
         span.setAttribute('system_one.question.count', Object.keys(node.questions).length)
+        ctx.signal.addEventListener('abort', onAbort, { once: true })
+        if (ctx.signal.aborted) onAbort()
         try {
           const prediction = await params.client.predict({
             state,
@@ -68,25 +82,36 @@ export function decideKind(params: { client: SystemOneClient }): NodeKind<Decide
             model: node.model,
             signal: ctx.signal,
           })
-          span.setAttribute('system_one.model', prediction.model)
-          span.setAttribute('system_one.usage.input_tokens', prediction.usage.inputTokens)
-          span.setAttribute('system_one.usage.output_tokens', prediction.usage.outputTokens)
+          if (!ended) {
+            span.setAttribute('system_one.model', prediction.model)
+            span.setAttribute('system_one.usage.input_tokens', prediction.usage.inputTokens)
+            span.setAttribute('system_one.usage.output_tokens', prediction.usage.outputTokens)
+          }
           return prediction
         } catch (error) {
-          const metadata = describeDecisionError(error)
-          span.setAttribute('error.type', metadata.type)
-          if (metadata.status !== undefined) span.setAttribute('http.status_code', metadata.status)
-          if (metadata.retryAfterMs !== undefined) {
-            span.setAttribute('system_one.retry_after_ms', metadata.retryAfterMs)
+          if (!ended) {
+            const metadata = describeDecisionError(error)
+            span.setAttribute('error.type', metadata.type)
+            if (metadata.status !== undefined)
+              span.setAttribute('http.status_code', metadata.status)
+            if (metadata.retryAfterMs !== undefined) {
+              span.setAttribute('system_one.retry_after_ms', metadata.retryAfterMs)
+            }
+            span.setStatus({ code: SpanStatusCode.ERROR })
           }
-          span.setStatus({ code: SpanStatusCode.ERROR })
           throw error
         } finally {
-          span.end()
+          ctx.signal.removeEventListener('abort', onAbort)
+          endSpan()
         }
       })
 
-      for (const [question, answer] of Object.entries(result.answers)) {
+      const answers: typeof result.answers = {}
+      for (const question of Object.keys(node.questions)) {
+        if (!Object.hasOwn(result.answers, question)) continue
+        const answer = result.answers[question]
+        if (answer === undefined) continue
+        answers[question] = answer
         const attributes: Record<string, string | number | boolean> = {
           'decision.question': question,
           'decision.type': answer.type,
@@ -101,7 +126,7 @@ export function decideKind(params: { client: SystemOneClient }): NodeKind<Decide
       }
 
       ctx.setResult({
-        ...result.answers,
+        ...answers,
         $meta: { model: result.model, usage: result.usage },
       })
 

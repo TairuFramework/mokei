@@ -16,7 +16,7 @@ import {
 } from '@opentelemetry/sdk-trace-base'
 import type { FlowDefinition } from '@sozai/flow-graph'
 import { type LogRecord, reset as resetLogging, setup as setupLogging } from '@sozai/log'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { createDecisionFlowGraph } from '../src/index.js'
 
@@ -52,6 +52,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetLogging()
+  vi.useRealTimers()
 })
 
 afterAll(() => {
@@ -238,6 +239,88 @@ describe('decision flow observability', () => {
     expect(serialized).not.toContain('PRIVATE_BACKEND_MESSAGE')
     expect(serialized).not.toContain('PRIVATE_INSTRUCTIONS')
     expect(serialized).not.toContain('PRIVATE_CRITERION_DESCRIPTION')
+  })
+
+  test('ignores undeclared top-level answers in results and answer events', async () => {
+    const graph = createDecisionFlowGraph({
+      client: new SystemOneClient({
+        backend: makeBackend({
+          model: 'system-one-model',
+          answers: {
+            department: {
+              type: 'choice',
+              choice: 'billing',
+              confidence: 0.92,
+              probabilities: { billing: 0.92 },
+            },
+            error: { type: 'choice', choice: 'spoofed', confidence: 1 },
+            unexpected: { type: 'noul', noul: 1 },
+          } as unknown as SystemOneResult['answers'],
+          usage: { input_tokens: 2, output_tokens: 1 },
+        } as SystemOneResult),
+        defaultModel: 'default-model',
+      }),
+    })
+    const definition = makeDefinition({
+      questions: {
+        department: {
+          type: 'choice',
+          instructions: 'Which department?',
+          criteria: { billing: 'Billing' },
+        },
+      },
+      onError: 'handled',
+      cases: [
+        {
+          when: {
+            path: ['results', 'decide', 'error', 'type'],
+            is: { equalTo: 'choice' },
+          },
+          to: 'handled',
+        },
+      ],
+    })
+
+    const run = await graph.run({ definition, input: { message: 'refund' } })
+    await provider.forceFlush()
+    const node = exporter.getFinishedSpans().find((span) => span.name === 'flow.node')
+
+    expect(run.status).toBe('ended')
+    expect(run.outcome).toBe('done')
+    expect(run.runState.frames[0]?.results.decide).toMatchObject({
+      department: { choice: 'billing' },
+      $meta: { model: 'system-one-model' },
+    })
+    expect(run.runState.frames[0]?.results.decide).not.toHaveProperty('error')
+    expect(run.runState.frames[0]?.results.decide).not.toHaveProperty('unexpected')
+    expect(
+      node?.events
+        .filter((event) => event.name === 'decision.answer')
+        .map((event) => event.attributes?.['decision.question']),
+    ).toEqual(['department'])
+  })
+
+  test('ends predict span with timeout metadata when the backend never settles', async () => {
+    vi.useFakeTimers()
+    const graph = createDecisionFlowGraph({
+      client: new SystemOneClient({
+        backend: { predict: () => new Promise(() => {}) },
+        defaultModel: 'default-model',
+      }),
+      retryDefaults: { decide: { maxAttempts: 1, attemptTimeoutMs: 10 } },
+    })
+    const runPromise = graph.run({
+      definition: makeDefinition(),
+      input: { message: 'refund' },
+    })
+
+    await vi.advanceTimersByTimeAsync(20)
+    await runPromise
+    await provider.forceFlush()
+
+    const predict = exporter.getFinishedSpans().find((span) => span.name === 'decision.predict')
+    expect(predict?.status.code).toBe(2)
+    expect(predict?.attributes['error.type']).toBe('TimeoutInterruption')
   })
 
   test('leaves one engine log record per retried, handled, and terminal failure', async () => {
