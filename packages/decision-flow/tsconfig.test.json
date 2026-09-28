@@ -3,6 +3,7 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": "..",
+    "lib": ["esnext", "dom"],
     "resolveJsonModule": true
   },
   "include": ["./src/**/*", "./test/**/*"]
