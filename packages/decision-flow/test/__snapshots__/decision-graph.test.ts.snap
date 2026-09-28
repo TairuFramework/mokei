@@ -1880,61 +1880,36 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
               },
               "retry": {
                 "additionalProperties": false,
-                "description": "Retry for this decision.",
-                "examples": [
-                  {
-                    "maxAttempts": 2,
-                  },
-                ],
+                "description": "retry",
                 "properties": {
                   "attemptTimeoutMs": {
-                    "description": "Attempt Timeout Ms for this decision.",
-                    "examples": [
-                      1,
-                    ],
+                    "description": "attemptTimeoutMs",
                     "maximum": 2147483647,
                     "minimum": 0,
                     "type": "integer",
                   },
                   "backoff": {
                     "additionalProperties": false,
-                    "description": "Backoff for this decision.",
-                    "examples": [
-                      {
-                        "initialMs": 1,
-                      },
-                    ],
+                    "description": "backoff",
                     "properties": {
                       "initialMs": {
-                        "description": "Initial Ms for this decision.",
-                        "examples": [
-                          1,
-                        ],
+                        "description": "initialMs",
                         "maximum": 2147483647,
                         "minimum": 0,
                         "type": "integer",
                       },
                       "jitter": {
-                        "description": "Jitter for this decision.",
-                        "examples": [
-                          true,
-                        ],
+                        "description": "jitter",
                         "type": "boolean",
                       },
                       "maxMs": {
-                        "description": "Max Ms for this decision.",
-                        "examples": [
-                          1,
-                        ],
+                        "description": "maxMs",
                         "maximum": 2147483647,
                         "minimum": 0,
                         "type": "integer",
                       },
                       "multiplier": {
-                        "description": "Multiplier for this decision.",
-                        "examples": [
-                          1,
-                        ],
+                        "description": "multiplier",
                         "minimum": 1,
                         "type": "number",
                       },
@@ -1945,37 +1920,25 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                     "type": "object",
                   },
                   "maxAttempts": {
-                    "description": "Max Attempts for this decision.",
-                    "examples": [
-                      1,
-                    ],
+                    "description": "maxAttempts",
                     "maximum": 100,
                     "minimum": 1,
                     "type": "integer",
                   },
                   "maxInterruptions": {
-                    "description": "Max Interruptions for this decision.",
-                    "examples": [
-                      1,
-                    ],
+                    "description": "maxInterruptions",
                     "maximum": 100,
                     "minimum": 0,
                     "type": "integer",
                   },
                   "suspendAfterMs": {
-                    "description": "Suspend After Ms for this decision.",
-                    "examples": [
-                      1,
-                    ],
+                    "description": "suspendAfterMs",
                     "maximum": 2147483647,
                     "minimum": 0,
                     "type": "integer",
                   },
                   "totalTimeoutMs": {
-                    "description": "Total Timeout Ms for this decision.",
-                    "examples": [
-                      1,
-                    ],
+                    "description": "totalTimeoutMs",
                     "maximum": 2147483647,
                     "minimum": 0,
                     "type": "integer",
@@ -3173,6 +3136,7 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "description": "Criteria for this decision.",
                           "examples": [
                             [
+                              "example",
                               "example",
                             ],
                           ],

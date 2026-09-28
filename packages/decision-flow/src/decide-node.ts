@@ -177,7 +177,7 @@ export const decideNodeSchema: Schema = {
     },
     default: { type: 'string' },
     onError: { type: 'string' },
-    retry: retryPolicySchema as Schema,
+    retry: structuredClone(retryPolicySchema) as Schema,
   },
   required: ['kind', 'state', 'questions', 'cases', 'default'],
   additionalProperties: false,
@@ -244,10 +244,12 @@ function fieldExample(field: string, schema: Record<string, unknown>): unknown {
   if (type === 'string') return 'example'
   if (type === 'number' || type === 'integer') return 1
   if (type === 'boolean') return true
-  if (type === 'array')
-    return Number(schema.minItems) > 0
-      ? [fieldExample(field, (schema.items ?? {}) as Record<string, unknown>)]
-      : []
+  if (type === 'array') {
+    const minItems = Math.max(0, Math.ceil(Number(schema.minItems) || 0))
+    return Array.from({ length: minItems }, () =>
+      fieldExample(field, (schema.items ?? {}) as Record<string, unknown>),
+    )
+  }
   if (type === 'object') {
     const properties = schema.properties as Record<string, Record<string, unknown>> | undefined
     const required = Array.isArray(schema.required) ? (schema.required as Array<string>) : []

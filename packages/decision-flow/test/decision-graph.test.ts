@@ -6,20 +6,36 @@ import {
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base'
 import {
+  createFlowGraph,
   defineNodeKind,
   type FlowDefinition,
   type FlowGraphOptions,
   type FlowRetryPolicy,
+  retryPolicySchema,
 } from '@sozai/flow-graph'
-import { createValidator } from '@sozai/schema'
+import { createValidator, type Schema } from '@sozai/schema'
 import { describe, expect, test, vi } from 'vitest'
 
-import {
+const engineRetryPolicySchema = structuredClone(retryPolicySchema)
+function actionRetrySchema(schema: Schema): unknown {
+  const properties = schema.properties as Record<string, Record<string, unknown>>
+  const nodes = properties.nodes?.additionalProperties as Record<string, unknown>
+  const action = (nodes.oneOf as Array<Record<string, unknown>>).find(
+    (variant) =>
+      (variant.properties as Record<string, Record<string, unknown>>)?.kind?.const === 'action',
+  )
+  return (action?.properties as Record<string, unknown>)?.retry
+}
+const engineActionRetrySchema = structuredClone(
+  actionRetrySchema(createFlowGraph({}).authoringSchema),
+)
+const {
   createDecisionFlowGraph,
+  decideNodeSchema,
   flowDefinitionSchema,
   flowStorageSchema,
   formatIssues,
-} from '../src/index.js'
+} = await import('../src/index.js')
 
 function makeClient(
   backend: SystemOneBackend = {
@@ -200,6 +216,36 @@ function definitionWith(node: Record<string, unknown>): FlowDefinition {
 }
 
 describe('createDecisionFlowGraph', () => {
+  test('keeps the engine retry schema and built-in action retry schema unchanged', () => {
+    const graph = createDecisionFlowGraph({ client: makeClient() })
+    expect(retryPolicySchema).toEqual(engineRetryPolicySchema)
+    expect(actionRetrySchema(graph.authoringSchema)).toEqual(engineActionRetrySchema)
+  })
+
+  test('generates decide schema examples that validate against their own schemas', () => {
+    const examples = (decideNodeSchema.examples ?? []) as Array<unknown>
+    const decideValidator = createValidator(decideNodeSchema)
+    expect(examples.length).toBeGreaterThan(0)
+    for (const example of examples) {
+      expect(decideValidator(example)).not.toHaveProperty('issues')
+    }
+
+    for (const [, property] of walkSchemaProperties(decideNodeSchema)) {
+      const propertyExamples = property.examples as Array<unknown> | undefined
+      if (!propertyExamples) continue
+      const propertySchema = {
+        type: 'object',
+        properties: { value: property },
+        required: ['value'],
+        definitions: decideNodeSchema.definitions,
+      } as Schema
+      const validateProperty = createValidator(propertySchema)
+      for (const example of propertyExamples) {
+        expect(validateProperty({ value: example })).not.toHaveProperty('issues')
+      }
+    }
+  })
+
   test('provides the default retry policy and composed authoring schema', () => {
     const graph = createDecisionFlowGraph({ client: makeClient() })
 
