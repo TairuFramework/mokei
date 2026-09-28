@@ -160,12 +160,14 @@ Plus `$meta.model`, `$meta.usage.inputTokens`, `$meta.usage.outputTokens`. Every
 `additionalProperties: false` except the two marked open. Extra fields a backend adds are kept in
 the result at runtime but cannot be referenced by flows. For a node with `onError`, the engine adds
 the handled-error shape (`error.type`, `error.code`, `error.status`, `error.reason`,
-`error.attempts`); `decide` does not declare it, and `error` joins `$meta` as a reserved question key. The engine's cross-node
+`error.attempts`) through its independent `invalid_error_path` check; `decide` does not declare it, and `error` joins `$meta` as a reserved question key. The engine's cross-node
 `invalid_result_path` check then covers reads of `decide` results from any node.
 
 **Check** (kind hook, on top of schema and result-path validation):
 
-- `questions` valid per `questionMapSchema`; no question key named `$meta` or `error`.
+- `questions` valid per `questionMapSchema`; no question key named `$meta` or `error`; no question key or `choice`
+  criteria key rejected by `isSafePathSegment` (from `@sozai/flow-graph`), with a hint to rename it,
+  since its answer or probability could never be referenced.
 - Comparisons on a `choice` field (`equalTo`, `notEqualTo`, `in`, `notIn`) use declared criteria
   keys, wherever the filter appears.
 - Comparisons on `noul`, `confidence`, `act_probability` and probabilities use numbers in [0, 1].
@@ -322,7 +324,8 @@ Spans follow the engine rule: `decision.predict` is started with the tracer dire
   resume with a `retry` event, `invalid_state` for a resolved number or `null`.
 - `resultSchema`: cross-node read of an undeclared question key, an extra backend field, or a
   `probabilities` key outside the criteria rejected; `legend.*` accepted.
-- Checker hook: unknown choice label anywhere, out-of-range numbers, `$meta` key.
+- Checker hook: unknown choice label anywhere, out-of-range numbers, `$meta` and `error` keys,
+  `__proto__` as a question key and as a criteria key.
 - The triage example end to end, including suspend at `ask`, JSON round-trip, `value` and `timeout`
   resumes.
 - `flowDefinitionSchema` snapshot; the example validates against it; a `call` node does not.
