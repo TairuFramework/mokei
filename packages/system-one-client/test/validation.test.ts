@@ -160,9 +160,9 @@ describe('validateResult', () => {
       answers: {
         dept: {
           type: 'choice',
-          choice: 'unlisted',
+          choice: 'billing',
           confidence: 0.9,
-          probabilities: { unlisted: 0.9 },
+          probabilities: { billing: 0.9 },
         },
         urgency: {
           type: 'score',
@@ -177,7 +177,7 @@ describe('validateResult', () => {
       family: 'english',
     }
     const result = validateResult({ questions, raw })
-    expect(result.answers.dept.choice).toBe('unlisted')
+    expect(result.answers.dept.choice).toBe('billing')
     expect(result.usage).toEqual({ inputTokens: 12, outputTokens: 3 })
     expect(result.extras).toEqual({ family: 'english' })
   })
@@ -279,5 +279,146 @@ describe('validateResult', () => {
       usage: { input_tokens: 0, output_tokens: 0 },
     }
     expect(() => validateResult({ questions, raw })).toThrow(SystemOneResponseError)
+  })
+
+  function response(answers: Record<string, unknown>) {
+    return {
+      model: 'english',
+      answers: {
+        dept: { type: 'choice', choice: 'billing', confidence: 1, probabilities: { billing: 1 } },
+        urgency: { type: 'score', score: 0.5, confidence: 1, legend: {}, probabilities: {} },
+        churn: { type: 'noul', noul: 0.5 },
+        ...answers,
+      },
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }
+  }
+
+  test.each([
+    [
+      'undeclared choice',
+      'dept',
+      { type: 'choice', choice: 'unlisted', confidence: 1, probabilities: {} },
+      ['answers', 'dept', 'choice'],
+    ],
+    [
+      'undeclared probability key',
+      'dept',
+      { type: 'choice', choice: 'billing', confidence: 1, probabilities: { unlisted: 0.2 } },
+      ['answers', 'dept', 'probabilities', 'unlisted'],
+    ],
+    [
+      'score below legend minimum',
+      'urgency',
+      { type: 'score', score: 0, confidence: 1, legend: { min: 1, max: 3 }, probabilities: {} },
+      ['answers', 'urgency', 'score'],
+    ],
+    [
+      'score above legend maximum',
+      'urgency',
+      { type: 'score', score: 4, confidence: 1, legend: { min: 1, max: 3 }, probabilities: {} },
+      ['answers', 'urgency', 'score'],
+    ],
+    ['noul below zero', 'churn', { type: 'noul', noul: -0.1 }, ['answers', 'churn', 'noul']],
+    ['noul above one', 'churn', { type: 'noul', noul: 1.1 }, ['answers', 'churn', 'noul']],
+    [
+      'confidence outside range',
+      'dept',
+      { type: 'choice', choice: 'billing', confidence: 1.1, probabilities: {} },
+      ['answers', 'dept', 'confidence'],
+    ],
+    [
+      'action probability outside range',
+      'dept',
+      {
+        type: 'choice',
+        choice: 'billing',
+        confidence: 1,
+        probabilities: {},
+        action: { act_probability: -1 },
+      },
+      ['answers', 'dept', 'action', 'act_probability'],
+    ],
+    [
+      'probability outside range',
+      'dept',
+      { type: 'choice', choice: 'billing', confidence: 1, probabilities: { billing: 2 } },
+      ['answers', 'dept', 'probabilities', 'billing'],
+    ],
+    [
+      'nonfinite confidence',
+      'dept',
+      { type: 'choice', choice: 'billing', confidence: Number.NaN, probabilities: {} },
+      ['confidence'],
+    ],
+    [
+      'nonfinite score',
+      'urgency',
+      {
+        type: 'score',
+        score: Number.POSITIVE_INFINITY,
+        confidence: 1,
+        legend: {},
+        probabilities: {},
+      },
+      ['score'],
+    ],
+    [
+      'nonfinite action probability',
+      'churn',
+      { type: 'noul', noul: 0.5, action: { act_probability: Number.POSITIVE_INFINITY } },
+      ['action', 'act_probability'],
+    ],
+    [
+      'nonfinite probability',
+      'urgency',
+      {
+        type: 'score',
+        score: 1,
+        confidence: 1,
+        legend: {},
+        probabilities: { '1': Number.POSITIVE_INFINITY },
+      },
+      ['probabilities', '1'],
+    ],
+  ] as const)('rejects %s with an issue at the answer path', (_name, key, answer, path) => {
+    expect(() => validateResult({ questions, raw: response({ [key]: answer }) })).toThrowError(
+      SystemOneResponseError,
+    )
+    try {
+      validateResult({ questions, raw: response({ [key]: answer }) })
+    } catch (error) {
+      expect((error as SystemOneResponseError).issues).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path })]),
+      )
+    }
+  })
+
+  test('accepts optional fields omitted and a score with only one numeric bound', () => {
+    const raw = response({
+      urgency: { type: 'score', score: 99, confidence: 1, legend: { min: 0 }, probabilities: {} },
+    })
+    expect(validateResult({ questions, raw }).answers.urgency.score).toBe(99)
+  })
+
+  test('does not accept inherited criteria or probability keys', () => {
+    const criteria = Object.create({ inherited: 'not declared' }) as Record<string, string>
+    criteria.billing = 'declared'
+    const inheritedQuestions = { dept: { ...questions.dept, criteria } }
+    const raw = {
+      model: 'english',
+      answers: {
+        dept: {
+          type: 'choice',
+          choice: 'inherited',
+          confidence: 1,
+          probabilities: { inherited: 1 },
+        },
+      },
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }
+    expect(() => validateResult({ questions: inheritedQuestions, raw })).toThrow(
+      SystemOneResponseError,
+    )
   })
 })

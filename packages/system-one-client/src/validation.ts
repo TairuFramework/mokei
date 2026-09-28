@@ -63,6 +63,69 @@ function answerValidatorFor(question: Question) {
   }
 }
 
+function probabilityIssue(value: number, path: Array<string>): ValidationIssue | undefined {
+  return Number.isFinite(value) && value >= 0 && value <= 1
+    ? undefined
+    : { message: `${path.join('.')} must be finite and within [0, 1]`, path }
+}
+
+function valueIssues(question: Question, answer: unknown, key: string): Array<ValidationIssue> {
+  const result: Array<ValidationIssue> = []
+  const value = answer as Record<string, unknown>
+  const base = ['answers', key]
+  const addProbability = (number: unknown, path: Array<string>) => {
+    if (typeof number !== 'number') return
+    const issue = probabilityIssue(number, path)
+    if (issue != null) result.push(issue)
+  }
+  if (question.type === 'choice') {
+    if (!Object.hasOwn(question.criteria, value.choice as string)) {
+      result.push({
+        message: `${base.join('.')} choice must name a declared criterion`,
+        path: [...base, 'choice'],
+      })
+    }
+    for (const [label, probability] of Object.entries(
+      value.probabilities as Record<string, number>,
+    )) {
+      if (!Object.hasOwn(question.criteria, label)) {
+        result.push({
+          message: `${base.join('.')} probability key must name a declared criterion`,
+          path: [...base, 'probabilities', label],
+        })
+      }
+      addProbability(probability, [...base, 'probabilities', label])
+    }
+  }
+  if (question.type === 'score') {
+    const legend = value.legend as Record<string, unknown>
+    const score = value.score as number
+    if (
+      !Number.isFinite(score) ||
+      (typeof legend.min === 'number' &&
+        typeof legend.max === 'number' &&
+        (score < legend.min || score > legend.max))
+    ) {
+      result.push({
+        message: `${base.join('.')} score must be finite and within numeric legend bounds`,
+        path: [...base, 'score'],
+      })
+    }
+    for (const [label, probability] of Object.entries(
+      value.probabilities as Record<string, number>,
+    )) {
+      addProbability(probability, [...base, 'probabilities', label])
+    }
+  }
+  if (question.type === 'noul') addProbability(value.noul, [...base, 'noul'])
+  if (value.confidence !== undefined) addProbability(value.confidence, [...base, 'confidence'])
+  const action = value.action as { act_probability?: number } | undefined
+  if (action?.act_probability !== undefined) {
+    addProbability(action.act_probability, [...base, 'action', 'act_probability'])
+  }
+  return result
+}
+
 export function validateResult<TQuestions extends QuestionMap>(params: {
   questions: TQuestions
   raw: unknown
@@ -88,13 +151,13 @@ export function validateResult<TQuestions extends QuestionMap>(params: {
   const answerRecord = answers as Record<string, unknown>
   const issues: Array<ValidationIssue> = []
   for (const [key, question] of Object.entries(questions)) {
-    issues.push(
-      ...run(
-        answerValidatorFor(question) as Validator<unknown>,
-        answerRecord[key],
-        `answers.${key}`,
-      ),
+    const shapeIssues = run(
+      answerValidatorFor(question) as Validator<unknown>,
+      answerRecord[key],
+      `answers.${key}`,
     )
+    issues.push(...shapeIssues)
+    if (shapeIssues.length === 0) issues.push(...valueIssues(question, answerRecord[key], key))
   }
   const usageIssues = run(usageValidator, usage, 'usage')
   issues.push(...usageIssues)
