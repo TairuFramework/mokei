@@ -201,7 +201,6 @@ const graph = createDecisionFlowGraph({
   client,                     // SystemOneClient
   actions?, kinds?, retryDefaults?, maxSteps?, runtime?, logger?,
   recordErrorMessages?, random?, now?,
-  resolver?,                  // forwarded; follow-on
 })
 ```
 
@@ -341,7 +340,7 @@ Spans follow the engine rule: `decision.predict` is started with the tracer dire
 ## Follow-on
 
 - Flow references (`call`, `goto`, `loop.body: { flow }`, `FlowResolver`) — engine side in sozai;
-  mokei already forwards `resolver`.
+  `createDecisionFlowGraph` gains a forwarded `resolver` option once the engine publishes it.
 - MCP `check_flow` / `run_flow` tools.
 - `AgentSession` integration (flows gating or routing turns).
 - `system-one-client` HTTP backend adopting `@sozai/async` `retry()` with `retryAfterMs`.
