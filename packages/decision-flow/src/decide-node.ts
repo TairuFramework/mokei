@@ -1,6 +1,16 @@
-import { type QuestionMap, questionMapSchema } from '@mokei/system-one-client'
-import { type Filter, type FlowRetryPolicy, retryPolicySchema, type Value } from '@sozai/flow-graph'
+import { type QuestionMap, questionMapSchema, type SystemOneClient } from '@mokei/system-one-client'
+import {
+  type ExecuteContext,
+  type Filter,
+  type FlowRetryPolicy,
+  type NodeKind,
+  retryPolicySchema,
+  type Value,
+} from '@sozai/flow-graph'
 import type { Schema } from '@sozai/schema'
+
+import { checkDecide, decideTargets } from './check-decide.js'
+import { decideResultSchema } from './result-schema.js'
 
 export type DecideNode = {
   kind: 'decide'
@@ -12,6 +22,55 @@ export type DecideNode = {
   default: string
   onError?: string
   retry?: FlowRetryPolicy
+}
+
+export class InvalidDecisionStateError extends Error {
+  #code = 'invalid_state'
+
+  constructor() {
+    super('Decision state must be a string, object, or array.')
+    this.name = 'InvalidDecisionStateError'
+  }
+
+  get code(): string {
+    return this.#code
+  }
+}
+
+/** Create a flow-graph node kind that runs a System One decision. */
+export function decideKind(params: { client: SystemOneClient }): NodeKind<DecideNode> {
+  return {
+    kind: 'decide' as const,
+    schema: decideNodeSchema,
+    targets: decideTargets,
+    resultSchema: (node: DecideNode) => decideResultSchema(node.questions),
+    check: checkDecide,
+    retries: true,
+    describeError: (error: unknown) =>
+      error instanceof InvalidDecisionStateError
+        ? { type: 'invalid_state', code: error.code }
+        : { type: error instanceof Error ? error.name : 'Error' },
+    execute: async (node: DecideNode, ctx: ExecuteContext) => {
+      const state = ctx.resolve(node.state)
+      if (state === null || (typeof state !== 'string' && typeof state !== 'object')) {
+        throw new InvalidDecisionStateError()
+      }
+
+      const result = await params.client.predict({
+        state,
+        questions: node.questions,
+        model: node.model,
+        signal: ctx.signal,
+      })
+      ctx.setResult({
+        ...result.answers,
+        $meta: { model: result.model, usage: result.usage },
+      })
+
+      const match = node.cases.find((item) => ctx.evaluate(item.when))
+      return { next: match?.to ?? node.default }
+    },
+  }
 }
 
 export const decideNodeSchema: Schema = {
