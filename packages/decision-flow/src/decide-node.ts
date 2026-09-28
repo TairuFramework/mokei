@@ -164,7 +164,7 @@ export const decideNodeSchema: Schema = {
     kind: { const: 'decide' },
     description: { type: 'string' },
     state: { $ref: '#/definitions/value' },
-    questions: questionMapSchema,
+    questions: structuredClone(questionMapSchema),
     model: { type: 'string' },
     cases: {
       type: 'array',
@@ -205,3 +205,94 @@ export const decideNodeSchema: Schema = {
     },
   ],
 }
+
+function fieldExample(field: string, schema: Record<string, unknown>): unknown {
+  const explicit: Record<string, unknown> = {
+    kind: 'decide',
+    description: 'Route this request to the right team.',
+    state: { value: 'A customer needs help with an invoice.' },
+    questions: {
+      department: {
+        type: 'choice',
+        instructions: 'Which team should handle this request?',
+        criteria: { billing: 'Billing support', technical: 'Technical support' },
+      },
+    },
+    model: 'laya-general',
+    cases: [
+      {
+        when: { path: ['results', 'triage', 'department', 'choice'], is: { equalTo: 'billing' } },
+        to: 'billing',
+      },
+    ],
+    when: { path: ['state', 'department'], is: { equalTo: 'billing' } },
+    is: { equalTo: 'billing' },
+    path: ['state', 'department'],
+    to: 'billing',
+    default: 'general',
+    onError: 'fallback',
+    retry: { maxAttempts: 2 },
+    presence: 'nonEmpty',
+    and: [{ path: ['state', 'active'], is: { equalTo: true } }],
+    or: [{ path: ['state', 'active'], is: { equalTo: true } }],
+    not: { path: ['state', 'active'], is: { equalTo: true } },
+  }
+  if (Object.hasOwn(explicit, field)) return explicit[field]
+  if (Object.hasOwn(schema, 'const')) return schema.const
+  if (Array.isArray(schema.enum)) return schema.enum[0]
+  const type = Array.isArray(schema.type) ? schema.type[0] : schema.type
+  if (type === 'string') return 'example'
+  if (type === 'number' || type === 'integer') return 1
+  if (type === 'boolean') return true
+  if (type === 'array')
+    return Number(schema.minItems) > 0
+      ? [fieldExample(field, (schema.items ?? {}) as Record<string, unknown>)]
+      : []
+  if (type === 'object') {
+    const properties = schema.properties as Record<string, Record<string, unknown>> | undefined
+    const required = Array.isArray(schema.required) ? (schema.required as Array<string>) : []
+    if (properties) {
+      return Object.fromEntries(
+        required.flatMap((key) => {
+          const property = properties[key]
+          return property ? [[key, fieldExample(key, property)]] : []
+        }),
+      )
+    }
+    if (schema.additionalProperties) return { example: 'Example value' }
+    return {}
+  }
+  for (const key of ['oneOf', 'anyOf', 'allOf']) {
+    const options = schema[key]
+    if (Array.isArray(options) && options[0] && typeof options[0] === 'object') {
+      return fieldExample(field, options[0] as Record<string, unknown>)
+    }
+  }
+  return null
+}
+
+function documentProperties(schema: unknown): void {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return
+  const objectSchema = schema as Record<string, unknown>
+  const properties = objectSchema.properties
+  if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
+    for (const [field, value] of Object.entries(properties)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+      const property = value as Record<string, unknown>
+      const label = field.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      property.description ??= `${label.charAt(0).toUpperCase()}${label.slice(1)} for this decision.`
+      property.examples ??= [fieldExample(field, property)]
+      documentProperties(property)
+    }
+  }
+  for (const key of ['definitions', 'items', 'additionalProperties']) {
+    const value = objectSchema[key]
+    if (value && typeof value === 'object') documentProperties(value)
+  }
+  for (const key of ['anyOf', 'oneOf', 'allOf']) {
+    const value = objectSchema[key]
+    if (Array.isArray(value)) value.forEach(documentProperties)
+  }
+}
+
+documentProperties(decideNodeSchema)

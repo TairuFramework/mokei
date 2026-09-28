@@ -1880,36 +1880,61 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
               },
               "retry": {
                 "additionalProperties": false,
-                "description": "retry",
+                "description": "Retry for this decision.",
+                "examples": [
+                  {
+                    "maxAttempts": 2,
+                  },
+                ],
                 "properties": {
                   "attemptTimeoutMs": {
-                    "description": "attemptTimeoutMs",
+                    "description": "Attempt Timeout Ms for this decision.",
+                    "examples": [
+                      1,
+                    ],
                     "maximum": 2147483647,
                     "minimum": 0,
                     "type": "integer",
                   },
                   "backoff": {
                     "additionalProperties": false,
-                    "description": "backoff",
+                    "description": "Backoff for this decision.",
+                    "examples": [
+                      {
+                        "initialMs": 1,
+                      },
+                    ],
                     "properties": {
                       "initialMs": {
-                        "description": "initialMs",
+                        "description": "Initial Ms for this decision.",
+                        "examples": [
+                          1,
+                        ],
                         "maximum": 2147483647,
                         "minimum": 0,
                         "type": "integer",
                       },
                       "jitter": {
-                        "description": "jitter",
+                        "description": "Jitter for this decision.",
+                        "examples": [
+                          true,
+                        ],
                         "type": "boolean",
                       },
                       "maxMs": {
-                        "description": "maxMs",
+                        "description": "Max Ms for this decision.",
+                        "examples": [
+                          1,
+                        ],
                         "maximum": 2147483647,
                         "minimum": 0,
                         "type": "integer",
                       },
                       "multiplier": {
-                        "description": "multiplier",
+                        "description": "Multiplier for this decision.",
+                        "examples": [
+                          1,
+                        ],
                         "minimum": 1,
                         "type": "number",
                       },
@@ -1920,25 +1945,37 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                     "type": "object",
                   },
                   "maxAttempts": {
-                    "description": "maxAttempts",
+                    "description": "Max Attempts for this decision.",
+                    "examples": [
+                      1,
+                    ],
                     "maximum": 100,
                     "minimum": 1,
                     "type": "integer",
                   },
                   "maxInterruptions": {
-                    "description": "maxInterruptions",
+                    "description": "Max Interruptions for this decision.",
+                    "examples": [
+                      1,
+                    ],
                     "maximum": 100,
                     "minimum": 0,
                     "type": "integer",
                   },
                   "suspendAfterMs": {
-                    "description": "suspendAfterMs",
+                    "description": "Suspend After Ms for this decision.",
+                    "examples": [
+                      1,
+                    ],
                     "maximum": 2147483647,
                     "minimum": 0,
                     "type": "integer",
                   },
                   "totalTimeoutMs": {
-                    "description": "totalTimeoutMs",
+                    "description": "Total Timeout Ms for this decision.",
+                    "examples": [
+                      1,
+                    ],
                     "maximum": 2147483647,
                     "minimum": 0,
                     "type": "integer",
@@ -2972,17 +3009,49 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
             ],
             "properties": {
               "cases": {
-                "description": "cases",
+                "description": "Cases for this decision.",
+                "examples": [
+                  [
+                    {
+                      "to": "billing",
+                      "when": {
+                        "is": {
+                          "equalTo": "billing",
+                        },
+                        "path": [
+                          "results",
+                          "triage",
+                          "department",
+                          "choice",
+                        ],
+                      },
+                    },
+                  ],
+                ],
                 "items": {
                   "additionalProperties": false,
                   "properties": {
                     "to": {
-                      "description": "to",
+                      "description": "To for this decision.",
+                      "examples": [
+                        "billing",
+                      ],
                       "type": "string",
                     },
                     "when": {
                       "$ref": "#/definitions/filter",
-                      "description": "when",
+                      "description": "When for this decision.",
+                      "examples": [
+                        {
+                          "is": {
+                            "equalTo": "billing",
+                          },
+                          "path": [
+                            "state",
+                            "department",
+                          ],
+                        },
+                      ],
                     },
                   },
                   "required": [
@@ -2994,23 +3063,38 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                 "type": "array",
               },
               "default": {
-                "description": "default",
+                "description": "Default for this decision.",
+                "examples": [
+                  "general",
+                ],
                 "type": "string",
               },
               "description": {
-                "description": "description",
+                "description": "Description for this decision.",
+                "examples": [
+                  "Route this request to the right team.",
+                ],
                 "type": "string",
               },
               "kind": {
                 "const": "decide",
-                "description": "kind",
+                "description": "Kind for this decision.",
+                "examples": [
+                  "decide",
+                ],
               },
               "model": {
-                "description": "model",
+                "description": "Model for this decision.",
+                "examples": [
+                  "laya-general",
+                ],
                 "type": "string",
               },
               "onError": {
-                "description": "onError",
+                "description": "On Error for this decision.",
+                "examples": [
+                  "fallback",
+                ],
                 "type": "string",
               },
               "questions": {
@@ -3037,7 +3121,12 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                               },
                             ],
                           },
-                          "description": "criteria",
+                          "description": "Criteria for this decision.",
+                          "examples": [
+                            {
+                              "example": "Example value",
+                            },
+                          ],
                           "maxProperties": 255,
                           "minProperties": 1,
                           "type": "object",
@@ -3055,11 +3144,17 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                               "type": "array",
                             },
                           ],
-                          "description": "instructions",
+                          "description": "Instructions for this decision.",
+                          "examples": [
+                            "example",
+                          ],
                         },
                         "type": {
-                          "description": "type",
+                          "description": "Type for this decision.",
                           "enum": [
+                            "choice",
+                          ],
+                          "examples": [
                             "choice",
                           ],
                         },
@@ -3075,7 +3170,12 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                       "additionalProperties": false,
                       "properties": {
                         "criteria": {
-                          "description": "criteria",
+                          "description": "Criteria for this decision.",
+                          "examples": [
+                            [
+                              "example",
+                            ],
+                          ],
                           "items": {
                             "anyOf": [
                               {
@@ -3089,7 +3189,10 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                                 "type": "array",
                               },
                             ],
-                            "description": "instructions",
+                            "description": "Instructions for this decision.",
+                            "examples": [
+                              "example",
+                            ],
                           },
                           "maxItems": 10,
                           "minItems": 2,
@@ -3108,11 +3211,17 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                               "type": "array",
                             },
                           ],
-                          "description": "instructions",
+                          "description": "Instructions for this decision.",
+                          "examples": [
+                            "example",
+                          ],
                         },
                         "type": {
-                          "description": "type",
+                          "description": "Type for this decision.",
                           "enum": [
+                            "score",
+                          ],
+                          "examples": [
                             "score",
                           ],
                         },
@@ -3129,7 +3238,10 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                       "properties": {
                         "criteria": {
                           "additionalProperties": false,
-                          "description": "criteria",
+                          "description": "Criteria for this decision.",
+                          "examples": [
+                            {},
+                          ],
                           "properties": {
                             "false": {
                               "anyOf": [
@@ -3144,7 +3256,10 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                                   "type": "array",
                                 },
                               ],
-                              "description": "instructions",
+                              "description": "Instructions for this decision.",
+                              "examples": [
+                                "example",
+                              ],
                             },
                             "true": {
                               "anyOf": [
@@ -3159,7 +3274,10 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                                   "type": "array",
                                 },
                               ],
-                              "description": "instructions",
+                              "description": "Instructions for this decision.",
+                              "examples": [
+                                "example",
+                              ],
                             },
                           },
                           "type": "object",
@@ -3177,11 +3295,17 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                               "type": "array",
                             },
                           ],
-                          "description": "instructions",
+                          "description": "Instructions for this decision.",
+                          "examples": [
+                            "example",
+                          ],
                         },
                         "type": {
-                          "description": "type",
+                          "description": "Type for this decision.",
                           "enum": [
+                            "noul",
+                          ],
+                          "examples": [
                             "noul",
                           ],
                         },
@@ -3194,42 +3318,79 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                     },
                   ],
                 },
-                "description": "questions",
+                "description": "Questions for this decision.",
+                "examples": [
+                  {
+                    "department": {
+                      "criteria": {
+                        "billing": "Billing support",
+                        "technical": "Technical support",
+                      },
+                      "instructions": "Which team should handle this request?",
+                      "type": "choice",
+                    },
+                  },
+                ],
                 "minProperties": 1,
                 "type": "object",
               },
               "retry": {
                 "additionalProperties": false,
-                "description": "retry",
+                "description": "Retry for this decision.",
+                "examples": [
+                  {
+                    "maxAttempts": 2,
+                  },
+                ],
                 "properties": {
                   "attemptTimeoutMs": {
-                    "description": "attemptTimeoutMs",
+                    "description": "Attempt Timeout Ms for this decision.",
+                    "examples": [
+                      1,
+                    ],
                     "maximum": 2147483647,
                     "minimum": 0,
                     "type": "integer",
                   },
                   "backoff": {
                     "additionalProperties": false,
-                    "description": "backoff",
+                    "description": "Backoff for this decision.",
+                    "examples": [
+                      {
+                        "initialMs": 1,
+                      },
+                    ],
                     "properties": {
                       "initialMs": {
-                        "description": "initialMs",
+                        "description": "Initial Ms for this decision.",
+                        "examples": [
+                          1,
+                        ],
                         "maximum": 2147483647,
                         "minimum": 0,
                         "type": "integer",
                       },
                       "jitter": {
-                        "description": "jitter",
+                        "description": "Jitter for this decision.",
+                        "examples": [
+                          true,
+                        ],
                         "type": "boolean",
                       },
                       "maxMs": {
-                        "description": "maxMs",
+                        "description": "Max Ms for this decision.",
+                        "examples": [
+                          1,
+                        ],
                         "maximum": 2147483647,
                         "minimum": 0,
                         "type": "integer",
                       },
                       "multiplier": {
-                        "description": "multiplier",
+                        "description": "Multiplier for this decision.",
+                        "examples": [
+                          1,
+                        ],
                         "minimum": 1,
                         "type": "number",
                       },
@@ -3240,25 +3401,37 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                     "type": "object",
                   },
                   "maxAttempts": {
-                    "description": "maxAttempts",
+                    "description": "Max Attempts for this decision.",
+                    "examples": [
+                      1,
+                    ],
                     "maximum": 100,
                     "minimum": 1,
                     "type": "integer",
                   },
                   "maxInterruptions": {
-                    "description": "maxInterruptions",
+                    "description": "Max Interruptions for this decision.",
+                    "examples": [
+                      1,
+                    ],
                     "maximum": 100,
                     "minimum": 0,
                     "type": "integer",
                   },
                   "suspendAfterMs": {
-                    "description": "suspendAfterMs",
+                    "description": "Suspend After Ms for this decision.",
+                    "examples": [
+                      1,
+                    ],
                     "maximum": 2147483647,
                     "minimum": 0,
                     "type": "integer",
                   },
                   "totalTimeoutMs": {
-                    "description": "totalTimeoutMs",
+                    "description": "Total Timeout Ms for this decision.",
+                    "examples": [
+                      1,
+                    ],
                     "maximum": 2147483647,
                     "minimum": 0,
                     "type": "integer",
@@ -3271,7 +3444,12 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
               },
               "state": {
                 "$ref": "#/definitions/value",
-                "description": "state",
+                "description": "State for this decision.",
+                "examples": [
+                  {
+                    "value": "A customer needs help with an invoice.",
+                  },
+                ],
               },
             },
             "required": [
