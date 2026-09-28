@@ -43,8 +43,21 @@ function collectFilterLeaves(
   }
   if (!isRecord(value)) return
 
+  const container = path.at(-1)
+  if (
+    Object.hasOwn(value, 'value') &&
+    Object.keys(value).length === 1 &&
+    container !== 'output' &&
+    container !== 'args' &&
+    container !== 'object'
+  ) {
+    return
+  }
+
   if (Array.isArray(value.path) && isRecord(value.is)) visit(value as FilterLeaf, path)
-  for (const [key, item] of Object.entries(value)) collectFilterLeaves(item, [...path, key], visit)
+  for (const [key, item] of Object.entries(value)) {
+    if (key !== 'schema' && key !== 'retry') collectFilterLeaves(item, [...path, key], visit)
+  }
 }
 
 function comparisonOperands(

@@ -54,12 +54,13 @@ export const decideNodeSchema: Schema = {
             path: { type: 'array', items: { type: 'string' } },
             is: {
               type: 'object',
+              minProperties: 1,
               properties: {
                 isNull: { type: 'boolean' },
                 equalTo: {},
                 notEqualTo: {},
-                in: { type: 'array' },
-                notIn: { type: 'array' },
+                in: { type: 'array', minItems: 1 },
+                notIn: { type: 'array', minItems: 1 },
                 lessThan: { type: ['number', 'string'] },
                 lessThanOrEqualTo: { type: ['number', 'string'] },
                 greaterThan: { type: ['number', 'string'] },
@@ -77,13 +78,17 @@ export const decideNodeSchema: Schema = {
         },
         {
           type: 'object',
-          properties: { and: { type: 'array', items: { $ref: '#/definitions/filter' } } },
+          properties: {
+            and: { type: 'array', minItems: 1, items: { $ref: '#/definitions/filter' } },
+          },
           required: ['and'],
           additionalProperties: false,
         },
         {
           type: 'object',
-          properties: { or: { type: 'array', items: { $ref: '#/definitions/filter' } } },
+          properties: {
+            or: { type: 'array', minItems: 1, items: { $ref: '#/definitions/filter' } },
+          },
           required: ['or'],
           additionalProperties: false,
         },

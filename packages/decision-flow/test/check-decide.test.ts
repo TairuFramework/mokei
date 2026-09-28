@@ -110,7 +110,25 @@ function definitionWithFilter(filter: Filter) {
   })
 }
 
+function definitionWithMalformedFilter(when: unknown) {
+  return makeDefinition({
+    cases: [{ when, to: 'done' }],
+  })
+}
+
 describe('checkDecide', () => {
+  test.each([
+    ['empty is', { path: ['input'], is: {} }],
+    ['empty membership operands', { path: ['input'], is: { in: [] } }],
+    ['empty and', { and: [] }],
+  ])('rejects %s filters through graph.check', (_label, when) => {
+    const result = createFlowGraph({ kinds: [decideKind] }).check(
+      definitionWithMalformedFilter(when),
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues.some((issue) => issue.severity === 'error')).toBe(true)
+  })
+
   test.each([
     ['empty questions', {}],
     ['malformed questions', { department: { type: 'unknown' } }],
@@ -169,6 +187,19 @@ describe('checkDecide', () => {
       path: ['nodes', 'decide', 'state', 'value'],
       hint: expect.any(String),
     })
+  })
+
+  test('accepts literal state data that resembles a filter', () => {
+    const issues = check({
+      state: {
+        value: {
+          path: ['results', 'decide', 'department', 'choice'],
+          is: { equalTo: 'unknown' },
+        },
+      },
+    })
+    expect(issues.some((issue) => issue.code === 'invalid_choice_label')).toBe(false)
+    expect(issues.filter((issue) => issue.severity === 'error')).toEqual([])
   })
 
   test.each(['equalTo', 'notEqualTo', 'in', 'notIn'])(
