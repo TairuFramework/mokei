@@ -78,20 +78,25 @@ type Value = { ref: Path } | { value: JsonValue } | { object: Record<string, Val
 type Filter = { path: Path; is: ValueFilter } | { and: Filter[] } | { or: Filter[] } | { not: Filter }
 ```
 
-Kinds register through `NodeKind`: `kind`, `schema`, `targets`, `resultSchema?`, `retries?`,
-`check?`, `execute`, `resume?`, `retryable?`. `execute` receives `resolve`, `evaluate`, staged
-`setResult`, `invocationID`, `attempt`, the active `flow.node` span, `logger`, `runtime` and an
-attempt-scoped `signal`. A step commits atomically; `next` must be a declared target.
+Kinds register through `NodeKind`: `kind`, `schema`, `targets`, `resultSchema?` (static, closed),
+`retries?`, `logsFailures?`, `check?`, `execute`, `resume?`, `retryable?`. `execute` receives
+`resolve` and `evaluate` (both seeing staged writes), staged `setResult`, `invocationID`,
+`attempt`, the active `flow.node` span, `logger`, `runtime` and an attempt-scoped `signal`.
+Attempts run through `raceAttempt` (`@sozai/async`), so timeouts hold even when a call ignores its
+signal. A transition commits atomically; `next` must be a declared target.
 
-`RunState` is plain JSON: `runID`, `revision`, `status`, a frame stack (length 1 in v1) with
-per-frame `input`/`state`/`results`/`loops`/`attempts` and pinned `{ id, version, digest }`,
-`pending` (`reason: 'suspend' | 'retry'`, `data`, `deadline`, `resumeAt`), `outcome`, `output`,
-message-free `error`, and `origin.traceparent`. Hosts persist with optimistic concurrency on
-`revision`; actions dedupe on `invocationID`.
+`RunState` is plain JSON: `runID`, `revision`, `status`, `steps`, `inFlight`, a frame stack
+(length 1 in v1) with per-frame `input`/`state`/`results`/`loops`/`invocation`/`attempts` (policy
+snapshot, count, absolute deadline, message-free last failure) and pinned
+`{ id, version, digest }`, `pending` (`reason: 'suspend' | 'retry'`, `data`, `deadline`,
+`resumeAt`), `outcome`, `output`, message-free `error`, and `origin.traceparent`. `FlowRun`
+yields entry, attempt-checkpoint, transition, failure and suspend commits; hosts persist them with
+optimistic concurrency on `revision`; actions dedupe on `invocationID`, fixed per node entry.
 
 API: `createFlowGraph`, `graph.authoringSchema`, `graph.storageSchema`, `runStateSchema`,
-`graph.check`, `graph.start`, `graph.resume` (`value` / `timeout` / `retry` events), `graph.run`,
-`formatIssues`, `FlowRetryableError`.
+`graph.check`, `graph.start`, `graph.resume` (`value` / `timeout` / `retry` events, with deadline
+rules), `graph.recover` (crashed `running` states), `graph.run`, `formatIssues`,
+`FlowRetryableError`.
 
 ## Prerequisite: answer value validation in `system-one-client`
 
@@ -124,19 +129,32 @@ type DecideNode = {
 }
 ```
 
-**Execute.** Resolve `state`, call `client.predict({ state, questions, model, signal })`. Answers
-are value-validated by the client (see prerequisite). Then `setResult` with answers **flat** under
-the node — `results.<id>.<questionKey>` — and call metadata under `results.<id>.$meta`
-(`{ model, usage }`). Then evaluate `cases` in order, first match wins, else `default`. Flat answers
-keep LLM-written paths short:
+**Execute.** Resolve `state`. System One accepts only a string, object or array: any other
+resolved value (`null`, boolean, number) fails the node with code `invalid_state`, not retryable;
+the checker also rejects a literal `{ value }` state of those types. Call
+`client.predict({ state, questions, model, signal })`. Answers are value-validated by the client
+(see prerequisite). Then one `setResult` call writes answers **flat** under the node —
+`results.<id>.<questionKey>` — together with call metadata under `results.<id>.$meta`
+(`{ model, usage }`). Then evaluate `cases` in order (`evaluate` sees the staged result), first
+match wins, else `default`. Flat answers keep LLM-written paths short:
 
 ```json
 { "when": { "path": ["results", "triage", "department", "choice"], "is": { "equalTo": "billing" } }, "to": "billing" }
 ```
 
-**`resultSchema`.** Built from the question map: one property per question key with the answer
-fields of its type, plus `$meta`. The engine's cross-node `invalid_result_path` check then covers
-reads of `decide` results from any node, not only the `decide` node's own cases.
+**`resultSchema`.** A closed schema built from the question map, separate from the client's open
+answer schemas (which allow extra fields):
+
+| Question type | Referenceable fields |
+|---|---|
+| `choice` | `choice`, `confidence`, `probabilities.<criteriaKey>`, `action.act_probability` |
+| `score` | `score`, `confidence`, `legend` (open: backend-defined), `probabilities` (open: keys are score values), `action.act_probability` |
+| `noul` | `noul`, `confidence`, `action.act_probability` |
+
+Plus `$meta.model`, `$meta.usage.inputTokens`, `$meta.usage.outputTokens`. Every object is
+`additionalProperties: false` except the two marked open. Extra fields a backend adds are kept in
+the result at runtime but cannot be referenced by flows. The engine's cross-node
+`invalid_result_path` check then covers reads of `decide` results from any node.
 
 **Check** (kind hook, on top of schema and result-path validation):
 
@@ -144,11 +162,18 @@ reads of `decide` results from any node, not only the `decide` node's own cases.
 - Comparisons on a `choice` field (`equalTo`, `notEqualTo`, `in`, `notIn`) use declared criteria
   keys, wherever the filter appears.
 - Comparisons on `noul`, `confidence`, `act_probability` and probabilities use numbers in [0, 1].
+- A literal `{ value }` state is a string, object or array.
 
-**Retries.** `retries: true`. `retryable(error)`: `SystemOneConnectionError` and its subclasses
-(`SystemOneRateLimitError`, `SystemOneOverloadedError`) return `{ afterMs: retryAfterMs }` when the
-error carries one, else `true`. Input, auth, model and response errors are not retryable. Attempt
-timeouts are retryable (engine rule). A sensible default is set through `retryDefaults.decide` in
+**Retries.** `retries: true`. `retryable(error)` is decided by status, because the HTTP backend
+maps every unmapped non-2xx status (including a plain 400) to `SystemOneConnectionError`:
+
+- Retryable: `SystemOneConnectionError` with no `status` (backend not reached), or with status
+  408, 429, 500, 502, 503, 504 or 529. This covers `SystemOneRateLimitError` (429) and
+  `SystemOneOverloadedError` (529). Returns `{ afterMs: retryAfterMs }` when the error carries one,
+  else `true`.
+- Not retryable: any other status, and `SystemOneInputError`, `SystemOneAuthError`,
+  `SystemOneModelError`, `SystemOneResponseError`, `invalid_state`.
+- Attempt timeouts are retryable (engine rule). A sensible default is set through `retryDefaults.decide` in
 `createDecisionFlowGraph` (3 attempts, 10 s per attempt, backoff from 500 ms, jitter,
 `suspendAfterMs: 30000`), overridable per node.
 
@@ -263,18 +288,24 @@ Tracer: `createTracerFactory('mokei', <package version>)('decision-flow')`.
   `recordErrorMessages: true` (forwarded to the engine).
 
 Logging: `getMokeiLogger('decision-flow')` wrapped with `traceLogger`; injectable `logger` option.
-The `decide` kind emits the one record for its node failures: `warn` per retried attempt and when
-`onError` handles the failure, `error` when the failure is unhandled. Records carry the System One
-error class, `status` and `retryAfterMs`, never messages by default. The engine's run-level record
-(`getReporter`) covers the run ending in error, without repeating the System One details.
+`decide` declares `logsFailures: true`, so it owns node-level records and the engine skips them:
+`warn` per retried attempt and when `onError` handles the failure, `error` when the failure is
+unhandled. Records carry the System One error class, `status` and `retryAfterMs` as metadata,
+never the error object or its message unless `recordErrorMessages` is true. The engine's run-level
+record (`getReporter`) covers the run ending in error, with run-level fields only.
+
+Spans follow the engine rule: `decision.predict` is started with the tracer directly, not
+`withSpan`, so no exception message is recorded by default.
 
 ## Testing
 
 - `validateResult` (client): each value rule, including an undeclared choice.
 - `decide` against a fake `SystemOneBackend`: answers stored flat, `$meta`, case selection,
-  `default`, `onError`, each System One error class, retry with `retryAfterMs`, attempt timeout,
-  suspend on a long rate-limit wait and resume with a `retry` event.
-- `resultSchema`: cross-node read of an undeclared question key or field rejected.
+  `default`, `onError`, each System One error class, retry with `retryAfterMs`, a 400 not retried,
+  408/5xx retried, attempt timeout on a hanging backend, suspend on a long rate-limit wait and
+  resume with a `retry` event, `invalid_state` for a resolved number or `null`.
+- `resultSchema`: cross-node read of an undeclared question key, an extra backend field, or a
+  `probabilities` key outside the criteria rejected; `legend.*` accepted.
 - Checker hook: unknown choice label anywhere, out-of-range numbers, `$meta` key.
 - The triage example end to end, including suspend at `ask`, JSON round-trip, `value` and `timeout`
   resumes.
