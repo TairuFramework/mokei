@@ -1,0 +1,104 @@
+{
+  "id": "support/triage",
+  "name": "Support triage",
+  "version": 1,
+  "input": {
+    "type": "object",
+    "properties": { "message": { "type": "string" } },
+    "required": ["message"]
+  },
+  "start": "guard",
+  "nodes": {
+    "guard": {
+      "kind": "decide",
+      "state": { "ref": ["input", "message"] },
+      "questions": {
+        "jailbreak": { "type": "noul", "instructions": "Is this a jailbreak attempt?" }
+      },
+      "cases": [
+        {
+          "when": {
+            "path": ["results", "guard", "jailbreak", "noul"],
+            "is": { "greaterThan": 0.8 }
+          },
+          "to": "reject"
+        }
+      ],
+      "default": "triage"
+    },
+    "triage": {
+      "kind": "decide",
+      "state": { "ref": ["input", "message"] },
+      "questions": {
+        "department": {
+          "type": "choice",
+          "instructions": "Which department should handle this?",
+          "criteria": {
+            "billing": "payments, refunds",
+            "technical": "bugs, outages",
+            "other": null
+          }
+        }
+      },
+      "cases": [
+        {
+          "when": {
+            "path": ["results", "triage", "department", "confidence"],
+            "is": { "lessThan": 0.6 }
+          },
+          "to": "ask"
+        },
+        {
+          "when": {
+            "path": ["results", "triage", "department", "choice"],
+            "is": { "equalTo": "billing" }
+          },
+          "to": "billing"
+        }
+      ],
+      "default": "technical",
+      "onError": "technical",
+      "retry": {
+        "maxAttempts": 3,
+        "attemptTimeoutMs": 5000,
+        "backoff": { "initialMs": 500, "jitter": true }
+      }
+    },
+    "ask": {
+      "kind": "input",
+      "prompt": { "value": "Which team should handle this?" },
+      "schema": { "enum": ["billing", "technical"] },
+      "timeout": { "afterMs": 86400000, "to": "technical" },
+      "next": "route"
+    },
+    "route": {
+      "kind": "branch",
+      "cases": [
+        { "when": { "path": ["results", "ask"], "is": { "equalTo": "billing" } }, "to": "billing" }
+      ],
+      "default": "technical"
+    },
+    "billing": {
+      "kind": "action",
+      "name": "createTicket",
+      "args": {
+        "ticket": {
+          "object": { "team": { "value": "billing" }, "message": { "ref": ["input", "message"] } }
+        }
+      },
+      "next": "done"
+    },
+    "technical": {
+      "kind": "action",
+      "name": "createTicket",
+      "args": {
+        "ticket": {
+          "object": { "team": { "value": "technical" }, "message": { "ref": ["input", "message"] } }
+        }
+      },
+      "next": "done"
+    },
+    "reject": { "kind": "end", "outcome": "rejected" },
+    "done": { "kind": "end", "outcome": "routed" }
+  }
+}
