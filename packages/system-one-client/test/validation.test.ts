@@ -349,7 +349,7 @@ describe('validateResult', () => {
       'nonfinite confidence',
       'dept',
       { type: 'choice', choice: 'billing', confidence: Number.NaN, probabilities: {} },
-      ['confidence'],
+      ['answers', 'dept', 'confidence'],
     ],
     [
       'nonfinite score',
@@ -361,13 +361,13 @@ describe('validateResult', () => {
         legend: {},
         probabilities: {},
       },
-      ['score'],
+      ['answers', 'urgency', 'score'],
     ],
     [
       'nonfinite action probability',
       'churn',
       { type: 'noul', noul: 0.5, action: { act_probability: Number.POSITIVE_INFINITY } },
-      ['action', 'act_probability'],
+      ['answers', 'churn', 'action', 'act_probability'],
     ],
     [
       'nonfinite probability',
@@ -379,7 +379,7 @@ describe('validateResult', () => {
         legend: {},
         probabilities: { '1': Number.POSITIVE_INFINITY },
       },
-      ['probabilities', '1'],
+      ['answers', 'urgency', 'probabilities', '1'],
     ],
   ] as const)('rejects %s with an issue at the answer path', (_name, key, answer, path) => {
     expect(() => validateResult({ questions, raw: response({ [key]: answer }) })).toThrowError(
@@ -388,9 +388,15 @@ describe('validateResult', () => {
     try {
       validateResult({ questions, raw: response({ [key]: answer }) })
     } catch (error) {
-      expect((error as SystemOneResponseError).issues).toEqual(
-        expect.arrayContaining([expect.objectContaining({ path })]),
-      )
+      const issues = (error as SystemOneResponseError).issues
+      expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({ path })]))
+      if (_name.startsWith('nonfinite')) {
+        expect(issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ path, message: expect.stringContaining(path.join('.')) }),
+          ]),
+        )
+      }
     }
   })
 
@@ -401,7 +407,7 @@ describe('validateResult', () => {
     expect(validateResult({ questions, raw }).answers.urgency.score).toBe(99)
   })
 
-  test('does not accept inherited criteria or probability keys', () => {
+  test('does not accept an inherited choice', () => {
     const criteria = Object.create({ inherited: 'not declared' }) as Record<string, string>
     criteria.billing = 'declared'
     const inheritedQuestions = { dept: { ...questions.dept, criteria } }
@@ -411,6 +417,27 @@ describe('validateResult', () => {
         dept: {
           type: 'choice',
           choice: 'inherited',
+          confidence: 1,
+          probabilities: { billing: 1 },
+        },
+      },
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }
+    expect(() => validateResult({ questions: inheritedQuestions, raw })).toThrow(
+      SystemOneResponseError,
+    )
+  })
+
+  test('does not accept an inherited probability key', () => {
+    const criteria = Object.create({ inherited: 'not declared' }) as Record<string, string>
+    criteria.billing = 'declared'
+    const inheritedQuestions = { dept: { ...questions.dept, criteria } }
+    const raw = {
+      model: 'english',
+      answers: {
+        dept: {
+          type: 'choice',
+          choice: 'billing',
           confidence: 1,
           probabilities: { inherited: 1 },
         },

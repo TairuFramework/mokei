@@ -155,7 +155,11 @@ export function validateResult<TQuestions extends QuestionMap>(params: {
       answerValidatorFor(question) as Validator<unknown>,
       answerRecord[key],
       `answers.${key}`,
-    )
+    ).map((issue) => {
+      const answerPath = ['answers', key, ...(Array.isArray(issue.path) ? issue.path : [])]
+      const message = issue.message.replace(`answers.${key}: `, '')
+      return { message: `${answerPath.join('.')}: ${message}`, path: answerPath }
+    })
     issues.push(...shapeIssues)
     if (shapeIssues.length === 0) issues.push(...valueIssues(question, answerRecord[key], key))
   }
