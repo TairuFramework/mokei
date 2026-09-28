@@ -192,11 +192,11 @@ Within the existing loop, store the shape issues for each answer, append them, t
 
 - [ ] **Step 5: Run passing checks.** Run `pnpm --filter @mokei/system-one-client test`. Expected: type checks and unit tests pass, including the replacement for the old acceptance test. Run `rtk proxy pnpm run lint`. Expected: exit 0.
 
-- [ ] **Step 6: Record the release intent.** Run `pnpm change` and select `@mokei/system-one-client` minor (0.x behaviour change). Rename the generated intent to `.changeset/decision-flow-answer-validation.md` if needed. Its complete content is:
+- [ ] **Step 6: Record the release intent.** Run `pnpm change` and select `@mokei/system-one-client` patch. Rename the generated intent to `.changeset/decision-flow-answer-validation.md` if needed. Its complete content is:
 
 ```md
 ---
-'@mokei/system-one-client': minor
+'@mokei/system-one-client': patch
 ---
 
 Reject backend answers whose choice, score, noul, confidence, action probability, or probabilities violate the question's declared values and bounds. Previously accepted invalid answers now throw `SystemOneResponseError`.
@@ -226,7 +226,7 @@ Run `pnpm change status`. Expected: a release plan including `@mokei/system-one-
 
 - [ ] **Step 1: Verify the publication gate before editing repository files.** Run `pnpm view @sozai/async version` and `pnpm view @sozai/flow-graph version`. Expected: both print a published semver. Create `/tmp/decision-flow-gate/package.json` containing `{ "private": true }`, then run `pnpm --dir /tmp/decision-flow-gate add @sozai/async@latest @sozai/flow-graph@latest`. Expected: exit 0. Run `rg -n 'RetryPolicy|RetryDecision|MAX_DELAY_MS|NodeKind|FlowRetryPolicy|createFlowGraph|defineNodeKind|isSafePathSegment|formatIssues|ExecuteContext|CheckContext|ErrorMetadata' /tmp/decision-flow-gate/node_modules/@sozai/async/lib /tmp/decision-flow-gate/node_modules/@sozai/flow-graph/lib`. Expected: exported declarations matching the upstream specs. Inspect `NodeKind.check` and especially whether `CheckContext` exposes the complete definition for filters outside a `decide` node. Inspect `ExecuteContext.span`, `graph.check/start/resume/run`, and schema properties directly in the installed `.d.ts` files. If either package, export, or definition-wide checker context is missing, stop Part B and report the exact missing contract to the upstream agent. If a published signature differs, update this plan's Part B interfaces and tests before implementation. The upstream documents are plans, not proof of published API.
 
-- [ ] **Step 2: Add catalog dependencies and package metadata.** Add `@sozai/flow-graph` at its published compatible version to the catalog; raise `@sozai/async` only if its published retry API requires a newer version. Add compatible `@opentelemetry/api` and `@opentelemetry/sdk-trace-base` versions to the catalog for observability tests. Add `@mokei/decision-flow` to `versioning.fixed`. Copy `system-one-client`'s package scripts, exports (`./lib/index.js`), `tsconfig.json`, `tsconfig.test.json`, and `vitest.config.ts` into the new package, changing only name, description, directory, and dependencies. Use dependencies `@mokei/system-one-client: workspace:^`, `@mokei/logger: workspace:^`, `@sozai/flow-graph: catalog:`, `@sozai/async: catalog:`, `@sozai/otel: catalog:`, and `@sozai/schema: catalog:`. Use `@types/node`, `@sozai/log`, `@opentelemetry/api`, and `@opentelemetry/sdk-trace-base` from the catalog in devDependencies. Set `resolveJsonModule: true` in both tsconfig files for the package version import and Task 8's example import. Run `pnpm install --lockfile-only` followed by `pnpm install`; expected: both exit 0 and `pnpm-lock.yaml` records the new package. The new-package scaffold is part of this deliverable.
+- [ ] **Step 2: Add catalog dependencies and package metadata.** Add `@sozai/flow-graph` at its published compatible version to the catalog; raise `@sozai/async` only if its published retry API requires a newer version. Add compatible `@opentelemetry/api` and `@opentelemetry/sdk-trace-base` versions to the catalog for observability tests. Add `@mokei/decision-flow` to `versioning.fixed`. Copy `system-one-client`'s package scripts, exports (`./lib/index.js`), `tsconfig.json`, `tsconfig.test.json`, and `vitest.config.ts` into the new package, changing only name, description, directory, and dependencies, and set `"version": "0.14.0"`. Use dependencies `@mokei/system-one-client: workspace:^`, `@mokei/logger: workspace:^`, `@sozai/flow-graph: catalog:`, `@sozai/async: catalog:`, `@sozai/otel: catalog:`, and `@sozai/schema: catalog:`. Use `@types/node`, `@sozai/log`, `@opentelemetry/api`, and `@opentelemetry/sdk-trace-base` from the catalog in devDependencies. Set `resolveJsonModule: true` in both tsconfig files for the package version import and Task 8's example import. Run `pnpm install --lockfile-only` followed by `pnpm install`; expected: both exit 0 and `pnpm-lock.yaml` records the new package. The new-package scaffold is part of this deliverable.
 
 - [ ] **Step 3: Write failing `result-schema.test.ts` tests.** Construct `questions` with a choice (`billing`, `technical`), score, and noul. Assert exact `properties` paths for each field, `$meta.model`, `$meta.usage.inputTokens`, `$meta.usage.outputTokens`; assert `additionalProperties: false` on root, answer, action, `$meta`, and usage; assert open `legend` and score `probabilities`; assert choice `probabilities` has only declared labels. Use `createValidator(decideResultSchema(questions))` to assert an extra runtime answer field fails this reference schema.
 
@@ -504,11 +504,11 @@ test('round-trips the suspended ask state and resumes with a value', async () =>
 
 - [ ] **Step 1: Run full verification.** Run `pnpm --filter @mokei/decision-flow test`, `pnpm --filter @mokei/decision-flow build`, `pnpm --filter @mokei/system-one-client test`, `pnpm run build`, `pnpm test`, and `rtk proxy pnpm run lint`. Expected: every command exits 0. If lint changes a file, inspect its diff and rerun the affected test before the release intent.
 
-- [ ] **Step 2: Record the intent.** Run `pnpm change` and select `@mokei/decision-flow` minor. Rename the generated file to `.changeset/decision-flow-package.md` if necessary. Its complete content is:
+- [ ] **Step 2: Record the intent.** Run `pnpm change` and select `@mokei/decision-flow` patch. Rename the generated file to `.changeset/decision-flow-package.md` if necessary. Its complete content is:
 
 ```md
 ---
-'@mokei/decision-flow': minor
+'@mokei/decision-flow': patch
 ---
 
 Add JSON-authored, resumable System One decision flows with static checking, retries, tracing, and a support triage example.
