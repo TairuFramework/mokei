@@ -2,7 +2,7 @@ import type { QuestionMap } from '@mokei/system-one-client'
 import { createValidator } from '@sozai/schema'
 import { describe, expect, test } from 'vitest'
 
-import { decideResultSchema } from '../src/result-schema.js'
+import { decideResultSchema } from '../src/index.js'
 
 const questions: QuestionMap = {
   dept: {
@@ -49,6 +49,7 @@ describe('decideResultSchema', () => {
     expect(propertyNames(dept)).toEqual(['choice', 'confidence', 'probabilities', 'action'])
     expect(at(dept, 'choice').enum).toEqual(['billing', 'technical'])
     expect(propertyNames(choiceProbabilities)).toEqual(['billing', 'technical'])
+    expect(choiceProbabilities.additionalProperties).toBe(false)
     expect(dept.additionalProperties).toBe(false)
     expect(action.additionalProperties).toBe(false)
     expect(at(action, 'act_probability')).toMatchObject({ minimum: 0, maximum: 1 })
@@ -84,13 +85,12 @@ describe('decideResultSchema', () => {
 
   test('rejects extra runtime answer fields from this reference schema', () => {
     const validate = createValidator(decideResultSchema(questions))
-    const result = validate({
+    const validResult = {
       dept: {
         choice: 'billing',
         confidence: 0.9,
         probabilities: { billing: 0.9, technical: 0.1 },
         action: { act_probability: 0.8 },
-        rationale: 'backend-only field',
       },
       urgency: {
         score: 1.2,
@@ -101,8 +101,25 @@ describe('decideResultSchema', () => {
       },
       refund: { noul: 0.2, confidence: 0.8, action: { act_probability: 0.4 } },
       $meta: { model: 'test-model', usage: { inputTokens: 10, outputTokens: 5 } },
+    }
+    const result = validate({
+      ...validResult,
+      dept: { ...validResult.dept, rationale: 'backend-only field' },
     })
 
     expect(result).toHaveProperty('issues')
+    if (!('issues' in result)) throw new Error('Expected extra field validation to fail')
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ['dept'],
+          details: expect.objectContaining({
+            keyword: 'additionalProperties',
+            params: { additionalProperty: 'rationale' },
+          }),
+        }),
+      ]),
+    )
+    expect(validate(validResult)).not.toHaveProperty('issues')
   })
 })
