@@ -67,7 +67,8 @@ export function decideKind(params: { client: SystemOneClient }): NodeKind<Decide
         }
         const onAbort = () => {
           if (ended) return
-          span.setAttribute('error.type', 'TimeoutInterruption')
+          const reason = ctx.signal.reason
+          span.setAttribute('error.type', reason instanceof Error ? reason.name : 'AbortError')
           span.setStatus({ code: SpanStatusCode.ERROR })
           endSpan()
         }

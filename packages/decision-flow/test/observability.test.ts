@@ -323,6 +323,41 @@ describe('decision flow observability', () => {
     expect(predict?.attributes['error.type']).toBe('TimeoutInterruption')
   })
 
+  test('ends predict span with abort metadata when the caller cancels a run', async () => {
+    let markBackendStarted: (() => void) | undefined
+    const backendStarted = new Promise<void>((resolve) => {
+      markBackendStarted = resolve
+    })
+    const controller = new AbortController()
+    const graph = createDecisionFlowGraph({
+      client: new SystemOneClient({
+        backend: {
+          predict: () => {
+            markBackendStarted?.()
+            return new Promise(() => {})
+          },
+        },
+        defaultModel: 'default-model',
+      }),
+      retryDefaults: { decide: { maxAttempts: 1 } },
+    })
+    const runPromise = graph.run({
+      definition: makeDefinition(),
+      input: { message: 'refund' },
+      signal: controller.signal,
+    })
+
+    await backendStarted
+    controller.abort()
+    await runPromise
+    await provider.forceFlush()
+
+    const predict = exporter.getFinishedSpans().find((span) => span.name === 'decision.predict')
+    expect(predict?.status.code).toBe(2)
+    expect(predict?.attributes['error.type']).toBe('AbortError')
+    expect(predict?.attributes['error.type']).not.toBe('TimeoutInterruption')
+  })
+
   test('leaves one engine log record per retried, handled, and terminal failure', async () => {
     const records: Array<LogRecord> = []
     configureLogSink(records)
