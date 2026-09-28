@@ -123,6 +123,7 @@ describe('decision flow observability', () => {
               choice: 'billing',
               confidence: 0.92,
               probabilities: { billing: 0.92 },
+              rationale: 'PRIVATE_RESULT_EXTRA',
             },
             urgency: {
               type: 'score',
@@ -134,7 +135,7 @@ describe('decision flow observability', () => {
             request: { type: 'noul', noul: 1 },
           },
           usage: { input_tokens: 17, output_tokens: 9 },
-        }),
+        } as SystemOneResult),
         defaultModel: 'default-model',
       }),
     })
@@ -192,6 +193,7 @@ describe('decision flow observability', () => {
     expect(serialized).not.toContain('PRIVATE_CRITERION_DESCRIPTION')
     expect(serialized).not.toContain('PRIVATE_SCORE_INSTRUCTIONS')
     expect(serialized).not.toContain('PRIVATE_NOUL_INSTRUCTIONS')
+    expect(serialized).not.toContain('PRIVATE_RESULT_EXTRA')
   })
 
   test('keeps prediction payloads and backend messages out of default spans', async () => {
@@ -248,9 +250,10 @@ describe('decision flow observability', () => {
           async predict() {
             retryCalls += 1
             if (retryCalls === 1) {
-              throw new SystemOneConnectionError({
+              throw new SystemOneRateLimitError({
                 message: 'PRIVATE_BACKEND_MESSAGE',
-                status: 503,
+                status: 429,
+                retryAfterMs: -5,
               })
             }
             return {
@@ -324,12 +327,24 @@ describe('decision flow observability', () => {
       ['mokei.decision-flow', 'error', ['Flow run failed']],
     ])
     expect(decisionRecords.map((record) => record.level)).toEqual(['warning', 'warning', 'error'])
-    expect(decisionRecords.map((record) => record.properties)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: 'SystemOneConnectionError', status: 503 }),
-        expect.objectContaining({ type: 'SystemOneConnectionError', status: 400 }),
-      ]),
-    )
+    expect(decisionRecords).toHaveLength(3)
+    expect(decisionRecords[0]?.properties).toMatchObject({
+      type: 'SystemOneRateLimitError',
+      status: 429,
+      retryAfterMs: 0,
+    })
+    expect(decisionRecords[1]?.properties).toMatchObject({
+      type: 'SystemOneConnectionError',
+      status: 400,
+    })
+    expect(decisionRecords[2]?.properties).toMatchObject({
+      type: 'SystemOneConnectionError',
+      status: 400,
+    })
+    for (const record of decisionRecords) {
+      expect(record.properties).not.toHaveProperty('message')
+      expect(record.properties).not.toHaveProperty('cause')
+    }
     const nodeContexts = exporter
       .getFinishedSpans()
       .filter((span) => span.name === 'flow.node')
