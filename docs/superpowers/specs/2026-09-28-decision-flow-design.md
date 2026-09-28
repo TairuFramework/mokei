@@ -79,7 +79,7 @@ type Filter = { path: Path; is: ValueFilter } | { and: Filter[] } | { or: Filter
 ```
 
 Kinds register through `NodeKind`: `kind`, `schema`, `targets`, `resultSchema?` (static, closed),
-`retries?`, `logsFailures?`, `check?`, `execute`, `resume?`, `retryable?`. `execute` receives
+`retries?`, `describeError?`, `check?`, `execute`, `resume?`, `retryable?`. `execute` receives
 `resolve` and `evaluate` (both seeing staged writes), staged `setResult`, `invocationID`,
 `attempt`, the active `flow.node` span, `logger`, `runtime` and an attempt-scoped `signal`.
 Attempts run through `raceAttempt` (`@sozai/async`), so timeouts hold even when a call ignores its
@@ -87,15 +87,20 @@ signal. A transition commits atomically; `next` must be a declared target.
 
 `RunState` is plain JSON: `runID`, `revision`, `status`, `steps`, `inFlight`, a frame stack
 (length 1 in v1) with per-frame `input`/`state`/`results`/`loops`/`invocation`/`attempts` (policy
-snapshot, count, absolute deadline, message-free last failure) and pinned
-`{ id, version, digest }`, `pending` (`reason: 'suspend' | 'retry'`, `data`, `deadline`,
-`resumeAt`), `outcome`, `output`, message-free `error`, and `origin.traceparent`. `FlowRun`
-yields entry, attempt-checkpoint, transition, failure and suspend commits; hosts persist them with
-optimistic concurrency on `revision`; actions dedupe on `invocationID`, fixed per node entry.
+snapshot, count, interruptions, absolute deadline, committed `retryAt`, message-free last failure)
+and pinned `{ id, version, digest }`, `pending` (`reason: 'suspend' | 'retry'`, `data`,
+`deadline`, `resumeAt`), `outcome`, `output`, message-free `error`, and `origin.traceparent`. A
+status matrix defines which fields each status allows. Timestamps are canonical UTC; all time
+decisions use an injectable `now`. `FlowRun` yields entry, attempt-checkpoint, transition,
+failure-with-disposition and suspend commits; hosts persist them with optimistic concurrency on
+`revision`; actions dedupe on `invocationID`, fixed per node entry. `recover` replays an
+interrupted attempt without consuming `maxAttempts` (bounded by `maxInterruptions`).
+
+The engine is the only failure logger; kinds contribute safe fields through `describeError`.
 
 API: `createFlowGraph`, `graph.authoringSchema`, `graph.storageSchema`, `runStateSchema`,
 `graph.check`, `graph.start`, `graph.resume` (`value` / `timeout` / `retry` events, with deadline
-rules), `graph.recover` (crashed `running` states), `graph.run`, `formatIssues`,
+rules), `graph.recover` (crashed `running` states), `graph.run`, `formatIssues`, `toTimestamp`,
 `FlowRetryableError`.
 
 ## Prerequisite: answer value validation in `system-one-client`
@@ -177,8 +182,12 @@ maps every unmapped non-2xx status (including a plain 400) to `SystemOneConnecti
 `createDecisionFlowGraph` (3 attempts, 10 s per attempt, backoff from 500 ms, jitter,
 `suspendAfterMs: 30000`), overridable per node.
 
+**`describeError(error)`.** Returns `ErrorMetadata`: `type` (System One error class name, or
+`invalid_state`), `status` when present, `retryAfterMs` when present. Never the message. The engine
+uses it for `lastFailure`, its log records and span attributes.
+
 **Errors.** After retries: `onError` if set, else run `error` with code `node_failed`, recording the
-System One error class and `status`.
+System One error class and `status` through `describeError`.
 
 **Construction.**
 
@@ -186,13 +195,14 @@ System One error class and `status`.
 const graph = createDecisionFlowGraph({
   client,                     // SystemOneClient
   actions?, kinds?, retryDefaults?, maxSteps?, runtime?, logger?,
-  recordErrorMessages?, random?,
+  recordErrorMessages?, random?, now?,
   resolver?,                  // forwarded; follow-on
 })
 ```
 
-registers `decideKind({ client })` on `createFlowGraph` and merges the default `decide` retry policy
-under the caller's `retryDefaults`. `decideKind` is also exported for hosts that compose kinds
+registers `decideKind({ client })` on `createFlowGraph`, merges the default `decide` retry policy
+under the caller's `retryDefaults`, and defaults the engine `logger` to
+`getMokeiLogger('decision-flow')`. `decideKind` is also exported for hosts that compose kinds
 themselves.
 
 ## Example
@@ -287,12 +297,14 @@ Tracer: `createTracerFactory('mokei', <package version>)('decision-flow')`.
   descriptions, input, state or results payloads. Error messages only when the host sets
   `recordErrorMessages: true` (forwarded to the engine).
 
-Logging: `getMokeiLogger('decision-flow')` wrapped with `traceLogger`; injectable `logger` option.
-`decide` declares `logsFailures: true`, so it owns node-level records and the engine skips them:
-`warn` per retried attempt and when `onError` handles the failure, `error` when the failure is
-unhandled. Records carry the System One error class, `status` and `retryAfterMs` as metadata,
-never the error object or its message unless `recordErrorMessages` is true. The engine's run-level
-record (`getReporter`) covers the run ending in error, with run-level fields only.
+Logging: the engine is the only failure logger (it alone knows whether a failure is retried,
+handled or unhandled). `createDecisionFlowGraph` defaults the engine's `logger` to
+`getMokeiLogger('decision-flow')`, so `decide` failures land under the `mokei` category: `warn`
+per retried attempt and per `onError`-handled failure, `error` when the run fails. Records carry
+`describeError`'s System One class, `status` and `retryAfterMs`, never the error object or its
+message unless `recordErrorMessages` is true. The engine applies `traceLogger` per record inside
+the active span, so records carry the node span's trace and span IDs. `decide` itself does not
+log.
 
 Spans follow the engine rule: `decision.predict` is started with the tracer directly, not
 `withSpan`, so no exception message is recorded by default.
@@ -312,7 +324,9 @@ Spans follow the engine rule: `decision.predict` is started with the tracer dire
 - `flowDefinitionSchema` snapshot; the example validates against it; a `call` node does not.
 - Tracing: in-memory exporter asserting `decision.predict` under `flow.node`, `decision.answer`
   events with fixed attribute names, and no payload or message leakage by default. Logging: logtape
-  test sink asserting one record per event.
+  test sink asserting one record per event under `mokei.decision-flow`, carrying `describeError`
+  fields and the node span's trace IDs.
+- `describeError`: each System One error class maps to type, status and `retryAfterMs`; no message.
 - Type tests on the public API.
 
 ## Follow-on
