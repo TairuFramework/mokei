@@ -89,8 +89,8 @@ for await (const state of graph.resume({
 }
 ```
 
-Call `graph.resume` with `{ type: 'timeout' }` only after the pending deadline. If an event arrives
-before its deadline, the engine rejects it.
+Call `graph.resume` with `{ type: 'timeout' }` only after the pending deadline. If a timeout event
+arrives before the deadline, the engine rejects it. A value event can resume at any time.
 
 ## Tracing, metrics, and privacy
 
