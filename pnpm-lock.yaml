@@ -203,6 +203,12 @@ catalogs:
     '@mantine/hooks':
       specifier: ^9.6.3
       version: 9.6.3
+    '@opentelemetry/api':
+      specifier: ^1.9.1
+      version: 1.9.1
+    '@opentelemetry/sdk-trace-base':
+      specifier: ^2.2.0
+      version: 2.11.0
     '@sozai/async':
       specifier: ^0.3.0
       version: 0.3.0
@@ -212,6 +218,9 @@ catalogs:
     '@sozai/event':
       specifier: ^0.1.4
       version: 0.1.4
+    '@sozai/flow-graph':
+      specifier: ^0.1.0
+      version: 0.1.0
     '@sozai/generator':
       specifier: ^0.2.1
       version: 0.2.1
@@ -861,6 +870,40 @@ importers:
         specifier: workspace:^
         version: link:../context-server
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.3
+
+  packages/decision-flow:
+    dependencies:
+      '@mokei/logger':
+        specifier: workspace:^
+        version: link:../logger
+      '@mokei/system-one-client':
+        specifier: workspace:^
+        version: link:../system-one-client
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.3.0
+      '@sozai/flow-graph':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.0)
+      '@sozai/otel':
+        specifier: 'catalog:'
+        version: 0.3.2
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.2
+    devDependencies:
+      '@opentelemetry/api':
+        specifier: 'catalog:'
+        version: 1.9.1
+      '@opentelemetry/sdk-trace-base':
+        specifier: 'catalog:'
+        version: 2.11.0(@opentelemetry/api@1.9.1)
+      '@sozai/log':
+        specifier: 'catalog:'
+        version: 0.3.1(@logtape/logtape@2.3.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
@@ -3467,6 +3510,34 @@ packages:
     resolution: {integrity: sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==}
     engines: {node: '>=8.0.0'}
 
+  '@opentelemetry/core@2.11.0':
+    resolution: {integrity: sha512-7YP44XH0tV6+Mb54x2YGf84i7yi+31MBZlE8JwvozkxyTvXbSp10X7cI7YE49ChJ3shMJoBmCJF3+1QFBJctGA==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.0.0 <1.10.0'
+
+  '@opentelemetry/resources@2.11.0':
+    resolution: {integrity: sha512-Ie7+8q8MDF4FAEQCKVMTx3ReUvxiIAgIiiW3c9JdmP8+HMcDy20puT+AHjexnExgnbvBxjQ9fjkFDWrikJ2jQA==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.3.0 <1.10.0'
+
+  '@opentelemetry/sdk-trace-base@2.11.0':
+    resolution: {integrity: sha512-H19x/TX/LZdqiYOjM7fqtSxwlplC5pgelavqbQdHbhdq0q/AI/TGkM2dfGuuynTXmJPeF2HoZVoPDu+TGoW78A==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.3.0 <1.10.0'
+
+  '@opentelemetry/sdk-trace@2.11.0':
+    resolution: {integrity: sha512-fFnTqGm8/G73GQVnxYi7LXa1ZVYEUvgL6XI1LpvV0bPC7WQ/ZGgKxCSl8FnlZBKto9JHHEFTO6s6CUpvvtwFrA==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.3.0 <1.10.0'
+
+  '@opentelemetry/semantic-conventions@1.43.0':
+    resolution: {integrity: sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==}
+    engines: {node: '>=14'}
+
   '@orama/core@0.1.11':
     resolution: {integrity: sha512-cxs2ZrPlL0qCO91ba1FkFg/CX569v6Pqbo0e7EEvRVObBSOI1N1PIYAQ7lTXBUN7mDjpqHvPgOJ0mUuvotSl+Q==}
 
@@ -4048,6 +4119,9 @@ packages:
 
   '@sozai/execution@0.2.1':
     resolution: {integrity: sha512-vQLquTIbnD+WQBpszBsDGQlU5DBIip/gZ7aqq0uHem2C5aN/TGPCrcpqelyiYMGswBNEJ2u/CL6/EmIo4cBHRA==}
+
+  '@sozai/flow-graph@0.1.0':
+    resolution: {integrity: sha512-uU9WfAokmWQ0R2+XZNeZwdZiKuSLMPJAaCUAlXgTocdkwysdIV6MgZhlhwB62VY3Ijr6kNei0njKALdDLZHrGA==}
 
   '@sozai/generator@0.2.1':
     resolution: {integrity: sha512-pU1YZlCL9emOvpcLEGFoLYULPnH+2fQTMrNa5dq8Z/M2loIJvuvvbMFUW4O4Qn3bdMEMO3Rpr5auCTjxL+FdjA==}
@@ -13650,47 +13724,33 @@ snapshots:
 
   '@noble/hashes@2.4.0': {}
 
-  '@node-llama-cpp/linux-arm64@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-arm64@3.19.0': {}
 
-  '@node-llama-cpp/linux-armv7l@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-armv7l@3.19.0': {}
 
-  '@node-llama-cpp/linux-riscv64@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-riscv64@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64-cuda@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64-cuda@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64-vulkan@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64-vulkan@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64@3.19.0': {}
 
-  '@node-llama-cpp/mac-arm64-metal@3.19.0':
-    optional: true
+  '@node-llama-cpp/mac-arm64-metal@3.19.0': {}
 
-  '@node-llama-cpp/mac-x64@3.19.0':
-    optional: true
+  '@node-llama-cpp/mac-x64@3.19.0': {}
 
-  '@node-llama-cpp/win-arm64@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-arm64@3.19.0': {}
 
-  '@node-llama-cpp/win-x64-cuda-ext@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64-cuda-ext@3.19.0': {}
 
-  '@node-llama-cpp/win-x64-cuda@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64-cuda@3.19.0': {}
 
-  '@node-llama-cpp/win-x64-vulkan@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64-vulkan@3.19.0': {}
 
-  '@node-llama-cpp/win-x64@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64@3.19.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -13709,6 +13769,34 @@ snapshots:
       '@opentelemetry/api': 1.9.1
 
   '@opentelemetry/api@1.9.1': {}
+
+  '@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/semantic-conventions': 1.43.0
+
+  '@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/semantic-conventions': 1.43.0
+
+  '@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/resources': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/semantic-conventions': 1.43.0
+
+  '@opentelemetry/sdk-trace@2.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/resources': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/semantic-conventions': 1.43.0
+
+  '@opentelemetry/semantic-conventions@1.43.0': {}
 
   '@orama/core@0.1.11':
     dependencies:
@@ -13947,29 +14035,21 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@reflink/reflink-darwin-arm64@0.1.19':
-    optional: true
+  '@reflink/reflink-darwin-arm64@0.1.19': {}
 
-  '@reflink/reflink-darwin-x64@0.1.19':
-    optional: true
+  '@reflink/reflink-darwin-x64@0.1.19': {}
 
-  '@reflink/reflink-linux-arm64-gnu@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-arm64-gnu@0.1.19': {}
 
-  '@reflink/reflink-linux-arm64-musl@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-arm64-musl@0.1.19': {}
 
-  '@reflink/reflink-linux-x64-gnu@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-x64-gnu@0.1.19': {}
 
-  '@reflink/reflink-linux-x64-musl@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-x64-musl@0.1.19': {}
 
-  '@reflink/reflink-win32-arm64-msvc@0.1.19':
-    optional: true
+  '@reflink/reflink-win32-arm64-msvc@0.1.19': {}
 
-  '@reflink/reflink-win32-x64-msvc@0.1.19':
-    optional: true
+  '@reflink/reflink-win32-x64-msvc@0.1.19': {}
 
   '@reflink/reflink@0.1.19':
     optionalDependencies:
@@ -13981,7 +14061,6 @@ snapshots:
       '@reflink/reflink-linux-x64-musl': 0.1.19
       '@reflink/reflink-win32-arm64-msvc': 0.1.19
       '@reflink/reflink-win32-x64-msvc': 0.1.19
-    optional: true
 
   '@rolldown/binding-android-arm-eabi@1.2.5':
     optional: true
@@ -14281,6 +14360,20 @@ snapshots:
     dependencies:
       '@sozai/async': 0.2.1
       '@sozai/result': 0.2.0
+
+  '@sozai/flow-graph@0.1.0(@logtape/logtape@2.3.0)':
+    dependencies:
+      '@noble/hashes': 2.4.0
+      '@sozai/async': 0.3.0
+      '@sozai/event': 0.1.4(@logtape/logtape@2.3.0)
+      '@sozai/json': 0.2.0
+      '@sozai/log': 0.3.1(@logtape/logtape@2.3.0)
+      '@sozai/otel': 0.3.2
+      '@sozai/runtime': 0.1.0
+      '@sozai/schema': 0.1.2
+      '@standard-schema/spec': 1.1.0
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
   '@sozai/generator@0.2.1':
     dependencies:
