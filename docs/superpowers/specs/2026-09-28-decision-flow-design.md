@@ -3,6 +3,7 @@
 **Date:** 2026-09-28
 **Branch:** `feat/decision-flow`
 **New packages:** `@sozai/flow-graph` (sozai), `@mokei/decision-flow` (mokei)
+**Changed packages:** `@sozai/async` (sozai), `@mokei/system-one-client` (mokei)
 
 ## Intent
 
@@ -20,47 +21,50 @@ references between flows — whose **full definition is JSON**.
 
 **`@sozai/flow`** is an async-generator state machine. Its definition is a record of handler
 functions, each hard-coding the next action. State and actions are serialisable; the definition is
-not. It supplies step-wise driving, resume from external state, abort signals, state validation
-and events — a good executor — but has no graph, branching, loop guard or expression concept.
+not. It supplies step-wise driving, abort signals, state validation and events — a usable executor
+— but has no graph, branching, loop guard or expression concept, and its non-terminal `state`
+value does not by itself suspend a run.
 
 **`@mokei/system-one-client`** answers typed questions (`choice`, `score`, `noul`) with confidence,
 probabilities and `act_probability`. Questions are already JSON with exported schemas, and one
 `predict` call batches several questions. Helpers (`routeIntent`, presets) are single-shot: guard,
-then triage, then route with a low-confidence fallback is hand-written code today.
+then triage, then route with a low-confidence fallback is hand-written code today. Its response
+validation checks answer shapes but not answer values against the question (a `choice` outside the
+declared criteria passes).
 
-The missing layer is a JSON flow definition plus an interpreter compiling it onto `@sozai/flow`.
+The missing layer is a JSON flow definition plus an interpreter driving `@sozai/flow`.
 
 ## Decisions
 
 | Topic | Decision |
 |---|---|
-| Execution | Resumable, step-wise core plus a run-to-completion wrapper |
-| Expressions | Small custom filter language, flat `{ path, is }` leaf; operator names inspired by kubun filters |
+| Execution | Resumable, step-wise core plus a run-to-completion wrapper; at-least-once node execution |
+| Expressions | Small filter language, flat `{ path, is }` leaf with a published truth table; operator names inspired by kubun filters |
+| Values | Tagged `ref` / `value` / `object` / `array`; everything stored is a `JsonValue` |
 | Shape | Flat graph of named nodes per flow; flows reference sibling flows by id (follow-on) |
 | Loops | In-graph back-edges through a bounded `loop` node in v1; `loop.body: { flow }` in the follow-on |
+| Suspension | Kinds with a `resume` hook may suspend with continuation data; `input` is one such kind |
+| Retries | Per-node JSON `retry` policy (attempts, timeouts, backoff, suspend on long waits); policy type and delay helpers in `@sozai/async` |
 | Layering | Generic engine in sozai (`@sozai/flow-graph`); mokei adds the `decide` kind |
 | v1 kinds | `decide` (mokei), `branch`, `set`, `loop`, `action`, `input`, `end` |
-| Deferred | `call`, `goto`, `loop.body` flow refs (schema reserved); `generate` (host action instead); `parallel` (multi-question `decide` covers most cases) |
-| Observability | Spans in both packages (metrics via collector `spanmetrics`); error logging via `@sozai/log` / `@mokei/logger` |
+| Deferred | `call`, `goto`, `loop.body` flow refs (storage schema only); `generate` (host action or kind); `parallel` (multi-question `decide` covers most cases) |
+| Schemas | Authoring schema (executable kinds only, for LLMs) and storage schema (adds reserved shapes) |
+| Integrity | Definition digest (`@noble/hashes` SHA-256 over canonical JSON) pinned per frame |
+| Answer validation | In `system-one-client` `validateResult`, so every consumer benefits |
+| Observability | Spans in both packages (metrics via collector connectors); one error log record per event; no payloads or error messages by default |
 | IDs | `runID` from an injected `Runtime`, fallback `createRuntime().getRandomID()` |
 
-## Layering
+## Work breakdown
 
-**`@sozai/flow-graph`** holds the definition format, filter evaluator, built-in kinds, node kind
-extension point, static checker, resumable runtime, run state and engine spans. Its full spec is the
-sozai backlog doc `../sozai/docs/agents/plans/backlog/2026-09-28-flow-graph-package.md`, to be
-implemented by a sozai agent. It is summarised here only where mokei depends on it.
+| Piece | Repo | Spec | Order |
+|---|---|---|---|
+| Retry policy and helpers | sozai `@sozai/async` | `../sozai/docs/agents/plans/backlog/2026-09-28-async-retry.md` | 1 |
+| Flow graph engine | sozai `@sozai/flow-graph` | `../sozai/docs/agents/plans/backlog/2026-09-28-flow-graph-package.md` | 2 |
+| Answer value validation | mokei `@mokei/system-one-client` | this doc | independent, before 4 |
+| `decide` kind and package | mokei `@mokei/decision-flow` | this doc | 4, after 2 is published |
 
-**`@mokei/decision-flow`** (`packages/decision-flow`) holds the `decide` kind, the composed schema
-and helpers for LLM authoring, `decide` spans and logging, and re-exports of the common graph API so
-application code imports one package.
-
-Dependencies: `@sozai/flow-graph`, `@sozai/otel`, `@sozai/runtime`, `@mokei/logger`,
-`@mokei/system-one-client`. Joins `versioning.fixed` in `pnpm-workspace.yaml`; `@sozai/flow-graph`
-added to the catalog.
-
-**Sequencing:** mokei implementation starts once `@sozai/flow-graph` is published. The mokei plan
-may prepare tests against an uncommitted local link, never committed.
+The sozai pieces are implemented by a sozai agent from the backlog docs. The mokei plan may prepare
+tests against an uncommitted local link, never committed.
 
 ## Engine summary (from the sozai spec)
 
@@ -69,16 +73,40 @@ type FlowDefinition = {
   id: string; name: string; version: number; description?: string
   input?: Schema; start: string; nodes: Record<string, Node>
 }
-type Path = Array<string>                         // root: input | state | results | loops
-type Value = { ref: Path } | { value: unknown }
+type Path = Array<string>             // root: input | state | results | loops; missing -> null
+type Value = { ref: Path } | { value: JsonValue } | { object: Record<string, Value> } | { array: Value[] }
 type Filter = { path: Path; is: ValueFilter } | { and: Filter[] } | { or: Filter[] } | { not: Filter }
 ```
 
-Kinds register through `NodeKind` (`kind`, `schema`, `targets`, `check?`, `execute`); `execute`
-receives `resolve`, `evaluate`, `setResult`, the active `flow.node` span, `logger`, `runtime` and
-`signal`. `RunState` is plain JSON with a frame stack (length 1 in v1), `runID`, `status`,
-`pending`, `outcome`, `output`, `error`, and `origin.traceparent`. API: `createFlowGraph`,
-`graph.check`, `graph.start`, `graph.resume`, `graph.run`, `formatIssues`.
+Kinds register through `NodeKind`: `kind`, `schema`, `targets`, `resultSchema?`, `retries?`,
+`check?`, `execute`, `resume?`, `retryable?`. `execute` receives `resolve`, `evaluate`, staged
+`setResult`, `invocationID`, `attempt`, the active `flow.node` span, `logger`, `runtime` and an
+attempt-scoped `signal`. A step commits atomically; `next` must be a declared target.
+
+`RunState` is plain JSON: `runID`, `revision`, `status`, a frame stack (length 1 in v1) with
+per-frame `input`/`state`/`results`/`loops`/`attempts` and pinned `{ id, version, digest }`,
+`pending` (`reason: 'suspend' | 'retry'`, `data`, `deadline`, `resumeAt`), `outcome`, `output`,
+message-free `error`, and `origin.traceparent`. Hosts persist with optimistic concurrency on
+`revision`; actions dedupe on `invocationID`.
+
+API: `createFlowGraph`, `graph.authoringSchema`, `graph.storageSchema`, `runStateSchema`,
+`graph.check`, `graph.start`, `graph.resume` (`value` / `timeout` / `retry` events), `graph.run`,
+`formatIssues`, `FlowRetryableError`.
+
+## Prerequisite: answer value validation in `system-one-client`
+
+`validateResult` today validates answer shapes only. Extend it to validate each answer against its
+question, raising `SystemOneResponseError` with issues:
+
+- `choice`: `choice` is a key of the question's `criteria`; `probabilities` keys are criteria keys.
+- `score`: when `legend.min` and `legend.max` are numbers, `score` lies within them.
+- `noul`: `noul` in [0, 1].
+- All types: `confidence`, `action.act_probability` and every `probabilities` value in [0, 1], and
+  finite.
+
+Tests cover each rule, including a backend returning an undeclared choice. This is a behaviour
+change for existing consumers (a previously accepted bad answer now throws); it ships with a
+release intent noting it.
 
 ## The `decide` kind
 
@@ -92,43 +120,55 @@ type DecideNode = {
   cases: Array<{ when: Filter; to: string }>
   default: string
   onError?: string
+  retry?: FlowRetryPolicy
 }
 ```
 
-**Execute.** Resolve `state`, call `client.predict({ state, questions, model, signal })`, then
-`setResult` with answers **flat** under the node — `results.<id>.<questionKey>` — and call metadata
-under `results.<id>.$meta` (`{ model, usage }`). Then evaluate `cases` in order, first match wins,
-else `default`. Flat answers keep LLM-written paths short:
+**Execute.** Resolve `state`, call `client.predict({ state, questions, model, signal })`. Answers
+are value-validated by the client (see prerequisite). Then `setResult` with answers **flat** under
+the node — `results.<id>.<questionKey>` — and call metadata under `results.<id>.$meta`
+(`{ model, usage }`). Then evaluate `cases` in order, first match wins, else `default`. Flat answers
+keep LLM-written paths short:
 
 ```json
 { "when": { "path": ["results", "triage", "department", "choice"], "is": { "equalTo": "billing" } }, "to": "billing" }
 ```
 
-**Check** (kind hook, on top of schema validation):
+**`resultSchema`.** Built from the question map: one property per question key with the answer
+fields of its type, plus `$meta`. The engine's cross-node `invalid_result_path` check then covers
+reads of `decide` results from any node, not only the `decide` node's own cases.
+
+**Check** (kind hook, on top of schema and result-path validation):
 
 - `questions` valid per `questionMapSchema`; no question key named `$meta`.
-- Filter paths under `results.<self>` name a declared question key.
-- The next segment is a valid answer field for that question type: `choice`, `confidence`,
-  `probabilities` for choice; `score`, `confidence`, `legend`, `probabilities` for score; `noul`,
-  `confidence` for noul; `action.act_probability` for all.
-- `choice` comparisons (`equalTo`, `in`, ...) use declared criteria keys; `noul` and confidence
-  comparisons use numbers in `[0, 1]`.
+- Comparisons on a `choice` field (`equalTo`, `notEqualTo`, `in`, `notIn`) use declared criteria
+  keys, wherever the filter appears.
+- Comparisons on `noul`, `confidence`, `act_probability` and probabilities use numbers in [0, 1].
 
-**Errors.** Any System One error (input, auth, model, connection, rate limit, overloaded) is a node
-failure: `onError` if set, else run `error` with code `node_failed`. No automatic retry in v1;
-`retryAfterMs` is logged.
+**Retries.** `retries: true`. `retryable(error)`: `SystemOneConnectionError` and its subclasses
+(`SystemOneRateLimitError`, `SystemOneOverloadedError`) return `{ afterMs: retryAfterMs }` when the
+error carries one, else `true`. Input, auth, model and response errors are not retryable. Attempt
+timeouts are retryable (engine rule). A sensible default is set through `retryDefaults.decide` in
+`createDecisionFlowGraph` (3 attempts, 10 s per attempt, backoff from 500 ms, jitter,
+`suspendAfterMs: 30000`), overridable per node.
+
+**Errors.** After retries: `onError` if set, else run `error` with code `node_failed`, recording the
+System One error class and `status`.
 
 **Construction.**
 
 ```ts
 const graph = createDecisionFlowGraph({
   client,                     // SystemOneClient
-  actions?, maxSteps?, runtime?, logger?,
+  actions?, kinds?, retryDefaults?, maxSteps?, runtime?, logger?,
+  recordErrorMessages?, random?,
+  resolver?,                  // forwarded; follow-on
 })
 ```
 
-registers `decideKind({ client })` on `createFlowGraph`. `decideKind` is also exported for hosts
-that compose kinds themselves.
+registers `decideKind({ client })` on `createFlowGraph` and merges the default `decide` retry policy
+under the caller's `retryDefaults`. `decideKind` is also exported for hosts that compose kinds
+themselves.
 
 ## Example
 
@@ -159,16 +199,31 @@ that compose kinds themselves.
         { "when": { "path": ["results", "triage", "department", "choice"], "is": { "equalTo": "billing" } }, "to": "billing" }
       ],
       "default": "technical",
-      "onError": "technical"
+      "onError": "technical",
+      "retry": { "maxAttempts": 3, "attemptTimeoutMs": 5000, "backoff": { "initialMs": 500, "jitter": true } }
     },
-    "ask": { "kind": "input", "prompt": "Which team should handle this?", "schema": { "enum": ["billing", "technical"] }, "next": "route" },
+    "ask": {
+      "kind": "input",
+      "prompt": { "value": "Which team should handle this?" },
+      "schema": { "enum": ["billing", "technical"] },
+      "timeout": { "afterMs": 86400000, "to": "technical" },
+      "next": "route"
+    },
     "route": {
       "kind": "branch",
       "cases": [{ "when": { "path": ["results", "ask"], "is": { "equalTo": "billing" } }, "to": "billing" }],
       "default": "technical"
     },
-    "billing": { "kind": "action", "name": "createTicket", "args": { "team": { "value": "billing" } }, "next": "done" },
-    "technical": { "kind": "action", "name": "createTicket", "args": { "team": { "value": "technical" } }, "next": "done" },
+    "billing": {
+      "kind": "action", "name": "createTicket",
+      "args": { "ticket": { "object": { "team": { "value": "billing" }, "message": { "ref": ["input", "message"] } } } },
+      "next": "done"
+    },
+    "technical": {
+      "kind": "action", "name": "createTicket",
+      "args": { "ticket": { "object": { "team": { "value": "technical" }, "message": { "ref": ["input", "message"] } } } },
+      "next": "done"
+    },
     "reject": { "kind": "end", "outcome": "rejected" },
     "done": { "kind": "end", "outcome": "routed" }
   }
@@ -177,49 +232,62 @@ that compose kinds themselves.
 
 ## LLM authoring support
 
-- `flowDefinitionSchema`: the composed schema (engine plus `decide`), with a `description` on every
-  field and examples, suitable to hand a model directly.
+- `flowDefinitionSchema`: the composed **authoring** schema (engine plus `decide`), executable kinds
+  only, with a `description` on every field and examples, suitable to hand a model directly.
+  `flowStorageSchema` is exported separately for persistence.
 - `formatIssues` re-exported: compact issue text (`path`, `code`, `message`, `hint`) for a repair loop.
-- Out of scope, noted for later: MCP `check_flow` / `run_flow` tools in `mcp-servers/system-one`.
 
 ## Observability
 
-Engine spans (`flow.segment`, `flow.node`) are specified in the sozai doc. Mokei complements them.
+Engine spans (`flow.segment`, `flow.node` per attempt), segment parenting and origin links, the
+metric dimension policy and the privacy rules are specified in the sozai doc. Mokei complements
+them.
 
 Tracer: `createTracerFactory('mokei', <package version>)('decision-flow')`.
 
 - **`decision.predict` span**, child of `flow.node`, wrapping the `predict` call:
   `system_one.model`, `system_one.question.count`, `system_one.usage.input_tokens`,
-  `system_one.usage.output_tokens`; on failure, status `ERROR`, `recordException`,
-  `system_one.error.class`, `http.status_code` when present.
-- **On the `flow.node` span** (via `ExecuteContext.span`), per question key:
-  `decision.<key>.type`, `decision.<key>.choice` / `.score` / `.noul`, `decision.<key>.confidence`.
-  Choice labels are bounded by declared criteria, so they are safe metric dimensions.
-- Derived metrics (collector `spanmetrics`): decision distribution per flow and node, confidence
-  distribution, low-confidence fallback rate (from `flow.branch.case`), predict latency, tokens.
-- **Privacy:** never record the resolved System One `state`, question instructions, input, state or
-  results payloads. Only ids, kinds, answer labels and numbers, and error classes.
+  `system_one.usage.output_tokens`; on failure, status `ERROR`, `error.type` (error class),
+  `http.status_code` when present, `system_one.retry_after_ms` when present.
+- **One span event per question** on the `flow.node` span, `decision.answer`, with fixed attribute
+  names: `decision.question` (the question key), `decision.type`, `decision.choice` / `decision.score`
+  / `decision.noul`, `decision.confidence`. No dynamic attribute names.
+- Choice labels are bounded by declared criteria, which `validateResult` now enforces, so
+  `decision.choice` is a safe dimension. `decision.question` is safe when definitions are curated;
+  for LLM-generated flows the collector should map or drop it.
+- Derived metrics: decision distribution per flow, node and question (`count` connector on
+  `decision.answer`); confidence distribution; low-confidence fallback rate (from
+  `flow.branch.case`); predict latency, tokens and retries (`spanmetrics` on `decision.predict`).
+- **Privacy:** never record the resolved System One `state`, question instructions, criteria
+  descriptions, input, state or results payloads. Error messages only when the host sets
+  `recordErrorMessages: true` (forwarded to the engine).
 
 Logging: `getMokeiLogger('decision-flow')` wrapped with `traceLogger`; injectable `logger` option.
-`decide` failures log at `error` with the System One error class, `status` and `retryAfterMs`.
-Handled failures (`onError` taken) log at `warn`.
+The `decide` kind emits the one record for its node failures: `warn` per retried attempt and when
+`onError` handles the failure, `error` when the failure is unhandled. Records carry the System One
+error class, `status` and `retryAfterMs`, never messages by default. The engine's run-level record
+(`getReporter`) covers the run ending in error, without repeating the System One details.
 
 ## Testing
 
+- `validateResult` (client): each value rule, including an undeclared choice.
 - `decide` against a fake `SystemOneBackend`: answers stored flat, `$meta`, case selection,
-  `default`, `onError`, each System One error class.
-- Checker hook: unknown question key, invalid answer field per type, unknown choice label,
-  out-of-range numbers, `$meta` key.
-- The triage example end to end, including suspend at `ask`, JSON round-trip and resume.
-- `flowDefinitionSchema` snapshot, and validation of the example against it.
-- Tracing: in-memory exporter asserting `decision.predict` under `flow.node`, decision attributes,
-  and no payload leakage. Logging: logtape test sink asserting error records.
+  `default`, `onError`, each System One error class, retry with `retryAfterMs`, attempt timeout,
+  suspend on a long rate-limit wait and resume with a `retry` event.
+- `resultSchema`: cross-node read of an undeclared question key or field rejected.
+- Checker hook: unknown choice label anywhere, out-of-range numbers, `$meta` key.
+- The triage example end to end, including suspend at `ask`, JSON round-trip, `value` and `timeout`
+  resumes.
+- `flowDefinitionSchema` snapshot; the example validates against it; a `call` node does not.
+- Tracing: in-memory exporter asserting `decision.predict` under `flow.node`, `decision.answer`
+  events with fixed attribute names, and no payload or message leakage by default. Logging: logtape
+  test sink asserting one record per event.
 - Type tests on the public API.
 
 ## Follow-on
 
 - Flow references (`call`, `goto`, `loop.body: { flow }`, `FlowResolver`) — engine side in sozai;
-  mokei needs no change beyond re-exports.
+  mokei already forwards `resolver`.
 - MCP `check_flow` / `run_flow` tools.
 - `AgentSession` integration (flows gating or routing turns).
-- Optional `decide` retry policy honouring `retryAfterMs`.
+- `system-one-client` HTTP backend adopting `@sozai/async` `retry()` with `retryAfterMs`.
