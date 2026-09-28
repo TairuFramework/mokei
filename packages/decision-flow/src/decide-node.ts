@@ -10,6 +10,7 @@ import {
 import type { Schema } from '@sozai/schema'
 
 import { checkDecide, decideTargets } from './check-decide.js'
+import { describeDecisionError, retryableDecision } from './decide-error.js'
 import { decideResultSchema } from './result-schema.js'
 
 export type DecideNode = {
@@ -46,10 +47,8 @@ export function decideKind(params: { client: SystemOneClient }): NodeKind<Decide
     resultSchema: (node: DecideNode) => decideResultSchema(node.questions),
     check: checkDecide,
     retries: true,
-    describeError: (error: unknown) =>
-      error instanceof InvalidDecisionStateError
-        ? { type: 'invalid_state', code: error.code }
-        : { type: error instanceof Error ? error.name : 'Error' },
+    describeError: describeDecisionError,
+    retryable: retryableDecision,
     execute: async (node: DecideNode, ctx: ExecuteContext) => {
       const state = ctx.resolve(node.state)
       if (state === null || (typeof state !== 'string' && typeof state !== 'object')) {

@@ -1,4 +1,5 @@
 export { checkDecide, decideTargets } from './check-decide.js'
+export { describeDecisionError, retryableDecision } from './decide-error.js'
 export {
   type DecideNode,
   decideKind,

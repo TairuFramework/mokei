@@ -1,7 +1,12 @@
 import {
+  SystemOneAuthError,
   type SystemOneBackend,
   type SystemOneBackendPredictParams,
   SystemOneClient,
+  SystemOneConnectionError,
+  SystemOneInputError,
+  SystemOneModelError,
+  SystemOneResponseError,
   type SystemOneResult,
 } from '@mokei/system-one-client'
 import {
@@ -10,7 +15,7 @@ import {
   type FlowDefinition,
   type RegisteredNodeKind,
 } from '@sozai/flow-graph'
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { InvalidDecisionStateError, decideKind as makeDecideKind } from '../src/index.js'
 
@@ -91,9 +96,13 @@ function makeDefinition(overrides: Record<string, unknown> = {}): FlowDefinition
   } as FlowDefinition
 }
 
-function makeGraph(backend: SystemOneBackend, extraKinds: Array<RegisteredNodeKind> = []) {
+function makeGraph(
+  backend: SystemOneBackend,
+  extraKinds: Array<RegisteredNodeKind> = [],
+  options: { now?: () => number } = {},
+) {
   const client = new SystemOneClient({ backend, defaultModel: 'default-model' })
-  return createFlowGraph({ kinds: [makeDecideKind({ client }), ...extraKinds] })
+  return createFlowGraph({ kinds: [makeDecideKind({ client }), ...extraKinds], ...options })
 }
 
 describe('decideKind', () => {
@@ -177,6 +186,234 @@ describe('decideKind', () => {
       error: { type: 'Error', reason: 'non_retryable', attempts: 1 },
     })
     expect(Object.keys(run.runState.frames[0]?.results.decide ?? {})).toEqual(['error'])
+  })
+
+  test('retries a retryable backend error and succeeds on the next attempt', async () => {
+    let calls = 0
+    const backend: SystemOneBackend = {
+      async predict() {
+        calls += 1
+        if (calls === 1) {
+          throw new SystemOneConnectionError({
+            message: 'temporary failure',
+            status: 503,
+          })
+        }
+        return answerResult()
+      },
+    }
+    const run = await makeGraph(backend).run({
+      definition: makeDefinition({ retry: { maxAttempts: 2, backoff: { initialMs: 0 } } }),
+      input: { state: 'refund' },
+    })
+
+    expect(run.status).toBe('ended')
+    expect(run.outcome).toBe('first')
+    expect(calls).toBe(2)
+  })
+
+  test.each([408, 500, 502, 503, 504])('retries status %i and then succeeds', async (status) => {
+    let calls = 0
+    const backend: SystemOneBackend = {
+      async predict() {
+        calls += 1
+        if (calls === 1) throw new SystemOneConnectionError({ message: 'temporary', status })
+        return answerResult()
+      },
+    }
+    const run = await makeGraph(backend).run({
+      definition: makeDefinition({ retry: { maxAttempts: 2, backoff: { initialMs: 0 } } }),
+      input: { state: 'refund' },
+    })
+
+    expect(run.status).toBe('ended')
+    expect(calls).toBe(2)
+  })
+
+  test('waits the server retry-after delay before trying again', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-28T10:00:00.000Z'))
+    let calls = 0
+    const backend: SystemOneBackend = {
+      async predict() {
+        calls += 1
+        if (calls === 1) {
+          const { SystemOneRateLimitError } = await import('@mokei/system-one-client')
+          throw new SystemOneRateLimitError({ message: 'wait', status: 429, retryAfterMs: 250 })
+        }
+        return answerResult()
+      },
+    }
+    const runPromise = makeGraph(backend, [], { now: () => Date.now() }).run({
+      definition: makeDefinition({
+        retry: { maxAttempts: 2, backoff: { initialMs: 0 } },
+      }),
+      input: { state: 'refund' },
+    })
+    for (let flush = 0; flush < 20 && calls === 0; flush += 1) {
+      await Promise.resolve()
+    }
+    expect(calls).toBe(1)
+    await vi.advanceTimersByTimeAsync(249)
+    expect(calls).toBe(1)
+    await vi.advanceTimersByTimeAsync(1)
+
+    const run = await runPromise
+    expect(run.status).toBe('ended')
+    expect(calls).toBe(2)
+  })
+
+  test.each([
+    ['bad request', new SystemOneConnectionError({ message: 'bad request', status: 400 })],
+    ['auth', new SystemOneAuthError({ message: 'auth' })],
+    ['model', new SystemOneModelError({ message: 'model' })],
+    ['input', new SystemOneInputError({ message: 'input' })],
+    ['response', new SystemOneResponseError({ message: 'response' })],
+  ])('does not retry %s failures', async (_label, error) => {
+    let calls = 0
+    const backend: SystemOneBackend = {
+      async predict() {
+        calls += 1
+        throw error
+      },
+    }
+    const run = await makeGraph(backend).run({
+      definition: makeDefinition({ retry: { maxAttempts: 3, backoff: { initialMs: 0 } } }),
+      input: { state: 'refund' },
+    })
+
+    expect(run.status).toBe('error')
+    expect(run.error?.reason).toBe('non_retryable')
+    expect(calls).toBe(1)
+  })
+
+  test('retries attempt timeouts against a backend that never settles', async () => {
+    vi.useFakeTimers()
+    const neverSettles: SystemOneBackend = {
+      predict: () => new Promise(() => {}),
+    }
+    const runPromise = makeGraph(neverSettles, [], { now: () => Date.now() }).run({
+      definition: makeDefinition({
+        onError: 'handled',
+        retry: {
+          maxAttempts: 2,
+          attemptTimeoutMs: 10,
+          backoff: { initialMs: 0 },
+        },
+      }),
+      input: { state: 'refund' },
+    })
+    await vi.advanceTimersByTimeAsync(25)
+    const run = await runPromise
+
+    expect(run.status).toBe('ended')
+    expect(run.runState.frames[0]?.results.decide).toMatchObject({
+      error: { type: 'TimeoutInterruption', reason: 'attempts', attempts: 2 },
+    })
+  })
+
+  test('suspends a long 429 retry and resumes it with a retry event', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-28T10:00:00.000Z'))
+    let calls = 0
+    const backend: SystemOneBackend = {
+      async predict() {
+        calls += 1
+        if (calls === 1) {
+          const { SystemOneRateLimitError } = await import('@mokei/system-one-client')
+          throw new SystemOneRateLimitError({ message: 'wait', status: 429, retryAfterMs: 60_000 })
+        }
+        return answerResult()
+      },
+    }
+    const graph = makeGraph(backend, [], { now: () => Date.now() })
+    const definition = makeDefinition({
+      retry: {
+        maxAttempts: 2,
+        backoff: { initialMs: 0 },
+        suspendAfterMs: 1_000,
+      },
+    })
+    const suspended = await graph.run({
+      definition,
+      input: { state: 'refund' },
+    })
+
+    expect(suspended.status).toBe('suspended')
+    expect(suspended.pending?.reason).toBe('retry')
+    vi.advanceTimersByTime(60_000)
+    const resumedRun = graph.resume({
+      definition,
+      runState: suspended.runState,
+      event: { type: 'retry' },
+    })
+    let finalStatus: string | undefined
+    let finalOutcome: string | undefined
+    for await (const state of resumedRun) {
+      finalStatus = state.status
+      finalOutcome = state.outcome
+    }
+    expect(finalStatus).toBe('ended')
+    expect(finalOutcome).toBe('first')
+    expect(calls).toBe(2)
+  })
+
+  test('passes safe failure details to onError and uses node_failed otherwise', async () => {
+    const backend: SystemOneBackend = {
+      async predict() {
+        throw new SystemOneConnectionError({ message: 'private', status: 400 })
+      },
+    }
+    const retry = { maxAttempts: 3, backoff: { initialMs: 0 } }
+    const handled = await makeGraph(backend).run({
+      definition: makeDefinition({ onError: 'handled', retry }),
+      input: { state: 'refund' },
+    })
+    const failed = await makeGraph(backend).run({
+      definition: makeDefinition({ retry }),
+      input: { state: 'refund' },
+    })
+
+    expect(handled.runState.frames[0]?.results.decide).toMatchObject({
+      error: {
+        type: 'SystemOneConnectionError',
+        status: 400,
+        reason: 'non_retryable',
+        attempts: 1,
+      },
+    })
+    expect(failed.status).toBe('error')
+    expect(failed.error?.code).toBe('node_failed')
+    expect(failed.error?.lastFailure).toMatchObject({
+      type: 'SystemOneConnectionError',
+      status: 400,
+    })
+  })
+
+  test('fails without retry when neither client nor node specifies a model', async () => {
+    let calls = 0
+    const client = new SystemOneClient({
+      backend: {
+        async predict() {
+          calls += 1
+          return answerResult()
+        },
+      },
+    })
+    const graph = createFlowGraph({ kinds: [makeDecideKind({ client })] })
+    const run = await graph.run({
+      definition: makeDefinition({ retry: { maxAttempts: 3, backoff: { initialMs: 0 } } }),
+      input: { state: 'refund' },
+    })
+
+    expect(run.status).toBe('error')
+    expect(run.error?.reason).toBe('non_retryable')
+    expect(run.error?.attempts).toBe(1)
+    expect(calls).toBe(0)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   test('rolls back a result staged by a node that throws before onError', async () => {
