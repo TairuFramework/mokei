@@ -54,6 +54,26 @@ function waitUntil(when: string, signal: AbortSignal): Promise<void> {
   })
 }
 
+export function terminalResult(state: RunState): CallToolResult | undefined {
+  if (state.status === 'ended') {
+    return {
+      content: [{ type: 'text', text: `Flow ended: ${state.outcome ?? 'completed'}` }],
+      structuredContent: {
+        ...(state.outcome !== undefined && { outcome: state.outcome }),
+        output: state.output ?? {},
+      },
+    }
+  }
+  if (state.status === 'error') {
+    return {
+      isError: true,
+      content: [{ type: 'text', text: `Flow error: ${state.error?.code ?? 'unknown'}` }],
+      structuredContent: { error: state.error ?? { code: 'unknown', name: 'Error' } },
+    }
+  }
+  return undefined
+}
+
 export async function startRun(params: {
   handle: TaskHandle
   graph: FlowGraph
@@ -61,8 +81,10 @@ export async function startRun(params: {
   definition: FlowDefinition
   resumeData: ResumeDataV1
   caller: ToolCaller
+  outstandingInputRequests?: Record<string, InputRequest>
 }): Promise<CallToolResult> {
   const { handle, graph, definition, resumeData, caller } = params
+  let outstandingInputRequests = params.outstandingInputRequests
   let run = params.run
   let driveSegment = resumeData.runState.status === 'running'
   const siblings = resumeData.siblings
@@ -97,26 +119,6 @@ export async function startRun(params: {
       // biome-ignore lint/style/useErrorCause: RPCError takes cause in its options object.
       throw new RPCError({ code: -32603, message: 'Flow checkpoint failed', cause: error })
     }
-  }
-
-  function terminal(state: RunState): CallToolResult | undefined {
-    if (state.status === 'ended') {
-      return {
-        content: [{ type: 'text', text: `Flow ended: ${state.outcome ?? 'completed'}` }],
-        structuredContent: {
-          ...(state.outcome !== undefined && { outcome: state.outcome }),
-          output: state.output ?? {},
-        },
-      }
-    }
-    if (state.status === 'error') {
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Flow error: ${state.error?.code ?? 'unknown'}` }],
-        structuredContent: { error: state.error ?? { code: 'unknown', name: 'Error' } },
-      }
-    }
-    return undefined
   }
 
   async function suspended(state: RunState): Promise<FlowRun | CallToolResult> {
@@ -168,8 +170,18 @@ export async function startRun(params: {
     }
     const form = toElicitationSchema(pending.schema)
     if (form === undefined) throw new Error('Input schema cannot be elicited')
+    const savedInputRequests = outstandingInputRequests
+    outstandingInputRequests = undefined
     let event: { type: 'timeout' } | { type: 'value'; value: JSONValue }
     if (pending.deadline !== undefined && Date.now() >= new Date(pending.deadline).getTime()) {
+      if (savedInputRequests !== undefined) {
+        const expired = new Error('Input deadline expired')
+        try {
+          await handle.requestInput(savedInputRequests, { signal: AbortSignal.abort(expired) })
+        } catch (error) {
+          if (error !== expired) throw error
+        }
+      }
       event = { type: 'timeout' }
     } else {
       const deadlineController = new AbortController()
@@ -229,7 +241,7 @@ export async function startRun(params: {
     while (true) {
       if (handle.signal.aborted) return stopped
       const state = resumeData.runState
-      const result = terminal(state)
+      const result = terminalResult(state)
       if (result !== undefined) return result
       if (state.status === 'aborted') {
         await handle.cancel()

@@ -185,6 +185,21 @@ test('recovers a running registered flow and completes it', async () => {
   }
 })
 
+test('resolves unknown flow tools for recovery without listing or calling them', async () => {
+  const f = fixture()
+  const { second, server } = f.createSecond()
+  try {
+    expect(Object.keys(server.recoveryTools)).toEqual(Object.keys(server.tools))
+    expect(Object.keys(server.recoveryTools)).not.toContain('flow_missing')
+    const fallback = server.recoveryTools.flow_missing
+    if (fallback === undefined) throw new Error('Recovery lookup did not resolve the flow')
+    expect(() => fallback.handler({} as never)).toThrow('Recovery-only flow tool cannot be called')
+  } finally {
+    await second.dispose()
+    await f.first.dispose()
+  }
+})
+
 const terminalCases = (['ended', 'error', 'aborted'] as const).flatMap((status) =>
   (['removed', 'changed', 'catalogue'] as const).map((drift) => [status, drift] as const),
 )
@@ -369,6 +384,74 @@ test('an elapsed input deadline resumes the timeout edge without issuing a reque
       result: { structuredContent: { outcome: 'timed' } },
     })
     expect((await f.store.get(id))?.issuedInputKeys).toEqual([])
+  } finally {
+    await second.dispose()
+  }
+})
+
+test('withdraws an outstanding expired input before asking at the timeout edge', async () => {
+  const definition: FlowDefinition = {
+    ...inputFlow,
+    nodes: {
+      ...inputFlow.nodes,
+      ask: {
+        kind: 'input',
+        prompt: { value: 'Your name?' },
+        schema: { type: 'string' },
+        next: 'done',
+        timeout: { afterMs: 60_000, to: 'ask-again' },
+      },
+      'ask-again': {
+        kind: 'input',
+        prompt: { value: 'Second answer?' },
+        schema: { type: 'string' },
+        next: 'done-again',
+      },
+      'done-again': {
+        kind: 'end',
+        outcome: 'answered-again',
+        output: { answer: { ref: ['results', 'ask-again'] } },
+      },
+    },
+  }
+  const state = await suspendedState(definition)
+  const expired = {
+    ...state,
+    pending: { ...state.pending, deadline: new Date(Date.now() - 1000).toISOString() },
+  } as RunState
+  const f = fixture({ storedDefinition: definition, state: expired })
+  const id = await persist(f)
+  const oldKey = inputKey(state)
+  const previous = await f.store.get(id)
+  if (previous === undefined) throw new Error('Task missing')
+  await f.store.update(
+    id,
+    {
+      status: 'input_required',
+      issuedInputKeys: [oldKey],
+      inputRequests: { [oldKey]: inputRequest },
+      inputResponses: {},
+    },
+    { revision: previous.revision },
+  )
+  const { second, server } = f.createSecond()
+  try {
+    await second.recover(server.recoveryTools)
+    await expect
+      .poll(
+        async () => Object.values((await second.get(id)).inputRequests ?? {})[0]?.params.message,
+      )
+      .toBe('Second answer?')
+    const recovered = await second.get(id)
+    expect(recovered.status).toBe('input_required')
+    const [newKey] = Object.keys(recovered.inputRequests ?? {})
+    if (newKey === undefined) throw new Error('Follow-up input was not issued')
+    expect(newKey).not.toBe(oldKey)
+    await second.update(id, { [newKey]: { action: 'accept', content: { value: 'Ada' } } })
+    await expect.poll(async () => (await second.get(id)).status).toBe('completed')
+    expect(await second.get(id)).toMatchObject({
+      result: { structuredContent: { outcome: 'answered-again', output: { answer: 'Ada' } } },
+    })
   } finally {
     await second.dispose()
   }

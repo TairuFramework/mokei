@@ -5,7 +5,7 @@ import type { Predictor } from '@mokei/decision-flow'
 import { digestDefinition, type FlowDefinition } from '@sozai/flow-graph'
 
 import { checkFlow } from './definition-checks.js'
-import { type ResumeDataV1, startRun } from './driver.js'
+import { type ResumeDataV1, startRun, terminalResult } from './driver.js'
 import type { PredictorFactory } from './predictor.js'
 import type { ToolCaller } from './tool-caller.js'
 
@@ -64,20 +64,9 @@ export function createRecovery(params: {
             await handle.cancel()
             return { content: [] }
           }
-          if (state.status === 'ended') {
-            return {
-              content: [{ type: 'text', text: `Flow ended: ${state.outcome ?? 'completed'}` }],
-              structuredContent: {
-                ...(state.outcome !== undefined && { outcome: state.outcome }),
-                output: state.output ?? {},
-              },
-            }
-          }
-          return {
-            isError: true,
-            content: [{ type: 'text', text: `Flow error: ${state.error?.code ?? 'unknown'}` }],
-            structuredContent: { error: state.error ?? { code: 'unknown', name: 'Error' } },
-          }
+          const result = terminalResult(state)
+          if (result === undefined) throw new Error('Invalid terminal checkpoint')
+          return result
         } finally {
           await cleanup()
         }
@@ -133,7 +122,16 @@ export function createRecovery(params: {
         state.status === 'running'
           ? graph.recover({ definition, runState: state, signal: controller.signal })
           : graph.start({ definition, signal: controller.signal })
-      return startRun({ handle, graph, run, definition, resumeData: data, caller: params.caller })
+      return startRun({
+        handle,
+        graph,
+        run,
+        definition,
+        resumeData: data,
+        caller: params.caller,
+        outstandingInputRequests:
+          record.status === 'input_required' ? record.inputRequests : undefined,
+      })
     })
   }
 }
