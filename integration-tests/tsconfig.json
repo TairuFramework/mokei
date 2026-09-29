@@ -6,6 +6,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "noEmit": true,
+    "resolveJsonModule": true,
     "types": ["node"]
   },
   "include": ["./suites/**/*", "./support/**/*"]

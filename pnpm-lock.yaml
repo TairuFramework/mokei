@@ -485,9 +485,15 @@ importers:
       '@mokei/session-node':
         specifier: workspace:^
         version: link:../packages/session-node
+      '@sozai/flow-graph':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.0)
       '@sozai/generator':
         specifier: 'catalog:'
         version: 0.2.1
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.2
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
