@@ -1135,7 +1135,7 @@ export class ContextClient<
       base._meta = { ...trace }
     }
     const params = protocol.decorateRequest(base, {
-      capabilities: this.#capabilities,
+      capabilities: this.#capabilitiesFor(protocol),
       clientInfo: this.#clientInfo,
       logLevel: this.#logLevel,
     })

@@ -8,10 +8,12 @@ import type {
   ServerMessage,
 } from '@mokei/context-protocol'
 import { METHOD_NOT_FOUND, TASKS_EXTENSION } from '@mokei/context-protocol'
-import { afterEach, expect, expectTypeOf, test } from 'vitest'
+import { afterEach, expect, expectTypeOf, test, vi } from 'vitest'
 
+import { ContextServer, createTaskManager, createTool } from '../../context-server/lib/index.js'
 import {
   ContextClient,
+  MethodNotInRevisionError,
   StructuredContentValidationError,
   TaskInputUnavailableError,
 } from '../src/index.js'
@@ -107,6 +109,87 @@ test('declares tasks only on current revision, including setup discovery', async
       'io.modelcontextprotocol/clientCapabilities'
     ],
   ).toBeUndefined()
+})
+
+test('task waits receive server notifications without polling', async () => {
+  const pair = new DirectTransports<ServerMessage, ClientMessage>()
+  const serverWrite = vi.spyOn(pair.server, 'write')
+  const work = Promise.withResolvers<void>()
+  const manager = createTaskManager({ pollIntervalMs: 60_000 })
+  const server = new ContextServer({
+    name: 'tasks-client-test',
+    version: '1.0.0',
+    protocolVersions: ['2026-07-28'],
+    transport: pair.server,
+    subscriptions: true,
+    tasks: manager,
+    tools: {
+      echo: createTool({
+        description: 'Complete a task after release',
+        inputSchema: { type: 'object' },
+        handler: ({ task }) => {
+          if (task == null) throw new Error('Expected task context')
+          return task.run(async () => {
+            await work.promise
+            return finalResult
+          })
+        },
+      }),
+    },
+  })
+  const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+  const get = vi.spyOn(manager, 'get')
+  const controller = new AbortController()
+  let pending: Promise<CallToolResult> | undefined
+
+  try {
+    const createdTask = await client.callTool({ name: 'echo', arguments: {}, task: 'handle' })
+    if (createdTask.resultType !== 'task' || typeof createdTask.taskId !== 'string') {
+      throw new Error('Expected a task handle')
+    }
+    const statuses: Array<unknown> = []
+    pending = client.tasks.wait(createdTask.taskId, {
+      signal: controller.signal,
+      onStatus: (status) => statuses.push(status.status),
+    })
+    pending.catch(() => {})
+    await vi.waitFor(() => expect(statuses).toContain('working'))
+    work.resolve()
+    await vi.waitFor(() => expect(statuses).toContain('completed'))
+    expect(await pending).toEqual(finalResult)
+    expect(serverWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'notifications/subscriptions/acknowledged',
+        params: expect.objectContaining({
+          notifications: expect.objectContaining({ taskIds: [createdTask.taskId] }),
+        }),
+      }),
+    )
+    expect(get).toHaveBeenCalledTimes(1)
+  } finally {
+    controller.abort(new Error('Test cleanup'))
+    work.resolve()
+    if (pending != null) await pending.catch(() => {})
+    await client.dispose()
+    await server.dispose()
+    await manager.dispose()
+    await pair.dispose()
+  }
+})
+
+test('legacy task listen carries no Tasks extension', async () => {
+  const { client, sent } = harness(
+    (request) => (request.method === 'tasks/get' ? complete : { content: finalResult.content }),
+    '2025-11-25',
+  )
+  await client.callTool({ name: 'echo', arguments: {} })
+  await expect(client.tasks.wait(created.taskId)).rejects.toBeInstanceOf(MethodNotInRevisionError)
+  await vi.waitFor(() =>
+    expect(sent.some((item) => item.method === 'subscriptions/listen')).toBe(true),
+  )
+  const listen = sent.find((item) => item.method === 'subscriptions/listen')
+  expect(listen).toBeDefined()
+  expect(listen?.params?._meta?.['io.modelcontextprotocol/clientCapabilities']).toBeUndefined()
 })
 
 test('exposes a stable handle and strips task from tool params', async () => {
