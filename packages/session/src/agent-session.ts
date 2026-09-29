@@ -41,6 +41,7 @@ const TOOL_SETTLED_REASON = new Error('Tool call settled')
 type AgentToolState = {
   key: string
   toolCall: FunctionToolCall<unknown>
+  signal: AbortSignal
   controllers: Set<AbortController>
   settlements: Set<Promise<void>>
 }
@@ -137,9 +138,9 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     const attribution = toolCall == null ? {} : { toolCall }
     const controller = activeTool == null ? undefined : new AbortController()
     const signal = AbortSignal.any(
-      controller == null
+      activeTool == null || controller == null
         ? [request.signal, this.signal]
-        : [request.signal, this.signal, controller.signal],
+        : [request.signal, this.signal, activeTool.signal, controller.signal],
     )
     let settle: (() => void) | undefined
     let settlement: Promise<void> | undefined
@@ -277,10 +278,16 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     // consumer abandons this generator mid-stream.
     let activeChatTurn: ChatTurn<T> | null = null
 
-    // Combine signals
-    const combinedSignal = signal
+    // Link caller and timeout cancellation to the run, which also aborts when
+    // a consumer abandons the generator.
+    const runController = new AbortController()
+    const upstreamSignal = signal
       ? AbortSignal.any([signal, timeoutController.signal])
       : timeoutController.signal
+    const onUpstreamAbort = () => runController.abort(upstreamSignal.reason)
+    if (upstreamSignal.aborted) onUpstreamAbort()
+    else upstreamSignal.addEventListener('abort', onUpstreamAbort, { once: true })
+    const combinedSignal = runController.signal
     const run: AgentRunState<T> = { channel: new AgentEventChannel<T>(), signal: combinedSignal }
     this.#activeRuns.add(run)
 
@@ -653,7 +660,9 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       }
       throw err
     } finally {
+      runController.abort(new Error('Agent stream closed'))
       clearTimeout(timeoutID)
+      upstreamSignal.removeEventListener('abort', onUpstreamAbort)
       this.#activeRuns.delete(run)
       run.channel.close()
       // A consumer that breaks out of this generator leaves the current turn's
@@ -748,6 +757,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       activeTool = {
         key,
         toolCall,
+        signal: callController.signal,
         controllers: new Set(),
         settlements: new Set(),
       }
