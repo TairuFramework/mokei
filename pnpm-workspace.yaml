@@ -73,7 +73,7 @@ catalog:
   eventsource-parser: ^4.1.1
   get-port: ^7.2.0
   globals: ^17.12.0
-  hono: ^4.13.9
+  hono: ^4.13.10
   ink: ^7.1.1
   commander: ^15.0.0
   ink-testing-library: ^4.0.0

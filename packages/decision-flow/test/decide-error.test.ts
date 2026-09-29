@@ -15,57 +15,16 @@ import { describeDecisionError, retryableDecision } from '../src/decide-error.js
 import { InvalidDecisionStateError } from '../src/decide-node.js'
 
 describe('retryableDecision', () => {
-  test.each([408, 429, 500, 502, 503, 504, 529])('retries connection status %i', (status) => {
-    expect(retryableDecision(new SystemOneConnectionError({ message: 'secret', status }))).toBe(
-      true,
-    )
-  })
-
-  test('retries a connection error without a status', () => {
-    expect(retryableDecision(new SystemOneConnectionError({ message: 'secret' }))).toBe(true)
-  })
-
-  test.each([400, 401, 403, 404, 422, 501])('does not retry connection status %i', (status) => {
-    expect(retryableDecision(new SystemOneConnectionError({ message: 'secret', status }))).toBe(
-      false,
-    )
-  })
-
-  test('uses a finite retry-after delay', () => {
-    const error = new SystemOneRateLimitError({ message: 'secret', status: 429, retryAfterMs: 250 })
-
-    expect(retryableDecision(error)).toEqual({ afterMs: 250 })
-  })
-
-  test('ignores an infinite server wait', () => {
-    const error = new SystemOneRateLimitError({
-      message: 'secret',
-      status: 429,
-      retryAfterMs: Number.POSITIVE_INFINITY,
-    })
-
-    expect(retryableDecision(error)).toBe(true)
-    expect(describeDecisionError(error)).toEqual({ type: 'SystemOneRateLimitError', status: 429 })
-  })
-
-  test.each([
-    new SystemOneAuthError({ message: 'secret' }),
-    new SystemOneInputError({ message: 'secret' }),
-    new SystemOneModelError({ message: 'secret' }),
-    new SystemOneResponseError({ message: 'secret' }),
-    new SystemOneError({ message: 'secret' }),
-    new InvalidDecisionStateError(),
-    new Error('secret'),
-  ])('does not retry non-connection errors (%s)', (error) => {
-    expect(retryableDecision(error)).toBe(false)
-  })
-
-  test('retries overloaded errors with their published 529 status', () => {
+  test('delegates System One retry decisions', () => {
+    expect(
+      retryableDecision(new SystemOneConnectionError({ message: 'secret', status: 503 })),
+    ).toBe(true)
     expect(
       retryableDecision(
-        new SystemOneOverloadedError({ message: 'secret', status: 529, retryAfterMs: 800 }),
+        new SystemOneRateLimitError({ message: 'secret', status: 429, retryAfterMs: 250 }),
       ),
-    ).toEqual({ afterMs: 800 })
+    ).toEqual({ afterMs: 250 })
+    expect(retryableDecision(new SystemOneAuthError({ message: 'secret' }))).toBe(false)
   })
 })
 

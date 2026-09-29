@@ -1,15 +1,18 @@
+import { RetryExhaustedError, type RetryPolicy, retry, TimeoutInterruption } from '@sozai/async'
 import ky, { HTTPError, type KyInstance } from 'ky'
 
 import type { SystemOneBackend, SystemOneBackendPredictParams, SystemOneResult } from './backend.js'
 import {
   SystemOneAuthError,
   SystemOneConnectionError,
+  SystemOneError,
   SystemOneInputError,
   SystemOneModelError,
   SystemOneOverloadedError,
   SystemOneRateLimitError,
   type ValidationIssue,
 } from './errors.js'
+import { retryableSystemOneError } from './retryable-error.js'
 
 export type SystemOneHTTPClientParams = {
   url: string
@@ -18,6 +21,31 @@ export type SystemOneHTTPClientParams = {
   fetch?: typeof fetch
   timeout?: number
   defaultModel?: string
+  retry?: RetryPolicy
+}
+
+function mapRetryError(error: unknown, signal?: AbortSignal): never {
+  if (signal?.aborted) {
+    throw signal.reason
+  }
+  if (error instanceof RetryExhaustedError) {
+    if (error.reason === 'total_timeout') {
+      throw new SystemOneConnectionError({
+        message: 'System One request did not complete within the retry budget',
+        cause: error,
+      })
+    }
+    if (error.cause instanceof SystemOneError) {
+      throw error.cause
+    }
+    if (error.cause instanceof TimeoutInterruption && error.cause.cause === 'attempt') {
+      throw new SystemOneConnectionError({ message: 'System One request timed out', cause: error })
+    }
+  }
+  if (error instanceof SystemOneError) {
+    throw error
+  }
+  throw error
 }
 
 export type HTTPSystemOneBackendParams = Omit<SystemOneHTTPClientParams, 'defaultModel'>
@@ -83,6 +111,9 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run()
   } catch (cause) {
+    if (cause instanceof TimeoutInterruption) {
+      throw cause
+    }
     if (cause instanceof HTTPError) {
       const status = cause.response.status
       if (status === 401 || status === 403) {
@@ -133,8 +164,10 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
 
 export class HTTPSystemOneBackend implements SystemOneBackend {
   #http: KyInstance
+  #retry: RetryPolicy | undefined
 
   constructor(params: HTTPSystemOneBackendParams) {
+    this.#retry = params.retry
     const headers = new Headers(params.headers)
     if (params.apiKey != null && params.apiKey !== '') {
       headers.set('Authorization', `Bearer ${params.apiKey}`)
@@ -148,13 +181,30 @@ export class HTTPSystemOneBackend implements SystemOneBackend {
   }
 
   async predict(params: SystemOneBackendPredictParams): Promise<SystemOneResult> {
-    return mapError(() => {
-      return this.#http
-        .post('v1/systemone', {
-          json: { state: params.state, model: params.model, questions: params.questions },
-          signal: params.signal,
-        })
-        .json<SystemOneResult>()
-    })
+    if (this.#retry == null) {
+      return mapError(() => this.#post(params, params.signal))
+    }
+
+    try {
+      return await retry(({ signal }) => mapError(() => this.#post(params, signal)), {
+        policy: this.#retry,
+        signal: params.signal,
+        retryable: (error) =>
+          error instanceof TimeoutInterruption && error.cause === 'attempt'
+            ? true
+            : retryableSystemOneError(error),
+      })
+    } catch (error) {
+      mapRetryError(error, params.signal)
+    }
+  }
+
+  #post(params: SystemOneBackendPredictParams, signal?: AbortSignal): Promise<SystemOneResult> {
+    return this.#http
+      .post('v1/systemone', {
+        json: { state: params.state, model: params.model, questions: params.questions },
+        signal,
+      })
+      .json<SystemOneResult>()
   }
 }

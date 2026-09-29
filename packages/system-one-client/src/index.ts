@@ -36,6 +36,7 @@ export {
   type SystemOneHTTPClientParams,
 } from './http.js'
 export { guardQuestions, moderationQuestions, routerQuestions, triageQuestions } from './presets.js'
+export { retryableSystemOneError } from './retryable-error.js'
 export { type IntentRoute, type RouteIntentParams, routeIntent } from './route-intent.js'
 export type {
   AnswerFor,

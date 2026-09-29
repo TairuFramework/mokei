@@ -41,6 +41,7 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@sozai/async": "catalog:",
     "@sozai/schema": "catalog:",
     "ky": "catalog:"
   },

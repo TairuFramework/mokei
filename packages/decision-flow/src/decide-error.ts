@@ -1,4 +1,5 @@
 import {
+  retryableSystemOneError,
   SystemOneConnectionError,
   SystemOneError,
   SystemOneOverloadedError,
@@ -6,8 +7,6 @@ import {
 } from '@mokei/system-one-client'
 import { MAX_DELAY_MS, type RetryDecision } from '@sozai/async'
 import type { ErrorMetadata } from '@sozai/flow-graph'
-
-const RETRYABLE_CONNECTION_STATUSES = new Set([408, 429, 500, 502, 503, 504, 529])
 
 function getRetryAfterMs(error: SystemOneConnectionError): number | undefined {
   if (error instanceof SystemOneRateLimitError || error instanceof SystemOneOverloadedError) {
@@ -18,15 +17,7 @@ function getRetryAfterMs(error: SystemOneConnectionError): number | undefined {
 
 /** Decide whether a System One failure should be retried by the flow engine. */
 export function retryableDecision(error: unknown): RetryDecision {
-  if (!(error instanceof SystemOneConnectionError)) return false
-
-  const status = error.status
-  if (status !== undefined && !RETRYABLE_CONNECTION_STATUSES.has(status)) return false
-
-  const retryAfterMs = getRetryAfterMs(error)
-  return typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs)
-    ? { afterMs: retryAfterMs }
-    : true
+  return retryableSystemOneError(error)
 }
 
 /** Describe a decision failure using only bounded, non-sensitive metadata. */

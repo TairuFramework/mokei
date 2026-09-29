@@ -1,3 +1,4 @@
+import { RetryExhaustedError } from '@sozai/async'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import {
@@ -28,9 +29,28 @@ function stubJSON(body: unknown, init: { status?: number } = {}) {
   )
 }
 
+async function flushMicrotasks() {
+  for (let turn = 0; turn < 10; turn += 1) {
+    await Promise.resolve()
+  }
+}
+
 const questions = {
   dept: { type: 'choice', instructions: 'Which team?', criteria: { billing: 'x' } },
 } as const
+
+const rawResult = {
+  model: 'english',
+  answers: {
+    dept: {
+      type: 'choice',
+      choice: 'billing',
+      confidence: 0.9,
+      probabilities: { billing: 0.9 },
+    },
+  },
+  usage: { input_tokens: 1, output_tokens: 1 },
+}
 
 describe('HTTPSystemOneBackend', () => {
   test('predict posts to /v1/systemone with a Bearer header and returns the raw envelope', async () => {
@@ -276,6 +296,278 @@ describe('HTTPSystemOneBackend', () => {
     })
     controller.abort()
     await expect(pending).rejects.toThrow(DOMException)
+  })
+
+  test('without retry, 503 fails after one request', async () => {
+    const fetcher = vi.fn(
+      async () =>
+        new Response('busy', { status: 503, headers: { 'content-type': 'application/json' } }),
+    )
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000', fetch: fetcher })
+    const error = await backend
+      .predict({ state: 'hi', questions, model: 'english' })
+      .catch((e: unknown) => e)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(error).toBeInstanceOf(SystemOneConnectionError)
+    expect((error as SystemOneConnectionError).status).toBe(503)
+  })
+
+  test('503 then success makes two requests', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('busy', { status: 503, headers: { 'content-type': 'application/json' } }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(rawResult), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+    const backend = new HTTPSystemOneBackend({
+      url: 'http://localhost:8000',
+      fetch: fetcher,
+      retry: { maxAttempts: 2 },
+    })
+    expect((await backend.predict({ state: 'hi', questions, model: 'english' })).model).toBe(
+      'english',
+    )
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  test('401 under retry is not retried', async () => {
+    const fetcher = vi.fn(
+      async () =>
+        new Response('unauthorized', {
+          status: 401,
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+    const backend = new HTTPSystemOneBackend({
+      url: 'http://localhost:8000',
+      fetch: fetcher,
+      retry: { maxAttempts: 3 },
+    })
+    await expect(backend.predict({ state: 'hi', questions, model: 'english' })).rejects.toThrow(
+      SystemOneAuthError,
+    )
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  test('exhausted 503s rethrow the last mapped error', async () => {
+    const fetcher = vi.fn(
+      async () =>
+        new Response('busy', { status: 503, headers: { 'content-type': 'application/json' } }),
+    )
+    const backend = new HTTPSystemOneBackend({
+      url: 'http://localhost:8000',
+      fetch: fetcher,
+      retry: { maxAttempts: 2 },
+    })
+    const error = await backend
+      .predict({ state: 'hi', questions, model: 'english' })
+      .catch((e: unknown) => e)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(error).toBeInstanceOf(SystemOneConnectionError)
+    expect(error).not.toBeInstanceOf(RetryExhaustedError)
+    expect((error as SystemOneConnectionError).status).toBe(503)
+  })
+
+  test('429 Retry-After waits before retrying', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response('busy', {
+            status: 429,
+            headers: { 'content-type': 'application/json', 'retry-after': '1' },
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(rawResult), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        )
+      const backend = new HTTPSystemOneBackend({
+        url: 'http://localhost:8000',
+        fetch: fetcher,
+        retry: { maxAttempts: 2 },
+      })
+      const pending = backend.predict({ state: 'hi', questions, model: 'english' })
+      await flushMicrotasks()
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(999)
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      await pending
+      expect(fetcher).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('attempt timeouts abort each request and map exhaustion', async () => {
+    vi.useFakeTimers()
+    try {
+      let abortedAttempts = 0
+      const fetcher = vi.fn<typeof fetch>((input, opts) => {
+        const signal = input instanceof Request ? input.signal : opts?.signal
+        return new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => {
+              abortedAttempts += 1
+              reject(signal.reason)
+            },
+            { once: true },
+          )
+        })
+      })
+      const backend = new HTTPSystemOneBackend({
+        url: 'http://localhost:8000',
+        fetch: fetcher,
+        retry: { maxAttempts: 2, attemptTimeoutMs: 20 },
+      })
+      const errorPromise = backend
+        .predict({ state: 'hi', questions, model: 'english' })
+        .catch((error: unknown) => error)
+      await flushMicrotasks()
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(20)
+      await flushMicrotasks()
+      await vi.advanceTimersByTimeAsync(1)
+      await flushMicrotasks()
+      expect(fetcher).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(20)
+      await flushMicrotasks()
+      const error = await errorPromise
+      expect(fetcher).toHaveBeenCalledTimes(2)
+      expect(abortedAttempts).toBe(2)
+      expect(error).toBeInstanceOf(SystemOneConnectionError)
+      expect((error as Error).message).toBe('System One request timed out')
+      expect((error as Error).cause).toBeInstanceOf(RetryExhaustedError)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('total timeout during a hanging request maps the retry budget error', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetcher = vi.fn<typeof fetch>(
+        (input) =>
+          new Promise<Response>((_resolve, reject) => {
+            const signal = input instanceof Request ? input.signal : undefined
+            signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+          }),
+      )
+      const backend = new HTTPSystemOneBackend({
+        url: 'http://localhost:8000',
+        fetch: fetcher,
+        retry: { maxAttempts: 3, totalTimeoutMs: 20 },
+      })
+      const errorPromise = backend
+        .predict({ state: 'hi', questions, model: 'english' })
+        .catch((error: unknown) => error)
+      await flushMicrotasks()
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(20)
+      await flushMicrotasks()
+      const error = await errorPromise
+      expect(error).toBeInstanceOf(SystemOneConnectionError)
+      expect((error as Error).message).toBe(
+        'System One request did not complete within the retry budget',
+      )
+      expect((error as Error).cause).toBeInstanceOf(RetryExhaustedError)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('total timeout prevents a retry when backoff crosses the budget', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetcher = vi.fn(
+        async () =>
+          new Response('busy', { status: 503, headers: { 'content-type': 'application/json' } }),
+      )
+      const backend = new HTTPSystemOneBackend({
+        url: 'http://localhost:8000',
+        fetch: fetcher,
+        retry: { maxAttempts: 3, totalTimeoutMs: 20, backoff: { initialMs: 30 } },
+      })
+      const errorPromise = backend
+        .predict({ state: 'hi', questions, model: 'english' })
+        .catch((error: unknown) => error)
+      await flushMicrotasks()
+      const error = await errorPromise
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      expect((error as Error).message).toBe(
+        'System One request did not complete within the retry budget',
+      )
+      expect((error as Error).cause).toBeInstanceOf(RetryExhaustedError)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('aborting an in-flight retry rejects with the abort reason', async () => {
+    const reason = new Error('stop')
+    const fetcher = vi.fn<typeof fetch>(
+      (input) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = input instanceof Request ? input.signal : undefined
+          signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+        }),
+    )
+    const backend = new HTTPSystemOneBackend({
+      url: 'http://localhost:8000',
+      fetch: fetcher,
+      retry: { maxAttempts: 2 },
+    })
+    const controller = new AbortController()
+    const errorPromise = backend
+      .predict({ state: 'hi', questions, model: 'english', signal: controller.signal })
+      .catch((error: unknown) => error)
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1))
+    controller.abort(reason)
+    const error = await errorPromise
+    expect(error).toBe(reason)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  test('aborting during backoff rejects with the abort reason and does not retry', async () => {
+    vi.useFakeTimers()
+    try {
+      const reason = new Error('stop')
+      const fetcher = vi.fn(
+        async () =>
+          new Response('busy', { status: 503, headers: { 'content-type': 'application/json' } }),
+      )
+      const backend = new HTTPSystemOneBackend({
+        url: 'http://localhost:8000',
+        fetch: fetcher,
+        retry: { maxAttempts: 2, backoff: { initialMs: 1000 } },
+      })
+      const controller = new AbortController()
+      const errorPromise = backend
+        .predict({ state: 'hi', questions, model: 'english', signal: controller.signal })
+        .catch((error: unknown) => error)
+      for (let turn = 0; turn < 100 && vi.getTimerCount() === 0; turn += 1) {
+        await Promise.resolve()
+      }
+      expect(vi.getTimerCount()).toBeGreaterThan(0)
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      controller.abort(reason)
+      await vi.advanceTimersByTimeAsync(1000)
+      const error = await errorPromise
+      expect(error).toBe(reason)
+      expect(fetcher).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
