@@ -926,6 +926,43 @@ importers:
         specifier: 'catalog:'
         version: 26.6.3
 
+  packages/decision-flow-server:
+    dependencies:
+      '@mokei/context-client':
+        specifier: workspace:^
+        version: link:../context-client
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+      '@mokei/context-rpc':
+        specifier: workspace:^
+        version: link:../context-rpc
+      '@mokei/context-server':
+        specifier: workspace:^
+        version: link:../context-server
+      '@mokei/decision-flow':
+        specifier: workspace:^
+        version: link:../decision-flow
+      '@mokei/system-one-client':
+        specifier: workspace:^
+        version: link:../system-one-client
+      '@sozai/flow-graph':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.0)
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.2
+    devDependencies:
+      '@mokei/host':
+        specifier: workspace:^
+        version: link:../host
+      '@mokei/session':
+        specifier: workspace:^
+        version: link:../session
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.3
+
   packages/host:
     dependencies:
       '@enkaku/transport':

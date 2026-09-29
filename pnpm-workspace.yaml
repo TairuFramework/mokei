@@ -126,6 +126,7 @@ versioning:
       - '@mokei/context-server'
       - '@mokei/context-server-node'
       - '@mokei/decision-flow'
+      - '@mokei/decision-flow-server'
       - '@mokei/host'
       - '@mokei/host-node'
       - '@mokei/host-monitor'
