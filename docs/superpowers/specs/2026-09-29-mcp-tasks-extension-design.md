@@ -125,7 +125,8 @@ The tool handler request gains `meta: Record<string, JSONValue>`: the `tools/cal
 `_meta` object, `{}` when absent, on both revisions and with or without `tasks`. Handlers use
 it for caller-supplied metadata (for example a depth counter or idempotency key). Local tools
 get the same field: `LocalToolContext.meta`, filled from the `_meta` that
-`ContextHost.callLocalTool` receives, `{}` when absent.
+`ContextHost.callLocalTool` receives (`LocalToolParams` gains `_meta`, and
+`callNamespacedTool` forwards it for `local:` IDs instead of dropping it), `{}` when absent.
 
 The tool handler request also gains `task?: TaskContext`, present only when the server has `tasks`,
 the method is `tools/call`, and the request's client capabilities declare the extension. The
