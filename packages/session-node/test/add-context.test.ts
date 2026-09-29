@@ -39,16 +39,14 @@ describe('NodeSession.addContext cleanup', () => {
 
     const result = await session.contextHost.callTool({
       key: 'elicitation',
-      name: 'ask',
+      name: 'capabilities',
       arguments: {},
     })
     const response = JSON.parse(
       result.content[0]?.type === 'text' ? result.content[0].text : '',
-    ) as {
-      elicitationCapability: boolean
-    }
+    ) as Record<string, unknown>
 
-    expect(response.elicitationCapability).toBe(false)
+    expect(response).not.toHaveProperty('elicitation')
   })
 
   test('abort during tool selection cannot alter a replacement context', async () => {

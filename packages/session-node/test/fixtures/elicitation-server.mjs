@@ -1,31 +1,13 @@
-import { createInterface } from 'node:readline'
+let capabilities
 
-const elicitationParams = {
-  message: 'Please provide a value',
-  requestedSchema: { type: 'object', properties: { answer: { type: 'string' } } },
-}
-
-let elicitationCapability = false
-let nextID = 1
-const pending = new Map()
-
-async function send(message) {
+function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`)
 }
 
-const input = createInterface({ input: process.stdin })
-input.on('line', (line) => {
-  const message = JSON.parse(line)
-
-  if (pending.has(message.id)) {
-    pending.get(message.id)(message)
-    pending.delete(message.id)
-    return
-  }
-
+function handle(message) {
   if (message.method === 'initialize') {
-    elicitationCapability = message.params.capabilities?.elicitation != null
-    void send({
+    capabilities = message.params.capabilities
+    send({
       jsonrpc: '2.0',
       id: message.id,
       result: {
@@ -34,44 +16,40 @@ input.on('line', (line) => {
         serverInfo: { name: 'elicitation-fixture', version: '1.0.0' },
       },
     })
-  } else if (message.method === 'notifications/initialized') {
-    // Notifications do not receive a response.
-  } else if (message.method === 'tools/list') {
-    void send({
+    return
+  }
+  if (message.method === 'notifications/initialized') {
+    return
+  }
+  if (message.method === 'tools/list') {
+    send({
       jsonrpc: '2.0',
       id: message.id,
       result: {
-        tools: [
-          {
-            name: 'ask',
-            description: 'Ask the client for input',
-            inputSchema: { type: 'object', properties: {} },
-          },
-        ],
+        tools: [{ name: 'capabilities', inputSchema: { type: 'object' } }],
       },
     })
-  } else if (message.method === 'tools/call') {
-    const requestID = `elicitation-${nextID++}`
-    pending.set(requestID, async (elicitationResponse) => {
-      const response = elicitationResponse.result ?? { error: elicitationResponse.error }
-      await send({
-        jsonrpc: '2.0',
-        id: message.id,
-        result: {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({ elicitationCapability, response }),
-            },
-          ],
-        },
-      })
-    })
-    void send({
+    return
+  }
+  if (message.method === 'tools/call') {
+    send({
       jsonrpc: '2.0',
-      id: requestID,
-      method: 'elicitation/create',
-      params: elicitationParams,
+      id: message.id,
+      result: { content: [{ type: 'text', text: JSON.stringify(capabilities) }] },
     })
+  }
+}
+
+let buffer = ''
+process.stdin.on('data', (chunk) => {
+  buffer += chunk.toString()
+  let index = buffer.indexOf('\n')
+  while (index !== -1) {
+    const line = buffer.slice(0, index)
+    buffer = buffer.slice(index + 1)
+    if (line.trim() !== '') {
+      handle(JSON.parse(line))
+    }
+    index = buffer.indexOf('\n')
   }
 })
