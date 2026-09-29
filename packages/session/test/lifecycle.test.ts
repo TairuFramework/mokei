@@ -1,3 +1,4 @@
+import { ContextHost } from '@mokei/host'
 import type {
   AggregatedMessage,
   MessagePart,
@@ -58,5 +59,28 @@ describe('Session.chat active-request guard', () => {
     // Cleanup: abort B.
     session.activeChatRequest?.abort()
     await Promise.all([chatA, chatB])
+  })
+})
+
+describe('Session elicitation', () => {
+  test('Session forwards elicit to its new host', async () => {
+    const session = new Session({ elicit: true })
+
+    expect(session.contextHost.elicitationEnabled).toBe(true)
+    await session.dispose()
+  })
+
+  test('Session rejects contextHost together with elicit', async () => {
+    const contextHost = new ContextHost()
+
+    expect(() => new Session({ contextHost, elicit: true })).toThrow(/contextHost.*elicit/i)
+    await contextHost.dispose()
+  })
+
+  test('default Session and NodeSession remain disabled', async () => {
+    const session = new Session()
+
+    expect(session.contextHost.elicitationEnabled).toBe(false)
+    await session.dispose()
   })
 })

@@ -12,6 +12,7 @@ export type AddContextParams = {
   env?: Record<string, string>
   signal?: AbortSignal
   enableTools?: EnableToolsArg
+  elicit?: false
   /** Revision to speak, or `'auto'` to probe the server. */
   protocolVersion?: ProtocolVersion | 'auto'
 }
@@ -25,7 +26,11 @@ export type NodeSessionParams<T extends ProviderTypes = ProviderTypes> = Omit<
 
 export class NodeSession<T extends ProviderTypes = ProviderTypes> extends Session<T> {
   constructor(params: NodeSessionParams<T> = {}) {
-    super({ ...params, contextHost: params.contextHost ?? new NodeContextHost() })
+    const { contextHost, elicit, ...sessionParams } = params
+    if (contextHost && elicit != null) {
+      throw new Error('Cannot provide both contextHost and elicit')
+    }
+    super({ ...sessionParams, contextHost: contextHost ?? new NodeContextHost({ elicit }) })
   }
 
   override get contextHost(): NodeContextHost {
@@ -45,7 +50,7 @@ export class NodeSession<T extends ProviderTypes = ProviderTypes> extends Sessio
   }
 
   addContext(params: AddContextParams): Promise<Array<ContextTool>> {
-    const { key, command, args, env, enableTools, protocolVersion } = params
+    const { key, command, args, env, enableTools, protocolVersion, elicit } = params
     let registeredClient: unknown
     const registrationPromise = this.contextHost.addLocalContext({
       key,
@@ -53,6 +58,7 @@ export class NodeSession<T extends ProviderTypes = ProviderTypes> extends Sessio
       args,
       env,
       protocolVersion,
+      elicit,
     })
     const setupPromise = (async () => {
       // Duplicate keys reject before registration, so they have nothing to clean up.

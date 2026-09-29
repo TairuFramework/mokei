@@ -65,6 +65,52 @@ describe('Session.addHTTPContext', () => {
     expect(addHTTPContextSpy).toHaveBeenCalledWith(expect.objectContaining({ fetchMiddleware }))
   })
 
+  test('Session HTTP entry false leaves capability absent', async () => {
+    session = new Session({ elicit: true })
+    let elicitationCapability: unknown
+    const fetchMiddleware: FetchMiddleware = (next) => async (url, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        id: string | number
+        method: string
+        params?: { capabilities?: { elicitation?: unknown } }
+      }
+      if (request.method === 'initialize') {
+        elicitationCapability = request.params?.capabilities?.elicitation
+        return new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: request.id,
+            result: {
+              protocolVersion: '2025-11-25',
+              capabilities: { tools: {} },
+              serverInfo: { name: 'fixture', version: '1.0.0' },
+            },
+          }),
+          { headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (request.method === 'tools/list') {
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { tools: [] } }),
+          {
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
+      }
+      return next(url, init)
+    }
+
+    await session.addHTTPContext({
+      key: 'remote',
+      url: 'https://mcp.example.com/mcp',
+      protocolVersion: '2025-11-25',
+      fetchMiddleware,
+      elicit: false,
+    })
+
+    expect(elicitationCapability).toBeUndefined()
+  })
+
   test('removes the context it just registered when setup() rejects (no signal)', async () => {
     session = new Session()
     // addHTTPContext resolves (the context is registered), then setup() fails. The fix must

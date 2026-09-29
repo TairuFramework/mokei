@@ -28,3 +28,26 @@ describe('NodeSession.addContext abort', () => {
     await session.contextHost.dispose()
   })
 })
+
+describe('NodeSession elicitation', () => {
+  test('NodeSession builds an elicitation-enabled NodeContextHost', async () => {
+    const session = new NodeSession({ elicit: true })
+
+    expect(session.contextHost.elicitationEnabled).toBe(true)
+    await session.dispose()
+  })
+
+  test('NodeSession rejects contextHost together with elicit', async () => {
+    const contextHost = new NodeSession().contextHost
+
+    expect(() => new NodeSession({ contextHost, elicit: true })).toThrow(/contextHost.*elicit/i)
+    await contextHost.dispose()
+  })
+
+  test('default Session and NodeSession remain disabled', async () => {
+    const session = new NodeSession()
+
+    expect(session.contextHost.elicitationEnabled).toBe(false)
+    await session.dispose()
+  })
+})
