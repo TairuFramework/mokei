@@ -1,11 +1,11 @@
 import { getMokeiLogger } from '@mokei/logger'
-import type { SystemOneClient } from '@mokei/system-one-client'
 import { createFlowGraph, type FlowGraph, type FlowGraphOptions } from '@sozai/flow-graph'
 import type { Schema } from '@sozai/schema'
 
+import type { Predictor } from './decide-node.js'
 import { decideKind } from './decide-node.js'
 
-export type DecisionFlowGraphOptions = FlowGraphOptions & { client: SystemOneClient }
+export type DecisionFlowGraphOptions = FlowGraphOptions & { client: Predictor }
 
 const defaultDecideRetryPolicy = {
   maxAttempts: 3,
@@ -32,7 +32,7 @@ const schemaOnlyClient = {
   predict(): never {
     throw new Error('The schema-only decision graph cannot execute nodes.')
   },
-} as unknown as SystemOneClient
+} as unknown as Predictor
 
 const schemaOnlyGraph = createDecisionFlowGraph({ client: schemaOnlyClient })
 

@@ -11,11 +11,13 @@ import {
   flowDefinitionSchema,
   flowStorageSchema,
   formatIssues,
+  type Predictor,
 } from '../src/index.js'
 
 test('public decision flow API types', () => {
   expectTypeOf<DecideNode>().toMatchTypeOf<{ kind: 'decide' }>()
   expectTypeOf(decideKind).toBeCallableWith({ client: {} as SystemOneClient })
+  expectTypeOf<SystemOneClient>().toMatchTypeOf<Predictor>()
   expectTypeOf(createDecisionFlowGraph).toBeCallableWith({ client: {} as SystemOneClient })
   expectTypeOf(
     createDecisionFlowGraph({ client: {} as SystemOneClient }),

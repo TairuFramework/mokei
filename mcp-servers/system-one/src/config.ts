@@ -30,6 +30,26 @@ const questionsInputSchema = {
   description: 'A System One question map: each key maps to a choice/score/noul question',
 } as const satisfies Schema
 
+export const predictOutputSchema = {
+  type: 'object',
+  properties: {
+    model: { type: 'string' },
+    answers: {
+      type: 'object',
+      additionalProperties: { type: 'object', additionalProperties: true },
+    },
+    usage: {
+      type: 'object',
+      properties: { inputTokens: { type: 'number' }, outputTokens: { type: 'number' } },
+      required: ['inputTokens', 'outputTokens'],
+      additionalProperties: false,
+    },
+    extras: { type: 'object', additionalProperties: true },
+  },
+  required: ['model', 'answers', 'usage'],
+  additionalProperties: false,
+} as const satisfies Schema
+
 const env = (v?: string): string | undefined => (v != null && v !== '' ? v : undefined)
 
 function resolveClient(options: SystemOneToolsOptions): SystemOneClient {
@@ -90,6 +110,7 @@ export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
         required: ['state', 'questions'],
         additionalProperties: false,
       } as const satisfies Schema,
+      outputSchema: predictOutputSchema,
       handler: async (req) => {
         try {
           const result = await client.predict({
@@ -98,15 +119,16 @@ export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
             model: req.input.model as string | undefined,
             signal: req.signal,
           })
-          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result) }],
+            structuredContent: result,
+            isError: false,
+          }
         } catch (err) {
           if (req.signal?.aborted) {
             throw err
           }
-          return {
-            content: [{ type: 'text', text: (err as Error).message ?? 'Unknown error' }],
-            isError: true,
-          }
+          throw new Error((err as Error).message ?? 'Unknown error', { cause: err })
         }
       },
     }),

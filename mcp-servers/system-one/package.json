@@ -49,6 +49,7 @@
     "@mokei/system-one-client": "workspace:^"
   },
   "devDependencies": {
+    "@sozai/schema": "catalog:",
     "@types/node": "catalog:"
   }
 }

@@ -578,6 +578,9 @@ importers:
         specifier: workspace:^
         version: link:../../packages/system-one-client
     devDependencies:
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.2
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
