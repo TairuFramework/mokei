@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from 'node:util'
 import {
   type CallToolResult,
   type ClientCapabilities,
@@ -132,6 +131,28 @@ function responseMatches(request: InputRequest, response: InputResponse): boolea
   if (request.method === 'roots/list') return 'roots' in response
   if (request.method === 'elicitation/create') return 'action' in response
   return 'model' in response && 'content' in response
+}
+
+function equalJSON(left: unknown, right: unknown): boolean {
+  if (left === right) return true
+  if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object')
+    return false
+  if (Array.isArray(left) || Array.isArray(right))
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => equalJSON(value, right[index]))
+    )
+  const leftRecord = left as Record<string, unknown>
+  const rightRecord = right as Record<string, unknown>
+  const keys = Object.keys(leftRecord)
+  return (
+    keys.length === Object.keys(rightRecord).length &&
+    keys.every(
+      (key) => Object.hasOwn(rightRecord, key) && equalJSON(leftRecord[key], rightRecord[key]),
+    )
+  )
 }
 
 type PendingInput = {
@@ -401,11 +422,14 @@ class ManagedTasks implements TaskManager {
   ): Promise<Record<string, InputResponse>> {
     const keys = Object.keys(requests)
     if (keys.length === 0) throw new Error('Input requests must not be empty')
+    let attached: PendingInput | undefined
     await this.#activeMutation(taskID, controller, (record) => {
       const reused = keys.find((key) => record.issuedInputKeys.includes(key))
       if (reused !== undefined) {
-        if (record.status === 'input_required' && isDeepStrictEqual(requests, record.inputRequests))
+        if (record.status === 'input_required' && equalJSON(requests, record.inputRequests)) {
+          attached = this.#attachInput(taskID, controller, record, options)
           return undefined
+        }
         throw new TaskInputKeyReusedError(reused)
       }
       if (record.status === 'input_required') throw new Error('Input is already outstanding')
@@ -431,6 +455,7 @@ class ManagedTasks implements TaskManager {
         issuedInputKeys: [...record.issuedInputKeys, ...keys],
       }
     })
+    if (attached !== undefined) return attached.promise
     return this.#awaitInput(taskID, controller, options)
   }
 
@@ -446,10 +471,22 @@ class ManagedTasks implements TaskManager {
     }
     const record = await this.#store.get(taskID)
     if (record?.status !== 'input_required') throw new Error('No input is outstanding')
+    const pending = this.#attachInput(taskID, controller, record, options)
+    const latest = await this.#store.get(taskID)
+    if (latest !== undefined) this.#resolveInput(taskID, latest)
+    return pending.promise
+  }
+
+  #attachInput(
+    taskID: string,
+    controller: AbortController,
+    record: TaskRecord,
+    options?: { signal?: AbortSignal },
+  ): PendingInput {
     const existing = this.#pending.get(taskID)
     if (existing !== undefined) {
       this.#listenForInputAbort(taskID, existing, options?.signal)
-      return existing.promise
+      return existing
     }
     const pending = Promise.withResolvers<Record<string, InputResponse>>()
     const entry: PendingInput = {
@@ -464,9 +501,7 @@ class ManagedTasks implements TaskManager {
       this.#abort(taskID, controller.signal.reason)
     }
     this.#resolveInput(taskID, record)
-    const latest = await this.#store.get(taskID)
-    if (latest !== undefined) this.#resolveInput(taskID, latest)
-    return pending.promise
+    return entry
   }
 
   #listenForInputAbort(taskID: string, entry: PendingInput, signal?: AbortSignal): void {

@@ -1,3 +1,4 @@
+import type { InputResponse } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
 import { describe, expect, test } from 'vitest'
 
@@ -96,6 +97,10 @@ describe('task manager', () => {
 
   test('handle cancellation aborts pending input and reports whether it won', async () => {
     const manager = createTaskManager()
+    const errors: Array<unknown> = []
+    manager.events.on('taskError', (event) => {
+      errors.push(event)
+    })
     let handle: TaskHandle | undefined
     let inputRejection: unknown
     const gate = Promise.withResolvers<void>()
@@ -124,6 +129,52 @@ describe('task manager', () => {
     expect(await handle.cancel()).toBe(false)
     expect((await manager.get(created.taskId)).status).toBe('cancelled')
     gate.resolve()
+    await tick()
+    expect(await manager.get(created.taskId)).toMatchObject({ status: 'cancelled' })
+    expect(errors).toEqual([])
+    await manager.dispose()
+  })
+
+  test('handle cancellation loses to client cancellation', async () => {
+    const manager = createTaskManager()
+    let handle: TaskHandle | undefined
+    const created = await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: {},
+      work: (task) => {
+        handle = task
+        return new Promise(() => {})
+      },
+    })
+    if (handle === undefined) throw new Error('Worker did not start')
+    await manager.cancel(created.taskId)
+    expect(await handle.cancel()).toBe(false)
+    expect(handle.signal.aborted).toBe(true)
+    expect((await manager.get(created.taskId)).status).toBe('cancelled')
+    await manager.dispose()
+  })
+
+  test('handle cancellation loses to expiry', async () => {
+    const store = createMemoryTaskStore()
+    let now = Date.parse('2026-09-29T12:00:00Z')
+    const manager = createTaskManager({ store, ttlMs: 1, now: () => now })
+    let handle: TaskHandle | undefined
+    const created = await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: {},
+      work: (task) => {
+        handle = task
+        return new Promise(() => {})
+      },
+    })
+    if (handle === undefined) throw new Error('Worker did not start')
+    now += 2
+    expect(await manager.canAccess(created.taskId)).toBe(false)
+    expect(await handle.cancel()).toBe(false)
+    expect(handle.signal.aborted).toBe(true)
+    expect(await store.get(created.taskId)).toBeUndefined()
     await manager.dispose()
   })
 
@@ -171,6 +222,103 @@ describe('task manager', () => {
     await expect(handle.requestInput({ ask: rootsRequest })).rejects.toBeInstanceOf(
       TaskInputKeyReusedError,
     )
+    await manager.dispose()
+  })
+
+  test('reissued input attaches before a final response changes the task to working', async () => {
+    const base = createMemoryTaskStore()
+    let armed = false
+    let reads = 0
+    let deliverFinalResponse: (() => Promise<void>) | undefined
+    let first: Promise<Record<string, InputResponse>> | undefined
+    const store = {
+      ...base,
+      get: async (taskID: string) => {
+        if (armed && ++reads === 2) {
+          armed = false
+          await deliverFinalResponse?.()
+          await first
+        }
+        return base.get(taskID)
+      },
+    }
+    const manager = createTaskManager({ store })
+    let handle: TaskHandle | undefined
+    const created = await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: { roots: {} },
+      work: (task) => {
+        handle = task
+        return new Promise(() => {})
+      },
+    })
+    if (handle === undefined) throw new Error('Worker did not start')
+    first = handle.requestInput({ ask: rootsRequest })
+    await tick()
+    deliverFinalResponse = () => manager.update(created.taskId, { ask: rootsResponse })
+    armed = true
+    const attached = handle.requestInput({ ask: { method: 'roots/list' } })
+    const attachedOutcome = attached.then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    )
+    await tick()
+    if (armed) {
+      armed = false
+      await deliverFinalResponse()
+    }
+    expect(await first).toEqual({ ask: rootsResponse })
+    expect(await attachedOutcome).toEqual({ value: { ask: rootsResponse } })
+    await manager.dispose()
+  })
+
+  test('reissued input compares nested JSON without depending on property order', async () => {
+    const manager = createTaskManager()
+    let handle: TaskHandle | undefined
+    const created = await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: { roots: {} },
+      work: (task) => {
+        handle = task
+        return new Promise(() => {})
+      },
+    })
+    if (handle === undefined) throw new Error('Worker did not start')
+    const first = handle.requestInput({
+      ask: { method: 'roots/list', params: { a: [1, { b: true }], c: null } },
+    })
+    await tick()
+    const attached = handle.requestInput({
+      ask: { params: { c: null, a: [1, { b: true }] }, method: 'roots/list' },
+    })
+    await manager.update(created.taskId, { ask: rootsResponse })
+    await expect(first).resolves.toEqual({ ask: rootsResponse })
+    await expect(attached).resolves.toEqual({ ask: rootsResponse })
+    await manager.dispose()
+  })
+
+  test('changing a request under an outstanding key rejects with the key reuse error', async () => {
+    const manager = createTaskManager()
+    let handle: TaskHandle | undefined
+    const created = await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: { roots: {} },
+      work: (task) => {
+        handle = task
+        return new Promise(() => {})
+      },
+    })
+    if (handle === undefined) throw new Error('Worker did not start')
+    const first = handle.requestInput({ ask: { method: 'roots/list', params: { page: 1 } } })
+    await tick()
+    await expect(
+      handle.requestInput({ ask: { method: 'roots/list', params: { page: 2 } } }),
+    ).rejects.toBeInstanceOf(TaskInputKeyReusedError)
+    await manager.update(created.taskId, { ask: rootsResponse })
+    await expect(first).resolves.toEqual({ ask: rootsResponse })
     await manager.dispose()
   })
 
@@ -400,6 +548,33 @@ describe('task manager', () => {
     })
     await manager.recover({ echo: tool })
     await manager.update(saved.taskID, { ask: rootsResponse })
+    await tick()
+    expect((await manager.get(saved.taskID)).status).toBe('completed')
+    await manager.dispose()
+  })
+
+  test('recovered worker reissues its persisted outstanding request', async () => {
+    const store = createMemoryTaskStore()
+    const saved = record({
+      status: 'input_required',
+      inputRequests: { ask: rootsRequest },
+      inputResponses: {},
+      issuedInputKeys: ['ask'],
+    })
+    await store.create(saved)
+    const observed = Promise.withResolvers<Record<string, InputResponse>>()
+    const manager = createTaskManager({
+      store,
+      recover: (_item, resume) =>
+        resume(async (task) => {
+          const responses = await task.requestInput({ ask: { method: 'roots/list' } })
+          observed.resolve(responses)
+          return result
+        }),
+    })
+    await manager.recover({ echo: tool })
+    await manager.update(saved.taskID, { ask: rootsResponse })
+    expect(await observed.promise).toEqual({ ask: rootsResponse })
     await tick()
     expect((await manager.get(saved.taskID)).status).toBe('completed')
     await manager.dispose()
@@ -654,6 +829,37 @@ describe('task manager', () => {
     expect(observed).toBe(reason)
     expect(await manager.get(created.taskId)).toMatchObject({ status: 'completed' })
     expect(await store.get(created.taskId)).toMatchObject({ issuedInputKeys: ['ask'] })
+    await manager.dispose()
+  })
+
+  test('a withdrawn input key rejects reissue with the key reuse error', async () => {
+    const manager = createTaskManager()
+    const controller = new AbortController()
+    const reason = new Error('input deadline')
+    const attempted = Promise.withResolvers<unknown>()
+    const created = await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: { roots: {} },
+      work: async (task) => {
+        try {
+          await task.requestInput({ ask: rootsRequest }, { signal: controller.signal })
+        } catch (error) {
+          expect(error).toBe(reason)
+        }
+        try {
+          await task.requestInput({ ask: rootsRequest })
+        } catch (error) {
+          attempted.resolve(error)
+        }
+        return result
+      },
+    })
+    await tick()
+    controller.abort(reason)
+    expect(await attempted.promise).toBeInstanceOf(TaskInputKeyReusedError)
+    await tick()
+    expect((await manager.get(created.taskId)).status).toBe('completed')
     await manager.dispose()
   })
 
