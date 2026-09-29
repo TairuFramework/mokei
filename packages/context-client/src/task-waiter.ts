@@ -6,6 +6,7 @@ import type {
   TasksGetResult,
 } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
+import { sleep } from '@sozai/async'
 
 import {
   InputRequiredNotSupportedError,
@@ -50,24 +51,6 @@ type TaskEntry = {
   dispatched: Set<string>
   inputError?: Error
   controller: AbortController
-}
-
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason)
-      return
-    }
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', abort)
-      resolve()
-    }, ms)
-    const abort = () => {
-      clearTimeout(timer)
-      reject(signal.reason)
-    }
-    signal.addEventListener('abort', abort, { once: true })
-  })
 }
 
 export class TaskWaiter {
@@ -138,7 +121,7 @@ export class TaskWaiter {
           snapshot = entry.latest ?? (await this.#get(params.taskID, params.signal))
           fromGet = entry.latest == null
         } else {
-          await (this.#params.delay ?? delay)(
+          await (this.#params.delay ?? sleep)(
             Math.max(250, snapshot.pollIntervalMs ?? 1000),
             params.signal ?? entry.controller.signal,
           )
