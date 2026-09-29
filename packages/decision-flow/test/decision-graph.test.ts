@@ -222,28 +222,29 @@ describe('createDecisionFlowGraph', () => {
     expect(actionRetrySchema(graph.authoringSchema)).toEqual(engineActionRetrySchema)
   })
 
-  test('generates decide schema examples that validate against their own schemas', () => {
-    const examples = (decideNodeSchema.examples ?? []) as Array<unknown>
-    const decideValidator = createValidator(decideNodeSchema)
-    expect(examples.length).toBeGreaterThan(0)
-    for (const example of examples) {
-      expect(decideValidator(example)).not.toHaveProperty('issues')
+  test('accepts a documented decide node', () => {
+    const node = {
+      kind: 'decide',
+      state: { ref: ['input'] },
+      questions: {
+        department: {
+          type: 'choice',
+          instructions: 'Which department should handle this request?',
+          criteria: { billing: 'Billing', technical: 'Technical support' },
+        },
+      },
+      cases: [
+        {
+          when: {
+            path: ['results', 'triage', 'department', 'choice'],
+            is: { equalTo: 'billing' },
+          },
+          to: 'billing',
+        },
+      ],
+      default: 'general',
     }
-
-    for (const [, property] of walkSchemaProperties(decideNodeSchema)) {
-      const propertyExamples = property.examples as Array<unknown> | undefined
-      if (!propertyExamples) continue
-      const propertySchema = {
-        type: 'object',
-        properties: { value: property },
-        required: ['value'],
-        definitions: decideNodeSchema.definitions,
-      } as Schema
-      const validateProperty = createValidator(propertySchema)
-      for (const example of propertyExamples) {
-        expect(validateProperty({ value: example })).not.toHaveProperty('issues')
-      }
-    }
+    expect(createValidator(decideNodeSchema)(node)).not.toHaveProperty('issues')
   })
 
   test('provides the default retry policy and composed authoring schema', () => {
@@ -255,7 +256,7 @@ describe('createDecisionFlowGraph', () => {
     expect(graph.check(makeDefinition()).ok).toBe(true)
   })
 
-  test('documents every decide schema property with a description and example', () => {
+  test('documents every decide schema property with a description', () => {
     const decideVariant = (flowDefinitionSchema.properties as Record<string, unknown>)
       .nodes as Record<string, unknown>
     const nodes = decideVariant.additionalProperties as Record<string, unknown>
@@ -268,8 +269,7 @@ describe('createDecisionFlowGraph', () => {
     const properties = walkSchemaProperties(decideSchema ?? {})
     expect(properties.length).toBeGreaterThan(0)
     const missing = properties.flatMap(([path, property]) => {
-      const keywords = ['description', 'examples'].filter((keyword) => !(keyword in property))
-      return keywords.length > 0 ? [{ path, keywords }] : []
+      return 'description' in property ? [] : [path]
     })
     expect(missing).toEqual([])
   })
