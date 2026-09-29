@@ -49,6 +49,7 @@
     "@sozai/schema": "catalog:"
   },
   "devDependencies": {
+    "@enkaku/transport": "catalog:",
     "@mokei/host": "workspace:^",
     "@mokei/mcp-system-one": "workspace:^",
     "@mokei/session": "workspace:^",
