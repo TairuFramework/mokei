@@ -49,8 +49,10 @@ function createSession(elicit: true | HostElicitHandler) {
   return { session, observed, ask }
 }
 
-function elicitationEvents(events: Array<AgentEvent>) {
-  return events.filter((event) => event.type.startsWith('elicitation-'))
+type ElicitationEvent = Extract<AgentEvent, { type: `elicitation-${string}` }>
+
+function elicitationEvents(events: Array<AgentEvent>): Array<ElicitationEvent> {
+  return events.filter((event): event is ElicitationEvent => event.type.startsWith('elicitation-'))
 }
 
 describe('AgentSession elicitation ownership', () => {
@@ -135,6 +137,127 @@ describe('AgentSession elicitation ownership', () => {
       { type: 'elicitation-request', key: 'questions' },
       { type: 'elicitation-response', key: 'questions', action: 'decline' },
     ])
+    await agent.dispose()
+    await session.dispose()
+  })
+
+  test('throwing onEvent on elicitation-request preserves the answer and event pair', async () => {
+    const { session, observed, ask } = createSession(true)
+    const emitted: Array<AgentEvent> = []
+    const agent = new AgentSession({
+      session,
+      provider,
+      model: 'test-model',
+      onElicitation: () => ({ action: 'accept', content: { answer: 'secret' } }),
+      onEvent: (event) => {
+        if (event.type === 'elicitation-request') throw new Error('observer failed')
+      },
+    })
+    agent.events.on('event', (event) => {
+      emitted.push(event)
+    })
+
+    await ask('request observer')
+
+    expect(observed).toEqual([{ action: 'accept', content: { answer: 'secret' } }])
+    const paired = elicitationEvents(emitted)
+    expect(paired.map((event) => event.type)).toEqual([
+      'elicitation-request',
+      'elicitation-response',
+    ])
+    expect(paired[1]?.requestID).toBe(paired[0]?.requestID)
+    await agent.dispose()
+    await session.dispose()
+  })
+
+  test('throwing onEvent on elicitation-response preserves the answer and event pair', async () => {
+    const { session, observed, ask } = createSession(true)
+    const emitted: Array<AgentEvent> = []
+    const agent = new AgentSession({
+      session,
+      provider,
+      model: 'test-model',
+      onElicitation: () => ({ action: 'accept', content: { answer: 'secret' } }),
+      onEvent: (event) => {
+        if (event.type === 'elicitation-response') throw new Error('observer failed')
+      },
+    })
+    agent.events.on('event', (event) => {
+      emitted.push(event)
+    })
+
+    await ask('response observer')
+
+    expect(observed).toEqual([{ action: 'accept', content: { answer: 'secret' } }])
+    const paired = elicitationEvents(emitted)
+    expect(paired.map((event) => event.type)).toEqual([
+      'elicitation-request',
+      'elicitation-response',
+    ])
+    expect(paired[1]?.requestID).toBe(paired[0]?.requestID)
+    await agent.dispose()
+    await session.dispose()
+  })
+
+  test('throwing onEvent on elicitation-request preserves the callback error', async () => {
+    const { session, ask } = createSession(true)
+    const emitted: Array<AgentEvent> = []
+    const callbackError = new Error('callback failed')
+    const agent = new AgentSession({
+      session,
+      provider,
+      model: 'test-model',
+      onElicitation: () => {
+        throw callbackError
+      },
+      onEvent: (event) => {
+        if (event.type === 'elicitation-request') throw new Error('observer failed')
+      },
+    })
+    agent.events.on('event', (event) => {
+      emitted.push(event)
+    })
+
+    const result = await ask('callback error')
+
+    expect(result).toMatchObject({
+      isError: true,
+      content: [{ type: 'text', text: 'callback failed' }],
+    })
+    const paired = elicitationEvents(emitted)
+    expect(paired.map((event) => event.type)).toEqual(['elicitation-request', 'elicitation-error'])
+    expect(paired[1]?.requestID).toBe(paired[0]?.requestID)
+    expect(paired[1]).toMatchObject({ error: callbackError })
+    await agent.dispose()
+    await session.dispose()
+  })
+
+  test('rejecting events listener preserves the answer without an unhandled rejection', async () => {
+    const { session, observed, ask } = createSession(true)
+    const emitted: Array<AgentEvent> = []
+    const agent = new AgentSession({
+      session,
+      provider,
+      model: 'test-model',
+      onElicitation: () => ({ action: 'accept', content: { answer: 'secret' } }),
+    })
+    agent.events.on('event', async () => {
+      throw new Error('listener failed')
+    })
+    agent.events.on('event', (event) => {
+      emitted.push(event)
+    })
+
+    await ask('rejecting listener')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(observed).toEqual([{ action: 'accept', content: { answer: 'secret' } }])
+    const paired = elicitationEvents(emitted)
+    expect(paired.map((event) => event.type)).toEqual([
+      'elicitation-request',
+      'elicitation-response',
+    ])
+    expect(paired[1]?.requestID).toBe(paired[0]?.requestID)
     await agent.dispose()
     await session.dispose()
   })

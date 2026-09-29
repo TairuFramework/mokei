@@ -148,8 +148,12 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   }
 
   #emitElicitationEvent(event: AgentEvent<T>): void {
-    this.#events.emit('event', event)
-    this.#params.onEvent?.(event)
+    void this.#events.emit('event', event).catch(() => undefined)
+    try {
+      this.#params.onEvent?.(event)
+    } catch {
+      // Observer failures must not change the elicitation result or event pair.
+    }
   }
 
   /**
