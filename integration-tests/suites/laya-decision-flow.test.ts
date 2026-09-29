@@ -250,6 +250,14 @@ describe.skipIf(laya == null)('support-triage example against laya-serve', () =>
     expect(observedRoute(run.runState, createTicket)).toBe(expectedRoute(results))
   })
 
+  // The english checkpoint's department confidence for CRASH stays below 0.6, so it routes to
+  // `ask`; only the billing route is stable enough to pin.
+  test('routes the billing message to the billing team with the english checkpoint', async () => {
+    const { graph, createTicket } = makeGraph()
+    const run = await graph.run({ definition, input: { message: BILLING } })
+    expect(observedRoute(run.runState, createTicket)).toBe('billing')
+  })
+
   test('suspends after a choice decision and resumes without another prediction', async () => {
     const { graph, fetcher } = makeGraph()
     const first = await graph.run({ definition: suspensionDefinition, input: { message: BILLING } })

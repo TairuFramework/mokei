@@ -390,4 +390,9 @@ Add opt-in retries for transient System One HTTP failures and export retry class
 
 ## Completion notes
 
-Record the three-run result for each message here during Task 8. Name any dropped pin and its failing run. Leave this section empty until the manual run occurs.
+Manual run on 2026-09-29 with `laya-serve` (english checkpoint), both laya suites together, three runs:
+
+- `BILLING` pin (`billing`): passed 3/3. Kept.
+- `CRASH` pin (`technical`): failed 3/3, observed `ask` every run (department confidence below
+  0.6). Dropped; the structural route test still covers `CRASH`.
+- One shared server per run; no `laya-serve` process left after teardown.
