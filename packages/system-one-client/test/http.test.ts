@@ -555,7 +555,10 @@ describe('HTTPSystemOneBackend', () => {
       const errorPromise = backend
         .predict({ state: 'hi', questions, model: 'english', signal: controller.signal })
         .catch((error: unknown) => error)
-      await flushMicrotasks()
+      for (let turn = 0; turn < 100 && vi.getTimerCount() === 0; turn += 1) {
+        await Promise.resolve()
+      }
+      expect(vi.getTimerCount()).toBeGreaterThan(0)
       expect(fetcher).toHaveBeenCalledTimes(1)
       controller.abort(reason)
       await vi.advanceTimersByTimeAsync(1000)
