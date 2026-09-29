@@ -50,6 +50,18 @@ to `retryableSystemOneError`, so the decide node's engine-level retries are unch
 - Set: `predict` runs inside `retry()` with the caller's `signal`. Each attempt uses the attempt
   signal `retry()` provides, so `attemptTimeoutMs` aborts the in-flight request.
 
+Error mapping happens at two levels:
+
+- **Per attempt:** the existing `mapError` wraps each attempt's HTTP call inside the `retry()`
+  callback, so the `retryable` predicate sees `SystemOneError` subclasses, never ky's
+  `HTTPError`.
+- **After `retry()`:** a separate `mapRetryError` maps what escapes `retry()` (table below).
+  `mapError` never wraps `retry()` itself, which would turn `RetryExhaustedError` into a generic
+  connection error.
+
+Without a `retry` option the backend keeps today's single `mapError` call and never enters
+`retry()`.
+
 The `retryable` predicate passed to `retry()` is: retry a `TimeoutInterruption` whose `cause` is
 `'attempt'` (an attempt that hit `attemptTimeoutMs`, raised by `retry()` itself, not by the
 HTTP error mapper), otherwise defer to `retryableSystemOneError`. `retryableSystemOneError`
@@ -89,8 +101,10 @@ Unit tests with a stubbed `fetch` that counts requests:
 - A `fetch` that hangs until its signal aborts, with `attemptTimeoutMs`: each attempt is
   aborted and retried; exhaustion throws `SystemOneConnectionError('System One request timed
   out')` after `maxAttempts` requests.
-- `totalTimeoutMs` passing during a hanging attempt, and during a backoff sleep, both throw
-  `SystemOneConnectionError` with the budget message and a `RetryExhaustedError` cause.
+- `totalTimeoutMs` passing during a hanging attempt throws `SystemOneConnectionError` with the
+  budget message and a `RetryExhaustedError` cause.
+- A backoff that would cross `totalTimeoutMs` (checked by `retry()` before it sleeps; there is
+  no deadline timer during the sleep) throws the same budget error without a further request.
 - Aborting the caller signal during an in-flight request, and during a backoff sleep, rejects
   with the abort reason and sends no further requests.
 
@@ -114,19 +128,28 @@ public packages).
 
 ## 3. Laya decision-flow suite (`integration-tests`)
 
-### Shared server
+### Shared server, scoped to the laya suites
 
 Move the `laya-serve` lifecycle out of `suites/laya.test.ts` into a vitest `globalSetup`,
-`support/laya-setup.ts`, registered in `vitest.config.ts`.
+`support/laya-setup.ts`. Register it on a dedicated vitest project so it only runs when a laya
+suite is selected. In `vitest.config.ts`, `test.projects` (vitest 5) defines two projects:
 
-- Declare the injected value with module augmentation in the setup file:
+- `laya`: `include: ['suites/laya*.test.ts']`, `globalSetup: ['support/laya-setup.ts']`.
+- `default`: every other suite, `exclude`-ing `suites/laya*.test.ts`, with no global setup.
+
+Both keep today's `environment: 'node'` and `testTimeout: 120_000`. `pnpm test` runs both
+projects; `pnpm exec vitest run suites/session.test.ts` never starts laya.
+
+The setup file:
+
+- Declares the injected value with module augmentation:
   `declare module 'vitest' { interface ProvidedContext { laya: { url: string; apiKey: string } | null } }`.
-- When `MOKEI_LAYA_SERVE_BIN` is unset, provide `laya: null` and start nothing.
-- Otherwise start the server on a free port with only the english checkpoint and the fixed API
-  key, wait for `/health` (failing fast with stderr if the process exits first, same limits as
-  today: 300 s health, 120 s warm-up timeout), run the warm-up prediction, then provide
-  `{ url, apiKey }` and return a teardown that sends `SIGTERM` and awaits exit.
-- If the health wait or warm-up throws, kill the child and await its exit before rethrowing,
+- When `MOKEI_LAYA_SERVE_BIN` is unset, provides `laya: null` and starts nothing.
+- Otherwise starts the server on a free port with only the english checkpoint and the fixed API
+  key, waits for `/health` (failing fast with stderr if the process exits first; same limits as
+  today: 300 s health, 120 s warm-up timeout), runs the warm-up prediction, then provides
+  `{ url, apiKey }` and returns a teardown that sends `SIGTERM` and awaits exit.
+- If the health wait or warm-up throws, kills the child and awaits its exit before rethrowing,
   so a failed setup never leaves `laya-serve` running.
 
 Both laya suites call `inject('laya')` and use `describe.skipIf(laya == null)`. `laya.test.ts`
@@ -134,59 +157,88 @@ otherwise keeps its tests unchanged. The checkpoint loads once for both suites.
 
 ### New suite: `suites/laya-decision-flow.test.ts`
 
-Skipped when `inject('laya')` is `null`. Builds a graph with `createDecisionFlowGraph`, a real
-`createSystemOneClient` (`defaultModel: 'english'`) whose `fetch` is wrapped to count requests,
-and a `createTicket` spy action returning `{ created: true }` (actions must return a JSON value).
+Skipped when `inject('laya')` is `null`. Each test builds a graph with
+`createDecisionFlowGraph`, a real `createSystemOneClient` (`defaultModel: 'english'`) whose
+`fetch` is wrapped to count requests, and a `createTicket` spy action returning
+`{ created: true }` (actions must return a JSON value).
+
+`integration-tests` adds `@sozai/schema` and `@sozai/flow-graph` (types) as catalog
+devDependencies for `createValidator` and `RunState`.
 
 The example is not a package export. Import it by relative path with the JSON import
 attribute: `import example from '../../packages/decision-flow/examples/support-triage.json' with
 { type: 'json' }`, enabling `resolveJsonModule` in `integration-tests/tsconfig.json` if needed.
 
-Results live on the run state at `runState.frames[0].results`, keyed by node ID; the paths
-below are relative to that.
+Results live on the run state at `runState.frames[0].results`, keyed by node ID.
 
-The example's routing depends on model answers (a jailbreak `guard`, a department question
-with an `other` choice, and a confidence fallback to `ask`), so the suite pins no route.
-Instead, a helper `expectedRoute(results)` recomputes the example's own rules from the recorded
-answers: `guard.jailbreak.noul > 0.8` gives `reject`; else `triage.department.confidence < 0.6`
-gives `ask`; else `choice === 'billing'` gives `billing`; else `technical`. Tests assert the run
-took that route. This checks the engine's branching against real answers without depending on
-what the checkpoint answers. The existing `laya.test.ts` routing test stays the checkpoint
-regression.
+#### Route helpers for the example
 
-Tests:
+Both helpers return one of `'rejected' | 'ask' | 'billing' | 'technical' | 'error'`.
 
-1. **Example validates.** The example passes `flowDefinitionSchema` and `graph.check`.
-2. **Billing and crash messages follow their recorded answers.** For each of the two messages
-   from `laya.test.ts`, run the example with `graph.run`. `guard.jailbreak.noul` is in [0, 1];
-   when `triage` ran, `triage.department` has a declared choice, `confidence` in [0, 1] and
-   probabilities in [0, 1]. The route taken (the terminal node, or `ask` when the run is
-   `suspended`) equals `expectedRoute(results)`. When the route reaches `billing` or
-   `technical`, `createTicket` ran exactly once.
-3. **A suspended run resumes.** For an ambiguous message, if the run suspends at `ask`, resume
-   with `{ type: 'value', value: 'billing' }` and assert the run ends at `billing` with
-   `results.ask === 'billing'`. If it does not suspend, assert its route matches
-   `expectedRoute` instead, so the test passes either way without skipping.
-4. **Streaming revisions and recovery.** Stream `graph.start` and assert strictly increasing
-   `revision`s. Then run again, stop the iterator (`return()`) after the first yielded state
-   whose `inFlight?.node === 'triage'`, and call `graph.recover` with that state. Assert the
-   recovered run replays `triage` with the same `inFlight.invocationID`, ends with status
-   `ended`, and `createTicket` ran at most once across both runs. Route equality with an
-   uninterrupted run is not asserted: a replayed `triage` makes a fresh prediction. (Replay
-   determinism is covered by decision-flow's unit tests with a fixed backend.)
-5. **Score and noul branching.** An inline flow with one `score` and one `noul` question
+`observedRoute(runState, createTicket)` reads what the run did:
+
+- `status === 'error'`: `'error'`.
+- `status === 'suspended'`: `runState.pending.node` (the example only suspends at `ask`).
+- `status === 'ended'` and `outcome === 'rejected'`: `'rejected'`.
+- `status === 'ended'` and `outcome === 'routed'`: the `team` argument of the single
+  `createTicket` call (`billing` or `technical`). Both action nodes advance to `done`, so the
+  final node cannot tell them apart.
+
+`expectedRoute(results)` recomputes the example's rules, in its case order, from the recorded
+results:
+
+1. No `guard` result (guard failed; it has no `onError`): `'error'`.
+2. `guard.jailbreak.noul > 0.8`: `'rejected'`.
+3. `triage.error` is set (triage exhausted its retries or failed non-retryably; `onError` is
+   `technical`): `'technical'`.
+4. `triage.department.confidence < 0.6`: `'ask'`.
+5. `triage.department.choice === 'billing'`: `'billing'`.
+6. Otherwise: `'technical'`.
+
+#### Tests
+
+1. **Example validates.** The example passes `flowDefinitionSchema` (via `createValidator`) and
+   `graph.check`.
+2. **Example routes follow the recorded answers.** For each of the billing and crash messages
+   from `laya.test.ts`, run the example with `graph.run`. When present, `guard.jailbreak.noul`
+   is in [0, 1] and `triage.department` has a declared choice, `confidence` in [0, 1] and
+   probabilities in [0, 1]. `observedRoute` equals `expectedRoute`.
+3. **Example checkpoint regression.** For the billing message the run routes to `billing`; for
+   the crash message, to `technical`. These are the only pinned assertions. Before committing
+   them, the implementer runs the suite against `laya-serve` three times; a pin that does not
+   hold in all three runs is dropped and the drop recorded in the plan's completion notes,
+   leaving test 2 as that message's coverage.
+4. **Decide then suspend then resume.** Inline flow: a `decide` node with one `choice` question
+   whose only case can never match a valid answer (`confidence` `greaterThan` 1), so it always
+   takes its `default`, an `input` node `ask` (`schema: { enum: ['billing', 'technical'] }`,
+   `next` a branch on `results.ask`), then two `end` nodes with outcomes `billing` and
+   `technical`. The run suspends with `pending.node === 'ask'` after exactly one prediction
+   request and a well-formed decide result; resuming with `{ type: 'value', value: 'billing' }`
+   ends with outcome `billing` and no further prediction request.
+5. **Recover from an in-flight checkpoint.** Inline flow: one `decide` node (no guard, no
+   fallback) whose cases route to a `record` action, then `end`. Stream `graph.start` with
+   `next()` and keep the first yielded state whose `inFlight?.node` is the decide node; stop
+   calling `next()` on that run (it is abandoned, not closed; `FlowRun` has no `return()`).
+   The engine yields that checkpoint before the decide node executes, so the request counter
+   is still 0. Then call `graph.recover` with the saved state on a fresh graph and drain it.
+   Assert: the recovered run ends; its revisions are all greater than the checkpoint's;
+   exactly one prediction request was made; the decide result is well formed; `record` ran
+   once. This checks that a persisted checkpoint resumes against a real backend; replay of a
+   request interrupted mid-flight is covered by decision-flow's unit tests.
+6. **Score and noul branching.** Inline flow with one `score` and one `noul` question that
    branches on thresholds; the test asserts well-formed answers and that the branch taken is
    the one the recorded answers select.
-6. **Wrong API key takes `onError`.** The example's `guard` has no `onError`, so this test uses
-   an inline flow: one `decide` node with `retry: { maxAttempts: 3 }` and `onError` pointing at
-   a fallback node. With a bad key, the run ends at the fallback; `results.<decide>.error` is
-   `{ type: 'SystemOneAuthError', reason: 'non_retryable', attempts: 1 }` with no message field;
-   the counting `fetch` saw exactly one request.
+7. **Wrong API key takes `onError`.** Inline flow: one `decide` node with
+   `retry: { maxAttempts: 3 }` and `onError` pointing at a fallback `end` node. With a bad key,
+   the run ends at the fallback; `results.<decide>.error` is
+   `{ type: 'SystemOneAuthError', reason: 'non_retryable', attempts: 1 }` with no message
+   field; the counting `fetch` saw exactly one request.
 
 ### README
 
-In `integration-tests/README.md`, the `laya` requirements row lists both laya suites, and
-`built-entries` joins the "nothing beyond a build" row.
+In `integration-tests/README.md`, the `laya` requirements row lists both laya suites, the
+`built-entries` suite joins the "nothing beyond a build" row, and a line notes that the laya
+suites run in their own vitest project so other targeted runs never start `laya-serve`.
 
 ## Verification
 
