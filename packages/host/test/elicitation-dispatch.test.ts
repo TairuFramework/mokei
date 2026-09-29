@@ -48,20 +48,55 @@ describe('ContextHost elicitation dispatch', () => {
     const result = { action: 'accept' as const }
     const original = request()
     const replacement = new AbortController().signal
+    let receivedKey: string | undefined
+    let receivedParams: HostElicitRequest['params'] | undefined
     let receivedSignal: AbortSignal | undefined
+    let useReplacementSignal = true
     const host = new TestContextHost({
-      elicit: ({ signal }) => {
+      elicit: ({ key, params: requestParams, signal }) => {
+        receivedKey = key
+        receivedParams = requestParams
         receivedSignal = signal
         return result
       },
     })
     const handler = host.createHandler('tools')
-    host.handleElicitation((_current, fallback) => fallback({ signal: replacement }))
+    host.handleElicitation((_current, fallback) =>
+      useReplacementSignal ? fallback({ signal: replacement }) : fallback(),
+    )
 
     await expect(handler?.({ params: original.params, signal: original.signal })).resolves.toBe(
       result,
     )
+    expect(receivedKey).toBe(original.key)
+    expect(receivedParams).toBe(original.params)
     expect(receivedSignal).toBe(replacement)
+
+    useReplacementSignal = false
+    await expect(handler?.({ params: original.params, signal: original.signal })).resolves.toBe(
+      result,
+    )
+    expect(receivedSignal).toBe(original.signal)
+    await host.dispose()
+  })
+
+  test('fallback rejects when the base handler throws synchronously', async () => {
+    const error = new Error('Base handler failed')
+    const result = { action: 'decline' as const }
+    const host = new TestContextHost({
+      elicit: () => {
+        throw error
+      },
+    })
+    const handler = host.createHandler('tools')
+    host.handleElicitation((_current, fallback) =>
+      fallback().catch((caught) => {
+        expect(caught).toBe(error)
+        return result
+      }),
+    )
+
+    await expect(handler?.({ params, signal: request().signal })).resolves.toBe(result)
     await host.dispose()
   })
 

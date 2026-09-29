@@ -311,11 +311,11 @@ export class ContextHost extends Disposer {
     }
   }
 
-  #dispatchElicitation(request: HostElicitRequest): Promise<ElicitResult> {
+  async #dispatchElicitation(request: HostElicitRequest): Promise<ElicitResult> {
     if (typeof this.#elicit === 'function') {
-      return Promise.resolve(this.#elicit(request))
+      return this.#elicit(request)
     }
-    return Promise.resolve({ action: 'decline' })
+    return { action: 'decline' }
   }
 
   /**
