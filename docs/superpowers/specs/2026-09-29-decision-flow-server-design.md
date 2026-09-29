@@ -33,11 +33,21 @@ This replaces the earlier backlog idea of `check_flow` / `run_flow` tools inside
   `@mokei/decision-flow`, `@mokei/context-server`, `@mokei/context-protocol`,
   `@mokei/context-client` (types), `@mokei/host` (types), `@mokei/session` (types),
   `@sozai/flow-graph`, `@mokei/system-one-client` (types).
-- `@mokei/session`: a `ToolApprovalFn` may return `{ approved: true, meta }`; `AgentSession`
-  sends that `meta` as the `_meta` of that one tool call (see Approval). Returning a boolean
-  keeps today's behaviour.
+- `@mokei/session`: a `ToolApprovalFn` may return `{ approved: true, meta }`, and that `meta`
+  reaches the tool call as `_meta` through this chain:
+  1. `#streamToolApproval` returns `{ approved, reason, meta? }`;
+  2. the loop keeps `meta` with the tool call across the yielded approval events (a consumer
+     that resumes after `tool-call-approved` still gets it) and passes it to
+     `#executeToolCall`;
+  3. `ExecuteToolCallParams` gains `_meta?: Record<string, JSONValue>`, and
+     `Session.executeToolCall` forwards it to `ContextHost.callNamespacedTool`.
+  Returning a boolean keeps today's behaviour. The `'auto'` / `'never'` / `'ask'` strings carry
+  no meta.
 - `@mokei/decision-flow`: `decideKind` and `createDecisionFlowGraph` accept
-  `client: Predictor`, where `Predictor = Pick<SystemOneClient, 'predict'>`. Type widening only;
+  `client: Predictor`, where `Predictor = { predict(params: PredictParams & { call?: { runID,
+  invocationID, attempt } }): Promise<PredictResult> }` and `PredictParams` is
+  `SystemOneClient['predict']`'s parameter. `decideKind` passes `call` from its execute
+  context; `SystemOneClient` satisfies the type and ignores the field. Type widening only;
   existing callers keep compiling.
 - `mcp-servers/system-one`: the `predict` tool gains an `outputSchema` for the mapped
   `PredictResult` and returns it as `structuredContent`; the text content is unchanged.
@@ -53,7 +63,7 @@ type ToolCaller = {
   callTool(params: {
     id: string
     arguments: Record<string, JSONValue>
-    idempotencyKey: string
+    meta: Record<string, JSONValue>
     signal: AbortSignal
   }): Promise<ToolCallOutcome>
   waitTask(params: { id: string; taskId: string; signal: AbortSignal }): Promise<CallToolResult>
@@ -76,10 +86,12 @@ type ToolCallOutcome = { result: CallToolResult } | { task: { taskId: string } }
 - Depth guard for callers outside a session: the server reads
   `_meta['io.mokei/flow-depth']` from the handler request's `meta`. Absent means 0; a value
   that is not a nonnegative integer is an `isError` result `Invalid flow depth`, and no task.
-  A run at depth 4 or more is refused the same way. The run stores its depth in `resumeData`,
-  and the caller sends depth + 1 on every sibling call.
-- The operation key is sent as `_meta['io.mokei/idempotency-key']` (see Delivery semantics).
-  `callNamespacedTool` passes `_meta` to remote and local tools alike, so both can read it.
+  A run at depth 4 or more is refused the same way. The run stores its depth in `resumeData`.
+- Per-run call metadata: the `tool` kind and the MCP predictor are built for each run (see
+  below) with that run's `depth`, and build every sibling call's `meta`:
+  `{ 'io.mokei/flow-depth': depth + 1, 'io.mokei/idempotency-key': <operation key>,
+  'io.mokei/attempt': attempt }` (see Delivery semantics). The caller sends `meta` as `_meta`;
+  `callNamespacedTool` passes it to remote and local tools alike.
 - `callTool` asks the sibling for a task handle (`task: 'handle'`) when the sibling's client
   supports the tasks extension, and returns `{ task }` when the sibling answers with one;
   otherwise it returns `{ result }`.
@@ -103,8 +115,10 @@ type ToolNode = {
 - `tool` is a static string. Tool IDs computed at run time are out of scope for v1 (see
   Follow-on); with them goes per-call approval.
 - Exactly one of `next`, or `cases` with `default`; the kind's `check` reports anything else.
-- Check time (the kind's `check` and `resultSchema`, which see the definition only; the
-  catalogue is closed over when the kind is built for a check or run):
+- `toolKind({ caller, catalogue, depth })` is built for each check and each run (a check uses
+  depth 0); the kind's hooks see only the definition and the execute context, so the
+  catalogue and depth are closed over.
+- Check time (the kind's `check` and `resultSchema`):
   - `tool` not in the catalogue: `unknown_tool`, with the available IDs as the hint.
   - `args` given as constant `{ value }` are validated against the tool's `inputSchema`.
     References are not type-checked against the argument schema; the checker only proves that
@@ -150,8 +164,12 @@ type ToolNode = {
 
 ### MCP-backed predictor
 
-`createMCPPredictor(caller, { tool = 'system-one:predict' })` returns a `Predictor` that calls
-that tool through `caller.callTool` and resolves the outcome to a final `CallToolResult`:
+`createMCPPredictor(caller, { tool = 'system-one:predict' })` returns a factory
+`(run: { depth: number }) => Predictor`; the server calls it for each run. The server's
+`predictor` option takes a `Predictor` (used as is for every run, for example a
+`SystemOneClient`) or such a factory. The per-run predictor calls the tool through
+`caller.callTool`, with `meta` built from `depth` and the `call` field `decideKind` passes, and
+resolves the outcome to a final `CallToolResult`:
 
 1. `{ task }`: waits with `caller.waitTask`; the predictor's `signal` cancels the sibling task
    through `caller.cancelTask`. A failed or cancelled sibling task is a `SystemOneError`.
@@ -162,7 +180,7 @@ that tool through `caller.callTool` and resolves the outcome to a final `CallToo
    `structuredContent` (an older system-one server) or failing validation is a
    `SystemOneResponseError`.
 
-The operation key for a predictor call is `<runID>:<invocationID>:predict`. It is the
+The operation key for a predictor call is `<runID>:<invocationID>:predict`, from `call`. It is the
 default `decide` backend; the application may pass a real `SystemOneClient` (HTTP, laya)
 instead.
 
@@ -278,7 +296,7 @@ One approval per run, asked inside the agent's normal tool-call gate, where the 
   task is created.
 - The approval grant is consumed before the task is created.
 - The task's `resumeData` is
-  `{ v: 1, flow: { definition } | { id, digest }, approved: Array<string>, depth, runState, siblings, inputKey? }`.
+  `{ v: 1, flow: { definition } | { id, digest }, approved: Array<string>, depth, runState, siblings, inputSeq? }`.
   Inline flows are stored whole; registered flows by `id` and `digest`. `siblings` lists the
   sibling task handles the run has issued and not yet seen settle.
 
@@ -295,7 +313,7 @@ One approval per run, asked inside the agent's normal tool-call gate, where the 
 
 | Pending | Driver |
 |---|---|
-| `input` node (`reason: 'suspend'`) | Mints an input key `<runID>:<invocationID>:input:<uuid>` and checkpoints it in `resumeData.inputKey`, then `requestInput` with one `elicitation/create` form request (below), passing a `signal` that aborts at the node's deadline. `accept`: resume `{ type: 'value', value }`. `decline` or `cancel`: abort the run, clean up siblings, then `handle.cancel()`; the task ends `cancelled` (if a settlement or client cancel won the race, that outcome stands). Deadline: the manager withdraws the request (task back to `working`), then resume `{ type: 'timeout' }`. |
+| `input` node (`reason: 'suspend'`) | `requestInput` under the input key `<runID>:<invocationID>:input:<inputSeq>` (`resumeData.inputSeq`, absent means 0), derived from the checkpointed state so no extra checkpoint precedes the request, with one `elicitation/create` form request (below), passing a `signal` that aborts at the node's deadline. `accept`: resume `{ type: 'value', value }`. `decline` or `cancel`: abort the run, clean up siblings, then `handle.cancel()`; the task ends `cancelled` (if a settlement or client cancel won the race, that outcome stands). Deadline: the manager withdraws the request (task back to `working`), then resume `{ type: 'timeout' }`. |
 | `tool` node waiting on a sibling task | `caller.waitTask`, then resume as described under the `tool` node kind. |
 | retry (`reason: 'retry'`, `resumeAt`) | Timer until `resumeAt`, then `resume({ type: 'retry' })`. |
 
@@ -308,9 +326,11 @@ properties are primitive (string, number, integer, boolean, or string enum).
   `{ type: 'object', properties: { value: schema }, required: ['value'] }` and unwrapped.
 - Anything else (absent schema, nested objects, arrays) is a check issue,
   `input_schema_not_elicitable`, with a hint to flatten the schema.
-- The resolved `prompt` becomes `message`. A prompt that resolves to a non-string at run time
-  (a reference) fails the node with `input_prompt_not_string`, not retryable, before any
-  request is issued.
+- The resolved `prompt` becomes `message`. The built-in `input` kind suspends before the driver
+  sees the prompt, and a suspension resumes only with `value` or `timeout`, so a prompt that
+  resolves to a non-string at run time (a reference) cannot be a node failure. The driver
+  aborts the run without issuing a request, cleans up siblings, and completes the task with
+  `isError: true` and `structuredContent: { error: { type: 'input_prompt_not_string', node } }`.
 
 ### End
 
@@ -335,6 +355,10 @@ best-effort: a cancel failure is logged and does not change the run's outcome.
 
 The server's `recover(record, resume)` callback:
 
+0. When the stored `RunState` is `ended`, `error` or `aborted` (the crash came after the final
+   checkpoint, before settlement), resumes a worker that settles from the stored state as End
+   describes. The outcome was durably committed, so no digest or catalogue check applies and
+   the graph does not advance.
 1. For a registered flow, compares the stored `digest` with the registered flow's before
    building anything. A mismatch resumes a worker that cancels listed siblings and throws
    `RPCError({ code: -32603, message: 'Flow definition changed' })`.
@@ -342,16 +366,15 @@ The server's `recover(record, resume)` callback:
    resumes a worker that cancels listed siblings and throws
    `RPCError({ code: -32603, message: 'Flow no longer valid', data: { formatted } })`.
 3. Otherwise resumes a worker that continues the run, by the stored `RunState` status:
-   - `ended`, `error`, `aborted` (the crash came after the final checkpoint, before
-     settlement): settles from the stored state as End describes, without advancing the
-     graph;
    - `running`: `graph.recover`;
    - `suspended`: re-enters the wait for its pending reason:
-     - input: `requestInput` again with the stored `inputKey` and the same request. It attaches
+     - input: `requestInput` again with the derived key and the same request. It attaches
        when the request is outstanding and issues it when the crash came before it was
        persisted. `TaskInputKeyReusedError` (the answer arrived but the crash came before the
-       next checkpoint) mints a new key, checkpoints it and asks again; the user is asked
-       twice, which is within at-least-once. A deadline already past resumes
+       next checkpoint, or an earlier recovery already moved on) increments `inputSeq`,
+       checkpoints it and asks again with the new key; that key may already be outstanding
+       from a recovery that crashed before its checkpoint, and then attaches. The user may be
+       asked twice, which is within at-least-once. A deadline already past resumes
        `{ type: 'timeout' }` without asking;
      - sibling task: `waitTask` using `pending.data.taskId`;
      - retry: its timer.
@@ -378,7 +401,7 @@ it matters when the application passes a persistent `TaskStore`.
 | Registered flow changed at recovery | task failed `Flow definition changed` |
 | Catalogue drift at recovery | task failed `Flow no longer valid` |
 | No elicitation for `input` node | wiring throws before registering (registered flows); check warning, then task cancelled with `TaskInputUnavailableError` on the client (inline) |
-| `input` prompt resolves to a non-string | node failure `input_prompt_not_string` |
+| `input` prompt resolves to a non-string | run aborted, task completed `isError: true` with `input_prompt_not_string` |
 | Predictor tool error, task failure or bad output | `SystemOneError` / `SystemOneResponseError`, a `decide` node failure |
 
 ## Testing
@@ -406,10 +429,15 @@ it matters when the application passes a persistent `TaskStore`.
     status (crash after the final checkpoint); catalogue drift; digest change;
   - input recovery: crash right after the suspension checkpoint (request issued on recovery),
     after `requestInput` persisted (attached), after the answer but before the next checkpoint
-    (new key), and with the deadline already past;
+    (`inputSeq` incremented), a second crash after issuing the incremented key but before its
+    checkpoint (attached), and with the deadline already past;
+  - terminal checkpoint followed by a registered-flow change or catalogue drift: settles from
+    the stored outcome;
+  - concurrent runs at different depths send the right `io.mokei/flow-depth`; predictor calls
+    carry `<runID>:<invocationID>:predict`;
   - depth: absent, invalid and at the limit;
   - `input` node without schema or with a non-string prompt: check issues; a reference prompt
-    resolving to a non-string: node failure;
+    resolving to a non-string: task completed `isError: true`, no request issued;
   - failure windows with a controlled store and deferred tools, stopping at each boundary:
     after the sibling acted but before the checkpoint (one repeat, same operation key), a retry
     after a timeout (same operation key, next attempt number), after
@@ -424,7 +452,8 @@ it matters when the application passes a persistent `TaskStore`.
   leaves no context registered; a failure after registration rolls back; recovery before
   registration.
 - Session (`@mokei/session`): an approval function returning `{ approved: true, meta }` sends
-  that `meta` as `_meta` on that call only.
+  that `meta` as `_meta` on that call only, through `stream()` (including a consumer resuming
+  after `tool-call-approved`) and `run()`; `Session.executeToolCall` forwards `_meta`.
 - Integration (`integration-tests`): an `AgentSession` with a stub sibling server and
   `mcp-servers/system-one` on its stub backend runs the support-triage example end to end,
   including an `input` answered through `onElicitation`; an optional laya-gated variant.
