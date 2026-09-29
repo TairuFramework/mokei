@@ -10,7 +10,7 @@
  * @module context-client
  */
 
-export type { ClientEvents } from './client.js'
+export type { ClientEvents, ClientTasks } from './client.js'
 export { ContextClient, DEFAULT_LIST_MAX_PAGES } from './client.js'
 export {
   CapabilityNotDeclaredError,

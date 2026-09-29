@@ -65,6 +65,27 @@ describe('runInputRequiredFlow', () => {
     )
   })
 
+  test('ends an input round when the retry creates a task', async () => {
+    const task = {
+      resultType: 'task',
+      taskId: 'task-1',
+      status: 'working',
+      createdAt: '2026-09-29T12:00:00.000Z',
+      lastUpdatedAt: '2026-09-29T12:00:00.000Z',
+      ttlMs: 1000,
+    }
+    const retry = vi.fn(async () => task)
+    const result = await runInputRequiredFlow({
+      method: 'tools/call',
+      first: { inputRequests: { ask: ASK } },
+      maxRounds: 10,
+      dispatch: async () => ({ roots: [] }),
+      retry,
+    })
+    expect(result).toEqual(task)
+    expect(retry).toHaveBeenCalledTimes(1)
+  })
+
   test('paces a requestState-only leg and counts it against the cap', async () => {
     const sleep = vi.fn(async () => {})
     const retry = vi.fn(async () => ({ content: [], resultType: 'complete' }))

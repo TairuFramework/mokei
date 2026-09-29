@@ -8,6 +8,8 @@ import type {
   ClientResult,
   CompleteRequest,
   CompleteResult,
+  CreateTaskResult,
+  DetailedTask,
   DiscoverResult,
   GetPromptRequest,
   GetPromptResult,
@@ -41,6 +43,8 @@ import type {
   ServerRequest,
   SetLevelRequest,
   SubscriptionFilter,
+  TasksAcknowledgement,
+  TasksGetResult,
 } from '@mokei/context-protocol'
 import {
   INPUT_REQUEST_CAPABILITIES,
@@ -54,6 +58,7 @@ import {
   PROTOCOL_VERSIONS,
   PROTOCOLS,
   serverMessage,
+  TASKS_EXTENSION,
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
 import {
@@ -274,6 +279,23 @@ export type ClientEvents = {
   toolsListChanged: undefined
 }
 
+export type ClientTasks = {
+  get(taskID: string): Promise<TasksGetResult>
+  update(
+    taskID: string,
+    inputResponses: Record<string, InputResponse>,
+  ): Promise<TasksAcknowledgement>
+  cancel(taskID: string): Promise<TasksAcknowledgement>
+  wait(
+    taskID: string,
+    options?: {
+      signal?: AbortSignal
+      onStatus?: (status: DetailedTask) => void
+      toolName?: string
+    },
+  ): Promise<CallToolResult>
+}
+
 type HandleNotification = ProgressNotification | ServerNotification
 
 type ClientTypes = {
@@ -352,6 +374,17 @@ export class ContextClient<
   #setupBuffer: Array<ServerMessage> = []
   #toolOutputSchemas = new Map<string, Validator<unknown>>()
   #taskWaiter: TaskWaiter | null = null
+  #tasks: ClientTasks = {
+    get: (taskID) => this.request('tasks/get', { taskId: taskID }),
+    update: (taskID, inputResponses) =>
+      this.request('tasks/update', { taskId: taskID, inputResponses }),
+    cancel: (taskID) => this.request('tasks/cancel', { taskId: taskID }),
+    wait: (taskID, options) => this.waitForTask({ taskID, ...options }),
+  }
+
+  get tasks(): ClientTasks {
+    return this.#tasks
+  }
 
   constructor(params: ClientParams) {
     // Indirected through a method so the validator tracks the resolved revision rather than
@@ -571,7 +604,7 @@ export class ContextClient<
       base._meta = { ...(base._meta as Record<string, unknown> | undefined), ...trace }
     }
     const decorated = protocol.decorateRequest(base, {
-      capabilities: this.#capabilities,
+      capabilities: this.#capabilitiesFor(protocol),
       clientInfo: this.#clientInfo,
       logLevel: this.#logLevel,
     })
@@ -771,6 +804,14 @@ export class ContextClient<
     this.#serverCapabilitySnapshot = result.capabilities ?? {}
   }
 
+  #capabilitiesFor(protocol: ProtocolDefinition): ClientCapabilities {
+    if (protocol.version !== '2026-07-28') return this.#capabilities
+    return {
+      ...this.#capabilities,
+      extensions: { ...this.#capabilities.extensions, [TASKS_EXTENSION]: {} },
+    }
+  }
+
   /**
    * Resolve `'auto'` through `server/discover` per
    * `specification/2026-07-28/basic/transports/stdio#backward-compatibility`.
@@ -837,7 +878,7 @@ export class ContextClient<
     const { result } = await this.#setupReader.driveDiscover({
       protocol,
       clientInfo: this.#clientInfo,
-      capabilities: this.#capabilities,
+      capabilities: this.#capabilitiesFor(protocol),
       logLevel: this.#logLevel,
     })
     return result
@@ -1631,24 +1672,36 @@ export class ContextClient<
   }
 
   callTool(
-    params: WithRequestOptions<ToolParams<T>> & { allowInputRequired?: false },
+    params: WithRequestOptions<ToolParams<T>> & { task?: undefined; allowInputRequired?: false },
   ): Promise<CallToolResult>
   callTool(
-    params: WithRequestOptions<ToolParams<T>> & { allowInputRequired: true },
+    params: WithRequestOptions<ToolParams<T>> & { task?: undefined; allowInputRequired: true },
   ): Promise<CallToolResult | InputRequiredResult>
   callTool(
-    params: WithRequestOptions<ToolParams<T>> & { allowInputRequired: boolean },
+    params: WithRequestOptions<ToolParams<T>> & { task?: undefined; allowInputRequired: boolean },
   ): Promise<CallToolResult | InputRequiredResult>
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { task: 'handle'; allowInputRequired?: false },
+  ): Promise<CallToolResult | CreateTaskResult>
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { task: 'handle'; allowInputRequired: true },
+  ): Promise<CallToolResult | CreateTaskResult | InputRequiredResult>
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { task: 'handle'; allowInputRequired: boolean },
+  ): Promise<CallToolResult | CreateTaskResult | InputRequiredResult>
   async callTool(
-    params: WithRequestOptions<ToolParams<T>>,
-  ): Promise<CallToolResult | InputRequiredResult> {
-    const [wireParams, options] = splitRequestOptions(params)
+    params: WithRequestOptions<ToolParams<T>> & { task?: 'handle' },
+  ): Promise<CallToolResult | CreateTaskResult | InputRequiredResult> {
+    const { task, ...requestParams } = params
+    const [wireParams, options] = splitRequestOptions(requestParams)
     const result = await this.request(
       'tools/call',
       wireParams as CallToolRequest['params'],
       options,
     )
+    if (isInputRequiredResult(result)) return result
     if (isCreateTaskResult(result)) {
+      if (task === 'handle') return result
       return await this.waitForTask({
         taskID: result.taskId,
         signal: options?.signal,
