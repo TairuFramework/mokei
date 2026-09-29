@@ -40,16 +40,33 @@ test('sends a flat object schema as requestedSchema without wrapping', () => {
   expect(toElicitationSchema(schema)).toEqual({ requestedSchema: schema, wrapped: false })
 })
 
-test.each([
-  { type: 'string' },
-  { type: 'number' },
-  { type: 'integer' },
-  { type: 'boolean' },
-  { enum: ['yes', 'no'] },
-])('wraps a primitive or string enum schema as a value form: %j', (schema) => {
-  expect(toElicitationSchema(schema)).toEqual({
-    requestedSchema: { type: 'object', properties: { value: schema }, required: ['value'] },
+test.each([{ type: 'string' }, { type: 'number' }, { type: 'integer' }, { type: 'boolean' }])(
+  'wraps a primitive schema as a value form: %j',
+  (schema) => {
+    expect(toElicitationSchema(schema)).toEqual({
+      requestedSchema: { type: 'object', properties: { value: schema }, required: ['value'] },
+      wrapped: true,
+    })
+  },
+)
+
+test('adds the string type MCP elicitation requires to a bare string enum', () => {
+  expect(toElicitationSchema({ enum: ['yes', 'no'] })).toEqual({
+    requestedSchema: {
+      type: 'object',
+      properties: { value: { type: 'string', enum: ['yes', 'no'] } },
+      required: ['value'],
+    },
     wrapped: true,
+  })
+  expect(
+    toElicitationSchema({ type: 'object', properties: { answer: { enum: ['a', 'b'] } } }),
+  ).toEqual({
+    requestedSchema: {
+      type: 'object',
+      properties: { answer: { type: 'string', enum: ['a', 'b'] } },
+    },
+    wrapped: false,
   })
 })
 

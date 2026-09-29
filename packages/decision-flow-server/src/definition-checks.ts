@@ -42,13 +42,22 @@ function isPrimitiveSchema(schema: unknown): schema is JSONObject {
   )
 }
 
+// MCP form elicitation requires an explicit type; a bare string enum becomes a string schema.
+function toWirePrimitive(schema: JSONObject): JSONObject {
+  return schema.type === undefined ? { type: 'string', ...schema } : schema
+}
+
 /** Adapt an input node schema to the flat MCP form schema. */
 export function toElicitationSchema(
   schema: unknown,
 ): { requestedSchema: JSONObject; wrapped: boolean } | undefined {
   if (isPrimitiveSchema(schema)) {
     return {
-      requestedSchema: { type: 'object', properties: { value: schema }, required: ['value'] },
+      requestedSchema: {
+        type: 'object',
+        properties: { value: toWirePrimitive(schema) },
+        required: ['value'],
+      },
       wrapped: true,
     }
   }
@@ -72,7 +81,16 @@ export function toElicitationSchema(
   if (!Object.values(properties).every(isPrimitiveSchema)) {
     return undefined
   }
-  return { requestedSchema: schema as JSONObject, wrapped: false }
+  const wireProperties = Object.fromEntries(
+    Object.entries(properties).map(([name, property]) => [
+      name,
+      toWirePrimitive(property as JSONObject),
+    ]),
+  )
+  return {
+    requestedSchema: { ...(schema as JSONObject), properties: wireProperties },
+    wrapped: false,
+  }
 }
 
 /** Report input nodes that cannot be served through MCP form elicitation. */

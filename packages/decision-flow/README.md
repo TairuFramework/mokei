@@ -3,6 +3,12 @@
 `@mokei/decision-flow` adds a `decide` node to `@sozai/flow-graph`. The node calls System One,
 validates each answer, records safe answer metadata, and lets the flow select the next node.
 
+`createDecisionFlowGraph` accepts any `Predictor` with a `predict` method matching
+`SystemOneClient.predict`. It may receive optional call identity (`runID`, `invocationID`,
+`attempt`) for an MCP-backed predictor. A `SystemOneClient` remains a valid predictor and
+ignores that extra identity. For MCP task execution and sibling tool nodes, see
+[`@mokei/decision-flow-server`](../decision-flow-server/README.md).
+
 ## Create and check a graph
 
 Pass a `SystemOneClient` and any host actions to `createDecisionFlowGraph`. The factory accepts the

@@ -195,6 +195,7 @@ binding.
 | Chat and agent loop | `@mokei/session`, `@mokei/session-node` | Portable `Session` and `AgentSession`; Node stdio `NodeSession.addContext` |
 | Provider abstraction and adapters | `@mokei/model-provider`, `@mokei/{openai,anthropic,ollama,llama}-provider` | `ModelProvider`, each provider package's `src/index.ts` |
 | System One classification | `@mokei/system-one-client`, `@mokei/mcp-system-one` | `HTTPSystemOneBackend`, `createSystemOneTools` |
+| Decision flows as MCP tasks | `@mokei/decision-flow`, `@mokei/decision-flow-server` | `createDecisionFlowGraph`, `addDecisionFlow`, `createDecisionFlowServer` |
 | CLI | `mokei` | `packages/cli/src/program.ts` |
 | Monitor | `@mokei/host-monitor`, `monitor` | `packages/host-monitor/src/index.ts`, `monitor/src/main.tsx` |
 
@@ -220,6 +221,8 @@ packages/
 +-- http-server/          # serveHTTP, bearer/JWKS/DID gate, stateless + subscription exchanges
 +-- session/              # Portable high-level chat + MCP abstraction
 +-- session-node/         # Node stdio session entry
++-- decision-flow/       # System One decide nodes for flow-graph
++-- decision-flow-server/ # MCP task server and Session wiring for decision flows
 +-- model-provider/       # Provider interface definitions
 +-- openai-provider/      # OpenAI integration
 +-- anthropic-provider/   # Anthropic Claude integration

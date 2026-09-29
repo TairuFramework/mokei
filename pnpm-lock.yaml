@@ -412,6 +412,9 @@ importers:
       '@mokei/decision-flow':
         specifier: workspace:^
         version: link:../packages/decision-flow
+      '@mokei/decision-flow-server':
+        specifier: workspace:^
+        version: link:../packages/decision-flow-server
       '@mokei/host':
         specifier: workspace:^
         version: link:../packages/host
