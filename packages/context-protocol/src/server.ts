@@ -27,8 +27,10 @@ import {
   type CreateTaskResult,
   createTaskResult,
   type TaskNotification,
+  type TasksAcknowledgement,
   type TasksGetResult,
   taskNotification,
+  tasksAcknowledgement,
   tasksGetResult,
 } from './versions/2026-07-28.js'
 
@@ -83,6 +85,7 @@ export const serverResult = {
     callToolResult,
     createTaskResult,
     tasksGetResult,
+    tasksAcknowledgement,
     listToolsResult,
   ],
 } as const satisfies Schema
@@ -98,6 +101,7 @@ export type ServerResult =
   | FromSchema<typeof callToolResult>
   | CreateTaskResult
   | TasksGetResult
+  | TasksAcknowledgement
   | FromSchema<typeof listToolsResult>
 
 export const serverResponse = {
