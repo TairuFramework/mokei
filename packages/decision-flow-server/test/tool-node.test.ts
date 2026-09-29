@@ -5,6 +5,7 @@ import { createFlowGraph, type FlowDefinition, type RunState } from '@sozai/flow
 import { describe, expect, test } from 'vitest'
 
 import type { CatalogTool, ToolCaller } from '../src/tool-caller.js'
+import { type ToolErrorCode, ToolNodeError } from '../src/tool-errors.js'
 import { toolKind } from '../src/tool-node.js'
 
 const inputSchema = {
@@ -108,6 +109,49 @@ describe('toolKind check', () => {
     )
   })
 
+  test('accepts a field reference from a tool without outputSchema', () => {
+    const def = definition({ args: { count: { ref: ['results', 'first', 'count'] } } })
+    def.start = 'first'
+    def.nodes.first = { kind: 'tool', tool: tool.id, args: { count: { value: 1 } }, next: 'work' }
+    expect(issue(def).some((entry) => entry.code === 'invalid_result_path')).toBe(false)
+  })
+
+  test('validates mixed constant args with root definitions and rejects unknown keys', () => {
+    const withReferences: CatalogTool = {
+      id: tool.id,
+      inputSchema: {
+        type: 'object',
+        definitions: { count: { type: 'number' } },
+        properties: {
+          count: { $ref: '#/definitions/count' },
+          dynamic: { type: 'number' },
+        },
+        required: ['count', 'dynamic'],
+        additionalProperties: false,
+      },
+    }
+    const dynamic = { ref: ['input', 'dynamic'] }
+    const invalidValue = definition({
+      args: { count: { value: 'wrong' }, dynamic },
+    })
+    expect(() => issue(invalidValue, [withReferences])).not.toThrow()
+    expect(
+      issue(invalidValue, [withReferences]).some((entry) => entry.code === 'tool_invalid_args'),
+    ).toBe(true)
+
+    const unknownKey = definition({
+      args: { count: { value: 1 }, dynamic, unknown: { value: true } },
+    })
+    expect(
+      issue(unknownKey, [withReferences]).some((entry) => entry.code === 'tool_invalid_args'),
+    ).toBe(true)
+
+    const valid = definition({ args: { count: { value: 1 }, dynamic } })
+    expect(issue(valid, [withReferences]).some((entry) => entry.code === 'tool_invalid_args')).toBe(
+      false,
+    )
+  })
+
   test('rejects output schema top-level error property', () => {
     const reserved = {
       ...tool,
@@ -148,6 +192,23 @@ describe('toolKind check', () => {
 })
 
 describe('toolKind execute', () => {
+  test.each([
+    ['tool_error', false],
+    ['tool_call_failed', true],
+    ['tool_rejected', false],
+    ['tool_invalid_args', false],
+    ['tool_invalid_output', false],
+    ['tool_unavailable', false],
+    ['tool_not_approved', false],
+    ['tool_task_failed', false],
+    ['tool_task_cancelled', false],
+  ] satisfies Array<[ToolErrorCode, boolean]>)('classifies retry for %s', (code, retryable) => {
+    const kind = toolKind({ caller: fakeCaller(), catalogue: [tool], depth: 0 })
+    const error = new ToolNodeError(code, code, retryable)
+    expect(kind.describeError?.(error)).toMatchObject({ type: code })
+    expect(kind.retryable?.(error)).toBe(retryable)
+  })
+
   test('resolves and validates before approval and dispatch', async () => {
     const calls: Array<Record<string, unknown>> = []
     const caller = fakeCaller(async (params) => {

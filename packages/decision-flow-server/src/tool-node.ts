@@ -38,6 +38,7 @@ export type ToolResumeValue =
   | { ok: false; status: 'failed' | 'cancelled'; error?: JSONValue }
 
 const definitions = decideNodeSchema.definitions
+const unconstrainedResultSchema: Schema = { additionalProperties: {} }
 
 export const toolNodeSchema: Schema = {
   definitions,
@@ -142,6 +143,12 @@ export function toolKind(params: {
   const inputValidators = new Map(
     params.catalogue.map((entry) => [entry.id, validatorFor(entry.inputSchema)]),
   )
+  const mixedInputValidators = new Map(
+    params.catalogue.map((entry) => [
+      entry.id,
+      validatorFor({ ...entry.inputSchema, required: [] }),
+    ]),
+  )
   const outputValidators = new Map(
     params.catalogue
       .filter((entry) => entry.outputSchema !== undefined)
@@ -183,20 +190,17 @@ export function toolKind(params: {
             'Use values that match the tool input schema.',
           )
         }
-      } else if (entry.inputSchema.properties) {
-        for (const [key, value] of constantArgs) {
-          const propertySchema = entry.inputSchema.properties[key]
-          if (
-            propertySchema &&
-            validatorFor(propertySchema as Schema)((value as { value: JSONValue }).value).issues
-          ) {
-            report(
-              'tool_invalid_args',
-              ['args', key],
-              `Constant argument ${key} does not match the tool input schema.`,
-              'Use a value that matches this argument schema.',
-            )
-          }
+      } else {
+        const values = Object.fromEntries(
+          constantArgs.map(([key, value]) => [key, (value as { value: JSONValue }).value]),
+        )
+        if (mixedInputValidators.get(node.tool)?.(values).issues) {
+          report(
+            'tool_invalid_args',
+            ['args'],
+            'Constant arguments do not match the tool input schema.',
+            'Use values that match the tool input schema.',
+          )
         }
       }
     }
@@ -231,7 +235,7 @@ export function toolKind(params: {
       ...(node.default === undefined ? [] : [{ path: ['default'], id: node.default }]),
       ...(node.onError === undefined ? [] : [{ path: ['onError'], id: node.onError }]),
     ],
-    resultSchema: (node) => catalogued.get(node.tool)?.outputSchema ?? {},
+    resultSchema: (node) => catalogued.get(node.tool)?.outputSchema ?? unconstrainedResultSchema,
     retries: true,
     check,
     describeError: (error) => ({
