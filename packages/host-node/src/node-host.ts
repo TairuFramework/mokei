@@ -3,6 +3,7 @@ import {
   type ClientTransport,
   type ContextClient,
   type ContextTypes,
+  type ElicitHandler,
   type UnknownContextTypes,
   UnsupportedProtocolVersionError,
 } from '@mokei/context-client'
@@ -34,6 +35,7 @@ export type SpawnHostedContextParams = SpawnContextServerParams & {
    * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
    */
   protocolVersion?: ProtocolVersion | 'auto'
+  elicit?: ElicitHandler
 }
 
 export async function spawnHostedContext<T extends ContextTypes = UnknownContextTypes>(
@@ -46,6 +48,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
     maxMessageSize,
     killTimeout,
     protocolVersion,
+    elicit,
     ...spawnParams
   } = params
   // Validated before spawning: `ContextClient`'s constructor also rejects an unsupported pin,
@@ -87,6 +90,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
   return createHostedContext({
     transport: transport as ClientTransport,
     protocolVersion,
+    elicit,
     dispose: async () => {
       // Already exited -- nothing to reap.
       if (childProcess.exitCode != null || childProcess.signalCode != null) {
@@ -111,6 +115,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
 
 export type AddLocalContextParams = SpawnContextServerParams & {
   key: string
+  elicit?: false
   /** Override the default 8 MiB stdout framer memory cap. */
   maxBufferSize?: number
   /** Optional tighter per-message cap in bytes. */
@@ -129,7 +134,7 @@ export class NodeContextHost extends ContextHost {
   async addLocalContext<T extends ContextTypes = UnknownContextTypes>(
     params: AddLocalContextParams,
   ): Promise<ContextClient<T>> {
-    const { key, ...spawnParams } = params
+    const { key, elicit, ...spawnParams } = params
     if (this.hasContext({ key }) || this.#pendingKeys.has(key)) {
       throw new Error(`Context ${key} already exists`)
     }
@@ -151,6 +156,7 @@ export class NodeContextHost extends ContextHost {
     try {
       const context = await spawnHostedContext<T>({
         ...spawnParams,
+        elicit: this.createElicitHandler({ key, elicit }),
         onStreamError: (error) => {
           // A framing fault only occurs while the read loop is actively pulling
           // the child's stdout -- i.e. during a request the host drove (setup /
