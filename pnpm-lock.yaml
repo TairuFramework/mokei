@@ -956,6 +956,9 @@ importers:
       '@mokei/host':
         specifier: workspace:^
         version: link:../host
+      '@mokei/mcp-system-one':
+        specifier: workspace:^
+        version: link:../../mcp-servers/system-one
       '@mokei/session':
         specifier: workspace:^
         version: link:../session

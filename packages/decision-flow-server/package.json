@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@mokei/host": "workspace:^",
+    "@mokei/mcp-system-one": "workspace:^",
     "@mokei/session": "workspace:^",
     "@types/node": "catalog:"
   }
