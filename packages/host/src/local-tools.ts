@@ -1,5 +1,16 @@
-import type { CallToolResult, InputSchema, Tool, ToolAnnotations } from '@mokei/context-protocol'
-import type { GenericToolDefinition, ServerClient, ToolDefinitions } from '@mokei/context-server'
+import {
+  type CallToolResult,
+  type InputSchema,
+  isCreateTaskResult,
+  type Tool,
+  type ToolAnnotations,
+} from '@mokei/context-protocol'
+import type {
+  GenericToolDefinition,
+  JSONValue,
+  ServerClient,
+  ToolDefinitions,
+} from '@mokei/context-server'
 import {
   defaultMintRequestState,
   finalizeToolResult,
@@ -7,18 +18,21 @@ import {
 } from '@mokei/context-server'
 
 /**
- * Request handed to a local tool's execute function: the validated `input` -- the thing the
- * tool's `inputSchema` describes -- plus the signal that aborts if the caller cancels.
+ * Request handed to a local tool's execute function: validated `input`, caller `meta`, and the
+ * signal that aborts if the caller cancels.
  *
  * Mirrors the `HandlerRequest` a `createTool` handler receives, so a tool is written the
  * same way whether it runs locally or behind an MCP server. The wire calls this field
  * `arguments`; handlers see `input`, which (unlike `arguments`) can be destructured -- the
  * latter is a reserved binding name in strict mode.
  */
-export type LocalToolRequest<TArgs = Record<string, unknown>> = {
+export type LocalToolContext<TArgs = Record<string, unknown>> = {
   input: TArgs
+  meta: Record<string, JSONValue>
   signal?: AbortSignal
 }
+
+export type LocalToolRequest<TArgs = Record<string, unknown>> = LocalToolContext<TArgs>
 
 /**
  * Execute function for a local tool.
@@ -181,6 +195,7 @@ export function toolToLocalTool(params: ToolToLocalToolParams): LocalToolDefinit
       const result = await definition.handler({
         input: request.input,
         client: stubClient,
+        meta: request.meta,
         // Forward the caller's cancellation signal; fall back to a never-aborting
         // one when invoked outside callLocalTool's cancellation plumbing.
         signal: request.signal ?? new AbortController().signal,
@@ -196,6 +211,9 @@ export function toolToLocalTool(params: ToolToLocalToolParams): LocalToolDefinit
           'This tool suspended on input (MRTR, SEP-2322), which is not available for local tools. ' +
             'Local tools run outside of an MCP server context and cannot round-trip a client request.',
         )
+      }
+      if (isCreateTaskResult(result)) {
+        throw new Error('This tool created a task, which is not available for local tools.')
       }
       return finalizeToolResult(definition, result)
     },

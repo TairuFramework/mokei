@@ -1,5 +1,6 @@
 import {
   type CallToolResult,
+  type CreateTaskResult,
   INVALID_PARAMS,
   inferSchemaDraft,
   type InputSchema as ToolInputSchema,
@@ -58,6 +59,7 @@ export function createPrompt<
       return handler({
         input: request.input as Arguments,
         client: request.client,
+        meta: request.meta,
         signal: request.signal,
         inputResponses: request.inputResponses,
         requestState: request.requestState,
@@ -78,6 +80,7 @@ export function createPrompt<
       return handler({
         input: validated.value,
         client: request.client,
+        meta: request.meta,
         signal: request.signal,
         inputResponses: request.inputResponses,
         requestState: request.requestState,
@@ -124,7 +127,7 @@ export function createTool<
   })
   const wrappedHandler = async (
     request: HandlerRequest<{ input: Record<string, unknown> }>,
-  ): Promise<CallToolResult | InputRequiredResult> => {
+  ): Promise<CallToolResult | InputRequiredResult | CreateTaskResult> => {
     const validated = validateInput(request.input)
     if (validated.issues != null) {
       throw new ToolInputValidationError({
@@ -134,13 +137,15 @@ export function createTool<
     const result = await handler({
       input: validated.value,
       client: request.client,
+      meta: request.meta,
       progress: request.progress,
       signal: request.signal,
+      ...(request.task == null ? {} : { task: request.task }),
       inputResponses: request.inputResponses,
       requestState: request.requestState,
       mintRequestState: request.mintRequestState,
     })
-    return result as CallToolResult | InputRequiredResult
+    return result as CallToolResult | InputRequiredResult | CreateTaskResult
   }
 
   const definition: GenericToolDefinition = {

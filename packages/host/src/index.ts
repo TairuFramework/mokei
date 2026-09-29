@@ -43,6 +43,7 @@ export {
   isLocalToolID,
   LOCAL_TOOL_NAMESPACE,
   type LocalTool,
+  type LocalToolContext,
   type LocalToolDefinition,
   type LocalToolExecute,
   toolsToLocalTools,

@@ -13,6 +13,7 @@ import {
   ENVELOPE_VIOLATION,
   INTERNAL_ERROR,
   INVALID_PARAMS,
+  isCreateTaskResult,
   LATEST_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
@@ -324,6 +325,7 @@ describe('ContextServer', () => {
     expect(complete).toHaveBeenCalledWith({
       client: expect.objectContaining(expectedClient),
       params,
+      meta: {},
       signal: expect.any(AbortSignal),
       inputResponses: undefined,
       requestState: undefined,
@@ -1938,6 +1940,7 @@ describe('factory parameters object', () => {
     const result = await definition.handler({
       input: { value: 1 },
       client: {} as never,
+      meta: {},
       signal: new AbortController().signal,
       mintRequestState: () => '',
     })
@@ -1955,6 +1958,7 @@ describe('factory parameters object', () => {
       definition.handler({
         input: { value: 'not a number' },
         client: {} as never,
+        meta: {},
         signal: new AbortController().signal,
         mintRequestState: () => '',
       }),
@@ -1978,6 +1982,7 @@ describe('factory parameters object', () => {
     const result = await definition.handler({
       input: { name: 'World' },
       client: {} as never,
+      meta: {},
       signal: new AbortController().signal,
       mintRequestState: () => '',
     })
@@ -1996,6 +2001,7 @@ describe('factory parameters object', () => {
     const result = await definition.handler({
       input: { anything: true },
       client: {} as never,
+      meta: {},
       signal: new AbortController().signal,
       mintRequestState: () => '',
     })
@@ -2017,11 +2023,15 @@ describe('tool outputSchema', () => {
     const result = await definition.handler({
       input: args,
       client: {} as never,
+      meta: {},
       signal: new AbortController().signal,
       mintRequestState: () => '',
     })
     if (isInputRequiredResult(result)) {
       return result
+    }
+    if (isCreateTaskResult(result)) {
+      throw new Error('A direct handler call cannot create a task')
     }
     const settled = settleToolOutcome(definition, { result })
     if ('error' in settled) {
@@ -2198,6 +2208,7 @@ describe('tool input validation outcome', () => {
     const request = {
       input: { count: 'wrong' },
       client: {} as never,
+      meta: {},
       signal: new AbortController().signal,
       mintRequestState: () => '',
     }
