@@ -21,7 +21,7 @@ type TestTypes = {
   ToolCall: TestToolCall
 }
 
-function createProvider(): ModelProvider<TestTypes> {
+function createProvider(toolName = 'questions:ask'): ModelProvider<TestTypes> {
   return {
     listModels: vi.fn(async () => [{ id: 'test-model', raw: { id: 'test-model' } }]),
     embed: vi.fn(async () => ({ embeddings: [] })),
@@ -34,7 +34,7 @@ function createProvider(): ModelProvider<TestTypes> {
               toolCalls: [
                 {
                   id: 'ask-1',
-                  name: 'questions:ask',
+                  name: toolName,
                   arguments: '{}',
                   raw: { id: 'ask-1', name: 'ask' },
                 },
@@ -139,6 +139,74 @@ function relevant(events: Array<AgentEvent>): Array<AgentEvent> {
 }
 
 describe('AgentSession elicitation stream', () => {
+  test('local tools do not attribute elicitation from the local context', async () => {
+    const harness = createHarness()
+    harness.provider = createProvider('local:run')
+    harness.session.contextHost.addDirectContext({
+      key: 'local',
+      protocolVersion: '2025-11-25',
+      config: {
+        name: 'local',
+        version: '1.0.0',
+        protocolVersions: ['2025-11-25'],
+        tools: {
+          ask: {
+            description: 'Ask',
+            inputSchema: { type: 'object' as const, properties: {} },
+            handler: async ({
+              client,
+            }: {
+              client: { elicit: (params: ElicitRequest['params']) => Promise<ElicitResult> }
+            }) => {
+              await client.elicit({
+                message: 'local context question',
+                requestedSchema: { type: 'object', properties: {} },
+              })
+              return { content: [] }
+            },
+          },
+        },
+      },
+    })
+    harness.session.contextHost.addLocalTool({
+      name: 'run',
+      inputSchema: { type: 'object', properties: {} },
+      execute: async () => {
+        await harness.session.contextHost.callTool({ key: 'local', name: 'ask', arguments: {} })
+        return { content: [] }
+      },
+    })
+    const observed: Array<AgentEvent> = []
+    const agent = new AgentSession({
+      session: harness.session,
+      provider: harness.provider,
+      model: 'test-model',
+      onElicitation: () => ({ action: 'decline' }),
+      onEvent: (event) => observed.push(event),
+    })
+    const streamed: Array<AgentEvent> = []
+    for await (const event of agent.stream({ prompt: 'run' })) streamed.push(event)
+
+    const elicitationEvents = observed.filter((event) => event.type.startsWith('elicitation-'))
+    expect(elicitationEvents.map((event) => event.type)).toEqual([
+      'elicitation-request',
+      'elicitation-response',
+    ])
+    expect(elicitationEvents.every((event) => !('toolCall' in event))).toBe(true)
+    expect(streamed.some((event) => event.type.startsWith('elicitation-'))).toBe(false)
+    expect(relevant(streamed).map((event) => event.type)).toEqual([
+      'tool-call-start',
+      'tool-call-complete',
+    ])
+    expect(
+      relevant(streamed).every(
+        (event) => 'toolCall' in event && event.toolCall?.name === 'local:run',
+      ),
+    ).toBe(true)
+    await agent.dispose()
+    await harness.session.dispose()
+  })
+
   test('yields elicitation-request before its callback resolves', async () => {
     const answer = defer<ElicitResult>()
     const harness = createHarness()

@@ -1,5 +1,10 @@
 import type { CallToolResult, ElicitResult } from '@mokei/context-protocol'
-import { type ElicitFallback, getContextToolInfo, type HostElicitRequest } from '@mokei/host'
+import {
+  type ElicitFallback,
+  getContextToolInfo,
+  type HostElicitRequest,
+  isLocalToolID,
+} from '@mokei/host'
 import type {
   ClientToolMessage,
   FunctionToolCall,
@@ -713,8 +718,10 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     // within a tool-call-start handler takes effect on the live controller.
     const callController = new AbortController()
     this.#activeToolController = callController
-    const [key] = getContextToolInfo(toolCall.name)
-    run.activeTool = { key, toolCall }
+    if (!isLocalToolID(toolCall.name)) {
+      const [key] = getContextToolInfo(toolCall.name)
+      run.activeTool = { key, toolCall }
+    }
     // Forward a turn-level abort onto the per-call controller. The listener is
     // removed in `finally` so listeners don't accumulate on the turn signal
     // across many sequential tool calls.
