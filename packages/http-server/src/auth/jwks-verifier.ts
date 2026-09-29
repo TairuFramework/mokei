@@ -379,6 +379,7 @@ export function createJWKSVerifier(config: JWKSVerifierConfig): OAuthTokenVerifi
       }
 
       return {
+        issuer: config.issuer,
         subject: payload.sub,
         scopes: scopesFromClaim(payload),
         expiresAt: payload.exp,

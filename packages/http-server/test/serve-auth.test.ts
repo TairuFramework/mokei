@@ -1,3 +1,4 @@
+import { META_CLIENT_CAPABILITIES, META_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
 import { afterEach, describe, expect, test } from 'vitest'
 
@@ -42,6 +43,47 @@ async function getPort(server: ReturnType<typeof serveHTTP>['server']): Promise<
 }
 
 describe('serveHTTP auth', () => {
+  test('passes verified auth to the stateless server', async () => {
+    const received: Array<unknown> = []
+    server = serveHTTP({
+      createServer: ({ transport, auth }) => {
+        received.push(auth)
+        return new ContextServer({ ...SERVER_CONFIG, protocolVersions: ['2026-07-28'], transport })
+      },
+      port: 0,
+      hostname: '127.0.0.1',
+      auth: {
+        verifier,
+        resource: 'http://127.0.0.1/mcp',
+        resourceMetadataURL: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
+        authorizationServers: ['https://as.example'],
+      },
+    })
+    const port = await getPort(server.server)
+    const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer good',
+        'Content-Type': 'application/json',
+        'X-User-Id': 'attacker',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'server/discover',
+        params: {
+          _meta: {
+            [META_PROTOCOL_VERSION]: '2026-07-28',
+            [META_CLIENT_CAPABILITIES]: {},
+          },
+        },
+      }),
+    })
+    expect(response.status).toBe(200)
+    expect(received).toEqual([{ subject: 'u', scopes: ['read'] }])
+    await response.body?.cancel()
+  })
+
   let server: ReturnType<typeof serveHTTP> | null = null
   afterEach(async () => {
     await server?.dispose()

@@ -43,9 +43,9 @@ export function serveHTTP(params: ServeHTTPParams): ServeHTTPResult {
       })
     })
     app.all(path, async (ctx) => {
-      const { response } = await gate(ctx.req.raw)
+      const { response, authInfo } = await gate(ctx.req.raw)
       if (response) return response
-      return await handler.handleRequest(ctx.req.raw)
+      return await handler.handleRequest(ctx.req.raw, { auth: authInfo })
     })
   } else {
     app.all(path, async (ctx) => {

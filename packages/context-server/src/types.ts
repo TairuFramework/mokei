@@ -33,7 +33,7 @@ import type { Schema } from '@sozai/schema'
 
 import type { InputRequiredResult } from './mrtr.js'
 import type { TaskContext } from './task-manager.js'
-import type { JSONValue } from './task-store.js'
+import type { JSONValue, TaskOwner } from './task-store.js'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
@@ -108,6 +108,7 @@ export type ProgressEmitter = (params: {
 export type HandlerRequest<C extends Record<string, unknown> = Record<string, never>> = C & {
   client: ServerClient
   meta: Record<string, JSONValue>
+  auth?: TaskOwner
   progress?: ProgressEmitter
   signal: AbortSignal
   task?: TaskContext

@@ -7,9 +7,10 @@ import {
 } from '@mokei/context-protocol'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
+import { createTool } from '../src/definitions.js'
 import { ContextServer } from '../src/server.js'
 import { createTaskManager, type TaskManager } from '../src/task-manager.js'
-import { createMemoryTaskStore } from '../src/task-store.js'
+import { createMemoryTaskStore, type TaskOwner } from '../src/task-store.js'
 import type { GenericToolDefinition } from '../src/types.js'
 
 const declared = {
@@ -42,13 +43,15 @@ afterEach(async () => {
   for (const dispose of cleanup.splice(0).reverse()) await dispose()
 })
 
-function setup(tasks?: TaskManager) {
+function setup(tasks?: TaskManager, auth?: TaskOwner, taskTool: GenericToolDefinition = tool) {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const server = new ContextServer({
     name: 'task-methods-test',
     version: '1.0.0',
     protocolVersions: ['2026-07-28'],
     tasks,
+    auth,
+    tools: { echo: taskTool },
     transport: transports.server,
   })
   cleanup.push(() => transports.dispose())
@@ -76,6 +79,85 @@ async function createTask(
 }
 
 describe('task methods', () => {
+  test('stores the verified request identity when creating a task', async () => {
+    const store = createMemoryTaskStore()
+    const manager = createTaskManager({ store })
+    const auth = { issuer: 'https://issuer.example', subject: 'alice', scopes: ['read'] }
+    let received: TaskOwner | undefined
+    const request = setup(
+      manager,
+      auth,
+      createTool({
+        description: 'Task test tool',
+        inputSchema: { type: 'object' },
+        handler: ({ task, auth: verified }) => {
+          received = verified
+          if (task == null) throw new Error('Expected task context')
+          return task.run(() => result)
+        },
+      }),
+    )
+    const response = await request('tools/call', {
+      name: 'echo',
+      arguments: {},
+      _meta: declared,
+    })
+    expect(response.result?.resultType).toBe('task')
+    const record = await store.get(response.result?.taskId as string)
+    expect(record?.owner).toEqual(auth)
+    expect(received).toEqual(auth)
+  })
+
+  test.each(['tasks/get', 'tasks/update', 'tasks/cancel'])(
+    '%s hides tasks from a different identity or reduced scopes',
+    async (method) => {
+      const manager = createTaskManager()
+      const owner = {
+        issuer: 'https://issuer.example',
+        subject: 'alice',
+        scopes: ['read', 'write'],
+      }
+      const created = await manager.create({
+        toolName: 'echo',
+        tool,
+        clientCapabilities: {},
+        owner,
+        work: () => result,
+      })
+      for (const auth of [
+        { ...owner, subject: 'bob' },
+        { ...owner, issuer: 'https://other.example' },
+        { ...owner, scopes: ['read'] },
+        undefined,
+      ]) {
+        const request = setup(manager, auth)
+        const response = await request(method, {
+          taskId: created.taskId,
+          ...(method === 'tasks/update' && { inputResponses: {} }),
+          _meta: declared,
+        })
+        expect(response.error).toMatchObject({ code: -32602, message: 'Task not found' })
+      }
+      const request = setup(manager, { ...owner, scopes: [...owner.scopes, 'extra'] })
+      const response = await request(method, {
+        taskId: created.taskId,
+        ...(method === 'tasks/update' && { inputResponses: {} }),
+        _meta: declared,
+      })
+      expect(response.error).toBeUndefined()
+    },
+  )
+
+  test('an authenticated caller cannot access an ownerless task', async () => {
+    const manager = createTaskManager()
+    const created = await createTask(manager, () => result)
+    const owner = { issuer: 'https://issuer.example', subject: 'alice', scopes: ['read'] }
+    const response = await setup(manager, owner)('tasks/get', {
+      taskId: created.taskId,
+      _meta: declared,
+    })
+    expect(response.error).toMatchObject({ code: -32602, message: 'Task not found' })
+  })
   test.each(['tasks/get', 'tasks/update', 'tasks/cancel'])(
     '%s is unavailable without a manager',
     async (method) => {

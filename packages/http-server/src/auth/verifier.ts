@@ -1,6 +1,12 @@
 import { fromB64U } from '@sozai/codec'
 
-export type AuthInfo = { subject: string; scopes: Array<string>; expiresAt?: number; raw?: unknown }
+export type AuthInfo = {
+  issuer?: string
+  subject: string
+  scopes: Array<string>
+  expiresAt?: number
+  raw?: unknown
+}
 
 /**
  * OAuth bearer verifier. Throw {@link TokenVerificationError} only for known

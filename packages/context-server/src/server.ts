@@ -85,7 +85,7 @@ import {
   SubscriptionWriter,
 } from './subscriptions.js'
 import type { TaskContext, TaskManager } from './task-manager.js'
-import type { JSONValue } from './task-store.js'
+import type { JSONValue, TaskOwner } from './task-store.js'
 import { settleToolOutcome } from './tool-outcome.js'
 import { withRequestMeta } from './trace.js'
 import type {
@@ -162,6 +162,7 @@ export type ServerConfig = {
 
 export type ServerParams = ServerConfig & {
   transport: ServerTransport
+  auth?: TaskOwner
   /**
    * Owns resource subscriptions (SEP-1391 `subscriptions/listen`): creates and owns a
    * {@link SubscriptionHub} bound to this server's own `events`, disposing it on teardown.
@@ -245,6 +246,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #tools: ToolDefinitions = {}
   #toolsList: Array<Tool> = []
   #tasks?: TaskManager
+  #auth?: TaskOwner
   #connectionID: string
   #subscriptionHub?: SubscriptionHub
   // True when this server created the hub (owner) and must dispose it; false when it borrows one.
@@ -267,6 +269,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     this.#cache = params.cache
     this.#tasks = params.tasks
+    this.#auth =
+      params.auth == null ? undefined : { ...params.auth, scopes: [...params.auth.scopes] }
     if (params.tasks != null) {
       this.#capabilities.extensions = { [TASKS_EXTENSION]: {} }
     }
@@ -664,6 +668,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           params: request.params,
           signal,
           meta,
+          auth: this.#auth,
           ...mrtr,
         })
       case 'initialize': {
@@ -697,12 +702,26 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         if (this.#resources == null) {
           break
         }
-        return this.#resources.list({ client, params: request.params, signal, meta, ...mrtr })
+        return this.#resources.list({
+          client,
+          params: request.params,
+          signal,
+          meta,
+          auth: this.#auth,
+          ...mrtr,
+        })
       case 'resources/read':
         if (this.#resources == null) {
           break
         }
-        return this.#resources.read({ client, params: request.params, signal, meta, ...mrtr })
+        return this.#resources.read({
+          client,
+          params: request.params,
+          signal,
+          meta,
+          auth: this.#auth,
+          ...mrtr,
+        })
       case 'resources/templates/list':
         if (this.#resources == null) {
           break
@@ -712,6 +731,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           params: request.params,
           signal,
           meta,
+          auth: this.#auth,
           ...mrtr,
         })
       case 'server/discover':
@@ -727,16 +747,19 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       case 'tasks/get':
         if (this.#tasks == null) break
         requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
-        return { ...(await this.#tasks.get(request.params.taskId)), resultType: 'complete' }
+        return {
+          ...(await this.#tasks.get(request.params.taskId, this.#auth)),
+          resultType: 'complete',
+        }
       case 'tasks/update':
         if (this.#tasks == null) break
         requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
-        await this.#tasks.update(request.params.taskId, request.params.inputResponses)
+        await this.#tasks.update(request.params.taskId, request.params.inputResponses, this.#auth)
         return { resultType: 'complete' }
       case 'tasks/cancel':
         if (this.#tasks == null) break
         requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
-        await this.#tasks.cancel(request.params.taskId)
+        await this.#tasks.cancel(request.params.taskId, this.#auth)
         return { resultType: 'complete' }
       case 'tools/call':
         return await this.#callTool(request, protocol, client, signal, mrtr, meta)
@@ -772,6 +795,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
                 toolName: name,
                 tool,
                 clientCapabilities: clientCapabilities ?? {},
+                owner: this.#auth,
                 requestMeta: meta,
                 work,
                 ...options,
@@ -793,6 +817,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         input: request.params.arguments ?? {},
         client,
         meta,
+        auth: this.#auth,
         progress,
         signal,
         ...(task == null ? {} : { task }),
@@ -832,7 +857,14 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (handler == null) {
       throw new RPCError({ code: INVALID_PARAMS, message: `Prompt ${name} not found` })
     }
-    return await handler({ input: request.params.arguments, client, signal, meta, ...mrtr })
+    return await handler({
+      input: request.params.arguments,
+      client,
+      signal,
+      meta,
+      auth: this.#auth,
+      ...mrtr,
+    })
   }
 
   /**

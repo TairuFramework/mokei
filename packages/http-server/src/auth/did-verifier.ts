@@ -40,6 +40,7 @@ export function createDIDVerifier(config: DIDVerifierConfig = {}): OAuthTokenVer
         throw new TokenVerificationError({ code: 'invalid_token', message: 'token missing exp' })
       }
       return {
+        issuer: String(payload.iss),
         subject: String(payload.iss),
         scopes: scopesFromClaim(payload),
         expiresAt: typeof payload.exp === 'number' ? payload.exp : undefined,

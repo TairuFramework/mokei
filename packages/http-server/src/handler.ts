@@ -7,10 +7,16 @@ import {
   type ProtocolVersion,
   type ServerMessage,
 } from '@mokei/context-protocol'
-import type { ContextServer, ServerTransport, SubscriptionHub } from '@mokei/context-server'
+import type {
+  ContextServer,
+  ServerTransport,
+  SubscriptionHub,
+  TaskManager,
+} from '@mokei/context-server'
 import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { createRuntime, type Runtime } from '@sozai/runtime'
 
+import type { AuthInfo } from './auth/verifier.js'
 import { appendReplay, eventsAfter, type Session, SessionManager } from './session.js'
 import { createSSEStream, SSE_RESPONSE_HEADERS, SSE_STREAM_HIGH_WATER_MARK } from './sse-stream.js'
 import { type SSEEvent, SSEWriter } from './sse-writer.js'
@@ -32,6 +38,8 @@ export type HTTPHandlerParams = {
     transport: ServerTransport
     subscriptionHub?: SubscriptionHub
     connectionID?: string
+    tasks?: TaskManager
+    auth?: AuthInfo
   }) => ContextServer
   /**
    * A durable `SubscriptionHub` the caller owns (e.g. a long-lived `ContextServer` with
@@ -50,6 +58,7 @@ export type HTTPHandlerParams = {
    * `serveHTTP(...).dispose()` / `handler.dispose()`.
    */
   subscriptionHub?: SubscriptionHub
+  tasks?: TaskManager
   /**
    * RN-safe runtime primitives (`@sozai/runtime`). Resolved once via `createRuntime` and threaded
    * to `runSubscriptionExchange`, which mints each listen POST's `connectionID` from its
@@ -116,7 +125,7 @@ export const DEFAULT_MAX_STATELESS_EXCHANGES = 100
 export const DEFAULT_MAX_SUBSCRIPTION_EXCHANGES = 100
 
 export type HTTPHandler = {
-  handleRequest: (request: Request) => Promise<Response>
+  handleRequest: (request: Request, options?: { auth?: AuthInfo }) => Promise<Response>
   /**
    * Tears the handler down. Async because it disposes session servers and awaits every in-flight
    * `subscriptions/listen` server's bounded disposal (its held-response flush), so an awaiting
@@ -227,6 +236,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     maxStatelessExchanges = DEFAULT_MAX_STATELESS_EXCHANGES,
     maxSubscriptionExchanges = DEFAULT_MAX_SUBSCRIPTION_EXCHANGES,
     subscriptionHub,
+    tasks,
     runtime: runtimeOverrides,
     logger = getMokeiLogger('http-server'),
   } = params
@@ -366,7 +376,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     return { controller, transport }
   }
 
-  async function handlePOST(request: Request): Promise<Response> {
+  async function handlePOST(request: Request, auth?: AuthInfo): Promise<Response> {
     if (!validateOrigin(request)) {
       return new Response('Forbidden', { status: 403 })
     }
@@ -409,7 +419,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
           { status: 400 },
         )
       }
-      return await handleStateless(request, body)
+      return await handleStateless(request, body, auth)
     }
 
     const sessionID = request.headers.get('Mcp-Session-Id')
@@ -476,6 +486,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   async function handleStateless(
     request: Request,
     body: Record<string, unknown>,
+    auth?: AuthInfo,
   ): Promise<Response> {
     const rawID = body.id
     const requestID: string | number | null =
@@ -495,7 +506,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
           headers: { 'Retry-After': '1' },
         })
       }
-      return await handleListen(request, body, requestID)
+      return await handleListen(request, body, requestID, auth)
     }
 
     // Refused before dispatch, mirroring the session path's `maxSessions` gate --
@@ -525,7 +536,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       // The stateless per-POST server borrows the durable hub (if any) so its advertised
       // capabilities -- `resources.subscribe` in particular -- match the listen path's. It never
       // registers a subscription itself, so no `connectionID` is threaded here.
-      createServer: (transport) => createServer({ transport, subscriptionHub }),
+      createServer: (transport) => createServer({ transport, subscriptionHub, tasks, auth }),
       replayBufferSize,
       timeoutMs: statelessTimeoutMs,
       // The client hanging up is a stateless exchange's only cancellation channel.
@@ -551,13 +562,20 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     request: Request,
     body: Record<string, unknown>,
     requestID: string | number | null,
+    auth?: AuthInfo,
   ): Promise<Response> {
     const hub = subscriptionHub as SubscriptionHub
     return await runSubscriptionExchange({
       message: body as unknown as ClientMessage,
       requestID,
       createServer: ({ transport, subscriptionHub: borrowed, connectionID }) => {
-        const server = createServer({ transport, subscriptionHub: borrowed, connectionID })
+        const server = createServer({
+          transport,
+          subscriptionHub: borrowed,
+          connectionID,
+          tasks,
+          auth,
+        })
         listenServers.add(server)
         void server.disposed.finally(() => {
           listenServers.delete(server)
@@ -761,12 +779,12 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     return new Response(null, { status: 204 })
   }
 
-  async function handleRequest(request: Request): Promise<Response> {
+  async function handleRequest(request: Request, options?: { auth?: AuthInfo }): Promise<Response> {
     const method = request.method.toUpperCase()
 
     switch (method) {
       case 'POST':
-        return await handlePOST(request)
+        return await handlePOST(request, options?.auth)
       case 'GET':
         return await handleGET(request)
       case 'DELETE':

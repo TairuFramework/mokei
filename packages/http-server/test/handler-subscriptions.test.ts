@@ -2,6 +2,7 @@ import { METHOD_NOT_FOUND } from '@mokei/context-protocol'
 import {
   ContextServer,
   createSubscriptionHub,
+  createTaskManager,
   type ServerConfig,
   type ServerEvents,
   type SubscriptionHub,
@@ -165,6 +166,34 @@ async function readSSEData(response: Response): Promise<Array<Record<string, unk
 }
 
 describe('subscriptions/listen routing', () => {
+  test('threads auth and the caller-owned task manager to the listen server', async () => {
+    const { hub } = createStubDurableHub()
+    const tasks = createTaskManager()
+    const received: Array<unknown> = []
+    const handler = createHandler({
+      subscriptionHub: hub,
+      tasks,
+      createServer: ({ transport, subscriptionHub, connectionID, auth, tasks: borrowed }) => {
+        received.push({ auth, tasks: borrowed })
+        return new ContextServer({
+          ...SERVER_CONFIG,
+          transport,
+          subscriptionHub,
+          connectionID,
+          tasks: borrowed,
+          auth,
+        })
+      },
+    })
+    const auth = { issuer: 'https://issuer.example', subject: 'alice', scopes: ['read'] }
+    const response = await handler.handleRequest(listenRequest(1), { auth })
+    expect(response.status).toBe(200)
+    expect(received).toEqual([{ auth, tasks }])
+    await handler.dispose()
+    await hub.dispose()
+    await tasks.dispose()
+  })
+
   test('routes to runSubscriptionExchange when a hub is configured (held-open ack stream)', async () => {
     const { hub } = createStubDurableHub()
     const handler = createHandler({ subscriptionHub: hub })
