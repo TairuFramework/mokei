@@ -9,6 +9,8 @@ import {
 import { describe, expect, inject, test } from 'vitest'
 
 const laya = inject('laya')
+// Only read inside the skipIf-guarded describe, where laya is non-null.
+const { url, apiKey } = laya ?? { url: '', apiKey: '' }
 
 const questions = {
   department: {
@@ -49,8 +51,8 @@ test('laya setup supplies a gate', () => {
 describe.skipIf(laya == null)('HTTPSystemOneBackend against laya-serve', () => {
   test('predict answers choice, score and noul questions', async () => {
     const client = createSystemOneClient({
-      url: laya!.url,
-      apiKey: laya!.apiKey,
+      url: url,
+      apiKey: apiKey,
       defaultModel: 'english',
     })
     const result = await client.predict({ state: BILLING, questions })
@@ -62,8 +64,8 @@ describe.skipIf(laya == null)('HTTPSystemOneBackend against laya-serve', () => {
   // messages, so a checkpoint regression shows up here.
   test('predict routes billing and technical messages', async () => {
     const client = createSystemOneClient({
-      url: laya!.url,
-      apiKey: laya!.apiKey,
+      url: url,
+      apiKey: apiKey,
       defaultModel: 'english',
     })
     const billing = await client.predict({ state: BILLING, questions })
@@ -75,8 +77,8 @@ describe.skipIf(laya == null)('HTTPSystemOneBackend against laya-serve', () => {
 
   test('predict accepts structured instructions and criteria', async () => {
     const client = createSystemOneClient({
-      url: laya!.url,
-      apiKey: laya!.apiKey,
+      url: url,
+      apiKey: apiKey,
       defaultModel: 'english',
     })
     const result = await client.predict({
@@ -112,7 +114,7 @@ describe.skipIf(laya == null)('HTTPSystemOneBackend against laya-serve', () => {
 
   test('a wrong API key rejects with SystemOneAuthError', async () => {
     const client = createSystemOneClient({
-      url: laya!.url,
+      url: url,
       apiKey: 'wrong',
       defaultModel: 'english',
     })
@@ -121,7 +123,7 @@ describe.skipIf(laya == null)('HTTPSystemOneBackend against laya-serve', () => {
 
   test('a 422 rejects with SystemOneInputError carrying the server reason', async () => {
     // The backend skips client validation, so the server sees the missing instructions.
-    const backend = new HTTPSystemOneBackend({ url: laya!.url, apiKey: laya!.apiKey })
+    const backend = new HTTPSystemOneBackend({ url: url, apiKey: apiKey })
     const request = backend.predict({
       state: BILLING,
       questions: { department: { type: 'noul' } } as unknown as QuestionMap,
