@@ -250,12 +250,16 @@ describe('session elicitation across protocol revisions', () => {
         params: ELICITATION_PARAMS,
         signal: expect.any(AbortSignal),
       })
-      const call = sent.find((item) => item.method === 'tools/call')
-      expect(
-        (call?.params as { _meta?: Record<string, unknown> })?._meta?.[
-          'io.modelcontextprotocol/clientCapabilities'
-        ],
-      ).toMatchObject({ elicitation: {} })
+      const calls = sent.filter((item) => item.method === 'tools/call')
+      // The initial call and the MRTR retry each declare the capability.
+      expect(calls).toHaveLength(2)
+      for (const call of calls) {
+        expect(
+          (call.params as { _meta?: Record<string, unknown> })?._meta?.[
+            'io.modelcontextprotocol/clientCapabilities'
+          ],
+        ).toMatchObject({ elicitation: {} })
+      }
     } finally {
       await session.dispose()
       await server.dispose()
