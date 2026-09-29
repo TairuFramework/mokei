@@ -19,7 +19,8 @@ This work is independent of the MCP Tasks extension branch and can land first.
 - `@mokei/host-node`: stdio contexts, `NodeContextHost`, `ProxyHost` and `spawnHostedContext` get
   the same handler.
 - `@mokei/session` and `@mokei/session-node`: `Session` and `NodeSession` forward the option to
-  the host they create; `AgentSession` surfaces requests as streamed agent events and resolves
+  the host they create; `Session.addHTTPContext` and `NodeSession.addContext` forward the
+  per-context opt-out; `AgentSession` surfaces requests as streamed agent events and resolves
   them through an application callback.
 
 Out of scope:
@@ -50,8 +51,13 @@ Out of scope:
   3. else decline: `{ action: 'decline' }`. With `elicit: true`, this is the permanent
      behaviour whenever no override is installed, including before one is installed and after
      it is removed.
-- `host.handleElicitation(handler: HostElicitHandler): () => void` installs the override and
+- `host.elicitationEnabled: boolean` reports whether the host was built with `elicit`.
+- `host.handleElicitation(handler: HostElicitOverride): () => void` installs the override and
   returns a function that removes it.
+  - `HostElicitOverride = (request: HostElicitRequest, fallback: () => Promise<ElicitResult>) =>
+    ElicitResult | Promise<ElicitResult>`. `fallback` runs steps 2 and 3 of the dispatch order
+    (base handler, else decline) with the same request, so an override can observe a request
+    and still defer.
   - One override at a time. Installing while one is present throws: routing requests between
     two owners by context key alone would send some requests to the wrong owner.
   - The remove function is idempotent, and removes only the override it installed.
@@ -91,23 +97,33 @@ The host passes each client a key-bound dispatcher (`ElicitHandler` that adds `k
 - `NodeSession` builds its `NodeContextHost` with the caller's `elicit` and does not pass
   `elicit` to `super`, so the default path works. It throws only when the caller supplied
   both `contextHost` and `elicit`.
+- Per-context opt-out through the session entry points: `Session.addHTTPContext` forwards
+  `elicit` from its params when it rebuilds the host params, and `NodeSession`'s
+  `AddContextParams` gains `elicit?: false`, forwarded to `addLocalContext`.
 
 ### AgentSession
 
 - `AgentParams` gains `onElicitation?: ElicitationFn`, where
   `ElicitationFn = (request: ElicitationRequest) => ElicitResult | Promise<ElicitResult>` and
   `ElicitationRequest = HostElicitRequest & { toolCall?: FunctionToolCall }`.
-- Ownership: on construction, `AgentSession` installs the host override with
-  `session.contextHost.handleElicitation(...)`, and removes it on dispose. One agent owns a
-  host's elicitation at a time: a second `AgentSession` on the same host throws at
-  construction, and so does an agent on a host without elicitation enabled.
-- Attribution: `toolCall` is best-effort. It is set when the agent has exactly one tool call in
-  flight whose context key matches the request's `key` (tool calls within a run execute one at a
-  time). Otherwise it is omitted. A request caused by an unrelated call on the same context
-  during a run can be attributed to the in-flight tool call; the spec accepts this, because the
-  request carries no originating-call identity.
-- Without `onElicitation`, the override still emits events, then defers to the host's base
-  handler, or declines when there is none.
+- Ownership:
+  - On a host with `elicitationEnabled`, `AgentSession` installs the host override with
+    `session.contextHost.handleElicitation(...)` at construction and removes it on dispose.
+  - On a host without elicitation, the agent installs nothing and constructs as today, so
+    existing `AgentSession` users are unaffected. Passing `onElicitation` there throws, because
+    no server can reach the callback.
+  - One agent owns a host's elicitation at a time: a second `AgentSession` on the same
+    elicitation-enabled host throws at construction.
+- Attribution: a request is attributed when the agent has exactly one active run and that run
+  has exactly one tool call in flight whose context key matches the request's `key` (tool calls
+  within a run execute one at a time). The request then gets `toolCall`, goes to that run's
+  event channel, and is linked to that tool call's signal (see Abort). Otherwise it is
+  unattributed: no `toolCall`, events go to `onEvent` only, and only the request's own signal
+  and agent disposal abort it. An unrelated call on the same context during a run can be
+  misattributed to the in-flight tool call; the request carries no originating-call identity,
+  so the spec accepts this.
+- Without `onElicitation`, the override emits events, then calls `fallback()` (base handler,
+  else decline).
 - New agent events, added to the `AgentEvent` union. Each carries `requestID` (unique per
   request within the agent) so a UI can pair them:
   - `elicitation-request`: `{ type, requestID, key, params, toolCall?, timestamp }`, emitted
@@ -117,8 +133,10 @@ The host passes each client a key-bound dispatcher (`ElicitHandler` that adds `k
     not included, so answers do not leak into event logs by default.
   - `elicitation-error`: `{ type, requestID, key, error, toolCall?, timestamp }`, emitted when
     the callback rejects or its request is aborted, before the error propagates to the client.
-  Every `elicitation-request` is followed by exactly one `elicitation-response` or
-  `elicitation-error`.
+- Pairing: `onEvent` receives exactly one `elicitation-response` or `elicitation-error` after
+  every `elicitation-request`, including after the stream is abandoned. A `stream()` consumer
+  receives the same pairing while its stream stays open; events emitted after the stream closed
+  reach `onEvent` only.
 
 ### Agent loop event channel
 
@@ -127,40 +145,49 @@ event and returns them together. An elicitation arriving during the call must re
 before its callback is awaited, or an interactive UI waiting on the event hangs (the failure
 `tool-call-pending` solved).
 
-- Each run has one ordered event channel. The override pushes elicitation events into the
-  channel of the run that owns the in-flight tool call; with no run active (for example during
-  `setup`), events go to `onEvent` only.
-- Before starting a tool call, the loop subscribes to the channel. While the call is in flight,
-  it yields channel events as they arrive.
+- Each run has one ordered event channel. Attributed elicitation events go into the channel of
+  the owning run and to `onEvent`; unattributed ones, and any emitted with no run active (for
+  example during `setup`), go to `onEvent` only.
+- `tool-call-start` goes through the channel when the call starts, so the stream yields it
+  before any elicitation event of that call. While the call is in flight, the loop yields
+  channel events as they arrive.
 - When the call settles, the loop drains every event already in the channel, then yields the
-  tool's buffered events. Elicitation events therefore always precede that tool call's terminal
-  event, including a response queued in the same microtask as settlement.
+  tool's terminal event. The stream order is therefore `tool-call-start`, the call's
+  elicitation events, then the terminal event, matching the order `onEvent` sees, including a
+  response queued in the same microtask as settlement.
 - The channel is closed and its waiters woken in the run's `finally`.
 
 ### Abort and abandoned streams
 
 - Each run owns an internal `AbortController`, linked to the caller's run signal. The
-  generator's `finally` aborts it, so a consumer's `return()` or `break` counts as cancelling the
-  run.
-- The per-tool-call signal is linked to the run controller, so aborting the run aborts the tool
-  call, and through the client, the pending MCP request and its elicitation `signal`.
+  generator's `finally` aborts it first, then closes the channel, so a consumer's `return()` or
+  `break` counts as cancelling the run.
+- The per-tool-call signal is linked to the run controller. Aborting the run aborts the tool
+  call, and through the client, the pending MCP request.
+- The callback's `signal` for an attributed request combines the request's own signal and the
+  per-tool-call signal. This matters on `2025-11-25`: `elicitation/create` is a separate reverse
+  RPC, and a server that does not forward its tool signal to `elicit()` never cancels it when the
+  tool call is cancelled. The agent aborts the callback anyway; the reverse RPC then fails with
+  the abort error.
 - An elicitation whose `signal` aborts emits `elicitation-error`. A callback result that
   arrives after abort is ignored.
 - `cancelToolCall()` and the tool timeout abort the same per-tool-call signal, with the same
-  effect on a pending elicitation.
+  effect on a pending attributed elicitation.
 
 ## Errors
 
 | Case | Behaviour |
 |---|---|
 | Host built without `elicit` | Clients built without `elicit`; no `elicitation` capability (today's behaviour) |
-| `handleElicitation` on such a host, including `AgentSession` construction | Throws |
+| `handleElicitation` on such a host | Throws |
+| `AgentSession` on such a host | Constructs as today; no override. With `onElicitation`, throws |
 | Second override on one host, including a second `AgentSession` | Throws |
 | No override, base handler set | Base handler answers |
 | No override, `elicit: true` | `{ action: 'decline' }` |
-| `AgentSession` without `onElicitation` | Events emitted; base handler answers, else decline |
+| `AgentSession` without `onElicitation` | Events emitted; `fallback()`: base handler answers, else decline |
 | `contextHost` and `elicit` both passed to `Session` or `NodeSession` | Constructor throws |
-| Callback rejects | `elicitation-error`, then the error propagates to the client, which reports the request as failed to the server |
+| Callback rejects, `2025-11-25` | `elicitation-error`; the reverse `elicitation/create` RPC returns the error to the server |
+| Callback rejects, `2026-07-28` | `elicitation-error`; the MRTR flow fails locally and the tool call rejects; the server gets no input response |
 | Request aborted (run cancelled, stream abandoned, tool timeout, `cancelToolCall`) | `elicitation-error`; late callback result ignored |
 
 ## Testing
@@ -169,6 +196,7 @@ before its callback is awaited, or an interactive UI waiting on the event hangs 
   - a direct context whose server elicits during a tool call gets the host handler's result,
     with the right `key`;
   - dispatch order: override, then base, then decline;
+  - an override calling `fallback()` gets the base handler's result, else decline;
   - a second override throws; remove is idempotent and restores base behaviour; host disposal
     removes the override;
   - `elicit: false` opt-out on `createContext`, `addDirectContext` and `addHTTPContext`;
@@ -183,16 +211,26 @@ before its callback is awaited, or an interactive UI waiting on the event hangs 
 - Session: option forwarded; `contextHost` plus `elicit` throws; `NodeSession({ elicit })`
   works; `NodeSession` with both throws.
 - AgentSession:
-  - construction throws on a host without elicitation, and for a second agent on one host;
+  - an agent on a default `Session` or `NodeSession` (no `elicit`) constructs as today; with
+    `onElicitation` it throws; a second agent on one elicitation-enabled host throws;
   - `elicitation-request` is yielded before the callback resolves (a callback waiting on the
     consumer having seen the event does not deadlock);
-  - a callback resolving immediately, a response at tool settlement, and several requests in one
-    MRTR round all keep order: requests and responses precede the tool's terminal event;
-  - callback rejection emits `elicitation-error` on both revisions;
+  - `stream()` and `onEvent` see the same order: `tool-call-start`, then the call's elicitation
+    events, then the terminal event, for a callback resolving immediately, a response at tool
+    settlement, and several requests in one MRTR round;
+  - callback rejection emits `elicitation-error` on both revisions, with the revision-specific
+    outcome from Errors;
   - `return()` on the stream, explicit abort, tool timeout and `cancelToolCall()` while a
-    callback is pending each abort the request and emit `elicitation-error`;
-  - without `onElicitation`, base handler then decline; dispose removes the override;
-  - `toolCall` set during a matching single tool call, omitted otherwise.
+    callback is pending each abort the request and emit `elicitation-error`; on `2025-11-25`,
+    both with a server that forwards its tool signal to `elicit()` and one that does not;
+  - breaking the stream right after `elicitation-request`: `onEvent` still gets exactly one
+    `elicitation-error`;
+  - without `onElicitation`, a function base handler answers through `fallback()`, else
+    decline; dispose removes the override;
+  - `toolCall` set during a matching single tool call, omitted otherwise; two concurrent
+    `stream()` runs calling the same context leave requests unattributed (`onEvent` only).
+- Session opt-out: capability absent for a context added through `Session.addHTTPContext` and
+  `NodeSession.addContext` with `elicit: false`.
 - Both protocol revisions end to end: `2025-11-25` server-initiated `elicitation/create`, and
   `2026-07-28` MRTR input requests fulfilled through the same handler.
 
