@@ -1,7 +1,7 @@
-export type ValidationIssue = {
-  message: string
-  path?: ReadonlyArray<unknown>
-}
+import type { StandardSchemaV1 } from '@sozai/schema'
+
+/** A Standard Schema issue: a message and an optional path to the offending value. */
+export type ValidationIssue = StandardSchemaV1.Issue
 
 export class SystemOneError extends Error {
   constructor(params: SystemOneErrorParams) {
@@ -11,19 +11,19 @@ export class SystemOneError extends Error {
 }
 export type SystemOneErrorParams = { message: string; cause?: unknown }
 
-class ValidationError extends SystemOneError {
-  #issues: Array<ValidationIssue>
+class ValidationError extends SystemOneError implements StandardSchemaV1.FailureResult {
+  #issues: ReadonlyArray<ValidationIssue>
 
   constructor(params: ValidationErrorParams) {
     super(params)
     this.#issues = params.issues
   }
 
-  get issues(): Array<ValidationIssue> {
+  get issues(): ReadonlyArray<ValidationIssue> {
     return this.#issues
   }
 }
-type ValidationErrorParams = SystemOneErrorParams & { issues: Array<ValidationIssue> }
+type ValidationErrorParams = SystemOneErrorParams & { issues: ReadonlyArray<ValidationIssue> }
 
 /**
  * Caller-supplied questions or state failed validation: in the client before any request, or in
@@ -35,7 +35,9 @@ export class SystemOneInputError extends ValidationError {
     this.name = 'SystemOneInputError'
   }
 }
-export type SystemOneInputErrorParams = SystemOneErrorParams & { issues?: Array<ValidationIssue> }
+export type SystemOneInputErrorParams = SystemOneErrorParams & {
+  issues?: ReadonlyArray<ValidationIssue>
+}
 
 export type SystemOneConnectionErrorParams = SystemOneErrorParams & {
   /** HTTP status of the response; absent when the backend could not be reached. */

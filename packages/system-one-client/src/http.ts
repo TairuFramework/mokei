@@ -26,6 +26,10 @@ function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null
 }
 
+function isPathKey(value: unknown): value is string | number {
+  return typeof value === 'string' || typeof value === 'number'
+}
+
 /**
  * Pull the reasons out of an error body. Covers FastAPI (`laya-serve`: `detail` as a string or a
  * validation list of `{ loc, msg }`), a top-level `message`, an `error` string or `{ message }`,
@@ -45,7 +49,8 @@ function errorIssues(data: unknown): Array<ValidationIssue> {
       const { loc, msg } = (item ?? {}) as { loc?: unknown; msg?: unknown }
       const text = stringOrNull(msg)
       if (text == null) return []
-      return [Array.isArray(loc) ? { message: text, path: loc } : { message: text }]
+      const path = Array.isArray(loc) ? loc.filter(isPathKey) : []
+      return [path.length > 0 ? { message: text, path } : { message: text }]
     })
   }
   const text =

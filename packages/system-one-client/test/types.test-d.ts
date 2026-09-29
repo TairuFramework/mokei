@@ -1,14 +1,26 @@
+import type { StandardSchemaV1 } from '@sozai/schema'
 import { expectTypeOf, test } from 'vitest'
 
-import type {
-  CreateSystemOneClientParams,
-  SystemOneConnectionErrorParams,
-  SystemOneHTTPClientParams,
-  SystemOneOverloadedErrorParams,
-  SystemOneRateLimitErrorParams,
-  SystemOneRetryableErrorParams,
+import {
+  type CreateSystemOneClientParams,
+  type SystemOneConnectionErrorParams,
+  type SystemOneHTTPClientParams,
+  type SystemOneInputError,
+  type SystemOneOverloadedErrorParams,
+  type SystemOneRateLimitErrorParams,
+  type SystemOneResponseError,
+  type SystemOneRetryableErrorParams,
+  validateQuestions,
+  validateState,
 } from '../src/index.js'
-import type { ChoiceAnswer, NoulAnswer, PredictResult, ScoreAnswer } from '../src/types.js'
+import type {
+  ChoiceAnswer,
+  NoulAnswer,
+  PredictResult,
+  QuestionMap,
+  ScoreAnswer,
+  State,
+} from '../src/types.js'
 
 test('public System One params include HTTP and error fields', () => {
   expectTypeOf<SystemOneHTTPClientParams>().toHaveProperty('url').toEqualTypeOf<string>()
@@ -42,4 +54,11 @@ test('PredictResult infers answer shape per question type', () => {
   expectTypeOf<Result['answers']['urgency']>().toEqualTypeOf<ScoreAnswer>()
   expectTypeOf<Result['answers']['churn']>().toEqualTypeOf<NoulAnswer>()
   expectTypeOf<Result['model']>().toEqualTypeOf<string>()
+})
+
+test('validation errors and results follow Standard Schema', () => {
+  expectTypeOf<SystemOneInputError>().toExtend<StandardSchemaV1.FailureResult>()
+  expectTypeOf<SystemOneResponseError>().toExtend<StandardSchemaV1.FailureResult>()
+  expectTypeOf(validateState).returns.toEqualTypeOf<StandardSchemaV1.Result<State>>()
+  expectTypeOf(validateQuestions).returns.toEqualTypeOf<StandardSchemaV1.Result<QuestionMap>>()
 })
