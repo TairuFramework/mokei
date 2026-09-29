@@ -12,6 +12,7 @@ export const subscriptionFilter = {
     // Plain string, not `format: 'uri'`: core@2.0.0 types these as `z.array(z.string())`, so a URI
     // constraint would reject core-valid peer filters.
     resourceSubscriptions: { type: 'array', items: { type: 'string' } },
+    taskIds: { type: 'array', items: { type: 'string' } },
   },
   type: 'object',
 } as const satisfies Schema

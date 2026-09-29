@@ -44,8 +44,10 @@ import type {
 } from '@mokei/context-protocol'
 import {
   INPUT_REQUEST_CAPABILITIES,
+  INTERNAL_ERROR,
   INVALID_REQUEST,
   inferSchemaDraft,
+  isCreateTaskResult,
   isHandshakeRequired,
   isSupportedProtocolVersion,
   META_SUBSCRIPTION_ID,
@@ -130,7 +132,7 @@ const SERVER_MESSAGE_VALIDATORS: Record<ProtocolVersion, Validator<ServerMessage
  * only starts once `#setup()` has settled `#protocol` -- but the fallback keeps the validator
  * total rather than making the read loop depend on that ordering.
  */
-const validateAnyServerMessage = createValidator(serverMessage)
+const validateAnyServerMessage = createValidator<Schema, ServerMessage>(serverMessage)
 
 export const DEFAULT_CLIENT_INFO: Implementation = {
   name: 'Mokei',
@@ -1599,6 +1601,9 @@ export class ContextClient<
       wireParams as CallToolRequest['params'],
       options,
     )
+    if (isCreateTaskResult(result)) {
+      throw new RPCError({ code: INTERNAL_ERROR, message: 'Task waiting is unavailable' })
+    }
     const validate = this.#toolOutputSchemas.get(params.name)
     if (validate == null || result.structuredContent == null) {
       return result

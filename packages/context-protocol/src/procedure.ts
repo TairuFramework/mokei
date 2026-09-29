@@ -28,7 +28,17 @@ import type {
   ListToolsResult,
   ToolListChangedNotification,
 } from './tool.js'
-import type { DiscoverRequest, DiscoverResult } from './versions/2026-07-28.js'
+import type {
+  CreateTaskResult,
+  DiscoverRequest,
+  DiscoverResult,
+  TaskNotification,
+  TasksAcknowledgement,
+  TasksCancelRequest,
+  TasksGetRequest,
+  TasksGetResult,
+  TasksUpdateRequest,
+} from './versions/2026-07-28.js'
 
 export type CommonNotifications = {
   cancelled: CancelledNotification
@@ -87,7 +97,19 @@ export type ClientRequests = {
   }
   'tools/call': {
     Params: CallToolRequest['params']
-    Result: CallToolResult
+    Result: CallToolResult | CreateTaskResult
+  }
+  'tasks/get': {
+    Params: TasksGetRequest['params']
+    Result: TasksGetResult
+  }
+  'tasks/update': {
+    Params: TasksUpdateRequest['params']
+    Result: TasksAcknowledgement
+  }
+  'tasks/cancel': {
+    Params: TasksCancelRequest['params']
+    Result: TasksAcknowledgement
   }
   'tools/list': {
     Params: ListToolsRequest['params']
@@ -96,6 +118,7 @@ export type ClientRequests = {
 }
 
 export type ServerNotifications = {
+  tasks: TaskNotification
   'prompts/list_changed': PromptListChangedNotification
   'resources/list_changed': ResourceListChangedNotification
   'tools/list_changed': ToolListChangedNotification

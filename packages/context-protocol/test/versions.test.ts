@@ -2,7 +2,10 @@ import { createValidator } from '@sozai/schema'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
+  type ClientRequests,
+  declaresTasksExtension,
   HEADER_MISMATCH,
+  isCreateTaskResult,
   isHandshakeRequired,
   isPerRequestLogLevel,
   isSupportedProtocolVersion,
@@ -11,6 +14,7 @@ import {
   PROTOCOL_VERSIONS,
   PROTOCOLS,
   type ProtocolVersion,
+  TASKS_EXTENSION,
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '../src/index.js'
 import {
@@ -443,5 +447,205 @@ describe('per-version message validation', () => {
         result: { _meta: { 'io.modelcontextprotocol/subscriptionId': 'sub-1' } },
       }).issues,
     ).toBeUndefined()
+  })
+})
+
+describe('tasks extension', () => {
+  const task = {
+    taskId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    status: 'working',
+    createdAt: '2026-09-29T12:00:00.000Z',
+    lastUpdatedAt: '2026-09-29T12:00:00.000Z',
+    ttlMs: 3_600_000,
+  }
+  const requestMeta = {
+    'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+    'io.modelcontextprotocol/clientCapabilities': {},
+  }
+  const client = createValidator(PROTOCOLS['2026-07-28'].clientMessage)
+  const server = createValidator(PROTOCOLS['2026-07-28'].serverMessage)
+
+  test('accepts every detailed status and requires task metadata', () => {
+    const details = [
+      task,
+      { ...task, status: 'input_required', inputRequests: { pick: { method: 'roots/list' } } },
+      { ...task, status: 'completed', result: { content: [], resultType: 'complete' } },
+      { ...task, status: 'failed', error: { code: -32603, message: 'failed' } },
+      { ...task, status: 'cancelled' },
+    ]
+    for (const detail of details) {
+      expect(
+        server({ jsonrpc: '2.0', id: 1, result: { ...detail, resultType: 'complete' } }).issues,
+      ).toBeUndefined()
+      expect(
+        server({ jsonrpc: '2.0', method: 'notifications/tasks', params: detail }).issues,
+      ).toBeUndefined()
+    }
+    for (const detail of [
+      { ...task, status: 'input_required' },
+      { ...task, status: 'completed' },
+      { ...task, status: 'failed' },
+      { ...task, status: 'working', inputRequests: { pick: { method: 'roots/list' } } },
+    ]) {
+      expect(
+        server({ jsonrpc: '2.0', id: 1, result: { ...detail, resultType: 'complete' } }).issues,
+      ).toBeDefined()
+    }
+    for (const key of ['createdAt', 'lastUpdatedAt', 'ttlMs'] as const) {
+      const incomplete = { ...task }
+      delete (incomplete as Record<string, unknown>)[key]
+      expect(
+        server({ jsonrpc: '2.0', id: 1, result: { ...incomplete, resultType: 'task' } }).issues,
+      ).toBeDefined()
+    }
+    expect(
+      server({
+        jsonrpc: '2.0',
+        id: 1,
+        result: { ...task, createdAt: 'yesterday', resultType: 'task' },
+      }).issues,
+    ).toBeDefined()
+    expect(
+      server({ jsonrpc: '2.0', id: 1, result: { ...task, ttlMs: null, resultType: 'task' } })
+        .issues,
+    ).toBeUndefined()
+  })
+
+  test('validates task requests and rejects requestState on update', () => {
+    const methods = [
+      ['tasks/get', { taskId: task.taskId }],
+      ['tasks/update', { taskId: task.taskId, inputResponses: {} }],
+      ['tasks/cancel', { taskId: task.taskId }],
+    ] as const
+    for (const [method, params] of methods) {
+      expect(PROTOCOLS['2026-07-28'].clientMethods.has(method)).toBe(true)
+      expect(
+        client({ jsonrpc: '2.0', id: 1, method, params: { ...params, _meta: requestMeta } }).issues,
+      ).toBeUndefined()
+      expect(
+        client({ jsonrpc: '2.0', id: 1, method, params: { _meta: requestMeta } }).issues,
+      ).toBeDefined()
+      expect(
+        createValidator(PROTOCOLS['2025-11-25'].clientMessage)({
+          jsonrpc: '2.0',
+          id: 1,
+          method,
+          params,
+        }).issues,
+      ).toBeDefined()
+    }
+    expect(
+      client({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tasks/update',
+        params: {
+          taskId: task.taskId,
+          inputResponses: {},
+          requestState: 'bad',
+          _meta: requestMeta,
+        },
+      }).issues,
+    ).toBeDefined()
+    for (const method of ['tasks/get', 'tasks/cancel']) {
+      expect(
+        client({
+          jsonrpc: '2.0',
+          id: 1,
+          method,
+          params: { taskId: task.taskId, inputResponses: {}, _meta: requestMeta },
+        }).issues,
+      ).toBeDefined()
+    }
+  })
+
+  test('keeps task results closed and subscription task filters typed', () => {
+    expect(
+      server({ jsonrpc: '2.0', id: 1, result: { ...task, resultType: 'task', extra: true } })
+        .issues,
+    ).toBeDefined()
+    expect(
+      server({ jsonrpc: '2.0', id: 1, result: { ...task, resultType: 'complete', extra: true } })
+        .issues,
+    ).toBeDefined()
+    expect(
+      server({ jsonrpc: '2.0', id: 1, result: { resultType: 'complete' } }).issues,
+    ).toBeUndefined()
+    expect(
+      client({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'subscriptions/listen',
+        params: { notifications: { taskIds: [task.taskId] }, _meta: requestMeta },
+      }).issues,
+    ).toBeUndefined()
+    expect(
+      server({
+        jsonrpc: '2.0',
+        method: 'notifications/subscriptions/acknowledged',
+        params: { notifications: { taskIds: [task.taskId] } },
+      }).issues,
+    ).toBeUndefined()
+    expect(TASKS_EXTENSION).toBe('io.modelcontextprotocol/tasks')
+    expect(declaresTasksExtension({ extensions: { [TASKS_EXTENSION]: {} } })).toBe(true)
+    expect(declaresTasksExtension(undefined)).toBe(false)
+    expect(isCreateTaskResult({ ...task, resultType: 'task' })).toBe(true)
+    expect(
+      createValidator(PROTOCOLS['2025-11-25'].serverMessage)({
+        jsonrpc: '2.0',
+        method: 'notifications/tasks',
+        params: task,
+      }).issues,
+    ).toBeDefined()
+  })
+
+  test('preserves a task result on 2026-07-28 only', () => {
+    const frame = {
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        taskId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        status: 'working',
+        createdAt: '2026-09-29T12:00:00.000Z',
+        lastUpdatedAt: '2026-09-29T12:00:00.000Z',
+        ttlMs: 3_600_000,
+        resultType: 'task',
+      },
+    }
+    const current = createValidator(PROTOCOLS['2026-07-28'].serverMessage)
+    const previous = createValidator(PROTOCOLS['2025-11-25'].serverMessage)
+    expect(current(frame).issues).toBeUndefined()
+    expect(previous(frame).issues).toBeDefined()
+    expect(
+      PROTOCOLS['2026-07-28'].wrapResult(frame.result, {
+        serverInfo: { name: 'test', version: '1.0.0' },
+      }).resultType,
+    ).toBe('task')
+  })
+
+  test('types all task client requests', () => {
+    const get: ClientRequests['tasks/get']['Params'] = { taskId: task.taskId }
+    const update: ClientRequests['tasks/update']['Params'] = {
+      taskId: task.taskId,
+      inputResponses: {},
+    }
+    const cancel: ClientRequests['tasks/cancel']['Params'] = { taskId: task.taskId }
+    const getResult: ClientRequests['tasks/get']['Result'] = {
+      ...task,
+      status: 'working',
+      resultType: 'complete',
+    }
+    const updateResult: ClientRequests['tasks/update']['Result'] = { resultType: 'complete' }
+    const cancelResult: ClientRequests['tasks/cancel']['Result'] = { resultType: 'complete' }
+    const callResult: ClientRequests['tools/call']['Result'] = {
+      ...task,
+      status: 'working',
+      resultType: 'task',
+    }
+    expect([get.taskId, update.taskId, cancel.taskId]).toEqual(Array(3).fill(task.taskId))
+    expect([getResult.resultType, updateResult.resultType, cancelResult.resultType]).toEqual(
+      Array(3).fill('complete'),
+    )
+    expect(callResult.resultType).toBe('task')
   })
 })

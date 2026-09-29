@@ -23,6 +23,14 @@ import {
 } from './rpc.js'
 import { createMessageRequest } from './sampling.js'
 import { callToolResult, listToolsResult, toolListChangedNotification } from './tool.js'
+import {
+  type CreateTaskResult,
+  createTaskResult,
+  type TaskNotification,
+  type TasksGetResult,
+  taskNotification,
+  tasksGetResult,
+} from './versions/2026-07-28.js'
 
 // Server messages from https://github.com/modelcontextprotocol/specification/blob/e19c2d5768c6b5f0c7372b9330a66d5a5cc22549/schema/schema.ts#L1089
 //
@@ -48,9 +56,19 @@ export const serverNotification = {
     resourceListChangedNotification,
     toolListChangedNotification,
     promptListChangedNotification,
+    taskNotification,
   ],
 } as const satisfies Schema
-export type ServerNotification = FromSchema<typeof serverNotification>
+export type ServerNotification =
+  | FromSchema<typeof cancelledNotification>
+  | FromSchema<typeof elicitationCompleteNotification>
+  | FromSchema<typeof loggingMessageNotification>
+  | FromSchema<typeof progressNotification>
+  | FromSchema<typeof resourceUpdatedNotification>
+  | FromSchema<typeof resourceListChangedNotification>
+  | FromSchema<typeof toolListChangedNotification>
+  | FromSchema<typeof promptListChangedNotification>
+  | TaskNotification
 
 export const serverResult = {
   anyOf: [
@@ -63,10 +81,24 @@ export const serverResult = {
     listResourceTemplatesResult,
     readResourceResult,
     callToolResult,
+    createTaskResult,
+    tasksGetResult,
     listToolsResult,
   ],
 } as const satisfies Schema
-export type ServerResult = FromSchema<typeof serverResult>
+export type ServerResult =
+  | FromSchema<typeof emptyResult>
+  | FromSchema<typeof initializeResult>
+  | FromSchema<typeof completeResult>
+  | FromSchema<typeof getPromptResult>
+  | FromSchema<typeof listPromptsResult>
+  | FromSchema<typeof listResourcesResult>
+  | FromSchema<typeof listResourceTemplatesResult>
+  | FromSchema<typeof readResourceResult>
+  | FromSchema<typeof callToolResult>
+  | CreateTaskResult
+  | TasksGetResult
+  | FromSchema<typeof listToolsResult>
 
 export const serverResponse = {
   anyOf: [
@@ -83,7 +115,9 @@ export const serverResponse = {
     },
   ],
 } as const satisfies Schema
-export type ServerResponse = FromSchema<typeof serverResponse>
+export type ServerResponse =
+  | FromSchema<typeof errorResponse>
+  | (FromSchema<typeof response> & { result: ServerResult })
 
 /**
  * Any MCP server message.
@@ -91,4 +125,4 @@ export type ServerResponse = FromSchema<typeof serverResponse>
 export const serverMessage = {
   anyOf: [serverRequest, serverNotification, serverResponse],
 } as const satisfies Schema
-export type ServerMessage = FromSchema<typeof serverMessage>
+export type ServerMessage = ServerRequest | ServerNotification | ServerResponse

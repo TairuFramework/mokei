@@ -9,8 +9,12 @@ import {
   type ClientMessage as ClientMessage20260728,
   type ClientNotification as ClientNotification20260728,
   type ClientRequest as ClientRequest20260728,
+  type CreateTaskResult,
+  createTaskResult,
+  type DetailedTask,
   type DiscoverRequest,
   type DiscoverResult,
+  declaresTasksExtension,
   discoverResult,
   type InputRequest,
   type InputRequiredResult,
@@ -19,10 +23,20 @@ import {
   inputRequests,
   inputResponse,
   inputResponses,
+  isCreateTaskResult,
   isInputRequiredResult,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
   PROTOCOL as PROTOCOL_2026_07_28,
+  TASKS_EXTENSION,
+  type Task,
+  type TaskNotification,
+  type TaskStatus,
+  type TasksAcknowledgement,
+  type TasksCancelRequest,
+  type TasksGetRequest,
+  type TasksGetResult,
+  type TasksUpdateRequest,
 } from './2026-07-28.js'
 import type { ProtocolDefinition, ProtocolVersion } from './types.js'
 
@@ -33,7 +47,23 @@ export type ClientNotification = ClientNotification20251125 | ClientNotification
 /** Any message a client speaking any supported revision may send. */
 export type ClientMessage = ClientMessage20251125 | ClientMessage20260728
 
-export type { DiscoverRequest, DiscoverResult, InputRequest, InputRequiredResult, InputResponse }
+export type {
+  CreateTaskResult,
+  DetailedTask,
+  DiscoverRequest,
+  DiscoverResult,
+  InputRequest,
+  InputRequiredResult,
+  InputResponse,
+  Task,
+  TaskNotification,
+  TaskStatus,
+  TasksAcknowledgement,
+  TasksCancelRequest,
+  TasksGetRequest,
+  TasksGetResult,
+  TasksUpdateRequest,
+}
 // `clientMessage` (the schema value, as opposed to the `ClientMessage` type above) is
 // `2025-11-25`'s own schema -- it predates the version split and nothing besides that revision's
 // own `PROTOCOL.clientMessage` currently consumes it as a value. Multi-revision wire validation
@@ -41,14 +71,18 @@ export type { DiscoverRequest, DiscoverResult, InputRequest, InputRequiredResult
 // callers of the value export.
 export {
   clientMessage,
+  createTaskResult,
+  declaresTasksExtension,
   discoverResult,
   inputRequest,
   inputRequests,
   inputResponse,
   inputResponses,
+  isCreateTaskResult,
   isInputRequiredResult,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
+  TASKS_EXTENSION,
 }
 
 /** Supported revisions, newest first. */
