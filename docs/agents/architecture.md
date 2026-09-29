@@ -77,6 +77,37 @@ re-sent once if the header set changed. Callers see an ordinary successful call,
 to two extra round trips. The HTTP server does not read any of these headers; conformance of the
 encoder, and the retry itself, are covered by SDK interop tests instead.
 
+### MCP Tasks
+
+The `io.modelcontextprotocol/tasks` extension is available on `2026-07-28` when a server receives
+a `TaskManager`. The application owns that manager and its store. A memory store is the default;
+applications that need tasks to survive restarts provide a persistent `TaskStore`.
+
+The manager owns task records, detached workers, cancellation signals and expiry. Its store uses
+revision-based compare-and-swap (CAS): a write based on a stale revision conflicts, and the manager
+re-reads and retries so concurrent status changes and partial input responses are preserved.
+Terminal transitions are first-writer-wins.
+
+Create the manager once for the lifetime of the application. For stdio, pass it to the process's
+`ContextServer`. For stateless `2026-07-28` Streamable HTTP, pass it to `serveHTTP` and use the
+`tasks` value supplied to each `createServer` callback. HTTP creates a short-lived server per
+request, so the shared manager keeps task workers and state alive after a response ends. The
+application disposes the manager.
+After a restart with persistent storage, call `await tasks.recover(tools)` before accepting
+requests, using the same tool definitions as the server.
+
+Tool handlers start detached work with `req.task.run(work)`. The returned task handle exposes
+status updates, cancellation and input requests. A task created with verified HTTP authorization
+is bound to the token's issuer, subject and scopes. Later requests must have the same issuer and
+subject, with scopes that include the recorded scopes. Unauthenticated tasks are ownerless and
+use their task ID as a bearer secret. Missing, expired, inaccessible and unrecovered tasks all
+return `Task not found`.
+
+On the client, `callTool` waits for a task automatically and returns its final tool result. Pass
+`task: 'handle'` to receive the task creation result instead; then use `client.tasks.wait(taskId)`
+to wait explicitly or `client.tasks.get(taskId)` to inspect its current state. Waiting listens for
+task notifications and falls back to polling when a listen is unavailable.
+
 ### HTTP Authorization
 
 `@mokei/http-client` provides OAuth 2.1 client middleware through `createOAuthMiddleware` and
@@ -88,7 +119,8 @@ contexts; the CLI's `/context add-http` command accepts `--oauth-client-id`, `--
 
 On the server, `@mokei/http-server` offers `serveHTTP` with `createBearerAuthGate`,
 `createJWKSVerifier` or `createDIDVerifier`, and `protectedResourceMetadataResponse`. The gate
-verifies requests before MCP dispatch; its returned `AuthInfo` is not yet passed to handlers.
+verifies requests before MCP dispatch; verified identity is available to task handlers for owner
+binding.
 
 ---
 
@@ -125,6 +157,7 @@ verifies requests before MCP dispatch; its returned `AuthInfo` is not yet passed
 | Revisions and negotiation | `@mokei/context-protocol`, `@mokei/context-client` | `PROTOCOLS`, `ContextClient` `protocolVersion: 'auto'` |
 | MRTR | `@mokei/context-client`, `@mokei/context-server` | `runInputRequiredFlow`, `inputRequired` |
 | Subscriptions | `@mokei/context-client`, `@mokei/context-server`, `@mokei/http-server` | `SubscriptionDriver`, `createSubscriptionHub`, `runSubscriptionExchange` |
+| MCP Tasks | `@mokei/context-client`, `@mokei/context-server`, `@mokei/http-server` | `createTaskManager`, `TaskStore`, `ContextClient.tasks` |
 | Tool namespacing and per-context tool switches | `@mokei/host` | `ContextHost.callNamespacedTool`, `enableContextTools`, `disableContextTools` |
 | Local tools | `@mokei/host` | `ContextHost.callLocalTool`, `packages/host/src/local-tools.ts` |
 | Chat and agent loop | `@mokei/session`, `@mokei/session-node` | Portable `Session` and `AgentSession`; Node stdio `NodeSession.addContext` |

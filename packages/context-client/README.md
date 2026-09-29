@@ -31,6 +31,25 @@ const result = await client.callTool({
 })
 ```
 
+On `2026-07-28`, `callTool` waits for a task automatically and returns its final tool result. To
+manage the wait yourself, set `task: 'handle'` to receive the task creation result, then call
+`client.tasks.wait`:
+
+```ts
+const task = await client.callTool({
+  name: 'long_running_tool',
+  arguments: { key: 'value' },
+  task: 'handle',
+})
+
+if (task.resultType === 'task') {
+  const result = await client.tasks.wait(task.taskId)
+}
+```
+
+The client listens for task status notifications while waiting and polls when listening is
+unavailable. Use `client.tasks.get(taskId)` to inspect the current status without waiting.
+
 ## Type-Safe Usage
 
 For the best developer experience, use type-safe clients by importing server types.
