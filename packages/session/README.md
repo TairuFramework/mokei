@@ -52,9 +52,11 @@ carry that `toolCall`. Unattributed requests reach `onEvent` and `agent.events` 
 Attribution requires exactly one active run with an in-flight context tool call whose context key
 matches the requesting server. A context key alone cannot prove which call caused a request, so an
 unrelated request from the same context can be attributed to that tool call.
-Disposing an agent aborts its active runs and keeps its elicitation override until they settle, so
-a late request from those tool calls never reaches a later owner. Constructing another eliciting
-agent on the same host throws until then.
+Disposing an agent aborts its active runs and keeps its elicitation override until their tool calls
+settle, so a request from those calls never reaches a later owner. Constructing another eliciting
+agent on the same host throws until then. On `2025-11-25`, a server that keeps running a tool after
+the client stops waiting for it can still send a request later; the protocol does not identify which
+call it belongs to, so it reaches whichever owner is installed then.
 URL-mode elicitation reaches the callback, but server `notifications/elicitation/complete`
 notifications are not forwarded. A UI cannot automatically close a URL prompt on completion.
 

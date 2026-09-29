@@ -91,14 +91,15 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   #removeElicitation: (() => void) | undefined
   #nextElicitationID = 0
   #activeRuns = new Set<AgentRunState<T>>()
+  #toolCallsInFlight = 0
 
   constructor(params: AgentParams<T>) {
     super({
-      // Active runs abort with the agent. The override stays installed until the last one
-      // settles, so a late request from their tool calls never reaches a later owner; dispose
-      // does not wait for them, since a consumer paused at a yield would never let them finish.
+      // Active runs abort with the agent. The override stays installed until their tool calls
+      // settle, so a late request from those calls never reaches a later owner. Dispose does not
+      // wait: a consumer paused at a yield could otherwise block it forever.
       dispose: async () => {
-        if (this.#activeRuns.size === 0) this.#removeElicitation?.()
+        this.#releaseElicitationIfIdle()
       },
     })
     this.#events = new EventEmitter()
@@ -577,8 +578,11 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
           } else {
             // Execute tool
             let settled = false
+            this.#toolCallsInFlight++
             const execution = this.#executeToolCall(toolCall, emitEvent, run).finally(() => {
               settled = true
+              this.#toolCallsInFlight--
+              this.#releaseElicitationIfIdle()
             })
             // A consumer can abandon the generator while execution is still pending.
             void execution.catch(() => undefined)
@@ -671,7 +675,6 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       clearTimeout(timeoutID)
       upstreamSignal.removeEventListener('abort', onUpstreamAbort)
       this.#activeRuns.delete(run)
-      if (this.signal.aborted && this.#activeRuns.size === 0) this.#removeElicitation?.()
       run.channel.close()
       // A consumer that breaks out of this generator leaves the current turn's
       // provider stream open; return it so the provider releases the reader.
@@ -745,6 +748,10 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       yield emitEvent({ type: 'tool-call-denied', toolCall, reason, timestamp: Date.now() })
     }
     return { approved, reason }
+  }
+
+  #releaseElicitationIfIdle(): void {
+    if (this.signal.aborted && this.#toolCallsInFlight === 0) this.#removeElicitation?.()
   }
 
   async #executeToolCall(

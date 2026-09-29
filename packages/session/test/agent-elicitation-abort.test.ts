@@ -252,6 +252,30 @@ describe('AgentSession elicitation abort', () => {
     await env.session.dispose()
   })
 
+  test('disposing with no tool call in flight releases ownership immediately', async () => {
+    const env = harness()
+    const agent = new AgentSession({
+      session: env.session,
+      provider: env.provider,
+      model: 'test-model',
+      onElicitation: () => ({ action: 'decline' }),
+    })
+    const stream = agent.stream({ prompt: 'ask' })
+    const first = await stream.next()
+    expect(first.value?.type).toBe('start')
+    // The consumer stays paused at `start` and never resumes the iterator.
+    await agent.dispose()
+    const replacement = new AgentSession({
+      session: env.session,
+      provider: env.provider,
+      model: 'test-model',
+      onElicitation: () => ({ action: 'decline' }),
+    })
+    await replacement.dispose()
+    await stream.return(undefined as never)
+    await env.session.dispose()
+  })
+
   test('stream return aborts pending elicitation', async () => {
     const env = harness()
     const answer = defer<ElicitResult>()
