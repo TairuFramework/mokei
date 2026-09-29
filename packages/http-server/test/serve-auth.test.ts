@@ -1,5 +1,9 @@
-import { META_CLIENT_CAPABILITIES, META_PROTOCOL_VERSION } from '@mokei/context-protocol'
-import { ContextServer, type ServerConfig } from '@mokei/context-server'
+import {
+  META_CLIENT_CAPABILITIES,
+  META_PROTOCOL_VERSION,
+  TASKS_EXTENSION,
+} from '@mokei/context-protocol'
+import { ContextServer, createTaskManager, type ServerConfig } from '@mokei/context-server'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import type { OAuthTokenVerifier } from '../src/auth/verifier.js'
@@ -82,6 +86,94 @@ describe('serveHTTP auth', () => {
     expect(response.status).toBe(200)
     expect(received).toEqual([{ subject: 'u', scopes: ['read'] }])
     await response.body?.cancel()
+  })
+
+  test('hides a task from a different verified HTTP subject', async () => {
+    const manager = createTaskManager()
+    const identityVerifier: OAuthTokenVerifier = {
+      async verifyAccessToken(token) {
+        if (token !== 'alice' && token !== 'bob') {
+          throw new TokenVerificationError({ code: 'invalid_token', message: 'no' })
+        }
+        return { issuer: 'https://issuer.example', subject: token, scopes: ['read'] }
+      },
+    }
+    try {
+      server = serveHTTP({
+        tasks: manager,
+        createServer: ({ transport, auth, tasks }) =>
+          new ContextServer({
+            ...SERVER_CONFIG,
+            protocolVersions: ['2026-07-28'],
+            tools: {
+              start: {
+                description: 'Create a task',
+                inputSchema: { type: 'object' },
+                handler: ({ task }) => {
+                  if (task == null) throw new Error('Expected task context')
+                  return task.run(() => ({ content: [] }))
+                },
+              },
+            },
+            transport,
+            auth,
+            tasks,
+          }),
+        port: 0,
+        hostname: '127.0.0.1',
+        auth: {
+          verifier: identityVerifier,
+          resource: 'http://127.0.0.1/mcp',
+          resourceMetadataURL: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
+          authorizationServers: ['https://as.example'],
+        },
+      })
+      const port = await getPort(server.server)
+      async function call(token: string, method: string, params: Record<string, unknown>) {
+        const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-User-Id': 'alice',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method,
+            params: {
+              ...params,
+              _meta: {
+                [META_PROTOCOL_VERSION]: '2026-07-28',
+                [META_CLIENT_CAPABILITIES]: { extensions: { [TASKS_EXTENSION]: {} } },
+              },
+            },
+          }),
+        })
+        expect(response.status).toBe(200)
+        const data = (await response.text())
+          .split('\n')
+          .find((line) => line.startsWith('data: ') && line.slice(6).trim() !== '')
+        if (data == null) throw new Error('Missing SSE response')
+        return JSON.parse(data.slice(6)) as {
+          result?: { resultType?: string; taskId?: string }
+          error?: { code: number; message: string }
+        }
+      }
+
+      const created = await call('alice', 'tools/call', { name: 'start', arguments: {} })
+      expect(created.result?.resultType).toBe('task')
+      const taskId = created.result?.taskId
+      expect(taskId).toBeDefined()
+      const owned = await call('alice', 'tasks/get', { taskId })
+      expect(owned.result?.taskId).toBe(taskId)
+      const hidden = await call('bob', 'tasks/get', { taskId })
+      expect(hidden.error).toMatchObject({ code: -32602, message: 'Task not found' })
+    } finally {
+      await server?.dispose()
+      server = null
+      await manager.dispose()
+    }
   })
 
   let server: ReturnType<typeof serveHTTP> | null = null

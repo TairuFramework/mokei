@@ -108,6 +108,43 @@ describe('task methods', () => {
     expect(received).toEqual(auth)
   })
 
+  test('stores only owner fields from full verifier auth', async () => {
+    const store = createMemoryTaskStore()
+    const manager = createTaskManager({ store })
+    const auth = {
+      issuer: 'https://issuer.example',
+      subject: 'alice',
+      scopes: ['read'],
+      expiresAt: 1_800_000_000,
+      raw: { claim: 1n },
+    }
+    const request = setup(
+      manager,
+      auth,
+      createTool({
+        description: 'Task test tool',
+        inputSchema: { type: 'object' },
+        handler: ({ task }) => {
+          if (task == null) throw new Error('Expected task context')
+          return task.run(() => result)
+        },
+      }),
+    )
+    const response = await request('tools/call', {
+      name: 'echo',
+      arguments: {},
+      _meta: declared,
+    })
+    expect(response.error).toBeUndefined()
+    expect(response.result?.resultType).toBe('task')
+    const record = await store.get(response.result?.taskId as string)
+    expect(record?.owner).toEqual({
+      issuer: auth.issuer,
+      subject: auth.subject,
+      scopes: auth.scopes,
+    })
+  })
+
   test.each(['tasks/get', 'tasks/update', 'tasks/cancel'])(
     '%s hides tasks from a different identity or reduced scopes',
     async (method) => {

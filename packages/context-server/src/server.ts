@@ -270,7 +270,13 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this.#cache = params.cache
     this.#tasks = params.tasks
     this.#auth =
-      params.auth == null ? undefined : { ...params.auth, scopes: [...params.auth.scopes] }
+      params.auth == null
+        ? undefined
+        : {
+            ...(params.auth.issuer == null ? {} : { issuer: params.auth.issuer }),
+            subject: params.auth.subject,
+            scopes: [...params.auth.scopes],
+          }
     if (params.tasks != null) {
       this.#capabilities.extensions = { [TASKS_EXTENSION]: {} }
     }
