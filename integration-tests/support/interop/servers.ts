@@ -79,6 +79,9 @@ export const MOKEI_STDIO_SERVER_MRTR_PATH = fileURLToPath(
 export const MOKEI_STDIO_SERVER_TASKS_PATH = fileURLToPath(
   new URL('./mokei-stdio-server-tasks.ts', import.meta.url),
 )
+export const SDK_STDIO_SERVER_TASKS_PATH = fileURLToPath(
+  new URL('./sdk-stdio-server-tasks.ts', import.meta.url),
+)
 /** Serves the MRTR fixture on `2026-07-28` only, via the official SDK v2 server. */
 export const SDK_STDIO_SERVER_MRTR_PATH = fileURLToPath(
   new URL('./sdk-stdio-server-mrtr.ts', import.meta.url),
@@ -411,11 +414,12 @@ export type TasksHTTPServer = RunningHTTPServer & {
 /** Keeps task state and subscriptions alive after the creating HTTP exchange is disposed. */
 export async function startMokeiTasksHTTPServer(
   auth?: ServeHTTPParams['auth'],
+  pollIntervalMs = 60_000,
 ): Promise<TasksHTTPServer> {
   const gate = Promise.withResolvers<void>()
   const started = Promise.withResolvers<void>()
   const disposed = Promise.withResolvers<void>()
-  const tasks = createTaskManager({ pollIntervalMs: 60_000 })
+  const tasks = createTaskManager({ pollIntervalMs })
   const eventsSource = new ContextServer({
     name: 'interop-tasks-events',
     version: '1.0.0',
