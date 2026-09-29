@@ -54,6 +54,7 @@ export {
   type TaskStore,
   TaskStoreConflictError,
 } from './task-store.js'
+export { type SettledToolOutcome, settleToolOutcome, type ToolOutcome } from './tool-outcome.js'
 export type {
   ExtractPromptTypes,
   ExtractServerTypes,

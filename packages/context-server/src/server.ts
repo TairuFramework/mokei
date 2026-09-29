@@ -60,7 +60,7 @@ import { defer } from '@sozai/async'
 import { createValidator, type Schema } from '@sozai/schema'
 
 import { applyCacheHints } from './cache.js'
-import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
+import { toResourceHandlers } from './definitions.js'
 import { buildDiscoverResult } from './discover.js'
 import {
   defaultMintRequestState,
@@ -79,12 +79,12 @@ import {
   type SubscriptionSink,
   SubscriptionWriter,
 } from './subscriptions.js'
+import { settleToolOutcome } from './tool-outcome.js'
 import { withRequestMeta } from './trace.js'
 import type {
   ClientInitialize,
   CompleteHandler,
   GenericPromptHandler,
-  GenericToolHandler,
   LogParams,
   PromptDefinitions,
   ResourceDefinitions,
@@ -225,7 +225,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #promptHandlers: Record<string, GenericPromptHandler> = {}
   #promptsList: Array<Prompt> = []
   #resources?: ResourceHandlers
-  #toolHandlers: Record<string, GenericToolHandler> = {}
+  #tools: ToolDefinitions = {}
   #toolsList: Array<Tool> = []
   #connectionID: string
   #subscriptionHub?: SubscriptionHub
@@ -316,7 +316,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
 
     for (const [name, tool] of Object.entries(params.tools ?? {})) {
       const { handler, ...info } = tool
-      this.#toolHandlers[name] = handler
+      this.#tools[name] = tool
       this.#toolsList.push({ name, ...info })
     }
     this.#toolsList.sort((a, b) => a.name.localeCompare(b.name))
@@ -683,8 +683,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     mrtr: MRTRContext,
   ): Promise<CallToolResult | InputRequiredResult> {
     const name = request.params.name
-    const handler = Object.hasOwn(this.#toolHandlers, name) ? this.#toolHandlers[name] : undefined
-    if (handler == null) {
+    const tool = Object.hasOwn(this.#tools, name) ? this.#tools[name] : undefined
+    if (tool == null) {
       // "Errors in finding the tool" are MCP protocol errors, per the spec.
       throw new RPCError({ code: INVALID_PARAMS, message: `Tool ${name} not found` })
     }
@@ -695,8 +695,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         : (params: { progress: number; total?: number; message?: string }) => {
             void this.notify('progress', { ...params, progressToken }).catch(() => {})
           }
+    let outcome: { result: CallToolResult } | { error: unknown }
     try {
-      return await handler({
+      const result = await tool.handler({
         // The wire calls it `arguments` (MCP `tools/call`); handlers receive it as `input`,
         // the thing the tool's `inputSchema` describes.
         input: request.params.arguments ?? {},
@@ -705,22 +706,21 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         signal,
         ...mrtr,
       })
+      if (isInputRequiredResult(result)) {
+        return result
+      }
+      outcome = { result }
     } catch (cause) {
-      // Tool-execution and input-validation failures (SEP-1303) are reported
-      // inside the result so the model can see and self-correct, not as
-      // protocol errors. Re-throw genuine cancellation.
       if (signal.aborted) {
         throw cause
       }
-      // An outputSchema violation is the server author's own contract breach,
-      // not a tool failure, so it must cross the wire as a JSON-RPC error
-      // rather than be hidden in an isError result.
-      if (cause instanceof ToolOutputValidationError) {
-        throw cause
-      }
-      const message = cause instanceof Error ? cause.message : String(cause)
-      return { content: [{ type: 'text', text: message }], isError: true }
+      outcome = { error: cause }
     }
+    const settled = settleToolOutcome(tool, outcome)
+    if ('error' in settled) {
+      throw new RPCError(settled.error)
+    }
+    return settled.result
   }
 
   async #getPrompt(

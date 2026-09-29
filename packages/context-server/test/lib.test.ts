@@ -15,6 +15,7 @@ import {
   INVALID_PARAMS,
   LATEST_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
+import { RPCError } from '@mokei/context-rpc'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
@@ -23,10 +24,12 @@ import {
   createTool,
   type GenericToolDefinition,
   inputRequired,
+  isInputRequiredResult,
   MRTRNotSupportedError,
   type RequestStateHooks,
   type Schema,
   type ServerParams,
+  settleToolOutcome,
 } from '../src/index.js'
 
 type TestContext = {
@@ -831,6 +834,29 @@ describe('ContextServer', () => {
         result: { isError: true, content: [{ type: 'text' }] },
       })
       await transports.dispose()
+    })
+
+    test('tool handler RPCError remains a JSON-RPC error', async () => {
+      await expectServerError(
+        {
+          protocolVersions: ['2025-11-25'],
+          tools: {
+            guarded: createTool({
+              description: 'guarded',
+              inputSchema: { type: 'object' },
+              handler: () => {
+                throw new RPCError({
+                  code: -32021,
+                  message: 'Missing capability',
+                  data: { requiredCapabilities: {} },
+                })
+              },
+            }),
+          },
+        },
+        { method: 'tools/call', params: { name: 'guarded', arguments: {} } },
+        { code: -32021, message: 'Missing capability', data: { requiredCapabilities: {} } },
+      )
     })
 
     test('input-validation error becomes an isError result', async () => {
@@ -1983,13 +2009,24 @@ describe('tool outputSchema', () => {
     required: ['count'],
   } as const
 
-  function callHandler(definition: GenericToolDefinition, args: Record<string, unknown> = {}) {
-    return definition.handler({
+  async function callHandler(
+    definition: GenericToolDefinition,
+    args: Record<string, unknown> = {},
+  ) {
+    const result = await definition.handler({
       input: args,
       client: {} as never,
       signal: new AbortController().signal,
       mintRequestState: () => '',
     })
+    if (isInputRequiredResult(result)) {
+      return result
+    }
+    const settled = settleToolOutcome(definition, { result })
+    if ('error' in settled) {
+      throw new RPCError(settled.error)
+    }
+    return settled.result
   }
 
   test('outputSchema is advertised in tools/list', async () => {
