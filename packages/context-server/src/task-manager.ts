@@ -473,7 +473,7 @@ class ManagedTasks implements TaskManager {
     if (record?.status !== 'input_required') throw new Error('No input is outstanding')
     const pending = this.#attachInput(taskID, controller, record, options)
     const latest = await this.#store.get(taskID)
-    if (latest !== undefined) this.#resolveInput(taskID, latest)
+    if (latest !== undefined) await this.#resolveInput(taskID, latest)
     return pending.promise
   }
 
@@ -500,7 +500,7 @@ class ManagedTasks implements TaskManager {
     if (controller.signal.aborted) {
       this.#abort(taskID, controller.signal.reason)
     }
-    this.#resolveInput(taskID, record)
+    void this.#resolveInput(taskID, record)
     return entry
   }
 
@@ -531,17 +531,18 @@ class ManagedTasks implements TaskManager {
     )
   }
 
-  #resolveInput(taskID: string, record: TaskRecord): void {
+  async #resolveInput(taskID: string, record: TaskRecord): Promise<void> {
     const pending = this.#pending.get(taskID)
     if (pending === undefined || record.status !== 'input_required') return
     const keys = Object.keys(record.inputRequests ?? {})
     if (!keys.every((key) => record.inputResponses?.[key] !== undefined)) return
-    void this.#mutate(taskID, (latest) =>
-      latest.status === 'input_required'
-        ? { status: 'working', inputRequests: undefined, inputResponses: undefined }
-        : undefined,
-    )
-      .then((updated) => {
+    for (let attempt = 0; attempt <= 3; attempt++) {
+      try {
+        const updated = await this.#mutate(taskID, (latest) =>
+          latest.status === 'input_required'
+            ? { status: 'working', inputRequests: undefined, inputResponses: undefined }
+            : undefined,
+        )
         if (
           updated?.status !== 'working' ||
           this.#pending.get(taskID) !== pending ||
@@ -552,8 +553,22 @@ class ManagedTasks implements TaskManager {
         for (const { signal, onAbort } of pending.abortListeners)
           signal.removeEventListener('abort', onAbort)
         pending.resolve(record.inputResponses ?? {})
-      })
-      .catch(() => {})
+        return
+      } catch (error) {
+        if (attempt < 3) continue
+        try {
+          await this.#mutate(taskID, (latest) =>
+            isTerminal(latest)
+              ? undefined
+              : { status: 'failed', error: { code: -32603, message: 'Task input failed' } },
+          )
+        } catch (failure) {
+          this.#events.fire('taskError', { taskID, error: failure })
+        }
+        this.#events.fire('taskError', { taskID, error })
+        this.#abort(taskID, error)
+      }
+    }
   }
 
   async get(taskID: string, owner?: TaskOwner): Promise<DetailedTask> {
@@ -594,7 +609,7 @@ class ManagedTasks implements TaskManager {
         : { inputResponses: accepted }
     })
     if (updated === undefined) throw taskNotFound()
-    this.#resolveInput(taskID, updated)
+    await this.#resolveInput(taskID, updated)
   }
 
   async cancel(taskID: string, owner?: TaskOwner): Promise<void> {

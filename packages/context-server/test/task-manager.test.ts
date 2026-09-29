@@ -35,6 +35,91 @@ async function tick(): Promise<void> {
 }
 
 describe('task manager', () => {
+  test('resumes input after a transient failure to persist working status', async () => {
+    const base = createMemoryTaskStore()
+    let failures = 0
+    const store = {
+      ...base,
+      update: async (...args: Parameters<typeof base.update>) => {
+        if (args[1].status === 'working' && failures++ === 0) {
+          throw new Error('Store unavailable')
+        }
+        return base.update(...args)
+      },
+    }
+    const manager = createTaskManager({ store })
+    const errors: Array<unknown> = []
+    manager.events.on('taskError', (event) => {
+      errors.push(event)
+    })
+    const created = await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: { roots: {} },
+      work: async (task) => {
+        await task.requestInput({ ask: rootsRequest })
+        return result
+      },
+    })
+    try {
+      await tick()
+      await manager.update(created.taskId, { ask: rootsResponse })
+      await expect.poll(async () => (await manager.get(created.taskId)).status).toBe('completed')
+      expect(failures).toBe(2)
+      expect(errors).toEqual([])
+    } finally {
+      await manager.dispose()
+    }
+  })
+
+  test('fails the task and releases input after persistent working status failures', async () => {
+    const base = createMemoryTaskStore()
+    const failure = new Error('Store unavailable')
+    let attempts = 0
+    const store = {
+      ...base,
+      update: async (...args: Parameters<typeof base.update>) => {
+        if (args[1].status === 'working') {
+          attempts++
+          throw failure
+        }
+        return base.update(...args)
+      },
+    }
+    const manager = createTaskManager({ store })
+    const errors: Array<unknown> = []
+    manager.events.on('taskError', (event) => {
+      errors.push(event)
+    })
+    const inputSettled = Promise.withResolvers<unknown>()
+    const created = await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: { roots: {} },
+      work: async (task) => {
+        try {
+          await task.requestInput({ ask: rootsRequest })
+        } catch (error) {
+          inputSettled.resolve(error)
+        }
+        return result
+      },
+    })
+    try {
+      await tick()
+      await manager.update(created.taskId, { ask: rootsResponse })
+      expect(await inputSettled.promise).toBe(failure)
+      expect(await manager.get(created.taskId)).toMatchObject({
+        status: 'failed',
+        error: { code: -32603, message: 'Task input failed' },
+      })
+      expect(attempts).toBe(4)
+      expect(errors).toEqual([{ taskID: created.taskId, error: failure }])
+    } finally {
+      await manager.dispose()
+    }
+  })
+
   test('retries a transient detached settlement failure', async () => {
     const base = createMemoryTaskStore()
     let failures = 0

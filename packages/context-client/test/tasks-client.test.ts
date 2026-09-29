@@ -8,6 +8,7 @@ import type {
   ServerMessage,
 } from '@mokei/context-protocol'
 import { METHOD_NOT_FOUND, TASKS_EXTENSION } from '@mokei/context-protocol'
+import { RequestTimeoutError } from '@mokei/context-rpc'
 import { afterEach, expect, expectTypeOf, test, vi } from 'vitest'
 
 import { ContextServer, createTaskManager, createTool } from '../../context-server/lib/index.js'
@@ -309,6 +310,21 @@ test('automatic wait cancels on abort while explicit wait leaves the task runnin
     reason,
   )
   expect(other.sent.some((item) => item.method === 'tasks/cancel')).toBe(false)
+})
+
+test('automatic wait cancels a task when the call deadline expires', async () => {
+  const { client, sent } = harness((request) => {
+    if (request.method === 'tools/call') return created
+    if (request.method === 'tasks/get') return { ...created, resultType: 'complete' }
+    return { resultType: 'complete' }
+  })
+  const startedAt = Date.now()
+  await expect(
+    client.callTool({ name: 'echo', arguments: {}, timeout: 100 }),
+  ).rejects.toBeInstanceOf(RequestTimeoutError)
+  expect(Date.now() - startedAt).toBeLessThan(1_000)
+  expect(sent.some((item) => item.method === 'tools/call')).toBe(true)
+  expect(sent.some((item) => item.method === 'tasks/cancel')).toBe(true)
 })
 
 test('automatic wait cancels when task input has no handler', async () => {

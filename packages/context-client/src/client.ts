@@ -64,6 +64,7 @@ import {
 import {
   ContextRPC,
   type RequestOptions,
+  RequestTimeoutError,
   RPCError,
   splitRequestOptions,
   type WithRequestOptions,
@@ -1694,21 +1695,40 @@ export class ContextClient<
   ): Promise<CallToolResult | CreateTaskResult | InputRequiredResult> {
     const { task, ...requestParams } = params
     const [wireParams, options] = splitRequestOptions(requestParams)
-    const result = await this.request(
-      'tools/call',
-      wireParams as CallToolRequest['params'],
-      options,
-    )
-    if (isInputRequiredResult(result)) return result
-    if (isCreateTaskResult(result)) {
-      if (task === 'handle') return result
-      return await this.waitForTask({
-        taskID: result.taskId,
-        signal: options?.signal,
-        toolName: params.name,
-        cancelOnAbort: true,
+    const timeout = options?.timeout
+    const deadline = timeout == null ? undefined : new AbortController()
+    const timer =
+      deadline == null
+        ? undefined
+        : setTimeout(() => {
+            deadline.abort(
+              new RequestTimeoutError({ message: `Request timed out after ${timeout}ms` }),
+            )
+          }, timeout)
+    const signal =
+      deadline == null
+        ? options?.signal
+        : options?.signal == null
+          ? deadline.signal
+          : AbortSignal.any([options.signal, deadline.signal])
+    try {
+      const result = await this.request('tools/call', wireParams as CallToolRequest['params'], {
+        ...options,
+        signal,
       })
+      if (isInputRequiredResult(result)) return result
+      if (isCreateTaskResult(result)) {
+        if (task === 'handle') return result
+        return await this.waitForTask({
+          taskID: result.taskId,
+          signal,
+          toolName: params.name,
+          cancelOnAbort: true,
+        })
+      }
+      return this.#validateToolOutput(result, params.name)
+    } finally {
+      clearTimeout(timer)
     }
-    return this.#validateToolOutput(result, params.name)
   }
 }

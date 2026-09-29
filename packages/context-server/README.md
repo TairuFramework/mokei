@@ -90,13 +90,14 @@ const tasks = createTaskManager()
 await tasks.recover(tools)
 const http = serveHTTP({
   tasks,
-  createServer: ({ transport, tasks: sharedTasks }) =>
+  createServer: ({ transport, tasks: sharedTasks, auth }) =>
     new ContextServer({
       name: 'report-server',
       version: '1.0.0',
       protocolVersions: ['2026-07-28'],
       tools,
       tasks: sharedTasks,
+      auth,
       transport,
     }),
 })
@@ -106,6 +107,8 @@ process.once('SIGTERM', async () => {
   await tasks.dispose()
 })
 ```
+
+Authenticated `createServer` callbacks must forward `auth` to `ContextServer` for task owner binding.
 
 `req.task.run` returns immediately with a task ID while the work continues in the manager. A
 persistent store and a `recover` callback are needed to resume running work after a restart.
