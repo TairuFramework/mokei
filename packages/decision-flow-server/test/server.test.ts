@@ -3,11 +3,35 @@ import { ContextClient } from '@mokei/context-client'
 import type { ClientMessage, ClientRequest, ServerMessage } from '@mokei/context-protocol'
 import { META_CLIENT_CAPABILITIES, META_PROTOCOL_VERSION } from '@mokei/context-protocol'
 import { ContextServer, createTaskManager } from '@mokei/context-server'
+import type { createDecisionFlowGraph } from '@mokei/decision-flow'
 import type { FlowDefinition } from '@sozai/flow-graph'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { createDecisionFlowServer, flowToolName } from '../src/index.js'
 import type { ToolCaller } from '../src/tool-caller.js'
+
+const startedSignals = vi.hoisted(() => [] as Array<AbortSignal | undefined>)
+
+vi.mock('@mokei/decision-flow', async (importOriginal) => {
+  const original = await importOriginal<{
+    createDecisionFlowGraph: typeof createDecisionFlowGraph
+  }>()
+  return {
+    ...original,
+    createDecisionFlowGraph: (...args: Parameters<typeof createDecisionFlowGraph>) => {
+      const graph = original.createDecisionFlowGraph(...args)
+      return {
+        ...graph,
+        start: (params: Parameters<typeof graph.start>[0]) => {
+          startedSignals.push(params.signal)
+          return graph.start(params)
+        },
+      }
+    },
+  }
+})
+
+vi.mock('../src/driver.js', () => ({ startRun: () => new Promise(() => {}) }))
 
 const predictor = {
   predict: async () => {
@@ -148,6 +172,24 @@ test('denied grant leaves no task; approved grant reaches task.run', async () =>
   })
   expect(started.resultType).toBe('task')
   expect(allowed.create).toHaveBeenCalledTimes(1)
+})
+
+test('a flow run uses the task signal and tasks/cancel aborts it', async () => {
+  const { client } = setup({ approval: () => ({ tools: [] }) })
+  startedSignals.length = 0
+
+  const result = await client.callTool({
+    name: 'run_flow',
+    arguments: { definition: flow() },
+    task: 'handle',
+  })
+  expect(result).toMatchObject({ resultType: 'task' })
+  if (result.resultType !== 'task' || typeof result.taskId !== 'string') return
+  expect(startedSignals).toHaveLength(1)
+  expect(startedSignals[0]?.aborted).toBe(false)
+
+  await client.tasks.cancel(result.taskId)
+  expect(startedSignals[0]?.aborted).toBe(true)
 })
 
 test('registered tools advertise normalized names and object input schemas', async () => {

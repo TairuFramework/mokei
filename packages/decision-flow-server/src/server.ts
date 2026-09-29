@@ -112,7 +112,14 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
     }
     const flow = definition as FlowDefinition
     const graph = checked.graphFor({ depth, approved: new Set(approved.tools) })
-    const run = graph.start({ definition: flow, input: input as JSONValue, signal: request.signal })
+    // The run starts before the task exists so its initial state is stored with the task;
+    // the controller links it to the task handle's signal, which tasks/cancel aborts.
+    const controller = new AbortController()
+    const run = graph.start({
+      definition: flow,
+      input: input as JSONValue,
+      signal: controller.signal,
+    })
     const resumeData: ResumeDataV1 = {
       v: 1,
       flow:
@@ -125,7 +132,12 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
       siblings: [],
     }
     return request.task.run(
-      (handle) => startRun({ handle, graph, run, resumeData, caller: params.caller }),
+      (handle) => {
+        const abort = () => controller.abort(handle.signal.reason)
+        if (handle.signal.aborted) abort()
+        else handle.signal.addEventListener('abort', abort, { once: true })
+        return startRun({ handle, graph, run, resumeData, caller: params.caller })
+      },
       { resumeData: resumeData as unknown as JSONValue },
     )
   }
