@@ -9,7 +9,7 @@ this one.
 ## Goal
 
 Implement the MCP Tasks extension for protocol revision `2026-07-28` in `@mokei/context-protocol`,
-`@mokei/context-server`, `@mokei/context-client` and `@mokei/http-server`. A server tool can
+`@mokei/context-server`, `@mokei/context-client`, `@mokei/http-server` and `@mokei/http-client`. A server tool can
 answer `tools/call` with a durable task handle; clients poll or subscribe for its status, supply
 input mid-flight and retrieve the final result. Existing callers of `callTool` (host, session,
 agent) keep receiving a final `CallToolResult`.
@@ -47,8 +47,10 @@ Add to `versions/2026-07-28.ts`, matching the ext-tasks `2026-07-28` schema:
 - `createTaskResult`: `task` fields plus `resultType: 'task'`. A closed schema added to the
   `serverResult` union and the hand-written `ServerResult` TS union, like `inputRequiredResult`.
 - Requests `tasks/get` (`{ taskId }`), `tasks/update` (`{ taskId, inputResponses }`) and
-  `tasks/cancel` (`{ taskId }`), each wrapped `withProtocolMeta(forbidRetryParams(...))` and added
-  to `PROTOCOL.clientMethods`.
+  `tasks/cancel` (`{ taskId }`), added to `PROTOCOL.clientMethods`. `tasks/get` and
+  `tasks/cancel` are wrapped `withProtocolMeta(forbidRetryParams(...))`. `tasks/update` requires
+  `inputResponses`, which `forbidRetryParams` rejects, so it is wrapped with `withProtocolMeta`
+  plus a schema that forbids only `requestState`.
 - Results: `tasks/get` returns a detailed task with `resultType: 'complete'`; `tasks/update` and
   `tasks/cancel` return an empty acknowledgement with `resultType: 'complete'`.
 - `notifications/tasks`: params are a detailed task. Added to `serverNotification`.
@@ -59,7 +61,8 @@ Add to `versions/2026-07-28.ts`, matching the ext-tasks `2026-07-28` schema:
 Typed plumbing, changed together with the schemas:
 
 - `procedure.ts`: `ClientRequests` gains the three `tasks/*` entries (params and results), so
-  `client.request('tasks/get', ...)` is typed.
+  `client.request('tasks/get', ...)` is typed. Its `tools/call` result widens to include
+  `CreateTaskResult`.
 - The exported aggregates (`ServerResult`, `ServerNotification`, `ServerMessage`, and the
   revision-union types in `index.ts` / `server.ts`) include the task result and notification.
 - Per-revision validation: the `2025-11-25` validators reject the new methods, results and
@@ -72,6 +75,10 @@ Exports: `TASKS_EXTENSION = 'io.modelcontextprotocol/tasks'`, `isCreateTaskResul
 other result is still stamped `'complete'`.
 
 Only `tools/call` may be answered with a task. `2025-11-25` is unchanged.
+
+HTTP routing (`@mokei/http-client`): the `Mcp-Name` header map gains `tasks/get`,
+`tasks/update` and `tasks/cancel`, each sourced from `params.taskId`, as the extension's
+Streamable HTTP section requires.
 
 ## 2. Server (`@mokei/context-server`, `@mokei/http-server`)
 
@@ -93,7 +100,9 @@ const tasks = createTaskManager(params)
 ```
 
 The manager owns the store, the registry of running workers and their abort controllers, the
-expiry sweep, and a `taskStatus` event source. Worker signals belong to the manager, not to
+expiry sweep, and a `taskStatus` event source. It holds no tool definitions: live tasks settle
+through the creating server's tool, and recovered tasks through the tools passed to
+`tasks.recover(tools)` (see Restart). Worker signals belong to the manager, not to
 the POST that created the task, so a task outlives its creating request. `tasks.dispose()`
 aborts running workers (outcomes ignored, records left as-is for recovery) and stops the sweep.
 
@@ -135,7 +144,7 @@ createTool({
 `req.task.run(work, options?)`:
 
 1. Creates the record in the store (`status: 'working'`, timestamps, `ttlMs`, owner,
-   `toolName`, optional `resumeData`) and only then returns the `CreateTaskResult` (the
+   `toolName`, the request's declared client capabilities, optional `resumeData`) and only then returns the `CreateTaskResult` (the
    extension requires durable creation before the response).
 2. Runs `work(handle)` detached, on the manager. `handle` provides:
    - `taskId`.
@@ -145,7 +154,12 @@ createTool({
      resolves with the `inputResponses` once `tasks/update` has supplied every key; the task
      then returns to `working`. Keys must be unique for the task's lifetime: reusing a key
      already issued rejects with an error. Rejects with the abort reason if the signal aborts
-     first.
+     first. Before persisting, it applies the same client-capability check as MRTR
+     (`server.ts` input gating) against the capabilities the creating request declared, which
+     the record stores. An undeclared capability rejects with the MRTR error; if the work does
+     not catch it, the task ends `failed` with that `-32021` error.
+   - `awaitInput()`: resolves with the responses to the requests currently outstanding,
+     without issuing new keys. Used by recovered work (see Restart).
 3. Settles the task through the same finalisation seam as the synchronous path (below).
 
 `options.resumeData` is a JSON value stored on the record for `recover` (see Restart).
@@ -209,11 +223,14 @@ type TaskStore = {
 
 Every record carries an integer `revision`. `update` is a compare-and-swap: it rejects with
 `TaskStoreConflictError` when the stored revision differs from `expected.revision`, and
-otherwise writes the patch with `revision + 1`. The manager retries a conflicted write after
-re-reading, except for terminal transitions (below).
+otherwise writes the patch with `revision + 1`. On conflict the manager re-reads and retries.
+A terminal transition retries for as long as the record is still non-terminal, and stops only
+when the re-read shows another terminal transition already won. A concurrent `setStatus` or
+partial `tasks/update` therefore never strands a completing task.
 
 `TaskRecord` is plain JSON: `taskId`, `revision`, `status`, `statusMessage`, `createdAt`,
-`lastUpdatedAt`, `ttlMs`, `pollIntervalMs`, `owner`, `toolName`, `resumeData`, `result`,
+`lastUpdatedAt`, `ttlMs`, `pollIntervalMs`, `owner`, `toolName`, `clientCapabilities`,
+`resumeData`, `result`,
 `error`, `inputRequests`, `inputResponses` (received so far for the outstanding requests), and
 `issuedInputKeys` (every key ever requested). Partial `tasks/update` calls merge into
 `inputResponses`; the CAS makes two concurrent partial updates both land, or one retry.
@@ -234,11 +251,16 @@ re-reading, except for terminal transitions (below).
 
 - Restart recovery needs a persistent store; with the default memory store there are no
   records after a restart and this section is a no-op.
-- `createTaskManager` lists records in `working` or `input_required` at start. With `recover`,
-  it calls `recover(record, resume)` for each. `record.toolName` and `record.resumeData`
-  identify the work; `resume(work)` re-attaches a worker with the same handle semantics
-  (outstanding `inputRequests` stay outstanding). The manager serves `tasks/*` for these tasks
-  only after `recover` has returned for them.
+- Recovery is explicit: after creating the manager, the application calls
+  `await tasks.recover(tools)`, passing the same tool map it gives `ContextServer`. The manager
+  lists records in `working` or `input_required`. With `recover`, it calls
+  `recover(record, resume)` for each. `record.toolName` and `record.resumeData` identify the
+  work; `resume(work)` re-attaches a worker with the same handle semantics. Outstanding
+  `inputRequests` stay outstanding, and the new worker collects their responses with
+  `handle.awaitInput()`. The outcome settles through `settleToolOutcome` with
+  `tools[record.toolName]`, so output validation still applies. A missing tool counts as not
+  recovered. `tasks/*` for these tasks returns `Task not found` until `recover` has returned
+  for them.
 - Without `recover`, or if `recover` returns without calling `resume` or throws, the task ends
   `failed` with error `{ code: -32603, message: 'Task interrupted by server restart' }`.
 - Task IDs are `crypto.randomUUID()` (128-bit).
@@ -251,8 +273,13 @@ re-reading, except for terminal transitions (below).
   (`createServer({ ..., auth })`), including `subscriptions/listen` servers held open.
 - Handler requests expose `auth?: { issuer?: string; subject: string; scopes: Array<string> }`.
   `issuer` comes from the token's `iss` claim when the verifier exposes it in `raw`.
-- The owner of a task is `{ issuer, subject }` from the creating request. Access requires an
-  exact match of both.
+- The owner of a task is `{ issuer, subject, scopes }` from the creating request.
+- `AuthInfo` gains an optional `issuer`. The built-in JWKS and DID verifiers set it; a custom
+  verifier may. Tokens whose verifier sets no issuer share one `undefined` issuer namespace,
+  which is correct only when one verifier serves the endpoint.
+- The owner also records the creating token's `scopes`. Access requires the same issuer and
+  subject, and caller scopes that include every recorded scope. A same-subject token with
+  fewer scopes gets `Task not found` on `tasks/*` and is left out of listen acknowledgements.
 - When a request carries verified auth, the task gets that owner. When it has none (stdio, or
   HTTP without auth), the task has no owner and the ID works as a bearer secret. An ownerless
   task is inaccessible to an authenticated caller, and an owned task to an unauthenticated one.
@@ -270,10 +297,15 @@ lists only the accepted IDs; rejected IDs are left out without an error. The hub
 - On `2026-07-28`, every request declares `extensions['io.modelcontextprotocol/tasks'] = {}` in
   the per-request client capabilities. `2025-11-25` requests are unchanged.
 - `callTool({ name, arguments, task: 'handle' })` returns `CallToolResult | CreateTaskResult`.
-  It is an overload alongside `allowInputRequired`; `task` is a local option that
-  `splitRequestOptions` strips before sending.
-- Ordering inside `callTool`: the existing MRTR loop runs first (a server may ask for input
-  before deciding to create a task). A `resultType: 'task'` response ends that loop. Without
+  `callTool` strips `task` from the params itself before sending (`splitRequestOptions` is
+  unchanged).
+- Overloads: neither option returns `CallToolResult`; `task: 'handle'` adds
+  `CreateTaskResult`; `allowInputRequired: true` adds `InputRequiredResult`; both together
+  return the union of all three.
+- Ordering inside `callTool`: without `allowInputRequired`, the existing MRTR loop runs first
+  (a server may ask for input before deciding to create a task), and a `resultType: 'task'`
+  response ends that loop. With `allowInputRequired`, an `input_required` response is returned
+  as today. Without
   `task: 'handle'`, the client then waits for the task and returns its final
   `CallToolResult`, so `callTool` keeps its return type and host, session and agent code is
   unchanged.
@@ -289,6 +321,8 @@ lists only the accepted IDs; rejected IDs are left out without an error. The hub
   request fails, or the acknowledgement's `taskIds` omits the ID, it polls instead. After an
   accepted acknowledgement it issues one `tasks/get`, so a change before the listen is not
   missed.
+- If an accepted listen ends or fails before the task is terminal, the waiter releases its
+  reference (closing the shared listen when the count reaches zero) and continues by polling.
 - Polling uses `tasks/get` at the task's `pollIntervalMs`, with a 250 ms floor.
 - Snapshots whose `taskId` differs from the awaited task are ignored.
 - `input_required`: the client fulfils each input request with the handlers MRTR uses
@@ -322,20 +356,27 @@ Unit:
   - task context present only with a manager, declared extension and `tools/call`;
   - durable create before response; status transitions;
   - `-32021` for undeclared `tasks/*` and task listens; `-32601` without a manager;
-  - `requestInput`, reused-key rejection, partial `tasks/update`, wrong response kind;
+  - `tasks/update` validates with `inputResponses` and rejects `requestState`;
+  - `requestInput`, reused-key rejection, undeclared input capability, partial `tasks/update`,
+    wrong response kind;
   - two partial updates racing both land; cancel racing completion (first writer wins);
+    completion racing a `setStatus` or partial update still completes;
     cancel after completion;
   - settle mapping for results, tool errors and JSON-RPC errors through the shared seam;
     stored result carries `resultType: 'complete'`;
   - expiry from `createdAt` with a controlled clock; pending `requestInput` rejects on
     cancel and expiry;
   - restart with a persistent test store, with and without `recover`, and with `recover`
-    throwing; the interrupted error object;
-  - owner mismatch (subject, issuer, owned versus ownerless) returns `Task not found`;
+    throwing; the interrupted error object; recovery while `input_required` using
+    `awaitInput`; a recovered task returning invalid output fails validation;
+  - owner mismatch (subject, issuer, fewer scopes, owned versus ownerless) returns
+    `Task not found`;
   - listen acknowledgement with mixed owned and unowned IDs; notifications only for accepted
     IDs.
 - Client: default wait by polling and by notifications; fallback to polling when the listen
-  fails or omits the ID; shared listen for concurrent waits; handle mode and option stripping;
+  fails or omits the ID, and when an accepted listen drops before completion; shared listen for
+concurrent waits; handle mode, `task` stripped from the wire, overload combinations with
+`allowInputRequired`; `Mcp-Name` set to the task ID on `tasks/*` over HTTP;
   MRTR before task creation; `tasks.*`; input fulfilment through existing handlers; duplicate
   `input_required` snapshots presented once; mismatched `taskId` snapshots ignored; failed
   (error code and data) and cancelled outcomes; missing input handler cancels; caller abort
