@@ -137,7 +137,14 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
         const abort = () => controller.abort(handle.signal.reason)
         if (handle.signal.aborted) abort()
         else handle.signal.addEventListener('abort', abort, { once: true })
-        return startRun({ handle, graph, run, definition: flow, resumeData, caller: params.caller })
+        return startRun({
+          handle,
+          graph,
+          run,
+          definition: flow,
+          resumeData,
+          caller: params.caller,
+        }).finally(() => handle.signal.removeEventListener('abort', abort))
       },
       { resumeData: resumeData as unknown as JSONValue },
     )

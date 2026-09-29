@@ -1,3 +1,4 @@
+import { StructuredContentValidationError } from '@mokei/context-client'
 import type { CallToolResult } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
 import type { JSONValue } from '@mokei/context-server'
@@ -213,6 +214,23 @@ describe('toolKind check', () => {
 })
 
 describe('toolKind execute', () => {
+  test('does not retry client structured output validation failures', async () => {
+    let calls = 0
+    const caller = fakeCaller(async () => {
+      calls += 1
+      throw new StructuredContentValidationError({
+        toolName: 'work',
+        issues: [{ message: 'value must be a number' }],
+      })
+    })
+    const run = await graph({ caller, catalogue: [{ ...tool, outputSchema }] }).run({
+      definition: definition({ retry: { maxAttempts: 2, backoff: { initialMs: 0 } } }),
+      input: {},
+    })
+    expect(run.error?.lastFailure).toMatchObject({ type: 'tool_invalid_output' })
+    expect(run.error?.attempts).toBe(1)
+    expect(calls).toBe(1)
+  })
   test.each([
     {
       code: 'tool_error',

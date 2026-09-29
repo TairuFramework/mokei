@@ -44,15 +44,15 @@
     "@mokei/context-rpc": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/decision-flow": "workspace:^",
+    "@mokei/host": "workspace:^",
+    "@mokei/session": "workspace:^",
     "@mokei/system-one-client": "workspace:^",
     "@sozai/flow-graph": "catalog:",
     "@sozai/schema": "catalog:"
   },
   "devDependencies": {
     "@enkaku/transport": "catalog:",
-    "@mokei/host": "workspace:^",
     "@mokei/mcp-system-one": "workspace:^",
-    "@mokei/session": "workspace:^",
     "@types/node": "catalog:"
   }
 }

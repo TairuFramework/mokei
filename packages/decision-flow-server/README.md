@@ -64,6 +64,8 @@ either `next` or `cases` plus `default`. The checker validates known tool IDs an
 arguments. At execution, the server validates resolved arguments against the live tool schema;
 the called tool's `structuredContent` is required when it declares an output schema. Flow
 contexts cannot call one another. Sibling tasks are awaited and cancelled with the parent run.
+The node's `retry.timeoutMs` and `totalTimeoutMs` bound the tool call, not a sibling task wait.
+A hung sibling task remains pending until client cancellation or the task TTL ends it.
 
 Tool effects have **at-least-once** delivery. Every sibling call includes
 `_meta['io.mokei/idempotency-key'] = <runID>:<invocationID>` and

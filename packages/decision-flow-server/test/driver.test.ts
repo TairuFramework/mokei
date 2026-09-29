@@ -291,6 +291,23 @@ test('a failed sibling wait resumes the tool as a failed task', async () => {
   })
 })
 
+test('a lost sibling wait cancels its task before failing the node', async () => {
+  const h = harness({
+    definition: definition('tool'),
+    caller: {
+      callTool: async () => ({ task: { taskId: 'sibling-1' } }),
+      waitTask: async () => {
+        throw new Error('transport lost')
+      },
+    },
+  })
+  const completed = await h.drive()
+  expect(completed.structuredContent?.error).toMatchObject({
+    lastFailure: { type: 'tool_task_failed' },
+  })
+  expect(h.cancelled).toEqual([{ id: tool.id, taskId: 'sibling-1' }])
+})
+
 test('different run depths reach sibling calls independently', async () => {
   const depths: Array<unknown> = []
   const make = (depth: number) =>

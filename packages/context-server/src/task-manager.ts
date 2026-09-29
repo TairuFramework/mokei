@@ -601,7 +601,11 @@ class ManagedTasks implements TaskManager {
     const updated = await this.#mutate(taskID, (record) => {
       const keys = Object.keys(responses)
       const notAwaiting = (key: string) =>
-        new RPCError({ code: INVALID_PARAMS, message: `Task is not awaiting input for ${key}` })
+        new RPCError({
+          code: INVALID_PARAMS,
+          message: `Task is not awaiting input for ${key}`,
+          data: { key },
+        })
       if (record.status !== 'input_required') {
         if (keys[0] !== undefined) throw notAwaiting(keys[0])
         return undefined

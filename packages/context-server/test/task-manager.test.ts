@@ -547,6 +547,7 @@ describe('task manager', () => {
     await expect(manager.update(created.taskId, { ask: rootsResponse })).rejects.toMatchObject({
       code: -32602,
       message: 'Task is not awaiting input for ask',
+      data: { key: 'ask' },
     })
     await expect(handle?.requestInput({ ask: rootsRequest })).rejects.toThrow()
     await manager.dispose()

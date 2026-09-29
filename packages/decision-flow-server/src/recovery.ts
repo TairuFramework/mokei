@@ -44,10 +44,9 @@ export function createRecovery(params: {
 }): NonNullable<TaskManagerParams['recover']> {
   return async (record, resume) => {
     const data = record.resumeData as unknown as ResumeDataV1
-    const state = data.runState
     const cleanup = async () => {
       await Promise.all(
-        data.siblings.map(async ({ tool, taskId }) => {
+        (Array.isArray(data?.siblings) ? data.siblings : []).map(async ({ tool, taskId }) => {
           try {
             await params.caller.cancelTask({ id: tool, taskId })
           } catch (error) {
@@ -56,6 +55,15 @@ export function createRecovery(params: {
         }),
       )
     }
+
+    if (data?.v !== 1) {
+      await resume(async () => {
+        await cleanup()
+        throw new RPCError({ code: -32603, message: 'Unsupported flow resume data version' })
+      })
+      return
+    }
+    const state = data.runState
 
     if (state.status === 'ended' || state.status === 'error' || state.status === 'aborted') {
       await resume(async (handle): Promise<CallToolResult> => {
@@ -131,7 +139,7 @@ export function createRecovery(params: {
         caller: params.caller,
         outstandingInputRequests:
           record.status === 'input_required' ? record.inputRequests : undefined,
-      })
+      }).finally(() => handle.signal.removeEventListener('abort', abort))
     })
   }
 }

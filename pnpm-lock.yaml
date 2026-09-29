@@ -946,6 +946,12 @@ importers:
       '@mokei/decision-flow':
         specifier: workspace:^
         version: link:../decision-flow
+      '@mokei/host':
+        specifier: workspace:^
+        version: link:../host
+      '@mokei/session':
+        specifier: workspace:^
+        version: link:../session
       '@mokei/system-one-client':
         specifier: workspace:^
         version: link:../system-one-client
@@ -959,15 +965,9 @@ importers:
       '@enkaku/transport':
         specifier: 'catalog:'
         version: 0.21.3(@logtape/logtape@2.3.0)
-      '@mokei/host':
-        specifier: workspace:^
-        version: link:../host
       '@mokei/mcp-system-one':
         specifier: workspace:^
         version: link:../../mcp-servers/system-one
-      '@mokei/session':
-        specifier: workspace:^
-        version: link:../session
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3

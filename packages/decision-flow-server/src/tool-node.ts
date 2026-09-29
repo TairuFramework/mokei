@@ -1,3 +1,4 @@
+import { StructuredContentValidationError } from '@mokei/context-client'
 import type { CallToolResult } from '@mokei/context-protocol'
 import { INTERNAL_ERROR } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
@@ -116,6 +117,8 @@ function resultValue(
 
 function dispatchError(error: unknown): ToolNodeError {
   if (error instanceof ToolNodeError) return error
+  if (error instanceof StructuredContentValidationError)
+    return new ToolNodeError('tool_invalid_output', error.message, false, error)
   if (error instanceof RPCError) {
     return error.code === INTERNAL_ERROR
       ? new ToolNodeError('tool_call_failed', error.message, true, error)

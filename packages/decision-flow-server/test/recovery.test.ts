@@ -185,6 +185,29 @@ test('recovers a running registered flow and completes it', async () => {
   }
 })
 
+test('rejects an unknown resume data version and cancels saved siblings', async () => {
+  const cancelled: Array<string> = []
+  const f = fixture({
+    siblings: [{ tool: 'sibling:work', taskId: 'child-1' }],
+    onCancel: async ({ taskId }) => {
+      cancelled.push(taskId)
+    },
+  })
+  f.data.v = 2 as 1
+  const id = await persist(f)
+  const { second, server } = f.createSecond()
+  try {
+    await second.recover(server.recoveryTools)
+    await expect.poll(async () => (await second.get(id)).status).toBe('failed')
+    expect(await second.get(id)).toMatchObject({
+      error: { code: -32603, message: 'Unsupported flow resume data version' },
+    })
+    expect(cancelled).toEqual(['child-1'])
+  } finally {
+    await second.dispose()
+  }
+})
+
 test('resolves unknown flow tools for recovery without listing or calling them', async () => {
   const f = fixture()
   const { second, server } = f.createSecond()

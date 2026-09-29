@@ -1,5 +1,5 @@
 import type { DetailedTask, ServerNotification } from '@mokei/context-protocol'
-import type { RPCError } from '@mokei/context-rpc'
+import { RPCError } from '@mokei/context-rpc'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
@@ -25,6 +25,72 @@ const completed = {
 }
 
 describe('TaskWaiter', () => {
+  test.each([
+    ['task resumed', { ...working, lastUpdatedAt: '2026-09-29T12:00:01.000Z' }],
+    [
+      'another key remains',
+      {
+        ...base,
+        status: 'input_required' as const,
+        lastUpdatedAt: '2026-09-29T12:00:01.000Z',
+        inputRequests: { other: { method: 'roots/list' as const, params: {} } },
+      },
+    ],
+  ] as const)('continues after a late answer when %s', async (_caseName, withdrawn) => {
+    const input = {
+      ...base,
+      status: 'input_required' as const,
+      inputRequests: { ask: { method: 'roots/list' as const, params: {} } },
+    }
+    const finished = { ...completed, lastUpdatedAt: '2026-09-29T12:00:02.000Z' }
+    let gets = 0
+    const request = vi.fn(async (method: string) => {
+      if (method === 'tasks/update')
+        throw new RPCError({ code: -32602, message: 'stale input', data: { key: 'ask' } })
+      gets += 1
+      return gets === 1 ? input : gets === 2 ? withdrawn : finished
+    })
+    const waiter = new TaskWaiter({
+      request,
+      openListen: () => {
+        throw new Error('unavailable')
+      },
+      fulfil: async (key) => (key === 'ask' ? { roots: [] } : new Promise(() => {})),
+      validate: vi.fn(),
+      delay: async () => {},
+    })
+    expect(await waiter.wait({ taskID: base.taskId })).toEqual(completed.result)
+    expect(request).toHaveBeenCalledWith('tasks/update', {
+      taskId: base.taskId,
+      inputResponses: { ask: { roots: [] } },
+    })
+  })
+
+  test('surfaces a rejected answer when the key remains outstanding', async () => {
+    const input = {
+      ...base,
+      status: 'input_required' as const,
+      inputRequests: { ask: { method: 'roots/list' as const, params: {} } },
+    }
+    const rejection = new RPCError({ code: -32602, message: 'stale input', data: { key: 'ask' } })
+    const request = vi.fn(async (method: string) => {
+      if (method === 'tasks/update') throw rejection
+      return input
+    })
+    const waiter = new TaskWaiter({
+      request,
+      openListen: () => {
+        throw new Error('unavailable')
+      },
+      fulfil: async () => ({ roots: [] }),
+      validate: vi.fn(),
+      delay: async () => {},
+    })
+    await expect(waiter.wait({ taskID: base.taskId })).rejects.toBe(rejection)
+    expect(
+      request.mock.calls.filter(([method]) => method === 'tasks/get').length,
+    ).toBeGreaterThanOrEqual(2)
+  })
   test('polls to completion when listen is unavailable', async () => {
     const request = vi.fn().mockResolvedValueOnce(working).mockResolvedValueOnce(completed)
     const waiter = new TaskWaiter({

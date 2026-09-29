@@ -144,6 +144,13 @@ export async function startRun(params: {
         }
       } catch (error) {
         if (handle.signal.aborted) throw new StopRun('Run stopped', { cause: error })
+        if (!(error instanceof TaskCancelledError)) {
+          try {
+            await caller.cancelTask({ id: tool, taskId })
+          } catch (cancelError) {
+            console.error('Flow sibling cancellation failed', cancelError)
+          }
+        }
         value =
           error instanceof TaskCancelledError
             ? { ok: false, status: 'cancelled' }
