@@ -101,6 +101,9 @@ const MCP_NAME_HEADER_SOURCE: ReadonlyMap<string, string> = new Map([
   ['tools/call', 'name'],
   ['prompts/get', 'name'],
   ['resources/read', 'uri'],
+  ['tasks/get', 'taskId'],
+  ['tasks/update', 'taskId'],
+  ['tasks/cancel', 'taskId'],
 ])
 
 /** A `fetch`-shaped function: the unit a {@link FetchMiddleware} wraps and produces. */
