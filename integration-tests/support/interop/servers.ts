@@ -13,12 +13,13 @@ import type { ClientMessage, ProtocolVersion, ServerMessage } from '@mokei/conte
 import {
   ContextServer,
   createSubscriptionHub,
+  createTaskManager,
   createTool,
   type ServerConfig,
   type ServerTransport,
 } from '@mokei/context-server'
 import { createHTTPClient } from '@mokei/http-client'
-import { serveHTTP } from '@mokei/http-server'
+import { type ServeHTTPParams, serveHTTP } from '@mokei/http-server'
 
 import {
   createMokeiConfig,
@@ -30,6 +31,7 @@ import {
 import { createMokeiSubscriptionConfig } from './mokei-subscriptions-fixture.ts'
 import { createMokeiMRTRConfig, createSDKMRTRServer } from './mrtr-fixture.ts'
 import { createSDKSubscriptionServer } from './subscriptions-fixture.ts'
+import { createMokeiTasksConfig } from './tasks-fixture.ts'
 
 export const MOKEI_STDIO_SERVER_PATH = fileURLToPath(
   new URL('./mokei-stdio-server.ts', import.meta.url),
@@ -73,6 +75,9 @@ export const REFUSING_STDIO_SERVER_PATH = fileURLToPath(
 /** Serves the MRTR fixture on `2026-07-28` only, via `@mokei/context-server`. */
 export const MOKEI_STDIO_SERVER_MRTR_PATH = fileURLToPath(
   new URL('./mokei-stdio-server-mrtr.ts', import.meta.url),
+)
+export const MOKEI_STDIO_SERVER_TASKS_PATH = fileURLToPath(
+  new URL('./mokei-stdio-server-tasks.ts', import.meta.url),
 )
 /** Serves the MRTR fixture on `2026-07-28` only, via the official SDK v2 server. */
 export const SDK_STDIO_SERVER_MRTR_PATH = fileURLToPath(
@@ -295,6 +300,7 @@ export type SpawnedMokeiSubscriptionClient = {
  */
 export async function spawnMokeiStdioSubscriptionClient(
   serverPath: string,
+  clientOptions: MokeiClientOptions = {},
 ): Promise<SpawnedMokeiSubscriptionClient> {
   const childProcess = spawn(process.execPath, [serverPath], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -336,6 +342,7 @@ export async function spawnMokeiStdioSubscriptionClient(
     streams: { readable: toTransport, writable: childProcess.stdin },
   })
   const client = new ContextClient({
+    ...clientOptions,
     protocolVersion: '2026-07-28',
     transport: transport as ClientTransport,
   })
@@ -391,6 +398,84 @@ export async function startMokeiMRTRHTTPServer(): Promise<RunningHTTPServer> {
     url: `http://127.0.0.1:${port}/mcp`,
     dispose: async () => {
       await result.dispose()
+    },
+  }
+}
+
+export type TasksHTTPServer = RunningHTTPServer & {
+  completionStarted: Promise<void>
+  creatingPOSTDisposed: Promise<void>
+  releaseCompletion: () => void
+}
+
+/** Keeps task state and subscriptions alive after the creating HTTP exchange is disposed. */
+export async function startMokeiTasksHTTPServer(
+  auth?: ServeHTTPParams['auth'],
+): Promise<TasksHTTPServer> {
+  const gate = Promise.withResolvers<void>()
+  const started = Promise.withResolvers<void>()
+  const disposed = Promise.withResolvers<void>()
+  const tasks = createTaskManager({ pollIntervalMs: 60_000 })
+  const eventsSource = new ContextServer({
+    name: 'interop-tasks-events',
+    version: '1.0.0',
+    protocolVersions: ['2026-07-28'],
+    transport: new Transport<ClientMessage, ServerMessage>({
+      stream: {
+        readable: new ReadableStream<ClientMessage>({}),
+        writable: new WritableStream<ServerMessage>({ write() {} }),
+      },
+    }) as ServerTransport,
+  })
+  const hub = createSubscriptionHub({ events: eventsSource.events, tasks })
+  const result = serveHTTP({
+    createServer: ({
+      transport,
+      subscriptionHub,
+      connectionID,
+      tasks: sharedTasks,
+      auth: owner,
+    }) => {
+      let createdTask = false
+      const server = new ContextServer({
+        ...createMokeiTasksConfig({
+          completionGate: gate.promise,
+          onCompleteStarted: () => {
+            createdTask = true
+            started.resolve()
+          },
+        }),
+        transport,
+        subscriptionHub,
+        connectionID,
+        tasks: sharedTasks,
+        auth: owner,
+      })
+      const dispose = server.dispose.bind(server)
+      server.dispose = async () => {
+        await dispose()
+        if (createdTask) disposed.resolve()
+      }
+      return server
+    },
+    tasks,
+    subscriptionHub: hub,
+    auth,
+    port: 0,
+    hostname: '127.0.0.1',
+  })
+  const port = await listening(result.server, '127.0.0.1')
+  return {
+    url: `http://127.0.0.1:${port}/mcp`,
+    completionStarted: started.promise,
+    creatingPOSTDisposed: disposed.promise,
+    releaseCompletion: () => gate.resolve(),
+    dispose: async () => {
+      gate.resolve()
+      await result.dispose()
+      await hub.dispose()
+      await eventsSource.dispose()
+      await tasks.dispose()
     },
   }
 }
