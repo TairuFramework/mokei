@@ -68,6 +68,37 @@ A client speaks one revision, fixed for the lifetime of its transport. `ContextC
 both sides support. Host contexts and the CLI default to `'auto'`. A server takes
 `protocolVersions`, the list it serves; listing both serves both.
 
+### Session Elicitation
+
+`ContextHost` and `NodeContextHost` enable elicitation at construction with `elicit: true` or a
+host handler. This choice fixes the capabilities of every client the host builds. A
+`2025-11-25` client declares `elicitation` in `initialize`; a `2026-07-28` client declares it in
+each request's `_meta` client capabilities. A context can opt out with `elicit: false`.
+Caller-built clients registered through `registerHostedContext` keep their own capabilities.
+
+The host binds each request to its context key. `handleElicitation` installs one temporary
+override, owned by an `AgentSession` when one is attached. The override can answer directly or
+call `fallback()` to use the base handler. With `elicit: true` and no base handler, fallback
+declines, including before an agent attaches and after it is disposed. `Session` and
+`NodeSession` pass `elicit` to hosts they construct; a supplied host owns its configuration.
+
+On `2025-11-25`, a server sends a reverse `elicitation/create` RPC during its tool call. On
+`2026-07-28`, it returns an MRTR `input_required` result; the client answers the embedded
+`elicitation/create` request and retries the tool call with `inputResponses` and `requestState`.
+Handler errors return a reverse RPC error on the older revision. On the newer revision, they
+fail the MRTR call locally without sending an input response.
+
+`AgentSession` emits `elicitation-request` followed by `elicitation-response` or
+`elicitation-error`, paired by `requestID`. A matching in-flight context tool adds `toolCall`
+attribution and sends those events through its run channel. The channel yields the request
+before awaiting the application answer. A per-tool settlement barrier emits every elicitation
+terminal event before the tool terminal event. Run, tool, stream-abandonment and disposal
+cancellation abort pending answers; unattributed requests reach `onEvent` only.
+
+`@mokei/host`, `@mokei/session` and `@mokei/context-server` remain Node-free. Stdio support
+lives in `@mokei/host-node` and `@mokei/session-node`. URL-mode requests reach the handler,
+but `notifications/elicitation/complete` is not forwarded to the application yet.
+
 On `2026-07-28` the HTTP client encodes the `Mcp-Method`, `Mcp-Name` and `Mcp-Param-*` request
 headers (SEP-2243). The `Mcp-Param-*` set comes from the `x-mcp-header` annotations the transport
 caches per tool from `tools/list`, so a peer that changes a tool's schema afterwards leaves that

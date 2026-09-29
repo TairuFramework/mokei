@@ -30,6 +30,7 @@ import {
 } from './fixture.ts'
 import { createMokeiSubscriptionConfig } from './mokei-subscriptions-fixture.ts'
 import { createMokeiMRTRConfig, createSDKMRTRServer } from './mrtr-fixture.ts'
+import { create2026ElicitationConfig } from './session-elicitation-fixture.ts'
 import { createSDKSubscriptionServer } from './subscriptions-fixture.ts'
 import { createMokeiTasksConfig } from './tasks-fixture.ts'
 
@@ -78,6 +79,10 @@ export const MOKEI_STDIO_SERVER_MRTR_PATH = fileURLToPath(
 )
 export const MOKEI_STDIO_SERVER_TASKS_PATH = fileURLToPath(
   new URL('./mokei-stdio-server-tasks.ts', import.meta.url),
+)
+/** Serves server-initiated elicitation on `2025-11-25`. */
+export const MOKEI_STDIO_SERVER_ELICITATION_PATH = fileURLToPath(
+  new URL('./mokei-stdio-server-elicitation.ts', import.meta.url),
 )
 /** Serves the MRTR fixture on `2026-07-28` only, via the official SDK v2 server. */
 export const SDK_STDIO_SERVER_MRTR_PATH = fileURLToPath(
@@ -477,6 +482,27 @@ export async function startMokeiTasksHTTPServer(
       await hub.dispose()
       await eventsSource.dispose()
       await tasks.dispose()
+    },
+  }
+}
+
+/** Serves elicitation through MRTR and records each response delivered on retry. */
+export async function startMokeiElicitationHTTPServer(): Promise<
+  RunningHTTPServer & { inputResponses: Array<unknown> }
+> {
+  const inputResponses: Array<unknown> = []
+  const config = create2026ElicitationConfig((response) => inputResponses.push(response))
+  const result = serveHTTP({
+    createServer: ({ transport }) => new ContextServer({ ...config, transport }),
+    port: 0,
+    hostname: '127.0.0.1',
+  })
+  const port = await listening(result.server, '127.0.0.1')
+  return {
+    url: `http://127.0.0.1:${port}/mcp`,
+    inputResponses,
+    dispose: async () => {
+      await result.dispose()
     },
   }
 }
