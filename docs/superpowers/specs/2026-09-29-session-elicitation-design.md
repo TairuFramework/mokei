@@ -54,10 +54,13 @@ Out of scope:
 - `host.elicitationEnabled: boolean` reports whether the host was built with `elicit`.
 - `host.handleElicitation(handler: HostElicitOverride): () => void` installs the override and
   returns a function that removes it.
-  - `HostElicitOverride = (request: HostElicitRequest, fallback: () => Promise<ElicitResult>) =>
-    ElicitResult | Promise<ElicitResult>`. `fallback` runs steps 2 and 3 of the dispatch order
-    (base handler, else decline) with the same request, so an override can observe a request
-    and still defer.
+  - `HostElicitOverride = (request: HostElicitRequest, fallback: ElicitFallback) =>
+    ElicitResult | Promise<ElicitResult>`, where
+    `ElicitFallback = (options?: { signal?: AbortSignal }) => Promise<ElicitResult>`.
+    `fallback` runs steps 2 and 3 of the dispatch order (base handler, else decline) with the
+    same request, so an override can observe a request and still defer. `options.signal`
+    replaces the request's signal for the base handler, so an override can link it to other
+    cancellation (the agent passes its combined signal, see Abort).
   - One override at a time. Installing while one is present throws: routing requests between
     two owners by context key alone would send some requests to the wrong owner.
   - The remove function is idempotent, and removes only the override it installed.
@@ -72,6 +75,11 @@ Out of scope:
 The host passes each client a key-bound dispatcher (`ElicitHandler` that adds `key`).
 
 - `createHostedContext` gains `elicit?: ElicitHandler` and passes it to `ContextClient`.
+- `CreateContextParams` is redefined as
+  `Omit<CreateHostedContextParams, 'elicit'> & { key: string; elicit?: false }` (today it
+  intersects `CreateHostedContextParams`, which would make `elicit: false` unassignable).
+  `createContext` passes the host dispatcher to `createHostedContext`, or nothing when opted
+  out.
 - These params types gain `elicit?: false` to opt one context out: `CreateContextParams`,
   `AddDirectContextParams`, `HTTPContextParams`, the `NodeContextHost` stdio add params, and
   `ProxySpawnParams`.
@@ -85,7 +93,9 @@ The host passes each client a key-bound dispatcher (`ElicitHandler` that adds `k
   - `NodeContextHost` accepts `elicit` like `ContextHost`; `addLocalContext` passes its
     key-bound dispatcher to `spawnHostedContext` unless opted out.
   - `ProxyHostParams` and `ProxyHost.forDaemon` options gain `elicit`, passed to `super`;
-    `ProxyHost.spawn` builds through `createContext`, so it gets the dispatcher.
+    `ProxyHost.spawn` builds through `createContext`, so it gets the dispatcher. `spawn`
+    extracts `elicit` from `ProxySpawnParams`, keeps it out of the daemon payload, and passes it
+    to `createContext`.
 
 ### Session
 
@@ -122,8 +132,8 @@ The host passes each client a key-bound dispatcher (`ElicitHandler` that adds `k
   and agent disposal abort it. An unrelated call on the same context during a run can be
   misattributed to the in-flight tool call; the request carries no originating-call identity,
   so the spec accepts this.
-- Without `onElicitation`, the override emits events, then calls `fallback()` (base handler,
-  else decline).
+- Without `onElicitation`, the override emits events, then calls `fallback({ signal })` with
+  the same signal an `onElicitation` callback would get (base handler, else decline).
 - New agent events, added to the `AgentEvent` union. Each carries `requestID` (unique per
   request within the agent) so a UI can pair them:
   - `elicitation-request`: `{ type, requestID, key, params, toolCall?, timestamp }`, emitted
@@ -151,8 +161,13 @@ before its callback is awaited, or an interactive UI waiting on the event hangs 
 - `tool-call-start` goes through the channel when the call starts, so the stream yields it
   before any elicitation event of that call. While the call is in flight, the loop yields
   channel events as they arrive.
-- When the call settles, the loop drains every event already in the channel, then yields the
-  tool's terminal event. The stream order is therefore `tool-call-start`, the call's
+- A `2025-11-25` server can start `elicitation/create` during a tool call and return the tool
+  result before the user answers. When the call settles, the agent first aborts the callback
+  signal of every attributed request of that call still pending (reason: the tool call
+  settled), so each emits its `elicitation-error`. The request belongs to the tool call it
+  was attributed to and does not outlive it.
+- When the call settles, the loop then drains every event already in the channel, and yields
+  the tool's terminal event. The stream order is therefore `tool-call-start`, the call's
   elicitation events, then the terminal event, matching the order `onEvent` sees, including a
   response queued in the same microtask as settlement.
 - The channel is closed and its waiters woken in the run's `finally`.
@@ -173,6 +188,9 @@ before its callback is awaited, or an interactive UI waiting on the event hangs 
   arrives after abort is ignored.
 - `cancelToolCall()` and the tool timeout abort the same per-tool-call signal, with the same
   effect on a pending attributed elicitation.
+- The same combined signal is passed to `fallback({ signal })`, so a base handler answering an
+  attributed request is cancelled the same way.
+- Tool settlement aborts still-pending attributed requests (see Agent loop event channel).
 
 ## Errors
 
@@ -206,7 +224,9 @@ before its callback is awaited, or an interactive UI waiting on the event hangs 
 - Capability declaration on both revisions: `initialize` capabilities on `2025-11-25`, `_meta`
   client capabilities on `2026-07-28`; decline behaviour before an override is installed and
   after it is removed.
-- Host-node: `addLocalContext` (with and without opt-out), standalone `spawnHostedContext` with
+- `createContext({ elicit: false })` type-checks and leaves the capability undeclared.
+- Host-node: `ProxyHost.spawn({ elicit: false })` leaves the capability undeclared and does not
+  send `elicit` to the daemon; `addLocalContext` (with and without opt-out), standalone `spawnHostedContext` with
   its own handler, and a `ProxyHost` built through `forDaemon` with `elicit`.
 - Session: option forwarded; `contextHost` plus `elicit` throws; `NodeSession({ elicit })`
   works; `NodeSession` with both throws.
@@ -225,6 +245,11 @@ before its callback is awaited, or an interactive UI waiting on the event hangs 
     both with a server that forwards its tool signal to `elicit()` and one that does not;
   - breaking the stream right after `elicitation-request`: `onEvent` still gets exactly one
     `elicitation-error`;
+  - a `2025-11-25` server that starts elicitation and returns its tool result before the
+    callback settles: the request is aborted at settlement, and its `elicitation-error`
+    precedes the tool's terminal event;
+  - a pending base handler reached through `fallback({ signal })` is aborted by tool
+    cancellation on `2025-11-25`;
   - without `onElicitation`, a function base handler answers through `fallback()`, else
     decline; dispose removes the override;
   - `toolCall` set during a matching single tool call, omitted otherwise; two concurrent
