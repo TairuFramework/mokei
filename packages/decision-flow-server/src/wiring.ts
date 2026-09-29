@@ -1,6 +1,6 @@
 import { createTaskManager, type JSONValue, type TaskStore } from '@mokei/context-server'
 import type { Predictor } from '@mokei/decision-flow'
-import type { ContextTool } from '@mokei/host'
+import type { ContextHost, ContextTool } from '@mokei/host'
 import type {
   Session,
   ToolApprovalFn,
@@ -34,6 +34,8 @@ export type DecisionFlowWiring = {
   dispose(): Promise<void>
 }
 
+const pendingKeys = new WeakMap<ContextHost, Set<string>>()
+
 function decision(result: Awaited<ReturnType<ToolApprovalFn>>): boolean {
   return typeof result === 'boolean' ? result : result.approved
 }
@@ -43,7 +45,15 @@ function applyStrategy(
   request: ToolApprovalRequest,
 ): Promise<Awaited<ReturnType<ToolApprovalFn>>> {
   if (strategy === 'auto') return Promise.resolve(true)
-  if (strategy === 'never' || strategy === 'ask') return Promise.resolve(false)
+  if (strategy === 'never') {
+    return Promise.resolve({ approved: false, reason: 'Tool execution disabled' })
+  }
+  if (strategy === 'ask') {
+    return Promise.resolve({
+      approved: false,
+      reason: 'Tool approval required but no handler configured',
+    })
+  }
   return strategy(request)
 }
 
@@ -74,12 +84,19 @@ export async function addDecisionFlow(
     if (!checked.ok) throw new Error(`Invalid registered flow ${flow.id}: ${checked.formatted}`)
   }
 
-  if (host.getContextKeys().includes(params.key)) {
+  let reserved = pendingKeys.get(host)
+  if (reserved === undefined) {
+    reserved = new Set()
+    pendingKeys.set(host, reserved)
+  }
+  if (reserved.has(params.key) || host.getContextKeys().includes(params.key)) {
     throw new Error(`Context ${params.key} already exists`)
   }
+  reserved.add(params.key)
   const grants = createGrantStore()
   let tasks: ReturnType<typeof createTaskManager> | undefined
   let server: ReturnType<typeof createDecisionFlowServer> | undefined
+  let registrationAttempted = false
   markDecisionFlowContext(host, params.key)
   try {
     tasks = createTaskManager({
@@ -109,16 +126,24 @@ export async function addDecisionFlow(
       },
       enabled: true,
     }))
+    if (host.getContextKeys().includes(params.key)) {
+      throw new Error(`Context ${params.key} already exists`)
+    }
+    registrationAttempted = true
     host.addDirectContext({
       key: params.key,
       config: server.config,
       protocolVersion: '2026-07-28',
       tools,
     })
+    reserved.delete(params.key)
   } catch (error) {
-    await host.remove(params.key)
+    await Promise.allSettled([
+      registrationAttempted ? Promise.resolve().then(() => host.remove(params.key)) : undefined,
+      Promise.resolve().then(() => tasks?.dispose()),
+    ])
+    reserved.delete(params.key)
     unmarkDecisionFlowContext(host, params.key)
-    await tasks?.dispose()
     throw error
   }
 
@@ -149,7 +174,7 @@ export async function addDecisionFlow(
           predictor,
           elicitation: host.elicitationEnabled,
         })
-        if (!checked.ok) return false
+        if (!checked.ok) return true
         const planned = flowPlan(definition as FlowDefinition, predictor)
         const enriched = {
           ...request,
