@@ -6,15 +6,9 @@ import {
   SystemOneAuthError,
   SystemOneInputError,
 } from '@mokei/system-one-client'
-import getPort from 'get-port'
-import spawn, { type Subprocess } from 'nano-spawn'
-import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import { describe, expect, inject, test } from 'vitest'
 
-// Gated: runs only when MOKEI_LAYA_SERVE_BIN points at a `laya-serve` executable
-// (`pip install "laya[serve]"`). The first start downloads the english checkpoint.
-const BIN = process.env.MOKEI_LAYA_SERVE_BIN
-const ENABLED = BIN != null && BIN !== ''
-const API_KEY = 'mokei-integration'
+const laya = inject('laya')
 
 const questions = {
   department: {
@@ -35,7 +29,6 @@ const questions = {
 
 const BILLING = 'I was charged twice for my subscription this month.'
 const CRASH = 'The app crashes every time I open the settings page.'
-const THANKS = 'Thanks, everything works great now.'
 
 // Structural only: which answer a model picks is model-dependent.
 function expectWellFormed(result: PredictResult<typeof questions>): void {
@@ -49,71 +42,17 @@ function expectWellFormed(result: PredictResult<typeof questions>): void {
   expect(result.usage.inputTokens).toBeGreaterThan(0)
 }
 
-async function waitForHealth(url: string, timeoutMs: number, signal: AbortSignal): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline && !signal.aborted) {
-    try {
-      const response = await fetch(`${url}/health`)
-      if (response.ok) return
-    } catch {
-      // not listening yet
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-  throw new Error(`laya-serve did not answer ${url}/health within ${timeoutMs}ms`)
-}
+test('laya setup supplies a gate', () => {
+  expect(laya).not.toBeUndefined()
+})
 
-describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
-  let server: Subprocess | undefined
-  let url = ''
-
-  beforeAll(async () => {
-    const port = await getPort()
-    url = `http://127.0.0.1:${port}`
-    server = spawn(BIN as string, [], {
-      env: {
-        LAYA_HOST: '127.0.0.1',
-        LAYA_PORT: String(port),
-        LAYA_MODELS: 'english',
-        LAYA_API_KEY: API_KEY,
-        LAYA_LOG_LEVEL: 'warning',
-      },
-      stdio: ['ignore', 'ignore', 'pipe'],
-    })
-    // Fail fast with the server's stderr if it exits before answering /health (bad binary,
-    // port clash, import error) instead of waiting out the health timeout.
-    const stopPolling = new AbortController()
-    const exited = server.then(
-      (result) => {
-        throw new Error(`laya-serve exited before it was ready:\n${result.stderr}`)
-      },
-      (error: unknown) => {
-        const stderr = (error as { stderr?: string }).stderr ?? ''
-        throw new Error(`laya-serve failed before it was ready:\n${stderr}`, { cause: error })
-      },
-    )
-    exited.catch(() => stopPolling.abort())
-    await Promise.race([waitForHealth(url, 300_000, stopPolling.signal), exited])
-    // The first inference pays one-off costs (device kernels, tokenizer), so warm up here and
-    // keep per-test durations close to steady-state latency. On CPU that first call can take
-    // longer than ky's 10s default timeout.
-    const warmup = createSystemOneClient({
-      url,
-      apiKey: API_KEY,
-      defaultModel: 'english',
-      timeout: 120_000,
-    })
-    await warmup.predict({ state: THANKS, questions })
-  }, 330_000)
-
-  afterAll(async () => {
-    const child = await server?.nodeChildProcess.catch(() => undefined)
-    child?.kill('SIGTERM')
-    await server?.catch(() => {})
-  })
-
+describe.skipIf(laya == null)('HTTPSystemOneBackend against laya-serve', () => {
   test('predict answers choice, score and noul questions', async () => {
-    const client = createSystemOneClient({ url, apiKey: API_KEY, defaultModel: 'english' })
+    const client = createSystemOneClient({
+      url: laya!.url,
+      apiKey: laya!.apiKey,
+      defaultModel: 'english',
+    })
     const result = await client.predict({ state: BILLING, questions })
     expectWellFormed(result)
     expect(result.extras?.routing).toMatchObject({ model: 'english' })
@@ -122,7 +61,11 @@ describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
   // Unlike the structural checks, this pins the english checkpoint's answers on two unambiguous
   // messages, so a checkpoint regression shows up here.
   test('predict routes billing and technical messages', async () => {
-    const client = createSystemOneClient({ url, apiKey: API_KEY, defaultModel: 'english' })
+    const client = createSystemOneClient({
+      url: laya!.url,
+      apiKey: laya!.apiKey,
+      defaultModel: 'english',
+    })
     const billing = await client.predict({ state: BILLING, questions })
     const crash = await client.predict({ state: CRASH, questions })
     expectWellFormed(crash)
@@ -131,7 +74,11 @@ describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
   })
 
   test('predict accepts structured instructions and criteria', async () => {
-    const client = createSystemOneClient({ url, apiKey: API_KEY, defaultModel: 'english' })
+    const client = createSystemOneClient({
+      url: laya!.url,
+      apiKey: laya!.apiKey,
+      defaultModel: 'english',
+    })
     const result = await client.predict({
       state: { channel: 'email', body: BILLING },
       questions: {
@@ -164,13 +111,17 @@ describe.skipIf(!ENABLED)('HTTPSystemOneBackend against laya-serve', () => {
   })
 
   test('a wrong API key rejects with SystemOneAuthError', async () => {
-    const client = createSystemOneClient({ url, apiKey: 'wrong', defaultModel: 'english' })
+    const client = createSystemOneClient({
+      url: laya!.url,
+      apiKey: 'wrong',
+      defaultModel: 'english',
+    })
     await expect(client.predict({ state: BILLING, questions })).rejects.toThrow(SystemOneAuthError)
   })
 
   test('a 422 rejects with SystemOneInputError carrying the server reason', async () => {
     // The backend skips client validation, so the server sees the missing instructions.
-    const backend = new HTTPSystemOneBackend({ url, apiKey: API_KEY })
+    const backend = new HTTPSystemOneBackend({ url: laya!.url, apiKey: laya!.apiKey })
     const request = backend.predict({
       state: BILLING,
       questions: { department: { type: 'noul' } } as unknown as QuestionMap,
