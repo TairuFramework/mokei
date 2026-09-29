@@ -3,6 +3,7 @@ import type {
   ContextHost,
   ContextTool,
   EnableToolsArg,
+  HostElicitHandler,
   HTTPContextParams,
   LocalToolDefinition,
 } from '@mokei/host'
@@ -71,6 +72,8 @@ export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
   providers?: Record<string, ModelProvider<T>>
   /** Pre-built ContextHost instance. If omitted, a fresh ContextHost is created. */
   contextHost?: ContextHost
+  /** Enable elicitation when this session creates its own context host. */
+  elicit?: HostElicitHandler | true
   /**
    * Local tools that can be called directly without setting up an MCP server.
    * These tools are registered with the `local:` namespace prefix.
@@ -146,13 +149,16 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #providers: Map<string, ModelProvider<T>>
 
   constructor(params: SessionParams<T> = {}) {
+    if (params.contextHost && params.elicit != null) {
+      throw new Error('Cannot provide both contextHost and elicit')
+    }
     super({
       dispose: async () => {
         await this.#contextHost.dispose()
       },
     })
     this.#events = new EventEmitter()
-    this.#contextHost = params.contextHost ?? new DefaultContextHost()
+    this.#contextHost = params.contextHost ?? new DefaultContextHost({ elicit: params.elicit })
     this.#providers = new Map(Object.entries(params.providers ?? {}))
 
     // Register local tools if provided
@@ -178,8 +184,17 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   }
 
   async #setupHTTPContext(params: AddHTTPContextParams): Promise<Array<ContextTool>> {
-    const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware, enableTools } =
-      params
+    const {
+      key,
+      url,
+      headers,
+      auth,
+      timeout,
+      protocolVersion,
+      fetchMiddleware,
+      enableTools,
+      elicit,
+    } = params
     // `ContextHost.addHTTPContext` registers the context synchronously (unlike stdio's
     // async-spawning `addLocalContext`), and rejects with "already exists" for a duplicate key
     // BEFORE registering anything. Awaiting it outside the try means a duplicate-key rejection
@@ -192,6 +207,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       timeout,
       protocolVersion,
       fetchMiddleware,
+      elicit,
     })
     try {
       const tools = await this.#contextHost.setup({ key, enableTools, signal: params.signal })

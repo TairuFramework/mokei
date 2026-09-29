@@ -90,6 +90,10 @@ export function turnReducer<T extends ProviderTypes = ProviderTypes>(
     case 'tool-call-error':
       return { ...state, state: 'streaming', pendingCall: null, activeToolCall: null }
     case 'iteration-complete':
+    // The CLI does not enable elicitation, so these events never reach the chat turn.
+    case 'elicitation-request':
+    case 'elicitation-response':
+    case 'elicitation-error':
       return state
     case 'complete':
       return {

@@ -20,6 +20,42 @@ defaulting to `'auto'`: the client probes the server and speaks the newest revis
 sides support, `'2026-07-28'` where the server serves it and `'2025-11-25'` otherwise. Pin
 an explicit revision to skip the probe's extra round trip.
 
+## Elicitation
+
+Enable elicitation when constructing a `ContextHost` by passing `elicit` as a handler or `true`:
+
+```typescript
+const host = new ContextHost({
+  elicit: async ({ key, params, signal }) => {
+    // Present params to the user and return an MCP elicitation result.
+    return { action: 'decline' }
+  },
+})
+```
+
+Clients built by the host declare elicitation from their first protocol request. The handler
+receives the requesting context's `key`, the server's request `params`, and an `AbortSignal`.
+Pass `elicit: false` to `createContext`, `addDirectContext` or `addHTTPContext` to opt out one
+context. A context registered with `registerHostedContext` keeps the capabilities and handler
+configured when its client was built.
+
+An override can observe or handle requests while retaining the host handler as a fallback:
+
+```typescript
+const removeOverride = host.handleElicitation(async (request, fallback) => {
+  return await fallback({ signal: request.signal })
+})
+```
+
+Only one override can be installed at a time, and `handleElicitation` requires the host to have
+been constructed with `elicit`. Its returned function removes that override. With `elicit: true`,
+requests are declined whenever no override is installed. Without an override, a handler passed at
+construction answers requests directly.
+
+URL-mode requests are forwarded to the handler with their `mode`, `elicitationId` and `url` intact.
+The host does not forward `notifications/elicitation/complete`, so it cannot report completion of
+a URL prompt to the application.
+
 ## Security
 
 The daemon control socket exposes a `spawn` channel that runs arbitrary

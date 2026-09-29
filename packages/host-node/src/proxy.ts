@@ -6,6 +6,7 @@ import type {
   UnknownContextTypes,
 } from '@mokei/context-client'
 import type { ProtocolVersion } from '@mokei/context-protocol'
+import type { HostElicitHandler } from '@mokei/host'
 
 import { type DaemonOptions, type HostClient, runDaemon } from './daemon.js'
 import { NodeContextHost } from './node-host.js'
@@ -13,6 +14,7 @@ import { filterEnv } from './utils.js'
 
 export type ProxySpawnParams = {
   key: string
+  elicit?: false
   command: string
   args?: Array<string>
   env?: Record<string, string | null | undefined>
@@ -24,18 +26,21 @@ export type ProxySpawnParams = {
   protocolVersion?: ProtocolVersion | 'auto'
 }
 
-export type ProxyHostParams = { client: HostClient }
+export type ProxyHostParams = { client: HostClient; elicit?: HostElicitHandler | true }
 
 export class ProxyHost extends NodeContextHost {
-  static async forDaemon(options?: DaemonOptions): Promise<ProxyHost> {
-    const client = await runDaemon(options)
-    return new ProxyHost({ client })
+  static async forDaemon(
+    options?: DaemonOptions & { elicit?: HostElicitHandler | true },
+  ): Promise<ProxyHost> {
+    const { elicit, ...daemonOptions } = options ?? {}
+    const client = await runDaemon(daemonOptions)
+    return new ProxyHost({ client, elicit })
   }
 
   #client: HostClient
 
   constructor(params: ProxyHostParams) {
-    super({ dispose: () => params.client.dispose() })
+    super({ dispose: () => params.client.dispose(), elicit: params.elicit })
     this.#client = params.client
   }
 
@@ -48,7 +53,7 @@ export class ProxyHost extends NodeContextHost {
   ): Promise<ContextClient<T>> {
     // `spawnParam` is forwarded verbatim to the daemon channel, so `protocolVersion` is
     // destructured out here: it belongs to the local client, not to the daemon's spawn param.
-    const { key, env, protocolVersion, ...spawnParam } = params
+    const { key, env, protocolVersion, elicit, ...spawnParam } = params
     if (this.hasContext({ key })) {
       throw new Error(`Context ${key} already exists`)
     }
@@ -62,6 +67,7 @@ export class ProxyHost extends NodeContextHost {
       key,
       transport,
       protocolVersion,
+      elicit,
       dispose: () => {
         channel.close()
       },

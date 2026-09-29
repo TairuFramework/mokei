@@ -4,6 +4,9 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { NodeSession } from '../src/node-session.js'
 
 const ECHO_SERVER = fileURLToPath(new URL('./fixtures/echo-server.mjs', import.meta.url))
+const ELICITATION_SERVER = fileURLToPath(
+  new URL('./fixtures/elicitation-server.mjs', import.meta.url),
+)
 const server = { command: process.execPath, args: [ECHO_SERVER] }
 
 describe('NodeSession.addContext cleanup', () => {
@@ -22,6 +25,28 @@ describe('NodeSession.addContext cleanup', () => {
     const tools = await session.addContext({ key: 'echo', ...server })
 
     expect(onAdded).toHaveBeenCalledWith({ key: 'echo', tools })
+  })
+
+  test('NodeSession addContext false leaves capability absent', async () => {
+    session = new NodeSession({ elicit: true })
+    await session.addContext({
+      key: 'elicitation',
+      command: process.execPath,
+      args: [ELICITATION_SERVER],
+      protocolVersion: '2025-11-25',
+      elicit: false,
+    })
+
+    const result = await session.contextHost.callTool({
+      key: 'elicitation',
+      name: 'capabilities',
+      arguments: {},
+    })
+    const response = JSON.parse(
+      result.content[0]?.type === 'text' ? result.content[0].text : '',
+    ) as Record<string, unknown>
+
+    expect(response).not.toHaveProperty('elicitation')
   })
 
   test('abort during tool selection cannot alter a replacement context', async () => {

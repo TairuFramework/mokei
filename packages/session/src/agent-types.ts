@@ -1,5 +1,5 @@
-import type { CallToolResult } from '@mokei/context-protocol'
-import type { ContextTool } from '@mokei/host'
+import type { CallToolResult, ElicitResult } from '@mokei/context-protocol'
+import type { ContextTool, HostElicitRequest } from '@mokei/host'
 import type { FunctionToolCall, Message, ModelProvider, ProviderTypes } from '@mokei/model-provider'
 
 import type { Session } from './session.js'
@@ -59,6 +59,14 @@ export type ToolApprovalDecision = {
   reason?: string
 }
 
+/** Request handed to an agent's elicitation callback. */
+export type ElicitationRequest = HostElicitRequest & {
+  toolCall?: FunctionToolCall<unknown>
+}
+
+/** Answer a server's elicitation request. */
+export type ElicitationFn = (request: ElicitationRequest) => ElicitResult | Promise<ElicitResult>
+
 /**
  * Parameters for a single agent execution (`run` or `stream`).
  */
@@ -93,6 +101,8 @@ export type AgentParams<T extends ProviderTypes = ProviderTypes> = {
   toolTimeout?: number
   /** Optional callback for each event during execution */
   onEvent?: (event: AgentEvent) => void
+  /** Optional callback to answer MCP elicitation requests */
+  onElicitation?: ElicitationFn
 }
 
 /**
@@ -108,6 +118,7 @@ export type ResolvedAgentParams<T extends ProviderTypes = ProviderTypes> = {
   timeout: number
   toolTimeout: number
   onEvent: ((event: AgentEvent) => void) | undefined
+  onElicitation?: ElicitationFn
 }
 
 /**
@@ -126,6 +137,9 @@ export type AgentEvent<T extends ProviderTypes = ProviderTypes> =
   | AgentToolCallStartEvent
   | AgentToolCallCompleteEvent
   | AgentToolCallErrorEvent
+  | AgentElicitationRequestEvent
+  | AgentElicitationResponseEvent
+  | AgentElicitationErrorEvent
   | AgentIterationCompleteEvent
   | AgentCompleteEvent<T>
   | AgentErrorEvent
@@ -243,6 +257,36 @@ export type AgentToolCallErrorEvent = {
   type: 'tool-call-error'
   toolCall: FunctionToolCall<unknown>
   error: Error
+  timestamp: number
+}
+
+/** Emitted before an elicitation callback or host fallback is awaited. */
+export type AgentElicitationRequestEvent = {
+  type: 'elicitation-request'
+  requestID: string
+  key: string
+  params: HostElicitRequest['params']
+  toolCall?: FunctionToolCall<unknown>
+  timestamp: number
+}
+
+/** Emitted when an elicitation is answered, without answer content. */
+export type AgentElicitationResponseEvent = {
+  type: 'elicitation-response'
+  requestID: string
+  key: string
+  action: ElicitResult['action']
+  toolCall?: FunctionToolCall<unknown>
+  timestamp: number
+}
+
+/** Emitted when an elicitation callback rejects or its request aborts. */
+export type AgentElicitationErrorEvent = {
+  type: 'elicitation-error'
+  requestID: string
+  key: string
+  error: Error
+  toolCall?: FunctionToolCall<unknown>
   timestamp: number
 }
 
