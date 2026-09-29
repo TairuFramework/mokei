@@ -218,12 +218,9 @@ describe('AgentSession elicitation ownership', () => {
       emitted.push(event)
     })
 
-    const result = await ask('callback error')
-
-    expect(result).toMatchObject({
-      isError: true,
-      content: [{ type: 'text', text: 'callback failed' }],
-    })
+    // The server's elicit call rejects with the reverse RPC error, which the tool reports as a
+    // JSON-RPC error rather than an `isError` result.
+    await expect(ask('callback error')).rejects.toMatchObject({ message: 'callback failed' })
     const paired = elicitationEvents(emitted)
     expect(paired.map((event) => event.type)).toEqual(['elicitation-request', 'elicitation-error'])
     expect(paired[1]?.requestID).toBe(paired[0]?.requestID)
