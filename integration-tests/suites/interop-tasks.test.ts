@@ -9,7 +9,7 @@ import {
 } from '../support/interop/sdk-tasks-fixture.ts'
 import {
   createSDKClient,
-  SDK_STDIO_SERVER_TASKS_PATH,
+  MOKEI_STDIO_SERVER_TASKS_PATH,
   startMokeiTasksHTTPServer,
   type TasksHTTPServer,
 } from '../support/interop/servers.ts'
@@ -40,7 +40,7 @@ const rows = [
       await client.connect(
         new StdioClientTransport({
           command: process.execPath,
-          args: [SDK_STDIO_SERVER_TASKS_PATH],
+          args: [MOKEI_STDIO_SERVER_TASKS_PATH, '10'],
         }),
       )
       const fixture = createSDKTasksFixture(client)

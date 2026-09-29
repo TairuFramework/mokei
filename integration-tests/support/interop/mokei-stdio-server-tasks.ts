@@ -4,7 +4,8 @@ import { ContextServer, createTaskManager } from '@mokei/context-server'
 
 import { createMokeiTasksConfig } from './tasks-fixture.ts'
 
-const tasks = createTaskManager({ pollIntervalMs: 60_000 })
+const pollIntervalMs = Number(process.argv[2] ?? 60_000)
+const tasks = createTaskManager({ pollIntervalMs })
 const transport = new NodeStreamsTransport<ClientMessage, ServerMessage>({
   streams: { readable: process.stdin, writable: process.stdout },
 })

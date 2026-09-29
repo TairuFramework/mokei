@@ -79,9 +79,6 @@ export const MOKEI_STDIO_SERVER_MRTR_PATH = fileURLToPath(
 export const MOKEI_STDIO_SERVER_TASKS_PATH = fileURLToPath(
   new URL('./mokei-stdio-server-tasks.ts', import.meta.url),
 )
-export const SDK_STDIO_SERVER_TASKS_PATH = fileURLToPath(
-  new URL('./sdk-stdio-server-tasks.ts', import.meta.url),
-)
 /** Serves the MRTR fixture on `2026-07-28` only, via the official SDK v2 server. */
 export const SDK_STDIO_SERVER_MRTR_PATH = fileURLToPath(
   new URL('./sdk-stdio-server-mrtr.ts', import.meta.url),
