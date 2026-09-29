@@ -656,14 +656,26 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           meta,
           ...mrtr,
         })
-      case 'initialize':
+      case 'initialize': {
         this.#clientInitialize = request.params
         this.events.emit('initialize', request.params)
+        const capabilities = { ...this.#capabilities }
+        if (
+          protocol.version === '2025-11-25' &&
+          capabilities.extensions?.[TASKS_EXTENSION] != null
+        ) {
+          capabilities.extensions = { ...capabilities.extensions }
+          delete capabilities.extensions[TASKS_EXTENSION]
+          if (Object.keys(capabilities.extensions).length === 0) {
+            delete capabilities.extensions
+          }
+        }
         return {
-          capabilities: this.#capabilities,
+          capabilities,
           protocolVersion: protocol.version,
           serverInfo: this.#serverInfo,
         } satisfies InitializeResult
+      }
       case 'logging/setLevel':
         this.#clientLoggingLevel = request.params.level
         return {}

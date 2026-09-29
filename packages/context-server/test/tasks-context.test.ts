@@ -59,6 +59,7 @@ describe('tool task context', () => {
         false,
       ],
       [createTaskManager(), undefined, '2025-11-25', false],
+      [createTaskManager(), { caller: 'legacy' }, '2025-11-25', false],
       [createTaskManager(), currentMeta, '2026-07-28', true],
     ] as const) {
       const tool = createTool({
@@ -105,6 +106,35 @@ describe('tool task context', () => {
       await tasks?.dispose()
       await transports.dispose()
     }
+  })
+
+  test('advertises tasks in current discovery but not legacy initialization', async () => {
+    const tasks = createTaskManager()
+    const { server, transports } = setup({
+      tasks,
+      protocolVersions: ['2025-11-25', '2026-07-28'],
+    })
+    const initialized = await exchange(transports, 'initialize', {
+      capabilities: {},
+      clientInfo: { name: 'test', version: '1.0.0' },
+      protocolVersion: '2025-11-25',
+    })
+    const initializeResult = initialized.result as {
+      capabilities: { extensions?: Record<string, unknown> }
+      protocolVersion: string
+    }
+    expect(initializeResult.protocolVersion).toBe('2025-11-25')
+    expect(initializeResult.capabilities.extensions?.[TASKS_EXTENSION]).toBeUndefined()
+
+    const discovered = await exchange(transports, 'server/discover', { _meta: currentMeta })
+    const discoverResult = discovered.result as {
+      capabilities: { extensions?: Record<string, unknown> }
+    }
+    expect(discoverResult.capabilities.extensions?.[TASKS_EXTENSION]).toEqual({})
+
+    await server.dispose()
+    await tasks.dispose()
+    await transports.dispose()
   })
 
   test('does not expose task context to a prompt handler', async () => {
