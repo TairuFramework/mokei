@@ -205,7 +205,7 @@ test('rejects an update based on a stale revision', async () => {
 
 **Files:** Create `packages/context-server/src/task-manager.ts`, `packages/context-server/test/task-manager.test.ts`; modify `packages/context-server/src/index.ts`.
 
-**Interfaces:** Consumes Task 2's store and owner types, Task 3's `settleToolOutcome`, protocol task types and `missingInputCapabilities`. Produces `TaskManagerParams = { store?: TaskStore; ttlMs?: number; pollIntervalMs?: number; recover?: (record: TaskRecord, resume: TaskResume) => Promise<void> | void; now?: () => number }`, `TaskHandle` (`taskID`, `signal`, `setStatus`, `requestInput`, `awaitInput`, `checkpoint`), `TaskContext.run(work, options?)`, `TaskManager` (`events`, `create`, `get`, `update`, `cancel`, `canAccess`, `recover(tools)`, `dispose`), and `createTaskManager(params?: TaskManagerParams): TaskManager`. The optional clock is internal test injection; document the public defaults as 3,600,000 and 1,000 ms.
+**Interfaces:** Consumes Task 2's store and owner types, Task 3's `settleToolOutcome`, protocol task types and `missingInputCapabilities`. Produces `TaskManagerParams = { store?: TaskStore; ttlMs?: number; pollIntervalMs?: number; recover?: (record: TaskRecord, resume: TaskResume) => Promise<void> | void; now?: () => number }`, `TaskHandle` (`taskID`, `signal`, `requestMeta`, `setStatus`, `requestInput`, `awaitInput`, `checkpoint`, `cancel`), `TaskContext.run(work, options?)`, `TaskManager` (`events`, `create`, `get`, `update`, `cancel`, `canAccess`, `recover(tools)`, `dispose`), and `createTaskManager(params?: TaskManagerParams): TaskManager`. The optional clock is internal test injection; document the public defaults as 3,600,000 and 1,000 ms.
 
 Use one contract for live and recovered workers:
 
@@ -221,13 +221,15 @@ type TaskHandle = {
   ): Promise<Record<string, InputResponse>>
   awaitInput(options?: { signal?: AbortSignal }): Promise<Record<string, InputResponse>>
   checkpoint(resumeData: JSONValue): Promise<void>
+  cancel(reason?: string): Promise<boolean>
+  requestMeta: Record<string, JSONValue>
 }
 type TaskResume = (work: TaskWork) => Promise<void>
 type TaskContext = {
   run(work: TaskWork, options?: { resumeData?: JSONValue }): Promise<CreateTaskResult>
 }
 type TaskManager = {
-  events: EventsSource<{ taskStatus: DetailedTask }>
+  events: EventsSource<{ taskStatus: DetailedTask; taskError: { taskID: string; error: unknown } }>
   create(params: {
     toolName: string
     tool: GenericToolDefinition
@@ -235,6 +237,7 @@ type TaskManager = {
     owner?: TaskOwner
     work: TaskWork
     resumeData?: JSONValue
+    requestMeta?: Record<string, JSONValue>
   }): Promise<CreateTaskResult>
   get(taskID: string, owner?: TaskOwner): Promise<DetailedTask>
   update(
@@ -253,6 +256,7 @@ type TaskManager = {
 - [ ] **Step 2: Run red.** Run: `pnpm --filter @mokei/context-server test`. Expected: missing manager API or failing transitions.
 - [ ] **Step 3: Implement worker and CAS state machine.** Keep controllers and pending-input deferred values in the manager. Retry mutations after `TaskStoreConflictError`. Stop only when the latest record is terminal or missing. Emit detailed snapshots after committed transitions. Use an `unref` sweep timer in Node where supported. Ignore detached work results after cancel, expiry or dispose.
 - [ ] **Step 4: Write failing restart tests.** Seed a persistent test store with `working` and `input_required` records. Assert hidden records before `recover(tools)`, successful `resume(work)`, `awaitInput()` on preserved requests, missing tool, missing/throwing callback and the exact `-32603` interrupted error. Assert a manager without a callback fails persisted records during its startup work. Assert a recovered worker sees the latest checkpointed `resumeData`, and a resumed worker throwing `RPCError` fails the task with that error.
+- [ ] **Step 4b (amendment 2): Handle cancel, keyed re-issue, request meta, settlement errors.** Tests first, then code, per spec "Handler API" and "Races, expiry and cancellation": `handle.cancel(reason?)` commits `cancelled` through the terminal CAS (resolves `true`, or `false` when a settlement, client cancel or expiry won), aborts `signal` and rejects pending input; `requestInput` with keys all outstanding and deep-equal attaches like `awaitInput`, while any other issued-key reuse rejects with exported `TaskInputKeyReusedError`; the record stores the creating request's `_meta` and `handle.requestMeta` exposes it (`{}` when absent), for live and recovered workers; a detached settlement failing for a non-terminal, non-missing reason retries up to three times, then emits `taskError`; sweep failures emit `taskError`.
 - [ ] **Step 5: Implement recovery.** Await initial store scan through a manager readiness promise before every public access. Keep records inaccessible until recovery callback returns with a resumed worker. Settle unrecovered records to `{ code: -32603, message: 'Task interrupted by server restart' }`. The recovered worker uses its named tool and the same outcome seam as a live worker.
 - [ ] **Step 6: Verify.** Run: `pnpm --filter @mokei/context-server test`. Expected: all task manager and existing server tests pass.
 - [ ] **Step 7: Commit.** Run `rtk proxy pnpm run lint`, then `git add packages/context-server/src/task-manager.ts packages/context-server/src/index.ts packages/context-server/test/task-manager.test.ts && git commit -m "feat: manage durable task workers and recovery"`.
@@ -261,7 +265,7 @@ type TaskManager = {
 
 **Files:** Modify `packages/context-server/src/types.ts`, `src/definitions.ts`, `src/server.ts`, `src/index.ts`, `test/mrtr.test.ts`; create `packages/context-server/test/tasks-context.test.ts`.
 
-**Interfaces:** Consumes `TaskContext` and manager from Task 4, and the outcome seam from Task 3. Produces `HandlerRequest.task?: TaskContext`. `ContextServer` accepts `tasks?: TaskManager` and supplies task context only for a declared `tools/call` on `2026-07-28`.
+**Interfaces:** Consumes `TaskContext` and manager from Task 4, and the outcome seam from Task 3. Produces `HandlerRequest.task?: TaskContext` and `HandlerRequest.meta: Record<string, JSONValue>` (the `tools/call` `_meta`, `{}` when absent, on both revisions); `TaskContext.run` passes it to `create` as `requestMeta`. Also modify `packages/host/src/local-tools.ts` (and host types) so `LocalToolContext.meta` carries the `_meta` given to `ContextHost.callLocalTool`, `{}` when absent, with a host test. `ContextServer` accepts `tasks?: TaskManager` and supplies task context only for a declared `tools/call` on `2026-07-28`.
 
 - [ ] **Step 1: Write failing tests.** Assert task context presence requires manager, task declaration and `tools/call`. Assert a task result without context fails `-32603`. Exercise normal result, output-schema failure, thrown tool error and thrown `RPCError` through the same seam for inline and detached work. Assert stored successful results carry `resultType: 'complete'` and task creation skips cache hints. Assert `server/discover` advertises the extension exactly when `tasks` is configured.
 - [ ] **Step 2: Run red.** Run: `pnpm --filter @mokei/context-server test`. Expected: failing context and outcome assertions.

@@ -121,7 +121,13 @@ extension is not advertised, handlers never receive a task context, and `tasks/*
 
 ### Handler API
 
-The tool handler request gains `task?: TaskContext`, present only when the server has `tasks`,
+The tool handler request gains `meta: Record<string, JSONValue>`: the `tools/call` request's
+`_meta` object, `{}` when absent, on both revisions and with or without `tasks`. Handlers use
+it for caller-supplied metadata (for example a depth counter or idempotency key). Local tools
+get the same field: `LocalToolContext.meta`, filled from the `_meta` that
+`ContextHost.callLocalTool` receives, `{}` when absent.
+
+The tool handler request also gains `task?: TaskContext`, present only when the server has `tasks`,
 the method is `tools/call`, and the request's client capabilities declare the extension. The
 handler decides per request:
 
@@ -144,7 +150,7 @@ createTool({
 `req.task.run(work, options?)`:
 
 1. Creates the record in the store (`status: 'working'`, timestamps, `ttlMs`, owner,
-   `toolName`, the request's declared client capabilities, optional `resumeData`) and only then returns the `CreateTaskResult` (the
+   `toolName`, the request's declared client capabilities, the request's `_meta`, optional `resumeData`) and only then returns the `CreateTaskResult` (the
    extension requires durable creation before the response).
 2. Runs `work(handle)` detached, on the manager. `handle` provides:
    - `taskId`.
@@ -152,8 +158,12 @@ createTool({
    - `setStatus(message)`: sets `statusMessage`, bumps `lastUpdatedAt`.
    - `requestInput(inputRequests)`: moves the task to `input_required` with those requests and
      resolves with the `inputResponses` once `tasks/update` has supplied every key; the task
-     then returns to `working`. Keys must be unique for the task's lifetime: reusing a key
-     already issued rejects with an error. Rejects with the abort reason if the signal aborts
+     then returns to `working`. Keys must be unique for the task's lifetime, with one
+     exception: a call whose keys are all currently outstanding with identical requests
+     (deep-equal) attaches to them instead of issuing, and resolves like `awaitInput`. This lets
+     recovered work re-issue its request whether or not the crash happened before the request
+     was persisted. Any other reuse of an issued key (answered, withdrawn, or outstanding with a
+     different request) rejects with `TaskInputKeyReusedError`. Rejects with the abort reason if the signal aborts
      first. Before persisting, it applies the same client-capability check as MRTR
      (`server.ts` input gating) against the capabilities the creating request declared, which
      the record stores. An undeclared capability rejects with the MRTR error; if the work does
@@ -170,6 +180,14 @@ createTool({
      settlement writes are never overwritten. Resolves once persisted; rejects when the task
      is terminal or its signal has aborted. Long-running work calls it at each durable point
      so `recover` resumes from the latest state.
+   - `cancel(reason?)`: ends the task `cancelled` from inside the work, for example when the
+     user declines an input. It goes through the same first-writer-wins terminal transition as
+     `tasks/cancel`: it aborts `signal`, rejects pending input calls, and the work's later
+     outcome is ignored. Resolves `true` when this call committed the cancellation, `false` when
+     the task was already terminal (a completed settlement, a client cancel or expiry won).
+   - `requestMeta`: the `_meta` object of the creating request (validated as a JSON object,
+     `{}` when absent), so work can read request metadata such as a caller's idempotency key.
+     A recovered worker gets the `_meta` stored on the record at creation.
 3. Settles the task through the same finalisation seam as the synchronous path (below).
 
 `options.resumeData` is a JSON value stored on the record for `recover` (see Restart).
@@ -260,7 +278,12 @@ partial `tasks/update` therefore never strands a completing task.
   ignored.
 - Expiry is measured from `createdAt` (status changes do not extend it). It is checked on every
   access and by an `unref`'d sweep timer; an expired record is deleted and its work aborted.
-- On cancel or expiry, a pending `requestInput` promise rejects with the abort reason.
+- On cancel (client or `handle.cancel`) or expiry, a pending `requestInput` promise rejects
+  with the abort reason.
+- Detached settlement that fails for a reason other than a terminal or missing record (for
+  example a store outage) is retried up to three times. If it still fails, the manager emits
+  `taskError: { taskID, error }` on `events` and leaves the record to expiry or restart
+  recovery. Sweep failures emit the same event and the next sweep retries.
 - Tests drive these rules with a controlled clock.
 
 ### Restart
@@ -389,7 +412,13 @@ Unit:
   - `-32021` for undeclared `tasks/*` and task listens; `-32601` without a manager;
   - `tasks/update` validates with `inputResponses` and rejects `requestState`; a real
     `tasks/update` through `_handleRequest` delivers its `inputResponses` to the task;
-  - `requestInput`, reused-key rejection, undeclared input capability (stored
+  - `requestInput` re-issue of identical outstanding keys attaching, reuse of answered,
+    withdrawn or differing keys rejecting with `TaskInputKeyReusedError`;
+  - `handle.cancel()` ending the task `cancelled` and returning `false` when a settlement or
+    client cancel won; `requestMeta` and handler `meta` carrying the request `_meta` (`{}` when
+    absent), also for local tools and recovered workers;
+  - detached settlement store failure retried, then `taskError` emitted;
+  - `requestInput`, undeclared input capability (stored
     `failed.error.code === -32021`), partial `tasks/update`,
     wrong response kind;
   - two partial updates racing both land; cancel racing completion (first writer wins);
