@@ -16,14 +16,13 @@ This replaces the earlier backlog idea of `check_flow` / `run_flow` tools inside
 
 ## Dependencies
 
-- MCP Tasks extension (`feat/mcp-tasks-extension`): `createTaskManager`, `ContextServer({ tasks })`,
+- MCP Tasks extension (merged to `main`, #60): `createTaskManager`, `ContextServer({ tasks })`,
   task handles (`requestInput` and `awaitInput` with `{ signal }` withdrawal, `requestInput`
   re-issue of an identical outstanding key, `checkpoint`, `cancel`, `requestMeta`), handler
   `meta` and `LocalToolContext.meta` (request `_meta`, forwarded by `callNamespacedTool` for
   local tools too), `taskError` events, `tasks.recover`, and the client's `callTool({ task: 'handle' })`, `tasks.wait(taskId)` and
-  `tasks.cancel(taskId)`. This branch starts from that one; implementation waits until it
-  merges.
-- Session elicitation (`feat/session-elicitation`): `ContextHost` `elicit` option,
+  `tasks.cancel(taskId)`.
+- Session elicitation (merged to `main`, #61): `ContextHost` `elicit` option,
   `elicitationEnabled`, and the `AgentSession` `onElicitation` override. Flow `input` nodes reach the user through it.
 - `@sozai/flow-graph` 0.1.0 as it is today. No upstream change is required.
 
@@ -90,11 +89,20 @@ type ToolCallOutcome = { result: CallToolResult } | { task: { taskId: string } }
 - Per-run call metadata: the `tool` kind and the MCP predictor are built for each run (see
   below) with that run's `depth`, and build every sibling call's `meta`:
   `{ 'io.mokei/flow-depth': depth + 1, 'io.mokei/idempotency-key': <operation key>,
-  'io.mokei/attempt': attempt }` (see Delivery semantics). The caller sends `meta` as `_meta`;
-  `callNamespacedTool` passes it to remote and local tools alike.
-- `callTool` asks the sibling for a task handle (`task: 'handle'`) when the sibling's client
-  supports the tasks extension, and returns `{ task }` when the sibling answers with one;
-  otherwise it returns `{ result }`.
+  'io.mokei/attempt': attempt }` (see Delivery semantics). The caller sends `meta` as `_meta`
+  to remote and local tools alike.
+- Dispatch bypasses `ContextHost.callNamespacedTool`, which always resolves a task to its final
+  result. `@mokei/host` is unchanged:
+  - remote tool `key:name`: `host.contexts[key].client.callTool({ name, arguments, _meta, signal,
+    task: 'handle' })`. A `CreateTaskResult` (`isCreateTaskResult`) becomes `{ task }`, anything
+    else `{ result }`. A `2025-11-25` sibling never answers with a task, so no capability probe
+    is needed;
+  - local tool `local:name`: `host.callLocalTool({ name, arguments, _meta, signal })`, always
+    `{ result }`. `callLocalTool` turns a thrown error into an `isError` result, so a local
+    tool's failure maps to `tool_error`;
+  - `waitTask` and `cancelTask` use `host.contexts[key].client.tasks.wait(taskId, { signal })`
+    and `.tasks.cancel(taskId)`. `tasks.wait` maps a failed task to `RPCError` and a cancelled
+    one to `TaskCancelledError`; the caller turns those into the node's `ok: false` resume.
 
 ### `tool` node kind
 
@@ -293,7 +301,7 @@ One approval per run, asked inside the agent's normal tool-call gate, where the 
 
 ### Start
 
-- `run_flow` and registered-flow tools call `tasks.create`.
+- `run_flow` and registered-flow tool handlers call `req.task.run(work, { resumeData })`.
 - An invalid inline definition returns an `isError` tool result with the formatted issues; no
   task is created.
 - The approval grant is consumed before the task is created.
@@ -477,8 +485,8 @@ it matters when the application passes a persistent `TaskStore`.
   semantics and the operation key, elicitation schema limits.
 - `docs/agents/architecture.md`: the new package and its place between session and
   decision-flow.
-- Changeset: minor for the new package (it joins the fixed release group), `@mokei/decision-flow`,
-  `@mokei/session` and `@mokei/mcp-system-one`.
+- Changeset: patch for the new package (it joins the fixed release group), `@mokei/decision-flow`,
+  `@mokei/session` and `@mokei/mcp-system-one`. Releases stay in the 0.14.x band.
 
 ## Follow-on
 
