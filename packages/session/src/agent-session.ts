@@ -787,16 +787,12 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         toolCall,
         signal: callController.signal,
       })
-      await this.#settleToolEvents(run, activeTool)
-
-      // Emit complete event
-      const completeEvent: AgentEvent<T> = {
+      await this.#settleToolEvents(run, activeTool, () => ({
         type: 'tool-call-complete',
         toolCall,
         result,
         timestamp: Date.now(),
-      }
-      this.#emitElicitationEvent(completeEvent, run)
+      }))
 
       return { result }
     } catch (error) {
@@ -816,15 +812,12 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         err = error instanceof Error ? error : new Error(String(error))
       }
 
-      // Emit error event
-      const errorEvent: AgentEvent<T> = {
+      await this.#settleToolEvents(run, activeTool, () => ({
         type: 'tool-call-error',
         toolCall,
         error: err,
         timestamp: Date.now(),
-      }
-      await this.#settleToolEvents(run, activeTool)
-      this.#emitElicitationEvent(errorEvent, run)
+      }))
 
       return { error: err }
     } finally {
@@ -835,16 +828,24 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     }
   }
 
-  async #settleToolEvents(run: AgentRunState<T>, activeTool?: AgentToolState): Promise<void> {
+  async #settleToolEvents(
+    run: AgentRunState<T>,
+    activeTool: AgentToolState | undefined,
+    terminal: () => AgentEvent<T>,
+  ): Promise<void> {
     while (true) {
       for (const controller of activeTool?.controllers ?? []) {
         controller.abort(TOOL_SETTLED_REASON)
       }
       await Promise.all(activeTool?.settlements ?? [])
       await run.channel.waitForDrain()
-      if ((activeTool == null || activeTool.settlements.size === 0) && run.channel.isDrained()) {
-        return
-      }
+      if (!run.channel.isDrained() || (activeTool != null && activeTool.settlements.size > 0))
+        continue
+
+      // Detach at publication so a terminal observer cannot attribute another request to this call.
+      run.activeTool = undefined
+      this.#emitElicitationEvent(terminal(), run)
+      return
     }
   }
 }

@@ -16,6 +16,7 @@ import type {
 import { defer } from '@sozai/async'
 import { describe, expect, test, vi } from 'vitest'
 
+import { AgentEventChannel } from '../src/agent-event-channel.js'
 import { type AgentEvent, AgentSession, Session } from '../src/index.js'
 
 type TestToolCall = { id: string; name: string }
@@ -145,6 +146,7 @@ function relevant(events: Array<AgentEvent>): Array<AgentEvent> {
     (event) =>
       event.type === 'tool-call-start' ||
       event.type === 'tool-call-complete' ||
+      event.type === 'tool-call-error' ||
       event.type.startsWith('elicitation-'),
   )
 }
@@ -393,6 +395,136 @@ describe('AgentSession elicitation stream', () => {
     await agent.dispose()
     await harness.session.dispose()
   })
+
+  test('request at the final drain check precedes the tool terminal', async () => {
+    const firstStarted = defer<void>()
+    const pendingAnswer = defer<ElicitResult>()
+    const harness = createHarness(async (client) => {
+      void client
+        .elicit({
+          message: 'first',
+          requestedSchema: { type: 'object', properties: {} },
+        })
+        .catch(() => undefined)
+      await firstStarted.promise
+      return { content: [] }
+    })
+    const host = harness.session.contextHost
+    const handleElicitation = host.handleElicitation.bind(host)
+    let dispatch: Parameters<typeof host.handleElicitation>[0] | undefined
+    const capture = vi.spyOn(host, 'handleElicitation').mockImplementation((handler) => {
+      dispatch = handler
+      return handleElicitation(handler)
+    })
+    const observed: Array<AgentEvent> = []
+    const agent = new AgentSession({
+      session: harness.session,
+      provider: harness.provider,
+      model: 'test-model',
+      onElicitation: ({ params }) => {
+        if (params.message === 'first') {
+          firstStarted.resolve()
+          return pendingAnswer.promise
+        }
+        return { action: 'decline' }
+      },
+      onEvent: (event) => observed.push(event),
+    })
+    capture.mockRestore()
+    const isDrained = AgentEventChannel.prototype.isDrained
+    let firstErrorYielded = false
+    let drainedChecks = 0
+    let secondStarted = false
+    const drainCheck = vi
+      .spyOn(AgentEventChannel.prototype, 'isDrained')
+      .mockImplementation(function (this: AgentEventChannel) {
+        const drained = isDrained.call(this)
+        if (firstErrorYielded && drained && ++drainedChecks === 1) {
+          if (dispatch == null) throw new Error('Elicitation handler is unavailable')
+          secondStarted = true
+          void Promise.resolve(
+            dispatch(
+              {
+                key: 'questions',
+                params: {
+                  message: 'second',
+                  requestedSchema: { type: 'object', properties: {} },
+                },
+                signal: new AbortController().signal,
+              },
+              async () => ({ action: 'decline' }),
+            ),
+          ).catch(() => undefined)
+        }
+        return drained
+      })
+    const streamed: Array<AgentEvent> = []
+    try {
+      for await (const event of agent.stream({ prompt: 'ask' })) {
+        streamed.push(event)
+        if (event.type === 'elicitation-error') firstErrorYielded = true
+      }
+      expect(secondStarted).toBe(true)
+      expectPairedAndOrdered(streamed, observed)
+      expect(relevant(streamed).map((event) => event.type)).toEqual([
+        'tool-call-start',
+        'elicitation-request',
+        'elicitation-error',
+        'elicitation-request',
+        'elicitation-error',
+        'tool-call-complete',
+      ])
+      expect(
+        relevant(streamed)
+          .filter((event) => event.type.startsWith('elicitation-'))
+          .every((event) => 'toolCall' in event && event.toolCall?.name === 'questions:ask'),
+      ).toBe(true)
+    } finally {
+      drainCheck.mockRestore()
+      await agent.dispose()
+      await harness.session.dispose()
+    }
+  })
+
+  test('tool rejection settles a pending elicitation before tool-call-error', async () => {
+    const callbackStarted = defer<void>()
+    const pendingAnswer = defer<ElicitResult>()
+    let agent: AgentSession<TestTypes>
+    const harness = createHarness(async (client) => {
+      void client
+        .elicit({
+          message: 'pending when tool rejects',
+          requestedSchema: { type: 'object', properties: {} },
+        })
+        .catch(() => undefined)
+      await callbackStarted.promise
+      agent.cancelToolCall()
+      throw new Error('tool rejected')
+    })
+    const observed: Array<AgentEvent> = []
+    agent = new AgentSession({
+      session: harness.session,
+      provider: harness.provider,
+      model: 'test-model',
+      onElicitation: () => {
+        callbackStarted.resolve()
+        return pendingAnswer.promise
+      },
+      onEvent: (event) => observed.push(event),
+    })
+    const streamed: Array<AgentEvent> = []
+    for await (const event of agent.stream({ prompt: 'ask' })) streamed.push(event)
+    expectPairedAndOrdered(streamed, observed)
+    expect(relevant(streamed).map((event) => event.type)).toEqual([
+      'tool-call-start',
+      'elicitation-request',
+      'elicitation-error',
+      'tool-call-error',
+    ])
+    await agent.dispose()
+    await harness.session.dispose()
+  })
+
   test('local tools do not attribute elicitation from the local context', async () => {
     const harness = createHarness()
     harness.provider = createProvider('local:run')
