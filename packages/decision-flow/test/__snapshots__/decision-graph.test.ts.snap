@@ -1,0 +1,3286 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`createDecisionFlowGraph > provides the default retry policy and composed authoring schema 1`] = `
+{
+  "additionalProperties": false,
+  "definitions": {
+    "filter": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "is": {
+              "additionalProperties": false,
+              "description": "is",
+              "minProperties": 1,
+              "properties": {
+                "contains": {
+                  "description": "contains",
+                  "type": "string",
+                },
+                "equalTo": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/json",
+                    },
+                    {
+                      "not": {
+                        "type": "null",
+                      },
+                    },
+                  ],
+                  "description": "equalTo",
+                },
+                "greaterThan": {
+                  "description": "greaterThan",
+                  "type": [
+                    "number",
+                    "string",
+                  ],
+                },
+                "greaterThanOrEqualTo": {
+                  "description": "greaterThanOrEqualTo",
+                  "type": [
+                    "number",
+                    "string",
+                  ],
+                },
+                "in": {
+                  "description": "in",
+                  "items": {
+                    "$ref": "#/definitions/json",
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                },
+                "includesAll": {
+                  "description": "includesAll",
+                  "items": {
+                    "type": [
+                      "string",
+                      "number",
+                    ],
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                },
+                "includesAny": {
+                  "description": "includesAny",
+                  "items": {
+                    "type": [
+                      "string",
+                      "number",
+                    ],
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                },
+                "isNull": {
+                  "description": "isNull",
+                  "type": "boolean",
+                },
+                "lessThan": {
+                  "description": "lessThan",
+                  "type": [
+                    "number",
+                    "string",
+                  ],
+                },
+                "lessThanOrEqualTo": {
+                  "description": "lessThanOrEqualTo",
+                  "type": [
+                    "number",
+                    "string",
+                  ],
+                },
+                "notEqualTo": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/json",
+                    },
+                    {
+                      "not": {
+                        "type": "null",
+                      },
+                    },
+                  ],
+                  "description": "notEqualTo",
+                },
+                "notIn": {
+                  "description": "notIn",
+                  "items": {
+                    "$ref": "#/definitions/json",
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                },
+                "presence": {
+                  "description": "presence",
+                  "enum": [
+                    "null",
+                    "nonNull",
+                    "empty",
+                    "nonEmpty",
+                    "nullOrEmpty",
+                  ],
+                },
+              },
+              "type": "object",
+            },
+            "path": {
+              "description": "Scope-rooted path",
+              "examples": [
+                [
+                  "state",
+                  "count",
+                ],
+              ],
+              "items": {
+                "description": "Safe path segment",
+                "not": {
+                  "enum": [
+                    "__proto__",
+                    "constructor",
+                    "prototype",
+                  ],
+                },
+                "type": "string",
+              },
+              "minItems": 1,
+              "type": "array",
+            },
+          },
+          "required": [
+            "path",
+            "is",
+          ],
+          "type": "object",
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "and": {
+              "description": "and",
+              "items": {
+                "$ref": "#/definitions/filter",
+              },
+              "minItems": 1,
+              "type": "array",
+            },
+          },
+          "required": [
+            "and",
+          ],
+          "type": "object",
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "or": {
+              "description": "or",
+              "items": {
+                "$ref": "#/definitions/filter",
+              },
+              "minItems": 1,
+              "type": "array",
+            },
+          },
+          "required": [
+            "or",
+          ],
+          "type": "object",
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "not": {
+              "$ref": "#/definitions/filter",
+              "description": "not",
+            },
+          },
+          "required": [
+            "not",
+          ],
+          "type": "object",
+        },
+      ],
+    },
+    "json": {
+      "anyOf": [
+        {
+          "type": "null",
+        },
+        {
+          "type": "boolean",
+        },
+        {
+          "type": "number",
+        },
+        {
+          "type": "string",
+        },
+        {
+          "items": {
+            "$ref": "#/definitions/json",
+          },
+          "type": "array",
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/definitions/json",
+          },
+          "type": "object",
+        },
+      ],
+    },
+    "value": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ref": {
+              "description": "Scope-rooted path",
+              "examples": [
+                [
+                  "state",
+                  "count",
+                ],
+              ],
+              "items": {
+                "description": "Safe path segment",
+                "not": {
+                  "enum": [
+                    "__proto__",
+                    "constructor",
+                    "prototype",
+                  ],
+                },
+                "type": "string",
+              },
+              "minItems": 1,
+              "type": "array",
+            },
+          },
+          "required": [
+            "ref",
+          ],
+          "type": "object",
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "value": {
+              "$ref": "#/definitions/json",
+              "description": "value",
+            },
+          },
+          "required": [
+            "value",
+          ],
+          "type": "object",
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "object": {
+              "additionalProperties": {
+                "$ref": "#/definitions/value",
+              },
+              "description": "object",
+              "propertyNames": {
+                "description": "Safe path segment",
+                "not": {
+                  "enum": [
+                    "__proto__",
+                    "constructor",
+                    "prototype",
+                  ],
+                },
+                "type": "string",
+              },
+              "type": "object",
+            },
+          },
+          "required": [
+            "object",
+          ],
+          "type": "object",
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "array": {
+              "description": "array",
+              "items": {
+                "$ref": "#/definitions/value",
+              },
+              "type": "array",
+            },
+          },
+          "required": [
+            "array",
+          ],
+          "type": "object",
+        },
+      ],
+    },
+  },
+  "examples": [
+    {
+      "id": "example",
+      "name": "Example",
+      "nodes": {
+        "done": {
+          "kind": "end",
+        },
+      },
+      "start": "done",
+      "version": 1,
+    },
+  ],
+  "properties": {
+    "description": {
+      "description": "Human-readable purpose",
+      "type": "string",
+    },
+    "id": {
+      "description": "Stable flow identifier",
+      "examples": [
+        "support/triage",
+      ],
+      "minLength": 1,
+      "type": "string",
+    },
+    "input": {
+      "description": "Run input JSON Schema",
+      "type": "object",
+    },
+    "name": {
+      "description": "Node ID or label",
+      "minLength": 1,
+      "type": "string",
+    },
+    "nodes": {
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "definitions": {
+              "filter": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "is": {
+                        "additionalProperties": false,
+                        "description": "is",
+                        "minProperties": 1,
+                        "properties": {
+                          "contains": {
+                            "description": "contains",
+                            "type": "string",
+                          },
+                          "equalTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "equalTo",
+                          },
+                          "greaterThan": {
+                            "description": "greaterThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "greaterThanOrEqualTo": {
+                            "description": "greaterThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "in": {
+                            "description": "in",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAll": {
+                            "description": "includesAll",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAny": {
+                            "description": "includesAny",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "isNull": {
+                            "description": "isNull",
+                            "type": "boolean",
+                          },
+                          "lessThan": {
+                            "description": "lessThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "lessThanOrEqualTo": {
+                            "description": "lessThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "notEqualTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "notEqualTo",
+                          },
+                          "notIn": {
+                            "description": "notIn",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "presence": {
+                            "description": "presence",
+                            "enum": [
+                              "null",
+                              "nonNull",
+                              "empty",
+                              "nonEmpty",
+                              "nullOrEmpty",
+                            ],
+                          },
+                        },
+                        "type": "object",
+                      },
+                      "path": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "path",
+                      "is",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "and": {
+                        "description": "and",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "and",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "or": {
+                        "description": "or",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "or",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "not": {
+                        "$ref": "#/definitions/filter",
+                        "description": "not",
+                      },
+                    },
+                    "required": [
+                      "not",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+              "json": {
+                "anyOf": [
+                  {
+                    "type": "null",
+                  },
+                  {
+                    "type": "boolean",
+                  },
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "string",
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "array",
+                  },
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "object",
+                  },
+                ],
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ref": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "ref",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "$ref": "#/definitions/json",
+                        "description": "value",
+                      },
+                    },
+                    "required": [
+                      "value",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "object": {
+                        "additionalProperties": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "description": "object",
+                        "propertyNames": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "type": "object",
+                      },
+                    },
+                    "required": [
+                      "object",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "array": {
+                        "description": "array",
+                        "items": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "array",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+            },
+            "description": "branch node",
+            "examples": [
+              {
+                "kind": "branch",
+              },
+            ],
+            "properties": {
+              "cases": {
+                "description": "cases",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "to": {
+                      "description": "Node ID or label",
+                      "minLength": 1,
+                      "type": "string",
+                    },
+                    "when": {
+                      "$ref": "#/definitions/filter",
+                      "description": "when",
+                    },
+                  },
+                  "required": [
+                    "when",
+                    "to",
+                  ],
+                  "type": "object",
+                },
+                "minItems": 1,
+                "type": "array",
+              },
+              "default": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "description": {
+                "description": "Human-readable purpose",
+                "type": "string",
+              },
+              "kind": {
+                "const": "branch",
+                "description": "Node kind",
+              },
+            },
+            "required": [
+              "kind",
+              "cases",
+              "default",
+            ],
+            "type": "object",
+          },
+          {
+            "additionalProperties": false,
+            "definitions": {
+              "filter": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "is": {
+                        "additionalProperties": false,
+                        "description": "is",
+                        "minProperties": 1,
+                        "properties": {
+                          "contains": {
+                            "description": "contains",
+                            "type": "string",
+                          },
+                          "equalTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "equalTo",
+                          },
+                          "greaterThan": {
+                            "description": "greaterThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "greaterThanOrEqualTo": {
+                            "description": "greaterThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "in": {
+                            "description": "in",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAll": {
+                            "description": "includesAll",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAny": {
+                            "description": "includesAny",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "isNull": {
+                            "description": "isNull",
+                            "type": "boolean",
+                          },
+                          "lessThan": {
+                            "description": "lessThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "lessThanOrEqualTo": {
+                            "description": "lessThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "notEqualTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "notEqualTo",
+                          },
+                          "notIn": {
+                            "description": "notIn",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "presence": {
+                            "description": "presence",
+                            "enum": [
+                              "null",
+                              "nonNull",
+                              "empty",
+                              "nonEmpty",
+                              "nullOrEmpty",
+                            ],
+                          },
+                        },
+                        "type": "object",
+                      },
+                      "path": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "path",
+                      "is",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "and": {
+                        "description": "and",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "and",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "or": {
+                        "description": "or",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "or",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "not": {
+                        "$ref": "#/definitions/filter",
+                        "description": "not",
+                      },
+                    },
+                    "required": [
+                      "not",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+              "json": {
+                "anyOf": [
+                  {
+                    "type": "null",
+                  },
+                  {
+                    "type": "boolean",
+                  },
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "string",
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "array",
+                  },
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "object",
+                  },
+                ],
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ref": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "ref",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "$ref": "#/definitions/json",
+                        "description": "value",
+                      },
+                    },
+                    "required": [
+                      "value",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "object": {
+                        "additionalProperties": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "description": "object",
+                        "propertyNames": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "type": "object",
+                      },
+                    },
+                    "required": [
+                      "object",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "array": {
+                        "description": "array",
+                        "items": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "array",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+            },
+            "description": "set node",
+            "examples": [
+              {
+                "kind": "set",
+              },
+            ],
+            "properties": {
+              "assign": {
+                "description": "assign",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "path": {
+                      "description": "Scope-rooted path",
+                      "examples": [
+                        [
+                          "state",
+                          "count",
+                        ],
+                      ],
+                      "items": {
+                        "description": "Safe path segment",
+                        "not": {
+                          "enum": [
+                            "__proto__",
+                            "constructor",
+                            "prototype",
+                          ],
+                        },
+                        "type": "string",
+                      },
+                      "minItems": 1,
+                      "type": "array",
+                    },
+                    "value": {
+                      "$ref": "#/definitions/value",
+                      "description": "value",
+                    },
+                  },
+                  "required": [
+                    "path",
+                    "value",
+                  ],
+                  "type": "object",
+                },
+                "minItems": 1,
+                "type": "array",
+              },
+              "description": {
+                "description": "Human-readable purpose",
+                "type": "string",
+              },
+              "kind": {
+                "const": "set",
+                "description": "Node kind",
+              },
+              "next": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "kind",
+              "assign",
+              "next",
+            ],
+            "type": "object",
+          },
+          {
+            "additionalProperties": false,
+            "definitions": {
+              "filter": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "is": {
+                        "additionalProperties": false,
+                        "description": "is",
+                        "minProperties": 1,
+                        "properties": {
+                          "contains": {
+                            "description": "contains",
+                            "type": "string",
+                          },
+                          "equalTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "equalTo",
+                          },
+                          "greaterThan": {
+                            "description": "greaterThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "greaterThanOrEqualTo": {
+                            "description": "greaterThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "in": {
+                            "description": "in",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAll": {
+                            "description": "includesAll",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAny": {
+                            "description": "includesAny",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "isNull": {
+                            "description": "isNull",
+                            "type": "boolean",
+                          },
+                          "lessThan": {
+                            "description": "lessThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "lessThanOrEqualTo": {
+                            "description": "lessThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "notEqualTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "notEqualTo",
+                          },
+                          "notIn": {
+                            "description": "notIn",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "presence": {
+                            "description": "presence",
+                            "enum": [
+                              "null",
+                              "nonNull",
+                              "empty",
+                              "nonEmpty",
+                              "nullOrEmpty",
+                            ],
+                          },
+                        },
+                        "type": "object",
+                      },
+                      "path": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "path",
+                      "is",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "and": {
+                        "description": "and",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "and",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "or": {
+                        "description": "or",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "or",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "not": {
+                        "$ref": "#/definitions/filter",
+                        "description": "not",
+                      },
+                    },
+                    "required": [
+                      "not",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+              "json": {
+                "anyOf": [
+                  {
+                    "type": "null",
+                  },
+                  {
+                    "type": "boolean",
+                  },
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "string",
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "array",
+                  },
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "object",
+                  },
+                ],
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ref": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "ref",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "$ref": "#/definitions/json",
+                        "description": "value",
+                      },
+                    },
+                    "required": [
+                      "value",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "object": {
+                        "additionalProperties": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "description": "object",
+                        "propertyNames": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "type": "object",
+                      },
+                    },
+                    "required": [
+                      "object",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "array": {
+                        "description": "array",
+                        "items": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "array",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+            },
+            "description": "loop node",
+            "examples": [
+              {
+                "kind": "loop",
+              },
+            ],
+            "properties": {
+              "body": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "description": {
+                "description": "Human-readable purpose",
+                "type": "string",
+              },
+              "exit": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "kind": {
+                "const": "loop",
+                "description": "Node kind",
+              },
+              "maxIterations": {
+                "description": "maxIterations",
+                "minimum": 1,
+                "type": "integer",
+              },
+              "onExhausted": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "while": {
+                "$ref": "#/definitions/filter",
+                "description": "when",
+              },
+            },
+            "required": [
+              "kind",
+              "maxIterations",
+              "while",
+              "body",
+              "exit",
+            ],
+            "type": "object",
+          },
+          {
+            "additionalProperties": false,
+            "definitions": {
+              "filter": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "is": {
+                        "additionalProperties": false,
+                        "description": "is",
+                        "minProperties": 1,
+                        "properties": {
+                          "contains": {
+                            "description": "contains",
+                            "type": "string",
+                          },
+                          "equalTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "equalTo",
+                          },
+                          "greaterThan": {
+                            "description": "greaterThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "greaterThanOrEqualTo": {
+                            "description": "greaterThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "in": {
+                            "description": "in",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAll": {
+                            "description": "includesAll",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAny": {
+                            "description": "includesAny",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "isNull": {
+                            "description": "isNull",
+                            "type": "boolean",
+                          },
+                          "lessThan": {
+                            "description": "lessThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "lessThanOrEqualTo": {
+                            "description": "lessThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "notEqualTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "notEqualTo",
+                          },
+                          "notIn": {
+                            "description": "notIn",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "presence": {
+                            "description": "presence",
+                            "enum": [
+                              "null",
+                              "nonNull",
+                              "empty",
+                              "nonEmpty",
+                              "nullOrEmpty",
+                            ],
+                          },
+                        },
+                        "type": "object",
+                      },
+                      "path": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "path",
+                      "is",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "and": {
+                        "description": "and",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "and",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "or": {
+                        "description": "or",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "or",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "not": {
+                        "$ref": "#/definitions/filter",
+                        "description": "not",
+                      },
+                    },
+                    "required": [
+                      "not",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+              "json": {
+                "anyOf": [
+                  {
+                    "type": "null",
+                  },
+                  {
+                    "type": "boolean",
+                  },
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "string",
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "array",
+                  },
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "object",
+                  },
+                ],
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ref": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "ref",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "$ref": "#/definitions/json",
+                        "description": "value",
+                      },
+                    },
+                    "required": [
+                      "value",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "object": {
+                        "additionalProperties": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "description": "object",
+                        "propertyNames": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "type": "object",
+                      },
+                    },
+                    "required": [
+                      "object",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "array": {
+                        "description": "array",
+                        "items": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "array",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+            },
+            "description": "action node",
+            "examples": [
+              {
+                "kind": "action",
+              },
+            ],
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/value",
+                  "description": "value",
+                },
+                "description": "args",
+                "propertyNames": {
+                  "description": "Safe path segment",
+                  "not": {
+                    "enum": [
+                      "__proto__",
+                      "constructor",
+                      "prototype",
+                    ],
+                  },
+                  "type": "string",
+                },
+                "type": "object",
+              },
+              "description": {
+                "description": "Human-readable purpose",
+                "type": "string",
+              },
+              "kind": {
+                "const": "action",
+                "description": "Node kind",
+              },
+              "name": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "next": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "onError": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "retry": {
+                "additionalProperties": false,
+                "description": "retry",
+                "properties": {
+                  "attemptTimeoutMs": {
+                    "description": "attemptTimeoutMs",
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  "backoff": {
+                    "additionalProperties": false,
+                    "description": "backoff",
+                    "properties": {
+                      "initialMs": {
+                        "description": "initialMs",
+                        "maximum": 2147483647,
+                        "minimum": 0,
+                        "type": "integer",
+                      },
+                      "jitter": {
+                        "description": "jitter",
+                        "type": "boolean",
+                      },
+                      "maxMs": {
+                        "description": "maxMs",
+                        "maximum": 2147483647,
+                        "minimum": 0,
+                        "type": "integer",
+                      },
+                      "multiplier": {
+                        "description": "multiplier",
+                        "minimum": 1,
+                        "type": "number",
+                      },
+                    },
+                    "required": [
+                      "initialMs",
+                    ],
+                    "type": "object",
+                  },
+                  "maxAttempts": {
+                    "description": "maxAttempts",
+                    "maximum": 100,
+                    "minimum": 1,
+                    "type": "integer",
+                  },
+                  "maxInterruptions": {
+                    "description": "maxInterruptions",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  "suspendAfterMs": {
+                    "description": "suspendAfterMs",
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  "totalTimeoutMs": {
+                    "description": "totalTimeoutMs",
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                },
+                "required": [
+                  "maxAttempts",
+                ],
+                "type": "object",
+              },
+            },
+            "required": [
+              "kind",
+              "name",
+              "next",
+            ],
+            "type": "object",
+          },
+          {
+            "additionalProperties": false,
+            "definitions": {
+              "filter": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "is": {
+                        "additionalProperties": false,
+                        "description": "is",
+                        "minProperties": 1,
+                        "properties": {
+                          "contains": {
+                            "description": "contains",
+                            "type": "string",
+                          },
+                          "equalTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "equalTo",
+                          },
+                          "greaterThan": {
+                            "description": "greaterThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "greaterThanOrEqualTo": {
+                            "description": "greaterThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "in": {
+                            "description": "in",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAll": {
+                            "description": "includesAll",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAny": {
+                            "description": "includesAny",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "isNull": {
+                            "description": "isNull",
+                            "type": "boolean",
+                          },
+                          "lessThan": {
+                            "description": "lessThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "lessThanOrEqualTo": {
+                            "description": "lessThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "notEqualTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "notEqualTo",
+                          },
+                          "notIn": {
+                            "description": "notIn",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "presence": {
+                            "description": "presence",
+                            "enum": [
+                              "null",
+                              "nonNull",
+                              "empty",
+                              "nonEmpty",
+                              "nullOrEmpty",
+                            ],
+                          },
+                        },
+                        "type": "object",
+                      },
+                      "path": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "path",
+                      "is",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "and": {
+                        "description": "and",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "and",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "or": {
+                        "description": "or",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "or",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "not": {
+                        "$ref": "#/definitions/filter",
+                        "description": "not",
+                      },
+                    },
+                    "required": [
+                      "not",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+              "json": {
+                "anyOf": [
+                  {
+                    "type": "null",
+                  },
+                  {
+                    "type": "boolean",
+                  },
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "string",
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "array",
+                  },
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "object",
+                  },
+                ],
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ref": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "ref",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "$ref": "#/definitions/json",
+                        "description": "value",
+                      },
+                    },
+                    "required": [
+                      "value",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "object": {
+                        "additionalProperties": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "description": "object",
+                        "propertyNames": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "type": "object",
+                      },
+                    },
+                    "required": [
+                      "object",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "array": {
+                        "description": "array",
+                        "items": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "array",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+            },
+            "description": "input node",
+            "examples": [
+              {
+                "kind": "input",
+              },
+            ],
+            "properties": {
+              "description": {
+                "description": "Human-readable purpose",
+                "type": "string",
+              },
+              "kind": {
+                "const": "input",
+                "description": "Node kind",
+              },
+              "next": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "prompt": {
+                "$ref": "#/definitions/value",
+                "description": "value",
+              },
+              "schema": {
+                "description": "schema",
+                "type": "object",
+              },
+              "timeout": {
+                "additionalProperties": false,
+                "description": "timeout",
+                "properties": {
+                  "afterMs": {
+                    "description": "afterMs",
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  "to": {
+                    "description": "Node ID or label",
+                    "minLength": 1,
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "afterMs",
+                  "to",
+                ],
+                "type": "object",
+              },
+            },
+            "required": [
+              "kind",
+              "next",
+            ],
+            "type": "object",
+          },
+          {
+            "additionalProperties": false,
+            "definitions": {
+              "filter": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "is": {
+                        "additionalProperties": false,
+                        "description": "is",
+                        "minProperties": 1,
+                        "properties": {
+                          "contains": {
+                            "description": "contains",
+                            "type": "string",
+                          },
+                          "equalTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "equalTo",
+                          },
+                          "greaterThan": {
+                            "description": "greaterThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "greaterThanOrEqualTo": {
+                            "description": "greaterThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "in": {
+                            "description": "in",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAll": {
+                            "description": "includesAll",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAny": {
+                            "description": "includesAny",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "isNull": {
+                            "description": "isNull",
+                            "type": "boolean",
+                          },
+                          "lessThan": {
+                            "description": "lessThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "lessThanOrEqualTo": {
+                            "description": "lessThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "notEqualTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "notEqualTo",
+                          },
+                          "notIn": {
+                            "description": "notIn",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "presence": {
+                            "description": "presence",
+                            "enum": [
+                              "null",
+                              "nonNull",
+                              "empty",
+                              "nonEmpty",
+                              "nullOrEmpty",
+                            ],
+                          },
+                        },
+                        "type": "object",
+                      },
+                      "path": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "path",
+                      "is",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "and": {
+                        "description": "and",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "and",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "or": {
+                        "description": "or",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "or",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "not": {
+                        "$ref": "#/definitions/filter",
+                        "description": "not",
+                      },
+                    },
+                    "required": [
+                      "not",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+              "json": {
+                "anyOf": [
+                  {
+                    "type": "null",
+                  },
+                  {
+                    "type": "boolean",
+                  },
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "string",
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "array",
+                  },
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "object",
+                  },
+                ],
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ref": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "ref",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "$ref": "#/definitions/json",
+                        "description": "value",
+                      },
+                    },
+                    "required": [
+                      "value",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "object": {
+                        "additionalProperties": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "description": "object",
+                        "propertyNames": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "type": "object",
+                      },
+                    },
+                    "required": [
+                      "object",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "array": {
+                        "description": "array",
+                        "items": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "array",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+            },
+            "description": "end node",
+            "examples": [
+              {
+                "kind": "end",
+              },
+            ],
+            "properties": {
+              "description": {
+                "description": "Human-readable purpose",
+                "type": "string",
+              },
+              "kind": {
+                "const": "end",
+                "description": "Node kind",
+              },
+              "outcome": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "output": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/value",
+                  "description": "value",
+                },
+                "description": "args",
+                "propertyNames": {
+                  "description": "Safe path segment",
+                  "not": {
+                    "enum": [
+                      "__proto__",
+                      "constructor",
+                      "prototype",
+                    ],
+                  },
+                  "type": "string",
+                },
+                "type": "object",
+              },
+            },
+            "required": [
+              "kind",
+            ],
+            "type": "object",
+          },
+          {
+            "additionalProperties": false,
+            "definitions": {
+              "filter": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "is": {
+                        "additionalProperties": false,
+                        "description": "is",
+                        "minProperties": 1,
+                        "properties": {
+                          "contains": {
+                            "description": "contains",
+                            "type": "string",
+                          },
+                          "equalTo": {
+                            "description": "equalTo",
+                          },
+                          "greaterThan": {
+                            "description": "greaterThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "greaterThanOrEqualTo": {
+                            "description": "greaterThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "in": {
+                            "description": "in",
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAll": {
+                            "description": "includesAll",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "type": "array",
+                          },
+                          "includesAny": {
+                            "description": "includesAny",
+                            "items": {
+                              "type": [
+                                "string",
+                                "number",
+                              ],
+                            },
+                            "type": "array",
+                          },
+                          "isNull": {
+                            "description": "isNull",
+                            "type": "boolean",
+                          },
+                          "lessThan": {
+                            "description": "lessThan",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "lessThanOrEqualTo": {
+                            "description": "lessThanOrEqualTo",
+                            "type": [
+                              "number",
+                              "string",
+                            ],
+                          },
+                          "notEqualTo": {
+                            "description": "notEqualTo",
+                          },
+                          "notIn": {
+                            "description": "notIn",
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "presence": {
+                            "description": "presence",
+                            "enum": [
+                              "null",
+                              "nonNull",
+                              "empty",
+                              "nonEmpty",
+                              "nullOrEmpty",
+                            ],
+                          },
+                        },
+                        "type": "object",
+                      },
+                      "path": {
+                        "description": "path",
+                        "items": {
+                          "type": "string",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "path",
+                      "is",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "and": {
+                        "description": "and",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "and",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "or": {
+                        "description": "or",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "or",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "not": {
+                        "$ref": "#/definitions/filter",
+                        "description": "not",
+                      },
+                    },
+                    "required": [
+                      "not",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ref": {
+                        "description": "ref",
+                        "items": {
+                          "type": "string",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "ref",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "description": "value",
+                      },
+                    },
+                    "required": [
+                      "value",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "object": {
+                        "additionalProperties": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "description": "object",
+                        "type": "object",
+                      },
+                    },
+                    "required": [
+                      "object",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "array": {
+                        "description": "array",
+                        "items": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "array",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+            },
+            "properties": {
+              "cases": {
+                "description": "Cases for this decision.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "to": {
+                      "description": "To for this decision.",
+                      "type": "string",
+                    },
+                    "when": {
+                      "$ref": "#/definitions/filter",
+                      "description": "When for this decision.",
+                    },
+                  },
+                  "required": [
+                    "when",
+                    "to",
+                  ],
+                  "type": "object",
+                },
+                "type": "array",
+              },
+              "default": {
+                "description": "Default for this decision.",
+                "type": "string",
+              },
+              "description": {
+                "description": "Description for this decision.",
+                "type": "string",
+              },
+              "kind": {
+                "const": "decide",
+                "description": "Kind for this decision.",
+              },
+              "model": {
+                "description": "Model for this decision.",
+                "type": "string",
+              },
+              "onError": {
+                "description": "On Error for this decision.",
+                "type": "string",
+              },
+              "questions": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "criteria": {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                              },
+                              {
+                                "additionalProperties": true,
+                                "type": "object",
+                              },
+                              {
+                                "type": "array",
+                              },
+                              {
+                                "type": "null",
+                              },
+                            ],
+                          },
+                          "description": "Criteria for this decision.",
+                          "maxProperties": 255,
+                          "minProperties": 1,
+                          "type": "object",
+                        },
+                        "instructions": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                            },
+                            {
+                              "additionalProperties": true,
+                              "type": "object",
+                            },
+                            {
+                              "type": "array",
+                            },
+                          ],
+                          "description": "Instructions for this decision.",
+                        },
+                        "type": {
+                          "description": "Type for this decision.",
+                          "enum": [
+                            "choice",
+                          ],
+                        },
+                      },
+                      "required": [
+                        "type",
+                        "instructions",
+                        "criteria",
+                      ],
+                      "type": "object",
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "criteria": {
+                          "description": "Criteria for this decision.",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                              },
+                              {
+                                "additionalProperties": true,
+                                "type": "object",
+                              },
+                              {
+                                "type": "array",
+                              },
+                            ],
+                            "description": "Instructions for this decision.",
+                          },
+                          "maxItems": 10,
+                          "minItems": 2,
+                          "type": "array",
+                        },
+                        "instructions": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                            },
+                            {
+                              "additionalProperties": true,
+                              "type": "object",
+                            },
+                            {
+                              "type": "array",
+                            },
+                          ],
+                          "description": "Instructions for this decision.",
+                        },
+                        "type": {
+                          "description": "Type for this decision.",
+                          "enum": [
+                            "score",
+                          ],
+                        },
+                      },
+                      "required": [
+                        "type",
+                        "instructions",
+                        "criteria",
+                      ],
+                      "type": "object",
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "criteria": {
+                          "additionalProperties": false,
+                          "description": "Criteria for this decision.",
+                          "properties": {
+                            "false": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "additionalProperties": true,
+                                  "type": "object",
+                                },
+                                {
+                                  "type": "array",
+                                },
+                              ],
+                              "description": "Instructions for this decision.",
+                            },
+                            "true": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "additionalProperties": true,
+                                  "type": "object",
+                                },
+                                {
+                                  "type": "array",
+                                },
+                              ],
+                              "description": "Instructions for this decision.",
+                            },
+                          },
+                          "type": "object",
+                        },
+                        "instructions": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                            },
+                            {
+                              "additionalProperties": true,
+                              "type": "object",
+                            },
+                            {
+                              "type": "array",
+                            },
+                          ],
+                          "description": "Instructions for this decision.",
+                        },
+                        "type": {
+                          "description": "Type for this decision.",
+                          "enum": [
+                            "noul",
+                          ],
+                        },
+                      },
+                      "required": [
+                        "type",
+                        "instructions",
+                      ],
+                      "type": "object",
+                    },
+                  ],
+                },
+                "description": "Questions for this decision.",
+                "minProperties": 1,
+                "type": "object",
+              },
+              "retry": {
+                "additionalProperties": false,
+                "description": "Retry for this decision.",
+                "properties": {
+                  "attemptTimeoutMs": {
+                    "description": "Attempt Timeout Ms for this decision.",
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  "backoff": {
+                    "additionalProperties": false,
+                    "description": "Backoff for this decision.",
+                    "properties": {
+                      "initialMs": {
+                        "description": "Initial Ms for this decision.",
+                        "maximum": 2147483647,
+                        "minimum": 0,
+                        "type": "integer",
+                      },
+                      "jitter": {
+                        "description": "Jitter for this decision.",
+                        "type": "boolean",
+                      },
+                      "maxMs": {
+                        "description": "Max Ms for this decision.",
+                        "maximum": 2147483647,
+                        "minimum": 0,
+                        "type": "integer",
+                      },
+                      "multiplier": {
+                        "description": "Multiplier for this decision.",
+                        "minimum": 1,
+                        "type": "number",
+                      },
+                    },
+                    "required": [
+                      "initialMs",
+                    ],
+                    "type": "object",
+                  },
+                  "maxAttempts": {
+                    "description": "Max Attempts for this decision.",
+                    "maximum": 100,
+                    "minimum": 1,
+                    "type": "integer",
+                  },
+                  "maxInterruptions": {
+                    "description": "Max Interruptions for this decision.",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  "suspendAfterMs": {
+                    "description": "Suspend After Ms for this decision.",
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  "totalTimeoutMs": {
+                    "description": "Total Timeout Ms for this decision.",
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                },
+                "required": [
+                  "maxAttempts",
+                ],
+                "type": "object",
+              },
+              "state": {
+                "$ref": "#/definitions/value",
+                "description": "State for this decision.",
+              },
+            },
+            "required": [
+              "kind",
+              "state",
+              "questions",
+              "cases",
+              "default",
+            ],
+            "type": "object",
+          },
+        ],
+      },
+      "description": "nodes",
+      "minProperties": 1,
+      "propertyNames": {
+        "description": "Safe path segment",
+        "not": {
+          "enum": [
+            "__proto__",
+            "constructor",
+            "prototype",
+          ],
+        },
+        "type": "string",
+      },
+      "type": "object",
+    },
+    "start": {
+      "description": "Node ID or label",
+      "minLength": 1,
+      "type": "string",
+    },
+    "version": {
+      "description": "Integer edit version",
+      "minimum": 0,
+      "type": "integer",
+    },
+  },
+  "required": [
+    "id",
+    "name",
+    "version",
+    "start",
+    "nodes",
+  ],
+  "type": "object",
+}
+`;

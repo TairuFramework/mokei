@@ -57,6 +57,7 @@ export {
   choiceQuestionSchema,
   noulAnswerSchema,
   noulQuestionSchema,
+  probabilitySchema,
   questionMapSchema,
   questionSchema,
   scoreAnswerSchema,

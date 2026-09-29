@@ -1,0 +1,58 @@
+{
+  "name": "@mokei/decision-flow",
+  "version": "0.14.0",
+  "description": "Mokei decision flow node kind for flow graphs",
+  "keywords": [
+    "model",
+    "context",
+    "protocol",
+    "mcp",
+    "decision-flow",
+    "laya",
+    "classification",
+    "typesafe"
+  ],
+  "homepage": "https://mokei.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TairuFramework/mokei",
+    "directory": "packages/decision-flow"
+  },
+  "license": "MIT",
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": "./lib/index.js"
+  },
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib/*"
+  ],
+  "scripts": {
+    "build": "pnpm run build:clean && pnpm run build:js && pnpm run build:types",
+    "build:clean": "del lib",
+    "build:js": "del 'lib/**/*.js' && swc src -d ./lib --config-file ../../node_modules/@kigu/dev/swc.json --strip-leading-paths",
+    "build:types": "del 'lib/**/*.d.ts' 'lib/**/*.d.ts.map' && tsc --emitDeclarationOnly --skipLibCheck",
+    "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
+    "prepublishOnly": "pnpm run build",
+    "test": "pnpm run test:types && pnpm run test:unit && pnpm run test:built",
+    "test:built": "pnpm run build && node test/built-entry.mjs",
+    "test:types": "tsc --noEmit --skipLibCheck -p tsconfig.test.json",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@mokei/logger": "workspace:^",
+    "@mokei/system-one-client": "workspace:^",
+    "@sozai/async": "catalog:",
+    "@sozai/flow-graph": "catalog:",
+    "@sozai/otel": "catalog:",
+    "@sozai/schema": "catalog:"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/sdk-trace-base": "catalog:",
+    "@sozai/log": "catalog:",
+    "@types/node": "catalog:"
+  }
+}

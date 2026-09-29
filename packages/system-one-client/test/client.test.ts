@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 import type { SystemOneBackend, SystemOneResult } from '../src/backend.js'
 import { SystemOneClient } from '../src/client.js'
-import { SystemOneError, SystemOneInputError } from '../src/errors.js'
+import { SystemOneError, SystemOneInputError, SystemOneResponseError } from '../src/errors.js'
 
 const questions = {
   dept: { type: 'choice', instructions: 'Which team?', criteria: { billing: 'x' } },
@@ -49,6 +49,19 @@ describe('SystemOneClient.predict', () => {
     const client = new SystemOneClient({ backend: { predict } })
     await expect(client.predict({ state: 'hi', questions })).rejects.toThrow(SystemOneError)
     expect(predict).not.toHaveBeenCalled()
+  })
+
+  test('rejects an undeclared choice returned by the backend', async () => {
+    const backend: SystemOneBackend = {
+      predict: async () =>
+        result({
+          dept: { type: 'choice', choice: 'other', confidence: 1, probabilities: { billing: 1 } },
+        }),
+    }
+    const client = new SystemOneClient({ backend, defaultModel: 'english' })
+    await expect(client.predict({ state: 'help', questions })).rejects.toThrow(
+      SystemOneResponseError,
+    )
   })
 
   test('per-call model overrides defaultModel', async () => {

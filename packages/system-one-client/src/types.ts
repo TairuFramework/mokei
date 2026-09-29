@@ -71,10 +71,17 @@ export type Question = ChoiceQuestion | ScoreQuestion | NoulQuestion
 export type QuestionMap = Record<string, Question>
 export type State = string | Record<string, unknown> | Array<unknown>
 
+/** A finite number in [0, 1]. */
+export const probabilitySchema = {
+  type: 'number',
+  minimum: 0,
+  maximum: 1,
+} as const satisfies Schema
+
 /** Laya adds this to every answer: the probability that the answer should be acted on. */
 export const answerActionSchema = {
   type: 'object',
-  properties: { act_probability: { type: 'number' } },
+  properties: { act_probability: probabilitySchema },
   additionalProperties: true,
 } as const satisfies Schema
 
@@ -85,8 +92,8 @@ export const choiceAnswerSchema = {
   properties: {
     type: { enum: ['choice'] },
     choice: { type: 'string' },
-    confidence: { type: 'number' },
-    probabilities: { type: 'object', additionalProperties: { type: 'number' } },
+    confidence: probabilitySchema,
+    probabilities: { type: 'object', additionalProperties: probabilitySchema },
     action: answerActionSchema,
   },
   required: ['type', 'choice', 'confidence', 'probabilities'],
@@ -98,9 +105,9 @@ export const scoreAnswerSchema = {
   properties: {
     type: { enum: ['score'] },
     score: { type: 'number' },
-    confidence: { type: 'number' },
+    confidence: probabilitySchema,
     legend: { type: 'object', additionalProperties: true },
-    probabilities: { type: 'object', additionalProperties: { type: 'number' } },
+    probabilities: { type: 'object', additionalProperties: probabilitySchema },
     action: answerActionSchema,
   },
   required: ['type', 'score', 'confidence', 'legend', 'probabilities'],
@@ -111,8 +118,8 @@ export const noulAnswerSchema = {
   type: 'object',
   properties: {
     type: { enum: ['noul'] },
-    noul: { type: 'number' },
-    confidence: { type: 'number' },
+    noul: probabilitySchema,
+    confidence: probabilitySchema,
     action: answerActionSchema,
   },
   required: ['type', 'noul'],
