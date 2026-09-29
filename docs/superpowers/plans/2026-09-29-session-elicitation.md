@@ -159,21 +159,21 @@
 
 **Files:** Create `.changeset/session-elicitation.md`.
 
-**Interfaces:** Consumes the verified public APIs and docs from Tasks 1–9. Produces one minor release intent for the four changed public packages; it does not apply versions.
+**Interfaces:** Consumes the verified public APIs and docs from Tasks 1–9. Produces one patch release intent (0.14.x band, per user) for the four changed public packages; it does not apply versions.
 
 - [ ] **Step 1: Create the release intent.** Write `.changeset/session-elicitation.md` with this content:
 
 ```markdown
 ---
-'@mokei/host': minor
-'@mokei/host-node': minor
-'@mokei/session': minor
-'@mokei/session-node': minor
+'@mokei/host': patch
+'@mokei/host-node': patch
+'@mokei/session': patch
+'@mokei/session-node': patch
 ---
 
 Enable session elicitation across both MCP revisions with host handlers, context opt-outs, streamed agent events, and cancellation.
 ```
 
-- [ ] **Step 2: Check the release plan.** Run `pnpm change status`. Expected: this intent requests a minor change for each named package; unrelated pending intents may appear. Do not run `pnpm version -r`.
+- [ ] **Step 2: Check the release plan.** Run `pnpm change status`. Expected: this intent requests a patch change for each named package; unrelated pending intents may appear. Do not run `pnpm version -r`.
 - [ ] **Step 3: Run final verification.** Run `rtk proxy pnpm run lint`, `pnpm build`, then `pnpm test`. Expected: every command exits 0. Run `git diff --check` and `git status --short`; expected: only intended implementation, tests, docs, changeset and any pre-existing unrelated worktree files.
-- [ ] **Step 4: Commit.** Run `git add .changeset/session-elicitation.md && git commit -m "docs: record session elicitation minor release"`.
+- [ ] **Step 4: Commit.** Run `git add .changeset/session-elicitation.md && git commit -m "docs: record session elicitation patch release"`.
