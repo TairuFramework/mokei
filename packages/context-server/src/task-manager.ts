@@ -495,6 +495,8 @@ class ManagedTasks implements TaskManager {
       reject: pending.reject,
       abortListeners: [],
     }
+    // Detached resolution can reject before the caller attaches to the promise.
+    entry.promise.catch(() => {})
     this.#pending.set(taskID, entry)
     this.#listenForInputAbort(taskID, entry, options?.signal)
     if (controller.signal.aborted) {
@@ -556,15 +558,20 @@ class ManagedTasks implements TaskManager {
         return
       } catch (error) {
         if (attempt < 3) continue
+        // Another resolver may have consumed the input meanwhile; only fail the input it still owns.
+        if (this.#pending.get(taskID) !== pending) return
         try {
-          await this.#mutate(taskID, (latest) =>
-            isTerminal(latest)
-              ? undefined
-              : { status: 'failed', error: { code: -32603, message: 'Task input failed' } },
+          const failed = await this.#mutate(taskID, (latest) =>
+            latest.status === 'input_required' && this.#pending.get(taskID) === pending
+              ? { status: 'failed', error: { code: -32603, message: 'Task input failed' } }
+              : undefined,
           )
+          // The record left input_required through another path, which now owns the outcome.
+          if (failed?.status !== 'failed') return
         } catch (failure) {
           this.#events.fire('taskError', { taskID, error: failure })
         }
+        if (this.#pending.get(taskID) !== pending) return
         this.#events.fire('taskError', { taskID, error })
         this.#abort(taskID, error)
       }
