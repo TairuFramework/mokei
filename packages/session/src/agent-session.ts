@@ -93,7 +93,14 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   #activeRuns = new Set<AgentRunState<T>>()
 
   constructor(params: AgentParams<T>) {
-    super({ dispose: async () => this.#removeElicitation?.() })
+    super({
+      // Active runs abort with the agent. The override stays installed until the last one
+      // settles, so a late request from their tool calls never reaches a later owner; dispose
+      // does not wait for them, since a consumer paused at a yield would never let them finish.
+      dispose: async () => {
+        if (this.#activeRuns.size === 0) this.#removeElicitation?.()
+      },
+    })
     this.#events = new EventEmitter()
 
     const { session } = params
@@ -282,8 +289,8 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     // a consumer abandons the generator.
     const runController = new AbortController()
     const upstreamSignal = signal
-      ? AbortSignal.any([signal, timeoutController.signal])
-      : timeoutController.signal
+      ? AbortSignal.any([signal, timeoutController.signal, this.signal])
+      : AbortSignal.any([timeoutController.signal, this.signal])
     const onUpstreamAbort = () => runController.abort(upstreamSignal.reason)
     if (upstreamSignal.aborted) onUpstreamAbort()
     else upstreamSignal.addEventListener('abort', onUpstreamAbort, { once: true })
@@ -664,6 +671,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       clearTimeout(timeoutID)
       upstreamSignal.removeEventListener('abort', onUpstreamAbort)
       this.#activeRuns.delete(run)
+      if (this.signal.aborted && this.#activeRuns.size === 0) this.#removeElicitation?.()
       run.channel.close()
       // A consumer that breaks out of this generator leaves the current turn's
       // provider stream open; return it so the provider releases the reader.

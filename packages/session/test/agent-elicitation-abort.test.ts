@@ -155,6 +155,103 @@ async function untilRequest(stream: AsyncGenerator<AgentEvent>): Promise<Array<A
 }
 
 describe('AgentSession elicitation abort', () => {
+  test('disposal keeps an in-flight 2025 request away from a replacement agent', async () => {
+    const toolStarted = defer<void>()
+    const sendRequest = defer<void>()
+    const requestOutcome = defer<'error' | 'response'>()
+    const env = harness({
+      handler: async (client) => {
+        toolStarted.resolve()
+        await sendRequest.promise
+        try {
+          await client.elicit(question)
+          requestOutcome.resolve('response')
+        } catch {
+          requestOutcome.resolve('error')
+        }
+        return { content: [{ type: 'text', text: 'settled' }] }
+      },
+    })
+    const first = new AgentSession({
+      session: env.session,
+      provider: env.provider,
+      model: 'test-model',
+      onElicitation: () => ({ action: 'accept', content: { answer: 'first' } }),
+    })
+    const stream = first.stream({ prompt: 'ask' })
+    for (;;) {
+      const next = await stream.next()
+      if (next.done) throw new Error('Stream ended before the tool call')
+      if (next.value.type === 'tool-call-start') break
+    }
+    await toolStarted.promise
+
+    const disposal = first.dispose()
+    expect(
+      () =>
+        new AgentSession({
+          session: env.session,
+          provider: env.provider,
+          model: 'test-model',
+          onElicitation: () => ({ action: 'decline' }),
+        }),
+    ).toThrow(/already installed/i)
+
+    sendRequest.resolve()
+    expect(await requestOutcome.promise).toBe('error')
+    let finishReason: string | undefined
+    for await (const event of stream) {
+      if (event.type === 'complete') finishReason = event.result.finishReason
+    }
+    expect(finishReason).toBe('aborted')
+    await disposal
+
+    let replacementCalls = 0
+    const replacement = new AgentSession({
+      session: env.session,
+      provider: env.provider,
+      model: 'test-model',
+      onElicitation: () => {
+        replacementCalls++
+        return { action: 'decline' }
+      },
+    })
+    expect(replacementCalls).toBe(0)
+    await replacement.dispose()
+    await env.session.dispose()
+  })
+
+  test('disposing from inside the stream loop does not wait for the paused run', async () => {
+    const env = harness({
+      handler: async () => {
+        await new Promise(() => {})
+        return { content: [] }
+      },
+    })
+    const agent = new AgentSession({
+      session: env.session,
+      provider: env.provider,
+      model: 'test-model',
+      onElicitation: () => ({ action: 'decline' }),
+    })
+    let finishReason: string | undefined
+    for await (const event of agent.stream({ prompt: 'ask' })) {
+      // The generator is paused at this yield while dispose runs.
+      if (event.type === 'tool-call-start') await agent.dispose()
+      if (event.type === 'complete') finishReason = event.result.finishReason
+    }
+    expect(finishReason).toBe('aborted')
+    expect(() =>
+      new AgentSession({
+        session: env.session,
+        provider: env.provider,
+        model: 'test-model',
+        onElicitation: () => ({ action: 'decline' }),
+      }).dispose(),
+    ).not.toThrow()
+    await env.session.dispose()
+  })
+
   test('stream return aborts pending elicitation', async () => {
     const env = harness()
     const answer = defer<ElicitResult>()

@@ -45,10 +45,16 @@ With `elicit: true` and no base handler, the fallback declines the request.
 `onEvent` and `agent.events` receive `elicitation-request`, followed by exactly one
 `elicitation-response` or `elicitation-error`. Match them using `requestID`, including when
 requests overlap. Response events contain the action but omit answer content.
-These events are not yet yielded by `agent.stream()`.
+When a request is attributed to a tool call, `agent.stream()` yields the request and its terminal
+event in order, between `tool-call-start` and the tool's terminal event. Both elicitation events
+carry that `toolCall`. Unattributed requests reach `onEvent` and `agent.events` only.
 
-The `toolCall` field is optional and currently absent on elicitation events. A context key alone
-cannot prove which tool call caused a request, so attribution has limits even when available.
+Attribution requires exactly one active run with an in-flight context tool call whose context key
+matches the requesting server. A context key alone cannot prove which call caused a request, so an
+unrelated request from the same context can be attributed to that tool call.
+Disposing an agent aborts its active runs and keeps its elicitation override until they settle, so
+a late request from those tool calls never reaches a later owner. Constructing another eliciting
+agent on the same host throws until then.
 URL-mode elicitation reaches the callback, but server `notifications/elicitation/complete`
 notifications are not forwarded. A UI cannot automatically close a URL prompt on completion.
 

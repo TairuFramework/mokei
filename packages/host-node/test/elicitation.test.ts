@@ -93,16 +93,77 @@ describe('Node host elicitation', () => {
   })
 
   test('ProxyHost forDaemon installs the host handler', async () => {
-    const client = { dispose: vi.fn() }
+    let server: ReadableStreamDefaultController<unknown>
+    let toolCallID: string | number
+    const channel = {
+      readable: new ReadableStream<unknown>({
+        start(controller) {
+          server = controller
+        },
+      }),
+      writable: new WritableStream<unknown>({
+        write(value) {
+          const message = value as { id?: string | number; method?: string; result?: unknown }
+          if (message.method === 'initialize') {
+            server.enqueue({
+              jsonrpc: '2.0',
+              id: message.id,
+              result: {
+                protocolVersion: '2025-11-25',
+                capabilities: { tools: {} },
+                serverInfo: { name: 'daemon-fixture', version: '1.0.0' },
+              },
+            })
+          } else if (message.method === 'tools/call') {
+            toolCallID = message.id as string | number
+            server.enqueue({
+              jsonrpc: '2.0',
+              id: 'elicitation-1',
+              method: 'elicitation/create',
+              params: {
+                message: 'Please provide a value',
+                requestedSchema: { type: 'object', properties: { answer: { type: 'string' } } },
+              },
+            })
+          } else if (message.id === 'elicitation-1') {
+            server.enqueue({
+              jsonrpc: '2.0',
+              id: toolCallID,
+              result: {
+                content: [{ type: 'text', text: JSON.stringify({ response: message.result }) }],
+              },
+            })
+          }
+        },
+      }),
+      close: vi.fn(),
+    }
+    const client = { dispose: vi.fn(), createChannel: vi.fn(() => channel) }
     vi.mocked(runDaemon).mockResolvedValue(client as never)
+    const requests: Array<string> = []
 
     const host = await ProxyHost.forDaemon({
       socketPath: '/tmp/mokei-elicitation.sock',
-      elicit: () => ({ action: 'accept' }),
+      elicit: ({ key }) => {
+        requests.push(key)
+        return { action: 'accept', content: { answer: key } }
+      },
     })
 
     expect(runDaemon).toHaveBeenCalledWith({ socketPath: '/tmp/mokei-elicitation.sock' })
     expect(host.elicitationEnabled).toBe(true)
+    const context = await host.spawn({
+      key: 'daemon-context',
+      command: process.execPath,
+      protocolVersion: '2025-11-25',
+    })
+    await context.initialize()
+    const result = await context.callTool({ name: 'ask', arguments: {} })
+    expect(requests).toEqual(['daemon-context'])
+    expect(resultData(result).response).toEqual({
+      action: 'accept',
+      content: { answer: 'daemon-context' },
+    })
     await host.dispose()
   })
 
