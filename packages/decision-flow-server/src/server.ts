@@ -15,6 +15,7 @@ import { checkFlow } from './definition-checks.js'
 import { type ResumeDataV1, startRun } from './driver.js'
 import { flowInputSchema, flowToolName } from './flow-tools.js'
 import type { PredictorFactory } from './predictor.js'
+import { createRecovery, recoveryToolMap } from './recovery.js'
 import type { ToolCaller } from './tool-caller.js'
 
 export type ApprovalHook = (params: {
@@ -160,9 +161,12 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
     }
   }
 
-  const recover: NonNullable<TaskManagerParams['recover']> = () => {
-    throw new Error('not implemented')
-  }
+  const recover = createRecovery({
+    flows: new Map((params.flows ?? []).map((flow) => [flow.id, flow])),
+    caller: params.caller,
+    predictor: params.predictor,
+    elicitation,
+  })
   return {
     config: {
       name: 'decision-flow',
@@ -172,7 +176,7 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
       tools,
     },
     tools,
-    recoveryTools: tools,
+    recoveryTools: recoveryToolMap(tools),
     recover,
   }
 }

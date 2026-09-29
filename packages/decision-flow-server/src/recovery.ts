@@ -1,0 +1,139 @@
+import type { CallToolResult } from '@mokei/context-protocol'
+import { RPCError } from '@mokei/context-rpc'
+import type { JSONValue, TaskManagerParams, ToolDefinitions } from '@mokei/context-server'
+import type { Predictor } from '@mokei/decision-flow'
+import { digestDefinition, type FlowDefinition } from '@sozai/flow-graph'
+
+import { checkFlow } from './definition-checks.js'
+import { type ResumeDataV1, startRun } from './driver.js'
+import type { PredictorFactory } from './predictor.js'
+import type { ToolCaller } from './tool-caller.js'
+
+const recoveryOnlyTool: ToolDefinitions[string] = {
+  description: 'Recover a persisted decision flow',
+  inputSchema: { type: 'object' },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      outcome: { type: 'string' },
+      output: { type: 'object' },
+      error: { type: 'object' },
+    },
+  },
+  handler: () => {
+    throw new Error('Recovery-only flow tool cannot be called')
+  },
+}
+
+export function recoveryToolMap(tools: ToolDefinitions): ToolDefinitions {
+  return new Proxy(tools, {
+    get(target, name, receiver) {
+      if (typeof name === 'string' && name.startsWith('flow_') && !Object.hasOwn(target, name)) {
+        return recoveryOnlyTool
+      }
+      return Reflect.get(target, name, receiver)
+    },
+  })
+}
+
+export function createRecovery(params: {
+  flows: ReadonlyMap<string, FlowDefinition>
+  caller: ToolCaller
+  predictor: Predictor | PredictorFactory
+  elicitation: () => boolean
+}): NonNullable<TaskManagerParams['recover']> {
+  return async (record, resume) => {
+    const data = record.resumeData as unknown as ResumeDataV1
+    const state = data.runState
+    const cleanup = async () => {
+      await Promise.all(
+        data.siblings.map(async ({ tool, taskId }) => {
+          try {
+            await params.caller.cancelTask({ id: tool, taskId })
+          } catch (error) {
+            console.error('Flow sibling cancellation failed', error)
+          }
+        }),
+      )
+    }
+
+    if (state.status === 'ended' || state.status === 'error' || state.status === 'aborted') {
+      await resume(async (handle): Promise<CallToolResult> => {
+        try {
+          if (state.status === 'aborted') {
+            await handle.cancel()
+            return { content: [] }
+          }
+          if (state.status === 'ended') {
+            return {
+              content: [{ type: 'text', text: `Flow ended: ${state.outcome ?? 'completed'}` }],
+              structuredContent: {
+                ...(state.outcome !== undefined && { outcome: state.outcome }),
+                output: state.output ?? {},
+              },
+            }
+          }
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Flow error: ${state.error?.code ?? 'unknown'}` }],
+            structuredContent: { error: state.error ?? { code: 'unknown', name: 'Error' } },
+          }
+        } finally {
+          await cleanup()
+        }
+      })
+      return
+    }
+
+    let definition: FlowDefinition | undefined
+    if ('definition' in data.flow) {
+      definition = data.flow.definition
+    } else {
+      const registered = params.flows.get(data.flow.id)
+      if (
+        registered !== undefined &&
+        digestDefinition(registered as unknown as JSONValue) === data.flow.digest
+      )
+        definition = registered
+    }
+    if (definition === undefined) {
+      await resume(async () => {
+        await cleanup()
+        throw new RPCError({ code: -32603, message: 'Flow definition changed' })
+      })
+      return
+    }
+
+    const checked = checkFlow({
+      definition,
+      caller: params.caller,
+      predictor: params.predictor,
+      elicitation: params.elicitation(),
+    })
+    if (!checked.ok) {
+      await resume(async () => {
+        await cleanup()
+        throw new RPCError({
+          code: -32603,
+          message: 'Flow no longer valid',
+          data: { formatted: checked.formatted },
+        })
+      })
+      return
+    }
+
+    const graph = checked.graphFor({ depth: data.depth, approved: new Set(data.approved) })
+    await resume((handle) => {
+      const controller = new AbortController()
+      const abort = () => controller.abort(handle.signal.reason)
+      if (handle.signal.aborted) abort()
+      else handle.signal.addEventListener('abort', abort, { once: true })
+      // startRun re-enters a suspended wait before consuming this lazy run.
+      const run =
+        state.status === 'running'
+          ? graph.recover({ definition, runState: state, signal: controller.signal })
+          : graph.start({ definition, signal: controller.signal })
+      return startRun({ handle, graph, run, definition, resumeData: data, caller: params.caller })
+    })
+  }
+}
