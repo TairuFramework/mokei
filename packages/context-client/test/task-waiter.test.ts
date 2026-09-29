@@ -165,8 +165,43 @@ describe('TaskWaiter', () => {
     expect(delay).toHaveBeenCalledTimes(1)
   })
 
+  test('aborts a silent listen after three seconds and polls', async () => {
+    vi.useFakeTimers()
+    try {
+      const abort = vi.fn()
+      const request = vi.fn().mockResolvedValueOnce(working).mockResolvedValueOnce(completed)
+      const delay = vi.fn(async () => {})
+      const waiter = new TaskWaiter({
+        request,
+        openListen: () => ({ exchange: new Promise(() => {}), abort }),
+        fulfil: vi.fn(),
+        validate: vi.fn(),
+        delay,
+      })
+      const pending = waiter.wait({ taskID: base.taskId })
+
+      await vi.advanceTimersByTimeAsync(2999)
+      expect(request).not.toHaveBeenCalled()
+      expect(abort).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await pending).toEqual(completed.result)
+      expect(abort).toHaveBeenCalledTimes(1)
+      expect(delay).toHaveBeenCalledWith(250, expect.any(AbortSignal))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   test('shares one listen across concurrent waits', async () => {
+    let notify: ((snapshot: DetailedTask) => void) | undefined
+    const abort = vi.fn()
     const openListen = vi.fn((_filter, handlers) => {
+      notify = (snapshot) =>
+        handlers.onNotification({
+          jsonrpc: '2.0',
+          method: 'notifications/tasks',
+          params: snapshot,
+        })
       queueMicrotask(() =>
         handlers.onNotification({
           jsonrpc: '2.0',
@@ -174,50 +209,104 @@ describe('TaskWaiter', () => {
           params: { notifications: { taskIds: [base.taskId] } },
         } as unknown as ServerNotification),
       )
-      return { exchange: new Promise(() => {}), abort: vi.fn() }
+      return { exchange: new Promise(() => {}), abort }
     })
-    const request = vi.fn().mockResolvedValue(completed)
+    const request = vi.fn().mockResolvedValue(working)
     const waiter = new TaskWaiter({ request, openListen, fulfil: vi.fn(), validate: vi.fn() })
-    expect(
-      await Promise.all([
-        waiter.wait({ taskID: base.taskId }),
-        waiter.wait({ taskID: base.taskId }),
-      ]),
-    ).toEqual([completed.result, completed.result])
+    const controller = new AbortController()
+    const reason = new Error('released')
+    const first = waiter.wait({ taskID: base.taskId, signal: controller.signal })
+    const second = waiter.wait({ taskID: base.taskId })
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    controller.abort(reason)
+    await expect(first).rejects.toBe(reason)
+    expect(abort).not.toHaveBeenCalled()
+    notify?.(completed)
+    expect(await second).toEqual(completed.result)
     expect(openListen).toHaveBeenCalledTimes(1)
     expect(request).toHaveBeenCalledTimes(2)
+    expect(abort).toHaveBeenCalledTimes(1)
   })
 
-  test('fulfils duplicate input once and sends only the latest outstanding key', async () => {
+  test('deduplicates an in-flight key across notifications, polls, and concurrent waits', async () => {
     const input = {
       ...base,
       status: 'input_required' as const,
       inputRequests: { ask: { method: 'roots/list' as const, params: {} } },
     }
+    let notify: ((snapshot: DetailedTask) => void) | undefined
+    let settle: (() => void) | undefined
+    let finishInput: ((response: { roots: Array<never> }) => void) | undefined
+    let completedNow = false
     let gets = 0
     const request = vi.fn(async (method: string) => {
-      if (method === 'tasks/update') return { resultType: 'complete' }
+      if (method === 'tasks/update') {
+        completedNow = true
+        return { resultType: 'complete' }
+      }
       gets += 1
-      return gets === 1 ? input : completed
+      return completedNow ? completed : input
     })
-    const fulfil = vi.fn(async () => ({ roots: [] }))
+    const fulfil = vi.fn(
+      () =>
+        new Promise<{ roots: Array<never> }>((resolve) => {
+          finishInput = resolve
+        }),
+    )
+    const delays: Array<() => void> = []
+    const delay = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          delays.push(resolve)
+        }),
+    )
     const waiter = new TaskWaiter({
       request,
-      openListen: () => {
-        throw new Error('unavailable')
+      openListen: (_filter, handlers) => {
+        notify = (snapshot) =>
+          handlers.onNotification({
+            jsonrpc: '2.0',
+            method: 'notifications/tasks',
+            params: snapshot,
+          })
+        settle = () => handlers.onSettle({ reason: 'closed' })
+        queueMicrotask(() =>
+          handlers.onNotification({
+            jsonrpc: '2.0',
+            method: 'notifications/subscriptions/acknowledged',
+            params: { notifications: { taskIds: [base.taskId] } },
+          } as unknown as ServerNotification),
+        )
+        return { exchange: new Promise(() => {}), abort: vi.fn() }
       },
       fulfil,
       validate: vi.fn(),
-      delay: async () => {},
+      delay,
     })
-    expect(await waiter.wait({ taskID: base.taskId })).toEqual(completed.result)
+    const first = waiter.wait({ taskID: base.taskId })
+    const second = waiter.wait({ taskID: base.taskId })
+    await vi.waitFor(() => expect(gets).toBe(2))
+    await vi.waitFor(() => expect(fulfil).toHaveBeenCalledTimes(1))
+    notify?.(input)
+    settle?.()
+    await vi.waitFor(() => expect(delays).toHaveLength(2))
+    for (const release of delays.splice(0)) release()
+    await vi.waitFor(() => expect(gets).toBe(4))
+    expect(fulfil).toHaveBeenCalledTimes(1)
+    expect(request.mock.calls.filter(([method]) => method === 'tasks/update')).toHaveLength(0)
+
+    finishInput?.({ roots: [] })
     await vi.waitFor(() =>
       expect(request).toHaveBeenCalledWith('tasks/update', {
         taskId: base.taskId,
         inputResponses: { ask: { roots: [] } },
       }),
     )
+    await vi.waitFor(() => expect(delays).toHaveLength(2))
+    for (const release of delays.splice(0)) release()
+    expect(await Promise.all([first, second])).toEqual([completed.result, completed.result])
     expect(fulfil).toHaveBeenCalledTimes(1)
+    expect(request.mock.calls.filter(([method]) => method === 'tasks/update')).toHaveLength(1)
   })
 
   test('validates completed output only when a tool name is known', async () => {

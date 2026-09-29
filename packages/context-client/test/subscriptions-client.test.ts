@@ -6,7 +6,7 @@ import type {
   ServerMessage,
 } from '@mokei/context-protocol'
 import { META_SUBSCRIPTION_ID } from '@mokei/context-protocol'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { ContextClient } from '../src/client.js'
 import { SubscriptionProtocolError } from '../src/index.js'
@@ -49,12 +49,14 @@ type ServerState = {
   listenID: RequestID | undefined
   listenFilter: unknown
   discoverCount: number
+  methods: Array<string>
 }
 
 type ServerOptions = {
   capabilities?: ServerCapabilities
   /** Ack only the first `subscriptions/listen` (the auto-open); ignore later candidates. */
   ackOnlyFirst?: boolean
+  taskStatus?: 'working' | 'completed'
 }
 
 /**
@@ -66,7 +68,12 @@ function startServer(
   server: DirectTransports<ServerMessage, ClientMessage>['server'],
   options: ServerOptions = {},
 ) {
-  const state: ServerState = { listenID: undefined, listenFilter: undefined, discoverCount: 0 }
+  const state: ServerState = {
+    listenID: undefined,
+    listenFilter: undefined,
+    discoverCount: 0,
+    methods: [],
+  }
   const firstAck = deferred()
   let acks = 0
 
@@ -77,6 +84,7 @@ function startServer(
         break
       }
       const message = next.value as { id?: RequestID; method?: string; params?: unknown }
+      if (message.method != null) state.methods.push(message.method)
       switch (message.method) {
         case 'server/discover': {
           state.discoverCount += 1
@@ -121,6 +129,24 @@ function startServer(
           } as never)
           break
         }
+        case 'tasks/get': {
+          server.write({
+            jsonrpc: '2.0',
+            id: message.id as RequestID,
+            result: {
+              taskId: 'task-1',
+              createdAt: '2026-09-29T12:00:00.000Z',
+              lastUpdatedAt: '2026-09-29T12:00:00.000Z',
+              ttlMs: 1000,
+              resultType: 'complete',
+              status: options.taskStatus ?? 'completed',
+              ...(options.taskStatus === 'working'
+                ? {}
+                : { result: { content: [{ type: 'text', text: 'done' }] } }),
+            },
+          } as never)
+          break
+        }
         default:
           // Ignore notifications (e.g. notifications/cancelled).
           break
@@ -136,6 +162,54 @@ function startServer(
 }
 
 describe('ContextClient subscriptions wiring', () => {
+  test('task acknowledgements preserve the active resource subscription filter', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      protocolVersion: '2026-07-28',
+      transport: transports.client,
+    })
+    const sub = startServer(transports.server, { taskStatus: 'working' })
+
+    await client.listResources()
+    await sub.firstAcked
+    const resourceFilter = client.subscriptionFilter
+    expect(resourceFilter).toEqual({
+      toolsListChanged: true,
+      promptsListChanged: true,
+      resourcesListChanged: true,
+      resourceSubscriptions: [],
+    })
+
+    const controller = new AbortController()
+    const reason = new Error('finished checking')
+    const onStatus = vi.fn()
+    const pending = client.waitForTask({ taskID: 'task-1', signal: controller.signal, onStatus })
+    await vi.waitFor(() => expect(sub.state.listenFilter).toEqual({ taskIds: ['task-1'] }))
+    await vi.waitFor(() =>
+      expect(onStatus).toHaveBeenCalledWith(expect.objectContaining({ status: 'working' })),
+    )
+    expect(client.subscriptionFilter).toEqual(resourceFilter)
+    controller.abort(reason)
+    await expect(pending).rejects.toBe(reason)
+    expect(client.subscriptionFilter).toEqual(resourceFilter)
+    await client.dispose()
+  })
+
+  test('waiting with an uncached tool name does not request tools/list', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      protocolVersion: '2026-07-28',
+      transport: transports.client,
+    })
+    const sub = startServer(transports.server)
+
+    await client.listResources()
+    await sub.firstAcked
+    await client.waitForTask({ taskID: 'task-1', toolName: 'uncached' })
+    expect(sub.state.methods).not.toContain('tools/list')
+    await client.dispose()
+  })
+
   test('auto-opens a listen after setup against a subscribe-capable server', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({

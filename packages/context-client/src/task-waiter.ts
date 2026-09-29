@@ -14,6 +14,8 @@ import {
 } from './errors.js'
 import type { ListenHandle, OpenListen } from './subscriptions.js'
 
+const TASK_LISTEN_ACK_TIMEOUT_MS = 3_000
+
 export type WaitForTaskParams = {
   taskID: string
   signal?: AbortSignal
@@ -38,6 +40,7 @@ type TaskEntry = {
   handle?: ListenHandle
   acknowledged: Promise<boolean>
   resolveAcknowledged: (accepted: boolean) => void
+  acknowledgementTimer?: ReturnType<typeof setTimeout>
   active: boolean
   latest?: DetailedTask
   version: number
@@ -189,6 +192,20 @@ export class TaskWaiter {
       dispatched: new Set(),
       controller: new AbortController(),
     }
+    let acknowledgementPending = true
+    const finishAcknowledgement = (accepted: boolean) => {
+      if (!acknowledgementPending) return
+      acknowledgementPending = false
+      clearTimeout(entry.acknowledgementTimer)
+      entry.active = accepted
+      entry.resolveAcknowledged(accepted)
+    }
+    entry.acknowledgementTimer = setTimeout(() => {
+      finishAcknowledgement(false)
+      const handle = entry.handle
+      entry.handle = undefined
+      handle?.abort()
+    }, TASK_LISTEN_ACK_TIMEOUT_MS)
     this.#entries.set(taskID, entry)
     try {
       entry.handle = this.#params.openListen(
@@ -204,8 +221,7 @@ export class TaskWaiter {
               }
               const accepted =
                 acknowledged.params?.notifications?.taskIds?.includes(taskID) ?? false
-              entry.active = accepted
-              entry.resolveAcknowledged(accepted)
+              finishAcknowledgement(accepted)
               return
             }
             if (
@@ -219,14 +235,14 @@ export class TaskWaiter {
           },
           onSettle: () => {
             entry.active = false
-            entry.resolveAcknowledged(false)
+            finishAcknowledgement(false)
             this.#wake(entry)
           },
         },
       )
       entry.handle.exchange.catch(() => {})
     } catch {
-      entry.resolveAcknowledged(false)
+      finishAcknowledgement(false)
     }
     return entry
   }
@@ -235,6 +251,7 @@ export class TaskWaiter {
     entry.count -= 1
     if (entry.count > 0) return
     this.#entries.delete(taskID)
+    clearTimeout(entry.acknowledgementTimer)
     entry.controller.abort()
     entry.handle?.abort()
   }

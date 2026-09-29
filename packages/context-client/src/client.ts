@@ -1037,7 +1037,7 @@ export class ContextClient<
     let driver = this.#subscriptionDriver
     if (driver == null) {
       driver = new SubscriptionDriver({
-        openListen: (filter, handlers) => this.#openListen(filter, handlers),
+        openListen: (filter, handlers) => this.#openResourceListen(filter, handlers),
         filter: this.#autoOpenFilter(),
         onNotification: (notification) => this.#handleSubscriptionNotification(notification),
         onError: (error) => this.#reportSubscriptionError(error),
@@ -1067,18 +1067,24 @@ export class ContextClient<
     return filter
   }
 
+  #openResourceListen(filter: SubscriptionFilter, handlers: ListenHandlers): ListenHandle {
+    return this.#openListen(filter, {
+      ...handlers,
+      onNotification: (notification) => {
+        if ((notification as { method?: unknown }).method === ACKNOWLEDGED_METHOD) {
+          const honored = (notification as { params?: { notifications?: SubscriptionFilter } })
+            .params?.notifications
+          if (honored != null) this.#honoredFilter = honored
+        }
+        handlers.onNotification(notification)
+      },
+    })
+  }
+
   /**
-   * The real `openListen` seam backing the driver: opens one `subscriptions/listen` stream
-   * exchange carrying `filter`, mapping the exchange's `progress`/`settle` frames onto the
-   * driver's `onNotification`/`onSettle`. Decorates the request with this revision's protocol
-   * envelope, exactly as `request()` does, so a real server sees the same `_meta`.
-   *
-   * Two things happen only here, at the layer that owns the wire id:
-   * - the `acknowledged` frame's subscriptionId (which equals this request's envelope id, or it
-   *   would not have routed to this exchange at all) is captured to verify the terminal result;
-   * - a terminal `result` settle is deferred by one microtask to read the terminal body off the
-   *   (already-resolved) exchange promise and confirm its `_meta` subscriptionId matches -- a
-   *   mismatch is surfaced as a protocol error rather than accepted as a graceful teardown.
+   * Opens one `subscriptions/listen` exchange and verifies its terminal subscriptionId.
+   * Resource filter state belongs to `#openResourceListen`, while task acknowledgements go
+   * directly to the task waiter.
    */
   #openListen(filter: SubscriptionFilter, handlers: ListenHandlers): ListenHandle {
     const protocol = this.#requireProtocol()
@@ -1107,11 +1113,6 @@ export class ContextClient<
             const id = meta?.[META_SUBSCRIPTION_ID]
             if (typeof id === 'string' || typeof id === 'number') {
               subscriptionId = id
-            }
-            const honored = (notification as { params?: { notifications?: SubscriptionFilter } })
-              .params?.notifications
-            if (honored != null) {
-              this.#honoredFilter = honored
             }
           }
           handlers.onNotification(notification)
