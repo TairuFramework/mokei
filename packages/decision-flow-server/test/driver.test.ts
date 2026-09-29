@@ -2,7 +2,7 @@ import { DirectTransports } from '@enkaku/transport'
 import { ContextClient, TaskCancelledError } from '@mokei/context-client'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import type { JSONValue, TaskHandle } from '@mokei/context-server'
-import { ContextServer, createTaskManager } from '@mokei/context-server'
+import { ContextServer, createMemoryTaskStore, createTaskManager } from '@mokei/context-server'
 import { createFlowGraph, type FlowDefinition } from '@sozai/flow-graph'
 import { expect, test } from 'vitest'
 
@@ -309,43 +309,102 @@ test('different run depths reach sibling calls independently', async () => {
 })
 
 test('recovery repeats an acted call with the same operation key after its handle missed checkpoint', async () => {
-  const keys: Array<unknown> = []
-  let calls = 0
+  const calls: Array<{ key: unknown; attempt: unknown }> = []
   const h = harness({
     definition: definition('tool'),
     caller: {
       callTool: async ({ meta }) => {
-        keys.push(meta['io.mokei/idempotency-key'])
-        calls++
-        return calls === 1 ? { task: { taskId: 'orphan' } } : { result }
+        calls.push({
+          key: meta['io.mokei/idempotency-key'],
+          attempt: meta['io.mokei/attempt'],
+        })
+        return calls.length === 1 ? { task: { taskId: 'orphan' } } : { result }
       },
     },
-    checkpoint: async (data) => {
-      if (data.siblings.length) throw new Error('crash before checkpoint')
+  })
+  const base = createMemoryTaskStore()
+  let first: ReturnType<typeof createTaskManager>
+  let crash = true
+  const store = {
+    ...base,
+    update: async (...args: Parameters<typeof base.update>) => {
+      const data = args[1].resumeData as unknown as ResumeDataV1 | undefined
+      if (crash && data?.siblings.length) {
+        crash = false
+        await first.dispose()
+        throw new Error('crash before sibling checkpoint')
+      }
+      return base.update(...args)
+    },
+  }
+  const taskTool = {
+    description: 'Flow task',
+    inputSchema: { type: 'object' as const },
+    handler: () => result,
+  }
+  const stopped = Promise.withResolvers<void>()
+  first = createTaskManager({ store })
+  const created = await first.create({
+    toolName: 'flow',
+    tool: taskTool,
+    clientCapabilities: {},
+    resumeData: h.resumeData as unknown as JSONValue,
+    work: async (handle) => {
+      try {
+        return await startRun({
+          handle,
+          graph: h.graph,
+          run: h.run,
+          definition: h.flow,
+          resumeData: h.resumeData,
+          caller: h.caller,
+        })
+      } finally {
+        stopped.resolve()
+      }
     },
   })
-  await expect(h.drive()).rejects.toMatchObject({ message: 'Flow checkpoint failed' })
-  const durable = h.checkpoints.filter((entry) => entry.runState.status === 'running').at(-1)
-  expect(durable?.runState.inFlight).toBeDefined()
-  const resumeData = structuredClone(durable) as ResumeDataV1
-  resumeData.siblings = []
-  const recovered = h.graph.recover({
-    definition: h.flow,
-    runState: resumeData.runState,
-    signal: h.handle.signal,
+  await stopped.promise
+  const persisted = await base.get(created.taskId)
+  expect(crash).toBe(false)
+  expect(persisted).toMatchObject({ status: 'working', resumeData: { siblings: [] } })
+  const checkpoint = persisted?.resumeData as unknown as ResumeDataV1
+  expect(checkpoint.runState.inFlight).toBeDefined()
+
+  const second = createTaskManager({
+    store,
+    recover: (record, resume) =>
+      resume((handle) => {
+        const data = record.resumeData as unknown as ResumeDataV1
+        const recovered = h.graph.recover({
+          definition: h.flow,
+          runState: data.runState,
+          signal: handle.signal,
+        })
+        return startRun({
+          handle,
+          graph: h.graph,
+          run: recovered,
+          definition: h.flow,
+          resumeData: data,
+          caller: h.caller,
+        })
+      }),
   })
-  const completed = await startRun({
-    handle: h.handle,
-    graph: h.graph,
-    run: recovered,
-    definition: h.flow,
-    resumeData,
-    caller: h.caller,
-  })
-  expect(completed.structuredContent).toMatchObject({ outcome: 'finished' })
-  expect(keys).toHaveLength(2)
-  expect(keys[0]).toBe(keys[1])
-  expect(h.cancelled).toContainEqual({ id: tool.id, taskId: 'orphan' })
+  try {
+    await second.recover({ flow: taskTool })
+    await expect.poll(async () => (await second.get(created.taskId)).status).toBe('completed')
+    expect(await second.get(created.taskId)).toMatchObject({
+      result: { structuredContent: { outcome: 'finished' } },
+    })
+    expect(calls).toHaveLength(2)
+    expect(calls[0]?.key).toMatch(/^run-1:.+/)
+    expect(calls[1]?.key).toBe(calls[0]?.key)
+    expect(calls.map(({ attempt }) => attempt)).toEqual([1, 1])
+    expect(h.cancelled).toContainEqual({ id: tool.id, taskId: 'orphan' })
+  } finally {
+    await second.dispose()
+  }
 })
 
 test('retry suspension waits for resumeAt then completes', async () => {
@@ -369,4 +428,35 @@ test('retry suspension waits for resumeAt then completes', async () => {
   expect(completed.structuredContent).toMatchObject({ outcome: 'finished' })
   expect(h.checkpoints.some((entry) => entry.runState.pending?.reason === 'retry')).toBe(true)
   expect(calls).toBe(2)
+})
+
+test('a timed-out tool call retries with the same operation key and next attempt', async () => {
+  const flow = definition('tool')
+  flow.nodes.work = {
+    ...flow.nodes.work,
+    retry: { maxAttempts: 2, attemptTimeoutMs: 20, backoff: { initialMs: 0 } },
+  } as FlowDefinition['nodes'][string]
+  const calls: Array<{ key: unknown; attempt: unknown }> = []
+  const h = harness({
+    definition: flow,
+    caller: {
+      callTool: async ({ meta, signal }) => {
+        calls.push({
+          key: meta['io.mokei/idempotency-key'],
+          attempt: meta['io.mokei/attempt'],
+        })
+        if (calls.length === 1) {
+          await new Promise<void>((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+          })
+        }
+        return { result }
+      },
+    },
+  })
+  expect((await h.drive()).structuredContent).toMatchObject({ outcome: 'finished' })
+  expect(calls).toHaveLength(2)
+  expect(calls[0]?.key).toMatch(/^run-1:.+/)
+  expect(calls[1]?.key).toBe(calls[0]?.key)
+  expect(calls.map(({ attempt }) => attempt)).toEqual([1, 2])
 })

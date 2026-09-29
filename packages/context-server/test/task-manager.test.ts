@@ -544,7 +544,10 @@ describe('task manager', () => {
     await tick()
     expect((await manager.get(created.taskId)).status).toBe('completed')
     expect((await store.get(created.taskId))?.issuedInputKeys).toEqual(['ask'])
-    await manager.update(created.taskId, { ask: rootsResponse })
+    await expect(manager.update(created.taskId, { ask: rootsResponse })).rejects.toMatchObject({
+      code: -32602,
+      message: 'Task is not awaiting input for ask',
+    })
     await expect(handle?.requestInput({ ask: rootsRequest })).rejects.toThrow()
     await manager.dispose()
   })
@@ -1022,7 +1025,7 @@ describe('task manager', () => {
     await second.dispose()
   })
 
-  test('ignores a stale update after input withdrawal while work continues', async () => {
+  test('rejects a stale update after input withdrawal while work continues', async () => {
     const store = createMemoryTaskStore()
     const manager = createTaskManager({ store })
     const controller = new AbortController()
@@ -1044,7 +1047,10 @@ describe('task manager', () => {
     controller.abort(new Error('deadline'))
     await tick()
     expect((await manager.get(created.taskId)).status).toBe('working')
-    await manager.update(created.taskId, { ask: rootsResponse })
+    await expect(manager.update(created.taskId, { ask: rootsResponse })).rejects.toMatchObject({
+      code: -32602,
+      message: 'Task is not awaiting input for ask',
+    })
     expect(await store.get(created.taskId)).toMatchObject({
       status: 'working',
       issuedInputKeys: ['ask'],

@@ -235,8 +235,13 @@ test('real input deadline withdraws the request and a late answer cannot change 
       status: 'completed',
       result: { structuredContent: { outcome: 'timed' } },
     })
-    await tasks.update(started.taskId, {
-      [key as string]: { action: 'accept', content: { value: 'late' } },
+    await expect(
+      tasks.update(started.taskId, {
+        [key as string]: { action: 'accept', content: { value: 'late' } },
+      }),
+    ).rejects.toMatchObject({
+      code: -32602,
+      message: `Task is not awaiting input for ${key}`,
     })
     expect(await tasks.get(started.taskId)).toMatchObject({
       status: 'completed',
