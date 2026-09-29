@@ -46,6 +46,14 @@ export {
   SubscriptionWriter,
   type SubscriptionWriterParams,
 } from './subscriptions.js'
+export {
+  createMemoryTaskStore,
+  type JSONValue,
+  type TaskOwner,
+  type TaskRecord,
+  type TaskStore,
+  TaskStoreConflictError,
+} from './task-store.js'
 export type {
   ExtractPromptTypes,
   ExtractServerTypes,
