@@ -44,7 +44,6 @@ import type {
 } from '@mokei/context-protocol'
 import {
   INPUT_REQUEST_CAPABILITIES,
-  INTERNAL_ERROR,
   INVALID_REQUEST,
   inferSchemaDraft,
   isCreateTaskResult,
@@ -93,6 +92,7 @@ import {
   SubscriptionProtocolError,
   type SubscriptionRetry,
 } from './subscriptions.js'
+import { TaskWaiter, type WaitForTaskParams } from './task-waiter.js'
 import { currentTraceMeta } from './trace.js'
 import {
   type ClientParams,
@@ -351,6 +351,7 @@ export class ContextClient<
   // as the read loop's first reads, so nothing buffered here is retained past that point.
   #setupBuffer: Array<ServerMessage> = []
   #toolOutputSchemas = new Map<string, Validator<unknown>>()
+  #taskWaiter: TaskWaiter | null = null
 
   constructor(params: ClientParams) {
     // Indirected through a method so the validator tracks the resolved revision rather than
@@ -1583,6 +1584,51 @@ export class ContextClient<
     }
   }
 
+  waitForTask(params: WaitForTaskParams): Promise<CallToolResult> {
+    this.#taskWaiter ??= new TaskWaiter({
+      request: async (method, requestParams) => {
+        if (method === 'tasks/get') {
+          return await this.request('tasks/get', { taskId: requestParams.taskId })
+        }
+        if (method === 'tasks/update') {
+          return await this.request('tasks/update', {
+            taskId: requestParams.taskId,
+            inputResponses: requestParams.inputResponses ?? {},
+          })
+        }
+        return await this.request('tasks/cancel', { taskId: requestParams.taskId })
+      },
+      openListen: (filter, handlers) => this.#openListen(filter, handlers),
+      fulfil: async (key, request, signal) => {
+        return await this.#fulfilInputRequest(key, request, signal)
+      },
+      validate: (result, toolName) => this.#validateToolOutput(result, toolName),
+    })
+    return this.#taskWaiter.wait(params)
+  }
+
+  #validateToolOutput(result: CallToolResult, toolName: string): CallToolResult {
+    const validate = this.#toolOutputSchemas.get(toolName)
+    if (validate == null || result.structuredContent == null) {
+      return result
+    }
+    const outcome = validate(result.structuredContent)
+    if (outcome.issues != null) {
+      throw new StructuredContentValidationError({
+        toolName,
+        issues: outcome.issues.map((issue) => {
+          return {
+            message: issue.message,
+            path: issue.path?.map((segment) => {
+              return typeof segment === 'object' && segment != null ? segment.key : segment
+            }),
+          }
+        }),
+      })
+    }
+    return result
+  }
+
   callTool(
     params: WithRequestOptions<ToolParams<T>> & { allowInputRequired?: false },
   ): Promise<CallToolResult>
@@ -1602,26 +1648,13 @@ export class ContextClient<
       options,
     )
     if (isCreateTaskResult(result)) {
-      throw new RPCError({ code: INTERNAL_ERROR, message: 'Task waiting is unavailable' })
-    }
-    const validate = this.#toolOutputSchemas.get(params.name)
-    if (validate == null || result.structuredContent == null) {
-      return result
-    }
-    const outcome = validate(result.structuredContent)
-    if (outcome.issues != null) {
-      throw new StructuredContentValidationError({
+      return await this.waitForTask({
+        taskID: result.taskId,
+        signal: options?.signal,
         toolName: params.name,
-        issues: outcome.issues.map((issue) => {
-          return {
-            message: issue.message,
-            path: issue.path?.map((segment) => {
-              return typeof segment === 'object' && segment != null ? segment.key : segment
-            }),
-          }
-        }),
+        cancelOnAbort: true,
       })
     }
-    return result
+    return this.#validateToolOutput(result, params.name)
   }
 }

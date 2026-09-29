@@ -96,6 +96,42 @@ export class InputRequiredNotSupportedError extends Error {
 
 export type InputRequiredNotSupportedErrorParams = { reason: string; cause?: unknown }
 
+export class TaskCancelledError extends Error {
+  #taskID: string
+
+  constructor(params: { taskID: string; cause?: unknown }) {
+    super(`Task ${params.taskID} was cancelled`, { cause: params.cause })
+    this.name = 'TaskCancelledError'
+    this.#taskID = params.taskID
+  }
+
+  get taskID(): string {
+    return this.#taskID
+  }
+}
+
+export class TaskInputUnavailableError extends Error {
+  #taskID: string
+  #key: string
+
+  constructor(params: { taskID: string; key: string; cause?: unknown }) {
+    super(`Input request "${params.key}" for task ${params.taskID} could not be fulfilled`, {
+      cause: params.cause,
+    })
+    this.name = 'TaskInputUnavailableError'
+    this.#taskID = params.taskID
+    this.#key = params.key
+  }
+
+  get taskID(): string {
+    return this.#taskID
+  }
+
+  get key(): string {
+    return this.#key
+  }
+}
+
 /** Thrown when a paginated list walk fetches more pages than its cap allows. */
 export class ListMaxPagesError extends Error {
   /** The list method that exceeded the cap, e.g. `tools/list`. */

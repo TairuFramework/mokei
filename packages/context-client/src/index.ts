@@ -25,6 +25,8 @@ export {
   type MRTRNotSupportedErrorParams,
   StructuredContentValidationError,
   type StructuredContentValidationErrorParams,
+  TaskCancelledError,
+  TaskInputUnavailableError,
   UnsupportedProtocolVersionError,
   type UnsupportedProtocolVersionErrorParams,
   type ValidationIssue,
@@ -56,6 +58,7 @@ export {
   SubscriptionStreamError,
   type SubscriptionStreamErrorParams,
 } from './subscriptions.js'
+export type { WaitForTaskParams } from './task-waiter.js'
 export { currentTraceMeta, type TraceMeta, traceMetaFromContext } from './trace.js'
 export type {
   ClientHandlerRequest,
