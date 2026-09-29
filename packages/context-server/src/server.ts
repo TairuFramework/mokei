@@ -1,6 +1,7 @@
 import type {
   CallToolRequest,
   CallToolResult,
+  ClientCapabilities,
   ClientMessage,
   ClientNotification,
   ClientRequest,
@@ -129,6 +130,15 @@ const LOGGING_LEVELS: Record<LoggingLevel, number> = {
 const validateClientMessage = createValidator<Schema, ClientMessage>({
   anyOf: PROTOCOL_VERSIONS.map((version) => PROTOCOLS[version].clientMessage),
 } as Schema)
+
+function requireTasksExtension(capabilities: ClientCapabilities | undefined): void {
+  if (declaresTasksExtension(capabilities)) return
+  throw new RPCError({
+    code: MISSING_REQUIRED_CLIENT_CAPABILITY,
+    message: 'Client did not declare the tasks extension',
+    data: { requiredCapabilities: { extensions: { [TASKS_EXTENSION]: {} } } },
+  })
+}
 
 export type CacheHints = {
   cacheScope?: 'public' | 'private'
@@ -714,6 +724,20 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           break
         }
         return this.#listen(request as SubscriptionsListenRequest, protocol, signal)
+      case 'tasks/get':
+        if (this.#tasks == null) break
+        requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
+        return { ...(await this.#tasks.get(request.params.taskId)), resultType: 'complete' }
+      case 'tasks/update':
+        if (this.#tasks == null) break
+        requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
+        await this.#tasks.update(request.params.taskId, request.params.inputResponses)
+        return { resultType: 'complete' }
+      case 'tasks/cancel':
+        if (this.#tasks == null) break
+        requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
+        await this.#tasks.cancel(request.params.taskId)
+        return { resultType: 'complete' }
       case 'tools/call':
         return await this.#callTool(request, protocol, client, signal, mrtr, meta)
       case 'tools/list':
