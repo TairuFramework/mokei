@@ -160,6 +160,16 @@ createTool({
      not catch it, the task ends `failed` with that `-32021` error.
    - `awaitInput()`: resolves with the responses to the requests currently outstanding,
      without issuing new keys. Used by recovered work (see Restart).
+   - Both input methods take an optional `{ signal }`. When that signal aborts first, the
+     manager withdraws the outstanding requests atomically: they leave `inputRequests`, the
+     task returns to `working`, and the call rejects with the signal's reason. Withdrawn keys
+     stay issued (they cannot be reused), and a later `tasks/update` for them is ignored like
+     any stale key. A worker uses this for an input deadline without ending the task.
+   - `checkpoint(resumeData)`: replaces the record's `resumeData` through the manager's
+     compare-and-swap, merging onto the latest record so concurrent status, input or
+     settlement writes are never overwritten. Resolves once persisted; rejects when the task
+     is terminal or its signal has aborted. Long-running work calls it at each durable point
+     so `recover` resumes from the latest state.
 3. Settles the task through the same finalisation seam as the synchronous path (below).
 
 `options.resumeData` is a JSON value stored on the record for `recover` (see Restart).
@@ -272,6 +282,9 @@ partial `tasks/update` therefore never strands a completing task.
   for them.
 - Without `recover`, or if `recover` returns without calling `resume` or throws, the task ends
   `failed` with error `{ code: -32603, message: 'Task interrupted by server restart' }`.
+- To fail a record with its own error (for example, stored work that no longer validates), the
+  callback resumes a worker that throws an `RPCError`; it settles through `settleToolOutcome`
+  as a JSON-RPC error with that code, message and data.
 - A manager with no `recover` callback does this at creation, without waiting for
   `tasks.recover(tools)`. With a callback, records stay awaiting recovery until
   `tasks.recover(tools)` runs; the architecture docs and READMEs state that it must be called

@@ -205,7 +205,7 @@ test('rejects an update based on a stale revision', async () => {
 
 **Files:** Create `packages/context-server/src/task-manager.ts`, `packages/context-server/test/task-manager.test.ts`; modify `packages/context-server/src/index.ts`.
 
-**Interfaces:** Consumes Task 2's store and owner types, Task 3's `settleToolOutcome`, protocol task types and `missingInputCapabilities`. Produces `TaskManagerParams = { store?: TaskStore; ttlMs?: number; pollIntervalMs?: number; recover?: (record: TaskRecord, resume: TaskResume) => Promise<void> | void; now?: () => number }`, `TaskHandle` (`taskID`, `signal`, `setStatus`, `requestInput`, `awaitInput`), `TaskContext.run(work, options?)`, `TaskManager` (`events`, `create`, `get`, `update`, `cancel`, `canAccess`, `recover(tools)`, `dispose`), and `createTaskManager(params?: TaskManagerParams): TaskManager`. The optional clock is internal test injection; document the public defaults as 3,600,000 and 1,000 ms.
+**Interfaces:** Consumes Task 2's store and owner types, Task 3's `settleToolOutcome`, protocol task types and `missingInputCapabilities`. Produces `TaskManagerParams = { store?: TaskStore; ttlMs?: number; pollIntervalMs?: number; recover?: (record: TaskRecord, resume: TaskResume) => Promise<void> | void; now?: () => number }`, `TaskHandle` (`taskID`, `signal`, `setStatus`, `requestInput`, `awaitInput`, `checkpoint`), `TaskContext.run(work, options?)`, `TaskManager` (`events`, `create`, `get`, `update`, `cancel`, `canAccess`, `recover(tools)`, `dispose`), and `createTaskManager(params?: TaskManagerParams): TaskManager`. The optional clock is internal test injection; document the public defaults as 3,600,000 and 1,000 ms.
 
 Use one contract for live and recovered workers:
 
@@ -215,8 +215,12 @@ type TaskHandle = {
   taskID: string
   signal: AbortSignal
   setStatus(message: string): Promise<void>
-  requestInput(requests: Record<string, InputRequest>): Promise<Record<string, InputResponse>>
-  awaitInput(): Promise<Record<string, InputResponse>>
+  requestInput(
+    requests: Record<string, InputRequest>,
+    options?: { signal?: AbortSignal },
+  ): Promise<Record<string, InputResponse>>
+  awaitInput(options?: { signal?: AbortSignal }): Promise<Record<string, InputResponse>>
+  checkpoint(resumeData: JSONValue): Promise<void>
 }
 type TaskResume = (work: TaskWork) => Promise<void>
 type TaskContext = {
@@ -245,10 +249,10 @@ type TaskManager = {
 }
 ```
 
-- [ ] **Step 1: Write failing lifecycle tests.** Use a controlled clock and deferred workers. Assert durable create precedes handle return; UUID format; status event and timestamps; cancel aborts signal; TTL expires from `createdAt` on access and sweep; pending input rejects on abort; dispose leaves records for recovery. Assert `setStatus` racing completion and two partial updates converge after conflicts.
+- [ ] **Step 1: Write failing lifecycle tests.** Use a controlled clock and deferred workers. Assert durable create precedes handle return; UUID format; status event and timestamps; cancel aborts signal; TTL expires from `createdAt` on access and sweep; pending input rejects on abort; dispose leaves records for recovery. Assert `setStatus` racing completion and two partial updates converge after conflicts. Assert input withdrawal: aborting the input `signal` removes the outstanding requests, returns the task to `working`, rejects with the reason, keeps the keys issued (reuse rejects), and a late `tasks/update` for them is ignored. Assert `checkpoint` replaces `resumeData`, survives a concurrent `setStatus` conflict without losing either write, and rejects on a terminal or aborted task.
 - [ ] **Step 2: Run red.** Run: `pnpm --filter @mokei/context-server test`. Expected: missing manager API or failing transitions.
 - [ ] **Step 3: Implement worker and CAS state machine.** Keep controllers and pending-input deferred values in the manager. Retry mutations after `TaskStoreConflictError`. Stop only when the latest record is terminal or missing. Emit detailed snapshots after committed transitions. Use an `unref` sweep timer in Node where supported. Ignore detached work results after cancel, expiry or dispose.
-- [ ] **Step 4: Write failing restart tests.** Seed a persistent test store with `working` and `input_required` records. Assert hidden records before `recover(tools)`, successful `resume(work)`, `awaitInput()` on preserved requests, missing tool, missing/throwing callback and the exact `-32603` interrupted error. Assert a manager without a callback fails persisted records during its startup work.
+- [ ] **Step 4: Write failing restart tests.** Seed a persistent test store with `working` and `input_required` records. Assert hidden records before `recover(tools)`, successful `resume(work)`, `awaitInput()` on preserved requests, missing tool, missing/throwing callback and the exact `-32603` interrupted error. Assert a manager without a callback fails persisted records during its startup work. Assert a recovered worker sees the latest checkpointed `resumeData`, and a resumed worker throwing `RPCError` fails the task with that error.
 - [ ] **Step 5: Implement recovery.** Await initial store scan through a manager readiness promise before every public access. Keep records inaccessible until recovery callback returns with a resumed worker. Settle unrecovered records to `{ code: -32603, message: 'Task interrupted by server restart' }`. The recovered worker uses its named tool and the same outcome seam as a live worker.
 - [ ] **Step 6: Verify.** Run: `pnpm --filter @mokei/context-server test`. Expected: all task manager and existing server tests pass.
 - [ ] **Step 7: Commit.** Run `rtk proxy pnpm run lint`, then `git add packages/context-server/src/task-manager.ts packages/context-server/src/index.ts packages/context-server/test/task-manager.test.ts && git commit -m "feat: manage durable task workers and recovery"`.
