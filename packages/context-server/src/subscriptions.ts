@@ -3,6 +3,8 @@ import { defer } from '@sozai/async'
 import type { EventsSource, UnsubscribeFunction } from '@sozai/event'
 
 import type { ServerEvents } from './server.js'
+import type { TaskManager } from './task-manager.js'
+import type { TaskOwner } from './task-store.js'
 
 /**
  * Pending frames a `SubscriptionWriter` accepts before it treats the subscriber as too slow to
@@ -212,6 +214,10 @@ export type SubscriptionEntry = {
   connectionID: string
   subscriptionID: RequestID
   filter: SubscriptionFilter
+  acceptedTaskIDs?: Array<string>
+  auth?: TaskOwner
+  expiresAt?: number
+  expire?: () => void
   /** Routes the notification through the serving server's own notify path. */
   deliver: (notification: ServerNotification) => Promise<void>
   /** Graceful teardown for *this* subscription: resolve the held terminal, await its write. */
@@ -239,6 +245,7 @@ export type SubscriptionHandle = {
 }
 
 export type SubscriptionHub = {
+  acceptTaskIDs(taskIDs: Array<string>, auth?: TaskOwner): Promise<Array<string>>
   /** Registers `entry` and starts routing matching producer events to it. */
   register(entry: SubscriptionEntry): SubscriptionHandle
   /** Awaits `handle.complete()` for every currently-registered entry. */
@@ -249,11 +256,13 @@ export type SubscriptionHub = {
 
 export type CreateSubscriptionHubParams = {
   events: EventsSource<ServerEvents>
+  tasks?: TaskManager
 }
 
 type SubscriptionRecord = {
   entry: SubscriptionEntry
   handle: SubscriptionHandle
+  expiryTimer?: ReturnType<typeof setTimeout>
 }
 
 /**
@@ -273,6 +282,8 @@ export function createSubscriptionHub(params: CreateSubscriptionHubParams): Subs
     if (bySubscription == null) {
       return
     }
+    const record = bySubscription.get(entry.subscriptionID)
+    if (record?.expiryTimer !== undefined) clearTimeout(record.expiryTimer)
     bySubscription.delete(entry.subscriptionID)
     if (bySubscription.size === 0) {
       connections.delete(entry.connectionID)
@@ -327,6 +338,40 @@ export function createSubscriptionHub(params: CreateSubscriptionHubParams): Subs
     }),
   ]
 
+  if (params.tasks !== undefined) {
+    const tasks = params.tasks
+    unsubscribes.push(
+      tasks.events.on('taskStatus', async (task) => {
+        const notification = {
+          jsonrpc: '2.0' as const,
+          method: 'notifications/tasks' as const,
+          params: task,
+        } as ServerNotification
+        const targets = allRecords().filter(({ entry }) =>
+          entry.acceptedTaskIDs?.includes(task.taskId),
+        )
+        await Promise.allSettled(
+          targets.map(async (record) => {
+            const { entry } = record
+            if (!(await tasks.canAccess(task.taskId, entry.auth))) return
+            if (entry.expiresAt !== undefined && Date.now() >= entry.expiresAt * 1_000) return
+            if (connections.get(entry.connectionID)?.get(entry.subscriptionID) !== record) return
+            await entry.deliver(notification)
+          }),
+        )
+      }),
+    )
+  }
+
+  async function acceptTaskIDs(taskIDs: Array<string>, auth?: TaskOwner): Promise<Array<string>> {
+    if (params.tasks === undefined) return []
+    const accepted: Array<string> = []
+    for (const taskID of taskIDs) {
+      if (await params.tasks.canAccess(taskID, auth)) accepted.push(taskID)
+    }
+    return accepted
+  }
+
   function register(entry: SubscriptionEntry): SubscriptionHandle {
     // Shared first-settlement-wins guard between complete() and close(): whichever is *invoked*
     // first sets this synchronously, so a same-tick race is resolved by call order, not by which
@@ -362,7 +407,19 @@ export function createSubscriptionHub(params: CreateSubscriptionHubParams): Subs
       bySubscription = new Map()
       connections.set(entry.connectionID, bySubscription)
     }
-    bySubscription.set(entry.subscriptionID, { entry, handle })
+    const record: SubscriptionRecord = { entry, handle }
+    bySubscription.set(entry.subscriptionID, record)
+    if (entry.auth !== undefined && entry.expiresAt !== undefined) {
+      record.expiryTimer = setTimeout(
+        () => {
+          handle.close()
+          if (entry.expire !== undefined) entry.expire()
+          else void entry.complete()
+        },
+        Math.max(0, entry.expiresAt * 1_000 - Date.now()),
+      )
+      record.expiryTimer.unref?.()
+    }
 
     return handle
   }
@@ -376,8 +433,11 @@ export function createSubscriptionHub(params: CreateSubscriptionHubParams): Subs
     for (const unsubscribe of unsubscribes) {
       unsubscribe()
     }
+    for (const record of allRecords()) {
+      if (record.expiryTimer !== undefined) clearTimeout(record.expiryTimer)
+    }
     connections.clear()
   }
 
-  return { register, endAllGracefully, dispose }
+  return { acceptTaskIDs, register, endAllGracefully, dispose }
 }

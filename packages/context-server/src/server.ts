@@ -162,7 +162,7 @@ export type ServerConfig = {
 
 export type ServerParams = ServerConfig & {
   transport: ServerTransport
-  auth?: TaskOwner
+  auth?: TaskOwner & { expiresAt?: number }
   /**
    * Owns resource subscriptions (SEP-1391 `subscriptions/listen`): creates and owns a
    * {@link SubscriptionHub} bound to this server's own `events`, disposing it on teardown.
@@ -247,6 +247,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #toolsList: Array<Tool> = []
   #tasks?: TaskManager
   #auth?: TaskOwner
+  #listenExpiresAt?: number
   #connectionID: string
   #subscriptionHub?: SubscriptionHub
   // True when this server created the hub (owner) and must dispose it; false when it borrows one.
@@ -269,6 +270,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     this.#cache = params.cache
     this.#tasks = params.tasks
+    this.#listenExpiresAt = params.auth?.expiresAt
     this.#auth =
       params.auth == null
         ? undefined
@@ -333,7 +335,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     this.#connectionID = params.connectionID ?? `context-server-${nextConnectionID++}`
     if (params.subscriptions === true) {
-      this.#subscriptionHub = createSubscriptionHub({ events: this.events })
+      this.#subscriptionHub = createSubscriptionHub({ events: this.events, tasks: this.#tasks })
       this.#ownsHub = true
     } else if (params.subscriptionHub != null) {
       this.#subscriptionHub = params.subscriptionHub
@@ -749,6 +751,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         if (this.#subscriptionHub == null) {
           break
         }
+        if (request.params.notifications.taskIds !== undefined) {
+          if (this.#tasks == null) break
+          requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
+        }
         return this.#listen(request as SubscriptionsListenRequest, protocol, signal)
       case 'tasks/get':
         if (this.#tasks == null) break
@@ -891,6 +897,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const hub = this.#subscriptionHub as SubscriptionHub
     const id = request.id
     const filter = request.params.notifications
+    const acceptedTaskIDs =
+      filter.taskIds === undefined ? undefined : await hub.acceptTaskIDs(filter.taskIds, this.#auth)
+    const acceptedFilter =
+      acceptedTaskIDs === undefined ? filter : { ...filter, taskIds: acceptedTaskIDs }
 
     const terminal = defer<ServerResult>()
     // Suppress unhandled-rejection in the narrow window before `#holdRequest` attaches its own
@@ -954,7 +964,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     await writer.enqueue({
       jsonrpc: '2.0',
       method: 'notifications/subscriptions/acknowledged',
-      params: { notifications: filter },
+      params: { notifications: acceptedFilter },
     } as unknown as ServerNotification)
 
     // Build the held response before registering, so `held.written` exists before the entry can be
@@ -968,6 +978,15 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       connectionID: this.#connectionID,
       subscriptionID: id,
       filter,
+      acceptedTaskIDs,
+      auth: this.#auth,
+      expiresAt: this.#listenExpiresAt,
+      expire: () => {
+        const reason = new Error('Listen authentication expired')
+        writer.abort(reason)
+        teardown(reason)
+        sink.close(reason)
+      },
       deliver: (notification) => writer.enqueue(notification),
       // Graceful teardown: resolve the terminal (only `result._meta[subscriptionId]`, no
       // `resultType`), then await its write so `endAllGracefully()` never reports completion before

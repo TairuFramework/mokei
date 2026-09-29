@@ -1,4 +1,4 @@
-import { METHOD_NOT_FOUND } from '@mokei/context-protocol'
+import { METHOD_NOT_FOUND, TASKS_EXTENSION } from '@mokei/context-protocol'
 import {
   ContextServer,
   createSubscriptionHub,
@@ -166,6 +166,91 @@ async function readSSEData(response: Response): Promise<Array<Record<string, unk
 }
 
 describe('subscriptions/listen routing', () => {
+  test('streams only task IDs accepted for the verified HTTP identity', async () => {
+    const tasks = createTaskManager()
+    const hub = createSubscriptionHub({ events: new EventEmitter<ServerEvents>(), tasks })
+    const auth = { issuer: 'issuer', subject: 'alice', scopes: ['read'] }
+    const other = { issuer: 'issuer', subject: 'bob', scopes: ['read'] }
+    const gate = Promise.withResolvers<void>()
+    const otherGate = Promise.withResolvers<void>()
+    const otherSettled = Promise.withResolvers<void>()
+    const taskTool = SERVER_CONFIG.tools?.echo
+    if (taskTool === undefined) throw new Error('Missing test tool')
+    const work = async (handle: Parameters<Parameters<typeof tasks.create>[0]['work']>[0]) => {
+      await gate.promise
+      await handle.setStatus('ready')
+      return { content: [{ type: 'text' as const, text: 'done' }] }
+    }
+    const owned = await tasks.create({
+      toolName: 'echo',
+      tool: taskTool,
+      clientCapabilities: {},
+      owner: auth,
+      work,
+    })
+    const unowned = await tasks.create({
+      toolName: 'echo',
+      tool: taskTool,
+      clientCapabilities: {},
+      owner: other,
+      work: async (handle) => {
+        await otherGate.promise
+        await handle.setStatus('private')
+        otherSettled.resolve()
+        return { content: [{ type: 'text' as const, text: 'private' }] }
+      },
+    })
+    const handler = createHandler({
+      subscriptionHub: hub,
+      tasks,
+      createServer: ({
+        transport,
+        subscriptionHub,
+        connectionID,
+        auth: verified,
+        tasks: borrowed,
+      }) =>
+        new ContextServer({
+          ...SERVER_CONFIG,
+          transport,
+          subscriptionHub,
+          connectionID,
+          auth: verified,
+          tasks: borrowed,
+        }),
+    })
+    const request = listenRequest(1, { taskIds: [owned.taskId, unowned.taskId, 'missing'] })
+    const body = JSON.parse(await request.text()) as { params: { _meta: typeof META } }
+    body.params._meta['io.modelcontextprotocol/clientCapabilities'] = {
+      extensions: { [TASKS_EXTENSION]: {} },
+    }
+    const response = await handler.handleRequest(
+      new Request(request, { body: JSON.stringify(body) }),
+      {
+        auth,
+      },
+    )
+    const frames = createSSEFrameReader(response)
+    await frames.next()
+    const ack = JSON.parse((await frames.next())?.data ?? '') as {
+      params: { notifications: { taskIds: Array<string> } }
+    }
+    expect(ack.params.notifications.taskIds).toEqual([owned.taskId])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    otherGate.resolve()
+    await otherSettled.promise
+    gate.resolve()
+    const status = JSON.parse((await frames.next())?.data ?? '') as {
+      method: string
+      params: { taskId: string; statusMessage: string }
+    }
+    expect(status.method).toBe('notifications/tasks')
+    expect(status.params).toMatchObject({ taskId: owned.taskId, statusMessage: 'ready' })
+    await handler.dispose()
+    await hub.dispose()
+    await tasks.dispose()
+  })
+
   test('threads auth and the caller-owned task manager to the listen server', async () => {
     const { hub } = createStubDurableHub()
     const tasks = createTaskManager()
