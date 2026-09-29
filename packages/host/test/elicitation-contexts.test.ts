@@ -48,6 +48,41 @@ function captureWrites(transport: DirectTransports<ServerMessage, ClientMessage>
   return messages
 }
 
+function captureHostDirectWrites() {
+  const messages: Array<unknown> = []
+  const descriptor = Object.getOwnPropertyDescriptor(DirectTransports.prototype, 'client')
+  if (descriptor?.get == null) {
+    throw new Error('DirectTransports.client getter is unavailable')
+  }
+
+  Object.defineProperty(DirectTransports.prototype, 'client', {
+    ...descriptor,
+    get(this: DirectTransports<ServerMessage, ClientMessage>) {
+      const transport = descriptor.get?.call(this) as DirectTransports<
+        ServerMessage,
+        ClientMessage
+      >['client']
+      const write = transport.write.bind(transport)
+      transport.write = async (message) => {
+        messages.push(message)
+        return await write(message)
+      }
+      return transport
+    },
+  })
+
+  return {
+    messages,
+    restore: () => Object.defineProperty(DirectTransports.prototype, 'client', descriptor),
+  }
+}
+
+function initializeRequests(messages: Array<unknown>) {
+  return messages.filter(
+    (message) => (message as { method?: string }).method === 'initialize',
+  ) as Array<{ params: { capabilities: { elicitation?: unknown } } }>
+}
+
 async function addDirect(
   host: ContextHost,
   key: string,
@@ -78,6 +113,9 @@ describe('ContextHost client elicitation', () => {
     const result = await host.callTool({ key: 'direct', name: 'ask', arguments: {} })
 
     expect(result.isError).not.toBe(true)
+    expect(result.content).toEqual([
+      { type: 'text', text: JSON.stringify({ action: 'accept', content: { answer: 'yes' } }) },
+    ])
     expect(observed).toEqual([{ action: 'accept', content: { answer: 'yes' } }])
     await host.dispose()
   })
@@ -111,7 +149,9 @@ describe('ContextHost client elicitation', () => {
   test('createContext and addDirectContext opt out independently', async () => {
     const host = new ContextHost({ elicit: () => ({ action: 'accept' }) })
     const noCapability: Array<unknown> = []
+    const hostDirectWrites = captureHostDirectWrites()
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const captureCreateWrites = captureWrites(transports.client)
     const server = new ContextServer({
       ...directConfig('2025-11-25', noCapability),
       transport: transports.server,
@@ -134,8 +174,18 @@ describe('ContextHost client elicitation', () => {
 
     expect(createdResult.isError).toBe(true)
     expect(directResult.isError).toBe(true)
+    expect(initializeRequests(captureCreateWrites)).toHaveLength(1)
+    expect(
+      initializeRequests(captureCreateWrites)[0]?.params.capabilities.elicitation,
+    ).toBeUndefined()
+    const hostInitializes = initializeRequests(hostDirectWrites.messages)
+    expect(hostInitializes.length).toBeGreaterThanOrEqual(2)
+    for (const initialize of hostInitializes) {
+      expect(initialize.params.capabilities.elicitation).toBeUndefined()
+    }
     expect(noCapability[0]).toBeInstanceOf(Error)
     expect(observed[0]).toBeInstanceOf(Error)
+    hostDirectWrites.restore()
     await host.dispose()
   })
 
@@ -183,6 +233,7 @@ describe('ContextHost client elicitation', () => {
       ...directConfig('2025-11-25', []),
       transport: transports.server,
     })
+    const messages = captureWrites(transports.client)
     const context = createHostedContext({
       transport: transports.client,
       protocolVersion: '2025-11-25',
@@ -197,16 +248,24 @@ describe('ContextHost client elicitation', () => {
     expect(result.content).toEqual([
       { type: 'text', text: JSON.stringify({ action: 'accept', content: { source: 'caller' } }) },
     ])
+    const initializes = initializeRequests(messages)
+    expect(initializes).toHaveLength(1)
+    expect(initializes[0]?.params.capabilities.elicitation).toEqual({})
     await host.dispose()
   })
 
   test('no host option leaves capability absent', async () => {
     const host = new ContextHost()
+    const hostDirectWrites = captureHostDirectWrites()
     const { observed } = await addDirect(host, 'disabled', '2025-11-25')
     const result = await host.callTool({ key: 'disabled', name: 'ask', arguments: {} })
 
     expect(result.isError).toBe(true)
     expect(observed[0]).toBeInstanceOf(Error)
+    const initializes = initializeRequests(hostDirectWrites.messages)
+    expect(initializes).toHaveLength(1)
+    expect(initializes[0]?.params.capabilities.elicitation).toBeUndefined()
+    hostDirectWrites.restore()
     await host.dispose()
   })
 
@@ -215,15 +274,22 @@ describe('ContextHost client elicitation', () => {
     const host = new ContextHost({
       elicit: () => {
         seen.push('host')
-        return { action: 'accept' }
+        return { action: 'accept', content: { server: seen.length === 1 ? 'old' : 'new' } }
       },
     })
     await addDirect(host, 'reused', '2025-11-25')
+    const firstResult = await host.callTool({ key: 'reused', name: 'ask', arguments: {} })
     await host.remove('reused')
     await addDirect(host, 'reused', '2025-11-25')
-    await host.callTool({ key: 'reused', name: 'ask', arguments: {} })
+    const result = await host.callTool({ key: 'reused', name: 'ask', arguments: {} })
 
-    expect(seen).toEqual(['host'])
+    expect(firstResult.content).toEqual([
+      { type: 'text', text: JSON.stringify({ action: 'accept', content: { server: 'old' } }) },
+    ])
+    expect(seen).toEqual(['host', 'host'])
+    expect(result.content).toEqual([
+      { type: 'text', text: JSON.stringify({ action: 'accept', content: { server: 'new' } }) },
+    ])
     await host.dispose()
   })
 
@@ -252,6 +318,7 @@ describe('ContextHost client elicitation', () => {
         dispose: () => server.dispose(),
       })
       await client.listTools()
+      await client.listTools()
 
       if (protocolVersion === '2025-11-25') {
         const initialize = messages.find(
@@ -259,21 +326,62 @@ describe('ContextHost client elicitation', () => {
         ) as { params: { capabilities: { elicitation?: unknown } } }
         expect(initialize.params.capabilities.elicitation).toEqual({})
       } else {
-        const request = messages.find((message) => {
-          const metadata = (message as { params?: { _meta?: Record<string, unknown> } }).params
-            ?._meta
-          return metadata?.['io.modelcontextprotocol/clientCapabilities'] != null
-        }) as { params: { _meta: Record<string, unknown> } }
-        expect(
-          (
-            request.params._meta['io.modelcontextprotocol/clientCapabilities'] as {
-              elicitation?: unknown
-            }
-          ).elicitation,
-        ).toEqual({})
+        const requests = messages.filter(
+          (message) => (message as { id?: unknown }).id != null,
+        ) as Array<{ params: { _meta: Record<string, unknown> } }>
+        expect(requests.length).toBeGreaterThan(1)
+        for (const request of requests) {
+          expect(
+            (
+              request.params._meta['io.modelcontextprotocol/clientCapabilities'] as {
+                elicitation?: unknown
+              }
+            ).elicitation,
+          ).toEqual({})
+        }
       }
       await host.dispose()
     }
+  })
+
+  test('2026-07-28 opt out omits elicitation from every request', async () => {
+    const host = new ContextHost({ elicit: true })
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const messages = captureWrites(transports.client)
+    const server = new ContextServer({
+      name: 'capability-opt-out-test',
+      version: '1.0.0',
+      protocolVersions: ['2026-07-28'],
+      transport: transports.server,
+      tools: {
+        ping: {
+          description: 'Return a value',
+          inputSchema: { type: 'object', properties: {} },
+          handler: () => ({ content: [{ type: 'text', text: 'pong' }] }),
+        },
+      },
+    })
+    const client = host.createContext({
+      key: '2026-07-28-opt-out',
+      transport: transports.client,
+      protocolVersion: '2026-07-28',
+      elicit: false,
+      dispose: () => server.dispose(),
+    })
+    await client.listTools()
+    await client.listTools()
+
+    const requests = messages.filter(
+      (message) => (message as { id?: unknown }).id != null,
+    ) as Array<{ params: { _meta?: Record<string, unknown> } }>
+    expect(requests.length).toBeGreaterThan(1)
+    for (const request of requests) {
+      const capabilities = request.params._meta?.['io.modelcontextprotocol/clientCapabilities'] as
+        | { elicitation?: unknown }
+        | undefined
+      expect(capabilities?.elicitation).toBeUndefined()
+    }
+    await host.dispose()
   })
 
   test('URL mode reaches the host handler', async () => {
