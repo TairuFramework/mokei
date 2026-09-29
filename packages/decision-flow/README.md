@@ -35,6 +35,8 @@ if (!checked.ok) throw new Error(formatIssues(checked.issues))
 `flowDefinitionSchema` is the executable authoring schema. `flowStorageSchema` also includes
 reserved node kinds for persisted definitions.
 
+Decide nodes have their own `retry` policy. Leave the HTTP backend's `retry` unset for flows; setting both multiplies attempts.
+
 ## Run and persist
 
 Use `graph.start` when the host must persist every committed state revision. Store each yielded state

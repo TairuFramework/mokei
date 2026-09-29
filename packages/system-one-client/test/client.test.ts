@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest'
 import type { SystemOneBackend, SystemOneResult } from '../src/backend.js'
 import { SystemOneClient } from '../src/client.js'
 import { SystemOneError, SystemOneInputError, SystemOneResponseError } from '../src/errors.js'
+import { createSystemOneClient } from '../src/index.js'
 
 const questions = {
   dept: { type: 'choice', instructions: 'Which team?', criteria: { billing: 'x' } },
@@ -17,6 +18,40 @@ function result(answers: Record<string, unknown>): SystemOneResult {
 }
 
 describe('SystemOneClient.predict', () => {
+  test('createSystemOneClient forwards retry to the HTTP backend', async () => {
+    const rawResult = {
+      model: 'english',
+      answers: {
+        dept: {
+          type: 'choice',
+          choice: 'billing',
+          confidence: 0.9,
+          probabilities: { billing: 0.9 },
+        },
+      },
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('busy', { status: 503, headers: { 'content-type': 'application/json' } }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(rawResult), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+    const client = createSystemOneClient({
+      url: 'http://localhost:8000',
+      fetch: fetcher,
+      defaultModel: 'english',
+      retry: { maxAttempts: 2 },
+    })
+    expect((await client.predict({ state: 'hi', questions })).answers.dept.choice).toBe('billing')
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
   test('validates, dispatches, returns a typed result', async () => {
     const backend: SystemOneBackend = {
       predict: vi.fn(async () =>
