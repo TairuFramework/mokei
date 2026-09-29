@@ -30,6 +30,7 @@ import {
   type Schema,
   type ServerParams,
   settleToolOutcome,
+  ToolInputValidationError,
 } from '../src/index.js'
 
 type TestContext = {
@@ -2180,5 +2181,42 @@ describe('tool outputSchema', () => {
         _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
       },
     )
+  })
+})
+
+describe('tool input validation outcome', () => {
+  test('maps a validated input error to an isError result without changing its direct rejection', async () => {
+    const definition = createTool({
+      description: 'Count',
+      inputSchema: {
+        type: 'object',
+        properties: { count: { type: 'number' } },
+        required: ['count'],
+      } as const,
+      handler: () => ({ content: [] }),
+    })
+    const request = {
+      input: { count: 'wrong' },
+      client: {} as never,
+      signal: new AbortController().signal,
+      mintRequestState: () => '',
+    }
+
+    let cause: unknown
+    try {
+      await definition.handler(request)
+    } catch (error) {
+      cause = error
+    }
+    expect(cause).toBeInstanceOf(ToolInputValidationError)
+    expect(cause).toBeInstanceOf(RPCError)
+    expect(cause).toMatchObject({
+      code: INVALID_PARAMS,
+      message: 'Invalid tool input',
+      data: { issues: [{ path: ['count'], message: expect.any(String) }] },
+    })
+    expect(settleToolOutcome(definition, { error: cause })).toEqual({
+      result: { content: [{ type: 'text', text: 'Invalid tool input' }], isError: true },
+    })
   })
 })

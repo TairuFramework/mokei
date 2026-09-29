@@ -1,6 +1,12 @@
-import { INTERNAL_ERROR } from '@mokei/context-protocol'
+import { INTERNAL_ERROR, INVALID_PARAMS } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
-import { createTool, inputRequired, type ToolDefinitions } from '@mokei/context-server'
+import {
+  createTool,
+  inputRequired,
+  type ToolDefinitions,
+  ToolInputValidationError,
+  ToolOutputValidationError,
+} from '@mokei/context-server'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -354,13 +360,19 @@ describe('Server Tool to Local Tool Conversion', () => {
         await localTool.execute({ input: { count: 1 } })
         throw new Error('Expected invalid output to throw')
       } catch (error) {
-        expect(error).toBeInstanceOf(RPCError)
+        expect(error).toBeInstanceOf(ToolOutputValidationError)
         expect(error).toMatchObject({
           code: INTERNAL_ERROR,
           message: 'Invalid tool output',
           data: { issues: [{ path: ['count'], message: expect.any(String) }] },
         })
       }
+
+      const host = new ContextHost()
+      host.addLocalTool(localTool)
+      await expect(host.callLocalTool({ name: 'count', arguments: { count: 1 } })).resolves.toEqual(
+        { content: [{ type: 'text', text: 'Invalid tool output' }], isError: true },
+      )
     })
 
     test('rejects missing structured output', async () => {
@@ -372,7 +384,9 @@ describe('Server Tool to Local Tool Conversion', () => {
       })
       const localTool = toolToLocalTool({ name: 'count', definition })
 
-      await expect(localTool.execute({ input: { count: 1 } })).rejects.toMatchObject({
+      const execution = localTool.execute({ input: { count: 1 } })
+      await expect(execution).rejects.toBeInstanceOf(ToolOutputValidationError)
+      await expect(execution).rejects.toMatchObject({
         code: INTERNAL_ERROR,
         message: 'Invalid tool output',
         data: {
@@ -389,7 +403,13 @@ describe('Server Tool to Local Tool Conversion', () => {
         handler: ({ input }) => ({ structuredContent: { count: input.count } }),
       })
       const host = new ContextHost()
-      host.addLocalTool(toolToLocalTool({ name: 'count', definition }))
+      const localTool = toolToLocalTool({ name: 'count', definition })
+      host.addLocalTool(localTool)
+
+      await expect(localTool.execute({ input: { count: 3 } })).resolves.toEqual({
+        structuredContent: { count: 3 },
+        content: [{ type: 'text', text: '{"count":3}' }],
+      })
 
       await expect(host.callLocalTool({ name: 'count', arguments: { count: 3 } })).resolves.toEqual(
         {
@@ -413,6 +433,44 @@ describe('Server Tool to Local Tool Conversion', () => {
         host.callLocalTool({ name: 'count', arguments: { count: 'wrong' } }),
       ).resolves.toEqual({
         content: [{ type: 'text', text: 'Invalid tool input' }],
+        isError: true,
+      })
+    })
+
+    test('rejects invalid input with its original RPC validation details', async () => {
+      const definition = createTool({
+        description: 'Count',
+        inputSchema,
+        handler: () => ({ content: [] }),
+      })
+      const localTool = toolToLocalTool({ name: 'count', definition })
+      const execution = localTool.execute({ input: { count: 'wrong' } })
+
+      await expect(execution).rejects.toBeInstanceOf(RPCError)
+      await expect(execution).rejects.toBeInstanceOf(ToolInputValidationError)
+      await expect(execution).rejects.toMatchObject({
+        code: INVALID_PARAMS,
+        message: 'Invalid tool input',
+        data: { issues: [{ path: ['count'], message: expect.any(String) }] },
+      })
+    })
+
+    test('rejects with the original handler error while ContextHost returns a tool error', async () => {
+      const failure = new Error('Something went wrong')
+      const definition = createTool({
+        description: 'Fails',
+        inputSchema: { type: 'object' } as const,
+        handler: () => {
+          throw failure
+        },
+      })
+      const localTool = toolToLocalTool({ name: 'failing', definition })
+      const host = new ContextHost()
+      host.addLocalTool(localTool)
+
+      await expect(localTool.execute({ input: {} })).rejects.toBe(failure)
+      await expect(host.callLocalTool({ name: 'failing' })).resolves.toEqual({
+        content: [{ type: 'text', text: 'Something went wrong' }],
         isError: true,
       })
     })
@@ -476,15 +534,9 @@ describe('Server Tool to Local Tool Conversion', () => {
 
       const localTool = toolToLocalTool({ name: 'needsClient', definition: serverTool })
 
-      await expect(localTool.execute({ input: {} })).resolves.toEqual({
-        content: [
-          {
-            type: 'text',
-            text: 'createMessage() is not available for local tools. Local tools run outside of an MCP server context and cannot access client methods.',
-          },
-        ],
-        isError: true,
-      })
+      await expect(localTool.execute({ input: {} })).rejects.toThrow(
+        'createMessage() is not available for local tools. Local tools run outside of an MCP server context and cannot access client methods.',
+      )
     })
 
     test('refuses a handler suspension (MRTR): no wire or retry loop to resume it on', async () => {

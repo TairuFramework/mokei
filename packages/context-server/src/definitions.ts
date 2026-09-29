@@ -20,13 +20,9 @@ export class ToolOutputValidationError extends RPCError {}
 
 export type ToolOutputValidationErrorParams = RPCErrorParams
 
-class ToolInputValidationError extends Error {
-  code = INVALID_PARAMS
-  data: unknown
-
+export class ToolInputValidationError extends RPCError {
   constructor(data: unknown) {
-    super('Invalid tool input')
-    this.data = data
+    super({ code: INVALID_PARAMS, message: 'Invalid tool input', data })
   }
 }
 
