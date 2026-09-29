@@ -1,3 +1,5 @@
+import { INTERNAL_ERROR } from '@mokei/context-protocol'
+import { RPCError } from '@mokei/context-rpc'
 import { createTool, inputRequired, type ToolDefinitions } from '@mokei/context-server'
 import { describe, expect, test } from 'vitest'
 
@@ -328,6 +330,93 @@ describe('ContextHost Local Tools', () => {
 
 describe('Server Tool to Local Tool Conversion', () => {
   describe('toolToLocalTool', () => {
+    const inputSchema = {
+      type: 'object',
+      properties: { count: { type: 'number' } },
+      required: ['count'],
+    } as const
+    const outputSchema = {
+      type: 'object',
+      properties: { count: { type: 'number' } },
+      required: ['count'],
+    } as const
+
+    test('rejects invalid structured output with its protocol error details', async () => {
+      const definition = createTool({
+        description: 'Invalid count',
+        inputSchema,
+        outputSchema,
+        handler: () => ({ structuredContent: { count: 'wrong' } }) as never,
+      })
+      const localTool = toolToLocalTool({ name: 'count', definition })
+
+      try {
+        await localTool.execute({ input: { count: 1 } })
+        throw new Error('Expected invalid output to throw')
+      } catch (error) {
+        expect(error).toBeInstanceOf(RPCError)
+        expect(error).toMatchObject({
+          code: INTERNAL_ERROR,
+          message: 'Invalid tool output',
+          data: { issues: [{ path: ['count'], message: expect.any(String) }] },
+        })
+      }
+    })
+
+    test('rejects missing structured output', async () => {
+      const definition = createTool({
+        description: 'Missing count',
+        inputSchema,
+        outputSchema,
+        handler: () => ({ content: [] }) as never,
+      })
+      const localTool = toolToLocalTool({ name: 'count', definition })
+
+      await expect(localTool.execute({ input: { count: 1 } })).rejects.toMatchObject({
+        code: INTERNAL_ERROR,
+        message: 'Invalid tool output',
+        data: {
+          issues: [{ message: 'Tool declares an outputSchema but returned no structuredContent' }],
+        },
+      })
+    })
+
+    test('backfills text content for valid structured-only output', async () => {
+      const definition = createTool({
+        description: 'Count',
+        inputSchema,
+        outputSchema,
+        handler: ({ input }) => ({ structuredContent: { count: input.count } }),
+      })
+      const host = new ContextHost()
+      host.addLocalTool(toolToLocalTool({ name: 'count', definition }))
+
+      await expect(host.callLocalTool({ name: 'count', arguments: { count: 3 } })).resolves.toEqual(
+        {
+          structuredContent: { count: 3 },
+          content: [{ type: 'text', text: '{"count":3}' }],
+        },
+      )
+    })
+
+    test('keeps invalid input as an Invalid tool input result through ContextHost', async () => {
+      const definition = createTool({
+        description: 'Count',
+        inputSchema,
+        outputSchema,
+        handler: ({ input }) => ({ structuredContent: { count: input.count } }),
+      })
+      const host = new ContextHost()
+      host.addLocalTool(toolToLocalTool({ name: 'count', definition }))
+
+      await expect(
+        host.callLocalTool({ name: 'count', arguments: { count: 'wrong' } }),
+      ).resolves.toEqual({
+        content: [{ type: 'text', text: 'Invalid tool input' }],
+        isError: true,
+      })
+    })
+
     test('converts a server tool definition to a local tool definition', async () => {
       const serverTool = createTool({
         description: 'Calculate math expression',
@@ -374,7 +463,7 @@ describe('Server Tool to Local Tool Conversion', () => {
       expect(result.content[0]).toEqual({ type: 'text', text: 'Echo: hello' })
     })
 
-    test('provides stub client that throws for createMessage', async () => {
+    test('reports unavailable createMessage as a tool error', async () => {
       const serverTool = createTool({
         description: 'Tool that needs client',
         inputSchema: { type: 'object' } as const,
@@ -387,9 +476,15 @@ describe('Server Tool to Local Tool Conversion', () => {
 
       const localTool = toolToLocalTool({ name: 'needsClient', definition: serverTool })
 
-      await expect(localTool.execute({ input: {} })).rejects.toThrow(
-        'createMessage() is not available for local tools',
-      )
+      await expect(localTool.execute({ input: {} })).resolves.toEqual({
+        content: [
+          {
+            type: 'text',
+            text: 'createMessage() is not available for local tools. Local tools run outside of an MCP server context and cannot access client methods.',
+          },
+        ],
+        isError: true,
+      })
     })
 
     test('refuses a handler suspension (MRTR): no wire or retry loop to resume it on', async () => {

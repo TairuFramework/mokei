@@ -1,6 +1,16 @@
 import type { CallToolResult, InputSchema, Tool, ToolAnnotations } from '@mokei/context-protocol'
-import type { GenericToolDefinition, ServerClient, ToolDefinitions } from '@mokei/context-server'
-import { defaultMintRequestState, isInputRequiredResult } from '@mokei/context-server'
+import { RPCError } from '@mokei/context-rpc'
+import type {
+  GenericToolDefinition,
+  ServerClient,
+  SettledToolOutcome,
+  ToolDefinitions,
+} from '@mokei/context-server'
+import {
+  defaultMintRequestState,
+  isInputRequiredResult,
+  settleToolOutcome,
+} from '@mokei/context-server'
 
 /**
  * Request handed to a local tool's execute function: the validated `input` -- the thing the
@@ -174,29 +184,44 @@ export function toolToLocalTool(params: ToolToLocalToolParams): LocalToolDefinit
     description: definition.description,
     inputSchema: definition.inputSchema,
     execute: async (request: LocalToolRequest) => {
-      const result = await definition.handler({
-        input: request.input,
-        client: stubClient,
-        // Forward the caller's cancellation signal; fall back to a never-aborting
-        // one when invoked outside callLocalTool's cancellation plumbing.
-        signal: request.signal ?? new AbortController().signal,
-        // Local tools run outside any MCP request/response cycle, so there is no wire to
-        // round-trip a `requestState` over -- but `mintRequestState` is a pure encoder a
-        // handler may still call while building an `inputRequired()` result, so it gets the
-        // same default `ContextServer` falls back to rather than a throwing stub.
-        mintRequestState: defaultMintRequestState,
-      })
-      // A handler suspends (MRTR, SEP-2322) by returning rather than awaiting, so there is no
-      // exception to catch here the way `createStubClient` catches a direct `client` call. Local
-      // execution has no wire and no retry loop to resume it on, so a suspension is refused the
-      // same way an unreachable `client` method is.
-      if (isInputRequiredResult(result)) {
-        throw new Error(
-          'This tool suspended on input (MRTR, SEP-2322), which is not available for local tools. ' +
-            'Local tools run outside of an MCP server context and cannot round-trip a client request.',
-        )
+      let outcome:
+        | { result: Awaited<ReturnType<GenericToolDefinition['handler']>> }
+        | { error: unknown }
+      try {
+        outcome = {
+          result: await definition.handler({
+            input: request.input,
+            client: stubClient,
+            // Forward the caller's cancellation signal; fall back to a never-aborting
+            // one when invoked outside callLocalTool's cancellation plumbing.
+            signal: request.signal ?? new AbortController().signal,
+            // Local tools run outside any MCP request/response cycle, so there is no wire to
+            // round-trip a `requestState` over -- but `mintRequestState` is a pure encoder a
+            // handler may still call while building an `inputRequired()` result, so it gets the
+            // same default `ContextServer` falls back to rather than a throwing stub.
+            mintRequestState: defaultMintRequestState,
+          }),
+        }
+      } catch (error) {
+        outcome = { error }
       }
-      return result
+      let settled: SettledToolOutcome
+      if ('error' in outcome) {
+        settled = settleToolOutcome(definition, outcome)
+      } else {
+        // Suspension is not a tool outcome: local execution has no wire or retry loop to resume it.
+        if (isInputRequiredResult(outcome.result)) {
+          throw new Error(
+            'This tool suspended on input (MRTR, SEP-2322), which is not available for local tools. ' +
+              'Local tools run outside of an MCP server context and cannot round-trip a client request.',
+          )
+        }
+        settled = settleToolOutcome(definition, { result: outcome.result })
+      }
+      if ('error' in settled) {
+        throw new RPCError(settled.error)
+      }
+      return settled.result
     },
   }
 }
