@@ -36,10 +36,13 @@ import type { ChatTurn } from './session.js'
 const TOOL_TIMEOUT_REASON = Symbol('mokei.tool-timeout')
 /** Abort reason set when the user cancels the active tool call. */
 const TOOL_CANCEL_REASON = Symbol('mokei.tool-cancel')
+const TOOL_SETTLED_REASON = new Error('Tool call settled')
 
 type AgentToolState = {
   key: string
   toolCall: FunctionToolCall<unknown>
+  controllers: Set<AbortController>
+  settlements: Set<Promise<void>>
 }
 
 type AgentRunState<T extends ProviderTypes> = {
@@ -127,11 +130,26 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     fallback: ElicitFallback,
   ): Promise<ElicitResult> {
     const requestID = String(++this.#nextElicitationID)
-    const signal = AbortSignal.any([request.signal, this.signal])
     const run = this.#activeRuns.size === 1 ? this.#activeRuns.values().next().value : undefined
-    const toolCall = run?.activeTool?.key === request.key ? run.activeTool.toolCall : undefined
+    const activeTool = run?.activeTool?.key === request.key ? run.activeTool : undefined
+    const toolCall = activeTool?.toolCall
     const attributedRun = toolCall == null ? undefined : run
     const attribution = toolCall == null ? {} : { toolCall }
+    const controller = activeTool == null ? undefined : new AbortController()
+    const signal = AbortSignal.any(
+      controller == null
+        ? [request.signal, this.signal]
+        : [request.signal, this.signal, controller.signal],
+    )
+    let settle: (() => void) | undefined
+    let settlement: Promise<void> | undefined
+    if (activeTool != null && controller != null) {
+      settlement = new Promise<void>((resolve) => {
+        settle = resolve
+      })
+      activeTool.controllers.add(controller)
+      activeTool.settlements.add(settlement)
+    }
     this.#emitElicitationEvent(
       {
         type: 'elicitation-request',
@@ -178,6 +196,10 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         attributedRun,
       )
       throw err
+    } finally {
+      if (controller != null) activeTool?.controllers.delete(controller)
+      settle?.()
+      if (settlement != null) activeTool?.settlements.delete(settlement)
     }
   }
 
@@ -554,6 +576,8 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
                 yield event
                 eventHistory.push(event)
               }
+              // A taken batch stays in flight until every yield has resumed.
+              run.channel.acknowledge(pending.length)
               if (!settled) await Promise.race([run.channel.waitForEvent(), execution])
               pending = run.channel.takeAll()
             }
@@ -718,9 +742,16 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     // within a tool-call-start handler takes effect on the live controller.
     const callController = new AbortController()
     this.#activeToolController = callController
+    let activeTool: AgentToolState | undefined
     if (!isLocalToolID(toolCall.name)) {
       const [key] = getContextToolInfo(toolCall.name)
-      run.activeTool = { key, toolCall }
+      activeTool = {
+        key,
+        toolCall,
+        controllers: new Set(),
+        settlements: new Set(),
+      }
+      run.activeTool = activeTool
     }
     // Forward a turn-level abort onto the per-call controller. The listener is
     // removed in `finally` so listeners don't accumulate on the turn signal
@@ -756,6 +787,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         toolCall,
         signal: callController.signal,
       })
+      await this.#settleToolEvents(run, activeTool)
 
       // Emit complete event
       const completeEvent: AgentEvent<T> = {
@@ -764,8 +796,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         result,
         timestamp: Date.now(),
       }
-      run.channel.push(completeEvent)
-      emitEvent(completeEvent)
+      this.#emitElicitationEvent(completeEvent, run)
 
       return { result }
     } catch (error) {
@@ -792,8 +823,8 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         error: err,
         timestamp: Date.now(),
       }
-      run.channel.push(errorEvent)
-      emitEvent(errorEvent)
+      await this.#settleToolEvents(run, activeTool)
+      this.#emitElicitationEvent(errorEvent, run)
 
       return { error: err }
     } finally {
@@ -801,6 +832,19 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       signal.removeEventListener('abort', onTurnAbort)
       this.#activeToolController = null
       run.activeTool = undefined
+    }
+  }
+
+  async #settleToolEvents(run: AgentRunState<T>, activeTool?: AgentToolState): Promise<void> {
+    while (true) {
+      for (const controller of activeTool?.controllers ?? []) {
+        controller.abort(TOOL_SETTLED_REASON)
+      }
+      await Promise.all(activeTool?.settlements ?? [])
+      await run.channel.waitForDrain()
+      if ((activeTool == null || activeTool.settlements.size === 0) && run.channel.isDrained()) {
+        return
+      }
     }
   }
 }

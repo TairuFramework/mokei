@@ -1,4 +1,10 @@
-import type { ElicitRequest, ElicitResult, Tool } from '@mokei/context-protocol'
+import type {
+  CallToolResult,
+  ElicitRequest,
+  ElicitResult,
+  InputResponse,
+  Tool,
+} from '@mokei/context-protocol'
 import type {
   AggregatedMessage,
   FunctionToolCall,
@@ -71,7 +77,11 @@ function createProvider(toolName = 'questions:ask'): ModelProvider<TestTypes> {
   }
 }
 
-function createHarness() {
+function createHarness(
+  handler?: (client: {
+    elicit: (params: ElicitRequest['params']) => Promise<ElicitResult>
+  }) => CallToolResult | Promise<CallToolResult>,
+) {
   const session = new Session<TestTypes>({ elicit: true })
   session.contextHost.addDirectContext({
     key: 'questions',
@@ -96,6 +106,7 @@ function createHarness() {
           }: {
             client: { elicit: (params: ElicitRequest['params']) => Promise<ElicitResult> }
           }) => {
+            if (handler != null) return await handler(client)
             const result = await client.elicit({
               message: 'tool question',
               requestedSchema: { type: 'object', properties: {} },
@@ -138,7 +149,250 @@ function relevant(events: Array<AgentEvent>): Array<AgentEvent> {
   )
 }
 
+function expectPairedAndOrdered(streamed: Array<AgentEvent>, observed: Array<AgentEvent>) {
+  const streamEvents = relevant(streamed)
+  const observedEvents = relevant(observed)
+  expect(streamEvents).toEqual(observedEvents)
+  const requests = streamEvents.filter((event) => event.type === 'elicitation-request')
+  const terminals = streamEvents.filter(
+    (event) => event.type === 'elicitation-response' || event.type === 'elicitation-error',
+  )
+  expect(requests).toHaveLength(terminals.length)
+  for (const request of requests) {
+    if (request.type !== 'elicitation-request') continue
+    expect(terminals.filter((event) => event.requestID === request.requestID)).toHaveLength(1)
+  }
+  const terminalIndex = streamEvents.findIndex(
+    (event) => event.type === 'tool-call-complete' || event.type === 'tool-call-error',
+  )
+  expect(terminalIndex).toBe(streamEvents.length - 1)
+  expect(streamEvents[0]?.type).toBe('tool-call-start')
+}
+
 describe('AgentSession elicitation stream', () => {
+  test('response at tool settlement precedes tool terminal', async () => {
+    const callbackStarted = defer<void>()
+    const answer = defer<ElicitResult>()
+    const harness = createHarness(async (client) => {
+      void client
+        .elicit({
+          message: 'at settlement',
+          requestedSchema: { type: 'object', properties: {} },
+        })
+        .catch(() => undefined)
+      await callbackStarted.promise
+      answer.resolve({ action: 'accept', content: {} })
+      return { content: [] }
+    })
+    const observed: Array<AgentEvent> = []
+    const agent = new AgentSession({
+      session: harness.session,
+      provider: harness.provider,
+      model: 'test-model',
+      onElicitation: () => {
+        callbackStarted.resolve()
+        return answer.promise
+      },
+      onEvent: (event) => observed.push(event),
+    })
+    const streamed: Array<AgentEvent> = []
+    for await (const event of agent.stream({ prompt: 'ask' })) streamed.push(event)
+    expectPairedAndOrdered(streamed, observed)
+    expect(relevant(streamed).map((event) => event.type)).toEqual([
+      'tool-call-start',
+      'elicitation-request',
+      'elicitation-response',
+      'tool-call-complete',
+    ])
+    await agent.dispose()
+    await harness.session.dispose()
+  })
+
+  test('several requests in one MRTR round preserve stream and onEvent order', async () => {
+    const session = new Session<TestTypes>({ elicit: true })
+    session.contextHost.addDirectContext({
+      key: 'questions',
+      protocolVersion: '2026-07-28',
+      tools: [
+        {
+          id: 'questions:ask',
+          tool: {
+            name: 'ask',
+            description: 'Ask',
+            inputSchema: { type: 'object', properties: {} },
+          },
+          enabled: true,
+        },
+      ],
+      config: {
+        name: 'questions',
+        version: '1.0.0',
+        protocolVersions: ['2026-07-28'],
+        tools: {
+          ask: {
+            description: 'Ask',
+            inputSchema: { type: 'object' as const, properties: {} },
+            handler: ({ inputResponses }: { inputResponses?: Record<string, InputResponse> }) => {
+              if (inputResponses != null) {
+                expect(inputResponses).toMatchObject({
+                  first: { action: 'decline' },
+                  second: { action: 'decline' },
+                })
+                return { content: [] }
+              }
+              return {
+                resultType: 'input_required' as const,
+                inputRequests: {
+                  first: {
+                    method: 'elicitation/create' as const,
+                    params: {
+                      message: 'first',
+                      requestedSchema: { type: 'object' as const, properties: {} },
+                    },
+                  },
+                  second: {
+                    method: 'elicitation/create' as const,
+                    params: {
+                      message: 'second',
+                      requestedSchema: { type: 'object' as const, properties: {} },
+                    },
+                  },
+                },
+              }
+            },
+          },
+        },
+      },
+    })
+    const observed: Array<AgentEvent> = []
+    const agent = new AgentSession({
+      session,
+      provider: createProvider(),
+      model: 'test-model',
+      onElicitation: () => ({ action: 'decline' }),
+      onEvent: (event) => observed.push(event),
+    })
+    const streamed: Array<AgentEvent> = []
+    for await (const event of agent.stream({ prompt: 'ask' })) streamed.push(event)
+    expectPairedAndOrdered(streamed, observed)
+    expect(relevant(streamed).map((event) => event.type)).toEqual([
+      'tool-call-start',
+      'elicitation-request',
+      'elicitation-request',
+      'elicitation-response',
+      'elicitation-response',
+      'tool-call-complete',
+    ])
+    await agent.dispose()
+    await session.dispose()
+  })
+
+  test('2025 tool returning before its elicitation settles aborts the request', async () => {
+    const callbackStarted = defer<void>()
+    const answer = defer<ElicitResult>()
+    let callbackSignal: AbortSignal | undefined
+    const harness = createHarness(async (client) => {
+      void client
+        .elicit({
+          message: 'left pending',
+          requestedSchema: { type: 'object', properties: {} },
+        })
+        .catch(() => undefined)
+      await callbackStarted.promise
+      return { content: [] }
+    })
+    const observed: Array<AgentEvent> = []
+    const agent = new AgentSession({
+      session: harness.session,
+      provider: harness.provider,
+      model: 'test-model',
+      onElicitation: ({ signal }) => {
+        callbackSignal = signal
+        callbackStarted.resolve()
+        return answer.promise
+      },
+      onEvent: (event) => observed.push(event),
+    })
+    const streamed: Array<AgentEvent> = []
+    for await (const event of agent.stream({ prompt: 'ask' })) streamed.push(event)
+    expectPairedAndOrdered(streamed, observed)
+    expect(relevant(streamed).map((event) => event.type)).toEqual([
+      'tool-call-start',
+      'elicitation-request',
+      'elicitation-error',
+      'tool-call-complete',
+    ])
+    expect(callbackSignal?.aborted).toBe(true)
+    expect(callbackSignal?.reason).toEqual(new Error('Tool call settled'))
+    await agent.dispose()
+    await harness.session.dispose()
+  })
+
+  test('keeps attribution through the settlement barrier', async () => {
+    const firstStarted = defer<void>()
+    const secondStarted = defer<void>()
+    const firstAnswer = defer<ElicitResult>()
+    const secondAnswer = defer<ElicitResult>()
+    let askAgain: (() => Promise<ElicitResult>) | undefined
+    const harness = createHarness(async (client) => {
+      askAgain = () =>
+        client.elicit({
+          message: 'second',
+          requestedSchema: { type: 'object', properties: {} },
+        })
+      void client
+        .elicit({
+          message: 'first',
+          requestedSchema: { type: 'object', properties: {} },
+        })
+        .catch(() => undefined)
+      await firstStarted.promise
+      return { content: [] }
+    })
+    const observed: Array<AgentEvent> = []
+    const agent = new AgentSession({
+      session: harness.session,
+      provider: harness.provider,
+      model: 'test-model',
+      onElicitation: (request) => {
+        if (request.params.message === 'first') {
+          firstStarted.resolve()
+          return firstAnswer.promise
+        }
+        secondStarted.resolve()
+        return secondAnswer.promise
+      },
+      onEvent: (event) => observed.push(event),
+    })
+    const streamed: Array<AgentEvent> = []
+    for await (const event of agent.stream({ prompt: 'ask' })) {
+      streamed.push(event)
+      if (
+        event.type === 'elicitation-error' &&
+        streamed.filter((seen) => seen.type === 'elicitation-error').length === 1
+      ) {
+        if (askAgain == null) throw new Error('Second elicitation is unavailable')
+        void askAgain().catch(() => undefined)
+        await secondStarted.promise
+      }
+    }
+    expectPairedAndOrdered(streamed, observed)
+    expect(relevant(streamed).map((event) => event.type)).toEqual([
+      'tool-call-start',
+      'elicitation-request',
+      'elicitation-error',
+      'elicitation-request',
+      'elicitation-error',
+      'tool-call-complete',
+    ])
+    expect(
+      relevant(streamed)
+        .filter((event) => event.type.startsWith('elicitation-'))
+        .every((event) => 'toolCall' in event && event.toolCall?.name === 'questions:ask'),
+    ).toBe(true)
+    await agent.dispose()
+    await harness.session.dispose()
+  })
   test('local tools do not attribute elicitation from the local context', async () => {
     const harness = createHarness()
     harness.provider = createProvider('local:run')
@@ -290,11 +544,15 @@ describe('AgentSession elicitation stream', () => {
       model: 'test-model',
       onElicitation: () => ({ action: 'decline' }),
       onEvent: (event) => {
-        if (event.type.startsWith('elicitation-')) throw new Error('observer failed')
+        if (event.type.startsWith('elicitation-') || event.type === 'tool-call-complete') {
+          throw new Error('observer failed')
+        }
       },
     })
     agent.events.on('event', async (event) => {
-      if (event.type.startsWith('elicitation-')) throw new Error('listener failed')
+      if (event.type.startsWith('elicitation-') || event.type === 'tool-call-complete') {
+        throw new Error('listener failed')
+      }
     })
     const streamed: Array<AgentEvent> = []
     for await (const event of agent.stream({ prompt: 'ask' })) streamed.push(event)
