@@ -162,14 +162,21 @@ before its callback is awaited, or an interactive UI waiting on the event hangs 
   before any elicitation event of that call. While the call is in flight, the loop yields
   channel events as they arrive.
 - A `2025-11-25` server can start `elicitation/create` during a tool call and return the tool
-  result before the user answers. When the call settles, the agent first aborts the callback
-  signal of every attributed request of that call still pending (reason: the tool call
-  settled), so each emits its `elicitation-error`. The request belongs to the tool call it
-  was attributed to and does not outlive it.
-- When the call settles, the loop then drains every event already in the channel, and yields
-  the tool's terminal event. The stream order is therefore `tool-call-start`, the call's
-  elicitation events, then the terminal event, matching the order `onEvent` sees, including a
-  response queued in the same microtask as settlement.
+  result before the user answers. The request belongs to the tool call it was attributed to
+  and does not outlive it.
+- Settlement barrier. `#executeToolCall` keeps a promise per attributed request of the call,
+  settled once that request's terminal event (`elicitation-response` or `elicitation-error`)
+  has been emitted. When the tool's MCP call settles, before emitting the tool's terminal
+  event anywhere:
+  1. abort the callback signal of every still-pending attributed request (reason: the tool
+     call settled);
+  2. await all the call's request promises;
+  3. drain the channel;
+  4. only then emit `tool-call-complete` or `tool-call-error` to `onEvent` and the stream.
+  The call's attribution and cancellation state stays registered until step 4, so no request
+  arriving during the barrier goes unattributed. The stream order is therefore
+  `tool-call-start`, the call's elicitation events, then the terminal event, matching the order
+  `onEvent` sees.
 - The channel is closed and its waiters woken in the run's `finally`.
 
 ### Abort and abandoned streams
