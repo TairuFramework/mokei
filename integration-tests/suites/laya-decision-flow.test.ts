@@ -10,7 +10,11 @@ import example from '../../packages/decision-flow/examples/support-triage.json' 
 
 const definition = example as unknown as FlowDefinition
 const laya = inject('laya')
-const { url, apiKey } = laya ?? { url: '', apiKey: '' }
+
+function requireLaya(): { url: string; apiKey: string } {
+  if (laya == null) throw new Error('laya-serve is not configured (MOKEI_LAYA_SERVE_BIN)')
+  return laya
+}
 
 const BILLING = 'I was charged twice for my subscription this month.'
 const CRASH = 'The app crashes every time I open the settings page.'
@@ -27,6 +31,7 @@ function makeGraph(
   const fetcher =
     params.fetcher ??
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init))
+  const { url, apiKey } = requireLaya()
   const client = createSystemOneClient({
     url,
     apiKey: params.apiKey ?? apiKey,
@@ -199,13 +204,27 @@ function observedRoute(runState: RunState, createTicket: ReturnType<typeof vi.fn
   return action.args.ticket.team
 }
 
+// Graph checking is static, so these tests build a graph whose backend must never be called.
+function makeCheckGraph(actions: Record<string, Action> = {}) {
+  const client = createSystemOneClient({
+    backend: {
+      predict: () => Promise.reject(new Error('graph checking must not predict')),
+    },
+    defaultModel: 'english',
+  })
+  return createDecisionFlowGraph({
+    client,
+    actions: { createTicket: () => ({ created: true }), ...actions },
+  })
+}
+
 test('support-triage example passes validation and graph checking', () => {
   expect(createValidator(flowDefinitionSchema)(example)).not.toHaveProperty('issues')
-  expect(makeGraph().graph.check(definition).ok).toBe(true)
+  expect(makeCheckGraph().check(definition).ok).toBe(true)
 })
 
 test('laya decision-flow fixtures pass graph checking', () => {
-  const { graph } = makeGraph({ actions: { record: () => ({ recorded: true }) } })
+  const graph = makeCheckGraph({ record: () => ({ recorded: true }) })
   for (const fixture of [
     suspensionDefinition,
     recoveryDefinition,

@@ -9,8 +9,11 @@ import {
 import { describe, expect, inject, test } from 'vitest'
 
 const laya = inject('laya')
-// Only read inside the skipIf-guarded describe, where laya is non-null.
-const { url, apiKey } = laya ?? { url: '', apiKey: '' }
+
+function requireLaya(): { url: string; apiKey: string } {
+  if (laya == null) throw new Error('laya-serve is not configured (MOKEI_LAYA_SERVE_BIN)')
+  return laya
+}
 
 const questions = {
   department: {
@@ -51,8 +54,8 @@ test('laya setup supplies a gate', () => {
 describe.skipIf(laya == null)('HTTPSystemOneBackend against laya-serve', () => {
   test('predict answers choice, score and noul questions', async () => {
     const client = createSystemOneClient({
-      url: url,
-      apiKey: apiKey,
+      url: requireLaya().url,
+      apiKey: requireLaya().apiKey,
       defaultModel: 'english',
     })
     const result = await client.predict({ state: BILLING, questions })
@@ -64,8 +67,8 @@ describe.skipIf(laya == null)('HTTPSystemOneBackend against laya-serve', () => {
   // messages, so a checkpoint regression shows up here.
   test('predict routes billing and technical messages', async () => {
     const client = createSystemOneClient({
-      url: url,
-      apiKey: apiKey,
+      url: requireLaya().url,
+      apiKey: requireLaya().apiKey,
       defaultModel: 'english',
     })
     const billing = await client.predict({ state: BILLING, questions })
@@ -77,8 +80,8 @@ describe.skipIf(laya == null)('HTTPSystemOneBackend against laya-serve', () => {
 
   test('predict accepts structured instructions and criteria', async () => {
     const client = createSystemOneClient({
-      url: url,
-      apiKey: apiKey,
+      url: requireLaya().url,
+      apiKey: requireLaya().apiKey,
       defaultModel: 'english',
     })
     const result = await client.predict({
@@ -114,7 +117,7 @@ describe.skipIf(laya == null)('HTTPSystemOneBackend against laya-serve', () => {
 
   test('a wrong API key rejects with SystemOneAuthError', async () => {
     const client = createSystemOneClient({
-      url: url,
+      url: requireLaya().url,
       apiKey: 'wrong',
       defaultModel: 'english',
     })
@@ -123,7 +126,10 @@ describe.skipIf(laya == null)('HTTPSystemOneBackend against laya-serve', () => {
 
   test('a 422 rejects with SystemOneInputError carrying the server reason', async () => {
     // The backend skips client validation, so the server sees the missing instructions.
-    const backend = new HTTPSystemOneBackend({ url: url, apiKey: apiKey })
+    const backend = new HTTPSystemOneBackend({
+      url: requireLaya().url,
+      apiKey: requireLaya().apiKey,
+    })
     const request = backend.predict({
       state: BILLING,
       questions: { department: { type: 'noul' } } as unknown as QuestionMap,
