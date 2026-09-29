@@ -274,6 +274,88 @@ describe('task manager', () => {
     await manager.dispose()
   })
 
+  test('does not start recovered work after disposal during the callback', async () => {
+    const store = createMemoryTaskStore()
+    const saved = record()
+    await store.create(saved)
+    const gate = Promise.withResolvers<void>()
+    let started = 0
+    const manager = createTaskManager({
+      store,
+      recover: async (_item, resume) => {
+        await gate.promise
+        await resume(() => {
+          started++
+          return new Promise(() => {})
+        })
+      },
+    })
+    const recovering = manager.recover({ echo: tool })
+    await tick()
+    await manager.dispose()
+    gate.resolve()
+    await recovering
+    expect(started).toBe(0)
+    expect((await store.get(saved.taskID))?.status).toBe('working')
+  })
+
+  test('does not start recovered work after expiry during the callback', async () => {
+    const store = createMemoryTaskStore()
+    const saved = record({ ttlMs: 1 })
+    await store.create(saved)
+    let now = Date.parse(saved.createdAt)
+    const gate = Promise.withResolvers<void>()
+    let started = 0
+    const manager = createTaskManager({
+      store,
+      now: () => now,
+      recover: async (_item, resume) => {
+        await gate.promise
+        await resume(() => {
+          started++
+          return new Promise(() => {})
+        })
+      },
+    })
+    const recovering = manager.recover({ echo: tool })
+    await tick()
+    now += 2
+    gate.resolve()
+    await recovering
+    expect(started).toBe(0)
+    expect(await store.get(saved.taskID)).toBeUndefined()
+    await manager.dispose()
+  })
+
+  test('serialises overlapping recovery of the same task', async () => {
+    const store = createMemoryTaskStore()
+    const saved = record()
+    await store.create(saved)
+    const gate = Promise.withResolvers<void>()
+    let callbacks = 0
+    let started = 0
+    const manager = createTaskManager({
+      store,
+      recover: async (_item, resume) => {
+        callbacks++
+        await gate.promise
+        await resume(() => {
+          started++
+          return new Promise(() => {})
+        })
+      },
+    })
+    const first = manager.recover({ echo: tool })
+    await tick()
+    const second = manager.recover({ echo: tool })
+    await tick()
+    gate.resolve()
+    await Promise.all([first, second])
+    expect(callbacks).toBe(1)
+    expect(started).toBe(1)
+    await manager.dispose()
+  })
+
   test('fails records when a tool is missing or recovery returns without resuming', async () => {
     const store = createMemoryTaskStore()
     const missing = record({ toolName: 'missing' })
@@ -508,6 +590,136 @@ describe('task manager', () => {
     now += 2
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(await store.get(created.taskId)).toBeUndefined()
+    await manager.dispose()
+  })
+
+  test('expiry aborts a worker and rejects its pending input', async () => {
+    const store = createMemoryTaskStore()
+    let now = Date.parse('2026-09-29T12:00:00Z')
+    const manager = createTaskManager({ store, ttlMs: 1, now: () => now })
+    let signal: AbortSignal | undefined
+    let rejection: unknown
+    const created = await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: { roots: {} },
+      work: async (task) => {
+        signal = task.signal
+        try {
+          await task.requestInput({ ask: rootsRequest })
+        } catch (error) {
+          rejection = error
+        }
+        return result
+      },
+    })
+    await tick()
+    expect((await store.get(created.taskId))?.status).toBe('input_required')
+    now += 2
+    await expect(manager.get(created.taskId)).rejects.toMatchObject({ message: 'Task not found' })
+    await tick()
+    expect(signal?.aborted).toBe(true)
+    expect(rejection).toBeInstanceOf(Error)
+    expect((rejection as Error).message).toBe('Task expired')
+    await manager.dispose()
+  })
+
+  test.each(['setStatus', 'checkpoint'] as const)(
+    'treats deletion during %s as a missing task',
+    async (method) => {
+      const base = createMemoryTaskStore()
+      const store = {
+        ...base,
+        update: async (...args: Parameters<typeof base.update>) => {
+          await base.delete(args[0])
+          return base.update(...args)
+        },
+      }
+      const manager = createTaskManager({ store })
+      let handle: TaskHandle | undefined
+      await manager.create({
+        toolName: 'echo',
+        tool,
+        clientCapabilities: {},
+        work: (task) => {
+          handle = task
+          return new Promise(() => {})
+        },
+      })
+      if (handle === undefined) throw new Error('Worker did not start')
+      const write =
+        method === 'setStatus' ? handle.setStatus('progress') : handle.checkpoint({ step: 2 })
+      await expect(write).rejects.toMatchObject({ message: 'Task not found' })
+      await manager.dispose()
+    },
+  )
+
+  test('treats deletion during an input update as a missing task', async () => {
+    const base = createMemoryTaskStore()
+    const store = {
+      ...base,
+      update: async (...args: Parameters<typeof base.update>) => {
+        if (
+          args[1].inputResponses !== undefined &&
+          Object.keys(args[1].inputResponses).length > 0
+        ) {
+          await base.delete(args[0])
+        }
+        return base.update(...args)
+      },
+    }
+    const manager = createTaskManager({ store })
+    const created = await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: { roots: {} },
+      work: async (task) => {
+        await task.requestInput({ ask: rootsRequest })
+        return result
+      },
+    })
+    await tick()
+    await expect(manager.update(created.taskId, { ask: rootsResponse })).rejects.toMatchObject({
+      message: 'Task not found',
+    })
+    await manager.dispose()
+  })
+
+  test('handles deletion during detached worker settlement', async () => {
+    const base = createMemoryTaskStore()
+    const store = {
+      ...base,
+      update: async (...args: Parameters<typeof base.update>) => {
+        if (args[1].status === 'completed') await base.delete(args[0])
+        return base.update(...args)
+      },
+    }
+    const manager = createTaskManager({ store })
+    const created = await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: {},
+      work: async () => result,
+    })
+    await tick()
+    expect(await store.get(created.taskId)).toBeUndefined()
+    await manager.dispose()
+  })
+
+  test('handles a failed background expiry sweep', async () => {
+    const base = createMemoryTaskStore()
+    let scans = 0
+    const store = {
+      ...base,
+      list: async (...args: Parameters<typeof base.list>) => {
+        scans++
+        if (scans > 1) throw new Error('Store unavailable')
+        return base.list(...args)
+      },
+    }
+    const manager = createTaskManager({ store, ttlMs: 1 })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(scans).toBeGreaterThan(1)
     await manager.dispose()
   })
 

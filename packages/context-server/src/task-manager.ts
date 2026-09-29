@@ -139,6 +139,7 @@ class ManagedTasks implements TaskManager {
   #recoverCallback?: TaskManagerParams['recover']
   #ready: Promise<void>
   #hidden = new Set<string>()
+  #recovering = new Set<string>()
   #controllers = new Map<string, AbortController>()
   #pending = new Map<string, PendingInput>()
   #events = new EventEmitter<{ taskStatus: DetailedTask }>()
@@ -154,7 +155,7 @@ class ManagedTasks implements TaskManager {
     this.#ready = this.#initialise()
     this.#timer = setInterval(
       () => {
-        void this.#sweep()
+        void this.#sweep().catch(() => {})
       },
       Math.max(1, Math.min(this.#ttlMs, 1_000)),
     )
@@ -198,6 +199,7 @@ class ManagedTasks implements TaskManager {
         this.#events.fire('taskStatus', detailed(updated))
         return updated
       } catch (error) {
+        if ((await this.#store.get(taskID)) === undefined) return undefined
         if (!(error instanceof TaskStoreConflictError)) throw error
       }
     }
@@ -302,8 +304,11 @@ class ManagedTasks implements TaskManager {
             ? { status: 'completed', result: { ...settled.result, resultType: 'complete' } }
             : { status: 'failed', error: settled.error },
       )
-      this.#controllers.delete(taskID)
     })()
+      .catch(() => {})
+      .finally(() => {
+        if (this.#controllers.get(taskID) === controller) this.#controllers.delete(taskID)
+      })
   }
 
   async #activeMutation(
@@ -316,7 +321,8 @@ class ManagedTasks implements TaskManager {
       if (controller.signal.aborted || isTerminal(record)) return undefined
       return change(record)
     })
-    if (updated === undefined || isTerminal(updated) || controller.signal.aborted)
+    if (updated === undefined) throw controller.signal.reason ?? taskNotFound()
+    if (isTerminal(updated) || controller.signal.aborted)
       throw controller.signal.reason ?? new Error('Task is no longer active')
     return updated
   }
@@ -381,12 +387,14 @@ class ManagedTasks implements TaskManager {
     }
     if (options?.signal !== undefined) {
       entry.onAbort = () => {
-        void this.#withdraw(taskID).then(() => {
-          if (this.#pending.get(taskID) === entry) {
-            this.#pending.delete(taskID)
-            entry.reject(options.signal?.reason)
-          }
-        })
+        void this.#withdraw(taskID)
+          .catch(() => {})
+          .then(() => {
+            if (this.#pending.get(taskID) === entry) {
+              this.#pending.delete(taskID)
+              entry.reject(options.signal?.reason)
+            }
+          })
       }
       options.signal.addEventListener('abort', entry.onAbort, { once: true })
     }
@@ -419,17 +427,19 @@ class ManagedTasks implements TaskManager {
       latest.status === 'input_required'
         ? { status: 'working', inputRequests: undefined, inputResponses: undefined }
         : undefined,
-    ).then((updated) => {
-      if (
-        updated?.status !== 'working' ||
-        this.#pending.get(taskID) !== pending ||
-        pending.signal?.aborted
-      )
-        return
-      this.#pending.delete(taskID)
-      pending.signal?.removeEventListener('abort', pending.onAbort as EventListener)
-      pending.resolve(record.inputResponses ?? {})
-    })
+    )
+      .then((updated) => {
+        if (
+          updated?.status !== 'working' ||
+          this.#pending.get(taskID) !== pending ||
+          pending.signal?.aborted
+        )
+          return
+        this.#pending.delete(taskID)
+        pending.signal?.removeEventListener('abort', pending.onAbort as EventListener)
+        pending.resolve(record.inputResponses ?? {})
+      })
+      .catch(() => {})
   }
 
   async get(taskID: string, owner?: TaskOwner): Promise<DetailedTask> {
@@ -469,7 +479,8 @@ class ManagedTasks implements TaskManager {
         ? undefined
         : { inputResponses: accepted }
     })
-    if (updated !== undefined) this.#resolveInput(taskID, updated)
+    if (updated === undefined) throw taskNotFound()
+    this.#resolveInput(taskID, updated)
   }
 
   async cancel(taskID: string, owner?: TaskOwner): Promise<void> {
@@ -479,34 +490,50 @@ class ManagedTasks implements TaskManager {
         ? undefined
         : { status: 'cancelled', inputRequests: undefined, inputResponses: undefined },
     )
-    if (updated?.status === 'cancelled') this.#abort(taskID, new Error('Task cancelled'))
+    if (updated === undefined) throw taskNotFound()
+    if (updated.status === 'cancelled') this.#abort(taskID, new Error('Task cancelled'))
   }
 
   async recover(tools: ToolDefinitions): Promise<void> {
     await this.#ready
     if (this.#disposed) throw new Error('Task manager disposed')
     for (const taskID of [...this.#hidden]) {
-      const record = await this.#store.get(taskID)
-      if (record === undefined || (await this.#expire(record))) continue
-      const tool = tools[record.toolName]
-      if (tool === undefined || this.#recoverCallback === undefined) {
-        await this.#failInterrupted(taskID)
-        continue
-      }
-      let resumedWork: TaskWork | undefined
+      if (this.#recovering.has(taskID) || !this.#hidden.has(taskID)) continue
+      this.#recovering.add(taskID)
       try {
-        await this.#recoverCallback(record, async (work) => {
-          if (resumedWork !== undefined) throw new Error('Task already resumed')
-          resumedWork = work
-        })
-      } catch {
-        await this.#failInterrupted(taskID)
-        continue
-      }
-      if (resumedWork === undefined) await this.#failInterrupted(taskID)
-      else {
-        this.#attach(taskID, tool, resumedWork)
-        this.#hidden.delete(taskID)
+        if (this.#disposed) return
+        const record = await this.#store.get(taskID)
+        if (record === undefined || (await this.#expire(record))) continue
+        const tool = tools[record.toolName]
+        if (tool === undefined || this.#recoverCallback === undefined) {
+          await this.#failInterrupted(taskID)
+          continue
+        }
+        let resumedWork: TaskWork | undefined
+        try {
+          await this.#recoverCallback(record, async (work) => {
+            if (resumedWork !== undefined) throw new Error('Task already resumed')
+            resumedWork = work
+          })
+        } catch {
+          if (!this.#disposed) await this.#failInterrupted(taskID)
+          continue
+        }
+        if (this.#disposed) return
+        const latest = await this.#store.get(taskID)
+        if (latest === undefined || (await this.#expire(latest))) continue
+        if (this.#disposed) return
+        if (isTerminal(latest)) {
+          this.#hidden.delete(taskID)
+          continue
+        }
+        if (resumedWork === undefined) await this.#failInterrupted(taskID)
+        else {
+          this.#attach(taskID, tool, resumedWork)
+          this.#hidden.delete(taskID)
+        }
+      } finally {
+        this.#recovering.delete(taskID)
       }
     }
   }
