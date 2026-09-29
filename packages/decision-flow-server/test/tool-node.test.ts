@@ -5,7 +5,6 @@ import { createFlowGraph, type FlowDefinition, type RunState } from '@sozai/flow
 import { describe, expect, test } from 'vitest'
 
 import type { CatalogTool, ToolCaller } from '../src/tool-caller.js'
-import { type ToolErrorCode, ToolNodeError } from '../src/tool-errors.js'
 import { toolKind } from '../src/tool-node.js'
 
 const inputSchema = {
@@ -116,6 +115,28 @@ describe('toolKind check', () => {
     expect(issue(def).some((entry) => entry.code === 'invalid_result_path')).toBe(false)
   })
 
+  test.each([
+    ['nested object', ['results', 'first', 'a', 'b', 'c']],
+    ['array index', ['results', 'first', 'content', '0', 'text']],
+  ])('accepts a %s reference from a tool without outputSchema', (_name, ref) => {
+    const def = definition({ args: { count: { ref } } })
+    def.start = 'first'
+    def.nodes.first = { kind: 'tool', tool: tool.id, args: { count: { value: 1 } }, next: 'work' }
+    expect(issue(def).some((entry) => entry.code === 'invalid_result_path')).toBe(false)
+  })
+
+  test.each([
+    [32, false],
+    [33, true],
+  ])('bounds unschematized result references at %i segments', (depth, invalid) => {
+    const def = definition({
+      args: { count: { ref: ['results', 'first', ...Array(depth).fill('child')] } },
+    })
+    def.start = 'first'
+    def.nodes.first = { kind: 'tool', tool: tool.id, args: { count: { value: 1 } }, next: 'work' }
+    expect(issue(def).some((entry) => entry.code === 'invalid_result_path')).toBe(invalid)
+  })
+
   test('validates mixed constant args with root definitions and rejects unknown keys', () => {
     const withReferences: CatalogTool = {
       id: tool.id,
@@ -193,20 +214,102 @@ describe('toolKind check', () => {
 
 describe('toolKind execute', () => {
   test.each([
-    ['tool_error', false],
-    ['tool_call_failed', true],
-    ['tool_rejected', false],
-    ['tool_invalid_args', false],
-    ['tool_invalid_output', false],
-    ['tool_unavailable', false],
-    ['tool_not_approved', false],
-    ['tool_task_failed', false],
-    ['tool_task_cancelled', false],
-  ] satisfies Array<[ToolErrorCode, boolean]>)('classifies retry for %s', (code, retryable) => {
-    const kind = toolKind({ caller: fakeCaller(), catalogue: [tool], depth: 0 })
-    const error = new ToolNodeError(code, code, retryable)
-    expect(kind.describeError?.(error)).toMatchObject({ type: code })
-    expect(kind.retryable?.(error)).toBe(retryable)
+    {
+      code: 'tool_error',
+      dispatch: async () => ({ result: { content: [], isError: true } }),
+    },
+    {
+      code: 'tool_call_failed',
+      dispatch: async () => {
+        throw new RPCError({ code: -32603, message: 'internal' })
+      },
+    },
+    {
+      code: 'tool_call_failed',
+      dispatch: async () => {
+        throw new Error('transport')
+      },
+    },
+    {
+      code: 'tool_rejected',
+      dispatch: async () => {
+        throw new RPCError({ code: -32602, message: 'bad arguments' })
+      },
+    },
+    {
+      code: 'tool_invalid_output',
+      catalogue: [{ ...tool, outputSchema }],
+      dispatch: async () => ({ result: { content: [] } }),
+    },
+  ] as const)('applies the retry policy to dispatched $code', async (scenario) => {
+    let calls = 0
+    const caller = fakeCaller(async () => {
+      calls += 1
+      return scenario.dispatch()
+    })
+    const catalogue =
+      'catalogue' in scenario && scenario.catalogue ? [...scenario.catalogue] : [tool]
+    const run = await graph({ caller, catalogue }).run({
+      definition: definition({ retry: { maxAttempts: 2, backoff: { initialMs: 0 } } }),
+      input: {},
+    })
+    const expectedAttempts = scenario.code === 'tool_call_failed' ? 2 : 1
+    expect(run.error?.lastFailure).toMatchObject({ type: scenario.code })
+    expect(run.error?.attempts).toBe(expectedAttempts)
+    expect(calls).toBe(expectedAttempts)
+  })
+
+  test.each([
+    [
+      'tool_invalid_args',
+      { args: { count: { ref: ['input', 'count'] } } },
+      { count: 'bad' },
+      new Set([tool.id]),
+      [tool],
+    ],
+    ['tool_unavailable', {}, {}, new Set([tool.id]), []],
+    ['tool_not_approved', {}, {}, new Set<string>(), [tool]],
+  ] as const)('does not retry pre-dispatch %s', async (code, node, input, approved, available) => {
+    let calls = 0
+    const caller = {
+      ...fakeCaller(async () => {
+        calls += 1
+        return { result: { content: [] } }
+      }),
+      listTools: () => [...available],
+    }
+    const run = await graph({ caller, approved }).run({
+      definition: definition({ ...node, retry: { maxAttempts: 2, backoff: { initialMs: 0 } } }),
+      input,
+    })
+    expect(run.error?.lastFailure).toMatchObject({ type: code })
+    expect(run.error?.attempts).toBe(1)
+    expect(calls).toBe(0)
+  })
+
+  test.each([
+    ['tool_task_failed', 'failed'],
+    ['tool_task_cancelled', 'cancelled'],
+  ] as const)('does not retry resumed %s', async (code, status) => {
+    let calls = 0
+    const caller = fakeCaller(async () => {
+      calls += 1
+      return { task: { taskId: 'task-1' } }
+    })
+    const def = definition({ retry: { maxAttempts: 2, backoff: { initialMs: 0 } } })
+    const runtime = graph({ caller })
+    const suspended = await runtime.run({ definition: def, input: {} })
+    expect(suspended.status).toBe('suspended')
+    let final: RunState | undefined
+    for await (const state of runtime.resume({
+      definition: def,
+      runState: suspended.runState,
+      event: { type: 'value', value: { ok: false, status } },
+    }))
+      final = state
+    expect(final?.error?.lastFailure).toMatchObject({ type: code })
+    expect(final?.error?.attempts).toBe(1)
+    expect(calls).toBe(1)
   })
 
   test('resolves and validates before approval and dispatch', async () => {

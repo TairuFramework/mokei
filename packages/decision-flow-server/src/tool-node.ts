@@ -38,7 +38,16 @@ export type ToolResumeValue =
   | { ok: false; status: 'failed' | 'cancelled'; error?: JSONValue }
 
 const definitions = decideNodeSchema.definitions
-const unconstrainedResultSchema: Schema = { additionalProperties: {} }
+// Unschematized results support references up to 32 segments below the result.
+const MAX_RESULT_PATH_DEPTH = 32
+
+function resultPathSchema(depth: number): Schema {
+  let schema: Schema = {}
+  for (let level = 0; level < depth; level++) schema = { additionalProperties: schema }
+  return schema
+}
+
+const unconstrainedResultSchema = resultPathSchema(MAX_RESULT_PATH_DEPTH)
 
 export const toolNodeSchema: Schema = {
   definitions,
