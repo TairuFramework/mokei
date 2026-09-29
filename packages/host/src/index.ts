@@ -25,6 +25,7 @@ export {
   type ContextHostParams,
   type ContextTool,
   type CreateContextParams,
+  type CreateHostedContextParams,
   createHostedContext,
   type ElicitFallback,
   type EnableTools,
