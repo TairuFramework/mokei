@@ -17,12 +17,14 @@ This replaces the earlier backlog idea of `check_flow` / `run_flow` tools inside
 ## Dependencies
 
 - MCP Tasks extension (`feat/mcp-tasks-extension`): `createTaskManager`, `ContextServer({ tasks })`,
-  task handles (`requestInput` and `awaitInput` with `{ signal }` withdrawal, `checkpoint`),
-  `tasks.recover`, and the client's `callTool({ task: 'handle' })`, `tasks.wait(taskId)` and
+  task handles (`requestInput` and `awaitInput` with `{ signal }` withdrawal, `requestInput`
+  re-issue of an identical outstanding key, `checkpoint`, `cancel`, `requestMeta`), handler
+  `meta` and `LocalToolContext.meta` (request `_meta`, forwarded by `callNamespacedTool` for
+  local tools too), `taskError` events, `tasks.recover`, and the client's `callTool({ task: 'handle' })`, `tasks.wait(taskId)` and
   `tasks.cancel(taskId)`. This branch starts from that one; implementation waits until it
   merges.
-- Session elicitation (`feat/session-elicitation`): `ContextHost` `elicit` option and the
-  `AgentSession` `onElicitation` override. Flow `input` nodes reach the user through it.
+- Session elicitation (`feat/session-elicitation`): `ContextHost` `elicit` option,
+  `elicitationEnabled`, and the `AgentSession` `onElicitation` override. Flow `input` nodes reach the user through it.
 - `@sozai/flow-graph` 0.1.0 as it is today. No upstream change is required.
 
 ## Package and touched packages
@@ -31,6 +33,9 @@ This replaces the earlier backlog idea of `check_flow` / `run_flow` tools inside
   `@mokei/decision-flow`, `@mokei/context-server`, `@mokei/context-protocol`,
   `@mokei/context-client` (types), `@mokei/host` (types), `@mokei/session` (types),
   `@sozai/flow-graph`, `@mokei/system-one-client` (types).
+- `@mokei/session`: a `ToolApprovalFn` may return `{ approved: true, meta }`; `AgentSession`
+  sends that `meta` as the `_meta` of that one tool call (see Approval). Returning a boolean
+  keeps today's behaviour.
 - `@mokei/decision-flow`: `decideKind` and `createDecisionFlowGraph` accept
   `client: Predictor`, where `Predictor = Pick<SystemOneClient, 'predict'>`. Type widening only;
   existing callers keep compiling.
@@ -68,10 +73,13 @@ type ToolCallOutcome = { result: CallToolResult } | { task: { taskId: string } }
 - Exclusion covers every decision-flow context on the host, not only the caller's own. The
   wiring helper records each decision-flow context key per host; `hostToolCaller` excludes all
   of them, so two flow servers cannot call each other.
-- Depth guard for callers outside a session: `run_flow` and registered-flow calls carry
-  `_meta['io.mokei/flow-depth']`; the caller forwards depth + 1 on every sibling call, and the
-  server refuses a run at depth 4 or more with an `isError` result.
-- The idempotency key is sent as `_meta['io.mokei/idempotency-key']` (see Delivery semantics).
+- Depth guard for callers outside a session: the server reads
+  `_meta['io.mokei/flow-depth']` from the handler request's `meta`. Absent means 0; a value
+  that is not a nonnegative integer is an `isError` result `Invalid flow depth`, and no task.
+  A run at depth 4 or more is refused the same way. The run stores its depth in `resumeData`,
+  and the caller sends depth + 1 on every sibling call.
+- The operation key is sent as `_meta['io.mokei/idempotency-key']` (see Delivery semantics).
+  `callNamespacedTool` passes `_meta` to remote and local tools alike, so both can read it.
 - `callTool` asks the sibling for a task handle (`task: 'handle'`) when the sibling's client
   supports the tasks extension, and returns `{ task }` when the sibling answers with one;
   otherwise it returns `{ result }`.
@@ -143,9 +151,18 @@ type ToolNode = {
 ### MCP-backed predictor
 
 `createMCPPredictor(caller, { tool = 'system-one:predict' })` returns a `Predictor` that calls
-that tool and returns its `structuredContent`, validated against the tool's `outputSchema`
-(the bundled server's schema for the mapped `PredictResult`). A result without
-`structuredContent` (an older system-one server) is a `SystemOneResponseError`. It is the
+that tool through `caller.callTool` and resolves the outcome to a final `CallToolResult`:
+
+1. `{ task }`: waits with `caller.waitTask`; the predictor's `signal` cancels the sibling task
+   through `caller.cancelTask`. A failed or cancelled sibling task is a `SystemOneError`.
+2. `isError: true`: a `SystemOneError` carrying the text content, checked before anything
+   else.
+3. `structuredContent`, validated against the tool's `outputSchema` (the bundled server's
+   schema for the mapped `PredictResult`), is the prediction. A result without
+   `structuredContent` (an older system-one server) or failing validation is a
+   `SystemOneResponseError`.
+
+The operation key for a predictor call is `<runID>:<invocationID>:predict`. It is the
 default `decide` backend; the application may pass a real `SystemOneClient` (HTTP, laya)
 instead.
 
@@ -172,8 +189,9 @@ Tools:
 - Task-mode tools require the client to declare the tasks extension; otherwise the call fails
   with `-32021` (MCP Tasks rule).
 - `check_flow` and every run check the definition against the live catalogue. An `input` node
-  whose schema is not an elicitation form schema is an issue (`input_schema_not_elicitable`,
-  see Suspensions). `check_flow` adds a non-blocking warning when the definition has `input`
+  without a `schema`, or whose schema is not an elicitation form schema, is an issue
+  (`input_schema_not_elicitable`, see Suspensions). An `input` node without a `prompt`, or
+  with a constant non-string `prompt`, is an issue (`input_prompt_not_string`). `check_flow` adds a non-blocking warning when the definition has `input`
   nodes and the host has no elicitation.
 - `approval` is required. There is no default that approves.
 
@@ -189,15 +207,20 @@ const agent = new AgentSession({ session, toolApproval: flows.wrapApproval('ask'
 
 `addDecisionFlow(session, options)` is async. It:
 
-1. builds a `hostToolCaller` over `session.contextHost`, recording `key` as a decision-flow
+1. validates before touching the host: throws when any registered flow has an `input` node and
+   `session.contextHost.elicitationEnabled` is false, and when a registered flow fails its
+   check against the current catalogue;
+2. builds a `hostToolCaller` over `session.contextHost`, recording `key` as a decision-flow
    context on that host;
-2. creates the `TaskManager` (memory store unless `store` is passed) with the server's
+3. creates the `TaskManager` (memory store unless `store` is passed) with the server's
    `recover` callback;
-3. runs `await tasks.recover(tools)` before registering anything, so persisted runs are served
+4. runs `await tasks.recover(tools)` before registering anything, so persisted runs are served
    with workers from the first request;
-4. registers the server as a direct context under `key`;
-5. throws when any registered flow has an `input` node and the host has no elicitation;
+5. registers the server as a direct context under `key`;
 6. returns `{ wrapApproval(strategy): ToolApprovalStrategy, dispose() }`.
+
+If a step after 1 throws, the helper rolls back what it did (removes the context, forgets the
+key, disposes the manager) before rethrowing.
 
 ## Approval
 
@@ -212,13 +235,20 @@ One approval per run, asked inside the agent's normal tool-call gate, where the 
   2. applies `strategy`: `'auto'` approves, `'never'` denies, `'ask'` emits the pending event
      then denies (today's meaning), and a `ToolApprovalFn` is called with the original request
      plus `flow: { id?, name, inline, tools }`;
-  3. on approval, records a single-use grant keyed by the tool name and a digest of the
-     canonical arguments, holding the approved tool set.
+  3. on approval, mints an unguessable single-use token (random UUID), records a grant
+     `{ token, toolName, argsDigest, tools, expiresAt }` (digest of the canonical arguments;
+     lifetime 5 minutes), and returns `{ approved: true, meta: { 'io.mokei/flow-grant': token } }`.
+     `AgentSession` sends that `meta` as the `_meta` of that tool call only.
 - `check_flow` passes through `strategy` like any other tool.
-- The server's `approval` hook, called before task creation, consumes the matching grant.
-  No grant (the call did not come through the wrapped gate, or it was denied) means an
-  `isError` result `Flow denied`, and no task. Nothing is asked twice, and nothing bypasses the
-  agent's strategy.
+- The server's `approval` hook, called before task creation, receives the tool name, the
+  arguments and the request `meta`. It atomically consumes the grant whose token matches, and
+  accepts only when the tool name and argument digest match and the grant has not expired.
+  Otherwise (no token, unknown or used token, mismatch, expired) the result is an `isError`
+  `Flow denied`, and no task.
+- Because the token travels only on the approved call, a concurrent identical call cannot use
+  it, and a grant the agent never dispatched (tool became unavailable, turn aborted) is never
+  consumed by another call; it expires. Expired grants are purged on each approval and
+  consumption. Nothing is asked twice, and nothing bypasses the agent's strategy.
 - The approved set is stored in the task's `resumeData`; recovery uses it and does not ask
   again.
 - Applications using the server without an `AgentSession` pass their own `approval` hook.
@@ -228,9 +258,12 @@ One approval per run, asked inside the agent's normal tool-call gate, where the 
 - Tool calls are at-least-once. Flow-graph commits `inFlight` before running a node; after a
   crash, `graph.recover` runs an interrupted node again. A tool that already acted will act
   again unless it deduplicates.
-- Every call carries `_meta['io.mokei/idempotency-key'] = <runID>:<invocationID>:<attempt>`.
-  The key is the same when recovery repeats the same attempt, and different for a new retry
-  attempt. Tools that must not repeat an action deduplicate on it. Package docs state this.
+- Every call carries an operation key, `_meta['io.mokei/idempotency-key'] =
+  <runID>:<invocationID>`, identical for crash replays and retry attempts of the same node
+  invocation, and `_meta['io.mokei/attempt']` with the attempt number for diagnostics. A tool
+  that must not repeat an action deduplicates on the operation key, and so also covers a retry
+  after a timeout whose earlier attempt acted. A tool that wants a fresh action per retry
+  combines the key with the attempt. Package docs state this.
 - Sibling task handles are committed in the run state (via the node's suspend and the next
   checkpoint) before the driver waits on them. A crash in the window between the sibling
   returning a handle and that checkpoint leaves an orphaned sibling task; recovery calls the
@@ -245,7 +278,7 @@ One approval per run, asked inside the agent's normal tool-call gate, where the 
   task is created.
 - The approval grant is consumed before the task is created.
 - The task's `resumeData` is
-  `{ v: 1, flow: { definition } | { id, digest }, approved: Array<string>, runState, siblings }`.
+  `{ v: 1, flow: { definition } | { id, digest }, approved: Array<string>, depth, runState, siblings, inputKey? }`.
   Inline flows are stored whole; registered flows by `id` and `digest`. `siblings` lists the
   sibling task handles the run has issued and not yet seen settle.
 
@@ -262,7 +295,7 @@ One approval per run, asked inside the agent's normal tool-call gate, where the 
 
 | Pending | Driver |
 |---|---|
-| `input` node (`reason: 'suspend'`) | `requestInput` with one `elicitation/create` form request (below), passing a `signal` that aborts at the node's deadline. `accept`: resume `{ type: 'value', value }`. `decline` or `cancel`: abort the run; the task ends `cancelled`. Deadline: the manager withdraws the request (task back to `working`), then resume `{ type: 'timeout' }`. |
+| `input` node (`reason: 'suspend'`) | Mints an input key `<runID>:<invocationID>:input:<uuid>` and checkpoints it in `resumeData.inputKey`, then `requestInput` with one `elicitation/create` form request (below), passing a `signal` that aborts at the node's deadline. `accept`: resume `{ type: 'value', value }`. `decline` or `cancel`: abort the run, clean up siblings, then `handle.cancel()`; the task ends `cancelled` (if a settlement or client cancel won the race, that outcome stands). Deadline: the manager withdraws the request (task back to `working`), then resume `{ type: 'timeout' }`. |
 | `tool` node waiting on a sibling task | `caller.waitTask`, then resume as described under the `tool` node kind. |
 | retry (`reason: 'retry'`, `resumeAt`) | Timer until `resumeAt`, then `resume({ type: 'retry' })`. |
 
@@ -273,8 +306,11 @@ properties are primitive (string, number, integer, boolean, or string enum).
   response content is the value.
 - A single primitive or enum schema is wrapped as
   `{ type: 'object', properties: { value: schema }, required: ['value'] }` and unwrapped.
-- Anything else (nested objects, arrays) is a check issue, `input_schema_not_elicitable`, with
-  a hint to flatten the schema.
+- Anything else (absent schema, nested objects, arrays) is a check issue,
+  `input_schema_not_elicitable`, with a hint to flatten the schema.
+- The resolved `prompt` becomes `message`. A prompt that resolves to a non-string at run time
+  (a reference) fails the node with `input_prompt_not_string`, not retryable, before any
+  request is issued.
 
 ### End
 
@@ -282,7 +318,7 @@ properties are primitive (string, number, integer, boolean, or string enum).
 |---|---|
 | `ended` | completed: `structuredContent: { outcome, output }`, text summary |
 | `error` | completed with `isError: true`, `structuredContent: { error: RunError }` |
-| `aborted` | cancelled |
+| `aborted` | cancelled (`handle.cancel()`) |
 
 A flow error is a tool-level result, not a JSON-RPC error, so the model can read it and repair
 the flow.
@@ -305,11 +341,20 @@ The server's `recover(record, resume)` callback:
 2. Rebuilds the graph and re-checks the flow against the current catalogue. A failing check
    resumes a worker that cancels listed siblings and throws
    `RPCError({ code: -32603, message: 'Flow no longer valid', data: { formatted } })`.
-3. Otherwise resumes a worker that continues the run:
+3. Otherwise resumes a worker that continues the run, by the stored `RunState` status:
+   - `ended`, `error`, `aborted` (the crash came after the final checkpoint, before
+     settlement): settles from the stored state as End describes, without advancing the
+     graph;
    - `running`: `graph.recover`;
-   - `suspended`: re-enters the wait for its pending reason (input via `awaitInput` with the
-     deadline signal, sibling task via `waitTask` using `pending.data.taskId`, retry via its
-     timer).
+   - `suspended`: re-enters the wait for its pending reason:
+     - input: `requestInput` again with the stored `inputKey` and the same request. It attaches
+       when the request is outstanding and issues it when the crash came before it was
+       persisted. `TaskInputKeyReusedError` (the answer arrived but the crash came before the
+       next checkpoint) mints a new key, checkpoints it and asks again; the user is asked
+       twice, which is within at-least-once. A deadline already past resumes
+       `{ type: 'timeout' }` without asking;
+     - sibling task: `waitTask` using `pending.data.taskId`;
+     - retry: its timer.
 
 A worker that throws `RPCError` settles the task as `failed` with that error (MCP Tasks
 recovery rule). The in-session default is the memory store, where recovery has nothing to do;
@@ -322,7 +367,8 @@ it matters when the application passes a persistent `TaskStore`.
 | Invalid inline definition | `isError` result with formatted issues, no task |
 | No approval grant | `isError` result `Flow denied`, no task |
 | Client lacks tasks extension | `-32021` |
-| Flow depth 4 or more | `isError` result, no task |
+| Flow depth 4 or more, or invalid depth | `isError` result, no task |
+| Grant token missing, used, mismatched or expired | `isError` result `Flow denied`, no task |
 | Tool failures | node failures, codes in the `tool` node table |
 | Flow calls a decision-flow context | `unknown_tool` at check time; `tool_unavailable` at dispatch |
 | Input declined or cancelled | run aborted, task cancelled |
@@ -331,7 +377,9 @@ it matters when the application passes a persistent `TaskStore`.
 | Checkpoint failure | run aborted, task failed `Flow checkpoint failed` |
 | Registered flow changed at recovery | task failed `Flow definition changed` |
 | Catalogue drift at recovery | task failed `Flow no longer valid` |
-| No elicitation for `input` node | wiring throws (registered flows); check warning, then task cancelled with `TaskInputUnavailableError` on the client (inline) |
+| No elicitation for `input` node | wiring throws before registering (registered flows); check warning, then task cancelled with `TaskInputUnavailableError` on the client (inline) |
+| `input` prompt resolves to a non-string | node failure `input_prompt_not_string` |
+| Predictor tool error, task failure or bad output | `SystemOneError` / `SystemOneResponseError`, a `decide` node failure |
 
 ## Testing
 
@@ -346,36 +394,49 @@ it matters when the application passes a persistent `TaskStore`.
   - suspend on a sibling task, resume both ways;
   - checker and runtime validators tested separately.
 - Unit (MCP predictor): against the real `mcp-servers/system-one` `predict` tool, including an
-  older text-only result.
+  older text-only result; a fake caller returning `isError`, a task handle that completes, one
+  that fails, and signal-driven sibling cancel.
 - Server (in-memory `ContextServer` and client, MCP Tasks):
   - `check_flow`; inline `run_flow` to completion; registered-flow tools, object and absent
     input schemas;
   - input via elicitation: flat object, wrapped primitive, `input_schema_not_elicitable`, early
     decline and cancel, real deadline expiry with request withdrawal and a late `tasks/update`;
   - cancel, including sibling task cancel on every non-success exit;
-  - recovery from a stored `RunState` for `running` and each suspended reason, catalogue drift,
-    digest change;
+  - recovery from a stored `RunState` for `running`, each suspended reason, and each terminal
+    status (crash after the final checkpoint); catalogue drift; digest change;
+  - input recovery: crash right after the suspension checkpoint (request issued on recovery),
+    after `requestInput` persisted (attached), after the answer but before the next checkpoint
+    (new key), and with the deadline already past;
+  - depth: absent, invalid and at the limit;
+  - `input` node without schema or with a non-string prompt: check issues; a reference prompt
+    resolving to a non-string: node failure;
   - failure windows with a controlled store and deferred tools, stopping at each boundary:
-    after the sibling acted but before the checkpoint (one repeat, same idempotency key), after
+    after the sibling acted but before the checkpoint (one repeat, same operation key), a retry
+    after a timeout (same operation key, next attempt number), after
     a sibling task handle but before the checkpoint, and checkpoint conflicts with status and
     input writes. Each asserts no dispatch outside the approved set, no unlisted sibling task
     left running after cleanup, and a recoverable parent record.
 - Session wiring: each `toolApproval` strategy through `wrapApproval`, one prompt per run, no
-  task without a grant, grants single-use, recursion refused between two flow contexts, depth
-  guard, wiring throws without elicitation when registered flows need input, recovery before
+  task without a grant, grants single-use; two concurrent identical calls where only the
+  approved one's token is accepted; an approved call that becomes unavailable before dispatch
+  leaves no usable grant; an expired token is refused; recursion refused between two flow
+  contexts; depth guard; wiring throws without elicitation when registered flows need input and
+  leaves no context registered; a failure after registration rolls back; recovery before
   registration.
+- Session (`@mokei/session`): an approval function returning `{ approved: true, meta }` sends
+  that `meta` as `_meta` on that call only.
 - Integration (`integration-tests`): an `AgentSession` with a stub sibling server and
   `mcp-servers/system-one` on its stub backend runs the support-triage example end to end,
   including an `input` answered through `onElicitation`; an optional laya-gated variant.
 
 ## Docs and release
 
-- Package README: concepts, wiring, approval, the `tool` node kind, delivery semantics and the
-  idempotency key, elicitation schema limits.
+- Package README: concepts, wiring, approval and grant tokens, the `tool` node kind, delivery
+  semantics and the operation key, elicitation schema limits.
 - `docs/agents/architecture.md`: the new package and its place between session and
   decision-flow.
-- Changeset: minor for the new package (it joins the fixed release group), `@mokei/decision-flow`
-  and `@mokei/mcp-system-one`.
+- Changeset: minor for the new package (it joins the fixed release group), `@mokei/decision-flow`,
+  `@mokei/session` and `@mokei/mcp-system-one`.
 
 ## Follow-on
 
