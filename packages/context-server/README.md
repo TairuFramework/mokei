@@ -79,7 +79,8 @@ These examples use the default memory store, so recovery has no records to resum
 after a restart, supply a persistent `TaskStore` and a `recover` callback to `createTaskManager`.
 
 For HTTP, `serveHTTP` owns its per-request servers, while the application passes the shared
-manager to the handler and disposes it separately:
+manager to the handler and disposes it separately when the application shuts down. `tools` is the
+same tool map as in the stdio example:
 
 ```ts
 import { ContextServer, createTaskManager } from '@mokei/context-server'
@@ -100,8 +101,10 @@ const http = serveHTTP({
     }),
 })
 
-await http.dispose()
-await tasks.dispose()
+process.once('SIGTERM', async () => {
+  await http.dispose()
+  await tasks.dispose()
+})
 ```
 
 `req.task.run` returns immediately with a task ID while the work continues in the manager. A

@@ -96,8 +96,9 @@ application disposes the manager.
 After a restart with persistent storage, call `await tasks.recover(tools)` before accepting
 requests, using the same tool definitions as the server.
 
-Tool handlers start detached work with `req.task.run(work)`. The returned task handle exposes
-status updates, cancellation and input requests. A task created with verified HTTP authorization
+Tool handlers start detached work with `req.task.run(work)`, which resolves to the task creation
+result. The `work` callback receives the task handle, which exposes status updates, cancellation
+and input requests. A task created with verified HTTP authorization
 is bound to the token's issuer, subject and scopes. Later requests must have the same issuer and
 subject, with scopes that include the recorded scopes. Unauthenticated tasks are ownerless and
 use their task ID as a bearer secret. Missing, expired, inaccessible and unrecovered tasks all
