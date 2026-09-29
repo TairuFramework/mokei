@@ -3,6 +3,7 @@ import {
   type ClientTransport,
   ContextClient,
   type ContextTypes,
+  type ElicitHandler,
   type ListParams,
   type PromptParams,
   type ToolParams,
@@ -11,6 +12,8 @@ import {
 import type {
   CallToolResult,
   ClientMessage,
+  ElicitRequest,
+  ElicitResult,
   GetPromptResult,
   Metadata,
   ProtocolVersion,
@@ -113,6 +116,7 @@ export type HostedContext<T extends ContextTypes = UnknownContextTypes> = {
 export type CreateHostedContextParams = {
   transport: ClientTransport
   tools?: Array<ContextTool>
+  elicit?: ElicitHandler
   dispose?: () => void | Promise<void>
   /**
    * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
@@ -122,13 +126,30 @@ export type CreateHostedContextParams = {
   protocolVersion?: ProtocolVersion | 'auto'
 }
 
-export type CreateContextParams = CreateHostedContextParams & {
+export type CreateContextParams = Omit<CreateHostedContextParams, 'elicit'> & {
   key: string
+  elicit?: false
 }
+
+export type HostElicitRequest = {
+  key: string
+  params: ElicitRequest['params']
+  signal: AbortSignal
+}
+
+export type HostElicitHandler = (request: HostElicitRequest) => ElicitResult | Promise<ElicitResult>
+
+export type ElicitFallback = (options?: { signal?: AbortSignal }) => Promise<ElicitResult>
+
+export type HostElicitOverride = (
+  request: HostElicitRequest,
+  fallback: ElicitFallback,
+) => ElicitResult | Promise<ElicitResult>
 
 export type ContextHostParams = {
   /** Subclass teardown, run after every context is removed. */
   dispose?: () => Promise<void>
+  elicit?: HostElicitHandler | true
 }
 
 export type HasContextParams = { key: string }
@@ -167,8 +188,8 @@ export function createHostedContext<T extends ContextTypes = UnknownContextTypes
   // `'auto'` rather than the newest revision: a host points at arbitrary third-party servers,
   // most of which serve `'2025-11-25'` only, and a `'2026-07-28'` pin rejects those with
   // `-32022` instead of negotiating down. Callers that know their server pin explicitly.
-  const { transport, tools = [], dispose, protocolVersion = 'auto' } = params
-  const client = new ContextClient<T>({ protocolVersion, transport })
+  const { transport, tools = [], dispose, protocolVersion = 'auto', elicit } = params
+  const client = new ContextClient<T>({ protocolVersion, transport, elicit })
   const disposer = new Disposer({
     dispose: async () => {
       // Via the client, not the transport: `client.dispose()` runs `_beforeTransportClose` (tears
@@ -185,6 +206,7 @@ export type AddDirectContextParams = {
   key: string
   config: ServerConfig
   tools?: Array<ContextTool>
+  elicit?: false
   /**
    * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
    * the probe resolves `'2026-07-28'` when the server serves it and falls back to
@@ -196,6 +218,7 @@ export type AddDirectContextParams = {
 export type HTTPContextParams = {
   /** Unique identifier for this context */
   key: string
+  elicit?: false
   /** URL of the MCP HTTP endpoint */
   url: string
   /** Optional custom headers to include in requests */
@@ -221,6 +244,8 @@ export class ContextHost extends Disposer {
   // Per-context teardown for the client subscription-event listeners wired on `2026-07-28`
   // contexts (SEP-1391). Cleared in `remove()` so a listener never outlives its context.
   #subscriptionUnsubscribes: Map<string, Array<() => void>> = new Map()
+  #elicit: HostElicitHandler | true | undefined
+  #elicitOverride: { handler: HostElicitOverride } | undefined
 
   /** Observe context lifecycle and subscription events. */
   get events(): EventEmitter<HostEvents> {
@@ -235,10 +260,62 @@ export class ContextHost extends Disposer {
         await params.dispose?.()
       },
     })
+    this.#elicit = params.elicit
   }
 
   get contexts(): Record<string, HostedContext> {
     return this.#contexts
+  }
+
+  get elicitationEnabled(): boolean {
+    return this.#elicit != null
+  }
+
+  handleElicitation(handler: HostElicitOverride): () => void {
+    if (!this.elicitationEnabled) {
+      throw new Error('Elicitation is not enabled for this host')
+    }
+    if (this.#elicitOverride != null) {
+      throw new Error('Elicitation handler already installed')
+    }
+    const override = { handler }
+    this.#elicitOverride = override
+    return () => {
+      if (this.#elicitOverride === override) {
+        this.#elicitOverride = undefined
+      }
+    }
+  }
+
+  // Subclasses in `@mokei/host-node` bind this internal dispatcher for stdio contexts.
+  // biome-ignore lint/style/useConsistentMemberAccessibility: subclasses must access this protected hook
+  protected createElicitHandler(params: {
+    key: string
+    elicit?: false
+  }): ElicitHandler | undefined {
+    if (!this.elicitationEnabled || params.elicit === false) {
+      return undefined
+    }
+    return ({ params: requestParams, signal }) => {
+      const request = { key: params.key, params: requestParams, signal }
+      const override = this.#elicitOverride
+      if (override != null) {
+        return override.handler(request, (options) =>
+          this.#dispatchElicitation({
+            ...request,
+            signal: options?.signal ?? request.signal,
+          }),
+        )
+      }
+      return this.#dispatchElicitation(request)
+    }
+  }
+
+  #dispatchElicitation(request: HostElicitRequest): Promise<ElicitResult> {
+    if (typeof this.#elicit === 'function') {
+      return Promise.resolve(this.#elicit(request))
+    }
+    return Promise.resolve({ action: 'decline' })
   }
 
   /**
@@ -249,6 +326,7 @@ export class ContextHost extends Disposer {
   }
 
   async #disposeHost(): Promise<void> {
+    this.#elicitOverride = undefined
     this.#localTools.clear()
     await Promise.all(Object.keys(this.#contexts).map((key) => this.remove(key)))
   }
@@ -399,12 +477,15 @@ export class ContextHost extends Disposer {
   createContext<T extends ContextTypes = UnknownContextTypes>(
     params: CreateContextParams,
   ): ContextClient<T> {
-    const { key, ...hostedParams } = params
+    const { key, elicit, ...hostedParams } = params
     if (this.#contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
 
-    const context = createHostedContext<T>(hostedParams)
+    const context = createHostedContext<T>({
+      ...hostedParams,
+      elicit: this.createElicitHandler({ key, elicit }),
+    })
     this.#contexts[key] = context as unknown as HostedContext
     this.#wireContextSubscriptions(key, context.client as unknown as ContextClient)
     return context.client
@@ -413,7 +494,7 @@ export class ContextHost extends Disposer {
   addDirectContext<T extends ContextTypes = UnknownContextTypes>(
     params: AddDirectContextParams,
   ): ContextClient<T> {
-    const { key, config, tools, protocolVersion } = params
+    const { key, config, tools, protocolVersion, elicit } = params
     if (this.#contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
     }
@@ -425,6 +506,7 @@ export class ContextHost extends Disposer {
       transport: transports.client,
       tools,
       protocolVersion,
+      elicit,
       dispose: async () => {
         await Promise.all([server.dispose(), transports.client.dispose()])
       },
@@ -460,7 +542,7 @@ export class ContextHost extends Disposer {
   async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
     params: HTTPContextParams,
   ): Promise<ContextClient<T>> {
-    const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware } = params
+    const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware, elicit } = params
 
     if (this.#contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
@@ -479,6 +561,7 @@ export class ContextHost extends Disposer {
         fetchMiddleware,
       }) as ClientTransport,
       protocolVersion,
+      elicit: this.createElicitHandler({ key, elicit }),
     })
 
     this.#contexts[key] = context as unknown as HostedContext
