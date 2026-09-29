@@ -1,5 +1,5 @@
-import type { CallToolResult } from '@mokei/context-protocol'
-import { getContextToolInfo } from '@mokei/host'
+import type { CallToolResult, ElicitResult } from '@mokei/context-protocol'
+import { type ElicitFallback, getContextToolInfo, type HostElicitRequest } from '@mokei/host'
 import type {
   ClientToolMessage,
   FunctionToolCall,
@@ -67,9 +67,11 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   #params: ResolvedAgentParams<T>
   #events: EventEmitter<AgentSessionEvents<T>>
   #activeToolController: AbortController | null = null
+  #removeElicitation: (() => void) | undefined
+  #nextElicitationID = 0
 
   constructor(params: AgentParams<T>) {
-    super()
+    super({ dispose: async () => this.#removeElicitation?.() })
     this.#events = new EventEmitter()
 
     const { session } = params
@@ -90,7 +92,64 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       timeout: params.timeout ?? AGENT_DEFAULTS.timeout,
       toolTimeout: params.toolTimeout ?? AGENT_DEFAULTS.toolTimeout,
       onEvent: params.onEvent,
+      onElicitation: params.onElicitation,
     }
+
+    if (session.contextHost.elicitationEnabled) {
+      this.#removeElicitation = session.contextHost.handleElicitation((request, fallback) =>
+        this.#handleElicitation(request, fallback),
+      )
+    } else if (params.onElicitation != null) {
+      throw new Error('Elicitation is not enabled for this host')
+    }
+  }
+
+  async #handleElicitation(
+    request: HostElicitRequest,
+    fallback: ElicitFallback,
+  ): Promise<ElicitResult> {
+    const requestID = String(++this.#nextElicitationID)
+    const signal = AbortSignal.any([request.signal, this.signal])
+    this.#emitElicitationEvent({
+      type: 'elicitation-request',
+      requestID,
+      key: request.key,
+      params: request.params,
+      timestamp: Date.now(),
+    })
+
+    try {
+      if (signal.aborted) {
+        throw signal.reason instanceof Error ? signal.reason : new Error('Aborted')
+      }
+      const result = this.#params.onElicitation
+        ? this.#params.onElicitation({ ...request, signal })
+        : fallback({ signal })
+      const answer = await raceAbort(Promise.resolve(result), signal)
+      this.#emitElicitationEvent({
+        type: 'elicitation-response',
+        requestID,
+        key: request.key,
+        action: answer.action,
+        timestamp: Date.now(),
+      })
+      return answer
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      this.#emitElicitationEvent({
+        type: 'elicitation-error',
+        requestID,
+        key: request.key,
+        error: err,
+        timestamp: Date.now(),
+      })
+      throw err
+    }
+  }
+
+  #emitElicitationEvent(event: AgentEvent<T>): void {
+    this.#events.emit('event', event)
+    this.#params.onEvent?.(event)
   }
 
   /**
