@@ -54,6 +54,7 @@ catalog:
   '@inkjs/ui': ^2.0.0
   '@mantine/core': ^9.6.3
   '@mantine/hooks': ^9.6.3
+  '@modelcontextprotocol/ext-tasks': 0.1.0
   '@swc/cli': ^0.8.1
   '@swc/core': ^1.15.41
   '@tabler/icons-react': ^3.48.0
