@@ -173,6 +173,10 @@ Today `createTool` validates output in `finalizeResult` and `#callTool` maps thr
 - A returned `CallToolResult` passes the `outputSchema` / `structuredContent` validation.
 - A thrown error that maps to a tool result (`isError: true`) becomes that result.
 - A thrown error that maps to a JSON-RPC error becomes that error object.
+- A protocol error thrown from inside the work (an `RPCError`, including the MRTR
+  missing-capability error from `requestInput`) becomes a JSON-RPC error with its own code,
+  message and data, never an `isError` tool result. On the synchronous path this matches
+  today's behaviour, where MRTR's `-32021` is raised outside the tool-error catch.
 
 Task settlement stores the result exactly as a synchronous `tools/call` would send it on
 `2026-07-28`, including `resultType: 'complete'`, and ends `completed`; a JSON-RPC error ends
@@ -180,7 +184,9 @@ Task settlement stores the result exactly as a synchronous `tools/call` would se
 
 `createTool` passes `CreateTaskResult` through without output validation, as it does for
 `input_required`. `_handleRequest` gets a task branch next to the MRTR branch: gated on method
-and declared capability, wrapped with `wrapResult`, and skipping `applyCacheHints`. A handler
+and declared capability, wrapped with `wrapResult`, and skipping `applyCacheHints`. The MRTR
+lifting of `inputResponses` / `requestState` out of params (`mrtr.ts`) is skipped for
+`tasks/update`, whose `inputResponses` belong to the task and must reach its handler. A handler
 that returns a `CreateTaskResult` when `req.task` was not provided fails the request with an
 internal error.
 
@@ -251,7 +257,10 @@ partial `tasks/update` therefore never strands a completing task.
 
 - Restart recovery needs a persistent store; with the default memory store there are no
   records after a restart and this section is a no-op.
-- Recovery is explicit: after creating the manager, the application calls
+- At creation, the manager marks every persisted `working` or `input_required` record as
+  awaiting recovery. Until that record is settled or resumed, `tasks/*` and listens treat it
+  as `Task not found`, and it is never served without a worker.
+- Recovery is explicit: after creating the manager, and before serving, the application calls
   `await tasks.recover(tools)`, passing the same tool map it gives `ContextServer`. The manager
   lists records in `working` or `input_required`. With `recover`, it calls
   `recover(record, resume)` for each. `record.toolName` and `record.resumeData` identify the
@@ -263,6 +272,10 @@ partial `tasks/update` therefore never strands a completing task.
   for them.
 - Without `recover`, or if `recover` returns without calling `resume` or throws, the task ends
   `failed` with error `{ code: -32603, message: 'Task interrupted by server restart' }`.
+- A manager with no `recover` callback does this at creation, without waiting for
+  `tasks.recover(tools)`. With a callback, records stay awaiting recovery until
+  `tasks.recover(tools)` runs; the architecture docs and READMEs state that it must be called
+  before the server accepts requests.
 - Task IDs are `crypto.randomUUID()` (128-bit).
 
 ### Owner binding
@@ -291,6 +304,10 @@ A hub entry for a listen records the listener's identity. On a listen with `task
 checks each ID against the listener's identity before writing the acknowledgement, which
 lists only the accepted IDs; rejected IDs are left out without an error. The hub then sends
 `notifications/tasks` only for accepted IDs.
+
+An authenticated listen ends when its token expires: the hub closes it at `auth.expiresAt`
+(when set), so no task state is delivered on an expired token. The client treats this like any
+dropped listen (section 3) and continues by polling, which goes through a fresh auth check.
 
 ## 3. Client (`@mokei/context-client`)
 
@@ -333,9 +350,10 @@ lists only the accepted IDs; rejected IDs are left out without an error. The hub
 
 ### Outcomes
 
-- `completed`: return `result`. The `structuredContent` / `outputSchema` check runs when the
-  tool name is known: always on `callTool`'s automatic wait, and on `tasks.wait` only when
-  `toolName` is passed.
+- `completed`: return `result`. The `structuredContent` / `outputSchema` check follows the
+  synchronous `callTool` rule: it runs when a validator for the tool is cached from
+  `tools/list`, and is skipped otherwise; the wait never fetches the schema. `callTool`'s
+  automatic wait knows the tool name; `tasks.wait` knows it only when `toolName` is passed.
 - `failed`: throw the `RPCError` the synchronous path would throw for that error object, with
   its `code`, `message` and `data`.
 - `cancelled`: throw `TaskCancelledError`.
@@ -356,8 +374,10 @@ Unit:
   - task context present only with a manager, declared extension and `tools/call`;
   - durable create before response; status transitions;
   - `-32021` for undeclared `tasks/*` and task listens; `-32601` without a manager;
-  - `tasks/update` validates with `inputResponses` and rejects `requestState`;
-  - `requestInput`, reused-key rejection, undeclared input capability, partial `tasks/update`,
+  - `tasks/update` validates with `inputResponses` and rejects `requestState`; a real
+    `tasks/update` through `_handleRequest` delivers its `inputResponses` to the task;
+  - `requestInput`, reused-key rejection, undeclared input capability (stored
+    `failed.error.code === -32021`), partial `tasks/update`,
     wrong response kind;
   - two partial updates racing both land; cancel racing completion (first writer wins);
     completion racing a `setStatus` or partial update still completes;
@@ -368,15 +388,18 @@ Unit:
     cancel and expiry;
   - restart with a persistent test store, with and without `recover`, and with `recover`
     throwing; the interrupted error object; recovery while `input_required` using
-    `awaitInput`; a recovered task returning invalid output fails validation;
+    `awaitInput`; a recovered task returning invalid output fails validation; `tasks/get`
+    before `tasks.recover(tools)` returns `Task not found`; a manager without `recover` fails
+    persisted tasks at creation;
   - owner mismatch (subject, issuer, fewer scopes, owned versus ownerless) returns
     `Task not found`;
   - listen acknowledgement with mixed owned and unowned IDs; notifications only for accepted
-    IDs.
+    IDs; an authenticated listen closes at `expiresAt` before the task completes.
 - Client: default wait by polling and by notifications; fallback to polling when the listen
   fails or omits the ID, and when an accepted listen drops before completion; shared listen for
 concurrent waits; handle mode, `task` stripped from the wire, overload combinations with
-`allowInputRequired`; `Mcp-Name` set to the task ID on `tasks/*` over HTTP;
+`allowInputRequired`; `Mcp-Name` set to the task ID on `tasks/*` over HTTP; output validation
+on automatic wait with and without a prior `tools/list`;
   MRTR before task creation; `tasks.*`; input fulfilment through existing handlers; duplicate
   `input_required` snapshots presented once; mismatched `taskId` snapshots ignored; failed
   (error code and data) and cancelled outcomes; missing input handler cancels; caller abort
