@@ -9,6 +9,7 @@ import type {
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 
+import { AgentEventChannel } from './agent-event-channel.js'
 import {
   AGENT_DEFAULTS,
   type AgentCompleteEvent,
@@ -30,6 +31,17 @@ import type { ChatTurn } from './session.js'
 const TOOL_TIMEOUT_REASON = Symbol('mokei.tool-timeout')
 /** Abort reason set when the user cancels the active tool call. */
 const TOOL_CANCEL_REASON = Symbol('mokei.tool-cancel')
+
+type AgentToolState = {
+  key: string
+  toolCall: FunctionToolCall<unknown>
+}
+
+type AgentRunState<T extends ProviderTypes> = {
+  channel: AgentEventChannel<T>
+  signal: AbortSignal
+  activeTool?: AgentToolState
+}
 
 /**
  * Events emitted by AgentSession.
@@ -69,6 +81,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   #activeToolController: AbortController | null = null
   #removeElicitation: (() => void) | undefined
   #nextElicitationID = 0
+  #activeRuns = new Set<AgentRunState<T>>()
 
   constructor(params: AgentParams<T>) {
     super({ dispose: async () => this.#removeElicitation?.() })
@@ -110,44 +123,61 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   ): Promise<ElicitResult> {
     const requestID = String(++this.#nextElicitationID)
     const signal = AbortSignal.any([request.signal, this.signal])
-    this.#emitElicitationEvent({
-      type: 'elicitation-request',
-      requestID,
-      key: request.key,
-      params: request.params,
-      timestamp: Date.now(),
-    })
+    const run = this.#activeRuns.size === 1 ? this.#activeRuns.values().next().value : undefined
+    const toolCall = run?.activeTool?.key === request.key ? run.activeTool.toolCall : undefined
+    const attributedRun = toolCall == null ? undefined : run
+    const attribution = toolCall == null ? {} : { toolCall }
+    this.#emitElicitationEvent(
+      {
+        type: 'elicitation-request',
+        requestID,
+        key: request.key,
+        params: request.params,
+        ...attribution,
+        timestamp: Date.now(),
+      },
+      attributedRun,
+    )
 
     try {
       if (signal.aborted) {
         throw signal.reason instanceof Error ? signal.reason : new Error('Aborted')
       }
       const result = this.#params.onElicitation
-        ? this.#params.onElicitation({ ...request, signal })
+        ? this.#params.onElicitation({ ...request, signal, ...attribution })
         : fallback({ signal })
       const answer = await raceAbort(Promise.resolve(result), signal)
-      this.#emitElicitationEvent({
-        type: 'elicitation-response',
-        requestID,
-        key: request.key,
-        action: answer.action,
-        timestamp: Date.now(),
-      })
+      this.#emitElicitationEvent(
+        {
+          type: 'elicitation-response',
+          requestID,
+          key: request.key,
+          action: answer.action,
+          ...attribution,
+          timestamp: Date.now(),
+        },
+        attributedRun,
+      )
       return answer
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
-      this.#emitElicitationEvent({
-        type: 'elicitation-error',
-        requestID,
-        key: request.key,
-        error: err,
-        timestamp: Date.now(),
-      })
+      this.#emitElicitationEvent(
+        {
+          type: 'elicitation-error',
+          requestID,
+          key: request.key,
+          error: err,
+          ...attribution,
+          timestamp: Date.now(),
+        },
+        attributedRun,
+      )
       throw err
     }
   }
 
-  #emitElicitationEvent(event: AgentEvent<T>): void {
+  #emitElicitationEvent(event: AgentEvent<T>, run?: AgentRunState<T>): void {
+    run?.channel.push(event)
     void this.#events.emit('event', event).catch(() => undefined)
     try {
       this.#params.onEvent?.(event)
@@ -224,6 +254,8 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     const combinedSignal = signal
       ? AbortSignal.any([signal, timeoutController.signal])
       : timeoutController.signal
+    const run: AgentRunState<T> = { channel: new AgentEventChannel<T>(), signal: combinedSignal }
+    this.#activeRuns.add(run)
 
     const emitEvent = (event: AgentEvent<T>): AgentEvent<T> => {
       this.#events.emit('event', event)
@@ -503,12 +535,24 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
             })
           } else {
             // Execute tool
-            const execResult = await this.#executeToolCall(toolCall, emitEvent, combinedSignal)
-
-            for (const event of execResult.events) {
-              yield event
-              eventHistory.push(event)
+            let settled = false
+            const execution = this.#executeToolCall(toolCall, emitEvent, run).finally(() => {
+              settled = true
+            })
+            // A consumer can abandon the generator while execution is still pending.
+            void execution.catch(() => undefined)
+            let pending = run.channel.takeAll()
+            while (pending.length > 0 || !settled) {
+              // Drain before waiting: an immediate callback may fill the channel
+              // before the generator gets its first turn after starting the call.
+              for (const event of pending) {
+                yield event
+                eventHistory.push(event)
+              }
+              if (!settled) await Promise.race([run.channel.waitForEvent(), execution])
+              pending = run.channel.takeAll()
             }
+            const execResult = await execution
 
             record.result = execResult.result
             record.error = execResult.error
@@ -581,6 +625,8 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       throw err
     } finally {
       clearTimeout(timeoutID)
+      this.#activeRuns.delete(run)
+      run.channel.close()
       // A consumer that breaks out of this generator leaves the current turn's
       // provider stream open; return it so the provider releases the reader.
       void activeChatTurn?.return(undefined as never).catch(() => {})
@@ -658,15 +704,17 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   async #executeToolCall(
     toolCall: FunctionToolCall<unknown>,
     emitEvent: (event: AgentEvent<T>) => AgentEvent<T>,
-    signal: AbortSignal,
-  ): Promise<{ result?: CallToolResult; error?: Error; events: Array<AgentEvent<T>> }> {
-    const events: Array<AgentEvent<T>> = []
+    run: AgentRunState<T>,
+  ): Promise<{ result?: CallToolResult; error?: Error }> {
+    const { signal } = run
 
     // Per-call controller: fires on timeout or user cancel, independent of the turn.
     // Set up BEFORE emitting tool-call-start so that cancelToolCall() called from
     // within a tool-call-start handler takes effect on the live controller.
     const callController = new AbortController()
     this.#activeToolController = callController
+    const [key] = getContextToolInfo(toolCall.name)
+    run.activeTool = { key, toolCall }
     // Forward a turn-level abort onto the per-call controller. The listener is
     // removed in `finally` so listeners don't accumulate on the turn signal
     // across many sequential tool calls.
@@ -683,12 +731,13 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       }, this.#params.toolTimeout)
 
       // Emit start event
-      const startEvent = emitEvent({
+      const startEvent: AgentEvent<T> = {
         type: 'tool-call-start',
         toolCall,
         timestamp: Date.now(),
-      })
-      events.push(startEvent)
+      }
+      run.channel.push(startEvent)
+      emitEvent(startEvent)
       if (signal.aborted) {
         callController.abort(signal.reason)
       } else {
@@ -702,15 +751,16 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       })
 
       // Emit complete event
-      const completeEvent = emitEvent({
+      const completeEvent: AgentEvent<T> = {
         type: 'tool-call-complete',
         toolCall,
         result,
         timestamp: Date.now(),
-      })
-      events.push(completeEvent)
+      }
+      run.channel.push(completeEvent)
+      emitEvent(completeEvent)
 
-      return { result, events }
+      return { result }
     } catch (error) {
       // Discriminate why the call ended. The turn-level signal taking priority
       // preserves user-abort / turn-timeout semantics (turn ends elsewhere).
@@ -729,19 +779,21 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       }
 
       // Emit error event
-      const errorEvent = emitEvent({
+      const errorEvent: AgentEvent<T> = {
         type: 'tool-call-error',
         toolCall,
         error: err,
         timestamp: Date.now(),
-      })
-      events.push(errorEvent)
+      }
+      run.channel.push(errorEvent)
+      emitEvent(errorEvent)
 
-      return { error: err, events }
+      return { error: err }
     } finally {
       clearTimeout(callTimer)
       signal.removeEventListener('abort', onTurnAbort)
       this.#activeToolController = null
+      run.activeTool = undefined
     }
   }
 }
