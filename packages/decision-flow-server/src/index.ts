@@ -12,6 +12,7 @@ export { type ResumeDataV1, startRun } from './driver.js'
 export { flowToolName } from './flow-tools.js'
 export { createGrantStore, type GrantStore } from './grants.js'
 export { flowPlan } from './plan.js'
+export { createMCPPredictor, type PredictorFactory, resolvePredictor } from './predictor.js'
 export {
   type ApprovalHook,
   createDecisionFlowServer,
@@ -26,3 +27,4 @@ export {
   ToolUnavailableError,
   unmarkDecisionFlowContext,
 } from './tool-caller.js'
+export { type AddDecisionFlowParams, addDecisionFlow, type DecisionFlowWiring } from './wiring.js'
