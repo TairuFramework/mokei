@@ -48,6 +48,15 @@ export {
   type SubscriptionWriterParams,
 } from './subscriptions.js'
 export {
+  createTaskManager,
+  type TaskContext,
+  type TaskHandle,
+  type TaskManager,
+  type TaskManagerParams,
+  type TaskResume,
+  type TaskWork,
+} from './task-manager.js'
+export {
   createMemoryTaskStore,
   type JSONValue,
   type TaskOwner,
