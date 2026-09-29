@@ -29,8 +29,19 @@ export type AddDecisionFlowParams = {
   store?: TaskStore
 }
 
+/** Flow details are present for checked flow runs and absent for other tool calls. */
+export type FlowApprovalRequest = ToolApprovalRequest & {
+  flow?: { id?: string; name: string; inline: boolean; tools: Array<string> }
+}
+
+export type FlowApprovalStrategy =
+  | 'auto'
+  | 'ask'
+  | 'never'
+  | ((request: FlowApprovalRequest) => ReturnType<ToolApprovalFn>)
+
 export type DecisionFlowWiring = {
-  wrapApproval(strategy: ToolApprovalStrategy): ToolApprovalStrategy
+  wrapApproval(strategy: FlowApprovalStrategy): ToolApprovalStrategy
   dispose(): Promise<void>
 }
 
@@ -41,8 +52,8 @@ function decision(result: Awaited<ReturnType<ToolApprovalFn>>): boolean {
 }
 
 function applyStrategy(
-  strategy: ToolApprovalStrategy,
-  request: ToolApprovalRequest,
+  strategy: FlowApprovalStrategy,
+  request: FlowApprovalRequest,
 ): Promise<Awaited<ReturnType<ToolApprovalFn>>> {
   if (strategy === 'auto') return Promise.resolve(true)
   if (strategy === 'never') {

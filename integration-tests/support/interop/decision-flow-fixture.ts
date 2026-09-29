@@ -1,7 +1,7 @@
 import { createMemoryTaskStore, createTaskManager, createTool } from '@mokei/context-server'
 import { addDecisionFlow } from '@mokei/decision-flow-server'
 import { createSystemOneConfig } from '@mokei/mcp-system-one'
-import { Session } from '@mokei/session'
+import { type AgentSession, Session } from '@mokei/session'
 import { SystemOneClient, type SystemOneResult } from '@mokei/system-one-client'
 import type { FlowDefinition } from '@sozai/flow-graph'
 
@@ -138,4 +138,55 @@ export async function createDecisionFlowFixture(
       await siblingTasks.dispose()
     },
   }
+}
+
+export function decisionFlowProvider(definition: unknown) {
+  let turn = 0
+  return {
+    listModels: async () => [{ id: 'test-model', raw: { id: 'test-model' } }],
+    embed: async () => ({ embeddings: [] }),
+    toolFromMCP: (tool: { name: string; description?: string }) => ({
+      name: tool.name,
+      description: tool.description ?? '',
+    }),
+    streamChat: () => {
+      const parts = [
+        ...(turn++ === 0
+          ? [
+              {
+                type: 'tool-call',
+                toolCalls: [
+                  {
+                    id: 'run-1',
+                    name: 'flow:run_flow',
+                    arguments: JSON.stringify({ definition, input: { message: 'Charged twice' } }),
+                    raw: {},
+                  },
+                ],
+                raw: {},
+              },
+            ]
+          : [{ type: 'text-delta', text: 'done', raw: {} }]),
+        { type: 'done', inputTokens: 1, outputTokens: 1, raw: {} },
+      ]
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const part of parts) controller.enqueue(part)
+          controller.close()
+        },
+      })
+      return Object.assign(Promise.resolve(stream), {
+        signal: new AbortController().signal,
+        abort: () => undefined,
+      })
+    },
+    aggregateMessage: (parts: Array<{ text?: string; toolCalls?: Array<unknown> }>) => ({
+      source: 'aggregated',
+      role: 'assistant',
+      text: parts.map((part) => part.text ?? '').join(''),
+      toolCalls: parts.flatMap((part) => part.toolCalls ?? []),
+      inputTokens: 1,
+      outputTokens: 1,
+    }),
+  } as unknown as ConstructorParameters<typeof AgentSession>[0]['provider']
 }

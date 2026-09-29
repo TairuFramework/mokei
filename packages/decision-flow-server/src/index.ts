@@ -27,4 +27,10 @@ export {
   ToolUnavailableError,
   unmarkDecisionFlowContext,
 } from './tool-caller.js'
-export { type AddDecisionFlowParams, addDecisionFlow, type DecisionFlowWiring } from './wiring.js'
+export {
+  type AddDecisionFlowParams,
+  addDecisionFlow,
+  type DecisionFlowWiring,
+  type FlowApprovalRequest,
+  type FlowApprovalStrategy,
+} from './wiring.js'

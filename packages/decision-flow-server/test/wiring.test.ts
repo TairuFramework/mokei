@@ -10,6 +10,7 @@ import {
 import type { FlowDefinition } from '@sozai/flow-graph'
 import { afterEach, expect, test, vi } from 'vitest'
 
+import type { FlowApprovalRequest } from '../src/index.js'
 import {
   hostToolCaller,
   markDecisionFlowContext,
@@ -249,16 +250,16 @@ test('function strategy sees flow plan once and other tools pass through unchang
   const wiring = await addDecisionFlow(value, { key: 'flow', flows: [toolFlow] })
   wirings.push(wiring)
   const prompts: Array<unknown> = []
-  const strategy = async (prompt: ToolApprovalRequest) => {
-    prompts.push(prompt)
+  const wrapped = wiring.wrapApproval(async ({ flow, ...prompt }) => {
+    const requestFromExport: FlowApprovalRequest = { ...prompt, flow }
+    const tools: Array<string> | undefined = flow?.tools
+    prompts.push({ ...requestFromExport, tools })
     return true
-  }
-  const wrapped = wiring.wrapApproval(strategy) as (
-    request: ToolApprovalRequest,
-  ) => Promise<unknown>
+  }) as (request: ToolApprovalRequest) => Promise<unknown>
   expect(await wrapped(request('local:echo', {}))).toBe(true)
   const approved = await wrapped(request('flow:flow_uses_echo', {}))
   expect(prompts).toHaveLength(2)
+  expect(prompts[0]).toMatchObject({ flow: undefined, tools: undefined })
   expect(prompts[1]).toMatchObject({
     flow: { id: 'uses-echo', name: 'Uses echo', inline: false, tools: ['local:echo'] },
   })

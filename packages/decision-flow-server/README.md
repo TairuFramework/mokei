@@ -29,8 +29,8 @@ const agent = new AgentSession({
   provider,
   model: 'your-model',
   toolApproval: flows.wrapApproval(async ({ flow }) => {
-    // Review flow?.tools, the static set of sibling tools this run may call.
-    return { approved: await approveRun(flow) }
+    // Other tools have no flow details; review the static sibling tool plan for flow runs.
+    return { approved: flow ? await approveRun(flow) : true }
   }),
   onElicitation: ({ params, signal }) => askUser({ params, signal }),
 })
@@ -51,9 +51,11 @@ needed). One decision approves the run. An approved call receives a single-use
 The token is bound to the tool name and arguments, expires after five minutes, and cannot
 authorize another call. `check_flow` follows the underlying strategy without a flow grant.
 
-`'auto'` approves flow runs, `'never'` denies them, and `'ask'` emits a pending event then denies
-unless an application supplies an approval function. If using `createDecisionFlowServer`
-directly, provide its required `approval` hook.
+`'auto'` approves flow runs and `'never'` denies them. `'ask'` emits a pending event and denies
+with `Tool approval required but no handler configured`; use a function strategy to collect an
+interactive decision. Its `FlowApprovalRequest.flow` is present for checked flow runs and absent
+for other tools. If using `createDecisionFlowServer` directly, provide its required `approval`
+hook.
 
 ## Tool nodes and delivery
 
@@ -70,18 +72,23 @@ replay or retry of that invocation. A tool that must avoid repeating an effect s
 on that key; a tool that deliberately repeats per retry may combine the key and attempt.
 Predictor calls use `<runID>:<invocationID>:predict` as their operation key. The call also carries
 `io.mokei/flow-depth` so nested flow calls can be refused.
+The maximum flow depth is 4; calls at that depth or with invalid depth metadata fail with
+`Invalid flow depth`.
 
 A sibling task handle is checkpointed before the flow waits for it. A crash after the sibling
 returns a handle but before that checkpoint can leave an orphaned sibling task. Recovery calls
 the tool again with the same operation key, so the sibling must deduplicate if duplicate work
 would be harmful.
+At recovery, a changed registered definition fails the task with `Flow definition changed`;
+a definition invalid against the current tool catalogue fails it with `Flow no longer valid`.
 
 ## Input nodes
 
 Input nodes reach the agent's `onElicitation` callback as MCP form elicitation. Their prompt
 must resolve to a string. The schema must be a flat object with primitive properties (string,
 number, integer, boolean, or string enum), or one primitive or string enum schema, which the
-server wraps under a `value` property and unwraps after acceptance. Use an explicit
-`type: 'string'` with enums for MCP form compatibility. Nested objects, arrays, and absent
-schemas fail `check_flow` with `input_schema_not_elicitable`. Decline or cancel ends the flow
-task as cancelled; a deadline resumes its timeout edge.
+server wraps under a `value` property and unwraps after acceptance. A string enum may omit
+`type: 'string'`; the server adds it to the wire schema. Nested objects, arrays, and absent
+schemas fail `check_flow` with `input_schema_not_elicitable`. A constant non-string prompt is
+reported as `input_prompt_not_string`, as is a reference that resolves to a non-string at run
+time. Decline or cancel ends the flow task as cancelled; a deadline resumes its timeout edge.
