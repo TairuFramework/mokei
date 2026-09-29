@@ -232,9 +232,11 @@ const agent = new AgentSession({ session, toolApproval: flows.wrapApproval('ask'
    context on that host;
 3. creates the `TaskManager` (memory store unless `store` is passed) with the server's
    `recover` callback;
-4. runs `await tasks.recover(tools)` before registering anything, so persisted runs are served
-   with workers from the first request;
-5. registers the server as a direct context under `key`;
+4. runs `await tasks.recover(recoveryTools)` before registering anything, so persisted runs are
+   served with workers from the first request (`recoveryTools`: see Recovery);
+5. registers the server as a direct context under `key` with `addDirectContext`, passing an
+   enabled `ContextTool` entry for `check_flow`, `run_flow` and every registered-flow tool, so
+   the agent's model tools and callable-name gate include them from the first turn;
 6. returns `{ wrapApproval(strategy): ToolApprovalStrategy, dispose() }`.
 
 If a step after 1 throws, the helper rolls back what it did (removes the context, forgets the
@@ -353,13 +355,22 @@ best-effort: a cancel failure is logged and does not change the run's outcome.
 
 ### Recovery
 
+The tool map given to `tasks.recover` is `recoveryTools`: the server's live tools, plus a
+lookup that resolves any other `flow_`-prefixed name to a recovery-only definition (the flow
+result output schema, a handler that is never called). The manager then invokes the callback
+for a task whose registered flow was removed since the crash, instead of failing it as
+interrupted before the callback runs. The recovery-only definition is never listed or
+callable.
+
 The server's `recover(record, resume)` callback:
 
 0. When the stored `RunState` is `ended`, `error` or `aborted` (the crash came after the final
    checkpoint, before settlement), resumes a worker that settles from the stored state as End
    describes. The outcome was durably committed, so no digest or catalogue check applies and
    the graph does not advance.
-1. For a registered flow, compares the stored `digest` with the registered flow's before
+1. For a registered flow that is no longer registered, resumes a worker that cancels listed
+   siblings and throws `RPCError({ code: -32603, message: 'Flow definition changed' })`.
+   For a registered flow, compares the stored `digest` with the registered flow's before
    building anything. A mismatch resumes a worker that cancels listed siblings and throws
    `RPCError({ code: -32603, message: 'Flow definition changed' })`.
 2. Rebuilds the graph and re-checks the flow against the current catalogue. A failing check
@@ -431,8 +442,9 @@ it matters when the application passes a persistent `TaskStore`.
     after `requestInput` persisted (attached), after the answer but before the next checkpoint
     (`inputSeq` incremented), a second crash after issuing the incremented key but before its
     checkpoint (attached), and with the deadline already past;
-  - terminal checkpoint followed by a registered-flow change or catalogue drift: settles from
-    the stored outcome;
+  - terminal checkpoint followed by a registered-flow change, removal, or catalogue drift:
+    settles from the stored outcome; a non-terminal run of a removed flow fails
+    `Flow definition changed`;
   - concurrent runs at different depths send the right `io.mokei/flow-depth`; predictor calls
     carry `<runID>:<invocationID>:predict`;
   - depth: absent, invalid and at the limit;
@@ -444,7 +456,8 @@ it matters when the application passes a persistent `TaskStore`.
     a sibling task handle but before the checkpoint, and checkpoint conflicts with status and
     input writes. Each asserts no dispatch outside the approved set, no unlisted sibling task
     left running after cleanup, and a recoverable parent record.
-- Session wiring: each `toolApproval` strategy through `wrapApproval`, one prompt per run, no
+- Session wiring: a newly wired `AgentSession` advertises and executes `key:run_flow` and a
+  registered-flow tool without an extra `host.setup`; each `toolApproval` strategy through `wrapApproval`, one prompt per run, no
   task without a grant, grants single-use; two concurrent identical calls where only the
   approved one's token is accepted; an approved call that becomes unavailable before dispatch
   leaves no usable grant; an expired token is refused; recursion refused between two flow
