@@ -114,14 +114,65 @@ describe('mokei tasks over HTTP', () => {
   })
 
   test('returns final content after a task listen notification', async () => {
-    const { client, server } = await http()
-    const id = await taskID(client, TASK_COMPLETE_TOOL)
+    const server = await startMokeiTasksHTTPServer()
+    servers.push(server)
+    const notifications: Array<Record<string, unknown>> = []
+    let listenOpened = false
+    const wireClient = createHTTPClient({
+      url: server.url,
+      protocolVersion: '2026-07-28',
+      fetchMiddleware: (next) => async (url, init) => {
+        const response = await next(url, init)
+        let request: { method?: unknown } | undefined
+        try {
+          request = JSON.parse(String(init?.body)) as { method?: unknown }
+        } catch {}
+        if (request?.method === 'subscriptions/listen' && response.body != null) {
+          listenOpened = true
+          const reader = response.clone().body?.getReader()
+          if (reader != null) {
+            void (async () => {
+              const decoder = new TextDecoder()
+              let stream = ''
+              while (true) {
+                const chunk = await reader.read()
+                if (chunk.done) break
+                stream += decoder.decode(chunk.value, { stream: true })
+                const lines = stream.split('\n')
+                stream = lines.pop() ?? ''
+                for (const line of lines) {
+                  if (!line.startsWith('data: ')) continue
+                  try {
+                    const frame = JSON.parse(line.slice(6)) as Record<string, unknown>
+                    if (frame.method === 'notifications/tasks') notifications.push(frame)
+                  } catch {}
+                }
+              }
+            })().catch(() => {})
+          }
+        }
+        return response
+      },
+    })
+    clients.push(wireClient)
+    const id = await taskID(wireClient, TASK_COMPLETE_TOOL)
     const statuses: Array<string> = []
-    const waiting = client.tasks.wait(id, { onStatus: (status) => statuses.push(status.status) })
+    const waiting = wireClient.tasks.wait(id, {
+      onStatus: (status) => statuses.push(status.status),
+    })
     await vi.waitFor(() => expect(statuses).toContain('working'))
+    await vi.waitFor(() => expect(listenOpened).toBe(true))
     server.releaseCompletion()
     expect((await waiting).content).toEqual(taskResult('completed').content)
     expect(statuses).toContain('completed')
+    await vi.waitFor(() =>
+      expect(notifications).toContainEqual(
+        expect.objectContaining({
+          method: 'notifications/tasks',
+          params: expect.objectContaining({ taskId: id, status: 'completed' }),
+        }),
+      ),
+    )
   })
 
   test('fulfils elicitation input and cancels another task', async () => {
@@ -203,13 +254,15 @@ describe('bearer owned HTTP tasks', () => {
     if (reader == null) throw new Error('Expected listen stream')
     try {
       let stream = ''
-      while (!stream.split('\n').some((line) => line.startsWith('data: {'))) {
+      let data: string | undefined
+      const decoder = new TextDecoder()
+      while (data == null) {
         const chunk = await reader.read()
         if (chunk.done) throw new Error('Listen closed before acknowledgement')
-        stream += new TextDecoder().decode(chunk.value)
+        stream += decoder.decode(chunk.value, { stream: true })
+        const lines = stream.split('\n')
+        data = lines.slice(0, -1).find((line) => line.startsWith('data: {'))
       }
-      const data = stream.split('\n').find((line) => line.startsWith('data: {'))
-      if (data == null) throw new Error('Missing acknowledgement')
       const frame = JSON.parse(data.slice(6)) as Record<string, unknown>
       expect(frame).toMatchObject({
         method: 'notifications/subscriptions/acknowledged',
