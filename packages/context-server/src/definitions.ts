@@ -1,6 +1,6 @@
 import {
   type CallToolResult,
-  INTERNAL_ERROR,
+  type CreateTaskResult,
   INVALID_PARAMS,
   inferSchemaDraft,
   type InputSchema as ToolInputSchema,
@@ -9,7 +9,7 @@ import {
 import { RPCError, type RPCErrorParams } from '@mokei/context-rpc'
 import { createValidator, type FromSchema, type Schema } from '@sozai/schema'
 
-import { type InputRequiredResult, isInputRequiredResult } from './mrtr.js'
+import type { InputRequiredResult } from './mrtr.js'
 
 /**
  * A tool handler's `structuredContent` violated (or was absent against) its
@@ -20,6 +20,12 @@ import { type InputRequiredResult, isInputRequiredResult } from './mrtr.js'
 export class ToolOutputValidationError extends RPCError {}
 
 export type ToolOutputValidationErrorParams = RPCErrorParams
+
+export class ToolInputValidationError extends RPCError {
+  constructor(data: unknown) {
+    super({ code: INVALID_PARAMS, message: 'Invalid tool input', data })
+  }
+}
 
 import type {
   GenericToolDefinition,
@@ -53,6 +59,8 @@ export function createPrompt<
       return handler({
         input: request.input as Arguments,
         client: request.client,
+        meta: request.meta,
+        auth: request.auth,
         signal: request.signal,
         inputResponses: request.inputResponses,
         requestState: request.requestState,
@@ -73,6 +81,8 @@ export function createPrompt<
       return handler({
         input: validated.value,
         client: request.client,
+        meta: request.meta,
+        auth: request.auth,
         signal: request.signal,
         inputResponses: request.inputResponses,
         requestState: request.requestState,
@@ -117,74 +127,28 @@ export function createTool<
     draft: inferSchemaDraft(inputSchema),
     strict: false,
   })
-  const validateOutput =
-    outputSchema == null
-      ? undefined
-      : createValidator(outputSchema as Schema, {
-          draft: inferSchemaDraft(outputSchema as Schema),
-          strict: false,
-        })
-
-  const finalizeResult = (result: CallToolResult): CallToolResult => {
-    if (validateOutput == null) {
-      return result
-    }
-    if (result.structuredContent == null) {
-      throw new ToolOutputValidationError({
-        code: INTERNAL_ERROR,
-        message: 'Invalid tool output',
-        data: {
-          issues: [{ message: 'Tool declares an outputSchema but returned no structuredContent' }],
-        },
-      })
-    }
-    const validated = validateOutput(result.structuredContent)
-    if (validated.issues != null) {
-      throw new ToolOutputValidationError({
-        code: INTERNAL_ERROR,
-        message: 'Invalid tool output',
-        data: {
-          issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
-        },
-      })
-    }
-    if (result.content == null) {
-      return {
-        ...result,
-        content: [{ type: 'text', text: JSON.stringify(result.structuredContent) }],
-      }
-    }
-    return result
-  }
-
   const wrappedHandler = async (
     request: HandlerRequest<{ input: Record<string, unknown> }>,
-  ): Promise<CallToolResult | InputRequiredResult> => {
+  ): Promise<CallToolResult | InputRequiredResult | CreateTaskResult> => {
     const validated = validateInput(request.input)
     if (validated.issues != null) {
-      throw new RPCError({
-        code: INVALID_PARAMS,
-        message: 'Invalid tool input',
-        data: {
-          issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
-        },
+      throw new ToolInputValidationError({
+        issues: validated.issues.map((issue) => ({ message: issue.message, path: issue.path })),
       })
     }
     const result = await handler({
       input: validated.value,
       client: request.client,
+      meta: request.meta,
+      auth: request.auth,
       progress: request.progress,
       signal: request.signal,
+      ...(request.task == null ? {} : { task: request.task }),
       inputResponses: request.inputResponses,
       requestState: request.requestState,
       mintRequestState: request.mintRequestState,
     })
-    // A suspension carries no `structuredContent` by construction -- it is not an answer, so it
-    // must never reach output-schema validation. Pass it through untouched.
-    if (isInputRequiredResult(result)) {
-      return result
-    }
-    return finalizeResult(result as CallToolResult)
+    return result as CallToolResult | InputRequiredResult | CreateTaskResult
   }
 
   const definition: GenericToolDefinition = {

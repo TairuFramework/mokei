@@ -12,8 +12,8 @@
 - **MCP tools.** `check_flow` / `run_flow` in `mcp-servers/system-one`, returning `formatIssues`
   output so a model can repair a flow.
   `run_flow` returns a durable handle through the MCP Tasks extension
-  (`io.modelcontextprotocol/tasks`), which mokei is adding on the `feat/mcp-tasks-extension`
-  branch. Build these tools after it lands.
+  (`io.modelcontextprotocol/tasks`), now implemented
+  ([MCP Tasks extension](../completed/2026-09-29-mcp-tasks-extension.complete.md)).
 - **`AgentSession` integration.** Flows gating or routing session turns. The runtime has no
   session dependency, so this lives in the session layer.
 - **Tracer version.** Pass the package version to `createTracerFactory` once the build keeps JSON

@@ -17,6 +17,7 @@ test('verifies a DID-issued token bound to the resource', async () => {
   const verifier = createDIDVerifier()
   const info = await verifier.verifyAccessToken(token, { resource })
   expect(info.subject).toBe(identity.id)
+  expect(info.issuer).toBe(identity.id)
   expect(info.scopes).toEqual(['read'])
 })
 

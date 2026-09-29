@@ -83,6 +83,7 @@ test('verifies an RS256 JWT against a JWKS', async () => {
   })
   const info = await verifier.verifyAccessToken(token, { resource })
   expect(info.subject).toBe('user-2')
+  expect(info.issuer).toBe(issuer)
   expect(info.scopes).toEqual(['read', 'write'])
 })
 
@@ -100,6 +101,7 @@ test('verifies an ES256 JWT against a JWKS', async () => {
   })
   const info = await verifier.verifyAccessToken(token, { resource })
   expect(info.subject).toBe('user-1')
+  expect(info.issuer).toBe(issuer)
   expect(info.scopes).toEqual(['read'])
 })
 

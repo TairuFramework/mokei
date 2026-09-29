@@ -1,12 +1,14 @@
 import type {
   CallToolRequest,
   CallToolResult,
+  ClientCapabilities,
   ClientMessage,
   ClientNotification,
   ClientRequest,
   CommonNotifications,
   CreateMessageRequest,
   CreateMessageResult,
+  CreateTaskResult,
   ElicitRequest,
   ElicitResult,
   GetPromptRequest,
@@ -33,10 +35,12 @@ import type {
   Tool,
 } from '@mokei/context-protocol'
 import {
+  declaresTasksExtension,
   ENVELOPE_VIOLATION,
   INPUT_REQUEST_CAPABILITIES,
   INTERNAL_ERROR,
   INVALID_PARAMS,
+  isCreateTaskResult,
   isHandshakeRequired,
   isPerRequestLogLevel,
   META_CLIENT_CAPABILITIES,
@@ -46,6 +50,7 @@ import {
   MISSING_REQUIRED_CLIENT_CAPABILITY,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
+  TASKS_EXTENSION,
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
 import {
@@ -60,7 +65,7 @@ import { defer } from '@sozai/async'
 import { createValidator, type Schema } from '@sozai/schema'
 
 import { applyCacheHints } from './cache.js'
-import { ToolOutputValidationError, toResourceHandlers } from './definitions.js'
+import { toResourceHandlers } from './definitions.js'
 import { buildDiscoverResult } from './discover.js'
 import {
   defaultMintRequestState,
@@ -79,12 +84,14 @@ import {
   type SubscriptionSink,
   SubscriptionWriter,
 } from './subscriptions.js'
+import type { TaskContext, TaskManager } from './task-manager.js'
+import type { JSONValue, TaskOwner } from './task-store.js'
+import { settleToolOutcome } from './tool-outcome.js'
 import { withRequestMeta } from './trace.js'
 import type {
   ClientInitialize,
   CompleteHandler,
   GenericPromptHandler,
-  GenericToolHandler,
   LogParams,
   PromptDefinitions,
   ResourceDefinitions,
@@ -124,6 +131,15 @@ const validateClientMessage = createValidator<Schema, ClientMessage>({
   anyOf: PROTOCOL_VERSIONS.map((version) => PROTOCOLS[version].clientMessage),
 } as Schema)
 
+function requireTasksExtension(capabilities: ClientCapabilities | undefined): void {
+  if (declaresTasksExtension(capabilities)) return
+  throw new RPCError({
+    code: MISSING_REQUIRED_CLIENT_CAPABILITY,
+    message: 'Client did not declare the tasks extension',
+    data: { requiredCapabilities: { extensions: { [TASKS_EXTENSION]: {} } } },
+  })
+}
+
 export type CacheHints = {
   cacheScope?: 'public' | 'private'
   ttlMs?: number
@@ -141,10 +157,12 @@ export type ServerConfig = {
   prompts?: PromptDefinitions
   resources?: ResourceDefinitions
   tools?: ToolDefinitions
+  tasks?: TaskManager
 }
 
 export type ServerParams = ServerConfig & {
   transport: ServerTransport
+  auth?: TaskOwner & { expiresAt?: number }
   /**
    * Owns resource subscriptions (SEP-1391 `subscriptions/listen`): creates and owns a
    * {@link SubscriptionHub} bound to this server's own `events`, disposing it on teardown.
@@ -225,8 +243,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #promptHandlers: Record<string, GenericPromptHandler> = {}
   #promptsList: Array<Prompt> = []
   #resources?: ResourceHandlers
-  #toolHandlers: Record<string, GenericToolHandler> = {}
+  #tools: ToolDefinitions = {}
   #toolsList: Array<Tool> = []
+  #tasks?: TaskManager
+  #auth?: TaskOwner
+  #listenExpiresAt?: number
   #connectionID: string
   #subscriptionHub?: SubscriptionHub
   // True when this server created the hub (owner) and must dispose it; false when it borrows one.
@@ -248,6 +269,19 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       log: this.log.bind(this),
     }
     this.#cache = params.cache
+    this.#tasks = params.tasks
+    this.#listenExpiresAt = params.auth?.expiresAt
+    this.#auth =
+      params.auth == null
+        ? undefined
+        : {
+            ...(params.auth.issuer == null ? {} : { issuer: params.auth.issuer }),
+            subject: params.auth.subject,
+            scopes: [...params.auth.scopes],
+          }
+    if (params.tasks != null) {
+      this.#capabilities.extensions = { [TASKS_EXTENSION]: {} }
+    }
     this.#completeHandler = params.complete
     this.#protocolVersions = params.protocolVersions
     // Freeze a copy up front so the guard below and every later `resolveRequestState` see the exact
@@ -301,7 +335,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     this.#connectionID = params.connectionID ?? `context-server-${nextConnectionID++}`
     if (params.subscriptions === true) {
-      this.#subscriptionHub = createSubscriptionHub({ events: this.events })
+      this.#subscriptionHub = createSubscriptionHub({ events: this.events, tasks: this.#tasks })
       this.#ownsHub = true
     } else if (params.subscriptionHub != null) {
       this.#subscriptionHub = params.subscriptionHub
@@ -316,7 +350,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
 
     for (const [name, tool] of Object.entries(params.tools ?? {})) {
       const { handler, ...info } = tool
-      this.#toolHandlers[name] = handler
+      this.#tools[name] = tool
       this.#toolsList.push({ name, ...info })
     }
     this.#toolsList.sort((a, b) => a.name.localeCompare(b.name))
@@ -530,7 +564,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     // `2025-11-25` has no MRTR, so `inputResponses`/`requestState` are ordinary params there and
     // must not be lifted: a peer is entitled to a tool argument by either name on that revision.
     const { params: liftedParams, lifted } =
-      protocol.inputRequestMethods.size > 0
+      protocol.inputRequestMethods.size > 0 && request.method !== 'tasks/update'
         ? liftRetryParams(request.params)
         : { params: request.params, lifted: {} }
     // `verify` runs before the handler and its refusal must answer the request with -32602
@@ -557,8 +591,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     const liftedRequest = { ...request, params: liftedParams } as ClientRequest
     const client = this.#createClient(protocol, protocol.readRequestMeta(request).logLevel)
+    const handlerMeta = (meta ?? {}) as Record<string, JSONValue>
     const result = await withRequestMeta(meta, () => {
-      return this.#dispatchRequest(liftedRequest, protocol, client, signal, mrtr)
+      return this.#dispatchRequest(liftedRequest, protocol, client, signal, mrtr, handlerMeta)
     })
     // A held `subscriptions/listen` response is already the wrapped terminal (or, more precisely,
     // its `terminal` promise resolves to one): the RPC layer writes it verbatim without wrapping,
@@ -604,6 +639,19 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         serverInfo: this.#serverInfo,
       }) as ServerResult
     }
+    if (isCreateTaskResult(result)) {
+      if (
+        request.method !== 'tools/call' ||
+        protocol.version !== '2026-07-28' ||
+        this.#tasks == null ||
+        !declaresTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
+      ) {
+        throw new RPCError({ code: INTERNAL_ERROR, message: 'Task result without task context' })
+      }
+      return protocol.wrapResult(result as unknown as Record<string, unknown>, {
+        serverInfo: this.#serverInfo,
+      }) as ServerResult
+    }
     const body = protocol.requiresCacheHints
       ? applyCacheHints(request.method, result as Record<string, unknown>, this.#cache)
       : (result as Record<string, unknown>)
@@ -616,38 +664,72 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     client: ServerClient,
     signal: AbortSignal,
     mrtr: MRTRContext,
-  ): Promise<ServerResult | InputRequiredResult | HeldResponse<ServerResult>> {
+    meta: Record<string, JSONValue>,
+  ): Promise<ServerResult | InputRequiredResult | CreateTaskResult | HeldResponse<ServerResult>> {
     switch (request.method) {
       case 'completion/complete':
         if (this.#completeHandler == null) {
           break
         }
-        return await this.#completeHandler({ client, params: request.params, signal, ...mrtr })
-      case 'initialize':
+        return await this.#completeHandler({
+          client,
+          params: request.params,
+          signal,
+          meta,
+          auth: this.#auth,
+          ...mrtr,
+        })
+      case 'initialize': {
         this.#clientInitialize = request.params
         this.events.emit('initialize', request.params)
+        const capabilities = { ...this.#capabilities }
+        if (
+          protocol.version === '2025-11-25' &&
+          capabilities.extensions?.[TASKS_EXTENSION] != null
+        ) {
+          capabilities.extensions = { ...capabilities.extensions }
+          delete capabilities.extensions[TASKS_EXTENSION]
+          if (Object.keys(capabilities.extensions).length === 0) {
+            delete capabilities.extensions
+          }
+        }
         return {
-          capabilities: this.#capabilities,
+          capabilities,
           protocolVersion: protocol.version,
           serverInfo: this.#serverInfo,
         } satisfies InitializeResult
+      }
       case 'logging/setLevel':
         this.#clientLoggingLevel = request.params.level
         return {}
       case 'prompts/get':
-        return await this.#getPrompt(request, client, signal, mrtr)
+        return await this.#getPrompt(request, client, signal, mrtr, meta)
       case 'prompts/list':
         return { prompts: this.#promptsList, ...this.#cache }
       case 'resources/list':
         if (this.#resources == null) {
           break
         }
-        return this.#resources.list({ client, params: request.params, signal, ...mrtr })
+        return this.#resources.list({
+          client,
+          params: request.params,
+          signal,
+          meta,
+          auth: this.#auth,
+          ...mrtr,
+        })
       case 'resources/read':
         if (this.#resources == null) {
           break
         }
-        return this.#resources.read({ client, params: request.params, signal, ...mrtr })
+        return this.#resources.read({
+          client,
+          params: request.params,
+          signal,
+          meta,
+          auth: this.#auth,
+          ...mrtr,
+        })
       case 'resources/templates/list':
         if (this.#resources == null) {
           break
@@ -656,6 +738,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           client,
           params: request.params,
           signal,
+          meta,
+          auth: this.#auth,
           ...mrtr,
         })
       case 'server/discover':
@@ -667,9 +751,30 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         if (this.#subscriptionHub == null) {
           break
         }
+        if (request.params.notifications.taskIds !== undefined) {
+          if (this.#tasks == null) break
+          requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
+        }
         return this.#listen(request as SubscriptionsListenRequest, protocol, signal)
+      case 'tasks/get':
+        if (this.#tasks == null) break
+        requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
+        return {
+          ...(await this.#tasks.get(request.params.taskId, this.#auth)),
+          resultType: 'complete',
+        }
+      case 'tasks/update':
+        if (this.#tasks == null) break
+        requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
+        await this.#tasks.update(request.params.taskId, request.params.inputResponses, this.#auth)
+        return { resultType: 'complete' }
+      case 'tasks/cancel':
+        if (this.#tasks == null) break
+        requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
+        await this.#tasks.cancel(request.params.taskId, this.#auth)
+        return { resultType: 'complete' }
       case 'tools/call':
-        return await this.#callTool(request, client, signal, mrtr)
+        return await this.#callTool(request, protocol, client, signal, mrtr, meta)
       case 'tools/list':
         return { tools: this.#toolsList, ...this.#cache }
     }
@@ -678,16 +783,37 @@ export class ContextServer extends ContextRPC<ServerTypes> {
 
   async #callTool(
     request: CallToolRequest,
+    protocol: ProtocolDefinition,
     client: ServerClient,
     signal: AbortSignal,
     mrtr: MRTRContext,
-  ): Promise<CallToolResult | InputRequiredResult> {
+    meta: Record<string, JSONValue>,
+  ): Promise<CallToolResult | InputRequiredResult | CreateTaskResult> {
     const name = request.params.name
-    const handler = Object.hasOwn(this.#toolHandlers, name) ? this.#toolHandlers[name] : undefined
-    if (handler == null) {
+    const tool = Object.hasOwn(this.#tools, name) ? this.#tools[name] : undefined
+    if (tool == null) {
       // "Errors in finding the tool" are MCP protocol errors, per the spec.
       throw new RPCError({ code: INVALID_PARAMS, message: `Tool ${name} not found` })
     }
+    const clientCapabilities = protocol.readRequestMeta(request).clientCapabilities
+    const tasks = this.#tasks
+    const task: TaskContext | undefined =
+      protocol.version === '2026-07-28' &&
+      tasks != null &&
+      declaresTasksExtension(clientCapabilities)
+        ? {
+            run: (work, options) =>
+              tasks.create({
+                toolName: name,
+                tool,
+                clientCapabilities: clientCapabilities ?? {},
+                owner: this.#auth,
+                requestMeta: meta,
+                work,
+                ...options,
+              }),
+          }
+        : undefined
     const progressToken = request.params._meta?.progressToken
     const progress =
       progressToken == null
@@ -695,32 +821,38 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         : (params: { progress: number; total?: number; message?: string }) => {
             void this.notify('progress', { ...params, progressToken }).catch(() => {})
           }
+    let outcome: { result: CallToolResult } | { error: unknown }
     try {
-      return await handler({
+      const result = await tool.handler({
         // The wire calls it `arguments` (MCP `tools/call`); handlers receive it as `input`,
         // the thing the tool's `inputSchema` describes.
         input: request.params.arguments ?? {},
         client,
+        meta,
+        auth: this.#auth,
         progress,
         signal,
+        ...(task == null ? {} : { task }),
         ...mrtr,
       })
+      if (isInputRequiredResult(result)) {
+        return result
+      }
+      if (isCreateTaskResult(result)) {
+        return result
+      }
+      outcome = { result }
     } catch (cause) {
-      // Tool-execution and input-validation failures (SEP-1303) are reported
-      // inside the result so the model can see and self-correct, not as
-      // protocol errors. Re-throw genuine cancellation.
       if (signal.aborted) {
         throw cause
       }
-      // An outputSchema violation is the server author's own contract breach,
-      // not a tool failure, so it must cross the wire as a JSON-RPC error
-      // rather than be hidden in an isError result.
-      if (cause instanceof ToolOutputValidationError) {
-        throw cause
-      }
-      const message = cause instanceof Error ? cause.message : String(cause)
-      return { content: [{ type: 'text', text: message }], isError: true }
+      outcome = { error: cause }
     }
+    const settled = settleToolOutcome(tool, outcome)
+    if ('error' in settled) {
+      throw new RPCError(settled.error)
+    }
+    return settled.result
   }
 
   async #getPrompt(
@@ -728,6 +860,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     client: ServerClient,
     signal: AbortSignal,
     mrtr: MRTRContext,
+    meta: Record<string, JSONValue>,
   ): Promise<GetPromptResult | InputRequiredResult> {
     const name = request.params.name
     const handler = Object.hasOwn(this.#promptHandlers, name)
@@ -736,7 +869,14 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (handler == null) {
       throw new RPCError({ code: INVALID_PARAMS, message: `Prompt ${name} not found` })
     }
-    return await handler({ input: request.params.arguments, client, signal, ...mrtr })
+    return await handler({
+      input: request.params.arguments,
+      client,
+      signal,
+      meta,
+      auth: this.#auth,
+      ...mrtr,
+    })
   }
 
   /**
@@ -757,6 +897,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const hub = this.#subscriptionHub as SubscriptionHub
     const id = request.id
     const filter = request.params.notifications
+    const acceptedTaskIDs =
+      filter.taskIds === undefined ? undefined : await hub.acceptTaskIDs(filter.taskIds, this.#auth)
+    const acceptedFilter =
+      acceptedTaskIDs === undefined ? filter : { ...filter, taskIds: acceptedTaskIDs }
 
     const terminal = defer<ServerResult>()
     // Suppress unhandled-rejection in the narrow window before `#holdRequest` attaches its own
@@ -820,7 +964,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     await writer.enqueue({
       jsonrpc: '2.0',
       method: 'notifications/subscriptions/acknowledged',
-      params: { notifications: filter },
+      params: { notifications: acceptedFilter },
     } as unknown as ServerNotification)
 
     // Build the held response before registering, so `held.written` exists before the entry can be
@@ -834,6 +978,15 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       connectionID: this.#connectionID,
       subscriptionID: id,
       filter,
+      acceptedTaskIDs,
+      auth: this.#auth,
+      expiresAt: this.#listenExpiresAt,
+      expire: () => {
+        const reason = new Error('Listen authentication expired')
+        writer.abort(reason)
+        teardown(reason)
+        sink.close(reason)
+      },
       deliver: (notification) => writer.enqueue(notification),
       // Graceful teardown: resolve the terminal (only `result._meta[subscriptionId]`, no
       // `resultType`), then await its write so `endAllGracefully()` never reports completion before

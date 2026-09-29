@@ -17,6 +17,7 @@ export {
   type CreateToolParams,
   createPrompt,
   createTool,
+  ToolInputValidationError,
   ToolOutputValidationError,
   type ToolOutputValidationErrorParams,
 } from './definitions.js'
@@ -46,6 +47,30 @@ export {
   SubscriptionWriter,
   type SubscriptionWriterParams,
 } from './subscriptions.js'
+export {
+  createTaskManager,
+  type TaskContext,
+  type TaskHandle,
+  TaskInputKeyReusedError,
+  type TaskManager,
+  type TaskManagerParams,
+  type TaskResume,
+  type TaskWork,
+} from './task-manager.js'
+export {
+  createMemoryTaskStore,
+  type JSONValue,
+  type TaskOwner,
+  type TaskRecord,
+  type TaskStore,
+  TaskStoreConflictError,
+} from './task-store.js'
+export {
+  finalizeToolResult,
+  type SettledToolOutcome,
+  settleToolOutcome,
+  type ToolOutcome,
+} from './tool-outcome.js'
 export type {
   ExtractPromptTypes,
   ExtractServerTypes,

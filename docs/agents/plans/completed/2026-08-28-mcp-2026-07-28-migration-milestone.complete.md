@@ -110,8 +110,8 @@ record). Findings that bear on this milestone:
   `notifications/cancelled` — direct input to the "MRTR continuation lifetime vs
   cancellation" open question. (That question is now answered — see "Open questions" below:
   MRTR keeps no continuation state, so there was nothing for this finding to end up qualifying.)
-- **Tasks removed from the spec** (SEP-2663) — mokei never implemented them; the SDK
-  keeps the 2025-11-25 task vocabulary as deprecated interop-only types. Nothing to do.
+- **Extension update, 2026-09-29:** mokei now implements the `io.modelcontextprotocol/tasks`
+  extension on `2026-07-28`. The SDK's deprecated 2025-11-25 task vocabulary remains interop-only.
 - **Roots / sampling / logging deprecated** (SEP-2577) — annotation-only, ≥12-month
   window. Confirms D1–D3 pacing; also a session-layer concern (sampling is load-bearing
   there) tracked in the adoption backlog item.

@@ -1,4 +1,12 @@
-import { createTool, inputRequired, type ToolDefinitions } from '@mokei/context-server'
+import { INTERNAL_ERROR, INVALID_PARAMS } from '@mokei/context-protocol'
+import { RPCError } from '@mokei/context-rpc'
+import {
+  createTool,
+  inputRequired,
+  type ToolDefinitions,
+  ToolInputValidationError,
+  ToolOutputValidationError,
+} from '@mokei/context-server'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -283,6 +291,38 @@ describe('ContextHost Local Tools', () => {
   })
 
   describe('callNamespacedTool', () => {
+    test('passes metadata to local tools, including converted server tools', async () => {
+      const host = new ContextHost()
+      const received: Array<Record<string, unknown>> = []
+      host.addLocalTool({
+        name: 'direct',
+        inputSchema: { type: 'object' },
+        execute: ({ meta }) => {
+          received.push(meta)
+          return { content: [] }
+        },
+      })
+      host.addLocalTool(
+        toolToLocalTool({
+          name: 'converted',
+          definition: createTool({
+            description: 'converted',
+            inputSchema: { type: 'object' },
+            handler: ({ meta }) => {
+              received.push(meta)
+              return { content: [] }
+            },
+          }),
+        }),
+      )
+
+      await host.callNamespacedTool({ id: 'local:direct', _meta: { caller: 'direct' } })
+      await host.callNamespacedTool({ id: 'local:converted', _meta: { caller: 'converted' } })
+      await host.callLocalTool({ name: 'direct' })
+      expect(received).toEqual([{ caller: 'direct' }, { caller: 'converted' }, {}])
+      await host.dispose()
+    })
+
     test('routes local: prefixed tools to callLocalTool', async () => {
       const host = new ContextHost()
 
@@ -328,6 +368,145 @@ describe('ContextHost Local Tools', () => {
 
 describe('Server Tool to Local Tool Conversion', () => {
   describe('toolToLocalTool', () => {
+    const inputSchema = {
+      type: 'object',
+      properties: { count: { type: 'number' } },
+      required: ['count'],
+    } as const
+    const outputSchema = {
+      type: 'object',
+      properties: { count: { type: 'number' } },
+      required: ['count'],
+    } as const
+
+    test('rejects invalid structured output with its protocol error details', async () => {
+      const definition = createTool({
+        description: 'Invalid count',
+        inputSchema,
+        outputSchema,
+        handler: () => ({ structuredContent: { count: 'wrong' } }) as never,
+      })
+      const localTool = toolToLocalTool({ name: 'count', definition })
+
+      try {
+        await localTool.execute({ meta: {}, input: { count: 1 } })
+        throw new Error('Expected invalid output to throw')
+      } catch (error) {
+        expect(error).toBeInstanceOf(ToolOutputValidationError)
+        expect(error).toMatchObject({
+          code: INTERNAL_ERROR,
+          message: 'Invalid tool output',
+          data: { issues: [{ path: ['count'], message: expect.any(String) }] },
+        })
+      }
+
+      const host = new ContextHost()
+      host.addLocalTool(localTool)
+      await expect(host.callLocalTool({ name: 'count', arguments: { count: 1 } })).resolves.toEqual(
+        { content: [{ type: 'text', text: 'Invalid tool output' }], isError: true },
+      )
+    })
+
+    test('rejects missing structured output', async () => {
+      const definition = createTool({
+        description: 'Missing count',
+        inputSchema,
+        outputSchema,
+        handler: () => ({ content: [] }) as never,
+      })
+      const localTool = toolToLocalTool({ name: 'count', definition })
+
+      const execution = localTool.execute({ meta: {}, input: { count: 1 } })
+      await expect(execution).rejects.toBeInstanceOf(ToolOutputValidationError)
+      await expect(execution).rejects.toMatchObject({
+        code: INTERNAL_ERROR,
+        message: 'Invalid tool output',
+        data: {
+          issues: [{ message: 'Tool declares an outputSchema but returned no structuredContent' }],
+        },
+      })
+    })
+
+    test('backfills text content for valid structured-only output', async () => {
+      const definition = createTool({
+        description: 'Count',
+        inputSchema,
+        outputSchema,
+        handler: ({ input }) => ({ structuredContent: { count: input.count } }),
+      })
+      const host = new ContextHost()
+      const localTool = toolToLocalTool({ name: 'count', definition })
+      host.addLocalTool(localTool)
+
+      await expect(localTool.execute({ meta: {}, input: { count: 3 } })).resolves.toEqual({
+        structuredContent: { count: 3 },
+        content: [{ type: 'text', text: '{"count":3}' }],
+      })
+
+      await expect(host.callLocalTool({ name: 'count', arguments: { count: 3 } })).resolves.toEqual(
+        {
+          structuredContent: { count: 3 },
+          content: [{ type: 'text', text: '{"count":3}' }],
+        },
+      )
+    })
+
+    test('keeps invalid input as an Invalid tool input result through ContextHost', async () => {
+      const definition = createTool({
+        description: 'Count',
+        inputSchema,
+        outputSchema,
+        handler: ({ input }) => ({ structuredContent: { count: input.count } }),
+      })
+      const host = new ContextHost()
+      host.addLocalTool(toolToLocalTool({ name: 'count', definition }))
+
+      await expect(
+        host.callLocalTool({ name: 'count', arguments: { count: 'wrong' } }),
+      ).resolves.toEqual({
+        content: [{ type: 'text', text: 'Invalid tool input' }],
+        isError: true,
+      })
+    })
+
+    test('rejects invalid input with its original RPC validation details', async () => {
+      const definition = createTool({
+        description: 'Count',
+        inputSchema,
+        handler: () => ({ content: [] }),
+      })
+      const localTool = toolToLocalTool({ name: 'count', definition })
+      const execution = localTool.execute({ meta: {}, input: { count: 'wrong' } })
+
+      await expect(execution).rejects.toBeInstanceOf(RPCError)
+      await expect(execution).rejects.toBeInstanceOf(ToolInputValidationError)
+      await expect(execution).rejects.toMatchObject({
+        code: INVALID_PARAMS,
+        message: 'Invalid tool input',
+        data: { issues: [{ path: ['count'], message: expect.any(String) }] },
+      })
+    })
+
+    test('rejects with the original handler error while ContextHost returns a tool error', async () => {
+      const failure = new Error('Something went wrong')
+      const definition = createTool({
+        description: 'Fails',
+        inputSchema: { type: 'object' } as const,
+        handler: () => {
+          throw failure
+        },
+      })
+      const localTool = toolToLocalTool({ name: 'failing', definition })
+      const host = new ContextHost()
+      host.addLocalTool(localTool)
+
+      await expect(localTool.execute({ meta: {}, input: {} })).rejects.toBe(failure)
+      await expect(host.callLocalTool({ name: 'failing' })).resolves.toEqual({
+        content: [{ type: 'text', text: 'Something went wrong' }],
+        isError: true,
+      })
+    })
+
     test('converts a server tool definition to a local tool definition', async () => {
       const serverTool = createTool({
         description: 'Calculate math expression',
@@ -368,13 +547,13 @@ describe('Server Tool to Local Tool Conversion', () => {
       })
 
       const localTool = toolToLocalTool({ name: 'echo', definition: serverTool })
-      const result = await localTool.execute({ input: { message: 'hello' } })
+      const result = await localTool.execute({ meta: {}, input: { message: 'hello' } })
 
       expect(result.content).toHaveLength(1)
       expect(result.content[0]).toEqual({ type: 'text', text: 'Echo: hello' })
     })
 
-    test('provides stub client that throws for createMessage', async () => {
+    test('reports unavailable createMessage as a tool error', async () => {
       const serverTool = createTool({
         description: 'Tool that needs client',
         inputSchema: { type: 'object' } as const,
@@ -387,8 +566,8 @@ describe('Server Tool to Local Tool Conversion', () => {
 
       const localTool = toolToLocalTool({ name: 'needsClient', definition: serverTool })
 
-      await expect(localTool.execute({ input: {} })).rejects.toThrow(
-        'createMessage() is not available for local tools',
+      await expect(localTool.execute({ meta: {}, input: {} })).rejects.toThrow(
+        'createMessage() is not available for local tools. Local tools run outside of an MCP server context and cannot access client methods.',
       )
     })
 
@@ -401,7 +580,7 @@ describe('Server Tool to Local Tool Conversion', () => {
 
       const localTool = toolToLocalTool({ name: 'suspends', definition: serverTool })
 
-      await expect(localTool.execute({ input: {} })).rejects.toThrow(
+      await expect(localTool.execute({ meta: {}, input: {} })).rejects.toThrow(
         'This tool suspended on input (MRTR, SEP-2322), which is not available for local tools.',
       )
     })
@@ -418,7 +597,7 @@ describe('Server Tool to Local Tool Conversion', () => {
       })
 
       const localTool = toolToLocalTool({ name: 'logger', definition: serverTool })
-      const result = await localTool.execute({ input: {} })
+      const result = await localTool.execute({ meta: {}, input: {} })
 
       expect(result.content[0]).toEqual({ type: 'text', text: 'logged' })
     })
@@ -436,7 +615,7 @@ describe('Server Tool to Local Tool Conversion', () => {
       })
 
       const localTool = toolToLocalTool({ name: 'signalChecker', definition: serverTool })
-      await localTool.execute({ input: {} })
+      await localTool.execute({ meta: {}, input: {} })
 
       expect(receivedSignal).toBeDefined()
       expect(receivedSignal?.aborted).toBe(false)
@@ -487,7 +666,7 @@ describe('Server Tool to Local Tool Conversion', () => {
       if (firstLocal == null) {
         throw new Error('expected a converted tool')
       }
-      const result = await firstLocal.execute({ input: { name: 'World' } })
+      const result = await firstLocal.execute({ meta: {}, input: { name: 'World' } })
 
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello, World!' })
     })

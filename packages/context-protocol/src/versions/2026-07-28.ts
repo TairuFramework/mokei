@@ -3,7 +3,12 @@ import type { FromSchema, Schema } from '@sozai/schema'
 import { clientResponse } from '../client.js'
 import { completeRequest, completeResult } from '../completion.js'
 import { elicitRequestParams, elicitResult } from '../elicitation.js'
-import { clientCapabilities, implementation, serverCapabilities } from '../initialize.js'
+import {
+  type ClientCapabilities,
+  clientCapabilities,
+  implementation,
+  serverCapabilities,
+} from '../initialize.js'
 import { loggingLevel, loggingMessageNotification } from '../logging.js'
 import {
   getPromptRequest,
@@ -27,8 +32,10 @@ import type { Request } from '../rpc.js'
 import {
   cacheableResult,
   cancelledNotification,
+  error,
   errorResponse,
   metadata,
+  notification,
   progressNotification,
   request,
   response,
@@ -62,6 +69,11 @@ export const META_CLIENT_INFO = 'io.modelcontextprotocol/clientInfo'
 export const META_CLIENT_CAPABILITIES = 'io.modelcontextprotocol/clientCapabilities'
 export const META_LOG_LEVEL = 'io.modelcontextprotocol/logLevel'
 export const META_SERVER_INFO = 'io.modelcontextprotocol/serverInfo'
+export const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks'
+
+export function declaresTasksExtension(capabilities: ClientCapabilities | undefined): boolean {
+  return capabilities?.extensions?.[TASKS_EXTENSION] != null
+}
 
 /** The protocol `_meta` every request carries in this revision. */
 export const requestMeta = {
@@ -258,6 +270,204 @@ export const inputResponses = {
   type: 'object',
 } as const satisfies Schema
 
+export const taskStatus = {
+  enum: ['working', 'input_required', 'completed', 'failed', 'cancelled'],
+  type: 'string',
+} as const satisfies Schema
+export type TaskStatus = FromSchema<typeof taskStatus>
+
+export const task = {
+  properties: {
+    taskId: { type: 'string' },
+    status: taskStatus,
+    statusMessage: { type: 'string' },
+    createdAt: { format: 'date-time', type: 'string' },
+    lastUpdatedAt: { format: 'date-time', type: 'string' },
+    ttlMs: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+    pollIntervalMs: { type: 'integer' },
+  },
+  required: ['taskId', 'status', 'createdAt', 'lastUpdatedAt', 'ttlMs'],
+  type: 'object',
+} as const satisfies Schema
+export type Task = FromSchema<typeof task>
+
+const detailedTaskProperties = {
+  ...task.properties,
+  _meta: metadata,
+  resultType: { const: 'complete', type: 'string' },
+} as const
+
+export const detailedTask = {
+  allOf: [
+    task,
+    {
+      anyOf: [
+        {
+          additionalProperties: false,
+          properties: { ...detailedTaskProperties, status: { const: 'working' } },
+          required: ['status'],
+          type: 'object',
+        },
+        {
+          additionalProperties: false,
+          properties: {
+            ...detailedTaskProperties,
+            status: { const: 'input_required' },
+            inputRequests,
+          },
+          required: ['status', 'inputRequests'],
+          type: 'object',
+        },
+        {
+          additionalProperties: false,
+          properties: {
+            ...detailedTaskProperties,
+            status: { const: 'completed' },
+            result: callToolResult,
+          },
+          required: ['status', 'result'],
+          type: 'object',
+        },
+        {
+          additionalProperties: false,
+          properties: { ...detailedTaskProperties, status: { const: 'failed' }, error },
+          required: ['status', 'error'],
+          type: 'object',
+        },
+        {
+          additionalProperties: false,
+          properties: { ...detailedTaskProperties, status: { const: 'cancelled' } },
+          required: ['status'],
+          type: 'object',
+        },
+      ],
+    },
+  ],
+} as const satisfies Schema
+export type DetailedTask =
+  | (Task & { status: 'working' })
+  | (Task & { status: 'input_required'; inputRequests: Record<string, InputRequest> })
+  | (Task & { status: 'completed'; result: FromSchema<typeof callToolResult> })
+  | (Task & { status: 'failed'; error: FromSchema<typeof error> })
+  | (Task & { status: 'cancelled' })
+
+export const tasksGetRequest = {
+  allOf: [
+    request,
+    {
+      properties: {
+        method: { const: 'tasks/get', type: 'string' },
+        params: {
+          properties: { taskId: { type: 'string' } },
+          required: ['taskId'],
+          type: 'object',
+        },
+      },
+      required: ['method', 'params'],
+      type: 'object',
+    },
+  ],
+} as const satisfies Schema
+export type TasksGetRequest = FromSchema<typeof tasksGetRequest>
+
+export const tasksUpdateRequest = {
+  allOf: [
+    request,
+    {
+      properties: {
+        method: { const: 'tasks/update', type: 'string' },
+        params: {
+          properties: { taskId: { type: 'string' }, inputResponses },
+          required: ['taskId', 'inputResponses'],
+          type: 'object',
+        },
+      },
+      required: ['method', 'params'],
+      type: 'object',
+    },
+  ],
+} as const satisfies Schema
+export type TasksUpdateRequest = FromSchema<typeof tasksUpdateRequest>
+
+export const tasksCancelRequest = {
+  allOf: [
+    request,
+    {
+      properties: {
+        method: { const: 'tasks/cancel', type: 'string' },
+        params: {
+          properties: { taskId: { type: 'string' } },
+          required: ['taskId'],
+          type: 'object',
+        },
+      },
+      required: ['method', 'params'],
+      type: 'object',
+    },
+  ],
+} as const satisfies Schema
+export type TasksCancelRequest = FromSchema<typeof tasksCancelRequest>
+
+export const createTaskResult = {
+  additionalProperties: false,
+  properties: {
+    ...task.properties,
+    _meta: metadata,
+    resultType: { const: 'task', type: 'string' },
+  },
+  required: [...task.required, 'resultType'],
+  type: 'object',
+} as const satisfies Schema
+export type CreateTaskResult = Task & { resultType: 'task' }
+
+export function isCreateTaskResult(value: unknown): value is CreateTaskResult {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    (value as { resultType?: unknown }).resultType === 'task'
+  )
+}
+
+export const tasksGetResult = {
+  allOf: [
+    detailedTask,
+    {
+      properties: { resultType: { const: 'complete', type: 'string' } },
+      required: ['resultType'],
+      type: 'object',
+    },
+  ],
+} as const satisfies Schema
+export type TasksGetResult = DetailedTask & { resultType: 'complete' }
+
+export const tasksAcknowledgement = {
+  additionalProperties: false,
+  properties: { _meta: metadata, resultType: { const: 'complete', type: 'string' } },
+  required: ['resultType'],
+  type: 'object',
+} as const satisfies Schema
+export type TasksAcknowledgement = FromSchema<typeof tasksAcknowledgement>
+
+export const taskNotification = {
+  allOf: [
+    notification,
+    {
+      properties: {
+        method: { const: 'notifications/tasks', type: 'string' },
+        params: detailedTask,
+      },
+      required: ['method', 'params'],
+      type: 'object',
+    },
+  ],
+} as const satisfies Schema
+export type TaskNotification = {
+  [key: string]: unknown
+  jsonrpc: '2.0'
+  method: 'notifications/tasks'
+  params: DetailedTask
+}
+
 /** Requests a client may send in this revision, each carrying the required `_meta`. */
 export const clientRequest = {
   anyOf: [
@@ -270,10 +480,35 @@ export const clientRequest = {
     withProtocolMeta(withRetryParams(readResourceRequest)),
     withProtocolMeta(forbidRetryParams(listToolsRequest)),
     withProtocolMeta(withRetryParams(callToolRequest)),
+    withProtocolMeta(forbidRetryParams(tasksGetRequest)),
+    withProtocolMeta({
+      allOf: [
+        tasksUpdateRequest,
+        {
+          properties: { params: { not: { required: ['requestState'], type: 'object' } } },
+          required: ['params'],
+          type: 'object',
+        },
+      ],
+    }),
+    withProtocolMeta(forbidRetryParams(tasksCancelRequest)),
     withProtocolMeta(forbidRetryParams(subscriptionsListenRequest)),
   ],
 } as const satisfies Schema
-export type ClientRequest = FromSchema<typeof clientRequest>
+export type ClientRequest =
+  | FromSchema<typeof discoverRequest>
+  | FromSchema<typeof completeRequest>
+  | FromSchema<typeof getPromptRequest>
+  | FromSchema<typeof listPromptsRequest>
+  | FromSchema<typeof listResourcesRequest>
+  | FromSchema<typeof listResourceTemplatesRequest>
+  | FromSchema<typeof readResourceRequest>
+  | FromSchema<typeof listToolsRequest>
+  | FromSchema<typeof callToolRequest>
+  | TasksGetRequest
+  | TasksUpdateRequest
+  | TasksCancelRequest
+  | FromSchema<typeof subscriptionsListenRequest>
 
 /**
  * Notifications a client may send in this revision. `2025-11-25`'s `initialized` and
@@ -293,7 +528,7 @@ export type ClientNotification = FromSchema<typeof clientNotification>
 export const clientMessage = {
   anyOf: [clientRequest, clientNotification, clientResponse],
 } as const satisfies Schema
-export type ClientMessage = FromSchema<typeof clientMessage>
+export type ClientMessage = ClientRequest | ClientNotification | FromSchema<typeof clientResponse>
 
 /**
  * Notifications a server may send in this revision. `2025-11-25`'s
@@ -311,6 +546,7 @@ export const serverNotification = {
     toolListChangedNotification,
     promptListChangedNotification,
     subscriptionsAcknowledgedNotification,
+    taskNotification,
   ],
 } as const satisfies Schema
 
@@ -427,6 +663,8 @@ export const serverResult = {
   anyOf: [
     emptyResult,
     inputRequiredResult,
+    createTaskResult,
+    tasksGetResult,
     discoverResult,
     subscriptionsListenResult,
     withResultType(completeResult),
@@ -450,6 +688,8 @@ type CompleteResultOf<S extends Schema> = FromSchema<S> & { resultType: 'complet
 export type ServerResult =
   | FromSchema<typeof emptyResult>
   | FromSchema<typeof inputRequiredResult>
+  | CreateTaskResult
+  | TasksGetResult
   | FromSchema<typeof discoverResult>
   | FromSchema<typeof subscriptionsListenResult>
   | CompleteResultOf<typeof completeResult>
@@ -502,6 +742,9 @@ export const PROTOCOL = {
     'resources/templates/list',
     'tools/call',
     'tools/list',
+    'tasks/get',
+    'tasks/update',
+    'tasks/cancel',
     'subscriptions/listen',
   ]),
   // Mirrors `clientNotification` above: `notifications/initialized` and
@@ -564,7 +807,10 @@ export const PROTOCOL = {
   ): Record<string, unknown> => {
     return {
       ...value,
-      resultType: value.resultType === 'input_required' ? 'input_required' : 'complete',
+      resultType:
+        value.resultType === 'input_required' || value.resultType === 'task'
+          ? value.resultType
+          : 'complete',
       _meta: { ...asRecord(value._meta), [META_SERVER_INFO]: context.serverInfo },
     }
   },

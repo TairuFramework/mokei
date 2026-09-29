@@ -18,7 +18,7 @@ import type {
   Tool,
 } from '@mokei/context-protocol'
 import type { WithRequestOptions } from '@mokei/context-rpc'
-import { ContextServer, type ServerConfig } from '@mokei/context-server'
+import { ContextServer, type JSONValue, type ServerConfig } from '@mokei/context-server'
 import { type FetchMiddleware, type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
@@ -91,6 +91,7 @@ export type NamespacedToolParams = WithRequestOptions<{
 export type LocalToolParams = {
   name: string
   arguments?: Record<string, unknown>
+  _meta?: Record<string, JSONValue>
   signal?: AbortSignal
 }
 
@@ -633,7 +634,12 @@ export class ContextHost extends Disposer {
 
     // Check if this is a local tool
     if (isLocalToolID(id)) {
-      return this.callLocalTool({ name: getLocalToolName(id), arguments: args, signal })
+      return this.callLocalTool({
+        name: getLocalToolName(id),
+        arguments: args,
+        _meta: _meta as Record<string, JSONValue> | undefined,
+        signal,
+      })
     }
 
     const [key, name] = getContextToolInfo(id)
@@ -642,7 +648,7 @@ export class ContextHost extends Disposer {
 
   /** Call a local tool by name. Local tools run in-process, so there is no request to time out. */
   async callLocalTool(params: LocalToolParams): Promise<CallToolResult> {
-    const { name, arguments: args = {}, signal } = params
+    const { name, arguments: args = {}, _meta, signal } = params
 
     const localTool = this.#localTools.get(name)
     if (localTool == null) {
@@ -654,7 +660,7 @@ export class ContextHost extends Disposer {
 
     try {
       // The call carries `arguments` (wire vocabulary); the handler receives `input`.
-      return await localTool.execute({ input: args, signal })
+      return await localTool.execute({ input: args, meta: _meta ?? {}, signal })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       return {

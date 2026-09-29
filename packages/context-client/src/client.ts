@@ -8,6 +8,8 @@ import type {
   ClientResult,
   CompleteRequest,
   CompleteResult,
+  CreateTaskResult,
+  DetailedTask,
   DiscoverResult,
   GetPromptRequest,
   GetPromptResult,
@@ -41,11 +43,14 @@ import type {
   ServerRequest,
   SetLevelRequest,
   SubscriptionFilter,
+  TasksAcknowledgement,
+  TasksGetResult,
 } from '@mokei/context-protocol'
 import {
   INPUT_REQUEST_CAPABILITIES,
   INVALID_REQUEST,
   inferSchemaDraft,
+  isCreateTaskResult,
   isHandshakeRequired,
   isSupportedProtocolVersion,
   META_SUBSCRIPTION_ID,
@@ -53,11 +58,13 @@ import {
   PROTOCOL_VERSIONS,
   PROTOCOLS,
   serverMessage,
+  TASKS_EXTENSION,
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
 import {
   ContextRPC,
   type RequestOptions,
+  RequestTimeoutError,
   RPCError,
   splitRequestOptions,
   type WithRequestOptions,
@@ -91,6 +98,7 @@ import {
   SubscriptionProtocolError,
   type SubscriptionRetry,
 } from './subscriptions.js'
+import { TaskWaiter, type WaitForTaskParams } from './task-waiter.js'
 import { currentTraceMeta } from './trace.js'
 import {
   type ClientParams,
@@ -130,7 +138,7 @@ const SERVER_MESSAGE_VALIDATORS: Record<ProtocolVersion, Validator<ServerMessage
  * only starts once `#setup()` has settled `#protocol` -- but the fallback keeps the validator
  * total rather than making the read loop depend on that ordering.
  */
-const validateAnyServerMessage = createValidator(serverMessage)
+const validateAnyServerMessage = createValidator<Schema, ServerMessage>(serverMessage)
 
 export const DEFAULT_CLIENT_INFO: Implementation = {
   name: 'Mokei',
@@ -272,6 +280,23 @@ export type ClientEvents = {
   toolsListChanged: undefined
 }
 
+export type ClientTasks = {
+  get(taskID: string): Promise<TasksGetResult>
+  update(
+    taskID: string,
+    inputResponses: Record<string, InputResponse>,
+  ): Promise<TasksAcknowledgement>
+  cancel(taskID: string): Promise<TasksAcknowledgement>
+  wait(
+    taskID: string,
+    options?: {
+      signal?: AbortSignal
+      onStatus?: (status: DetailedTask) => void
+      toolName?: string
+    },
+  ): Promise<CallToolResult>
+}
+
 type HandleNotification = ProgressNotification | ServerNotification
 
 type ClientTypes = {
@@ -349,6 +374,18 @@ export class ContextClient<
   // as the read loop's first reads, so nothing buffered here is retained past that point.
   #setupBuffer: Array<ServerMessage> = []
   #toolOutputSchemas = new Map<string, Validator<unknown>>()
+  #taskWaiter: TaskWaiter | null = null
+  #tasks: ClientTasks = {
+    get: (taskID) => this.request('tasks/get', { taskId: taskID }),
+    update: (taskID, inputResponses) =>
+      this.request('tasks/update', { taskId: taskID, inputResponses }),
+    cancel: (taskID) => this.request('tasks/cancel', { taskId: taskID }),
+    wait: (taskID, options) => this.waitForTask({ taskID, ...options }),
+  }
+
+  get tasks(): ClientTasks {
+    return this.#tasks
+  }
 
   constructor(params: ClientParams) {
     // Indirected through a method so the validator tracks the resolved revision rather than
@@ -568,7 +605,7 @@ export class ContextClient<
       base._meta = { ...(base._meta as Record<string, unknown> | undefined), ...trace }
     }
     const decorated = protocol.decorateRequest(base, {
-      capabilities: this.#capabilities,
+      capabilities: this.#capabilitiesFor(protocol),
       clientInfo: this.#clientInfo,
       logLevel: this.#logLevel,
     })
@@ -768,6 +805,14 @@ export class ContextClient<
     this.#serverCapabilitySnapshot = result.capabilities ?? {}
   }
 
+  #capabilitiesFor(protocol: ProtocolDefinition): ClientCapabilities {
+    if (protocol.version !== '2026-07-28') return this.#capabilities
+    return {
+      ...this.#capabilities,
+      extensions: { ...this.#capabilities.extensions, [TASKS_EXTENSION]: {} },
+    }
+  }
+
   /**
    * Resolve `'auto'` through `server/discover` per
    * `specification/2026-07-28/basic/transports/stdio#backward-compatibility`.
@@ -834,7 +879,7 @@ export class ContextClient<
     const { result } = await this.#setupReader.driveDiscover({
       protocol,
       clientInfo: this.#clientInfo,
-      capabilities: this.#capabilities,
+      capabilities: this.#capabilitiesFor(protocol),
       logLevel: this.#logLevel,
     })
     return result
@@ -1034,7 +1079,7 @@ export class ContextClient<
     let driver = this.#subscriptionDriver
     if (driver == null) {
       driver = new SubscriptionDriver({
-        openListen: (filter, handlers) => this.#openListen(filter, handlers),
+        openListen: (filter, handlers) => this.#openResourceListen(filter, handlers),
         filter: this.#autoOpenFilter(),
         onNotification: (notification) => this.#handleSubscriptionNotification(notification),
         onError: (error) => this.#reportSubscriptionError(error),
@@ -1064,18 +1109,24 @@ export class ContextClient<
     return filter
   }
 
+  #openResourceListen(filter: SubscriptionFilter, handlers: ListenHandlers): ListenHandle {
+    return this.#openListen(filter, {
+      ...handlers,
+      onNotification: (notification) => {
+        if ((notification as { method?: unknown }).method === ACKNOWLEDGED_METHOD) {
+          const honored = (notification as { params?: { notifications?: SubscriptionFilter } })
+            .params?.notifications
+          if (honored != null) this.#honoredFilter = honored
+        }
+        handlers.onNotification(notification)
+      },
+    })
+  }
+
   /**
-   * The real `openListen` seam backing the driver: opens one `subscriptions/listen` stream
-   * exchange carrying `filter`, mapping the exchange's `progress`/`settle` frames onto the
-   * driver's `onNotification`/`onSettle`. Decorates the request with this revision's protocol
-   * envelope, exactly as `request()` does, so a real server sees the same `_meta`.
-   *
-   * Two things happen only here, at the layer that owns the wire id:
-   * - the `acknowledged` frame's subscriptionId (which equals this request's envelope id, or it
-   *   would not have routed to this exchange at all) is captured to verify the terminal result;
-   * - a terminal `result` settle is deferred by one microtask to read the terminal body off the
-   *   (already-resolved) exchange promise and confirm its `_meta` subscriptionId matches -- a
-   *   mismatch is surfaced as a protocol error rather than accepted as a graceful teardown.
+   * Opens one `subscriptions/listen` exchange and verifies its terminal subscriptionId.
+   * Resource filter state belongs to `#openResourceListen`, while task acknowledgements go
+   * directly to the task waiter.
    */
   #openListen(filter: SubscriptionFilter, handlers: ListenHandlers): ListenHandle {
     const protocol = this.#requireProtocol()
@@ -1085,7 +1136,7 @@ export class ContextClient<
       base._meta = { ...trace }
     }
     const params = protocol.decorateRequest(base, {
-      capabilities: this.#capabilities,
+      capabilities: this.#capabilitiesFor(protocol),
       clientInfo: this.#clientInfo,
       logLevel: this.#logLevel,
     })
@@ -1104,11 +1155,6 @@ export class ContextClient<
             const id = meta?.[META_SUBSCRIPTION_ID]
             if (typeof id === 'string' || typeof id === 'number') {
               subscriptionId = id
-            }
-            const honored = (notification as { params?: { notifications?: SubscriptionFilter } })
-              .params?.notifications
-            if (honored != null) {
-              this.#honoredFilter = honored
             }
           }
           handlers.onNotification(notification)
@@ -1581,32 +1627,38 @@ export class ContextClient<
     }
   }
 
-  callTool(
-    params: WithRequestOptions<ToolParams<T>> & { allowInputRequired?: false },
-  ): Promise<CallToolResult>
-  callTool(
-    params: WithRequestOptions<ToolParams<T>> & { allowInputRequired: true },
-  ): Promise<CallToolResult | InputRequiredResult>
-  callTool(
-    params: WithRequestOptions<ToolParams<T>> & { allowInputRequired: boolean },
-  ): Promise<CallToolResult | InputRequiredResult>
-  async callTool(
-    params: WithRequestOptions<ToolParams<T>>,
-  ): Promise<CallToolResult | InputRequiredResult> {
-    const [wireParams, options] = splitRequestOptions(params)
-    const result = await this.request(
-      'tools/call',
-      wireParams as CallToolRequest['params'],
-      options,
-    )
-    const validate = this.#toolOutputSchemas.get(params.name)
+  waitForTask(params: WaitForTaskParams): Promise<CallToolResult> {
+    this.#taskWaiter ??= new TaskWaiter({
+      request: async (method, requestParams) => {
+        if (method === 'tasks/get') {
+          return await this.request('tasks/get', { taskId: requestParams.taskId })
+        }
+        if (method === 'tasks/update') {
+          return await this.request('tasks/update', {
+            taskId: requestParams.taskId,
+            inputResponses: requestParams.inputResponses ?? {},
+          })
+        }
+        return await this.request('tasks/cancel', { taskId: requestParams.taskId })
+      },
+      openListen: (filter, handlers) => this.#openListen(filter, handlers),
+      fulfil: async (key, request, signal) => {
+        return await this.#fulfilInputRequest(key, request, signal)
+      },
+      validate: (result, toolName) => this.#validateToolOutput(result, toolName),
+    })
+    return this.#taskWaiter.wait(params)
+  }
+
+  #validateToolOutput(result: CallToolResult, toolName: string): CallToolResult {
+    const validate = this.#toolOutputSchemas.get(toolName)
     if (validate == null || result.structuredContent == null) {
       return result
     }
     const outcome = validate(result.structuredContent)
     if (outcome.issues != null) {
       throw new StructuredContentValidationError({
-        toolName: params.name,
+        toolName,
         issues: outcome.issues.map((issue) => {
           return {
             message: issue.message,
@@ -1618,5 +1670,65 @@ export class ContextClient<
       })
     }
     return result
+  }
+
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { task?: undefined; allowInputRequired?: false },
+  ): Promise<CallToolResult>
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { task?: undefined; allowInputRequired: true },
+  ): Promise<CallToolResult | InputRequiredResult>
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { task?: undefined; allowInputRequired: boolean },
+  ): Promise<CallToolResult | InputRequiredResult>
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { task: 'handle'; allowInputRequired?: false },
+  ): Promise<CallToolResult | CreateTaskResult>
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { task: 'handle'; allowInputRequired: true },
+  ): Promise<CallToolResult | CreateTaskResult | InputRequiredResult>
+  callTool(
+    params: WithRequestOptions<ToolParams<T>> & { task: 'handle'; allowInputRequired: boolean },
+  ): Promise<CallToolResult | CreateTaskResult | InputRequiredResult>
+  async callTool(
+    params: WithRequestOptions<ToolParams<T>> & { task?: 'handle' },
+  ): Promise<CallToolResult | CreateTaskResult | InputRequiredResult> {
+    const { task, ...requestParams } = params
+    const [wireParams, options] = splitRequestOptions(requestParams)
+    const timeout = options?.timeout
+    const deadline = timeout == null ? undefined : new AbortController()
+    const timer =
+      deadline == null
+        ? undefined
+        : setTimeout(() => {
+            deadline.abort(
+              new RequestTimeoutError({ message: `Request timed out after ${timeout}ms` }),
+            )
+          }, timeout)
+    const signal =
+      deadline == null
+        ? options?.signal
+        : options?.signal == null
+          ? deadline.signal
+          : AbortSignal.any([options.signal, deadline.signal])
+    try {
+      const result = await this.request('tools/call', wireParams as CallToolRequest['params'], {
+        ...options,
+        signal,
+      })
+      if (isInputRequiredResult(result)) return result
+      if (isCreateTaskResult(result)) {
+        if (task === 'handle') return result
+        return await this.waitForTask({
+          taskID: result.taskId,
+          signal,
+          toolName: params.name,
+          cancelOnAbort: true,
+        })
+      }
+      return this.#validateToolOutput(result, params.name)
+    } finally {
+      clearTimeout(timer)
+    }
   }
 }

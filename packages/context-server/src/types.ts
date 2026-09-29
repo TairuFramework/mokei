@@ -6,6 +6,7 @@ import type {
   CompleteResult,
   CreateMessageRequest,
   CreateMessageResult,
+  CreateTaskResult,
   ElicitRequest,
   ElicitResult,
   GetPromptResult,
@@ -31,6 +32,8 @@ import type { WithRequestOptions } from '@mokei/context-rpc'
 import type { Schema } from '@sozai/schema'
 
 import type { InputRequiredResult } from './mrtr.js'
+import type { TaskContext } from './task-manager.js'
+import type { JSONValue, TaskOwner } from './task-store.js'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
@@ -104,8 +107,11 @@ export type ProgressEmitter = (params: {
 
 export type HandlerRequest<C extends Record<string, unknown> = Record<string, never>> = C & {
   client: ServerClient
+  meta: Record<string, JSONValue>
+  auth?: TaskOwner
   progress?: ProgressEmitter
   signal: AbortSignal
+  task?: TaskContext
   /**
    * Results for the input requests this handler asked for on a previous round (MRTR, SEP-2322),
    * keyed as the handler keyed its own `inputRequests`. Absent on the first round and on
@@ -185,7 +191,8 @@ export type ResourceHandlers = {
 export type ToolHandlerReturn =
   | CallToolResult
   | InputRequiredResult
-  | Promise<CallToolResult | InputRequiredResult>
+  | CreateTaskResult
+  | Promise<CallToolResult | InputRequiredResult | CreateTaskResult>
 
 export type StructuredToolHandlerReturn<Output> = Omit<CallToolResult, 'content'> & {
   content?: CallToolResult['content']
@@ -203,7 +210,8 @@ export type TypedToolHandler<Arguments, Output = unknown> = (
   :
       | StructuredToolHandlerReturn<Output>
       | InputRequiredResult
-      | Promise<StructuredToolHandlerReturn<Output> | InputRequiredResult>
+      | CreateTaskResult
+      | Promise<StructuredToolHandlerReturn<Output> | InputRequiredResult | CreateTaskResult>
 
 export type GenericToolDefinition = {
   description: string

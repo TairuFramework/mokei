@@ -1420,6 +1420,9 @@ describe('HTTPTransport', () => {
     const cases: Array<{ method: string; params: Record<string, unknown>; expected: string }> = [
       { method: 'prompts/get', params: { name: 'greet' }, expected: 'greet' },
       { method: 'resources/read', params: { uri: 'test://greeting' }, expected: 'test://greeting' },
+      { method: 'tasks/get', params: { taskId: 'task-1' }, expected: 'task-1' },
+      { method: 'tasks/update', params: { taskId: 'task-1' }, expected: 'task-1' },
+      { method: 'tasks/cancel', params: { taskId: 'task-1' }, expected: 'task-1' },
     ]
     for (const [index, { method, params, expected }] of cases.entries()) {
       fetchMock.mockResolvedValueOnce(jsonResponse({ jsonrpc: '2.0', id: index, result: {} }))

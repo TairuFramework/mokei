@@ -2,11 +2,12 @@ import { createValidator } from '@sozai/schema'
 import { describe, expect, test } from 'vitest'
 
 import { clientResult } from '../src/client.js'
-import { serverResult } from '../src/server.js'
+import { serverMessage, serverResult } from '../src/server.js'
 import { serverResult as serverResult20260728 } from '../src/versions/2026-07-28.js'
 
 const validateServerResult = createValidator(serverResult)
 const validateClientResult = createValidator(clientResult)
+const validateServerMessage = createValidator(serverMessage)
 
 describe('serverResult', () => {
   test('accepts an empty result', () => {
@@ -16,6 +17,13 @@ describe('serverResult', () => {
 
   test('accepts a known result', () => {
     expect(validateServerResult({ tools: [] }).issues).toBeUndefined()
+  })
+
+  test('accepts a task acknowledgement through the cross-revision aggregates', () => {
+    const result = { resultType: 'complete' }
+
+    expect(validateServerResult(result).issues).toBeUndefined()
+    expect(validateServerMessage({ jsonrpc: '2.0', id: 1, result }).issues).toBeUndefined()
   })
 
   test('rejects an object matching no known result', () => {

@@ -1163,7 +1163,9 @@ describe('protocol version selection', () => {
     expect(sent.map((message) => message.method)).toEqual(['server/discover', 'prompts/list'])
     const params = sent[1]?.params as { _meta: Record<string, unknown> }
     expect(params._meta['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
-    expect(params._meta['io.modelcontextprotocol/clientCapabilities']).toEqual({})
+    expect(params._meta['io.modelcontextprotocol/clientCapabilities']).toEqual({
+      extensions: { 'io.modelcontextprotocol/tasks': {} },
+    })
   })
 
   // `2026-07-28` removes `logging/setLevel`, so `ClientParams.logLevel` is the only way to ask
@@ -1237,7 +1239,7 @@ describe('protocol version selection', () => {
       (call.params as Record<string, Record<string, Record<string, unknown>>>)._meta?.[
         'io.modelcontextprotocol/clientCapabilities'
       ],
-    ).toEqual({ sampling: {} })
+    ).toEqual({ sampling: {}, extensions: { 'io.modelcontextprotocol/tasks': {} } })
   })
 
   test('an unsupported protocolVersion string throws instead of probing', () => {
@@ -1963,7 +1965,9 @@ describe('setup on a revision without a handshake', () => {
     const meta = (discover.params as { _meta?: Record<string, unknown> })._meta
     expect(meta?.['io.modelcontextprotocol/protocolVersion']).toBe('2026-07-28')
     // The full request envelope, the same one every later request carries.
-    expect(meta?.['io.modelcontextprotocol/clientCapabilities']).toEqual({})
+    expect(meta?.['io.modelcontextprotocol/clientCapabilities']).toEqual({
+      extensions: { 'io.modelcontextprotocol/tasks': {} },
+    })
   })
 
   // The liveness check must not become a second, stricter handshake. `2026-07-28` does not

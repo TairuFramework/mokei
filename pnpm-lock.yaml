@@ -203,6 +203,9 @@ catalogs:
     '@mantine/hooks':
       specifier: ^9.6.3
       version: 9.6.3
+    '@modelcontextprotocol/ext-tasks':
+      specifier: 0.1.0
+      version: 0.1.0
     '@opentelemetry/api':
       specifier: ^1.9.1
       version: 1.9.1
@@ -458,6 +461,9 @@ importers:
       '@modelcontextprotocol/core':
         specifier: 2.1.0
         version: 2.1.0
+      '@modelcontextprotocol/ext-tasks':
+        specifier: 'catalog:'
+        version: 0.1.0(@modelcontextprotocol/client@2.1.0)
       '@modelcontextprotocol/node':
         specifier: 2.1.0
         version: 2.1.0(@modelcontextprotocol/server@2.1.0)(hono@4.13.10)
@@ -3242,6 +3248,14 @@ packages:
   '@modelcontextprotocol/core@2.1.0':
     resolution: {integrity: sha512-YdFj5gMRHr0gYNAhTbQDgjLHiEJdIAUYxomhKseUNye7ZGlISQmUoLh2sveFFCiQ7j2YMffT1kgSND0FSfIFjQ==}
     engines: {node: '>=20'}
+
+  '@modelcontextprotocol/ext-tasks@0.1.0':
+    resolution: {integrity: sha512-N6kQdDoR8bQcXFvoB0qsPh2k5/hr+aQDKngiJH8P2u3L68bdX0yMuPRMAZ6JHBGTA51rRFc3ajhiosEaeW9U1A==}
+    peerDependencies:
+      '@modelcontextprotocol/client': ^2.0.0
+    peerDependenciesMeta:
+      '@modelcontextprotocol/client':
+        optional: true
 
   '@modelcontextprotocol/node@2.1.0':
     resolution: {integrity: sha512-6xg3iWVcOfiL8Y7rI6xUqXD0lI2AY5q3djsa/cOi1IJUSwx06t0gvhSwU/6mIIohrFlt40/ANUG56DQ0HLhILQ==}
@@ -13607,6 +13621,12 @@ snapshots:
   '@modelcontextprotocol/core@2.1.0':
     dependencies:
       zod: 4.6.5
+
+  '@modelcontextprotocol/ext-tasks@0.1.0(@modelcontextprotocol/client@2.1.0)':
+    dependencies:
+      zod: 4.6.5
+    optionalDependencies:
+      '@modelcontextprotocol/client': 2.1.0
 
   '@modelcontextprotocol/node@2.1.0(@modelcontextprotocol/server@2.1.0)(hono@4.13.10)':
     dependencies:

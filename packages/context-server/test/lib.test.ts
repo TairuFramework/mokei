@@ -13,8 +13,10 @@ import {
   ENVELOPE_VIOLATION,
   INTERNAL_ERROR,
   INVALID_PARAMS,
+  isCreateTaskResult,
   LATEST_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
+import { RPCError } from '@mokei/context-rpc'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
@@ -23,10 +25,13 @@ import {
   createTool,
   type GenericToolDefinition,
   inputRequired,
+  isInputRequiredResult,
   MRTRNotSupportedError,
   type RequestStateHooks,
   type Schema,
   type ServerParams,
+  settleToolOutcome,
+  ToolInputValidationError,
 } from '../src/index.js'
 
 type TestContext = {
@@ -320,6 +325,7 @@ describe('ContextServer', () => {
     expect(complete).toHaveBeenCalledWith({
       client: expect.objectContaining(expectedClient),
       params,
+      meta: {},
       signal: expect.any(AbortSignal),
       inputResponses: undefined,
       requestState: undefined,
@@ -831,6 +837,29 @@ describe('ContextServer', () => {
         result: { isError: true, content: [{ type: 'text' }] },
       })
       await transports.dispose()
+    })
+
+    test('tool handler RPCError remains a JSON-RPC error', async () => {
+      await expectServerError(
+        {
+          protocolVersions: ['2025-11-25'],
+          tools: {
+            guarded: createTool({
+              description: 'guarded',
+              inputSchema: { type: 'object' },
+              handler: () => {
+                throw new RPCError({
+                  code: -32021,
+                  message: 'Missing capability',
+                  data: { requiredCapabilities: {} },
+                })
+              },
+            }),
+          },
+        },
+        { method: 'tools/call', params: { name: 'guarded', arguments: {} } },
+        { code: -32021, message: 'Missing capability', data: { requiredCapabilities: {} } },
+      )
     })
 
     test('input-validation error becomes an isError result', async () => {
@@ -1911,6 +1940,7 @@ describe('factory parameters object', () => {
     const result = await definition.handler({
       input: { value: 1 },
       client: {} as never,
+      meta: {},
       signal: new AbortController().signal,
       mintRequestState: () => '',
     })
@@ -1928,6 +1958,7 @@ describe('factory parameters object', () => {
       definition.handler({
         input: { value: 'not a number' },
         client: {} as never,
+        meta: {},
         signal: new AbortController().signal,
         mintRequestState: () => '',
       }),
@@ -1951,6 +1982,7 @@ describe('factory parameters object', () => {
     const result = await definition.handler({
       input: { name: 'World' },
       client: {} as never,
+      meta: {},
       signal: new AbortController().signal,
       mintRequestState: () => '',
     })
@@ -1969,6 +2001,7 @@ describe('factory parameters object', () => {
     const result = await definition.handler({
       input: { anything: true },
       client: {} as never,
+      meta: {},
       signal: new AbortController().signal,
       mintRequestState: () => '',
     })
@@ -1983,13 +2016,28 @@ describe('tool outputSchema', () => {
     required: ['count'],
   } as const
 
-  function callHandler(definition: GenericToolDefinition, args: Record<string, unknown> = {}) {
-    return definition.handler({
+  async function callHandler(
+    definition: GenericToolDefinition,
+    args: Record<string, unknown> = {},
+  ) {
+    const result = await definition.handler({
       input: args,
       client: {} as never,
+      meta: {},
       signal: new AbortController().signal,
       mintRequestState: () => '',
     })
+    if (isInputRequiredResult(result)) {
+      return result
+    }
+    if (isCreateTaskResult(result)) {
+      throw new Error('A direct handler call cannot create a task')
+    }
+    const settled = settleToolOutcome(definition, { result })
+    if ('error' in settled) {
+      throw new RPCError(settled.error)
+    }
+    return settled.result
   }
 
   test('outputSchema is advertised in tools/list', async () => {
@@ -2143,5 +2191,43 @@ describe('tool outputSchema', () => {
         _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'test', version: '0.0.0' } },
       },
     )
+  })
+})
+
+describe('tool input validation outcome', () => {
+  test('maps a validated input error to an isError result without changing its direct rejection', async () => {
+    const definition = createTool({
+      description: 'Count',
+      inputSchema: {
+        type: 'object',
+        properties: { count: { type: 'number' } },
+        required: ['count'],
+      } as const,
+      handler: () => ({ content: [] }),
+    })
+    const request = {
+      input: { count: 'wrong' },
+      client: {} as never,
+      meta: {},
+      signal: new AbortController().signal,
+      mintRequestState: () => '',
+    }
+
+    let cause: unknown
+    try {
+      await definition.handler(request)
+    } catch (error) {
+      cause = error
+    }
+    expect(cause).toBeInstanceOf(ToolInputValidationError)
+    expect(cause).toBeInstanceOf(RPCError)
+    expect(cause).toMatchObject({
+      code: INVALID_PARAMS,
+      message: 'Invalid tool input',
+      data: { issues: [{ path: ['count'], message: expect.any(String) }] },
+    })
+    expect(settleToolOutcome(definition, { error: cause })).toEqual({
+      result: { content: [{ type: 'text', text: 'Invalid tool input' }], isError: true },
+    })
   })
 })
