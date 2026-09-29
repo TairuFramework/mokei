@@ -51,6 +51,7 @@ export {
   createTaskManager,
   type TaskContext,
   type TaskHandle,
+  TaskInputKeyReusedError,
   type TaskManager,
   type TaskManagerParams,
   type TaskResume,

@@ -28,6 +28,7 @@ export type TaskRecord = {
   owner?: TaskOwner
   toolName: string
   clientCapabilities: ClientCapabilities
+  requestMeta?: Record<string, JSONValue>
   resumeData?: JSONValue
   result?: CallToolResult & { resultType: 'complete' }
   error?: { code: number; message: string; data?: unknown }
