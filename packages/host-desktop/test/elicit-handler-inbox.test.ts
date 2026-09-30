@@ -16,6 +16,7 @@ import {
   type DesktopElicitHandler,
   type DesktopElicitOptions,
   type DesktopElicitRequest,
+  InboxDisposedError,
   type InputInbox,
   type NotifyRequest,
   type Runner,
@@ -228,6 +229,31 @@ describe('desktop elicit handler (inbox)', () => {
       track(h(request(params)))
       await flush()
       expect(fake.notifies[0]?.request.message).toBe(`ctx needs your input: ${'x'.repeat(200)}`)
+    })
+
+    test('a synchronous notification setup failure is reported, not left unhandled', async () => {
+      inbox.registerAnswerSurface()
+      // A non-string message makes the preview slice throw during setup
+      const params = { ...NAME_FORM, message: 42 } as unknown as DesktopElicitRequest['params']
+      const h = create({ notificationPromptPreview: true })
+      const settled = track(h(request(params)))
+      await flush()
+      expect(fake.notifies).toHaveLength(0)
+      expect(reports).toHaveLength(1)
+      expect(reports[0]).toMatch(/^Input notification failed: /)
+      expect(inbox.list()).toHaveLength(1)
+      expect(settled.done).toBe(false)
+    })
+
+    test('no notification is attempted once the inbox is disposed', async () => {
+      inbox.registerAnswerSurface()
+      inbox.dispose()
+      const h = create()
+      const settled = track(h(request()))
+      await flush()
+      expect(settled.error).toBeInstanceOf(InboxDisposedError)
+      expect(fake.notifies).toHaveLength(0)
+      expect(reports).toEqual([])
     })
 
     test('a failed notification is reported and the entry stays', async () => {

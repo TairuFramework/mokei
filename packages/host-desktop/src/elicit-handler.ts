@@ -357,7 +357,8 @@ export function createDesktopElicitHandler(
         throw signal.reason
       }
       if (disposal.signal.aborted) {
-        throw disposal.signal.reason
+        // Each request gets its own error, never the shared disposal reason
+        throw new Error(DISPOSED_MESSAGE, { cause: error })
       }
       if (budget.signal.aborted) {
         return CANCEL
@@ -375,24 +376,25 @@ export function createDesktopElicitHandler(
 
   /** Best-effort notification about a new inbox entry; failures are reported, never thrown. */
   async function notifyAdded(request: DesktopElicitRequest, source: string): Promise<void> {
-    const { selection } = detect()
-    if (selection.notify == null) {
-      report(
-        options.onUnsupported,
-        `Input notification failed: ${selection.notifyProblem ?? 'No notification backend is available'}`,
-      )
-      return
-    }
-    let message = `${source} needs your input`
-    if (options.notificationPromptPreview === true) {
-      message += `: ${request.params.message.slice(0, PREVIEW_LENGTH)}`
-    }
-    const timeout = new AbortController()
-    const timer = setTimeout(() => {
-      timeout.abort(new Error('Notification delivery timed out'))
-    }, NOTIFY_TIMEOUT_MS)
-    const signal = AbortSignal.any([timeout.signal, disposal.signal])
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
+      const { selection } = detect()
+      if (selection.notify == null) {
+        report(
+          options.onUnsupported,
+          `Input notification failed: ${selection.notifyProblem ?? 'No notification backend is available'}`,
+        )
+        return
+      }
+      let message = `${source} needs your input`
+      if (options.notificationPromptPreview === true) {
+        message += `: ${request.params.message.slice(0, PREVIEW_LENGTH)}`
+      }
+      const timeout = new AbortController()
+      timer = setTimeout(() => {
+        timeout.abort(new Error('Notification delivery timed out'))
+      }, NOTIFY_TIMEOUT_MS)
+      const signal = AbortSignal.any([timeout.signal, disposal.signal])
       const backend = getBackend(selection.notify.name)
       if (backend.notify == null) {
         throw new Error(`${backend.name} cannot show notifications`)
@@ -434,7 +436,8 @@ export function createDesktopElicitHandler(
           )
       : undefined
     const answer = inbox.add(request, { prompt })
-    if (!request.signal.aborted) {
+    // A disposed inbox or handler has rejected the request already; nobody needs the notification
+    if (!request.signal.aborted && !inbox.disposed && !disposal.signal.aborted) {
       // Delivery never holds up the answer; failures are reported by notifyAdded
       void notifyAdded(request, source)
     }

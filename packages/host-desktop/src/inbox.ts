@@ -30,6 +30,8 @@ export type InputInboxEvents = {
 export type InputInbox = {
   readonly events: EventEmitter<InputInboxEvents>
   readonly hasAnswerSurface: boolean
+  /** `true` once `dispose()` has run; `add` then rejects with `InboxDisposedError`. */
+  readonly disposed: boolean
   registerAnswerSurface(): () => void
   add(request: DesktopElicitRequest, options?: { prompt?: InboxPrompt }): Promise<ElicitResult>
   list(): Array<PendingInput>
@@ -200,6 +202,9 @@ export function createInputInbox(): InputInbox {
     events,
     get hasAnswerSurface() {
       return surfaces > 0
+    },
+    get disposed() {
+      return disposed
     },
     registerAnswerSurface() {
       surfaces++

@@ -118,6 +118,7 @@ aborted, or the inbox is disposed. `inbox.prompt(id)` starts a fresh `timeoutSec
   other abort and `'disposed'`).
 - `dispose()` removes every entry and rejects each pending answer with `InboxDisposedError`. It
   does not answer `cancel`, so a task stays in `input_required` and can be picked up again.
+  `disposed` is then `true`, and a later request gets no notification.
 - `add(request, { prompt })` is public, so an application can build its own delayed handler (one
   that posts to a chat, for example) on the same inbox. It registers its own answer surface
   under the same rule.

@@ -442,6 +442,8 @@ describe('desktop elicit handler (blocking)', () => {
       expect(call(0).options.signal.aborted).toBe(true)
       expect(open.error).toEqual(new Error('Desktop elicit handler disposed'))
       expect(queued.error).toEqual(new Error('Desktop elicit handler disposed'))
+      // Each request gets its own error instance
+      expect(open.error).not.toBe(queued.error)
       await expect(h(request())).rejects.toThrow('Desktop elicit handler disposed')
       expect(fake.calls).toHaveLength(1)
     })
