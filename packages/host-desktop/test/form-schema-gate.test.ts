@@ -1,0 +1,185 @@
+import * as sozaiSchema from '@sozai/schema'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+
+import { type FieldPlan, type FormParams, planForm, validateContent } from '../src/form.js'
+import { createInputInbox, InboxAnswerInvalidError } from '../src/inbox.js'
+
+vi.mock('@sozai/schema', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@sozai/schema')>()
+  return { ...original, createValidator: vi.fn(original.createValidator) }
+})
+
+const createValidator = vi.mocked(sozaiSchema.createValidator)
+const options = { appName: 'App', source: 'Server "s"' }
+
+function params(properties: Record<string, unknown>, required?: Array<string>): FormParams {
+  return {
+    mode: 'form',
+    message: 'Please answer',
+    requestedSchema: { type: 'object', properties, required },
+  } as FormParams
+}
+
+function single(schema: unknown): FieldPlan {
+  const plan = planForm(params({ f: schema }, ['f']), options)
+  if (!plan.ok) throw new Error(`unexpected: ${plan.reason}`)
+  return plan.fields[0] as FieldPlan
+}
+
+function bad(schema: unknown, answer: string): string | null {
+  const result = single(schema).toValue(answer)
+  return result.ok ? null : result.violation
+}
+
+let uniqueKey = 0
+/** A schema no earlier test compiled, so the cache cannot already hold it. */
+function fresh(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  uniqueKey += 1
+  return { type: 'string', maxLength: 1000 + uniqueKey, ...extra }
+}
+
+beforeEach(() => {
+  createValidator.mockClear()
+})
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('keyword whitelist', () => {
+  test('a whitelisted keyword with a wrong value type is ignored', () => {
+    expect(bad({ type: 'string', minLength: 'x' }, 'a')).toBeNull()
+    expect(bad({ type: 'number', minimum: 'x' }, '1')).toBeNull()
+    expect(
+      validateContent(params({ s: { type: 'string', minLength: 'x' } }).requestedSchema, {
+        s: 'a',
+      }),
+    ).toEqual([])
+  })
+
+  test.each([
+    ['$ref', { $ref: 'https://evil.example/x' }],
+    ['not', { not: { type: 'string' } }],
+    ['allOf', { allOf: [{ maxLength: 0 }] }],
+    // biome-ignore lint/suspicious/noThenProperty: a JSON Schema if/then, not a thenable
+    ['if', { if: { type: 'string' }, then: { maxLength: 0 } }],
+    ['const', { const: 'nope' }],
+    ['$id', { $id: 'http://x/y' }],
+  ])('%s is dropped', (_name, extra) => {
+    const schema = { type: 'string', ...extra }
+    expect(bad(schema, 'a')).toBeNull()
+    expect(validateContent(params({ s: schema }).requestedSchema, { s: 'a' })).toEqual([])
+  })
+
+  test('an unknown format is dropped without a console warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    expect(bad(fresh({ format: 'bogus' }), 'a')).toBeNull()
+    expect(warn).not.toHaveBeenCalled()
+    expect(error).not.toHaveBeenCalled()
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  test('each field compiles in planForm, before any answer', () => {
+    single(fresh())
+    expect(createValidator).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('multi-select messages', () => {
+  const content = (schema: Record<string, unknown>, value: unknown) =>
+    validateContent(
+      params({ m: { type: 'array', items: { enum: ['x', 'y'] }, ...schema } }).requestedSchema,
+      {
+        m: value,
+      },
+    )
+
+  test('minItems, maxItems and uniqueItems read as choices', () => {
+    expect(content({ minItems: 1 }, [])).toEqual(['m: choose at least 1 option'])
+    expect(content({ minItems: 2 }, ['x'])).toEqual(['m: choose at least 2 options'])
+    expect(content({ maxItems: 1 }, ['x', 'y'])).toEqual(['m: choose at most 1 option'])
+    expect(content({ uniqueItems: true }, ['x', 'x'])).toEqual(['m: choose each option only once'])
+  })
+
+  test('items given as anyOf consts', () => {
+    const schema = params({
+      m: { type: 'array', items: { anyOf: [{ const: 'x' }] } },
+    }).requestedSchema
+    expect(validateContent(schema, { m: ['x'] })).toEqual([])
+    expect(validateContent(schema, { m: ['z'] })).toEqual(['m: "z" is not an offered choice'])
+  })
+})
+
+describe('number parsing', () => {
+  test.each(['Infinity', '-Infinity', '0x10', '0b1', '1_000', 'abc', ' '])(
+    '%j is not a number',
+    (answer) => {
+      expect(bad({ type: 'number' }, answer)).toBe('must be a number, such as 42 or 3.5')
+    },
+  )
+
+  test.each([
+    ['42', 42],
+    ['-3.5', -3.5],
+    [' 7 ', 7],
+    ['1e3', 1000],
+    ['.5', 0.5],
+  ])('%j parses as %s', (answer, value) => {
+    expect(single({ type: 'number' }).toValue(answer)).toEqual({ ok: true, value })
+  })
+})
+
+describe('compiled validator cache', () => {
+  test('identical schemas in fresh objects compile once', () => {
+    const extra = fresh()
+    for (let i = 0; i < 50; i++) {
+      validateContent(params({ s: { ...extra } }).requestedSchema, { s: 'a' })
+      single({ ...extra }).toValue('a')
+    }
+    // One for the form, one for its field
+    expect(createValidator).toHaveBeenCalledTimes(2)
+  })
+
+  test('the cache is bounded and evicts the least recently used schema', () => {
+    const first = fresh()
+    single(first)
+    for (let i = 0; i < 64; i++) single(fresh())
+    createValidator.mockClear()
+    single({ ...first })
+    expect(createValidator).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a schema that fails to compile', () => {
+  const broken = { type: 'string', pattern: '(' }
+
+  test('planForm declines it', () => {
+    const plan = planForm(params({ f: broken }, ['f']), options)
+    expect(plan).toEqual({ ok: false, reason: 'property "f" has an invalid pattern' })
+  })
+
+  test('the inbox compiles at add and reports it on answer', () => {
+    const inbox = createInputInbox()
+    const request = {
+      key: 'k',
+      params: params({ f: broken }, ['f']),
+      signal: new AbortController().signal,
+    }
+    const answer = inbox.add(request)
+    answer.catch(() => {})
+    expect(createValidator).toHaveBeenCalled()
+    const [entry] = inbox.list()
+    let thrown: unknown
+    try {
+      inbox.answer(entry?.id as string, { f: 'x' })
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(InboxAnswerInvalidError)
+    expect((thrown as InboxAnswerInvalidError).issues).toEqual([
+      expect.stringMatching(/^the requested schema cannot be validated: /),
+    ])
+    inbox.dispose()
+  })
+})

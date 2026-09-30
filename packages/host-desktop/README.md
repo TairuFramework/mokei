@@ -30,12 +30,15 @@ const host = new NodeContextHost({ elicit: desktop, dispose: () => desktop.dispo
 (or pass a `contextHost` built as above).
 
 - Each form property becomes one dialog, in schema order: a string is a text entry, a string
-  `enum` or `oneOf` is a choice list, a number or integer is a text entry converted with
-  `Number`, and a boolean is a Yes/No confirm. An empty form shows one confirm. Constraints
-  (`minLength`, `maxLength`, `pattern`, `format`, `minimum`, `maximum`, integer-ness) are
-  checked after each answer with JSON Schema 2020-12 semantics (AJV through `@sozai/schema`):
-  lengths count code points and `pattern` is unanchored. A violation reopens the dialog with a
-  readable message on its first line, at most 3 attempts.
+  `enum` or `oneOf` is a choice list, a number or integer is a text entry that accepts plain
+  decimal notation (no hex, separators or `Infinity`), and a boolean is a Yes/No confirm. An
+  empty form shows one confirm. Constraints (`minLength`, `maxLength`, `pattern`, `format` of
+  `email`, `uri`, `date` or `date-time`, `minimum`, `maximum`, integer-ness) are checked after
+  each answer with JSON Schema 2020-12 semantics (AJV through `@sozai/schema`): lengths count
+  code points and `pattern` is unanchored. Only these keywords are compiled. Any other keyword
+  (`$ref`, `not`, `allOf`, an unknown format), or a listed one with a value of the wrong type, is
+  ignored. The schema is compiled before the first dialog opens. A violation reopens the
+  dialog with a readable message on its first line, at most 3 attempts.
 - URL mode, multi-select arrays, other property types and forms with more than 10 properties
   are declined without a dialog, and `onUnsupported` (or stderr) gets the reason.
 - Dialogs open one at a time; concurrent requests queue. A dialog killed by an abort or a
@@ -97,8 +100,9 @@ aborted, or the inbox is disposed. `inbox.prompt(id)` starts a fresh `timeoutSec
 - `list()` and `get(id)` return `PendingInput` entries: `id`, context `key`, `message`,
   `requestedSchema`, `createdAt` and `canPrompt`.
 - `answer(id, content)` validates `content` against the entry's schema (declared properties,
-  required properties, types, `enum` and `oneOf` membership, multi-select items and the
-  constraints above). Invalid content throws `InboxAnswerInvalidError` and leaves the entry
+  required properties, types, `enum` and `oneOf` membership, multi-select items with
+  `minItems`, `maxItems` and `uniqueItems`, and the constraints above, compiled when the entry
+  is added). Invalid content throws `InboxAnswerInvalidError` and leaves the entry
   pending; valid content resolves `accept`.
 - `decline(id)` and `cancel(id)` resolve `decline` and `cancel`.
 - `answer`, `decline` and `cancel` return `false` when the entry is already gone. That race is

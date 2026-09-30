@@ -95,8 +95,11 @@ describe('planForm mapping', () => {
 
   test('number rejects empty and NaN, optional empty is omitted', () => {
     const n = single({ type: 'number' })
-    expect(n.toValue('')).toEqual({ ok: false, violation: 'must be a number' })
-    expect(n.toValue('abc')).toEqual({ ok: false, violation: 'must be a number' })
+    expect(n.toValue('')).toEqual({ ok: false, violation: 'must be a number, such as 42 or 3.5' })
+    expect(n.toValue('abc')).toEqual({
+      ok: false,
+      violation: 'must be a number, such as 42 or 3.5',
+    })
     const opt = single({ type: 'number' }, false)
     expect(opt.toValue('')).toEqual({ ok: true })
   })
@@ -240,7 +243,7 @@ describe('constraints via toValue', () => {
     expect(bad({ type: 'number', maximum: 5 }, '5')).toBeNull()
     expect(bad({ type: 'integer' }, '1.5')).toBe('must be a whole number')
     expect(bad({ type: 'integer' }, '2')).toBeNull()
-    expect(bad({ type: 'number' }, 'abc')).toBe('must be a number')
+    expect(bad({ type: 'number' }, 'abc')).toBe('must be a number, such as 42 or 3.5')
   })
 
   test('formats', () => {
