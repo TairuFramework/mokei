@@ -24,6 +24,8 @@
 ## Remaining minor cleanups
 
 - The server version is hard-coded.
+- A catalogue tool whose schema fails to compile throws from `check_flow` when a node references it; report a `tool_invalid_schema` issue instead.
+- Once the standalone binary exists, cover `run_flow` calling a registered flow with a declined input over stdio (`NodeContextHost`).
 
 ## Done in the flow references, decline and validators PR
 
