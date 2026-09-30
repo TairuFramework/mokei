@@ -10,6 +10,7 @@ import {
   MISSING_REQUIRED_CLIENT_CAPABILITY,
 } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
+import { sleep } from '@sozai/async'
 import { EventEmitter, type EventsSource } from '@sozai/event'
 
 import { missingInputCapabilities } from './mrtr.js'
@@ -613,7 +614,7 @@ class ManagedTasks implements TaskManager {
           if (settled) return
           this.#events.fire('taskError', { taskID, error })
         }
-        await this.#sleep(delay)
+        await sleep(delay, this.#disposal.signal).catch(() => {})
         delay = Math.min(delay * 2, WITHDRAW_BACKOFF_MS.max)
       }
       settle(() => reject(new Error('Task manager disposed')))
@@ -639,24 +640,9 @@ class ManagedTasks implements TaskManager {
       } catch (error) {
         this.#events.fire('taskError', { taskID, error })
       }
-      await this.#sleep(delay)
+      await sleep(delay, this.#disposal.signal).catch(() => {})
       delay = Math.min(delay * 2, WITHDRAW_BACKOFF_MS.max)
     }
-  }
-
-  /** Resolves after `ms`, or as soon as the manager is disposed. */
-  #sleep(ms: number): Promise<void> {
-    const signal = this.#disposal.signal
-    if (signal.aborted) return Promise.resolve()
-    return new Promise((resolve) => {
-      const done = () => {
-        clearTimeout(timer)
-        signal.removeEventListener('abort', done)
-        resolve()
-      }
-      const timer = setTimeout(done, ms)
-      signal.addEventListener('abort', done, { once: true })
-    })
   }
 
   async get(taskID: string, owner?: TaskOwner): Promise<DetailedTask> {
