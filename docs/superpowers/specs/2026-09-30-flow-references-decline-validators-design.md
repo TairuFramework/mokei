@@ -33,74 +33,109 @@ edge, unconstrained result paths) and `docs/agents/plans/backlog/2026-09-30-host
 
 ## 1. Flow references
 
-### Resolver
+### Registry
 
 `createDecisionFlowServer` builds one registry from `params.flows`:
 
 - A duplicate `id` throws `Error('Duplicate registered flow id: <id>')`. This check runs before the
   existing `flow_<id>` tool-name collision check.
-- The registry exposes a synchronous lookup `(id, version?) => FlowDefinition | undefined` and a
-  `FlowResolver` built with `createMapResolver(params.flows)`.
+- Each entry stores a JSON snapshot of the definition (`structuredClone`) and its
+  `digestDefinition` digest, both taken at registration. Later mutation of the caller's object has
+  no effect.
+- The registry exposes a synchronous `lookup(id, version?) => FlowDefinition | undefined` and a
+  `FlowResolver` built with `createMapResolver` over the snapshots.
 
-`checkFlow` takes the registry. Its resolver for a definition `D` resolves in this order:
+### Resolver per definition
 
-1. `D.id`: return `D` (only when the version matches or is omitted).
-2. Any other id: delegate to the registered resolver.
+`checkFlow` takes the registry. The resolver for a checked or running definition `D` resolves in
+this order:
 
-A runtime definition (`run_flow`, `check_flow`) whose `id` equals a registered flow's `id` but is
-not that registered definition is rejected with the error issue `flow_id_conflict` at path `['id']`.
-A registered flow checks against itself, so it never conflicts. The identity test is the
-definition digest (`digestDefinition`).
+1. `D.id`, with the version matching `D.version` or omitted: return `D`. A runtime definition may
+   therefore reference itself. flow-graph reports a `goto`-only self cycle as `unbounded_cycle` and
+   a `call` self cycle as a `recursive_call` warning bounded by `maxDepth`.
+2. Any other reference: delegate to the registered resolver. A runtime definition never supplies
+   other flows.
+
+A runtime definition (`run_flow`, `check_flow`) whose `id` equals a registered flow's `id` is
+rejected with the error issue `flow_id_conflict` at path `['id']`, unless its digest equals the
+registered digest. A digest-equal copy is the registered flow, so it is accepted.
 
 ### Checks
 
-`checkFlow` calls `graph.checkFlows(definition)` after `graph.check(definition)` succeeds and
-merges its issues. Issues inside a callee keep flow-graph's `['flows', id, version, ...]` path
-prefix. `checkFlows` is async, so `checkFlow` becomes async and every caller awaits it:
-`check_flow`, `run_flow`, registered flow tools, registration, recovery and `wrapApproval`.
+`checkFlow` becomes async, because `graph.checkFlows()` is async:
 
-Registration checks each registered flow after the whole registry exists, so flows can reference
-each other regardless of array order. A registered flow with blocking issues still throws
-`Invalid registered flow <id>` at server creation. Because registration becomes async,
-`createDecisionFlowServer` becomes async. `createDecisionFlowContext` in `wiring.ts` already
-awaits its setup and absorbs the change.
+1. Run `graph.check(definition)`. If it fails, its issues are the graph issues.
+2. Otherwise run `graph.checkFlows(definition)` and use its result as the graph issues. It already
+   contains the root's local warnings, so the step 1 warnings are dropped. Issues inside a callee
+   keep flow-graph's `['flows', id, version, ...]` path prefix.
+3. Append the mokei checks once: `checkInputNodes` and the `input_without_elicitation` warning.
+   Both apply to every flow reachable from the definition (the walk below), not only the root.
+   Callee issues use the same `['flows', id, version, ...]` prefix.
 
-`checkInputNodes` and the `input_without_elicitation` warning apply to every flow the definition
-reaches, not only the root. The walk is shared with `flowPlan` (below).
+Every caller awaits `checkFlow`: `check_flow`, `run_flow`, registered flow tools, registration,
+recovery and `wrapApproval`.
+
+### Reachable flows
+
+One helper, `reachableFlows(definition, lookup)`, returns the definition plus every flow reachable
+through `call`, `goto` and `loop.body.flow`, tracking visited `(id, version)` pairs so cycles
+terminate. Unresolved references are skipped: `checkFlow` reports them as `missing_flow`, and a
+flow with blocking issues never runs. `checkFlow`, `flowPlan`, the elicitation guard and
+`list_flows` share it.
+
+### Registration
+
+Registration checks each flow after the whole registry exists, so flows can reference each other
+regardless of array order. A flow with blocking issues throws `Invalid registered flow <id>`.
+
+`createDecisionFlowServer` becomes async and returns a promise of the same object. Callers change:
+
+- `wiring.ts` creates the server with `await`. The task manager's `recover` callback, which today
+  throws `Flow server unavailable during recovery` while `server` is unset, instead awaits a
+  promise of the server, so a recovery that fires during creation waits rather than fails. If
+  creation rejects, that promise rejects and recovery rejects with the creation error.
+- The `wiring.ts` elicitation guard (`Registered flow <id> requires elicitation`) checks input nodes
+  across `reachableFlows`, not only the root.
+- Tests that expect a synchronous result or a synchronous throw use `await` and `rejects`.
 
 ### Plan and approvals
 
-`flowPlan(definition, predictor, lookup)` walks the definition and every flow reachable through
-`call`, `goto` and `loop.body.flow`, using the synchronous registry lookup. The walk tracks
-visited `(id, version)` pairs, so cycles terminate. Unresolved references are skipped: `checkFlow`
-already reports them as `missing_flow`, and a flow with blocking issues never runs.
-The plan is the sorted, unique set of `tool` ids plus the predictor tool when any reached flow has
-a `decide` node. `wrapApproval` in `wiring.ts` and the approval hook therefore see callee tools,
-and the per-run `approved` set covers them.
+`flowPlan(definition, predictor, lookup)` collects over `reachableFlows`: the sorted, unique set of
+`tool` ids, plus the predictor tool when any reached flow has a `decide` node. `wrapApproval` in
+`wiring.ts` and the approval hook therefore see callee tools, and the per-run `approved` set covers
+them.
 
 ### Run, resume and recovery
 
-- `graphFor` passes the combined resolver to `createDecisionFlowGraph`. `@mokei/decision-flow`
-  already forwards `resolver` and `maxDepth`; no API change there.
+- `graphFor` passes the per-definition resolver to `createDecisionFlowGraph`.
+  `@mokei/decision-flow` already forwards `resolver` and `maxDepth`; no API change there.
 - `resumeData` is unchanged (`v: 1`). Ad-hoc runs still store `{ definition }` and registered runs
-  `{ id, digest }`. Callee frames are pinned by flow-graph in `runState.frames`.
+  `{ id, digest }`. flow-graph pins callee frames in `runState.frames`.
+- `startRun` takes a `lookup(id, version) => FlowDefinition | undefined` (the per-definition
+  resolution above, synchronous) for the decline lookup in section 2.
+- Frame resolution happens inside the lazy run's `next()` and inside `graph.resume()`. `startRun`
+  catches `FlowVersionMismatchError` and `FlowReferenceError` wherever it advances or resumes a run
+  and maps both to `RPCError({ code: -32603, message: 'Flow definition changed' })`.
 - Recovery (`createRecovery`) takes the registry instead of its `Map<string, FlowDefinition>`. The
-  root definition lookup and digest check stay as they are. flow-graph `recover` and `resume`
-  resolve every frame and throw `FlowVersionMismatchError` when a callee changed. The driver maps
-  that error, and a resolver miss (`FlowReferenceError`), to the existing
-  `RPCError({ code: -32603, message: 'Flow definition changed' })`.
+  root lookup and digest check stay. Before calling `checkFlow`, recovery checks every frame in
+  `state.frames`: the frame's `flow.id` and `flow.version` must resolve, and the digest must equal
+  `flow.digest`. A miss or mismatch returns `Flow definition changed`. Only then does `checkFlow`
+  run, and its blocking issues still return `Flow no longer valid`. A removed callee therefore
+  reports `Flow definition changed`, not a `missing_flow` check failure.
 
 ### `list_flows`
 
 A new tool on `createDecisionFlowServer`, so `wiring.ts` exposes it with the other server tools:
 
-- Input schema `{ type: 'object' }`. Not a task tool.
+- Input schema `{ type: 'object' }`. Not a task tool. `wrapApproval` does not gate it, like
+  `check_flow`.
 - Output: `{ flows: Array<{ id, name, version, input, outputs, outcomes }> }`, sorted by `id`.
   - `input`: `flowInputSchema(flow)`.
-  - `outputs`: sorted union of the keys of every `end` node's `output` in the flow itself.
-  - `outcomes`: sorted unique `end` node `outcome` values.
+  - `outputs`: sorted union of the `output` keys of every `end` node in the flow and in every flow
+    reachable from it through `goto` only. These are the keys a caller can read at
+    `results.<call>.output`, matching the flow-graph `invalid_result_path` check.
+  - `outcomes`: sorted unique `outcome` values over the same `end` nodes.
 - `content` is a short text list, one line per flow: `<id> v<version>: <name>`.
-- `wrapApproval` does not gate it, like `check_flow`.
 
 ### `@mokei/decision-flow`
 
@@ -113,7 +148,8 @@ flow containing a `decide` node, a `goto`, and a flow-body `loop`.
 In `driver.ts`, `answered()` handles a response whose `action` is not `accept`:
 
 1. Resolve the pending node: the last frame in `state.frames` gives `flow.id` and `flow.version`,
-   the resolver gives the definition, and `pending.node` gives the node.
+   the `lookup` passed to `startRun` gives the definition, and `pending.node` gives the node. The
+   active frame can be a callee. If the lookup fails, the run takes step 3 (cancel).
 2. If that node has `kind: 'input'` and a `decline.to`, return
    `{ type: 'decline', reason: action === 'cancel' ? 'cancel' : 'decline' }`, and the run resumes
    through `graph.resume`. flow-graph routes to `decline.to` with
