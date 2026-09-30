@@ -259,15 +259,3 @@ anything.
   needs `DBUS_SESSION_BUS_ADDRESS`. Cron jobs and system services usually lack them, so
   detection finds nothing. A user systemd service, or a job that exports the desktop session's
   variables, works.
-
-## QA checklist
-
-Linux dialogs run end to end in CI (`zenity` under `xvfb`, answered with `xdotool`, and left to time out). macOS is covered by unit tests plus
-this manual checklist, run through a `NodeContextHost`:
-
-- [ ] On macOS with `alerter` v26.5 installed, capture the real `--json` output for a reply, an action click, a close, a content click and a timeout, and confirm the `activationType` and `activationValue` fields the parser reads in `src/backends/alerter.ts` (the parser fixtures were written from documentation, not captured output). Update the parser fixtures in `test/backends.test.ts` to match the captured output.
-- [ ] Values starting with `-` never reach alerter (they fall back to `osascript`, or decline when `alerter` is forced). Check that a choice with a `-timeout` label and a text field with a `--appIcon` default open an `osascript` dialog with the text unchanged.
-- [ ] With `alerter` installed and with it absent (`osascript` fallback), show each dialog kind (text, confirm, choice) and check the answer.
-- [ ] Let a dialog time out and check the result is `cancel`.
-- [ ] Abort a request while its dialog is open and check the dialog closes.
-- [ ] In inbox mode, check the notification appears, then answer an entry with `inbox.prompt(id)`.
