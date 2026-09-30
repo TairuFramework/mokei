@@ -5,7 +5,9 @@ import { describe, expect, test, vi } from 'vitest'
 import {
   InputRequiredNotSupportedError,
   TaskCancelledError,
+  TaskExpiredError,
   TaskInputUnavailableError,
+  TaskInputWithdrawnError,
 } from '../src/errors.js'
 import { TaskWaiter } from '../src/task-waiter.js'
 
@@ -492,5 +494,238 @@ describe('TaskWaiter', () => {
     notify?.({ ...completed, lastUpdatedAt: '2026-09-29T12:00:02.000Z' })
     expect(await pending).toEqual(completed.result)
     expect(request).not.toHaveBeenCalledWith('tasks/update', expect.anything())
+  })
+
+  describe('withdrawal and expiry', () => {
+    const input = {
+      ...base,
+      status: 'input_required' as const,
+      inputRequests: { ask: { method: 'roots/list' as const, params: {} } },
+    }
+    const at = (seconds: number) => `2026-09-29T12:00:0${seconds}.000Z`
+
+    function subscribe() {
+      const state: { notify?: (status: DetailedTask) => void } = {}
+      const openListen = (
+        _filter: unknown,
+        handlers: {
+          onNotification: (notification: ServerNotification) => void
+        },
+      ) => {
+        state.notify = (status) =>
+          handlers.onNotification({
+            jsonrpc: '2.0',
+            method: 'notifications/tasks',
+            params: status,
+          })
+        queueMicrotask(() =>
+          handlers.onNotification({
+            jsonrpc: '2.0',
+            method: 'notifications/subscriptions/acknowledged',
+            params: { notifications: { taskIds: [base.taskId] } },
+          } as unknown as ServerNotification),
+        )
+        return { exchange: new Promise<never>(() => {}), abort: vi.fn() }
+      }
+      return { state, openListen }
+    }
+
+    const notFound = () => new RPCError({ code: -32602, message: 'Task not found' })
+
+    test('withdrawal aborts the handler with TaskInputWithdrawnError', async () => {
+      const { state, openListen } = subscribe()
+      let reason: unknown
+      const fulfil = vi.fn(
+        (_key: string, _request: unknown, signal: AbortSignal) =>
+          new Promise<never>((_resolve, reject) => {
+            signal.addEventListener('abort', () => {
+              reason = signal.reason
+              reject(signal.reason)
+            })
+          }),
+      )
+      const request = vi.fn().mockResolvedValue(input)
+      const waiter = new TaskWaiter({
+        request,
+        openListen,
+        fulfil,
+        validate: vi.fn(),
+      })
+      const pending = waiter.wait({ taskID: base.taskId })
+      await vi.waitFor(() => expect(fulfil).toHaveBeenCalledTimes(1))
+      state.notify?.({ ...working, lastUpdatedAt: at(1) })
+      await vi.waitFor(() => expect(reason).toBeInstanceOf(TaskInputWithdrawnError))
+      expect(reason).toMatchObject({ key: 'ask', taskID: base.taskId })
+      let settled = false
+      pending.then(
+        () => (settled = true),
+        () => (settled = true),
+      )
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(settled).toBe(false)
+      state.notify?.({ ...completed, lastUpdatedAt: at(2) })
+      expect(await pending).toEqual(completed.result)
+      expect(request).not.toHaveBeenCalledWith('tasks/update', expect.anything())
+    })
+
+    test('a late answer keeps the wait alive', async () => {
+      let gets = 0
+      const request = vi.fn(async (method: string) => {
+        if (method === 'tasks/update') {
+          throw new RPCError({ code: -32602, message: 'stale input', data: { key: 'ask' } })
+        }
+        gets += 1
+        return gets === 1
+          ? input
+          : gets === 2
+            ? { ...working, lastUpdatedAt: at(1) }
+            : { ...completed, lastUpdatedAt: at(2) }
+      })
+      const waiter = new TaskWaiter({
+        request,
+        openListen: () => {
+          throw new Error('unavailable')
+        },
+        fulfil: async () => ({ roots: [] }),
+        validate: vi.fn(),
+        delay: async () => {},
+      })
+      expect(await waiter.wait({ taskID: base.taskId })).toEqual(completed.result)
+    })
+
+    test('reversed snapshot delivery leaves a withdrawn dialog closed', async () => {
+      const { state, openListen } = subscribe()
+      const signals: Array<AbortSignal> = []
+      const fulfil = vi.fn((_key: string, _request: unknown, signal: AbortSignal) => {
+        signals.push(signal)
+        return new Promise<never>(() => {})
+      })
+      const onStatus = vi.fn()
+      const older = { ...input, lastUpdatedAt: at(1) }
+      const waiter = new TaskWaiter({
+        request: vi.fn().mockResolvedValue(input),
+        openListen,
+        fulfil,
+        validate: vi.fn(),
+      })
+      const pending = waiter.wait({ taskID: base.taskId, onStatus })
+      await vi.waitFor(() => expect(fulfil).toHaveBeenCalledTimes(1))
+      state.notify?.({ ...working, lastUpdatedAt: at(2) })
+      state.notify?.(older)
+      state.notify?.({ ...completed, lastUpdatedAt: at(3) })
+      expect(await pending).toEqual(completed.result)
+      expect(fulfil.mock.calls.length).toBeLessThanOrEqual(1)
+      expect(signals[0]?.aborted).toBe(true)
+      expect(onStatus).not.toHaveBeenCalledWith(older)
+    })
+
+    test('expiry while subscribed fails with TaskExpiredError', async () => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(Date.parse(base.createdAt))
+        const deadline = Date.parse(base.createdAt) + base.ttlMs
+        const { openListen } = subscribe()
+        const rejection = notFound()
+        const request = vi.fn(async () => {
+          if (Date.now() >= deadline) throw rejection
+          return working
+        })
+        const waiter = new TaskWaiter({
+          request,
+          openListen,
+          fulfil: vi.fn(),
+          validate: vi.fn(),
+          now: () => Date.now(),
+        })
+        const pending = waiter.wait({ taskID: base.taskId })
+        const assertion = expect(pending).rejects.toMatchObject({
+          name: 'TaskExpiredError',
+          taskID: base.taskId,
+          cause: rejection,
+        })
+        await vi.advanceTimersByTimeAsync(base.ttlMs)
+        await assertion
+        await expect(pending).rejects.toBeInstanceOf(TaskExpiredError)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    test('expiry while polling fails with TaskExpiredError', async () => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(Date.parse(base.createdAt))
+        const deadline = Date.parse(base.createdAt) + 600
+        const request = vi.fn(async () => {
+          if (Date.now() >= deadline) throw notFound()
+          return { ...working, ttlMs: 600 }
+        })
+        const waiter = new TaskWaiter({
+          request,
+          openListen: () => {
+            throw new Error('unavailable')
+          },
+          fulfil: vi.fn(),
+          validate: vi.fn(),
+          now: () => Date.now(),
+        })
+        const pending = waiter.wait({ taskID: base.taskId })
+        const assertion = expect(pending).rejects.toBeInstanceOf(TaskExpiredError)
+        await vi.advanceTimersByTimeAsync(1000)
+        await assertion
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    test('not found before the deadline keeps the original error', async () => {
+      const rejection = notFound()
+      const request = vi.fn().mockResolvedValueOnce(working).mockRejectedValueOnce(rejection)
+      const waiter = new TaskWaiter({
+        request,
+        openListen: () => {
+          throw new Error('unavailable')
+        },
+        fulfil: vi.fn(),
+        validate: vi.fn(),
+        delay: async () => {},
+        now: () => Date.parse(base.createdAt),
+      })
+      await expect(waiter.wait({ taskID: base.taskId })).rejects.toBe(rejection)
+    })
+
+    test('releasing the wait aborts the handler', async () => {
+      const controller = new AbortController()
+      let dispatchSignal: AbortSignal | undefined
+      let finish: ((response: { roots: Array<never> }) => void) | undefined
+      const fulfil = vi.fn((_key: string, _request: unknown, signal: AbortSignal) => {
+        dispatchSignal = signal
+        return new Promise<{ roots: Array<never> }>((resolve) => {
+          finish = resolve
+        })
+      })
+      const request = vi.fn().mockResolvedValue(input)
+      const waiter = new TaskWaiter({
+        request,
+        openListen: () => {
+          throw new Error('unavailable')
+        },
+        fulfil,
+        validate: vi.fn(),
+        delay: (_ms, signal) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason))
+          }),
+      })
+      const pending = waiter.wait({ taskID: base.taskId, signal: controller.signal })
+      await vi.waitFor(() => expect(fulfil).toHaveBeenCalledTimes(1))
+      const reason = new Error('stopped')
+      controller.abort(reason)
+      await expect(pending).rejects.toBe(reason)
+      expect(dispatchSignal?.aborted).toBe(true)
+      finish?.({ roots: [] })
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(request).not.toHaveBeenCalledWith('tasks/update', expect.anything())
+    })
   })
 })

@@ -11,7 +11,9 @@ import { sleep } from '@sozai/async'
 import {
   InputRequiredNotSupportedError,
   TaskCancelledError,
+  TaskExpiredError,
   TaskInputUnavailableError,
+  TaskInputWithdrawnError,
 } from './errors.js'
 import type { ListenHandle, OpenListen } from './subscriptions.js'
 
@@ -34,9 +36,12 @@ export type TaskWaiterParams = {
   fulfil: (key: string, request: InputRequest, signal: AbortSignal) => Promise<InputResponse>
   validate: (result: CallToolResult, toolName: string) => CallToolResult
   delay?: (ms: number, signal: AbortSignal) => Promise<void>
+  /** Clock used to detect task expiry, defaults to `Date.now`. */
+  now?: () => number
 }
 
 type TaskEntry = {
+  taskID: string
   count: number
   handle?: ListenHandle
   acknowledged: Promise<boolean>
@@ -49,6 +54,8 @@ type TaskEntry = {
   statusListeners: Set<(status: DetailedTask) => void>
   inputs: Record<string, InputRequest>
   dispatched: Set<string>
+  inFlight: Map<string, AbortController>
+  deadline?: number
   inputError?: Error
   controller: AbortController
 }
@@ -77,23 +84,24 @@ export class TaskWaiter {
     try {
       const accepted = await this.#abortable(entry.acknowledged, params.signal)
       seen = entry.version
-      let snapshot: DetailedTask = await this.#get(params.taskID, params.signal)
+      let snapshot: DetailedTask = await this.#get(entry, params.signal)
       let fromGet = true
       for (;;) {
         if (snapshot.taskId !== params.taskID) {
           throw new Error(`Unexpected taskId ${snapshot.taskId}`)
         }
+        let observed = false
         if (
           fromGet &&
           (entry.version === seen ||
             entry.latest == null ||
             snapshot.lastUpdatedAt > entry.latest.lastUpdatedAt)
         ) {
-          this.#observe(entry, snapshot)
+          observed = this.#observe(entry, snapshot)
         }
         snapshot = entry.latest ?? snapshot
         seen = entry.version
-        if (fromGet) notifyStatus(snapshot)
+        if (fromGet && observed) notifyStatus(snapshot)
         if (statusError != null) throw statusError
         if (snapshot.status === 'completed') {
           return params.toolName == null
@@ -115,19 +123,26 @@ export class TaskWaiter {
         if (entry.inputError != null) {
           throw entry.inputError
         }
-        if (accepted && entry.active) {
-          await this.#waitForChange(entry, seen, params.signal)
-          seen = entry.version
-          snapshot = entry.latest ?? (await this.#get(params.taskID, params.signal))
-          fromGet = entry.latest == null
-        } else {
-          await (this.#params.delay ?? sleep)(
-            Math.max(250, snapshot.pollIntervalMs ?? 1000),
-            params.signal ?? entry.controller.signal,
-          )
-          seen = entry.version
-          snapshot = await this.#get(params.taskID, params.signal)
+        const subscribed = accepted && entry.active
+        const elapsed = await this.#stretch(
+          entry,
+          snapshot.pollIntervalMs,
+          params.signal,
+          subscribed
+            ? () => this.#waitForChange(entry, seen, params.signal)
+            : (signal) =>
+                (this.#params.delay ?? sleep)(
+                  Math.max(250, snapshot.pollIntervalMs ?? 1000),
+                  signal,
+                ),
+        )
+        seen = entry.version
+        if (elapsed || !subscribed || entry.latest == null) {
+          snapshot = await this.#get(entry, params.signal)
           fromGet = true
+        } else {
+          snapshot = entry.latest
+          fromGet = false
         }
       }
     } catch (error) {
@@ -164,6 +179,7 @@ export class TaskWaiter {
       resolveAcknowledged = resolve
     })
     const entry: TaskEntry = {
+      taskID,
       count: 1,
       acknowledged,
       resolveAcknowledged,
@@ -173,6 +189,7 @@ export class TaskWaiter {
       statusListeners: new Set(),
       inputs: {},
       dispatched: new Set(),
+      inFlight: new Map(),
       controller: new AbortController(),
     }
     let acknowledgementPending = true
@@ -213,8 +230,9 @@ export class TaskWaiter {
             ) {
               return
             }
-            this.#observe(entry, notification.params)
-            for (const listener of entry.statusListeners) listener(notification.params)
+            if (this.#observe(entry, notification.params)) {
+              for (const listener of entry.statusListeners) listener(notification.params)
+            }
           },
           onSettle: () => {
             entry.active = false
@@ -239,20 +257,67 @@ export class TaskWaiter {
     entry.handle?.abort()
   }
 
-  #observe(entry: TaskEntry, snapshot: DetailedTask): void {
+  #observe(entry: TaskEntry, snapshot: DetailedTask): boolean {
     if (entry.latest != null) {
-      if (snapshot.lastUpdatedAt < entry.latest.lastUpdatedAt) return
+      if (snapshot.lastUpdatedAt < entry.latest.lastUpdatedAt) return false
       if (
         snapshot.lastUpdatedAt === entry.latest.lastUpdatedAt &&
         (entry.latest.status === 'completed' ||
           entry.latest.status === 'failed' ||
           entry.latest.status === 'cancelled')
       )
-        return
+        return false
     }
     entry.latest = snapshot
     entry.inputs = snapshot.status === 'input_required' ? snapshot.inputRequests : {}
+    entry.deadline =
+      typeof snapshot.ttlMs === 'number' && Number.isFinite(snapshot.ttlMs)
+        ? Date.parse(snapshot.createdAt) + snapshot.ttlMs
+        : undefined
+    for (const [key, controller] of entry.inFlight) {
+      if (!Object.hasOwn(entry.inputs, key)) {
+        controller.abort(new TaskInputWithdrawnError({ taskID: entry.taskID, key }))
+      }
+    }
     this.#wake(entry)
+    return true
+  }
+
+  /**
+   * Runs one wait stretch, racing it against the task's expiry deadline. Resolves true when the
+   * deadline timer won, so the caller re-reads the task to learn whether it is gone.
+   */
+  async #stretch(
+    entry: TaskEntry,
+    pollIntervalMs: number | undefined,
+    signal: AbortSignal | undefined,
+    run: (signal: AbortSignal) => Promise<void>,
+  ): Promise<boolean> {
+    const stretch = new AbortController()
+    const runSignal = AbortSignal.any([signal ?? entry.controller.signal, stretch.signal])
+    const work = run(runSignal).then(() => false)
+    if (entry.deadline == null) {
+      try {
+        return await work
+      } finally {
+        stretch.abort()
+      }
+    }
+    const remaining = entry.deadline - (this.#params.now ?? Date.now)()
+    // Past the deadline yet still readable: the server is late to evict, so re-read no faster
+    // than the poll floor rather than spinning.
+    const wait = remaining > 0 ? remaining : Math.max(250, pollIntervalMs ?? 1000)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const expiry = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(true), wait)
+    })
+    try {
+      return await Promise.race([work, expiry])
+    } finally {
+      clearTimeout(timer)
+      stretch.abort()
+      work.catch(() => {})
+    }
   }
 
   #wake(entry: TaskEntry): void {
@@ -285,21 +350,38 @@ export class TaskWaiter {
     })
   }
 
-  async #get(taskID: string, signal?: AbortSignal): Promise<TasksGetResult> {
-    return await this.#abortable(
-      this.#params.request('tasks/get', { taskId: taskID }) as Promise<TasksGetResult>,
-      signal,
-    )
+  async #get(entry: TaskEntry, signal?: AbortSignal): Promise<TasksGetResult> {
+    try {
+      return await this.#abortable(
+        this.#params.request('tasks/get', { taskId: entry.taskID }) as Promise<TasksGetResult>,
+        signal,
+      )
+    } catch (error) {
+      if (
+        error instanceof RPCError &&
+        error.code === -32602 &&
+        error.message === 'Task not found' &&
+        entry.deadline != null &&
+        (this.#params.now ?? Date.now)() >= entry.deadline
+      ) {
+        // biome-ignore lint/style/useErrorCause: the cause is passed through the params object
+        throw new TaskExpiredError({ taskID: entry.taskID, cause: error })
+      }
+      throw error
+    }
   }
 
   #dispatchInputs(entry: TaskEntry, taskID: string, requests: Record<string, InputRequest>): void {
     for (const [key, request] of Object.entries(requests)) {
       if (entry.dispatched.has(key)) continue
       entry.dispatched.add(key)
+      const own = new AbortController()
+      entry.inFlight.set(key, own)
+      const signal = AbortSignal.any([entry.controller.signal, own.signal])
       void this.#params
-        .fulfil(key, request, entry.controller.signal)
+        .fulfil(key, request, signal)
         .then(async (response) => {
-          if (!Object.hasOwn(entry.inputs, key)) return
+          if (signal.aborted || !Object.hasOwn(entry.inputs, key)) return
           try {
             await this.#params.request('tasks/update', {
               taskId: taskID,
@@ -315,13 +397,14 @@ export class TaskWaiter {
               error.data.key !== key
             )
               throw error
-            const snapshot = await this.#get(taskID, entry.controller.signal)
+            const snapshot = await this.#get(entry, signal)
             if (snapshot.status === 'input_required' && Object.hasOwn(snapshot.inputRequests, key))
               throw error
             this.#observe(entry, snapshot)
           }
         })
         .catch((error: unknown) => {
+          if (signal.aborted) return
           entry.inputError =
             error instanceof InputRequiredNotSupportedError
               ? new TaskInputUnavailableError({ taskID, key, cause: error })
@@ -329,6 +412,9 @@ export class TaskWaiter {
                 ? error
                 : new Error(String(error))
           this.#wake(entry)
+        })
+        .finally(() => {
+          if (entry.inFlight.get(key) === own) entry.inFlight.delete(key)
         })
     }
   }
