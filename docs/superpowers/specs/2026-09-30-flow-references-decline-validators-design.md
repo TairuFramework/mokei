@@ -187,10 +187,17 @@ Each package gets a module-private cache:
 
 - A current factory, created lazily with the package's validator options.
 - A `Map` LRU of validators (or compile errors, where the package caches those) keyed by the
-  canonical JSON of the schema. Canonical JSON sorts object keys recursively.
+  canonical JSON of the schema. Canonical JSON sorts object keys recursively; array order is kept.
+  Each package gets a small `canonicalJSON` function. `form.ts` today keys by plain
+  `JSON.stringify`, so key order splits entries; it switches to `canonicalJSON`.
 - A counter of distinct compiles on the current factory. When it reaches 256, the next compile
   first calls `dispose()`, creates a new factory, clears the LRU and resets the counter.
 - LRU capacity: 64 entries, least recently used evicted first.
+
+Recycling bounds the cache and releases idle instances. It does not free an instance while
+something still holds a validator from it: `@sozai/schema` keeps a disposed factory's instance
+alive until its last validator is collected. Consumers therefore hold validators only as long as
+they need them (see the lazy lookup below).
 
 No shared package is created. The two copies are small. A reusable
 `createValidatorCache({ maxCompiles, maxEntries })` in `@sozai/schema` goes in the backlog as
@@ -200,7 +207,7 @@ requested upstream.
 
 `src/form.ts` replaces `createValidator(schema, { draft: '2020-12', strict: false })` with the
 cache above, using a factory created with `{ draft: '2020-12', strict: false }`. The existing
-64-entry LRU keyed by canonical JSON stays; the change adds the factory and the recycle step, and
+64-entry LRU stays; the change adds the factory, the recycle step and the canonical key, and
 updates the comment block that describes the shared instance.
 
 ### `@mokei/decision-flow-server`
@@ -208,10 +215,12 @@ updates the comment block that describes the shared instance.
 A new `src/validators.ts` exports `validatorFor(schema: Schema): Validator<unknown>`, backed by
 the cache with the package's current options (the default `createValidator` options).
 
-- `tool-node.ts`: `toolKind` drops its per-run `validatorCache` and calls `validatorFor` for the
-  input, mixed-input (`{ ...inputSchema, required: [] }`) and output validators. This also fixes a
-  leak: the mixed-input spread is a new object on every run, so today each run recompiles every
-  catalogued tool's schema on the shared instance.
+- `tool-node.ts`: `toolKind` drops its per-run `validatorCache` and its eager maps of input,
+  mixed-input (`{ ...inputSchema, required: [] }`) and output validators for the whole catalogue.
+  Each check or execute calls `validatorFor` for the one tool it needs, at the moment it needs it,
+  and keeps no reference afterwards. A suspended run then holds no validators, so it does not keep
+  an old factory alive. This also fixes a leak: the mixed-input spread is a new object on every
+  run, so today each run recompiles every catalogued tool's schema on the shared instance.
 - `predictor.ts`: calls `validatorFor(outputSchema)` instead of `createValidator(outputSchema)` for
   every prediction.
 
@@ -223,10 +232,13 @@ A `FlowGraphOptions` validator-factory option goes in the backlog as requested u
 | Situation | Result |
 | --- | --- |
 | Duplicate registered `id` | `createDecisionFlowServer` rejects. |
+| Recovery fires while the server is being created | Recovery waits for creation. |
 | Registered flow references a missing flow | `Invalid registered flow <id>` with `missing_flow`. |
 | Runtime definition reuses a registered `id` | `flow_id_conflict` error issue. |
 | Runtime definition references a missing flow | `missing_flow` error issue; `run_flow` returns it as an error result. |
-| Callee changed before recovery or resume | `Flow definition changed`. |
+| Callee changed or removed before recovery | `Flow definition changed` (frame check before `checkFlow`). |
+| Callee changed during a live resume | `FlowVersionMismatchError` or `FlowReferenceError` mapped to `Flow definition changed`. |
+| Registered root reaches an `input` node without elicitation | `Registered flow <id> requires elicitation`. |
 | Decline on `input` with `decline.to` | Run continues at `decline.to`. |
 | Decline on `input` without `decline.to` | Task cancelled (unchanged). |
 
@@ -239,21 +251,27 @@ A `FlowGraphOptions` validator-factory option goes in the backlog as requested u
     flow referencing a later-registered flow.
   - `plan`: transitive tools, predictor tool from a callee `decide`, cycle termination.
   - `server`: duplicate id rejection, `list_flows` output, `run_flow` calling a registered flow.
-  - `driver`: decline and cancel with a `decline` edge resume the run; without the edge the task is
-    cancelled; a missing response counts as cancel.
-  - `recovery`: a suspended callee frame recovers; a changed callee maps to
-    `Flow definition changed`.
+  - `driver`: decline and cancel with a `decline` edge resume the run, including on an `input`
+    node inside a callee frame; without the edge the task is cancelled; a missing response counts
+    as cancel.
+  - `recovery`: a suspended callee frame recovers; a changed or removed callee maps to
+    `Flow definition changed`; a recovery fired during server creation waits for it.
+  - `wiring`: the elicitation guard rejects a registered root whose callee has an `input` node.
+  - `list_flows`: `outputs` and `outcomes` include `end` nodes reached through `goto`.
   - `tool-node`: unconstrained result paths at any depth.
   - `validators`: identical canonical schemas reuse one validator; the 257th distinct compile
-    disposes the factory and clears the cache; a validator from a disposed factory still validates.
+    disposes the factory and clears the cache; a validator from a disposed factory still validates;
+    keys are independent of object key order; a run that recycles mid-flight keeps validating.
 - `host-desktop`: the same recycle assertions through `form.ts`.
 - `integration-tests`: `run_flow` through `NodeContextHost` calling a registered flow that asks for
   input, declined through the elicitation handler and routed to `decline.to`.
 
 ## Delivery
 
-- Branch `feat/flow-references-decline-validators`, one PR.
-- One changeset with a patch bump for the fixed group.
+- Branch `feat/flow-references-decline-validators`, one PR, with separate commits for the flow
+  work (sections 1-3) and the validator work (section 4) so each can be reviewed alone.
+- One changeset with a patch bump for the fixed group (the repo stays on 0.14.x patches). It calls
+  out the breaking changes: `checkFlow` and `createDecisionFlowServer` become async.
 - Backlog updates: move the three flow items and the AJV item to done, and add the two upstream
   asks (`createValidatorCache` in `@sozai/schema`, a validator-factory option in
   `@sozai/flow-graph`).
