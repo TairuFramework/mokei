@@ -8,7 +8,7 @@
 - **Runtime tool IDs.** Tool IDs computed at run time, with per-call approval, since the approved set is fixed at plan time today.
 - **Standalone binary.** Add `mcp-servers/decision-flow`, using a `NodeContextHost` built from a config of sibling servers.
 - **`llm` node kind.** Add a session-backed kind that uses the session's `ModelProvider`.
-- **Isolated validator options upstream.** Add `createValidatorCache({ maxCompiles, maxEntries })` to `@sozai/schema`, so the recycle rule in `src/validators.ts` can move out of this package. Requested upstream.
+- **Validator cache package upstream.** A new sozai package exposing `createValidatorCache({ factory, maxCompiles, maxEntries })` over `createValidatorFactory` and `@sozai/json` canonical keys, so the recycle rule in `src/validators.ts` and in `@mokei/host-desktop`'s `src/form.ts` can move out of mokei. Requested upstream.
 - **Validator factory in flow-graph.** Add a validator-factory option to `FlowGraphOptions` in `@sozai/flow-graph`, so the graph's own compiles use the recycled factory. Requested upstream.
 
 ## Done in the decision-flow server PR
