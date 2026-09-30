@@ -23,7 +23,17 @@ export type DesktopToolsOptions = {
   createBackend?: (name: BackendName, runner: Runner) => DesktopBackend
 }
 
+/** The tools, plus `dispose()` for the runner they created themselves. */
+export type DesktopTools = Array<LocalToolDefinition> & {
+  /**
+   * Disposes the runner `createDesktopTools` created on demand, killing a running notification;
+   * `notify` then returns an error. An injected `runner` stays the caller's to dispose.
+   */
+  dispose(): Promise<void>
+}
+
 const DEFAULT_TIMEOUT_SECONDS = 90
+const DISPOSED_MESSAGE = 'Desktop tools disposed'
 const NOTIFY_TIMEOUT_MS = 5000
 const MIN_CHOICES = 2
 const MAX_CHOICES = 20
@@ -151,11 +161,13 @@ function parseAskInput(input: Record<string, unknown>): AskInput | CallToolResul
   return { question, answer }
 }
 
-export function createDesktopTools(options: DesktopToolsOptions): Array<LocalToolDefinition> {
+export function createDesktopTools(options: DesktopToolsOptions): DesktopTools {
   const appName = options.appName ?? 'mokei'
   const timeoutMs =
     timeoutSecondsOption('timeoutSeconds', options.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS) * 1000
   const tools: Array<LocalToolDefinition> = []
+  let ownRunner: Runner | undefined
+  let disposed = false
 
   if (options.notify !== false) {
     const createBackend = options.createBackend ?? defaultCreateBackend(appName)
@@ -164,7 +176,6 @@ export function createDesktopTools(options: DesktopToolsOptions): Array<LocalToo
       env: options.env ?? process.env,
       forced: options.backends,
     })
-    let runner = options.runner
 
     tools.push({
       name: 'notify',
@@ -189,12 +200,19 @@ export function createDesktopTools(options: DesktopToolsOptions): Array<LocalToo
           return invalid('sound', 'must be a boolean')
         }
 
+        if (disposed) {
+          return errorResult(DISPOSED_MESSAGE)
+        }
         const { selection } = detect()
         if (selection.notify == null) {
           return errorResult(selection.notifyProblem ?? 'No notification backend is available')
         }
 
-        runner ??= createRunner()
+        let runner = options.runner
+        if (runner == null) {
+          ownRunner ??= createRunner()
+          runner = ownRunner
+        }
         const backend = createBackend(selection.notify.name, runner)
         if (backend.notify == null) {
           return errorResult(`${backend.name} cannot show notifications`)
@@ -210,7 +228,7 @@ export function createDesktopTools(options: DesktopToolsOptions): Array<LocalToo
           await untilAbort(
             backend.notify(
               {
-                title: (title as string | undefined) ?? appName,
+                title: isNonEmptyString(title) && title.trim() !== '' ? title : appName,
                 message,
                 subtitle: subtitle as string | undefined,
                 sound: sound as boolean | undefined,
@@ -245,8 +263,11 @@ export function createDesktopTools(options: DesktopToolsOptions): Array<LocalToo
           return parsed
         }
 
-        const timeoutSignal = AbortSignal.timeout(timeoutMs)
-        const combined = signal == null ? timeoutSignal : AbortSignal.any([signal, timeoutSignal])
+        // Its own reason object, so only this timeout's rejection reads as a timeout
+        const timeoutReason = new DOMException('ask_user timed out', 'TimeoutError')
+        const timeout = new AbortController()
+        const timer = setTimeout(() => timeout.abort(timeoutReason), timeoutMs)
+        const combined = signal == null ? timeout.signal : AbortSignal.any([signal, timeout.signal])
         let result: ElicitResult
         try {
           result = await untilAbort(
@@ -266,10 +287,12 @@ export function createDesktopTools(options: DesktopToolsOptions): Array<LocalToo
             combined,
           )
         } catch (error) {
-          if (timeoutSignal.aborted && signal?.aborted !== true) {
+          if (error === timeoutReason) {
             return jsonResult({ status: 'cancelled' })
           }
           throw error
+        } finally {
+          clearTimeout(timer)
         }
 
         switch (result.action) {
@@ -284,5 +307,10 @@ export function createDesktopTools(options: DesktopToolsOptions): Array<LocalToo
     })
   }
 
-  return tools
+  async function dispose(): Promise<void> {
+    disposed = true
+    await ownRunner?.dispose()
+  }
+
+  return Object.assign(tools, { dispose })
 }

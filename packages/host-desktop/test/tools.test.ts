@@ -12,6 +12,7 @@ import {
   type DesktopElicitRequest,
   type DesktopToolsOptions,
   type NotifyRequest,
+  type Runner,
 } from '../src/index.js'
 
 const binDir = mkdtempSync(join(tmpdir(), 'mokei-host-desktop-tools-'))
@@ -99,6 +100,54 @@ describe('registration', () => {
   })
 })
 
+describe('dispose', () => {
+  test('disposes the runner it creates', async () => {
+    const runners: Array<Runner> = []
+    const tools = createDesktopTools({
+      platform: 'linux',
+      env: LINUX_ENV,
+      createBackend: (name, runner) => {
+        runners.push(runner)
+        return { name, notify: async () => {} }
+      },
+    })
+    const host = new ContextHost()
+    host.addLocalTools(tools)
+    await host.callLocalTool({ name: 'notify', arguments: { message: 'm' } })
+    expect(runners).toHaveLength(1)
+    await tools.dispose()
+    await expect(
+      runners[0]?.run(process.execPath, ['-e', ''], { timeoutMs: 1000 }),
+    ).rejects.toThrow('Runner disposed')
+  })
+
+  test('does not dispose a runner it was given', async () => {
+    const runner = { run: vi.fn(), dispose: vi.fn(async () => {}) }
+    const tools = createDesktopTools({ runner })
+    await tools.dispose()
+    expect(runner.dispose).not.toHaveBeenCalled()
+  })
+
+  test('notify after dispose reports an error and starts no runner', async () => {
+    const created: Array<Runner> = []
+    const tools = createDesktopTools({
+      platform: 'linux',
+      env: LINUX_ENV,
+      createBackend: (name, runner) => {
+        created.push(runner)
+        return { name, notify: async () => {} }
+      },
+    })
+    await tools.dispose()
+    const host = new ContextHost()
+    host.addLocalTools(tools)
+    const result = await host.callLocalTool({ name: 'notify', arguments: { message: 'm' } })
+    expect(result.isError).toBe(true)
+    expect(result.content).toEqual([{ type: 'text', text: 'Desktop tools disposed' }])
+    expect(created).toHaveLength(0)
+  })
+})
+
 describe('notify', () => {
   test('delivers and returns the backend', async () => {
     const { host, notifications } = setup({ appName: 'App' })
@@ -123,6 +172,12 @@ describe('notify', () => {
     const { host, notifications } = setup()
     await host.callLocalTool({ name: 'notify', arguments: { message: 'm', title: 'T' } })
     expect(notifications[0]?.request.title).toBe('T')
+  })
+
+  test.each(['', '   '])('an empty title (%j) falls back to the app name', async (title) => {
+    const { host, notifications } = setup({ appName: 'App' })
+    await host.callLocalTool({ name: 'notify', arguments: { message: 'm', title } })
+    expect(notifications[0]?.request.title).toBe('App')
   })
 
   test('rejects a missing message naming the field', async () => {
@@ -281,10 +336,20 @@ describe('ask_user', () => {
   })
 
   test('its own timeout gives cancelled', async () => {
+    vi.useFakeTimers()
     const { host } = withElicit(() => new Promise<ElicitResult>(() => {}), {
-      timeoutSeconds: 0.05,
+      timeoutSeconds: 30,
     })
-    const result = await ask(host, { question: 'q', kind: 'text' })
+    const pending = ask(host, { question: 'q', kind: 'text' })
+    await vi.advanceTimersByTimeAsync(29_999)
+    let settled = false
+    void pending.then(() => {
+      settled = true
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    const result = await pending
     expect(result.isError).toBeUndefined()
     expect(structured(result)).toEqual({ status: 'cancelled' })
   })

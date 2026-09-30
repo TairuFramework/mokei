@@ -192,17 +192,17 @@ process. The task stays in `input_required` until its TTL.
 ## Local tools
 
 ```ts
-import { createDesktopTools, createRunner } from '@mokei/host-desktop'
+import { createDesktopTools } from '@mokei/host-desktop'
 
-const runner = createRunner()
-host.addLocalTools(createDesktopTools({ elicit: desktop, runner }))
-// On shutdown: await runner.dispose()
+const tools = createDesktopTools({ elicit: desktop })
+host.addLocalTools(tools)
+// On shutdown: await tools.dispose()
 ```
 
 The host exposes them as `local:notify` and `local:ask_user`.
 
-- `notify` takes `{ message, title?, subtitle?, sound? }` (`subtitle` is macOS only; `sound` is
-  ignored on Linux) and returns `{ delivered: true, backend }` once the OS accepts the
+- `notify` takes `{ message, title?, subtitle?, sound? }` (an empty or blank `title` gives the
+  app name; `subtitle` is macOS only; `sound` is ignored on Linux) and returns `{ delivered: true, backend }` once the OS accepts the
   notification, within 5 seconds. With no backend or a failed delivery it returns an
   `isError` result with an install hint or the failure reason.
 - `ask_user` takes `{ question, kind: 'text' | 'confirm' | 'choice', choices?, default? }`,
@@ -214,8 +214,8 @@ The host exposes them as `local:notify` and `local:ask_user`.
 - `toolApproval: 'ask'` alone denies these tools, because no approval handler shows a prompt.
   Supply a `ToolApprovalFn` or allow `local:notify` and `local:ask_user` explicitly.
 
-Inject your own `runner` and dispose it on shutdown, as above. A runner that `createDesktopTools`
-creates itself is never disposed, so a notification still running at exit is not cleaned up.
+`tools.dispose()` disposes the runner `createDesktopTools` created itself, killing a running
+notification; `notify` then returns an error. A `runner` you pass in stays yours to dispose.
 
 ## Shutdown
 
@@ -228,7 +228,7 @@ you passed in. Wire it to host disposal and to process signals:
 async function shutdown() {
   await host.dispose() // runs desktop.dispose() through ContextHostParams.dispose
   inbox.dispose()
-  await runner.dispose()
+  await tools.dispose()
   process.exit(0)
 }
 process.once('SIGTERM', shutdown)
