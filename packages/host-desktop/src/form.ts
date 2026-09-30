@@ -125,10 +125,12 @@ function checkFormat(format: string, value: string): boolean {
 }
 
 function checkString(schema: Loose, value: string): string | undefined {
-  if (schema.minLength != null && value.length < schema.minLength) {
+  // JSON Schema lengths count code points, not UTF-16 units
+  const length = [...value].length
+  if (schema.minLength != null && length < schema.minLength) {
     return `must satisfy minLength ${schema.minLength}`
   }
-  if (schema.maxLength != null && value.length > schema.maxLength) {
+  if (schema.maxLength != null && length > schema.maxLength) {
     return `must satisfy maxLength ${schema.maxLength}`
   }
   if (schema.pattern != null) {

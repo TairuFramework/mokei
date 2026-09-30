@@ -142,18 +142,20 @@ describe('planForm rejections', () => {
   }
 
   test('multi-select array', () => {
-    expect(reason({ f: { type: 'array', items: { type: 'string', enum: ['a'] } } })).toMatch(/f/)
+    expect(reason({ f: { type: 'array', items: { type: 'string', enum: ['a'] } } })).toBe(
+      'property "f" has an unsupported kind',
+    )
   })
 
   test('unknown kind', () => {
-    expect(reason({ f: { type: 'object' } })).toMatch(/f/)
+    expect(reason({ f: { type: 'object' } })).toBe('property "f" has an unsupported kind')
   })
 
   test('more than 10 properties', () => {
     const props = Object.fromEntries(
       Array.from({ length: 11 }, (_, i) => [`p${i}`, { type: 'string' }]),
     )
-    expect(reason(props)).toMatch(/10/)
+    expect(reason(props)).toBe('form has more than 10 properties')
     const ten = Object.fromEntries(
       Array.from({ length: 10 }, (_, i) => [`p${i}`, { type: 'string' }]),
     )
@@ -206,6 +208,19 @@ describe('constraints via toValue', () => {
     expect(bad({ type: 'string', minLength: 3 }, 'abc')).toBeNull()
     expect(bad({ type: 'string', maxLength: 2 }, 'abc')).toMatch(/maxLength/)
     expect(bad({ type: 'string', maxLength: 2 }, 'ab')).toBeNull()
+  })
+
+  test('minLength / maxLength count code points, not UTF-16 units', () => {
+    // One astral emoji is two UTF-16 units but one code point
+    expect(bad({ type: 'string', maxLength: 1 }, '\u{1F600}')).toBeNull()
+    expect(bad({ type: 'string', minLength: 2 }, '\u{1F600}')).toBe('must satisfy minLength 2')
+    expect(bad({ type: 'string', minLength: 2 }, 'a\u{1F600}')).toBeNull()
+    expect(bad({ type: 'string', maxLength: 1 }, 'a\u{1F600}')).toBe('must satisfy maxLength 1')
+  })
+
+  test('validateContent counts code points too', () => {
+    const emoji = params({ s: { type: 'string', maxLength: 1 } }).requestedSchema
+    expect(validateContent(emoji, { s: '\u{1F600}' })).toEqual([])
   })
 
   test('pattern is whole-string', () => {
@@ -266,41 +281,53 @@ describe('validateContent', () => {
   })
 
   test('non-object content', () => {
-    expect(validateContent(schema, null)).not.toEqual([])
-    expect(validateContent(schema, [])).not.toEqual([])
+    expect(validateContent(schema, null)).toEqual(['content must be an object'])
+    expect(validateContent(schema, [])).toEqual(['content must be an object'])
   })
 
   test('unknown key', () => {
-    expect(validateContent(schema, { s: 'ok', extra: 1 }).join()).toMatch(/extra/)
+    expect(validateContent(schema, { s: 'ok', extra: 1 })).toEqual(['extra: unknown property'])
   })
 
   test('missing required', () => {
-    expect(validateContent(schema, {}).join()).toMatch(/s/)
+    expect(validateContent(schema, {})).toEqual(['s: required'])
   })
 
   test('wrong type', () => {
-    expect(validateContent(schema, { s: 1 }).join()).toMatch(/s/)
-    expect(validateContent(schema, { s: 'ok', n: '2' }).join()).toMatch(/n/)
-    expect(validateContent(schema, { s: 'ok', b: 'true' }).join()).toMatch(/b/)
-    expect(validateContent(schema, { s: 'ok', n: Number.NaN }).join()).toMatch(/n/)
+    expect(validateContent(schema, { s: 1 })).toEqual(['s: must be a string'])
+    expect(validateContent(schema, { s: 'ok', n: '2' })).toEqual(['n: must be a number'])
+    expect(validateContent(schema, { s: 'ok', b: 'true' })).toEqual(['b: must be a boolean'])
+    expect(validateContent(schema, { s: 'ok', n: Number.NaN })).toEqual(['n: must be a number'])
   })
 
   test('enum and oneOf miss', () => {
-    expect(validateContent(schema, { s: 'ok', e: 'z' }).join()).toMatch(/e/)
-    expect(validateContent(schema, { s: 'ok', o: 'z' }).join()).toMatch(/o/)
+    expect(validateContent(schema, { s: 'ok', e: 'z' })).toEqual([
+      'e: must be one of the offered choices',
+    ])
+    expect(validateContent(schema, { s: 'ok', o: 'z' })).toEqual([
+      'o: must be one of the offered choices',
+    ])
   })
 
   test('multi-select unknown item and non-array', () => {
-    expect(validateContent(schema, { s: 'ok', m1: ['p', 'z'] }).join()).toMatch(/m1/)
-    expect(validateContent(schema, { s: 'ok', m2: ['z'] }).join()).toMatch(/m2/)
-    expect(validateContent(schema, { s: 'ok', m1: 'p' }).join()).toMatch(/m1/)
-    expect(validateContent(schema, { s: 'ok', m1: [1] }).join()).toMatch(/m1/)
+    expect(validateContent(schema, { s: 'ok', m1: ['p', 'z'] })).toEqual([
+      'm1: "z" is not an offered choice',
+    ])
+    expect(validateContent(schema, { s: 'ok', m2: ['z'] })).toEqual([
+      'm2: "z" is not an offered choice',
+    ])
+    expect(validateContent(schema, { s: 'ok', m1: 'p' })).toEqual([
+      'm1: must be an array of strings',
+    ])
+    expect(validateContent(schema, { s: 'ok', m1: [1] })).toEqual([
+      'm1: must be an array of strings',
+    ])
   })
 
   test('constraint failures name the property', () => {
-    expect(validateContent(schema, { s: 'x' }).join()).toMatch(/s.*minLength/)
-    expect(validateContent(schema, { s: 'ok', n: 0 }).join()).toMatch(/n.*minimum/)
-    expect(validateContent(schema, { s: 'ok', n: 1.5 }).join()).toMatch(/n.*integer/)
+    expect(validateContent(schema, { s: 'x' })).toEqual(['s: must satisfy minLength 2'])
+    expect(validateContent(schema, { s: 'ok', n: 0 })).toEqual(['n: must satisfy minimum 1'])
+    expect(validateContent(schema, { s: 'ok', n: 1.5 })).toEqual(['n: must be an integer'])
   })
 })
 
