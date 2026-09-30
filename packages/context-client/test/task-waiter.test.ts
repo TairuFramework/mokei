@@ -419,9 +419,43 @@ describe('TaskWaiter', () => {
     })
     const pending = waiter.wait({ taskID: base.taskId, onStatus })
     await vi.waitFor(() => expect(onStatus).toHaveBeenCalledWith(working))
-    notify?.(completed)
+    const finished = { ...completed, lastUpdatedAt: '2026-09-29T12:00:01.000Z' }
+    notify?.(finished)
     expect(await pending).toEqual(completed.result)
-    expect(onStatus).toHaveBeenCalledWith(completed)
+    expect(onStatus).toHaveBeenCalledWith(finished)
+  })
+
+  test('reports a pushed snapshot to onStatus once when a read returns the same revision', async () => {
+    let notify: ((status: DetailedTask) => void) | undefined
+    const onStatus = vi.fn()
+    const waiter = new TaskWaiter({
+      request: vi.fn().mockResolvedValue(working),
+      openListen: (_filter, handlers) => {
+        notify = (status) =>
+          handlers.onNotification({
+            jsonrpc: '2.0',
+            method: 'notifications/tasks',
+            params: status,
+          })
+        queueMicrotask(() => {
+          notify?.(working)
+          handlers.onNotification({
+            jsonrpc: '2.0',
+            method: 'notifications/subscriptions/acknowledged',
+            params: { notifications: { taskIds: [base.taskId] } },
+          } as unknown as ServerNotification)
+        })
+        return { exchange: new Promise(() => {}), abort: vi.fn() }
+      },
+      fulfil: vi.fn(),
+      validate: vi.fn(),
+    })
+    const pending = waiter.wait({ taskID: base.taskId, onStatus })
+    await vi.waitFor(() => expect(onStatus).toHaveBeenCalledWith(working))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    notify?.({ ...completed, lastUpdatedAt: '2026-09-29T12:00:01.000Z' })
+    expect(await pending).toEqual(completed.result)
+    expect(onStatus.mock.calls.map(([status]) => status.status)).toEqual(['working', 'completed'])
   })
 
   test('cancels the server task on automatic wait abort', async () => {
@@ -534,18 +568,60 @@ describe('TaskWaiter', () => {
 
     test('withdrawal aborts the handler with TaskInputWithdrawnError', async () => {
       vi.useFakeTimers()
+      try {
+        const { state, openListen } = subscribe()
+        let reason: unknown
+        const fulfil = vi.fn(
+          (_key: string, _request: unknown, signal: AbortSignal) =>
+            new Promise<never>((_resolve, reject) => {
+              signal.addEventListener('abort', () => {
+                reason = signal.reason
+                reject(signal.reason)
+              })
+            }),
+        )
+        const request = vi.fn().mockResolvedValue(input)
+        const waiter = new TaskWaiter({
+          request,
+          openListen,
+          fulfil,
+          validate: vi.fn(),
+        })
+        const pending = waiter.wait({ taskID: base.taskId })
+        await vi.waitFor(() => expect(fulfil).toHaveBeenCalledTimes(1))
+        state.notify?.({ ...working, lastUpdatedAt: at(1) })
+        await vi.waitFor(() => expect(reason).toBeInstanceOf(TaskInputWithdrawnError))
+        expect(reason).toMatchObject({ key: 'ask', taskID: base.taskId })
+        let settled = false
+        pending.then(
+          () => (settled = true),
+          () => (settled = true),
+        )
+        await vi.advanceTimersByTimeAsync(10)
+        expect(settled).toBe(false)
+        state.notify?.({ ...completed, lastUpdatedAt: at(2) })
+        expect(await pending).toEqual(completed.result)
+        expect(request).not.toHaveBeenCalledWith('tasks/update', expect.anything())
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    test('an accepted answer is not reported as withdrawn', async () => {
       const { state, openListen } = subscribe()
-      let reason: unknown
-      const fulfil = vi.fn(
-        (_key: string, _request: unknown, signal: AbortSignal) =>
-          new Promise<never>((_resolve, reject) => {
-            signal.addEventListener('abort', () => {
-              reason = signal.reason
-              reject(signal.reason)
-            })
-          }),
-      )
-      const request = vi.fn().mockResolvedValue(input)
+      const reasons: Array<unknown> = []
+      const fulfil = vi.fn(async (_key: string, _request: unknown, signal: AbortSignal) => {
+        signal.addEventListener('abort', () => reasons.push(signal.reason))
+        return { roots: [] }
+      })
+      const request = vi.fn(async (method: string) => {
+        if (method === 'tasks/update') {
+          // The server accepts the answer and pushes the resumed task before replying.
+          state.notify?.({ ...working, lastUpdatedAt: at(1) })
+          return {}
+        }
+        return input
+      })
       const waiter = new TaskWaiter({
         request,
         openListen,
@@ -553,21 +629,13 @@ describe('TaskWaiter', () => {
         validate: vi.fn(),
       })
       const pending = waiter.wait({ taskID: base.taskId })
-      await vi.waitFor(() => expect(fulfil).toHaveBeenCalledTimes(1))
-      state.notify?.({ ...working, lastUpdatedAt: at(1) })
-      await vi.waitFor(() => expect(reason).toBeInstanceOf(TaskInputWithdrawnError))
-      expect(reason).toMatchObject({ key: 'ask', taskID: base.taskId })
-      let settled = false
-      pending.then(
-        () => (settled = true),
-        () => (settled = true),
+      await vi.waitFor(() =>
+        expect(request).toHaveBeenCalledWith('tasks/update', expect.anything()),
       )
-      await vi.advanceTimersByTimeAsync(10)
-      expect(settled).toBe(false)
+      await new Promise((resolve) => setTimeout(resolve, 10))
       state.notify?.({ ...completed, lastUpdatedAt: at(2) })
       expect(await pending).toEqual(completed.result)
-      expect(request).not.toHaveBeenCalledWith('tasks/update', expect.anything())
-      vi.useRealTimers()
+      expect(reasons.some((reason) => reason instanceof TaskInputWithdrawnError)).toBe(false)
     })
 
     test('a late answer keeps the wait alive', async () => {
@@ -737,38 +805,41 @@ describe('TaskWaiter', () => {
 
     test('releasing the wait aborts the handler', async () => {
       vi.useFakeTimers()
-      const controller = new AbortController()
-      let dispatchSignal: AbortSignal | undefined
-      let finish: ((response: { roots: Array<never> }) => void) | undefined
-      const fulfil = vi.fn((_key: string, _request: unknown, signal: AbortSignal) => {
-        dispatchSignal = signal
-        return new Promise<{ roots: Array<never> }>((resolve) => {
-          finish = resolve
+      try {
+        const controller = new AbortController()
+        let dispatchSignal: AbortSignal | undefined
+        let finish: ((response: { roots: Array<never> }) => void) | undefined
+        const fulfil = vi.fn((_key: string, _request: unknown, signal: AbortSignal) => {
+          dispatchSignal = signal
+          return new Promise<{ roots: Array<never> }>((resolve) => {
+            finish = resolve
+          })
         })
-      })
-      const request = vi.fn().mockResolvedValue(input)
-      const waiter = new TaskWaiter({
-        request,
-        openListen: () => {
-          throw new Error('unavailable')
-        },
-        fulfil,
-        validate: vi.fn(),
-        delay: (_ms, signal) =>
-          new Promise((_resolve, reject) => {
-            signal.addEventListener('abort', () => reject(signal.reason))
-          }),
-      })
-      const pending = waiter.wait({ taskID: base.taskId, signal: controller.signal })
-      await vi.waitFor(() => expect(fulfil).toHaveBeenCalledTimes(1))
-      const reason = new Error('stopped')
-      controller.abort(reason)
-      await expect(pending).rejects.toBe(reason)
-      expect(dispatchSignal?.aborted).toBe(true)
-      finish?.({ roots: [] })
-      await vi.advanceTimersByTimeAsync(10)
-      expect(request).not.toHaveBeenCalledWith('tasks/update', expect.anything())
-      vi.useRealTimers()
+        const request = vi.fn().mockResolvedValue(input)
+        const waiter = new TaskWaiter({
+          request,
+          openListen: () => {
+            throw new Error('unavailable')
+          },
+          fulfil,
+          validate: vi.fn(),
+          delay: (_ms, signal) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason))
+            }),
+        })
+        const pending = waiter.wait({ taskID: base.taskId, signal: controller.signal })
+        await vi.waitFor(() => expect(fulfil).toHaveBeenCalledTimes(1))
+        const reason = new Error('stopped')
+        controller.abort(reason)
+        await expect(pending).rejects.toBe(reason)
+        expect(dispatchSignal?.aborted).toBe(true)
+        finish?.({ roots: [] })
+        await vi.advanceTimersByTimeAsync(10)
+        expect(request).not.toHaveBeenCalledWith('tasks/update', expect.anything())
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     test('a 30 day TTL does not turn the subscribed wait into a read loop', async () => {

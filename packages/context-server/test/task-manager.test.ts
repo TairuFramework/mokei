@@ -183,6 +183,46 @@ describe('task manager', () => {
     await manager.dispose()
   })
 
+  test.each([
+    ['without a signal', undefined],
+    ['with a signal', new AbortController().signal],
+  ])(
+    'requestInput %s leaves only the returned promise to handle when the task ends',
+    async (_name, signal) => {
+      const unhandled: Array<unknown> = []
+      const onUnhandled = (reason: unknown) => unhandled.push(reason)
+      process.on('unhandledRejection', onUnhandled)
+      try {
+        const manager = createTaskManager()
+        let handle: TaskHandle | undefined
+        const created = await manager.create({
+          toolName: 'echo',
+          tool,
+          clientCapabilities: { roots: {} },
+          work: (task) => {
+            handle = task
+            return new Promise(() => {})
+          },
+        })
+        if (handle === undefined) throw new Error('Worker did not start')
+        const pending = handle.requestInput({ ask: rootsRequest }, { signal })
+        const outcome = pending.then(
+          () => undefined,
+          (error: unknown) => error,
+        )
+        await tick()
+        await manager.cancel(created.taskId)
+        expect(await outcome).toBeInstanceOf(Error)
+        await tick()
+        await tick()
+        expect(unhandled).toEqual([])
+        await manager.dispose()
+      } finally {
+        process.off('unhandledRejection', onUnhandled)
+      }
+    },
+  )
+
   test('handle cancellation loses to client cancellation', async () => {
     const manager = createTaskManager()
     let handle: TaskHandle | undefined

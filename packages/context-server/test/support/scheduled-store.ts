@@ -12,10 +12,18 @@ export function mulberry32(seed: number): () => number {
   }
 }
 
-function flush(): Promise<void> {
-  // setImmediate runs after every queued microtask, so continuations of a released op settle.
+/** Yields past every queued microtask and one check phase of the event loop. */
+function turn(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve))
 }
+
+/** Yields past the timer phase too, for continuations deferred with `setTimeout(0)`. */
+function timerTurn(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+/** Consecutive idle turns required before the harness counts the system as settled. */
+const IDLE_TURNS = 2
 
 /**
  * An in-memory store whose `get`, `update` and `delete` calls wait in a queue until `drain`
@@ -30,13 +38,34 @@ export function createScheduledStore(seed: number): {
   const random = mulberry32(seed)
   const queue: Array<() => void> = []
   const commits: Array<TaskRecord> = []
+  let running = 0
 
   function schedule<T>(run: () => Promise<T>): Promise<T> {
     const { promise, resolve, reject } = Promise.withResolvers<T>()
     queue.push(() => {
-      run().then(resolve, reject)
+      running += 1
+      run()
+        .then(resolve, reject)
+        .finally(() => {
+          running -= 1
+        })
     })
     return promise
+  }
+
+  /**
+   * Yields until no released op is still running and the queue stays unchanged for several
+   * consecutive turns, so continuations chained over microtasks and macrotasks all land before
+   * the next release or the final invariant check.
+   */
+  async function settle(): Promise<void> {
+    let idle = 0
+    while (idle < IDLE_TURNS) {
+      const queued = queue.length
+      await turn()
+      if (running > 0 || queue.length !== queued) idle = 0
+      else idle += 1
+    }
   }
 
   const store: TaskStore = {
@@ -56,11 +85,17 @@ export function createScheduledStore(seed: number): {
     store,
     commits,
     async drain() {
-      await flush()
-      while (queue.length > 0) {
-        const [release] = queue.splice(Math.floor(random() * queue.length), 1)
-        release?.()
-        await flush()
+      for (;;) {
+        await settle()
+        while (queue.length > 0) {
+          const [release] = queue.splice(Math.floor(random() * queue.length), 1)
+          release?.()
+          await settle()
+        }
+        // Before the invariants are checked, let timer-deferred work surface; loop if it queued.
+        await timerTurn()
+        await settle()
+        if (queue.length === 0 && running === 0) return
       }
     },
   }

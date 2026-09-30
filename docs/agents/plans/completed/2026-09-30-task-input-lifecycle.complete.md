@@ -70,7 +70,10 @@ decision-flow driver tests for each recovery outcome.
 
 ## Follow-ons
 
-Parked minor cleanups: [task input lifecycle follow-ons](../backlog/2026-09-30-task-input-lifecycle-follow-ons.md).
+The review minors were fixed in the same PR: the interleaving harness drains until the store is
+quiescent, fake-timer tests always restore real timers, `onStatus` skips snapshots no newer than
+the last one reported, and an answered dispatch is no longer aborted as withdrawn. No follow-on
+work remains.
 
 ## Out of scope
 

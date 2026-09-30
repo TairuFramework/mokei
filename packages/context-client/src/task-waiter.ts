@@ -72,7 +72,12 @@ export class TaskWaiter {
   async wait(params: WaitForTaskParams): Promise<CallToolResult> {
     const entry = this.#acquire(params.taskID)
     let statusError: unknown
+    // Server `lastUpdatedAt` is strictly monotonic, so a snapshot no newer than the last one
+    // reported (a push followed by a read of the same revision) is a duplicate.
+    let reported: string | undefined
     const notifyStatus = (status: DetailedTask) => {
+      if (reported != null && status.lastUpdatedAt <= reported) return
+      reported = status.lastUpdatedAt
       try {
         params.onStatus?.(status)
       } catch (error) {
@@ -82,7 +87,6 @@ export class TaskWaiter {
     }
     if (params.onStatus != null) entry.statusListeners.add(notifyStatus)
     let seen = 0
-    let notified: string | undefined
     try {
       const accepted = await this.#abortable(entry.acknowledged, params.signal)
       seen = entry.version
@@ -103,10 +107,7 @@ export class TaskWaiter {
         }
         snapshot = entry.latest ?? snapshot
         seen = entry.version
-        if (fromGet && observed && snapshot.lastUpdatedAt !== notified) {
-          notified = snapshot.lastUpdatedAt
-          notifyStatus(snapshot)
-        }
+        if (fromGet && observed) notifyStatus(snapshot)
         if (statusError != null) throw statusError
         if (snapshot.status === 'completed') {
           return params.toolName == null
@@ -394,6 +395,9 @@ export class TaskWaiter {
         .fulfil(key, request, signal)
         .then(async (response) => {
           if (signal.aborted || !Object.hasOwn(entry.inputs, key)) return
+          // The handler has answered: a snapshot that no longer lists the key (typically the
+          // server accepting this very answer) must not abort it as withdrawn.
+          if (entry.inFlight.get(key) === own) entry.inFlight.delete(key)
           try {
             await this.#params.request('tasks/update', {
               taskId: taskID,
