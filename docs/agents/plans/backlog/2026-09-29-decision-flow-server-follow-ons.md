@@ -32,6 +32,6 @@
 - **Unconstrained result paths.** The `tool` kind's result schema no longer uses a 32-level `additionalProperties` chain.
 - **Runtime validator recycling.** Runtime schemas compile on an isolated factory that is recycled after 256 distinct compiles, with a 64-entry LRU keyed by canonical JSON. Runs no longer recompile per run.
 
-## Done in the quick follow-ons PR
+## Done in the [quick follow-ons](../completed/2026-09-30-quick-follow-ons.complete.md) PR
 
 - **Uncompilable tool schemas.** A node referencing a catalogue tool whose input schema fails to compile gets a `tool_invalid_schema` issue at `['nodes', id, 'tool']` instead of throwing from `check_flow`.

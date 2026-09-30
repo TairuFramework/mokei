@@ -9,7 +9,7 @@
 - **Server-side URL-mode completion.** `ContextServer` cannot send `notifications/elicitation/complete` through its
   typed `notify`. Add it for `2025-11-25` connections only, since `2026-07-28` forbids the notification.
 
-## Done in the quick follow-ons PR
+## Done in the [quick follow-ons](../completed/2026-09-30-quick-follow-ons.complete.md) PR
 
 - **URL-mode completion.** `@mokei/context-client` emits `elicitationComplete`, the host forwards it as
   `elicitation:complete` with the context key, and `AgentSession` publishes an `elicitation-complete` event to
