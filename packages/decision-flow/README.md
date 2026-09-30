@@ -100,6 +100,25 @@ for await (const state of graph.resume({
 Call `graph.resume` with `{ type: 'timeout' }` only after the pending deadline. If a timeout event
 arrives before the deadline, the engine rejects it. A value event can resume at any time.
 
+## Flow references
+
+A flow can `call` another flow, hand over to it with `goto`, or run it as a `loop` body
+(`body: { flow, version }`). Pass a `resolver` to `createDecisionFlowGraph` so these references
+resolve. `resume` and `recover` also require it, because they resolve every pinned frame from it.
+
+```ts
+import { createMapResolver } from '@sozai/flow-graph'
+
+const graph = createDecisionFlowGraph({
+  client,
+  resolver: createMapResolver([main, classify]),
+})
+await graph.run({ definition: main })
+```
+
+Referenced flows need an `id` and a `version`. A `call` continues at `next` and exposes the callee's
+result as `results.<callNode>.output`.
+
 ## Tracing, metrics, and privacy
 
 The engine records `flow.segment` and `flow.node` spans. Decision prediction adds a child

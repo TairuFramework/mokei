@@ -1,6 +1,7 @@
 import { createMemoryTaskStore, createTaskManager, type JSONValue } from '@mokei/context-server'
 import {
   createFlowGraph,
+  createMapResolver,
   digestDefinition,
   type FlowDefinition,
   type RunState,
@@ -37,6 +38,7 @@ function fixture(
     flowRef?: ResumeDataV1['flow']
     caller?: Partial<ToolCaller>
     approved?: Array<string>
+    flows?: Array<FlowDefinition>
   } = {},
 ) {
   const store = createMemoryTaskStore()
@@ -76,12 +78,13 @@ function fixture(
     runState: state,
     siblings: options.siblings ?? [],
   }
-  const createSecond = () => {
-    const server = createDecisionFlowServer({
+  const createSecond = async () => {
+    const server = await createDecisionFlowServer({
       caller,
       predictor,
       tasks: {} as ReturnType<typeof createTaskManager>,
-      flows: options.registered === false ? [] : [options.definition ?? storedFlow],
+      flows:
+        options.flows ?? (options.registered === false ? [] : [options.definition ?? storedFlow]),
       approval: () => ({ tools: [] }),
       elicitation: () => true,
     })
@@ -109,11 +112,18 @@ const inputFlow: FlowDefinition = {
   },
 }
 
-async function suspendedState(definition: FlowDefinition, caller?: ToolCaller): Promise<RunState> {
+async function suspendedState(
+  definition: FlowDefinition,
+  caller?: ToolCaller,
+  callees: Array<FlowDefinition> = [],
+): Promise<RunState> {
+  const resolver =
+    callees.length === 0 ? {} : { resolver: createMapResolver([definition, ...callees]) }
   const graph = createFlowGraph(
     caller === undefined
-      ? {}
+      ? resolver
       : {
+          ...resolver,
           kinds: [
             toolKind({
               caller,
@@ -173,7 +183,7 @@ async function persist(f: ReturnType<typeof fixture>) {
 test('recovers a running registered flow and completes it', async () => {
   const f = fixture()
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -199,7 +209,7 @@ test('recovery ignores malformed saved siblings and cancels the valid sibling', 
   })
   f.data.runState = { ...f.data.runState, status: 'ended', outcome: 'finished' }
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -219,7 +229,7 @@ test('rejects an unknown resume data version and cancels saved siblings', async 
   })
   f.data.v = 2 as 1
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('failed')
@@ -234,7 +244,7 @@ test('rejects an unknown resume data version and cancels saved siblings', async 
 
 test('resolves unknown flow tools for recovery without listing or calling them', async () => {
   const f = fixture()
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     expect(Object.keys(server.recoveryTools)).toEqual(Object.keys(server.tools))
     expect(Object.keys(server.recoveryTools)).not.toContain('flow_missing')
@@ -282,7 +292,7 @@ test.each(terminalCases)(
       ...(status === 'error' ? { error: { code: 'saved', name: 'Saved error' } } : {}),
     } as RunState
     const id = await persist(f)
-    const { second, server } = f.createSecond()
+    const { second, server } = await f.createSecond()
     listed = false
     try {
       await second.recover(server.recoveryTools)
@@ -318,7 +328,7 @@ test.each(['changed', 'removed'] as const)(
       },
     })
     const id = await persist(f)
-    const { second, server } = f.createSecond()
+    const { second, server } = await f.createSecond()
     try {
       await second.recover(server.recoveryTools)
       await expect.poll(async () => (await second.get(id)).status).toBe('failed')
@@ -350,7 +360,7 @@ test('catalogue drift fails recovery with formatted issues and cancels siblings'
     },
   })
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   listed = false
   try {
     await second.recover(server.recoveryTools)
@@ -387,7 +397,7 @@ test.each(['not-issued', 'outstanding'] as const)(
         { revision: previous.revision },
       )
     }
-    const { second, server } = f.createSecond()
+    const { second, server } = await f.createSecond()
     try {
       await second.recover(server.recoveryTools)
       await expect.poll(async () => (await second.get(id)).status).toBe('input_required')
@@ -426,7 +436,7 @@ test('recovers input by replaying an answer committed before the restart', async
     },
     { revision: previous.revision },
   )
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -447,7 +457,7 @@ test('an elapsed input deadline resumes the timeout edge without issuing a reque
   } as RunState
   const f = fixture({ storedDefinition: inputFlow, state: expired })
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -503,7 +513,7 @@ test('withdraws an outstanding expired input before asking at the timeout edge',
     },
     { revision: previous.revision },
   )
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect
@@ -563,7 +573,7 @@ test('recovers a suspended sibling wait by its stored task ID', async () => {
     },
   })
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -619,7 +629,7 @@ test('recovers a suspended retry timer then retries the tool', async () => {
     },
   })
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -663,13 +673,177 @@ test('cancelling a recovered run aborts its graph work', async () => {
     },
   })
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(() => entered).toBe(true)
     await second.cancel(id)
     await expect.poll(() => aborted).toBe(true)
     expect(await second.get(id)).toMatchObject({ status: 'cancelled' })
+  } finally {
+    await second.dispose()
+  }
+})
+
+const subFlow: FlowDefinition = {
+  id: 'sub',
+  name: 'Sub',
+  version: 1,
+  start: 'ask',
+  nodes: {
+    ask: {
+      kind: 'input',
+      prompt: { value: 'Your name?' },
+      schema: { type: 'string' },
+      next: 'done',
+    },
+    done: { kind: 'end', outcome: 'answered', output: { name: { ref: ['results', 'ask'] } } },
+  },
+}
+
+function callerFlow(version?: number): FlowDefinition {
+  return {
+    id: flow.id,
+    name: 'Caller',
+    version: 1,
+    start: 'call',
+    nodes: {
+      call: {
+        kind: 'call',
+        flow: 'sub',
+        ...(version === undefined ? {} : { version }),
+        next: 'done',
+      },
+      done: {
+        kind: 'end',
+        outcome: 'called',
+        output: { answer: { ref: ['results', 'call', 'output', 'name'] } },
+      },
+    },
+  }
+}
+
+async function calleeFixture(
+  root: FlowDefinition,
+  registered: Array<FlowDefinition>,
+  options: {
+    adHoc?: boolean
+    callee?: FlowDefinition
+    tool?: { id: string; inputSchema: { type: 'object' } }
+    listed?: () => boolean
+  } = {},
+) {
+  const callee = options.callee ?? subFlow
+  const tools = options.tool === undefined ? [] : [options.tool]
+  const suspendCaller: ToolCaller | undefined =
+    options.tool === undefined
+      ? undefined
+      : {
+          listTools: () => tools,
+          callTool: async () => {
+            throw new Error('Unexpected tool call')
+          },
+          waitTask: async () => {
+            throw new Error('Unexpected wait')
+          },
+          cancelTask: async () => {},
+        }
+  const state = await suspendedState(root, suspendCaller, [callee])
+  expect(state.frames.map((frame) => frame.flow.id)).toEqual([root.id, callee.id])
+  const f = fixture({
+    storedDefinition: root,
+    state,
+    flows: registered,
+    flowRef: options.adHoc ? { definition: root } : undefined,
+    catalogue: () => (options.listed?.() === false ? [] : tools),
+  })
+  const id = await persist(f)
+  return { f, id, key: inputKey(state) }
+}
+
+test.each([
+  ['a versioned', 1],
+  ['an unversioned', undefined],
+] as const)(
+  'recovers a run suspended in a callee frame through %s call reference',
+  async (_name, version) => {
+    const root = callerFlow(version)
+    const { f, id, key } = await calleeFixture(root, [root, subFlow])
+    const { second, server } = await f.createSecond()
+    try {
+      await second.recover(server.recoveryTools)
+      await expect.poll(async () => (await second.get(id)).status).toBe('input_required')
+      await second.update(id, { [key]: { action: 'accept', content: { value: 'Ada' } } })
+      await expect.poll(async () => (await second.get(id)).status).toBe('completed')
+      expect(await second.get(id)).toMatchObject({
+        result: { structuredContent: { outcome: 'called', output: { answer: 'Ada' } } },
+      })
+    } finally {
+      await second.dispose()
+    }
+  },
+)
+
+test('a changed callee reports Flow definition changed', async () => {
+  const root = callerFlow(1)
+  const { f, id } = await calleeFixture(root, [root, { ...subFlow, name: 'Sub changed' }])
+  const { second, server } = await f.createSecond()
+  try {
+    await second.recover(server.recoveryTools)
+    await expect.poll(async () => (await second.get(id)).status).toBe('failed')
+    expect(await second.get(id)).toMatchObject({
+      error: { code: -32603, message: 'Flow definition changed' },
+    })
+  } finally {
+    await second.dispose()
+  }
+})
+
+test('a removed callee reports Flow definition changed, not Flow no longer valid', async () => {
+  // An ad-hoc root keeps its stored definition, so only the callee frame can fail.
+  const root = callerFlow(1)
+  const { f, id } = await calleeFixture(root, [], { adHoc: true })
+  const { second, server } = await f.createSecond()
+  try {
+    await second.recover(server.recoveryTools)
+    await expect.poll(async () => (await second.get(id)).status).toBe('failed')
+    expect(await second.get(id)).toMatchObject({
+      error: { code: -32603, message: 'Flow definition changed' },
+    })
+  } finally {
+    await second.dispose()
+  }
+})
+
+test('a still-valid callee frame with new blocking issues reports Flow no longer valid', async () => {
+  const tool = { id: 'sibling:work', inputSchema: { type: 'object' as const } }
+  const callee: FlowDefinition = {
+    ...subFlow,
+    nodes: {
+      ...subFlow.nodes,
+      ask: { ...subFlow.nodes.ask, next: 'work' } as FlowDefinition['nodes'][string],
+      work: { kind: 'tool', tool: tool.id, args: {}, next: 'done' },
+    },
+  }
+  const root = callerFlow(1)
+  let listed = true
+  const { f, id } = await calleeFixture(root, [root, callee], {
+    callee,
+    tool,
+    listed: () => listed,
+  })
+  const { second, server } = await f.createSecond()
+  listed = false
+  try {
+    await second.recover(server.recoveryTools)
+    await expect.poll(async () => (await second.get(id)).status).toBe('failed')
+    expect(await second.get(id)).toMatchObject({
+      error: {
+        code: -32603,
+        message: 'Flow no longer valid',
+        data: { formatted: expect.stringContaining('unknown_tool') },
+      },
+    })
   } finally {
     await second.dispose()
   }

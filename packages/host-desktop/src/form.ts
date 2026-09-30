@@ -1,10 +1,12 @@
 import type { ElicitRequest } from '@mokei/context-protocol'
+import { canonicalize } from '@sozai/json'
 import {
-  createValidator,
+  createValidatorFactory,
   type Schema,
   ValidationError,
   type ValidationErrorObject,
   type Validator,
+  type ValidatorFactory,
 } from '@sozai/schema'
 
 import type { AskRequest } from './backends/types.js'
@@ -197,22 +199,41 @@ function contentValidationSchema(schema: RequestedSchema): SchemaObject {
   }
 }
 
+/** Distinct compiles on one factory before it is disposed and replaced. */
+const MAX_COMPILES = 256
+
 /**
  * Compiled validators (or the compile error) by the canonical JSON of the whitelisted schema,
- * least recently used first. Repeated forms reuse one compile: `@sozai/schema` shares one AJV
- * instance, whose code-gen scope keeps every compiled function for the life of the process.
+ * least recently used first. Repeated forms reuse one compile. Validators come from an isolated
+ * factory instead of the AJV instance `@sozai/schema` shares process-wide, whose code-gen scope
+ * keeps every compiled function for the life of the process. The factory is disposed and
+ * replaced after MAX_COMPILES distinct compiles, and the cache is cleared with it; validators
+ * handed out earlier keep working.
  */
 const compiled = new Map<string, Validator<unknown> | Error>()
+let factory: ValidatorFactory | undefined
+let generation = 0
+let compiles = 0
 
 function compile(schema: SchemaObject | false): Validator<unknown> {
-  const key = JSON.stringify(schema)
+  // Schemas always serialize, so canonicalize never returns undefined here.
+  const key = canonicalize(schema) as string
   let entry = compiled.get(key)
   if (entry == null) {
+    if (factory !== undefined && compiles >= MAX_COMPILES) {
+      factory.dispose()
+      factory = undefined
+      compiled.clear()
+      compiles = 0
+      generation += 1
+    }
+    factory ??= createValidatorFactory({ draft: '2020-12', strict: false })
     try {
-      entry = createValidator(schema as unknown as Schema, { draft: '2020-12', strict: false })
+      entry = factory.createValidator(schema as unknown as Schema) as Validator<unknown>
     } catch (error) {
       entry = error instanceof Error ? error : new Error(String(error))
     }
+    compiles += 1
     if (compiled.size >= CACHE_LIMIT) {
       compiled.delete(compiled.keys().next().value as string)
     }
@@ -222,6 +243,19 @@ function compile(schema: SchemaObject | false): Validator<unknown> {
   compiled.set(key, entry)
   if (entry instanceof Error) throw entry
   return entry
+}
+
+export function formValidatorStats(): { generation: number; compiles: number; entries: number } {
+  return { generation, compiles, entries: compiled.size }
+}
+
+/** Reset the cache and factory. Tests only. */
+export function resetFormValidators(): void {
+  factory?.dispose()
+  factory = undefined
+  generation = 0
+  compiles = 0
+  compiled.clear()
 }
 
 function issuesOf(

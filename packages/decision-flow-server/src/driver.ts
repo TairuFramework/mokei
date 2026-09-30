@@ -7,9 +7,17 @@ import {
   type TaskHandle,
   TaskInputKeyReusedError,
 } from '@mokei/context-server'
-import type { FlowDefinition, FlowGraph, FlowRun, RunState } from '@sozai/flow-graph'
+import {
+  type FlowDefinition,
+  type FlowGraph,
+  FlowReferenceError,
+  type FlowRun,
+  FlowVersionMismatchError,
+  type RunState,
+} from '@sozai/flow-graph'
 
 import { toElicitationSchema } from './definition-checks.js'
+import type { FlowLookup } from './registry.js'
 import { cancelSibling, type ToolCaller } from './tool-caller.js'
 import type { ToolResumeValue, ToolSuspendData } from './tool-node.js'
 
@@ -39,6 +47,16 @@ function isToolSuspension(data: unknown): data is ToolSuspendData {
     typeof data.tool === 'string' &&
     'taskId' in data &&
     typeof data.taskId === 'string'
+  )
+}
+
+function hasDeclineEdge(decline: unknown): boolean {
+  return (
+    typeof decline === 'object' &&
+    decline !== null &&
+    'to' in decline &&
+    typeof decline.to === 'string' &&
+    decline.to !== ''
   )
 }
 
@@ -84,8 +102,9 @@ export async function startRun(params: {
   run: FlowRun
   resumeData: ResumeDataV1
   caller: ToolCaller
+  lookup: FlowLookup
 }): Promise<CallToolResult> {
-  const { handle, graph, resumeData, caller } = params
+  const { handle, graph, resumeData, caller, lookup } = params
   let run = params.run
   let driveSegment = resumeData.runState.status === 'running'
   const siblings = resumeData.siblings
@@ -222,6 +241,7 @@ export async function startRun(params: {
     if (form === undefined) throw new Error('Input schema cannot be elicited')
     const wrapped = form.wrapped
     const frame = state.frames.at(-1)
+    const pendingNode = pending.node
     const invocationID =
       frame?.attempts[pending.node]?.invocationID ?? `${pending.node}.${state.invocation}`
     // Deterministic from the run state, so a recovered run re-attaches to or replays the request.
@@ -246,12 +266,25 @@ export async function startRun(params: {
     const isTimeout = (error: unknown) =>
       error === expired || error instanceof InputRequestWithdrawnError
 
-    /** The value event for an accepted answer; declining or cancelling ends the task. */
+    /**
+     * The value event for an accepted answer. Declining or cancelling takes the node's `decline`
+     * edge when it has one, and otherwise ends the task.
+     */
     async function answered(
       responses: Record<string, InputResponse>,
-    ): Promise<{ type: 'value'; value: JSONValue } | { type: 'stopped' }> {
+    ): Promise<
+      | { type: 'value'; value: JSONValue }
+      | { type: 'decline'; reason: 'decline' | 'cancel' }
+      | { type: 'stopped' }
+    > {
       const response = responses[key]
       if (response?.action !== 'accept') {
+        const node = frame && lookup(frame.flow.id, frame.flow.version)?.nodes[pendingNode]
+        if (node?.kind === 'input' && hasDeclineEdge(node.decline)) {
+          const reason =
+            response === undefined || response.action === 'cancel' ? 'cancel' : 'decline'
+          return { type: 'decline', reason }
+        }
         await cleanup()
         await handle.cancel()
         return { type: 'stopped' }
@@ -327,7 +360,15 @@ export async function startRun(params: {
       })
       let step: IteratorResult<RunState, RunState>
       try {
-        step = await run.next()
+        try {
+          step = await run.next()
+        } catch (error) {
+          if (error instanceof FlowVersionMismatchError || error instanceof FlowReferenceError) {
+            // biome-ignore lint/style/useErrorCause: RPCError takes cause in its options object.
+            throw new RPCError({ code: -32603, message: 'Flow definition changed', cause: error })
+          }
+          throw error
+        }
         await Promise.all(statuses)
       } finally {
         off()

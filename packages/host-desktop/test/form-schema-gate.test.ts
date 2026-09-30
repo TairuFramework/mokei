@@ -1,15 +1,35 @@
-import * as sozaiSchema from '@sozai/schema'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { type FieldPlan, type FormParams, planForm, validateContent } from '../src/form.js'
+import {
+  type FieldPlan,
+  type FormParams,
+  planForm,
+  resetFormValidators,
+  validateContent,
+} from '../src/form.js'
 import { createInputInbox, InboxAnswerInvalidError } from '../src/inbox.js'
+
+// Counts compiles made on any validator factory
+const createValidator = vi.hoisted(() => vi.fn())
 
 vi.mock('@sozai/schema', async (importOriginal) => {
   const original = await importOriginal<typeof import('@sozai/schema')>()
-  return { ...original, createValidator: vi.fn(original.createValidator) }
+  return {
+    ...original,
+    createValidatorFactory: (
+      factoryOptions?: Parameters<typeof original.createValidatorFactory>[0],
+    ) => {
+      const factory = original.createValidatorFactory(factoryOptions)
+      const inner = factory.createValidator.bind(factory)
+      factory.createValidator = ((schema: never) => {
+        createValidator(schema)
+        return inner(schema)
+      }) as typeof factory.createValidator
+      return factory
+    },
+  }
 })
 
-const createValidator = vi.mocked(sozaiSchema.createValidator)
 const options = { appName: 'App', source: 'Server "s"' }
 
 function params(properties: Record<string, unknown>, required?: Array<string>): FormParams {
@@ -39,6 +59,7 @@ function fresh(extra: Record<string, unknown> = {}): Record<string, unknown> {
 }
 
 beforeEach(() => {
+  resetFormValidators()
   createValidator.mockClear()
 })
 afterEach(() => {

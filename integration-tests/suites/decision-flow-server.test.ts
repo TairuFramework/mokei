@@ -1,5 +1,7 @@
-import { AgentSession } from '@mokei/session'
+import { addDecisionFlow } from '@mokei/decision-flow-server'
+import { AgentSession, Session } from '@mokei/session'
 import type { SystemOneResult } from '@mokei/system-one-client'
+import type { FlowDefinition } from '@sozai/flow-graph'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import {
@@ -106,5 +108,70 @@ test('aborting the agent cancels the flow and its sibling ticket task', async ()
     expect(fixture.tickets).toEqual([])
   } finally {
     await agent.dispose()
+  }
+})
+
+test('run_flow calls a registered flow and routes a declined input', async () => {
+  const ask = {
+    id: 'ask',
+    name: 'Ask',
+    version: 1,
+    start: 'ask',
+    nodes: {
+      ask: {
+        kind: 'input',
+        prompt: { value: 'Which team?' },
+        schema: { type: 'string' },
+        decline: { to: 'declined' },
+        next: 'answered',
+      },
+      answered: { kind: 'end', outcome: 'answered' },
+      declined: {
+        kind: 'end',
+        outcome: 'declined',
+        output: { why: { ref: ['results', 'ask', 'declined'] } },
+      },
+    },
+  } as unknown as FlowDefinition
+  const root = {
+    id: 'root',
+    name: 'Root',
+    version: 1,
+    start: 'call',
+    nodes: {
+      call: { kind: 'call', flow: 'ask', version: 1, next: 'after' },
+      after: {
+        kind: 'end',
+        outcome: 'after',
+        output: {
+          callee: { ref: ['results', 'call', 'outcome'] },
+          why: { ref: ['results', 'call', 'output', 'why'] },
+        },
+      },
+    },
+  } as unknown as FlowDefinition
+  const session = new Session({ elicit: true })
+  const wiring = await addDecisionFlow(session, { key: 'flow', flows: [ask] })
+  const completed: Array<unknown> = []
+  const agent = new AgentSession({
+    session,
+    provider: decisionFlowProvider(root),
+    model: 'test-model',
+    toolApproval: wiring.wrapApproval('auto'),
+    onEvent(event) {
+      if (event.type === 'tool-call-complete') completed.push(event.result)
+    },
+    onElicitation: () => ({ action: 'decline' }),
+  })
+  try {
+    await agent.run({ prompt: 'Ask the user' })
+    expect(completed).toHaveLength(1)
+    expect(completed[0]).toMatchObject({
+      structuredContent: { outcome: 'after', output: { callee: 'declined', why: 'decline' } },
+    })
+  } finally {
+    await agent.dispose()
+    await wiring.dispose()
+    await session.dispose()
   }
 })

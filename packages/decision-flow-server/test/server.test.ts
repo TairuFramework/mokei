@@ -7,7 +7,9 @@ import type { createDecisionFlowGraph } from '@mokei/decision-flow'
 import type { FlowDefinition } from '@sozai/flow-graph'
 import { afterEach, expect, test, vi } from 'vitest'
 
+import { flowSummaries } from '../src/flow-tools.js'
 import { createDecisionFlowServer, flowToolName } from '../src/index.js'
+import { createFlowRegistry } from '../src/registry.js'
 import type { ToolCaller } from '../src/tool-caller.js'
 
 const startedSignals = vi.hoisted(() => [] as Array<AbortSignal | undefined>)
@@ -63,7 +65,7 @@ afterEach(async () => {
   await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()))
 })
 
-function setup(
+async function setup(
   options: {
     flows?: Array<FlowDefinition>
     approval?: () => { tools: Array<string> } | undefined
@@ -74,7 +76,7 @@ function setup(
   const tasks = createTaskManager()
   const create = vi.spyOn(tasks, 'create')
   const approval = vi.fn(options.approval ?? (() => undefined))
-  const definition = createDecisionFlowServer({
+  const definition = await createDecisionFlowServer({
     caller,
     predictor,
     tasks,
@@ -94,7 +96,7 @@ function setup(
 }
 
 test('check_flow returns issues, formatted text, and the elicitation warning', async () => {
-  const { client, create } = setup()
+  const { client, create } = await setup()
   const result = await client.callTool({
     name: 'check_flow',
     arguments: {
@@ -122,7 +124,7 @@ test('check_flow returns issues, formatted text, and the elicitation warning', a
 })
 
 test('invalid run_flow returns formatted issues before approval or task creation', async () => {
-  const { client, create, approval } = setup()
+  const { client, create, approval } = await setup()
   const result = await client.callTool({ name: 'run_flow', arguments: { definition: invalid } })
   expect(result.isError).toBe(true)
   expect(result.content[0]).toMatchObject({ type: 'text', text: expect.stringContaining('start') })
@@ -136,7 +138,7 @@ test.each([
   ['negative', -1, 'Invalid flow depth'],
   ['limit', 4, 'Invalid flow depth'],
 ])('rejects %s depth before creating a task', async (_name, depth, message) => {
-  const { client, create, approval } = setup()
+  const { client, create, approval } = await setup()
   const result = await client.callTool({
     name: 'run_flow',
     arguments: { definition: flow() },
@@ -148,7 +150,7 @@ test.each([
 })
 
 test('absent depth is zero and reaches approval', async () => {
-  const { client, create, approval } = setup()
+  const { client, create, approval } = await setup()
   const result = await client.callTool({ name: 'run_flow', arguments: { definition: flow() } })
   expect(result).toMatchObject({ isError: true, content: [{ type: 'text', text: 'Flow denied' }] })
   expect(approval).toHaveBeenCalledWith(expect.objectContaining({ toolName: 'run_flow' }))
@@ -156,7 +158,7 @@ test('absent depth is zero and reaches approval', async () => {
 })
 
 test('denied grant leaves no task; approved grant reaches task.run', async () => {
-  const denied = setup()
+  const denied = await setup()
   const result = await denied.client.callTool({
     name: 'run_flow',
     arguments: { definition: flow() },
@@ -164,7 +166,7 @@ test('denied grant leaves no task; approved grant reaches task.run', async () =>
   expect(result.isError).toBe(true)
   expect(denied.create).not.toHaveBeenCalled()
 
-  const allowed = setup({ approval: () => ({ tools: [] }) })
+  const allowed = await setup({ approval: () => ({ tools: [] }) })
   const started = await allowed.client.callTool({
     name: 'run_flow',
     arguments: { definition: flow() },
@@ -175,7 +177,7 @@ test('denied grant leaves no task; approved grant reaches task.run', async () =>
 })
 
 test('a flow run uses the task signal and tasks/cancel aborts it', async () => {
-  const { client } = setup({ approval: () => ({ tools: [] }) })
+  const { client } = await setup({ approval: () => ({ tools: [] }) })
   startedSignals.length = 0
 
   const result = await client.callTool({
@@ -193,7 +195,7 @@ test('a flow run uses the task signal and tasks/cancel aborts it', async () => {
 })
 
 test('registered tools advertise normalized names and object input schemas', async () => {
-  const { client, definition } = setup({
+  const { client, definition } = await setup({
     flows: [
       flow('support/triage', { type: 'object', properties: { topic: { type: 'string' } } }),
       flow('plain'),
@@ -212,14 +214,14 @@ test('registered tools advertise normalized names and object input schemas', asy
 })
 
 test('registered run checks depth and grant before task creation', async () => {
-  const { client, create } = setup({ flows: [flow()] })
+  const { client, create } = await setup({ flows: [flow()] })
   const result = await client.callTool({ name: 'flow_support_triage', arguments: {} })
   expect(result).toMatchObject({ isError: true, content: [{ type: 'text', text: 'Flow denied' }] })
   expect(create).not.toHaveBeenCalled()
 })
 
 test('malformed approval leaves no task', async () => {
-  const { client, create } = setup({
+  const { client, create } = await setup({
     approval: () => ({ tools: [42] as unknown as Array<string> }),
   })
   const result = await client.callTool({ name: 'run_flow', arguments: { definition: flow() } })
@@ -228,7 +230,7 @@ test('malformed approval leaves no task', async () => {
 })
 
 test('registered run rejects depth at the limit before approval', async () => {
-  const { client, create, approval } = setup({ flows: [flow()] })
+  const { client, create, approval } = await setup({ flows: [flow()] })
   const result = await client.callTool({
     name: 'flow_support_triage',
     arguments: {},
@@ -246,7 +248,7 @@ test('task tool requires the client tasks extension', async () => {
   const pair = new DirectTransports<ServerMessage, ClientMessage>()
   const tasks = createTaskManager()
   const create = vi.spyOn(tasks, 'create')
-  const definition = createDecisionFlowServer({
+  const definition = await createDecisionFlowServer({
     caller,
     predictor,
     tasks,
@@ -274,13 +276,154 @@ test('task tool requires the client tasks extension', async () => {
   expect(create).not.toHaveBeenCalled()
 })
 
-test('construction rejects invalid registered schemas, collisions, and invalid flows', () => {
+test('construction rejects invalid registered schemas, collisions, and invalid flows', async () => {
   const tasks = createTaskManager()
   cleanups.push(() => tasks.dispose())
   const params = { caller, predictor, tasks, approval: () => undefined }
-  expect(() =>
+  await expect(
     createDecisionFlowServer({ ...params, flows: [flow('bad', { type: 'string' })] }),
-  ).toThrow()
-  expect(() => createDecisionFlowServer({ ...params, flows: [flow('a/b'), flow('a_b')] })).toThrow()
-  expect(() => createDecisionFlowServer({ ...params, flows: [invalid] })).toThrow()
+  ).rejects.toThrow()
+  await expect(
+    createDecisionFlowServer({ ...params, flows: [flow('a/b'), flow('a_b')] }),
+  ).rejects.toThrow()
+  await expect(createDecisionFlowServer({ ...params, flows: [invalid] })).rejects.toThrow()
+})
+
+const callee: FlowDefinition = {
+  id: 'callee',
+  name: 'Callee',
+  version: 1,
+  start: 'done',
+  nodes: { done: { kind: 'end', outcome: 'ok', output: { value: { value: 1 } } } },
+}
+const callerFlow: FlowDefinition = {
+  id: 'caller',
+  name: 'Caller',
+  version: 2,
+  start: 'call',
+  nodes: {
+    call: { kind: 'call', flow: 'callee', next: 'done' },
+    done: { kind: 'end', outcome: 'called' },
+  },
+}
+
+test('rejects duplicate registered ids', async () => {
+  const tasks = createTaskManager()
+  cleanups.push(() => tasks.dispose())
+  await expect(
+    createDecisionFlowServer({
+      caller,
+      predictor,
+      tasks,
+      approval: () => undefined,
+      flows: [flow('a'), flow('a')],
+    }),
+  ).rejects.toThrow('Duplicate registered flow id: a')
+})
+
+test('registered flows can reference a later-registered flow', async () => {
+  const { client } = await setup({ flows: [callerFlow, callee] })
+  const names = (await client.listTools()).tools.map((tool) => tool.name)
+  expect(names).toEqual(expect.arrayContaining(['flow_caller', 'flow_callee']))
+})
+
+test('rejects a registered flow calling a missing flow', async () => {
+  const tasks = createTaskManager()
+  cleanups.push(() => tasks.dispose())
+  await expect(
+    createDecisionFlowServer({
+      caller,
+      predictor,
+      tasks,
+      approval: () => undefined,
+      flows: [callerFlow],
+    }),
+  ).rejects.toThrow(/^Invalid registered flow caller/)
+})
+
+test('list_flows returns sorted summaries', async () => {
+  const exit: FlowDefinition = {
+    id: 'exit',
+    name: 'Exit',
+    version: 3,
+    start: 'done',
+    nodes: {
+      done: { kind: 'end', outcome: 'exited', output: { reason: { value: 'x' } } },
+    },
+  }
+  const main: FlowDefinition = {
+    id: 'main',
+    name: 'Main',
+    version: 1,
+    input: { type: 'object', properties: { topic: { type: 'string' } } },
+    start: 'call',
+    nodes: {
+      call: { kind: 'call', flow: 'callee', next: 'leave' },
+      leave: { kind: 'goto', flow: 'exit' },
+      done: { kind: 'end', outcome: 'done', output: { answer: { value: 1 } } },
+    },
+  }
+  const { client, create } = await setup({ flows: [main, callee, exit] })
+  const result = await client.callTool({ name: 'list_flows', arguments: {} })
+  expect(result.structuredContent).toEqual({
+    flows: [
+      {
+        id: 'callee',
+        name: 'Callee',
+        version: 1,
+        input: { type: 'object' },
+        outputs: ['value'],
+        outcomes: ['ok'],
+      },
+      {
+        id: 'exit',
+        name: 'Exit',
+        version: 3,
+        input: { type: 'object' },
+        outputs: ['reason'],
+        outcomes: ['exited'],
+      },
+      {
+        id: 'main',
+        name: 'Main',
+        version: 1,
+        input: { type: 'object', properties: { topic: { type: 'string' } } },
+        outputs: ['answer', 'reason'],
+        outcomes: ['done', 'exited'],
+      },
+    ],
+  })
+  expect(result.content[0]).toEqual({
+    type: 'text',
+    text: 'callee v1: Callee\nexit v3: Exit\nmain v1: Main',
+  })
+  expect(create).not.toHaveBeenCalled()
+})
+
+test('run_flow runs a definition that calls a registered flow', async () => {
+  const { client, create } = await setup({
+    flows: [callee],
+    approval: () => ({ tools: [] }),
+  })
+  const result = await client.callTool({
+    name: 'run_flow',
+    arguments: { definition: callerFlow },
+    task: 'handle',
+  })
+  expect(result.resultType).toBe('task')
+  expect(create).toHaveBeenCalledTimes(1)
+})
+
+test('flowSummaries input is a copy of the registry snapshot', () => {
+  const registry = createFlowRegistry([
+    flow('copy', { type: 'object', properties: { topic: { type: 'string' } } }),
+  ])
+  const digest = registry.digest('copy')
+  const summary = flowSummaries(registry)[0]
+  if (summary === undefined) throw new Error('expected a summary')
+  ;(summary.input as { properties: Record<string, unknown> }).properties.injected = {
+    type: 'string',
+  }
+  expect(registry.digest('copy')).toBe(digest)
+  expect(JSON.stringify(flowSummaries(registry)[0]?.input)).not.toContain('injected')
 })

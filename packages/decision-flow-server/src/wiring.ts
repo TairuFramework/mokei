@@ -15,6 +15,7 @@ import { flowToolName } from './flow-tools.js'
 import { createGrantStore } from './grants.js'
 import { flowPlan } from './plan.js'
 import { createMCPPredictor, type PredictorFactory } from './predictor.js'
+import { createFlowRegistry, reachableFlows } from './registry.js'
 import { createDecisionFlowServer } from './server.js'
 import {
   hostToolCaller,
@@ -75,20 +76,25 @@ export async function addDecisionFlow(
   params: AddDecisionFlowParams,
 ): Promise<DecisionFlowWiring> {
   const host = session.contextHost
-  const flows = params.flows ?? []
   const caller = hostToolCaller(host, { exclude: [params.key] })
   const predictor = params.predictor ?? createMCPPredictor(caller)
-  const registered = new Map(flows.map((flow) => [flowToolName(flow.id), flow]))
+  const registry = createFlowRegistry(params.flows ?? [])
+  const registered = new Map(registry.flows.map((flow) => [flowToolName(flow.id), flow]))
 
-  for (const flow of flows) {
+  for (const flow of registry.flows) {
     if (
       !host.elicitationEnabled &&
-      Object.values(flow.nodes).some((node) => node.kind === 'input')
+      reachableFlows(flow, registry.lookup, 'all').some((reached) =>
+        Object.values(reached.nodes).some(
+          (node) => typeof node === 'object' && node !== null && node.kind === 'input',
+        ),
+      )
     ) {
       throw new Error(`Registered flow ${flow.id} requires elicitation`)
     }
-    const checked = checkFlow({
+    const checked = await checkFlow({
       definition: flow,
+      registry,
       caller,
       predictor,
       elicitation: host.elicitationEnabled,
@@ -107,7 +113,7 @@ export async function addDecisionFlow(
   reserved.add(params.key)
   const grants = createGrantStore()
   let tasks: ReturnType<typeof createTaskManager> | undefined
-  let server: ReturnType<typeof createDecisionFlowServer> | undefined
+  let server: Awaited<ReturnType<typeof createDecisionFlowServer>> | undefined
   let registrationAttempted = false
   markDecisionFlowContext(host, params.key)
   try {
@@ -118,11 +124,11 @@ export async function addDecisionFlow(
         return server.recover(record, resume)
       },
     })
-    server = createDecisionFlowServer({
+    server = await createDecisionFlowServer({
       caller,
       predictor,
       tasks,
-      flows,
+      registry,
       elicitation: () => host.elicitationEnabled,
       approval: ({ toolName, arguments: args, meta }) =>
         grants.consume({ token: meta[FLOW_GRANT_META], toolName, arguments: args }),
@@ -180,14 +186,15 @@ export async function addDecisionFlow(
           return false
         }
         const definition = flow ?? args.definition
-        const checked = checkFlow({
+        const checked = await checkFlow({
           definition,
+          registry,
           caller,
           predictor,
           elicitation: host.elicitationEnabled,
         })
         if (checked.issues) return true
-        const planned = flowPlan(definition as FlowDefinition, predictor)
+        const planned = flowPlan(definition as FlowDefinition, predictor, checked.lookup)
         const enriched = {
           ...request,
           flow: {

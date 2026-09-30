@@ -4,6 +4,7 @@ import { expect, test } from 'vitest'
 
 import { checkFlow, checkInputNodes, toElicitationSchema } from '../src/definition-checks.js'
 import { flowPlan } from '../src/plan.js'
+import { createFlowRegistry } from '../src/registry.js'
 import type { ToolCaller } from '../src/tool-caller.js'
 
 const predictor = {
@@ -11,6 +12,7 @@ const predictor = {
     throw new Error('unused')
   },
 }
+const registry = createFlowRegistry([])
 const caller: ToolCaller = {
   listTools: () => [{ id: 'local:fetch', inputSchema: { type: 'object' } }],
   callTool: async () => {
@@ -123,7 +125,7 @@ test('reports missing and constant non-string prompts but permits references', (
   ])
 })
 
-test('checkFlow adds a non-blocking warning without elicitation', () => {
+test('checkFlow adds a non-blocking warning without elicitation', async () => {
   const flow = definition({
     ask: {
       kind: 'input',
@@ -133,20 +135,30 @@ test('checkFlow adds a non-blocking warning without elicitation', () => {
     },
     done: { kind: 'end', outcome: 'done' },
   })
-  const checked = checkFlow({ definition: flow, caller, predictor, elicitation: false })
+  const checked = await checkFlow({
+    definition: flow,
+    registry,
+    caller,
+    predictor,
+    elicitation: false,
+  })
   expect(checked.issues).toBeUndefined()
   expect(checked).toMatchObject({ value: flow })
   expect(checked.warnings).toMatchObject([
     { code: 'input_without_elicitation', severity: 'warning' },
   ])
   expect(checked.formatted).toContain('input_without_elicitation')
-  expect(checkFlow({ definition: flow, caller, predictor, elicitation: true }).warnings).toEqual([])
+  expect(
+    (await checkFlow({ definition: flow, registry, caller, predictor, elicitation: true }))
+      .warnings,
+  ).toEqual([])
 })
 
-test('checkFlow returns a Standard Schema result', () => {
+test('checkFlow returns a Standard Schema result', async () => {
   const flow = definition({ done: { kind: 'end', outcome: 'done' } })
-  const result: StandardSchemaV1.Result<FlowDefinition> = checkFlow({
+  const result: StandardSchemaV1.Result<FlowDefinition> = await checkFlow({
     definition: flow,
+    registry,
     caller,
     predictor,
     elicitation: true,
@@ -154,12 +166,18 @@ test('checkFlow returns a Standard Schema result', () => {
   expect(result).toMatchObject({ value: flow })
 })
 
-test('checkFlow includes input node errors in its formatted result', () => {
+test('checkFlow includes input node errors in its formatted result', async () => {
   const flow = definition({
     ask: { kind: 'input', prompt: { value: 123 }, next: 'done' },
     done: { kind: 'end', outcome: 'done' },
   })
-  const checked = checkFlow({ definition: flow, caller, predictor, elicitation: true })
+  const checked = await checkFlow({
+    definition: flow,
+    registry,
+    caller,
+    predictor,
+    elicitation: true,
+  })
   expect(checked).not.toHaveProperty('value')
   expect(checked.issues?.map((issue) => issue.code)).toEqual([
     'input_schema_not_elicitable',
@@ -169,16 +187,17 @@ test('checkFlow includes input node errors in its formatted result', () => {
   expect(checked.formatted).toContain('input_prompt_not_string')
 })
 
-test('checkFlow returns input issues and a run graph bound to the live catalogue', () => {
+test('checkFlow returns input issues and a run graph bound to the live catalogue', async () => {
   const flow = definition({
     use: { kind: 'tool', tool: 'local:fetch', args: {}, next: 'done' },
     done: { kind: 'end', outcome: 'done' },
   })
   expect(
-    checkFlow({ definition: flow, caller, predictor, elicitation: true }).issues,
+    (await checkFlow({ definition: flow, registry, caller, predictor, elicitation: true })).issues,
   ).toBeUndefined()
-  const unavailable = checkFlow({
+  const unavailable = await checkFlow({
     definition: flow,
+    registry,
     caller: { ...caller, listTools: () => [] },
     predictor,
     elicitation: true,
@@ -187,7 +206,7 @@ test('checkFlow returns input issues and a run graph bound to the live catalogue
   expect(unavailable.graphFor({ depth: 0, approved: new Set() }).check(flow).issues).toBeDefined()
 })
 
-test('graphFor reads a fresh catalogue for each run', () => {
+test('graphFor reads a fresh catalogue for each run', async () => {
   const flow = definition({
     use: { kind: 'tool', tool: 'local:fetch', args: {}, next: 'done' },
     done: { kind: 'end', outcome: 'done' },
@@ -197,7 +216,13 @@ test('graphFor reads a fresh catalogue for each run', () => {
     ...caller,
     listTools: () => (available ? caller.listTools() : []),
   }
-  const checked = checkFlow({ definition: flow, caller: liveCaller, predictor, elicitation: true })
+  const checked = await checkFlow({
+    definition: flow,
+    registry,
+    caller: liveCaller,
+    predictor,
+    elicitation: true,
+  })
   expect(checked.issues).toBeUndefined()
   available = false
   expect(
@@ -214,7 +239,172 @@ test('flowPlan lists sorted unique tool IDs and a factory predictor tool for dec
     done: { kind: 'end', outcome: 'done' },
   })
   const factory = Object.assign((_run: { depth: number }) => predictor, { tool: 'm:predict' })
-  expect(flowPlan(flow, factory)).toEqual(['a:tool', 'm:predict', 'z:tool'])
-  expect(flowPlan(flow, predictor)).toEqual(['a:tool', 'z:tool'])
-  expect(flowPlan(definition({ done: { kind: 'end', outcome: 'done' } }), factory)).toEqual([])
+  const { lookup } = createFlowRegistry([])
+  expect(flowPlan(flow, factory, lookup)).toEqual(['a:tool', 'm:predict', 'z:tool'])
+  expect(flowPlan(flow, predictor, lookup)).toEqual(['a:tool', 'z:tool'])
+  expect(flowPlan(definition({ done: { kind: 'end', outcome: 'done' } }), factory, lookup)).toEqual(
+    [],
+  )
+})
+
+test('flowPlan includes callee tools and a callee decide predictor', () => {
+  const root = {
+    ...definition({
+      call: { kind: 'call', flow: 'sub', version: 1, next: 'done' },
+      tool: { kind: 'tool', tool: 'a:tool', args: {}, next: 'done' },
+      done: end,
+    }),
+    id: 'root',
+  }
+  const sub = {
+    ...definition({
+      tool: { kind: 'tool', tool: 'b:x', args: {}, next: 'decide' },
+      decide: { kind: 'decide', default: 'done' },
+      done: end,
+    }),
+    id: 'sub',
+  }
+  const factory = Object.assign((_run: { depth: number }) => predictor, { tool: 'm:predict' })
+  const { lookup } = createFlowRegistry([sub])
+  expect(flowPlan(root, factory, lookup)).toEqual(['a:tool', 'b:x', 'm:predict'])
+})
+
+test('flowPlan terminates on reference cycles', () => {
+  const a = {
+    ...definition({
+      call: { kind: 'call', flow: 'b', version: 1, next: 'done' },
+      tool: { kind: 'tool', tool: 'a:tool', args: {}, next: 'done' },
+      done: end,
+    }),
+    id: 'a',
+  }
+  const b = {
+    ...definition({
+      call: { kind: 'call', flow: 'a', version: 1, next: 'done' },
+      tool: { kind: 'tool', tool: 'b:tool', args: {}, next: 'done' },
+      done: end,
+    }),
+    id: 'b',
+  }
+  const { lookup } = createFlowRegistry([a, b])
+  expect(flowPlan(a, predictor, lookup)).toEqual(['a:tool', 'b:tool'])
+})
+
+const end = { kind: 'end', outcome: 'done' } as const
+
+function check(definition: unknown, flows: Array<FlowDefinition> = [], elicitation = true) {
+  return checkFlow({
+    definition,
+    registry: createFlowRegistry(flows),
+    caller,
+    predictor,
+    elicitation,
+  })
+}
+
+test('reports flow_id_conflict for a runtime definition reusing a registered id', async () => {
+  const registered = definition({ done: end })
+  const runtime = definition({ done: { kind: 'end', outcome: 'other' } })
+  const checked = await check(runtime, [registered])
+  expect(checked.issues).toMatchObject([
+    { code: 'flow_id_conflict', path: ['id'], severity: 'error' },
+  ])
+})
+
+test('accepts a digest-equal copy of a registered flow', async () => {
+  const registered = definition({ done: end })
+  const checked = await check(structuredClone(registered), [registered])
+  expect(checked.issues).toBeUndefined()
+  expect(checked.warnings).toEqual([])
+})
+
+test('reports missing_flow for an unknown call target', async () => {
+  const checked = await check(
+    definition({ call: { kind: 'call', flow: 'nowhere', next: 'done' }, done: end }),
+  )
+  expect(checked.issues?.some((issue) => issue.code === 'missing_flow')).toBe(true)
+})
+
+const callee: FlowDefinition = {
+  id: 'callee',
+  name: 'Callee',
+  version: 1,
+  start: 'ask',
+  nodes: {
+    ask: { kind: 'input', prompt: { value: 'Question?' }, next: 'done' },
+    done: end,
+  },
+} as unknown as FlowDefinition
+
+test('reports callee input issues with a flows prefix', async () => {
+  const checked = await check(
+    definition({ call: { kind: 'call', flow: 'callee', version: 1, next: 'done' }, done: end }),
+    [callee],
+  )
+  expect(checked.issues).toContainEqual(
+    expect.objectContaining({
+      code: 'input_schema_not_elicitable',
+      path: ['flows', 'callee', 1, 'nodes', 'ask', 'schema'],
+    }),
+  )
+})
+
+test('warns input_without_elicitation for a callee input node', async () => {
+  const valid = {
+    ...callee,
+    nodes: { ...callee.nodes, ask: { ...callee.nodes.ask, schema: { type: 'string' } } },
+  } as FlowDefinition
+  const root = definition({
+    call: { kind: 'call', flow: 'callee', version: 1, next: 'done' },
+    done: end,
+  })
+  const checked = await check(root, [valid], false)
+  expect(checked.issues).toBeUndefined()
+  expect(checked.warnings).toMatchObject([{ code: 'input_without_elicitation' }])
+  expect((await check(root, [valid], true)).warnings).toEqual([])
+})
+
+test('does not duplicate root warnings', async () => {
+  const root = { ...definition({ done: end, orphan: end }), start: 'done' }
+  const checked = await check(root)
+  expect(checked.issues).toBeUndefined()
+  expect(checked.warnings.map((issue) => issue.code)).toEqual(['unreachable'])
+})
+
+test('malformed definitions return issues and never throw', async () => {
+  const bad = { id: 'bad', name: 'Bad', version: 1, start: 'done' } as unknown as FlowDefinition
+  const inputs = [
+    {},
+    { nodes: 3 },
+    { id: 'x', version: 1, start: 'c', nodes: { c: { kind: 'call', flow: 'bad' } } },
+  ]
+  for (const input of inputs) {
+    const checked = await check(input, [bad])
+    expect(checked.issues).toBeDefined()
+  }
+})
+
+test('reports issues for a malformed callee reached from a well-formed root', async () => {
+  const root = {
+    id: 'root',
+    name: 'Root',
+    version: 1,
+    start: 'c',
+    nodes: { c: { kind: 'call', flow: 'bad', next: 'done' }, done: end },
+  }
+  const base = { id: 'bad', name: 'Bad', version: 1, start: 'done' }
+  for (const bad of [base, { ...base, nodes: { done: 3 } }] as Array<FlowDefinition>) {
+    const checked = await check(root, [bad])
+    expect(
+      checked.issues?.some((issue) => issue.path[0] === 'flows' && issue.path[1] === 'bad'),
+    ).toBe(true)
+  }
+})
+
+test('returns a root-first lookup', async () => {
+  const registered = definition({ done: end })
+  const root = { ...definition({ done: end }), id: 'root' }
+  const checked = await check(root, [registered])
+  expect(checked.lookup('root', 1)).toBe(root)
+  expect(checked.lookup('test-flow')).toEqual(registered)
 })

@@ -647,3 +647,73 @@ test('duplicate registration preserves the first flow context exclusion', async 
       .map((tool) => tool.id),
   ).not.toContain('flow:run_flow')
 })
+
+test('elicitation guard covers callee input nodes', async () => {
+  const value = session()
+  const asker: FlowDefinition = {
+    ...flow,
+    id: 'asker',
+    start: 'ask',
+    nodes: {
+      ask: {
+        kind: 'input',
+        prompt: { value: 'Question?' },
+        schema: { type: 'string' },
+        next: 'done',
+      },
+      done: { kind: 'end', outcome: 'done' },
+    },
+  }
+  const root: FlowDefinition = {
+    ...flow,
+    id: 'root',
+    start: 'call',
+    nodes: {
+      call: { kind: 'call', flow: 'asker', next: 'done' },
+      done: { kind: 'end', outcome: 'done' },
+    },
+  }
+  await expect(addDecisionFlow(value, { key: 'flow', flows: [root, asker] })).rejects.toThrow(
+    'Registered flow root requires elicitation',
+  )
+  expect(value.contextHost.getContextKeys()).not.toContain('flow')
+})
+
+test('rejects a registered flow with a null node', async () => {
+  const value = session()
+  const broken = { ...flow, id: 'broken', nodes: { x: null } } as unknown as FlowDefinition
+  await expect(addDecisionFlow(value, { key: 'flow', flows: [broken] })).rejects.toThrow(
+    'Invalid registered flow broken',
+  )
+})
+
+test('approval uses registry snapshots', async () => {
+  const value = session()
+  value.contextHost.addLocalTool({
+    name: 'echo',
+    inputSchema: { type: 'object' },
+    execute: () => ({ content: [] }),
+  })
+  const mutable = structuredClone(toolFlow)
+  const flows = [mutable]
+  const wiring = await addDecisionFlow(value, { key: 'flow', flows })
+  wirings.push(wiring)
+  ;(mutable.nodes.use as unknown as { tool: string }).tool = 'local:other'
+  flows.splice(0, flows.length, { ...flow, id: 'other' })
+  flows.push({ ...flow, id: 'extra' })
+  const seen: Array<Array<string> | undefined> = []
+  const wrapped = wiring.wrapApproval(async ({ flow }) => {
+    seen.push(flow?.tools)
+    return true
+  }) as (request: ToolApprovalRequest) => Promise<unknown>
+  await wrapped(request('flow:flow_uses_echo', {}))
+  expect(seen).toEqual([['local:echo']])
+  const approved = await (
+    wiring.wrapApproval('auto') as (
+      request: ToolApprovalRequest,
+    ) => Promise<{ meta: Record<string, string> }>
+  )(request('flow:flow_uses_echo', {}))
+  const started = await call(value, 'flow:flow_uses_echo', {}, approved.meta)
+  expect(started.isError).not.toBe(true)
+  expect(flows.map((item) => item.id)).toEqual(['other', 'extra'])
+})

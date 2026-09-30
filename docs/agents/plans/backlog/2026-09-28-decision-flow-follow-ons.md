@@ -6,9 +6,6 @@
 
 ## Items
 
-- **Flow references.** When `@sozai/flow-graph` publishes `call`, `goto`, `loop.body: { flow }`
-  and `FlowResolver` (requested upstream),
-  add a forwarded `resolver` option to `createDecisionFlowGraph` and cover a cross-flow example.
 - **MCP tools and `AgentSession` integration.** Done by
   [decision-flow server](../completed/2026-09-29-decision-flow-server.complete.md) (`check_flow`,
   `run_flow` and registered-flow task tools, wired into `AgentSession`). Flows gating or routing
@@ -18,3 +15,7 @@
 - **Checker coverage.** The `decide` checker skips any `{ value }`-shaped object, as the engine
   does, so a custom kind storing a filter under a field named `value` gets no choice-label check.
   Revisit if kinds expose filter-typed fields to the checker explicitly.
+
+## Done in the flow references, decline and validators PR
+
+- **Flow references.** Registered flows can reference each other, and `@mokei/decision-flow-server` resolves them through a registry.

@@ -2,10 +2,27 @@
 
 Run checked decision flows as MCP tasks. A flow server sits beside the tools it calls in a
 `Session`; `decide` nodes use the sibling `system-one:predict` tool by default, and `tool` nodes
-call other namespaced tools. The server offers `check_flow`, `run_flow`, and one task tool per
-registered flow (`support/triage` becomes `flow_support_triage`). `check_flow` reports issues
-without starting a task. The package is Node-free and can also be used with
+call other namespaced tools. The server offers `check_flow`, `run_flow`, `list_flows`, and one
+task tool per registered flow (`support/triage` becomes `flow_support_triage`). `check_flow`
+reports issues without starting a task. The package is Node-free and can also be used with
 `createDecisionFlowServer` and a host supplied `ToolCaller` outside a session.
+
+`createDecisionFlowServer` returns a promise, and `checkFlow` is async because it resolves
+referenced flows through a registry; await both. `createDecisionFlowServer` accepts `flows`
+or a prebuilt `registry` (created with `createFlowRegistry`); when both are given, `registry`
+wins. `FlowRegistry`, `FlowSummary` and `flowSummaries` are exported alongside them.
+
+## Listing and referencing flows
+
+`list_flows` takes no input and returns `{ flows: [{ id, name, version, input, outputs,
+outcomes }] }` sorted by id. Its text content has one line per flow, `<id> v<version>: <name>`.
+
+A flow can `call` another registered flow with a `call` node (`flow`, optional `version`, `next`).
+Definitions passed to `run_flow` or `check_flow` may reference any registered flow, and may
+reference themselves. References are not limited to `call`: runtime definitions can also reach registered flows through `goto` and a loop's `body.flow`. Reusing a registered id with a different definition reports
+`flow_id_conflict` at `['id']` ("Flow id is already registered with a different definition.");
+use a different id or the registered definition. Static tool plans and approvals include the
+tools of every referenced flow.
 
 ## Wire a session
 
@@ -87,7 +104,8 @@ returns a handle but before that checkpoint can leave an orphaned sibling task. 
 the tool again with the same operation key, so the sibling must deduplicate if duplicate work
 would be harmful.
 At recovery, a changed registered definition fails the task with `Flow definition changed`;
-a definition invalid against the current tool catalogue fails it with `Flow no longer valid`.
+this also applies when a pinned called-flow frame's definition changed or was removed. A
+definition invalid against the current tool catalogue fails it with `Flow no longer valid`.
 
 ## Input nodes
 
@@ -98,4 +116,7 @@ server wraps under a `value` property and unwraps after acceptance. A string enu
 `type: 'string'`; the server adds it to the wire schema. Nested objects, arrays, and absent
 schemas fail `check_flow` with `input_schema_not_elicitable`. A constant non-string prompt is
 reported as `input_prompt_not_string`, as is a reference that resolves to a non-string at run
-time. Decline or cancel ends the flow task as cancelled; a deadline resumes its timeout edge.
+time. A deadline resumes its timeout edge. Decline or cancel ends the flow task as cancelled, unless
+the node has a `decline: { to }` edge. The node then continues at `to` with
+`results.<node> = { declined: 'decline' | 'cancel' }`; a missing response counts as cancel.
+Inside a called flow, the edge belongs to that called flow's input node.

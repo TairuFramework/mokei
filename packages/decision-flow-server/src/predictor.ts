@@ -2,10 +2,10 @@ import type { CallToolResult } from '@mokei/context-protocol'
 import type { Predictor, PredictParams } from '@mokei/decision-flow'
 import type { PredictResult, QuestionMap } from '@mokei/system-one-client'
 import { SystemOneError, SystemOneResponseError } from '@mokei/system-one-client'
-import { createValidator } from '@sozai/schema'
 
 import { callMeta, FLOW_DEPTH_META } from './call-meta.js'
 import { cancelSibling, type ToolCaller } from './tool-caller.js'
+import { validatorFor } from './validators.js'
 
 export type PredictorFactory = ((run: { depth: number }) => Predictor) & { tool: string }
 
@@ -69,7 +69,7 @@ export function createMCPPredictor(
         if (outputSchema === undefined || result.structuredContent === undefined) {
           throw new SystemOneResponseError({ message: 'Predictor returned no structured output' })
         }
-        const validated = createValidator(outputSchema)(result.structuredContent)
+        const validated = validatorFor(outputSchema)(result.structuredContent)
         if (validated.issues) {
           throw new SystemOneResponseError({
             message: 'Predictor output failed validation',

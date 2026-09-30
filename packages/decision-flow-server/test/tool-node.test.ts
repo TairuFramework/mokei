@@ -13,6 +13,12 @@ import { describe, expect, test } from 'vitest'
 
 import type { CatalogTool, ToolCaller } from '../src/tool-caller.js'
 import { toolKind } from '../src/tool-node.js'
+import {
+  MAX_COMPILES,
+  resetValidatorCache,
+  validatorCacheStats,
+  validatorFor,
+} from '../src/validators.js'
 
 const inputSchema = {
   type: 'object' as const,
@@ -135,16 +141,13 @@ describe('toolKind check', () => {
     expect(issue(def).some((entry) => entry.code === 'invalid_result_path')).toBe(false)
   })
 
-  test.each([
-    [32, false],
-    [33, true],
-  ])('bounds unschematized result references at %i segments', (depth, invalid) => {
+  test.each([33, 64])('accepts unschematized result references at %i segments', (depth) => {
     const def = definition({
       args: { count: { ref: ['results', 'first', ...Array(depth).fill('child')] } },
     })
     def.start = 'first'
     def.nodes.first = { kind: 'tool', tool: tool.id, args: { count: { value: 1 } }, next: 'work' }
-    expect(issue(def).some((entry) => entry.code === 'invalid_result_path')).toBe(invalid)
+    expect(issue(def).some((entry) => entry.code === 'invalid_result_path')).toBe(false)
   })
 
   test('validates mixed constant args with root definitions and rejects unknown keys', () => {
@@ -525,6 +528,36 @@ describe('toolKind execute', () => {
         expect(failed?.error?.lastFailure).toMatchObject({ type: code })
       }
     }
+  })
+
+  test('validation keeps working across a recycle mid-run', async () => {
+    resetValidatorCache()
+    const catalogued = { ...tool, outputSchema }
+    const caller = fakeCaller(async () => ({ task: { taskId: 'task-1' } }))
+    const outcomes: Array<unknown> = []
+    for (const structuredContent of [{ value: 5 }, { value: 'bad' }]) {
+      const def = definition({ onError: 'handled' })
+      const runtime = graph({ caller, catalogue: [catalogued], resolver: createMapResolver([def]) })
+      const suspended = await runtime.run({ definition: def, input: {} })
+      expect(suspended.status).toBe('suspended')
+      const generation = validatorCacheStats().generation
+      for (let index = 0; index < MAX_COMPILES; index++) {
+        validatorFor({ type: 'object', properties: { [`recycle${index}`]: { type: 'string' } } })
+      }
+      expect(validatorCacheStats().generation).toBe(generation + 1)
+      let final: RunState | undefined
+      for await (const state of runtime.resume({
+        runState: suspended.runState,
+        event: { type: 'value', value: { ok: true, result: { content: [], structuredContent } } },
+      }))
+        final = state
+      expect(final?.status).toBe('ended')
+      outcomes.push(final?.frames[0]?.results.work)
+    }
+    expect(outcomes).toEqual([
+      { value: 5 },
+      { error: expect.objectContaining({ type: 'tool_invalid_output' }) },
+    ])
   })
 
   test('retries internal RPC errors but does not retry rejected RPC errors', async () => {

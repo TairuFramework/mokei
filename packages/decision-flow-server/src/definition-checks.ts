@@ -1,16 +1,21 @@
 import type { JSONValue } from '@mokei/context-server'
 import { createDecisionFlowGraph, type Predictor } from '@mokei/decision-flow'
 import {
-  createMapResolver,
+  digestDefinition,
   type FlowDefinition,
   type FlowGraph,
   type FlowIssue,
-  type FlowResolver,
   formatIssues,
 } from '@sozai/flow-graph'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import { type PredictorFactory, resolvePredictor } from './predictor.js'
+import {
+  definitionResolution,
+  type FlowLookup,
+  type FlowRegistry,
+  reachableFlows,
+} from './registry.js'
 import type { ToolCaller } from './tool-caller.js'
 import { toolKind } from './tool-node.js'
 
@@ -146,24 +151,24 @@ export type FlowCheckResult = (
   /** Every issue, blocking and non-blocking, formatted for display. */
   formatted: string
   graphFor(run: { depth: number; approved: ReadonlySet<string> }): FlowGraph
+  /** Root-first lookup of the checked definition and the registered flows. */
+  lookup: FlowLookup
 }
 
-/** Check a definition against the current catalogue and return a fresh graph factory. */
-export function checkFlow(params: {
+/** Check a definition and the flows it references against the current catalogue. */
+export async function checkFlow(params: {
   definition: unknown
+  registry: FlowRegistry
   caller: ToolCaller
   predictor: Predictor | PredictorFactory
   elicitation: boolean
-}): FlowCheckResult {
-  // Resume and recover resolve pinned frames by id. Built on first use, since an unchecked
-  // definition may not be a flow at all.
-  let definitions: FlowResolver | undefined
-  const resolver: FlowResolver = {
-    resolve: (id, version, options) => {
-      definitions ??= createMapResolver([params.definition as FlowDefinition])
-      return definitions.resolve(id, version, options)
-    },
-  }
+}): Promise<FlowCheckResult> {
+  const raw = params.definition
+  const id = isObject(raw) && typeof raw.id === 'string' ? raw.id : undefined
+  const { lookup, resolver } =
+    id === undefined
+      ? params.registry
+      : definitionResolution(raw as FlowDefinition, params.registry)
   const graphFor = (run: { depth: number; approved: ReadonlySet<string> }): FlowGraph =>
     createDecisionFlowGraph({
       client: resolvePredictor(params.predictor, run),
@@ -177,31 +182,53 @@ export function checkFlow(params: {
       ],
       resolver,
     })
+
+  const all: Array<FlowIssue> = []
+  const registeredDigest = id === undefined ? undefined : params.registry.digest(id)
+  if (registeredDigest !== undefined && registeredDigest !== digestDefinition(raw as never)) {
+    all.push({
+      severity: 'error',
+      code: 'flow_id_conflict',
+      path: ['id'],
+      message: 'Flow id is already registered with a different definition.',
+      hint: 'Use a different id or the registered definition.',
+    })
+  }
   const graph = graphFor({ depth: 0, approved: new Set() })
-  const checked = graph.check(params.definition)
-  const raw = params.definition
-  const nodes = isObject(raw) && isObject(raw.nodes) ? raw.nodes : undefined
-  const inputNodes =
-    nodes !== undefined &&
-    Object.values(nodes).some((node) => isObject(node) && node.kind === 'input')
-  const all: Array<FlowIssue> = [
-    ...(checked.issues ?? checked.warnings),
-    ...(nodes !== undefined ? checkInputNodes(raw as FlowDefinition) : []),
-    ...(!params.elicitation && inputNodes
-      ? [
-          {
-            severity: 'warning' as const,
-            code: 'input_without_elicitation',
-            path: ['nodes'],
-            message: 'Input nodes require elicitation.',
-            hint: 'Enable elicitation before running this flow.',
-          },
-        ]
-      : []),
-  ]
+  const local = graph.check(raw)
+  if (local.issues) {
+    all.push(...local.issues)
+  } else {
+    const checked = await graph.checkFlows(raw)
+    all.push(...(checked.issues ?? checked.warnings))
+  }
+  const reached = reachableFlows(raw, lookup, 'all')
+  for (const [index, flow] of reached.entries()) {
+    const issues = checkInputNodes(flow)
+    all.push(
+      ...(index === 0
+        ? issues
+        : issues.map((issue) => ({
+            ...issue,
+            path: ['flows', flow.id, flow.version, ...(issue.path ?? [])],
+          }))),
+    )
+  }
+  const inputNodes = reached.some((flow) =>
+    Object.values(flow.nodes).some((node) => isObject(node) && node.kind === 'input'),
+  )
+  if (!params.elicitation && inputNodes) {
+    all.push({
+      severity: 'warning',
+      code: 'input_without_elicitation',
+      path: ['nodes'],
+      message: 'Input nodes require elicitation.',
+      hint: 'Enable elicitation before running this flow.',
+    })
+  }
   const errors = all.filter((issue) => issue.severity === 'error')
   const warnings = all.filter((issue) => issue.severity !== 'error')
-  const details = { warnings, formatted: formatIssues(all), graphFor }
+  const details = { warnings, formatted: formatIssues(all), graphFor, lookup }
   return errors.length > 0
     ? { issues: errors, ...details }
     : { value: raw as FlowDefinition, ...details }
