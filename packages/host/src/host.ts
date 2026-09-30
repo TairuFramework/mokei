@@ -21,7 +21,7 @@ import type {
   Tool,
 } from '@mokei/context-protocol'
 import type { WithRequestOptions } from '@mokei/context-rpc'
-import { ContextServer, type JSONValue, type ServerConfig } from '@mokei/context-server'
+import { ContextServer, type JSONValue, type ServerParams } from '@mokei/context-server'
 import { type FetchMiddleware, type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
@@ -204,7 +204,8 @@ export function createHostedContext<T extends ContextTypes = UnknownContextTypes
 
 export type AddDirectContextParams = {
   key: string
-  config: ServerConfig
+  /** Params of the in-process `ContextServer`; the host supplies its `transport`. */
+  config: Omit<ServerParams, 'transport'>
   tools?: Array<ContextTool>
   elicit?: false
   /**

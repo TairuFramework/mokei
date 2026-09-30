@@ -7,11 +7,9 @@ import {
   createTaskManager,
   createTool,
   InputRequestWithdrawnError,
-  type ServerConfig,
-  type ServerParams,
   type TaskManager,
 } from '@mokei/context-server'
-import { ContextHost } from '@mokei/host'
+import { type AddDirectContextParams, ContextHost } from '@mokei/host'
 import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
@@ -80,10 +78,9 @@ describe('decision-flow-style task through the inbox', () => {
 
   function setup(ttlMs?: number): void {
     manager = createTaskManager({ pollIntervalMs: 60_000, ttlMs })
-    // `AddDirectContextParams.config` is typed `ServerConfig`, which lacks `subscriptions`, but
-    // `addDirectContext` spreads it into the `ContextServer` params. Waits need the live
-    // subscription: with a 60 s poll interval, polling alone would not see status changes.
-    const config: ServerConfig & Pick<ServerParams, 'subscriptions'> = {
+    // Waits need the live subscription: with a 60 s poll interval, polling alone would not see
+    // status changes.
+    const config: AddDirectContextParams['config'] = {
       name: 'flow-server',
       version: '1.0.0',
       protocolVersions: ['2026-07-28'],
