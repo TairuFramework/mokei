@@ -1009,6 +1009,31 @@ importers:
         specifier: 'catalog:'
         version: 26.6.3
 
+  packages/host-desktop:
+    dependencies:
+      '@mokei/context-client':
+        specifier: workspace:^
+        version: link:../context-client
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+      '@mokei/host':
+        specifier: workspace:^
+        version: link:../host
+      '@sozai/event':
+        specifier: 'catalog:'
+        version: 0.1.4(@logtape/logtape@2.3.0)
+    devDependencies:
+      '@mokei/context-server':
+        specifier: workspace:^
+        version: link:../context-server
+      '@mokei/host-node':
+        specifier: workspace:^
+        version: link:../host-node
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.3
+
   packages/host-monitor:
     dependencies:
       '@enkaku/http-serve':
