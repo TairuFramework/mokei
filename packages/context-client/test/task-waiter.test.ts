@@ -687,6 +687,38 @@ describe('TaskWaiter', () => {
       }
     })
 
+    test.each([
+      ['after the deadline', base.ttlMs, true],
+      ['before the deadline', 0, false],
+    ] as const)('a rejected answer for a missing task %s', async (_caseName, offset, expired) => {
+      const { openListen } = subscribe()
+      const snapshot = {
+        ...base,
+        status: 'input_required' as const,
+        inputRequests: { ask: { method: 'roots/list' as const, params: {} } },
+      }
+      const rejection = notFound()
+      const request = vi.fn(async (method: string) => {
+        if (method === 'tasks/update') throw rejection
+        return snapshot
+      })
+      const waiter = new TaskWaiter({
+        request,
+        openListen,
+        fulfil: async () => ({ roots: [] }),
+        validate: vi.fn(),
+        now: () => Date.parse(base.createdAt) + offset,
+      })
+      const error = await waiter.wait({ taskID: base.taskId }).catch((reason: unknown) => reason)
+      expect(request).toHaveBeenCalledWith('tasks/update', expect.anything())
+      if (expired) {
+        expect(error).toBeInstanceOf(TaskExpiredError)
+        expect(error).toMatchObject({ taskID: base.taskId, cause: rejection })
+      } else {
+        expect(error).toBe(rejection)
+      }
+    })
+
     test('not found before the deadline keeps the original error', async () => {
       const rejection = notFound()
       const request = vi.fn().mockResolvedValueOnce(working).mockRejectedValueOnce(rejection)

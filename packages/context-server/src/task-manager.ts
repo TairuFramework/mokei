@@ -35,10 +35,23 @@ export type TaskHandle = {
   signal: AbortSignal
   requestMeta: Record<string, JSONValue>
   setStatus(message: string): Promise<void>
+  /**
+   * Asks the client for input and resolves with its responses. Keys are unique per task: an
+   * identical request (same keys, deep-equal contents) under already issued keys re-attaches to
+   * the open request or replays its settled outcome, the stored answer or an
+   * `InputRequestWithdrawnError` for a withdrawal. A changed request under an issued key throws
+   * `TaskInputKeyReusedError`. Aborting `options.signal` withdraws the open request and rejects
+   * with `InputRequestWithdrawnError`.
+   */
   requestInput(
     requests: Record<string, InputRequest>,
     options?: { signal?: AbortSignal },
   ): Promise<Record<string, InputResponse>>
+  /**
+   * Waits on the task's open input request, as `requestInput` with that request's contents: it
+   * resolves with the answer, and aborting `options.signal` withdraws the request and rejects with
+   * `InputRequestWithdrawnError`. Throws when no input is outstanding.
+   */
   awaitInput(options?: { signal?: AbortSignal }): Promise<Record<string, InputResponse>>
   checkpoint(resumeData: JSONValue): Promise<void>
   cancel(reason?: string): Promise<boolean>
@@ -194,6 +207,7 @@ function equalJSON(left: unknown, right: unknown): boolean {
 /** Receives each committed record of a task, possibly out of order; `undefined` means deleted. */
 type RecordListener = (record: TaskRecord | undefined) => void
 
+/** Retry backoff for withdrawal writes and outcome reads. */
 const WITHDRAW_BACKOFF_MS = { initial: 10, max: 1_000 }
 
 class ManagedTasks implements TaskManager {
@@ -480,9 +494,11 @@ class ManagedTasks implements TaskManager {
   async #requestInput(
     taskID: string,
     controller: AbortController,
-    requests: Record<string, InputRequest>,
+    incoming: Record<string, InputRequest>,
     options?: { signal?: AbortSignal },
   ): Promise<Record<string, InputResponse>> {
+    // Stored records are plain JSON, so compare and store the same form (undefined dropped).
+    const requests = JSON.parse(JSON.stringify(incoming)) as Record<string, InputRequest>
     const keys = Object.keys(requests)
     if (keys.length === 0) throw new Error('Input requests must not be empty')
     const signal = options?.signal
@@ -549,8 +565,9 @@ class ManagedTasks implements TaskManager {
   }
 
   /**
-   * Resolves from committed records only. The listener is registered before the single read,
-   * so a commit made before registration is still seen.
+   * Resolves from committed records only. The listener is registered before the read, so a
+   * commit made before registration is still seen. A failed read is retried with backoff until
+   * it succeeds, the wait settles or the manager is disposed.
    */
   #waitForOutcome(
     taskID: string,
@@ -586,7 +603,21 @@ class ManagedTasks implements TaskManager {
     const unlisten = this.#listen(taskID, check)
     controller.signal.addEventListener('abort', onAbort, { once: true })
     if (controller.signal.aborted) onAbort()
-    this.#store.get(taskID).then(check, (error: unknown) => settle(() => reject(error)))
+    void (async () => {
+      let delay = WITHDRAW_BACKOFF_MS.initial
+      while (!settled && !this.#disposed) {
+        try {
+          check(await this.#store.get(taskID))
+          return
+        } catch (error) {
+          if (settled) return
+          this.#events.fire('taskError', { taskID, error })
+        }
+        await this.#sleep(delay)
+        delay = Math.min(delay * 2, WITHDRAW_BACKOFF_MS.max)
+      }
+      settle(() => reject(new Error('Task manager disposed')))
+    })()
     return promise
   }
 

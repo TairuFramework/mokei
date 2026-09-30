@@ -357,6 +357,17 @@ export class TaskWaiter {
     })
   }
 
+  /** A `Task not found` rejection at or after the task's finite TTL deadline means it expired. */
+  #expiredNotFound(entry: TaskEntry, error: unknown): boolean {
+    return (
+      error instanceof RPCError &&
+      error.code === -32602 &&
+      error.message === 'Task not found' &&
+      entry.deadline != null &&
+      (this.#params.now ?? Date.now)() >= entry.deadline
+    )
+  }
+
   async #get(entry: TaskEntry, signal?: AbortSignal): Promise<TasksGetResult> {
     try {
       return await this.#abortable(
@@ -364,13 +375,7 @@ export class TaskWaiter {
         signal,
       )
     } catch (error) {
-      if (
-        error instanceof RPCError &&
-        error.code === -32602 &&
-        error.message === 'Task not found' &&
-        entry.deadline != null &&
-        (this.#params.now ?? Date.now)() >= entry.deadline
-      ) {
+      if (this.#expiredNotFound(entry, error)) {
         // biome-ignore lint/style/useErrorCause: the cause is passed through the params object
         throw new TaskExpiredError({ taskID: entry.taskID, cause: error })
       }
@@ -395,6 +400,10 @@ export class TaskWaiter {
               inputResponses: { [key]: response },
             })
           } catch (error) {
+            if (this.#expiredNotFound(entry, error)) {
+              // biome-ignore lint/style/useErrorCause: the cause is passed through the params object
+              throw new TaskExpiredError({ taskID, cause: error })
+            }
             if (
               !(error instanceof RPCError) ||
               error.code !== -32602 ||

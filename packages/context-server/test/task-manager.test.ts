@@ -1,4 +1,9 @@
-import type { DetailedTask, InputResponse } from '@mokei/context-protocol'
+import type {
+  ClientCapabilities,
+  DetailedTask,
+  InputRequest,
+  InputResponse,
+} from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -1301,9 +1306,17 @@ describe('task manager', () => {
 
 const INTERRUPTED_ERROR = { code: -32603, message: 'Task interrupted by server restart' }
 
-async function started(params: { store?: TaskStore; now?: () => number; ttlMs?: number } = {}) {
-  const store = params.store ?? createMemoryTaskStore()
-  const manager = createTaskManager({ ...params, store })
+async function started(
+  params: {
+    store?: TaskStore
+    now?: () => number
+    ttlMs?: number
+    clientCapabilities?: ClientCapabilities
+  } = {},
+) {
+  const { clientCapabilities = { roots: {} }, ...options } = params
+  const store = options.store ?? createMemoryTaskStore()
+  const manager = createTaskManager({ ...options, store })
   const events: Array<DetailedTask> = []
   const errors: Array<{ taskID?: string; error: unknown }> = []
   manager.events.on('taskStatus', (event) => {
@@ -1316,7 +1329,7 @@ async function started(params: { store?: TaskStore; now?: () => number; ttlMs?: 
   const created = await manager.create({
     toolName: 'echo',
     tool,
-    clientCapabilities: { roots: {} },
+    clientCapabilities,
     work: (task) => {
       handle = task
       return new Promise(() => {})
@@ -1552,6 +1565,104 @@ describe('input waiting and lifecycle', () => {
       ask: rootsResponse,
     })
     await manager.dispose()
+  })
+
+  test('a re-ask with an undefined property matches the stored request', async () => {
+    const { store, manager, handle, taskID, events } = await started({
+      clientCapabilities: { elicitation: {} },
+    })
+    const ask = (): InputRequest => ({
+      method: 'elicitation/create',
+      params: {
+        mode: 'form',
+        message: 'Pick',
+        requestedSchema: {
+          type: 'object',
+          properties: { value: { type: 'string', description: undefined } },
+        },
+      },
+    })
+    const first = handle.requestInput({ ask: ask() })
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    const again = handle.requestInput({ ask: ask() })
+    const answer = { action: 'accept' as const, content: { value: 'Ada' } }
+    await manager.update(taskID, { ask: answer })
+    await expect(first).resolves.toEqual({ ask: answer })
+    await expect(again).resolves.toEqual({ ask: answer })
+    await expect(handle.requestInput({ ask: ask() })).resolves.toEqual({ ask: answer })
+    expect((await store.get(taskID))?.inputs).toHaveLength(1)
+    await manager.dispose()
+  })
+
+  test('a failed outcome read retries and settles with the committed outcome', async () => {
+    const base = createMemoryTaskStore()
+    const failure = new Error('Store unavailable')
+    let failing = 0
+    const store: TaskStore = {
+      ...base,
+      get: async (taskID) => {
+        if (failing > 0) {
+          failing--
+          throw failure
+        }
+        return base.get(taskID)
+      },
+    }
+    const { manager, handle, taskID, events, errors } = await started({ store })
+    void settleOf(handle.requestInput({ ask: rootsRequest }))
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    await manager.update(taskID, { ask: rootsResponse })
+    // The identical re-ask reads once to find the answered entry, then the outcome read fails
+    // twice before the retry sees the committed answer.
+    const originalGet = store.get
+    let reads = 0
+    store.get = async (id) => {
+      reads++
+      if (reads === 2) failing = 2
+      return originalGet(id)
+    }
+    await expect(handle.requestInput({ ask: rootsRequest })).resolves.toEqual({
+      ask: rootsResponse,
+    })
+    expect(errors).toEqual([
+      { taskID, error: failure },
+      { taskID, error: failure },
+    ])
+    await manager.dispose()
+  })
+
+  test('dispose ends the outcome read retry during persistent store failures', async () => {
+    vi.useFakeTimers()
+    try {
+      const base = createMemoryTaskStore()
+      const failure = new Error('Store unavailable')
+      let failing = false
+      const store: TaskStore = {
+        ...base,
+        get: async (taskID) => {
+          if (failing) throw failure
+          return base.get(taskID)
+        },
+        update: async (...args: Parameters<typeof base.update>) => {
+          const updated = await base.update(...args)
+          // Every read after the ask commits fails, so only the retry loop can observe it.
+          if (updated.status === 'input_required') failing = true
+          return updated
+        },
+      }
+      const { manager, handle, errors } = await started({ store })
+      const pending = settleOf(handle.requestInput({ ask: rootsRequest }))
+      // Attempts at 0, 10, 30 and 70 ms, then a 80 ms backoff sleep is pending.
+      await vi.advanceTimersByTimeAsync(75)
+      expect(errors).toHaveLength(4)
+      await manager.dispose()
+      expect(await pending).toEqual({ error: new Error('Task manager disposed') })
+      expect(vi.getTimerCount()).toBe(0)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(errors).toHaveLength(4)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   test('requestInput replays a withdrawn request', async () => {

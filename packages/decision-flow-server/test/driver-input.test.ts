@@ -399,6 +399,28 @@ test('expired deadline with an open request withdraws it and takes the timeout e
   }
 })
 
+test('expired deadline with a withdrawn request takes the timeout edge without asking', async () => {
+  const { store, tasks, taskID, key } = await recoverInput({
+    flow: timedFlow,
+    deadline: Date.now() - 1000,
+    status: 'working',
+    inputs: (key) => [
+      { id: 1, requests: { [key]: askRequest }, responses: {}, outcome: 'withdrawn' },
+    ],
+  })
+  try {
+    expect(await settled(tasks, taskID)).toMatchObject({
+      status: 'completed',
+      result: { structuredContent: { outcome: 'timed' } },
+    })
+    expect((await store.get(taskID))?.inputs).toEqual([
+      { id: 1, requests: { [key]: askRequest }, responses: {}, outcome: 'withdrawn' },
+    ])
+  } finally {
+    await tasks.dispose()
+  }
+})
+
 test('a reused key with changed contents fails the run', async () => {
   const changed = {
     ...askRequest,
