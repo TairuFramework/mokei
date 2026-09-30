@@ -24,6 +24,11 @@ export {
   selectBackends,
 } from './detect.js'
 export {
+  createDesktopElicitHandler,
+  type DesktopElicitHandler,
+  type DesktopElicitOptions,
+} from './elicit-handler.js'
+export {
   createInputInbox,
   type DesktopElicitRequest,
   InboxAnswerInvalidError,
