@@ -50,6 +50,8 @@ needed). One decision approves the run. An approved call receives a single-use
 `io.mokei/flow-grant` token in request `_meta`; the server consumes it before creating a task.
 The token is bound to the tool name and arguments, expires after five minutes, and cannot
 authorize another call. `check_flow` follows the underlying strategy without a flow grant.
+The wrapper is always a function, so `AgentSession` emits `tool-call-pending` before every
+tool call, including when the wrapped strategy is `'auto'`.
 
 `'auto'` approves flow runs and `'never'` denies them. `'ask'` emits a pending event and denies
 with `Tool approval required but no handler configured`; use a function strategy to collect an
@@ -64,8 +66,11 @@ either `next` or `cases` plus `default`. The checker validates known tool IDs an
 arguments. At execution, the server validates resolved arguments against the live tool schema;
 the called tool's `structuredContent` is required when it declares an output schema. Flow
 contexts cannot call one another. Sibling tasks are awaited and cancelled with the parent run.
-The node's `retry.timeoutMs` and `totalTimeoutMs` bound the tool call, not a sibling task wait.
-A hung sibling task remains pending until client cancellation or the task TTL ends it.
+The node's `retry.attemptTimeoutMs` and `totalTimeoutMs` also bound the wait on a sibling task:
+on expiry the sibling is cancelled (bounded at 5 seconds), then the attempt times out and is
+retried per the node's retry policy, or the node fails with `total_timeout`. The attempt timeout
+for a task tool counts from the task's creation (suspension), so the call and wait can together
+take up to about twice `attemptTimeoutMs`.
 
 Tool effects have **at-least-once** delivery. Every sibling call includes
 `_meta['io.mokei/idempotency-key'] = <runID>:<invocationID>` and

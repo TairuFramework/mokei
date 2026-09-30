@@ -185,6 +185,30 @@ test('recovers a running registered flow and completes it', async () => {
   }
 })
 
+test('recovery ignores malformed saved siblings and cancels the valid sibling', async () => {
+  const cancelled: Array<string> = []
+  const f = fixture({
+    siblings: [
+      null,
+      { tool: 1 },
+      { tool: 'sibling:work', taskId: 'valid' },
+    ] as unknown as ResumeDataV1['siblings'],
+    onCancel: async ({ taskId }) => {
+      cancelled.push(taskId)
+    },
+  })
+  f.data.runState = { ...f.data.runState, status: 'ended', outcome: 'finished' }
+  const id = await persist(f)
+  const { second, server } = f.createSecond()
+  try {
+    await second.recover(server.recoveryTools)
+    await expect.poll(async () => (await second.get(id)).status).toBe('completed')
+    expect(cancelled).toEqual(['valid'])
+  } finally {
+    await second.dispose()
+  }
+})
+
 test('rejects an unknown resume data version and cancels saved siblings', async () => {
   const cancelled: Array<string> = []
   const f = fixture({

@@ -41,6 +41,7 @@ export type FlowApprovalStrategy =
   | ((request: FlowApprovalRequest) => ReturnType<ToolApprovalFn>)
 
 export type DecisionFlowWiring = {
+  /** Always returns a function, so AgentSession emits tool-call-pending before every tool call, including for 'auto'. */
   wrapApproval(strategy: FlowApprovalStrategy): ToolApprovalStrategy
   dispose(): Promise<void>
 }

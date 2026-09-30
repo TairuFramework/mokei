@@ -281,6 +281,9 @@ export function toolKind(params: {
           return {
             suspend: {
               data: { tool: node.tool, taskId: outcome.task.taskId } satisfies ToolSuspendData,
+              ...(node.retry?.attemptTimeoutMs === undefined
+                ? {}
+                : { deadline: new Date(Date.now() + node.retry.attemptTimeoutMs).toISOString() }),
             },
           }
         return finish(node, ctx, outcome.result)

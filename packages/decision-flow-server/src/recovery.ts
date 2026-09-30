@@ -7,7 +7,7 @@ import { digestDefinition, type FlowDefinition } from '@sozai/flow-graph'
 import { checkFlow } from './definition-checks.js'
 import { type ResumeDataV1, startRun, terminalResult } from './driver.js'
 import type { PredictorFactory } from './predictor.js'
-import type { ToolCaller } from './tool-caller.js'
+import { cancelSibling, type ToolCaller } from './tool-caller.js'
 
 const recoveryOnlyTool: ToolDefinitions[string] = {
   description: 'Recover a persisted decision flow',
@@ -44,11 +44,18 @@ export function createRecovery(params: {
 }): NonNullable<TaskManagerParams['recover']> {
   return async (record, resume) => {
     const data = record.resumeData as unknown as ResumeDataV1
+    const siblings = (Array.isArray(data?.siblings) ? data.siblings : []).filter(
+      (entry): entry is ResumeDataV1['siblings'][number] =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        typeof entry.tool === 'string' &&
+        typeof entry.taskId === 'string',
+    )
     const cleanup = async () => {
       await Promise.all(
-        (Array.isArray(data?.siblings) ? data.siblings : []).map(async ({ tool, taskId }) => {
+        siblings.map(async ({ tool, taskId }) => {
           try {
-            await params.caller.cancelTask({ id: tool, taskId })
+            await cancelSibling(params.caller, { id: tool, taskId })
           } catch (error) {
             console.error('Flow sibling cancellation failed', error)
           }
@@ -135,7 +142,7 @@ export function createRecovery(params: {
         graph,
         run,
         definition,
-        resumeData: data,
+        resumeData: { ...data, siblings },
         caller: params.caller,
         outstandingInputRequests:
           record.status === 'input_required' ? record.inputRequests : undefined,

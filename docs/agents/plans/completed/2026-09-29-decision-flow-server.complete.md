@@ -50,6 +50,7 @@ application registered, or to one it writes and repairs itself. This replaces th
   - Every sibling call carries `io.mokei/idempotency-key = <runID>:<invocationID>` and `io.mokei/attempt`. Tools that must not repeat an action deduplicate on the key.
   - Sibling task handles are committed to run state before the driver waits on them. A crash in that window leaves an orphaned sibling task, and recovery calls the tool again with the same key.
   - A lost sibling wait cancels the sibling.
+  - The node's attempt and total timeouts bound the sibling task wait; on expiry the sibling is cancelled.
   - Invalid structured output from a sibling is `tool_invalid_output` and is not retried.
 - **Input nodes use MCP form elicitation.**
   - Schemas must be a primitive, a string enum, or a flat object of primitives; anything else is `input_schema_not_elicitable`.

@@ -17,6 +17,28 @@ export type ToolCaller = {
   cancelTask(params: { id: string; taskId: string }): Promise<void>
 }
 
+export const SIBLING_CANCEL_TIMEOUT_MS = 5_000
+
+export async function cancelSibling(
+  caller: ToolCaller,
+  target: { id: string; taskId: string },
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      caller.cancelTask(target),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Sibling cancellation timed out')),
+          SIBLING_CANCEL_TIMEOUT_MS,
+        )
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
 export class ToolUnavailableError extends Error {
   get code(): 'tool_unavailable' {
     return 'tool_unavailable'

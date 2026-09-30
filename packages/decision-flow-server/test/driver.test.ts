@@ -4,7 +4,7 @@ import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import type { JSONValue, TaskHandle } from '@mokei/context-server'
 import { ContextServer, createMemoryTaskStore, createTaskManager } from '@mokei/context-server'
 import { createFlowGraph, type FlowDefinition } from '@sozai/flow-graph'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 import { type ResumeDataV1, startRun } from '../src/driver.js'
 import { createDecisionFlowServer } from '../src/server.js'
@@ -224,6 +224,23 @@ test.each(['node_error', 'total_timeout'] as const)(
   },
 )
 
+test('a stalled sibling cancellation does not block run completion', async () => {
+  vi.useFakeTimers()
+  try {
+    const h = harness({ caller: { cancelTask: async () => new Promise<void>(() => {}) } })
+    h.resumeData.runState = { ...h.resumeData.runState, status: 'error' }
+    h.resumeData.siblings.push({ tool: tool.id, taskId: 'stalled' })
+    const completion = h.drive()
+    await vi.advanceTimersByTimeAsync(5_000)
+    const sentinel = Symbol('still waiting')
+    expect(await Promise.race([completion, Promise.resolve(sentinel)])).toMatchObject({
+      isError: true,
+    })
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 test('client cancellation cancels every outstanding sibling task', async () => {
   let waiting!: () => void
   const entered = new Promise<void>((resolve) => {
@@ -273,6 +290,25 @@ test('a checkpoint rejected after client cancellation stops quietly', async () =
     },
   })
   await expect(h.drive()).resolves.not.toMatchObject({ isError: true })
+})
+
+test('a failed status write fails the run with a flow status RPC error', async () => {
+  const h = harness()
+  h.handle.setStatus = async () => {
+    throw new Error('store failure')
+  }
+  await expect(h.drive()).rejects.toMatchObject({
+    code: -32603,
+    message: 'Flow status update failed',
+  })
+})
+
+test('a terminal status write stops the run quietly', async () => {
+  const h = harness()
+  h.handle.setStatus = async () => {
+    throw new Error('Task is no longer active')
+  }
+  await expect(h.drive()).resolves.toEqual({ content: [] })
 })
 
 test('a failed sibling wait resumes the tool as a failed task', async () => {
@@ -425,55 +461,300 @@ test('recovery repeats an acted call with the same operation key after its handl
 })
 
 test('retry suspension waits for resumeAt then completes', async () => {
-  const flow = definition('tool')
-  flow.nodes.work = {
-    ...flow.nodes.work,
-    retry: { maxAttempts: 2, backoff: { initialMs: 80 }, suspendAfterMs: 0 },
-  } as FlowDefinition['nodes'][string]
-  let calls = 0
-  const h = harness({
-    definition: flow,
-    caller: {
-      callTool: async () => {
-        calls++
-        if (calls === 1) throw new Error('transient')
-        return { result }
+  vi.useFakeTimers()
+  try {
+    const flow = definition('tool')
+    flow.nodes.work = {
+      ...flow.nodes.work,
+      retry: { maxAttempts: 2, backoff: { initialMs: 80 }, suspendAfterMs: 0 },
+    } as FlowDefinition['nodes'][string]
+    let calls = 0
+    const h = harness({
+      definition: flow,
+      caller: {
+        callTool: async () => {
+          calls++
+          if (calls === 1) throw new Error('transient')
+          return { result }
+        },
       },
-    },
-  })
-  const completed = await h.drive()
-  expect(completed.structuredContent).toMatchObject({ outcome: 'finished' })
-  expect(h.checkpoints.some((entry) => entry.runState.pending?.reason === 'retry')).toBe(true)
-  expect(calls).toBe(2)
+    })
+    const completion = h.drive()
+    await vi.advanceTimersByTimeAsync(80)
+    const completed = await completion
+    expect(completed.structuredContent).toMatchObject({ outcome: 'finished' })
+    expect(h.checkpoints.some((entry) => entry.runState.pending?.reason === 'retry')).toBe(true)
+    expect(calls).toBe(2)
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 test('a timed-out tool call retries with the same operation key and next attempt', async () => {
+  vi.useFakeTimers()
+  try {
+    const flow = definition('tool')
+    flow.nodes.work = {
+      ...flow.nodes.work,
+      retry: { maxAttempts: 2, attemptTimeoutMs: 20, backoff: { initialMs: 0 } },
+    } as FlowDefinition['nodes'][string]
+    const calls: Array<{ key: unknown; attempt: unknown }> = []
+    const h = harness({
+      definition: flow,
+      caller: {
+        callTool: async ({ meta, signal }) => {
+          calls.push({
+            key: meta['io.mokei/idempotency-key'],
+            attempt: meta['io.mokei/attempt'],
+          })
+          if (calls.length === 1) {
+            await new Promise<void>((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+            })
+          }
+          return { result }
+        },
+      },
+    })
+    const completion = h.drive()
+    await vi.advanceTimersByTimeAsync(20)
+    expect((await completion).structuredContent).toMatchObject({ outcome: 'finished' })
+    expect(calls).toHaveLength(2)
+    expect(calls[0]?.key).toMatch(/^run-1:.+/)
+    expect(calls[1]?.key).toBe(calls[0]?.key)
+    expect(calls.map(({ attempt }) => attempt)).toEqual([1, 2])
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('a sibling wait that exceeds its attempt deadline cancels the sibling and retries', async () => {
+  vi.useFakeTimers()
+  try {
+    const flow = definition('tool')
+    flow.nodes.work = {
+      ...flow.nodes.work,
+      retry: { maxAttempts: 2, attemptTimeoutMs: 10, backoff: { initialMs: 0 } },
+    } as FlowDefinition['nodes'][string]
+    let calls = 0
+    const h = harness({
+      definition: flow,
+      caller: {
+        callTool: async () => (++calls === 1 ? { task: { taskId: 'slow' } } : { result }),
+        waitTask: async () => new Promise(() => {}),
+      },
+    })
+    const completion = h.drive()
+    await vi.advanceTimersByTimeAsync(10)
+    expect((await completion).structuredContent).toMatchObject({ outcome: 'finished' })
+    expect(calls).toBe(2)
+    expect(h.cancelled).toEqual([{ id: tool.id, taskId: 'slow' }])
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('an early sibling attempt timer waits for the deadline before retrying', async () => {
+  vi.useFakeTimers()
+  let now: ReturnType<typeof vi.spyOn> | undefined
+  try {
+    const flow = definition('tool')
+    flow.nodes.work = {
+      ...flow.nodes.work,
+      retry: { maxAttempts: 2, attemptTimeoutMs: 10, backoff: { initialMs: 0 } },
+    } as FlowDefinition['nodes'][string]
+    const entered = Promise.withResolvers<void>()
+    let calls = 0
+    const h = harness({
+      definition: flow,
+      caller: {
+        callTool: async () => (++calls === 1 ? { task: { taskId: 'slow' } } : { result }),
+        waitTask: async () => {
+          entered.resolve()
+          return new Promise(() => {})
+        },
+      },
+    })
+    const completion = h.drive()
+    await entered.promise
+    now = vi
+      .spyOn(Date, 'now')
+      .mockImplementation(() => (vi.getMockedSystemTime()?.getTime() ?? 0) - 2)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(h.cancelled).toEqual([])
+    expect(calls).toBe(1)
+    await vi.advanceTimersByTimeAsync(2)
+    expect((await completion).structuredContent).toMatchObject({ outcome: 'finished' })
+    expect(calls).toBe(2)
+    expect(h.cancelled).toEqual([{ id: tool.id, taskId: 'slow' }])
+  } finally {
+    now?.mockRestore()
+    vi.useRealTimers()
+  }
+})
+
+test('a total deadline during a sibling wait ends the node with total_timeout', async () => {
+  vi.useFakeTimers()
+  try {
+    const flow = definition('tool')
+    flow.nodes.work = {
+      ...flow.nodes.work,
+      retry: {
+        maxAttempts: 2,
+        attemptTimeoutMs: 100,
+        totalTimeoutMs: 10,
+        backoff: { initialMs: 0 },
+      },
+    } as FlowDefinition['nodes'][string]
+    const h = harness({
+      definition: flow,
+      caller: {
+        callTool: async () => ({ task: { taskId: 'slow' } }),
+        waitTask: async () => new Promise(() => {}),
+      },
+    })
+    const completion = h.drive()
+    await vi.advanceTimersByTimeAsync(10)
+    const completed = await completion
+    expect(completed.structuredContent?.error).toMatchObject({ reason: 'total_timeout' })
+    expect(h.cancelled).toEqual([{ id: tool.id, taskId: 'slow' }])
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('an early sibling total timer waits for the deadline before total_timeout', async () => {
+  vi.useFakeTimers()
+  let now: ReturnType<typeof vi.spyOn> | undefined
+  try {
+    const flow = definition('tool')
+    flow.nodes.work = {
+      ...flow.nodes.work,
+      retry: {
+        maxAttempts: 2,
+        attemptTimeoutMs: 100,
+        totalTimeoutMs: 10,
+        backoff: { initialMs: 0 },
+      },
+    } as FlowDefinition['nodes'][string]
+    const entered = Promise.withResolvers<void>()
+    const h = harness({
+      definition: flow,
+      caller: {
+        callTool: async () => ({ task: { taskId: 'slow' } }),
+        waitTask: async () => {
+          entered.resolve()
+          return new Promise(() => {})
+        },
+      },
+    })
+    const completion = h.drive()
+    await entered.promise
+    now = vi
+      .spyOn(Date, 'now')
+      .mockImplementation(() => (vi.getMockedSystemTime()?.getTime() ?? 0) - 2)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(h.cancelled).toEqual([])
+    await vi.advanceTimersByTimeAsync(2)
+    expect((await completion).structuredContent?.error).toMatchObject({ reason: 'total_timeout' })
+    expect(h.cancelled).toEqual([{ id: tool.id, taskId: 'slow' }])
+  } finally {
+    now?.mockRestore()
+    vi.useRealTimers()
+  }
+})
+
+test('a total deadline keeps its failed-value resume when cancellation crosses the attempt deadline', async () => {
+  vi.useFakeTimers()
+  try {
+    const flow = definition('tool')
+    flow.nodes.work = {
+      ...flow.nodes.work,
+      retry: {
+        maxAttempts: 2,
+        attemptTimeoutMs: 100,
+        totalTimeoutMs: 10,
+        backoff: { initialMs: 0 },
+      },
+    } as FlowDefinition['nodes'][string]
+    const h = harness({
+      definition: flow,
+      caller: {
+        callTool: async () => ({ task: { taskId: 'slow' } }),
+        waitTask: async () => new Promise(() => {}),
+        cancelTask: async () => new Promise((resolve) => setTimeout(resolve, 150)),
+      },
+    })
+    const resume = vi.spyOn(h.graph, 'resume')
+    const completion = h.drive()
+    await vi.advanceTimersByTimeAsync(160)
+    await completion
+    expect(resume.mock.calls[0]?.[0].event).toMatchObject({
+      type: 'value',
+      value: { ok: false, status: 'failed' },
+    })
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('a sibling deadline passed during downtime expires before waiting on recovery', async () => {
   const flow = definition('tool')
   flow.nodes.work = {
     ...flow.nodes.work,
-    retry: { maxAttempts: 2, attemptTimeoutMs: 20, backoff: { initialMs: 0 } },
+    retry: { maxAttempts: 2, attemptTimeoutMs: 100, backoff: { initialMs: 0 } },
   } as FlowDefinition['nodes'][string]
-  const calls: Array<{ key: unknown; attempt: unknown }> = []
+  let calls = 0
+  let waits = 0
   const h = harness({
     definition: flow,
     caller: {
-      callTool: async ({ meta, signal }) => {
-        calls.push({
-          key: meta['io.mokei/idempotency-key'],
-          attempt: meta['io.mokei/attempt'],
-        })
-        if (calls.length === 1) {
-          await new Promise<void>((_resolve, reject) => {
-            signal.addEventListener('abort', () => reject(signal.reason), { once: true })
-          })
-        }
-        return { result }
+      callTool: async () => (++calls === 1 ? { task: { taskId: 'expired' } } : { result }),
+      waitTask: async () => {
+        waits++
+        return result
       },
     },
   })
+  let suspended: Awaited<ReturnType<typeof h.run.next>>
+  do {
+    suspended = await h.run.next()
+  } while (!suspended.done && suspended.value.status !== 'suspended')
+  if (suspended.done || suspended.value.status !== 'suspended' || !suspended.value.pending)
+    throw new Error('No suspension')
+  h.resumeData.runState = {
+    ...suspended.value,
+    pending: { ...suspended.value.pending, deadline: new Date(Date.now() - 1).toISOString() },
+  }
   expect((await h.drive()).structuredContent).toMatchObject({ outcome: 'finished' })
-  expect(calls).toHaveLength(2)
-  expect(calls[0]?.key).toMatch(/^run-1:.+/)
-  expect(calls[1]?.key).toBe(calls[0]?.key)
-  expect(calls.map(({ attempt }) => attempt)).toEqual([1, 2])
+  expect(waits).toBe(0)
+  expect(calls).toBe(2)
+  expect(h.cancelled).toEqual([{ id: tool.id, taskId: 'expired' }])
+})
+
+test('a sibling completed before its deadline resumes normally', async () => {
+  vi.useFakeTimers()
+  try {
+    const flow = definition('tool')
+    flow.nodes.work = {
+      ...flow.nodes.work,
+      retry: { maxAttempts: 2, attemptTimeoutMs: 100, backoff: { initialMs: 0 } },
+    } as FlowDefinition['nodes'][string]
+    let calls = 0
+    const h = harness({
+      definition: flow,
+      caller: {
+        callTool: async () => {
+          calls++
+          return { task: { taskId: 'fast' } }
+        },
+      },
+    })
+    expect((await h.drive()).structuredContent).toMatchObject({ outcome: 'finished' })
+    expect(h.checkpoints.some((entry) => entry.runState.pending?.deadline !== undefined)).toBe(true)
+    expect(calls).toBe(1)
+    expect(h.cancelled).toEqual([])
+  } finally {
+    vi.useRealTimers()
+  }
 })

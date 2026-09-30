@@ -213,7 +213,7 @@ export type AgentReasoningCompleteEvent = {
 
 /**
  * Emitted when a tool call is pending approval.
- * Emitted when toolApproval is 'ask' or a ToolApprovalFn (not for 'auto'/'never').
+ * Emitted when toolApproval is 'ask' or any ToolApprovalFn, including wrapped strategies.
  */
 export type AgentToolCallPendingEvent = {
   type: 'tool-call-pending'

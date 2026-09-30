@@ -148,10 +148,7 @@ export function checkFlow(params: {
         }),
       ],
     })
-  const graph = createDecisionFlowGraph({
-    client: resolvePredictor(params.predictor, { depth: 0 }),
-    kinds: [toolKind({ caller: params.caller, catalogue: params.caller.listTools(), depth: 0 })],
-  })
+  const graph = graphFor({ depth: 0, approved: new Set() })
   const checked = graph.check(params.definition)
   const raw = params.definition
   const nodes = isObject(raw) && isObject(raw.nodes) ? raw.nodes : undefined

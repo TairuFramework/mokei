@@ -5,7 +5,7 @@ import { SystemOneError, SystemOneResponseError } from '@mokei/system-one-client
 import { createValidator } from '@sozai/schema'
 
 import { callMeta, FLOW_DEPTH_META } from './call-meta.js'
-import type { ToolCaller } from './tool-caller.js'
+import { cancelSibling, type ToolCaller } from './tool-caller.js'
 
 export type PredictorFactory = ((run: { depth: number }) => Predictor) & { tool: string }
 
@@ -46,7 +46,7 @@ export function createMCPPredictor(
         if ('task' in outcome) {
           const task = { id: tool, taskId: outcome.task.taskId }
           const onAbort = () => {
-            void caller.cancelTask(task).catch(() => {})
+            void cancelSibling(caller, task).catch(() => {})
           }
           signal.addEventListener('abort', onAbort, { once: true })
           if (signal.aborted) onAbort()

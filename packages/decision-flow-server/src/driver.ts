@@ -6,7 +6,7 @@ import { type TaskHandle, TaskInputKeyReusedError } from '@mokei/context-server'
 import type { FlowDefinition, FlowGraph, FlowRun, RunState } from '@sozai/flow-graph'
 
 import { toElicitationSchema } from './definition-checks.js'
-import type { ToolCaller } from './tool-caller.js'
+import { cancelSibling, type ToolCaller } from './tool-caller.js'
 import type { ToolResumeValue, ToolSuspendData } from './tool-node.js'
 
 export type ResumeDataV1 = {
@@ -97,7 +97,7 @@ export async function startRun(params: {
       cleanupPromise,
       ...newCancels.map(async ({ tool, taskId }) => {
         try {
-          await caller.cancelTask({ id: tool, taskId })
+          await cancelSibling(caller, { id: tool, taskId })
         } catch (error) {
           console.error('Flow sibling cancellation failed', error)
         }
@@ -136,17 +136,56 @@ export async function startRun(params: {
     }
     if (isToolSuspension(pending.data)) {
       const { tool, taskId } = pending.data
+      const attemptDeadline =
+        pending.deadline === undefined ? undefined : Date.parse(pending.deadline)
+      const totalDeadline = state.frames.at(-1)?.attempts[pending.node]?.deadline
+      const deadline = [
+        attemptDeadline,
+        totalDeadline === undefined ? undefined : Date.parse(totalDeadline),
+      ]
+        .filter((time): time is number => time !== undefined)
+        .reduce<number | undefined>(
+          (earlier, time) => (earlier === undefined ? time : Math.min(earlier, time)),
+          undefined,
+        )
+      const deadlineController = new AbortController()
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      const now = Date.now()
+      let expired = deadline !== undefined && now >= deadline
+      let attemptExpired = expired && attemptDeadline !== undefined && now >= attemptDeadline
       let value: ToolResumeValue
       try {
-        value = {
-          ok: true,
-          result: await caller.waitTask({ id: tool, taskId, signal: handle.signal }),
-        }
+        if (!expired) {
+          const signal = AbortSignal.any([handle.signal, deadlineController.signal])
+          const waiting = caller.waitTask({ id: tool, taskId, signal })
+          const result =
+            deadline === undefined
+              ? await waiting
+              : await Promise.race([
+                  waiting,
+                  new Promise<never>((_resolve, reject) => {
+                    const expire = () => {
+                      const now = Date.now()
+                      if (now < deadline) {
+                        timeout = setTimeout(expire, deadline - now)
+                        return
+                      }
+                      expired = true
+                      attemptExpired = attemptDeadline !== undefined && now >= attemptDeadline
+                      const error = new Error('Sibling task deadline expired')
+                      deadlineController.abort(error)
+                      reject(error)
+                    }
+                    timeout = setTimeout(expire, Math.max(0, deadline - Date.now()))
+                  }),
+                ])
+          value = { ok: true, result }
+        } else throw new Error('Sibling task deadline expired')
       } catch (error) {
         if (handle.signal.aborted) throw new StopRun('Run stopped', { cause: error })
-        if (!(error instanceof TaskCancelledError)) {
+        if (expired || !(error instanceof TaskCancelledError)) {
           try {
-            await caller.cancelTask({ id: tool, taskId })
+            await cancelSibling(caller, { id: tool, taskId })
           } catch (cancelError) {
             console.error('Flow sibling cancellation failed', cancelError)
           }
@@ -155,6 +194,8 @@ export async function startRun(params: {
           error instanceof TaskCancelledError
             ? { ok: false, status: 'cancelled' }
             : { ok: false, status: 'failed' }
+      } finally {
+        if (timeout !== undefined) clearTimeout(timeout)
       }
       const index = siblings.findIndex(
         (sibling) => sibling.tool === tool && sibling.taskId === taskId,
@@ -164,7 +205,10 @@ export async function startRun(params: {
       return graph.resume({
         definition,
         runState: state,
-        event: { type: 'value', value: value as unknown as JSONValue },
+        event:
+          expired && attemptExpired
+            ? { type: 'timeout' }
+            : { type: 'value', value: value as unknown as JSONValue },
         signal: handle.signal,
       })
     }
@@ -267,7 +311,9 @@ export async function startRun(params: {
       const off = run.events.on('node:enter', ({ node }) => {
         statuses.push(
           handle.setStatus(`Running node ${node}`).catch((error) => {
-            if (!handle.signal.aborted) throw error
+            if (handle.signal.aborted || isTerminalCheckpoint(error))
+              throw new StopRun('Run stopped', { cause: error })
+            throw new RPCError({ code: -32603, message: 'Flow status update failed', cause: error })
           }),
         )
       })
