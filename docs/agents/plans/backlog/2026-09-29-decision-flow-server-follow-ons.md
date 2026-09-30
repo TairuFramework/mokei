@@ -8,8 +8,8 @@
 - **Runtime tool IDs.** Tool IDs computed at run time, with per-call approval, since the approved set is fixed at plan time today.
 - **Standalone binary.** Add `mcp-servers/decision-flow`, using a `NodeContextHost` built from a config of sibling servers.
 - **`llm` node kind.** Add a session-backed kind that uses the session's `ModelProvider`.
-- **Input decline edge.** Add a flow-graph `decline` resume event for `input` nodes, so a decline takes its own edge instead of cancelling the run. Blocked on `@sozai/flow-graph`: `ResumeEvent` and `validateResumeEvent` accept only `value` and `timeout`. Requested upstream.
-- **Unconstrained result paths.** Replace the 32-level `additionalProperties` chain in the `tool` kind's result schema once `@sozai/flow-graph` can treat a schema as unconstrained. Requested upstream.
+- **Isolated validator options upstream.** Add `createValidatorCache({ maxCompiles, maxEntries })` to `@sozai/schema`, so the recycle rule in `src/validators.ts` can move out of this package. Requested upstream.
+- **Validator factory in flow-graph.** Add a validator-factory option to `FlowGraphOptions` in `@sozai/flow-graph`, so the graph's own compiles use the recycled factory. Requested upstream.
 
 ## Done in the decision-flow server PR
 
@@ -24,3 +24,9 @@
 ## Remaining minor cleanups
 
 - The server version is hard-coded.
+
+## Done in the flow references, decline and validators PR
+
+- **Input decline edge.** An `input` node's decline routes to its `decline` edge, including inside called flows.
+- **Unconstrained result paths.** The `tool` kind's result schema no longer uses a 32-level `additionalProperties` chain.
+- **Runtime validator recycling.** Runtime schemas compile on an isolated factory that is recycled after 256 distinct compiles, with a 64-entry LRU keyed by canonical JSON. Runs no longer recompile per run.

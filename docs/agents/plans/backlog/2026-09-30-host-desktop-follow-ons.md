@@ -8,13 +8,6 @@
 - **Unverified backend behaviour.** zenity escaping follows the zenity 4 source only (3.x not
   checked). alerter JSON field names and argv parsing come from its docs; confirm on a Mac with
   alerter installed (Manual QA below). The first CI run is the first real zenity run.
-- **AJV scope growth.** `@sozai/schema` compiles on one AJV instance shared by the process.
-  AJV's code-gen scope keeps every compiled function, even after `removeSchema`, at about 7-9 KB
-  per compile. `form.ts` compiles a whitelisted, canonical copy of each schema and caches
-  validators in a 64-entry LRU keyed by canonical JSON. Repeated forms therefore never
-  recompile, but each distinct server schema still grows the heap for the life of the process.
-  Needs an isolated, disposable validator instance option in `@sozai/schema` (requested
-  upstream). Once it ships, recycle the instance every N distinct compiles and clear the LRU with it.
 - **Manual QA.** Linux dialogs run end to end in CI (`zenity` under `xvfb`, answered with
   `xdotool`, and left to time out). macOS is covered by unit tests plus this manual checklist,
   run through a `NodeContextHost`. Moved from the package README.
@@ -32,3 +25,7 @@
     notification.
   - Inbox mode:
     - [ ] In inbox mode, check the notification appears, then answer an entry with `inbox.prompt(id)`.
+
+## Done in the flow references, decline and validators PR
+
+- **AJV scope growth.** `form.ts` compiles on an isolated validator factory, recycled after 256 distinct compiles, with the 64-entry LRU cleared alongside and keyed by canonical JSON. The shared process-wide AJV instance no longer grows with each distinct server schema.

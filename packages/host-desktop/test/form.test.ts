@@ -1,9 +1,12 @@
-import { describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test } from 'vitest'
 
 import {
+  canonicalJSON,
   type FieldPlan,
   type FormParams,
+  formValidatorStats,
   planForm,
+  resetFormValidators,
   validateContent,
   withViolation,
 } from '../src/form.js'
@@ -370,5 +373,47 @@ describe('withViolation', () => {
   test('puts the violation on the first line', () => {
     const ask = { kind: 'text' as const, title: 'T', text: 'body' }
     expect(withViolation(ask, 'too short')).toEqual({ ...ask, text: 'too short\nbody' })
+  })
+})
+
+describe('form validator factory', () => {
+  beforeEach(() => {
+    resetFormValidators()
+  })
+
+  function numberForm(index: number): FormParams {
+    return params({ field: { type: 'string', maxLength: index + 1 } }, ['field'])
+  }
+
+  test('canonicalJSON is independent of key order', () => {
+    expect(canonicalJSON({ b: 1, a: { d: [3, 1], c: null } })).toBe(
+      canonicalJSON({ a: { c: null, d: [3, 1] }, b: 1 }),
+    )
+  })
+
+  test('schemas differing only in key order share one compile', () => {
+    const first = params({ a: { type: 'string', minLength: 1 } })
+    const second = params({ a: { minLength: 1, type: 'string' } })
+    planForm(first, options)
+    const { compiles } = formValidatorStats()
+    planForm(second, options)
+    expect(formValidatorStats().compiles).toBe(compiles)
+  })
+
+  test('the 257th distinct compile recycles the factory and clears the cache', () => {
+    for (let index = 0; index < 256; index++) planForm(numberForm(index), options)
+    expect(formValidatorStats()).toEqual({ generation: 0, compiles: 256, entries: 64 })
+    planForm(numberForm(256), options)
+    expect(formValidatorStats()).toEqual({ generation: 1, compiles: 1, entries: 1 })
+  })
+
+  test('a compile error is cached and rethrown', () => {
+    const bad = params({ a: { type: 'string', pattern: '(' } })
+    const first = planForm(bad, options)
+    expect(first.ok).toBe(false)
+    const { compiles } = formValidatorStats()
+    const second = planForm(bad, options)
+    expect(second).toEqual(first)
+    expect(formValidatorStats().compiles).toBe(compiles)
   })
 })
