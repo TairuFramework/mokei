@@ -197,6 +197,22 @@ describe('toolKind check', () => {
   })
 
   test.each([
+    ['all constant', {}],
+    ['partly constant', { args: { count: { value: 1 }, other: { ref: ['input', 'other'] } } }],
+  ])('reports an uncompilable input schema (%s)', (_name, node) => {
+    const broken = {
+      ...tool,
+      id: 'sibling:broken',
+      inputSchema: { ...inputSchema, properties: { count: { type: 'string', pattern: '(' } } },
+    } as CatalogTool
+    const found = issue(definition({ tool: broken.id, ...node }), [broken])
+    expect(found.filter((entry) => entry.code === 'tool_invalid_schema')).toEqual([
+      expect.objectContaining({ path: ['nodes', 'work', 'tool'] }),
+    ])
+    expect(found.some((entry) => entry.code === 'tool_invalid_args')).toBe(false)
+  })
+
+  test.each([
     ['neither route', { next: undefined }],
     ['both routes', { cases: [], default: 'done' }],
     ['cases without default', { next: undefined, cases: [] }],

@@ -49,10 +49,10 @@ function createSession(elicit: true | HostElicitHandler) {
   return { session, observed, ask }
 }
 
-type ElicitationEvent = Extract<AgentEvent, { type: `elicitation-${string}` }>
+type ElicitationEvent = Extract<AgentEvent, { requestID: string }>
 
 function elicitationEvents(events: Array<AgentEvent>): Array<ElicitationEvent> {
-  return events.filter((event): event is ElicitationEvent => event.type.startsWith('elicitation-'))
+  return events.filter((event): event is ElicitationEvent => 'requestID' in event)
 }
 
 describe('AgentSession elicitation ownership', () => {
@@ -367,6 +367,42 @@ describe('AgentSession elicitation ownership', () => {
     answer.resolve({ action: 'accept', content: { answer: 'too late' } })
     await Promise.resolve()
     expect(elicitationEvents(events)).toHaveLength(2)
+    await session.dispose()
+  })
+
+  test('URL-mode completion reaches onEvent and events until dispose', async () => {
+    const session = new Session({ elicit: true })
+    const fromCallback: Array<AgentEvent> = []
+    const fromEmitter: Array<AgentEvent> = []
+    const agent = new AgentSession({
+      session,
+      provider,
+      model: 'test-model',
+      onEvent: (event) => fromCallback.push(event),
+    })
+    agent.events.on('event', (event) => {
+      fromEmitter.push(event)
+    })
+
+    await session.contextHost.events.emit('elicitation:complete', {
+      key: 'questions',
+      elicitationId: 'e1',
+    })
+    const expected = {
+      type: 'elicitation-complete',
+      key: 'questions',
+      elicitationId: 'e1',
+      timestamp: expect.any(Number),
+    }
+    expect(fromCallback).toEqual([expected])
+    expect(fromEmitter).toEqual([expected])
+
+    await agent.dispose()
+    await session.contextHost.events.emit('elicitation:complete', {
+      key: 'questions',
+      elicitationId: 'e2',
+    })
+    expect(fromCallback).toHaveLength(1)
     await session.dispose()
   })
 })

@@ -65,7 +65,9 @@ settle, so a request from those calls never reaches a later owner. Constructing 
 agent on the same host throws until then. On `2025-11-25`, a server that keeps running a tool after
 the client stops waiting for it can still send a request later; the protocol does not identify which
 call it belongs to, so it reaches whichever owner is installed then.
-URL-mode elicitation reaches the callback, but server `notifications/elicitation/complete`
-notifications are not forwarded. A UI cannot automatically close a URL prompt on completion.
+URL-mode elicitation reaches the callback. When the server later sends
+`notifications/elicitation/complete`, `onEvent` and `agent.events` receive an `elicitation-complete`
+event with the context `key` and `elicitationId`, so a UI can close the URL prompt. It is not part of
+run streams, since it may arrive after the run ended.
 
 ## [Documentation](https://mokei.dev)

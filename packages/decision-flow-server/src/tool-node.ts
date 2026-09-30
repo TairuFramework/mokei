@@ -158,30 +158,32 @@ export function toolKind(params: {
         )
       }
       const constantArgs = Object.entries(node.args).filter(([, value]) => isConstant(value))
-      if (constantArgs.length === Object.keys(node.args).length) {
-        const values = Object.fromEntries(
-          constantArgs.map(([key, value]) => [key, (value as { value: JSONValue }).value]),
+      const values = Object.fromEntries(
+        constantArgs.map(([key, value]) => [key, (value as { value: JSONValue }).value]),
+      )
+      // With references present, only the constant arguments are known, so drop `required`.
+      const schema =
+        constantArgs.length === Object.keys(node.args).length
+          ? entry.inputSchema
+          : { ...entry.inputSchema, required: [] }
+      let validate: Validator<unknown> | undefined
+      try {
+        validate = validatorFor(schema)
+      } catch (error) {
+        report(
+          'tool_invalid_schema',
+          ['tool'],
+          `Tool ${node.tool} input schema does not compile: ${(error as Error).message}`,
+          'Fix the tool input schema on the sibling server.',
         )
-        if (validatorFor(entry.inputSchema)(values).issues) {
-          report(
-            'tool_invalid_args',
-            ['args'],
-            'Constant arguments do not match the tool input schema.',
-            'Use values that match the tool input schema.',
-          )
-        }
-      } else {
-        const values = Object.fromEntries(
-          constantArgs.map(([key, value]) => [key, (value as { value: JSONValue }).value]),
+      }
+      if (validate?.(values).issues) {
+        report(
+          'tool_invalid_args',
+          ['args'],
+          'Constant arguments do not match the tool input schema.',
+          'Use values that match the tool input schema.',
         )
-        if (validatorFor({ ...entry.inputSchema, required: [] })(values).issues) {
-          report(
-            'tool_invalid_args',
-            ['args'],
-            'Constant arguments do not match the tool input schema.',
-            'Use values that match the tool input schema.',
-          )
-        }
       }
     }
     const hasNext = node.next !== undefined

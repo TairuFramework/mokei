@@ -180,6 +180,11 @@ export type HostEvents = {
    * reacting is the consumer's policy.
    */
   'resource:updated': { key: string; uri: string }
+  /**
+   * A `2025-11-25` context's server completed a URL-mode elicitation
+   * (`notifications/elicitation/complete`). An application can close the matching URL prompt.
+   */
+  'elicitation:complete': { key: string; elicitationId: string }
 }
 
 export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
@@ -577,6 +582,7 @@ export class ContextHost extends Disposer {
    * context is safe and only `2026-07-28` contexts ever react. On a `*ListChanged` signal the host
    * re-discovers the affected list (refreshing the namespaced tool aggregate for tools) *before*
    * emitting `<x>:changed`; on `resourceUpdated` it forwards `resource:updated` without re-reading.
+   * It also forwards `2025-11-25` `elicitationComplete` as `elicitation:complete`.
    */
   #wireContextSubscriptions(key: string, client: ContextClient): void {
     const unsubscribes = [
@@ -591,6 +597,9 @@ export class ContextHost extends Disposer {
       }),
       client.events.on('resourceUpdated', ({ uri }) => {
         void this.#events.emit('resource:updated', { key, uri }).catch(() => {})
+      }),
+      client.events.on('elicitationComplete', ({ elicitationId }) => {
+        void this.#events.emit('elicitation:complete', { key, elicitationId }).catch(() => {})
       }),
     ]
     this.#subscriptionUnsubscribes.set(key, unsubscribes)
