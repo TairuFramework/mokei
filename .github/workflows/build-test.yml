@@ -41,7 +41,8 @@ jobs:
         run: pnpm run test
 
       - name: Desktop dialogs (Linux)
+        if: matrix.node == 24
         run: |
           sudo apt-get update
-          sudo apt-get install -y zenity xvfb
+          sudo apt-get install -y zenity xvfb xdotool
           xvfb-run -a env DESKTOP_E2E=1 pnpm --filter @mokei/host-desktop run test:unit
