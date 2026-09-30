@@ -39,3 +39,4 @@ export {
   type PendingInput,
 } from './inbox.js'
 export { createRunner, type Runner, type RunOptions, type RunResult } from './runner.js'
+export { createDesktopTools, type DesktopToolsOptions } from './tools.js'

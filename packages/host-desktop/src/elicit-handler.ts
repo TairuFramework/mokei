@@ -54,7 +54,7 @@ type Step = { ask: AskRequest; backend: AskBackendName; field?: FieldPlan }
 
 type Content = NonNullable<ElicitResult['content']>
 
-function defaultCreateBackend(appName: string) {
+export function defaultCreateBackend(appName: string) {
   return (name: BackendName, runner: Runner): DesktopBackend => {
     switch (name) {
       case 'alerter':
@@ -78,7 +78,7 @@ function messageOf(error: unknown): string {
 }
 
 /** Settles with the promise, or rejects with the signal's reason as soon as it aborts. */
-function untilAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+export function untilAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => reject(signal.reason)
     signal.addEventListener('abort', onAbort, { once: true })
