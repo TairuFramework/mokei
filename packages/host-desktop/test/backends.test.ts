@@ -302,7 +302,6 @@ describe('zenity', () => {
     'T',
     '--text',
     'X',
-    '--no-markup',
     '--column',
     'Pick',
     '--column',
@@ -319,7 +318,6 @@ describe('zenity', () => {
       'T',
       '--text',
       'X',
-      '--no-markup',
       '--entry-text',
       'dflt',
       '--timeout',
@@ -365,7 +363,9 @@ describe('zenity', () => {
   })
 
   test('argv injection', () => {
-    expect(buildZenityArgs({ ...text, text: HOSTILE }, 25)).toContain(HOSTILE)
+    expect(buildZenityArgs({ ...text, text: HOSTILE }, 25)).toContain(
+      '"; do shell script "rm -rf ~" --x\n\\\\',
+    )
     expect(buildZenityArgs({ ...choice, choices: [{ value: 'x', label: HOSTILE }] }, 25)).toContain(
       HOSTILE,
     )
@@ -455,9 +455,55 @@ describe('leading dash values', () => {
     expect(args).toEqual(['--app-name', 'mokei', '--', v, v])
   })
 
-  test('zenity disables markup wherever --text is used', () => {
+  // zenity 4 passes entry --text through g_strcompress and mnemonic parsing, and list --text
+  // through g_strcompress and Pango markup; titles, column headers and rows are plain text.
+  const Special = 'a & b < c > d _e \\f "g" \'h\''
+
+  test('zenity escapes entry --text for g_strcompress and mnemonics', () => {
+    const args = buildZenityArgs({ ...text, title: Special, text: Special, default: Special }, 25)
+    expect(args).toEqual([
+      '--entry',
+      '--title',
+      Special,
+      '--text',
+      'a & b < c > d __e \\\\f "g" \'h\'',
+      '--entry-text',
+      Special,
+      '--timeout',
+      '25',
+    ])
+  })
+
+  test.each([
+    ['confirm', confirm],
+    ['choice', choice],
+  ] as const)('zenity escapes %s list --text for g_strcompress and markup', (_, request) => {
+    const label = { value: 'x', label: Special }
+    const args = buildZenityArgs(
+      { ...request, title: Special, text: Special, choices: [label], default: 'x' },
+      25,
+    )
+    expect(args.slice(0, 6)).toEqual([
+      '--list',
+      '--radiolist',
+      '--title',
+      Special,
+      '--text',
+      'a &amp; b &lt; c &gt; d _e \\\\f &quot;g&quot; &apos;h&apos;',
+    ])
+    if (request.kind === 'choice') {
+      expect(args.slice(args.indexOf('--') + 1)).toEqual(['TRUE', Special])
+    }
+  })
+
+  test('zenity keeps newlines in --text', () => {
+    expect(buildZenityArgs({ ...text, text: 'a\nb' }, 25)).toContain('a\nb')
+    expect(buildZenityArgs({ ...confirm, text: 'a\nb' }, 25)).toContain('a\nb')
+  })
+
+  test('zenity no longer passes --no-markup, which zenity ignores for entry and list', () => {
     for (const request of [text, confirm, choice]) {
-      expect(buildZenityArgs(request, 25)).toContain('--no-markup')
+      expect(buildZenityArgs(request, 25)).not.toContain('--no-markup')
     }
   })
 

@@ -10,6 +10,33 @@ import {
   unexpectedExit,
 } from './types.js'
 
+const MARKUP_ENTITIES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&apos;',
+}
+
+/** `g_strcompress` turns `\\` into `\` and drops the backslash of other escapes. */
+function escapeCompress(text: string): string {
+  return text.replaceAll('\\', '\\\\')
+}
+
+/**
+ * zenity 4 shows entry `--text` with `gtk_label_set_text_with_mnemonic(g_strcompress(text))`,
+ * where `__` is a literal underscore.
+ */
+function escapeZenityEntryText(text: string): string {
+  return escapeCompress(text).replaceAll('_', '__')
+}
+
+/** zenity 4 shows list `--text` with `gtk_label_set_markup(g_strcompress(text))`. */
+function escapeZenityListText(text: string): string {
+  return escapeCompress(text).replace(/[&<>"']/g, (char) => MARKUP_ENTITIES[char] ?? char)
+}
+
+// Titles (the dialog heading), column headers, rows and --entry-text are shown as plain text.
 function radioListArgs(
   request: AskRequest,
   nativeTimeoutSeconds: number,
@@ -22,8 +49,7 @@ function radioListArgs(
     '--title',
     request.title,
     '--text',
-    request.text,
-    '--no-markup',
+    escapeZenityListText(request.text),
     '--column',
     'Pick',
     '--column',
@@ -43,8 +69,7 @@ export function buildZenityArgs(request: AskRequest, nativeTimeoutSeconds: numbe
         '--title',
         request.title,
         '--text',
-        request.text,
-        '--no-markup',
+        escapeZenityEntryText(request.text),
         '--entry-text',
         request.default ?? '',
         '--timeout',
