@@ -48,7 +48,8 @@
     "@mokei/session": "workspace:^",
     "@mokei/system-one-client": "workspace:^",
     "@sozai/flow-graph": "catalog:",
-    "@sozai/schema": "catalog:"
+    "@sozai/schema": "catalog:",
+    "@standard-schema/spec": "catalog:"
   },
   "devDependencies": {
     "@enkaku/transport": "catalog:",

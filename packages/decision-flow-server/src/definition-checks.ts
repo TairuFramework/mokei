@@ -6,6 +6,7 @@ import {
   type FlowIssue,
   formatIssues,
 } from '@sozai/flow-graph'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import { type PredictorFactory, resolvePredictor } from './predictor.js'
 import type { ToolCaller } from './tool-caller.js'
@@ -124,18 +125,34 @@ export function checkInputNodes(definition: FlowDefinition): Array<FlowIssue> {
   return issues
 }
 
+/**
+ * Standard Schema failure result whose issues are flow issues. `FlowIssue` extends
+ * `StandardSchemaV1.Issue`, so this is assignable to `StandardSchemaV1.FailureResult`.
+ */
+export type FlowCheckFailure = { readonly issues: ReadonlyArray<FlowIssue> }
+
+/**
+ * Result of checking a flow definition: a Standard Schema result carrying the definition on
+ * success, or the blocking issues on failure.
+ */
+export type FlowCheckResult = (
+  | StandardSchemaV1.SuccessResult<FlowDefinition>
+  | FlowCheckFailure
+) & {
+  /** Non-blocking issues, reported whether or not the check succeeds. */
+  warnings: Array<FlowIssue>
+  /** Every issue, blocking and non-blocking, formatted for display. */
+  formatted: string
+  graphFor(run: { depth: number; approved: ReadonlySet<string> }): FlowGraph
+}
+
 /** Check a definition against the current catalogue and return a fresh graph factory. */
 export function checkFlow(params: {
   definition: unknown
   caller: ToolCaller
   predictor: Predictor | PredictorFactory
   elicitation: boolean
-}): {
-  ok: boolean
-  issues: Array<FlowIssue>
-  formatted: string
-  graphFor(run: { depth: number; approved: ReadonlySet<string> }): FlowGraph
-} {
+}): FlowCheckResult {
   const graphFor = (run: { depth: number; approved: ReadonlySet<string> }): FlowGraph =>
     createDecisionFlowGraph({
       client: resolvePredictor(params.predictor, run),
@@ -155,7 +172,7 @@ export function checkFlow(params: {
   const inputNodes =
     nodes !== undefined &&
     Object.values(nodes).some((node) => isObject(node) && node.kind === 'input')
-  const issues = [
+  const all: Array<FlowIssue> = [
     ...checked.issues,
     ...(nodes !== undefined ? checkInputNodes(raw as FlowDefinition) : []),
     ...(!params.elicitation && inputNodes
@@ -170,10 +187,10 @@ export function checkFlow(params: {
         ]
       : []),
   ]
-  return {
-    ok: !issues.some((issue) => issue.severity === 'error'),
-    issues,
-    formatted: formatIssues(issues),
-    graphFor,
-  }
+  const errors = all.filter((issue) => issue.severity === 'error')
+  const warnings = all.filter((issue) => issue.severity !== 'error')
+  const details = { warnings, formatted: formatIssues(all), graphFor }
+  return errors.length > 0
+    ? { issues: errors, ...details }
+    : { value: raw as FlowDefinition, ...details }
 }

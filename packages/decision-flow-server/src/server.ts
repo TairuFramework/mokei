@@ -62,8 +62,8 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
         return {
           content: [{ type: 'text', text: checked.formatted }],
           structuredContent: {
-            ok: checked.ok,
-            issues: checked.issues,
+            ok: checked.issues === undefined,
+            issues: [...(checked.issues ?? []), ...checked.warnings],
             formatted: checked.formatted,
           },
         }
@@ -92,7 +92,7 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
       predictor: params.predictor,
       elicitation: elicitation(),
     })
-    if (!checked.ok) return errorResult(checked.formatted)
+    if (checked.issues) return errorResult(checked.formatted)
     const approved = params.approval({
       toolName: name,
       arguments: request.input as Record<string, JSONValue>,
@@ -160,7 +160,7 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
       predictor: params.predictor,
       elicitation: elicitation(),
     })
-    if (!checked.ok) throw new Error(`Invalid registered flow ${flow.id}: ${checked.formatted}`)
+    if (checked.issues) throw new Error(`Invalid registered flow ${flow.id}: ${checked.formatted}`)
     tools[name] = {
       description: flow.name,
       inputSchema: inputSchema as ToolDefinitions[string]['inputSchema'],

@@ -1,4 +1,5 @@
 import type { FlowDefinition } from '@sozai/flow-graph'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { expect, test } from 'vitest'
 
 import { checkFlow, checkInputNodes, toElicitationSchema } from '../src/definition-checks.js'
@@ -133,10 +134,24 @@ test('checkFlow adds a non-blocking warning without elicitation', () => {
     done: { kind: 'end', outcome: 'done' },
   })
   const checked = checkFlow({ definition: flow, caller, predictor, elicitation: false })
-  expect(checked.ok).toBe(true)
-  expect(checked.issues).toMatchObject([{ code: 'input_without_elicitation', severity: 'warning' }])
+  expect(checked.issues).toBeUndefined()
+  expect(checked).toMatchObject({ value: flow })
+  expect(checked.warnings).toMatchObject([
+    { code: 'input_without_elicitation', severity: 'warning' },
+  ])
   expect(checked.formatted).toContain('input_without_elicitation')
-  expect(checkFlow({ definition: flow, caller, predictor, elicitation: true }).issues).toEqual([])
+  expect(checkFlow({ definition: flow, caller, predictor, elicitation: true }).warnings).toEqual([])
+})
+
+test('checkFlow returns a Standard Schema result', () => {
+  const flow = definition({ done: { kind: 'end', outcome: 'done' } })
+  const result: StandardSchemaV1.Result<FlowDefinition> = checkFlow({
+    definition: flow,
+    caller,
+    predictor,
+    elicitation: true,
+  })
+  expect(result).toMatchObject({ value: flow })
 })
 
 test('checkFlow includes input node errors in its formatted result', () => {
@@ -145,8 +160,8 @@ test('checkFlow includes input node errors in its formatted result', () => {
     done: { kind: 'end', outcome: 'done' },
   })
   const checked = checkFlow({ definition: flow, caller, predictor, elicitation: true })
-  expect(checked.ok).toBe(false)
-  expect(checked.issues.map((issue) => issue.code)).toEqual([
+  expect(checked).not.toHaveProperty('value')
+  expect(checked.issues?.map((issue) => issue.code)).toEqual([
     'input_schema_not_elicitable',
     'input_prompt_not_string',
   ])
@@ -159,15 +174,16 @@ test('checkFlow returns input issues and a run graph bound to the live catalogue
     use: { kind: 'tool', tool: 'local:fetch', args: {}, next: 'done' },
     done: { kind: 'end', outcome: 'done' },
   })
-  expect(checkFlow({ definition: flow, caller, predictor, elicitation: true }).ok).toBe(true)
+  expect(
+    checkFlow({ definition: flow, caller, predictor, elicitation: true }).issues,
+  ).toBeUndefined()
   const unavailable = checkFlow({
     definition: flow,
     caller: { ...caller, listTools: () => [] },
     predictor,
     elicitation: true,
   })
-  expect(unavailable.ok).toBe(false)
-  expect(unavailable.issues.some((issue) => issue.code === 'unknown_tool')).toBe(true)
+  expect(unavailable.issues?.some((issue) => issue.code === 'unknown_tool')).toBe(true)
   expect(unavailable.graphFor({ depth: 0, approved: new Set() }).check(flow).ok).toBe(false)
 })
 
@@ -182,7 +198,7 @@ test('graphFor reads a fresh catalogue for each run', () => {
     listTools: () => (available ? caller.listTools() : []),
   }
   const checked = checkFlow({ definition: flow, caller: liveCaller, predictor, elicitation: true })
-  expect(checked.ok).toBe(true)
+  expect(checked.issues).toBeUndefined()
   available = false
   expect(checked.graphFor({ depth: 1, approved: new Set(['local:fetch']) }).check(flow).ok).toBe(
     false,

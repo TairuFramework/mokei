@@ -114,7 +114,7 @@ export function createRecovery(params: {
       predictor: params.predictor,
       elicitation: params.elicitation(),
     })
-    if (!checked.ok) {
+    if (checked.issues) {
       await resume(async () => {
         await cleanup()
         throw new RPCError({

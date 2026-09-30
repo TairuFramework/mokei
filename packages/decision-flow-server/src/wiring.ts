@@ -93,7 +93,7 @@ export async function addDecisionFlow(
       predictor,
       elicitation: host.elicitationEnabled,
     })
-    if (!checked.ok) throw new Error(`Invalid registered flow ${flow.id}: ${checked.formatted}`)
+    if (checked.issues) throw new Error(`Invalid registered flow ${flow.id}: ${checked.formatted}`)
   }
 
   let reserved = pendingKeys.get(host)
@@ -186,7 +186,7 @@ export async function addDecisionFlow(
           predictor,
           elicitation: host.elicitationEnabled,
         })
-        if (!checked.ok) return true
+        if (checked.issues) return true
         const planned = flowPlan(definition as FlowDefinition, predictor)
         const enriched = {
           ...request,

@@ -45,6 +45,7 @@ catalog:
   '@opentelemetry/api': ^1.9.1
   '@opentelemetry/sdk-trace-base': ^2.2.0
   '@sozai/stream': ^0.2.1
+  '@standard-schema/spec': ^1.1.0
   '@tejika/cli': ^0.4.1
   '@tejika/env': ^0.5.0
   '@tejika/process': ^0.5.1
