@@ -253,6 +253,11 @@ function toError(value: unknown): Error {
 
 export type ClientEvents = {
   closed: { error?: Error }
+  /**
+   * Emitted when a `2025-11-25` server sends `notifications/elicitation/complete` for a URL-mode
+   * elicitation, carrying its `elicitationId`.
+   */
+  elicitationComplete: { elicitationId: string }
   initialized: InitializeResult
   log: Log
   /**
@@ -983,6 +988,10 @@ export class ContextClient<
   _handleNotification(notification: HandleNotification): void {
     if (notification.method === 'notifications/message') {
       this.events.emit('log', notification.params)
+    }
+    if (notification.method === 'notifications/elicitation/complete') {
+      const { elicitationId } = notification.params
+      void this.events.emit('elicitationComplete', { elicitationId }).catch(() => {})
     }
     // Clear tool output schemas cache on tools/list_changed notification
     if (notification.method === 'notifications/tools/list_changed') {

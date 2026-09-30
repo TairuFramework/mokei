@@ -5,12 +5,16 @@
 
 ## Items
 
-- **URL-mode completion.** `2025-11-25` URL-mode requests reach the handler, but server
-  `notifications/elicitation/complete` is not forwarded, so a UI cannot close a URL prompt when the server completes
-  it. Forward it through the host and as an agent event.
-- **Run-event observer isolation.** The general run-event path in `AgentSession` drops the `events.emit` promise and
-  lets `onEvent` exceptions escape into the run. The elicitation events already isolate observer failures; apply the
-  same treatment to every run event.
-- **Per-run tool cancellation.** `cancelToolCall()` uses one agent-wide controller, so with two concurrent runs it
-  cancels whichever tool call started last. Scope it per run or per tool call.
 - **Host-level sampling and roots.** Same host-construction capability and override model as elicitation.
+- **Server-side URL-mode completion.** `ContextServer` cannot send `notifications/elicitation/complete` through its
+  typed `notify`. Add it for `2025-11-25` connections only, since `2026-07-28` forbids the notification.
+
+## Done in the quick follow-ons PR
+
+- **URL-mode completion.** `@mokei/context-client` emits `elicitationComplete`, the host forwards it as
+  `elicitation:complete` with the context key, and `AgentSession` publishes an `elicitation-complete` event to
+  `onEvent` and `events` (not run streams, since it may arrive after the run ended).
+- **Run-event observer isolation.** Every run event goes through one publish path that ignores `onEvent` exceptions
+  and rejected `events` listeners.
+- **Per-call tool cancellation.** `cancelToolCall(toolCallID?)` cancels the call with that ID, or every call in flight
+  when omitted. A finishing call no longer clears another run's controller.

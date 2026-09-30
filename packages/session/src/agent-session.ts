@@ -88,8 +88,9 @@ export type AgentSessionEvents<T extends ProviderTypes = ProviderTypes> = {
 export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #params: ResolvedAgentParams<T>
   #events: EventEmitter<AgentSessionEvents<T>>
-  #activeToolController: AbortController | null = null
+  #toolControllers = new Map<AbortController, string>()
   #removeElicitation: (() => void) | undefined
+  #removeElicitationComplete: (() => void) | undefined
   #nextElicitationID = 0
   #activeRuns = new Set<AgentRunState<T>>()
   #toolCallsInFlight = 0
@@ -100,6 +101,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       // settle, so a late request from those calls never reaches a later owner. Dispose does not
       // wait: a consumer paused at a yield could otherwise block it forever.
       dispose: async () => {
+        this.#removeElicitationComplete?.()
         this.#releaseElicitationIfIdle()
       },
     })
@@ -129,6 +131,12 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     if (session.contextHost.elicitationEnabled) {
       this.#removeElicitation = session.contextHost.handleElicitation((request, fallback) =>
         this.#handleElicitation(request, fallback),
+      )
+      this.#removeElicitationComplete = session.contextHost.events.on(
+        'elicitation:complete',
+        ({ key, elicitationId }) => {
+          this.#notify({ type: 'elicitation-complete', key, elicitationId, timestamp: Date.now() })
+        },
       )
     } else if (params.onElicitation != null) {
       throw new Error('Elicitation is not enabled for this host')
@@ -215,11 +223,16 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 
   #emitElicitationEvent(event: AgentEvent<T>, run?: AgentRunState<T>): void {
     run?.channel.push(event)
+    this.#notify(event)
+  }
+
+  /** Publish to observers. Observer failures never reach the run. */
+  #notify(event: AgentEvent<T>): void {
     void this.#events.emit('event', event).catch(() => undefined)
     try {
       this.#params.onEvent?.(event)
     } catch {
-      // Observer failures must not change the elicitation result or event pair.
+      // Ignored: an observer cannot change the run's outcome or event order.
     }
   }
 
@@ -231,11 +244,14 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   }
 
   /**
-   * Cancel the tool call currently being executed, if any. The current turn
-   * continues with the remaining tool calls / iterations. No-op when idle.
+   * Cancel tool calls in flight. With `toolCallID`, only the call with that ID (from its
+   * `tool-call-start` event) is cancelled; without it, every call in flight across all runs is.
+   * Each affected turn continues with its remaining tool calls / iterations. No-op when idle.
    */
-  cancelToolCall(): void {
-    this.#activeToolController?.abort(TOOL_CANCEL_REASON)
+  cancelToolCall(toolCallID?: string): void {
+    for (const [controller, id] of this.#toolControllers) {
+      if (toolCallID === undefined || id === toolCallID) controller.abort(TOOL_CANCEL_REASON)
+    }
   }
 
   /**
@@ -269,16 +285,8 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
   async *stream(params: AgentRunParams<T>): AsyncGenerator<AgentEvent<T>> {
     const { prompt, messages: priorMessages, signal } = params
     const startTime = Date.now()
-    const {
-      session,
-      provider,
-      model,
-      systemPrompt,
-      toolApproval,
-      maxIterations,
-      timeout,
-      onEvent,
-    } = this.#params
+    const { session, provider, model, systemPrompt, toolApproval, maxIterations, timeout } =
+      this.#params
 
     // Set up timeout
     const timeoutController = new AbortController()
@@ -301,8 +309,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     this.#activeRuns.add(run)
 
     const emitEvent = (event: AgentEvent<T>): AgentEvent<T> => {
-      this.#events.emit('event', event)
-      onEvent?.(event)
+      this.#notify(event)
       return event
     }
 
@@ -772,7 +779,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     // Set up BEFORE emitting tool-call-start so that cancelToolCall() called from
     // within a tool-call-start handler takes effect on the live controller.
     const callController = new AbortController()
-    this.#activeToolController = callController
+    this.#toolControllers.set(callController, toolCall.id)
     let activeTool: AgentToolState | undefined
     if (!isLocalToolID(toolCall.name)) {
       const [key] = getContextToolInfo(toolCall.name)
@@ -791,8 +798,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     const onTurnAbort = () => {
       callController.abort(signal.reason)
     }
-    // Declared here so `finally` can always clear it, even if emitting the
-    // start event (which invokes a user `onEvent` callback) throws.
+    // Declared here so `finally` can always clear it.
     let callTimer: ReturnType<typeof setTimeout> | undefined
 
     try {
@@ -856,7 +862,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     } finally {
       clearTimeout(callTimer)
       signal.removeEventListener('abort', onTurnAbort)
-      this.#activeToolController = null
+      this.#toolControllers.delete(callController)
       run.activeTool = undefined
     }
   }

@@ -412,4 +412,32 @@ describe('ContextHost client elicitation', () => {
     expect(received).toEqual(urlParams)
     await host.dispose()
   })
+
+  test('URL-mode completion is forwarded as elicitation:complete', async () => {
+    const host = new ContextHost({ elicit: true })
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const server = new ContextServer({
+      name: 'elicitation-complete-test',
+      version: '1.0.0',
+      protocolVersions: ['2025-11-25'],
+      transport: transports.server,
+      tools: {},
+    })
+    const completed = new Promise<unknown>((resolve) => {
+      host.events.on('elicitation:complete', resolve)
+    })
+    const client = host.createContext({
+      key: 'url',
+      transport: transports.client,
+      protocolVersion: '2025-11-25',
+      dispose: () => server.dispose(),
+    })
+    await client.initialize()
+    // ContextServer does not type this notification yet: `2026-07-28` forbids it.
+    const notify = server.notify.bind(server) as (method: string, params: unknown) => Promise<void>
+    await notify('elicitation/complete', { elicitationId: 'elicitation-123' })
+
+    await expect(completed).resolves.toEqual({ key: 'url', elicitationId: 'elicitation-123' })
+    await host.dispose()
+  })
 })

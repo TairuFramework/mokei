@@ -1797,6 +1797,93 @@ describe('AgentSession', () => {
       await session.dispose()
     })
 
+    test('cancelToolCall with an ID cancels only that call across concurrent runs', async () => {
+      const second = { ...toolCall, id: 'call-2', raw: { id: 'call-2', name: 'mock:slow' } }
+      const provider = createMockProvider([
+        { toolCalls: [toolCall] },
+        { toolCalls: [second] },
+        { text: 'First done' },
+        { text: 'Second done' },
+      ])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'slow',
+            description: 'stalls briefly',
+            result: { content: [{ type: 'text', text: 'late' }] },
+            delayMs: 100,
+          },
+        ],
+        { mock: provider },
+      )
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        toolTimeout: 5000,
+      })
+      let started = 0
+      agent.events.on('event', (e) => {
+        // Cancel once both calls are in flight, so the later start cannot win by default.
+        if (e.type === 'tool-call-start' && ++started === 2) agent.cancelToolCall('call-1')
+      })
+
+      const collect = async () => {
+        const events: Array<AgentEvent> = []
+        for await (const event of agent.stream({ prompt: 'go' })) events.push(event)
+        return events
+      }
+      const runs = await Promise.all([collect(), collect()])
+      const outcomes = Object.fromEntries(
+        runs
+          .flat()
+          .flatMap((e) =>
+            e.type === 'tool-call-complete'
+              ? [[e.toolCall.id, 'complete']]
+              : e.type === 'tool-call-error'
+                ? [[e.toolCall.id, e.error.name]]
+                : [],
+          ),
+      )
+      expect(outcomes).toEqual({ 'call-1': 'ToolCallCancelledError', 'call-2': 'complete' })
+
+      await session.dispose()
+    })
+
+    test('onEvent and listener failures do not end the run', async () => {
+      const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'Finished' }])
+      const session = await createMockSessionWithTools(
+        [
+          {
+            name: 'slow',
+            description: 'fast enough',
+            result: { content: [{ type: 'text', text: 'ok' }] },
+          },
+        ],
+        { mock: provider },
+      )
+      const agent = new AgentSession({
+        session,
+        provider: 'mock',
+        model: 'test-model',
+        onEvent: () => {
+          throw new Error('observer failed')
+        },
+      })
+      agent.events.on('event', async () => {
+        throw new Error('listener failed')
+      })
+
+      const events: Array<AgentEvent> = []
+      for await (const event of agent.stream({ prompt: 'go' })) events.push(event)
+      expect(events.map((e) => e.type)).toEqual(
+        expect.arrayContaining(['start', 'tool-call-start', 'tool-call-complete', 'complete']),
+      )
+      expect(events.some((e) => e.type === 'error')).toBe(false)
+
+      await session.dispose()
+    })
+
     test('a turn-level abort during a tool call does not produce a timeout/cancel error', async () => {
       const provider = createMockProvider([{ toolCalls: [toolCall] }, { text: 'unreached' }])
       const session = await createMockSessionWithTools(

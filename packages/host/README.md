@@ -53,8 +53,9 @@ requests are declined whenever no override is installed. Without an override, a 
 construction answers requests directly.
 
 URL-mode requests are forwarded to the handler with their `mode`, `elicitationId` and `url` intact.
-The host does not forward `notifications/elicitation/complete`, so it cannot report completion of
-a URL prompt to the application.
+When a `2025-11-25` server sends `notifications/elicitation/complete`, the host emits
+`elicitation:complete` with the context `key` and `elicitationId`, so an application can close the
+matching URL prompt.
 
 ## Security
 

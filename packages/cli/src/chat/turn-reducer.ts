@@ -94,6 +94,7 @@ export function turnReducer<T extends ProviderTypes = ProviderTypes>(
     case 'elicitation-request':
     case 'elicitation-response':
     case 'elicitation-error':
+    case 'elicitation-complete':
       return state
     case 'complete':
       return {

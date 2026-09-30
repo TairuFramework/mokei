@@ -108,7 +108,7 @@ export type AgentParams<T extends ProviderTypes = ProviderTypes> = {
   timeout?: number
   /** Per-tool-call timeout in milliseconds (default: 120000 = 2 minutes) */
   toolTimeout?: number
-  /** Optional callback for each event during execution */
+  /** Optional callback for each event during execution. Exceptions it throws are ignored. */
   onEvent?: (event: AgentEvent) => void
   /** Optional callback to answer MCP elicitation requests */
   onElicitation?: ElicitationFn
@@ -149,6 +149,7 @@ export type AgentEvent<T extends ProviderTypes = ProviderTypes> =
   | AgentElicitationRequestEvent
   | AgentElicitationResponseEvent
   | AgentElicitationErrorEvent
+  | AgentElicitationCompleteEvent
   | AgentIterationCompleteEvent
   | AgentCompleteEvent<T>
   | AgentErrorEvent
@@ -296,6 +297,18 @@ export type AgentElicitationErrorEvent = {
   key: string
   error: Error
   toolCall?: FunctionToolCall<unknown>
+  timestamp: number
+}
+
+/**
+ * Emitted when a server completes a URL-mode elicitation (`2025-11-25`
+ * `notifications/elicitation/complete`). It reaches `onEvent` and `events` only, not run streams:
+ * the notification may arrive after the run that prompted it has ended.
+ */
+export type AgentElicitationCompleteEvent = {
+  type: 'elicitation-complete'
+  key: string
+  elicitationId: string
   timestamp: number
 }
 
