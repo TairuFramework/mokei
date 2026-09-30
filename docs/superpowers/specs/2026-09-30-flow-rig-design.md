@@ -154,7 +154,7 @@ never calls `tasks.wait`, which would answer input requests itself.
 | Record state | Meaning |
 |--------------|---------|
 | `asking` | The desktop handler is running for this key, with its own abort controller |
-| `sending` | The handler resolved; `tasks.update` is in flight |
+| `sending` | The handler resolved; the record holds the result until `tasks.update` succeeds |
 | `done` | Answered, withdrawn or failed; never dispatched again |
 
 Reconciliation of a snapshot:
@@ -165,25 +165,33 @@ Reconciliation of a snapshot:
 2. A key with an `asking` record that is missing from the snapshot, or any `asking` record once the task is not
    `input_required` any more: abort its controller, which withdraws the inbox entry or closes the dialog, and mark it
    `done`.
-3. A key with a `sending` or `done` record: nothing. A record is never dispatched twice.
+3. A key with a `sending` record and no update in flight (the last attempt failed): send the stored result again.
+   After three failed attempts the record becomes `done` and the run's `error` reports the failure; the run stays
+   `input_required` until `cancel_flow`.
+4. A key with a `sending` record missing from the snapshot, or any `sending` record once the task is not
+   `input_required`: mark it `done` (the server took the answer, or the run moved on).
+5. A key with a `done` record: nothing. The desktop is never asked twice for one key.
 
 When the handler resolves while its record is still `asking`, the record moves to `sending` and the watcher sends
-`client.tasks.update(taskId, { [requestKey]: result })`, then marks it `done`. If the record was already withdrawn,
-the result is dropped.
+`client.tasks.update(taskId, { [requestKey]: result })`, and marks it `done` when the update succeeds. If the record
+was already withdrawn, the result is dropped.
 
 - A `cancel` or `decline` from the handler is sent unchanged, so the flow's `decline` edge applies.
 - A handler that throws answers `cancel` and logs the error.
 - A `tasks.update` rejected because the key is no longer pending (the answer raced a cancel, a timeout or a
-  withdrawal) is logged and ignored. Other `tasks.update` errors are logged, and the next snapshot decides what
-  happens.
+  withdrawal) marks the record `done` and is logged. Other `tasks.update` errors leave the record in `sending`
+  for the retry in step 3.
 - `answer_input` validates through the inbox. `InboxAnswerInvalidError` or an unknown id returns an error result.
 
 **Shutdown.** On SIGINT, SIGTERM or stdin close:
 
-1. Stop accepting facade calls and stop every watcher loop.
-2. Abort every `asking` record, so no late handler result reaches `tasks.update`.
-3. Send `tasks.cancel` for each live run and wait up to 5 seconds for all of them together. Runs still active after
-   that are abandoned; the in-memory task store ends with the process.
+1. Stop accepting facade calls and stop every watcher loop. No new `tasks.update` starts after this point.
+2. Abort every approval in progress and every `asking` record, so no late handler result reaches `tasks.update`.
+3. Within one 5-second bound, together:
+   - wait for `start_flow` calls already past approval; a task one of them creates is cancelled like a live run;
+   - wait for `tasks.update` calls already in flight;
+   - send `tasks.cancel` for each live run.
+   Anything still pending after 5 seconds is abandoned; the in-memory task store ends with the process.
 4. Dispose the inbox, the flow wiring and the session, in that order.
 
 **Not handled.** Runs do not survive a restart. `flow_status` on an unknown `runId` returns an error result.
@@ -199,7 +207,8 @@ the result is dropped.
 ## Testing
 
 **Smoke run.** `node scripts/flow-rig/smoke.mjs` spawns `serve.mjs` through a `NodeContextHost` with a temporary
-config (`predictor: 'fake'`, `input: 'inbox'`, `confirm: 'deny'`) and checks:
+config (`predictor: 'fake'`, `input: 'inbox'`, `confirm: 'deny'`, and a `fakeAnswers` entry holding a complete
+typed answer for `demo/triage`'s question key) and checks:
 
 - `list_flows` lists the three sample flows.
 - `check_flow` on an invalid inline flow reports issues.
