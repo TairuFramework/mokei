@@ -54,13 +54,16 @@ published package in one `versioning.fixed` lockstep group.
 ## Now (next/)
 
 - **Flow rig milestone** (`milestones/2026-09-30-flow-rig-milestone.md`) -- phase 1, the local rig driven from
-  Claude Code, is in review on `feat/flow-rig`.
+  Claude Code, is built; its manual macOS QA checklist is open. Phase 2 (integration/e2e harness) is next.
 
 The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) -- both
 revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **Flow rig, phase 1** (2026-09-30) -- `scripts/flow-rig/` runs decision flows with System One, MCP siblings
+  and desktop input, driven from Claude Code through a facade MCP server (`.mcp.json`). See
+  `completed/2026-09-30-flow-rig.complete.md`.
 - **OAuth hardening** (2026-09-25) -- the refresh path clears the token store when the token
   endpoint answers `invalid_grant`, JWKS and AS-metadata fetch failures surface as HTTP 500
   instead of 401, non-2xx OAuth bodies are drained, and the server's loopback check matches

@@ -1,6 +1,6 @@
 # Milestone: flow rig
 
-**Status:** open — phase 1 (local rig) in review
+**Status:** open — phase 1 (local rig) built, manual QA pending
 **Opened:** 2026-09-30
 **Branch / PR:** phase 1 on `feat/flow-rig`
 
@@ -18,11 +18,13 @@ starts, since each depends on what the previous phase finds.
 
 | # | Phase | Scope | Exit criteria | Status |
 |---|-------|-------|---------------|--------|
-| 1 | Local rig | A Node script under `scripts/flow-rig/` that owns a `NodeSession` with sibling servers, `addDecisionFlow` and the desktop elicit handler, and exposes a facade MCP server to Claude Code (`start_flow`, `flow_status`, input tools). Sample flows, smoke run, manual QA checklist. No package changes. | Smoke run passes; manual QA checklist done on macOS; findings recorded below. | in review |
+| 1 | Local rig | A Node script under `scripts/flow-rig/` that owns a `NodeSession` with sibling servers, `addDecisionFlow` and the desktop elicit handler, and exposes a facade MCP server to Claude Code (`start_flow`, `flow_status`, input tools). Sample flows, smoke run, manual QA checklist. No package changes. | Smoke run passes; manual QA checklist done on macOS; findings recorded below. | built, manual QA pending |
 | 2 | Integration/e2e harness | Move the rig's scenarios into `integration-tests/`: fake predictor, stub desktop backend or answers through the facade tools, run in `pnpm test:integration` and CI. | Rig scenarios run in CI without a desktop or System One. | not started |
 | 3 | Session, host and CLI features | Address the findings: public APIs the rig had to work around, CLI surfaces for flows and the input inbox, desktop notifications in the CLI. | Every finding below is shipped or explicitly deferred. | not started |
 
 Completed phases link their summary in `completed/` here.
+
+- Phase 1: [`completed/2026-09-30-flow-rig.complete.md`](../completed/2026-09-30-flow-rig.complete.md)
 
 ## Decisions
 
