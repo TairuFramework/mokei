@@ -18,6 +18,7 @@ import {
 import type { ListenHandle, OpenListen } from './subscriptions.js'
 
 const TASK_LISTEN_ACK_TIMEOUT_MS = 3_000
+const MAX_TIMER_MS = 2_147_483_647
 
 export type WaitForTaskParams = {
   taskID: string
@@ -81,6 +82,7 @@ export class TaskWaiter {
     }
     if (params.onStatus != null) entry.statusListeners.add(notifyStatus)
     let seen = 0
+    let notified: string | undefined
     try {
       const accepted = await this.#abortable(entry.acknowledged, params.signal)
       seen = entry.version
@@ -101,7 +103,10 @@ export class TaskWaiter {
         }
         snapshot = entry.latest ?? snapshot
         seen = entry.version
-        if (fromGet && observed) notifyStatus(snapshot)
+        if (fromGet && observed && snapshot.lastUpdatedAt !== notified) {
+          notified = snapshot.lastUpdatedAt
+          notifyStatus(snapshot)
+        }
         if (statusError != null) throw statusError
         if (snapshot.status === 'completed') {
           return params.toolName == null
@@ -129,7 +134,7 @@ export class TaskWaiter {
           snapshot.pollIntervalMs,
           params.signal,
           subscribed
-            ? () => this.#waitForChange(entry, seen, params.signal)
+            ? (signal) => this.#waitForChange(entry, seen, signal)
             : (signal) =>
                 (this.#params.delay ?? sleep)(
                   Math.max(250, snapshot.pollIntervalMs ?? 1000),
@@ -270,10 +275,11 @@ export class TaskWaiter {
     }
     entry.latest = snapshot
     entry.inputs = snapshot.status === 'input_required' ? snapshot.inputRequests : {}
-    entry.deadline =
-      typeof snapshot.ttlMs === 'number' && Number.isFinite(snapshot.ttlMs)
+    const deadline =
+      typeof snapshot.ttlMs === 'number'
         ? Date.parse(snapshot.createdAt) + snapshot.ttlMs
-        : undefined
+        : Number.NaN
+    entry.deadline = Number.isFinite(deadline) ? deadline : undefined
     for (const [key, controller] of entry.inFlight) {
       if (!Object.hasOwn(entry.inputs, key)) {
         controller.abort(new TaskInputWithdrawnError({ taskID: entry.taskID, key }))
@@ -309,7 +315,8 @@ export class TaskWaiter {
     const wait = remaining > 0 ? remaining : Math.max(250, pollIntervalMs ?? 1000)
     let timer: ReturnType<typeof setTimeout> | undefined
     const expiry = new Promise<boolean>((resolve) => {
-      timer = setTimeout(() => resolve(true), wait)
+      // A timer past the 32-bit limit would fire at once; firing early only re-reads and re-arms.
+      timer = setTimeout(() => resolve(true), Math.min(wait, MAX_TIMER_MS))
     })
     try {
       return await Promise.race([work, expiry])
