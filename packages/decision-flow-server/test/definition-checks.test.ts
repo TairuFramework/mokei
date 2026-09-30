@@ -184,7 +184,7 @@ test('checkFlow returns input issues and a run graph bound to the live catalogue
     elicitation: true,
   })
   expect(unavailable.issues?.some((issue) => issue.code === 'unknown_tool')).toBe(true)
-  expect(unavailable.graphFor({ depth: 0, approved: new Set() }).check(flow).ok).toBe(false)
+  expect(unavailable.graphFor({ depth: 0, approved: new Set() }).check(flow).issues).toBeDefined()
 })
 
 test('graphFor reads a fresh catalogue for each run', () => {
@@ -200,9 +200,9 @@ test('graphFor reads a fresh catalogue for each run', () => {
   const checked = checkFlow({ definition: flow, caller: liveCaller, predictor, elicitation: true })
   expect(checked.issues).toBeUndefined()
   available = false
-  expect(checked.graphFor({ depth: 1, approved: new Set(['local:fetch']) }).check(flow).ok).toBe(
-    false,
-  )
+  expect(
+    checked.graphFor({ depth: 1, approved: new Set(['local:fetch']) }).check(flow).issues,
+  ).toBeDefined()
 })
 
 test('flowPlan lists sorted unique tool IDs and a factory predictor tool for decide nodes', () => {

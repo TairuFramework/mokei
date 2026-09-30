@@ -82,9 +82,14 @@ function makeDefinition(overrides: Record<string, unknown> = {}): FlowDefinition
   } as FlowDefinition
 }
 
+// Every issue the checker reports, warnings included, whether or not the definition passes.
+function checkIssues(definition: unknown) {
+  const result = createFlowGraph({ kinds: [decideKind] }).check(definition)
+  return { issues: result.issues ?? result.warnings }
+}
+
 function check(overrides: Record<string, unknown> = {}, extraNodes = {}) {
-  const graph = createFlowGraph({ kinds: [decideKind] })
-  return graph.check({
+  return checkIssues({
     ...makeDefinition(overrides),
     nodes: { ...makeDefinition(overrides).nodes, ...extraNodes },
   }).issues
@@ -125,8 +130,8 @@ describe('checkDecide', () => {
     const result = createFlowGraph({ kinds: [decideKind] }).check(
       definitionWithMalformedFilter(when),
     )
-    expect(result.ok).toBe(false)
-    expect(result.issues.some((issue) => issue.severity === 'error')).toBe(true)
+    expect(result.issues).toBeDefined()
+    expect(result.issues?.some((issue) => issue.severity === 'error')).toBe(true)
   })
 
   test.each([
@@ -211,9 +216,7 @@ describe('checkDecide', () => {
         [{ or: [choiceFilter(operator, comparison)] }, ['or', 0]],
         [{ not: choiceFilter(operator, comparison) }, ['not']],
       ] as Array<[Filter, Array<string | number>]>) {
-        const issues = createFlowGraph({ kinds: [decideKind] }).check(
-          definitionWithFilter(when),
-        ).issues
+        const issues = checkIssues(definitionWithFilter(when)).issues
         expect(issueWithCode(issues, 'invalid_choice_label')).toMatchObject({
           path: [
             'nodes',
@@ -244,7 +247,7 @@ describe('checkDecide', () => {
       ],
       default: 'done',
     }
-    const issues = createFlowGraph({ kinds: [decideKind] }).check(definition).issues
+    const issues = checkIssues(definition).issues
     expect(
       issues.some(
         (issue) => issue.code === 'invalid_choice_label' && issue.path.includes('branch'),
@@ -266,9 +269,7 @@ describe('checkDecide', () => {
         path: ['results', 'decide', ...suffix],
         is: { [operator]: comparison },
       }
-      const issues = createFlowGraph({ kinds: [decideKind] }).check(
-        definitionWithFilter(filter),
-      ).issues
+      const issues = checkIssues(definitionWithFilter(filter)).issues
       expect(issueWithCode(issues, 'invalid_probability')).toMatchObject({
         path: [
           'nodes',
@@ -290,9 +291,7 @@ describe('checkDecide', () => {
       path: ['results', 'decide', 'confidence', 'confidence'],
       is: { equalTo: Number.NaN },
     }
-    const issues = createFlowGraph({ kinds: [decideKind] }).check(
-      definitionWithFilter(filter),
-    ).issues
+    const issues = checkIssues(definitionWithFilter(filter)).issues
     expect(issues.some((issue) => issue.code === 'schema')).toBe(true)
     expect(issues.some((issue) => issue.code === 'invalid_probability')).toBe(false)
   })
@@ -373,7 +372,7 @@ describe('checkDecide', () => {
       ],
       default: 'done',
     }
-    const issues = createFlowGraph({ kinds: [decideKind] }).check(definition).issues
+    const issues = checkIssues(definition).issues
     expect(issues.some((issue) => issue.code === 'invalid_result_path')).toBe(true)
   })
 
@@ -392,7 +391,7 @@ describe('checkDecide', () => {
       ],
       default: 'done',
     }
-    const issues = createFlowGraph({ kinds: [decideKind] }).check(definition).issues
+    const issues = checkIssues(definition).issues
     expect(issues.some((issue) => issue.code === 'invalid_result_path')).toBe(false)
   })
 

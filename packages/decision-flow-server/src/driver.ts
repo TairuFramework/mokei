@@ -82,11 +82,10 @@ export async function startRun(params: {
   handle: TaskHandle
   graph: FlowGraph
   run: FlowRun
-  definition: FlowDefinition
   resumeData: ResumeDataV1
   caller: ToolCaller
 }): Promise<CallToolResult> {
-  const { handle, graph, definition, resumeData, caller } = params
+  const { handle, graph, resumeData, caller } = params
   let run = params.run
   let driveSegment = resumeData.runState.status === 'running'
   const siblings = resumeData.siblings
@@ -130,7 +129,6 @@ export async function startRun(params: {
       if (pending.resumeAt === undefined) throw new Error('Retry has no resume time')
       await waitUntil(pending.resumeAt, handle.signal)
       return graph.resume({
-        definition,
         runState: state,
         event: { type: 'retry' },
         signal: handle.signal,
@@ -205,7 +203,6 @@ export async function startRun(params: {
       if (index >= 0) siblings.splice(index, 1)
       await checkpoint()
       return graph.resume({
-        definition,
         runState: state,
         event:
           expired && attemptExpired
@@ -226,7 +223,7 @@ export async function startRun(params: {
     const wrapped = form.wrapped
     const frame = state.frames.at(-1)
     const invocationID =
-      frame?.attempts[pending.node]?.invocationID ?? `${pending.node}.${frame?.invocation ?? 0}`
+      frame?.attempts[pending.node]?.invocationID ?? `${pending.node}.${state.invocation}`
     // Deterministic from the run state, so a recovered run re-attaches to or replays the request.
     const key = `${state.runID}:${invocationID}:input:${resumeData.inputSeq ?? 0}`
     const request = {
@@ -296,7 +293,7 @@ export async function startRun(params: {
     }
     const event = responses === undefined ? { type: 'timeout' as const } : await answered(responses)
     if (event.type === 'stopped') return stopped
-    return graph.resume({ definition, runState: state, event, signal: handle.signal })
+    return graph.resume({ runState: state, event, signal: handle.signal })
   }
 
   try {

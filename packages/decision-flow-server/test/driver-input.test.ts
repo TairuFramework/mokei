@@ -7,7 +7,12 @@ import {
   type TaskHandle,
   type TaskRecord,
 } from '@mokei/context-server'
-import { createFlowGraph, type FlowDefinition, type RunState } from '@sozai/flow-graph'
+import {
+  createFlowGraph,
+  createMapResolver,
+  type FlowDefinition,
+  type RunState,
+} from '@sozai/flow-graph'
 import { expect, test, vi } from 'vitest'
 
 import { type ResumeDataV1, startRun } from '../src/driver.js'
@@ -51,7 +56,7 @@ function inputFlow(
 }
 
 function harness(flow: FlowDefinition, response: InputResponse | ((key: string) => InputResponse)) {
-  const graph = createFlowGraph()
+  const graph = createFlowGraph({ resolver: createMapResolver([flow]) })
   const run = graph.start({ definition: flow, runID: 'run-input' })
   const resumeData: ResumeDataV1 = {
     v: 1,
@@ -84,7 +89,7 @@ function harness(flow: FlowDefinition, response: InputResponse | ((key: string) 
       return true
     },
   }
-  const drive = () => startRun({ handle, graph, run, definition: flow, resumeData, caller })
+  const drive = () => startRun({ handle, graph, run, resumeData, caller })
   return {
     drive,
     keys,
@@ -147,7 +152,7 @@ test('non-string resolved prompt yields typed tool error without elicitation', a
     ...flow.nodes.ask,
     prompt: { ref: ['input', 'prompt'] },
   } as FlowDefinition['nodes'][string]
-  const graph = createFlowGraph()
+  const graph = createFlowGraph({ resolver: createMapResolver([flow]) })
   const run = graph.start({ definition: flow, input: { prompt: 42 }, runID: 'run-input' })
   const resumeData: ResumeDataV1 = {
     v: 1,
@@ -173,7 +178,7 @@ test('non-string resolved prompt yields typed tool error without elicitation', a
     },
     cancel: async () => true,
   }
-  const completed = await startRun({ handle, graph, run, definition: flow, resumeData, caller })
+  const completed = await startRun({ handle, graph, run, resumeData, caller })
   expect(completed).toMatchObject({
     isError: true,
     structuredContent: { error: { type: 'input_prompt_not_string', node: 'ask' } },
@@ -185,7 +190,7 @@ test('real input deadline withdraws the request and a late answer cannot change 
   const store = createMemoryTaskStore()
   const tasks = createTaskManager({ store })
   const flow = inputFlow({ type: 'string' }, { timeout: { afterMs: 100, to: 'timed' } })
-  const graph = createFlowGraph()
+  const graph = createFlowGraph({ resolver: createMapResolver([flow]) })
   const run = graph.start({ definition: flow, runID: 'run-input' })
   const resumeData: ResumeDataV1 = {
     v: 1,
@@ -205,7 +210,7 @@ test('real input deadline withdraws the request and a late answer cannot change 
       },
       clientCapabilities: { elicitation: {} },
       resumeData: resumeData as unknown as JSONValue,
-      work: (handle) => startRun({ handle, graph, run, definition: flow, resumeData, caller }),
+      work: (handle) => startRun({ handle, graph, run, resumeData, caller }),
     })
     let key: string | undefined
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -261,7 +266,7 @@ const askRequest = {
 } as InputRequest
 
 async function suspendedAt(flow: FlowDefinition, deadline?: number) {
-  const graph = createFlowGraph()
+  const graph = createFlowGraph({ resolver: createMapResolver([flow]) })
   const run = graph.start({ definition: flow, runID: 'run-input' })
   let state: RunState | undefined
   for (let index = 0; index < 20 && state === undefined; index++) {
@@ -276,7 +281,7 @@ async function suspendedAt(flow: FlowDefinition, deadline?: number) {
   const frame = state.frames.at(-1)
   const pending = state.pending as NonNullable<RunState['pending']>
   const invocation =
-    frame?.attempts[pending.node]?.invocationID ?? `${pending.node}.${frame?.invocation ?? 0}`
+    frame?.attempts[pending.node]?.invocationID ?? `${pending.node}.${state.invocation}`
   const resumeData: ResumeDataV1 = {
     v: 1,
     flow: { definition: flow },
@@ -321,9 +326,7 @@ async function recoverInput(params: {
   const second = createTaskManager({
     store,
     recover: (_record, resume) =>
-      resume((handle) =>
-        startRun({ handle, graph, run, definition: params.flow, resumeData, caller }),
-      ),
+      resume((handle) => startRun({ handle, graph, run, resumeData, caller })),
   })
   await second.recover({ flow: tool })
   return { store, tasks: second, taskID: created.taskId, key }
@@ -465,9 +468,7 @@ test('a non-deadline rejection propagates', async () => {
     },
     cancel: async () => true,
   }
-  await expect(
-    startRun({ handle, graph, run, definition: timedFlow, resumeData, caller }),
-  ).rejects.toThrow('boom')
+  await expect(startRun({ handle, graph, run, resumeData, caller })).rejects.toThrow('boom')
 })
 
 test('an input deadline timer firing early re-arms before taking the timeout edge', async () => {
@@ -494,7 +495,7 @@ test('an input deadline timer firing early re-arms before taking the timeout edg
       },
       cancel: async () => true,
     }
-    const completed = startRun({ handle, graph, run, definition: flow, resumeData, caller })
+    const completed = startRun({ handle, graph, run, resumeData, caller })
     await vi.advanceTimersByTimeAsync(0)
     expect(asked).toBeDefined()
     // Move the clock back 1 ms: the 100 ms timer then fires 1 ms before the deadline.

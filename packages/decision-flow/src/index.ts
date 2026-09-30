@@ -15,6 +15,5 @@ export {
   createDecisionFlowGraph,
   type DecisionFlowGraphOptions,
   flowDefinitionSchema,
-  flowStorageSchema,
 } from './decision-graph.js'
 export { decideResultSchema } from './result-schema.js'

@@ -35,11 +35,11 @@
     "nano-spawn": "catalog:"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "2.1.0",
-    "@modelcontextprotocol/core": "2.1.0",
+    "@modelcontextprotocol/client": "catalog:",
+    "@modelcontextprotocol/core": "catalog:",
     "@modelcontextprotocol/ext-tasks": "catalog:",
-    "@modelcontextprotocol/node": "2.1.0",
-    "@modelcontextprotocol/server": "2.1.0",
+    "@modelcontextprotocol/node": "catalog:",
+    "@modelcontextprotocol/server": "catalog:",
     "@mokei/context-rpc": "workspace:^",
     "@mokei/host-monitor": "workspace:^",
     "@mokei/host-protocol": "workspace:^",

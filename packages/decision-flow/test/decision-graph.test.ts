@@ -29,13 +29,8 @@ function actionRetrySchema(schema: Schema): unknown {
 const engineActionRetrySchema = structuredClone(
   actionRetrySchema(createFlowGraph({}).authoringSchema),
 )
-const {
-  createDecisionFlowGraph,
-  decideNodeSchema,
-  flowDefinitionSchema,
-  flowStorageSchema,
-  formatIssues,
-} = await import('../src/index.js')
+const { createDecisionFlowGraph, decideNodeSchema, flowDefinitionSchema, formatIssues } =
+  await import('../src/index.js')
 
 function makeClient(
   backend: SystemOneBackend = {
@@ -252,8 +247,7 @@ describe('createDecisionFlowGraph', () => {
 
     expect(graph.authoringSchema).toMatchSnapshot()
     expect(flowDefinitionSchema).toEqual(graph.authoringSchema)
-    expect(flowStorageSchema).toEqual(graph.storageSchema)
-    expect(graph.check(makeDefinition()).ok).toBe(true)
+    expect(graph.check(makeDefinition()).issues).toBeUndefined()
   })
 
   test('documents every decide schema property with a description', () => {
@@ -456,17 +450,16 @@ describe('createDecisionFlowGraph', () => {
     }
   })
 
-  test('authoring rejects reserved call nodes while storage accepts them', () => {
+  test('authoring schema accepts call nodes', () => {
     const callDefinition = makeDefinition({ kind: 'call', flow: 'later', next: 'finish' })
 
-    expect(createValidator(flowDefinitionSchema)(callDefinition)).toHaveProperty('issues')
-    expect(createValidator(flowStorageSchema)(callDefinition)).not.toHaveProperty('issues')
+    expect(createValidator(flowDefinitionSchema)(callDefinition)).not.toHaveProperty('issues')
   })
 
   test('formats validation issues with path, code, message, and hint', () => {
     const graph = createDecisionFlowGraph({ client: makeClient() })
     const result = graph.check({ id: '', name: 'Bad', version: -1, start: 'missing', nodes: {} })
-    const formatted = formatIssues(result.issues)
+    const formatted = formatIssues(result.issues ?? [])
 
     expect(formatted).toContain('schema')
     expect(formatted).toContain('Fix:')

@@ -32,18 +32,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                   "description": "equalTo",
                 },
                 "greaterThan": {
-                  "description": "greaterThan",
-                  "type": [
-                    "number",
-                    "string",
+                  "anyOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "string",
+                    },
                   ],
+                  "description": "greaterThan",
                 },
                 "greaterThanOrEqualTo": {
-                  "description": "greaterThanOrEqualTo",
-                  "type": [
-                    "number",
-                    "string",
+                  "anyOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "string",
+                    },
                   ],
+                  "description": "greaterThanOrEqualTo",
                 },
                 "in": {
                   "description": "in",
@@ -56,9 +64,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                 "includesAll": {
                   "description": "includesAll",
                   "items": {
-                    "type": [
-                      "string",
-                      "number",
+                    "anyOf": [
+                      {
+                        "type": "string",
+                      },
+                      {
+                        "type": "number",
+                      },
                     ],
                   },
                   "minItems": 1,
@@ -67,9 +79,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                 "includesAny": {
                   "description": "includesAny",
                   "items": {
-                    "type": [
-                      "string",
-                      "number",
+                    "anyOf": [
+                      {
+                        "type": "string",
+                      },
+                      {
+                        "type": "number",
+                      },
                     ],
                   },
                   "minItems": 1,
@@ -80,18 +96,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                   "type": "boolean",
                 },
                 "lessThan": {
-                  "description": "lessThan",
-                  "type": [
-                    "number",
-                    "string",
+                  "anyOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "string",
+                    },
                   ],
+                  "description": "lessThan",
                 },
                 "lessThanOrEqualTo": {
-                  "description": "lessThanOrEqualTo",
-                  "type": [
-                    "number",
-                    "string",
+                  "anyOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "string",
+                    },
                   ],
+                  "description": "lessThanOrEqualTo",
                 },
                 "notEqualTo": {
                   "allOf": [
@@ -394,18 +418,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "description": "equalTo",
                           },
                           "greaterThan": {
-                            "description": "greaterThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThan",
                           },
                           "greaterThanOrEqualTo": {
-                            "description": "greaterThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThanOrEqualTo",
                           },
                           "in": {
                             "description": "in",
@@ -418,9 +450,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAll": {
                             "description": "includesAll",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -429,9 +465,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAny": {
                             "description": "includesAny",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -442,18 +482,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "type": "boolean",
                           },
                           "lessThan": {
-                            "description": "lessThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThan",
                           },
                           "lessThanOrEqualTo": {
-                            "description": "lessThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThanOrEqualTo",
                           },
                           "notEqualTo": {
                             "allOf": [
@@ -770,18 +818,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "description": "equalTo",
                           },
                           "greaterThan": {
-                            "description": "greaterThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThan",
                           },
                           "greaterThanOrEqualTo": {
-                            "description": "greaterThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThanOrEqualTo",
                           },
                           "in": {
                             "description": "in",
@@ -794,9 +850,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAll": {
                             "description": "includesAll",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -805,9 +865,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAny": {
                             "description": "includesAny",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -818,18 +882,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "type": "boolean",
                           },
                           "lessThan": {
-                            "description": "lessThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThan",
                           },
                           "lessThanOrEqualTo": {
-                            "description": "lessThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThanOrEqualTo",
                           },
                           "notEqualTo": {
                             "allOf": [
@@ -1163,18 +1235,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "description": "equalTo",
                           },
                           "greaterThan": {
-                            "description": "greaterThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThan",
                           },
                           "greaterThanOrEqualTo": {
-                            "description": "greaterThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThanOrEqualTo",
                           },
                           "in": {
                             "description": "in",
@@ -1187,9 +1267,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAll": {
                             "description": "includesAll",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -1198,9 +1282,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAny": {
                             "description": "includesAny",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -1211,18 +1299,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "type": "boolean",
                           },
                           "lessThan": {
-                            "description": "lessThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThan",
                           },
                           "lessThanOrEqualTo": {
-                            "description": "lessThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThanOrEqualTo",
                           },
                           "notEqualTo": {
                             "allOf": [
@@ -1464,9 +1560,52 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
             ],
             "properties": {
               "body": {
-                "description": "Node ID or label",
-                "minLength": 1,
-                "type": "string",
+                "description": "Local body node ID or flow body reference",
+                "oneOf": [
+                  {
+                    "description": "Node ID or label",
+                    "minLength": 1,
+                    "type": "string",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "flow": {
+                        "description": "Node ID or label",
+                        "minLength": 1,
+                        "type": "string",
+                      },
+                      "input": {
+                        "additionalProperties": {
+                          "$ref": "#/definitions/value",
+                          "description": "value",
+                        },
+                        "description": "Referenced flow input; omitted input is {}",
+                        "propertyNames": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "type": "object",
+                      },
+                      "version": {
+                        "description": "Pinned flow version; omit to resolve the highest version",
+                        "minimum": 0,
+                        "type": "integer",
+                      },
+                    },
+                    "required": [
+                      "flow",
+                    ],
+                    "type": "object",
+                  },
+                ],
               },
               "description": {
                 "description": "Human-readable purpose",
@@ -1536,18 +1675,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "description": "equalTo",
                           },
                           "greaterThan": {
-                            "description": "greaterThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThan",
                           },
                           "greaterThanOrEqualTo": {
-                            "description": "greaterThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThanOrEqualTo",
                           },
                           "in": {
                             "description": "in",
@@ -1560,9 +1707,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAll": {
                             "description": "includesAll",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -1571,9 +1722,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAny": {
                             "description": "includesAny",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -1584,18 +1739,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "type": "boolean",
                           },
                           "lessThan": {
-                            "description": "lessThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThan",
                           },
                           "lessThanOrEqualTo": {
-                            "description": "lessThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThanOrEqualTo",
                           },
                           "notEqualTo": {
                             "allOf": [
@@ -1988,18 +2151,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "description": "equalTo",
                           },
                           "greaterThan": {
-                            "description": "greaterThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThan",
                           },
                           "greaterThanOrEqualTo": {
-                            "description": "greaterThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThanOrEqualTo",
                           },
                           "in": {
                             "description": "in",
@@ -2012,9 +2183,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAll": {
                             "description": "includesAll",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -2023,9 +2198,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAny": {
                             "description": "includesAny",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -2036,18 +2215,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "type": "boolean",
                           },
                           "lessThan": {
-                            "description": "lessThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThan",
                           },
                           "lessThanOrEqualTo": {
-                            "description": "lessThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThanOrEqualTo",
                           },
                           "notEqualTo": {
                             "allOf": [
@@ -2288,6 +2475,21 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
               },
             ],
             "properties": {
+              "decline": {
+                "additionalProperties": false,
+                "description": "decline",
+                "properties": {
+                  "to": {
+                    "description": "Node ID or label",
+                    "minLength": 1,
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "to",
+                ],
+                "type": "object",
+              },
               "description": {
                 "description": "Human-readable purpose",
                 "type": "string",
@@ -2369,18 +2571,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "description": "equalTo",
                           },
                           "greaterThan": {
-                            "description": "greaterThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThan",
                           },
                           "greaterThanOrEqualTo": {
-                            "description": "greaterThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "greaterThanOrEqualTo",
                           },
                           "in": {
                             "description": "in",
@@ -2393,9 +2603,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAll": {
                             "description": "includesAll",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -2404,9 +2618,13 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                           "includesAny": {
                             "description": "includesAny",
                             "items": {
-                              "type": [
-                                "string",
-                                "number",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
                               ],
                             },
                             "minItems": 1,
@@ -2417,18 +2635,26 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                             "type": "boolean",
                           },
                           "lessThan": {
-                            "description": "lessThan",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThan",
                           },
                           "lessThanOrEqualTo": {
-                            "description": "lessThanOrEqualTo",
-                            "type": [
-                              "number",
-                              "string",
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
                             ],
+                            "description": "lessThanOrEqualTo",
                           },
                           "notEqualTo": {
                             "allOf": [
@@ -2704,6 +2930,886 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
             },
             "required": [
               "kind",
+            ],
+            "type": "object",
+          },
+          {
+            "additionalProperties": false,
+            "definitions": {
+              "filter": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "is": {
+                        "additionalProperties": false,
+                        "description": "is",
+                        "minProperties": 1,
+                        "properties": {
+                          "contains": {
+                            "description": "contains",
+                            "type": "string",
+                          },
+                          "equalTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "equalTo",
+                          },
+                          "greaterThan": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
+                            ],
+                            "description": "greaterThan",
+                          },
+                          "greaterThanOrEqualTo": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
+                            ],
+                            "description": "greaterThanOrEqualTo",
+                          },
+                          "in": {
+                            "description": "in",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAll": {
+                            "description": "includesAll",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAny": {
+                            "description": "includesAny",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "isNull": {
+                            "description": "isNull",
+                            "type": "boolean",
+                          },
+                          "lessThan": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
+                            ],
+                            "description": "lessThan",
+                          },
+                          "lessThanOrEqualTo": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
+                            ],
+                            "description": "lessThanOrEqualTo",
+                          },
+                          "notEqualTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "notEqualTo",
+                          },
+                          "notIn": {
+                            "description": "notIn",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "presence": {
+                            "description": "presence",
+                            "enum": [
+                              "null",
+                              "nonNull",
+                              "empty",
+                              "nonEmpty",
+                              "nullOrEmpty",
+                            ],
+                          },
+                        },
+                        "type": "object",
+                      },
+                      "path": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "path",
+                      "is",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "and": {
+                        "description": "and",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "and",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "or": {
+                        "description": "or",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "or",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "not": {
+                        "$ref": "#/definitions/filter",
+                        "description": "not",
+                      },
+                    },
+                    "required": [
+                      "not",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+              "json": {
+                "anyOf": [
+                  {
+                    "type": "null",
+                  },
+                  {
+                    "type": "boolean",
+                  },
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "string",
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "array",
+                  },
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "object",
+                  },
+                ],
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ref": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "ref",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "$ref": "#/definitions/json",
+                        "description": "value",
+                      },
+                    },
+                    "required": [
+                      "value",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "object": {
+                        "additionalProperties": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "description": "object",
+                        "propertyNames": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "type": "object",
+                      },
+                    },
+                    "required": [
+                      "object",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "array": {
+                        "description": "array",
+                        "items": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "array",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+            },
+            "description": "call node",
+            "examples": [
+              {
+                "kind": "call",
+              },
+            ],
+            "properties": {
+              "description": {
+                "description": "Human-readable purpose",
+                "type": "string",
+              },
+              "flow": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "input": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/value",
+                  "description": "value",
+                },
+                "description": "Referenced flow input; omitted input is {}",
+                "propertyNames": {
+                  "description": "Safe path segment",
+                  "not": {
+                    "enum": [
+                      "__proto__",
+                      "constructor",
+                      "prototype",
+                    ],
+                  },
+                  "type": "string",
+                },
+                "type": "object",
+              },
+              "kind": {
+                "const": "call",
+                "description": "Node kind",
+              },
+              "next": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "onError": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "retry": {
+                "additionalProperties": false,
+                "description": "Call retry policy. totalTimeoutMs is a retry deadline from call entry: it never interrupts a running or suspended callee. attemptTimeoutMs is not supported.",
+                "properties": {
+                  "attemptTimeoutMs": {
+                    "description": "attemptTimeoutMs",
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  "backoff": {
+                    "additionalProperties": false,
+                    "description": "backoff",
+                    "properties": {
+                      "initialMs": {
+                        "description": "initialMs",
+                        "maximum": 2147483647,
+                        "minimum": 0,
+                        "type": "integer",
+                      },
+                      "jitter": {
+                        "description": "jitter",
+                        "type": "boolean",
+                      },
+                      "maxMs": {
+                        "description": "maxMs",
+                        "maximum": 2147483647,
+                        "minimum": 0,
+                        "type": "integer",
+                      },
+                      "multiplier": {
+                        "description": "multiplier",
+                        "minimum": 1,
+                        "type": "number",
+                      },
+                    },
+                    "required": [
+                      "initialMs",
+                    ],
+                    "type": "object",
+                  },
+                  "maxAttempts": {
+                    "description": "maxAttempts",
+                    "maximum": 100,
+                    "minimum": 1,
+                    "type": "integer",
+                  },
+                  "maxInterruptions": {
+                    "description": "maxInterruptions",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  "suspendAfterMs": {
+                    "description": "suspendAfterMs",
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  "totalTimeoutMs": {
+                    "description": "totalTimeoutMs",
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                },
+                "required": [
+                  "maxAttempts",
+                ],
+                "type": "object",
+              },
+              "version": {
+                "description": "Pinned flow version; omit to resolve the highest version",
+                "minimum": 0,
+                "type": "integer",
+              },
+            },
+            "required": [
+              "kind",
+              "flow",
+              "next",
+            ],
+            "type": "object",
+          },
+          {
+            "additionalProperties": false,
+            "definitions": {
+              "filter": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "is": {
+                        "additionalProperties": false,
+                        "description": "is",
+                        "minProperties": 1,
+                        "properties": {
+                          "contains": {
+                            "description": "contains",
+                            "type": "string",
+                          },
+                          "equalTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "equalTo",
+                          },
+                          "greaterThan": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
+                            ],
+                            "description": "greaterThan",
+                          },
+                          "greaterThanOrEqualTo": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
+                            ],
+                            "description": "greaterThanOrEqualTo",
+                          },
+                          "in": {
+                            "description": "in",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAll": {
+                            "description": "includesAll",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "includesAny": {
+                            "description": "includesAny",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                },
+                                {
+                                  "type": "number",
+                                },
+                              ],
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "isNull": {
+                            "description": "isNull",
+                            "type": "boolean",
+                          },
+                          "lessThan": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
+                            ],
+                            "description": "lessThan",
+                          },
+                          "lessThanOrEqualTo": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                              },
+                              {
+                                "type": "string",
+                              },
+                            ],
+                            "description": "lessThanOrEqualTo",
+                          },
+                          "notEqualTo": {
+                            "allOf": [
+                              {
+                                "$ref": "#/definitions/json",
+                              },
+                              {
+                                "not": {
+                                  "type": "null",
+                                },
+                              },
+                            ],
+                            "description": "notEqualTo",
+                          },
+                          "notIn": {
+                            "description": "notIn",
+                            "items": {
+                              "$ref": "#/definitions/json",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                          },
+                          "presence": {
+                            "description": "presence",
+                            "enum": [
+                              "null",
+                              "nonNull",
+                              "empty",
+                              "nonEmpty",
+                              "nullOrEmpty",
+                            ],
+                          },
+                        },
+                        "type": "object",
+                      },
+                      "path": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "path",
+                      "is",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "and": {
+                        "description": "and",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "and",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "or": {
+                        "description": "or",
+                        "items": {
+                          "$ref": "#/definitions/filter",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "or",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "not": {
+                        "$ref": "#/definitions/filter",
+                        "description": "not",
+                      },
+                    },
+                    "required": [
+                      "not",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+              "json": {
+                "anyOf": [
+                  {
+                    "type": "null",
+                  },
+                  {
+                    "type": "boolean",
+                  },
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "string",
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "array",
+                  },
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/definitions/json",
+                    },
+                    "type": "object",
+                  },
+                ],
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ref": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "ref",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "$ref": "#/definitions/json",
+                        "description": "value",
+                      },
+                    },
+                    "required": [
+                      "value",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "object": {
+                        "additionalProperties": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "description": "object",
+                        "propertyNames": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "type": "object",
+                      },
+                    },
+                    "required": [
+                      "object",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "array": {
+                        "description": "array",
+                        "items": {
+                          "$ref": "#/definitions/value",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "array",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+            },
+            "description": "goto node",
+            "examples": [
+              {
+                "kind": "goto",
+              },
+            ],
+            "properties": {
+              "description": {
+                "description": "Human-readable purpose",
+                "type": "string",
+              },
+              "flow": {
+                "description": "Node ID or label",
+                "minLength": 1,
+                "type": "string",
+              },
+              "input": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/value",
+                  "description": "value",
+                },
+                "description": "Referenced flow input; omitted input is {}",
+                "propertyNames": {
+                  "description": "Safe path segment",
+                  "not": {
+                    "enum": [
+                      "__proto__",
+                      "constructor",
+                      "prototype",
+                    ],
+                  },
+                  "type": "string",
+                },
+                "type": "object",
+              },
+              "kind": {
+                "const": "goto",
+                "description": "Node kind",
+              },
+              "version": {
+                "description": "Pinned flow version; omit to resolve the highest version",
+                "minimum": 0,
+                "type": "integer",
+              },
+            },
+            "required": [
+              "kind",
+              "flow",
             ],
             "type": "object",
           },

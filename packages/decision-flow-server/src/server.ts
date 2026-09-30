@@ -141,7 +141,6 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
           handle,
           graph,
           run,
-          definition: flow,
           resumeData,
           caller: params.caller,
         }).finally(() => handle.signal.removeEventListener('abort', abort))

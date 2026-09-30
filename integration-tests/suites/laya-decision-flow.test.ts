@@ -1,6 +1,11 @@
 import { createDecisionFlowGraph, flowDefinitionSchema } from '@mokei/decision-flow'
 import { createSystemOneClient } from '@mokei/system-one-client'
-import type { Action, FlowDefinition, RunState } from '@sozai/flow-graph'
+import {
+  type Action,
+  createMapResolver,
+  type FlowDefinition,
+  type RunState,
+} from '@sozai/flow-graph'
 import { createValidator } from '@sozai/schema'
 import { describe, expect, inject, test, vi } from 'vitest'
 
@@ -42,6 +47,7 @@ function makeGraph(
   const graph = createDecisionFlowGraph({
     client,
     actions: { createTicket, ...params.actions },
+    resolver: createMapResolver([suspensionDefinition, recoveryDefinition]),
   })
   return { graph, fetcher, createTicket }
 }
@@ -220,7 +226,7 @@ function makeCheckGraph(actions: Record<string, Action> = {}) {
 
 test('support-triage example passes validation and graph checking', () => {
   expect(createValidator(flowDefinitionSchema)(example)).not.toHaveProperty('issues')
-  expect(makeCheckGraph().check(definition).ok).toBe(true)
+  expect(makeCheckGraph().check(definition).issues).toBeUndefined()
 })
 
 test('laya decision-flow fixtures pass graph checking', () => {
@@ -231,7 +237,7 @@ test('laya decision-flow fixtures pass graph checking', () => {
     scoreNoulDefinition,
     authDefinition,
   ]) {
-    expect(graph.check(fixture).ok).toBe(true)
+    expect(graph.check(fixture).issues).toBeUndefined()
   }
 })
 
@@ -295,7 +301,6 @@ describe.skipIf(laya == null)('support-triage example against laya-serve', () =>
     const runState = JSON.parse(JSON.stringify(first.runState)) as RunState
     const states: Array<RunState> = []
     for await (const state of graph.resume({
-      definition: suspensionDefinition,
       runState,
       event: { type: 'value', value: 'billing' },
     })) {
@@ -322,7 +327,6 @@ describe.skipIf(laya == null)('support-triage example against laya-serve', () =>
     expect(fetcher).toHaveBeenCalledTimes(0)
 
     const recovered = makeGraph({ fetcher, actions: { record } }).graph.recover({
-      definition: recoveryDefinition,
       runState: checkpoint,
     })
     const states: Array<RunState> = []

@@ -135,13 +135,12 @@ export function createRecovery(params: {
       // startRun re-enters a suspended wait before consuming this lazy run.
       const run =
         state.status === 'running'
-          ? graph.recover({ definition, runState: state, signal: controller.signal })
+          ? graph.recover({ runState: state, signal: controller.signal })
           : graph.start({ definition, signal: controller.signal })
       return startRun({
         handle,
         graph,
         run,
-        definition,
         resumeData: { ...data, siblings },
         caller: params.caller,
       }).finally(() => handle.signal.removeEventListener('abort', abort))

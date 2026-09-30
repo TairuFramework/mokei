@@ -11,7 +11,6 @@ test('built decision-flow entry exports its public symbols', () => {
     'decideTargets',
     'describeDecisionError',
     'flowDefinitionSchema',
-    'flowStorageSchema',
     'formatIssues',
     'InvalidDecisionStateError',
     'retryableDecision',

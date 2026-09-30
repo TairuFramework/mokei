@@ -2,7 +2,13 @@ import { StructuredContentValidationError } from '@mokei/context-client'
 import type { CallToolResult } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
 import type { JSONValue } from '@mokei/context-server'
-import { createFlowGraph, type FlowDefinition, type RunState } from '@sozai/flow-graph'
+import {
+  createFlowGraph,
+  createMapResolver,
+  type FlowDefinition,
+  type FlowResolver,
+  type RunState,
+} from '@sozai/flow-graph'
 import { describe, expect, test } from 'vitest'
 
 import type { CatalogTool, ToolCaller } from '../src/tool-caller.js'
@@ -64,6 +70,7 @@ function graph(
     catalogue?: Array<CatalogTool>
     approved?: ReadonlySet<string>
     depth?: number
+    resolver?: FlowResolver
   } = {},
 ) {
   return createFlowGraph({
@@ -75,11 +82,13 @@ function graph(
         approved: options.approved ?? new Set([tool.id]),
       }),
     ],
+    resolver: options.resolver,
   })
 }
 
 function issue(def: FlowDefinition, catalogue: Array<CatalogTool> = [tool]) {
-  return graph({ catalogue }).check(def).issues
+  const result = graph({ catalogue }).check(def)
+  return result.issues ?? result.warnings
 }
 
 describe('toolKind check', () => {
@@ -202,14 +211,14 @@ describe('toolKind check', () => {
       default: 'done',
       onError: 'handled',
     })
-    expect(graph().check(def).ok).toBe(true)
+    expect(graph().check(def).issues).toBeUndefined()
   })
 
   test('checks without an approved set', () => {
     const checking = createFlowGraph({
       kinds: [toolKind({ caller: fakeCaller(), catalogue: [tool], depth: 0 })],
     })
-    expect(checking.check(definition()).ok).toBe(true)
+    expect(checking.check(definition()).issues).toBeUndefined()
   })
 })
 
@@ -315,12 +324,11 @@ describe('toolKind execute', () => {
       return { task: { taskId: 'task-1' } }
     })
     const def = definition({ retry: { maxAttempts: 2, backoff: { initialMs: 0 } } })
-    const runtime = graph({ caller })
+    const runtime = graph({ caller, resolver: createMapResolver([def]) })
     const suspended = await runtime.run({ definition: def, input: {} })
     expect(suspended.status).toBe('suspended')
     let final: RunState | undefined
     for await (const state of runtime.resume({
-      definition: def,
       runState: suspended.runState,
       event: { type: 'value', value: { ok: false, status } },
     }))
@@ -490,13 +498,12 @@ describe('toolKind execute', () => {
     ]
     for (const { value, code } of cases) {
       const def = definition({ onError: 'handled' })
-      const runtime = graph({ caller })
+      const runtime = graph({ caller, resolver: createMapResolver([def]) })
       const suspended = await runtime.run({ definition: def, input: {} })
       expect(suspended.status).toBe('suspended')
       expect(suspended.pending?.data).toEqual({ tool: tool.id, taskId: 'task-1' })
       let final: RunState | undefined
       for await (const state of runtime.resume({
-        definition: def,
         runState: suspended.runState,
         event: { type: 'value', value },
       }))
@@ -507,10 +514,10 @@ describe('toolKind execute', () => {
       )
       if (code) {
         const unhandled = definition()
-        const second = await runtime.run({ definition: unhandled, input: {} })
+        const unhandledRuntime = graph({ caller, resolver: createMapResolver([unhandled]) })
+        const second = await unhandledRuntime.run({ definition: unhandled, input: {} })
         let failed: RunState | undefined
-        for await (const state of runtime.resume({
-          definition: unhandled,
+        for await (const state of unhandledRuntime.resume({
           runState: second.runState,
           event: { type: 'value', value },
         }))

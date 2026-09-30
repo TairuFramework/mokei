@@ -55,7 +55,7 @@ describe('Predictor', () => {
     expect(run.status).toBe('ended')
     expect(received?.call).toEqual({
       runID: 'predictor-call-test',
-      invocationID: 'predictor-call-test:0:1',
+      invocationID: 'predictor-call-test:1',
       attempt: 1,
     })
   })

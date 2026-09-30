@@ -36,8 +36,5 @@ const schemaOnlyClient = {
 
 const schemaOnlyGraph = createDecisionFlowGraph({ client: schemaOnlyClient })
 
-/** JSON Schema for authorable decision flows. */
+/** JSON Schema for authorable and stored decision flows. */
 export const flowDefinitionSchema: Schema = schemaOnlyGraph.authoringSchema
-
-/** JSON Schema for stored decision flows, including reserved node kinds. */
-export const flowStorageSchema: Schema = schemaOnlyGraph.storageSchema

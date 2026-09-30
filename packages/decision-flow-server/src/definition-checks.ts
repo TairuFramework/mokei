@@ -1,9 +1,11 @@
 import type { JSONValue } from '@mokei/context-server'
 import { createDecisionFlowGraph, type Predictor } from '@mokei/decision-flow'
 import {
+  createMapResolver,
   type FlowDefinition,
   type FlowGraph,
   type FlowIssue,
+  type FlowResolver,
   formatIssues,
 } from '@sozai/flow-graph'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
@@ -153,6 +155,15 @@ export function checkFlow(params: {
   predictor: Predictor | PredictorFactory
   elicitation: boolean
 }): FlowCheckResult {
+  // Resume and recover resolve pinned frames by id. Built on first use, since an unchecked
+  // definition may not be a flow at all.
+  let definitions: FlowResolver | undefined
+  const resolver: FlowResolver = {
+    resolve: (id, version, options) => {
+      definitions ??= createMapResolver([params.definition as FlowDefinition])
+      return definitions.resolve(id, version, options)
+    },
+  }
   const graphFor = (run: { depth: number; approved: ReadonlySet<string> }): FlowGraph =>
     createDecisionFlowGraph({
       client: resolvePredictor(params.predictor, run),
@@ -164,6 +175,7 @@ export function checkFlow(params: {
           approved: run.approved,
         }),
       ],
+      resolver,
     })
   const graph = graphFor({ depth: 0, approved: new Set() })
   const checked = graph.check(params.definition)
@@ -173,7 +185,7 @@ export function checkFlow(params: {
     nodes !== undefined &&
     Object.values(nodes).some((node) => isObject(node) && node.kind === 'input')
   const all: Array<FlowIssue> = [
-    ...checked.issues,
+    ...(checked.issues ?? checked.warnings),
     ...(nodes !== undefined ? checkInputNodes(raw as FlowDefinition) : []),
     ...(!params.elicitation && inputNodes
       ? [

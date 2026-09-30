@@ -35,11 +35,11 @@ const validation = validate(supportTriage)
 if (validation.issues) throw new Error(formatIssues(validation.issues))
 
 const checked = graph.check(supportTriage)
-if (!checked.ok) throw new Error(formatIssues(checked.issues))
+if (checked.issues) throw new Error(formatIssues(checked.issues))
 ```
 
-`flowDefinitionSchema` is the executable authoring schema. `flowStorageSchema` also includes
-reserved node kinds for persisted definitions.
+`flowDefinitionSchema` describes executable definitions, including stored ones, for editors and
+model generation.
 
 Decide nodes have their own `retry` policy. Leave the HTTP backend's `retry` unset for flows; setting both multiplies attempts.
 

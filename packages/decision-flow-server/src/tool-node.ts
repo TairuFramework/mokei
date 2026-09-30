@@ -9,6 +9,7 @@ import {
   type ExecuteContext,
   type Filter,
   type FlowIssue,
+  FlowNodeFailure,
   type FlowRetryPolicy,
   type NodeKind,
   retryPolicySchema,
@@ -42,9 +43,15 @@ const definitions = decideNodeSchema.definitions
 // Unschematized results support references up to 32 segments below the result.
 const MAX_RESULT_PATH_DEPTH = 32
 
+// Only walked by the graph checker to resolve result paths, never used to validate a result.
+// Each level declares `type: 'object'` so Ajv strict mode accepts `additionalProperties`. The leaf
+// accepts any value but is not annotation-only: the checker treats `{}` as unconstrained and
+// would accept any deeper path, removing the depth bound.
 function resultPathSchema(depth: number): Schema {
-  let schema: Schema = {}
-  for (let level = 0; level < depth; level++) schema = { additionalProperties: schema }
+  let schema: Schema = { not: false }
+  for (let level = 0; level < depth; level++) {
+    schema = { type: 'object', additionalProperties: schema }
+  }
   return schema
 }
 
@@ -294,6 +301,8 @@ export function toolKind(params: {
     resume(node, ctx, event) {
       if (event.type === 'timeout')
         throw new ToolNodeError('tool_call_failed', 'Tool task timed out', true)
+      // Tool tasks resume with their outcome, never with an input decline.
+      if (event.type === 'decline') throw new FlowNodeFailure({ code: 'invalid_suspend' })
       const value = event.value as ToolResumeValue
       if (value.ok) return finish(node, ctx, value.result)
       throw value.status === 'cancelled'

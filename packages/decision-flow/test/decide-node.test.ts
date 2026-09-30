@@ -11,8 +11,10 @@ import {
 } from '@mokei/system-one-client'
 import {
   createFlowGraph,
+  createMapResolver,
   defineNodeKind,
   type FlowDefinition,
+  type FlowResolver,
   type RegisteredNodeKind,
 } from '@sozai/flow-graph'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -99,7 +101,7 @@ function makeDefinition(overrides: Record<string, unknown> = {}): FlowDefinition
 function makeGraph(
   backend: SystemOneBackend,
   extraKinds: Array<RegisteredNodeKind> = [],
-  options: { now?: () => number } = {},
+  options: { now?: () => number; resolver?: FlowResolver } = {},
 ) {
   const client = new SystemOneClient({ backend, defaultModel: 'default-model' })
   return createFlowGraph({ kinds: [makeDecideKind({ client }), ...extraKinds], ...options })
@@ -326,13 +328,16 @@ describe('decideKind', () => {
         return answerResult()
       },
     }
-    const graph = makeGraph(backend, [], { now: () => Date.now() })
     const definition = makeDefinition({
       retry: {
         maxAttempts: 2,
         backoff: { initialMs: 0 },
         suspendAfterMs: 1_000,
       },
+    })
+    const graph = makeGraph(backend, [], {
+      now: () => Date.now(),
+      resolver: createMapResolver([definition]),
     })
     const suspended = await graph.run({
       definition,
@@ -343,7 +348,6 @@ describe('decideKind', () => {
     expect(suspended.pending?.reason).toBe('retry')
     vi.advanceTimersByTime(60_000)
     const resumedRun = graph.resume({
-      definition,
       runState: suspended.runState,
       event: { type: 'retry' },
     })

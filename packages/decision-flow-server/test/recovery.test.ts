@@ -138,7 +138,7 @@ function inputKey(state: RunState): string {
   if (pending === undefined) throw new Error('No pending input')
   const frame = state.frames.at(-1)
   const invocation =
-    frame?.attempts[pending.node]?.invocationID ?? `${pending.node}.${frame?.invocation ?? 0}`
+    frame?.attempts[pending.node]?.invocationID ?? `${pending.node}.${state.invocation}`
   return `${state.runID}:${invocation}:input:0`
 }
 

@@ -3,7 +3,13 @@ import {
   SystemOneClient,
   type SystemOneResult,
 } from '@mokei/system-one-client'
-import type { Action, FlowDefinition, FlowRun, RunState } from '@sozai/flow-graph'
+import {
+  type Action,
+  createMapResolver,
+  type FlowDefinition,
+  type FlowRun,
+  type RunState,
+} from '@sozai/flow-graph'
 import { createValidator } from '@sozai/schema'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -61,6 +67,7 @@ function makeGraph(params: {
     client,
     actions: { createTicket },
     now: params.now,
+    resolver: createMapResolver([definition]),
   })
 }
 
@@ -75,7 +82,7 @@ describe('support triage example', () => {
     const validate = createValidator(flowDefinitionSchema)
 
     expect(validate(example)).not.toHaveProperty('issues')
-    expect(makeGraph({}).check(definition).ok).toBe(true)
+    expect(makeGraph({}).check(definition).issues).toBeUndefined()
   })
 
   test('rejects a message flagged by the guard', async () => {
@@ -116,7 +123,6 @@ describe('support triage example', () => {
     const runState = JSON.parse(JSON.stringify(first.runState)) as RunState
     const freshGraph = makeGraph({ createTicket })
     const resumed = freshGraph.resume({
-      definition,
       runState,
       event: { type: 'value', value: 'billing' },
     })
@@ -152,7 +158,6 @@ describe('support triage example', () => {
     now += 86_400_001
     const freshGraph = makeGraph({ createTicket, now: () => now })
     const resumed = freshGraph.resume({
-      definition,
       runState,
       event: { type: 'timeout' },
     })
@@ -174,6 +179,6 @@ describe('support triage example', () => {
     const runState = JSON.parse(JSON.stringify(first.runState)) as RunState
     const freshGraph = makeGraph({ now: () => now })
 
-    expect(() => freshGraph.resume({ definition, runState, event: { type: 'timeout' } })).toThrow()
+    expect(() => freshGraph.resume({ runState, event: { type: 'timeout' } })).toThrow()
   })
 })

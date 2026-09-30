@@ -9,7 +9,6 @@ import {
   type DecisionFlowGraphOptions,
   decideKind,
   flowDefinitionSchema,
-  flowStorageSchema,
   formatIssues,
   type Predictor,
 } from '../src/index.js'
@@ -23,7 +22,6 @@ test('public decision flow API types', () => {
     createDecisionFlowGraph({ client: {} as SystemOneClient }),
   ).toMatchTypeOf<FlowGraph>()
   expectTypeOf(flowDefinitionSchema).toMatchTypeOf<Schema>()
-  expectTypeOf(flowStorageSchema).toMatchTypeOf<Schema>()
   expectTypeOf(formatIssues).toBeCallableWith([])
   expectTypeOf(createDecisionFlowGraph).parameters.toEqualTypeOf<[DecisionFlowGraphOptions]>()
 })

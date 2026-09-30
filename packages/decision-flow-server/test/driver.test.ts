@@ -3,7 +3,7 @@ import { ContextClient, TaskCancelledError } from '@mokei/context-client'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import type { JSONValue, TaskHandle } from '@mokei/context-server'
 import { ContextServer, createMemoryTaskStore, createTaskManager } from '@mokei/context-server'
-import { createFlowGraph, type FlowDefinition } from '@sozai/flow-graph'
+import { createFlowGraph, createMapResolver, type FlowDefinition } from '@sozai/flow-graph'
 import { expect, test, vi } from 'vitest'
 
 import { type ResumeDataV1, startRun } from '../src/driver.js'
@@ -60,6 +60,7 @@ function harness(
         approved: new Set([tool.id]),
       }),
     ],
+    resolver: createMapResolver([flow]),
   })
   const run = graph.start({ definition: flow, signal: abort.signal, runID: 'run-1' })
   const resumeData: ResumeDataV1 = {
@@ -93,7 +94,7 @@ function harness(
       return true
     },
   }
-  const drive = () => startRun({ handle, graph, run, definition: flow, resumeData, caller })
+  const drive = () => startRun({ handle, graph, run, resumeData, caller })
   return {
     flow,
     drive,
@@ -408,7 +409,6 @@ test('recovery repeats an acted call with the same operation key after its handl
           handle,
           graph: h.graph,
           run: h.run,
-          definition: h.flow,
           resumeData: h.resumeData,
           caller: h.caller,
         })
@@ -430,7 +430,6 @@ test('recovery repeats an acted call with the same operation key after its handl
       resume((handle) => {
         const data = record.resumeData as unknown as ResumeDataV1
         const recovered = h.graph.recover({
-          definition: h.flow,
           runState: data.runState,
           signal: handle.signal,
         })
@@ -438,7 +437,6 @@ test('recovery repeats an acted call with the same operation key after its handl
           handle,
           graph: h.graph,
           run: recovered,
-          definition: h.flow,
           resumeData: data,
           caller: h.caller,
         })

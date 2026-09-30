@@ -7,153 +7,153 @@ importers:
     configDependencies: {}
     packageManagerDependencies:
       pnpm:
-        specifier: 12.6.0
-        version: 12.6.0
+        specifier: 12.8.1
+        version: 12.8.1
 
 packages:
 
-  '@pnpm/exe.android-arm64@12.6.0':
-    resolution: {integrity: sha512-kviIHft9h02q+7N2In7tSL9T/HRUSGwYmU74YPtsWU5ee7vgqPyC0JT6RRX6miW+NxX1CvHgQxg69qq1qTLJYQ==}
+  '@pnpm/exe.android-arm64@12.8.1':
+    resolution: {integrity: sha512-siDxcidfz5eM6L2tJfik+i2bbUEw8UC7MZ3Yl2HYdRmqbdhHGAOQACtOOu6QVW4Jul4/w5wVKm+wM8ACtgh1Pg==}
     cpu: [arm64]
     os: [android]
 
-  '@pnpm/exe.android-x64@12.6.0':
-    resolution: {integrity: sha512-CT8aJKLq2mtZFE71pr4E5Z2xHL8uGnRGr+NclDqsXlVF4SVcQ2QAs14mWi0C8gjT4hbmi+Q0lJRRIkMAWfjjng==}
+  '@pnpm/exe.android-x64@12.8.1':
+    resolution: {integrity: sha512-0F/uqPRc3aN4vLHsa0f+6fTtmsigFQ9/yxEU43fionF//pNHEd5e97b3w/nKIgqYMCUQCJphmBRMA9Q8/wlo9Q==}
     cpu: [x64]
     os: [android]
 
-  '@pnpm/exe.darwin-arm64@12.6.0':
-    resolution: {integrity: sha512-rafpVkjzugKBMxSvGQd5wK1x5eOTkD/+lcJIFHeQhvd+BJ8kDisOOvwhQDrpGd4vd2Fx+hhW0P2Ptt638OlhFg==}
+  '@pnpm/exe.darwin-arm64@12.8.1':
+    resolution: {integrity: sha512-/rwavvMQJsl2RIxOHBnDF+4Gk+fhQFAY4M3PQZoKskJOEnaJcygG9p1xby6wcQcbS4d9dIubv09CQhufTgfmpw==}
     cpu: [arm64]
     os: [darwin]
 
-  '@pnpm/exe.darwin-x64@12.6.0':
-    resolution: {integrity: sha512-72Jpuv1m24gI8zUNcaylYpBWEhBzz1VPhnDIU2GYM2eRP+KsOqVLwV78i+JrihI39zY2NNXmaN4eAKX1inpaDQ==}
+  '@pnpm/exe.darwin-x64@12.8.1':
+    resolution: {integrity: sha512-htYt2gN7zqJKLhC99Ft6EUiO7myjZAZXfmGCTJUL1v+o7vE9hZdE1+fAkk4Oj1ZHNRti6b2woOxEkRkAusi8OQ==}
     cpu: [x64]
     os: [darwin]
 
-  '@pnpm/exe.freebsd-x64@12.6.0':
-    resolution: {integrity: sha512-LON4QgNy1w/XF4uySZIyC/5hEB0oGdelXsY9tSKqstER+2j2X2oHz67skD11RRd/HWFRtMr64shQZ4I9ZoZ0zg==}
+  '@pnpm/exe.freebsd-x64@12.8.1':
+    resolution: {integrity: sha512-PB5BULNgytxvExoOXUUeseS/DcpPENs+cg3iA6xHHeaLT4ctEGKSGXEbuj7USeqvo8JBpAx039hivnbzGqDwnA==}
     cpu: [x64]
     os: [freebsd]
 
-  '@pnpm/exe.linux-arm64-musl@12.6.0':
-    resolution: {integrity: sha512-BdDpX+DeaMUc5x6WNcE6FkmFy36NwrBbBvwsZU737Zt3u1fTY+iKFPchjEQNCM4rT6q6xvF2oN3ZwExGsJCkxQ==}
+  '@pnpm/exe.linux-arm64-musl@12.8.1':
+    resolution: {integrity: sha512-kKeyC/ArjrgdciQRBrOL0j9HtOI4gDRgoyP+eJ1CQKyadpKlf/DhDDyspXe07R3B9KagTVLUF2nlt6Dr5quFIg==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@pnpm/exe.linux-arm64@12.6.0':
-    resolution: {integrity: sha512-8h2sNoIhHDpHDYqZZCh9PXr6krqW10btb0GHVGuw710muDHlFAHMtUG2ogmaHge6zJG1xgY4Y7mwX5g/LWvrYg==}
+  '@pnpm/exe.linux-arm64@12.8.1':
+    resolution: {integrity: sha512-q4s9a9X2O3N9aeUFooW24orNrxvu20+jyVUFR5RanPCqOKKPBrgs2iywMkBBx1aXkkzdWT54/mfz8Be8sJlWEw==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@pnpm/exe.linux-ppc64@12.6.0':
-    resolution: {integrity: sha512-ld6xgcEhFCFrsVsJhbmdmR714PnsEspO/Ij8w0/D7OSiz2hYGu3fZd5tKRxOI5m6H6Gl0/RRFAPncTHbsgXVjQ==}
+  '@pnpm/exe.linux-ppc64@12.8.1':
+    resolution: {integrity: sha512-F7XSjKJthwCh/L6abZiMpAfo2Cm61SZIT3e4dfgiIjESndlWaXCnfLKngSgZ/SEMsdmHT6dud3+kWIB3tw0/xQ==}
     cpu: [ppc64]
     os: [linux]
     libc: [glibc]
 
-  '@pnpm/exe.linux-riscv64@12.6.0':
-    resolution: {integrity: sha512-HIbImydoC3J8NFt+8MXfhTCf5rO6NjCMyinSAHac0VmV8uCHw+kbQkyAzxV84rzz9ZOzmBOnj0b1N461UIYGsw==}
+  '@pnpm/exe.linux-riscv64@12.8.1':
+    resolution: {integrity: sha512-z1ecpIK/ZY08Unk69KWWE9867oaKUytGUjrHnBoGFAAhsK+q+0cfvBH+f5fWobJ7FX97leMlLO+gkJolddM45Q==}
     cpu: [riscv64]
     os: [linux]
     libc: [glibc]
 
-  '@pnpm/exe.linux-s390x@12.6.0':
-    resolution: {integrity: sha512-DjSqT7+BZ/lWcDHwNMuzsRVfyxUimh+D54Xw4tSWbdVVQhtWtNMUyI93LVnwCmsoEpar2gC3SFeAgywx37svKQ==}
+  '@pnpm/exe.linux-s390x@12.8.1':
+    resolution: {integrity: sha512-KU6tnrBfu4uKXTq6N5qJwSm8FSrs9Wc8b5AUEsHK9bRXwNdsZ1/lRxG1++X29SKRW9OSNuDSjxASv5mAvGo1gA==}
     cpu: [s390x]
     os: [linux]
     libc: [glibc]
 
-  '@pnpm/exe.linux-x64-musl@12.6.0':
-    resolution: {integrity: sha512-31lKeGPmRE6xfV6I3VjaEGVFRei14pl/zgoFDK4w+UkbJqOuNl2Ht3O1GuqNIg3Gl14qTEb4kZRAYFHXifDx9A==}
+  '@pnpm/exe.linux-x64-musl@12.8.1':
+    resolution: {integrity: sha512-eUE8BWJkDr2tJb/yrk0yVnszlmNqFarVxUlqiZ9BAkct28Nq/5g2H0tvMDmPA7fAQW3STNj+omJPPRVT+4s5sQ==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@pnpm/exe.linux-x64@12.6.0':
-    resolution: {integrity: sha512-qFWBneHJAJ73W4whtbaFOL1M/7DBC6ILHXuxc7ZPtEhfPuT1zeZiGrmKHoMAfJA+mcm6xhOFljqVTUS+00Jabw==}
+  '@pnpm/exe.linux-x64@12.8.1':
+    resolution: {integrity: sha512-8bDZ0lZlCdi2rvnFul7EYgcC7zKeWSe76y8JV2oXobaS8p9i9d6PSf6LgLtTM0fI7R9Oh4eLCbveXyNDMmvZ+g==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@pnpm/exe.win32-arm64@12.6.0':
-    resolution: {integrity: sha512-OhfefXEEykZlslSUhR8PPRe6MVPV3Oink/dVfIecE5velpc7j80cZYsHlaDrtRDcm3TPwQHkaRW1SJ1efX9oFg==}
+  '@pnpm/exe.win32-arm64@12.8.1':
+    resolution: {integrity: sha512-MsT0dlrRxnCRCHCaosNbhWpEiAFnFuMEu3KuDJDU41BXgTwiINxU8goloUSUDejWZUqKaUqNC/qUTihl9nFtqg==}
     cpu: [arm64]
     os: [win32]
 
-  '@pnpm/exe.win32-x64@12.6.0':
-    resolution: {integrity: sha512-L2tuyrD2+Imgxs3VK/ST/2L3xD6vDP0ktJQxM0TaGw7TbAQEMq+RMc8iK6Ew7Id579uzjJe8jSfJID2ZGsOHCA==}
+  '@pnpm/exe.win32-x64@12.8.1':
+    resolution: {integrity: sha512-SWtPe0PsbTTk//gJND10tMdOfCYjrkq5+qV49hzVhY7xz2iJ339Rc+xwASlcvbwTfrvH39YNqpKYibD+CRGLwA==}
     cpu: [x64]
     os: [win32]
 
-  pnpm@12.6.0:
-    resolution: {integrity: sha512-PvaPlRyxEawgS0paFvCy3fDaVqluBBPoHYVdnwtV75JnFHCQKOHNAMQFwsX7e56OxNxGd3yAXQNzwvL/AP0g7A==}
+  pnpm@12.8.1:
+    resolution: {integrity: sha512-9kupB1B/XOr+BsjTjmBS0BeURFgOwSed3Vv8EctIqoomRLZlmOB+dh2oSHKp/FfV+QK4f6SdAkGY1VhhKqu+RQ==}
     engines: {node: '>=18.*'}
     hasBin: true
 
 snapshots:
 
-  '@pnpm/exe.android-arm64@12.6.0':
+  '@pnpm/exe.android-arm64@12.8.1':
     optional: true
 
-  '@pnpm/exe.android-x64@12.6.0':
+  '@pnpm/exe.android-x64@12.8.1':
     optional: true
 
-  '@pnpm/exe.darwin-arm64@12.6.0':
+  '@pnpm/exe.darwin-arm64@12.8.1':
     optional: true
 
-  '@pnpm/exe.darwin-x64@12.6.0':
+  '@pnpm/exe.darwin-x64@12.8.1':
     optional: true
 
-  '@pnpm/exe.freebsd-x64@12.6.0':
+  '@pnpm/exe.freebsd-x64@12.8.1':
     optional: true
 
-  '@pnpm/exe.linux-arm64-musl@12.6.0':
+  '@pnpm/exe.linux-arm64-musl@12.8.1':
     optional: true
 
-  '@pnpm/exe.linux-arm64@12.6.0':
+  '@pnpm/exe.linux-arm64@12.8.1':
     optional: true
 
-  '@pnpm/exe.linux-ppc64@12.6.0':
+  '@pnpm/exe.linux-ppc64@12.8.1':
     optional: true
 
-  '@pnpm/exe.linux-riscv64@12.6.0':
+  '@pnpm/exe.linux-riscv64@12.8.1':
     optional: true
 
-  '@pnpm/exe.linux-s390x@12.6.0':
+  '@pnpm/exe.linux-s390x@12.8.1':
     optional: true
 
-  '@pnpm/exe.linux-x64-musl@12.6.0':
+  '@pnpm/exe.linux-x64-musl@12.8.1':
     optional: true
 
-  '@pnpm/exe.linux-x64@12.6.0':
+  '@pnpm/exe.linux-x64@12.8.1':
     optional: true
 
-  '@pnpm/exe.win32-arm64@12.6.0':
+  '@pnpm/exe.win32-arm64@12.8.1':
     optional: true
 
-  '@pnpm/exe.win32-x64@12.6.0':
+  '@pnpm/exe.win32-x64@12.8.1':
     optional: true
 
-  pnpm@12.6.0:
+  pnpm@12.8.1:
     optionalDependencies:
-      '@pnpm/exe.android-arm64': 12.6.0
-      '@pnpm/exe.android-x64': 12.6.0
-      '@pnpm/exe.darwin-arm64': 12.6.0
-      '@pnpm/exe.darwin-x64': 12.6.0
-      '@pnpm/exe.freebsd-x64': 12.6.0
-      '@pnpm/exe.linux-arm64': 12.6.0
-      '@pnpm/exe.linux-arm64-musl': 12.6.0
-      '@pnpm/exe.linux-ppc64': 12.6.0
-      '@pnpm/exe.linux-riscv64': 12.6.0
-      '@pnpm/exe.linux-s390x': 12.6.0
-      '@pnpm/exe.linux-x64': 12.6.0
-      '@pnpm/exe.linux-x64-musl': 12.6.0
-      '@pnpm/exe.win32-arm64': 12.6.0
-      '@pnpm/exe.win32-x64': 12.6.0
+      '@pnpm/exe.android-arm64': 12.8.1
+      '@pnpm/exe.android-x64': 12.8.1
+      '@pnpm/exe.darwin-arm64': 12.8.1
+      '@pnpm/exe.darwin-x64': 12.8.1
+      '@pnpm/exe.freebsd-x64': 12.8.1
+      '@pnpm/exe.linux-arm64': 12.8.1
+      '@pnpm/exe.linux-arm64-musl': 12.8.1
+      '@pnpm/exe.linux-ppc64': 12.8.1
+      '@pnpm/exe.linux-riscv64': 12.8.1
+      '@pnpm/exe.linux-s390x': 12.8.1
+      '@pnpm/exe.linux-x64': 12.8.1
+      '@pnpm/exe.linux-x64-musl': 12.8.1
+      '@pnpm/exe.win32-arm64': 12.8.1
+      '@pnpm/exe.win32-x64': 12.8.1
 
 ---
 lockfileVersion: '9.0'
@@ -189,8 +189,8 @@ catalogs:
       specifier: ^0.21.3
       version: 0.21.3
     '@hono/node-server':
-      specifier: ^2.1.1
-      version: 2.1.1
+      specifier: ^2.1.3
+      version: 2.1.3
     '@inkjs/ui':
       specifier: ^2.0.0
       version: 2.0.0
@@ -203,9 +203,21 @@ catalogs:
     '@mantine/hooks':
       specifier: ^9.6.3
       version: 9.6.3
+    '@modelcontextprotocol/client':
+      specifier: 2.2.0
+      version: 2.2.0
+    '@modelcontextprotocol/core':
+      specifier: 2.2.0
+      version: 2.2.0
     '@modelcontextprotocol/ext-tasks':
       specifier: 0.1.0
       version: 0.1.0
+    '@modelcontextprotocol/node':
+      specifier: 2.1.0
+      version: 2.1.0
+    '@modelcontextprotocol/server':
+      specifier: 2.2.0
+      version: 2.2.0
     '@opentelemetry/api':
       specifier: ^1.9.1
       version: 1.9.1
@@ -222,8 +234,8 @@ catalogs:
       specifier: ^0.1.4
       version: 0.1.4
     '@sozai/flow-graph':
-      specifier: ^0.1.0
-      version: 0.1.0
+      specifier: ^0.2.0
+      version: 0.2.0
     '@sozai/generator':
       specifier: ^0.2.1
       version: 0.2.1
@@ -237,8 +249,8 @@ catalogs:
       specifier: ^0.1.0
       version: 0.1.0
     '@sozai/schema':
-      specifier: ^0.1.2
-      version: 0.1.2
+      specifier: ^0.1.3
+      version: 0.1.3
     '@sozai/stream':
       specifier: ^0.2.1
       version: 0.2.1
@@ -276,8 +288,8 @@ catalogs:
       specifier: ^0.4.1
       version: 0.4.1
     '@types/luxon':
-      specifier: ^3.7.5
-      version: 3.7.5
+      specifier: ^3.7.6
+      version: 3.7.6
     '@types/node':
       specifier: ^26.6.3
       version: 26.6.3
@@ -300,8 +312,8 @@ catalogs:
       specifier: ^4.1.1
       version: 4.1.1
     execa:
-      specifier: ^9.6.1
-      version: 9.6.1
+      specifier: ^10.0.1
+      version: 10.0.1
     get-port:
       specifier: ^7.2.0
       version: 7.2.0
@@ -309,8 +321,8 @@ catalogs:
       specifier: ^17.12.0
       version: 17.12.0
     hono:
-      specifier: ^4.13.10
-      version: 4.13.10
+      specifier: ^4.13.11
+      version: 4.13.11
     ink:
       specifier: ^7.1.1
       version: 7.1.1
@@ -465,20 +477,20 @@ importers:
         version: 2.1.0
     devDependencies:
       '@modelcontextprotocol/client':
-        specifier: 2.1.0
-        version: 2.1.0
+        specifier: 'catalog:'
+        version: 2.2.0
       '@modelcontextprotocol/core':
-        specifier: 2.1.0
-        version: 2.1.0
+        specifier: 'catalog:'
+        version: 2.2.0
       '@modelcontextprotocol/ext-tasks':
         specifier: 'catalog:'
-        version: 0.1.0(@modelcontextprotocol/client@2.1.0)
+        version: 0.1.0(@modelcontextprotocol/client@2.2.0)
       '@modelcontextprotocol/node':
-        specifier: 2.1.0
-        version: 2.1.0(@modelcontextprotocol/server@2.1.0)(hono@4.13.10)
+        specifier: 'catalog:'
+        version: 2.1.0(@modelcontextprotocol/server@2.2.0)(hono@4.13.11)
       '@modelcontextprotocol/server':
-        specifier: 2.1.0
-        version: 2.1.0
+        specifier: 'catalog:'
+        version: 2.2.0
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../packages/context-rpc
@@ -502,13 +514,13 @@ importers:
         version: link:../packages/session-node
       '@sozai/flow-graph':
         specifier: 'catalog:'
-        version: 0.1.0(@logtape/logtape@2.3.0)
+        version: 0.2.0(@logtape/logtape@2.3.0)
       '@sozai/generator':
         specifier: 'catalog:'
         version: 0.2.1
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
@@ -589,7 +601,7 @@ importers:
     devDependencies:
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
@@ -635,13 +647,13 @@ importers:
     devDependencies:
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.21.3
+        version: 0.21.3(@logtape/logtape@2.3.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../packages/context-protocol
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@tanstack/router-devtools':
         specifier: 'catalog:'
         version: 1.167.2(@tanstack/react-router@1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@tanstack/router-core@1.171.33)(csstype@3.2.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -650,7 +662,7 @@ importers:
         version: 1.168.41(@rspack/core@1.7.12)(@tanstack/react-router@1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.5)(supports-color@8.1.1)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))(webpack@5.108.4(@swc/core@1.16.1)(@swc/html@1.15.43)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3))
       '@types/luxon':
         specifier: 'catalog:'
-        version: 3.7.5
+        version: 3.7.6
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
@@ -692,7 +704,7 @@ importers:
         version: link:../model-provider
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       eventsource-parser:
         specifier: 'catalog:'
         version: 4.1.1
@@ -817,10 +829,10 @@ importers:
         version: 0.3.0
       '@sozai/otel':
         specifier: 'catalog:'
-        version: 0.3.2
+        version: 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.1
@@ -833,7 +845,7 @@ importers:
     devDependencies:
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
 
   packages/context-rpc:
     dependencies:
@@ -852,7 +864,7 @@ importers:
         version: 0.21.3(@logtape/logtape@2.3.0)
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
 
   packages/context-server:
     dependencies:
@@ -870,10 +882,10 @@ importers:
         version: 0.1.4(@logtape/logtape@2.3.0)
       '@sozai/otel':
         specifier: 'catalog:'
-        version: 0.3.2
+        version: 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
@@ -914,13 +926,13 @@ importers:
         version: 0.3.0
       '@sozai/flow-graph':
         specifier: 'catalog:'
-        version: 0.1.0(@logtape/logtape@2.3.0)
+        version: 0.2.0(@logtape/logtape@2.3.0)
       '@sozai/otel':
         specifier: 'catalog:'
-        version: 0.3.2
+        version: 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
     devDependencies:
       '@opentelemetry/api':
         specifier: 'catalog:'
@@ -963,10 +975,10 @@ importers:
         version: link:../system-one-client
       '@sozai/flow-graph':
         specifier: 'catalog:'
-        version: 0.1.0(@logtape/logtape@2.3.0)
+        version: 0.2.0(@logtape/logtape@2.3.0)
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@standard-schema/spec':
         specifier: 'catalog:'
         version: 1.1.0
@@ -1028,10 +1040,10 @@ importers:
         version: 0.1.4(@logtape/logtape@2.3.0)
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       execa:
         specifier: 'catalog:'
-        version: 9.6.1
+        version: 10.0.1
     devDependencies:
       '@mokei/context-server':
         specifier: workspace:^
@@ -1121,10 +1133,10 @@ importers:
     dependencies:
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.21.3
+        version: 0.21.3(@logtape/logtape@2.3.0)
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
 
   packages/http-client:
     dependencies:
@@ -1160,10 +1172,10 @@ importers:
         version: 0.21.3(@logtape/logtape@2.3.0)
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.1.1(hono@4.13.10)
+        version: 2.1.3(hono@4.13.11)
       '@kokuin/token':
         specifier: 'catalog:'
-        version: 0.5.0
+        version: 0.5.0(@logtape/logtape@2.3.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -1181,7 +1193,7 @@ importers:
         version: 0.1.0
       hono:
         specifier: 'catalog:'
-        version: 4.13.10
+        version: 4.13.11
     devDependencies:
       '@mokei/http-client':
         specifier: workspace:^
@@ -1206,7 +1218,7 @@ importers:
         version: 0.3.0
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       node-llama-cpp:
         specifier: '>=3.0.0'
         version: 3.19.0(supports-color@8.1.1)(typescript@6.0.3)
@@ -1225,7 +1237,7 @@ importers:
     dependencies:
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
     devDependencies:
       '@mokei/context-protocol':
         specifier: workspace:^
@@ -1244,7 +1256,7 @@ importers:
         version: link:../model-provider
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.1
@@ -1266,7 +1278,7 @@ importers:
         version: link:../model-provider
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       eventsource-parser:
         specifier: 'catalog:'
         version: 4.1.1
@@ -1350,7 +1362,7 @@ importers:
         version: 0.3.0
       '@sozai/schema':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       ky:
         specifier: 'catalog:'
         version: 2.1.0
@@ -3038,8 +3050,8 @@ packages:
     peerDependencies:
       hono: ^4
 
-  '@hono/node-server@2.1.1':
-    resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
+  '@hono/node-server@2.1.3':
+    resolution: {integrity: sha512-TA//nWMqPhbfdfneACk6t5a9eqbS9lABEPyKn0/xZTah3H3U2XaVg85rJFl0/Fyit0I552YDHgXGVSf3GwqbUw==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
@@ -3300,9 +3312,6 @@ packages:
   '@lit/reactive-element@2.1.2':
     resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
 
-  '@logtape/logtape@2.2.4':
-    resolution: {integrity: sha512-2rALzv9m4ibE5FyB8/FMm5MPMMlK7ujgy3ufricVKIxj6e7SZbw4w6J16/fRAsXgdDlOXPUA0aa6XoEQvdlKxw==}
-
   '@logtape/logtape@2.3.0':
     resolution: {integrity: sha512-s/pxCgf9Gg75ypTV/bRUq355Dy/JP/zUJWfgJQPO5pTkXC23X2AXBcmBBgFiWH+bSi4yiX/G06qGV8CdAWD3SA==}
 
@@ -3330,12 +3339,12 @@ packages:
   '@mixmark-io/domino@2.2.0':
     resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
 
-  '@modelcontextprotocol/client@2.1.0':
-    resolution: {integrity: sha512-mDVhoy5WjDb0U+4dQPzLcciC2erSex/GRVQqnoZdiuMoE3YiTZdiS7ezNcFwX4XEOWOaj7jZr0kLYnILnL8orA==}
+  '@modelcontextprotocol/client@2.2.0':
+    resolution: {integrity: sha512-LxCou/CSYQ6dwEnjhLZY0KnEuc8V4UJ3IEQCl/uR2yHobSQIEdJKUlKLRYRF5i5FqRGHy1eK7une3aAWDHLtig==}
     engines: {node: '>=20'}
 
-  '@modelcontextprotocol/core@2.1.0':
-    resolution: {integrity: sha512-YdFj5gMRHr0gYNAhTbQDgjLHiEJdIAUYxomhKseUNye7ZGlISQmUoLh2sveFFCiQ7j2YMffT1kgSND0FSfIFjQ==}
+  '@modelcontextprotocol/core@2.2.0':
+    resolution: {integrity: sha512-iLhmprRmWI8EcosOA3wVvww22z02NkgqhV4fBH6f/odQBsi7xnJc0HGmi21yWO+/iKw2yzqVE127Zhna5/+JXw==}
     engines: {node: '>=20'}
 
   '@modelcontextprotocol/ext-tasks@0.1.0':
@@ -3356,8 +3365,8 @@ packages:
       hono:
         optional: true
 
-  '@modelcontextprotocol/server@2.1.0':
-    resolution: {integrity: sha512-FdvwZU5N03O77Suh35JqjAqq5R1ZTEPFtwu6N4BgBq28qrQtrCnpbLL5U2pwYCuE194jAw0xnlOVmIqhfoYuUQ==}
+  '@modelcontextprotocol/server@2.2.0':
+    resolution: {integrity: sha512-qFnltjus6Gk8Lx6J1w2RXmr3YPN22MNT6qD6zjAkaiWIlFIFxWClz0rXHNuJF/KSUyn5YGhkSvXkWDbQHVLFEQ==}
     engines: {node: '>=20'}
 
   '@module-federation/error-codes@0.22.0':
@@ -4235,8 +4244,8 @@ packages:
   '@sozai/execution@0.2.1':
     resolution: {integrity: sha512-vQLquTIbnD+WQBpszBsDGQlU5DBIip/gZ7aqq0uHem2C5aN/TGPCrcpqelyiYMGswBNEJ2u/CL6/EmIo4cBHRA==}
 
-  '@sozai/flow-graph@0.1.0':
-    resolution: {integrity: sha512-uU9WfAokmWQ0R2+XZNeZwdZiKuSLMPJAaCUAlXgTocdkwysdIV6MgZhlhwB62VY3Ijr6kNei0njKALdDLZHrGA==}
+  '@sozai/flow-graph@0.2.0':
+    resolution: {integrity: sha512-SV/G0xXpuaqzz0AR1inQxOP0yzSblLo9BCXQ5zd8JYXFPjJ0zmEhgnwA55BRT2Ng3v6zxDz73wHGSi8zfA3A8Q==}
 
   '@sozai/generator@0.2.1':
     resolution: {integrity: sha512-pU1YZlCL9emOvpcLEGFoLYULPnH+2fQTMrNa5dq8Z/M2loIJvuvvbMFUW4O4Qn3bdMEMO3Rpr5auCTjxL+FdjA==}
@@ -4249,9 +4258,6 @@ packages:
 
   '@sozai/lock@0.1.0':
     resolution: {integrity: sha512-A9Gkw7DlG7kj0wDlK9RuUMd+PIZoIFlRAI19TCTmPW/G7wvx/c1/OQ8b66d4rFQZVkpeb6G/GAyOglx8rC84BA==}
-
-  '@sozai/log@0.3.0':
-    resolution: {integrity: sha512-kHXNZ8LNBPOy/KObz9ClS+iNnjkzDhYL1u2TqkpsI47vrwia6VnCPkgmhXavNauYE9/+IIJrFjKGjTGs2rNikA==}
 
   '@sozai/log@0.3.1':
     resolution: {integrity: sha512-IblWrhbUOd6KCkG+Dzr9ZS+Dgyhqr5W3Zb1CbZUN5r2ybBAN5WL9GTn7L45bLuQOSp0RzjDeqB7OH39InMm0yg==}
@@ -4269,6 +4275,9 @@ packages:
 
   '@sozai/schema@0.1.2':
     resolution: {integrity: sha512-axdurlOUu9prryrFnuZ1CS3KPYucAXAw2wy55dwgKpE2n4r7KVX6AJ9F24qAAjHsnbzonMRXzzAYRPJS1YG/Yw==}
+
+  '@sozai/schema@0.1.3':
+    resolution: {integrity: sha512-Wm0DewKxyAF2zPgMdrQqWDESSbo9jtU5yLPRZrgPkohv9cYKHSyaMgPtPJAMCIsU47My+OMaqkyvKoJ6VzLqtg==}
 
   '@sozai/stream@0.2.0':
     resolution: {integrity: sha512-wMtP+YBNb6SOHCBgwv0BNhaGyTbvsGBSdrT7Jz3zG5auAq3RGFYQmApdtTcKF7QpbKr5kKX1YABJIiKaAY3mGA==}
@@ -4888,8 +4897,8 @@ packages:
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
-  '@types/luxon@3.7.5':
-    resolution: {integrity: sha512-jJ41Q4z6ZVO260MNDdHfW7+7a5iMiX8Mr6ZJHcmgrvhZha6dz5704o/lF2kKl6URjH6ivEL97w9xS/MgpJEphg==}
+  '@types/luxon@3.7.6':
+    resolution: {integrity: sha512-6KSjliQAXK8ZLgFQO4B7iE4Rpf/B3rItzCFuXezBY/XIAGxOdLd7vRNK9/StRPwiS/yJsVbB7HKpW46B8tcEuQ==}
 
   '@types/mdast@3.0.15':
     resolution: {integrity: sha512-LnwD+mUEfxWMa1QpDraczIn6k0Ee3SMicuYSSzS6ZYl2gKS09EClnJYGd8Du6rfc5r/GZEk5o1mRb8TaTj03sQ==}
@@ -5182,19 +5191,9 @@ packages:
 
   ajv-formats@2.1.1:
     resolution: {integrity: sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==}
-    peerDependencies:
-      ajv: ^8.0.0
-    peerDependenciesMeta:
-      ajv:
-        optional: true
 
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
-    peerDependencies:
-      ajv: ^8.0.0
-    peerDependenciesMeta:
-      ajv:
-        optional: true
 
   ajv-keywords@3.5.2:
     resolution: {integrity: sha512-5p6WTN0DdTGVQk6VjcEju19IgaHudalcfabD7yhDGeA6bcQnmL+CpveLJq/3hvfwd1aof6L386Ougkx6RfyMIQ==}
@@ -5238,7 +5237,6 @@ packages:
 
   ansi-html-community@0.0.8:
     resolution: {integrity: sha512-1APHAyr3+PCamwNw3bXCPp4HFLONZt/yIH0sZp0/469KWNTEy+qN5jQ3GVX6DMZ1UXAi34yVwtTeaG/HpBuuzw==}
-    engines: {'0': node >= 0.8.0}
     hasBin: true
 
   ansi-regex@5.0.1:
@@ -6354,6 +6352,10 @@ packages:
     resolution: {integrity: sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA==}
     engines: {node: '>=18.0.0'}
 
+  execa@10.0.1:
+    resolution: {integrity: sha512-ge98qjkRK4IB7tL7Ju/6qmm5LHoH1eEMt5FNZrz3f4UIYhF28lggX20z3FaX1sgc67msLEn0N0BscOs29iuwyw==}
+    engines: {node: '>=22'}
+
   execa@5.1.1:
     resolution: {integrity: sha512-8uSpZZocAZRBAPIEINJj3Lo9HyGitllczc27Eh5YYojjMFMn8yHMDMaUHE2Jqfq05D/wucwI4JGURyXt1vchyg==}
     engines: {node: '>=10'}
@@ -6798,8 +6800,8 @@ packages:
     resolution: {integrity: sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw==}
     engines: {node: '>=16.9.0'}
 
-  hono@4.13.10:
-    resolution: {integrity: sha512-dQuLsa5oO+47QVMVMaaD9cIv8ctmVtK1iRvwWngkfloFJMeFeuoUFDswIqZGxmGX3hrRzREgEArjkK9OgsQEhA==}
+  hono@4.13.11:
+    resolution: {integrity: sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg==}
     engines: {node: '>=16.9.0'}
 
   hpack.js@2.1.6:
@@ -10500,6 +10502,11 @@ packages:
     resolution: {integrity: sha512-TEZA+Zqxin7Jjsm2cjRohCmen5awh+hT6Zi3VZdqZlNRk7zvOI/9WpBFg/DWlA56bWnzwm6DuB8NS0EsxQH9uQ==}
     engines: {node: ^22.14.0 || >=24.0.0}
 
+  which-command@0.1.0:
+    resolution: {integrity: sha512-XZyoF5/5hZtXitIwzrU4NKK+Wtbb9aB9CezUEw2Q0wlYK8NUYQxC1rRXgNueYLtBAJwXIb+/tFVk4dozciNJMA==}
+    engines: {node: '>=22'}
+    hasBin: true
+
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
     engines: {node: '>= 8'}
@@ -13041,13 +13048,13 @@ snapshots:
 
   '@enkaku/client@0.21.3(@logtape/logtape@2.3.0)':
     dependencies:
-      '@enkaku/otel': 0.21.3
-      '@kokuin/token': 0.5.0
+      '@enkaku/otel': 0.21.3(@logtape/logtape@2.3.0)
+      '@kokuin/token': 0.5.0(@logtape/logtape@2.3.0)
       '@sozai/async': 0.2.1
       '@sozai/event': 0.1.3(@logtape/logtape@2.3.0)
       '@sozai/execution': 0.2.1
       '@sozai/log': 0.3.1(@logtape/logtape@2.3.0)
-      '@sozai/otel': 0.3.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/runtime': 0.1.0
       '@sozai/stream': 0.2.1
     transitivePeerDependencies:
@@ -13055,10 +13062,10 @@ snapshots:
 
   '@enkaku/http-fetch@0.21.3(@logtape/logtape@2.3.0)':
     dependencies:
-      '@enkaku/otel': 0.21.3
-      '@enkaku/protocol': 0.21.3
+      '@enkaku/otel': 0.21.3(@logtape/logtape@2.3.0)
+      '@enkaku/protocol': 0.21.3(@logtape/logtape@2.3.0)
       '@enkaku/transport': 0.21.3(@logtape/logtape@2.3.0)
-      '@sozai/otel': 0.3.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/runtime': 0.1.0
       '@sozai/stream': 0.2.0
       eventsource-parser: 4.1.1
@@ -13067,11 +13074,11 @@ snapshots:
 
   '@enkaku/http-serve@0.21.3(@logtape/logtape@2.3.0)':
     dependencies:
-      '@enkaku/otel': 0.21.3
-      '@enkaku/protocol': 0.21.3
+      '@enkaku/otel': 0.21.3(@logtape/logtape@2.3.0)
+      '@enkaku/protocol': 0.21.3(@logtape/logtape@2.3.0)
       '@enkaku/transport': 0.21.3(@logtape/logtape@2.3.0)
       '@sozai/async': 0.2.1
-      '@sozai/otel': 0.3.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/runtime': 0.1.0
       '@sozai/stream': 0.2.0
     transitivePeerDependencies:
@@ -13084,38 +13091,48 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/otel@0.21.0':
+  '@enkaku/otel@0.21.0(@logtape/logtape@2.3.0)':
     dependencies:
       '@opentelemetry/api': 1.9.1
-      '@sozai/otel': 0.3.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
-  '@enkaku/otel@0.21.3':
+  '@enkaku/otel@0.21.3(@logtape/logtape@2.3.0)':
     dependencies:
       '@opentelemetry/api': 1.9.1
-      '@sozai/otel': 0.3.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
-  '@enkaku/protocol@0.21.0':
+  '@enkaku/protocol@0.21.0(@logtape/logtape@2.3.0)':
     dependencies:
-      '@kokuin/token': 0.4.0
+      '@kokuin/token': 0.4.0(@logtape/logtape@2.3.0)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
-  '@enkaku/protocol@0.21.1':
+  '@enkaku/protocol@0.21.1(@logtape/logtape@2.3.0)':
     dependencies:
-      '@kokuin/token': 0.5.0
+      '@kokuin/token': 0.5.0(@logtape/logtape@2.3.0)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
-  '@enkaku/protocol@0.21.3':
+  '@enkaku/protocol@0.21.3(@logtape/logtape@2.3.0)':
     dependencies:
-      '@kokuin/token': 0.5.0
+      '@kokuin/token': 0.5.0(@logtape/logtape@2.3.0)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
   '@enkaku/server@0.21.3(@logtape/logtape@2.3.0)':
     dependencies:
-      '@enkaku/otel': 0.21.3
-      '@enkaku/protocol': 0.21.3
-      '@kokuin/capability': 0.3.0
-      '@kokuin/token': 0.5.0
+      '@enkaku/otel': 0.21.3(@logtape/logtape@2.3.0)
+      '@enkaku/protocol': 0.21.3(@logtape/logtape@2.3.0)
+      '@kokuin/capability': 0.3.0(@logtape/logtape@2.3.0)
+      '@kokuin/token': 0.5.0(@logtape/logtape@2.3.0)
       '@sozai/async': 0.2.1
       '@sozai/event': 0.1.3(@logtape/logtape@2.3.0)
       '@sozai/log': 0.3.1(@logtape/logtape@2.3.0)
-      '@sozai/otel': 0.3.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/runtime': 0.1.0
       '@sozai/schema': 0.1.2
       '@sozai/stream': 0.2.1
@@ -13124,18 +13141,18 @@ snapshots:
 
   '@enkaku/socket@0.21.0(@logtape/logtape@2.3.0)':
     dependencies:
-      '@enkaku/otel': 0.21.0
+      '@enkaku/otel': 0.21.0(@logtape/logtape@2.3.0)
       '@enkaku/transport': 0.21.3(@logtape/logtape@2.3.0)
-      '@sozai/otel': 0.3.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/stream': 0.2.1
     transitivePeerDependencies:
       - '@logtape/logtape'
 
   '@enkaku/socket@0.21.3(@logtape/logtape@2.3.0)':
     dependencies:
-      '@enkaku/otel': 0.21.3
+      '@enkaku/otel': 0.21.3(@logtape/logtape@2.3.0)
       '@enkaku/transport': 0.21.3(@logtape/logtape@2.3.0)
-      '@sozai/otel': 0.3.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/stream': 0.2.0
     transitivePeerDependencies:
       - '@logtape/logtape'
@@ -13269,17 +13286,17 @@ snapshots:
     dependencies:
       '@hapi/hoek': 9.3.0
 
-  '@hono/node-server@1.19.15(hono@4.13.10)':
+  '@hono/node-server@1.19.15(hono@4.13.11)':
     dependencies:
-      hono: 4.13.10
+      hono: 4.13.11
 
   '@hono/node-server@2.1.0(hono@4.13.1)':
     dependencies:
       hono: 4.13.1
 
-  '@hono/node-server@2.1.1(hono@4.13.10)':
+  '@hono/node-server@2.1.3(hono@4.13.11)':
     dependencies:
-      hono: 4.13.10
+      hono: 4.13.11
 
   '@huggingface/jinja@0.5.9': {}
 
@@ -13588,35 +13605,43 @@ snapshots:
       - supports-color
       - vite
 
-  '@kokuin/capability@0.3.0':
+  '@kokuin/capability@0.3.0(@logtape/logtape@2.3.0)':
     dependencies:
-      '@kokuin/token': 0.5.0
+      '@kokuin/token': 0.5.0(@logtape/logtape@2.3.0)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
-  '@kokuin/otel@0.3.0':
+  '@kokuin/otel@0.3.0(@logtape/logtape@2.3.0)':
     dependencies:
       '@opentelemetry/api': 1.9.1
-      '@sozai/otel': 0.3.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
-  '@kokuin/token@0.4.0':
+  '@kokuin/token@0.4.0(@logtape/logtape@2.3.0)':
     dependencies:
-      '@kokuin/otel': 0.3.0
+      '@kokuin/otel': 0.3.0(@logtape/logtape@2.3.0)
       '@noble/ciphers': 2.2.0
       '@noble/curves': 2.4.0
       '@noble/hashes': 2.4.0
       '@scure/base': 2.4.0
       '@sozai/codec': 0.4.0
-      '@sozai/otel': 0.3.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/schema': 0.1.2
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
-  '@kokuin/token@0.5.0':
+  '@kokuin/token@0.5.0(@logtape/logtape@2.3.0)':
     dependencies:
-      '@kokuin/otel': 0.3.0
+      '@kokuin/otel': 0.3.0(@logtape/logtape@2.3.0)
       '@noble/curves': 2.4.0
       '@noble/hashes': 2.4.0
       '@scure/base': 2.4.0
       '@sozai/codec': 0.4.1
-      '@sozai/otel': 0.3.2
-      '@sozai/schema': 0.1.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
+      '@sozai/schema': 0.1.3
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
   '@kwsites/file-exists@1.1.1(supports-color@8.1.1)':
     dependencies:
@@ -13637,8 +13662,6 @@ snapshots:
   '@lit/reactive-element@2.1.2':
     dependencies:
       '@lit-labs/ssr-dom-shim': 1.6.0
-
-  '@logtape/logtape@2.2.4': {}
 
   '@logtape/logtape@2.3.0': {}
 
@@ -13697,9 +13720,9 @@ snapshots:
 
   '@mixmark-io/domino@2.2.0': {}
 
-  '@modelcontextprotocol/client@2.1.0':
+  '@modelcontextprotocol/client@2.2.0':
     dependencies:
-      '@modelcontextprotocol/core': 2.1.0
+      '@modelcontextprotocol/core': 2.2.0
       cross-spawn: 7.0.6
       eventsource: 3.0.7
       eventsource-parser: 3.1.0
@@ -13707,26 +13730,26 @@ snapshots:
       pkce-challenge: 5.0.1
       zod: 4.6.5
 
-  '@modelcontextprotocol/core@2.1.0':
+  '@modelcontextprotocol/core@2.2.0':
     dependencies:
       zod: 4.6.5
 
-  '@modelcontextprotocol/ext-tasks@0.1.0(@modelcontextprotocol/client@2.1.0)':
+  '@modelcontextprotocol/ext-tasks@0.1.0(@modelcontextprotocol/client@2.2.0)':
     dependencies:
       zod: 4.6.5
     optionalDependencies:
-      '@modelcontextprotocol/client': 2.1.0
+      '@modelcontextprotocol/client': 2.2.0
 
-  '@modelcontextprotocol/node@2.1.0(@modelcontextprotocol/server@2.1.0)(hono@4.13.10)':
+  '@modelcontextprotocol/node@2.1.0(@modelcontextprotocol/server@2.2.0)(hono@4.13.11)':
     dependencies:
-      '@hono/node-server': 1.19.15(hono@4.13.10)
-      '@modelcontextprotocol/server': 2.1.0
+      '@hono/node-server': 1.19.15(hono@4.13.11)
+      '@modelcontextprotocol/server': 2.2.0
     optionalDependencies:
-      hono: 4.13.10
+      hono: 4.13.11
 
-  '@modelcontextprotocol/server@2.1.0':
+  '@modelcontextprotocol/server@2.2.0':
     dependencies:
-      '@modelcontextprotocol/core': 2.1.0
+      '@modelcontextprotocol/core': 2.2.0
       zod: 4.6.5
 
   '@module-federation/error-codes@0.22.0': {}
@@ -13845,33 +13868,47 @@ snapshots:
 
   '@noble/hashes@2.4.0': {}
 
-  '@node-llama-cpp/linux-arm64@3.19.0': {}
+  '@node-llama-cpp/linux-arm64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-armv7l@3.19.0': {}
+  '@node-llama-cpp/linux-armv7l@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-riscv64@3.19.0': {}
+  '@node-llama-cpp/linux-riscv64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0': {}
+  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64-cuda@3.19.0': {}
+  '@node-llama-cpp/linux-x64-cuda@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64-vulkan@3.19.0': {}
+  '@node-llama-cpp/linux-x64-vulkan@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64@3.19.0': {}
+  '@node-llama-cpp/linux-x64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/mac-arm64-metal@3.19.0': {}
+  '@node-llama-cpp/mac-arm64-metal@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/mac-x64@3.19.0': {}
+  '@node-llama-cpp/mac-x64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-arm64@3.19.0': {}
+  '@node-llama-cpp/win-arm64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64-cuda-ext@3.19.0': {}
+  '@node-llama-cpp/win-x64-cuda-ext@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64-cuda@3.19.0': {}
+  '@node-llama-cpp/win-x64-cuda@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64-vulkan@3.19.0': {}
+  '@node-llama-cpp/win-x64-vulkan@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64@3.19.0': {}
+  '@node-llama-cpp/win-x64@3.19.0':
+    optional: true
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -14156,21 +14193,29 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@reflink/reflink-darwin-arm64@0.1.19': {}
+  '@reflink/reflink-darwin-arm64@0.1.19':
+    optional: true
 
-  '@reflink/reflink-darwin-x64@0.1.19': {}
+  '@reflink/reflink-darwin-x64@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-arm64-gnu@0.1.19': {}
+  '@reflink/reflink-linux-arm64-gnu@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-arm64-musl@0.1.19': {}
+  '@reflink/reflink-linux-arm64-musl@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-x64-gnu@0.1.19': {}
+  '@reflink/reflink-linux-x64-gnu@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-x64-musl@0.1.19': {}
+  '@reflink/reflink-linux-x64-musl@0.1.19':
+    optional: true
 
-  '@reflink/reflink-win32-arm64-msvc@0.1.19': {}
+  '@reflink/reflink-win32-arm64-msvc@0.1.19':
+    optional: true
 
-  '@reflink/reflink-win32-x64-msvc@0.1.19': {}
+  '@reflink/reflink-win32-x64-msvc@0.1.19':
+    optional: true
 
   '@reflink/reflink@0.1.19':
     optionalDependencies:
@@ -14182,6 +14227,7 @@ snapshots:
       '@reflink/reflink-linux-x64-musl': 0.1.19
       '@reflink/reflink-win32-arm64-msvc': 0.1.19
       '@reflink/reflink-win32-x64-msvc': 0.1.19
+    optional: true
 
   '@rolldown/binding-android-arm-eabi@1.2.5':
     optional: true
@@ -14482,16 +14528,16 @@ snapshots:
       '@sozai/async': 0.2.1
       '@sozai/result': 0.2.0
 
-  '@sozai/flow-graph@0.1.0(@logtape/logtape@2.3.0)':
+  '@sozai/flow-graph@0.2.0(@logtape/logtape@2.3.0)':
     dependencies:
       '@noble/hashes': 2.4.0
       '@sozai/async': 0.3.0
       '@sozai/event': 0.1.4(@logtape/logtape@2.3.0)
       '@sozai/json': 0.2.0
       '@sozai/log': 0.3.1(@logtape/logtape@2.3.0)
-      '@sozai/otel': 0.3.2
+      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/runtime': 0.1.0
-      '@sozai/schema': 0.1.2
+      '@sozai/schema': 0.1.3
       '@standard-schema/spec': 1.1.0
     transitivePeerDependencies:
       - '@logtape/logtape'
@@ -14508,19 +14554,17 @@ snapshots:
     dependencies:
       '@sozai/async': 0.2.1
 
-  '@sozai/log@0.3.0':
-    dependencies:
-      '@logtape/logtape': 2.2.4
-
   '@sozai/log@0.3.1(@logtape/logtape@2.3.0)':
     dependencies:
       '@logtape/logtape': 2.3.0
 
-  '@sozai/otel@0.3.2':
+  '@sozai/otel@0.3.2(@logtape/logtape@2.3.0)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/api-logs': 0.221.0
-      '@sozai/log': 0.3.0
+      '@sozai/log': 0.3.1(@logtape/logtape@2.3.0)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
   '@sozai/result@0.2.0':
     dependencies:
@@ -14532,7 +14576,14 @@ snapshots:
     dependencies:
       '@standard-schema/spec': 1.1.0
       ajv: 8.20.0
-      ajv-formats: 3.0.1(ajv@8.20.0)
+      ajv-formats: 3.0.1
+      json-schema-to-ts: 3.1.1
+
+  '@sozai/schema@0.1.3':
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      ajv: 8.20.0
+      ajv-formats: 3.0.1
       json-schema-to-ts: 3.1.1
 
   '@sozai/stream@0.2.0':
@@ -15000,7 +15051,7 @@ snapshots:
   '@tejika/process@0.5.1(@logtape/logtape@2.3.0)':
     dependencies:
       '@enkaku/client': 0.21.3(@logtape/logtape@2.3.0)
-      '@enkaku/protocol': 0.21.1
+      '@enkaku/protocol': 0.21.1(@logtape/logtape@2.3.0)
       '@enkaku/server': 0.21.3(@logtape/logtape@2.3.0)
       '@enkaku/socket': 0.21.0(@logtape/logtape@2.3.0)
       '@sozai/lock': 0.1.0
@@ -15012,7 +15063,7 @@ snapshots:
   '@tejika/server@0.4.1(@logtape/logtape@2.3.0)':
     dependencies:
       '@enkaku/http-serve': 0.21.3(@logtape/logtape@2.3.0)
-      '@enkaku/protocol': 0.21.0
+      '@enkaku/protocol': 0.21.0(@logtape/logtape@2.3.0)
       '@hono/node-server': 2.1.0(hono@4.13.1)
       '@tejika/env': 0.5.0
       hono: 4.13.1
@@ -15152,7 +15203,7 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
-  '@types/luxon@3.7.5': {}
+  '@types/luxon@3.7.6': {}
 
   '@types/mdast@3.0.15':
     dependencies:
@@ -15527,12 +15578,12 @@ snapshots:
       clean-stack: 2.2.0
       indent-string: 4.0.0
 
-  ajv-formats@2.1.1(ajv@8.20.0):
-    optionalDependencies:
+  ajv-formats@2.1.1:
+    dependencies:
       ajv: 8.20.0
 
-  ajv-formats@3.0.1(ajv@8.20.0):
-    optionalDependencies:
+  ajv-formats@3.0.1:
+    dependencies:
       ajv: 8.20.0
 
   ajv-keywords@3.5.2(ajv@6.15.0):
@@ -16765,6 +16816,21 @@ snapshots:
     dependencies:
       eventsource-parser: 3.1.0
 
+  execa@10.0.1:
+    dependencies:
+      '@sindresorhus/merge-streams': 4.0.0
+      figures: 6.1.0
+      get-stream: 9.0.1
+      human-signals: 8.0.1
+      is-plain-obj: 4.1.0
+      is-stream: 4.0.1
+      npm-run-path: 6.0.0
+      pretty-ms: 9.3.1
+      signal-exit: 4.1.0
+      strip-final-newline: 4.0.0
+      which-command: 0.1.0
+      yoctocolors: 2.2.0
+
   execa@5.1.1:
     dependencies:
       cross-spawn: 7.0.6
@@ -17433,7 +17499,7 @@ snapshots:
 
   hono@4.13.1: {}
 
-  hono@4.13.10: {}
+  hono@4.13.11: {}
 
   hpack.js@2.1.6:
     dependencies:
@@ -20822,7 +20888,7 @@ snapshots:
     dependencies:
       '@types/json-schema': 7.0.15
       ajv: 8.20.0
-      ajv-formats: 2.1.1(ajv@8.20.0)
+      ajv-formats: 2.1.1
       ajv-keywords: 5.1.0(ajv@8.20.0)
 
   search-insights@2.17.3: {}
@@ -22059,6 +22125,8 @@ snapshots:
       webidl-conversions: 8.0.1
     transitivePeerDependencies:
       - '@noble/hashes'
+
+  which-command@0.1.0: {}
 
   which@2.0.2:
     dependencies:
