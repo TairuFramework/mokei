@@ -70,14 +70,63 @@ describe('alerter', () => {
   const json = (activationType: string, activationValue?: string) =>
     result({ stdout: JSON.stringify({ activationType, activationValue }) })
 
+  // `--json` output captured from alerter 26.5 on macOS.
+  const captured = {
+    replied: `{
+  "activationAt" : "2026-09-30 17:43:52 +0100",
+  "activationType" : "replied",
+  "activationValue" : "hi",
+  "deliveredAt" : "2026-09-30 17:43:46 +0100"
+}`,
+    actionClicked: (value: string, index: number) => `{
+  "activationAt" : "2026-09-30 17:44:04 +0100",
+  "activationType" : "actionClicked",
+  "activationValue" : "${value}",
+  "activationValueIndex" : "${index}",
+  "deliveredAt" : "2026-09-30 17:43:55 +0100"
+}`,
+    closed: `{
+  "activationAt" : "2026-09-30 17:44:15 +0100",
+  "activationType" : "closed",
+  "activationValue" : "",
+  "deliveredAt" : "2026-09-30 17:44:07 +0100"
+}`,
+    contentsClicked: `{
+  "activationAt" : "2026-09-30 17:44:22 +0100",
+  "activationType" : "contentsClicked",
+  "deliveredAt" : "2026-09-30 17:44:19 +0100"
+}`,
+    timeout: `{
+  "activationAt" : "2026-09-30 17:43:43 +0100",
+  "activationType" : "timeout",
+  "deliveredAt" : "2026-09-30 17:43:39 +0100"
+}`,
+  }
+  const stdout = (value: string) => result({ stdout: value })
+
   test.each([
-    ['replied', text, json('replied', 'hi'), { status: 'answered', value: 'hi' }],
-    ['confirm yes', confirm, json('actionClicked', 'Yes'), { status: 'answered', value: true }],
-    ['confirm no', confirm, json('actionClicked', 'No'), { status: 'answered', value: false }],
-    ['choice', choice, json('actionClicked', 'Beta'), { status: 'answered', value: 'b' }],
-    ['closed', confirm, json('closed'), { status: 'dismissed' }],
-    ['contentsClicked', confirm, json('contentsClicked'), { status: 'dismissed' }],
-    ['timeout', confirm, json('timeout'), { status: 'timeout' }],
+    ['replied', text, stdout(captured.replied), { status: 'answered', value: 'hi' }],
+    [
+      'confirm yes',
+      confirm,
+      stdout(captured.actionClicked('Yes', 0)),
+      { status: 'answered', value: true },
+    ],
+    [
+      'confirm no',
+      confirm,
+      stdout(captured.actionClicked('No', 1)),
+      { status: 'answered', value: false },
+    ],
+    [
+      'choice',
+      choice,
+      stdout(captured.actionClicked('Beta', 1)),
+      { status: 'answered', value: 'b' },
+    ],
+    ['closed', confirm, stdout(captured.closed), { status: 'dismissed' }],
+    ['contentsClicked', confirm, stdout(captured.contentsClicked), { status: 'dismissed' }],
+    ['timeout', confirm, stdout(captured.timeout), { status: 'timeout' }],
     ['runner timedOut', confirm, result({ code: null, timedOut: true }), { status: 'timeout' }],
   ])('parse %s', (_name, request, run, expected) => {
     expect(parseAlerterResult(request, run)).toEqual(expected)
