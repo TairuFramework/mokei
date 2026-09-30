@@ -400,7 +400,7 @@ test('a reused key with changed contents fails the run', async () => {
     ...askRequest,
     params: { ...askRequest.params, message: 'Something else' },
   } as InputRequest
-  const { store, tasks, taskID, key } = await recoverInput({
+  const { store, tasks, taskID } = await recoverInput({
     flow: timedFlow,
     status: 'working',
     inputs: (key) => [
@@ -413,13 +413,9 @@ test('a reused key with changed contents fails the run', async () => {
     ],
   })
   try {
-    // A plain error thrown by the work settles as a tool error result.
     expect(await settled(tasks, taskID)).toMatchObject({
-      status: 'completed',
-      result: {
-        isError: true,
-        content: [{ type: 'text', text: `Input key already issued: ${key}` }],
-      },
+      status: 'failed',
+      error: { code: -32603, message: 'Flow input key reused' },
     })
     expect((await store.get(taskID))?.inputs).toHaveLength(1)
   } finally {

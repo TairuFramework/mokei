@@ -2,7 +2,11 @@ import { TaskCancelledError } from '@mokei/context-client'
 import type { CallToolResult, InputRequest, InputResponse } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
 import type { JSONValue } from '@mokei/context-server'
-import { InputRequestWithdrawnError, type TaskHandle } from '@mokei/context-server'
+import {
+  InputRequestWithdrawnError,
+  type TaskHandle,
+  TaskInputKeyReusedError,
+} from '@mokei/context-server'
 import type { FlowDefinition, FlowGraph, FlowRun, RunState } from '@sozai/flow-graph'
 
 import { toElicitationSchema } from './definition-checks.js'
@@ -232,6 +236,16 @@ export async function startRun(params: {
       } as InputRequest,
     }
     const expired = new Error('Input deadline expired')
+    /** Asks for the request; a reused key is a bug and fails the run. */
+    async function ask(signal: AbortSignal): Promise<Record<string, InputResponse>> {
+      try {
+        return await handle.requestInput(request, { signal })
+      } catch (error) {
+        if (!(error instanceof TaskInputKeyReusedError)) throw error
+        // biome-ignore lint/style/useErrorCause: RPCError takes cause in its options object.
+        throw new RPCError({ code: -32603, message: 'Flow input key reused', cause: error })
+      }
+    }
     const isTimeout = (error: unknown) =>
       error === expired || error instanceof InputRequestWithdrawnError
 
@@ -254,7 +268,7 @@ export async function startRun(params: {
     if (deadline !== undefined && Date.now() >= deadline) {
       // Replays a stored answer, withdraws an open request, and never issues a new one.
       try {
-        responses = await handle.requestInput(request, { signal: AbortSignal.abort(expired) })
+        responses = await ask(AbortSignal.abort(expired))
       } catch (error) {
         if (!isTimeout(error)) throw error
       }
@@ -266,7 +280,7 @@ export async function startRun(params: {
           : setTimeout(() => deadlineController.abort(expired), Math.max(0, deadline - Date.now()))
       const signal = AbortSignal.any([handle.signal, deadlineController.signal])
       try {
-        responses = await handle.requestInput(request, { signal })
+        responses = await ask(signal)
       } catch (error) {
         if (handle.signal.aborted) throw new StopRun('Run stopped', { cause: error })
         if (!deadlineController.signal.aborted || !isTimeout(error)) throw error
