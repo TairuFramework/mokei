@@ -1,0 +1,44 @@
+{
+  "id": "demo/triage",
+  "name": "Demo triage",
+  "version": 1,
+  "input": {
+    "type": "object",
+    "properties": { "message": { "type": "string" } }
+  },
+  "start": "triage",
+  "nodes": {
+    "triage": {
+      "kind": "decide",
+      "state": { "ref": ["input"] },
+      "questions": {
+        "label": {
+          "type": "choice",
+          "instructions": "Is this message a bug report or a question?",
+          "criteria": {
+            "bug": "something is broken or behaves incorrectly",
+            "question": "a request for information or help"
+          }
+        }
+      },
+      "cases": [],
+      "default": "lookup"
+    },
+    "lookup": {
+      "kind": "tool",
+      "tool": "sqlite:sqlite_get",
+      "args": {
+        "sql": { "value": "SELECT :label AS label" },
+        "parameters": {
+          "object": { "label": { "ref": ["results", "triage", "label", "choice"] } }
+        }
+      },
+      "next": "done"
+    },
+    "done": {
+      "kind": "end",
+      "outcome": "triaged",
+      "output": { "row": { "ref": ["results", "lookup"] } }
+    }
+  }
+}

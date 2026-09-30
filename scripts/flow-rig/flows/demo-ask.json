@@ -1,0 +1,21 @@
+{
+  "id": "demo/ask",
+  "name": "Demo ask",
+  "version": 1,
+  "start": "ask",
+  "nodes": {
+    "ask": {
+      "kind": "input",
+      "prompt": { "value": "Enter a value" },
+      "schema": { "type": "string" },
+      "decline": { "to": "declined" },
+      "next": "answered"
+    },
+    "declined": { "kind": "end", "outcome": "declined" },
+    "answered": {
+      "kind": "end",
+      "outcome": "answered",
+      "output": { "value": { "ref": ["results", "ask"] } }
+    }
+  }
+}
