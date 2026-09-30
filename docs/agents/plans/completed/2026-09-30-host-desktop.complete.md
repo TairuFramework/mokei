@@ -17,9 +17,10 @@ headless agent notify or ask the user directly.
 ## Key design decisions
 
 - **New Node-only package `@mokei/host-desktop`** (user-approved), in the fixed release group. It
-  works with any `ContextHost`; nothing was added to `@mokei/host-node` or `@mokei/session`, so
-  headless `host-node` users never load dialog code. The only `@mokei/host` change widens the
-  direct-context config type to `Omit<ServerParams, 'transport'>`.
+  works with any `ContextHost`; nothing was added to `@mokei/host`, `@mokei/host-node` or
+  `@mokei/session`, so headless `host-node` users never load dialog code. `subscriptions` moved
+  from `ServerParams` to `ServerConfig` in `@mokei/context-server`, so direct contexts and
+  `serveProcess` can enable it (the task integration test needs it).
 - **OS tools driven directly through `execa`, without a shell** (`alerter` or `osascript` on macOS,
   `zenity` and `notify-send` on Linux). `node-notifier` was rejected: unmaintained, stale vendored
   binaries. A runner tracks every child and kills it on abort, timeout or dispose (SIGTERM, then

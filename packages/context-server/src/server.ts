@@ -158,17 +158,17 @@ export type ServerConfig = {
   resources?: ResourceDefinitions
   tools?: ToolDefinitions
   tasks?: TaskManager
-}
-
-export type ServerParams = ServerConfig & {
-  transport: ServerTransport
-  auth?: TaskOwner & { expiresAt?: number }
   /**
    * Owns resource subscriptions (SEP-1391 `subscriptions/listen`): creates and owns a
    * {@link SubscriptionHub} bound to this server's own `events`, disposing it on teardown.
    * Mutually exclusive with `subscriptionHub` -- pass one or the other, never both.
    */
   subscriptions?: boolean
+}
+
+export type ServerParams = ServerConfig & {
+  transport: ServerTransport
+  auth?: TaskOwner & { expiresAt?: number }
   /**
    * Borrows an externally-owned {@link SubscriptionHub} for stateless HTTP: the
    * server serves `subscriptions/listen` against it but neither re-subscribes its producers nor
