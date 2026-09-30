@@ -15,6 +15,14 @@ await session.addHTTPContext({ key: 'remote', url: 'https://example.com/mcp' })
 
 For spawned stdio contexts on Node, install `@mokei/session-node` and use `NodeSession`.
 
+## Tool approval metadata
+
+An agent's `toolApproval` callback may return `{ approved: true, meta }`. The session sends
+that `meta` as `_meta` on the approved tool call only, including when a stream consumer resumes
+after `tool-call-approved`. Returning a boolean keeps the existing approval behavior. This
+allows [`@mokei/decision-flow-server`](../decision-flow-server/README.md) to send a single-use
+flow grant with the run it approved.
+
 ## Server elicitation in agents
 
 Enable elicitation when creating the session, then supply `onElicitation` to answer requests.

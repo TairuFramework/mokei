@@ -7,15 +7,11 @@ import {
 } from '@mokei/context-server'
 import {
   createSystemOneClient,
-  guardQuestions,
-  moderationQuestions,
   type QuestionMap,
   questionMapSchema,
-  routerQuestions,
   type State,
   type SystemOneClient,
   stateSchema,
-  triageQuestions,
 } from '@mokei/system-one-client'
 
 export type SystemOneToolsOptions = {
@@ -28,6 +24,26 @@ export type SystemOneToolsOptions = {
 const questionsInputSchema = {
   ...questionMapSchema,
   description: 'A System One question map: each key maps to a choice/score/noul question',
+} as const satisfies Schema
+
+export const predictOutputSchema = {
+  type: 'object',
+  properties: {
+    model: { type: 'string' },
+    answers: {
+      type: 'object',
+      additionalProperties: { type: 'object', additionalProperties: true },
+    },
+    usage: {
+      type: 'object',
+      properties: { inputTokens: { type: 'number' }, outputTokens: { type: 'number' } },
+      required: ['inputTokens', 'outputTokens'],
+      additionalProperties: false,
+    },
+    extras: { type: 'object', additionalProperties: true },
+  },
+  required: ['model', 'answers', 'usage'],
+  additionalProperties: false,
 } as const satisfies Schema
 
 const env = (v?: string): string | undefined => (v != null && v !== '' ? v : undefined)
@@ -46,37 +62,6 @@ function resolveClient(options: SystemOneToolsOptions): SystemOneClient {
 export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
   const client = resolveClient(options)
 
-  function presetTool(description: string, questions: QuestionMap) {
-    return createTool({
-      description,
-      inputSchema: {
-        type: 'object',
-        properties: { state: stateSchema, model: { type: 'string' } },
-        required: ['state'],
-        additionalProperties: false,
-      } as const satisfies Schema,
-      handler: async (req) => {
-        try {
-          const result = await client.predict({
-            state: req.input.state as State,
-            questions,
-            model: req.input.model as string | undefined,
-            signal: req.signal,
-          })
-          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
-        } catch (err) {
-          if (req.signal?.aborted) {
-            throw err
-          }
-          return {
-            content: [{ type: 'text', text: (err as Error).message ?? 'Unknown error' }],
-            isError: true,
-          }
-        }
-      },
-    })
-  }
-
   return {
     predict: createTool({
       description: 'Classify text with System One typed questions (choice/score/noul)',
@@ -90,6 +75,7 @@ export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
         required: ['state', 'questions'],
         additionalProperties: false,
       } as const satisfies Schema,
+      outputSchema: predictOutputSchema,
       handler: async (req) => {
         try {
           const result = await client.predict({
@@ -98,22 +84,19 @@ export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
             model: req.input.model as string | undefined,
             signal: req.signal,
           })
-          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result) }],
+            structuredContent: result,
+            isError: false,
+          }
         } catch (err) {
           if (req.signal?.aborted) {
             throw err
           }
-          return {
-            content: [{ type: 'text', text: (err as Error).message ?? 'Unknown error' }],
-            isError: true,
-          }
+          throw new Error((err as Error).message ?? 'Unknown error', { cause: err })
         }
       },
     }),
-    route: presetTool('Route to a model tier', routerQuestions()),
-    guard: presetTool('Detect jailbreak / prompt-injection attempts', guardQuestions()),
-    moderate: presetTool('Moderate content for safety', moderationQuestions()),
-    triage: presetTool('Triage a support request', triageQuestions()),
   } satisfies ToolDefinitions
 }
 

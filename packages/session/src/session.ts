@@ -22,10 +22,14 @@ import { Disposer, raceSignal } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 import { fromStream } from '@sozai/generator'
 
+import type { JSONValue } from './agent-types.js'
+
 /** Parameters for executing a tool call the model requested. */
 export type ExecuteToolCallParams<T extends ProviderTypes = ProviderTypes> = {
   /** The tool call to execute, as returned by the provider */
   toolCall: FunctionToolCall<T['ToolCall']>
+  /** Metadata forwarded to the context tool request */
+  _meta?: Record<string, JSONValue>
   /** Aborts the tool call in flight */
   signal?: AbortSignal
   /** Rejects the tool call with a RequestTimeoutError after this many ms */
@@ -407,10 +411,11 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   }
 
   executeToolCall<P extends T = T>(params: ExecuteToolCallParams<P>): Promise<CallToolResult> {
-    const { toolCall, signal, timeout } = params
+    const { toolCall, _meta, signal, timeout } = params
     return this.#contextHost.callNamespacedTool({
       id: toolCall.name,
       arguments: JSON.parse(toolCall.arguments),
+      _meta,
       signal,
       timeout,
     })

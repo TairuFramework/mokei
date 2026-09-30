@@ -24,6 +24,7 @@ import {
   type AgentResult,
   type AgentRunParams,
   type AgentToolCallRecord,
+  type JSONValue,
   type ResolvedAgentParams,
   type ToolApprovalContext,
   type ToolApprovalFn,
@@ -530,7 +531,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
             eventHistory.push(approvalStep.value)
             approvalStep = await approval.next()
           }
-          const { approved: stepApproved, reason: stepReason } = approvalStep.value
+          const { approved: stepApproved, reason: stepReason, meta } = approvalStep.value
 
           const record: AgentToolCallRecord = {
             call: toolCall,
@@ -579,7 +580,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
             // Execute tool
             let settled = false
             this.#toolCallsInFlight++
-            const execution = this.#executeToolCall(toolCall, emitEvent, run).finally(() => {
+            const execution = this.#executeToolCall(toolCall, emitEvent, run, meta).finally(() => {
               settled = true
               this.#toolCallsInFlight--
               this.#releaseElicitationIfIdle()
@@ -706,7 +707,10 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     context: ToolApprovalContext,
     emitEvent: (event: AgentEvent<T>) => AgentEvent<T>,
     signal: AbortSignal,
-  ): AsyncGenerator<AgentEvent<T>, { approved: boolean; reason?: string }> {
+  ): AsyncGenerator<
+    AgentEvent<T>,
+    { approved: boolean; reason?: string; meta?: Record<string, JSONValue> }
+  > {
     if (strategy === 'auto') {
       yield emitEvent({ type: 'tool-call-approved', toolCall, timestamp: Date.now() })
       return { approved: true }
@@ -735,11 +739,13 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 
     let approved: boolean
     let reason: string | undefined
+    let meta: Record<string, JSONValue> | undefined
     if (typeof result === 'boolean') {
       approved = result
     } else {
       approved = result.approved
       reason = result.reason
+      meta = result.meta
     }
 
     if (approved) {
@@ -747,7 +753,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     } else {
       yield emitEvent({ type: 'tool-call-denied', toolCall, reason, timestamp: Date.now() })
     }
-    return { approved, reason }
+    return { approved, reason, meta }
   }
 
   #releaseElicitationIfIdle(): void {
@@ -758,6 +764,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     toolCall: FunctionToolCall<unknown>,
     emitEvent: (event: AgentEvent<T>) => AgentEvent<T>,
     run: AgentRunState<T>,
+    meta?: Record<string, JSONValue>,
   ): Promise<{ result?: CallToolResult; error?: Error }> {
     const { signal } = run
 
@@ -810,6 +817,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       // Execute via session (handles namespaced tool parsing internally)
       const result = await this.#params.session.executeToolCall({
         toolCall,
+        _meta: meta,
         signal: callController.signal,
       })
       await this.#settleToolEvents(run, activeTool, () => ({

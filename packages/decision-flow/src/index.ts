@@ -7,6 +7,9 @@ export {
   decideKind,
   decideNodeSchema,
   InvalidDecisionStateError,
+  type PredictCall,
+  type Predictor,
+  type PredictParams,
 } from './decide-node.js'
 export {
   createDecisionFlowGraph,

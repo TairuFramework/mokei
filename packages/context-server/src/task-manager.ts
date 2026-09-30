@@ -599,11 +599,21 @@ class ManagedTasks implements TaskManager {
   ): Promise<void> {
     await this.#visible(taskID, owner)
     const updated = await this.#mutate(taskID, (record) => {
-      if (record.status !== 'input_required') return undefined
+      const keys = Object.keys(responses)
+      const notAwaiting = (key: string) =>
+        new RPCError({
+          code: INVALID_PARAMS,
+          message: `Task is not awaiting input for ${key}`,
+          data: { key },
+        })
+      if (record.status !== 'input_required') {
+        if (keys[0] !== undefined) throw notAwaiting(keys[0])
+        return undefined
+      }
       const accepted: Record<string, InputResponse> = { ...record.inputResponses }
       for (const [key, response] of Object.entries(responses)) {
         const request = record.inputRequests?.[key]
-        if (request === undefined || accepted[key] !== undefined) continue
+        if (request === undefined || accepted[key] !== undefined) throw notAwaiting(key)
         if (!responseMatches(request, response))
           throw new RPCError({
             code: INVALID_PARAMS,

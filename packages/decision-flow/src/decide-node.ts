@@ -1,4 +1,9 @@
-import { type QuestionMap, questionMapSchema, type SystemOneClient } from '@mokei/system-one-client'
+import {
+  type PredictResult,
+  type QuestionMap,
+  questionMapSchema,
+  type SystemOnePredictParams,
+} from '@mokei/system-one-client'
 import {
   type ExecuteContext,
   type Filter,
@@ -15,6 +20,12 @@ import { describeDecisionError, retryableDecision } from './decide-error.js'
 import { decideResultSchema } from './result-schema.js'
 
 const tracer = createTracerFactory('mokei')('decision-flow')
+
+export type PredictCall = { runID: string; invocationID: string; attempt: number }
+
+export type PredictParams = SystemOnePredictParams<QuestionMap> & { call?: PredictCall }
+
+export type Predictor = { predict(params: PredictParams): Promise<PredictResult<QuestionMap>> }
 
 export type DecideNode = {
   kind: 'decide'
@@ -42,7 +53,7 @@ export class InvalidDecisionStateError extends Error {
 }
 
 /** Create a flow-graph node kind that runs a System One decision. */
-export function decideKind(params: { client: SystemOneClient }): NodeKind<DecideNode> {
+export function decideKind(params: { client: Predictor }): NodeKind<DecideNode> {
   return {
     kind: 'decide' as const,
     schema: decideNodeSchema,
@@ -82,6 +93,11 @@ export function decideKind(params: { client: SystemOneClient }): NodeKind<Decide
             questions: node.questions,
             model: node.model,
             signal: ctx.signal,
+            call: {
+              runID: ctx.runID,
+              invocationID: ctx.invocationID,
+              attempt: ctx.attempt,
+            },
           })
           if (!ended) {
             span.setAttribute('system_one.model', prediction.model)

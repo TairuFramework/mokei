@@ -6,6 +6,7 @@
 export {
   createSystemOneConfig,
   createSystemOneTools,
+  predictOutputSchema,
   type SystemOneServerTypes,
   type SystemOneToolsOptions,
 } from './config.js'

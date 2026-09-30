@@ -300,10 +300,26 @@ export class TaskWaiter {
         .fulfil(key, request, entry.controller.signal)
         .then(async (response) => {
           if (!Object.hasOwn(entry.inputs, key)) return
-          await this.#params.request('tasks/update', {
-            taskId: taskID,
-            inputResponses: { [key]: response },
-          })
+          try {
+            await this.#params.request('tasks/update', {
+              taskId: taskID,
+              inputResponses: { [key]: response },
+            })
+          } catch (error) {
+            if (
+              !(error instanceof RPCError) ||
+              error.code !== -32602 ||
+              typeof error.data !== 'object' ||
+              error.data === null ||
+              !('key' in error.data) ||
+              error.data.key !== key
+            )
+              throw error
+            const snapshot = await this.#get(taskID, entry.controller.signal)
+            if (snapshot.status === 'input_required' && Object.hasOwn(snapshot.inputRequests, key))
+              throw error
+            this.#observe(entry, snapshot)
+          }
         })
         .catch((error: unknown) => {
           entry.inputError =

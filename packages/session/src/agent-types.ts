@@ -4,6 +4,14 @@ import type { FunctionToolCall, Message, ModelProvider, ProviderTypes } from '@m
 
 import type { Session } from './session.js'
 
+export type JSONValue =
+  | null
+  | boolean
+  | number
+  | string
+  | Array<JSONValue>
+  | { [key: string]: JSONValue }
+
 /**
  * Tool approval strategy for agent execution.
  *
@@ -57,6 +65,7 @@ export type ToolApprovalContext = {
 export type ToolApprovalDecision = {
   approved: boolean
   reason?: string
+  meta?: Record<string, JSONValue>
 }
 
 /** Request handed to an agent's elicitation callback. */
@@ -204,7 +213,7 @@ export type AgentReasoningCompleteEvent = {
 
 /**
  * Emitted when a tool call is pending approval.
- * Emitted when toolApproval is 'ask' or a ToolApprovalFn (not for 'auto'/'never').
+ * Emitted when toolApproval is 'ask' or any ToolApprovalFn, including wrapped strategies.
  */
 export type AgentToolCallPendingEvent = {
   type: 'tool-call-pending'

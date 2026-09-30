@@ -242,6 +242,9 @@ catalogs:
     '@sozai/stream':
       specifier: ^0.2.1
       version: 0.2.1
+    '@standard-schema/spec':
+      specifier: ^1.1.0
+      version: 1.1.0
     '@tabler/icons-react':
       specifier: ^3.48.0
       version: 3.48.0
@@ -412,6 +415,9 @@ importers:
       '@mokei/decision-flow':
         specifier: workspace:^
         version: link:../packages/decision-flow
+      '@mokei/decision-flow-server':
+        specifier: workspace:^
+        version: link:../packages/decision-flow-server
       '@mokei/host':
         specifier: workspace:^
         version: link:../packages/host
@@ -578,6 +584,9 @@ importers:
         specifier: workspace:^
         version: link:../../packages/system-one-client
     devDependencies:
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.2
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
@@ -919,6 +928,52 @@ importers:
       '@sozai/log':
         specifier: 'catalog:'
         version: 0.3.1(@logtape/logtape@2.3.0)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.3
+
+  packages/decision-flow-server:
+    dependencies:
+      '@mokei/context-client':
+        specifier: workspace:^
+        version: link:../context-client
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+      '@mokei/context-rpc':
+        specifier: workspace:^
+        version: link:../context-rpc
+      '@mokei/context-server':
+        specifier: workspace:^
+        version: link:../context-server
+      '@mokei/decision-flow':
+        specifier: workspace:^
+        version: link:../decision-flow
+      '@mokei/host':
+        specifier: workspace:^
+        version: link:../host
+      '@mokei/session':
+        specifier: workspace:^
+        version: link:../session
+      '@mokei/system-one-client':
+        specifier: workspace:^
+        version: link:../system-one-client
+      '@sozai/flow-graph':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.0)
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.2
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
+    devDependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.0)
+      '@mokei/mcp-system-one':
+        specifier: workspace:^
+        version: link:../../mcp-servers/system-one
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3

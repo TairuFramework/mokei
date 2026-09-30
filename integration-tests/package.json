@@ -18,6 +18,7 @@
     "@mokei/context-server": "workspace:^",
     "@mokei/context-server-node": "workspace:^",
     "@mokei/decision-flow": "workspace:^",
+    "@mokei/decision-flow-server": "workspace:^",
     "@mokei/host": "workspace:^",
     "@mokei/host-node": "workspace:^",
     "@mokei/http-client": "workspace:^",

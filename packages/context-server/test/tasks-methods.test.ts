@@ -315,7 +315,7 @@ describe('task methods', () => {
     await request('tasks/cancel', { taskId: created.taskId, _meta: declared })
   })
 
-  test('tasks/update merges racing partial responses and ignores stale keys', async () => {
+  test('tasks/update merges racing partial responses and rejects stale keys', async () => {
     const store = createMemoryTaskStore()
     const manager = createTaskManager({ store })
     const request = setup(manager)
@@ -329,7 +329,7 @@ describe('task methods', () => {
     await Promise.all([
       request('tasks/update', {
         taskId: created.taskId,
-        inputResponses: { a: rootsResponse, stale: { action: 'decline' } },
+        inputResponses: { a: rootsResponse },
         _meta: declared,
       }),
       request('tasks/update', {
@@ -347,10 +347,13 @@ describe('task methods', () => {
       inputResponses: { a: rootsResponse },
       _meta: declared,
     })
-    expect(stale.result).toMatchObject({ resultType: 'complete' })
+    expect(stale.error).toMatchObject({
+      code: -32602,
+      message: 'Task is not awaiting input for a',
+    })
   })
 
-  test('tasks/update keeps partial input outstanding and ignores an answered key', async () => {
+  test('tasks/update keeps partial input outstanding and rejects an answered key', async () => {
     const manager = createTaskManager()
     const request = setup(manager)
     const created = await createTask(manager, async (handle) => {
@@ -371,10 +374,42 @@ describe('task methods', () => {
       inputResponses: { a: { action: 'decline' }, b: rootsResponse },
       _meta: declared,
     })
-    expect(second.error).toBeUndefined()
+    expect(second.error).toMatchObject({
+      code: -32602,
+      message: 'Task is not awaiting input for a',
+    })
+    expect((await manager.get(created.taskId)).status).toBe('input_required')
+    await request('tasks/update', {
+      taskId: created.taskId,
+      inputResponses: { b: rootsResponse },
+      _meta: declared,
+    })
     await vi.waitFor(async () => {
       expect((await manager.get(created.taskId)).status).toBe('completed')
     })
+  })
+
+  test('tasks/update rejects keys absent from outstanding input', async () => {
+    const manager = createTaskManager()
+    const request = setup(manager)
+    const created = await createTask(manager, async (handle) => {
+      await handle.requestInput({ ask: rootsRequest })
+      return result
+    })
+    await vi.waitFor(async () => {
+      expect((await manager.get(created.taskId)).status).toBe('input_required')
+    })
+    const response = await request('tasks/update', {
+      taskId: created.taskId,
+      inputResponses: { stale: rootsResponse },
+      _meta: declared,
+    })
+    expect(response.error).toMatchObject({
+      code: -32602,
+      message: 'Task is not awaiting input for stale',
+    })
+    expect((await manager.get(created.taskId)).status).toBe('input_required')
+    await request('tasks/cancel', { taskId: created.taskId, _meta: declared })
   })
 
   test('tasks/cancel acknowledges a cancellation and leaves completed tasks unchanged', async () => {
