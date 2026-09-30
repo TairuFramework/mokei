@@ -213,6 +213,8 @@ class ManagedTasks implements TaskManager {
   }>()
   #timer: ReturnType<typeof setInterval>
   #disposed = false
+  /** Aborted on disposal, so backoff sleeps end instead of holding the event loop. */
+  #disposal = new AbortController()
 
   constructor(params: TaskManagerParams) {
     this.#store = params.store ?? createMemoryTaskStore()
@@ -606,9 +608,24 @@ class ManagedTasks implements TaskManager {
       } catch (error) {
         this.#events.fire('taskError', { taskID, error })
       }
-      await new Promise((resolve) => setTimeout(resolve, delay))
+      await this.#sleep(delay)
       delay = Math.min(delay * 2, WITHDRAW_BACKOFF_MS.max)
     }
+  }
+
+  /** Resolves after `ms`, or as soon as the manager is disposed. */
+  #sleep(ms: number): Promise<void> {
+    const signal = this.#disposal.signal
+    if (signal.aborted) return Promise.resolve()
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer)
+        signal.removeEventListener('abort', done)
+        resolve()
+      }
+      const timer = setTimeout(done, ms)
+      signal.addEventListener('abort', done, { once: true })
+    })
   }
 
   async get(taskID: string, owner?: TaskOwner): Promise<DetailedTask> {
@@ -724,6 +741,7 @@ class ManagedTasks implements TaskManager {
   async dispose(): Promise<void> {
     await this.#ready
     this.#disposed = true
+    this.#disposal.abort()
     clearInterval(this.#timer)
     for (const taskID of this.#controllers.keys())
       this.#abort(taskID, new Error('Task manager disposed'))

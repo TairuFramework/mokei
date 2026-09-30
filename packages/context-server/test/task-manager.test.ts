@@ -512,8 +512,51 @@ describe('task manager', () => {
       message: 'Task is not awaiting input for ask',
       data: { key: 'ask' },
     })
-    await expect(handle?.requestInput({ ask: rootsRequest })).rejects.toThrow()
+    await expect(handle?.requestInput({ ask: rootsRequest })).rejects.toThrow(
+      'Task is no longer active',
+    )
     await manager.dispose()
+  })
+
+  test('dispose ends the withdraw retry loop during persistent store failures', async () => {
+    vi.useFakeTimers()
+    try {
+      const base = createMemoryTaskStore()
+      const failure = new Error('Store unavailable')
+      const store = {
+        ...base,
+        update: async (...args: Parameters<typeof base.update>) => {
+          if (args[1].inputs?.at(-1)?.outcome === 'withdrawn') throw failure
+          return base.update(...args)
+        },
+      }
+      const manager = createTaskManager({ store })
+      const errors: Array<{ taskID?: string; error: unknown }> = []
+      manager.events.on('taskError', (event) => {
+        errors.push(event)
+      })
+      const controller = new AbortController()
+      await manager.create({
+        toolName: 'echo',
+        tool,
+        clientCapabilities: { roots: {} },
+        work: async (task) => {
+          await task.requestInput({ ask: rootsRequest }, { signal: controller.signal })
+          return result
+        },
+      })
+      await vi.advanceTimersByTimeAsync(0)
+      controller.abort(new Error('deadline'))
+      // Attempts at 0, 10, 30 and 70 ms, then a 80 ms backoff sleep is pending.
+      await vi.advanceTimersByTimeAsync(75)
+      expect(errors).toHaveLength(4)
+      await manager.dispose()
+      expect(vi.getTimerCount()).toBe(0)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(errors).toHaveLength(4)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   test('merges concurrent status and checkpoint writes', async () => {
@@ -536,7 +579,7 @@ describe('task manager', () => {
       resumeData: { step: 2 },
     })
     await manager.cancel(created.taskId)
-    await expect(handle.checkpoint({ step: 3 })).rejects.toThrow()
+    await expect(handle.checkpoint({ step: 3 })).rejects.toThrow('Task cancelled')
     await manager.dispose()
   })
 
