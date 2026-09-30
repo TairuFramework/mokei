@@ -181,14 +181,18 @@ function propertyValidationSchema(schema: unknown): SchemaObject | false {
 }
 
 function contentValidationSchema(schema: RequestedSchema): SchemaObject {
-  const properties: Record<string, SchemaObject | false> = {}
-  for (const [name, property] of Object.entries(schema.properties ?? {})) {
-    properties[name] = propertyValidationSchema(property)
-  }
+  // fromEntries defines own properties, so a property named __proto__ stays a property
+  const properties: Record<string, SchemaObject | false> = Object.fromEntries(
+    Object.entries(schema.properties ?? {}).map(([name, property]) => [
+      name,
+      propertyValidationSchema(property),
+    ]),
+  )
+  const required: Array<unknown> = Array.isArray(schema.required) ? schema.required : []
   return {
     type: 'object',
     properties,
-    required: stringList(schema.required) ?? [],
+    required: required.filter((name): name is string => typeof name === 'string'),
     additionalProperties: false,
   }
 }

@@ -183,3 +183,23 @@ describe('a schema that fails to compile', () => {
     inbox.dispose()
   })
 })
+
+describe('malformed requested schemas', () => {
+  test('a property named __proto__ is reported on that field only', () => {
+    const schema = JSON.parse(
+      '{"type":"object","properties":{"__proto__":{"type":"string"},"b":{"type":"string"}}}',
+    )
+    expect(validateContent(schema, JSON.parse('{"__proto__":"a","b":"x"}'))).toEqual([
+      '__proto__: unknown property',
+    ])
+  })
+
+  test('a non-string entry in required keeps the other requirements', () => {
+    const schema = {
+      type: 'object',
+      properties: { a: { type: 'string' } },
+      required: ['a', 5],
+    } as unknown as FormParams['requestedSchema']
+    expect(validateContent(schema, {})).not.toEqual([])
+  })
+})
