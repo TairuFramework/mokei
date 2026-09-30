@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util'
-import type { DetailedTask, InputResponse } from '@mokei/context-protocol'
+import { type DetailedTask, INVALID_PARAMS, type InputResponse } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
 import { test } from 'vitest'
 
@@ -90,9 +90,10 @@ test.each(Array.from({ length: SEEDS }, (_, seed) => seed))(
     const signalled = track(worker.requestInput(requests, { signal: controller.signal }))
     const duplicate = track(worker.requestInput(requests))
     const others: Array<Settlement> = []
-    const rpcOthers: Array<Settlement> = []
-    if (choose() < 0.5) rpcOthers.push(track(manager.update(taskID, { a: responses.a })))
-    if (choose() < 0.5) rpcOthers.push(track(manager.update(taskID, { b: responses.b })))
+    const updates: Array<{ key: 'a' | 'b'; settlement: Settlement }> = []
+    for (const key of ['a', 'b'] as const)
+      if (choose() < 0.5)
+        updates.push({ key, settlement: track(manager.update(taskID, { [key]: responses[key] })) })
     // The abort waits on a scheduled read, so the scheduler places it among the writes.
     if (choose() < 0.5)
       others.push(track(store.get(taskID).then(() => controller.abort(abortReason))))
@@ -101,10 +102,28 @@ test.each(Array.from({ length: SEEDS }, (_, seed) => seed))(
     await drain()
 
     commits.forEach((record, index) => {
-      if ((record.status === 'input_required') !== isOpen(record))
+      const latest = record.inputs.at(-1)
+      // Terminal writes leave `inputs` unchanged, so an open-looking latest entry is allowed there.
+      if (
+        !isTerminal(record) &&
+        (record.status === 'input_required') !== (latest != null && latest.outcome === undefined)
+      )
+        fail(`commit ${index} has status ${record.status} with latest ${JSON.stringify(latest)}`)
+      record.inputs.forEach((item, position) => {
+        if (item.id !== position + 1) fail(`commit ${index} has entry ids out of order`)
+      })
+      const previous = commits[index - 1]
+      if (previous === undefined) return
+      if (Date.parse(record.lastUpdatedAt) <= Date.parse(previous.lastUpdatedAt))
         fail(
-          `commit ${index} has status ${record.status} with latest ${JSON.stringify(record.inputs.at(-1))}`,
+          `commit ${index} lastUpdatedAt ${record.lastUpdatedAt} is not after the previous commit`,
         )
+      if (record.inputs.length < previous.inputs.length)
+        fail(`commit ${index} dropped input entries`)
+      previous.inputs.forEach((item, position) => {
+        if (item.outcome !== undefined && record.inputs[position]?.outcome !== item.outcome)
+          fail(`commit ${index} changed the settled outcome of entry ${item.id}`)
+      })
     })
     events.forEach((event, index) => {
       if ('inputRequests' in event && Object.keys(event.inputRequests ?? {}).length === 0)
@@ -114,14 +133,21 @@ test.each(Array.from({ length: SEEDS }, (_, seed) => seed))(
     for (const settlement of others)
       if (settlement.state !== 'fulfilled')
         fail(`abort or cancel did not settle: ${settlement.state}`)
-    for (const settlement of rpcOthers)
-      if (
-        settlement.state === 'pending' ||
-        (settlement.state === 'rejected' && !(settlement.error instanceof RPCError))
-      )
-        fail(`update settled as ${settlement.state}`)
-
     const final = commits.at(-1)
+    for (const { key, settlement } of updates) {
+      if (settlement.state === 'pending') fail(`update of ${key} is pending`)
+      else if (settlement.state === 'fulfilled') {
+        // An accepted answer is never lost.
+        if (!final?.inputs.some((item) => isDeepStrictEqual(item.responses[key], responses[key])))
+          fail(`update of ${key} resolved but no entry holds its response`)
+      } else if (
+        !(settlement.error instanceof RPCError) ||
+        settlement.error.code !== INVALID_PARAMS ||
+        settlement.error.message !== `Task is not awaiting input for ${key}`
+      )
+        fail(`update of ${key} rejected with ${String(settlement.error)}`)
+    }
+
     const entry = final?.inputs.at(-1)
     const terminal = isTerminal(final)
     for (const [name, settlement] of [
@@ -138,7 +164,8 @@ test.each(Array.from({ length: SEEDS }, (_, seed) => seed))(
           fail(`${name} was withdrawn while the final entry is ${JSON.stringify(entry)}`)
       } else if (name === 'signalled' && settlement.error === abortReason) {
         // Aborted before this call issued the request: it throws the reason without writing, and
-        // never attaches, so nothing withdraws the request the duplicate may have issued.
+        // never attaches, so nothing withdraws the request the duplicate may have issued. This
+        // cannot tell apart a call that attached and then threw without withdrawing.
         if (entry?.outcome === 'withdrawn') fail('signalled threw its abort reason but withdrew')
       } else if (
         !terminal ||

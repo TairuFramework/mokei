@@ -42,10 +42,14 @@ async function startTask(
   return { manager, taskID: created.taskId, input: input as Promise<unknown> }
 }
 
-/** Recovers the task on a second instance whose worker repeats `requests`. */
+/**
+ * Recovers the task on a second instance whose worker repeats `requests`. With a `signal`, the
+ * worker hangs once the input settles either way, so every write comes from the input lifecycle.
+ */
 async function recoverTask(
   store: TaskStore,
   requests: Record<string, InputRequest>,
+  signal?: AbortSignal,
 ): Promise<{ manager: TaskManager; input: Promise<Record<string, InputResponse>> }> {
   // Wrapped, so resolving does not adopt the input promise's own outcome.
   const started = Promise.withResolvers<{ input: Promise<Record<string, InputResponse>> }>()
@@ -53,8 +57,12 @@ async function recoverTask(
     store,
     recover: async (_record, resume) => {
       await resume(async (task: TaskHandle) => {
-        const input = task.requestInput(requests)
+        const input = task.requestInput(requests, { signal })
         started.resolve({ input })
+        if (signal !== undefined) {
+          await input.catch(() => {})
+          await new Promise(() => {})
+        }
         await input
         return result
       })
@@ -138,5 +146,57 @@ describe('task input recovery', () => {
       { id: 1, requests: { ask: rootsRequest }, responses: {} },
     ])
     await second.manager.dispose()
+  })
+
+  describe('deadline passed during downtime', () => {
+    const deadline = new Error('deadline')
+
+    test('answered: resolves with the stored responses without writing', async () => {
+      const store = createMemoryTaskStore()
+      const first = await startTask(store)
+      await first.manager.update(first.taskID, { ask: rootsResponse })
+      await first.manager.dispose()
+      const before = await store.get(first.taskID)
+
+      const second = await recoverTask(store, { ask: rootsRequest }, AbortSignal.abort(deadline))
+      await expect(second.input).resolves.toEqual({ ask: rootsResponse })
+      expect(await store.get(first.taskID)).toEqual(before)
+      await second.manager.dispose()
+    })
+
+    test('withdrawn: rejects with InputRequestWithdrawnError without writing', async () => {
+      const store = createMemoryTaskStore()
+      const controller = new AbortController()
+      const first = await startTask(store, controller.signal)
+      controller.abort(deadline)
+      await expect(first.input).rejects.toBeInstanceOf(InputRequestWithdrawnError)
+      await first.manager.dispose()
+      const before = await store.get(first.taskID)
+
+      const second = await recoverTask(store, { ask: rootsRequest }, AbortSignal.abort(deadline))
+      await expect(second.input).rejects.toMatchObject({ taskID: first.taskID, id: 1 })
+      await expect(second.input).rejects.toBeInstanceOf(InputRequestWithdrawnError)
+      expect(await store.get(first.taskID)).toEqual(before)
+      await second.manager.dispose()
+    })
+
+    test('open: withdraws the request and rejects with InputRequestWithdrawnError', async () => {
+      const store = createMemoryTaskStore()
+      const first = await startTask(store)
+      await first.manager.dispose()
+
+      // The same request re-attaches, the aborted signal withdraws it, and the waiter reports
+      // the committed outcome (spec requestInput steps 1-3); the abort reason is only thrown for a
+      // request that was never issued.
+      const second = await recoverTask(store, { ask: rootsRequest }, AbortSignal.abort(deadline))
+      await expect(second.input).rejects.toMatchObject({ taskID: first.taskID, id: 1 })
+      await expect(second.input).rejects.toBeInstanceOf(InputRequestWithdrawnError)
+      const stored = await store.get(first.taskID)
+      expect(stored?.status).toBe('working')
+      expect(stored?.inputs).toEqual([
+        { id: 1, requests: { ask: rootsRequest }, responses: {}, outcome: 'withdrawn' },
+      ])
+      await second.manager.dispose()
+    })
   })
 })
