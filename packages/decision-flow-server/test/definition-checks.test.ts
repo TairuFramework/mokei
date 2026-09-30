@@ -239,9 +239,55 @@ test('flowPlan lists sorted unique tool IDs and a factory predictor tool for dec
     done: { kind: 'end', outcome: 'done' },
   })
   const factory = Object.assign((_run: { depth: number }) => predictor, { tool: 'm:predict' })
-  expect(flowPlan(flow, factory)).toEqual(['a:tool', 'm:predict', 'z:tool'])
-  expect(flowPlan(flow, predictor)).toEqual(['a:tool', 'z:tool'])
-  expect(flowPlan(definition({ done: { kind: 'end', outcome: 'done' } }), factory)).toEqual([])
+  const { lookup } = createFlowRegistry([])
+  expect(flowPlan(flow, factory, lookup)).toEqual(['a:tool', 'm:predict', 'z:tool'])
+  expect(flowPlan(flow, predictor, lookup)).toEqual(['a:tool', 'z:tool'])
+  expect(flowPlan(definition({ done: { kind: 'end', outcome: 'done' } }), factory, lookup)).toEqual(
+    [],
+  )
+})
+
+test('flowPlan includes callee tools and a callee decide predictor', () => {
+  const root = {
+    ...definition({
+      call: { kind: 'call', flow: 'sub', version: 1, next: 'done' },
+      tool: { kind: 'tool', tool: 'a:tool', args: {}, next: 'done' },
+      done: end,
+    }),
+    id: 'root',
+  }
+  const sub = {
+    ...definition({
+      tool: { kind: 'tool', tool: 'b:x', args: {}, next: 'decide' },
+      decide: { kind: 'decide', default: 'done' },
+      done: end,
+    }),
+    id: 'sub',
+  }
+  const factory = Object.assign((_run: { depth: number }) => predictor, { tool: 'm:predict' })
+  const { lookup } = createFlowRegistry([sub])
+  expect(flowPlan(root, factory, lookup)).toEqual(['a:tool', 'b:x', 'm:predict'])
+})
+
+test('flowPlan terminates on reference cycles', () => {
+  const a = {
+    ...definition({
+      call: { kind: 'call', flow: 'b', version: 1, next: 'done' },
+      tool: { kind: 'tool', tool: 'a:tool', args: {}, next: 'done' },
+      done: end,
+    }),
+    id: 'a',
+  }
+  const b = {
+    ...definition({
+      call: { kind: 'call', flow: 'a', version: 1, next: 'done' },
+      tool: { kind: 'tool', tool: 'b:tool', args: {}, next: 'done' },
+      done: end,
+    }),
+    id: 'b',
+  }
+  const { lookup } = createFlowRegistry([a, b])
+  expect(flowPlan(a, predictor, lookup)).toEqual(['a:tool', 'b:tool'])
 })
 
 const end = { kind: 'end', outcome: 'done' } as const
@@ -335,6 +381,23 @@ test('malformed definitions return issues and never throw', async () => {
   for (const input of inputs) {
     const checked = await check(input, [bad])
     expect(checked.issues).toBeDefined()
+  }
+})
+
+test('reports issues for a malformed callee reached from a well-formed root', async () => {
+  const root = {
+    id: 'root',
+    name: 'Root',
+    version: 1,
+    start: 'c',
+    nodes: { c: { kind: 'call', flow: 'bad', next: 'done' }, done: end },
+  }
+  const base = { id: 'bad', name: 'Bad', version: 1, start: 'done' }
+  for (const bad of [base, { ...base, nodes: { done: 3 } }] as Array<FlowDefinition>) {
+    const checked = await check(root, [bad])
+    expect(
+      checked.issues?.some((issue) => issue.path[0] === 'flows' && issue.path[1] === 'bad'),
+    ).toBe(true)
   }
 })
 

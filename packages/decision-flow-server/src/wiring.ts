@@ -191,7 +191,7 @@ export async function addDecisionFlow(
           elicitation: host.elicitationEnabled,
         })
         if (checked.issues) return true
-        const planned = flowPlan(definition as FlowDefinition, predictor)
+        const planned = flowPlan(definition as FlowDefinition, predictor, checked.lookup)
         const enriched = {
           ...request,
           flow: {
