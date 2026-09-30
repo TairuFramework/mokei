@@ -23,4 +23,14 @@ export {
   type ForcedBackends,
   selectBackends,
 } from './detect.js'
+export {
+  createInputInbox,
+  type DesktopElicitRequest,
+  InboxAnswerInvalidError,
+  InboxDisposedError,
+  type InboxPrompt,
+  type InputInbox,
+  type InputInboxEvents,
+  type PendingInput,
+} from './inbox.js'
 export { createRunner, type Runner, type RunOptions, type RunResult } from './runner.js'
