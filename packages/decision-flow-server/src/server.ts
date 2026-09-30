@@ -13,10 +13,10 @@ import { digestDefinition, type FlowDefinition } from '@sozai/flow-graph'
 import { MAX_FLOW_DEPTH, readFlowDepth } from './call-meta.js'
 import { checkFlow } from './definition-checks.js'
 import { type ResumeDataV1, startRun } from './driver.js'
-import { flowInputSchema, flowToolName } from './flow-tools.js'
+import { flowInputSchema, flowSummaries, flowToolName } from './flow-tools.js'
 import type { PredictorFactory } from './predictor.js'
 import { createRecovery, recoveryToolMap } from './recovery.js'
-import { createFlowRegistry } from './registry.js'
+import { createFlowRegistry, type FlowRegistry } from './registry.js'
 import type { ToolCaller } from './tool-caller.js'
 
 export type ApprovalHook = (params: {
@@ -30,6 +30,8 @@ export type DecisionFlowServerParams = {
   predictor: Predictor | PredictorFactory
   tasks: TaskManager
   flows?: Array<FlowDefinition>
+  /** Wins over `flows` when both are given. */
+  registry?: FlowRegistry
   approval: ApprovalHook
   elicitation?: () => boolean
 }
@@ -45,7 +47,7 @@ export async function createDecisionFlowServer(params: DecisionFlowServerParams)
   recover: NonNullable<TaskManagerParams['recover']>
 }> {
   const elicitation = params.elicitation ?? (() => false)
-  const registry = createFlowRegistry(params.flows ?? [])
+  const registry = params.registry ?? createFlowRegistry(params.flows ?? [])
   const tools: ToolDefinitions = {
     check_flow: {
       description: 'Check a decision flow definition',
@@ -69,6 +71,22 @@ export async function createDecisionFlowServer(params: DecisionFlowServerParams)
             issues: [...(checked.issues ?? []), ...checked.warnings],
             formatted: checked.formatted,
           },
+        }
+      },
+    },
+    list_flows: {
+      description: 'List the registered decision flows',
+      inputSchema: { type: 'object' },
+      handler: () => {
+        const flows = flowSummaries(registry)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: flows.map((flow) => `${flow.id} v${flow.version}: ${flow.name}`).join('\n'),
+            },
+          ],
+          structuredContent: { flows },
         }
       },
     },
@@ -153,7 +171,7 @@ export async function createDecisionFlowServer(params: DecisionFlowServerParams)
     )
   }
 
-  for (const flow of params.flows ?? []) {
+  for (const flow of registry.flows) {
     const name = flowToolName(flow.id)
     if (Object.hasOwn(tools, name)) throw new Error(`Flow tool name collision: ${name}`)
     const inputSchema = flowInputSchema(flow)
@@ -173,7 +191,7 @@ export async function createDecisionFlowServer(params: DecisionFlowServerParams)
   }
 
   const recover = createRecovery({
-    flows: new Map((params.flows ?? []).map((flow) => [flow.id, flow])),
+    flows: new Map(registry.flows.map((flow) => [flow.id, flow])),
     registry,
     caller: params.caller,
     predictor: params.predictor,

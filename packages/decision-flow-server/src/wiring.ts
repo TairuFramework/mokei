@@ -15,7 +15,7 @@ import { flowToolName } from './flow-tools.js'
 import { createGrantStore } from './grants.js'
 import { flowPlan } from './plan.js'
 import { createMCPPredictor, type PredictorFactory } from './predictor.js'
-import { createFlowRegistry } from './registry.js'
+import { createFlowRegistry, reachableFlows } from './registry.js'
 import { createDecisionFlowServer } from './server.js'
 import {
   hostToolCaller,
@@ -76,16 +76,17 @@ export async function addDecisionFlow(
   params: AddDecisionFlowParams,
 ): Promise<DecisionFlowWiring> {
   const host = session.contextHost
-  const flows = params.flows ?? []
   const caller = hostToolCaller(host, { exclude: [params.key] })
   const predictor = params.predictor ?? createMCPPredictor(caller)
-  const registered = new Map(flows.map((flow) => [flowToolName(flow.id), flow]))
-  const registry = createFlowRegistry(flows)
+  const registry = createFlowRegistry(params.flows ?? [])
+  const registered = new Map(registry.flows.map((flow) => [flowToolName(flow.id), flow]))
 
-  for (const flow of flows) {
+  for (const flow of registry.flows) {
     if (
       !host.elicitationEnabled &&
-      Object.values(flow.nodes).some((node) => node.kind === 'input')
+      reachableFlows(flow, registry.lookup, 'all').some((reached) =>
+        Object.values(reached.nodes).some((node) => node.kind === 'input'),
+      )
     ) {
       throw new Error(`Registered flow ${flow.id} requires elicitation`)
     }
@@ -125,7 +126,7 @@ export async function addDecisionFlow(
       caller,
       predictor,
       tasks,
-      flows,
+      registry,
       elicitation: () => host.elicitationEnabled,
       approval: ({ toolName, arguments: args, meta }) =>
         grants.consume({ token: meta[FLOW_GRANT_META], toolName, arguments: args }),

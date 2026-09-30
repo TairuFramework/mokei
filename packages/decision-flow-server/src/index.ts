@@ -14,10 +14,11 @@ export {
   type FlowCheckResult,
   toElicitationSchema,
 } from './definition-checks.js'
-export { flowToolName } from './flow-tools.js'
+export { type FlowSummary, flowSummaries, flowToolName } from './flow-tools.js'
 export { createGrantStore, type GrantStore } from './grants.js'
 export { flowPlan } from './plan.js'
 export { createMCPPredictor, type PredictorFactory, resolvePredictor } from './predictor.js'
+export { createFlowRegistry, type FlowRegistry } from './registry.js'
 export {
   type ApprovalHook,
   createDecisionFlowServer,

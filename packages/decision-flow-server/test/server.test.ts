@@ -286,3 +286,128 @@ test('construction rejects invalid registered schemas, collisions, and invalid f
   ).rejects.toThrow()
   await expect(createDecisionFlowServer({ ...params, flows: [invalid] })).rejects.toThrow()
 })
+
+const callee: FlowDefinition = {
+  id: 'callee',
+  name: 'Callee',
+  version: 1,
+  start: 'done',
+  nodes: { done: { kind: 'end', outcome: 'ok', output: { value: { value: 1 } } } },
+}
+const callerFlow: FlowDefinition = {
+  id: 'caller',
+  name: 'Caller',
+  version: 2,
+  start: 'call',
+  nodes: {
+    call: { kind: 'call', flow: 'callee', next: 'done' },
+    done: { kind: 'end', outcome: 'called' },
+  },
+}
+
+test('rejects duplicate registered ids', async () => {
+  const tasks = createTaskManager()
+  cleanups.push(() => tasks.dispose())
+  await expect(
+    createDecisionFlowServer({
+      caller,
+      predictor,
+      tasks,
+      approval: () => undefined,
+      flows: [flow('a'), flow('a')],
+    }),
+  ).rejects.toThrow('Duplicate registered flow id: a')
+})
+
+test('registered flows can reference a later-registered flow', async () => {
+  const { client } = await setup({ flows: [callerFlow, callee] })
+  const names = (await client.listTools()).tools.map((tool) => tool.name)
+  expect(names).toEqual(expect.arrayContaining(['flow_caller', 'flow_callee']))
+})
+
+test('rejects a registered flow calling a missing flow', async () => {
+  const tasks = createTaskManager()
+  cleanups.push(() => tasks.dispose())
+  await expect(
+    createDecisionFlowServer({
+      caller,
+      predictor,
+      tasks,
+      approval: () => undefined,
+      flows: [callerFlow],
+    }),
+  ).rejects.toThrow(/^Invalid registered flow caller/)
+})
+
+test('list_flows returns sorted summaries', async () => {
+  const exit: FlowDefinition = {
+    id: 'exit',
+    name: 'Exit',
+    version: 3,
+    start: 'done',
+    nodes: {
+      done: { kind: 'end', outcome: 'exited', output: { reason: { value: 'x' } } },
+    },
+  }
+  const main: FlowDefinition = {
+    id: 'main',
+    name: 'Main',
+    version: 1,
+    input: { type: 'object', properties: { topic: { type: 'string' } } },
+    start: 'call',
+    nodes: {
+      call: { kind: 'call', flow: 'callee', next: 'leave' },
+      leave: { kind: 'goto', flow: 'exit' },
+      done: { kind: 'end', outcome: 'done', output: { answer: { value: 1 } } },
+    },
+  }
+  const { client, create } = await setup({ flows: [main, callee, exit] })
+  const result = await client.callTool({ name: 'list_flows', arguments: {} })
+  expect(result.structuredContent).toEqual({
+    flows: [
+      {
+        id: 'callee',
+        name: 'Callee',
+        version: 1,
+        input: { type: 'object' },
+        outputs: ['value'],
+        outcomes: ['ok'],
+      },
+      {
+        id: 'exit',
+        name: 'Exit',
+        version: 3,
+        input: { type: 'object' },
+        outputs: ['reason'],
+        outcomes: ['exited'],
+      },
+      {
+        id: 'main',
+        name: 'Main',
+        version: 1,
+        input: { type: 'object', properties: { topic: { type: 'string' } } },
+        outputs: ['answer', 'reason'],
+        outcomes: ['done', 'exited'],
+      },
+    ],
+  })
+  expect(result.content[0]).toEqual({
+    type: 'text',
+    text: 'callee v1: Callee\nexit v3: Exit\nmain v1: Main',
+  })
+  expect(create).not.toHaveBeenCalled()
+})
+
+test('run_flow runs a definition that calls a registered flow', async () => {
+  const { client, create } = await setup({
+    flows: [callee],
+    approval: () => ({ tools: [] }),
+  })
+  const result = await client.callTool({
+    name: 'run_flow',
+    arguments: { definition: callerFlow },
+    task: 'handle',
+  })
+  expect(result.resultType).toBe('task')
+  expect(create).toHaveBeenCalledTimes(1)
+})
