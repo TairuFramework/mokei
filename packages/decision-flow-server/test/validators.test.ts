@@ -55,6 +55,14 @@ describe('validators', () => {
     expect(validate({ field0: 'bad' }).issues).toBeDefined()
   })
 
+  test('a failed compile is counted, cached and rethrown', () => {
+    const bad = { type: 'string', pattern: '(' } as never
+    expect(() => validatorFor(bad)).toThrow()
+    expect(validatorCacheStats()).toMatchObject({ compiles: 1, entries: 1 })
+    expect(() => validatorFor(structuredClone(bad))).toThrow()
+    expect(validatorCacheStats().compiles).toBe(1)
+  })
+
   test('LRU keeps at most 64 entries', () => {
     const first = validatorFor(numberSchema(0))
     for (let index = 1; index < MAX_ENTRIES; index++) validatorFor(numberSchema(index))

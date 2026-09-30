@@ -25,7 +25,7 @@ export function canonicalJSON(value: unknown): string {
 let factory: ValidatorFactory | undefined
 let generation = 0
 let compiles = 0
-const cache = new Map<string, Validator<unknown>>()
+const cache = new Map<string, Validator<unknown> | Error>()
 
 /**
  * Validator for a runtime schema, compiled on an isolated factory. The factory is recycled after
@@ -37,6 +37,7 @@ export function validatorFor(schema: Schema): Validator<unknown> {
   if (cached !== undefined) {
     cache.delete(key)
     cache.set(key, cached)
+    if (cached instanceof Error) throw cached
     return cached
   }
   if (factory !== undefined && compiles >= MAX_COMPILES) {
@@ -47,14 +48,21 @@ export function validatorFor(schema: Schema): Validator<unknown> {
     generation += 1
   }
   factory ??= createValidatorFactory()
-  const validator = factory.createValidator(schema) as Validator<unknown>
-  compiles += 1
-  cache.set(key, validator)
+  let entry: Validator<unknown> | Error
+  try {
+    entry = factory.createValidator(schema) as Validator<unknown>
+  } catch (error) {
+    entry = error instanceof Error ? error : new Error(String(error))
+  } finally {
+    compiles += 1
+  }
+  cache.set(key, entry)
   if (cache.size > MAX_ENTRIES) {
     const oldest = cache.keys().next().value
     if (oldest !== undefined) cache.delete(oldest)
   }
-  return validator
+  if (entry instanceof Error) throw entry
+  return entry
 }
 
 export function validatorCacheStats(): { generation: number; compiles: number; entries: number } {

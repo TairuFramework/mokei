@@ -407,6 +407,17 @@ describe('form validator factory', () => {
     expect(formValidatorStats()).toEqual({ generation: 1, compiles: 1, entries: 1 })
   })
 
+  test('a validator obtained before a recycle still validates', () => {
+    const plan = planForm(numberForm(0), options)
+    if (!plan.ok) throw new Error('expected a plan')
+    for (let index = 1; index <= 256; index++) planForm(numberForm(index), options)
+    expect(formValidatorStats().generation).toBe(1)
+    const field = plan.fields[0]
+    if (field === undefined) throw new Error('expected a field')
+    expect(field.toValue('x')).toEqual({ ok: true, value: 'x' })
+    expect(field.toValue('xx')).toMatchObject({ ok: false })
+  })
+
   test('a compile error is cached and rethrown', () => {
     const bad = params({ a: { type: 'string', pattern: '(' } })
     const first = planForm(bad, options)

@@ -37,7 +37,8 @@ const host = new NodeContextHost({ elicit: desktop, dispose: () => desktop.dispo
   each answer with JSON Schema 2020-12 semantics (AJV through `@sozai/schema`): lengths count
   code points and `pattern` is unanchored. Only these keywords are compiled. Any other keyword
   (`$ref`, `not`, `allOf`, an unknown format), or a listed one with a value of the wrong type, is
-  ignored. The schema is compiled before the first dialog opens. A violation reopens the
+  ignored. Validators compile on an isolated instance that is recycled after 256 distinct
+  compiles; validators already handed out keep working. The schema is compiled before the first dialog opens. A violation reopens the
   dialog with a readable message on its first line, at most 3 attempts.
 - URL mode, multi-select arrays, other property types and forms with more than 10 properties
   are declined without a dialog, and `onUnsupported` (or stderr) gets the reason.
