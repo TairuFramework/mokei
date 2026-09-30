@@ -40,22 +40,6 @@ export type ToolResumeValue =
   | { ok: false; status: 'failed' | 'cancelled'; error?: JSONValue }
 
 const definitions = decideNodeSchema.definitions
-// Unschematized results support references up to 32 segments below the result.
-const MAX_RESULT_PATH_DEPTH = 32
-
-// Only walked by the graph checker to resolve result paths, never used to validate a result.
-// Each level declares `type: 'object'` so Ajv strict mode accepts `additionalProperties`. The leaf
-// accepts any value but is not annotation-only: the checker treats `{}` as unconstrained and
-// would accept any deeper path, removing the depth bound.
-function resultPathSchema(depth: number): Schema {
-  let schema: Schema = { not: false }
-  for (let level = 0; level < depth; level++) {
-    schema = { type: 'object', additionalProperties: schema }
-  }
-  return schema
-}
-
-const unconstrainedResultSchema = resultPathSchema(MAX_RESULT_PATH_DEPTH)
 
 export const toolNodeSchema: Schema = {
   definitions,
@@ -254,7 +238,7 @@ export function toolKind(params: {
       ...(node.default === undefined ? [] : [{ path: ['default'], id: node.default }]),
       ...(node.onError === undefined ? [] : [{ path: ['onError'], id: node.onError }]),
     ],
-    resultSchema: (node) => catalogued.get(node.tool)?.outputSchema ?? unconstrainedResultSchema,
+    resultSchema: (node) => catalogued.get(node.tool)?.outputSchema ?? {},
     retries: true,
     check,
     describeError: (error) => ({

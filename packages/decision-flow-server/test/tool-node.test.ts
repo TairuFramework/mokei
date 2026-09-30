@@ -135,16 +135,13 @@ describe('toolKind check', () => {
     expect(issue(def).some((entry) => entry.code === 'invalid_result_path')).toBe(false)
   })
 
-  test.each([
-    [32, false],
-    [33, true],
-  ])('bounds unschematized result references at %i segments', (depth, invalid) => {
+  test.each([33, 64])('accepts unschematized result references at %i segments', (depth) => {
     const def = definition({
       args: { count: { ref: ['results', 'first', ...Array(depth).fill('child')] } },
     })
     def.start = 'first'
     def.nodes.first = { kind: 'tool', tool: tool.id, args: { count: { value: 1 } }, next: 'work' }
-    expect(issue(def).some((entry) => entry.code === 'invalid_result_path')).toBe(invalid)
+    expect(issue(def).some((entry) => entry.code === 'invalid_result_path')).toBe(false)
   })
 
   test('validates mixed constant args with root definitions and rejects unknown keys', () => {
