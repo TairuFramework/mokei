@@ -22,8 +22,10 @@ sibling MCP servers, and desktop notifications and dialogs. The rig exercises th
 
 Claude Code cannot call the decision-flow server directly:
 
-- `run_flow` and the per-flow tools require the MCP tasks extension. Without it they throw
-  `Client did not declare the tasks extension`.
+- `run_flow` and the per-flow tools only run as tasks: after the definition check and the grant check, a call from a
+  client that did not declare the tasks extension throws `Client did not declare the tasks extension`. Whether
+  Claude Code declares it is outside this repo; the rig does not depend on it.
+- A call with no grant returns `Flow denied`.
 - The flow server's approval hook is synchronous and only consumes a single-use `dev.mokei/flow-grant` token. The
   grant is minted by `DecisionFlowWiring.wrapApproval`, which runs on the `AgentSession` side.
 
@@ -57,7 +59,7 @@ readable size.
     "sqlite": { "command": "node", "args": ["mcp-servers/sqlite/lib/serve.js"] }
   },
   "flowsDir": "flows",
-  "allow": ["system-one:predict", "sqlite:read_query"],
+  "allow": ["system-one:predict", "sqlite:sqlite_get"],
   "predictor": "real",
   "fakeAnswers": {},
   "input": "inbox",
@@ -69,7 +71,9 @@ readable size.
   `flowsDir` resolves from the config file's directory.
 - `allow` holds tool-id globs (`*` matches within one segment, so `sqlite:*` matches every sqlite tool).
 - `predictor`: `real` uses the sibling `system-one:predict`. `fake` passes a scripted `Predictor` to
-  `addDecisionFlow` that answers each question key from `fakeAnswers`. A question key missing from `fakeAnswers`
+  `addDecisionFlow`. Its `predict` returns `{ model: 'fake', answers, usage: { inputTokens: 0, outputTokens: 0 } }`,
+  where `answers[key]` is `fakeAnswers[key]` for each question key. Each `fakeAnswers` value is a complete typed
+  answer for its question kind, exactly as System One would return it. A question key missing from `fakeAnswers`
   fails the prediction with `No fake answer for <key>`.
 - `input`: `inbox` (default) or `dialog` (opt-in blocking dialogs).
 - `confirm`: `desktop` (default) shows a desktop confirm dialog. `deny` and `approve` skip the dialog; they exist
@@ -97,13 +101,14 @@ readable size.
 | `list_flows` | none | Passes through the flow server's `list_flows` |
 | `check_flow` | `{ definition }` | Passes through the flow server's `check_flow` |
 | `start_flow` | `{ flow?, definition?, input? }` | `{ runId }`, or an error result |
-| `flow_status` | `{ runId }` | `{ state, pending, result? }` |
+| `flow_status` | `{ runId }` | `{ state, pending, result?, error? }` |
 | `cancel_flow` | `{ runId }` | `{ state }` after the cancel is sent |
 | `prompt_input` | `{ id }` | Opens desktop dialogs for the inbox entry; returns the settled action |
 | `answer_input` | `{ id, value }` | Answers the inbox entry |
 | `decline_input` | `{ id }` | Declines the inbox entry |
 
-`state` is one of `working`, `input_required`, `completed`, `failed`, `cancelled`. `pending` lists
+`state` is one of `working`, `input_required`, `completed`, `failed`, `cancelled`, or `unknown` while polling fails
+(with the last poll error in `error`). `pending` lists
 `{ id, message, requestedSchema }` for the run's inbox entries (always empty in `dialog` mode). The `prompt_input`,
 `answer_input` and `decline_input` tools are registered only in inbox mode.
 
@@ -123,38 +128,71 @@ All logs go to stderr, since stdout carries MCP.
 
 1. Resolve the definition: a registered `flow` id, or an inline `definition`. Exactly one is required, otherwise an
    error result.
-2. Build a `ToolApprovalRequest` for `flow:<tool>` (the per-flow tool for a registered id, `run_flow` for an inline
-   definition) and run the wrapped approval. A denial returns `Flow denied: <reason>`.
-3. Call the flow tool through the flow context's client with `task: 'handle'` and the approval's `_meta`.
+2. Build the tool name and arguments once. A registered id uses the per-flow tool `flow_<id>` named as `flowToolName` does
+   (`demo/triage` becomes `flow_demo_triage`), with `input` (default `{}`) as its arguments. An inline definition uses `run_flow` with arguments `{ definition, input }`.
+3. Run the wrapped approval with a `ToolApprovalRequest`: `toolCall` `{ id: runId, name: 'flow:<tool>', arguments:
+   JSON.stringify(args) }`, `iteration: 1`, `history: []`, and a signal that aborts on shutdown. Normalize the result:
+   `true` or `{ approved: true, meta }` approves; `false` or `{ approved: false, reason }` returns
+   `Flow denied: <reason>`.
+4. Call the tool through `session.contextHost.getContext('flow').client` with `task: 'handle'`, the same `args`
+   object, and the approval's `meta` as `_meta`. The grant is single use and bound to the tool name and a digest of
+   the arguments, so the approved arguments and the called arguments must be identical.
    - A `CallToolResult` is a synchronous error and is returned as is.
    - A `CreateTaskResult` registers the run as `runId -> { taskId, inputs: Map<requestKey, entry> }`, starts its
      watcher, and returns `{ runId }`.
 
 **Watcher.** One per run. It polls `client.tasks.get(taskId)` about every 500 ms until the task is terminal. It
-never calls `tasks.wait`, which would answer input requests automatically.
+never calls `tasks.wait`, which would answer input requests itself.
 
-- On a terminal state it stores the result or error and aborts every open input signal, which removes the
-  run's inbox entries.
-- Three `tasks.get` failures in a row mark the run `failed` with `lost task`.
+- On a terminal state it stores the result or error and withdraws every open input (see below).
+- A failed `tasks.get` does not mean the task is gone. After three failures in a row the run's state becomes
+  `unknown`, with the last error in `flow_status`, and polling continues with backoff up to 5 seconds. A later
+  successful poll restores the real state. `cancel_flow` still works on an `unknown` run.
 
-**Inputs.** For each new key in `inputRequests` while `input_required`:
+**Inputs.** Each run keeps one input record per request key, reconciled against every snapshot in a single place:
 
-1. Call the desktop handler with `{ key: runId, params, signal }`. In inbox mode the entry's `PendingInput.key` is
-   the `runId`, which is how `flow_status` finds the run's entries.
-2. When the handler resolves, send `client.tasks.update(taskId, { [requestKey]: result })`.
+| Record state | Meaning |
+|--------------|---------|
+| `asking` | The desktop handler is running for this key, with its own abort controller |
+| `sending` | The handler resolved; `tasks.update` is in flight |
+| `done` | Answered, withdrawn or failed; never dispatched again |
+
+Reconciliation of a snapshot:
+
+1. A key in `inputRequests` with no record: create an `asking` record and call the desktop handler with
+   `{ key: runId, params, signal }`. In inbox mode the entry's `PendingInput.key` is the `runId`, which is how
+   `flow_status` finds the run's entries (`inbox.list().filter((entry) => entry.key === runId)`).
+2. A key with an `asking` record that is missing from the snapshot, or any `asking` record once the task is not
+   `input_required` any more: abort its controller, which withdraws the inbox entry or closes the dialog, and mark it
+   `done`.
+3. A key with a `sending` or `done` record: nothing. A record is never dispatched twice.
+
+When the handler resolves while its record is still `asking`, the record moves to `sending` and the watcher sends
+`client.tasks.update(taskId, { [requestKey]: result })`, then marks it `done`. If the record was already withdrawn,
+the result is dropped.
 
 - A `cancel` or `decline` from the handler is sent unchanged, so the flow's `decline` edge applies.
 - A handler that throws answers `cancel` and logs the error.
+- A `tasks.update` rejected because the key is no longer pending (the answer raced a cancel, a timeout or a
+  withdrawal) is logged and ignored. Other `tasks.update` errors are logged, and the next snapshot decides what
+  happens.
 - `answer_input` validates through the inbox. `InboxAnswerInvalidError` or an unknown id returns an error result.
 
-**Shutdown.** On SIGINT, SIGTERM or stdin close: cancel live runs (bounded to 5 seconds), then dispose the inbox,
-the flow wiring and the session.
+**Shutdown.** On SIGINT, SIGTERM or stdin close:
+
+1. Stop accepting facade calls and stop every watcher loop.
+2. Abort every `asking` record, so no late handler result reaches `tasks.update`.
+3. Send `tasks.cancel` for each live run and wait up to 5 seconds for all of them together. Runs still active after
+   that are abandoned; the in-memory task store ends with the process.
+4. Dispose the inbox, the flow wiring and the session, in that order.
 
 **Not handled.** Runs do not survive a restart. `flow_status` on an unknown `runId` returns an error result.
 
 ## Sample flows
 
-- `demo/triage`: a `decide` node through `system-one:predict`, then a `tool` node calling `sqlite:read_query`.
+- `demo/triage`: a `decide` node through `system-one:predict`, then a `tool` node calling `sqlite:sqlite_get`
+  with `SELECT :label AS label` and the predicted label as a parameter, which works against the sibling's default
+  in-memory database.
 - `demo/ask`: an `input` node with a `decline` edge.
 - `demo/nested`: a `call` node to `demo/ask`.
 
