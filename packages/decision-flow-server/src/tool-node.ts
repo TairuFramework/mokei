@@ -15,11 +15,12 @@ import {
   retryPolicySchema,
   type Value,
 } from '@sozai/flow-graph'
-import { createValidator, type Schema, type Validator } from '@sozai/schema'
+import type { Schema, Validator } from '@sozai/schema'
 
 import { callMeta } from './call-meta.js'
 import type { CatalogTool, ToolCaller } from './tool-caller.js'
 import { ToolNodeError } from './tool-errors.js'
+import { validatorFor } from './validators.js'
 
 export type ToolNode = {
   kind: 'tool'
@@ -134,30 +135,6 @@ export function toolKind(params: {
   approved?: ReadonlySet<string>
 }): NodeKind<ToolNode> {
   const catalogued = new Map(params.catalogue.map((entry) => [entry.id, entry]))
-  const validatorCache = new Map<Schema, Validator<unknown>>()
-  const validatorFor = (schema: Schema): Validator<unknown> => {
-    let validator = validatorCache.get(schema)
-    if (validator === undefined) {
-      validator = createValidator(schema)
-      validatorCache.set(schema, validator)
-    }
-    return validator
-  }
-  const inputValidators = new Map(
-    params.catalogue.map((entry) => [entry.id, validatorFor(entry.inputSchema)]),
-  )
-  const mixedInputValidators = new Map(
-    params.catalogue.map((entry) => [
-      entry.id,
-      validatorFor({ ...entry.inputSchema, required: [] }),
-    ]),
-  )
-  const outputValidators = new Map(
-    params.catalogue
-      .filter((entry) => entry.outputSchema !== undefined)
-      .map((entry) => [entry.id, validatorFor(entry.outputSchema as Schema)]),
-  )
-
   function check(node: ToolNode, ctx: CheckContext): Array<FlowIssue> {
     const issues: Array<FlowIssue> = []
     const report = (code: string, path: Array<string | number>, message: string, hint: string) => {
@@ -185,7 +162,7 @@ export function toolKind(params: {
         const values = Object.fromEntries(
           constantArgs.map(([key, value]) => [key, (value as { value: JSONValue }).value]),
         )
-        if (inputValidators.get(node.tool)?.(values).issues) {
+        if (validatorFor(entry.inputSchema)(values).issues) {
           report(
             'tool_invalid_args',
             ['args'],
@@ -197,7 +174,7 @@ export function toolKind(params: {
         const values = Object.fromEntries(
           constantArgs.map(([key, value]) => [key, (value as { value: JSONValue }).value]),
         )
-        if (mixedInputValidators.get(node.tool)?.(values).issues) {
+        if (validatorFor({ ...entry.inputSchema, required: [] })(values).issues) {
           report(
             'tool_invalid_args',
             ['args'],
@@ -225,7 +202,13 @@ export function toolKind(params: {
     const entry = catalogued.get(node.tool)
     if (entry === undefined)
       throw new ToolNodeError('tool_unavailable', `Tool unavailable: ${node.tool}`)
-    ctx.setResult(resultValue(result, entry, outputValidators.get(node.tool)))
+    ctx.setResult(
+      resultValue(
+        result,
+        entry,
+        entry.outputSchema === undefined ? undefined : validatorFor(entry.outputSchema as Schema),
+      ),
+    )
     return { next: next(node, ctx) }
   }
 
@@ -252,8 +235,7 @@ export function toolKind(params: {
       const entry = params.caller.listTools().find((tool) => tool.id === node.tool)
       if (entry === undefined)
         throw new ToolNodeError('tool_unavailable', `Tool unavailable: ${node.tool}`)
-      const validate = validatorFor(entry.inputSchema)
-      if (validate(args).issues)
+      if (validatorFor(entry.inputSchema)(args).issues)
         throw new ToolNodeError('tool_invalid_args', `Invalid arguments for ${node.tool}`)
       if (!params.approved?.has(node.tool))
         throw new ToolNodeError('tool_not_approved', `Tool not approved: ${node.tool}`)
