@@ -15,6 +15,7 @@ import { flowToolName } from './flow-tools.js'
 import { createGrantStore } from './grants.js'
 import { flowPlan } from './plan.js'
 import { createMCPPredictor, type PredictorFactory } from './predictor.js'
+import { createFlowRegistry } from './registry.js'
 import { createDecisionFlowServer } from './server.js'
 import {
   hostToolCaller,
@@ -79,6 +80,7 @@ export async function addDecisionFlow(
   const caller = hostToolCaller(host, { exclude: [params.key] })
   const predictor = params.predictor ?? createMCPPredictor(caller)
   const registered = new Map(flows.map((flow) => [flowToolName(flow.id), flow]))
+  const registry = createFlowRegistry(flows)
 
   for (const flow of flows) {
     if (
@@ -87,8 +89,9 @@ export async function addDecisionFlow(
     ) {
       throw new Error(`Registered flow ${flow.id} requires elicitation`)
     }
-    const checked = checkFlow({
+    const checked = await checkFlow({
       definition: flow,
+      registry,
       caller,
       predictor,
       elicitation: host.elicitationEnabled,
@@ -107,7 +110,7 @@ export async function addDecisionFlow(
   reserved.add(params.key)
   const grants = createGrantStore()
   let tasks: ReturnType<typeof createTaskManager> | undefined
-  let server: ReturnType<typeof createDecisionFlowServer> | undefined
+  let server: Awaited<ReturnType<typeof createDecisionFlowServer>> | undefined
   let registrationAttempted = false
   markDecisionFlowContext(host, params.key)
   try {
@@ -118,7 +121,7 @@ export async function addDecisionFlow(
         return server.recover(record, resume)
       },
     })
-    server = createDecisionFlowServer({
+    server = await createDecisionFlowServer({
       caller,
       predictor,
       tasks,
@@ -180,8 +183,9 @@ export async function addDecisionFlow(
           return false
         }
         const definition = flow ?? args.definition
-        const checked = checkFlow({
+        const checked = await checkFlow({
           definition,
+          registry,
           caller,
           predictor,
           elicitation: host.elicitationEnabled,

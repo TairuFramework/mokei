@@ -76,8 +76,8 @@ function fixture(
     runState: state,
     siblings: options.siblings ?? [],
   }
-  const createSecond = () => {
-    const server = createDecisionFlowServer({
+  const createSecond = async () => {
+    const server = await createDecisionFlowServer({
       caller,
       predictor,
       tasks: {} as ReturnType<typeof createTaskManager>,
@@ -173,7 +173,7 @@ async function persist(f: ReturnType<typeof fixture>) {
 test('recovers a running registered flow and completes it', async () => {
   const f = fixture()
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -199,7 +199,7 @@ test('recovery ignores malformed saved siblings and cancels the valid sibling', 
   })
   f.data.runState = { ...f.data.runState, status: 'ended', outcome: 'finished' }
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -219,7 +219,7 @@ test('rejects an unknown resume data version and cancels saved siblings', async 
   })
   f.data.v = 2 as 1
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('failed')
@@ -234,7 +234,7 @@ test('rejects an unknown resume data version and cancels saved siblings', async 
 
 test('resolves unknown flow tools for recovery without listing or calling them', async () => {
   const f = fixture()
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     expect(Object.keys(server.recoveryTools)).toEqual(Object.keys(server.tools))
     expect(Object.keys(server.recoveryTools)).not.toContain('flow_missing')
@@ -282,7 +282,7 @@ test.each(terminalCases)(
       ...(status === 'error' ? { error: { code: 'saved', name: 'Saved error' } } : {}),
     } as RunState
     const id = await persist(f)
-    const { second, server } = f.createSecond()
+    const { second, server } = await f.createSecond()
     listed = false
     try {
       await second.recover(server.recoveryTools)
@@ -318,7 +318,7 @@ test.each(['changed', 'removed'] as const)(
       },
     })
     const id = await persist(f)
-    const { second, server } = f.createSecond()
+    const { second, server } = await f.createSecond()
     try {
       await second.recover(server.recoveryTools)
       await expect.poll(async () => (await second.get(id)).status).toBe('failed')
@@ -350,7 +350,7 @@ test('catalogue drift fails recovery with formatted issues and cancels siblings'
     },
   })
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   listed = false
   try {
     await second.recover(server.recoveryTools)
@@ -387,7 +387,7 @@ test.each(['not-issued', 'outstanding'] as const)(
         { revision: previous.revision },
       )
     }
-    const { second, server } = f.createSecond()
+    const { second, server } = await f.createSecond()
     try {
       await second.recover(server.recoveryTools)
       await expect.poll(async () => (await second.get(id)).status).toBe('input_required')
@@ -426,7 +426,7 @@ test('recovers input by replaying an answer committed before the restart', async
     },
     { revision: previous.revision },
   )
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -447,7 +447,7 @@ test('an elapsed input deadline resumes the timeout edge without issuing a reque
   } as RunState
   const f = fixture({ storedDefinition: inputFlow, state: expired })
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -503,7 +503,7 @@ test('withdraws an outstanding expired input before asking at the timeout edge',
     },
     { revision: previous.revision },
   )
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect
@@ -563,7 +563,7 @@ test('recovers a suspended sibling wait by its stored task ID', async () => {
     },
   })
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -619,7 +619,7 @@ test('recovers a suspended retry timer then retries the tool', async () => {
     },
   })
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
@@ -663,7 +663,7 @@ test('cancelling a recovered run aborts its graph work', async () => {
     },
   })
   const id = await persist(f)
-  const { second, server } = f.createSecond()
+  const { second, server } = await f.createSecond()
   try {
     await second.recover(server.recoveryTools)
     await expect.poll(() => entered).toBe(true)

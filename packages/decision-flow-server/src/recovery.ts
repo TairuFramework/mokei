@@ -7,6 +7,7 @@ import { digestDefinition, type FlowDefinition } from '@sozai/flow-graph'
 import { checkFlow } from './definition-checks.js'
 import { type ResumeDataV1, startRun, terminalResult } from './driver.js'
 import type { PredictorFactory } from './predictor.js'
+import type { FlowRegistry } from './registry.js'
 import { cancelSibling, type ToolCaller } from './tool-caller.js'
 
 const recoveryOnlyTool: ToolDefinitions[string] = {
@@ -38,6 +39,7 @@ export function recoveryToolMap(tools: ToolDefinitions): ToolDefinitions {
 
 export function createRecovery(params: {
   flows: ReadonlyMap<string, FlowDefinition>
+  registry: FlowRegistry
   caller: ToolCaller
   predictor: Predictor | PredictorFactory
   elicitation: () => boolean
@@ -108,8 +110,9 @@ export function createRecovery(params: {
       return
     }
 
-    const checked = checkFlow({
+    const checked = await checkFlow({
       definition,
+      registry: params.registry,
       caller: params.caller,
       predictor: params.predictor,
       elicitation: params.elicitation(),

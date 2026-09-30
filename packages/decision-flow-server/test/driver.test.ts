@@ -124,7 +124,7 @@ test.each(['run_flow', 'flow_driver_test'])(
     const pair = new DirectTransports<ServerMessage, ClientMessage>()
     const tasks = createTaskManager()
     const flow = definition()
-    const serverDefinition = createDecisionFlowServer({
+    const serverDefinition = await createDecisionFlowServer({
       caller: {
         listTools: () => [],
         callTool: async () => {

@@ -16,6 +16,7 @@ import { type ResumeDataV1, startRun } from './driver.js'
 import { flowInputSchema, flowToolName } from './flow-tools.js'
 import type { PredictorFactory } from './predictor.js'
 import { createRecovery, recoveryToolMap } from './recovery.js'
+import { createFlowRegistry } from './registry.js'
 import type { ToolCaller } from './tool-caller.js'
 
 export type ApprovalHook = (params: {
@@ -37,13 +38,14 @@ function errorResult(message: string): CallToolResult {
   return { isError: true, content: [{ type: 'text', text: message }] }
 }
 
-export function createDecisionFlowServer(params: DecisionFlowServerParams): {
+export async function createDecisionFlowServer(params: DecisionFlowServerParams): Promise<{
   config: Omit<ServerConfig, 'tasks'> & { tasks: TaskManager }
   tools: ToolDefinitions
   recoveryTools: ToolDefinitions
   recover: NonNullable<TaskManagerParams['recover']>
-} {
+}> {
   const elicitation = params.elicitation ?? (() => false)
+  const registry = createFlowRegistry(params.flows ?? [])
   const tools: ToolDefinitions = {
     check_flow: {
       description: 'Check a decision flow definition',
@@ -52,9 +54,10 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
         properties: { definition: { type: 'object' } },
         required: ['definition'],
       },
-      handler: ({ input }) => {
-        const checked = checkFlow({
+      handler: async ({ input }) => {
+        const checked = await checkFlow({
           definition: input.definition,
+          registry,
           caller: params.caller,
           predictor: params.predictor,
           elicitation: elicitation(),
@@ -83,11 +86,12 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
 
   type Request = Parameters<(typeof tools)['run_flow']['handler']>[0]
 
-  function runFlow(name: string, definition: unknown, input: unknown, request: Request) {
+  async function runFlow(name: string, definition: unknown, input: unknown, request: Request) {
     const depth = readFlowDepth(request.meta)
     if (depth === undefined || depth >= MAX_FLOW_DEPTH) return errorResult('Invalid flow depth')
-    const checked = checkFlow({
+    const checked = await checkFlow({
       definition,
+      registry,
       caller: params.caller,
       predictor: params.predictor,
       elicitation: elicitation(),
@@ -153,8 +157,9 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
     const name = flowToolName(flow.id)
     if (Object.hasOwn(tools, name)) throw new Error(`Flow tool name collision: ${name}`)
     const inputSchema = flowInputSchema(flow)
-    const checked = checkFlow({
+    const checked = await checkFlow({
       definition: flow,
+      registry,
       caller: params.caller,
       predictor: params.predictor,
       elicitation: elicitation(),
@@ -169,6 +174,7 @@ export function createDecisionFlowServer(params: DecisionFlowServerParams): {
 
   const recover = createRecovery({
     flows: new Map((params.flows ?? []).map((flow) => [flow.id, flow])),
+    registry,
     caller: params.caller,
     predictor: params.predictor,
     elicitation,
