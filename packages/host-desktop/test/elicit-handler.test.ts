@@ -490,6 +490,32 @@ describe('desktop elicit handler (blocking)', () => {
       expect(fake.calls).toHaveLength(0)
     })
 
+    test('askBackendFor not ok: a reply default starting with - with forced alerter', async () => {
+      const h = create({
+        platform: 'darwin',
+        env: { PATH: binDir },
+        backends: { ask: 'alerter' },
+      })
+      const params = form({ name: { type: 'string', default: '--appIcon' } })
+      await expect(h(request(params))).resolves.toEqual({ action: 'decline' })
+      expect(reports).toHaveLength(1)
+      expect(reports[0]).toMatch(/starting with "-"/)
+      expect(fake.calls).toHaveLength(0)
+    })
+
+    test('auto-selected alerter falls back to osascript for a label starting with -', async () => {
+      const h = create({ platform: 'darwin', env: { PATH: binDir } })
+      const params = form({
+        pick: { type: 'string', enum: ['a', 'b'], enumNames: ['-timeout', 'B'] },
+      })
+      const pending = h(request(params))
+      await flush()
+      expect(fake.calls.map((c) => c.backend)).toEqual(['osascript'])
+      fake.calls[0]?.resolve({ status: 'answered', value: 'a' })
+      await expect(pending).resolves.toEqual({ action: 'accept', content: { pick: 'a' } })
+      expect(reports).toEqual([])
+    })
+
     test('without onUnsupported the report goes to console.error with the prefix', async () => {
       const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
       const h = create({ onUnsupported: undefined, env: { PATH: '' } })
@@ -504,6 +530,22 @@ describe('desktop elicit handler (blocking)', () => {
       expect(() => createDesktopElicitHandler({ mode: 'inbox' })).toThrow(
         new TypeError('mode "inbox" requires an inbox'),
       )
+    })
+
+    test.each([Number.NaN, 0, -1, Number.POSITIVE_INFINITY])(
+      'an invalid timeout (%s) throws',
+      (value) => {
+        for (const name of ['timeoutSeconds', 'maxTimeoutSeconds'] as const) {
+          expect(() => createDesktopElicitHandler({ [name]: value })).toThrow(
+            new TypeError(`${name} must be a finite number greater than 0, got ${value}`),
+          )
+        }
+      },
+    )
+
+    test('valid timeouts are accepted', () => {
+      const h = createDesktopElicitHandler({ timeoutSeconds: 0.5, maxTimeoutSeconds: 1200 })
+      return h.dispose()
     })
   })
 })

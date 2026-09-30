@@ -38,6 +38,7 @@ type AskCall = {
   request: AskRequest
   options: BackendCallOptions
   resolve: (result: AskResult) => void
+  reject: (reason: unknown) => void
 }
 type NotifyCall = {
   backend: BackendName
@@ -53,8 +54,8 @@ function fakeBackends(log: Array<string>) {
   const createBackend = (name: BackendName): DesktopBackend => ({
     name,
     ask(request, options) {
-      return new Promise<AskResult>((resolve) => {
-        asks.push({ request, options, resolve })
+      return new Promise<AskResult>((resolve, reject) => {
+        asks.push({ request, options, resolve, reject })
       })
     },
     notify(request, options) {
@@ -392,6 +393,113 @@ describe('desktop elicit handler (inbox)', () => {
       await flush()
       expect(fake.asks[0]?.options.signal.aborted).toBe(true)
       expect(settled.error).toBe(reason)
+    })
+  })
+
+  describe('prompt outcomes no person chose', () => {
+    const ChoiceForm = (label: string) =>
+      ({
+        message: 'Pick',
+        requestedSchema: {
+          type: 'object',
+          properties: { pick: { type: 'string', oneOf: [{ const: 'a', title: label }] } },
+          required: ['pick'],
+        },
+      }) as unknown as DesktopElicitRequest['params']
+
+    async function expectPendingAfterRejectedPrompt(settled: Settled): Promise<void> {
+      const id = onlyEntryId()
+      const prompted = track(inbox.prompt(id))
+      await flush()
+      expect(prompted.error).toBeInstanceOf(Error)
+      expect(inbox.get(id)).toBeDefined()
+      expect(settled.done).toBe(false)
+    }
+
+    test('no dialog backend: canPrompt is false, prompt rejects and the entry stays pending', async () => {
+      inbox.registerAnswerSurface()
+      // notify-send is available, zenity is not (no DISPLAY)
+      const h = create({ env: { PATH: binDir, DBUS_SESSION_BUS_ADDRESS: 'unix:path=/x' } })
+      const settled = track(h(request()))
+      await flush()
+      expect(inbox.get(onlyEntryId())?.canPrompt).toBe(false)
+      await expectPendingAfterRejectedPrompt(settled)
+      expect(fake.asks).toHaveLength(0)
+      // The application can still answer through its own surface
+      expect(inbox.decline(onlyEntryId())).toBe(true)
+      await flush()
+      expect(settled.result).toEqual({ action: 'decline' })
+    })
+
+    test.each([
+      ['a missing binary', 'spawn zenity ENOENT'],
+      ['an unknown exit code', 'zenity exited with code 42'],
+    ])(
+      'a backend failure (%s) rejects the prompt and leaves the entry pending',
+      async (_, message) => {
+        inbox.registerAnswerSurface()
+        const h = create()
+        const settled = track(h(request()))
+        await flush()
+        const id = onlyEntryId()
+        expect(inbox.get(id)?.canPrompt).toBe(true)
+        const prompted = track(inbox.prompt(id))
+        await flush()
+        fake.asks[0]?.reject(new Error(message))
+        await flush()
+        expect((prompted.error as Error).message).toBe(message)
+        expect(reports).toContain(message)
+        expect(inbox.get(id)).toBeDefined()
+        expect(settled.done).toBe(false)
+
+        // A later prompt opens a fresh dialog and a person's answer settles the entry
+        const retried = track(inbox.prompt(id))
+        await flush()
+        expect(fake.asks).toHaveLength(2)
+        fake.asks[1]?.resolve({ status: 'answered', value: 'Ada' })
+        await flush()
+        const accept = { action: 'accept', content: { name: 'Ada' } }
+        expect(retried.result).toEqual(accept)
+        expect(settled.result).toEqual(accept)
+      },
+    )
+
+    test.each([
+      ['a comma', 'a,b'],
+      ['a leading dash', '-timeout'],
+    ])(
+      'forced alerter refusing a label with %s: canPrompt is false and the entry stays pending',
+      async (_, label) => {
+        inbox.registerAnswerSurface()
+        const h = create({
+          platform: 'darwin',
+          env: { PATH: binDir },
+          backends: { ask: 'alerter' },
+        })
+        const settled = track(h(request(ChoiceForm(label))))
+        await flush()
+        expect(inbox.get(onlyEntryId())?.canPrompt).toBe(false)
+        await expectPendingAfterRejectedPrompt(settled)
+        expect(fake.asks).toHaveLength(0)
+      },
+    )
+
+    test.each([
+      ['dismissed', { action: 'cancel' }],
+      ['declined', { action: 'decline' }],
+    ] as const)("a person's %s dialog still settles the entry", async (status, expected) => {
+      inbox.registerAnswerSurface()
+      const h = create()
+      const settled = track(h(request()))
+      await flush()
+      const id = onlyEntryId()
+      const prompted = track(inbox.prompt(id))
+      await flush()
+      fake.asks[0]?.resolve({ status })
+      await flush()
+      expect(prompted.result).toEqual(expected)
+      expect(settled.result).toEqual(expected)
+      expect(inbox.get(id)).toBeUndefined()
     })
   })
 

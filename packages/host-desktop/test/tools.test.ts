@@ -82,6 +82,15 @@ describe('registration', () => {
     expect(createDesktopTools({}).map((t) => t.name)).toEqual(['notify'])
   })
 
+  test.each([Number.NaN, 0, -5, Number.POSITIVE_INFINITY])(
+    'an invalid timeoutSeconds (%s) throws',
+    (value) => {
+      expect(() => createDesktopTools({ timeoutSeconds: value })).toThrow(
+        new TypeError(`timeoutSeconds must be a finite number greater than 0, got ${value}`),
+      )
+    },
+  )
+
   test('ask_user description mentions timeouts', () => {
     const tool = createDesktopTools({ elicit: async () => ({ action: 'cancel' }) }).find(
       (t) => t.name === 'ask_user',

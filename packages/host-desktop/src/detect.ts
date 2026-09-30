@@ -160,19 +160,25 @@ export function askBackendFor(
   if (ask == null) {
     return { ok: false, reason: selection.askProblem ?? 'No dialog backend is available' }
   }
-  if (ask.name !== 'alerter' || alerterCanShow(request)) {
+  if (ask.name !== 'alerter') {
     return { ok: true, name: ask.name }
   }
-  const comma = 'alerter cannot show a choice label containing a comma'
+  const shown = alerterCanShow(request)
+  if (shown.ok) {
+    return { ok: true, name: ask.name }
+  }
   if (ask.forced) {
-    return { ok: false, reason: `${comma}; use a different label or another dialog backend` }
+    return {
+      ok: false,
+      reason: `${shown.reason}; change the request or use another dialog backend`,
+    }
   }
   if (availability.available.has('osascript')) {
     return { ok: true, name: 'osascript' }
   }
   return {
     ok: false,
-    reason: `${comma}, and the osascript fallback is unavailable: ${availability.missing.osascript ?? 'unavailable'}. Make osascript available or avoid commas in choice labels.`,
+    reason: `${shown.reason}, and the osascript fallback is unavailable: ${availability.missing.osascript ?? 'unavailable'}. Make osascript available or change the request.`,
   }
 }
 

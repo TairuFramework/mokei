@@ -39,7 +39,8 @@ const host = new NodeContextHost({ elicit: desktop, dispose: () => desktop.dispo
 - Dialogs open one at a time; concurrent requests queue.
 - Each request has a budget, `timeoutSeconds` (90 by default, clamped to `maxTimeoutSeconds`,
   600). It starts when the handler is called and covers queue time, every field and every
-  retry. When it runs out, the handler returns `cancel`.
+  retry. When it runs out, the handler returns `cancel`. Both options must be finite numbers
+  greater than 0; any other value throws a `TypeError` when the handler is created.
 - A dismissed dialog, a dialog timeout and exhausted attempts all give `cancel`. The supplied
   backends never infer `decline` from a close.
 - Aborting the request's signal (for example when a task withdraws its input request) kills the
@@ -98,12 +99,17 @@ aborted, or the inbox is disposed. `inbox.prompt(id)` starts a fresh `timeoutSec
 - `decline(id)` and `cancel(id)` resolve `decline` and `cancel`.
 - `answer`, `decline` and `cancel` return `false` when the entry is already gone. That race is
   normal.
-- `prompt(id)` opens the handler's dialogs for the entry; every outcome, a dismissal included,
-  settles it. A second `prompt` while one is open returns the same promise. Another answer
-  action closes an open prompt.
-- `canPrompt` reflects only whether the form maps to dialogs, not whether a dialog backend is
-  installed. A `prompt` with no dialog backend available reports the problem through
-  `onUnsupported` (or stderr) and settles the entry as `decline`.
+- `prompt(id)` opens the handler's dialogs for the entry. An outcome the person chose settles
+  it: an answer, a decline, a dismissal, or the `timeoutSeconds` budget running out (`cancel`).
+  An outcome no person chose rejects the prompt and leaves the entry pending, so the
+  application can fall back to `answer`, `decline` or `cancel`: no dialog backend can show the
+  form, or the backend fails (a missing command, an unknown exit code). The problem is also
+  reported through `onUnsupported` (or stderr). A second `prompt` while one is open returns the
+  same promise. Another answer action closes an open prompt.
+- `canPrompt` is `true` when the form maps to dialogs and the detected dialog backend can show
+  every one of them. It is `false` when no dialog backend is available, or when a forced
+  `alerter` cannot show the form (a choice label containing a comma, a value starting with
+  `-`); `prompt` then rejects without opening a dialog.
 - Events: `added` (the entry), `settled` (`{ id, action }`, never the content) and `removed`
   (`{ id, reason }`, with `'withdrawn'` when a task withdrew the request, `'aborted'` for any
   other abort and `'disposed'`).
@@ -238,7 +244,10 @@ anything.
   LaunchDaemon runs outside it: `osascript` dialogs fail, and `display notification` can be
   dropped silently. A `display notification` is attributed to Script Editor and dropped when
   that app's notifications are off. `alerter` (`brew install vjeantet/tap/alerter`) is preferred
-  for dialogs; `osascript` is the fallback, and handles choice labels containing a comma.
+  for dialogs; `osascript` is the fallback. alerter has no `--` option terminator, so a request
+  whose alerter option values would include a choice label containing a comma, or a title,
+  text, reply default or actions list starting with `-`, uses `osascript` instead. When
+  `alerter` is forced, such a request is declined and reported through `onUnsupported`.
 - **Linux:** `zenity` needs `DISPLAY` or `WAYLAND_DISPLAY`, and `notify-send` (`libnotify-bin`)
   needs `DBUS_SESSION_BUS_ADDRESS`. Cron jobs and system services usually lack them, so
   detection finds nothing. A user systemd service, or a job that exports the desktop session's
@@ -246,11 +255,11 @@ anything.
 
 ## QA checklist
 
-Linux dialogs run end to end in CI (`zenity` under `xvfb`). macOS is covered by unit tests plus
+Linux dialogs run end to end in CI (`zenity` under `xvfb`, answered with `xdotool`, and left to time out). macOS is covered by unit tests plus
 this manual checklist, run through a `NodeContextHost`:
 
 - [ ] On macOS with `alerter` v26.5 installed, capture the real `--json` output for a reply, an action click, a close, a content click and a timeout, and confirm the `activationType` and `activationValue` fields the parser reads in `src/backends/alerter.ts` (the parser fixtures were written from documentation, not captured output). Update the parser fixtures in `test/backends.test.ts` to match the captured output.
-- [ ] Check that alerter accepts option values starting with `-` (for example `--message -foo`). If it does not, switch to the `--message=<value>` form.
+- [ ] Values starting with `-` never reach alerter (they fall back to `osascript`, or decline when `alerter` is forced). Check that a choice with a `-timeout` label and a text field with a `--appIcon` default open an `osascript` dialog with the text unchanged.
 - [ ] With `alerter` installed and with it absent (`osascript` fallback), show each dialog kind (text, confirm, choice) and check the answer.
 - [ ] Let a dialog time out and check the result is `cancel`.
 - [ ] Abort a request while its dialog is open and check the dialog closes.

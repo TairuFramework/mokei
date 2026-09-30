@@ -77,6 +77,19 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** Returns a timeout option in seconds, or throws unless it is a finite number greater than 0. */
+export function timeoutSecondsOption(
+  name: string,
+  value: number | undefined,
+  fallback: number,
+): number {
+  const seconds = value ?? fallback
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) {
+    throw new TypeError(`${name} must be a finite number greater than 0, got ${String(seconds)}`)
+  }
+  return seconds
+}
+
 /** Settles with the promise, or rejects with the signal's reason as soon as it aborts. */
 export function untilAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -157,8 +170,12 @@ export function createDesktopElicitHandler(
   }
   const budgetMs =
     Math.min(
-      options.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS,
-      options.maxTimeoutSeconds ?? DEFAULT_MAX_TIMEOUT_SECONDS,
+      timeoutSecondsOption('timeoutSeconds', options.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS),
+      timeoutSecondsOption(
+        'maxTimeoutSeconds',
+        options.maxTimeoutSeconds,
+        DEFAULT_MAX_TIMEOUT_SECONDS,
+      ),
     ) * 1000
   const appName = options.appName ?? 'mokei'
   const describeSource = options.describeSource ?? ((r) => r.key ?? 'A server')
@@ -283,8 +300,15 @@ export function createDesktopElicitHandler(
    * Blocking path: queues the request and shows its dialogs. The budget starts at this call
    * and covers queue time, every field and every retry. Rejects with `request.signal.reason`
    * on abort; budget expiry gives `cancel`.
+   *
+   * An outcome no person chose (no dialog backend, an unsupported request, a backend failure)
+   * gives `decline` or `cancel` with `failure: 'result'`, and rejects with `failure: 'reject'`,
+   * so an inbox prompt leaves its entry pending.
    */
-  async function showDialogs(request: DesktopElicitRequest): Promise<ElicitResult> {
+  async function showDialogs(
+    request: DesktopElicitRequest,
+    failure: 'result' | 'reject' = 'result',
+  ): Promise<ElicitResult> {
     const { signal } = request
     signal.throwIfAborted()
     // A fresh error per later call, so callers never share one instance
@@ -294,6 +318,9 @@ export function createDesktopElicitHandler(
     const planned = planSteps(request)
     if (!planned.ok) {
       report(options.onUnsupported, planned.reason)
+      if (failure === 'reject') {
+        throw new Error(planned.reason)
+      }
       return DECLINE
     }
 
@@ -320,6 +347,9 @@ export function createDesktopElicitHandler(
       }
       // A backend failure (unknown exit code, missing binary...) ends the request as cancel
       report(options.onUnsupported, messageOf(error))
+      if (failure === 'reject') {
+        throw error
+      }
       return CANCEL
     } finally {
       clearTimeout(timer)
@@ -377,10 +407,14 @@ export function createDesktopElicitHandler(
       )
       return Promise.resolve(CANCEL)
     }
-    const canPrompt = planForm(request.params as FormParams, { appName, source }).ok
+    // Promptable when the form maps to dialogs and a dialog backend can show every one of them
+    const canPrompt = planSteps(request).ok
     const prompt = canPrompt
       ? (promptSignal: AbortSignal) =>
-          showDialogs({ ...request, signal: AbortSignal.any([promptSignal, request.signal]) })
+          showDialogs(
+            { ...request, signal: AbortSignal.any([promptSignal, request.signal]) },
+            'reject',
+          )
       : undefined
     const answer = inbox.add(request, { prompt })
     if (!request.signal.aborted) {

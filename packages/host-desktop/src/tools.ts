@@ -3,7 +3,7 @@ import type { LocalToolDefinition } from '@mokei/host'
 
 import type { BackendName, DesktopBackend } from './backends/types.js'
 import { createDetector, type ForcedBackends } from './detect.js'
-import { defaultCreateBackend, untilAbort } from './elicit-handler.js'
+import { defaultCreateBackend, timeoutSecondsOption, untilAbort } from './elicit-handler.js'
 import type { DesktopElicitRequest } from './inbox.js'
 import { createRunner, type Runner } from './runner.js'
 
@@ -153,7 +153,8 @@ function parseAskInput(input: Record<string, unknown>): AskInput | CallToolResul
 
 export function createDesktopTools(options: DesktopToolsOptions): Array<LocalToolDefinition> {
   const appName = options.appName ?? 'mokei'
-  const timeoutMs = (options.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000
+  const timeoutMs =
+    timeoutSecondsOption('timeoutSeconds', options.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS) * 1000
   const tools: Array<LocalToolDefinition> = []
 
   if (options.notify !== false) {

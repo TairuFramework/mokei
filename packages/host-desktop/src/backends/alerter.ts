@@ -8,9 +8,32 @@ import {
   unexpectedExit,
 } from './types.js'
 
-/** alerter takes `--actions` as a comma-separated list, so a label containing `,` cannot be shown. */
-export function alerterCanShow(request: AskRequest): boolean {
-  return !(request.choices ?? []).some((choice) => choice.label.includes(','))
+const ALERTER_COMMA_REASON = 'alerter cannot show a choice label containing a comma'
+const ALERTER_DASH_REASON =
+  'alerter cannot show a value starting with "-", which it could read as an option'
+
+/**
+ * Whether alerter can show the request.
+ *
+ * - alerter takes `--actions` as a comma-separated list, so a label containing `,` cannot be shown.
+ * - alerter has no `--` terminator, so an option value starting with `-` (title, text, reply
+ *   default or the actions list) could be parsed as an option.
+ */
+export function alerterCanShow(request: AskRequest): { ok: true } | { ok: false; reason: string } {
+  const labels = (request.choices ?? []).map((choice) => choice.label)
+  if (labels.some((label) => label.includes(','))) {
+    return { ok: false, reason: ALERTER_COMMA_REASON }
+  }
+  const values = [request.title, request.text]
+  if (request.kind === 'text') {
+    values.push(request.default ?? '')
+  } else if (request.kind === 'choice') {
+    values.push(labels.join(','))
+  }
+  if (values.some((value) => value.startsWith('-'))) {
+    return { ok: false, reason: ALERTER_DASH_REASON }
+  }
+  return { ok: true }
 }
 
 export function buildAlerterArgs(request: AskRequest, nativeTimeoutSeconds: number): Array<string> {

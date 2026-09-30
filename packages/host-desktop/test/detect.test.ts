@@ -207,6 +207,26 @@ describe('askBackendFor', () => {
     if (!r.ok) expect(r.reason).toContain('osascript')
   })
 
+  const dash: AskRequest = { kind: 'text', title: 't', text: 'x', default: '--appIcon' }
+
+  test('forced alerter cannot show a value starting with -', () => {
+    const a = detect('darwin', GUI, 'alerter', 'osascript')
+    const r = askBackendFor(dash, select(a, { ask: 'alerter' }, 'darwin'), a)
+    expect(r).toEqual({
+      ok: false,
+      reason:
+        'alerter cannot show a value starting with "-", which it could read as an option; change the request or use another dialog backend',
+    })
+  })
+
+  test('auto alerter falls back to osascript for a value starting with -', () => {
+    const a = detect('darwin', GUI, 'alerter', 'osascript')
+    expect(askBackendFor(dash, select(a, {}, 'darwin'), a)).toEqual({
+      ok: true,
+      name: 'osascript',
+    })
+  })
+
   test('alerter is used when no label has a comma', () => {
     const a = detect('darwin', GUI, 'alerter', 'osascript')
     expect(askBackendFor(plain, select(a, {}, 'darwin'), a)).toEqual({ ok: true, name: 'alerter' })

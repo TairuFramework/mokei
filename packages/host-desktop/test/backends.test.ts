@@ -106,9 +106,32 @@ describe('alerter', () => {
   })
 
   test('alerterCanShow', () => {
-    expect(alerterCanShow(choice)).toBe(true)
-    expect(alerterCanShow(text)).toBe(true)
-    expect(alerterCanShow({ ...choice, choices: [{ value: 'x', label: 'a,b' }] })).toBe(false)
+    expect(alerterCanShow(choice)).toEqual({ ok: true })
+    expect(alerterCanShow(text)).toEqual({ ok: true })
+    expect(alerterCanShow(confirm)).toEqual({ ok: true })
+    expect(alerterCanShow({ ...choice, choices: [{ value: 'x', label: 'a,b' }] })).toEqual({
+      ok: false,
+      reason: 'alerter cannot show a choice label containing a comma',
+    })
+  })
+
+  test('alerterCanShow refuses every option value starting with -', () => {
+    const dash = {
+      ok: false,
+      reason: 'alerter cannot show a value starting with "-", which it could read as an option',
+    }
+    expect(alerterCanShow({ ...text, default: '--appIcon' })).toEqual(dash)
+    expect(alerterCanShow({ ...text, default: '-timeout' })).toEqual(dash)
+    expect(
+      alerterCanShow({ ...choice, choices: [{ value: 'a', label: '-x' }, ...choices] }),
+    ).toEqual(dash)
+    expect(alerterCanShow({ ...confirm, title: '-T' })).toEqual(dash)
+    expect(alerterCanShow({ ...confirm, text: '--sender' })).toEqual(dash)
+    // A dash inside a value, or in a later label of the actions list, is not an option
+    expect(alerterCanShow({ ...text, default: 'a-b' })).toEqual({ ok: true })
+    expect(
+      alerterCanShow({ ...choice, choices: [...choices, { value: 'c', label: '-c' }] }),
+    ).toEqual({ ok: true })
   })
 
   test('wrapper passes native timeout and unchanged runner timeout', async () => {
