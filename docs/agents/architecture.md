@@ -119,6 +119,16 @@ revision-based compare-and-swap (CAS): a write based on a stale revision conflic
 re-reads and retries so concurrent status changes and partial input responses are preserved.
 Terminal transitions are first-writer-wins.
 
+Each task record keeps every input request it has made in `inputs`, ordered by increasing `id`.
+An entry holds its requests, its responses and, once settled, an `outcome` of `answered` or
+`withdrawn`. A request is open when the task status is `input_required` and the latest entry has
+no outcome. Four transitions change it, each a single CAS write: ask appends an entry and sets
+`input_required`; answer adds a response and, with the last key, sets `answered` and `working`;
+withdraw sets `withdrawn` and `working`; a terminal status ends an open request. A settled entry
+never changes, and keys are never reused. Waiters register a listener, then read the record, and
+resolve only from committed records, so a late or reordered notification cannot change the
+result. Expiry deletes the record and notifies the waiters, which fail.
+
 Create the manager once for the lifetime of the application. For stdio, pass it to the process's
 `ContextServer`. For stateless `2026-07-28` Streamable HTTP, pass it to `serveHTTP` and use the
 `tasks` value supplied to each `createServer` callback. HTTP creates a short-lived server per

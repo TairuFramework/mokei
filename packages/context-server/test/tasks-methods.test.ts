@@ -341,7 +341,14 @@ describe('task methods', () => {
     await vi.waitFor(async () => {
       expect((await manager.get(created.taskId)).status).toBe('completed')
     })
-    expect((await store.get(created.taskId))?.issuedInputKeys).toEqual(['a', 'b'])
+    expect((await store.get(created.taskId))?.inputs).toEqual([
+      {
+        id: 1,
+        requests: { a: rootsRequest, b: rootsRequest },
+        responses: { a: rootsResponse, b: rootsResponse },
+        outcome: 'answered',
+      },
+    ])
     const stale = await request('tasks/update', {
       taskId: created.taskId,
       inputResponses: { a: rootsResponse },

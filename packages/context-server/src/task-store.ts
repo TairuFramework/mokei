@@ -16,6 +16,16 @@ export type JSONValue =
 
 export type TaskOwner = { issuer?: string; subject: string; scopes: Array<string> }
 
+/** One input request a task made, kept for the task's lifetime. */
+export type InputRecord = {
+  /** Increments per request on this task, starting at 1. */
+  id: number
+  requests: Record<string, InputRequest>
+  responses: Record<string, InputResponse>
+  /** Absent while the request is open. A settled entry never changes again. */
+  outcome?: 'answered' | 'withdrawn'
+}
+
 export type TaskRecord = {
   taskID: string
   revision: number
@@ -32,9 +42,8 @@ export type TaskRecord = {
   resumeData?: JSONValue
   result?: CallToolResult & { resultType: 'complete' }
   error?: { code: number; message: string; data?: unknown }
-  inputRequests?: Record<string, InputRequest>
-  inputResponses?: Record<string, InputResponse>
-  issuedInputKeys: Array<string>
+  /** Every input request the task has made, in id order. The last entry is the latest. */
+  inputs: Array<InputRecord>
 }
 
 export type TaskStore = {

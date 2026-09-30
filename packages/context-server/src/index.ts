@@ -49,6 +49,7 @@ export {
 } from './subscriptions.js'
 export {
   createTaskManager,
+  InputRequestWithdrawnError,
   type TaskContext,
   type TaskHandle,
   TaskInputKeyReusedError,
@@ -59,6 +60,7 @@ export {
 } from './task-manager.js'
 export {
   createMemoryTaskStore,
+  type InputRecord,
   type JSONValue,
   type TaskOwner,
   type TaskRecord,

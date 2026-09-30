@@ -132,6 +132,44 @@ export class TaskInputUnavailableError extends Error {
   }
 }
 
+/** Thrown into a task input handler's signal when the server withdraws the request it serves. */
+export class TaskInputWithdrawnError extends Error {
+  #taskID: string
+  #key: string
+
+  constructor(params: { taskID: string; key: string; cause?: unknown }) {
+    super(`Input request "${params.key}" for task ${params.taskID} was withdrawn`, {
+      cause: params.cause,
+    })
+    this.name = 'TaskInputWithdrawnError'
+    this.#taskID = params.taskID
+    this.#key = params.key
+  }
+
+  get taskID(): string {
+    return this.#taskID
+  }
+
+  get key(): string {
+    return this.#key
+  }
+}
+
+/** Thrown when a task is gone from the server once its TTL has elapsed. */
+export class TaskExpiredError extends Error {
+  #taskID: string
+
+  constructor(params: { taskID: string; cause?: unknown }) {
+    super(`Task ${params.taskID} expired`, { cause: params.cause })
+    this.name = 'TaskExpiredError'
+    this.#taskID = params.taskID
+  }
+
+  get taskID(): string {
+    return this.#taskID
+  }
+}
+
 /** Thrown when a paginated list walk fetches more pages than its cap allows. */
 export class ListMaxPagesError extends Error {
   /** The list method that exceeded the cap, e.g. `tools/list`. */

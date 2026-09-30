@@ -5,7 +5,9 @@ import { describe, expect, test, vi } from 'vitest'
 import {
   InputRequiredNotSupportedError,
   TaskCancelledError,
+  TaskExpiredError,
   TaskInputUnavailableError,
+  TaskInputWithdrawnError,
 } from '../src/errors.js'
 import { TaskWaiter } from '../src/task-waiter.js'
 
@@ -417,9 +419,43 @@ describe('TaskWaiter', () => {
     })
     const pending = waiter.wait({ taskID: base.taskId, onStatus })
     await vi.waitFor(() => expect(onStatus).toHaveBeenCalledWith(working))
-    notify?.(completed)
+    const finished = { ...completed, lastUpdatedAt: '2026-09-29T12:00:01.000Z' }
+    notify?.(finished)
     expect(await pending).toEqual(completed.result)
-    expect(onStatus).toHaveBeenCalledWith(completed)
+    expect(onStatus).toHaveBeenCalledWith(finished)
+  })
+
+  test('reports a pushed snapshot to onStatus once when a read returns the same revision', async () => {
+    let notify: ((status: DetailedTask) => void) | undefined
+    const onStatus = vi.fn()
+    const waiter = new TaskWaiter({
+      request: vi.fn().mockResolvedValue(working),
+      openListen: (_filter, handlers) => {
+        notify = (status) =>
+          handlers.onNotification({
+            jsonrpc: '2.0',
+            method: 'notifications/tasks',
+            params: status,
+          })
+        queueMicrotask(() => {
+          notify?.(working)
+          handlers.onNotification({
+            jsonrpc: '2.0',
+            method: 'notifications/subscriptions/acknowledged',
+            params: { notifications: { taskIds: [base.taskId] } },
+          } as unknown as ServerNotification)
+        })
+        return { exchange: new Promise(() => {}), abort: vi.fn() }
+      },
+      fulfil: vi.fn(),
+      validate: vi.fn(),
+    })
+    const pending = waiter.wait({ taskID: base.taskId, onStatus })
+    await vi.waitFor(() => expect(onStatus).toHaveBeenCalledWith(working))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    notify?.({ ...completed, lastUpdatedAt: '2026-09-29T12:00:01.000Z' })
+    expect(await pending).toEqual(completed.result)
+    expect(onStatus.mock.calls.map(([status]) => status.status)).toEqual(['working', 'completed'])
   })
 
   test('cancels the server task on automatic wait abort', async () => {
@@ -492,5 +528,390 @@ describe('TaskWaiter', () => {
     notify?.({ ...completed, lastUpdatedAt: '2026-09-29T12:00:02.000Z' })
     expect(await pending).toEqual(completed.result)
     expect(request).not.toHaveBeenCalledWith('tasks/update', expect.anything())
+  })
+
+  describe('withdrawal and expiry', () => {
+    const input = {
+      ...base,
+      status: 'input_required' as const,
+      inputRequests: { ask: { method: 'roots/list' as const, params: {} } },
+    }
+    const at = (seconds: number) => `2026-09-29T12:00:0${seconds}.000Z`
+
+    function subscribe() {
+      const state: { notify?: (status: DetailedTask) => void } = {}
+      const openListen = (
+        _filter: unknown,
+        handlers: {
+          onNotification: (notification: ServerNotification) => void
+        },
+      ) => {
+        state.notify = (status) =>
+          handlers.onNotification({
+            jsonrpc: '2.0',
+            method: 'notifications/tasks',
+            params: status,
+          })
+        queueMicrotask(() =>
+          handlers.onNotification({
+            jsonrpc: '2.0',
+            method: 'notifications/subscriptions/acknowledged',
+            params: { notifications: { taskIds: [base.taskId] } },
+          } as unknown as ServerNotification),
+        )
+        return { exchange: new Promise<never>(() => {}), abort: vi.fn() }
+      }
+      return { state, openListen }
+    }
+
+    const notFound = () => new RPCError({ code: -32602, message: 'Task not found' })
+
+    test('withdrawal aborts the handler with TaskInputWithdrawnError', async () => {
+      vi.useFakeTimers()
+      try {
+        const { state, openListen } = subscribe()
+        let reason: unknown
+        const fulfil = vi.fn(
+          (_key: string, _request: unknown, signal: AbortSignal) =>
+            new Promise<never>((_resolve, reject) => {
+              signal.addEventListener('abort', () => {
+                reason = signal.reason
+                reject(signal.reason)
+              })
+            }),
+        )
+        const request = vi.fn().mockResolvedValue(input)
+        const waiter = new TaskWaiter({
+          request,
+          openListen,
+          fulfil,
+          validate: vi.fn(),
+        })
+        const pending = waiter.wait({ taskID: base.taskId })
+        await vi.waitFor(() => expect(fulfil).toHaveBeenCalledTimes(1))
+        state.notify?.({ ...working, lastUpdatedAt: at(1) })
+        await vi.waitFor(() => expect(reason).toBeInstanceOf(TaskInputWithdrawnError))
+        expect(reason).toMatchObject({ key: 'ask', taskID: base.taskId })
+        let settled = false
+        pending.then(
+          () => (settled = true),
+          () => (settled = true),
+        )
+        await vi.advanceTimersByTimeAsync(10)
+        expect(settled).toBe(false)
+        state.notify?.({ ...completed, lastUpdatedAt: at(2) })
+        expect(await pending).toEqual(completed.result)
+        expect(request).not.toHaveBeenCalledWith('tasks/update', expect.anything())
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    test('an accepted answer is not reported as withdrawn', async () => {
+      const { state, openListen } = subscribe()
+      const reasons: Array<unknown> = []
+      const fulfil = vi.fn(async (_key: string, _request: unknown, signal: AbortSignal) => {
+        signal.addEventListener('abort', () => reasons.push(signal.reason))
+        return { roots: [] }
+      })
+      const request = vi.fn(async (method: string) => {
+        if (method === 'tasks/update') {
+          // The server accepts the answer and pushes the resumed task before replying.
+          state.notify?.({ ...working, lastUpdatedAt: at(1) })
+          return {}
+        }
+        return input
+      })
+      const waiter = new TaskWaiter({
+        request,
+        openListen,
+        fulfil,
+        validate: vi.fn(),
+      })
+      const pending = waiter.wait({ taskID: base.taskId })
+      await vi.waitFor(() =>
+        expect(request).toHaveBeenCalledWith('tasks/update', expect.anything()),
+      )
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      state.notify?.({ ...completed, lastUpdatedAt: at(2) })
+      expect(await pending).toEqual(completed.result)
+      expect(reasons.some((reason) => reason instanceof TaskInputWithdrawnError)).toBe(false)
+    })
+
+    test('a late answer keeps the wait alive', async () => {
+      let gets = 0
+      let reread: () => void = () => {}
+      const rereadDone = new Promise<void>((resolve) => {
+        reread = resolve
+      })
+      const request = vi.fn(async (method: string) => {
+        if (method === 'tasks/update') {
+          throw new RPCError({ code: -32602, message: 'stale input', data: { key: 'ask' } })
+        }
+        gets += 1
+        if (gets === 2) queueMicrotask(reread)
+        return gets === 1
+          ? input
+          : gets === 2
+            ? { ...working, lastUpdatedAt: at(1) }
+            : { ...completed, lastUpdatedAt: at(2) }
+      })
+      const waiter = new TaskWaiter({
+        request,
+        openListen: () => {
+          throw new Error('unavailable')
+        },
+        fulfil: async () => ({ roots: [] }),
+        validate: vi.fn(),
+        // Hold the poll until the dispatch path has re-read, so only that read can reach `working`.
+        delay: () => rereadDone,
+      })
+      expect(await waiter.wait({ taskID: base.taskId })).toEqual(completed.result)
+      expect(gets).toBe(3)
+    })
+
+    test('reversed snapshot delivery leaves a withdrawn dialog closed', async () => {
+      const { state, openListen } = subscribe()
+      const signals: Array<AbortSignal> = []
+      const fulfil = vi.fn((_key: string, _request: unknown, signal: AbortSignal) => {
+        signals.push(signal)
+        return new Promise<never>(() => {})
+      })
+      const onStatus = vi.fn()
+      const older = { ...input, lastUpdatedAt: at(1) }
+      const waiter = new TaskWaiter({
+        request: vi.fn().mockResolvedValue(input),
+        openListen,
+        fulfil,
+        validate: vi.fn(),
+      })
+      const pending = waiter.wait({ taskID: base.taskId, onStatus })
+      await vi.waitFor(() => expect(fulfil).toHaveBeenCalledTimes(1))
+      state.notify?.({ ...working, lastUpdatedAt: at(2) })
+      state.notify?.(older)
+      state.notify?.({ ...completed, lastUpdatedAt: at(3) })
+      expect(await pending).toEqual(completed.result)
+      expect(fulfil.mock.calls.length).toBeLessThanOrEqual(1)
+      expect(signals[0]?.aborted).toBe(true)
+      expect(onStatus).not.toHaveBeenCalledWith(older)
+    })
+
+    test('expiry while subscribed fails with TaskExpiredError', async () => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(Date.parse(base.createdAt))
+        const deadline = Date.parse(base.createdAt) + base.ttlMs
+        const { openListen } = subscribe()
+        const rejection = notFound()
+        const request = vi.fn(async () => {
+          if (Date.now() >= deadline) throw rejection
+          return working
+        })
+        const waiter = new TaskWaiter({
+          request,
+          openListen,
+          fulfil: vi.fn(),
+          validate: vi.fn(),
+          now: () => Date.now(),
+        })
+        const pending = waiter.wait({ taskID: base.taskId })
+        const assertion = expect(pending).rejects.toMatchObject({
+          name: 'TaskExpiredError',
+          taskID: base.taskId,
+          cause: rejection,
+        })
+        await vi.advanceTimersByTimeAsync(base.ttlMs)
+        await assertion
+        await expect(pending).rejects.toBeInstanceOf(TaskExpiredError)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    test('expiry while polling fails with TaskExpiredError', async () => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(Date.parse(base.createdAt))
+        const deadline = Date.parse(base.createdAt) + 600
+        const request = vi.fn(async () => {
+          if (Date.now() >= deadline) throw notFound()
+          return { ...working, ttlMs: 600 }
+        })
+        const waiter = new TaskWaiter({
+          request,
+          openListen: () => {
+            throw new Error('unavailable')
+          },
+          fulfil: vi.fn(),
+          validate: vi.fn(),
+          now: () => Date.now(),
+        })
+        const pending = waiter.wait({ taskID: base.taskId })
+        const assertion = expect(pending).rejects.toBeInstanceOf(TaskExpiredError)
+        await vi.advanceTimersByTimeAsync(1000)
+        await assertion
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    test.each([
+      ['after the deadline', base.ttlMs, true],
+      ['before the deadline', 0, false],
+    ] as const)('a rejected answer for a missing task %s', async (_caseName, offset, expired) => {
+      const { openListen } = subscribe()
+      const snapshot = {
+        ...base,
+        status: 'input_required' as const,
+        inputRequests: { ask: { method: 'roots/list' as const, params: {} } },
+      }
+      const rejection = notFound()
+      const request = vi.fn(async (method: string) => {
+        if (method === 'tasks/update') throw rejection
+        return snapshot
+      })
+      const waiter = new TaskWaiter({
+        request,
+        openListen,
+        fulfil: async () => ({ roots: [] }),
+        validate: vi.fn(),
+        now: () => Date.parse(base.createdAt) + offset,
+      })
+      const error = await waiter.wait({ taskID: base.taskId }).catch((reason: unknown) => reason)
+      expect(request).toHaveBeenCalledWith('tasks/update', expect.anything())
+      if (expired) {
+        expect(error).toBeInstanceOf(TaskExpiredError)
+        expect(error).toMatchObject({ taskID: base.taskId, cause: rejection })
+      } else {
+        expect(error).toBe(rejection)
+      }
+    })
+
+    test('not found before the deadline keeps the original error', async () => {
+      const rejection = notFound()
+      const request = vi.fn().mockResolvedValueOnce(working).mockRejectedValueOnce(rejection)
+      const waiter = new TaskWaiter({
+        request,
+        openListen: () => {
+          throw new Error('unavailable')
+        },
+        fulfil: vi.fn(),
+        validate: vi.fn(),
+        delay: async () => {},
+        now: () => Date.parse(base.createdAt),
+      })
+      await expect(waiter.wait({ taskID: base.taskId })).rejects.toBe(rejection)
+    })
+
+    test('releasing the wait aborts the handler', async () => {
+      vi.useFakeTimers()
+      try {
+        const controller = new AbortController()
+        let dispatchSignal: AbortSignal | undefined
+        let finish: ((response: { roots: Array<never> }) => void) | undefined
+        const fulfil = vi.fn((_key: string, _request: unknown, signal: AbortSignal) => {
+          dispatchSignal = signal
+          return new Promise<{ roots: Array<never> }>((resolve) => {
+            finish = resolve
+          })
+        })
+        const request = vi.fn().mockResolvedValue(input)
+        const waiter = new TaskWaiter({
+          request,
+          openListen: () => {
+            throw new Error('unavailable')
+          },
+          fulfil,
+          validate: vi.fn(),
+          delay: (_ms, signal) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason))
+            }),
+        })
+        const pending = waiter.wait({ taskID: base.taskId, signal: controller.signal })
+        await vi.waitFor(() => expect(fulfil).toHaveBeenCalledTimes(1))
+        const reason = new Error('stopped')
+        controller.abort(reason)
+        await expect(pending).rejects.toBe(reason)
+        expect(dispatchSignal?.aborted).toBe(true)
+        finish?.({ roots: [] })
+        await vi.advanceTimersByTimeAsync(10)
+        expect(request).not.toHaveBeenCalledWith('tasks/update', expect.anything())
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    test('a 30 day TTL does not turn the subscribed wait into a read loop', async () => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(Date.parse(base.createdAt))
+        const { openListen } = subscribe()
+        const request = vi.fn().mockResolvedValue({ ...working, ttlMs: 30 * 24 * 3600 * 1000 })
+        const waiter = new TaskWaiter({
+          request,
+          openListen,
+          fulfil: vi.fn(),
+          validate: vi.fn(),
+          now: () => Date.now(),
+        })
+        const pending = waiter.wait({ taskID: base.taskId })
+        pending.catch(() => {})
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect(request).toHaveBeenCalledTimes(1)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    test('an invalid createdAt means no expiry timer', async () => {
+      vi.useFakeTimers()
+      try {
+        const { openListen } = subscribe()
+        const request = vi.fn().mockResolvedValue({ ...working, createdAt: 'not a date' })
+        const waiter = new TaskWaiter({
+          request,
+          openListen,
+          fulfil: vi.fn(),
+          validate: vi.fn(),
+          now: () => Date.now(),
+        })
+        const pending = waiter.wait({ taskID: base.taskId })
+        pending.catch(() => {})
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect(request).toHaveBeenCalledTimes(1)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    test('a past-deadline re-read of an unchanged snapshot does not repeat onStatus', async () => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(Date.parse(base.createdAt) + 5000)
+        const { openListen } = subscribe()
+        const request = vi
+          .fn()
+          .mockResolvedValueOnce(working)
+          .mockResolvedValueOnce(working)
+          .mockResolvedValueOnce(working)
+          .mockResolvedValue(completed)
+        const onStatus = vi.fn()
+        const waiter = new TaskWaiter({
+          request,
+          openListen,
+          fulfil: vi.fn(),
+          validate: vi.fn(),
+          now: () => Date.now(),
+        })
+        const pending = waiter.wait({ taskID: base.taskId, onStatus })
+        await vi.advanceTimersByTimeAsync(3000 + 250 * 4)
+        await pending
+        expect(request.mock.calls.length).toBeGreaterThanOrEqual(3)
+        expect(onStatus.mock.calls.filter(([status]) => status === working)).toHaveLength(1)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
   })
 })

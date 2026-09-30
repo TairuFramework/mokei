@@ -1,12 +1,14 @@
-import type { InputResponse } from '@mokei/context-protocol'
+import type { InputRequest, InputResponse } from '@mokei/context-protocol'
 import {
+  createMemoryTaskStore,
   createTaskManager,
+  type InputRecord,
   type JSONValue,
   type TaskHandle,
-  TaskInputKeyReusedError,
+  type TaskRecord,
 } from '@mokei/context-server'
-import { createFlowGraph, type FlowDefinition } from '@sozai/flow-graph'
-import { expect, test } from 'vitest'
+import { createFlowGraph, type FlowDefinition, type RunState } from '@sozai/flow-graph'
+import { expect, test, vi } from 'vitest'
 
 import { type ResumeDataV1, startRun } from '../src/driver.js'
 import type { ToolCaller } from '../src/tool-caller.js'
@@ -133,18 +135,6 @@ test('primitive elicitation wraps schema and unwraps accepted value', async () =
   })
 })
 
-test('recovery reissues an already consumed input key with a checkpointed sequence', async () => {
-  let requests = 0
-  const h = harness(inputFlow({ type: 'string' }), (key) => {
-    requests++
-    if (requests === 1) throw new TaskInputKeyReusedError(key)
-    return { action: 'accept', content: { value: 'Ada' } }
-  })
-  expect((await h.drive()).structuredContent).toMatchObject({ output: { answer: 'Ada' } })
-  expect(h.keys).toEqual(['run-input:ask.1:input:0', 'run-input:ask.1:input:1'])
-  expect(h.resumeData.inputSeq).toBe(1)
-})
-
 test.each(['decline', 'cancel'] as const)('%s cancels the flow task', async (action) => {
   const h = harness(inputFlow({ type: 'string' }), { action })
   await h.drive()
@@ -192,7 +182,8 @@ test('non-string resolved prompt yields typed tool error without elicitation', a
 })
 
 test('real input deadline withdraws the request and a late answer cannot change the outcome', async () => {
-  const tasks = createTaskManager()
+  const store = createMemoryTaskStore()
+  const tasks = createTaskManager({ store })
   const flow = inputFlow({ type: 'string' }, { timeout: { afterMs: 100, to: 'timed' } })
   const graph = createFlowGraph()
   const run = graph.start({ definition: flow, runID: 'run-input' })
@@ -218,9 +209,9 @@ test('real input deadline withdraws the request and a late answer cannot change 
     })
     let key: string | undefined
     for (let attempt = 0; attempt < 100; attempt++) {
-      const record = await tasks.get(started.taskId)
-      if (record.status === 'input_required') {
-        key = Object.keys(record.inputRequests)[0]
+      const record = await store.get(started.taskId)
+      if (record?.status === 'input_required') {
+        key = Object.keys(record.inputs.at(-1)?.requests ?? {})[0]
         break
       }
       await new Promise((resolve) => setTimeout(resolve, 1))
@@ -247,7 +238,273 @@ test('real input deadline withdraws the request and a late answer cannot change 
       status: 'completed',
       result: { structuredContent: { outcome: 'timed' } },
     })
+    expect((await store.get(started.taskId))?.inputs).toEqual([
+      expect.objectContaining({ id: 1, responses: {}, outcome: 'withdrawn' }),
+    ])
   } finally {
     await tasks.dispose()
+  }
+})
+
+const timedFlow = inputFlow({ type: 'string' }, { timeout: { afterMs: 60_000, to: 'timed' } })
+
+const askRequest = {
+  method: 'elicitation/create',
+  params: {
+    message: 'Choose',
+    requestedSchema: {
+      type: 'object',
+      properties: { value: { type: 'string' } },
+      required: ['value'],
+    },
+  },
+} as InputRequest
+
+async function suspendedAt(flow: FlowDefinition, deadline?: number) {
+  const graph = createFlowGraph()
+  const run = graph.start({ definition: flow, runID: 'run-input' })
+  let state: RunState | undefined
+  for (let index = 0; index < 20 && state === undefined; index++) {
+    const step = await run.next()
+    if (step.done) throw new Error('Run ended before suspension')
+    if (step.value.status === 'suspended') state = step.value
+  }
+  if (state?.pending === undefined) throw new Error('Run did not suspend')
+  if (deadline !== undefined) {
+    state = { ...state, pending: { ...state.pending, deadline: new Date(deadline).toISOString() } }
+  }
+  const frame = state.frames.at(-1)
+  const pending = state.pending as NonNullable<RunState['pending']>
+  const invocation =
+    frame?.attempts[pending.node]?.invocationID ?? `${pending.node}.${frame?.invocation ?? 0}`
+  const resumeData: ResumeDataV1 = {
+    v: 1,
+    flow: { definition: flow },
+    approved: [],
+    depth: 0,
+    runState: state,
+    siblings: [],
+  }
+  return { graph, run, resumeData, key: `${state.runID}:${invocation}:input:0` }
+}
+
+/** Persists a task with the given input history, then resumes it with `startRun`. */
+async function recoverInput(params: {
+  flow: FlowDefinition
+  deadline?: number
+  status: TaskRecord['status']
+  inputs: (key: string) => Array<InputRecord>
+}) {
+  const store = createMemoryTaskStore()
+  const { graph, run, resumeData, key } = await suspendedAt(params.flow, params.deadline)
+  const tool = {
+    description: 'Input flow',
+    inputSchema: { type: 'object' as const },
+    handler: () => ({ content: [] }),
+  }
+  const first = createTaskManager({ store })
+  const created = await first.create({
+    toolName: 'flow',
+    tool,
+    clientCapabilities: { elicitation: {} },
+    resumeData: resumeData as unknown as JSONValue,
+    work: () => new Promise(() => {}),
+  })
+  await first.dispose()
+  const previous = await store.get(created.taskId)
+  if (previous === undefined) throw new Error('Task missing')
+  await store.update(
+    created.taskId,
+    { status: params.status, inputs: params.inputs(key) },
+    { revision: previous.revision },
+  )
+  const second = createTaskManager({
+    store,
+    recover: (_record, resume) =>
+      resume((handle) =>
+        startRun({ handle, graph, run, definition: params.flow, resumeData, caller }),
+      ),
+  })
+  await second.recover({ flow: tool })
+  return { store, tasks: second, taskID: created.taskId, key }
+}
+
+async function settled(tasks: ReturnType<typeof createTaskManager>, taskID: string) {
+  await expect
+    .poll(async () => (await tasks.get(taskID)).status)
+    .toSatisfy((status) => status === 'completed' || status === 'failed')
+  return tasks.get(taskID)
+}
+
+test('expired deadline replays a stored answer', async () => {
+  const { store, tasks, taskID } = await recoverInput({
+    flow: timedFlow,
+    deadline: Date.now() - 1000,
+    status: 'working',
+    inputs: (key) => [
+      {
+        id: 1,
+        requests: { [key]: askRequest },
+        responses: { [key]: { action: 'accept', content: { value: 'Ada' } } },
+        outcome: 'answered',
+      },
+    ],
+  })
+  try {
+    expect(await settled(tasks, taskID)).toMatchObject({
+      status: 'completed',
+      result: { structuredContent: { outcome: 'done', output: { answer: 'Ada' } } },
+    })
+    expect((await store.get(taskID))?.inputs).toHaveLength(1)
+  } finally {
+    await tasks.dispose()
+  }
+})
+
+test('expired deadline with a request never issued takes the timeout edge', async () => {
+  const { store, tasks, taskID } = await recoverInput({
+    flow: timedFlow,
+    deadline: Date.now() - 1000,
+    status: 'working',
+    inputs: () => [],
+  })
+  try {
+    expect(await settled(tasks, taskID)).toMatchObject({
+      status: 'completed',
+      result: { structuredContent: { outcome: 'timed' } },
+    })
+    expect((await store.get(taskID))?.inputs).toEqual([])
+  } finally {
+    await tasks.dispose()
+  }
+})
+
+test('expired deadline with an open request withdraws it and takes the timeout edge', async () => {
+  const { store, tasks, taskID, key } = await recoverInput({
+    flow: timedFlow,
+    deadline: Date.now() - 1000,
+    status: 'input_required',
+    inputs: (key) => [{ id: 1, requests: { [key]: askRequest }, responses: {} }],
+  })
+  try {
+    expect(await settled(tasks, taskID)).toMatchObject({
+      status: 'completed',
+      result: { structuredContent: { outcome: 'timed' } },
+    })
+    expect((await store.get(taskID))?.inputs).toEqual([
+      { id: 1, requests: { [key]: askRequest }, responses: {}, outcome: 'withdrawn' },
+    ])
+  } finally {
+    await tasks.dispose()
+  }
+})
+
+test('expired deadline with a withdrawn request takes the timeout edge without asking', async () => {
+  const { store, tasks, taskID, key } = await recoverInput({
+    flow: timedFlow,
+    deadline: Date.now() - 1000,
+    status: 'working',
+    inputs: (key) => [
+      { id: 1, requests: { [key]: askRequest }, responses: {}, outcome: 'withdrawn' },
+    ],
+  })
+  try {
+    expect(await settled(tasks, taskID)).toMatchObject({
+      status: 'completed',
+      result: { structuredContent: { outcome: 'timed' } },
+    })
+    expect((await store.get(taskID))?.inputs).toEqual([
+      { id: 1, requests: { [key]: askRequest }, responses: {}, outcome: 'withdrawn' },
+    ])
+  } finally {
+    await tasks.dispose()
+  }
+})
+
+test('a reused key with changed contents fails the run', async () => {
+  const changed = {
+    ...askRequest,
+    params: { ...askRequest.params, message: 'Something else' },
+  } as InputRequest
+  const { store, tasks, taskID } = await recoverInput({
+    flow: timedFlow,
+    status: 'working',
+    inputs: (key) => [
+      {
+        id: 1,
+        requests: { [key]: changed },
+        responses: { [key]: { action: 'accept', content: { value: 'Ada' } } },
+        outcome: 'answered',
+      },
+    ],
+  })
+  try {
+    expect(await settled(tasks, taskID)).toMatchObject({
+      status: 'failed',
+      error: { code: -32603, message: 'Flow input key reused' },
+    })
+    expect((await store.get(taskID))?.inputs).toHaveLength(1)
+  } finally {
+    await tasks.dispose()
+  }
+})
+
+test('a non-deadline rejection propagates', async () => {
+  const { graph, run, resumeData } = await suspendedAt(timedFlow)
+  const handle: TaskHandle = {
+    taskID: 'task-input',
+    signal: new AbortController().signal,
+    requestMeta: {},
+    setStatus: async () => {},
+    checkpoint: async () => {},
+    requestInput: async () => {
+      throw new Error('boom')
+    },
+    awaitInput: async () => {
+      throw new Error('unexpected await')
+    },
+    cancel: async () => true,
+  }
+  await expect(
+    startRun({ handle, graph, run, definition: timedFlow, resumeData, caller }),
+  ).rejects.toThrow('boom')
+})
+
+test('an input deadline timer firing early re-arms before taking the timeout edge', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+  try {
+    const flow = inputFlow({ type: 'string' }, { timeout: { afterMs: 100, to: 'timed' } })
+    const { graph, run, resumeData } = await suspendedAt(flow)
+    let asked: AbortSignal | undefined
+    const handle: TaskHandle = {
+      taskID: 'task-input',
+      signal: new AbortController().signal,
+      requestMeta: {},
+      setStatus: async () => {},
+      checkpoint: async () => {},
+      requestInput: (_requests, options) => {
+        const signal = options?.signal as AbortSignal
+        asked = signal
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+      },
+      awaitInput: async () => {
+        throw new Error('unexpected await')
+      },
+      cancel: async () => true,
+    }
+    const completed = startRun({ handle, graph, run, definition: flow, resumeData, caller })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(asked).toBeDefined()
+    // Move the clock back 1 ms: the 100 ms timer then fires 1 ms before the deadline.
+    vi.setSystemTime(Date.now() - 1)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(asked?.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(asked?.aborted).toBe(true)
+    expect((await completed).structuredContent).toEqual({ outcome: 'timed', output: {} })
+  } finally {
+    vi.useRealTimers()
   }
 })

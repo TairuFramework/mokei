@@ -144,8 +144,6 @@ export function createRecovery(params: {
         definition,
         resumeData: { ...data, siblings },
         caller: params.caller,
-        outstandingInputRequests:
-          record.status === 'input_required' ? record.inputRequests : undefined,
       }).finally(() => handle.signal.removeEventListener('abort', abort))
     })
   }
