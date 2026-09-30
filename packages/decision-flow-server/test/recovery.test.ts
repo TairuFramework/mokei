@@ -133,13 +133,13 @@ async function suspendedState(definition: FlowDefinition, caller?: ToolCaller): 
   throw new Error('Run did not suspend')
 }
 
-function inputKey(state: RunState, seq = 0): string {
+function inputKey(state: RunState): string {
   const pending = state.pending
   if (pending === undefined) throw new Error('No pending input')
   const frame = state.frames.at(-1)
   const invocation =
     frame?.attempts[pending.node]?.invocationID ?? `${pending.node}.${frame?.invocation ?? 0}`
-  return `${state.runID}:${invocation}:input:${seq}`
+  return `${state.runID}:${invocation}:input:0`
 }
 
 const inputRequest = {
@@ -368,32 +368,21 @@ test('catalogue drift fails recovery with formatted issues and cancels siblings'
   }
 })
 
-test.each(['not-issued', 'outstanding', 'answered', 'incremented-outstanding'] as const)(
+test.each(['not-issued', 'outstanding'] as const)(
   'recovers input when the original key is %s',
   async (window) => {
     const state = await suspendedState(inputFlow)
     const f = fixture({ storedDefinition: inputFlow, state })
     const id = await persist(f)
-    const key0 = inputKey(state)
-    const key1 = inputKey(state, 1)
-    if (window !== 'not-issued') {
+    const key = inputKey(state)
+    if (window === 'outstanding') {
       const previous = await f.store.get(id)
       if (previous === undefined) throw new Error('Task missing')
       await f.store.update(
         id,
         {
-          status: window === 'answered' ? 'working' : 'input_required',
-          inputs: [
-            {
-              id: 1,
-              requests: { [key0]: inputRequest },
-              responses: {},
-              ...(window !== 'outstanding' && { outcome: 'answered' as const }),
-            },
-            ...(window === 'incremented-outstanding'
-              ? [{ id: 2, requests: { [key1]: inputRequest }, responses: {} }]
-              : []),
-          ],
+          status: 'input_required',
+          inputs: [{ id: 1, requests: { [key]: inputRequest }, responses: {} }],
         },
         { revision: previous.revision },
       )
@@ -402,15 +391,9 @@ test.each(['not-issued', 'outstanding', 'answered', 'incremented-outstanding'] a
     try {
       await second.recover(server.recoveryTools)
       await expect.poll(async () => (await second.get(id)).status).toBe('input_required')
-      const actual = await second.get(id)
-      const expectedKey =
-        window === 'answered' || window === 'incremented-outstanding' ? key1 : key0
-      expect(actual).toMatchObject({ inputRequests: { [expectedKey]: inputRequest } })
-      if (window === 'answered' || window === 'incremented-outstanding') {
-        const saved = await f.store.get(id)
-        expect((saved?.resumeData as unknown as ResumeDataV1 | undefined)?.inputSeq).toBe(1)
-      }
-      await second.update(id, { [expectedKey]: { action: 'accept', content: { value: 'Ada' } } })
+      expect(await second.get(id)).toMatchObject({ inputRequests: { [key]: inputRequest } })
+      expect((await f.store.get(id))?.inputs).toHaveLength(1)
+      await second.update(id, { [key]: { action: 'accept', content: { value: 'Ada' } } })
       await expect.poll(async () => (await second.get(id)).status).toBe('completed')
       expect(await second.get(id)).toMatchObject({
         result: { structuredContent: { outcome: 'answered', output: { answer: 'Ada' } } },
@@ -420,6 +403,41 @@ test.each(['not-issued', 'outstanding', 'answered', 'incremented-outstanding'] a
     }
   },
 )
+
+test('recovers input by replaying an answer committed before the restart', async () => {
+  const state = await suspendedState(inputFlow)
+  const f = fixture({ storedDefinition: inputFlow, state })
+  const id = await persist(f)
+  const key = inputKey(state)
+  const previous = await f.store.get(id)
+  if (previous === undefined) throw new Error('Task missing')
+  await f.store.update(
+    id,
+    {
+      status: 'working',
+      inputs: [
+        {
+          id: 1,
+          requests: { [key]: inputRequest },
+          responses: { [key]: { action: 'accept', content: { value: 'Ada' } } },
+          outcome: 'answered',
+        },
+      ],
+    },
+    { revision: previous.revision },
+  )
+  const { second, server } = f.createSecond()
+  try {
+    await second.recover(server.recoveryTools)
+    await expect.poll(async () => (await second.get(id)).status).toBe('completed')
+    expect(await second.get(id)).toMatchObject({
+      result: { structuredContent: { outcome: 'answered', output: { answer: 'Ada' } } },
+    })
+    expect((await f.store.get(id))?.inputs).toHaveLength(1)
+  } finally {
+    await second.dispose()
+  }
+})
 
 test('an elapsed input deadline resumes the timeout edge without issuing a request', async () => {
   const state = await suspendedState(inputFlow)
@@ -498,6 +516,7 @@ test('withdraws an outstanding expired input before asking at the timeout edge',
     const [newKey] = Object.keys(recovered.inputRequests ?? {})
     if (newKey === undefined) throw new Error('Follow-up input was not issued')
     expect(newKey).not.toBe(oldKey)
+    expect((await f.store.get(id))?.inputs[0]).toMatchObject({ outcome: 'withdrawn' })
     await second.update(id, { [newKey]: { action: 'accept', content: { value: 'Ada' } } })
     await expect.poll(async () => (await second.get(id)).status).toBe('completed')
     expect(await second.get(id)).toMatchObject({

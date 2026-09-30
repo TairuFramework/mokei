@@ -1,12 +1,6 @@
 import type { CallToolResult } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
-import type {
-  InputRecord,
-  JSONValue,
-  TaskManagerParams,
-  TaskRecord,
-  ToolDefinitions,
-} from '@mokei/context-server'
+import type { JSONValue, TaskManagerParams, ToolDefinitions } from '@mokei/context-server'
 import type { Predictor } from '@mokei/decision-flow'
 import { digestDefinition, type FlowDefinition } from '@sozai/flow-graph'
 
@@ -29,14 +23,6 @@ const recoveryOnlyTool: ToolDefinitions[string] = {
   handler: () => {
     throw new Error('Recovery-only flow tool cannot be called')
   },
-}
-
-/** The open request's `requests`: the latest entry, while the task awaits it. */
-function outstandingInputRequests(record: TaskRecord): InputRecord['requests'] | undefined {
-  const latest = record.inputs.at(-1)
-  return record.status === 'input_required' && latest?.outcome === undefined
-    ? latest?.requests
-    : undefined
 }
 
 export function recoveryToolMap(tools: ToolDefinitions): ToolDefinitions {
@@ -158,7 +144,6 @@ export function createRecovery(params: {
         definition,
         resumeData: { ...data, siblings },
         caller: params.caller,
-        outstandingInputRequests: outstandingInputRequests(record),
       }).finally(() => handle.signal.removeEventListener('abort', abort))
     })
   }
