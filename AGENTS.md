@@ -20,7 +20,7 @@ through a unified session and agent architecture built on typed MCP server/clien
 - **Context Management** -- `ContextHost` manages direct and HTTP connections; `NodeContextHost` spawns stdio servers. `enableContextTools` and `disableContextTools` control tools per context.
 - **Provider Abstraction** -- A unified `ModelProvider` interface wraps OpenAI, Anthropic, Ollama, and Llama (local GGUF via node-llama-cpp), allowing the `Session` and `AgentSession` layers to work with any backend interchangeably.
 - **Session and Agent Layers** -- `Session` provides high-level chat + MCP abstraction; `AgentSession` adds an automatic agent loop with tool execution.
-- **System One** -- `@mokei/system-one-client` classifies typed questions; `mcp-servers/system-one` exposes predict, guard, moderate, route and triage tools.
+- **System One** -- `@mokei/system-one-client` classifies typed questions; `mcp-servers/system-one` exposes a `predict` tool.
 
 ## Quick Commands
 

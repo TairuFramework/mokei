@@ -1,4 +1,4 @@
-import type { QuestionMap } from './types.js'
+import type { QuestionMap } from '../../src/types.js'
 
 /** Which model tier should handle this input. */
 export function routerQuestions(): QuestionMap {

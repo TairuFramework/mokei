@@ -7,15 +7,11 @@ import {
 } from '@mokei/context-server'
 import {
   createSystemOneClient,
-  guardQuestions,
-  moderationQuestions,
   type QuestionMap,
   questionMapSchema,
-  routerQuestions,
   type State,
   type SystemOneClient,
   stateSchema,
-  triageQuestions,
 } from '@mokei/system-one-client'
 
 export type SystemOneToolsOptions = {
@@ -66,37 +62,6 @@ function resolveClient(options: SystemOneToolsOptions): SystemOneClient {
 export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
   const client = resolveClient(options)
 
-  function presetTool(description: string, questions: QuestionMap) {
-    return createTool({
-      description,
-      inputSchema: {
-        type: 'object',
-        properties: { state: stateSchema, model: { type: 'string' } },
-        required: ['state'],
-        additionalProperties: false,
-      } as const satisfies Schema,
-      handler: async (req) => {
-        try {
-          const result = await client.predict({
-            state: req.input.state as State,
-            questions,
-            model: req.input.model as string | undefined,
-            signal: req.signal,
-          })
-          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false }
-        } catch (err) {
-          if (req.signal?.aborted) {
-            throw err
-          }
-          return {
-            content: [{ type: 'text', text: (err as Error).message ?? 'Unknown error' }],
-            isError: true,
-          }
-        }
-      },
-    })
-  }
-
   return {
     predict: createTool({
       description: 'Classify text with System One typed questions (choice/score/noul)',
@@ -132,10 +97,6 @@ export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
         }
       },
     }),
-    route: presetTool('Route to a model tier', routerQuestions()),
-    guard: presetTool('Detect jailbreak / prompt-injection attempts', guardQuestions()),
-    moderate: presetTool('Moderate content for safety', moderationQuestions()),
-    triage: presetTool('Triage a support request', triageQuestions()),
   } satisfies ToolDefinitions
 }
 

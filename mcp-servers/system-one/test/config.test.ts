@@ -1,4 +1,4 @@
-import { guardQuestions, type SystemOneClient } from '@mokei/system-one-client'
+import type { SystemOneClient } from '@mokei/system-one-client'
 import { createValidator } from '@sozai/schema'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -76,20 +76,6 @@ describe('createSystemOneTools', () => {
     expect(response.content[0]?.text).toBe(JSON.stringify(result))
   })
 
-  test('preset tools classify with a fixed question set', async () => {
-    const client = fakeClient({ jailbreak: { type: 'noul', noul: 0.1 } })
-    const tools = createSystemOneTools({ client })
-    const res = (await tools.guard.handler({
-      input: { state: 'hello' },
-      signal: new AbortController().signal,
-    } as never)) as { isError: boolean; content: Array<{ text?: string }> }
-    expect(res.isError).toBe(false)
-    expect(res.content[0]?.text).toContain('jailbreak')
-    expect(vi.mocked(client.predict)).toHaveBeenCalledWith(
-      expect.objectContaining({ questions: guardQuestions() }),
-    )
-  })
-
   test('predict tool rethrows when the request was cancelled instead of returning isError', async () => {
     const client = abortingClient()
     const tools = createSystemOneTools({ client })
@@ -105,16 +91,6 @@ describe('createSystemOneTools', () => {
         },
         signal: controller.signal,
       } as never),
-    ).rejects.toThrow(DOMException)
-  })
-
-  test('preset tool rethrows when the request was cancelled instead of returning isError', async () => {
-    const client = abortingClient()
-    const tools = createSystemOneTools({ client })
-    const controller = new AbortController()
-    controller.abort()
-    await expect(
-      tools.guard.handler({ input: { state: 'hello' }, signal: controller.signal } as never),
     ).rejects.toThrow(DOMException)
   })
 })

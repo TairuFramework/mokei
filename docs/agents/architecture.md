@@ -240,8 +240,7 @@ Metro. Node-only entry points live in the `-node` packages: `serveProcess` is in
 `NodeSession.addContext` and its Node-typed `contextHost` are in `@mokei/session-node`.
 File names use kebab-case throughout, except React component files (PascalCase, `ChatApp.tsx`) and React hook files (camelCase, `useSession.ts`).
 `HTTPSystemOneBackend` speaks to a `laya-serve` sidecar or the hosted TypeSafe API (see
-`docs/reference/system-one-sidecar.md`). The bundled System One MCP server exposes `predict`,
-`guard`, `moderate`, `route` and `triage` tools.
+`docs/reference/system-one-sidecar.md`). The bundled System One MCP server exposes a single `predict` tool.
 
 Other workspaces:
 

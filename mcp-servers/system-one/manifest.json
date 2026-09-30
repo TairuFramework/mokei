@@ -14,13 +14,7 @@
       "env": { "SYSTEM_ONE_URL": "http://localhost:8000", "SYSTEM_ONE_MODEL": "english" }
     }
   },
-  "tools": [
-    { "name": "predict", "description": "Classify text with System One typed questions" },
-    { "name": "route", "description": "Route to a model tier" },
-    { "name": "guard", "description": "Detect jailbreak / prompt-injection attempts" },
-    { "name": "moderate", "description": "Moderate content for safety" },
-    { "name": "triage", "description": "Triage a support request" }
-  ],
+  "tools": [{ "name": "predict", "description": "Classify text with System One typed questions" }],
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/TairuFramework/mokei" }
 }

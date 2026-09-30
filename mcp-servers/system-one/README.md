@@ -1,7 +1,6 @@
 # @mokei/mcp-system-one
 
-Expose System One classification as MCP tools: `predict`, `guard`, `moderate`, `route`, and
-`triage`. Create the server config with `createSystemOneConfig({ client })`, or supply URL,
+Expose System One classification as a single MCP tool, `predict`. Create the server config with `createSystemOneConfig({ client })`, or supply URL,
 API key, and model options for its HTTP client.
 
 The `predict` tool accepts `state`, a typed `questions` map, and an optional `model`. It

@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
+import { validateQuestions } from '../src/validation.js'
 import {
   guardQuestions,
   moderationQuestions,
   routerQuestions,
   triageQuestions,
-} from '../src/presets.js'
-import { validateQuestions } from '../src/validation.js'
+} from './fixtures/presets.js'
 
 describe('preset question sets', () => {
   test('every preset is a valid question map', () => {
