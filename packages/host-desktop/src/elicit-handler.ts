@@ -240,11 +240,16 @@ export function createDesktopElicitHandler(
     return { ok: true, steps }
   }
 
+  /**
+   * Shows one dialog. `onOpen` receives the backend call so the queue slot is held until the
+   * dialog process has exited, even after an abort has already settled this request.
+   */
   function askOnce(
     step: Step,
     ask: AskRequest,
     signal: AbortSignal,
     deadline: number,
+    onOpen: (dialog: Promise<AskResult>) => void,
   ): Promise<AskResult> {
     signal.throwIfAborted()
     const remaining = deadline - Date.now()
@@ -255,20 +260,23 @@ export function createDesktopElicitHandler(
     if (backend.ask == null) {
       throw new Error(`${step.backend} cannot show dialogs`)
     }
-    return untilAbort(backend.ask(ask, { timeoutMs: remaining, signal }), signal)
+    const dialog = backend.ask(ask, { timeoutMs: remaining, signal })
+    onOpen(dialog)
+    return untilAbort(dialog, signal)
   }
 
   async function runSteps(
     steps: Array<Step>,
     signal: AbortSignal,
     deadline: number,
+    onOpen: (dialog: Promise<AskResult>) => void,
   ): Promise<ElicitResult> {
     const content: Content = {}
     for (const step of steps) {
       let ask = step.ask
       let answered = false
       for (let attempt = 0; attempt < MAX_ATTEMPTS && !answered; attempt++) {
-        const result = await askOnce(step, ask, signal, deadline)
+        const result = await askOnce(step, ask, signal, deadline, onOpen)
         if (result.status === 'declined') {
           return DECLINE
         }
@@ -330,10 +338,19 @@ export function createDesktopElicitHandler(
     const stop = AbortSignal.any([signal, budget.signal, disposal.signal])
     try {
       const release = await queue.acquire(stop)
+      let lastDialog: Promise<AskResult> | undefined
       try {
-        return await runSteps(planned.steps, stop, deadline)
+        return await runSteps(planned.steps, stop, deadline, (dialog) => {
+          lastDialog = dialog
+        })
       } finally {
-        release()
+        // An abort settles this request at once; the next dialog opens only once the killed one
+        // has exited (the runner escalates to SIGKILL, so this always happens)
+        if (lastDialog == null) {
+          release()
+        } else {
+          lastDialog.then(release, release)
+        }
       }
     } catch (error) {
       if (signal.aborted) {

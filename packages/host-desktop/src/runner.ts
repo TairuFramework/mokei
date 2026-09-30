@@ -66,19 +66,35 @@ export function createRunner(): Runner {
       )
       children.add(child)
 
+      let killTimer: ReturnType<typeof setTimeout> | undefined
+      // SIGTERM, then SIGKILL after the grace period dispose uses, so a child ignoring SIGTERM
+      // cannot keep the run pending
+      function terminate(): void {
+        if (killTimer != null) {
+          return
+        }
+        child.kill('SIGTERM')
+        killTimer = setTimeout(() => {
+          if (child.exitCode == null && child.signalCode == null) {
+            child.kill('SIGKILL')
+          }
+        }, KILL_ESCALATION_MS)
+      }
+
       const timer = setTimeout(() => {
         timedOut = true
-        child.kill('SIGTERM')
+        terminate()
       }, timeoutMs)
 
       const onAbort = () => {
         aborted = true
-        child.kill('SIGTERM')
+        terminate()
       }
       signal?.addEventListener('abort', onAbort, { once: true })
 
       function cleanup() {
         clearTimeout(timer)
+        clearTimeout(killTimer)
         signal?.removeEventListener('abort', onAbort)
         children.delete(child)
       }

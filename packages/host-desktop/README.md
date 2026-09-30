@@ -36,7 +36,9 @@ const host = new NodeContextHost({ elicit: desktop, dispose: () => desktop.dispo
   checked after each answer; a violation reopens the dialog, at most 3 attempts.
 - URL mode, multi-select arrays, other property types and forms with more than 10 properties
   are declined without a dialog, and `onUnsupported` (or stderr) gets the reason.
-- Dialogs open one at a time; concurrent requests queue.
+- Dialogs open one at a time; concurrent requests queue. A dialog killed by an abort or a
+  timeout gets SIGTERM, then SIGKILL after 1 s, and the next queued dialog opens only once it has
+  exited.
 - Each request has a budget, `timeoutSeconds` (90 by default, clamped to `maxTimeoutSeconds`,
   600). It starts when the handler is called and covers queue time, every field and every
   retry. When it runs out, the handler returns `cancel`. Both options must be finite numbers

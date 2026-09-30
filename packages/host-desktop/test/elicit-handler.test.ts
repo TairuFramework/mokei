@@ -296,6 +296,26 @@ describe('desktop elicit handler (blocking)', () => {
       expect(second.result).toEqual({ action: 'accept', content: { other: 'two' } })
     })
 
+    test('the next dialog waits until an aborted dialog has settled', async () => {
+      const h = create()
+      const controller = new AbortController()
+      const first = track(h(request(undefined, controller.signal)))
+      const second = track(h(request(form({ other: { type: 'string' } }))))
+      await flush()
+      const reason = new Error('stop')
+      controller.abort(reason)
+      await flush()
+      // The caller gets its rejection at once, but the killed dialog has not exited yet
+      expect(first.error).toBe(reason)
+      expect(fake.calls).toHaveLength(1)
+      call(0).reject(reason)
+      await flush()
+      expect(fake.calls).toHaveLength(2)
+      call(1).resolve({ status: 'answered', value: 'two' })
+      await flush()
+      expect(second.result).toEqual({ action: 'accept', content: { other: 'two' } })
+    })
+
     test('a request aborted while queued leaves the queue and rejects with the reason', async () => {
       const h = create()
       const first = track(h(request()))

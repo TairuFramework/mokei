@@ -46,6 +46,31 @@ describe('runner', () => {
     expect(result.timedOut).toBe(true)
   })
 
+  test('escalates a timeout to SIGKILL when the child ignores SIGTERM', async () => {
+    runner = createRunner()
+    const started = Date.now()
+    const result = await runner.run(
+      node,
+      ['-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"],
+      { timeoutMs: 200 },
+    )
+    expect(result.timedOut).toBe(true)
+    expect(Date.now() - started).toBeLessThan(5000)
+  }, 10000)
+
+  test('escalates an abort to SIGKILL when the child ignores SIGTERM', async () => {
+    runner = createRunner()
+    const controller = new AbortController()
+    const reason = new Error('stop')
+    const promise = runner.run(
+      node,
+      ['-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"],
+      { timeoutMs: 60000, signal: controller.signal },
+    )
+    setTimeout(() => controller.abort(reason), 200)
+    await expect(promise).rejects.toBe(reason)
+  }, 10000)
+
   test('kills on abort', async () => {
     runner = createRunner()
     const controller = new AbortController()
