@@ -2,8 +2,8 @@
 
 **Date:** 2026-09-30
 **Branch:** `feat/flow-rig`
-**Sub-project:** 1 of 3 (local rig). Sub-project 2 turns the rig into an integration/e2e harness; sub-project 3
-uses the rig's findings to drive session, host and CLI features.
+**Milestone:** phase 1 of 3 of `docs/agents/plans/milestones/2026-09-30-flow-rig-milestone.md`. Phase 2 turns the
+rig into an integration/e2e harness; phase 3 uses the rig's findings to drive session, host and CLI features.
 
 ## Goal
 
@@ -15,7 +15,7 @@ sibling MCP servers, and desktop notifications and dialogs. The rig exercises th
 
 - A plain Node ESM script under `scripts/flow-rig/`, with no build step and no new package. It imports the built
   `lib/` of workspace packages, so `pnpm build` must run first.
-- No changes to published packages in this sub-project. Gaps go to a findings backlog doc instead.
+- No changes to published packages in this phase. Gaps go to the milestone's Findings section instead.
 - macOS only for manual QA. The rig must not fail to start on Linux, but Linux is not tested.
 
 ## Why a facade
@@ -41,7 +41,7 @@ server with blocking tools to Claude Code.
 | `scripts/flow-rig/README.md` | Setup, config reference, manual QA checklist |
 | `.mcp.json` | Adds `flow-rig`: `node scripts/flow-rig/serve.mjs` |
 | `package.json` | Adds `./scripts` to the `lint` script |
-| `docs/agents/plans/backlog/2026-09-30-flow-rig-findings.md` | Gaps found while building and using the rig |
+| `docs/agents/plans/milestones/2026-09-30-flow-rig-milestone.md` | Findings section updated with gaps found while building and using the rig |
 
 `serve.mjs` may be split into a few sibling modules (config, approval, runs, facade tools) if it grows past a
 readable size.
@@ -172,7 +172,7 @@ config (`predictor: 'fake'`, `input: 'inbox'`, `confirm: 'deny'`) and checks:
 - An inline flow calling a tool outside `allow` is denied.
 - `demo/triage` completes with the fake prediction.
 
-It exits non-zero on the first failure. It is not part of `pnpm test`; sub-project 2 moves it into
+It exits non-zero on the first failure. It is not part of `pnpm test`; phase 2 moves it into
 `integration-tests/`.
 
 **Manual QA from Claude Code** (checklist in the README):
@@ -187,7 +187,7 @@ It exits non-zero on the first failure. It is not part of `pnpm test`; sub-proje
 
 ## Findings
 
-`docs/agents/plans/backlog/2026-09-30-flow-rig-findings.md` records each gap found for sub-project 3. It starts with:
+The milestone's Findings section records each gap found, for phase 3. It starts with:
 
 - No public API calls a tool with approval outside `AgentSession`; the rig calls `wrapApproval` and the raw client.
 - Inbox entries carry only a context key, not a task or run id; the rig uses the run id as the key.

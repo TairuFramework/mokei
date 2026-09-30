@@ -53,7 +53,8 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-No active items.
+- **Flow rig milestone** (`milestones/2026-09-30-flow-rig-milestone.md`) -- phase 1, the local rig driven from
+  Claude Code, is designed on `feat/flow-rig`.
 
 The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) -- both
 revisions at capability parity, nothing open.
@@ -165,8 +166,9 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 
 ## Milestones
 
-No active milestone. `milestones/` is empty — the one completed milestone was moved to `completed/`
-once the migration closed.
+- **Flow rig** (`milestones/2026-09-30-flow-rig-milestone.md`) -- open. Decision flows, System One, MCP siblings
+  and desktop input run locally: phase 1 a rig driven from Claude Code, phase 2 an integration/e2e harness, phase 3
+  session, host and CLI features from the rig's findings.
 
 - **MCP `2026-07-28` spec migration** (`completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md`) —
   complete. Phase 0 groundwork (G1–G4, G6, G7) shipped on `2025-11-25`
