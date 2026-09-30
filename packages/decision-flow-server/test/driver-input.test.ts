@@ -16,6 +16,7 @@ import {
 import { expect, test, vi } from 'vitest'
 
 import { type ResumeDataV1, startRun } from '../src/driver.js'
+import { createFlowRegistry, type FlowLookup } from '../src/registry.js'
 import type { ToolCaller } from '../src/tool-caller.js'
 
 const caller: ToolCaller = {
@@ -55,8 +56,14 @@ function inputFlow(
   }
 }
 
-function harness(flow: FlowDefinition, response: InputResponse | ((key: string) => InputResponse)) {
-  const graph = createFlowGraph({ resolver: createMapResolver([flow]) })
+function harness(
+  flow: FlowDefinition,
+  response: InputResponse | ((key: string) => InputResponse | undefined),
+  options: { flows?: Array<FlowDefinition>; lookup?: FlowLookup } = {},
+) {
+  const flows = [flow, ...(options.flows ?? [])]
+  const lookup = options.lookup ?? createFlowRegistry(flows).lookup
+  const graph = createFlowGraph({ resolver: createMapResolver(flows) })
   const run = graph.start({ definition: flow, runID: 'run-input' })
   const resumeData: ResumeDataV1 = {
     v: 1,
@@ -79,7 +86,8 @@ function harness(flow: FlowDefinition, response: InputResponse | ((key: string) 
       requested = requests
       const key = Object.keys(requests)[0] as string
       keys.push(key)
-      return { [key]: typeof response === 'function' ? response(key) : response }
+      const answer = typeof response === 'function' ? response(key) : response
+      return answer === undefined ? {} : { [key]: answer }
     },
     awaitInput: async () => {
       throw new Error('unexpected await')
@@ -89,7 +97,7 @@ function harness(flow: FlowDefinition, response: InputResponse | ((key: string) 
       return true
     },
   }
-  const drive = () => startRun({ handle, graph, run, resumeData, caller })
+  const drive = () => startRun({ handle, graph, run, resumeData, caller, lookup })
   return {
     drive,
     keys,
@@ -146,6 +154,69 @@ test.each(['decline', 'cancel'] as const)('%s cancels the flow task', async (act
   expect(h.cancelled).toBe(true)
 })
 
+function declineFlow(): FlowDefinition {
+  const flow = inputFlow({ type: 'string' })
+  flow.nodes.ask = {
+    ...flow.nodes.ask,
+    decline: { to: 'declined' },
+  } as FlowDefinition['nodes'][string]
+  flow.nodes.declined = {
+    kind: 'end',
+    outcome: 'declined',
+    output: { why: { ref: ['results', 'ask', 'declined'] } },
+  }
+  return flow
+}
+
+test.each(['decline', 'cancel'] as const)('%s takes the decline edge', async (action) => {
+  const h = harness(declineFlow(), { action })
+  const completed = await h.drive()
+  expect(h.cancelled).toBe(false)
+  expect(completed.structuredContent).toEqual({ outcome: 'declined', output: { why: action } })
+})
+
+test('a missing response counts as cancel on a decline edge', async () => {
+  const h = harness(declineFlow(), () => undefined)
+  const completed = await h.drive()
+  expect(h.cancelled).toBe(false)
+  expect(completed.structuredContent).toEqual({ outcome: 'declined', output: { why: 'cancel' } })
+})
+
+test('decline inside a callee frame uses the callee decline edge', async () => {
+  const sub = { ...declineFlow(), id: 'sub', name: 'Sub' }
+  const root: FlowDefinition = {
+    id: 'root',
+    name: 'Root',
+    version: 1,
+    start: 'call',
+    nodes: {
+      call: { kind: 'call', flow: 'sub', version: 1, next: 'after' },
+      after: {
+        kind: 'end',
+        outcome: 'after',
+        output: {
+          sub: { ref: ['results', 'call', 'outcome'] },
+          why: { ref: ['results', 'call', 'output', 'why'] },
+        },
+      },
+    },
+  }
+  const h = harness(root, { action: 'decline' }, { flows: [sub] })
+  const completed = await h.drive()
+  expect(h.cancelled).toBe(false)
+  expect(completed.structuredContent).toEqual({
+    outcome: 'after',
+    output: { sub: 'declined', why: 'decline' },
+  })
+})
+
+test('a failed lookup cancels the task', async () => {
+  const h = harness(declineFlow(), { action: 'decline' }, { lookup: () => undefined })
+  const completed = await h.drive()
+  expect(h.cancelled).toBe(true)
+  expect(completed).toEqual({ content: [] })
+})
+
 test('non-string resolved prompt yields typed tool error without elicitation', async () => {
   const flow = inputFlow({ type: 'string' })
   flow.nodes.ask = {
@@ -178,7 +249,14 @@ test('non-string resolved prompt yields typed tool error without elicitation', a
     },
     cancel: async () => true,
   }
-  const completed = await startRun({ handle, graph, run, resumeData, caller })
+  const completed = await startRun({
+    handle,
+    graph,
+    run,
+    resumeData,
+    caller,
+    lookup: createFlowRegistry([flow]).lookup,
+  })
   expect(completed).toMatchObject({
     isError: true,
     structuredContent: { error: { type: 'input_prompt_not_string', node: 'ask' } },
@@ -210,7 +288,15 @@ test('real input deadline withdraws the request and a late answer cannot change 
       },
       clientCapabilities: { elicitation: {} },
       resumeData: resumeData as unknown as JSONValue,
-      work: (handle) => startRun({ handle, graph, run, resumeData, caller }),
+      work: (handle) =>
+        startRun({
+          handle,
+          graph,
+          run,
+          resumeData,
+          caller,
+          lookup: createFlowRegistry([flow]).lookup,
+        }),
     })
     let key: string | undefined
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -290,7 +376,8 @@ async function suspendedAt(flow: FlowDefinition, deadline?: number) {
     runState: state,
     siblings: [],
   }
-  return { graph, run, resumeData, key: `${state.runID}:${invocation}:input:0` }
+  const lookup = createFlowRegistry([flow]).lookup
+  return { graph, run, resumeData, lookup, key: `${state.runID}:${invocation}:input:0` }
 }
 
 /** Persists a task with the given input history, then resumes it with `startRun`. */
@@ -301,7 +388,7 @@ async function recoverInput(params: {
   inputs: (key: string) => Array<InputRecord>
 }) {
   const store = createMemoryTaskStore()
-  const { graph, run, resumeData, key } = await suspendedAt(params.flow, params.deadline)
+  const { graph, run, resumeData, lookup, key } = await suspendedAt(params.flow, params.deadline)
   const tool = {
     description: 'Input flow',
     inputSchema: { type: 'object' as const },
@@ -326,7 +413,7 @@ async function recoverInput(params: {
   const second = createTaskManager({
     store,
     recover: (_record, resume) =>
-      resume((handle) => startRun({ handle, graph, run, resumeData, caller })),
+      resume((handle) => startRun({ handle, graph, run, resumeData, caller, lookup })),
   })
   await second.recover({ flow: tool })
   return { store, tasks: second, taskID: created.taskId, key }
@@ -453,7 +540,7 @@ test('a reused key with changed contents fails the run', async () => {
 })
 
 test('a non-deadline rejection propagates', async () => {
-  const { graph, run, resumeData } = await suspendedAt(timedFlow)
+  const { graph, run, resumeData, lookup } = await suspendedAt(timedFlow)
   const handle: TaskHandle = {
     taskID: 'task-input',
     signal: new AbortController().signal,
@@ -468,14 +555,14 @@ test('a non-deadline rejection propagates', async () => {
     },
     cancel: async () => true,
   }
-  await expect(startRun({ handle, graph, run, resumeData, caller })).rejects.toThrow('boom')
+  await expect(startRun({ handle, graph, run, resumeData, caller, lookup })).rejects.toThrow('boom')
 })
 
 test('an input deadline timer firing early re-arms before taking the timeout edge', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
   try {
     const flow = inputFlow({ type: 'string' }, { timeout: { afterMs: 100, to: 'timed' } })
-    const { graph, run, resumeData } = await suspendedAt(flow)
+    const { graph, run, resumeData, lookup } = await suspendedAt(flow)
     let asked: AbortSignal | undefined
     const handle: TaskHandle = {
       taskID: 'task-input',
@@ -495,7 +582,7 @@ test('an input deadline timer firing early re-arms before taking the timeout edg
       },
       cancel: async () => true,
     }
-    const completed = startRun({ handle, graph, run, resumeData, caller })
+    const completed = startRun({ handle, graph, run, resumeData, caller, lookup })
     await vi.advanceTimersByTimeAsync(0)
     expect(asked).toBeDefined()
     // Move the clock back 1 ms: the 100 ms timer then fires 1 ms before the deadline.

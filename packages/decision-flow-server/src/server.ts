@@ -165,6 +165,7 @@ export async function createDecisionFlowServer(params: DecisionFlowServerParams)
           run,
           resumeData,
           caller: params.caller,
+          lookup: checked.lookup,
         }).finally(() => handle.signal.removeEventListener('abort', abort))
       },
       { resumeData: resumeData as unknown as JSONValue },

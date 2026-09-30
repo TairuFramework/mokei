@@ -146,6 +146,7 @@ export function createRecovery(params: {
         run,
         resumeData: { ...data, siblings },
         caller: params.caller,
+        lookup: checked.lookup,
       }).finally(() => handle.signal.removeEventListener('abort', abort))
     })
   }

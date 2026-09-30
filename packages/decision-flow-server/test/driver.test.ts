@@ -1,12 +1,14 @@
 import { DirectTransports } from '@enkaku/transport'
 import { ContextClient, TaskCancelledError } from '@mokei/context-client'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
+import { RPCError } from '@mokei/context-rpc'
 import type { JSONValue, TaskHandle } from '@mokei/context-server'
 import { ContextServer, createMemoryTaskStore, createTaskManager } from '@mokei/context-server'
 import { createFlowGraph, createMapResolver, type FlowDefinition } from '@sozai/flow-graph'
 import { expect, test, vi } from 'vitest'
 
 import { type ResumeDataV1, startRun } from '../src/driver.js'
+import { createFlowRegistry } from '../src/registry.js'
 import { createDecisionFlowServer } from '../src/server.js'
 import type { ToolCaller } from '../src/tool-caller.js'
 import { toolKind } from '../src/tool-node.js'
@@ -94,7 +96,8 @@ function harness(
       return true
     },
   }
-  const drive = () => startRun({ handle, graph, run, resumeData, caller })
+  const lookup = createFlowRegistry([flow]).lookup
+  const drive = () => startRun({ handle, graph, run, resumeData, caller, lookup })
   return {
     flow,
     drive,
@@ -107,8 +110,81 @@ function harness(
     caller,
     graph,
     run,
+    lookup,
   }
 }
+
+test('a changed callee maps to Flow definition changed', async () => {
+  const sub = (label: string): FlowDefinition => ({
+    id: 'sub',
+    name: 'Sub',
+    version: 1,
+    start: 'ask',
+    nodes: {
+      ask: { kind: 'input', prompt: { value: 'Choose' }, schema: { type: 'string' }, next: 'done' },
+      done: { kind: 'end', outcome: label },
+    },
+  })
+  const root: FlowDefinition = {
+    id: 'root',
+    name: 'Root',
+    version: 1,
+    start: 'call',
+    nodes: {
+      call: { kind: 'call', flow: 'sub', version: 1, next: 'done' },
+      done: { kind: 'end', outcome: 'finished' },
+    },
+  }
+  const started = createFlowGraph({ resolver: createMapResolver([root, sub('first')]) })
+  const run = started.start({ definition: root, runID: 'run-changed' })
+  let step = await run.next()
+  while (!step.done && step.value.status !== 'suspended') step = await run.next()
+  expect(step.value.status).toBe('suspended')
+  const resumeData: ResumeDataV1 = {
+    v: 1,
+    flow: { definition: root },
+    approved: [],
+    depth: 0,
+    runState: step.value,
+    siblings: [],
+  }
+  const changed = createFlowRegistry([root, sub('second')])
+  const graph = createFlowGraph({ resolver: changed.resolver })
+  const handle: TaskHandle = {
+    taskID: 'task-changed',
+    signal: new AbortController().signal,
+    requestMeta: {},
+    setStatus: async () => {},
+    checkpoint: async () => {},
+    requestInput: async (requests) => {
+      const key = Object.keys(requests)[0] as string
+      return { [key]: { action: 'accept', content: { value: 'Ada' } } }
+    },
+    awaitInput: async () => {
+      throw new Error('unexpected input')
+    },
+    cancel: async () => true,
+  }
+  const failed = startRun({
+    handle,
+    graph,
+    run,
+    resumeData,
+    caller: {
+      listTools: () => [],
+      callTool: async () => {
+        throw new Error('unexpected tool')
+      },
+      waitTask: async () => {
+        throw new Error('unexpected wait')
+      },
+      cancelTask: async () => {},
+    },
+    lookup: changed.lookup,
+  })
+  await expect(failed).rejects.toBeInstanceOf(RPCError)
+  await expect(failed).rejects.toMatchObject({ code: -32603, message: 'Flow definition changed' })
+})
 
 test('inline end checkpoints committed state and returns its output', async () => {
   const h = harness()
@@ -411,6 +487,7 @@ test('recovery repeats an acted call with the same operation key after its handl
           run: h.run,
           resumeData: h.resumeData,
           caller: h.caller,
+          lookup: h.lookup,
         })
       } finally {
         stopped.resolve()
@@ -439,6 +516,7 @@ test('recovery repeats an acted call with the same operation key after its handl
           run: recovered,
           resumeData: data,
           caller: h.caller,
+          lookup: h.lookup,
         })
       }),
   })
