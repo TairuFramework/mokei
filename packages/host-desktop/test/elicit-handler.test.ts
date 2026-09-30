@@ -374,15 +374,20 @@ describe('desktop elicit handler (blocking)', () => {
       expect(call(1).options.timeoutMs).toBe(60_000)
     })
 
-    test('expiry while queued gives cancel at 90 s', async () => {
+    test('expiry while queued gives cancel 90 s after the queued call', async () => {
       const h = create()
-      track(h(request()))
+      const first = track(h(request()))
+      await vi.advanceTimersByTimeAsync(30_000)
       const queued = track(h(request()))
-      await vi.advanceTimersByTimeAsync(89_999)
+      // The first budget ends at 90 s, but its dialog has not exited, so the slot stays held
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(first.result).toEqual({ action: 'cancel' })
+      expect(queued.done).toBe(false)
+      await vi.advanceTimersByTimeAsync(29_999)
       expect(queued.done).toBe(false)
       await vi.advanceTimersByTimeAsync(1)
+      // The queued request's own budget ran from its call, at 30 s; it never opened a dialog
       expect(queued.result).toEqual({ action: 'cancel' })
-      // The first request's own budget also expired at 90 s; the queued one never opened.
       expect(fake.calls).toHaveLength(1)
     })
 

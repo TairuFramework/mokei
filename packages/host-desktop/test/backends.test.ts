@@ -437,7 +437,8 @@ describe('leading dash values', () => {
       25,
     )
     const tail = args.slice(args.indexOf('--') + 1)
-    expect(tail.filter((a) => a === v).length).toBeGreaterThanOrEqual(3)
+    // Title, text, default label and the one choice label
+    expect(tail).toEqual([v, v, v, v])
     expect(args.slice(0, args.indexOf('--')).includes(v)).toBe(false)
   })
 

@@ -156,6 +156,7 @@ describe('decision-flow-style task through the inbox', () => {
   })
 
   afterEach(async () => {
+    vi.useRealTimers()
     for (const controller of waits.splice(0)) controller.abort(new Error('Test cleanup'))
     deadline.abort(new Error('Test cleanup'))
     unregister()
@@ -239,11 +240,18 @@ describe('decision-flow-style task through the inbox', () => {
   })
 
   test('a task TTL expiry without a status event removes the entry after the wait fails', async () => {
-    setup(300)
+    // Faked clock and sweep interval make the expiry deterministic; everything else stays real
+    vi.useFakeTimers({
+      toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    })
+    setup(60_000)
     const taskID = await startTask()
     const { result } = wait(taskID)
     const id = await pendingID()
 
+    await vi.advanceTimersByTimeAsync(59_000)
+    expect(inbox.list().map((entry) => entry.id)).toEqual([id])
+    await vi.advanceTimersByTimeAsync(1_000)
     await expect(result).rejects.toBeInstanceOf(TaskExpiredError)
     await vi.waitFor(() => expect(removed.map((event) => event.id)).toEqual([id]))
     expect(inbox.list()).toEqual([])

@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { afterAll, describe, expect, test } from 'vitest'
 
-import { type AskRequest, createRunner, createZenityBackend } from '../src/index.js'
+import { type AskRequest, type AskResult, createRunner, createZenityBackend } from '../src/index.js'
 
 const run = promisify(execFile)
 
@@ -49,6 +49,13 @@ describe.runIf(process.env.DESKTOP_E2E)('zenity end to end', () => {
   const runner = createRunner()
   const backend = createZenityBackend(runner)
 
+  function ask(request: AskRequest, timeoutMs: number): Promise<AskResult> {
+    // Fails clearly instead of comparing an undefined result
+    expect(backend.ask, 'zenity backend must implement ask').toBeTypeOf('function')
+    const call = backend.ask as NonNullable<typeof backend.ask>
+    return call(request, { timeoutMs, signal: new AbortController().signal })
+  }
+
   afterAll(async () => {
     await runner.dispose()
   })
@@ -57,20 +64,14 @@ describe.runIf(process.env.DESKTOP_E2E)('zenity end to end', () => {
     'an unanswered $kind dialog times out',
     async (request) => {
       // 6 s runner budget gives a 1 s native zenity timeout
-      const result = await backend.ask?.(request, {
-        timeoutMs: 6_000,
-        signal: new AbortController().signal,
-      })
+      const result = await ask(request, 6_000)
       expect(result).toEqual({ status: 'timeout' })
     },
     15_000,
   )
 
   async function answer(request: AskRequest, keys: Array<string>): Promise<unknown> {
-    const asked = backend.ask?.(request, {
-      timeoutMs: 30_000,
-      signal: new AbortController().signal,
-    })
+    const asked = ask(request, 30_000)
     await answerWithKeys(keys)
     return await asked
   }
