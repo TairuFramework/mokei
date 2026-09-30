@@ -8,7 +8,7 @@ import {
   type TaskRecord,
 } from '@mokei/context-server'
 import { createFlowGraph, type FlowDefinition, type RunState } from '@sozai/flow-graph'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 import { type ResumeDataV1, startRun } from '../src/driver.js'
 import type { ToolCaller } from '../src/tool-caller.js'
@@ -238,6 +238,9 @@ test('real input deadline withdraws the request and a late answer cannot change 
       status: 'completed',
       result: { structuredContent: { outcome: 'timed' } },
     })
+    expect((await store.get(started.taskId))?.inputs).toEqual([
+      expect.objectContaining({ id: 1, responses: {}, outcome: 'withdrawn' }),
+    ])
   } finally {
     await tasks.dispose()
   }
@@ -334,7 +337,7 @@ async function settled(tasks: ReturnType<typeof createTaskManager>, taskID: stri
 }
 
 test('expired deadline replays a stored answer', async () => {
-  const { tasks, taskID } = await recoverInput({
+  const { store, tasks, taskID } = await recoverInput({
     flow: timedFlow,
     deadline: Date.now() - 1000,
     status: 'working',
@@ -352,6 +355,7 @@ test('expired deadline replays a stored answer', async () => {
       status: 'completed',
       result: { structuredContent: { outcome: 'done', output: { answer: 'Ada' } } },
     })
+    expect((await store.get(taskID))?.inputs).toHaveLength(1)
   } finally {
     await tasks.dispose()
   }
@@ -442,4 +446,43 @@ test('a non-deadline rejection propagates', async () => {
   await expect(
     startRun({ handle, graph, run, definition: timedFlow, resumeData, caller }),
   ).rejects.toThrow('boom')
+})
+
+test('an input deadline timer firing early re-arms before taking the timeout edge', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+  try {
+    const flow = inputFlow({ type: 'string' }, { timeout: { afterMs: 100, to: 'timed' } })
+    const { graph, run, resumeData } = await suspendedAt(flow)
+    let asked: AbortSignal | undefined
+    const handle: TaskHandle = {
+      taskID: 'task-input',
+      signal: new AbortController().signal,
+      requestMeta: {},
+      setStatus: async () => {},
+      checkpoint: async () => {},
+      requestInput: (_requests, options) => {
+        const signal = options?.signal as AbortSignal
+        asked = signal
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+      },
+      awaitInput: async () => {
+        throw new Error('unexpected await')
+      },
+      cancel: async () => true,
+    }
+    const completed = startRun({ handle, graph, run, definition: flow, resumeData, caller })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(asked).toBeDefined()
+    // Move the clock back 1 ms: the 100 ms timer then fires 1 ms before the deadline.
+    vi.setSystemTime(Date.now() - 1)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(asked?.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(asked?.aborted).toBe(true)
+    expect((await completed).structuredContent).toEqual({ outcome: 'timed', output: {} })
+  } finally {
+    vi.useRealTimers()
+  }
 })

@@ -252,12 +252,12 @@ export async function startRun(params: {
     /** The value event for an accepted answer; declining or cancelling ends the task. */
     async function answered(
       responses: Record<string, InputResponse>,
-    ): Promise<{ type: 'value'; value: JSONValue } | CallToolResult> {
+    ): Promise<{ type: 'value'; value: JSONValue } | { type: 'stopped' }> {
       const response = responses[key]
       if (response?.action !== 'accept') {
         await cleanup()
         await handle.cancel()
-        return stopped
+        return { type: 'stopped' }
       }
       const content = (response.content ?? {}) as Record<string, JSONValue>
       return { type: 'value', value: (wrapped ? content.value : content) as JSONValue }
@@ -274,10 +274,16 @@ export async function startRun(params: {
       }
     } else {
       const deadlineController = new AbortController()
-      const timeout =
-        deadline === undefined
-          ? undefined
-          : setTimeout(() => deadlineController.abort(expired), Math.max(0, deadline - Date.now()))
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      if (deadline !== undefined) {
+        // Timers can fire early: re-arm until the deadline has passed, or resume rejects timeout.
+        const expire = () => {
+          const remaining = deadline - Date.now()
+          if (remaining > 0) timeout = setTimeout(expire, remaining)
+          else deadlineController.abort(expired)
+        }
+        timeout = setTimeout(expire, Math.max(0, deadline - Date.now()))
+      }
       const signal = AbortSignal.any([handle.signal, deadlineController.signal])
       try {
         responses = await ask(signal)
@@ -289,7 +295,7 @@ export async function startRun(params: {
       }
     }
     const event = responses === undefined ? { type: 'timeout' as const } : await answered(responses)
-    if ('content' in event) return event
+    if (event.type === 'stopped') return stopped
     return graph.resume({ definition, runState: state, event, signal: handle.signal })
   }
 
