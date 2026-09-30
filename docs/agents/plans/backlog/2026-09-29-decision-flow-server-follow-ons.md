@@ -10,12 +10,6 @@
 - **`llm` node kind.** Add a session-backed kind that uses the session's `ModelProvider`.
 - **Input decline edge.** Add a flow-graph `decline` resume event for `input` nodes, so a decline takes its own edge instead of cancelling the run. Blocked on `@sozai/flow-graph`: `ResumeEvent` and `validateResumeEvent` accept only `value` and `timeout`. The request is filed in sozai's backlog as `2026-09-30-flow-graph-input-decline-edge.md`.
 - **Unconstrained result paths.** Replace the 32-level `additionalProperties` chain in the `tool` kind's result schema once `@sozai/flow-graph` can treat a schema as unconstrained. The request is filed in sozai's backlog as `2026-09-29-flow-graph-unconstrained-result-paths.md`.
-- **Task input lifecycle.** Planned on branch `feat/task-input-lifecycle`, which builds on this one. It changes decision-flow input recovery:
-  - an expired deadline replays a stored answer instead of re-asking;
-  - `TaskInputKeyReusedError` fails the run, and the `inputSeq` re-ask goes away;
-  - only the deadline maps to the timeout edge.
-
-  It also fixes a waiter failure: a second waiter answering an already-answered key that is still listed fails its wait. The fix is that task snapshots list only unanswered keys.
 
 ## Done in the decision-flow server PR
 
