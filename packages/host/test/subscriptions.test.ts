@@ -246,3 +246,23 @@ describe('ContextHost subscription events', () => {
     await host.dispose()
   })
 })
+
+describe('ContextHost direct context config', () => {
+  test('passes server params such as subscriptions through to the direct server', async () => {
+    const host = new ContextHost()
+    const client = host.addDirectContext({
+      key: 'direct',
+      protocolVersion: '2025-11-25',
+      config: {
+        name: 'direct',
+        version: '0.0.0',
+        protocolVersions: ['2025-11-25'],
+        resources: { list: [], read: () => ({ contents: [] }) },
+        subscriptions: true,
+      },
+    })
+    const result = await client.initialize()
+    expect(result.capabilities.resources?.subscribe).toBe(true)
+    await host.dispose()
+  })
+})
