@@ -7,6 +7,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { TaskInputWithdrawnError } from '../../packages/context-client/lib/index.js'
 import { createTool } from '../../packages/context-server/lib/index.js'
 import { serveProcess } from '../../packages/context-server-node/lib/index.js'
 import { addDecisionFlow, flowToolName } from '../../packages/decision-flow-server/lib/index.js'
@@ -41,6 +42,15 @@ function successResult(structuredContent) {
     content: [{ type: 'text', text: JSON.stringify(structuredContent) }],
     structuredContent,
   }
+}
+
+/** Readable prompt source for a run: its flow id, or `inline flow`. */
+function describeRun(runs, runId) {
+  const label = runId === undefined ? undefined : runs?.label(runId)
+  if (label !== undefined) {
+    return `flow-rig: ${label}`
+  }
+  return runId === undefined ? 'flow-rig' : `flow-rig run ${runId.slice(0, 8)}`
 }
 
 async function loadFlows(flowsDir) {
@@ -109,16 +119,21 @@ function createFacadeTools({ session, runs, inbox }) {
           input: { type: 'object' },
         },
       },
-      handler: ({ input }) => {
+      handler: ({ input, signal }) => {
         const { flow, definition } = input
         if ((flow === undefined) === (definition === undefined)) {
           return errorResult('Provide exactly one of `flow` or `definition`')
         }
         if (flow !== undefined) {
-          return runs.start({ toolName: flowToolName(flow), args: input.input ?? {} })
+          return runs.start({
+            toolName: flowToolName(flow),
+            args: input.input ?? {},
+            signal,
+            label: flow,
+          })
         }
         const args = input.input === undefined ? { definition } : { definition, input: input.input }
-        return runs.start({ toolName: 'run_flow', args })
+        return runs.start({ toolName: 'run_flow', args, signal, label: 'inline flow' })
       },
     }),
     flow_status: createTool({
@@ -220,12 +235,16 @@ export async function main({ configPath, stdio = true }) {
     inbox = createInputInbox()
     releaseSurface = inbox.registerAnswerSurface()
   }
-  const inputs = createDesktopElicitHandler({ mode: config.input, inbox })
+  let runs
+  const inputs = createDesktopElicitHandler({
+    mode: config.input,
+    inbox,
+    describeSource: (request) => describeRun(runs, request.key),
+  })
   const confirm = createDesktopElicitHandler({ mode: 'dialog' })
   const session = new NodeSession({ elicit: (request) => inputs(request) })
 
   let wiring
-  let runs
   const cleanup = [
     ['inbox', () => inbox?.dispose()],
     ['inbox answer surface', () => releaseSurface?.()],
@@ -283,8 +302,14 @@ export async function main({ configPath, stdio = true }) {
           : inbox
               .list()
               .filter((entry) => entry.key === runId)
-              .map(({ id, message, requestedSchema }) => ({ id, message, requestedSchema })),
+              .map(({ id, message, requestedSchema, canPrompt }) => ({
+                id,
+                message,
+                requestedSchema,
+                canPrompt,
+              })),
       log,
+      withdrawReason: (params) => new TaskInputWithdrawnError(params),
     })
   } catch (err) {
     await disposeAll(cleanup)

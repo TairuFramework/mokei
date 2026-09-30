@@ -48,6 +48,7 @@ export function createRunManager({
   ask,
   listPending,
   log,
+  withdrawReason,
   pollMs = 500,
   maxBackoffMs = 5000,
   sleep,
@@ -110,9 +111,10 @@ export function createRunManager({
     }
   }
 
-  function register(runId, task) {
+  function register(runId, task, label) {
     const run = {
       taskId: task.taskId,
+      label,
       state: task.status ?? 'working',
       result: undefined,
       error: undefined,
@@ -124,6 +126,7 @@ export function createRunManager({
       ask: (requestKey, request, signal) => ask(runId, requestKey, request, signal),
       update: (responses) => client.tasks.update(run.taskId, responses),
       log,
+      withdrawReason: withdrawReason && ((key) => withdrawReason({ taskID: run.taskId, key })),
     })
     runs.set(runId, run)
     watch(run).catch((err) => {
@@ -135,7 +138,7 @@ export function createRunManager({
     return run.failures >= UNKNOWN_AFTER_FAILURES ? 'unknown' : run.state
   }
 
-  async function callFlowTool(runId, toolName, args, meta) {
+  async function callFlowTool(runId, toolName, args, meta, label) {
     let result
     try {
       result = await client.callTool({
@@ -155,21 +158,23 @@ export function createRunManager({
       lateCancels.push(cancelTask(result.taskId))
       return errorResult('Rig is shutting down')
     }
-    register(runId, result)
+    register(runId, result, label)
     return successResult({ runId })
   }
 
   return {
-    async start({ toolName, args }) {
+    async start({ toolName, args, signal, label }) {
       if (isStopped()) {
         return errorResult('Rig is shutting down')
       }
       const runId = randomUUID()
       const controller = new AbortController()
       approvals.add(controller)
+      const approvalSignal =
+        signal === undefined ? controller.signal : AbortSignal.any([controller.signal, signal])
       let decision
       try {
-        decision = await approve({ runId, toolName, args, signal: controller.signal })
+        decision = await approve({ runId, toolName, args, signal: approvalSignal })
       } catch (err) {
         return errorResult(`Flow denied: ${errorMessage(err)}`)
       } finally {
@@ -178,16 +183,23 @@ export function createRunManager({
       if (isStopped()) {
         return errorResult('Rig is shutting down')
       }
+      if (signal?.aborted) {
+        return errorResult('Start cancelled')
+      }
       if (!decision?.approved) {
         return errorResult(`Flow denied: ${decision?.reason}`)
       }
-      const pending = callFlowTool(runId, toolName, args, decision.meta)
+      const pending = callFlowTool(runId, toolName, args, decision.meta, label)
       starts.add(pending)
       try {
         return await pending
       } finally {
         starts.delete(pending)
       }
+    },
+
+    label(runId) {
+      return runs.get(runId)?.label
     },
 
     status(runId) {

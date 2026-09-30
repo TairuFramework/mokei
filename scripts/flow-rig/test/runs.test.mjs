@@ -67,6 +67,7 @@ function setup(options = {}) {
       return [{ id: `${runId}:entry`, message: 'Pick one', requestedSchema: {} }]
     },
     log() {},
+    withdrawReason: options.withdrawReason,
     pollMs: 100,
     maxBackoffMs: 300,
     sleep(ms) {
@@ -88,7 +89,7 @@ async function nextGet(calls, index) {
 test('start approves then calls the tool with the identical args object', async () => {
   const { manager, calls } = setup()
   const args = { input: { a: 1 } }
-  const result = await manager.start({ toolName: 'flow_demo', args })
+  const result = await manager.start({ toolName: 'flow_demo', args, label: 'demo' })
   assert.equal(calls.approve.length, 1)
   const approval = calls.approve[0]
   assert.equal(approval.toolName, 'flow_demo')
@@ -102,6 +103,8 @@ test('start approves then calls the tool with the identical args object', async 
   assert.deepEqual(params._meta, { grant: 'g' })
   assert.equal(params.task, 'handle')
   assert.deepEqual(result.structuredContent, { runId: approval.runId })
+  assert.equal(manager.label(approval.runId), 'demo')
+  assert.equal(manager.label('nope'), undefined)
   assert.deepEqual(result.content, [
     { type: 'text', text: JSON.stringify({ runId: approval.runId }) },
   ])
@@ -234,6 +237,40 @@ test('status and cancel of an unknown run are error results', async () => {
     isError: true,
     content: [{ type: 'text', text: 'Unknown run: nope' }],
   })
+})
+
+test('a caller abort during approval aborts the approval signal and skips the tool', async () => {
+  const approval = deferred()
+  const { manager, calls } = setup({ approve: () => approval.promise })
+  const caller = new AbortController()
+  const pending = manager.start({ toolName: 'flow_demo', args: {}, signal: caller.signal })
+  await flush()
+  assert.equal(calls.approve[0].signal.aborted, false)
+  caller.abort()
+  assert.equal(calls.approve[0].signal.aborted, true)
+  approval.resolve({ approved: true, meta: {} })
+  assert.deepEqual(await pending, {
+    isError: true,
+    content: [{ type: 'text', text: 'Start cancelled' }],
+  })
+  assert.equal(calls.callTool.length, 0)
+})
+
+test('withdrawReason receives the task id and input key', async () => {
+  const { manager, calls } = setup({
+    withdrawReason: ({ taskID, key }) => new Error(`${taskID}/${key}`),
+  })
+  await manager.start({ toolName: 'flow_demo', args: {} })
+  ;(await nextGet(calls, 0)).resolve({
+    taskId: 'task-1',
+    status: 'input_required',
+    inputRequests: { k1: REQUEST },
+  })
+  await flush()
+  ;(await nextGet(calls, 1)).resolve({ taskId: 'task-1', status: 'working' })
+  await flush()
+  assert.equal(calls.ask[0].signal.reason.message, 'task-1/k1')
+  await manager.shutdown({ timeoutMs: 10 })
 })
 
 test('shutdown aborts approvals, cancels late and live tasks, and bounds the wait', async () => {

@@ -54,7 +54,7 @@ published package in one `versioning.fixed` lockstep group.
 ## Now (next/)
 
 - **Flow rig milestone** (`milestones/2026-09-30-flow-rig-milestone.md`) -- phase 1, the local rig driven from
-  Claude Code, is designed on `feat/flow-rig`.
+  Claude Code, is in review on `feat/flow-rig`.
 
 The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) -- both
 revisions at capability parity, nothing open.

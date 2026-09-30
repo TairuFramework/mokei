@@ -6,7 +6,7 @@
 
 const INVALID_PARAMS = -32602
 
-export function createInputTracker({ ask, update, log, maxAttempts = 3 }) {
+export function createInputTracker({ ask, update, log, withdrawReason, maxAttempts = 3 }) {
   const records = new Map()
   const inFlight = new Set()
   let error
@@ -58,7 +58,10 @@ export function createInputTracker({ ask, update, log, maxAttempts = 3 }) {
     }
     pending
       .catch((err) => {
-        log(`Input handler failed for ${key}`, err)
+        // A handler rejecting after its withdrawal is expected: nothing to log or send.
+        if (record.state === 'asking') {
+          log(`Input handler failed for ${key}`, err)
+        }
         return { action: 'cancel' }
       })
       .then((result) => {
@@ -71,8 +74,8 @@ export function createInputTracker({ ask, update, log, maxAttempts = 3 }) {
       })
   }
 
-  function withdraw(record) {
-    record.controller.abort()
+  function withdraw(key, record) {
+    record.controller.abort(withdrawReason?.(key))
     record.state = 'done'
   }
 
@@ -87,7 +90,7 @@ export function createInputTracker({ ask, update, log, maxAttempts = 3 }) {
       for (const [key, record] of records) {
         const present = inputRequired && Object.hasOwn(requests, key)
         if (record.state === 'asking' && !present) {
-          withdraw(record)
+          withdraw(key, record)
         } else if (record.state === 'sending') {
           if (!present) {
             record.state = 'done'
@@ -106,9 +109,9 @@ export function createInputTracker({ ask, update, log, maxAttempts = 3 }) {
       }
     },
     abortAll() {
-      for (const record of records.values()) {
+      for (const [key, record] of records) {
         if (record.state === 'asking') {
-          withdraw(record)
+          withdraw(key, record)
         }
       }
     },

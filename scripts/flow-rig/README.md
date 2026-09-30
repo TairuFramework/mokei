@@ -32,7 +32,7 @@ The rig reads `scripts/flow-rig/rig.config.json`, or the file named by `FLOW_RIG
 | Field | Default | Meaning |
 |-------|---------|---------|
 | `siblings` | `{}` | MCP servers to spawn, keyed by context key, with `command`, `args` and optional `env`. Same shape as `mcp-servers/config.json`. Relative `.js` paths in `args` resolve from the repository root. A spawn failure stops the rig, except that `system-one` is skipped when `predictor` is `fake`. |
-| `flowsDir` | `flows` | Directory of flow definitions (`*.json`), resolved from the config file's directory. An invalid flow stops the rig, with the file name and issues on stderr. |
+| `flowsDir` | `flows` | Directory of flow definitions (`*.json`), resolved from the config file's directory. An invalid flow stops the rig, naming the flow files and the issues on stderr. |
 | `allow` | `[]` | Tool-id globs. A run whose tool plan fits these globs is approved without asking. `*` matches within one segment, so `sqlite:*` matches every sqlite tool but not tools of other contexts. |
 | `predictor` | `real` | `real` uses the sibling `system-one:predict`. `fake` answers `decide` questions from `fakeAnswers`. |
 | `fakeAnswers` | `{}` | Used when `predictor` is `fake`. Maps each question key to a complete typed answer for that question kind, exactly as System One would return it. A missing key fails the prediction with `No fake answer for <key>`. |
@@ -46,23 +46,24 @@ The rig reads `scripts/flow-rig/rig.config.json`, or the file named by `FLOW_RIG
 | `list_flows` | none | The flow server's list of registered flows |
 | `check_flow` | `{ definition }` | The flow server's check of an inline definition, without running it |
 | `start_flow` | `{ flow?, definition?, input? }` | `{ runId }`, or an error result. Give exactly one of `flow` (a registered id) or `definition` (an inline flow). Returns `Flow denied: <reason>` when approval is refused, and `Rig is shutting down` once shutdown has begun. |
-| `flow_status` | `{ runId }` | `{ state, pending, result?, error? }` |
+| `flow_status` | `{ runId }` | `{ state, pending, result?, error? }`. `pending` entries are `{ id, message, requestedSchema, canPrompt }`. |
 | `cancel_flow` | `{ runId }` | `{ state }` after the cancel is sent |
 | `prompt_input` | `{ id }` | Opens desktop dialogs for the inbox entry and blocks until it settles. Returns `{ id, action }`. |
 | `answer_input` | `{ id, value }` | Answers the inbox entry with a value matching its requested schema. Returns `{ id, action }` with action `accept`. An invalid value or unknown id returns an error result. |
 | `decline_input` | `{ id }` | Declines the inbox entry. Returns `{ id, action }` with action `decline`. |
 
 `state` is one of `working`, `input_required`, `completed`, `failed`, `cancelled`, or `unknown` when polling the task
-keeps failing (the last poll error is then in `error`). `pending` lists `{ id, message, requestedSchema }` for the
-run's inbox entries while the run is `input_required`. It is always empty in `dialog` mode.
+keeps failing (the last poll error is then in `error`). `pending` lists the run's inbox entries while the run is
+`input_required`, and is always empty in `dialog` mode. `canPrompt` tells whether `prompt_input` can open a dialog
+for the entry.
 
 `prompt_input`, `answer_input` and `decline_input` exist only when `input` is `inbox`. Runs do not survive a restart,
 and `flow_status` on an unknown `runId` returns an error result.
 
 ## Sample flows
 
-- `demo/triage`: a `decide` node through `system-one:predict`, then a `sqlite:sqlite_get` lookup using the
-  predicted label.
+- `demo/triage`: takes `input: { message }` and classifies it as a bug or a question with a `decide` node through
+  `system-one:predict`, then runs a `sqlite:sqlite_get` lookup using the predicted label.
 - `demo/ask`: an `input` node with a `decline` edge.
 - `demo/nested`: a `call` node to `demo/ask`, so the inner input shows up under the outer run.
 

@@ -50,7 +50,8 @@ Gaps found while building and using the rig. Phase 3 consumes this list.
 - **`InputInbox.prompt(id)` takes no abort signal.** A cancelled `prompt_input` call leaves the desktop dialog open.
 - **A flow `end` node's `outcome` must be a literal.** Passing a nested flow's outcome through needs a `branch` on
   each possible outcome (see `demo/nested`).
-- **Aborting a desktop elicit handler rejects its promise.** A host that withdraws inputs sees an error for every
-  withdrawal and must tell withdrawal apart from failure itself (the rig currently logs these as failures).
+- **Aborting a desktop elicit handler rejects its promise.** Aborting with a `TaskInputWithdrawnError` reason makes
+  the inbox record the entry as `withdrawn`, but the handler promise still rejects, so a host must ignore
+  rejections from inputs it has withdrawn itself (the rig does).
 - **`@mokei/host-desktop` elicit handling and the flow task API have no shared notion of a run.** The rig keeps its
   own runId-to-task map and passes the run id as the inbox key.

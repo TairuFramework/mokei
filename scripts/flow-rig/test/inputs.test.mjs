@@ -202,3 +202,24 @@ test('settled waits for an in-flight update', async () => {
   await done
   assert.equal(settled, true)
 })
+
+test('a handler rejecting after withdrawal or abortAll is not logged or sent', async () => {
+  const { tracker, asks, updates, logs } = setup()
+  tracker.reconcile(snapshot(['a', 'b']))
+  tracker.reconcile(snapshot(['b']))
+  tracker.abortAll()
+  asks[0].reject(asks[0].signal.reason)
+  asks[1].reject(asks[1].signal.reason)
+  await flush()
+  assert.deepEqual(logs, [])
+  assert.equal(updates.length, 0)
+})
+
+test('withdrawReason builds the abort reason for each key', () => {
+  const { tracker, asks } = setup({ withdrawReason: (key) => new Error(`withdrawn ${key}`) })
+  tracker.reconcile(snapshot(['a', 'b']))
+  tracker.reconcile(snapshot(['b']))
+  tracker.abortAll()
+  assert.equal(asks[0].signal.reason.message, 'withdrawn a')
+  assert.equal(asks[1].signal.reason.message, 'withdrawn b')
+})
