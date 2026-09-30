@@ -24,7 +24,7 @@ edge, unconstrained result paths) and `docs/agents/plans/backlog/2026-09-30-host
 
 | Question | Decision |
 | --- | --- |
-| Which flows can a runtime definition reference? | Registered server flows only. No flows are supplied with a call. |
+| Which flows can a runtime definition reference? | Registered server flows, plus the definition itself. No other flows are supplied with a call. |
 | Discovery | A new `list_flows` tool returns flow summaries. |
 | Versions per registered flow `id` | One. A duplicate `id` throws at registration. |
 | Decline on an `input` node without a `decline` edge | Unchanged: the task is cancelled. |
@@ -44,6 +44,11 @@ edge, unconstrained result paths) and `docs/agents/plans/backlog/2026-09-30-host
   no effect.
 - The registry exposes a synchronous `lookup(id, version?) => FlowDefinition | undefined` and a
   `FlowResolver` built with `createMapResolver` over the snapshots.
+- The registry is the only source of registered definitions. The registered flow tools, recovery,
+  `list_flows` and `wiring.ts` (its approval map and elicitation guard) all read the snapshots,
+  never the caller's `flows` objects. `wiring.ts` builds the registry once and passes it to
+  `createDecisionFlowServer` in place of `flows`; `createDecisionFlowServer` also accepts `flows`
+  and builds its own registry when called directly.
 
 ### Resolver per definition
 
@@ -77,11 +82,14 @@ recovery and `wrapApproval`.
 
 ### Reachable flows
 
-One helper, `reachableFlows(definition, lookup)`, returns the definition plus every flow reachable
-through `call`, `goto` and `loop.body.flow`, tracking visited `(id, version)` pairs so cycles
-terminate. Unresolved references are skipped: `checkFlow` reports them as `missing_flow`, and a
-flow with blocking issues never runs. `checkFlow`, `flowPlan`, the elicitation guard and
-`list_flows` share it.
+One helper, `reachableFlows(definition, lookup, edges)`, returns the definition plus every flow
+reachable through the given reference edges, tracking visited `(id, version)` pairs so cycles
+terminate. `edges` is `'all'` (`call`, `goto` and `loop.body.flow`) or `'goto'` (`goto` only, for
+`list_flows` summaries). The walk tolerates malformed input: a root or callee without an object
+`nodes` contributes no nodes and no references, and a node that is not an object is skipped. It
+never throws. Unresolved references are skipped: `checkFlow` reports them as `missing_flow`, and a
+flow with blocking issues never runs. `checkFlow`, `flowPlan` and the elicitation guard use `'all'`; `list_flows`
+uses `'goto'`.
 
 ### Registration
 
@@ -90,10 +98,9 @@ regardless of array order. A flow with blocking issues throws `Invalid registere
 
 `createDecisionFlowServer` becomes async and returns a promise of the same object. Callers change:
 
-- `wiring.ts` creates the server with `await`. The task manager's `recover` callback, which today
-  throws `Flow server unavailable during recovery` while `server` is unset, instead awaits a
-  promise of the server, so a recovery that fires during creation waits rather than fails. If
-  creation rejects, that promise rejects and recovery rejects with the creation error.
+- `wiring.ts` creates the server with `await`. The task manager only invokes its `recover`
+  callback from `tasks.recover(tools)`, which wiring calls after the server exists, so the existing
+  `Flow server unavailable during recovery` guard stays unchanged.
 - The `wiring.ts` elicitation guard (`Registered flow <id> requires elicitation`) checks input nodes
   across `reachableFlows`, not only the root.
 - Tests that expect a synchronous result or a synchronous throw use `await` and `rejects`.
@@ -113,9 +120,10 @@ them.
   `{ id, digest }`. flow-graph pins callee frames in `runState.frames`.
 - `startRun` takes a `lookup(id, version) => FlowDefinition | undefined` (the per-definition
   resolution above, synchronous) for the decline lookup in section 2.
-- Frame resolution happens inside the lazy run's `next()` and inside `graph.resume()`. `startRun`
-  catches `FlowVersionMismatchError` and `FlowReferenceError` wherever it advances or resumes a run
-  and maps both to `RPCError({ code: -32603, message: 'Flow definition changed' })`.
+- `graph.resume()` and `graph.recover()` return lazy runs. They may throw shape or event errors
+  at once, but pinned-frame resolution runs on the returned run's first `next()`. `startRun`
+  catches `FlowVersionMismatchError` and `FlowReferenceError` wherever it calls `next()` and maps
+  both to `RPCError({ code: -32603, message: 'Flow definition changed' })`.
 - Recovery (`createRecovery`) takes the registry instead of its `Map<string, FlowDefinition>`. The
   root lookup and digest check stay. Before calling `checkFlow`, recovery checks every frame in
   `state.frames`: the frame's `flow.id` and `flow.version` must resolve, and the digest must equal
@@ -232,7 +240,6 @@ A `FlowGraphOptions` validator-factory option goes in the backlog as requested u
 | Situation | Result |
 | --- | --- |
 | Duplicate registered `id` | `createDecisionFlowServer` rejects. |
-| Recovery fires while the server is being created | Recovery waits for creation. |
 | Registered flow references a missing flow | `Invalid registered flow <id>` with `missing_flow`. |
 | Runtime definition reuses a registered `id` | `flow_id_conflict` error issue. |
 | Runtime definition references a missing flow | `missing_flow` error issue; `run_flow` returns it as an error result. |
@@ -255,8 +262,11 @@ A `FlowGraphOptions` validator-factory option goes in the backlog as requested u
     node inside a callee frame; without the edge the task is cancelled; a missing response counts
     as cancel.
   - `recovery`: a suspended callee frame recovers; a changed or removed callee maps to
-    `Flow definition changed`; a recovery fired during server creation waits for it.
-  - `wiring`: the elicitation guard rejects a registered root whose callee has an `input` node.
+    `Flow definition changed`.
+  - `wiring`: the elicitation guard rejects a registered root whose callee has an `input` node;
+    mutating the caller's `flows` array after creation changes neither approval nor runs.
+  - `definition-checks`: malformed definitions (no `nodes`, non-object nodes, a reference to a
+    malformed callee) return issues and never throw.
   - `list_flows`: `outputs` and `outcomes` include `end` nodes reached through `goto`.
   - `tool-node`: unconstrained result paths at any depth.
   - `validators`: identical canonical schemas reuse one validator; the 257th distinct compile
@@ -270,8 +280,9 @@ A `FlowGraphOptions` validator-factory option goes in the backlog as requested u
 
 - Branch `feat/flow-references-decline-validators`, one PR, with separate commits for the flow
   work (sections 1-3) and the validator work (section 4) so each can be reviewed alone.
-- One changeset with a patch bump for the fixed group (the repo stays on 0.14.x patches). It calls
-  out the breaking changes: `checkFlow` and `createDecisionFlowServer` become async.
+- One changeset with a patch bump for the fixed group. The repo stays on 0.14.x patches by
+  decision, and pre-1.0 patches may carry breaking changes. The changeset text names the breaking
+  changes for consumers: `checkFlow` and `createDecisionFlowServer` become async.
 - Backlog updates: move the three flow items and the AJV item to done, and add the two upstream
   asks (`createValidatorCache` in `@sozai/schema`, a validator-factory option in
   `@sozai/flow-graph`).
