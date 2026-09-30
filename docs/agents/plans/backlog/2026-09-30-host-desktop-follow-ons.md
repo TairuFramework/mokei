@@ -13,9 +13,8 @@
   per compile. `form.ts` compiles a whitelisted, canonical copy of each schema and caches
   validators in a 64-entry LRU keyed by canonical JSON. Repeated forms therefore never
   recompile, but each distinct server schema still grows the heap for the life of the process.
-  The upstream ask for an isolated, disposable instance is at
-  `/Users/paul/dev/yulsi/sozai/docs/agents/plans/backlog/2026-09-30-schema-isolated-validator-instances.md`.
-  Once it ships, recycle the instance every N distinct compiles and clear the LRU with it.
+  Needs an isolated, disposable validator instance option in `@sozai/schema` (requested
+  upstream). Once it ships, recycle the instance every N distinct compiles and clear the LRU with it.
 - **Manual QA.** Linux dialogs run end to end in CI (`zenity` under `xvfb`, answered with
   `xdotool`, and left to time out). macOS is covered by unit tests plus this manual checklist,
   run through a `NodeContextHost`. Moved from the package README.

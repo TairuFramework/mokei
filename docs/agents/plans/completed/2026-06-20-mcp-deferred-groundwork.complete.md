@@ -27,7 +27,7 @@ Three self-contained slices of the MCP-draft deferred groundwork.
   untouched.
 - **G5 inbound** — SHIPPED. Initially blocked (enkaku's `extractTraceContext` reads
   `tid`/`sid`, not the SEP-414 W3C `traceparent` mokei emits, and had no baggage
-  activation), so an ask was filed to the `../enkaku` checkout for
+  activation), so an ask was filed upstream with enkaku for
   `extractW3CTraceContext(meta)` + `withActiveBaggage`. enkaku shipped both in
   `@enkaku/otel@0.17.1` (enkaku #42) within the same session, and the wiring landed:
   new `context-server/src/trace.ts` (`activeContextFromMeta` / `baggageEntriesFromMeta` /

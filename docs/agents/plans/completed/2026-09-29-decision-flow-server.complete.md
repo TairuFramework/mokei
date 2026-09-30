@@ -66,7 +66,7 @@ application registered, or to one it writes and repairs itself. This replaces th
     - suspended on a retry: its timer.
   - A lookup for `flow_*` names serves only recovery. It is never listed and cannot be called.
   - Resume data must be version 1.
-- **Tool results with no declared schema.** The `tool` kind's result schema is a 32-level `additionalProperties` chain, so `results.<node>.<path>` references check. The flow-graph checker cannot yet treat a schema as unconstrained; the ask is filed in sozai's backlog (`2026-09-29-flow-graph-unconstrained-result-paths.md`).
+- **Tool results with no declared schema.** The `tool` kind's result schema is a 32-level `additionalProperties` chain, so `results.<node>.<path>` references check. The flow-graph checker cannot yet treat a schema as unconstrained; the ask is requested upstream in `@sozai/flow-graph`.
 
 ## Testing
 

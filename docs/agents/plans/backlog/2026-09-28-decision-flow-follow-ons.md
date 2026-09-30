@@ -7,7 +7,7 @@
 ## Items
 
 - **Flow references.** When `@sozai/flow-graph` publishes `call`, `goto`, `loop.body: { flow }`
-  and `FlowResolver` (tracked in `../sozai/docs/agents/plans/backlog/2026-09-28-flow-graph-flow-references.md`),
+  and `FlowResolver` (requested upstream),
   add a forwarded `resolver` option to `createDecisionFlowGraph` and cover a cross-flow example.
 - **MCP tools and `AgentSession` integration.** Done by
   [decision-flow server](../completed/2026-09-29-decision-flow-server.complete.md) (`check_flow`,
