@@ -103,13 +103,14 @@ aborted, or the inbox is disposed. `inbox.prompt(id)` starts a fresh `timeoutSec
   it: an answer, a decline, a dismissal, or the `timeoutSeconds` budget running out (`cancel`).
   An outcome no person chose rejects the prompt and leaves the entry pending, so the
   application can fall back to `answer`, `decline` or `cancel`: no dialog backend can show the
-  form, or the backend fails (a missing command, an unknown exit code). The problem is also
-  reported through `onUnsupported` (or stderr). A second `prompt` while one is open returns the
+  form, or the backend fails (a missing command, an unknown exit code). When the prompt opens,
+  the problem is also reported through `onUnsupported` (or stderr). A second `prompt` while one is open returns the
   same promise. Another answer action closes an open prompt.
 - `canPrompt` is `true` when the form maps to dialogs and the detected dialog backend can show
-  every one of them. It is `false` when no dialog backend is available, or when a forced
-  `alerter` cannot show the form (a choice label containing a comma, a value starting with
-  `-`); `prompt` then rejects without opening a dialog.
+  every one of them. It is `false` when no dialog backend is available, or when no available
+  backend can show the form: a forced `alerter` refusing it (a choice label containing a comma,
+  a value starting with `-`), or an auto-selected `alerter` refusing it with no `osascript` to
+  fall back to. `prompt` then rejects without opening a dialog or reporting.
 - Events: `added` (the entry), `settled` (`{ id, action }`, never the content) and `removed`
   (`{ id, reason }`, with `'withdrawn'` when a task withdrew the request, `'aborted'` for any
   other abort and `'disposed'`).

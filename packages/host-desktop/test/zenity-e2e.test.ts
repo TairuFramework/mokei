@@ -81,6 +81,9 @@ describe.runIf(process.env.DESKTOP_E2E)('zenity end to end', () => {
       'type',
       '--delay',
       '50',
+      // Without --args, type takes every remaining argument as text
+      '--args',
+      '1',
       'hello e2e',
       'key',
       'Return',
