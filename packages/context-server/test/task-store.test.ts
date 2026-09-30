@@ -16,7 +16,7 @@ function createRecord(patch: Partial<TaskRecord> = {}): TaskRecord {
     ttlMs: 3_600_000,
     toolName: 'echo',
     clientCapabilities: {},
-    issuedInputKeys: [],
+    inputs: [],
     ...patch,
   }
 }
@@ -27,7 +27,14 @@ describe('createMemoryTaskStore', () => {
     const record = createRecord({
       owner: { issuer: 'issuer', subject: 'alice', scopes: ['read'] },
       resumeData: { input: ['hello', null, true, 2] },
-      issuedInputKeys: ['prompt'],
+      inputs: [
+        {
+          id: 1,
+          requests: { prompt: { method: 'roots/list' } },
+          responses: { prompt: { roots: [] } },
+          outcome: 'answered',
+        },
+      ],
     })
     await store.create(record)
     expect(await store.get(record.taskID)).toEqual(record)
@@ -62,7 +69,7 @@ describe('createMemoryTaskStore', () => {
       ttlMs: 3_600_000,
       toolName: 'echo',
       clientCapabilities: {},
-      issuedInputKeys: [],
+      inputs: [],
     })
     const [record] = await store.list({ status: ['working'] })
     if (record === undefined) throw new Error('Expected a working task')
@@ -99,7 +106,7 @@ describe('createMemoryTaskStore', () => {
     fetchedData.values.push('changed')
     const [listed] = await store.list({ status: ['working'] })
     if (listed === undefined) throw new Error('Expected a working task')
-    listed.issuedInputKeys.push('changed')
+    listed.inputs.push({ id: 1, requests: {}, responses: {} })
     const patch = { resumeData: { values: ['updated'] } }
     const updated = await store.update(record.taskID, patch, { revision: 0 })
     patch.resumeData.values.push('changed')
@@ -107,7 +114,7 @@ describe('createMemoryTaskStore', () => {
     updatedData.values.push('changed')
     expect(await store.get(record.taskID)).toMatchObject({
       revision: 1,
-      issuedInputKeys: [],
+      inputs: [],
       resumeData: { values: ['updated'] },
     })
   })

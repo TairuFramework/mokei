@@ -382,12 +382,18 @@ test.each(['not-issued', 'outstanding', 'answered', 'incremented-outstanding'] a
       await f.store.update(
         id,
         {
-          issuedInputKeys: window === 'incremented-outstanding' ? [key0, key1] : [key0],
           status: window === 'answered' ? 'working' : 'input_required',
-          ...(window !== 'answered' && {
-            inputRequests: { [window === 'incremented-outstanding' ? key1 : key0]: inputRequest },
-            inputResponses: {},
-          }),
+          inputs: [
+            {
+              id: 1,
+              requests: { [key0]: inputRequest },
+              responses: {},
+              ...(window !== 'outstanding' && { outcome: 'answered' as const }),
+            },
+            ...(window === 'incremented-outstanding'
+              ? [{ id: 2, requests: { [key1]: inputRequest }, responses: {} }]
+              : []),
+          ],
         },
         { revision: previous.revision },
       )
@@ -430,7 +436,7 @@ test('an elapsed input deadline resumes the timeout edge without issuing a reque
     expect(await second.get(id)).toMatchObject({
       result: { structuredContent: { outcome: 'timed' } },
     })
-    expect((await f.store.get(id))?.issuedInputKeys).toEqual([])
+    expect((await f.store.get(id))?.inputs).toEqual([])
   } finally {
     await second.dispose()
   }
@@ -475,9 +481,7 @@ test('withdraws an outstanding expired input before asking at the timeout edge',
     id,
     {
       status: 'input_required',
-      issuedInputKeys: [oldKey],
-      inputRequests: { [oldKey]: inputRequest },
-      inputResponses: {},
+      inputs: [{ id: 1, requests: { [oldKey]: inputRequest }, responses: {} }],
     },
     { revision: previous.revision },
   )

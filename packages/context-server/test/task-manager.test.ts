@@ -1,9 +1,14 @@
-import type { InputResponse } from '@mokei/context-protocol'
+import type { DetailedTask, InputResponse } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
-import { createTaskManager, type TaskHandle, TaskInputKeyReusedError } from '../src/task-manager.js'
-import { createMemoryTaskStore, type TaskRecord } from '../src/task-store.js'
+import {
+  createTaskManager,
+  InputRequestWithdrawnError,
+  type TaskHandle,
+  TaskInputKeyReusedError,
+} from '../src/task-manager.js'
+import { createMemoryTaskStore, type TaskRecord, type TaskStore } from '../src/task-store.js'
 import type { GenericToolDefinition } from '../src/types.js'
 
 const tool: GenericToolDefinition = {
@@ -25,7 +30,7 @@ function record(patch: Partial<TaskRecord> = {}): TaskRecord {
     ttlMs: 3_600_000,
     toolName: 'echo',
     clientCapabilities: { roots: {} },
-    issuedInputKeys: [],
+    inputs: [],
     ...patch,
   }
 }
@@ -35,15 +40,14 @@ async function tick(): Promise<void> {
 }
 
 describe('task manager', () => {
-  test('resumes input after a transient failure to persist working status', async () => {
+  test('a failed answer write rejects the update and a retry completes the input', async () => {
     const base = createMemoryTaskStore()
+    const failure = new Error('Store unavailable')
     let failures = 0
     const store = {
       ...base,
       update: async (...args: Parameters<typeof base.update>) => {
-        if (args[1].status === 'working' && failures++ === 0) {
-          throw new Error('Store unavailable')
-        }
+        if (args[1].status === 'working' && failures++ === 0) throw failure
         return base.update(...args)
       },
     }
@@ -63,58 +67,12 @@ describe('task manager', () => {
     })
     try {
       await tick()
+      await expect(manager.update(created.taskId, { ask: rootsResponse })).rejects.toBe(failure)
+      expect((await manager.get(created.taskId)).status).toBe('input_required')
       await manager.update(created.taskId, { ask: rootsResponse })
       await expect.poll(async () => (await manager.get(created.taskId)).status).toBe('completed')
       expect(failures).toBe(2)
       expect(errors).toEqual([])
-    } finally {
-      await manager.dispose()
-    }
-  })
-
-  test('fails the task and releases input after persistent working status failures', async () => {
-    const base = createMemoryTaskStore()
-    const failure = new Error('Store unavailable')
-    let attempts = 0
-    const store = {
-      ...base,
-      update: async (...args: Parameters<typeof base.update>) => {
-        if (args[1].status === 'working') {
-          attempts++
-          throw failure
-        }
-        return base.update(...args)
-      },
-    }
-    const manager = createTaskManager({ store })
-    const errors: Array<unknown> = []
-    manager.events.on('taskError', (event) => {
-      errors.push(event)
-    })
-    const inputSettled = Promise.withResolvers<unknown>()
-    const created = await manager.create({
-      toolName: 'echo',
-      tool,
-      clientCapabilities: { roots: {} },
-      work: async (task) => {
-        try {
-          await task.requestInput({ ask: rootsRequest })
-        } catch (error) {
-          inputSettled.resolve(error)
-        }
-        return result
-      },
-    })
-    try {
-      await tick()
-      await manager.update(created.taskId, { ask: rootsResponse })
-      expect(await inputSettled.promise).toBe(failure)
-      expect(await manager.get(created.taskId)).toMatchObject({
-        status: 'failed',
-        error: { code: -32603, message: 'Task input failed' },
-      })
-      expect(attempts).toBe(4)
-      expect(errors).toEqual([{ taskID: created.taskId, error: failure }])
     } finally {
       await manager.dispose()
     }
@@ -282,7 +240,7 @@ describe('task manager', () => {
     await manager.dispose()
   })
 
-  test('reissued identical outstanding requests attach and other issued keys reject', async () => {
+  test('reissued identical requests attach or replay and other issued keys reject', async () => {
     const manager = createTaskManager()
     let handle: TaskHandle | undefined
     const created = await manager.create({
@@ -304,9 +262,12 @@ describe('task manager', () => {
     await manager.update(created.taskId, { ask: rootsResponse })
     await expect(first).resolves.toEqual({ ask: rootsResponse })
     await expect(attached).resolves.toEqual({ ask: rootsResponse })
-    await expect(handle.requestInput({ ask: rootsRequest })).rejects.toBeInstanceOf(
-      TaskInputKeyReusedError,
-    )
+    await expect(handle.requestInput({ ask: rootsRequest })).resolves.toEqual({
+      ask: rootsResponse,
+    })
+    await expect(
+      handle.requestInput({ ask: { method: 'roots/list', params: { page: 2 } } }),
+    ).rejects.toBeInstanceOf(TaskInputKeyReusedError)
     await manager.dispose()
   })
 
@@ -523,7 +484,7 @@ describe('task manager', () => {
     await manager.dispose()
   })
 
-  test('withdraws aborted input while retaining issued keys', async () => {
+  test('withdraws aborted input while retaining its request', async () => {
     const store = createMemoryTaskStore()
     const manager = createTaskManager({ store })
     const controller = new AbortController()
@@ -543,7 +504,9 @@ describe('task manager', () => {
     controller.abort(new Error('deadline'))
     await tick()
     expect((await manager.get(created.taskId)).status).toBe('completed')
-    expect((await store.get(created.taskId))?.issuedInputKeys).toEqual(['ask'])
+    expect((await store.get(created.taskId))?.inputs).toEqual([
+      { id: 1, requests: { ask: rootsRequest }, responses: {}, outcome: 'withdrawn' },
+    ])
     await expect(manager.update(created.taskId, { ask: rootsResponse })).rejects.toMatchObject({
       code: -32602,
       message: 'Task is not awaiting input for ask',
@@ -623,8 +586,7 @@ describe('task manager', () => {
     const store = createMemoryTaskStore()
     const saved = record({
       status: 'input_required',
-      inputRequests: { ask: rootsRequest },
-      issuedInputKeys: ['ask'],
+      inputs: [{ id: 1, requests: { ask: rootsRequest }, responses: {} }],
     })
     await store.create(saved)
     const manager = createTaskManager({
@@ -646,9 +608,7 @@ describe('task manager', () => {
     const store = createMemoryTaskStore()
     const saved = record({
       status: 'input_required',
-      inputRequests: { ask: rootsRequest },
-      inputResponses: {},
-      issuedInputKeys: ['ask'],
+      inputs: [{ id: 1, requests: { ask: rootsRequest }, responses: {} }],
     })
     await store.create(saved)
     const observed = Promise.withResolvers<Record<string, InputResponse>>()
@@ -893,7 +853,7 @@ describe('task manager', () => {
     expect(await store.get(created.taskId)).toMatchObject({ status: 'input_required' })
   })
 
-  test('withdraws input with the supplied reason and lets work continue', async () => {
+  test('withdraws input with the withdrawn error and lets work continue', async () => {
     const store = createMemoryTaskStore()
     const manager = createTaskManager({ store })
     const controller = new AbortController()
@@ -915,38 +875,45 @@ describe('task manager', () => {
     await tick()
     controller.abort(reason)
     await tick()
-    expect(observed).toBe(reason)
+    expect(observed).toBeInstanceOf(InputRequestWithdrawnError)
     expect(await manager.get(created.taskId)).toMatchObject({ status: 'completed' })
-    expect(await store.get(created.taskId)).toMatchObject({ issuedInputKeys: ['ask'] })
+    expect((await store.get(created.taskId))?.inputs).toEqual([
+      { id: 1, requests: { ask: rootsRequest }, responses: {}, outcome: 'withdrawn' },
+    ])
     await manager.dispose()
   })
 
-  test('a withdrawn input key rejects reissue with the key reuse error', async () => {
+  test('a withdrawn input replays its withdrawal and rejects a changed reissue', async () => {
     const manager = createTaskManager()
     const controller = new AbortController()
-    const reason = new Error('input deadline')
-    const attempted = Promise.withResolvers<unknown>()
+    const attempts = Promise.withResolvers<Array<unknown>>()
     const created = await manager.create({
       toolName: 'echo',
       tool,
       clientCapabilities: { roots: {} },
       work: async (task) => {
-        try {
-          await task.requestInput({ ask: rootsRequest }, { signal: controller.signal })
-        } catch (error) {
-          expect(error).toBe(reason)
+        const errors: Array<unknown> = []
+        for (const requests of [
+          { ask: rootsRequest },
+          { ask: rootsRequest },
+          { ask: { method: 'roots/list' as const, params: { page: 2 } } },
+        ]) {
+          try {
+            await task.requestInput(requests, { signal: controller.signal })
+          } catch (error) {
+            errors.push(error)
+          }
         }
-        try {
-          await task.requestInput({ ask: rootsRequest })
-        } catch (error) {
-          attempted.resolve(error)
-        }
+        attempts.resolve(errors)
         return result
       },
     })
     await tick()
-    controller.abort(reason)
-    expect(await attempted.promise).toBeInstanceOf(TaskInputKeyReusedError)
+    controller.abort(new Error('input deadline'))
+    const [withdrawn, replayed, changed] = await attempts.promise
+    expect(withdrawn).toBeInstanceOf(InputRequestWithdrawnError)
+    expect(replayed).toBeInstanceOf(InputRequestWithdrawnError)
+    expect(changed).toBeInstanceOf(TaskInputKeyReusedError)
     await tick()
     expect((await manager.get(created.taskId)).status).toBe('completed')
     await manager.dispose()
@@ -1052,11 +1019,10 @@ describe('task manager', () => {
       code: -32602,
       message: 'Task is not awaiting input for ask',
     })
-    expect(await store.get(created.taskId)).toMatchObject({
-      status: 'working',
-      issuedInputKeys: ['ask'],
-    })
-    expect((await store.get(created.taskId))?.inputResponses).toBeUndefined()
+    expect((await store.get(created.taskId))?.status).toBe('working')
+    expect((await store.get(created.taskId))?.inputs).toEqual([
+      { id: 1, requests: { ask: rootsRequest }, responses: {}, outcome: 'withdrawn' },
+    ])
     gate.resolve()
     await tick()
     await manager.dispose()
@@ -1144,10 +1110,7 @@ describe('task manager', () => {
     const store = {
       ...base,
       update: async (...args: Parameters<typeof base.update>) => {
-        if (
-          args[1].inputResponses !== undefined &&
-          Object.keys(args[1].inputResponses).length > 0
-        ) {
+        if (Object.keys(args[1].inputs?.at(-1)?.responses ?? {}).length > 0) {
           await base.delete(args[0])
         }
         return base.update(...args)
@@ -1294,3 +1257,341 @@ describe('task manager', () => {
 })
 
 const INTERRUPTED_ERROR = { code: -32603, message: 'Task interrupted by server restart' }
+
+async function started(params: { store?: TaskStore; now?: () => number; ttlMs?: number } = {}) {
+  const store = params.store ?? createMemoryTaskStore()
+  const manager = createTaskManager({ ...params, store })
+  const events: Array<DetailedTask> = []
+  const errors: Array<{ taskID?: string; error: unknown }> = []
+  manager.events.on('taskStatus', (event) => {
+    events.push(event)
+  })
+  manager.events.on('taskError', (event) => {
+    errors.push(event)
+  })
+  let handle: TaskHandle | undefined
+  const created = await manager.create({
+    toolName: 'echo',
+    tool,
+    clientCapabilities: { roots: {} },
+    work: (task) => {
+      handle = task
+      return new Promise(() => {})
+    },
+  })
+  if (handle === undefined) throw new Error('Worker did not start')
+  events.length = 0
+  return { store, manager, handle, taskID: created.taskId, events, errors }
+}
+
+function settleOf<T>(promise: Promise<T>): Promise<{ value: T } | { error: unknown }> {
+  return promise.then(
+    (value) => ({ value }),
+    (error: unknown) => ({ error }),
+  )
+}
+
+describe('input transitions', () => {
+  test('ask appends an open request and changes the status', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    void settleOf(handle.requestInput({ ask: rootsRequest }))
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    const saved = await store.get(taskID)
+    expect(saved).toMatchObject({ status: 'input_required', revision: 1 })
+    expect(saved?.inputs).toEqual([{ id: 1, requests: { ask: rootsRequest }, responses: {} }])
+    expect(events[0]).toMatchObject({
+      status: 'input_required',
+      inputRequests: { ask: rootsRequest },
+    })
+    await manager.dispose()
+  })
+
+  test('ask fails while a request is open', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    void settleOf(handle.requestInput({ ask: rootsRequest }))
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    await expect(handle.requestInput({ other: rootsRequest })).rejects.toThrow(
+      'Input is already outstanding',
+    )
+    expect((await store.get(taskID))?.revision).toBe(1)
+    expect(events).toHaveLength(1)
+    await manager.dispose()
+  })
+
+  test('ask fails when the key is issued with different contents', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    void settleOf(handle.requestInput({ ask: { method: 'roots/list', params: { page: 1 } } }))
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    await expect(
+      handle.requestInput({ ask: { method: 'roots/list', params: { page: 2 } } }),
+    ).rejects.toBeInstanceOf(TaskInputKeyReusedError)
+    expect((await store.get(taskID))?.revision).toBe(1)
+    expect(events).toHaveLength(1)
+    await manager.dispose()
+  })
+
+  test('ask fails with an aborted signal without writing', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    const reason = new Error('deadline')
+    await expect(
+      handle.requestInput({ ask: rootsRequest }, { signal: AbortSignal.abort(reason) }),
+    ).rejects.toBe(reason)
+    expect(await store.get(taskID)).toMatchObject({ revision: 0, inputs: [] })
+    expect(events).toHaveLength(0)
+    await manager.dispose()
+  })
+
+  test('a partial answer keeps the request open with the unanswered keys', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    void settleOf(handle.requestInput({ a: rootsRequest, b: rootsRequest }))
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    await manager.update(taskID, { a: rootsResponse })
+    const saved = await store.get(taskID)
+    expect(saved?.status).toBe('input_required')
+    expect(saved?.inputs).toEqual([
+      { id: 1, requests: { a: rootsRequest, b: rootsRequest }, responses: { a: rootsResponse } },
+    ])
+    expect(events).toHaveLength(2)
+    expect((await manager.get(taskID)) as { inputRequests?: unknown }).toMatchObject({
+      status: 'input_required',
+      inputRequests: { b: rootsRequest },
+    })
+    expect(Object.keys((events[1] as { inputRequests: object }).inputRequests)).toEqual(['b'])
+    await manager.dispose()
+  })
+
+  test('the final answer settles the request and resumes work', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    const pending = handle.requestInput({ a: rootsRequest, b: rootsRequest })
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    await manager.update(taskID, { a: rootsResponse })
+    await manager.update(taskID, { b: rootsResponse })
+    await expect(pending).resolves.toEqual({ a: rootsResponse, b: rootsResponse })
+    const saved = await store.get(taskID)
+    expect(saved?.status).toBe('working')
+    expect(saved?.inputs).toEqual([
+      {
+        id: 1,
+        requests: { a: rootsRequest, b: rootsRequest },
+        responses: { a: rootsResponse, b: rootsResponse },
+        outcome: 'answered',
+      },
+    ])
+    expect(events).toHaveLength(3)
+    expect(events[2]).not.toHaveProperty('inputRequests')
+    await manager.dispose()
+  })
+
+  test.each([
+    ['an unknown key', { stale: rootsResponse }, 'stale'],
+    ['an answered key', { a: rootsResponse }, 'a'],
+    ['a multi-key update with one stale key', { b: rootsResponse, a: rootsResponse }, 'a'],
+  ] as const)('answer fails for %s', async (_name, responses, key) => {
+    const { store, manager, handle, taskID, events } = await started()
+    void settleOf(handle.requestInput({ a: rootsRequest, b: rootsRequest }))
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    await manager.update(taskID, { a: rootsResponse })
+    const before = await store.get(taskID)
+    await expect(manager.update(taskID, responses)).rejects.toMatchObject({
+      code: -32602,
+      message: `Task is not awaiting input for ${key}`,
+      data: { key },
+    })
+    expect(await store.get(taskID)).toEqual(before)
+    expect(events).toHaveLength(2)
+    await manager.dispose()
+  })
+
+  test('answer fails for a withdrawn request', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    const controller = new AbortController()
+    const pending = settleOf(
+      handle.requestInput({ ask: rootsRequest }, { signal: controller.signal }),
+    )
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    controller.abort(new Error('deadline'))
+    await pending
+    const before = await store.get(taskID)
+    await expect(manager.update(taskID, { ask: rootsResponse })).rejects.toMatchObject({
+      code: -32602,
+      message: 'Task is not awaiting input for ask',
+      data: { key: 'ask' },
+    })
+    expect(await store.get(taskID)).toEqual(before)
+    expect(events).toHaveLength(2)
+    await manager.dispose()
+  })
+
+  test('answer fails for a terminal task', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    const pending = settleOf(handle.requestInput({ ask: rootsRequest }))
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    await manager.cancel(taskID)
+    await pending
+    const before = await store.get(taskID)
+    await expect(manager.update(taskID, { ask: rootsResponse })).rejects.toMatchObject({
+      code: -32602,
+      message: 'Task is not awaiting input for ask',
+      data: { key: 'ask' },
+    })
+    expect(await store.get(taskID)).toEqual(before)
+    expect(events).toHaveLength(2)
+    await manager.dispose()
+  })
+
+  test('empty responses write nothing', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    void settleOf(handle.requestInput({ ask: rootsRequest }))
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    await manager.update(taskID, {})
+    expect((await store.get(taskID))?.revision).toBe(1)
+    expect(events).toHaveLength(1)
+    await manager.dispose()
+  })
+
+  test('withdraw settles the request and rejects its waiter', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    const controller = new AbortController()
+    const pending = handle.requestInput({ ask: rootsRequest }, { signal: controller.signal })
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    controller.abort(new Error('deadline'))
+    const error = await pending.catch((reason: unknown) => reason)
+    expect(error).toBeInstanceOf(InputRequestWithdrawnError)
+    expect(error).toMatchObject({
+      taskID,
+      id: 1,
+      message: `Input request 1 for task ${taskID} was withdrawn`,
+    })
+    const saved = await store.get(taskID)
+    expect(saved?.status).toBe('working')
+    expect(saved?.inputs).toEqual([
+      { id: 1, requests: { ask: rootsRequest }, responses: {}, outcome: 'withdrawn' },
+    ])
+    expect(events).toHaveLength(2)
+    await manager.dispose()
+  })
+
+  test('withdraw is a no-op after the request is answered', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    const controller = new AbortController()
+    const pending = handle.requestInput({ ask: rootsRequest }, { signal: controller.signal })
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    await manager.update(taskID, { ask: rootsResponse })
+    await expect(pending).resolves.toEqual({ ask: rootsResponse })
+    controller.abort(new Error('deadline'))
+    await tick()
+    expect((await store.get(taskID))?.revision).toBe(2)
+    expect(events).toHaveLength(2)
+    await manager.dispose()
+  })
+
+  test('cancelling with a request open leaves inputs unchanged and rejects the waiter', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    const pending = handle.requestInput({ ask: rootsRequest })
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    await manager.cancel(taskID)
+    await expect(pending).rejects.toThrow('Task cancelled')
+    const saved = await store.get(taskID)
+    expect(saved?.status).toBe('cancelled')
+    expect(saved?.inputs).toEqual([{ id: 1, requests: { ask: rootsRequest }, responses: {} }])
+    expect(events).toHaveLength(2)
+    await manager.dispose()
+  })
+})
+
+describe('input waiting and lifecycle', () => {
+  test('answer committed before a waiter registers still resolves it', async () => {
+    const { manager, handle, taskID, events } = await started()
+    void settleOf(handle.requestInput({ ask: rootsRequest }))
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    await manager.update(taskID, { ask: rootsResponse })
+    await expect(handle.requestInput({ ask: { method: 'roots/list' } })).resolves.toEqual({
+      ask: rootsResponse,
+    })
+    await manager.dispose()
+  })
+
+  test('requestInput replays a withdrawn request', async () => {
+    const { manager, handle, taskID, events } = await started()
+    const controller = new AbortController()
+    const first = settleOf(
+      handle.requestInput({ ask: rootsRequest }, { signal: controller.signal }),
+    )
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    controller.abort(new Error('deadline'))
+    await first
+    const error = await handle
+      .requestInput({ ask: rootsRequest })
+      .catch((reason: unknown) => reason)
+    expect(error).toBeInstanceOf(InputRequestWithdrawnError)
+    expect(error).toMatchObject({ taskID, id: 1 })
+    await manager.dispose()
+  })
+
+  test('lastUpdatedAt strictly increases under a frozen clock', async () => {
+    const fixed = Date.parse('2026-09-29T12:00:00Z')
+    const { manager, handle, events } = await started({ now: () => fixed })
+    await handle.setStatus('one')
+    await handle.setStatus('two')
+    await handle.setStatus('three')
+    const stamps = events.map((event) => Date.parse(event.lastUpdatedAt))
+    expect(stamps).toEqual([fixed + 1, fixed + 2, fixed + 3])
+    await manager.dispose()
+  })
+
+  test('expiry rejects an open waiter with Task expired', async () => {
+    let now = Date.parse('2026-09-29T12:00:00Z')
+    const { manager, handle, taskID, events } = await started({ now: () => now, ttlMs: 1000 })
+    const pending = handle.requestInput({ ask: rootsRequest })
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    now += 1001
+    await expect(manager.get(taskID)).rejects.toMatchObject({ message: 'Task not found' })
+    await expect(pending).rejects.toThrow('Task expired')
+    await manager.dispose()
+  })
+
+  test('dispose rejects pending waiters', async () => {
+    const { store, manager, handle, taskID, events } = await started()
+    const first = handle.requestInput({ ask: rootsRequest })
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    const second = handle.requestInput({ ask: rootsRequest })
+    await manager.dispose()
+    await expect(first).rejects.toThrow('Task manager disposed')
+    await expect(second).rejects.toThrow('Task manager disposed')
+    expect((await store.get(taskID))?.status).toBe('input_required')
+  })
+
+  test('withdraw retries a failing store write', async () => {
+    const base = createMemoryTaskStore()
+    const failure = new Error('Store unavailable')
+    let failures = 0
+    const store: TaskStore = {
+      ...base,
+      update: async (...args: Parameters<typeof base.update>) => {
+        if (args[1].inputs?.at(-1)?.outcome === 'withdrawn' && failures < 2) {
+          failures++
+          throw failure
+        }
+        return base.update(...args)
+      },
+    }
+    const { manager, handle, taskID, events, errors } = await started({ store })
+    const controller = new AbortController()
+    const pending = handle.requestInput({ ask: rootsRequest }, { signal: controller.signal })
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    controller.abort(new Error('deadline'))
+    await expect(pending).rejects.toBeInstanceOf(InputRequestWithdrawnError)
+    expect(errors).toEqual([
+      { taskID, error: failure },
+      { taskID, error: failure },
+    ])
+    expect((await store.get(taskID))?.inputs.at(-1)?.outcome).toBe('withdrawn')
+    await manager.dispose()
+  })
+
+  test('awaitInput with no open request throws No input is outstanding', async () => {
+    const { manager, handle } = await started()
+    await expect(handle.awaitInput()).rejects.toThrow('No input is outstanding')
+    await manager.dispose()
+  })
+})

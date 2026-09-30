@@ -15,6 +15,7 @@ import { EventEmitter, type EventsSource } from '@sozai/event'
 import { missingInputCapabilities } from './mrtr.js'
 import {
   createMemoryTaskStore,
+  type InputRecord,
   type JSONValue,
   type TaskOwner,
   type TaskRecord,
@@ -46,6 +47,25 @@ export class TaskInputKeyReusedError extends Error {
   constructor(key: string) {
     super(`Input key already issued: ${key}`)
     this.name = 'TaskInputKeyReusedError'
+  }
+}
+export class InputRequestWithdrawnError extends Error {
+  #taskID: string
+  #id: number
+
+  constructor(params: { taskID: string; id: number }) {
+    super(`Input request ${params.id} for task ${params.taskID} was withdrawn`)
+    this.name = 'InputRequestWithdrawnError'
+    this.#taskID = params.taskID
+    this.#id = params.id
+  }
+
+  get taskID(): string {
+    return this.#taskID
+  }
+
+  get id(): number {
+    return this.#id
   }
 }
 export type TaskResume = (work: TaskWork) => Promise<void>
@@ -90,6 +110,16 @@ function isTerminal(record: TaskRecord): boolean {
   )
 }
 
+/** The latest input request, when it is open: status and outcome change in the same write. */
+function openInput(record: TaskRecord): InputRecord | undefined {
+  const latest = record.inputs.at(-1)
+  return record.status === 'input_required' && latest?.outcome === undefined ? latest : undefined
+}
+
+function settleLatest(record: TaskRecord, entry: InputRecord): Array<InputRecord> {
+  return [...record.inputs.slice(0, -1), entry]
+}
+
 function detailed(record: TaskRecord): DetailedTask {
   const base = {
     taskId: record.taskID,
@@ -100,8 +130,14 @@ function detailed(record: TaskRecord): DetailedTask {
     ttlMs: record.ttlMs,
     ...(record.pollIntervalMs !== undefined && { pollIntervalMs: record.pollIntervalMs }),
   }
-  if (record.status === 'input_required')
-    return { ...base, status: 'input_required', inputRequests: record.inputRequests ?? {} }
+  if (record.status === 'input_required') {
+    // Never empty for an open request: the final answer closes it in the same write.
+    const open = openInput(record)
+    const inputRequests: Record<string, InputRequest> = {}
+    for (const [key, request] of Object.entries(open?.requests ?? {}))
+      if (!Object.hasOwn(open?.responses ?? {}, key)) inputRequests[key] = request
+    return { ...base, status: 'input_required', inputRequests }
+  }
   if (record.status === 'completed')
     return {
       ...base,
@@ -155,12 +191,10 @@ function equalJSON(left: unknown, right: unknown): boolean {
   )
 }
 
-type PendingInput = {
-  promise: Promise<Record<string, InputResponse>>
-  resolve: (responses: Record<string, InputResponse>) => void
-  reject: (reason: unknown) => void
-  abortListeners: Array<{ signal: AbortSignal; onAbort: () => void }>
-}
+/** Receives each committed record of a task, possibly out of order; `undefined` means deleted. */
+type RecordListener = (record: TaskRecord | undefined) => void
+
+const WITHDRAW_BACKOFF_MS = { initial: 10, max: 1_000 }
 
 class ManagedTasks implements TaskManager {
   #store: TaskStore
@@ -172,7 +206,7 @@ class ManagedTasks implements TaskManager {
   #hidden = new Set<string>()
   #recovering = new Set<string>()
   #controllers = new Map<string, AbortController>()
-  #pending = new Map<string, PendingInput>()
+  #listeners = new Map<string, Set<RecordListener>>()
   #events = new EventEmitter<{
     taskStatus: DetailedTask
     taskError: { taskID?: string; error: unknown }
@@ -221,40 +255,62 @@ class ManagedTasks implements TaskManager {
     this.#hidden.delete(taskID)
   }
 
+  /**
+   * Applies `change` as one conditional write, re-reading and rerunning it on a revision
+   * conflict. `committed` runs after the write commits and before any observer sees it.
+   */
   async #mutate(
     taskID: string,
     change: (record: TaskRecord) => Partial<TaskRecord> | undefined,
+    committed?: (record: TaskRecord) => void,
   ): Promise<TaskRecord | undefined> {
     while (true) {
       const record = await this.#store.get(taskID)
       if (record === undefined) return undefined
       const patch = change(record)
       if (patch === undefined) return record
+      // Strictly increasing per task, so distinct revisions never share a timestamp.
+      const lastUpdatedAt = Math.max(this.#now(), Date.parse(record.lastUpdatedAt) + 1)
+      let updated: TaskRecord
       try {
-        const updated = await this.#store.update(
+        updated = await this.#store.update(
           taskID,
-          { ...patch, lastUpdatedAt: new Date(this.#now()).toISOString() },
+          { ...patch, lastUpdatedAt: new Date(lastUpdatedAt).toISOString() },
           { revision: record.revision },
         )
-        this.#events.fire('taskStatus', detailed(updated))
-        return updated
       } catch (error) {
         if ((await this.#store.get(taskID)) === undefined) return undefined
         if (!(error instanceof TaskStoreConflictError)) throw error
+        continue
       }
+      committed?.(updated)
+      this.#events.fire('taskStatus', detailed(updated))
+      this.#notify(taskID, updated)
+      return updated
     }
+  }
+
+  #listen(taskID: string, listener: RecordListener): () => void {
+    let listeners = this.#listeners.get(taskID)
+    if (listeners === undefined) {
+      listeners = new Set()
+      this.#listeners.set(taskID, listeners)
+    }
+    listeners.add(listener)
+    return () => {
+      listeners.delete(listener)
+      if (listeners.size === 0 && this.#listeners.get(taskID) === listeners)
+        this.#listeners.delete(taskID)
+    }
+  }
+
+  #notify(taskID: string, record: TaskRecord | undefined): void {
+    for (const listener of [...(this.#listeners.get(taskID) ?? [])]) listener(record)
   }
 
   #abort(taskID: string, reason: unknown): void {
     this.#controllers.get(taskID)?.abort(reason)
     this.#controllers.delete(taskID)
-    const pending = this.#pending.get(taskID)
-    if (pending !== undefined) {
-      this.#pending.delete(taskID)
-      for (const { signal, onAbort } of pending.abortListeners)
-        signal.removeEventListener('abort', onAbort)
-      pending.reject(reason)
-    }
   }
 
   async #expire(record: TaskRecord): Promise<boolean> {
@@ -262,6 +318,7 @@ class ManagedTasks implements TaskManager {
       return false
     await this.#store.delete(record.taskID)
     this.#hidden.delete(record.taskID)
+    this.#notify(record.taskID, undefined)
     this.#abort(record.taskID, new Error('Task expired'))
     return true
   }
@@ -310,7 +367,7 @@ class ManagedTasks implements TaskManager {
       toolName: params.toolName,
       clientCapabilities: params.clientCapabilities,
       ...(params.requestMeta !== undefined && { requestMeta: params.requestMeta }),
-      issuedInputKeys: [],
+      inputs: [],
       ...(params.owner !== undefined && { owner: params.owner }),
       ...(params.resumeData !== undefined && { resumeData: params.resumeData }),
     }
@@ -386,16 +443,20 @@ class ManagedTasks implements TaskManager {
     reason?: string,
   ): Promise<boolean> {
     if (controller.signal.aborted || this.#disposed) return false
-    let committed = false
-    const updated = await this.#mutate(taskID, (record) => {
-      committed = !isTerminal(record) && !controller.signal.aborted && !this.#disposed
-      return committed
-        ? { status: 'cancelled', inputRequests: undefined, inputResponses: undefined }
-        : undefined
-    })
-    if (!committed || updated?.status !== 'cancelled') return false
-    this.#abort(taskID, new Error(reason ?? 'Task cancelled'))
-    return true
+    let won = false
+    await this.#mutate(
+      taskID,
+      (record) =>
+        isTerminal(record) || controller.signal.aborted || this.#disposed
+          ? undefined
+          : { status: 'cancelled' },
+      () => {
+        // Abort before observers see the cancelled record, so waiters reject with this reason.
+        won = true
+        this.#abort(taskID, new Error(reason ?? 'Task cancelled'))
+      },
+    )
+    return won
   }
 
   async #activeMutation(
@@ -422,17 +483,23 @@ class ManagedTasks implements TaskManager {
   ): Promise<Record<string, InputResponse>> {
     const keys = Object.keys(requests)
     if (keys.length === 0) throw new Error('Input requests must not be empty')
-    let attached: PendingInput | undefined
+    const signal = options?.signal
+    let id = 0
+    // The lookup runs inside the change callback, so a conflict re-read reruns it.
     await this.#activeMutation(taskID, controller, (record) => {
-      const reused = keys.find((key) => record.issuedInputKeys.includes(key))
-      if (reused !== undefined) {
-        if (record.status === 'input_required' && equalJSON(requests, record.inputRequests)) {
-          attached = this.#attachInput(taskID, controller, record, options)
-          return undefined
-        }
-        throw new TaskInputKeyReusedError(reused)
+      // The same request (same key set, deep-equal contents), open or settled: re-attach to it
+      // or replay its outcome.
+      const same = record.inputs.find((entry) => equalJSON(entry.requests, requests))
+      if (same !== undefined) {
+        id = same.id
+        return undefined
       }
-      if (record.status === 'input_required') throw new Error('Input is already outstanding')
+      const reused = keys.find((key) =>
+        record.inputs.some((entry) => Object.hasOwn(entry.requests, key)),
+      )
+      if (reused !== undefined) throw new TaskInputKeyReusedError(reused)
+      if (signal?.aborted) throw signal.reason
+      if (openInput(record) !== undefined) throw new Error('Input is already outstanding')
       const missing = missingInputCapabilities(requests, record.clientCapabilities)
       if (missing !== undefined) {
         const [key, request] = Object.entries(requests).find(
@@ -448,15 +515,23 @@ class ManagedTasks implements TaskManager {
           data: { requiredCapabilities: missing },
         })
       }
+      id = record.inputs.length + 1
       return {
         status: 'input_required',
-        inputRequests: requests,
-        inputResponses: {},
-        issuedInputKeys: [...record.issuedInputKeys, ...keys],
+        inputs: [...record.inputs, { id, requests, responses: {} }],
       }
     })
-    if (attached !== undefined) return attached.promise
-    return this.#awaitInput(taskID, controller, options)
+    const outcome = this.#waitForOutcome(taskID, controller, id)
+    if (signal !== undefined) {
+      const onAbort = () => {
+        void this.#withdraw(taskID, id)
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
+      if (signal.aborted) onAbort()
+      const release = () => signal.removeEventListener('abort', onAbort)
+      outcome.then(release, release)
+    }
+    return outcome
   }
 
   async #awaitInput(
@@ -465,116 +540,74 @@ class ManagedTasks implements TaskManager {
     options?: { signal?: AbortSignal },
   ): Promise<Record<string, InputResponse>> {
     if (controller.signal.aborted) throw controller.signal.reason
-    if (options?.signal?.aborted) {
-      await this.#withdraw(taskID)
-      throw options.signal.reason
-    }
     const record = await this.#store.get(taskID)
-    if (record?.status !== 'input_required') throw new Error('No input is outstanding')
-    const pending = this.#attachInput(taskID, controller, record, options)
-    const latest = await this.#store.get(taskID)
-    if (latest !== undefined) await this.#resolveInput(taskID, latest)
-    return pending.promise
+    const open = record === undefined ? undefined : openInput(record)
+    if (open === undefined) throw new Error('No input is outstanding')
+    return this.#requestInput(taskID, controller, open.requests, options)
   }
 
-  #attachInput(
+  /**
+   * Resolves from committed records only. The listener is registered before the single read,
+   * so a commit made before registration is still seen.
+   */
+  #waitForOutcome(
     taskID: string,
     controller: AbortController,
-    record: TaskRecord,
-    options?: { signal?: AbortSignal },
-  ): PendingInput {
-    const existing = this.#pending.get(taskID)
-    if (existing !== undefined) {
-      this.#listenForInputAbort(taskID, existing, options?.signal)
-      return existing
+    id: number,
+  ): Promise<Record<string, InputResponse>> {
+    const { promise, resolve, reject } = Promise.withResolvers<Record<string, InputResponse>>()
+    let settled = false
+    const settle = (settleWith: () => void) => {
+      if (settled) return
+      settled = true
+      unlisten()
+      controller.signal.removeEventListener('abort', onAbort)
+      settleWith()
     }
-    const pending = Promise.withResolvers<Record<string, InputResponse>>()
-    const entry: PendingInput = {
-      promise: pending.promise,
-      resolve: pending.resolve,
-      reject: pending.reject,
-      abortListeners: [],
+    // Settled outcomes and terminal status never revert, so a stale record only keeps waiting.
+    const check = (record: TaskRecord | undefined) => {
+      if (record === undefined) return settle(() => reject(new Error('Task expired')))
+      const entry = record.inputs.find((item) => item.id === id)
+      if (entry?.outcome === 'answered') return settle(() => resolve(entry.responses))
+      if (entry?.outcome === 'withdrawn')
+        return settle(() => reject(new InputRequestWithdrawnError({ taskID, id })))
+      if (isTerminal(record))
+        settle(() =>
+          reject(
+            controller.signal.aborted
+              ? controller.signal.reason
+              : new Error('Task is no longer active'),
+          ),
+        )
     }
-    // Detached resolution can reject before the caller attaches to the promise.
-    entry.promise.catch(() => {})
-    this.#pending.set(taskID, entry)
-    this.#listenForInputAbort(taskID, entry, options?.signal)
-    if (controller.signal.aborted) {
-      this.#abort(taskID, controller.signal.reason)
-    }
-    void this.#resolveInput(taskID, record)
-    return entry
+    const onAbort = () => settle(() => reject(controller.signal.reason))
+    const unlisten = this.#listen(taskID, check)
+    controller.signal.addEventListener('abort', onAbort, { once: true })
+    if (controller.signal.aborted) onAbort()
+    this.#store.get(taskID).then(check, (error: unknown) => settle(() => reject(error)))
+    return promise
   }
 
-  #listenForInputAbort(taskID: string, entry: PendingInput, signal?: AbortSignal): void {
-    if (signal === undefined) return
-    const onAbort = () => {
-      void this.#withdraw(taskID)
-        .catch(() => {})
-        .then(() => {
-          if (this.#pending.get(taskID) === entry) {
-            this.#pending.delete(taskID)
-            for (const listener of entry.abortListeners)
-              listener.signal.removeEventListener('abort', listener.onAbort)
-            entry.reject(signal.reason)
-          }
-        })
-    }
-    entry.abortListeners.push({ signal, onAbort })
-    signal.addEventListener('abort', onAbort, { once: true })
-    if (signal.aborted) onAbort()
-  }
-
-  async #withdraw(taskID: string): Promise<void> {
-    await this.#mutate(taskID, (record) =>
-      record.status === 'input_required'
-        ? { status: 'working', inputRequests: undefined, inputResponses: undefined }
-        : undefined,
-    )
-  }
-
-  async #resolveInput(taskID: string, record: TaskRecord): Promise<void> {
-    const pending = this.#pending.get(taskID)
-    if (pending === undefined || record.status !== 'input_required') return
-    const keys = Object.keys(record.inputRequests ?? {})
-    if (!keys.every((key) => record.inputResponses?.[key] !== undefined)) return
-    for (let attempt = 0; attempt <= 3; attempt++) {
+  /** Retries store failures with backoff until the entry settles, the task ends or disposal. */
+  async #withdraw(taskID: string, id: number): Promise<void> {
+    let delay = WITHDRAW_BACKOFF_MS.initial
+    while (!this.#disposed) {
       try {
-        const updated = await this.#mutate(taskID, (latest) =>
-          latest.status === 'input_required'
-            ? { status: 'working', inputRequests: undefined, inputResponses: undefined }
-            : undefined,
-        )
-        if (
-          updated?.status !== 'working' ||
-          this.#pending.get(taskID) !== pending ||
-          pending.abortListeners.some(({ signal }) => signal.aborted)
-        )
-          return
-        this.#pending.delete(taskID)
-        for (const { signal, onAbort } of pending.abortListeners)
-          signal.removeEventListener('abort', onAbort)
-        pending.resolve(record.inputResponses ?? {})
+        await this.#mutate(taskID, (record) => {
+          const open = openInput(record)
+          return open?.id === id
+            ? {
+                status: 'working',
+                inputs: settleLatest(record, { ...open, outcome: 'withdrawn' }),
+              }
+            : undefined
+        })
         return
       } catch (error) {
-        if (attempt < 3) continue
-        // Another resolver may have consumed the input meanwhile; only fail the input it still owns.
-        if (this.#pending.get(taskID) !== pending) return
-        try {
-          const failed = await this.#mutate(taskID, (latest) =>
-            latest.status === 'input_required' && this.#pending.get(taskID) === pending
-              ? { status: 'failed', error: { code: -32603, message: 'Task input failed' } }
-              : undefined,
-          )
-          // The record left input_required through another path, which now owns the outcome.
-          if (failed?.status !== 'failed') return
-        } catch (failure) {
-          this.#events.fire('taskError', { taskID, error: failure })
-        }
-        if (this.#pending.get(taskID) !== pending) return
         this.#events.fire('taskError', { taskID, error })
-        this.#abort(taskID, error)
       }
+      await new Promise((resolve) => setTimeout(resolve, delay))
+      delay = Math.min(delay * 2, WITHDRAW_BACKOFF_MS.max)
     }
   }
 
@@ -599,45 +632,49 @@ class ManagedTasks implements TaskManager {
   ): Promise<void> {
     await this.#visible(taskID, owner)
     const updated = await this.#mutate(taskID, (record) => {
-      const keys = Object.keys(responses)
-      const notAwaiting = (key: string) =>
-        new RPCError({
-          code: INVALID_PARAMS,
-          message: `Task is not awaiting input for ${key}`,
-          data: { key },
-        })
-      if (record.status !== 'input_required') {
-        if (keys[0] !== undefined) throw notAwaiting(keys[0])
-        return undefined
-      }
-      const accepted: Record<string, InputResponse> = { ...record.inputResponses }
-      for (const [key, response] of Object.entries(responses)) {
-        const request = record.inputRequests?.[key]
-        if (request === undefined || accepted[key] !== undefined) throw notAwaiting(key)
-        if (!responseMatches(request, response))
+      const entries = Object.entries(responses)
+      if (entries.length === 0) return undefined
+      const open = openInput(record)
+      const accepted: Record<string, InputResponse> = { ...open?.responses }
+      for (const [key, response] of entries) {
+        if (
+          open === undefined ||
+          !Object.hasOwn(open.requests, key) ||
+          Object.hasOwn(open.responses, key)
+        )
+          throw new RPCError({
+            code: INVALID_PARAMS,
+            message: `Task is not awaiting input for ${key}`,
+            data: { key },
+          })
+        if (!responseMatches(open.requests[key] as InputRequest, response))
           throw new RPCError({
             code: INVALID_PARAMS,
             message: `Input response kind does not match ${key}`,
           })
         accepted[key] = response
       }
-      return Object.keys(accepted).length === Object.keys(record.inputResponses ?? {}).length
-        ? undefined
-        : { inputResponses: accepted }
+      if (open === undefined) return undefined
+      // The final answer closes the request in the same write that resumes the task.
+      const answered = Object.keys(open.requests).every((key) => Object.hasOwn(accepted, key))
+      return answered
+        ? {
+            status: 'working',
+            inputs: settleLatest(record, { ...open, responses: accepted, outcome: 'answered' }),
+          }
+        : { inputs: settleLatest(record, { ...open, responses: accepted }) }
     })
     if (updated === undefined) throw taskNotFound()
-    await this.#resolveInput(taskID, updated)
   }
 
   async cancel(taskID: string, owner?: TaskOwner): Promise<void> {
     await this.#visible(taskID, owner)
-    const updated = await this.#mutate(taskID, (record) =>
-      isTerminal(record)
-        ? undefined
-        : { status: 'cancelled', inputRequests: undefined, inputResponses: undefined },
+    const updated = await this.#mutate(
+      taskID,
+      (record) => (isTerminal(record) ? undefined : { status: 'cancelled' }),
+      () => this.#abort(taskID, new Error('Task cancelled')),
     )
     if (updated === undefined) throw taskNotFound()
-    if (updated.status === 'cancelled') this.#abort(taskID, new Error('Task cancelled'))
   }
 
   async recover(tools: ToolDefinitions): Promise<void> {
