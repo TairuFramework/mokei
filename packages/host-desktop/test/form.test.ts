@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test } from 'vitest'
 
 import {
-  canonicalJSON,
   type FieldPlan,
   type FormParams,
   formValidatorStats,
@@ -384,12 +383,6 @@ describe('form validator factory', () => {
   function numberForm(index: number): FormParams {
     return params({ field: { type: 'string', maxLength: index + 1 } }, ['field'])
   }
-
-  test('canonicalJSON is independent of key order', () => {
-    expect(canonicalJSON({ b: 1, a: { d: [3, 1], c: null } })).toBe(
-      canonicalJSON({ a: { c: null, d: [3, 1] }, b: 1 }),
-    )
-  })
 
   test('schemas differing only in key order share one compile', () => {
     const first = params({ a: { type: 'string', minLength: 1 } })

@@ -1,4 +1,5 @@
 import type { ElicitRequest } from '@mokei/context-protocol'
+import { canonicalize } from '@sozai/json'
 import {
   createValidatorFactory,
   type Schema,
@@ -201,18 +202,6 @@ function contentValidationSchema(schema: RequestedSchema): SchemaObject {
 /** Distinct compiles on one factory before it is disposed and replaced. */
 const MAX_COMPILES = 256
 
-/** JSON with object keys sorted recursively; array order is kept. */
-export function canonicalJSON(value: unknown): string {
-  return JSON.stringify(value, (_key, item: unknown) => {
-    if (item === null || typeof item !== 'object' || Array.isArray(item)) return item
-    return Object.fromEntries(
-      Object.entries(item as Record<string, unknown>).sort(([a], [b]) =>
-        a < b ? -1 : a > b ? 1 : 0,
-      ),
-    )
-  })
-}
-
 /**
  * Compiled validators (or the compile error) by the canonical JSON of the whitelisted schema,
  * least recently used first. Repeated forms reuse one compile. Validators come from an isolated
@@ -227,7 +216,8 @@ let generation = 0
 let compiles = 0
 
 function compile(schema: SchemaObject | false): Validator<unknown> {
-  const key = canonicalJSON(schema)
+  // Schemas always serialize, so canonicalize never returns undefined here.
+  const key = canonicalize(schema) as string
   let entry = compiled.get(key)
   if (entry == null) {
     if (factory !== undefined && compiles >= MAX_COMPILES) {

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test } from 'vitest'
 
 import {
-  canonicalJSON,
   MAX_COMPILES,
   MAX_ENTRIES,
   resetValidatorCache,
@@ -22,12 +21,11 @@ beforeEach(() => {
 })
 
 describe('validators', () => {
-  test('canonicalJSON is independent of key order', () => {
-    expect(canonicalJSON({ b: 1, a: { d: [3, 1], c: null } })).toBe(
-      canonicalJSON({ a: { c: null, d: [3, 1] }, b: 1 }),
-    )
-    expect(canonicalJSON({ a: [1, 2] })).not.toBe(canonicalJSON({ a: [2, 1] }))
-    expect(canonicalJSON([{ y: 1, x: 2 }])).toBe('[{"x":2,"y":1}]')
+  test('schemas differing only in key order share one validator', () => {
+    const first = { type: 'object' as const, properties: { a: { type: 'string' as const } } }
+    const second = { properties: { a: { type: 'string' as const } }, type: 'object' as const }
+    expect(validatorFor(first)).toBe(validatorFor(second))
+    expect(validatorCacheStats().compiles).toBe(1)
   })
 
   test('identical schemas reuse one validator', () => {

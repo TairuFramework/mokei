@@ -1,3 +1,4 @@
+import { canonicalize } from '@sozai/json'
 import {
   createValidatorFactory,
   type Schema,
@@ -10,18 +11,6 @@ export const MAX_COMPILES = 256
 /** Validators kept in the least recently used cache. */
 export const MAX_ENTRIES = 64
 
-/** JSON with object keys sorted recursively; array order is kept. */
-export function canonicalJSON(value: unknown): string {
-  return JSON.stringify(value, (_key, item: unknown) => {
-    if (item === null || typeof item !== 'object' || Array.isArray(item)) return item
-    return Object.fromEntries(
-      Object.entries(item as Record<string, unknown>).sort(([a], [b]) =>
-        a < b ? -1 : a > b ? 1 : 0,
-      ),
-    )
-  })
-}
-
 let factory: ValidatorFactory | undefined
 let generation = 0
 let compiles = 0
@@ -32,7 +21,8 @@ const cache = new Map<string, Validator<unknown> | Error>()
  * MAX_COMPILES distinct compiles; validators handed out earlier keep working.
  */
 export function validatorFor(schema: Schema): Validator<unknown> {
-  const key = canonicalJSON(schema)
+  // Schemas always serialize, so canonicalize never returns undefined here.
+  const key = canonicalize(schema) as string
   const cached = cache.get(key)
   if (cached !== undefined) {
     cache.delete(key)

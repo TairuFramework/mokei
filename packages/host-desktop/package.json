@@ -44,6 +44,7 @@
     "@mokei/context-protocol": "workspace:^",
     "@mokei/host": "workspace:^",
     "@sozai/event": "catalog:",
+    "@sozai/json": "catalog:",
     "@sozai/schema": "catalog:",
     "execa": "catalog:"
   },
