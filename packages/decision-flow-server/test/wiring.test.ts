@@ -679,6 +679,14 @@ test('elicitation guard covers callee input nodes', async () => {
   expect(value.contextHost.getContextKeys()).not.toContain('flow')
 })
 
+test('rejects a registered flow with a null node', async () => {
+  const value = session()
+  const broken = { ...flow, id: 'broken', nodes: { x: null } } as unknown as FlowDefinition
+  await expect(addDecisionFlow(value, { key: 'flow', flows: [broken] })).rejects.toThrow(
+    'Invalid registered flow broken',
+  )
+})
+
 test('approval uses registry snapshots', async () => {
   const value = session()
   value.contextHost.addLocalTool({
@@ -687,9 +695,12 @@ test('approval uses registry snapshots', async () => {
     execute: () => ({ content: [] }),
   })
   const mutable = structuredClone(toolFlow)
-  const wiring = await addDecisionFlow(value, { key: 'flow', flows: [mutable] })
+  const flows = [mutable]
+  const wiring = await addDecisionFlow(value, { key: 'flow', flows })
   wirings.push(wiring)
   ;(mutable.nodes.use as unknown as { tool: string }).tool = 'local:other'
+  flows.splice(0, flows.length, { ...flow, id: 'other' })
+  flows.push({ ...flow, id: 'extra' })
   const seen: Array<Array<string> | undefined> = []
   const wrapped = wiring.wrapApproval(async ({ flow }) => {
     seen.push(flow?.tools)
@@ -697,4 +708,12 @@ test('approval uses registry snapshots', async () => {
   }) as (request: ToolApprovalRequest) => Promise<unknown>
   await wrapped(request('flow:flow_uses_echo', {}))
   expect(seen).toEqual([['local:echo']])
+  const approved = await (
+    wiring.wrapApproval('auto') as (
+      request: ToolApprovalRequest,
+    ) => Promise<{ meta: Record<string, string> }>
+  )(request('flow:flow_uses_echo', {}))
+  const started = await call(value, 'flow:flow_uses_echo', {}, approved.meta)
+  expect(started.isError).not.toBe(true)
+  expect(flows.map((item) => item.id)).toEqual(['other', 'extra'])
 })

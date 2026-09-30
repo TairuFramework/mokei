@@ -14,6 +14,7 @@ export function flowPlan(
   let hasDecide = false
   for (const flow of reachableFlows(definition, lookup, 'all')) {
     for (const node of Object.values(flow.nodes)) {
+      if (typeof node !== 'object' || node === null) continue
       if (node.kind === 'tool' && typeof node.tool === 'string') tools.add(node.tool)
       if (node.kind === 'decide') hasDecide = true
     }

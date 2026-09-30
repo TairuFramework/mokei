@@ -42,7 +42,7 @@ export function flowSummaries(registry: FlowRegistry): Array<FlowSummary> {
         id: flow.id,
         name: flow.name,
         version: flow.version,
-        input: flowInputSchema(flow),
+        input: structuredClone(flowInputSchema(flow)),
         outputs: [...outputs].sort(),
         outcomes: [...outcomes].sort(),
       }

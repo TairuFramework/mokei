@@ -7,7 +7,9 @@ import type { createDecisionFlowGraph } from '@mokei/decision-flow'
 import type { FlowDefinition } from '@sozai/flow-graph'
 import { afterEach, expect, test, vi } from 'vitest'
 
+import { flowSummaries } from '../src/flow-tools.js'
 import { createDecisionFlowServer, flowToolName } from '../src/index.js'
+import { createFlowRegistry } from '../src/registry.js'
 import type { ToolCaller } from '../src/tool-caller.js'
 
 const startedSignals = vi.hoisted(() => [] as Array<AbortSignal | undefined>)
@@ -410,4 +412,18 @@ test('run_flow runs a definition that calls a registered flow', async () => {
   })
   expect(result.resultType).toBe('task')
   expect(create).toHaveBeenCalledTimes(1)
+})
+
+test('flowSummaries input is a copy of the registry snapshot', () => {
+  const registry = createFlowRegistry([
+    flow('copy', { type: 'object', properties: { topic: { type: 'string' } } }),
+  ])
+  const digest = registry.digest('copy')
+  const summary = flowSummaries(registry)[0]
+  if (summary === undefined) throw new Error('expected a summary')
+  ;(summary.input as { properties: Record<string, unknown> }).properties.injected = {
+    type: 'string',
+  }
+  expect(registry.digest('copy')).toBe(digest)
+  expect(JSON.stringify(flowSummaries(registry)[0]?.input)).not.toContain('injected')
 })

@@ -85,7 +85,9 @@ export async function addDecisionFlow(
     if (
       !host.elicitationEnabled &&
       reachableFlows(flow, registry.lookup, 'all').some((reached) =>
-        Object.values(reached.nodes).some((node) => node.kind === 'input'),
+        Object.values(reached.nodes).some(
+          (node) => typeof node === 'object' && node !== null && node.kind === 'input',
+        ),
       )
     ) {
       throw new Error(`Registered flow ${flow.id} requires elicitation`)

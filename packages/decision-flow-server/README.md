@@ -19,7 +19,7 @@ outcomes }] }` sorted by id. Its text content has one line per flow, `<id> v<ver
 
 A flow can `call` another registered flow with a `call` node (`flow`, optional `version`, `next`).
 Definitions passed to `run_flow` or `check_flow` may reference any registered flow, and may
-reference themselves. Reusing a registered id with a different definition reports
+reference themselves. References are not limited to `call`: runtime definitions can also reach registered flows through `goto` and a loop's `body.flow`. Reusing a registered id with a different definition reports
 `flow_id_conflict` at `['id']` ("Flow id is already registered with a different definition.");
 use a different id or the registered definition. Static tool plans and approvals include the
 tools of every referenced flow.
