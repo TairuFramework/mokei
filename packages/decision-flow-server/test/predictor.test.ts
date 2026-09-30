@@ -172,9 +172,9 @@ test('passes flow metadata and a predictor-specific operation key', async () => 
       id: 'system-one:predict',
       arguments: { state: 'Help me', questions },
       meta: {
-        'io.mokei/flow-depth': 3,
-        'io.mokei/idempotency-key': 'run-1:node-2:predict',
-        'io.mokei/attempt': 3,
+        'dev.mokei/flow-depth': 3,
+        'dev.mokei/idempotency-key': 'run-1:node-2:predict',
+        'dev.mokei/attempt': 3,
       },
     }),
   )

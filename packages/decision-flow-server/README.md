@@ -47,7 +47,7 @@ lets runs resume after a process restart. You may also pass a `predictor` to use
 `wrapApproval` extends the agent's normal approval strategy. For a flow run, it checks the
 definition and presents its complete static tool plan (including `system-one:predict` when
 needed). One decision approves the run. An approved call receives a single-use
-`io.mokei/flow-grant` token in request `_meta`; the server consumes it before creating a task.
+`dev.mokei/flow-grant` token in request `_meta`; the server consumes it before creating a task.
 The token is bound to the tool name and arguments, expires after five minutes, and cannot
 authorize another call. `check_flow` follows the underlying strategy without a flow grant.
 The wrapper is always a function, so `AgentSession` emits `tool-call-pending` before every
@@ -73,12 +73,12 @@ for a task tool counts from the task's creation (suspension), so the call and wa
 take up to about twice `attemptTimeoutMs`.
 
 Tool effects have **at-least-once** delivery. Every sibling call includes
-`_meta['io.mokei/idempotency-key'] = <runID>:<invocationID>` and
-`_meta['io.mokei/attempt'] = <attempt number>`. The operation key stays the same for a crash
+`_meta['dev.mokei/idempotency-key'] = <runID>:<invocationID>` and
+`_meta['dev.mokei/attempt'] = <attempt number>`. The operation key stays the same for a crash
 replay or retry of that invocation. A tool that must avoid repeating an effect should deduplicate
 on that key; a tool that deliberately repeats per retry may combine the key and attempt.
 Predictor calls use `<runID>:<invocationID>:predict` as their operation key. The call also carries
-`io.mokei/flow-depth` so nested flow calls can be refused.
+`dev.mokei/flow-depth` so nested flow calls can be refused.
 The maximum flow depth is 4; calls at that depth or with invalid depth metadata fail with
 `Invalid flow depth`.
 

@@ -20,7 +20,7 @@ type TestTypes = {
   ToolCall: ToolCall
 }
 
-const grant = { 'io.mokei/flow-grant': 't1' }
+const grant = { 'dev.mokei/flow-grant': 't1' }
 
 function provider(toolCalls: Array<FunctionToolCall<ToolCall>>): ModelProvider<TestTypes> {
   return {

@@ -352,7 +352,7 @@ test('different run depths reach sibling calls independently', async () => {
       definition: definition('tool'),
       caller: {
         callTool: async ({ meta }) => {
-          depths.push(meta['io.mokei/flow-depth'])
+          depths.push(meta['dev.mokei/flow-depth'])
           return { result }
         },
       },
@@ -368,8 +368,8 @@ test('recovery repeats an acted call with the same operation key after its handl
     caller: {
       callTool: async ({ meta }) => {
         calls.push({
-          key: meta['io.mokei/idempotency-key'],
-          attempt: meta['io.mokei/attempt'],
+          key: meta['dev.mokei/idempotency-key'],
+          attempt: meta['dev.mokei/attempt'],
         })
         return calls.length === 1 ? { task: { taskId: 'orphan' } } : { result }
       },
@@ -504,8 +504,8 @@ test('a timed-out tool call retries with the same operation key and next attempt
       caller: {
         callTool: async ({ meta, signal }) => {
           calls.push({
-            key: meta['io.mokei/idempotency-key'],
-            attempt: meta['io.mokei/attempt'],
+            key: meta['dev.mokei/idempotency-key'],
+            attempt: meta['dev.mokei/attempt'],
           })
           if (calls.length === 1) {
             await new Promise<void>((_resolve, reject) => {

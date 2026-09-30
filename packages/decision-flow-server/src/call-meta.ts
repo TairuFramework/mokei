@@ -1,9 +1,9 @@
 import type { JSONValue } from '@mokei/context-server'
 
-export const FLOW_DEPTH_META = 'io.mokei/flow-depth'
-export const IDEMPOTENCY_KEY_META = 'io.mokei/idempotency-key'
-export const ATTEMPT_META = 'io.mokei/attempt'
-export const FLOW_GRANT_META = 'io.mokei/flow-grant'
+export const FLOW_DEPTH_META = 'dev.mokei/flow-depth'
+export const IDEMPOTENCY_KEY_META = 'dev.mokei/idempotency-key'
+export const ATTEMPT_META = 'dev.mokei/attempt'
+export const FLOW_GRANT_META = 'dev.mokei/flow-grant'
 export const MAX_FLOW_DEPTH = 4
 
 export function readFlowDepth(meta: Record<string, JSONValue>): number | undefined {

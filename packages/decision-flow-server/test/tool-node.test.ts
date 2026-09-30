@@ -554,12 +554,12 @@ describe('toolKind execute', () => {
     })
     expect(run.status).toBe('ended')
     expect(calls).toHaveLength(2)
-    expect(calls[0]?.meta).toMatchObject({ 'io.mokei/flow-depth': 3, 'io.mokei/attempt': 1 })
-    expect(calls[1]?.meta).toMatchObject({ 'io.mokei/flow-depth': 3, 'io.mokei/attempt': 2 })
-    expect(calls[0]?.meta['io.mokei/idempotency-key']).toBe(
-      calls[1]?.meta['io.mokei/idempotency-key'],
+    expect(calls[0]?.meta).toMatchObject({ 'dev.mokei/flow-depth': 3, 'dev.mokei/attempt': 1 })
+    expect(calls[1]?.meta).toMatchObject({ 'dev.mokei/flow-depth': 3, 'dev.mokei/attempt': 2 })
+    expect(calls[0]?.meta['dev.mokei/idempotency-key']).toBe(
+      calls[1]?.meta['dev.mokei/idempotency-key'],
     )
-    expect(calls[0]?.meta['io.mokei/idempotency-key']).toMatch(
+    expect(calls[0]?.meta['dev.mokei/idempotency-key']).toMatch(
       new RegExp(`^${run.runState.runID}:.+$`),
     )
   })

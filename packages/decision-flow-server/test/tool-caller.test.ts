@@ -37,7 +37,7 @@ async function addEcho(target: ContextHost, key: string) {
           outputSchema,
           handler: ({ meta }) => ({
             content: [],
-            structuredContent: { ok: meta['io.mokei/flow-depth'] === 1 },
+            structuredContent: { ok: meta['dev.mokei/flow-depth'] === 1 },
           }),
         }),
       },
@@ -192,7 +192,7 @@ test('local tool receives call meta', async () => {
     name: 'depth',
     inputSchema,
     execute: ({ meta }) => ({
-      content: [{ type: 'text', text: String(meta['io.mokei/flow-depth']) }],
+      content: [{ type: 'text', text: String(meta['dev.mokei/flow-depth']) }],
     }),
   })
 
@@ -212,8 +212,8 @@ test('remote tool receives call meta', async () => {
 
 test('readFlowDepth accepts absence and non-negative integers only', () => {
   expect(readFlowDepth({})).toBe(0)
-  expect(readFlowDepth({ 'io.mokei/flow-depth': 2 })).toBe(2)
+  expect(readFlowDepth({ 'dev.mokei/flow-depth': 2 })).toBe(2)
   for (const value of [-1, 1.5, 'x']) {
-    expect(readFlowDepth({ 'io.mokei/flow-depth': value })).toBeUndefined()
+    expect(readFlowDepth({ 'dev.mokei/flow-depth': value })).toBeUndefined()
   }
 })

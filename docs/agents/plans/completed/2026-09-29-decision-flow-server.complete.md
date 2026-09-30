@@ -39,15 +39,15 @@ application registered, or to one it writes and repairs itself. This replaces th
 - **One approval per run, inside the agent's tool gate.**
   - `wrapApproval` computes the run's plan in-process: every `tool` node ID, plus the predictor tool.
   - It applies the agent's strategy to the plan. A function strategy receives `flow: { id?, name, inline, tools }` as a `FlowApprovalRequest`.
-  - On approval it mints a single-use grant token (random UUID, bound to tool name and canonical-argument digest, 5-minute lifetime). The token travels only as that call's `_meta['io.mokei/flow-grant']`.
+  - On approval it mints a single-use grant token (random UUID, bound to tool name and canonical-argument digest, 5-minute lifetime). The token travels only as that call's `_meta['dev.mokei/flow-grant']`.
   - The server consumes the grant atomically before creating a task, so a concurrent identical call cannot reuse it.
   - An invalid inline definition skips approval, so the server returns formatted issues and creates no task.
   - `approval` is required; there is no approving default.
 - **Server check order:** depth, then definition, then grant, then task creation.
-  - Nested flow calls carry `io.mokei/flow-depth`, capped at 4.
+  - Nested flow calls carry `dev.mokei/flow-depth`, capped at 4.
   - All flow contexts on one host exclude each other from their catalogues, which prevents recursion. Keys are reserved synchronously, so concurrent wiring cannot collide.
 - **At-least-once delivery.**
-  - Every sibling call carries `io.mokei/idempotency-key = <runID>:<invocationID>` and `io.mokei/attempt`. Tools that must not repeat an action deduplicate on the key.
+  - Every sibling call carries `dev.mokei/idempotency-key = <runID>:<invocationID>` and `dev.mokei/attempt`. Tools that must not repeat an action deduplicate on the key.
   - Sibling task handles are committed to run state before the driver waits on them. A crash in that window leaves an orphaned sibling task, and recovery calls the tool again with the same key.
   - A lost sibling wait cancels the sibling.
   - The node's attempt and total timeouts bound the sibling task wait; on expiry the sibling is cancelled.

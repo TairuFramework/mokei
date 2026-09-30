@@ -140,7 +140,7 @@ test.each([
   const result = await client.callTool({
     name: 'run_flow',
     arguments: { definition: flow() },
-    _meta: { 'io.mokei/flow-depth': depth },
+    _meta: { 'dev.mokei/flow-depth': depth },
   })
   expect(result).toMatchObject({ isError: true, content: [{ type: 'text', text: message }] })
   expect(create).not.toHaveBeenCalled()
@@ -232,7 +232,7 @@ test('registered run rejects depth at the limit before approval', async () => {
   const result = await client.callTool({
     name: 'flow_support_triage',
     arguments: {},
-    _meta: { 'io.mokei/flow-depth': 4 },
+    _meta: { 'dev.mokei/flow-depth': 4 },
   })
   expect(result).toMatchObject({
     isError: true,

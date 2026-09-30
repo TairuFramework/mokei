@@ -218,7 +218,7 @@ test.each(['auto', 'never', 'ask'] as const)(
     if (strategy === 'auto') {
       expect(approval).toMatchObject({
         approved: true,
-        meta: { 'io.mokei/flow-grant': expect.any(String) },
+        meta: { 'dev.mokei/flow-grant': expect.any(String) },
       })
       const token = (approval as { meta: Record<string, string> }).meta
       expect((await call(value, 'flow:run_flow', { definition: flow }, token)).isError).not.toBe(
@@ -265,7 +265,7 @@ test('function strategy sees flow plan once and other tools pass through unchang
   })
   expect(approved).toMatchObject({
     approved: true,
-    meta: { 'io.mokei/flow-grant': expect.any(String) },
+    meta: { 'dev.mokei/flow-grant': expect.any(String) },
   })
   expect(
     (
@@ -530,7 +530,7 @@ test('flow contexts exclude each other at check and enforce the depth guard', as
         value,
         'first:run_flow',
         { definition: flow },
-        { ...approval.meta, 'io.mokei/flow-depth': '4' },
+        { ...approval.meta, 'dev.mokei/flow-depth': '4' },
       ),
     ),
   ).toBe('Invalid flow depth')
