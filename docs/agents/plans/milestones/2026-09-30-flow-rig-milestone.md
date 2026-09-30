@@ -1,6 +1,6 @@
 # Milestone: flow rig
 
-**Status:** open — phase 1 (local rig) designed, not started
+**Status:** open — phase 1 (local rig) in review
 **Opened:** 2026-09-30
 **Branch / PR:** phase 1 on `feat/flow-rig`
 
@@ -18,7 +18,7 @@ starts, since each depends on what the previous phase finds.
 
 | # | Phase | Scope | Exit criteria | Status |
 |---|-------|-------|---------------|--------|
-| 1 | Local rig | A Node script under `scripts/flow-rig/` that owns a `NodeSession` with sibling servers, `addDecisionFlow` and the desktop elicit handler, and exposes a facade MCP server to Claude Code (`start_flow`, `flow_status`, input tools). Sample flows, smoke run, manual QA checklist. No package changes. | Smoke run passes; manual QA checklist done on macOS; findings recorded below. | designed |
+| 1 | Local rig | A Node script under `scripts/flow-rig/` that owns a `NodeSession` with sibling servers, `addDecisionFlow` and the desktop elicit handler, and exposes a facade MCP server to Claude Code (`start_flow`, `flow_status`, input tools). Sample flows, smoke run, manual QA checklist. No package changes. | Smoke run passes; manual QA checklist done on macOS; findings recorded below. | in review |
 | 2 | Integration/e2e harness | Move the rig's scenarios into `integration-tests/`: fake predictor, stub desktop backend or answers through the facade tools, run in `pnpm test:integration` and CI. | Rig scenarios run in CI without a desktop or System One. | not started |
 | 3 | Session, host and CLI features | Address the findings: public APIs the rig had to work around, CLI surfaces for flows and the input inbox, desktop notifications in the CLI. | Every finding below is shipped or explicitly deferred. | not started |
 
@@ -47,3 +47,10 @@ Gaps found while building and using the rig. Phase 3 consumes this list.
   to. The rig passes the run id as the key.
 - **`tasks.wait` answers task input requests automatically.** A host that routes task input itself must poll
   `tasks.get` and answer with `tasks.update`.
+- **`InputInbox.prompt(id)` takes no abort signal.** A cancelled `prompt_input` call leaves the desktop dialog open.
+- **A flow `end` node's `outcome` must be a literal.** Passing a nested flow's outcome through needs a `branch` on
+  each possible outcome (see `demo/nested`).
+- **Aborting a desktop elicit handler rejects its promise.** A host that withdraws inputs sees an error for every
+  withdrawal and must tell withdrawal apart from failure itself (the rig currently logs these as failures).
+- **`@mokei/host-desktop` elicit handling and the flow task API have no shared notion of a run.** The rig keeps its
+  own runId-to-task map and passes the run id as the inbox key.
