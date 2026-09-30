@@ -41,6 +41,9 @@ export type DesktopElicitHandler = ((request: DesktopElicitRequest) => Promise<E
 const DEFAULT_TIMEOUT_SECONDS = 90
 const DEFAULT_MAX_TIMEOUT_SECONDS = 600
 const MAX_ATTEMPTS = 3
+const NOTIFY_TIMEOUT_MS = 5000
+const PREVIEW_LENGTH = 200
+const URL_MODE_REASON = 'URL mode elicitation is not supported by desktop dialogs'
 const DISPOSED_MESSAGE = 'Desktop elicit handler disposed'
 
 const CANCEL: ElicitResult = { action: 'cancel' }
@@ -64,6 +67,10 @@ function defaultCreateBackend(appName: string) {
         return createNotifySendBackend(runner, appName)
     }
   }
+}
+
+function isUrlMode(params: DesktopElicitRequest['params']): boolean {
+  return !('requestedSchema' in params) || params.mode === 'url'
 }
 
 function messageOf(error: unknown): string {
@@ -182,8 +189,8 @@ export function createDesktopElicitHandler(
     request: DesktopElicitRequest,
   ): { ok: true; steps: Array<Step> } | { ok: false; reason: string } {
     const params = request.params
-    if (!('requestedSchema' in params) || params.mode === 'url') {
-      return { ok: false, reason: 'URL mode elicitation is not supported by desktop dialogs' }
+    if (isUrlMode(params)) {
+      return { ok: false, reason: URL_MODE_REASON }
     }
     const source = describeSource(request)
     const plan = planForm(params as FormParams, { appName, source })
@@ -319,9 +326,73 @@ export function createDesktopElicitHandler(
     }
   }
 
+  /** Best-effort notification about a new inbox entry; failures are reported, never thrown. */
+  async function notifyAdded(request: DesktopElicitRequest, source: string): Promise<void> {
+    const { selection } = detect()
+    if (selection.notify == null) {
+      report(
+        options.onUnsupported,
+        `Input notification failed: ${selection.notifyProblem ?? 'No notification backend is available'}`,
+      )
+      return
+    }
+    let message = `${source} needs your input`
+    if (options.notificationPromptPreview === true) {
+      message += `: ${request.params.message.slice(0, PREVIEW_LENGTH)}`
+    }
+    const timeout = new AbortController()
+    const timer = setTimeout(() => {
+      timeout.abort(new Error('Notification delivery timed out'))
+    }, NOTIFY_TIMEOUT_MS)
+    const signal = AbortSignal.any([timeout.signal, disposal.signal])
+    try {
+      const backend = getBackend(selection.notify.name)
+      if (backend.notify == null) {
+        throw new Error(`${backend.name} cannot show notifications`)
+      }
+      await untilAbort(
+        backend.notify({ title: appName, message }, { timeoutMs: NOTIFY_TIMEOUT_MS, signal }),
+        signal,
+      )
+    } catch (error) {
+      if (!disposal.signal.aborted) {
+        report(options.onUnsupported, `Input notification failed: ${messageOf(error)}`)
+      }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  /** Inbox path: adds a pending entry, starts a notification and returns the entry's answer. */
+  function addToInbox(inbox: InputInbox, request: DesktopElicitRequest): Promise<ElicitResult> {
+    if (isUrlMode(request.params)) {
+      report(options.onUnsupported, URL_MODE_REASON)
+      return Promise.resolve(DECLINE)
+    }
+    const source = describeSource(request)
+    if (!inbox.hasAnswerSurface) {
+      report(
+        options.onUnsupported,
+        `No input answer surface is registered; cancelling input from ${source}`,
+      )
+      return Promise.resolve(CANCEL)
+    }
+    const canPrompt = planForm(request.params as FormParams, { appName, source }).ok
+    const prompt = canPrompt
+      ? (promptSignal: AbortSignal) =>
+          showDialogs({ ...request, signal: AbortSignal.any([promptSignal, request.signal]) })
+      : undefined
+    const answer = inbox.add(request, { prompt })
+    if (!request.signal.aborted) {
+      // Delivery never holds up the answer; failures are reported by notifyAdded
+      void notifyAdded(request, source)
+    }
+    return answer
+  }
+
   async function handle(request: DesktopElicitRequest): Promise<ElicitResult> {
-    if (mode === 'inbox') {
-      throw new Error('Inbox mode is not implemented')
+    if (mode === 'inbox' && options.inbox != null) {
+      return await addToInbox(options.inbox, request)
     }
     return await showDialogs(request)
   }
