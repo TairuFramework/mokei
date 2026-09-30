@@ -13,4 +13,14 @@ export type {
   NotifyRequest,
 } from './backends/types.js'
 export { createZenityBackend } from './backends/zenity.js'
+export {
+  type Availability,
+  askBackendFor,
+  type BackendSelection,
+  createDetector,
+  type DetectOptions,
+  detectAvailability,
+  type ForcedBackends,
+  selectBackends,
+} from './detect.js'
 export { createRunner, type Runner, type RunOptions, type RunResult } from './runner.js'
