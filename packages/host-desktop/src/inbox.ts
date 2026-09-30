@@ -77,6 +77,7 @@ type Entry = {
   prompt?: InboxPrompt
   promptAbort?: AbortController
   promptResult?: Promise<ElicitResult>
+  outcome?: { result: ElicitResult } | { error: unknown }
 }
 
 export function createInputInbox(): InputInbox {
@@ -85,14 +86,15 @@ export function createInputInbox(): InputInbox {
   let surfaces = 0
   let disposed = false
 
-  function detach(entry: Entry): void {
+  function detach(entry: Entry, outcome: NonNullable<Entry['outcome']>): void {
+    entry.outcome = outcome
     entries.delete(entry.input.id)
     entry.signal.removeEventListener('abort', entry.onAbort)
-    entry.promptAbort?.abort()
+    entry.promptAbort?.abort('error' in outcome ? outcome.error : undefined)
   }
 
   function settle(entry: Entry, result: ElicitResult): void {
-    detach(entry)
+    detach(entry, { result })
     events.fire('settled', { id: entry.input.id, action: result.action })
     entry.resolve(result)
   }
@@ -102,7 +104,7 @@ export function createInputInbox(): InputInbox {
     reason: InputInboxEvents['removed']['reason'],
     error: unknown,
   ): void {
-    detach(entry)
+    detach(entry, { error })
     events.fire('removed', { id: entry.input.id, reason })
     entry.reject(error)
   }
@@ -160,12 +162,20 @@ export function createInputInbox(): InputInbox {
     const controller = new AbortController()
     entry.promptAbort = controller
     const run: Promise<ElicitResult> = (async () => {
+      // Once the entry is gone, the dialog's late result or failure is replaced by the outcome
+      const finalOutcome = (): ElicitResult => {
+        const outcome = entry.outcome
+        if (outcome != null && 'error' in outcome) throw outcome.error
+        return (outcome as { result: ElicitResult }).result
+      }
       try {
         const result = await entry.prompt?.(controller.signal)
-        // A result arriving after settlement is ignored
-        if (result != null && entries.get(id) === entry) settle(entry, result)
-        return result as ElicitResult
+        if (entries.get(id) !== entry) return finalOutcome()
+        if (result == null) throw new Error(`Input ${id} prompt returned no result`)
+        settle(entry, result)
+        return result
       } catch (error) {
+        if (entries.get(id) !== entry) return finalOutcome()
         // Leave the entry pending so it can be prompted again
         if (entry.promptAbort === controller) {
           entry.promptResult = undefined

@@ -105,15 +105,17 @@ describe('input inbox', () => {
     const promise = inbox.add(request())
     const { id } = pending(0)
     expect(() => inbox.answer(id, { other: 1 })).toThrow(InboxAnswerInvalidError)
+    let caught: unknown
     try {
       inbox.answer(id, { name: 1 })
     } catch (error) {
-      expect(error).toBeInstanceOf(InboxAnswerInvalidError)
-      const err = error as InboxAnswerInvalidError
-      expect(err.id).toBe(id)
-      expect(err.issues.length).toBeGreaterThan(0)
-      expect(err.message).toBe(`Invalid answer for input ${id}: ${err.issues.join('; ')}`)
+      caught = error
     }
+    expect(caught).toBeInstanceOf(InboxAnswerInvalidError)
+    const err = caught as InboxAnswerInvalidError
+    expect(err.id).toBe(id)
+    expect(err.issues.length).toBeGreaterThan(0)
+    expect(err.message).toBe(`Invalid answer for input ${id}: ${err.issues.join('; ')}`)
     expect(() => inbox.answer(id, { name: 'x', tags: ['c'] })).toThrow(InboxAnswerInvalidError)
     expect(inbox.get(id)).toBeDefined()
     expect(inbox.answer(id, { name: 'x', tags: ['a', 'b'] })).toBe(true)
@@ -252,7 +254,50 @@ describe('input inbox', () => {
       expect(promptSignal?.aborted).toBe(true)
       d.resolve({ action: 'accept', content: { name: 'late' } })
       await expect(promise).resolves.toEqual({ action: 'accept', content: { name: 'ext' } })
-      await expect(prompted).resolves.toEqual({ action: 'accept', content: { name: 'late' } })
+      await expect(prompted).resolves.toEqual({ action: 'accept', content: { name: 'ext' } })
+    })
+
+    test('a prompt rejecting with the abort reason after an external answer does not reject', async () => {
+      inbox = createInputInbox()
+      const promise = inbox.add(request(), {
+        prompt: (signal) =>
+          new Promise((_, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason))
+          }),
+      })
+      const { id } = pending(0)
+      const prompted = inbox.prompt(id)
+      inbox.decline(id)
+      await expect(promise).resolves.toEqual({ action: 'decline' })
+      await expect(prompted).resolves.toEqual({ action: 'decline' })
+    })
+
+    test('a prompt killed by request abort rejects with the request reason', async () => {
+      inbox = createInputInbox()
+      const controller = new AbortController()
+      const promise = inbox.add(request({ signal: controller.signal }), {
+        prompt: (signal) =>
+          new Promise((_, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason))
+          }),
+      })
+      const prompted = inbox.prompt(pending(0).id)
+      const reason = new Error('req aborted')
+      controller.abort(reason)
+      await expect(promise).rejects.toBe(reason)
+      await expect(prompted).rejects.toBe(reason)
+    })
+
+    test('a prompt resolving no result keeps the entry pending', async () => {
+      inbox = createInputInbox()
+      const promise = inbox.add(request(), {
+        prompt: (async () => undefined) as unknown as () => Promise<ElicitResult>,
+      })
+      const { id } = pending(0)
+      await expect(inbox.prompt(id)).rejects.toThrow(`Input ${id} prompt returned no result`)
+      expect(inbox.get(id)).toBeDefined()
+      inbox.cancel(id)
+      await promise
     })
 
     test('a rejection keeps the entry pending and rejects prompt', async () => {
