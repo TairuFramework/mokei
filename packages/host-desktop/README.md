@@ -222,8 +222,9 @@ notification; `notify` then returns an error. A `runner` you pass in stays yours
 
 ## Shutdown
 
-Dialog and notification commands run as child processes, which outlive a parent that exits
-without cleanup. `handler.dispose()` disposes the handler's own runner (killing every open
+Dialog and notification commands run as child processes through `execa`, without a shell. The
+runner asks `execa` to kill them when the Node process exits, but a parent killed with SIGKILL
+still leaves them running, and exit-time cleanup cannot wait for them. `handler.dispose()` disposes the handler's own runner (killing every open
 dialog), rejects queued requests and makes later dialog requests reject; it does not dispose a runner
 you passed in. Wire it to host disposal and to process signals:
 

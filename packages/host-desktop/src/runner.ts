@@ -1,4 +1,4 @@
-import { type ChildProcess, execFile } from 'node:child_process'
+import { execa, type ResultPromise } from 'execa'
 
 export type RunOptions = { timeoutMs: number; signal?: AbortSignal }
 export type RunResult = {
@@ -12,128 +12,71 @@ export type Runner = {
   dispose(): Promise<void>
 }
 
+/** Grace period between SIGTERM and SIGKILL for a timeout, an abort or dispose. */
 const KILL_ESCALATION_MS = 1000
 
 export function createRunner(): Runner {
-  const children = new Set<ChildProcess>()
+  const children = new Set<ResultPromise>()
   let disposed = false
 
-  function run(command: string, args: Array<string>, options: RunOptions): Promise<RunResult> {
+  async function run(
+    command: string,
+    args: Array<string>,
+    options: RunOptions,
+  ): Promise<RunResult> {
     if (disposed) {
-      return Promise.reject(new Error('Runner disposed'))
+      throw new Error('Runner disposed')
     }
     const { timeoutMs, signal } = options
-    if (signal?.aborted) {
-      return Promise.reject(signal.reason)
+    signal?.throwIfAborted()
+
+    // No shell: the command and each argument are passed as they are
+    const child = execa(command, args, {
+      timeout: timeoutMs,
+      cancelSignal: signal,
+      forceKillAfterDelay: KILL_ESCALATION_MS,
+      cleanup: true,
+      reject: false,
+      stripFinalNewline: false,
+      windowsHide: true,
+    })
+    children.add(child)
+    let result: Awaited<typeof child>
+    try {
+      // Settles only once the process has exited, after any SIGKILL escalation
+      result = await child
+    } finally {
+      children.delete(child)
     }
 
-    return new Promise<RunResult>((resolve, reject) => {
-      let timedOut = false
-      let aborted = false
-      let settled = false
-
-      const child = execFile(
-        command,
-        args,
-        { windowsHide: true, encoding: 'utf8' },
-        (error, stdout, stderr) => {
-          cleanup()
-          if (settled) {
-            return
-          }
-          settled = true
-          if (aborted) {
-            reject(signal?.reason)
-            return
-          }
-          if (error != null) {
-            const code = (error as NodeJS.ErrnoException).code
-            // A string code (ENOENT, EACCES...) is a spawn failure; a number is the exit code
-            if (typeof code === 'string') {
-              reject(error)
-              return
-            }
-            resolve({
-              code: typeof code === 'number' ? code : null,
-              stdout,
-              stderr,
-              timedOut,
-            })
-            return
-          }
-          resolve({ code: 0, stdout, stderr, timedOut })
-        },
-      )
-      children.add(child)
-
-      let killTimer: ReturnType<typeof setTimeout> | undefined
-      // SIGTERM, then SIGKILL after the grace period dispose uses, so a child ignoring SIGTERM
-      // cannot keep the run pending
-      function terminate(): void {
-        if (killTimer != null) {
-          return
-        }
-        child.kill('SIGTERM')
-        killTimer = setTimeout(() => {
-          if (child.exitCode == null && child.signalCode == null) {
-            child.kill('SIGKILL')
-          }
-        }, KILL_ESCALATION_MS)
-      }
-
-      const timer = setTimeout(() => {
-        timedOut = true
-        terminate()
-      }, timeoutMs)
-
-      const onAbort = () => {
-        aborted = true
-        terminate()
-      }
-      signal?.addEventListener('abort', onAbort, { once: true })
-
-      function cleanup() {
-        clearTimeout(timer)
-        clearTimeout(killTimer)
-        signal?.removeEventListener('abort', onAbort)
-        children.delete(child)
-      }
-    })
+    if (signal?.aborted) {
+      throw signal.reason
+    }
+    if (
+      result.failed &&
+      result.exitCode === undefined &&
+      !result.timedOut &&
+      !result.isTerminated
+    ) {
+      // A spawn failure (ENOENT, EACCES...): `reject: false` returns the error as the result
+      throw result
+    }
+    return {
+      code: result.exitCode ?? null,
+      stdout: String(result.stdout ?? ''),
+      stderr: String(result.stderr ?? ''),
+      timedOut: result.timedOut,
+    }
   }
 
   async function dispose(): Promise<void> {
     disposed = true
     const live = [...children]
-    if (live.length === 0) {
-      return
-    }
     for (const child of live) {
-      child.kill('SIGTERM')
+      // `kill()` applies `forceKillAfterDelay`: SIGTERM, then SIGKILL after the grace period
+      child.kill()
     }
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        for (const child of live) {
-          if (child.exitCode == null && child.signalCode == null) {
-            child.kill('SIGKILL')
-          }
-        }
-      }, KILL_ESCALATION_MS)
-      let remaining = live.length
-      const done = () => {
-        remaining -= 1
-        if (remaining === 0) {
-          clearTimeout(timer)
-          resolve()
-        }
-      }
-      for (const child of live) {
-        if (child.exitCode != null || child.signalCode != null) {
-          done()
-        } else {
-          child.once('close', done)
-        }
-      }
-    })
+    await Promise.allSettled(live)
   }
 
   return { run, dispose }

@@ -262,7 +262,7 @@ Metro. Node-only entry points live in the `-node` packages: `serveProcess` is in
 `@mokei/context-server-node`, and `addLocalContext` (now a method on `NodeContextHost`),
 `spawnHostedContext`, `createClient`, `runDaemon` and `ProxyHost` are in `@mokei/host-node`.
 `NodeSession.addContext` and its Node-typed `contextHost` are in `@mokei/session-node`.
-`@mokei/host-desktop` is Node-only too: it spawns desktop dialog and notification commands.
+`@mokei/host-desktop` is Node-only too: it spawns desktop dialog and notification commands through `execa` (no shell).
 File names use kebab-case throughout, except React component files (PascalCase, `ChatApp.tsx`) and React hook files (camelCase, `useSession.ts`).
 `HTTPSystemOneBackend` speaks to a `laya-serve` sidecar or the hosted TypeSafe API (see
 `docs/reference/system-one-sidecar.md`). The bundled System One MCP server exposes a single `predict` tool.

@@ -38,6 +38,17 @@ describe('runner', () => {
     expect(result).toEqual({ code: 3, stdout: 'out\n', stderr: 'err\n', timedOut: false })
   })
 
+  test('passes arguments without a shell', async () => {
+    runner = createRunner()
+    const hostile = '$(echo injected); `echo x` | cat > /dev/null && echo "$HOME"'
+    const result = await runner.run(
+      node,
+      ['-e', 'process.stdout.write(process.argv[1])', hostile],
+      { timeoutMs: 5000 },
+    )
+    expect(result).toEqual({ code: 0, stdout: hostile, stderr: '', timedOut: false })
+  })
+
   test('kills on timeout', async () => {
     runner = createRunner()
     const result = await runner.run(node, ['-e', 'setInterval(() => {}, 1000)'], {
