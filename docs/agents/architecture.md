@@ -99,6 +99,15 @@ cancellation abort pending answers; unattributed requests reach `onEvent` only.
 lives in `@mokei/host-node` and `@mokei/session-node`. URL-mode requests reach the handler,
 but `notifications/elicitation/complete` is not forwarded to the application yet.
 
+`@mokei/host-desktop` provides a Node-only `HostElicitHandler`, `createDesktopElicitHandler`. In
+`dialog` mode it answers each form with native dialogs (`alerter` or `osascript` on macOS, `zenity`
+on Linux), one dialog at a time, within a 90-second budget that ends as `cancel`. In `inbox` mode
+it adds the request to a `createInputInbox` inbox as a pending entry, sends a generic notification
+and returns when the application answers, declines, cancels or prompts the entry through its own
+registered answer surface; an aborted handler signal removes the entry. The inbox is in-process
+and single-user; after a restart, waiting on the task again re-adds the entry.
+`createDesktopTools` adds `notify` and `ask_user` local tools.
+
 On `2026-07-28` the HTTP client encodes the `Mcp-Method`, `Mcp-Name` and `Mcp-Param-*` request
 headers (SEP-2243). The `Mcp-Param-*` set comes from the `x-mcp-header` annotations the transport
 caches per tool from `tools/list`, so a peer that changes a tool's schema afterwards leaves that
@@ -149,6 +158,9 @@ On the client, `callTool` waits for a task automatically and returns its final t
 `task: 'handle'` to receive the task creation result instead; then use `client.tasks.wait(taskId)`
 to wait explicitly or `client.tasks.get(taskId)` to inspect its current state. Waiting listens for
 task notifications and falls back to polling when a listen is unavailable.
+When a waited request is withdrawn, the signal passed to the input handler aborts with
+`TaskInputWithdrawnError`; a subscribed wait still checks a finite task TTL and fails with
+`TaskExpiredError` once the task is gone; public task snapshots list only unanswered input keys.
 
 ### HTTP Authorization
 
@@ -205,6 +217,7 @@ binding.
 | Chat and agent loop | `@mokei/session`, `@mokei/session-node` | Portable `Session` and `AgentSession`; Node stdio `NodeSession.addContext` |
 | Provider abstraction and adapters | `@mokei/model-provider`, `@mokei/{openai,anthropic,ollama,llama}-provider` | `ModelProvider`, each provider package's `src/index.ts` |
 | System One classification | `@mokei/system-one-client`, `@mokei/mcp-system-one` | `HTTPSystemOneBackend`, `createSystemOneTools` |
+| Desktop elicitation and input inbox | `@mokei/host-desktop` | `createDesktopElicitHandler`, `createInputInbox`, `createDesktopTools` |
 | Decision flows as MCP tasks | `@mokei/decision-flow`, `@mokei/decision-flow-server` | `createDecisionFlowGraph`, `addDecisionFlow`, `createDecisionFlowServer` |
 | CLI | `mokei` | `packages/cli/src/program.ts` |
 | Monitor | `@mokei/host-monitor`, `monitor` | `packages/host-monitor/src/index.ts`, `monitor/src/main.tsx` |
@@ -225,6 +238,7 @@ packages/
 +-- context-client/       # MCP client implementation
 +-- host/                 # Multi-context orchestrator (RN/Metro-safe)
 +-- host-node/            # Node stdio + daemon entry for host
++-- host-desktop/         # Desktop dialogs, notifications and input inbox (Node-only)
 +-- host-protocol/        # Host <-> monitor protocol types
 +-- host-monitor/         # Monitor UI for host contexts
 +-- http-client/          # Streamable HTTP, OAuth 2.1 client middleware, x-mcp-header encoding
@@ -248,6 +262,7 @@ Metro. Node-only entry points live in the `-node` packages: `serveProcess` is in
 `@mokei/context-server-node`, and `addLocalContext` (now a method on `NodeContextHost`),
 `spawnHostedContext`, `createClient`, `runDaemon` and `ProxyHost` are in `@mokei/host-node`.
 `NodeSession.addContext` and its Node-typed `contextHost` are in `@mokei/session-node`.
+`@mokei/host-desktop` is Node-only too: it spawns desktop dialog and notification commands.
 File names use kebab-case throughout, except React component files (PascalCase, `ChatApp.tsx`) and React hook files (camelCase, `useSession.ts`).
 `HTTPSystemOneBackend` speaks to a `laya-serve` sidecar or the hosted TypeSafe API (see
 `docs/reference/system-one-sidecar.md`). The bundled System One MCP server exposes a single `predict` tool.
