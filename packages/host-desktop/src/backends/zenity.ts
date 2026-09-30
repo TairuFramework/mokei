@@ -23,12 +23,14 @@ function radioListArgs(
     request.title,
     '--text',
     request.text,
+    '--no-markup',
     '--column',
     'Pick',
     '--column',
     'Choice',
     '--timeout',
     String(nativeTimeoutSeconds),
+    '--',
     ...labels.flatMap((label) => [label === selected ? 'TRUE' : 'FALSE', label]),
   ]
 }
@@ -42,6 +44,7 @@ export function buildZenityArgs(request: AskRequest, nativeTimeoutSeconds: numbe
         request.title,
         '--text',
         request.text,
+        '--no-markup',
         '--entry-text',
         request.default ?? '',
         '--timeout',
@@ -69,6 +72,9 @@ function parseZenityAnswer(request: AskRequest, stdout: string): AskResult {
     case 'text':
       return { status: 'answered', value: output }
     case 'confirm':
+      if (output !== 'Yes' && output !== 'No') {
+        throw new Error(`zenity returned an unknown confirm answer: ${output}`)
+      }
       return { status: 'answered', value: output === 'Yes' }
     case 'choice': {
       const choice = requireChoices(request).find((c) => c.label === output)

@@ -89,7 +89,7 @@ export function parseOsascriptAskResult(request: AskRequest, result: RunResult):
   if (result.timedOut) {
     return { status: 'timeout' }
   }
-  if (result.code === 1 && result.stderr.includes('-128')) {
+  if (result.code === 1 && result.stderr.includes('(-128)')) {
     return { status: 'dismissed' }
   }
   if (result.code !== 0) {
@@ -112,6 +112,9 @@ export function parseOsascriptAskResult(request: AskRequest, result: RunResult):
     case 'text':
       return { status: 'answered', value: answer }
     case 'confirm':
+      if (answer !== 'Yes' && answer !== 'No') {
+        throw new Error(`osascript returned an unknown confirm answer: ${answer}`)
+      }
       return { status: 'answered', value: answer === 'Yes' }
     case 'choice': {
       const choice = requireChoices(request).find((c) => c.label === answer)

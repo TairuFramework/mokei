@@ -279,12 +279,14 @@ describe('zenity', () => {
     'T',
     '--text',
     'X',
+    '--no-markup',
     '--column',
     'Pick',
     '--column',
     'Choice',
     '--timeout',
     '25',
+    '--',
   ]
 
   test('args per kind', () => {
@@ -294,6 +296,7 @@ describe('zenity', () => {
       'T',
       '--text',
       'X',
+      '--no-markup',
       '--entry-text',
       'dflt',
       '--timeout',
@@ -359,7 +362,7 @@ describe('notify-send', () => {
   test('args', () => {
     expect(
       buildNotifySendArgs({ title: 'T', message: 'M', subtitle: 'S', sound: true }, 'mokei'),
-    ).toEqual(['--app-name', 'mokei', 'T', 'M'])
+    ).toEqual(['--app-name', 'mokei', '--', 'T', 'M'])
   })
 
   test('wrapper', async () => {
@@ -370,7 +373,7 @@ describe('notify-send', () => {
     )
     expect(firstCall(calls)).toEqual({
       command: 'notify-send',
-      args: ['--app-name', 'mokei', 'T', 'M'],
+      args: ['--app-name', 'mokei', '--', 'T', 'M'],
       options: { timeoutMs: 5_000, signal },
     })
   })
@@ -391,5 +394,68 @@ describe('notify-send', () => {
       ).notify?.(req, opts),
     ).rejects.toThrow('Notification delivery timed out')
     expect(createNotifySendBackend(fakeRunner(result()).runner, 'm').ask).toBeUndefined()
+  })
+})
+
+describe('leading dash values', () => {
+  const dashed = ['--help', '-x']
+
+  test.each(dashed)('alerter keeps %s as one element', (v) => {
+    const args = buildAlerterArgs(
+      { ...choice, title: v, text: v, choices: [{ value: 'x', label: v }] },
+      25,
+    )
+    expect(args.filter((a) => a === v)).toHaveLength(3)
+  })
+
+  test.each(dashed)('osascript keeps %s as one element after --', (v) => {
+    const args = buildOsascriptAskArgs(
+      { ...choice, title: v, text: v, choices: [{ value: 'x', label: v }] },
+      25,
+    )
+    const tail = args.slice(args.indexOf('--') + 1)
+    expect(tail.filter((a) => a === v).length).toBeGreaterThanOrEqual(3)
+    expect(args.slice(0, args.indexOf('--')).includes(v)).toBe(false)
+  })
+
+  test.each(dashed)('zenity rows come after -- for %s', (v) => {
+    const args = buildZenityArgs({ ...choice, choices: [{ value: 'x', label: v }] }, 25)
+    expect(args.indexOf(v)).toBeGreaterThan(args.indexOf('--'))
+    expect(args.filter((a) => a === v)).toHaveLength(1)
+    expect(buildZenityArgs(confirm, 25).indexOf('Yes')).toBeGreaterThan(
+      buildZenityArgs(confirm, 25).indexOf('--'),
+    )
+  })
+
+  test.each(dashed)('notify-send title and message come after -- for %s', (v) => {
+    const args = buildNotifySendArgs({ title: v, message: v }, 'mokei')
+    expect(args).toEqual(['--app-name', 'mokei', '--', v, v])
+  })
+
+  test('zenity disables markup wherever --text is used', () => {
+    for (const request of [text, confirm, choice]) {
+      expect(buildZenityArgs(request, 25)).toContain('--no-markup')
+    }
+  })
+
+  test('confirm answers other than Yes/No throw', () => {
+    expect(() => parseZenityResult(confirm, result({ stdout: '' }))).toThrow(
+      'unknown confirm answer',
+    )
+    expect(() => parseZenityResult(confirm, result({ stdout: 'Maybe\n' }))).toThrow(
+      'unknown confirm answer',
+    )
+    expect(() => parseOsascriptAskResult(confirm, result({ stdout: 'gave up:false\n' }))).toThrow(
+      'unknown confirm answer',
+    )
+    expect(() =>
+      parseOsascriptAskResult(confirm, result({ stdout: 'gave up:false\nMaybe\n' })),
+    ).toThrow('unknown confirm answer')
+  })
+
+  test('only (-128) is a dismissal', () => {
+    expect(() =>
+      parseOsascriptAskResult(text, result({ code: 1, stderr: 'error at 1-1280' })),
+    ).toThrow()
   })
 })

@@ -2,7 +2,7 @@ import type { Runner } from '../runner.js'
 import { assertNotified, type DesktopBackend, type NotifyRequest } from './types.js'
 
 export function buildNotifySendArgs(request: NotifyRequest, appName: string): Array<string> {
-  return ['--app-name', appName, request.title, request.message]
+  return ['--app-name', appName, '--', request.title, request.message]
 }
 
 export function createNotifySendBackend(runner: Runner, appName: string): DesktopBackend {
