@@ -7,7 +7,7 @@ import { digestDefinition, type FlowDefinition } from '@sozai/flow-graph'
 import { checkFlow } from './definition-checks.js'
 import { type ResumeDataV1, startRun, terminalResult } from './driver.js'
 import type { PredictorFactory } from './predictor.js'
-import type { FlowRegistry } from './registry.js'
+import { definitionResolution, type FlowRegistry } from './registry.js'
 import { cancelSibling, type ToolCaller } from './tool-caller.js'
 
 const recoveryOnlyTool: ToolDefinitions[string] = {
@@ -37,8 +37,24 @@ export function recoveryToolMap(tools: ToolDefinitions): ToolDefinitions {
   })
 }
 
+/** Every pinned frame must still resolve to a definition with the same digest. */
+function framesMatch(
+  frames: ResumeDataV1['runState']['frames'] | undefined,
+  root: FlowDefinition,
+  registry: FlowRegistry,
+): boolean {
+  if (!Array.isArray(frames) || frames.length === 0) return true
+  const { lookup } = definitionResolution(root, registry)
+  return frames.every((frame) => {
+    const definition = lookup(frame?.flow?.id, frame?.flow?.version)
+    return (
+      definition !== undefined &&
+      digestDefinition(definition as unknown as JSONValue) === frame?.flow?.digest
+    )
+  })
+}
+
 export function createRecovery(params: {
-  flows: ReadonlyMap<string, FlowDefinition>
   registry: FlowRegistry
   caller: ToolCaller
   predictor: Predictor | PredictorFactory
@@ -95,12 +111,12 @@ export function createRecovery(params: {
     if ('definition' in data.flow) {
       definition = data.flow.definition
     } else {
-      const registered = params.flows.get(data.flow.id)
-      if (
-        registered !== undefined &&
-        digestDefinition(registered as unknown as JSONValue) === data.flow.digest
-      )
+      const registered = params.registry.lookup(data.flow.id)
+      if (registered !== undefined && params.registry.digest(data.flow.id) === data.flow.digest)
         definition = registered
+    }
+    if (definition !== undefined && !framesMatch(state.frames, definition, params.registry)) {
+      definition = undefined
     }
     if (definition === undefined) {
       await resume(async () => {

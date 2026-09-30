@@ -192,7 +192,6 @@ export async function createDecisionFlowServer(params: DecisionFlowServerParams)
   }
 
   const recover = createRecovery({
-    flows: new Map(registry.flows.map((flow) => [flow.id, flow])),
     registry,
     caller: params.caller,
     predictor: params.predictor,
