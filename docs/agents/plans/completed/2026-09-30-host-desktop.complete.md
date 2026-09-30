@@ -17,11 +17,15 @@ headless agent notify or ask the user directly.
 ## Key design decisions
 
 - **New Node-only package `@mokei/host-desktop`** (user-approved), in the fixed release group. It
-  works with any `ContextHost`; nothing was added to `@mokei/host`, `@mokei/host-node` or
-  `@mokei/session`, so headless `host-node` users never load dialog code.
-- **OS tools driven directly with `execFile`** (`alerter` or `osascript` on macOS, `zenity` and
-  `notify-send` on Linux). `node-notifier` was rejected: unmaintained, stale vendored binaries. A
-  runner tracks every child and kills it on abort, timeout or dispose (SIGTERM, then SIGKILL).
+  works with any `ContextHost`; nothing was added to `@mokei/host-node` or `@mokei/session`, so
+  headless `host-node` users never load dialog code. The only `@mokei/host` change widens the
+  direct-context config type to `Omit<ServerParams, 'transport'>`.
+- **OS tools driven directly through `execa`, without a shell** (`alerter` or `osascript` on macOS,
+  `zenity` and `notify-send` on Linux). `node-notifier` was rejected: unmaintained, stale vendored
+  binaries. A runner tracks every child and kills it on abort, timeout or dispose (SIGTERM, then
+  SIGKILL after 1 second); the next dialog waits until a killed one has exited.
+- **Answer validation with `@sozai/schema`** (AJV, JSON Schema 2020-12 with formats) against the
+  request's `requestedSchema`; the dialog mapping (`planForm`) stays custom and runs first.
 - **Argument safety.** Server-supplied text never becomes an option: `--` precedes zenity rows and
   notify-send positionals; `alerter`, which has no `--`, refuses any value starting with `-` or a
   choice label containing a comma (auto-selection falls back to `osascript`, a forced `alerter`
@@ -56,7 +60,7 @@ headless agent notify or ask the user directly.
 - Tests: unit tests per module, a task integration test (ContextServer tasks answered through an
   inbox-mode handler), and a zenity end-to-end suite (timeout and answered paths via `xdotool`)
   gated by `DESKTOP_E2E` and run under `xvfb-run` in one Linux CI job.
-- README (usage, answer surfaces, manual QA checklist for macOS backends),
+- README (usage, answer surfaces, shutdown),
   `docs/agents/architecture.md` entries, and a patch changeset.
 
 ## Follow-ons
