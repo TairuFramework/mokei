@@ -1,4 +1,11 @@
 import type { ElicitRequest } from '@mokei/context-protocol'
+import {
+  createValidator,
+  type Schema,
+  ValidationError,
+  type ValidationErrorObject,
+  type Validator,
+} from '@sozai/schema'
 
 import type { AskRequest } from './backends/types.js'
 
@@ -18,8 +25,13 @@ export type FieldPlan = {
 export type FormPlan = { ok: true; fields: Array<FieldPlan> } | { ok: false; reason: string }
 
 const MAX_PROPERTIES = 10
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const DATE = /^(\d{4})-(\d{2})-(\d{2})$/
+const CHOICE_MESSAGE = 'must be one of the offered choices'
+const FORMAT_MESSAGES: Record<string, string> = {
+  email: 'must be an email address',
+  uri: 'must be a URI, such as https://example.com',
+  date: 'must be a date, such as 2024-01-31',
+  'date-time': 'must be a date and time, such as 2024-01-31T10:00:00Z',
+}
 
 type Choice = { value: string; label: string }
 
@@ -33,12 +45,7 @@ type Loose = {
   enumNames?: Array<string>
   oneOf?: Array<{ const: string; title?: string }>
   items?: { enum?: Array<string>; anyOf?: Array<{ const: string }> }
-  minLength?: number
-  maxLength?: number
   pattern?: string
-  format?: string
-  minimum?: number
-  maximum?: number
 }
 
 type Shape =
@@ -101,60 +108,71 @@ function describeProperty(name: string, schema: PrimitiveSchemaDefinition): Shap
   return `property "${name}" has an unsupported kind`
 }
 
-function isValidDate(value: string): boolean {
-  const match = DATE.exec(value)
-  if (match == null) return false
-  const [y, m, d] = [Number(match[1]), Number(match[2]), Number(match[3])]
-  const date = new Date(Date.UTC(y, m - 1, d))
-  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
+const validators = new WeakMap<object, Validator<unknown>>()
+
+/**
+ * Compiles `schema` with AJV once per schema object. MCP elicitation schemas use the 2020-12
+ * dialect, so a `$schema` is dropped. The compiled copy gets a unique `$id`, which lets
+ * `@sozai/schema` remove it from AJV's shared cache (a schema without one would stay forever).
+ */
+function validatorFor(schema: object, extra: Record<string, unknown> = {}): Validator<unknown> {
+  let validator = validators.get(schema)
+  if (validator == null) {
+    const { $schema: _schema, $id: _id, ...rest } = schema as Record<string, unknown>
+    validator = createValidator(
+      { ...rest, ...extra, $id: `urn:uuid:${crypto.randomUUID()}` } as Schema,
+      { draft: '2020-12', strict: false },
+    )
+    validators.set(schema, validator)
+  }
+  return validator
 }
 
-function checkFormat(format: string, value: string): boolean {
-  switch (format) {
-    case 'email':
-      return EMAIL.test(value)
-    case 'uri':
-      return URL.canParse(value)
-    case 'date':
-      return isValidDate(value)
-    case 'date-time':
-      return value.includes('T') && !Number.isNaN(Date.parse(value))
+function issuesOf(
+  validator: Validator<unknown>,
+  value: unknown,
+): ReadonlyArray<ValidationErrorObject> {
+  const result = validator(value)
+  return result instanceof ValidationError ? result.issues : []
+}
+
+/** A message a person can act on, for one AJV issue about a property value. */
+function describeIssue(issue: ValidationErrorObject): string {
+  const { keyword, params, message } = issue.details
+  switch (keyword) {
+    case 'type':
+      if (params.type === 'integer') return 'must be a whole number'
+      return `must be a ${params.type}`
+    case 'minLength':
+      return `must be at least ${params.limit} ${params.limit === 1 ? 'character' : 'characters'}`
+    case 'maxLength':
+      return `must be at most ${params.limit} ${params.limit === 1 ? 'character' : 'characters'}`
+    case 'pattern':
+      return `must match the pattern ${params.pattern}`
+    case 'format':
+      return FORMAT_MESSAGES[params.format] ?? `must be a valid ${params.format}`
+    case 'minimum':
+      return `must be at least ${params.limit}`
+    case 'maximum':
+      return `must be at most ${params.limit}`
+    case 'exclusiveMinimum':
+      return `must be greater than ${params.limit}`
+    case 'exclusiveMaximum':
+      return `must be less than ${params.limit}`
+    case 'enum':
+    case 'const':
+    case 'anyOf':
+    case 'oneOf':
+      return CHOICE_MESSAGE
     default:
-      return true
+      return message ?? `does not satisfy ${keyword}`
   }
 }
 
-function checkString(schema: Loose, value: string): string | undefined {
-  // JSON Schema lengths count code points, not UTF-16 units
-  const length = [...value].length
-  if (schema.minLength != null && length < schema.minLength) {
-    return `must satisfy minLength ${schema.minLength}`
-  }
-  if (schema.maxLength != null && length > schema.maxLength) {
-    return `must satisfy maxLength ${schema.maxLength}`
-  }
-  if (schema.pattern != null) {
-    let matches = false
-    try {
-      matches = new RegExp(`^(?:${schema.pattern})$`, 'u').test(value)
-    } catch {
-      // Unusable pattern, planForm rejects these up front.
-    }
-    if (!matches) return `must match pattern ${schema.pattern}`
-  }
-  if (schema.format != null && !checkFormat(schema.format, value)) {
-    return `must satisfy format ${schema.format}`
-  }
-}
-
-function checkNumber(schema: Loose, value: number): string | undefined {
-  if (schema.type === 'integer' && !Number.isInteger(value)) return 'must be an integer'
-  if (schema.minimum != null && value < schema.minimum) {
-    return `must satisfy minimum ${schema.minimum}`
-  }
-  if (schema.maximum != null && value > schema.maximum) {
-    return `must satisfy maximum ${schema.maximum}`
-  }
+/** The first violation of a single property value, or undefined when it is valid. */
+function checkValue(schema: PrimitiveSchemaDefinition, value: unknown): string | undefined {
+  const [issue] = issuesOf(validatorFor(schema), value)
+  return issue == null ? undefined : describeIssue(issue)
 }
 
 function defaultFor(shape: Shape, schema: Loose): string | undefined {
@@ -194,7 +212,7 @@ function planField(
     if (shape.kind === 'choice') {
       return shape.choices.some((c) => c.value === answer)
         ? { ok: true, value: answer }
-        : { ok: false, violation: 'must be one of the offered choices' }
+        : { ok: false, violation: CHOICE_MESSAGE }
     }
     if (!required && answer === '') return { ok: true }
     if (shape.numeric) {
@@ -202,10 +220,10 @@ function planField(
       if (answer.trim() === '' || Number.isNaN(value)) {
         return { ok: false, violation: 'must be a number' }
       }
-      const violation = checkNumber(s, value)
+      const violation = checkValue(schema, value)
       return violation == null ? { ok: true, value } : { ok: false, violation }
     }
-    const violation = checkString(s, answer)
+    const violation = checkValue(schema, answer)
     return violation == null ? { ok: true, value: answer } : { ok: false, violation }
   }
   return { name, required, schema, ask, toValue }
@@ -241,37 +259,30 @@ export function planForm(
   return { ok: true, fields }
 }
 
-function validateValue(
-  name: string,
-  schema: PrimitiveSchemaDefinition,
-  value: unknown,
-): string | undefined {
-  const s = loose(schema)
-  const fail = (message: string) => `${name}: ${message}`
-  if (s.type === 'array') {
-    const allowed = s.items?.enum ?? s.items?.anyOf?.map((o) => o.const) ?? []
-    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-      return fail('must be an array of strings')
+/** Describes one issue with elicitation content, with the property it is about ('' for none). */
+function describeContentIssue(
+  issue: ValidationErrorObject,
+  content: Record<string, unknown>,
+): { name: string; text: string } {
+  const { keyword, params } = issue.details
+  const [name, index] = issue.path
+  if (name == null) {
+    if (keyword === 'required') return { name: params.missingProperty, text: 'required' }
+    if (keyword === 'additionalProperties') {
+      return { name: params.additionalProperty, text: 'unknown property' }
     }
-    const unknown = (value as Array<string>).find((item) => !allowed.includes(item))
-    return unknown == null ? undefined : fail(`"${unknown}" is not an offered choice`)
+    return { name: '', text: `content ${describeIssue(issue)}` }
   }
-  if (s.type === 'boolean')
-    return typeof value === 'boolean' ? undefined : fail('must be a boolean')
-  if (s.type === 'number' || s.type === 'integer') {
-    if (typeof value !== 'number' || !Number.isFinite(value)) return fail('must be a number')
-    const violation = checkNumber(s, value)
-    return violation == null ? undefined : fail(violation)
+  if (index != null) {
+    // An item of a multi-select array
+    if (keyword === 'type') return { name, text: 'must be an array of strings' }
+    const item = (content[name] as Array<unknown>)[Number(index)]
+    return { name, text: `${JSON.stringify(item)} is not an offered choice` }
   }
-  if (s.type === 'string') {
-    if (typeof value !== 'string') return fail('must be a string')
-    const choices = s.oneOf?.map((o) => o.const) ?? s.enum
-    if (choices != null && !choices.includes(value))
-      return fail('must be one of the offered choices')
-    const violation = checkString(s, value)
-    return violation == null ? undefined : fail(violation)
+  if (keyword === 'type' && params.type === 'array') {
+    return { name, text: 'must be an array of strings' }
   }
-  return fail('has an unsupported kind')
+  return { name, text: describeIssue(issue) }
 }
 
 /** Validates elicitation content against the requested schema. Empty result means valid. */
@@ -279,20 +290,28 @@ export function validateContent(schema: RequestedSchema, content: unknown): Arra
   if (content == null || typeof content !== 'object' || Array.isArray(content)) {
     return ['content must be an object']
   }
-  const record = content as Record<string, unknown>
-  const issues: Array<string> = []
-  for (const key of Object.keys(record)) {
-    if (!Object.hasOwn(schema.properties, key)) issues.push(`${key}: unknown property`)
+  // A key holding `undefined` is absent once serialised; validate it as absent
+  const record = Object.fromEntries(
+    Object.entries(content as Record<string, unknown>).filter(([, value]) => value !== undefined),
+  )
+  let issues: ReadonlyArray<ValidationErrorObject>
+  try {
+    issues = issuesOf(validatorFor(schema, { additionalProperties: false }), record)
+  } catch (error) {
+    return [`the requested schema cannot be validated: ${(error as Error).message}`]
   }
-  for (const key of schema.required ?? []) {
-    if (record[key] === undefined) issues.push(`${key}: required`)
+  // One problem per property, the first AJV reports
+  const byName = new Map<string, string>()
+  for (const issue of issues) {
+    const described = describeContentIssue(issue, record)
+    if (!byName.has(described.name)) {
+      byName.set(
+        described.name,
+        described.name === '' ? described.text : `${described.name}: ${described.text}`,
+      )
+    }
   }
-  for (const [key, value] of Object.entries(record)) {
-    if (!Object.hasOwn(schema.properties, key) || value === undefined) continue
-    const issue = validateValue(key, schema.properties[key] as PrimitiveSchemaDefinition, value)
-    if (issue != null) issues.push(issue)
-  }
-  return issues
+  return [...byName.values()]
 }
 
 /** Returns the request with the violation on the first line of its text. */

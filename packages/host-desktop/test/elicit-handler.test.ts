@@ -207,7 +207,7 @@ describe('desktop elicit handler (blocking)', () => {
       call(0).resolve({ status: 'answered', value: '2' })
       await flush()
       expect(fake.calls).toHaveLength(2)
-      expect(call(1).request.text.split('\n')[0]).toBe('must satisfy minimum 5')
+      expect(call(1).request.text.split('\n')[0]).toBe('must be at least 5')
       call(1).resolve({ status: 'answered', value: '7' })
       await flush()
       expect(settled.result).toEqual({ action: 'accept', content: { n: 7 } })

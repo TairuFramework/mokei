@@ -204,18 +204,19 @@ describe('constraints via toValue', () => {
   }
 
   test('minLength / maxLength', () => {
-    expect(bad({ type: 'string', minLength: 3 }, 'ab')).toMatch(/minLength/)
+    expect(bad({ type: 'string', minLength: 3 }, 'ab')).toBe('must be at least 3 characters')
     expect(bad({ type: 'string', minLength: 3 }, 'abc')).toBeNull()
-    expect(bad({ type: 'string', maxLength: 2 }, 'abc')).toMatch(/maxLength/)
+    expect(bad({ type: 'string', maxLength: 2 }, 'abc')).toBe('must be at most 2 characters')
     expect(bad({ type: 'string', maxLength: 2 }, 'ab')).toBeNull()
+    expect(bad({ type: 'string', minLength: 1 }, '')).toBe('must be at least 1 character')
   })
 
   test('minLength / maxLength count code points, not UTF-16 units', () => {
     // One astral emoji is two UTF-16 units but one code point
     expect(bad({ type: 'string', maxLength: 1 }, '\u{1F600}')).toBeNull()
-    expect(bad({ type: 'string', minLength: 2 }, '\u{1F600}')).toBe('must satisfy minLength 2')
+    expect(bad({ type: 'string', minLength: 2 }, '\u{1F600}')).toBe('must be at least 2 characters')
     expect(bad({ type: 'string', minLength: 2 }, 'a\u{1F600}')).toBeNull()
-    expect(bad({ type: 'string', maxLength: 1 }, 'a\u{1F600}')).toBe('must satisfy maxLength 1')
+    expect(bad({ type: 'string', maxLength: 1 }, 'a\u{1F600}')).toBe('must be at most 1 character')
   })
 
   test('validateContent counts code points too', () => {
@@ -223,31 +224,44 @@ describe('constraints via toValue', () => {
     expect(validateContent(emoji, { s: '\u{1F600}' })).toEqual([])
   })
 
-  test('pattern is whole-string', () => {
-    expect(bad({ type: 'string', pattern: '[a-c]+' }, 'abc')).toBeNull()
-    expect(bad({ type: 'string', pattern: '[a-c]+' }, 'abcd')).toMatch(/pattern/)
-    expect(bad({ type: 'string', pattern: 'a|b' }, 'ab')).toMatch(/pattern/)
+  test('pattern follows JSON Schema: unanchored, anchors when the schema says so', () => {
+    expect(bad({ type: 'string', pattern: '[a-c]+' }, 'abcd')).toBeNull()
+    expect(bad({ type: 'string', pattern: '[a-c]+' }, 'xyz')).toBe('must match the pattern [a-c]+')
+    expect(bad({ type: 'string', pattern: '^[a-c]+$' }, 'abcd')).toBe(
+      'must match the pattern ^[a-c]+$',
+    )
+    expect(bad({ type: 'string', pattern: '^[a-c]+$' }, 'abc')).toBeNull()
   })
 
   test('minimum / maximum / integer', () => {
-    expect(bad({ type: 'number', minimum: 5 }, '4')).toMatch(/minimum/)
+    expect(bad({ type: 'number', minimum: 5 }, '4')).toBe('must be at least 5')
     expect(bad({ type: 'number', minimum: 5 }, '5')).toBeNull()
-    expect(bad({ type: 'number', maximum: 5 }, '6')).toMatch(/maximum/)
+    expect(bad({ type: 'number', maximum: 5 }, '6')).toBe('must be at most 5')
     expect(bad({ type: 'number', maximum: 5 }, '5')).toBeNull()
-    expect(bad({ type: 'integer' }, '1.5')).toMatch(/integer/)
+    expect(bad({ type: 'integer' }, '1.5')).toBe('must be a whole number')
     expect(bad({ type: 'integer' }, '2')).toBeNull()
+    expect(bad({ type: 'number' }, 'abc')).toBe('must be a number')
   })
 
   test('formats', () => {
-    const f = (format: string, ok: Array<string>, no: Array<string>) => {
+    const f = (format: string, ok: Array<string>, no: Array<string>, message: string) => {
       for (const v of ok) expect(bad({ type: 'string', format }, v), `${format} ${v}`).toBeNull()
-      for (const v of no)
-        expect(bad({ type: 'string', format }, v), `${format} ${v}`).toMatch(/format/)
+      for (const v of no) expect(bad({ type: 'string', format }, v), `${format} ${v}`).toBe(message)
     }
-    f('email', ['a@b.co'], ['a@b', 'a b@c.d', 'nope'])
-    f('uri', ['https://x.y/z'], ['not a uri'])
-    f('date', ['2024-02-29'], ['2023-02-29', '2024-13-01', '24-1-1', '2024-01-01T00:00:00Z'])
-    f('date-time', ['2024-01-01T10:00:00Z'], ['2024-01-01', 'garbage'])
+    f('email', ['a@b.co'], ['a@b', 'a b@c.d', 'nope'], 'must be an email address')
+    f('uri', ['https://x.y/z'], ['not a uri'], 'must be a URI, such as https://example.com')
+    f(
+      'date',
+      ['2024-02-29'],
+      ['2023-02-29', '2024-13-01', '24-1-1', '2024-01-01T00:00:00Z'],
+      'must be a date, such as 2024-01-31',
+    )
+    f(
+      'date-time',
+      ['2024-01-01T10:00:00Z'],
+      ['2024-01-01', 'garbage'],
+      'must be a date and time, such as 2024-01-31T10:00:00Z',
+    )
   })
 })
 
@@ -295,9 +309,11 @@ describe('validateContent', () => {
 
   test('wrong type', () => {
     expect(validateContent(schema, { s: 1 })).toEqual(['s: must be a string'])
-    expect(validateContent(schema, { s: 'ok', n: '2' })).toEqual(['n: must be a number'])
+    expect(validateContent(schema, { s: 'ok', n: '2' })).toEqual(['n: must be a whole number'])
     expect(validateContent(schema, { s: 'ok', b: 'true' })).toEqual(['b: must be a boolean'])
-    expect(validateContent(schema, { s: 'ok', n: Number.NaN })).toEqual(['n: must be a number'])
+    expect(validateContent(schema, { s: 'ok', n: Number.NaN })).toEqual([
+      'n: must be a whole number',
+    ])
   })
 
   test('enum and oneOf miss', () => {
@@ -324,10 +340,26 @@ describe('validateContent', () => {
     ])
   })
 
+  test('a declared $schema does not change the dialect', () => {
+    const declared = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      ...params({ s: { type: 'string', minLength: 2 } }).requestedSchema,
+    } as typeof schema
+    expect(validateContent(declared, { s: 'ok' })).toEqual([])
+    expect(validateContent(declared, { s: 'x' })).toEqual(['s: must be at least 2 characters'])
+  })
+
+  test('an uncompilable schema gives an issue instead of throwing', () => {
+    const broken = params({ s: { type: 'string', pattern: '(' } }).requestedSchema
+    const issues = validateContent(broken, { s: 'x' })
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatch(/^the requested schema cannot be validated: /)
+  })
+
   test('constraint failures name the property', () => {
-    expect(validateContent(schema, { s: 'x' })).toEqual(['s: must satisfy minLength 2'])
-    expect(validateContent(schema, { s: 'ok', n: 0 })).toEqual(['n: must satisfy minimum 1'])
-    expect(validateContent(schema, { s: 'ok', n: 1.5 })).toEqual(['n: must be an integer'])
+    expect(validateContent(schema, { s: 'x' })).toEqual(['s: must be at least 2 characters'])
+    expect(validateContent(schema, { s: 'ok', n: 0 })).toEqual(['n: must be at least 1'])
+    expect(validateContent(schema, { s: 'ok', n: 1.5 })).toEqual(['n: must be a whole number'])
   })
 })
 

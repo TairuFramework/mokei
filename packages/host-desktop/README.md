@@ -33,7 +33,9 @@ const host = new NodeContextHost({ elicit: desktop, dispose: () => desktop.dispo
   `enum` or `oneOf` is a choice list, a number or integer is a text entry converted with
   `Number`, and a boolean is a Yes/No confirm. An empty form shows one confirm. Constraints
   (`minLength`, `maxLength`, `pattern`, `format`, `minimum`, `maximum`, integer-ness) are
-  checked after each answer; a violation reopens the dialog, at most 3 attempts.
+  checked after each answer with JSON Schema 2020-12 semantics (AJV through `@sozai/schema`):
+  lengths count code points and `pattern` is unanchored. A violation reopens the dialog with a
+  readable message on its first line, at most 3 attempts.
 - URL mode, multi-select arrays, other property types and forms with more than 10 properties
   are declined without a dialog, and `onUnsupported` (or stderr) gets the reason.
 - Dialogs open one at a time; concurrent requests queue. A dialog killed by an abort or a

@@ -1023,6 +1023,9 @@ importers:
       '@sozai/event':
         specifier: 'catalog:'
         version: 0.1.4(@logtape/logtape@2.3.0)
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.2
     devDependencies:
       '@mokei/context-server':
         specifier: workspace:^
