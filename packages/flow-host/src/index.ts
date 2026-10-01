@@ -1,5 +1,6 @@
 export * from './errors.js'
 export { createFlowHost } from './host.js'
+export { pruneRuns } from './prune-runs.js'
 export * from './run-store.js'
 export * from './trace-store.js'
 export { createTraceStoreLogSink } from './trace-store-log-sink.js'
