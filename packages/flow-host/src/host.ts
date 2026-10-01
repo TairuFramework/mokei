@@ -61,6 +61,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
   const events = new EventEmitter<FlowHostEvents>()
   const queue = createRunQueue()
   const lastApplied = new Map<string, number>()
+  const pendingCancellations = new Map<string, string>()
   function emit<Event extends keyof FlowHostEvents>(event: Event, value: FlowHostEvents[Event]) {
     void events.emit(event, value).catch(() => undefined)
   }
@@ -76,6 +77,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
   }
   const inbox = createInbox({
     client,
+    store,
     queue,
     emit,
     approve: async (runID, id) => {
@@ -103,13 +105,19 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
       if (result.changed) lastApplied.set(runID, timestamp)
       if (result.stateChanged) emit('run:state', runSnapshot(result.record))
       const terminal = TERMINAL_STATES.has(result.record.state)
-      if (accepted) inbox.reconcile(runID, terminal ? undefined : task)
-      return { terminal, accepted, unsupported }
+      if (accepted) {
+        inbox.reconcile(runID, terminal ? undefined : task)
+        if (unsupported !== undefined) pendingCancellations.set(runID, task.taskId)
+      }
+      return { terminal, accepted }
     })
     // Network calls stay outside the run queue so pending responses cannot block transitions.
-    if (applied.accepted) {
-      if (applied.unsupported !== undefined) await client.tasks.cancel(task.taskId)
-      else if (!applied.terminal) await inbox.cancelURLs(runID, task)
+    const pendingTaskID = pendingCancellations.get(runID)
+    if (pendingTaskID !== undefined) {
+      await client.tasks.cancel(pendingTaskID)
+      pendingCancellations.delete(runID)
+    } else if (applied.accepted && !applied.terminal) {
+      await inbox.cancelURLs(runID, task)
     }
     return applied.terminal
   }
@@ -118,6 +126,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     pollMs: params.pollMs ?? 500,
     apply,
     interrupted: async (runID) => {
+      pendingCancellations.delete(runID)
       await change(runID, () => ({
         state: 'failed',
         error: { type: 'Interrupted', message: 'Task not found' },

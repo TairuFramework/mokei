@@ -188,6 +188,51 @@ test('a transport update error reopens the item for retry', async () => {
   await host.inbox.answer(item.id, { value: 'Ada' })
   await completed(host, run.runID)
 })
+test.each(['cancelled', 'completed', 'withdrawn'] as const)(
+  'a failed answer never reopens an input after %s',
+  async (outcome) => {
+    const { host, session } = await fixture()
+    const settled = vi.fn()
+    host.events.on('inbox:settled', settled)
+    const run = await host.start({ definition: inputFlow })
+    const item = await pending(host, run.runID)
+    const client = session.contextHost.getContext('flow').client
+    const entered = deferred<void>()
+    const update = deferred<{ resultType: 'complete' }>()
+    vi.spyOn(client.tasks, 'update').mockImplementation(async () => {
+      entered.resolve()
+      return update.promise
+    })
+    const answer = expect(host.inbox.answer(item.id, { value: 'Ada' })).rejects.toThrow(
+      'Transport failed',
+    )
+    await entered.promise
+    if (outcome === 'cancelled') {
+      expect((await host.cancel(run.runID)).state).toBe('cancelled')
+    } else {
+      const get = client.tasks.get.bind(client.tasks)
+      const polled = vi.spyOn(client.tasks, 'get').mockImplementation(async (taskID) => {
+        const task = await get(taskID)
+        return outcome === 'completed'
+          ? { ...task, status: 'completed', result: { resultType: 'complete', content: [] } }
+          : { ...task, status: 'input_required', inputRequests: {} }
+      })
+      if (outcome === 'completed') await completed(host, run.runID)
+      else await vi.waitFor(() => expect(polled.mock.calls.length).toBeGreaterThanOrEqual(2))
+    }
+    expect(settled).not.toHaveBeenCalled()
+    update.reject(new Error('Transport failed'))
+    await answer
+    expect(host.inbox.list({ runID: run.runID })).toEqual([])
+    expect(settled).toHaveBeenCalledExactlyOnceWith({
+      item,
+      outcome: outcome === 'cancelled' ? 'cancelled' : 'withdrawn',
+    })
+    await expect(host.inbox.answer(item.id, { value: 'again' })).rejects.toBeInstanceOf(
+      InboxItemNotFoundError,
+    )
+  },
+)
 test('a key no longer awaited settles withdrawn and rejects with not found', async () => {
   const { host, session } = await fixture()
   const settled = vi.fn()
@@ -271,6 +316,37 @@ test.each([
       }),
     )
     expect(cancel).toHaveBeenCalledWith(get.mock.calls[0]?.[0])
+    expect(host.inbox.list()).toEqual([])
+  },
+)
+
+test.each([
+  { method: 'sampling/createMessage', params: { messages: [], maxTokens: 10 } },
+  { method: 'roots/list', params: {} },
+] satisfies Array<InputRequest>)(
+  'unsupported $method retries a failed task cancellation while the run stays failed',
+  async (request) => {
+    const { host, client, get } = await synthetic(request)
+    const states = vi.fn()
+    host.events.on('run:state', states)
+    const cancel = vi
+      .spyOn(client.tasks, 'cancel')
+      .mockRejectedValueOnce(new Error('Transport failed'))
+      .mockImplementation(async () => {
+        expect(await host.get(run.runID)).toMatchObject({
+          state: 'failed',
+          error: { type: 'UnsupportedInput', message: request.method },
+        })
+        return { resultType: 'complete' }
+      })
+    const run = await host.start({ definition: inputFlow })
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(2))
+    expect(cancel.mock.calls).toEqual([[get.mock.calls[0]?.[0]], [get.mock.calls[0]?.[0]]])
+    expect(await host.get(run.runID)).toMatchObject({
+      state: 'failed',
+      error: { type: 'UnsupportedInput', message: request.method },
+    })
+    expect(states.mock.calls.map(([snapshot]) => snapshot.state)).toEqual(['working', 'failed'])
     expect(host.inbox.list()).toEqual([])
   },
 )

@@ -5,7 +5,9 @@ import { createElicitContentValidator } from '@mokei/host'
 import { getMokeiLogger } from '@mokei/logger'
 
 import { InboxAnswerInvalidError, InboxItemNotFoundError } from './errors.js'
+import type { RunStore } from './run-store.js'
 import type { createRunQueue } from './transitions.js'
+import { TERMINAL_STATES } from './transitions.js'
 import type { FlowHost, FlowHostEvents, InboxItem, InboxOutcome } from './types.js'
 
 type Entry = {
@@ -17,6 +19,7 @@ type Entry = {
 
 export function createInbox(params: {
   client: ContextClient
+  store: RunStore
   queue: ReturnType<typeof createRunQueue>
   emit<Event extends keyof FlowHostEvents>(event: Event, value: FlowHostEvents[Event]): void
   approve(runID: string, id: string): Promise<void>
@@ -24,6 +27,7 @@ export function createInbox(params: {
 }) {
   const items = new Map<string, Entry>()
   const cancelledURLs = new Set<string>()
+  const latestInputKeys = new Map<string, Set<string>>()
   const logger = getMokeiLogger('flow-host')
   function requireOpen(id: string): Entry {
     const entry = items.get(id)
@@ -51,6 +55,7 @@ export function createInbox(params: {
   }
   function reconcile(runID: string, task?: DetailedTask) {
     const requests = task?.status === 'input_required' ? task.inputRequests : {}
+    latestInputKeys.set(runID, new Set(Object.keys(requests)))
     for (const [id, entry] of items) {
       if (
         entry.item.runID === runID &&
@@ -131,7 +136,16 @@ export function createInbox(params: {
           settle(id, 'withdrawn')
           throw new InboxItemNotFoundError(id)
         }
-        claimed.entry.status = 'open'
+        const record = await params.store.get(runID)
+        if (
+          record === undefined ||
+          TERMINAL_STATES.has(record.state) ||
+          !latestInputKeys.get(runID)?.has(claimed.inputKey)
+        ) {
+          settle(id, record?.state === 'cancelled' ? 'cancelled' : 'withdrawn')
+        } else {
+          claimed.entry.status = 'open'
+        }
       })
       throw error
     }
