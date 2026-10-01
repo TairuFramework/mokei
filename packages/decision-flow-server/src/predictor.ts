@@ -1,7 +1,12 @@
 import type { CallToolResult } from '@mokei/context-protocol'
 import type { Predictor, PredictParams } from '@mokei/decision-flow'
-import type { PredictResult, QuestionMap } from '@mokei/system-one-client'
-import { SystemOneError, SystemOneResponseError } from '@mokei/system-one-client'
+import type { PredictResult, QuestionMap, SystemOneErrorInfo } from '@mokei/system-one-client'
+import {
+  SYSTEM_ONE_ERROR_META,
+  SystemOneError,
+  SystemOneResponseError,
+  systemOneErrorFromInfo,
+} from '@mokei/system-one-client'
 
 import { callMeta, FLOW_DEPTH_META } from './call-meta.js'
 import { cancelSibling, type ToolCaller } from './tool-caller.js'
@@ -63,7 +68,22 @@ export function createMCPPredictor(
         }
 
         if (result.isError === true) {
-          throw new SystemOneError({ message: errorText(result) || 'Predictor tool failed' })
+          const message = errorText(result) || 'Predictor tool failed'
+          const meta = result._meta?.[SYSTEM_ONE_ERROR_META]
+          if (
+            meta !== null &&
+            typeof meta === 'object' &&
+            'name' in meta &&
+            typeof meta.name === 'string'
+          ) {
+            const info: SystemOneErrorInfo = { name: meta.name }
+            if ('status' in meta && typeof meta.status === 'number') info.status = meta.status
+            if ('retryAfterMs' in meta && typeof meta.retryAfterMs === 'number') {
+              info.retryAfterMs = meta.retryAfterMs
+            }
+            throw systemOneErrorFromInfo(info, message)
+          }
+          throw new SystemOneError({ message })
         }
         const outputSchema = caller.listTools().find((entry) => entry.id === tool)?.outputSchema
         if (outputSchema === undefined || result.structuredContent === undefined) {

@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 import type { SystemOneBackend, SystemOneResult } from '../src/backend.js'
 import { SystemOneClient } from '../src/client.js'
-import { SystemOneError, SystemOneInputError, SystemOneResponseError } from '../src/errors.js'
+import { SystemOneInputError, SystemOneResponseError } from '../src/errors.js'
 import { createSystemOneClient } from '../src/index.js'
 
 const questions = {
@@ -79,11 +79,15 @@ describe('SystemOneClient.predict', () => {
     expect(predict).not.toHaveBeenCalled()
   })
 
-  test('throws SystemOneError when no model resolves', async () => {
-    const predict = vi.fn()
+  test('predict without a model or default sends no model field', async () => {
+    const predict = vi.fn<SystemOneBackend['predict']>(async () =>
+      result({
+        dept: { type: 'choice', choice: 'billing', confidence: 1, probabilities: { billing: 1 } },
+      }),
+    )
     const client = new SystemOneClient({ backend: { predict } })
-    await expect(client.predict({ state: 'hi', questions })).rejects.toThrow(SystemOneError)
-    expect(predict).not.toHaveBeenCalled()
+    expect((await client.predict({ state: 'hi', questions })).answers.dept.choice).toBe('billing')
+    expect(predict.mock.calls[0]?.[0].model).toBeUndefined()
   })
 
   test('rejects an undeclared choice returned by the backend', async () => {

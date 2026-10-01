@@ -10,8 +10,11 @@ import {
   type QuestionMap,
   questionMapSchema,
   type State,
+  SYSTEM_ONE_ERROR_META,
   type SystemOneClient,
+  SystemOneError,
   stateSchema,
+  systemOneErrorInfo,
 } from '@mokei/system-one-client'
 
 export type SystemOneToolsOptions = {
@@ -70,7 +73,11 @@ export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
         properties: {
           state: stateSchema,
           questions: questionsInputSchema,
-          model: { type: 'string', description: 'Model name; overrides SYSTEM_ONE_MODEL' },
+          model: {
+            type: 'string',
+            description:
+              'Optional model name; overrides SYSTEM_ONE_MODEL. The backend picks its default when omitted.',
+          },
         },
         required: ['state', 'questions'],
         additionalProperties: false,
@@ -93,7 +100,17 @@ export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
           if (req.signal?.aborted) {
             throw err
           }
-          throw new Error((err as Error).message ?? 'Unknown error', { cause: err })
+          return {
+            isError: true,
+            structuredContent: undefined,
+            content: [{ type: 'text', text: err instanceof Error ? err.message : 'Unknown error' }],
+            _meta: {
+              [SYSTEM_ONE_ERROR_META]:
+                err instanceof SystemOneError
+                  ? systemOneErrorInfo(err)
+                  : { name: 'SystemOneError' },
+            },
+          }
         }
       },
     }),

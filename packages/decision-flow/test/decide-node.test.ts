@@ -394,12 +394,12 @@ describe('decideKind', () => {
     })
   })
 
-  test('fails without retry when neither client nor node specifies a model', async () => {
-    let calls = 0
+  test('lets the backend pick the model when neither client nor node specifies one', async () => {
+    const models: Array<string | undefined> = []
     const client = new SystemOneClient({
       backend: {
-        async predict() {
-          calls += 1
+        async predict(params) {
+          models.push(params.model)
           return answerResult()
         },
       },
@@ -410,10 +410,8 @@ describe('decideKind', () => {
       input: { state: 'refund' },
     })
 
-    expect(run.status).toBe('error')
-    expect(run.error?.reason).toBe('non_retryable')
-    expect(run.error?.attempts).toBe(1)
-    expect(calls).toBe(0)
+    expect(run.status).toBe('ended')
+    expect(models).toEqual([undefined])
   })
 
   afterEach(() => {

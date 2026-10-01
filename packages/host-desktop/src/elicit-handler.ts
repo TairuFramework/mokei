@@ -161,6 +161,10 @@ function createDialogQueue() {
   return { acquire }
 }
 
+/**
+ * An abort whose reason is a TaskInputWithdrawnError records the inbox entry as withdrawn;
+ * the returned promise still rejects with that reason, and the caller that aborted owns the rejection.
+ */
 export function createDesktopElicitHandler(
   options: DesktopElicitOptions = {},
 ): DesktopElicitHandler {

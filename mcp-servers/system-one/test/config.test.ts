@@ -1,4 +1,4 @@
-import type { SystemOneClient } from '@mokei/system-one-client'
+import { type SystemOneClient, SystemOneModelError } from '@mokei/system-one-client'
 import { createValidator } from '@sozai/schema'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -75,6 +75,35 @@ describe('createSystemOneTools', () => {
     expect(response.structuredContent).toEqual(result)
     expect(response.content[0]?.text).toBe(JSON.stringify(result))
   })
+
+  test.each([
+    [new SystemOneModelError({ message: 'unknown model' }), 'unknown model', 'SystemOneModelError'],
+    [new Error('failed'), 'failed', 'SystemOneError'],
+  ])(
+    'a client failure returns an error result with the error meta (%s)',
+    async (error, message, name) => {
+      const client = {
+        predict: async () => {
+          throw error
+        },
+      } as unknown as SystemOneClient
+      const tools = createSystemOneTools({ client })
+      const response = await tools.predict.handler({
+        input: {
+          state: 'hi',
+          questions: {
+            dept: { type: 'choice', instructions: 'Which team?', criteria: { billing: 'x' } },
+          },
+        },
+        signal: new AbortController().signal,
+      } as never)
+      expect(response).toEqual({
+        isError: true,
+        content: [{ type: 'text', text: message }],
+        _meta: { 'dev.mokei/system-one-error': { name } },
+      })
+    },
+  )
 
   test('predict tool rethrows when the request was cancelled instead of returning isError', async () => {
     const client = abortingClient()

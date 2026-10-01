@@ -44,7 +44,7 @@ export type InputInbox = {
   answer(id: string, content: ElicitResult['content']): boolean
   decline(id: string): boolean
   cancel(id: string): boolean
-  prompt(id: string): Promise<ElicitResult>
+  prompt(id: string, options?: { signal?: AbortSignal }): Promise<ElicitResult>
   dispose(): void
 }
 
@@ -86,6 +86,7 @@ type Entry = {
   prompt?: InboxPrompt
   promptAbort?: AbortController
   promptResult?: Promise<ElicitResult>
+  promptWaiters: number
   outcome?: { result: ElicitResult } | { error: unknown }
 }
 
@@ -156,6 +157,7 @@ export function createInputInbox(): InputInbox {
         resolve,
         reject,
         prompt: options.prompt,
+        promptWaiters: 0,
       }
       entries.set(input.id, entry)
       request.signal.addEventListener('abort', entry.onAbort, { once: true })
@@ -163,39 +165,78 @@ export function createInputInbox(): InputInbox {
     })
   }
 
-  function prompt(id: string): Promise<ElicitResult> {
+  function prompt(id: string, options: { signal?: AbortSignal } = {}): Promise<ElicitResult> {
     const entry = entries.get(id)
     if (entry == null) return Promise.reject(new Error(`No pending input ${id}`))
     if (entry.prompt == null) return Promise.reject(new Error(`Input ${id} cannot be prompted`))
-    if (entry.promptResult != null) return entry.promptResult
+    const { signal } = options
+    if (signal?.aborted) return Promise.reject(signal.reason)
 
-    const controller = new AbortController()
-    entry.promptAbort = controller
-    const run: Promise<ElicitResult> = (async () => {
-      // Once the entry is gone, the dialog's late result or failure is replaced by the outcome
-      const finalOutcome = (): ElicitResult => {
-        const outcome = entry.outcome
-        if (outcome != null && 'error' in outcome) throw outcome.error
-        return (outcome as { result: ElicitResult }).result
-      }
-      try {
-        const result = await entry.prompt?.(controller.signal)
-        if (entries.get(id) !== entry) return finalOutcome()
-        if (result == null) throw new Error(`Input ${id} prompt returned no result`)
-        settle(entry, result)
-        return result
-      } catch (error) {
-        if (entries.get(id) !== entry) return finalOutcome()
-        // Leave the entry pending so it can be prompted again
-        if (entry.promptAbort === controller) {
-          entry.promptResult = undefined
-          entry.promptAbort = undefined
+    let run = entry.promptResult
+    if (run == null) {
+      const controller = new AbortController()
+      entry.promptAbort = controller
+      run = (async () => {
+        const finalOutcome = (): ElicitResult => {
+          const outcome = entry.outcome
+          if (outcome != null && 'error' in outcome) throw outcome.error
+          return (outcome as { result: ElicitResult }).result
         }
-        throw error
+        try {
+          const result = await entry.prompt?.(controller.signal)
+          if (entries.get(id) !== entry) return finalOutcome()
+          if (result == null) throw new Error(`Input ${id} prompt returned no result`)
+          settle(entry, result)
+          return result
+        } catch (error) {
+          if (entries.get(id) !== entry) return finalOutcome()
+          // Leave the entry pending so it can be prompted again
+          if (entry.promptAbort === controller) {
+            entry.promptResult = undefined
+            entry.promptAbort = undefined
+          }
+          throw error
+        }
+      })()
+      entry.promptResult = run
+    }
+
+    entry.promptWaiters++
+    return new Promise<ElicitResult>((resolve, reject) => {
+      let active = true
+      const finish = (callback: () => void) => {
+        if (!active) return
+        active = false
+        signal?.removeEventListener('abort', onAbort)
+        entry.promptWaiters--
+        callback()
       }
-    })()
-    entry.promptResult = run
-    return run
+      const onAbort = () => {
+        if (signal == null) return
+        const outcome = entry.outcome
+        if (outcome != null) {
+          finish(() => {
+            if ('error' in outcome) reject(outcome.error)
+            else resolve(outcome.result)
+          })
+          return
+        }
+        finish(() => {
+          if (entry.promptWaiters === 0) {
+            const controller = entry.promptAbort
+            entry.promptResult = undefined
+            entry.promptAbort = undefined
+            controller?.abort(signal.reason)
+          }
+          reject(signal.reason)
+        })
+      }
+      signal?.addEventListener('abort', onAbort, { once: true })
+      run.then(
+        (result) => finish(() => resolve(result)),
+        (error) => finish(() => reject(error)),
+      )
+    })
   }
 
   function dispose(): void {

@@ -14,7 +14,7 @@ export type SystemOneResult = {
 export type SystemOneBackendPredictParams = {
   state: State
   questions: QuestionMap
-  model: string
+  model?: string
   signal?: AbortSignal
 }
 

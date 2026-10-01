@@ -202,7 +202,11 @@ export class HTTPSystemOneBackend implements SystemOneBackend {
   #post(params: SystemOneBackendPredictParams, signal?: AbortSignal): Promise<SystemOneResult> {
     return this.#http
       .post('v1/systemone', {
-        json: { state: params.state, model: params.model, questions: params.questions },
+        json: {
+          state: params.state,
+          questions: params.questions,
+          ...(params.model === undefined ? {} : { model: params.model }),
+        },
         signal,
       })
       .json<SystemOneResult>()
