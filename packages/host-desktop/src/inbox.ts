@@ -212,6 +212,7 @@ export function createInputInbox(): InputInbox {
         callback()
       }
       const onAbort = () => {
+        if (signal == null) return
         const outcome = entry.outcome
         if (outcome != null) {
           finish(() => {
@@ -221,8 +222,13 @@ export function createInputInbox(): InputInbox {
           return
         }
         finish(() => {
-          if (entry.promptWaiters === 0) entry.promptAbort?.abort(signal?.reason)
-          reject(signal?.reason)
+          if (entry.promptWaiters === 0) {
+            const controller = entry.promptAbort
+            entry.promptResult = undefined
+            entry.promptAbort = undefined
+            controller?.abort(signal.reason)
+          }
+          reject(signal.reason)
         })
       }
       signal?.addEventListener('abort', onAbort, { once: true })

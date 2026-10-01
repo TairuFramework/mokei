@@ -161,6 +161,10 @@ function createDialogQueue() {
   return { acquire }
 }
 
+/**
+ * An abort whose reason is a TaskInputWithdrawnError records the inbox entry as withdrawn;
+ * the returned promise still rejects with that reason, and the caller that aborted owns the rejection.
+ */
 export function createDesktopElicitHandler(
   options: DesktopElicitOptions = {},
 ): DesktopElicitHandler {
@@ -412,11 +416,7 @@ export function createDesktopElicitHandler(
     }
   }
 
-  /**
-   * Inbox path: adds a pending entry, starts a notification and returns the entry's answer.
-   * An abort whose reason is a TaskInputWithdrawnError records the inbox entry as withdrawn;
-   * the returned promise still rejects with that reason, and the caller that aborted owns the rejection.
-   */
+  /** Inbox path: adds a pending entry, starts a notification and returns the entry's answer. */
   function addToInbox(inbox: InputInbox, request: DesktopElicitRequest): Promise<ElicitResult> {
     if (isUrlMode(request.params)) {
       report(options.onUnsupported, URL_MODE_REASON)

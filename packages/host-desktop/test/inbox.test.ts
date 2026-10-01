@@ -308,11 +308,60 @@ describe('input inbox', () => {
       const first = inbox.prompt(id)
       const secondCaller = new AbortController()
       const second = inbox.prompt(id, { signal: secondCaller.signal })
+      expect(prompt).toHaveBeenCalledTimes(1)
       secondCaller.abort(new Error('second stopped'))
       await expect(second).rejects.toThrow('second stopped')
       expect(promptSignal?.aborted).toBe(false)
       d.resolve({ action: 'accept', content: { name: 'shared' } })
       await expect(first).resolves.toEqual({ action: 'accept', content: { name: 'shared' } })
+      await answer
+    })
+
+    test('the shared prompt aborts only after both signalled callers abort', async () => {
+      inbox = createInputInbox()
+      let promptSignal: AbortSignal | undefined
+      const prompt = vi.fn((signal: AbortSignal) => {
+        promptSignal = signal
+        return new Promise<ElicitResult>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+      })
+      const answer = inbox.add(request(), { prompt })
+      const { id } = pending(0)
+      const firstCaller = new AbortController()
+      const secondCaller = new AbortController()
+      const first = inbox.prompt(id, { signal: firstCaller.signal })
+      const second = inbox.prompt(id, { signal: secondCaller.signal })
+      firstCaller.abort(new Error('first stopped'))
+      await expect(first).rejects.toThrow('first stopped')
+      expect(promptSignal?.aborted).toBe(false)
+      secondCaller.abort(new Error('second stopped'))
+      await expect(second).rejects.toThrow('second stopped')
+      expect(promptSignal?.aborted).toBe(true)
+      inbox.cancel(id)
+      await answer
+    })
+
+    test('prompt immediately after the last abort starts a new run', async () => {
+      inbox = createInputInbox()
+      const signals: Array<AbortSignal> = []
+      const prompt = vi.fn((signal: AbortSignal) => {
+        signals.push(signal)
+        return new Promise<ElicitResult>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+      })
+      const answer = inbox.add(request(), { prompt })
+      const { id } = pending(0)
+      const caller = new AbortController()
+      const first = inbox.prompt(id, { signal: caller.signal })
+      caller.abort(new Error('stopped'))
+      const second = inbox.prompt(id)
+      expect(prompt).toHaveBeenCalledTimes(2)
+      expect(signals[1]).not.toBe(signals[0])
+      await expect(first).rejects.toThrow('stopped')
+      inbox.cancel(id)
+      await expect(second).resolves.toEqual({ action: 'cancel' })
       await answer
     })
 
