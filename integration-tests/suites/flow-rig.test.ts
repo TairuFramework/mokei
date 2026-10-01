@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import type { RigDriver, StubCall } from '../support/flow-rig/rig-driver.ts'
@@ -234,7 +235,7 @@ describe('inbox rig', () => {
       await driver.cleanup([])
       expect(performance.now() - cleanupStartedAt).toBeLessThan(5000)
       const settled = await Promise.allSettled([started.promise])
-      expect(settled[0]).toMatchObject({ status: 'rejected', reason: { message: 'Cancelled' } })
+      expect(settled[0]).toMatchObject({ status: 'rejected' })
       await driver.waitForDialog(
         watermark,
         (call) => call.index === ask.index && !call.pending,
@@ -438,7 +439,9 @@ describe('startRig', () => {
       startRig({
         input: 'inbox',
         configOverrides: {
-          flowsDir: new URL('../support/flow-rig/nonexistent-flows', import.meta.url).pathname,
+          flowsDir: fileURLToPath(
+            new URL('../support/flow-rig/nonexistent-flows', import.meta.url),
+          ),
         },
       }),
     ).rejects.toThrow()

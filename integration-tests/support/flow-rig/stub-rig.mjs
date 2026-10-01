@@ -5,24 +5,38 @@ import { createStubDesktop } from './stub-desktop.mjs'
 
 const stub = createStubDesktop()
 let rig
-try {
-  rig = await createRig({ configPath: process.env.FLOW_RIG_CONFIG, desktop: stub.desktop })
-} catch (error) {
-  console.error('[flow-rig-stub]', error)
-  await stub.dispose()
-  process.exit(1)
-}
 
 let stopping
 function stop() {
   stopping ??= (async () => {
     try {
-      await rig.shutdown()
+      await rig?.shutdown()
     } finally {
       await stub.dispose()
     }
   })()
   return stopping
+}
+
+function exit() {
+  stop().then(
+    () => process.exit(0),
+    (error) => {
+      console.error('[flow-rig-stub]', error)
+      process.exit(1)
+    },
+  )
+}
+process.once('SIGINT', exit)
+process.once('SIGTERM', exit)
+process.stdin.once('end', exit)
+
+try {
+  rig = await createRig({ configPath: process.env.FLOW_RIG_CONFIG, desktop: stub.desktop })
+} catch (error) {
+  console.error('[flow-rig-stub]', error)
+  await stop()
+  process.exit(1)
 }
 
 serveProcess({
@@ -42,16 +56,3 @@ serveProcess({
     }),
   },
 })
-
-function exit() {
-  stop().then(
-    () => process.exit(0),
-    (error) => {
-      console.error('[flow-rig-stub]', error)
-      process.exit(1)
-    },
-  )
-}
-process.once('SIGINT', exit)
-process.once('SIGTERM', exit)
-process.stdin.once('end', exit)

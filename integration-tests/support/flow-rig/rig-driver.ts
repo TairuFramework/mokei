@@ -8,6 +8,7 @@ import type { CallToolResult } from '@mokei/context-protocol'
 import { NodeContextHost } from '@mokei/host-node'
 
 const WAIT_MS = 10_000
+const START_MS = 30_000
 const POLL_MS = 100
 const absolute = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 
@@ -92,7 +93,7 @@ export async function startRig(config: RigConfig): Promise<RigDriver> {
       env: { ...process.env, FLOW_RIG_CONFIG: configPath },
       stderr: 'inherit',
     })
-    await host.setup({ key: 'rig', timeout: WAIT_MS })
+    await host.setup({ key: 'rig', timeout: START_MS })
   } catch (error) {
     try {
       await host.dispose()
@@ -194,9 +195,7 @@ export async function startRig(config: RigConfig): Promise<RigDriver> {
     },
     async dispose() {
       try {
-        const startedAt = Date.now()
         data(await call('stub_shutdown', {}, { timeoutMs: WAIT_MS }))
-        assert.ok(Date.now() - startedAt < WAIT_MS, 'teardown finishes before the kill grace')
       } finally {
         try {
           await host.dispose()

@@ -75,7 +75,7 @@ and `flow_status` on an unknown `runID` returns an error result.
 
 ## Manual QA checklist
 
-Run these from Claude Code on macOS with the rig built. This checklist covers the real desktop and real System One.
+Run these from Claude Code on macOS with the rig built and System One running. This checklist covers the real desktop and real System One.
 
 - [x] `start_flow` with `demo/triage` against a running System One completes with a predicted label.
 - [x] `start_flow` with `demo/ask` shows an inbox notification. `flow_status` lists one pending entry. `prompt_input`
