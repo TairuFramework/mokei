@@ -575,7 +575,7 @@ test('recovery repeats an acted call with the same operation key after its handl
     expect(calls[0]?.key).toMatch(/^run-1:.+/)
     expect(calls[1]?.key).toBe(calls[0]?.key)
     expect(calls.map(({ attempt }) => attempt)).toEqual([1, 1])
-    expect(h.cancelled).toContainEqual({ id: tool.id, taskId: 'orphan' })
+    expect(h.cancelled).toEqual([])
   } finally {
     await second.dispose()
   }

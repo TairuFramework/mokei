@@ -6,6 +6,7 @@ import {
   InputRequestWithdrawnError,
   type TaskHandle,
   TaskInputKeyReusedError,
+  TaskManagerDisposedError,
 } from '@mokei/context-server'
 import {
   type FlowDefinition,
@@ -126,7 +127,7 @@ export async function startRun(params: {
     return cleanupPromise
   }
   const onAbort = () => {
-    void cleanup()
+    if (!(handle.signal.reason instanceof TaskManagerDisposedError)) void cleanup()
   }
   handle.signal.addEventListener('abort', onAbort, { once: true })
 
@@ -396,6 +397,6 @@ export async function startRun(params: {
     throw error
   } finally {
     handle.signal.removeEventListener('abort', onAbort)
-    await cleanup()
+    if (!(handle.signal.reason instanceof TaskManagerDisposedError)) await cleanup()
   }
 }

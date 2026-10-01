@@ -24,6 +24,7 @@ import {
   TaskStoreConflictError,
 } from './task-store.js'
 import { settleToolOutcome } from './tool-outcome.js'
+import { withRequestMeta } from './trace.js'
 import {
   type GenericToolDefinition,
   MissingRequiredClientCapabilityError,
@@ -56,6 +57,12 @@ export type TaskHandle = {
   awaitInput(options?: { signal?: AbortSignal }): Promise<Record<string, InputResponse>>
   checkpoint(resumeData: JSONValue): Promise<void>
   cancel(reason?: string): Promise<boolean>
+}
+export class TaskManagerDisposedError extends Error {
+  constructor() {
+    super('Task manager disposed')
+    this.name = 'TaskManagerDisposedError'
+  }
 }
 export class TaskInputKeyReusedError extends Error {
   constructor(key: string) {
@@ -371,7 +378,7 @@ class ManagedTasks implements TaskManager {
     requestMeta?: Record<string, JSONValue>
   }): Promise<CreateTaskResult> {
     await this.#ready
-    if (this.#disposed) throw new Error('Task manager disposed')
+    if (this.#disposed) throw new TaskManagerDisposedError()
     const createdAt = new Date(this.#now()).toISOString()
     const record: TaskRecord = {
       taskID: crypto.randomUUID(),
@@ -390,7 +397,7 @@ class ManagedTasks implements TaskManager {
     }
     await this.#store.create(record)
     this.#events.fire('taskStatus', detailed(record))
-    this.#attach(record.taskID, params.tool, params.work, record.requestMeta)
+    if (!this.#disposed) this.#attach(record.taskID, params.tool, params.work, record.requestMeta)
     return { ...detailed(record), resultType: 'task' }
   }
 
@@ -617,7 +624,7 @@ class ManagedTasks implements TaskManager {
         await sleep(delay, this.#disposal.signal).catch(() => {})
         delay = Math.min(delay * 2, WITHDRAW_BACKOFF_MS.max)
       }
-      settle(() => reject(new Error('Task manager disposed')))
+      settle(() => reject(new TaskManagerDisposedError()))
     })()
     return promise
   }
@@ -713,7 +720,7 @@ class ManagedTasks implements TaskManager {
 
   async recover(tools: ToolDefinitions): Promise<void> {
     await this.#ready
-    if (this.#disposed) throw new Error('Task manager disposed')
+    if (this.#disposed) throw new TaskManagerDisposedError()
     for (const taskID of [...this.#hidden]) {
       if (this.#recovering.has(taskID) || !this.#hidden.has(taskID)) continue
       this.#recovering.add(taskID)
@@ -746,7 +753,10 @@ class ManagedTasks implements TaskManager {
         }
         if (resumedWork === undefined) await this.#failInterrupted(taskID)
         else {
-          this.#attach(taskID, tool, resumedWork, latest.requestMeta)
+          const work = resumedWork
+          withRequestMeta(latest.requestMeta, () => {
+            this.#attach(taskID, tool, work, latest.requestMeta)
+          })
           this.#hidden.delete(taskID)
         }
       } finally {
@@ -761,7 +771,7 @@ class ManagedTasks implements TaskManager {
     this.#disposal.abort()
     clearInterval(this.#timer)
     for (const taskID of this.#controllers.keys())
-      this.#abort(taskID, new Error('Task manager disposed'))
+      this.#abort(taskID, new TaskManagerDisposedError())
   }
 }
 

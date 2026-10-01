@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import type {
   ClientCapabilities,
   DetailedTask,
@@ -5,8 +6,12 @@ import type {
   InputResponse,
 } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
+import type { Context } from '@opentelemetry/api'
+import { context, ROOT_CONTEXT } from '@opentelemetry/api'
+import { getActiveTraceContext } from '@sozai/otel'
 import { describe, expect, test, vi } from 'vitest'
 
+import { TaskManagerDisposedError } from '../src/index.js'
 import {
   createTaskManager,
   InputRequestWithdrawnError,
@@ -45,6 +50,125 @@ async function tick(): Promise<void> {
 }
 
 describe('task manager', () => {
+  test('dispose aborts running work with TaskManagerDisposedError', async () => {
+    const manager = createTaskManager()
+    let signal: AbortSignal | undefined
+    await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: {},
+      work: (handle) => {
+        signal = handle.signal
+        return new Promise(() => {})
+      },
+    })
+    await manager.dispose()
+    expect(signal?.aborted).toBe(true)
+    expect(signal?.reason).toBeInstanceOf(TaskManagerDisposedError)
+    expect(signal?.reason).toMatchObject({
+      name: 'TaskManagerDisposedError',
+      message: 'Task manager disposed',
+    })
+  })
+
+  test('create does not start work when disposed during the store write', async () => {
+    const base = createMemoryTaskStore()
+    const writing = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const store: TaskStore = {
+      ...base,
+      create: async (record) => {
+        writing.resolve()
+        await release.promise
+        await base.create(record)
+      },
+    }
+    const manager = createTaskManager({ store })
+    let started = false
+    const creating = manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: {},
+      work: () => {
+        started = true
+        return result
+      },
+    })
+    await writing.promise
+    await manager.dispose()
+    release.resolve()
+    const created = await creating
+    expect(started).toBe(false)
+    expect((await store.get(created.taskId))?.status).toBe('working')
+    const recovered: Array<string> = []
+    const second = createTaskManager({
+      store,
+      recover: async (record, resume) => {
+        recovered.push(record.taskID)
+        await resume(() => result)
+      },
+    })
+    try {
+      await second.recover({ echo: tool })
+      expect(recovered).toEqual([created.taskId])
+      await expect.poll(async () => (await second.get(created.taskId)).status).toBe('completed')
+    } finally {
+      await second.dispose()
+    }
+  })
+
+  test('recovered work runs under its stored request trace context', async () => {
+    const storage = new AsyncLocalStorage<Context>()
+    context.setGlobalContextManager({
+      active: () => storage.getStore() ?? ROOT_CONTEXT,
+      with: <A extends Array<unknown>, F extends (...args: A) => ReturnType<F>>(
+        ctx: Context,
+        fn: F,
+        thisArg?: ThisParameterType<F>,
+        ...args: A
+      ): ReturnType<F> => storage.run(ctx, () => fn.call(thisArg, ...args)),
+      bind: <T>(_ctx: Context, target: T): T => target,
+      enable() {
+        return this
+      },
+      disable() {
+        return this
+      },
+    })
+    const store = createMemoryTaskStore()
+    const first = createTaskManager({ store })
+    let second: ReturnType<typeof createTaskManager> | undefined
+    let traceID: string | undefined
+    try {
+      const created = await first.create({
+        toolName: 'echo',
+        tool,
+        clientCapabilities: {},
+        requestMeta: { traceparent: '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01' },
+        work: () => new Promise(() => {}),
+      })
+      await first.dispose()
+      const recovered = createTaskManager({
+        store,
+        recover: async (_record, resume) => {
+          await resume(async () => {
+            await Promise.resolve()
+            traceID = getActiveTraceContext()?.traceID
+            return result
+          })
+        },
+      })
+      second = recovered
+      await recovered.recover({ echo: tool })
+      await expect.poll(async () => (await recovered.get(created.taskId)).status).toBe('completed')
+      expect(traceID).toBe('0af7651916cd43dd8448eb211c80319c')
+    } finally {
+      await first.dispose()
+      await second?.dispose()
+      context.disable()
+    }
+  })
+
   test('a failed answer write rejects the update and a retry completes the input', async () => {
     const base = createMemoryTaskStore()
     const failure = new Error('Store unavailable')
@@ -1696,7 +1820,7 @@ describe('input waiting and lifecycle', () => {
       await vi.advanceTimersByTimeAsync(75)
       expect(errors).toHaveLength(4)
       await manager.dispose()
-      expect(await pending).toEqual({ error: new Error('Task manager disposed') })
+      expect(await pending).toEqual({ error: new TaskManagerDisposedError() })
       expect(vi.getTimerCount()).toBe(0)
       await vi.advanceTimersByTimeAsync(5_000)
       expect(errors).toHaveLength(4)
