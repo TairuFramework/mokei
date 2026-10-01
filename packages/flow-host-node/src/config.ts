@@ -93,13 +93,15 @@ const configurationSchema = {
 } as const satisfies Schema
 
 const validateConfiguration = createValidator(configurationSchema)
-const defaults: FlowConfig = {
-  siblings: {},
-  flowDirs: [],
-  approval: { allow: [] },
-  tracing: {},
-  logs: { level: 'info' },
-  retention: { days: 30 },
+function createDefaults(): FlowConfig {
+  return {
+    siblings: {},
+    flowDirs: [],
+    approval: { allow: [] },
+    tracing: {},
+    logs: { level: 'info' },
+    retention: { days: 30 },
+  }
 }
 
 function issuePath(issue: { path?: ReadonlyArray<unknown>; details?: unknown }): string {
@@ -119,16 +121,13 @@ function issuePath(issue: { path?: ReadonlyArray<unknown>; details?: unknown }):
 function resolveConfiguredPath(value: string, configDirectory: string): string {
   if (value.startsWith('~/')) return join(homedir(), value.slice(2))
   if (value === '~') return homedir()
-  if (value.startsWith('~') || isAbsolute(value) || /^[a-z][a-z\d+.-]*:\/\//i.test(value))
-    return value
+  if (value.startsWith('~') || isAbsolute(value) || /^[a-z][a-z\d+.-]+:/i.test(value)) return value
   return resolve(configDirectory, value)
 }
 
 function isScriptPath(value: string): boolean {
   return (
-    /\.(?:js|mjs|cjs)$/i.test(value) &&
-    !value.startsWith('-') &&
-    !/^[a-z][a-z\d+.-]*:\/\//i.test(value)
+    /\.(?:js|mjs|cjs)$/i.test(value) && !value.startsWith('-') && !/^[a-z][a-z\d+.-]+:/i.test(value)
   )
 }
 
@@ -140,7 +139,7 @@ export async function loadFlowConfig(
     content = await readFile(path, 'utf8')
   } catch (error) {
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
-      return { ...defaults }
+      return createDefaults()
     }
     throw error
   }

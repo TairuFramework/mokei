@@ -30,6 +30,19 @@ describe('flow configuration', () => {
     })
   })
 
+  test('returns fresh nested defaults for each missing config', async () => {
+    const { loadFlowConfig } = await import('../src/index.js')
+    const directory = await createDirectory()
+    const path = join(directory, 'missing.json')
+    const first = await loadFlowConfig(path)
+    first.approval.allow.push('changed')
+    first.retention.days = 1
+
+    const second = await loadFlowConfig(path)
+    expect(second.approval.allow).toEqual([])
+    expect(second.retention.days).toBe(30)
+  })
+
   test('loads the complete config', async () => {
     const { loadFlowConfig } = await import('../src/index.js')
     const directory = await createDirectory()
@@ -123,9 +136,13 @@ describe('flow configuration', () => {
               './worker.js',
               'worker.mjs',
               '../worker.cjs',
+              '~/worker.js',
+              '/opt/worker.js',
               '--inspect',
               '--config=settings.js',
               'https://example.com/code.js',
+              'file:worker.js',
+              'node:worker',
               'ordinary',
             ],
           },
@@ -144,9 +161,13 @@ describe('flow configuration', () => {
       join(directory, 'worker.js'),
       join(directory, 'worker.mjs'),
       join(directory, '../worker.cjs'),
+      join(homedir(), 'worker.js'),
+      '/opt/worker.js',
       '--inspect',
       '--config=settings.js',
       'https://example.com/code.js',
+      'file:worker.js',
+      'node:worker',
       'ordinary',
     ])
   })
