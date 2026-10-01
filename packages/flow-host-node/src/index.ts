@@ -1,4 +1,7 @@
+export type { FlowConfig } from './config.js'
+export { FlowConfigError, loadFlowConfig } from './config.js'
 export { openFlowDatabase } from './database.js'
+export { loadFlowDirs } from './flow-dirs.js'
 export { createSQLiteRunStore } from './sqlite-run-store.js'
 export { createSQLiteTaskStore } from './sqlite-task-store.js'
 export { createSQLiteTraceStore } from './sqlite-trace-store.js'
