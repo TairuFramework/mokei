@@ -1,1 +1,1 @@
-export {}
+export { openFlowDatabase } from './database.js'
