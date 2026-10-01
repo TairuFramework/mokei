@@ -82,6 +82,99 @@ test('queued approval survives a restart', async () => {
   await state(second.host, run.runID, 'completed')
   expect(second.echo).toHaveBeenCalledTimes(1)
 })
+test('input keeps its item and task IDs across two sequential recoveries', async () => {
+  const shared = stores()
+  const first = await fixture(shared)
+  const run = await first.host.start({ definition: inputFlow })
+  await state(first.host, run.runID, 'input_required')
+  const item = required(first.host.inbox.list()[0])
+  const taskID = required((await shared.runStore.get(run.runID))?.taskID)
+  await first.host.dispose()
+  const second = await fixture(shared)
+  await vi.waitFor(() => expect(second.host.inbox.list()[0]?.id).toBe(item.id))
+  await second.host.dispose()
+  const third = await fixture(shared)
+  await vi.waitFor(() => expect(third.host.inbox.list()[0]?.id).toBe(item.id))
+  expect((await shared.runStore.get(run.runID))?.taskID).toBe(taskID)
+  await third.host.inbox.answer(item.id, { value: 'Ada' })
+  await state(third.host, run.runID, 'completed')
+  expect(await third.host.get(run.runID)).toMatchObject({
+    result: { output: { answer: { value: 'Ada' } } },
+  })
+  const tasks = await shared.taskStore.list({
+    status: ['working', 'input_required', 'completed', 'failed', 'cancelled'],
+  })
+  expect(tasks.map((task) => task.taskID)).toEqual([taskID])
+})
+test.each(['snapshot', 'interrupted'] as const)(
+  'dispose drains an in-progress watcher %s write before disposing wiring',
+  async (source) => {
+    const shared = stores()
+    const originalWiring = wiringModule.addDecisionFlow
+    let wiringDisposed = false
+    vi.spyOn(wiringModule, 'addDecisionFlow').mockImplementation(async (...args) => {
+      const wiring = await originalWiring(...args)
+      const dispose = wiring.dispose.bind(wiring)
+      wiring.dispose = async () => {
+        wiringDisposed = true
+        await dispose()
+      }
+      return wiring
+    })
+    const f = await fixture(shared)
+    const run = await f.host.start({ definition: inputFlow })
+    await state(f.host, run.runID, 'input_required')
+    const taskID = required((await shared.runStore.get(run.runID))?.taskID)
+    const entered = deferred<void>()
+    const release = deferred<void>()
+    const written = deferred<void>()
+    const update = shared.runStore.update.bind(shared.runStore)
+    let disposed = false
+    let writesAfterDispose = 0
+    vi.spyOn(shared.runStore, 'update').mockImplementation(async (...args) => {
+      const held = args[1].state === (source === 'snapshot' ? 'completed' : 'failed')
+      if (held) {
+        entered.resolve()
+        await release.promise
+      }
+      const result = await update(...args)
+      if (disposed) writesAfterDispose += 1
+      if (held) written.resolve()
+      return result
+    })
+    if (source === 'snapshot') {
+      const client = f.session.contextHost.getContext('flow').client
+      const task = await client.tasks.get(taskID)
+      if (task.status !== 'input_required') throw new Error('Expected input')
+      await client.tasks.update(taskID, {
+        [required(Object.keys(task.inputRequests)[0])]: {
+          action: 'accept',
+          content: { value: 'Ada' },
+        },
+      })
+    } else {
+      await shared.taskStore.delete(taskID)
+    }
+    await entered.promise
+    const disposing = f.host.dispose().then(() => {
+      disposed = true
+    })
+    try {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      expect(disposed).toBe(false)
+      expect(wiringDisposed).toBe(false)
+    } finally {
+      release.resolve()
+      await written.promise
+      await disposing
+    }
+    expect(writesAfterDispose).toBe(0)
+    expect(await f.host.get(run.runID)).toMatchObject({
+      state: source === 'snapshot' ? 'completed' : 'failed',
+      ...(source === 'interrupted' ? { error: { type: 'Interrupted' } } : {}),
+    })
+  },
+)
 async function crash(withTask: boolean) {
   const shared = stores()
   const original = wiringModule.addDecisionFlow
@@ -177,6 +270,38 @@ test('launch crash without a task fails Interrupted', async () => {
     error: { type: 'Interrupted' },
   })
 })
+test.each(['failed', 'cancelled'] as const)(
+  'launch crash links a task already %s without creating another task',
+  async (status) => {
+    const f = await crash(true)
+    await f.first.host.dispose()
+    const taskID = required(f.taskID)
+    const task = required(await f.taskStore.get(taskID))
+    await f.taskStore.update(
+      taskID,
+      {
+        status,
+        lastUpdatedAt: new Date().toISOString(),
+        ...(status === 'failed' ? { error: { code: -32603, message: 'Worker failed' } } : {}),
+      },
+      { revision: task.revision },
+    )
+    f.polls.count = 0
+    const second = await fixture(f)
+    await state(second.host, f.record.runID, status)
+    expect((await f.runStore.get(f.record.runID))?.taskID).toBe(taskID)
+    if (status === 'failed')
+      expect(await second.host.get(f.record.runID)).toMatchObject({
+        error: { type: 'TaskFailed', message: 'Worker failed' },
+      })
+    expect(f.polls.count).toBe(1)
+    expect(second.host.inbox.list()).toEqual([])
+    const tasks = await f.taskStore.list({
+      status: ['working', 'input_required', 'completed', 'failed', 'cancelled'],
+    })
+    expect(tasks.map((task) => task.taskID)).toEqual([taskID])
+  },
+)
 test.each([false, true])(
   'recovery honours cancelRequested with a linked task: %s',
   async (linked) => {

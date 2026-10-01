@@ -298,7 +298,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
       disposed = true
       disposal = (async () => {
         await Promise.allSettled(inFlight)
-        watchers.stop()
+        await watchers.stop()
         await wiring.dispose()
       })()
       return disposal

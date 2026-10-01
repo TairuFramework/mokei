@@ -10,6 +10,8 @@ export function createWatchers(params: {
 }) {
   const logger = getMokeiLogger('flow-host')
   const watchers = new Map<string, AbortController>()
+  const pending = new Set<Promise<void>>()
+  let stopped = false
   function sleep(ms: number, signal: AbortSignal): Promise<void> {
     return new Promise((resolve) => {
       const finish = () => {
@@ -52,19 +54,23 @@ export function createWatchers(params: {
   }
   return {
     watch(runID: string, taskID: string) {
-      if (watchers.has(runID)) return
+      if (stopped || watchers.has(runID)) return
       const controller = new AbortController()
       watchers.set(runID, controller)
-      void loop(runID, taskID, controller.signal)
+      const work = loop(runID, taskID, controller.signal)
         .catch((error) => {
           logger.error('Task watcher failed for {runID}: {error}', { runID, error })
         })
         .finally(() => {
+          pending.delete(work)
           if (watchers.get(runID) === controller) watchers.delete(runID)
         })
+      pending.add(work)
     },
-    stop() {
+    async stop() {
+      stopped = true
       for (const controller of watchers.values()) controller.abort()
+      await Promise.allSettled(pending)
       watchers.clear()
     },
   }
