@@ -1,37 +1,15 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ClientRequest, ServerMessage } from '@mokei/context-protocol'
-import type { Context } from '@opentelemetry/api'
-import { context, ROOT_CONTEXT } from '@opentelemetry/api'
+import { context } from '@opentelemetry/api'
 import { formatTraceparent, getActiveBaggage, getActiveTraceContext } from '@sozai/otel'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import { ContextServer, createTool } from '../src/index.js'
 import { activeContextFromMeta, baggageEntriesFromMeta, withRequestMeta } from '../src/trace.js'
-
-// Register a minimal AsyncLocalStorage-based context manager so context.with() +
-// context.active() propagate both synchronously and across await boundaries in tests.
-// Without this, OTel's default NoopContextManager ignores the context passed to
-// context.with(), so getActiveTraceContext() always returns undefined.
-const storage = new AsyncLocalStorage<Context>()
+import { installTestContextManager } from './test-context-manager.js'
 
 beforeAll(() => {
-  context.setGlobalContextManager({
-    active: () => storage.getStore() ?? ROOT_CONTEXT,
-    with: <A extends Array<unknown>, F extends (...args: A) => ReturnType<F>>(
-      ctx: Context,
-      fn: F,
-      thisArg?: ThisParameterType<F>,
-      ...args: A
-    ): ReturnType<F> => storage.run(ctx, () => fn.call(thisArg, ...args)),
-    bind: <T>(_ctx: Context, target: T): T => target,
-    enable() {
-      return this
-    },
-    disable() {
-      return this
-    },
-  })
+  installTestContextManager()
 })
 
 afterAll(() => {

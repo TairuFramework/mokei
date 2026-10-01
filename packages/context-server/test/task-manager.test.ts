@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
 import type {
   ClientCapabilities,
   DetailedTask,
@@ -6,20 +5,19 @@ import type {
   InputResponse,
 } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
-import type { Context } from '@opentelemetry/api'
-import { context, ROOT_CONTEXT } from '@opentelemetry/api'
 import { getActiveTraceContext } from '@sozai/otel'
 import { describe, expect, test, vi } from 'vitest'
 
-import { TaskManagerDisposedError } from '../src/index.js'
 import {
   createTaskManager,
   InputRequestWithdrawnError,
   type TaskHandle,
   TaskInputKeyReusedError,
+  TaskManagerDisposedError,
 } from '../src/task-manager.js'
 import { createMemoryTaskStore, type TaskRecord, type TaskStore } from '../src/task-store.js'
 import type { GenericToolDefinition } from '../src/types.js'
+import { installTestContextManager } from './test-context-manager.js'
 
 const tool: GenericToolDefinition = {
   description: 'Test tool',
@@ -85,6 +83,10 @@ describe('task manager', () => {
     }
     const manager = createTaskManager({ store })
     let started = false
+    const statuses: Array<DetailedTask> = []
+    manager.events.on('taskStatus', (status) => {
+      statuses.push(status)
+    })
     const creating = manager.create({
       toolName: 'echo',
       tool,
@@ -99,6 +101,7 @@ describe('task manager', () => {
     release.resolve()
     const created = await creating
     expect(started).toBe(false)
+    expect(statuses).toEqual([])
     expect((await store.get(created.taskId))?.status).toBe('working')
     const recovered: Array<string> = []
     const second = createTaskManager({
@@ -117,24 +120,77 @@ describe('task manager', () => {
     }
   })
 
-  test('recovered work runs under its stored request trace context', async () => {
-    const storage = new AsyncLocalStorage<Context>()
-    context.setGlobalContextManager({
-      active: () => storage.getStore() ?? ROOT_CONTEXT,
-      with: <A extends Array<unknown>, F extends (...args: A) => ReturnType<F>>(
-        ctx: Context,
-        fn: F,
-        thisArg?: ThisParameterType<F>,
-        ...args: A
-      ): ReturnType<F> => storage.run(ctx, () => fn.call(thisArg, ...args)),
-      bind: <T>(_ctx: Context, target: T): T => target,
-      enable() {
-        return this
+  test('does not emit status when a mutation finishes after disposal', async () => {
+    const base = createMemoryTaskStore()
+    const writing = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const store: TaskStore = {
+      ...base,
+      update: async (...args) => {
+        writing.resolve()
+        await release.promise
+        return base.update(...args)
       },
-      disable() {
-        return this
+    }
+    const manager = createTaskManager({ store })
+    let handle: TaskHandle | undefined
+    await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: {},
+      work: (task) => {
+        handle = task
+        return new Promise(() => {})
       },
     })
+    if (handle === undefined) throw new Error('Worker did not start')
+    const statuses: Array<DetailedTask> = []
+    manager.events.on('taskStatus', (status) => {
+      statuses.push(status)
+    })
+    const write = handle.setStatus('progress')
+    await writing.promise
+    await manager.dispose()
+    release.resolve()
+    await expect(write).rejects.toBeInstanceOf(TaskManagerDisposedError)
+    expect(statuses).toEqual([])
+  })
+
+  test('does not emit errors when a sweep fails after disposal', async () => {
+    vi.useFakeTimers()
+    const scanning = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<Array<TaskRecord>>()
+    const base = createMemoryTaskStore()
+    let scans = 0
+    const manager = createTaskManager({
+      store: {
+        ...base,
+        list: async (filter) => {
+          if (scans++ === 0) return base.list(filter)
+          scanning.resolve()
+          return release.promise
+        },
+      },
+    })
+    const errors: Array<unknown> = []
+    manager.events.on('taskError', ({ error }) => {
+      errors.push(error)
+    })
+    try {
+      await vi.advanceTimersByTimeAsync(1_000)
+      await scanning.promise
+      await manager.dispose()
+      release.reject(new Error('Store unavailable'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(errors).toEqual([])
+    } finally {
+      await manager.dispose()
+      vi.useRealTimers()
+    }
+  })
+
+  test('recovered work runs under its stored request trace context', async () => {
+    const disableContext = installTestContextManager()
     const store = createMemoryTaskStore()
     const first = createTaskManager({ store })
     let second: ReturnType<typeof createTaskManager> | undefined
@@ -165,7 +221,7 @@ describe('task manager', () => {
     } finally {
       await first.dispose()
       await second?.dispose()
-      context.disable()
+      disableContext()
     }
   })
 

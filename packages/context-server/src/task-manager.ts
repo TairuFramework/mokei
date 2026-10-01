@@ -249,7 +249,7 @@ class ManagedTasks implements TaskManager {
       () => {
         void this.#sweep().catch((error) => {
           // A failed scan cannot identify an individual task.
-          this.#events.fire('taskError', { error })
+          if (!this.#disposed) this.#events.fire('taskError', { error })
         })
       },
       Math.max(1, Math.min(this.#ttlMs ?? 1_000, 1_000)),
@@ -308,7 +308,7 @@ class ManagedTasks implements TaskManager {
         continue
       }
       committed?.(updated)
-      this.#events.fire('taskStatus', detailed(updated))
+      if (!this.#disposed) this.#events.fire('taskStatus', detailed(updated))
       this.#notify(taskID, updated)
       return updated
     }
@@ -363,7 +363,7 @@ class ManagedTasks implements TaskManager {
       try {
         await this.#expire(record)
       } catch (error) {
-        this.#events.fire('taskError', { taskID: record.taskID, error })
+        if (!this.#disposed) this.#events.fire('taskError', { taskID: record.taskID, error })
       }
     }
   }
@@ -396,7 +396,7 @@ class ManagedTasks implements TaskManager {
       ...(params.resumeData !== undefined && { resumeData: params.resumeData }),
     }
     await this.#store.create(record)
-    this.#events.fire('taskStatus', detailed(record))
+    if (!this.#disposed) this.#events.fire('taskStatus', detailed(record))
     if (!this.#disposed) this.#attach(record.taskID, params.tool, params.work, record.requestMeta)
     return { ...detailed(record), resultType: 'task' }
   }
@@ -451,11 +451,13 @@ class ManagedTasks implements TaskManager {
           } catch {
             // Report the original settlement failure after the final attempt.
           }
-          if (attempt === 3) this.#events.fire('taskError', { taskID, error })
+          if (attempt === 3 && !this.#disposed) this.#events.fire('taskError', { taskID, error })
         }
       }
     })()
-      .catch((error) => this.#events.fire('taskError', { taskID, error }))
+      .catch((error) => {
+        if (!this.#disposed) this.#events.fire('taskError', { taskID, error })
+      })
       .finally(() => {
         if (this.#controllers.get(taskID) === controller) this.#controllers.delete(taskID)
       })
@@ -619,7 +621,7 @@ class ManagedTasks implements TaskManager {
           return
         } catch (error) {
           if (settled) return
-          this.#events.fire('taskError', { taskID, error })
+          if (!this.#disposed) this.#events.fire('taskError', { taskID, error })
         }
         await sleep(delay, this.#disposal.signal).catch(() => {})
         delay = Math.min(delay * 2, WITHDRAW_BACKOFF_MS.max)
@@ -645,7 +647,7 @@ class ManagedTasks implements TaskManager {
         })
         return
       } catch (error) {
-        this.#events.fire('taskError', { taskID, error })
+        if (!this.#disposed) this.#events.fire('taskError', { taskID, error })
       }
       await sleep(delay, this.#disposal.signal).catch(() => {})
       delay = Math.min(delay * 2, WITHDRAW_BACKOFF_MS.max)

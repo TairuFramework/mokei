@@ -3,7 +3,12 @@ import { ContextClient, TaskCancelledError } from '@mokei/context-client'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
 import type { JSONValue, TaskHandle } from '@mokei/context-server'
-import { ContextServer, createMemoryTaskStore, createTaskManager } from '@mokei/context-server'
+import {
+  ContextServer,
+  createMemoryTaskStore,
+  createTaskManager,
+  TaskManagerDisposedError,
+} from '@mokei/context-server'
 import { createFlowGraph, createMapResolver, type FlowDefinition } from '@sozai/flow-graph'
 import { expect, test, vi } from 'vitest'
 
@@ -392,6 +397,58 @@ test('client cancellation cancels every outstanding sibling task', async () => {
   ])
 })
 
+test('dispose cancels only siblings absent from the last completed checkpoint', async () => {
+  const writing = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const h = harness({
+    definition: definition('tool'),
+    caller: { callTool: async () => ({ task: { taskId: 'unpersisted' } }) },
+    checkpoint: async (data) => {
+      if (data.siblings.some(({ taskId }) => taskId === 'unpersisted')) {
+        writing.resolve()
+        await release.promise
+        throw new TaskManagerDisposedError()
+      }
+    },
+  })
+  h.resumeData.siblings.push({ tool: tool.id, taskId: 'persisted' })
+  const work = h.drive()
+  await writing.promise
+  expect(
+    h.checkpoints.some(
+      (data) =>
+        data.siblings.some(({ taskId }) => taskId === 'persisted') &&
+        !data.siblings.some(({ taskId }) => taskId === 'unpersisted'),
+    ),
+  ).toBe(true)
+  h.abort.abort(new TaskManagerDisposedError())
+  release.resolve()
+  await work
+  expect(h.cancelled).toEqual([{ id: tool.id, taskId: 'unpersisted' }])
+})
+
+test('dispose preserves a sibling after its checkpoint completes', async () => {
+  const waiting = Promise.withResolvers<void>()
+  const h = harness({
+    definition: definition('tool'),
+    caller: {
+      callTool: async () => ({ task: { taskId: 'persisted' } }),
+      waitTask: async ({ signal }) => {
+        waiting.resolve()
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+        return result
+      },
+    },
+  })
+  const work = h.drive()
+  await waiting.promise
+  h.abort.abort(new TaskManagerDisposedError())
+  await work
+  expect(h.cancelled).toEqual([])
+})
+
 test('a checkpoint failure cancels siblings and fails with the specified RPC error', async () => {
   const h = harness({
     definition: definition('tool'),
@@ -575,7 +632,7 @@ test('recovery repeats an acted call with the same operation key after its handl
     expect(calls[0]?.key).toMatch(/^run-1:.+/)
     expect(calls[1]?.key).toBe(calls[0]?.key)
     expect(calls.map(({ attempt }) => attempt)).toEqual([1, 1])
-    expect(h.cancelled).toEqual([])
+    expect(h.cancelled).toEqual([{ id: tool.id, taskId: 'orphan' }])
   } finally {
     await second.dispose()
   }

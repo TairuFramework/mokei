@@ -109,10 +109,15 @@ export async function startRun(params: {
   let run = params.run
   let driveSegment = resumeData.runState.status === 'running'
   const siblings = resumeData.siblings
+  let checkpointedSiblings = new Set(siblings.map(({ tool, taskId }) => `${tool}:${taskId}`))
   const cancelled = new Set<string>()
   let cleanupPromise: Promise<void> = Promise.resolve()
   function cleanup(): Promise<void> {
-    const newCancels = siblings.filter(({ tool, taskId }) => !cancelled.has(`${tool}:${taskId}`))
+    const disposing = handle.signal.reason instanceof TaskManagerDisposedError
+    const newCancels = siblings.filter(({ tool, taskId }) => {
+      const key = `${tool}:${taskId}`
+      return !cancelled.has(key) && (!disposing || !checkpointedSiblings.has(key))
+    })
     for (const { tool, taskId } of newCancels) cancelled.add(`${tool}:${taskId}`)
     cleanupPromise = Promise.all([
       cleanupPromise,
@@ -127,13 +132,15 @@ export async function startRun(params: {
     return cleanupPromise
   }
   const onAbort = () => {
-    if (!(handle.signal.reason instanceof TaskManagerDisposedError)) void cleanup()
+    void cleanup()
   }
   handle.signal.addEventListener('abort', onAbort, { once: true })
 
   async function checkpoint(): Promise<void> {
+    const snapshot = new Set(siblings.map(({ tool, taskId }) => `${tool}:${taskId}`))
     try {
       await handle.checkpoint(resumeData as unknown as JSONValue)
+      checkpointedSiblings = snapshot
     } catch (error) {
       if (handle.signal.aborted || isTerminalCheckpoint(error))
         throw new StopRun('Run stopped', { cause: error })
@@ -397,6 +404,6 @@ export async function startRun(params: {
     throw error
   } finally {
     handle.signal.removeEventListener('abort', onAbort)
-    if (!(handle.signal.reason instanceof TaskManagerDisposedError)) await cleanup()
+    await cleanup()
   }
 }
