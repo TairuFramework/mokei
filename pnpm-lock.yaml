@@ -333,8 +333,8 @@ catalogs:
       specifier: ^4.0.0
       version: 4.0.0
     jotai:
-      specifier: ^3.0.0
-      version: 3.0.0
+      specifier: ^3.0.1
+      version: 3.0.1
     jsdom:
       specifier: ^30.1.1
       version: 30.1.1
@@ -637,7 +637,7 @@ importers:
         version: 3.14.13(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       jotai:
         specifier: 'catalog:'
-        version: 3.0.0(@types/react@19.3.0)(react@19.3.0)
+        version: 3.0.1(@types/react@19.3.0)(react@19.3.0)
       luxon:
         specifier: 'catalog:'
         version: 3.7.2
@@ -7272,8 +7272,8 @@ packages:
   jose@6.2.4:
     resolution: {integrity: sha512-N8acGzVsQy6M/fjFcxtysNc4Q379TcM5dM/qKkNtsHFji88yANnXTr7BLeP75iPnFwBfQzM/jg2BZ9+HZrHCZA==}
 
-  jotai@3.0.0:
-    resolution: {integrity: sha512-KxhbmsJUp/tmrv6aZgO+nzB3H9K8C0xmk5i3aGkwy/EANg73DVBkggv3zVHaAi5PlNlQgTgP4uiVepo+JC+wSA==}
+  jotai@3.0.1:
+    resolution: {integrity: sha512-6tS7wY9otdiNp26Wqb/1ds3OuVJVoV+tJlN4hpLrYmfFf/t9bauVt+zKBNSpS5qSl5h6GieVQ+OknVraZX+udQ==}
     engines: {node: '>=22.12.0'}
     peerDependencies:
       '@types/react': '>=18.0.0'
@@ -13877,33 +13877,47 @@ snapshots:
 
   '@noble/hashes@2.4.0': {}
 
-  '@node-llama-cpp/linux-arm64@3.19.0': {}
+  '@node-llama-cpp/linux-arm64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-armv7l@3.19.0': {}
+  '@node-llama-cpp/linux-armv7l@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-riscv64@3.19.0': {}
+  '@node-llama-cpp/linux-riscv64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0': {}
+  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64-cuda@3.19.0': {}
+  '@node-llama-cpp/linux-x64-cuda@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64-vulkan@3.19.0': {}
+  '@node-llama-cpp/linux-x64-vulkan@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64@3.19.0': {}
+  '@node-llama-cpp/linux-x64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/mac-arm64-metal@3.19.0': {}
+  '@node-llama-cpp/mac-arm64-metal@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/mac-x64@3.19.0': {}
+  '@node-llama-cpp/mac-x64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-arm64@3.19.0': {}
+  '@node-llama-cpp/win-arm64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64-cuda-ext@3.19.0': {}
+  '@node-llama-cpp/win-x64-cuda-ext@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64-cuda@3.19.0': {}
+  '@node-llama-cpp/win-x64-cuda@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64-vulkan@3.19.0': {}
+  '@node-llama-cpp/win-x64-vulkan@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64@3.19.0': {}
+  '@node-llama-cpp/win-x64@3.19.0':
+    optional: true
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -14188,21 +14202,29 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@reflink/reflink-darwin-arm64@0.1.19': {}
+  '@reflink/reflink-darwin-arm64@0.1.19':
+    optional: true
 
-  '@reflink/reflink-darwin-x64@0.1.19': {}
+  '@reflink/reflink-darwin-x64@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-arm64-gnu@0.1.19': {}
+  '@reflink/reflink-linux-arm64-gnu@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-arm64-musl@0.1.19': {}
+  '@reflink/reflink-linux-arm64-musl@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-x64-gnu@0.1.19': {}
+  '@reflink/reflink-linux-x64-gnu@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-x64-musl@0.1.19': {}
+  '@reflink/reflink-linux-x64-musl@0.1.19':
+    optional: true
 
-  '@reflink/reflink-win32-arm64-msvc@0.1.19': {}
+  '@reflink/reflink-win32-arm64-msvc@0.1.19':
+    optional: true
 
-  '@reflink/reflink-win32-x64-msvc@0.1.19': {}
+  '@reflink/reflink-win32-x64-msvc@0.1.19':
+    optional: true
 
   '@reflink/reflink@0.1.19':
     optionalDependencies:
@@ -14214,6 +14236,7 @@ snapshots:
       '@reflink/reflink-linux-x64-musl': 0.1.19
       '@reflink/reflink-win32-arm64-msvc': 0.1.19
       '@reflink/reflink-win32-x64-msvc': 0.1.19
+    optional: true
 
   '@rolldown/binding-android-arm-eabi@1.2.5':
     optional: true
@@ -17932,7 +17955,7 @@ snapshots:
 
   jose@6.2.4: {}
 
-  jotai@3.0.0(@types/react@19.3.0)(react@19.3.0):
+  jotai@3.0.1(@types/react@19.3.0)(react@19.3.0):
     optionalDependencies:
       '@types/react': 19.3.0
       react: 19.3.0
