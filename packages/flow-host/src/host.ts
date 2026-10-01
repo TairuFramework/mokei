@@ -184,15 +184,22 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
       inbox.settle(id, outcome)
     })
   }
-  await recoverRuns({
-    store,
-    taskStore,
-    change,
-    addApproval: inbox.add,
-    resume: tracing.resume,
-    watch: watchers.watch,
-    cancelTask,
-  })
+  try {
+    await recoverRuns({
+      store,
+      taskStore,
+      change,
+      addApproval: inbox.add,
+      resume: tracing.resume,
+      watch: watchers.watch,
+      cancelTask,
+    })
+  } catch (error) {
+    await watchers.stop().catch(() => undefined)
+    tracing.dispose()
+    await wiring.dispose().catch(() => undefined)
+    throw error
+  }
   let disposed = false
   let disposal: Promise<void> | undefined
   const inFlight = new Set<Promise<unknown>>()

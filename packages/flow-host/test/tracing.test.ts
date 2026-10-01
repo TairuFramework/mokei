@@ -19,6 +19,7 @@ import {
 } from '@sozai/otel'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 
+import { createFlowHost } from '../src/host.js'
 import { createMemoryRunStore } from '../src/run-store.js'
 import { createFixture, echoFlow, emptyFlow } from './fixture.js'
 
@@ -227,6 +228,63 @@ test('dispose ends open spans without terminating runs', async () => {
   expect(exporter.getFinishedSpans().filter((span) => span.name === 'flow.run')).toHaveLength(2)
   expect((await f.host.get(queued.runID))?.state).toBe('awaiting_approval')
   expect((await f.host.get(waiting.runID))?.state).toBe('input_required')
+})
+test('recovery failure ends all run spans and stops the host', async () => {
+  const runStore = createMemoryRunStore()
+  const taskStore = createMemoryTaskStore()
+  const f = await fixture({ flows: [echoFlow], runStore, taskStore })
+  const queued = await f.host.start({ flow: echoFlow.id })
+  const waiting = await f.host.start({ definition: inputFlow })
+  await state(f, waiting.runID, 'input_required')
+  const interrupted = await f.host.start({ flow: echoFlow.id })
+  await f.host.dispose()
+  for (const [run, createdAt] of [
+    [queued, 3],
+    [waiting, 2],
+    [interrupted, 1],
+  ] as const) {
+    const record = required(await runStore.get(run.runID))
+    await runStore.update(
+      run.runID,
+      { createdAt, ...(run === interrupted ? { state: 'working' } : {}) },
+      { revision: record.revision },
+    )
+  }
+  const failure = new Error('Recovery storage unavailable')
+  const update = runStore.update.bind(runStore)
+  vi.spyOn(runStore, 'update').mockImplementation(async (...args) => {
+    if (args[0] === interrupted.runID) throw failure
+    return update(...args)
+  })
+  let polls = 0
+  const list = runStore.list.bind(runStore)
+  vi.spyOn(runStore, 'list').mockImplementation(async (filter) => {
+    const client = f.session.contextHost.getContext('flow').client
+    const get = client.tasks.get.bind(client.tasks)
+    vi.spyOn(client.tasks, 'get').mockImplementation(async (...args) => {
+      polls += 1
+      return get(...args)
+    })
+    return list(filter)
+  })
+  await expect(
+    createFlowHost({ session: f.session, flows: [echoFlow], runStore, taskStore, pollMs: 1 }),
+  ).rejects.toBe(failure)
+  await provider.forceFlush()
+  const spans = exporter.getFinishedSpans().filter((span) => span.name.startsWith('flow.run'))
+  expect(spans.filter((span) => span.name === 'flow.run')).toHaveLength(3)
+  const resumed = spans.filter((span) => span.name === 'flow.run.resume')
+  expect(resumed).toHaveLength(3)
+  expect(resumed.map((span) => span.attributes['run.id']).sort()).toEqual(
+    [queued.runID, waiting.runID, interrupted.runID].sort(),
+  )
+  for (const span of spans) expect(span.ended).toBe(true)
+  expect(f.session.contextHost.getContextKeys()).not.toContain('flow')
+  expect(polls).toBeGreaterThan(0)
+  const stoppedPolls = polls
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  expect(polls).toBe(stoppedPolls)
+  expect(await taskStore.list({ status: ['input_required'] })).toHaveLength(1)
 })
 test('without an SDK trace fields are absent and runs complete', async () => {
   trace.disable()
