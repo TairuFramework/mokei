@@ -187,6 +187,7 @@ export async function startRig(config: RigConfig): Promise<RigDriver> {
       await Promise.allSettled(outstanding.map((started) => started.promise))
       const deadline = Date.now() + WAIT_MS
       for (const runID of runIDs) {
+        // Give every run a cancellation attempt even after the shared deadline expires.
         const timeoutMs = Math.max(2000, deadline - Date.now())
         await call('cancel_flow', { runID }, { timeoutMs }).catch(() => {})
       }

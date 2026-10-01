@@ -230,9 +230,11 @@ describe('inbox rig', () => {
         (call) => call.type === 'ask' && call.pending,
         'abandoned confirm dialog',
       )
+      const cleanupStartedAt = performance.now()
       await driver.cleanup([])
+      expect(performance.now() - cleanupStartedAt).toBeLessThan(5000)
       const settled = await Promise.allSettled([started.promise])
-      expect(settled).toHaveLength(1)
+      expect(settled[0]).toMatchObject({ status: 'rejected', reason: { message: 'Cancelled' } })
       await driver.waitForDialog(
         watermark,
         (call) => call.index === ask.index && !call.pending,
