@@ -1,5 +1,6 @@
 export * from './errors.js'
 export { createFlowHost } from './host.js'
 export * from './run-store.js'
+export * from './trace-store.js'
 export { TERMINAL_STATES } from './transitions.js'
 export type * from './types.js'
