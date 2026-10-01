@@ -1,8 +1,34 @@
 import assert from 'node:assert/strict'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
-import type { RigDriver } from '../support/flow-rig/rig-driver.ts'
+import type { RigDriver, StubCall } from '../support/flow-rig/rig-driver.ts'
 import { startRig } from '../support/flow-rig/rig-driver.ts'
+
+const queryFlow = {
+  input: {},
+  definition: {
+    id: 'confirm-query',
+    name: 'Confirm query',
+    version: 1,
+    start: 'q',
+    nodes: {
+      q: {
+        kind: 'tool',
+        tool: 'sqlite:sqlite_all',
+        args: { sql: { value: 'SELECT 1 AS one' } },
+        next: 'done',
+      },
+      done: { kind: 'end', outcome: 'queried', output: { rows: { ref: ['results', 'q'] } } },
+    },
+  },
+}
+
+function expectDenied(result: Awaited<ReturnType<RigDriver['call']>>) {
+  expect(result.isError).toBe(true)
+  const entry = result.content[0]
+  assert.ok(entry?.type === 'text')
+  expect(entry.text).toMatch(/^Flow denied/)
+}
 
 describe('inbox rig', () => {
   let rig: RigDriver | undefined
@@ -116,6 +142,127 @@ describe('inbox rig', () => {
     })
   }
 
+  test('prompts demo/ask through a dialog', async () => {
+    await withRuns(async (driver, runIDs) => {
+      const w1 = await driver.watermark()
+      const runID = await start(driver, runIDs, { flow: 'demo/ask' })
+      await driver.waitForDialog(w1, (call) => call.type === 'notify', 'inbox notification')
+      const pending = await driver.waitFor(
+        runID,
+        (s) => s.pending.length === 1,
+        'one pending input',
+      )
+      const entry = pending.pending[0]
+      assert.ok(entry)
+      const inputID = entry.id
+      const w2 = await driver.watermark()
+      const prompted = driver.startBlocking('prompt_input', { id: inputID })
+      const ask = await driver.waitForDialog(
+        w2,
+        (call) => call.type === 'ask' && call.pending,
+        'prompt dialog',
+      )
+      const { calls } = driver.data<{ calls: Array<StubCall> }>(await driver.call('stub_dialogs'))
+      expect(
+        calls.filter((call) => call.index > w2 && call.type === 'ask' && call.pending),
+      ).toHaveLength(1)
+      driver.data(
+        await driver.call('stub_answer', {
+          index: ask.index,
+          result: { status: 'answered', value: 'hi' },
+        }),
+      )
+      expect(driver.data(await prompted.promise)).toEqual({ id: inputID, action: 'accept' })
+      const done = await driver.waitFor(
+        runID,
+        (s) => s.state === 'completed',
+        'prompted flow completion',
+      )
+      expect(done.result?.isError).not.toBe(true)
+      expect(done.result?.structuredContent).toMatchObject({ outcome: 'answered' })
+      expect(done.result?.structuredContent?.output).toEqual({ value: 'hi' })
+    })
+  })
+
+  for (const approved of [true, false]) {
+    test(`confirms a flow outside the allowlist with ${approved ? 'yes' : 'no'}`, async () => {
+      await withRuns(async (driver, runIDs) => {
+        const watermark = await driver.watermark()
+        const started = driver.startBlocking('start_flow', queryFlow)
+        const ask = await driver.waitForDialog(
+          watermark,
+          (call) => call.type === 'ask' && call.pending,
+          'confirm dialog',
+        )
+        expect(ask).toMatchObject({ backend: 'zenity', kind: 'confirm' })
+        driver.data(
+          await driver.call('stub_answer', {
+            index: ask.index,
+            result: { status: 'answered', value: approved },
+          }),
+        )
+        const result = await started.promise
+        if (!approved) {
+          expectDenied(result)
+          return
+        }
+        const { runID } = driver.data<{ runID: string }>(result)
+        expect(runID).toBeTypeOf('string')
+        runIDs.push(runID)
+        const done = await driver.waitFor(
+          runID,
+          (s) => s.state === 'completed',
+          'approved flow completion',
+        )
+        expect(done.result?.isError).not.toBe(true)
+        expect(done.result?.structuredContent).toMatchObject({ outcome: 'queried' })
+        expect(done.result?.structuredContent?.output).toEqual({ rows: [{ one: 1 }] })
+      })
+    })
+  }
+
+  test('cleanup aborts an outstanding blocking call', async () => {
+    await withRuns(async (driver, runIDs) => {
+      const watermark = await driver.watermark()
+      const started = driver.startBlocking('start_flow', queryFlow)
+      const ask = await driver.waitForDialog(
+        watermark,
+        (call) => call.type === 'ask' && call.pending,
+        'abandoned confirm dialog',
+      )
+      await driver.cleanup([])
+      const settled = await Promise.allSettled([started.promise])
+      expect(settled).toHaveLength(1)
+      await driver.waitForDialog(
+        watermark,
+        (call) => call.index === ask.index && !call.pending,
+        'withdrawn confirm dialog',
+      )
+      const fresh = await driver.watermark()
+      const next = driver.startBlocking('start_flow', queryFlow)
+      const nextAsk = await driver.waitForDialog(
+        fresh,
+        (call) => call.type === 'ask' && call.pending,
+        'next confirm dialog',
+      )
+      expect(nextAsk).toMatchObject({ backend: 'zenity', kind: 'confirm' })
+      driver.data(
+        await driver.call('stub_answer', {
+          index: nextAsk.index,
+          result: { status: 'answered', value: false },
+        }),
+      )
+      expectDenied(await next.promise)
+      const runID = await start(driver, runIDs, { flow: 'demo/ask' })
+      const pending = await driver.waitFor(
+        runID,
+        (s) => s.state === 'input_required',
+        'following inbox input',
+      )
+      expect(pending.pending).toHaveLength(1)
+    })
+  })
+
   test('triages with the fake label', async () => {
     await withRuns(async (driver, runIDs) => {
       const runID = await start(driver, runIDs, { flow: 'demo/triage' })
@@ -184,6 +331,101 @@ describe('inbox rig', () => {
       const result = await driver.call('answer_input', { id: inputID, value: { value: 'hi' } })
       expect(result.isError).toBe(true)
       expect(result.content).toEqual([{ type: 'text', text: `Unknown input: ${inputID}` }])
+    })
+  })
+})
+
+describe('dialog rig', () => {
+  let rig: RigDriver | undefined
+
+  beforeAll(async () => {
+    rig = await startRig({ input: 'dialog' })
+  }, 60_000)
+
+  afterAll(async () => {
+    if (rig == null) return
+    try {
+      expect(rig.data<{ runnerCalls: number }>(await rig.call('stub_dialogs')).runnerCalls).toBe(0)
+    } finally {
+      await rig.dispose()
+    }
+  }, 30_000)
+
+  async function withRuns(action: (driver: RigDriver, runIDs: Array<string>) => Promise<void>) {
+    if (rig == null) throw new Error('Rig has not started')
+    const runIDs: Array<string> = []
+    try {
+      await action(rig, runIDs)
+    } finally {
+      await rig.cleanup(runIDs)
+    }
+  }
+
+  test('opens a dialog directly for demo/ask', async () => {
+    await withRuns(async (driver, runIDs) => {
+      const watermark = await driver.watermark()
+      const { runID } = driver.data<{ runID: string }>(
+        await driver.call('start_flow', { flow: 'demo/ask' }),
+      )
+      runIDs.push(runID)
+      const ask = await driver.waitForDialog(
+        watermark,
+        (call) => call.type === 'ask' && call.pending,
+        'direct input dialog',
+      )
+      const pending = await driver.waitFor(
+        runID,
+        (s) => s.state === 'input_required',
+        'dialog input required',
+      )
+      expect(pending.pending).toEqual([])
+      driver.data(
+        await driver.call('stub_answer', {
+          index: ask.index,
+          result: { status: 'answered', value: 'hi' },
+        }),
+      )
+      const done = await driver.waitFor(
+        runID,
+        (s) => s.state === 'completed',
+        'dialog flow completion',
+      )
+      expect(done.result?.isError).not.toBe(true)
+      expect(done.result?.structuredContent).toMatchObject({ outcome: 'answered' })
+      expect(done.result?.structuredContent?.output).toEqual({ value: 'hi' })
+    })
+  })
+
+  test('cancelling a run withdraws its open dialog', async () => {
+    await withRuns(async (driver, runIDs) => {
+      const watermark = await driver.watermark()
+      const { runID } = driver.data<{ runID: string }>(
+        await driver.call('start_flow', { flow: 'demo/ask' }),
+      )
+      runIDs.push(runID)
+      const ask = await driver.waitForDialog(
+        watermark,
+        (call) => call.type === 'ask' && call.pending,
+        'cancelled input dialog',
+      )
+      expect(driver.data(await driver.call('cancel_flow', { runID }))).toEqual({
+        state: 'cancelled',
+      })
+      await driver.waitForDialog(
+        watermark,
+        (call) => call.index === ask.index && !call.pending,
+        'withdrawn input dialog',
+      )
+      const fresh = await driver.watermark()
+      const next = driver.data<{ runID: string }>(
+        await driver.call('start_flow', { flow: 'demo/ask' }),
+      )
+      runIDs.push(next.runID)
+      await driver.waitForDialog(
+        fresh,
+        (call) => call.type === 'ask' && call.pending,
+        'following input dialog',
+      )
     })
   })
 })

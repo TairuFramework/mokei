@@ -182,14 +182,13 @@ export async function startRig(config: RigConfig): Promise<RigDriver> {
       return started
     },
     async cleanup(runIDs) {
-      const deadline = Date.now() + WAIT_MS
       const outstanding = [...blocking]
       for (const started of outstanding) started.abort()
       await Promise.allSettled(outstanding.map((started) => started.promise))
+      const deadline = Date.now() + WAIT_MS
       for (const runID of runIDs) {
-        const remaining = deadline - Date.now()
-        if (remaining <= 0) break
-        await call('cancel_flow', { runID }, { timeoutMs: remaining }).catch(() => {})
+        const timeoutMs = Math.max(2000, deadline - Date.now())
+        await call('cancel_flow', { runID }, { timeoutMs }).catch(() => {})
       }
     },
     async dispose() {
