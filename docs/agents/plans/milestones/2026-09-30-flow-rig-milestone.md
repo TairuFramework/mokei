@@ -1,9 +1,9 @@
 # Milestone: flow rig
 
-**Status:** open -- phases 1 (local rig) and 2 (integration harness) complete, phase 3 in progress (quick fixes
-done, flow runs API next)
+**Status:** closed -- phases 1 and 2 complete; phase 3 quick fixes complete, the rest replaced by the
+[flow daemon milestone](2026-10-01-flow-daemon-milestone.md)
 **Opened:** 2026-09-30
-**Branch / PR:** phases 1 to 3 on `feat/flow-rig`
+**Branch / PR:** phases 1 to 3 quick fixes on `feat/flow-rig` (PR #68, merged)
 
 ## Goal
 
@@ -21,7 +21,7 @@ starts, since each depends on what the previous phase finds.
 |---|-------|-------|---------------|--------|
 | 1 | Local rig | A Node script under `scripts/flow-rig/` that owns a `NodeSession` with sibling servers, `addDecisionFlow` and the desktop elicit handler, and exposes a facade MCP server to Claude Code (`start_flow`, `flow_status`, input tools). Sample flows, smoke run, manual QA checklist. No package changes. | Smoke run passes; manual QA checklist done on macOS; findings recorded below. | complete |
 | 2 | Integration/e2e harness | Move the rig's scenarios into `integration-tests/`: fake predictor, stub desktop backend or answers through the facade tools, run in `pnpm test:integration` and CI. | Rig scenarios run in CI without a desktop or System One. | complete |
-| 3 | Session, host and CLI features | Address the findings: public APIs the rig had to work around, CLI surfaces for flows and the input inbox, desktop notifications in the CLI. | Every finding below is shipped or explicitly deferred. | in progress |
+| 3 | Session, host and CLI features | Address the findings: public APIs the rig had to work around, CLI surfaces for flows and the input inbox, desktop notifications in the CLI. | Every finding below is shipped or explicitly deferred. | quick fixes complete; rest replaced by the flow daemon milestone |
 
 Completed phases link their summary in `completed/` here.
 
@@ -47,11 +47,11 @@ Completed phases link their summary in `completed/` here.
 Gaps found while building and using the rig. Phase 3 consumes this list.
 
 - **No public "call a tool with approval" outside `AgentSession`.** The rig calls the `wrapApproval` function and the
-  raw context client itself. Status: phase 3 sub-project B (flow runs API).
+  raw context client itself. Status: moved to the flow daemon milestone.
 - **Inbox entries carry only a context key.** No task or run id, so a host cannot tell which run an entry belongs
-  to. The rig passes the run id as the key. Status: phase 3 sub-project B (flow runs API).
+  to. The rig passes the run id as the key. Status: moved to the flow daemon milestone.
 - **`tasks.wait` answers task input requests automatically.** A host that routes task input itself must poll
-  `tasks.get` and answer with `tasks.update`. Status: phase 3 sub-project B (flow runs API).
+  `tasks.get` and answer with `tasks.update`. Status: moved to the flow daemon milestone.
 - **`InputInbox.prompt(id)` takes no abort signal.** A cancelled `prompt_input` call leaves the desktop dialog open.
   Status: shipped -- `prompt` accepts a signal and closes its dialogs when aborted.
 - **A flow `end` node's `outcome` must be a literal.** Passing a nested flow's outcome through needs a `branch` on
@@ -61,7 +61,7 @@ Gaps found while building and using the rig. Phase 3 consumes this list.
   rejections from inputs it has withdrawn itself (the rig does). Status: deferred by design -- the aborting caller
   owns the rejection and must handle it.
 - **`@mokei/host-desktop` elicit handling and the flow task API have no shared notion of a run.** The rig keeps its
-  own runID-to-task map and passes the run id as the inbox key. Status: phase 3 sub-project B (flow runs API).
+  own runID-to-task map and passes the run id as the inbox key. Status: moved to the flow daemon milestone.
 - **A predictor failure hides its message.** The flow error reports only `lastFailure: { type: "SystemOneError" }`.
   A missing System One model needed a manual repro against the sibling server to diagnose. Status: shipped -- the
   predictor rebuilds the typed error from the System One error metadata.
@@ -69,7 +69,7 @@ Gaps found while building and using the rig. Phase 3 consumes this list.
   call fails, although `laya-serve` picks a default itself. The integration suite cannot catch this, since it uses the
   fake predictor. Status: shipped -- `model` is optional and omitted when unset.
 - **A failed flow reports `state: completed`.** The task completes and the failure shows only as `isError` in the
-  result, so `flow_status` callers must inspect the result. Status: phase 3 sub-project B (flow runs API).
+  result, so `flow_status` callers must inspect the result. Status: moved to the flow daemon milestone.
 - **An inline flow started without `input` fails with `Invalid flow input`.** The rig does not default a missing
   `input` to `{}`, and the error does not say that `input` is missing. Status: shipped -- missing `input` defaults
   to `{}`; the `Invalid flow input` detail was requested upstream.
