@@ -310,3 +310,35 @@ test('without an SDK an active remote parent does not create stored trace fields
   expect(run).not.toHaveProperty('traceID')
   expect(await runStore.get(run.runID)).not.toHaveProperty('traceparent')
 })
+
+test('starts independent root traces linked to the caller', async () => {
+  const f = await fixture()
+  const caller = trace.getTracer('caller').startSpan('caller')
+  const [first, second] = await context.with(trace.setSpan(context.active(), caller), () =>
+    Promise.all([f.host.start({ definition: emptyFlow }), f.host.start({ definition: emptyFlow })]),
+  )
+  expect(first.traceID).not.toBe(second.traceID)
+  expect(first.traceID).not.toBe(caller.spanContext().traceId)
+  await state(f, first.runID, 'completed')
+  await state(f, second.runID, 'completed')
+  const runSpans = exporter.getFinishedSpans().filter((span) => span.name === 'flow.run')
+  expect(runSpans).toHaveLength(2)
+  expect(runSpans.every((span) => span.parentSpanContext === undefined)).toBe(true)
+  expect(runSpans[0]?.links[0]?.context).toEqual(caller.spanContext())
+  expect(runSpans[1]?.links[0]?.context).toEqual(caller.spanContext())
+  caller.end()
+})
+
+test('ignores an invalid caller span link', async () => {
+  const f = await fixture()
+  const invalid = trace.setSpanContext(ROOT_CONTEXT, {
+    traceId: '0'.repeat(32),
+    spanId: '0'.repeat(16),
+    traceFlags: 1,
+  })
+  const run = await context.with(invalid, () => f.host.start({ definition: emptyFlow }))
+  await state(f, run.runID, 'completed')
+  const span = required(exporter.getFinishedSpans().find((span) => span.name === 'flow.run'))
+  expect(span.parentSpanContext).toBeUndefined()
+  expect(span.links).toEqual([])
+})

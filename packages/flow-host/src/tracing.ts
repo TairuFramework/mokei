@@ -1,3 +1,4 @@
+import { isSpanContextValid } from '@opentelemetry/api'
 import type { Context, Span } from '@sozai/otel'
 import {
   createTracerFactory,
@@ -28,9 +29,17 @@ export function createRunTracing() {
         ? extractW3CTraceContext({ traceparent: record.traceparent })
         : undefined
     const parentSpan = withActiveContext(parent, () => getActiveSpan()?.spanContext())
+    const caller = getActiveSpan()?.spanContext()
     const span = tracer.startSpan(
       resume ? 'flow.run.resume' : 'flow.run',
       {
+        ...(!resume
+          ? {
+              root: true,
+              links:
+                caller !== undefined && isSpanContextValid(caller) ? [{ context: caller }] : [],
+            }
+          : {}),
         attributes: {
           'run.id': record.runID,
           ...(record.flowID !== undefined ? { 'flow.id': record.flowID } : {}),

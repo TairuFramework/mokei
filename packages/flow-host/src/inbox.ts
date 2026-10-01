@@ -19,6 +19,7 @@ type Entry = {
 }
 
 export function createInbox(params: {
+  withRun<T>(runID: string, work: () => T): T
   client: ContextClient
   store: RunStore
   queue: ReturnType<typeof createRunQueue>
@@ -65,54 +66,58 @@ export function createInbox(params: {
     params.emit('inbox:added', structuredClone(copy))
   }
   function reconcile(runID: string, task?: DetailedTask) {
-    const requests = task?.status === 'input_required' ? task.inputRequests : {}
-    latestInputKeys.set(runID, new Set(Object.keys(requests)))
-    for (const [id, entry] of items) {
-      if (
-        entry.item.runID === runID &&
-        entry.item.kind === 'input' &&
-        entry.status === 'open' &&
-        !Object.hasOwn(requests, entry.item.inputKey)
-      ) {
-        settle(id, 'withdrawn')
+    return params.withRun(runID, () => {
+      const requests = task?.status === 'input_required' ? task.inputRequests : {}
+      latestInputKeys.set(runID, new Set(Object.keys(requests)))
+      for (const [id, entry] of items) {
+        if (
+          entry.item.runID === runID &&
+          entry.item.kind === 'input' &&
+          entry.status === 'open' &&
+          !Object.hasOwn(requests, entry.item.inputKey)
+        ) {
+          settle(id, 'withdrawn')
+        }
       }
-    }
-    for (const [inputKey, request] of Object.entries(requests)) {
-      if (request.method !== 'elicitation/create' || request.params.mode === 'url') continue
-      add(
-        {
-          id: `${runID}:${inputKey}`,
-          runID,
-          kind: 'input',
-          inputKey,
-          message: request.params.message,
-          requestedSchema: request.params.requestedSchema,
-          createdAt: Date.now(),
-        },
-        task?.taskId,
-      )
-    }
+      for (const [inputKey, request] of Object.entries(requests)) {
+        if (request.method !== 'elicitation/create' || request.params.mode === 'url') continue
+        add(
+          {
+            id: `${runID}:${inputKey}`,
+            runID,
+            kind: 'input',
+            inputKey,
+            message: request.params.message,
+            requestedSchema: request.params.requestedSchema,
+            createdAt: Date.now(),
+          },
+          task?.taskId,
+        )
+      }
+    })
   }
   async function cancelURLs(runID: string, task: DetailedTask) {
-    if (task.status !== 'input_required') return
-    for (const [inputKey, request] of Object.entries(task.inputRequests)) {
-      const id = `${runID}:${inputKey}`
-      if (
-        request.method !== 'elicitation/create' ||
-        request.params.mode !== 'url' ||
-        cancelledURLs.get(runID)?.has(id)
-      )
-        continue
-      logger.warn('Cancelling URL elicitation for {runID}', { runID })
-      await params.client.tasks.update(task.taskId, { [inputKey]: { action: 'cancel' } })
-      await params.queue.run(runID, async () => {
-        const record = await params.store.get(runID)
-        if (record === undefined || TERMINAL_STATES.has(record.state)) return
-        const keys = cancelledURLs.get(runID) ?? new Set<string>()
-        keys.add(id)
-        cancelledURLs.set(runID, keys)
-      })
-    }
+    return params.withRun(runID, async () => {
+      if (task.status !== 'input_required') return
+      for (const [inputKey, request] of Object.entries(task.inputRequests)) {
+        const id = `${runID}:${inputKey}`
+        if (
+          request.method !== 'elicitation/create' ||
+          request.params.mode !== 'url' ||
+          cancelledURLs.get(runID)?.has(id)
+        )
+          continue
+        logger.warn('Cancelling URL elicitation for {runID}', { runID })
+        await params.client.tasks.update(task.taskId, { [inputKey]: { action: 'cancel' } })
+        await params.queue.run(runID, async () => {
+          const record = await params.store.get(runID)
+          if (record === undefined || TERMINAL_STATES.has(record.state)) return
+          const keys = cancelledURLs.get(runID) ?? new Set<string>()
+          keys.add(id)
+          cancelledURLs.set(runID, keys)
+        })
+      }
+    })
   }
   async function respond(
     id: string,
@@ -121,51 +126,60 @@ export function createInbox(params: {
     reason?: string,
   ) {
     const initial = requireOpen(id)
-    if (initial.item.kind === 'approval') {
-      if (action === 'accept') await params.approve(initial.item.runID, id)
-      else await params.rejectApproval(id, action === 'decline' ? 'declined' : 'cancelled', reason)
-      return
-    }
-    const runID = initial.item.runID
-    const claimed = await params.queue.run(runID, async () => {
-      const entry = requireOpen(id)
-      if (entry.item.kind !== 'input' || entry.taskID === undefined)
-        throw new InboxItemNotFoundError(id)
-      if (action === 'accept') {
-        const issues = entry.validate?.(content) ?? []
-        if (issues.length > 0) throw new InboxAnswerInvalidError(issues)
+    return params.withRun(initial.item.runID, async () => {
+      if (initial.item.kind === 'approval') {
+        if (action === 'accept') await params.approve(initial.item.runID, id)
+        else
+          await params.rejectApproval(id, action === 'decline' ? 'declined' : 'cancelled', reason)
+        return
       }
-      const response: InputResponse =
-        action === 'accept' ? { action, content: content as ElicitResult['content'] } : { action }
-      entry.status = 'settling'
-      return { entry, taskID: entry.taskID, inputKey: entry.item.inputKey, response }
-    })
-    try {
-      await params.client.tasks.update(claimed.taskID, { [claimed.inputKey]: claimed.response })
-    } catch (error) {
-      await params.queue.run(runID, async () => {
-        if (
-          isTaskNotFound(error) ||
-          (error !== null && typeof error === 'object' && 'code' in error && error.code === -32602)
-        ) {
-          settle(id, 'withdrawn')
+      const runID = initial.item.runID
+      const claimed = await params.queue.run(runID, async () => {
+        const entry = requireOpen(id)
+        if (entry.item.kind !== 'input' || entry.taskID === undefined)
           throw new InboxItemNotFoundError(id)
+        if (action === 'accept') {
+          const issues = entry.validate?.(content) ?? []
+          if (issues.length > 0) throw new InboxAnswerInvalidError(issues)
         }
-        const record = await params.store.get(runID)
-        if (
-          record === undefined ||
-          TERMINAL_STATES.has(record.state) ||
-          !latestInputKeys.get(runID)?.has(claimed.inputKey)
-        ) {
-          settle(id, 'withdrawn')
-        } else {
-          claimed.entry.status = 'open'
-        }
+        const response: InputResponse =
+          action === 'accept' ? { action, content: content as ElicitResult['content'] } : { action }
+        entry.status = 'settling'
+        return { entry, taskID: entry.taskID, inputKey: entry.item.inputKey, response }
       })
-      throw error
-    }
-    await params.queue.run(runID, async () => {
-      settle(id, action === 'accept' ? 'answered' : action === 'decline' ? 'declined' : 'cancelled')
+      try {
+        await params.client.tasks.update(claimed.taskID, { [claimed.inputKey]: claimed.response })
+      } catch (error) {
+        await params.queue.run(runID, async () => {
+          if (
+            isTaskNotFound(error) ||
+            (error !== null &&
+              typeof error === 'object' &&
+              'code' in error &&
+              error.code === -32602)
+          ) {
+            settle(id, 'withdrawn')
+            throw new InboxItemNotFoundError(id)
+          }
+          const record = await params.store.get(runID)
+          if (
+            record === undefined ||
+            TERMINAL_STATES.has(record.state) ||
+            !latestInputKeys.get(runID)?.has(claimed.inputKey)
+          ) {
+            settle(id, 'withdrawn')
+          } else {
+            claimed.entry.status = 'open'
+          }
+        })
+        throw error
+      }
+      await params.queue.run(runID, async () => {
+        settle(
+          id,
+          action === 'accept' ? 'answered' : action === 'decline' ? 'declined' : 'cancelled',
+        )
+      })
     })
   }
   const api: FlowHost['inbox'] = {
