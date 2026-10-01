@@ -29,6 +29,9 @@ To use a different config file, set the `FLOW_RIG_CONFIG` environment variable t
 
 The rig reads `scripts/flow-rig/rig.config.json`, or the file named by `FLOW_RIG_CONFIG`.
 
+The `system-one` sibling's `SYSTEM_ONE_MODEL` env is optional. When it is unset, `laya-serve` picks its default
+model.
+
 | Field | Default | Meaning |
 |-------|---------|---------|
 | `siblings` | `{}` | MCP servers to spawn, keyed by context key, with `command`, `args` and optional `env`. Same shape as `mcp-servers/config.json`. Relative `.js` paths in `args` resolve from the repository root. A spawn failure stops the rig, except that `system-one` is skipped when `predictor` is `fake`. |
@@ -45,7 +48,7 @@ The rig reads `scripts/flow-rig/rig.config.json`, or the file named by `FLOW_RIG
 |------|-------|--------|
 | `list_flows` | none | The flow server's list of registered flows |
 | `check_flow` | `{ definition }` | The flow server's check of an inline definition, without running it |
-| `start_flow` | `{ flow?, definition?, input? }` | `{ runID }`, or an error result. Give exactly one of `flow` (a registered id) or `definition` (an inline flow). An inline flow declaring an `input` schema needs `input` passed (at least `{}`). Returns `Flow denied: <reason>` when approval is refused, and `Rig is shutting down` once shutdown has begun. |
+| `start_flow` | `{ flow?, definition?, input? }` | `{ runID }`, or an error result. Give exactly one of `flow` (a registered id) or `definition` (an inline flow). For inline flows, missing `input` defaults to `{}`. Returns `Flow denied: <reason>` when approval is refused, and `Rig is shutting down` once shutdown has begun. |
 | `flow_status` | `{ runID }` | `{ state, pending, result?, error? }`. `pending` entries are `{ id, message, requestedSchema, canPrompt }`. |
 | `cancel_flow` | `{ runID }` | `{ state }` after the cancel is sent |
 | `prompt_input` | `{ id }` | Opens desktop dialogs for the inbox entry and blocks until it settles. Returns `{ id, action }`. |
