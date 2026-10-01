@@ -8,7 +8,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 
 import { createFlowHost } from '../src/host.js'
 import { createMemoryRunStore } from '../src/run-store.js'
-import type { FlowHost, RunRecord } from '../src/types.js'
+import type { FlowHost, FlowRunSnapshot, InboxItem, RunRecord } from '../src/types.js'
 import { createFixture, deferred, echoFlow, emptyFlow } from './fixture.js'
 
 const fixtures: Array<Awaited<ReturnType<typeof createFixture>>> = []
@@ -471,4 +471,84 @@ test('a recovery error fails only its run and leaves other runs usable', async (
   expect(second.host.inbox.list()).toHaveLength(1)
   await second.host.inbox.answer(`${queued.runID}:approval`)
   await state(second.host, queued.runID, 'completed')
+})
+
+test.each([true, false])(
+  'recovery applies the allow policy to a stored approval plan: %s',
+  async (allowed) => {
+    const shared = stores()
+    const definition: FlowDefinition = {
+      ...echoFlow,
+      nodes: {
+        ...echoFlow.nodes,
+        echo: { kind: 'tool', tool: 'local:hold', args: {}, next: 'done' },
+      },
+    }
+    const now = Date.now()
+    const record: RunRecord = {
+      runID: crypto.randomUUID(),
+      label: 'Held run',
+      state: 'awaiting_approval',
+      createdAt: now,
+      updatedAt: now,
+      revision: 0,
+      request: {
+        toolName: 'run_flow',
+        arguments: { definition } as unknown as RunRecord['request']['arguments'],
+      },
+      plan: { tools: ['local:hold'] },
+    }
+    await shared.runStore.create(record)
+    const second = await fixture({ ...shared, allow: [allowed ? 'local:*' : 'other:*'] })
+    expect(await second.host.get(record.runID)).toMatchObject({
+      state: allowed ? 'working' : 'awaiting_approval',
+    })
+    expect(second.host.inbox.list()).toEqual(
+      allowed
+        ? []
+        : [
+            {
+              id: `${record.runID}:approval`,
+              runID: record.runID,
+              kind: 'approval',
+              plan: record.plan,
+              createdAt: now,
+            },
+          ],
+    )
+    const stored = required(await shared.runStore.get(record.runID))
+    if (allowed) {
+      expect(stored.taskID).toBeDefined()
+      expect(await shared.taskStore.get(required(stored.taskID))).toMatchObject({
+        status: 'working',
+      })
+    } else {
+      expect(stored.taskID).toBeUndefined()
+      expect(await shared.taskStore.list({ status: ['working'] })).toEqual([])
+    }
+  },
+)
+
+test('parameter listeners receive recovery approval and interrupted run events', async () => {
+  const f = await crash(false)
+  const queued = await f.first.host.start({ definition: echoFlow })
+  await f.first.host.dispose()
+  const added: Array<InboxItem> = []
+  const states: Array<FlowRunSnapshot> = []
+  const second = await fixture({
+    ...f,
+    listeners: {
+      'inbox:added': (item) => {
+        added.push(item)
+      },
+      'run:state': (run) => {
+        states.push(run)
+      },
+    },
+  })
+  expect(added).toEqual(second.host.inbox.list())
+  expect(added).toHaveLength(1)
+  expect(added[0]).toMatchObject({ runID: queued.runID, kind: 'approval' })
+  expect(states).toEqual([await second.host.get(f.record.runID)])
+  expect(states[0]).toMatchObject({ state: 'failed', error: { type: 'Interrupted' } })
 })

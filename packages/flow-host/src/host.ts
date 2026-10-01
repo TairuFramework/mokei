@@ -1,12 +1,7 @@
 import type { DetailedTask } from '@mokei/context-protocol'
 import type { JSONValue } from '@mokei/context-server'
 import { createMemoryTaskStore } from '@mokei/context-server'
-import {
-  addDecisionFlow,
-  createFlowRegistry,
-  flowSummaries,
-  flowToolName,
-} from '@mokei/decision-flow-server'
+import { addDecisionFlow, flowToolName } from '@mokei/decision-flow-server'
 import { EventEmitter } from '@sozai/event'
 
 import { isAllowed } from './approval.js'
@@ -47,15 +42,13 @@ export function runSnapshot(record: RunRecord): FlowRunSnapshot {
 }
 
 /**
- * Recovery events fire during creation, before listeners can subscribe.
- * Reconcile list() and inbox.list() after creation resolves, then rely on events.
+ * Recovery events fire during creation. Pass listeners to receive them, or
+ * reconcile list() and inbox.list() after creation resolves, then rely on events.
  */
 export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> {
   if (!params.session.contextHost.elicitationEnabled)
     throw new Error('Flow host requires elicitation')
   const key = params.key ?? 'flow'
-  const registry = createFlowRegistry(params.flows ?? [])
-  const summaries = flowSummaries(registry)
   const store = params.runStore ?? createMemoryRunStore()
   const taskStore = params.taskStore ?? createMemoryTaskStore()
   const wiring = await addDecisionFlow(params.session, {
@@ -67,6 +60,13 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
   })
   const client = params.session.contextHost.getContext(key).client
   const events = new EventEmitter<FlowHostEvents>()
+  function listen<Event extends keyof FlowHostEvents>(event: Event) {
+    const handler = params.listeners?.[event]
+    if (handler !== undefined) events.on(event, handler)
+  }
+  listen('run:state')
+  listen('inbox:added')
+  listen('inbox:settled')
   const queue = createRunQueue()
   const tracing = createRunTracing()
   const lastApplied = new Map<string, number>()
@@ -192,6 +192,10 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
       return claimed.record
     })
   }
+  async function launchAllowed(runID: string): Promise<RunRecord> {
+    const claimed = await claim(runID)
+    return TERMINAL_STATES.has(claimed.state) ? claimed : launch(claimed)
+  }
   async function approval(id: string, outcome: 'declined' | 'cancelled', reason?: string) {
     const runID = inbox.requireOpen(id).item.runID
     await queue.run(runID, async () => {
@@ -213,6 +217,8 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
       taskStore,
       change,
       addApproval: inbox.add,
+      allow: params.approval?.allow ?? [],
+      launchAllowed,
       resume: tracing.resume,
       watch: watchers.watch,
       cancelTask,
@@ -240,10 +246,10 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     }
   }
   const host: FlowHost = {
-    flows: () => structuredClone(summaries),
+    flows: wiring.flows,
     check: wiring.check,
     async start(request) {
-      const flow = 'flow' in request ? registry.lookup(request.flow) : undefined
+      const flow = 'flow' in request ? wiring.lookupFlow(request.flow) : undefined
       if ('flow' in request && flow === undefined) throw new FlowNotFoundError(request.flow)
       const resolved =
         'flow' in request
@@ -293,8 +299,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
         throw error
       }
       if (allowed) {
-        const claimed = await claim(current.runID)
-        return runSnapshot(TERMINAL_STATES.has(claimed.state) ? claimed : await launch(claimed))
+        return runSnapshot(await launchAllowed(current.runID))
       }
       return runSnapshot(current)
     },

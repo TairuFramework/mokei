@@ -1,6 +1,7 @@
 import type { TaskStore } from '@mokei/context-server'
 import { getMokeiLogger } from '@mokei/logger'
 
+import { isAllowed } from './approval.js'
 import type { ChangeRun } from './launch.js'
 import { approvalItem, interruptedError } from './run-helpers.js'
 import type { RunStore } from './run-store.js'
@@ -12,6 +13,8 @@ export async function recoverRuns(params: {
   change: ChangeRun
   resume(record: RunRecord): void
   addApproval(item: InboxItem): void
+  allow: Array<string>
+  launchAllowed(runID: string): Promise<RunRecord>
   watch(runID: string, taskID: string): void
   cancelTask(runID: string, taskID: string): Promise<RunRecord>
 }) {
@@ -23,7 +26,8 @@ export async function recoverRuns(params: {
     try {
       params.resume(run)
       if (run.state === 'awaiting_approval') {
-        params.addApproval(approvalItem(run))
+        if (isAllowed(run.plan.tools, params.allow)) await params.launchAllowed(run.runID)
+        else params.addApproval(approvalItem(run))
         continue
       }
       if (run.state === 'working' && run.taskID === undefined) {

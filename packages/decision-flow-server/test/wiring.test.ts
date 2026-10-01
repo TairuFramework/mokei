@@ -130,6 +130,35 @@ afterEach(async () => {
   vi.useRealTimers()
 })
 
+test('wiring exposes registered flow lookup and summaries as snapshots', async () => {
+  const value = session()
+  const definition = structuredClone(flow)
+  const wiring = await addDecisionFlow(value, { key: 'flow', flows: [definition] })
+  wirings.push(wiring)
+  definition.name = 'Changed'
+  expect(wiring.lookupFlow(flow.id)).toEqual(flow)
+  expect(wiring.lookupFlow('missing')).toBeUndefined()
+  const summaries = wiring.flows()
+  expect(summaries).toEqual([
+    {
+      id: flow.id,
+      name: flow.name,
+      version: flow.version,
+      input: { type: 'object' },
+      outputs: [],
+      outcomes: ['done'],
+    },
+  ])
+  const found = wiring.lookupFlow(flow.id)
+  if (found === undefined) throw new Error('Expected registered flow')
+  found.name = 'Changed lookup'
+  const summary = summaries[0]
+  if (summary === undefined) throw new Error('Expected flow summary')
+  summary.name = 'Changed summary'
+  expect(wiring.lookupFlow(flow.id)?.name).toBe(flow.name)
+  expect(wiring.flows()[0]?.name).toBe(flow.name)
+})
+
 test('authorize returns plan, digest and a grant for a registered flow', async () => {
   const value = session()
   value.contextHost.addLocalTool({

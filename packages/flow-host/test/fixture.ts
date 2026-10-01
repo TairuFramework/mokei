@@ -39,6 +39,7 @@ export async function createFixture(
     allow?: Array<string>
     runStore?: FlowHostParams['runStore']
     taskStore?: FlowHostParams['taskStore']
+    listeners?: FlowHostParams['listeners']
   } = {},
 ) {
   const elicit = vi.fn(async () => {
@@ -74,6 +75,7 @@ export async function createFixture(
     runStore: params.runStore,
     taskStore: params.taskStore,
     pollMs: 10,
+    listeners: params.listeners,
   })
   return {
     session,

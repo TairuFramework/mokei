@@ -71,6 +71,9 @@ export type FlowHostParams = {
   runStore?: RunStore
   taskTTLMs?: number | null
   taskStore?: TaskStore
+  listeners?: {
+    [Event in keyof FlowHostEvents]?: (value: FlowHostEvents[Event]) => void | Promise<void>
+  }
   pollMs?: number
 }
 

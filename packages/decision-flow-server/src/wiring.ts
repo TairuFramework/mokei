@@ -11,7 +11,8 @@ import { type FlowDefinition, formatIssues } from '@sozai/flow-graph'
 
 import { FLOW_GRANT_META } from './call-meta.js'
 import { checkFlow, type FlowCheckResult } from './definition-checks.js'
-import { flowToolName } from './flow-tools.js'
+import type { FlowSummary } from './flow-tools.js'
+import { flowSummaries, flowToolName } from './flow-tools.js'
 import { createGrantStore } from './grants.js'
 import { flowPlan } from './plan.js'
 import { createMCPPredictor, type PredictorFactory } from './predictor.js'
@@ -43,6 +44,8 @@ export type FlowApprovalStrategy =
   | ((request: FlowApprovalRequest) => ReturnType<ToolApprovalFn>)
 
 export type DecisionFlowWiring = {
+  lookupFlow(flowID: string): FlowDefinition | undefined
+  flows(): Array<FlowSummary>
   authorize(request: {
     toolName: string
     arguments: Record<string, JSONValue>
@@ -215,6 +218,11 @@ export async function addDecisionFlow(
   return {
     authorize,
     check,
+    lookupFlow(flowID) {
+      const flow = registry.lookup(flowID)
+      return flow === undefined ? undefined : structuredClone(flow)
+    },
+    flows: () => flowSummaries(registry),
     wrapApproval(strategy) {
       return async (request) => {
         const prefix = `${params.key}:`
