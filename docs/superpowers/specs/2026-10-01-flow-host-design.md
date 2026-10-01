@@ -127,7 +127,7 @@ run inbox is a later change.
 ```ts
 export type RunRecord = FlowRunSnapshot & {
   revision: number
-  request: { toolName: string; arguments: Record<string, unknown> }
+  request: { toolName: string; arguments: Record<string, JSONValue> }
   digest?: string // registered flows: the registry digest the plan was computed from
   taskID?: string
   traceparent?: string
@@ -194,7 +194,7 @@ Launch is the only path that mints a grant:
 ### `DecisionFlowWiring.authorize`
 
 ```ts
-authorize(request: { toolName: string; arguments: Record<string, unknown> }): Promise<AuthorizeResult>
+authorize(request: { toolName: string; arguments: Record<string, JSONValue> }): Promise<AuthorizeResult>
 type AuthorizeResult =
   | { ok: true; plan: Array<string>; digest?: string; grant(): Record<string, JSONValue> }
   | { ok: false; issues: Array<string> }
