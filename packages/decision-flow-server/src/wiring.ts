@@ -188,11 +188,12 @@ export async function addDecisionFlow(
     toolName: string
     arguments: Record<string, JSONValue>
   }): Promise<AuthorizeResult> {
-    const { toolName, arguments: args } = request
+    const { toolName } = request
     const flow = registered.get(toolName)
     if (toolName !== 'run_flow' && flow === undefined) {
       return { ok: false, issues: [`Unknown flow tool: ${toolName}`] }
     }
+    const args = structuredClone(request.arguments)
     const checked = await check(flow ?? args.definition)
     if (checked.issues) {
       return { ok: false, issues: checked.issues.map((issue) => formatIssues([issue])) }
@@ -200,7 +201,7 @@ export async function addDecisionFlow(
     const planned = flowPlan(checked.value, predictor, checked.lookup)
     return {
       ok: true,
-      plan: planned,
+      plan: [...planned],
       digest: flow === undefined ? undefined : registry.digest(flow.id),
       grant: () => ({
         [FLOW_GRANT_META]: grants.issue({ toolName, arguments: args, tools: planned }),

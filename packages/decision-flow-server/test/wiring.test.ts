@@ -181,6 +181,85 @@ test('authorize for run_flow has no digest', async () => {
   ).not.toBe(true)
 })
 
+test.each(['registered', 'inline'] as const)(
+  'grant retains the checked arguments for a %s flow after caller mutation',
+  async (kind) => {
+    const value = session()
+    const wiring = await addDecisionFlow(value, { key: 'flow', flows: [flow] })
+    wirings.push(wiring)
+    const toolName = kind === 'registered' ? flowToolName(flow.id) : 'run_flow'
+    const args = {
+      ...(kind === 'inline' ? { definition: structuredClone(flow) as unknown as JSONValue } : {}),
+      input: { message: 'original' },
+    }
+    const original = structuredClone(args)
+    const result = await wiring.authorize({ toolName, arguments: args })
+    if (!result.ok) throw new Error(result.issues.join('\n'))
+    args.input.message = 'mutated'
+
+    expect(
+      (
+        await value.contextHost.callNamespacedTool({
+          id: `flow:${toolName}`,
+          arguments: original,
+          _meta: result.grant(),
+        })
+      ).isError,
+    ).not.toBe(true)
+    const rejected = await value.contextHost.callNamespacedTool({
+      id: `flow:${toolName}`,
+      arguments: args,
+      _meta: result.grant(),
+    })
+    expect(rejected.isError).toBe(true)
+    expect(text(rejected)).toBe('Flow denied')
+  },
+)
+
+test('grant retains the checked tools after the returned plan is mutated', async () => {
+  const value = session()
+  const store = createMemoryTaskStore()
+  for (const name of ['echo', 'other']) {
+    value.contextHost.addLocalTool({
+      name,
+      inputSchema: { type: 'object' },
+      execute: () => ({ content: [] }),
+    })
+  }
+  const wiring = await addDecisionFlow(value, { key: 'flow', store })
+  wirings.push(wiring)
+  const args = { definition: structuredClone(toolFlow) as unknown as JSONValue }
+  const result = await wiring.authorize({ toolName: 'run_flow', arguments: args })
+  if (!result.ok) throw new Error(result.issues.join('\n'))
+  expect(result.plan).toEqual(['local:echo'])
+  result.plan.splice(0, result.plan.length, 'local:other')
+
+  expect(
+    (
+      await value.contextHost.callNamespacedTool({
+        id: 'flow:run_flow',
+        arguments: args,
+        _meta: result.grant(),
+      })
+    ).isError,
+  ).not.toBe(true)
+  const records = await store.list({
+    status: ['working', 'input_required', 'completed', 'failed', 'cancelled'],
+  })
+  expect(records).toHaveLength(1)
+  expect(records[0]?.resumeData).toMatchObject({ approved: ['local:echo'] })
+
+  const changed = structuredClone(toolFlow)
+  changed.nodes.use = { kind: 'tool', tool: 'local:other', args: {}, next: 'done' }
+  const rejected = await value.contextHost.callNamespacedTool({
+    id: 'flow:run_flow',
+    arguments: { definition: changed },
+    _meta: result.grant(),
+  })
+  expect(rejected.isError).toBe(true)
+  expect(text(rejected)).toBe('Flow denied')
+})
+
 test('authorize reports issues for an invalid inline definition', async () => {
   const value = session()
   const wiring = await addDecisionFlow(value, { key: 'flow' })
