@@ -37,7 +37,7 @@ The rig reads `scripts/flow-rig/rig.config.json`, or the file named by `FLOW_RIG
 | `predictor` | `real` | `real` uses the sibling `system-one:predict`. `fake` answers `decide` questions from `fakeAnswers`. |
 | `fakeAnswers` | `{}` | Used when `predictor` is `fake`. Maps each question key to a complete typed answer for that question kind, exactly as System One would return it. A missing key fails the prediction with `No fake answer for <key>`. |
 | `input` | `inbox` | `inbox` sends flow input to the desktop inbox, to be opened with `prompt_input`. `dialog` opens a blocking dialog directly. |
-| `confirm` | `desktop` | What to do with a run that is not fully covered by `allow`. `desktop` shows a confirm dialog that lists the flow and its tool plan (cancel or timeout denies). `deny` and `approve` skip the dialog and exist for the smoke run. |
+| `confirm` | `desktop` | What to do with a run that is not fully covered by `allow`. `desktop` shows a confirm dialog that lists the flow and its tool plan (cancel or timeout denies). `deny` and `approve` skip the dialog. |
 
 ## Tools
 
@@ -45,7 +45,7 @@ The rig reads `scripts/flow-rig/rig.config.json`, or the file named by `FLOW_RIG
 |------|-------|--------|
 | `list_flows` | none | The flow server's list of registered flows |
 | `check_flow` | `{ definition }` | The flow server's check of an inline definition, without running it |
-| `start_flow` | `{ flow?, definition?, input? }` | `{ runID }`, or an error result. Give exactly one of `flow` (a registered id) or `definition` (an inline flow). Returns `Flow denied: <reason>` when approval is refused, and `Rig is shutting down` once shutdown has begun. |
+| `start_flow` | `{ flow?, definition?, input? }` | `{ runID }`, or an error result. Give exactly one of `flow` (a registered id) or `definition` (an inline flow). An inline flow declaring an `input` schema needs `input` passed (at least `{}`). Returns `Flow denied: <reason>` when approval is refused, and `Rig is shutting down` once shutdown has begun. |
 | `flow_status` | `{ runID }` | `{ state, pending, result?, error? }`. `pending` entries are `{ id, message, requestedSchema, canPrompt }`. |
 | `cancel_flow` | `{ runID }` | `{ state }` after the cancel is sent |
 | `prompt_input` | `{ id }` | Opens desktop dialogs for the inbox entry and blocks until it settles. Returns `{ id, action }`. |
@@ -69,15 +69,13 @@ and `flow_status` on an unknown `runID` returns an error result.
 
 ## Tests
 
-- Unit tests: `pnpm run test:flow-rig`
-- Smoke run: `pnpm run smoke:flow-rig`. It starts the rig with a temporary config (fake predictor, inbox input,
-  `confirm: deny`) and checks listing, flow checking, answered and declined input, nested input, denial outside the
-  allowlist, and a completed triage run. It needs neither System One nor a desktop. It exits non-zero on the first
-  failure.
+- Unit tests: `pnpm run test:flow-rig`.
+- Integration: `pnpm run test:integration` runs `integration-tests/suites/flow-rig.test.ts` against a stub desktop
+  and the fake predictor, with no System One or desktop needed.
 
 ## Manual QA checklist
 
-Run these from Claude Code on macOS with the rig built and System One running.
+Run these from Claude Code on macOS with the rig built. This checklist covers the real desktop and real System One.
 
 - [x] `start_flow` with `demo/triage` against a running System One completes with a predicted label.
 - [x] `start_flow` with `demo/ask` shows an inbox notification. `flow_status` lists one pending entry. `prompt_input`
