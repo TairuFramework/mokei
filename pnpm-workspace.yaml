@@ -33,6 +33,7 @@ catalog:
   '@enkaku/socket': ^0.21.3
   '@enkaku/transport': ^0.21.3
   '@kokuin/token': ^0.5.0
+  '@logtape/logtape': ^2.3.0
   '@sozai/async': ^0.3.0
   '@sozai/codec': ^0.4.1
   '@sozai/event': ^0.1.4
@@ -44,11 +45,15 @@ catalog:
   '@sozai/runtime': ^0.1.0
   '@sozai/schema': ^0.1.4
   '@opentelemetry/api': ^1.9.1
-  '@opentelemetry/sdk-trace-base': ^2.2.0
+  '@opentelemetry/core': ^2.11.0
+  '@opentelemetry/context-async-hooks': ^2.11.0
+  '@opentelemetry/exporter-trace-otlp-http': ^0.222.0
+  '@opentelemetry/sdk-trace-base': ^2.11.0
   '@sozai/stream': ^0.2.1
   '@standard-schema/spec': ^1.1.0
   '@tejika/cli': ^0.4.1
   '@tejika/env': ^0.5.0
+  '@tejika/log': ^0.4.0
   '@tejika/process': ^0.5.1
   '@tejika/server': ^0.4.1
   '@tejika/ui': ^0.4.1
