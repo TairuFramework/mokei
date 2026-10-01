@@ -21,6 +21,7 @@ import { createLauncher } from './launch.js'
 import { mapTaskSnapshot } from './map-task.js'
 import { recoverRuns } from './recovery.js'
 import { createMemoryRunStore } from './run-store.js'
+import { createRunTracing } from './tracing.js'
 import { createRunQueue, TERMINAL_STATES, transition } from './transitions.js'
 import type {
   FlowHost,
@@ -62,9 +63,14 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
   const client = params.session.contextHost.getContext(key).client
   const events = new EventEmitter<FlowHostEvents>()
   const queue = createRunQueue()
+  const tracing = createRunTracing()
   const lastApplied = new Map<string, number>()
   const pendingCancellations = new Map<string, string>()
   function emit<Event extends keyof FlowHostEvents>(event: Event, value: FlowHostEvents[Event]) {
+    if (event === 'run:state') {
+      const snapshot = value as FlowRunSnapshot
+      tracing.state(snapshot.runID, snapshot.state)
+    }
     void events.emit(event, value).catch(() => undefined)
   }
   async function change(
@@ -144,7 +150,14 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     if (!TERMINAL_STATES.has(record.state)) watchers.watch(runID, taskID)
     return record
   }
-  const launch = createLauncher({ client, wiring, change, cancelTask, watch: watchers.watch })
+  const launch = createLauncher({
+    client,
+    wiring,
+    change,
+    cancelTask,
+    watch: watchers.watch,
+    tracing,
+  })
   async function claim(runID: string, approvalID?: string): Promise<RunRecord> {
     return queue.run(runID, async () => {
       if (approvalID !== undefined) inbox.requireOpen(approvalID)
@@ -176,6 +189,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     taskStore,
     change,
     addApproval: inbox.add,
+    resume: tracing.resume,
     watch: watchers.watch,
     cancelTask,
   })
@@ -232,24 +246,31 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
         digest: authorized.digest,
         plan: { tools: [...authorized.plan] },
       }
+      Object.assign(record, tracing.start(record))
       const allowed = isAllowed(authorized.plan, params.approval?.allow ?? [])
-      const current = await queue.run(record.runID, async () => {
-        await store.create(record)
-        const current = await store.get(record.runID)
-        if (current === undefined) throw new RunNotFoundError(record.runID)
-        if (allowed) return current
-        emit('run:state', runSnapshot(current))
-        if (current.state !== 'awaiting_approval') return current
-        const item: InboxItem = {
-          id: `${current.runID}:approval`,
-          runID: current.runID,
-          kind: 'approval',
-          plan: structuredClone(current.plan),
-          createdAt: current.createdAt,
-        }
-        inbox.add(item)
-        return current
-      })
+      let current: RunRecord
+      try {
+        current = await queue.run(record.runID, async () => {
+          await store.create(record)
+          const current = await store.get(record.runID)
+          if (current === undefined) throw new RunNotFoundError(record.runID)
+          if (allowed) return current
+          emit('run:state', runSnapshot(current))
+          if (current.state !== 'awaiting_approval') return current
+          const item: InboxItem = {
+            id: `${current.runID}:approval`,
+            runID: current.runID,
+            kind: 'approval',
+            plan: structuredClone(current.plan),
+            createdAt: current.createdAt,
+          }
+          inbox.add(item)
+          return current
+        })
+      } catch (error) {
+        tracing.end(record.runID)
+        throw error
+      }
       if (allowed) return runSnapshot(await launch(await claim(current.runID)))
       return runSnapshot(current)
     },
@@ -299,6 +320,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
       disposal = (async () => {
         await Promise.allSettled(inFlight)
         await watchers.stop()
+        tracing.dispose()
         await wiring.dispose()
       })()
       return disposal

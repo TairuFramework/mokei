@@ -3,6 +3,7 @@ import { isCreateTaskResult } from '@mokei/context-protocol'
 import type { AuthorizeResult, DecisionFlowWiring } from '@mokei/decision-flow-server'
 
 import { resultText } from './map-task.js'
+import type { RunTracing } from './tracing.js'
 import type { RunRecord } from './types.js'
 
 export type ChangeRun = (
@@ -11,6 +12,7 @@ export type ChangeRun = (
 ) => Promise<RunRecord>
 
 export function createLauncher(params: {
+  tracing: RunTracing
   client: ContextClient
   wiring: DecisionFlowWiring
   change: ChangeRun
@@ -42,12 +44,14 @@ export function createLauncher(params: {
           error: { type: 'FlowChanged', message: 'Flow changed since approval' },
         }))
       }
-      const result = await params.client.callTool({
-        name: record.request.toolName,
-        arguments: record.request.arguments,
-        _meta: { ...authorized.grant(), 'dev.mokei/flow-run': runID },
-        task: 'handle',
-      })
+      const result = await params.tracing.withRun(runID, () =>
+        params.client.callTool({
+          name: record.request.toolName,
+          arguments: record.request.arguments,
+          _meta: { ...authorized.grant(), 'dev.mokei/flow-run': runID },
+          task: 'handle',
+        }),
+      )
       if (!isCreateTaskResult(result)) {
         return params.change(runID, (current) =>
           current.cancelRequested

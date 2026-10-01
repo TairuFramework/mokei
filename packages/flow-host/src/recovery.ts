@@ -8,6 +8,7 @@ export async function recoverRuns(params: {
   store: RunStore
   taskStore: TaskStore
   change: ChangeRun
+  resume(record: RunRecord): void
   addApproval(item: InboxItem): void
   watch(runID: string, taskID: string): void
   cancelTask(runID: string, taskID: string): Promise<RunRecord>
@@ -22,6 +23,7 @@ export async function recoverRuns(params: {
       })
     : []
   for (let run of runs) {
+    params.resume(run)
     if (run.state === 'awaiting_approval') {
       params.addApproval({
         id: `${run.runID}:approval`,
