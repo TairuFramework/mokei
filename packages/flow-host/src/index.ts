@@ -1,5 +1,6 @@
 export * from './approval.js'
 export * from './errors.js'
+export { createFlowHost } from './host.js'
 export * from './run-store.js'
 export * from './transitions.js'
 export type * from './types.js'

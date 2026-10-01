@@ -103,5 +103,3 @@ export type RunRecord = FlowRunSnapshot & {
   traceparent?: string
   cancelRequested?: boolean
 }
-
-export declare function createFlowHost(params: FlowHostParams): Promise<FlowHost>
