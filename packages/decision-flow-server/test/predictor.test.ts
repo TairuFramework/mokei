@@ -1,7 +1,16 @@
 import type { CallToolResult } from '@mokei/context-protocol'
+import { createDecisionFlowGraph } from '@mokei/decision-flow'
 import { ContextHost } from '@mokei/host'
 import { createSystemOneConfig, predictOutputSchema } from '@mokei/mcp-system-one'
-import { SystemOneClient, SystemOneError, SystemOneResponseError } from '@mokei/system-one-client'
+import {
+  SYSTEM_ONE_ERROR_META,
+  SystemOneClient,
+  SystemOneError,
+  SystemOneModelError,
+  SystemOneRateLimitError,
+  SystemOneResponseError,
+} from '@mokei/system-one-client'
+import type { FlowDefinition } from '@sozai/flow-graph'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { createMCPPredictor, resolvePredictor } from '../src/predictor.js'
@@ -183,4 +192,102 @@ test('passes flow metadata and a predictor-specific operation key', async () => 
 test('resolvePredictor preserves a direct predictor', () => {
   const direct = { predict: async () => prediction }
   expect(resolvePredictor(direct, { depth: 2 })).toBe(direct)
+})
+
+const modelErrorResult: CallToolResult = {
+  isError: true,
+  content: [{ type: 'text', text: 'unknown model' }],
+  _meta: { 'dev.mokei/system-one-error': { name: 'SystemOneModelError' } },
+}
+
+test('an error result with system-one meta rebuilds the typed error', async () => {
+  const failed = caller({ callTool: async () => ({ result: modelErrorResult }) })
+  const pending = createMCPPredictor(failed)({ depth: 0 }).predict(params())
+  await expect(pending).rejects.toBeInstanceOf(SystemOneModelError)
+  await expect(pending).rejects.toMatchObject({ message: 'unknown model' })
+})
+
+test('an error result without meta stays a plain SystemOneError', async () => {
+  const failed = caller({
+    callTool: async () => ({ result: { isError: true, content: modelErrorResult.content } }),
+  })
+  await expect(createMCPPredictor(failed)({ depth: 0 }).predict(params())).rejects.toMatchObject({
+    name: 'SystemOneError',
+    message: 'unknown model',
+  })
+})
+
+test.each([null, 'SystemOneModelError', 42, [], {}, { name: 42 }, { name: 'UnknownError' }])(
+  'falls back to a plain error for invalid or unknown metadata %j',
+  async (info) => {
+    const failed = caller({
+      callTool: async () => ({
+        result: { ...modelErrorResult, _meta: { [SYSTEM_ONE_ERROR_META]: info } },
+      }),
+    })
+    await expect(createMCPPredictor(failed)({ depth: 0 }).predict(params())).rejects.toMatchObject({
+      name: 'SystemOneError',
+      message: 'unknown model',
+    })
+  },
+)
+
+test.each([
+  { status: 429, retryAfterMs: 1500, expectedStatus: 429, expectedDelay: 1500 },
+  { status: '429', retryAfterMs: '1500', expectedStatus: undefined, expectedDelay: undefined },
+  { status: 429, retryAfterMs: null, expectedStatus: 429, expectedDelay: undefined },
+  { status: false, retryAfterMs: 1500, expectedStatus: undefined, expectedDelay: 1500 },
+])('preserves only numeric error details %j', async (details) => {
+  const failed = caller({
+    callTool: async () => ({
+      result: {
+        ...modelErrorResult,
+        _meta: {
+          [SYSTEM_ONE_ERROR_META]: {
+            name: 'SystemOneRateLimitError',
+            status: details.status,
+            retryAfterMs: details.retryAfterMs,
+          },
+        },
+      },
+    }),
+  })
+  const pending = createMCPPredictor(failed)({ depth: 0 }).predict(params())
+  await expect(pending).rejects.toBeInstanceOf(SystemOneRateLimitError)
+  await expect(pending).rejects.toMatchObject({
+    message: 'unknown model',
+    status: details.expectedStatus,
+    retryAfterMs: details.expectedDelay,
+  })
+})
+
+test('a decide flow records the typed predictor failure', async () => {
+  const flow: FlowDefinition = {
+    id: 'typed-predictor-error',
+    name: 'Typed predictor error',
+    version: 1,
+    start: 'decide',
+    nodes: {
+      decide: {
+        kind: 'decide',
+        state: { value: 'Help me' },
+        questions,
+        cases: [],
+        default: 'done',
+      },
+      done: { kind: 'end', outcome: 'done' },
+    },
+  }
+  const failed = caller({ callTool: async () => ({ result: modelErrorResult }) })
+  const graph = createDecisionFlowGraph({
+    client: createMCPPredictor(failed)({ depth: 0 }),
+    retryDefaults: { decide: { maxAttempts: 1 } },
+  })
+  const run = graph.start({ definition: flow })
+  for await (const _state of run) {
+  }
+  expect(run.getState()).toMatchObject({
+    status: 'error',
+    error: { lastFailure: { type: 'SystemOneModelError' } },
+  })
 })

@@ -97,8 +97,10 @@ export async function createDecisionFlowServer(params: DecisionFlowServerParams)
         properties: { definition: { type: 'object' }, input: {} },
         required: ['definition'],
       },
-      handler: (request) =>
-        runFlow('run_flow', request.input.definition, request.input.input, request),
+      handler: (request) => {
+        const input = request.input.input === undefined ? {} : request.input.input
+        return runFlow('run_flow', request.input.definition, input, request)
+      },
     },
   }
 

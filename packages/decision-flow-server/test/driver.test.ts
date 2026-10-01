@@ -199,7 +199,7 @@ test.each(['run_flow', 'flow_driver_test'])(
   async (name) => {
     const pair = new DirectTransports<ServerMessage, ClientMessage>()
     const tasks = createTaskManager()
-    const flow = definition()
+    const flow = { ...definition(), input: { type: 'object' as const } }
     const serverDefinition = await createDecisionFlowServer({
       caller: {
         listTools: () => [],
@@ -241,6 +241,51 @@ test.each(['run_flow', 'flow_driver_test'])(
     }
   },
 )
+
+test('run_flow with null input fails validation', async () => {
+  const pair = new DirectTransports<ServerMessage, ClientMessage>()
+  const tasks = createTaskManager()
+  const flow = { ...definition(), input: { type: 'object' as const } }
+  const serverDefinition = await createDecisionFlowServer({
+    caller: {
+      listTools: () => [],
+      callTool: async () => {
+        throw new Error('unexpected tool')
+      },
+      waitTask: async () => {
+        throw new Error('unexpected wait')
+      },
+      cancelTask: async () => {},
+    },
+    predictor: {
+      predict: async () => {
+        throw new Error('unexpected predict')
+      },
+    },
+    tasks,
+    flows: [flow],
+    approval: () => ({ tools: [] }),
+  })
+  const server = new ContextServer({ ...serverDefinition.config, transport: pair.server })
+  const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+  try {
+    await expect(
+      client.callTool({
+        name: 'run_flow',
+        arguments: { definition: flow, input: null },
+        task: 'handle',
+      }),
+    ).resolves.toMatchObject({
+      isError: true,
+      content: [{ type: 'text', text: 'Invalid flow input' }],
+    })
+  } finally {
+    await client.dispose()
+    await server.dispose()
+    await tasks.dispose()
+    await pair.dispose()
+  }
+})
 
 test('a registered definition resumes a sibling task before ending', async () => {
   const h = harness({
