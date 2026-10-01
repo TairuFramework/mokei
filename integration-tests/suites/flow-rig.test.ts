@@ -453,21 +453,25 @@ describe('startRig', () => {
     const dir = await mkdtemp(join(tmpdir(), 'flow-rig-stderr-'))
     const path = join(dir, 'stderr.log')
     const sink = await open(path, 'w')
-    await expect(
-      startRig({
-        input: 'inbox',
-        stderr: sink.fd,
-        configOverrides: {
-          flowsDir: fileURLToPath(
-            new URL('../support/flow-rig/nonexistent-flows', import.meta.url),
-          ),
-        },
-      }),
-    ).rejects.toThrow()
-    await sink.close()
-    const stderr = await readFile(path, 'utf8')
-    await rm(dir, { recursive: true, force: true })
-    expect(stderr).toContain('ENOENT')
-    expect(stderr).toContain('nonexistent-flows')
+    try {
+      await expect(
+        startRig({
+          input: 'inbox',
+          stderr: sink.fd,
+          configOverrides: {
+            flowsDir: fileURLToPath(
+              new URL('../support/flow-rig/nonexistent-flows', import.meta.url),
+            ),
+          },
+        }),
+      ).rejects.toThrow()
+      await sink.close()
+      const stderr = await readFile(path, 'utf8')
+      expect(stderr).toContain('ENOENT')
+      expect(stderr).toContain('nonexistent-flows')
+    } finally {
+      await sink.close()
+      await rm(dir, { recursive: true, force: true })
+    }
   }, 60_000)
 })
