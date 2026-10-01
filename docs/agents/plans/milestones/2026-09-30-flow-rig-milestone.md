@@ -1,8 +1,9 @@
 # Milestone: flow rig
 
-**Status:** open -- phases 1 (local rig) and 2 (integration harness) complete, phase 3 next
+**Status:** open -- phases 1 (local rig) and 2 (integration harness) complete, phase 3 in progress (quick fixes
+done, flow runs API next)
 **Opened:** 2026-09-30
-**Branch / PR:** phases 1 and 2 on `feat/flow-rig`
+**Branch / PR:** phases 1 to 3 on `feat/flow-rig`
 
 ## Goal
 
@@ -20,12 +21,13 @@ starts, since each depends on what the previous phase finds.
 |---|-------|-------|---------------|--------|
 | 1 | Local rig | A Node script under `scripts/flow-rig/` that owns a `NodeSession` with sibling servers, `addDecisionFlow` and the desktop elicit handler, and exposes a facade MCP server to Claude Code (`start_flow`, `flow_status`, input tools). Sample flows, smoke run, manual QA checklist. No package changes. | Smoke run passes; manual QA checklist done on macOS; findings recorded below. | complete |
 | 2 | Integration/e2e harness | Move the rig's scenarios into `integration-tests/`: fake predictor, stub desktop backend or answers through the facade tools, run in `pnpm test:integration` and CI. | Rig scenarios run in CI without a desktop or System One. | complete |
-| 3 | Session, host and CLI features | Address the findings: public APIs the rig had to work around, CLI surfaces for flows and the input inbox, desktop notifications in the CLI. | Every finding below is shipped or explicitly deferred. | not started |
+| 3 | Session, host and CLI features | Address the findings: public APIs the rig had to work around, CLI surfaces for flows and the input inbox, desktop notifications in the CLI. | Every finding below is shipped or explicitly deferred. | in progress |
 
 Completed phases link their summary in `completed/` here.
 
 - Phase 1: [`completed/2026-09-30-flow-rig.complete.md`](../completed/2026-09-30-flow-rig.complete.md)
 - Phase 2: [`completed/2026-10-01-flow-rig-phase-2.complete.md`](../completed/2026-10-01-flow-rig-phase-2.complete.md)
+- Phase 3, quick fixes: [`completed/2026-10-01-flow-rig-phase-3a-quick-fixes.complete.md`](../completed/2026-10-01-flow-rig-phase-3a-quick-fixes.complete.md)
 
 ## Decisions
 
