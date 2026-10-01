@@ -7,11 +7,12 @@ import type {
   ToolApprovalRequest,
   ToolApprovalStrategy,
 } from '@mokei/session'
-import type { FlowDefinition } from '@sozai/flow-graph'
+import { type FlowDefinition, formatIssues } from '@sozai/flow-graph'
 
 import { FLOW_GRANT_META } from './call-meta.js'
-import { checkFlow } from './definition-checks.js'
-import { flowToolName } from './flow-tools.js'
+import { checkFlow, type FlowCheckResult } from './definition-checks.js'
+import type { FlowSummary } from './flow-tools.js'
+import { flowSummaries, flowToolName } from './flow-tools.js'
 import { createGrantStore } from './grants.js'
 import { flowPlan } from './plan.js'
 import { createMCPPredictor, type PredictorFactory } from './predictor.js'
@@ -28,6 +29,7 @@ export type AddDecisionFlowParams = {
   flows?: Array<FlowDefinition>
   predictor?: Predictor | PredictorFactory
   store?: TaskStore
+  taskTTLMs?: number | null
 }
 
 /** Flow details are present for checked flow runs and absent for other tool calls. */
@@ -42,10 +44,21 @@ export type FlowApprovalStrategy =
   | ((request: FlowApprovalRequest) => ReturnType<ToolApprovalFn>)
 
 export type DecisionFlowWiring = {
+  lookupFlow(flowID: string): FlowDefinition | undefined
+  flows(): Array<FlowSummary>
+  authorize(request: {
+    toolName: string
+    arguments: Record<string, JSONValue>
+  }): Promise<AuthorizeResult>
+  check(definition: unknown): Promise<FlowCheckResult>
   /** Always returns a function, so AgentSession emits tool-call-pending before every tool call, including for 'auto'. */
   wrapApproval(strategy: FlowApprovalStrategy): ToolApprovalStrategy
   dispose(): Promise<void>
 }
+
+export type AuthorizeResult =
+  | { ok: true; plan: Array<string>; digest?: string; grant(): Record<string, JSONValue> }
+  | { ok: false; issues: Array<string> }
 
 const pendingKeys = new WeakMap<ContextHost, Set<string>>()
 
@@ -119,6 +132,7 @@ export async function addDecisionFlow(
   try {
     tasks = createTaskManager({
       store: params.store,
+      ttlMs: params.taskTTLMs,
       recover: (record, resume) => {
         if (server === undefined) throw new Error('Flow server unavailable during recovery')
         return server.recover(record, resume)
@@ -165,8 +179,50 @@ export async function addDecisionFlow(
     throw error
   }
 
+  function check(definition: unknown): Promise<FlowCheckResult> {
+    return checkFlow({
+      definition,
+      registry,
+      caller,
+      predictor,
+      elicitation: host.elicitationEnabled,
+    })
+  }
+
+  async function authorize(request: {
+    toolName: string
+    arguments: Record<string, JSONValue>
+  }): Promise<AuthorizeResult> {
+    const { toolName } = request
+    const flow = registered.get(toolName)
+    if (toolName !== 'run_flow' && flow === undefined) {
+      return { ok: false, issues: [`Unknown flow tool: ${toolName}`] }
+    }
+    const args = structuredClone(request.arguments)
+    const checked = await check(flow ?? args.definition)
+    if (checked.issues) {
+      return { ok: false, issues: checked.issues.map((issue) => formatIssues([issue])) }
+    }
+    const planned = flowPlan(checked.value, predictor, checked.lookup)
+    return {
+      ok: true,
+      plan: [...planned],
+      digest: flow === undefined ? undefined : registry.digest(flow.id),
+      grant: () => ({
+        [FLOW_GRANT_META]: grants.issue({ toolName, arguments: args, tools: planned }),
+      }),
+    }
+  }
+
   let disposed = false
   return {
+    authorize,
+    check,
+    lookupFlow(flowID) {
+      const flow = registry.lookup(flowID)
+      return flow === undefined ? undefined : structuredClone(flow)
+    },
+    flows: () => flowSummaries(registry),
     wrapApproval(strategy) {
       return async (request) => {
         const prefix = `${params.key}:`
@@ -186,36 +242,24 @@ export async function addDecisionFlow(
           return false
         }
         const definition = flow ?? args.definition
-        const checked = await checkFlow({
-          definition,
-          registry,
-          caller,
-          predictor,
-          elicitation: host.elicitationEnabled,
-        })
-        if (checked.issues) return true
-        const planned = flowPlan(definition as FlowDefinition, predictor, checked.lookup)
+        const authorised = await authorize({ toolName: toolName as string, arguments: args })
+        if (!authorised.ok) return true
         const enriched = {
           ...request,
           flow: {
             id: (definition as FlowDefinition).id,
             name: (definition as FlowDefinition).name,
             inline: flow === undefined,
-            tools: planned,
+            tools: authorised.plan,
           },
         }
         const result = await applyStrategy(strategy, enriched)
         if (!decision(result)) return result
-        const token = grants.issue({
-          toolName: toolName as string,
-          arguments: args,
-          tools: planned,
-        })
         return {
           approved: true,
           meta: {
             ...(typeof result === 'boolean' ? {} : result.meta),
-            [FLOW_GRANT_META]: token,
+            ...authorised.grant(),
           },
         }
       }

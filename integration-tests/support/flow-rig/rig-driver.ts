@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { setTimeout as poll } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import type { CallToolResult } from '@mokei/context-protocol'
+import type { FlowRunSnapshot } from '@mokei/flow-host'
 import { NodeContextHost } from '@mokei/host-node'
 
 const WAIT_MS = 10_000
@@ -16,12 +17,14 @@ export type RigConfig = {
   input: 'inbox' | 'dialog'
   fakeAnswers?: Record<string, unknown>
   configOverrides?: Record<string, unknown>
+  /** File descriptor for the rig's stderr; inherited when omitted. */
+  stderr?: number
 }
 export type FlowStatus = {
-  state: string
+  state: FlowRunSnapshot['state']
   pending: Array<{ id: string; message: string; canPrompt: boolean }>
   result?: CallToolResult
-  error?: string
+  error?: FlowRunSnapshot['error']
 }
 export type StubCall = {
   index: number
@@ -91,7 +94,7 @@ export async function startRig(config: RigConfig): Promise<RigDriver> {
       command: process.execPath,
       args: [absolute('./stub-rig.mjs')],
       env: { ...process.env, FLOW_RIG_CONFIG: configPath },
-      stderr: 'inherit',
+      stderr: config.stderr ?? 'inherit',
     })
     await host.setup({ key: 'rig', timeout: START_MS })
   } catch (error) {

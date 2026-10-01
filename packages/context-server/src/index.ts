@@ -54,6 +54,7 @@ export {
   type TaskHandle,
   TaskInputKeyReusedError,
   type TaskManager,
+  TaskManagerDisposedError,
   type TaskManagerParams,
   type TaskResume,
   type TaskWork,

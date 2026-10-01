@@ -41,6 +41,7 @@
     "@modelcontextprotocol/node": "catalog:",
     "@modelcontextprotocol/server": "catalog:",
     "@mokei/context-rpc": "workspace:^",
+    "@mokei/flow-host": "workspace:^",
     "@mokei/host-monitor": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "@mokei/logger": "workspace:^",

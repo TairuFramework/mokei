@@ -537,6 +537,76 @@ test('withdraws an outstanding expired input before asking at the timeout edge',
   }
 })
 
+test('disposal while awaiting a sibling task keeps the sibling', async () => {
+  const tool = { id: 'sibling:work', inputSchema: { type: 'object' as const } }
+  const definition: FlowDefinition = {
+    ...flow,
+    start: 'work',
+    nodes: { work: { kind: 'tool', tool: tool.id, args: {}, next: 'done' }, ...flow.nodes },
+  }
+  const state = await suspendedState(definition, {
+    listTools: () => [tool],
+    callTool: async () => ({ task: { taskId: 'child-dispose' } }),
+    waitTask: async () => {
+      throw new Error('Unexpected wait before suspension')
+    },
+    cancelTask: async () => {},
+  })
+  const sibling = Promise.withResolvers<{ content: Array<{ type: 'text'; text: string }> }>()
+  const waited: Array<string> = []
+  const cancelled: Array<string> = []
+  const f = fixture({
+    storedDefinition: definition,
+    state,
+    approved: [tool.id],
+    catalogue: () => [tool],
+    siblings: [{ tool: tool.id, taskId: 'child-dispose' }],
+    caller: {
+      waitTask: async ({ taskId, signal }) => {
+        waited.push(taskId)
+        return new Promise((resolve, reject) => {
+          const abort = () => reject(signal.reason)
+          if (signal.aborted) abort()
+          else signal.addEventListener('abort', abort, { once: true })
+          sibling.promise
+            .then(resolve, reject)
+            .finally(() => signal.removeEventListener('abort', abort))
+        })
+      },
+      cancelTask: async ({ taskId }) => {
+        cancelled.push(taskId)
+      },
+    },
+  })
+  const id = await persist(f)
+  const firstWiring = await f.createSecond()
+  let nextWiring: Awaited<ReturnType<typeof f.createSecond>> | undefined
+  try {
+    await firstWiring.second.recover(firstWiring.server.recoveryTools)
+    await expect.poll(() => waited.length).toBe(1)
+    await firstWiring.second.dispose()
+    // Let the aborted wait unwind through the driver's finally block.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(cancelled).toEqual([])
+    expect((await f.store.get(id))?.status).toBe('working')
+    nextWiring = await f.createSecond()
+    const { second, server } = nextWiring
+    await second.recover(server.recoveryTools)
+    await expect.poll(() => waited.length).toBe(2)
+    sibling.resolve({ content: [{ type: 'text', text: 'done' }] })
+    await expect.poll(async () => (await second.get(id)).status).toBe('completed')
+    expect(await second.get(id)).toMatchObject({
+      result: { structuredContent: { outcome: 'finished' } },
+    })
+    expect(waited).toEqual(['child-dispose', 'child-dispose'])
+    expect(cancelled).toEqual([])
+  } finally {
+    await firstWiring.second.dispose()
+    await nextWiring?.second.dispose()
+    sibling.resolve({ content: [] })
+  }
+})
+
 test('recovers a suspended sibling wait by its stored task ID', async () => {
   const tool = { id: 'sibling:work', inputSchema: { type: 'object' as const } }
   const definition: FlowDefinition = {

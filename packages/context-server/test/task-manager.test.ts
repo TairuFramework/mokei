@@ -5,6 +5,7 @@ import type {
   InputResponse,
 } from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
+import { getActiveTraceContext } from '@sozai/otel'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
@@ -12,9 +13,11 @@ import {
   InputRequestWithdrawnError,
   type TaskHandle,
   TaskInputKeyReusedError,
+  TaskManagerDisposedError,
 } from '../src/task-manager.js'
 import { createMemoryTaskStore, type TaskRecord, type TaskStore } from '../src/task-store.js'
 import type { GenericToolDefinition } from '../src/types.js'
+import { installTestContextManager } from './test-context-manager.js'
 
 const tool: GenericToolDefinition = {
   description: 'Test tool',
@@ -45,6 +48,183 @@ async function tick(): Promise<void> {
 }
 
 describe('task manager', () => {
+  test('dispose aborts running work with TaskManagerDisposedError', async () => {
+    const manager = createTaskManager()
+    let signal: AbortSignal | undefined
+    await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: {},
+      work: (handle) => {
+        signal = handle.signal
+        return new Promise(() => {})
+      },
+    })
+    await manager.dispose()
+    expect(signal?.aborted).toBe(true)
+    expect(signal?.reason).toBeInstanceOf(TaskManagerDisposedError)
+    expect(signal?.reason).toMatchObject({
+      name: 'TaskManagerDisposedError',
+      message: 'Task manager disposed',
+    })
+  })
+
+  test('create does not start work when disposed during the store write', async () => {
+    const base = createMemoryTaskStore()
+    const writing = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const store: TaskStore = {
+      ...base,
+      create: async (record) => {
+        writing.resolve()
+        await release.promise
+        await base.create(record)
+      },
+    }
+    const manager = createTaskManager({ store })
+    let started = false
+    const statuses: Array<DetailedTask> = []
+    manager.events.on('taskStatus', (status) => {
+      statuses.push(status)
+    })
+    const creating = manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: {},
+      work: () => {
+        started = true
+        return result
+      },
+    })
+    await writing.promise
+    await manager.dispose()
+    release.resolve()
+    const created = await creating
+    expect(started).toBe(false)
+    expect(statuses).toEqual([])
+    expect((await store.get(created.taskId))?.status).toBe('working')
+    const recovered: Array<string> = []
+    const second = createTaskManager({
+      store,
+      recover: async (record, resume) => {
+        recovered.push(record.taskID)
+        await resume(() => result)
+      },
+    })
+    try {
+      await second.recover({ echo: tool })
+      expect(recovered).toEqual([created.taskId])
+      await expect.poll(async () => (await second.get(created.taskId)).status).toBe('completed')
+    } finally {
+      await second.dispose()
+    }
+  })
+
+  test('does not emit status when a mutation finishes after disposal', async () => {
+    const base = createMemoryTaskStore()
+    const writing = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const store: TaskStore = {
+      ...base,
+      update: async (...args) => {
+        writing.resolve()
+        await release.promise
+        return base.update(...args)
+      },
+    }
+    const manager = createTaskManager({ store })
+    let handle: TaskHandle | undefined
+    await manager.create({
+      toolName: 'echo',
+      tool,
+      clientCapabilities: {},
+      work: (task) => {
+        handle = task
+        return new Promise(() => {})
+      },
+    })
+    if (handle === undefined) throw new Error('Worker did not start')
+    const statuses: Array<DetailedTask> = []
+    manager.events.on('taskStatus', (status) => {
+      statuses.push(status)
+    })
+    const write = handle.setStatus('progress')
+    await writing.promise
+    await manager.dispose()
+    release.resolve()
+    await expect(write).rejects.toBeInstanceOf(TaskManagerDisposedError)
+    expect(statuses).toEqual([])
+  })
+
+  test('does not emit errors when a sweep fails after disposal', async () => {
+    vi.useFakeTimers()
+    const scanning = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<Array<TaskRecord>>()
+    const base = createMemoryTaskStore()
+    let scans = 0
+    const manager = createTaskManager({
+      store: {
+        ...base,
+        list: async (filter) => {
+          if (scans++ === 0) return base.list(filter)
+          scanning.resolve()
+          return release.promise
+        },
+      },
+    })
+    const errors: Array<unknown> = []
+    manager.events.on('taskError', ({ error }) => {
+      errors.push(error)
+    })
+    try {
+      await vi.advanceTimersByTimeAsync(1_000)
+      await scanning.promise
+      await manager.dispose()
+      release.reject(new Error('Store unavailable'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(errors).toEqual([])
+    } finally {
+      await manager.dispose()
+      vi.useRealTimers()
+    }
+  })
+
+  test('recovered work runs under its stored request trace context', async () => {
+    const disableContext = installTestContextManager()
+    const store = createMemoryTaskStore()
+    const first = createTaskManager({ store })
+    let second: ReturnType<typeof createTaskManager> | undefined
+    let traceID: string | undefined
+    try {
+      const created = await first.create({
+        toolName: 'echo',
+        tool,
+        clientCapabilities: {},
+        requestMeta: { traceparent: '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01' },
+        work: () => new Promise(() => {}),
+      })
+      await first.dispose()
+      const recovered = createTaskManager({
+        store,
+        recover: async (_record, resume) => {
+          await resume(async () => {
+            await Promise.resolve()
+            traceID = getActiveTraceContext()?.traceID
+            return result
+          })
+        },
+      })
+      second = recovered
+      await recovered.recover({ echo: tool })
+      await expect.poll(async () => (await recovered.get(created.taskId)).status).toBe('completed')
+      expect(traceID).toBe('0af7651916cd43dd8448eb211c80319c')
+    } finally {
+      await first.dispose()
+      await second?.dispose()
+      disableContext()
+    }
+  })
+
   test('a failed answer write rejects the update and a retry completes the input', async () => {
     const base = createMemoryTaskStore()
     const failure = new Error('Store unavailable')
@@ -1696,7 +1876,7 @@ describe('input waiting and lifecycle', () => {
       await vi.advanceTimersByTimeAsync(75)
       expect(errors).toHaveLength(4)
       await manager.dispose()
-      expect(await pending).toEqual({ error: new Error('Task manager disposed') })
+      expect(await pending).toEqual({ error: new TaskManagerDisposedError() })
       expect(vi.getTimerCount()).toBe(0)
       await vi.advanceTimersByTimeAsync(5_000)
       expect(errors).toHaveLength(4)

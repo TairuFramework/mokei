@@ -24,6 +24,7 @@ import {
   TaskStoreConflictError,
 } from './task-store.js'
 import { settleToolOutcome } from './tool-outcome.js'
+import { withRequestMeta } from './trace.js'
 import {
   type GenericToolDefinition,
   MissingRequiredClientCapabilityError,
@@ -57,6 +58,12 @@ export type TaskHandle = {
   checkpoint(resumeData: JSONValue): Promise<void>
   cancel(reason?: string): Promise<boolean>
 }
+export class TaskManagerDisposedError extends Error {
+  constructor() {
+    super('Task manager disposed')
+    this.name = 'TaskManagerDisposedError'
+  }
+}
 export class TaskInputKeyReusedError extends Error {
   constructor(key: string) {
     super(`Input key already issued: ${key}`)
@@ -88,8 +95,8 @@ export type TaskContext = {
 }
 export type TaskManagerParams = {
   store?: TaskStore
-  /** Task lifetime in milliseconds. Defaults to 3,600,000. */
-  ttlMs?: number
+  /** Task lifetime in milliseconds; null disables expiry. Defaults to 3,600,000. */
+  ttlMs?: number | null
   /** Suggested client poll interval in milliseconds. Defaults to 1,000. */
   pollIntervalMs?: number
   recover?: (record: TaskRecord, resume: TaskResume) => Promise<void> | void
@@ -213,7 +220,7 @@ const WITHDRAW_BACKOFF_MS = { initial: 10, max: 1_000 }
 
 class ManagedTasks implements TaskManager {
   #store: TaskStore
-  #ttlMs: number
+  #ttlMs: number | null
   #pollIntervalMs: number
   #now: () => number
   #recoverCallback?: TaskManagerParams['recover']
@@ -233,7 +240,7 @@ class ManagedTasks implements TaskManager {
 
   constructor(params: TaskManagerParams) {
     this.#store = params.store ?? createMemoryTaskStore()
-    this.#ttlMs = params.ttlMs ?? 3_600_000
+    this.#ttlMs = params.ttlMs === undefined ? 3_600_000 : params.ttlMs
     this.#pollIntervalMs = params.pollIntervalMs ?? 1_000
     this.#now = params.now ?? Date.now
     this.#recoverCallback = params.recover
@@ -242,10 +249,10 @@ class ManagedTasks implements TaskManager {
       () => {
         void this.#sweep().catch((error) => {
           // A failed scan cannot identify an individual task.
-          this.#events.fire('taskError', { error })
+          if (!this.#disposed) this.#events.fire('taskError', { error })
         })
       },
-      Math.max(1, Math.min(this.#ttlMs, 1_000)),
+      Math.max(1, Math.min(this.#ttlMs ?? 1_000, 1_000)),
     )
     this.#timer.unref?.()
   }
@@ -301,7 +308,7 @@ class ManagedTasks implements TaskManager {
         continue
       }
       committed?.(updated)
-      this.#events.fire('taskStatus', detailed(updated))
+      if (!this.#disposed) this.#events.fire('taskStatus', detailed(updated))
       this.#notify(taskID, updated)
       return updated
     }
@@ -356,7 +363,7 @@ class ManagedTasks implements TaskManager {
       try {
         await this.#expire(record)
       } catch (error) {
-        this.#events.fire('taskError', { taskID: record.taskID, error })
+        if (!this.#disposed) this.#events.fire('taskError', { taskID: record.taskID, error })
       }
     }
   }
@@ -371,7 +378,7 @@ class ManagedTasks implements TaskManager {
     requestMeta?: Record<string, JSONValue>
   }): Promise<CreateTaskResult> {
     await this.#ready
-    if (this.#disposed) throw new Error('Task manager disposed')
+    if (this.#disposed) throw new TaskManagerDisposedError()
     const createdAt = new Date(this.#now()).toISOString()
     const record: TaskRecord = {
       taskID: crypto.randomUUID(),
@@ -389,8 +396,8 @@ class ManagedTasks implements TaskManager {
       ...(params.resumeData !== undefined && { resumeData: params.resumeData }),
     }
     await this.#store.create(record)
-    this.#events.fire('taskStatus', detailed(record))
-    this.#attach(record.taskID, params.tool, params.work, record.requestMeta)
+    if (!this.#disposed) this.#events.fire('taskStatus', detailed(record))
+    if (!this.#disposed) this.#attach(record.taskID, params.tool, params.work, record.requestMeta)
     return { ...detailed(record), resultType: 'task' }
   }
 
@@ -444,11 +451,13 @@ class ManagedTasks implements TaskManager {
           } catch {
             // Report the original settlement failure after the final attempt.
           }
-          if (attempt === 3) this.#events.fire('taskError', { taskID, error })
+          if (attempt === 3 && !this.#disposed) this.#events.fire('taskError', { taskID, error })
         }
       }
     })()
-      .catch((error) => this.#events.fire('taskError', { taskID, error }))
+      .catch((error) => {
+        if (!this.#disposed) this.#events.fire('taskError', { taskID, error })
+      })
       .finally(() => {
         if (this.#controllers.get(taskID) === controller) this.#controllers.delete(taskID)
       })
@@ -612,12 +621,12 @@ class ManagedTasks implements TaskManager {
           return
         } catch (error) {
           if (settled) return
-          this.#events.fire('taskError', { taskID, error })
+          if (!this.#disposed) this.#events.fire('taskError', { taskID, error })
         }
         await sleep(delay, this.#disposal.signal).catch(() => {})
         delay = Math.min(delay * 2, WITHDRAW_BACKOFF_MS.max)
       }
-      settle(() => reject(new Error('Task manager disposed')))
+      settle(() => reject(new TaskManagerDisposedError()))
     })()
     return promise
   }
@@ -638,7 +647,7 @@ class ManagedTasks implements TaskManager {
         })
         return
       } catch (error) {
-        this.#events.fire('taskError', { taskID, error })
+        if (!this.#disposed) this.#events.fire('taskError', { taskID, error })
       }
       await sleep(delay, this.#disposal.signal).catch(() => {})
       delay = Math.min(delay * 2, WITHDRAW_BACKOFF_MS.max)
@@ -713,7 +722,7 @@ class ManagedTasks implements TaskManager {
 
   async recover(tools: ToolDefinitions): Promise<void> {
     await this.#ready
-    if (this.#disposed) throw new Error('Task manager disposed')
+    if (this.#disposed) throw new TaskManagerDisposedError()
     for (const taskID of [...this.#hidden]) {
       if (this.#recovering.has(taskID) || !this.#hidden.has(taskID)) continue
       this.#recovering.add(taskID)
@@ -746,7 +755,10 @@ class ManagedTasks implements TaskManager {
         }
         if (resumedWork === undefined) await this.#failInterrupted(taskID)
         else {
-          this.#attach(taskID, tool, resumedWork, latest.requestMeta)
+          const work = resumedWork
+          withRequestMeta(latest.requestMeta, () => {
+            this.#attach(taskID, tool, work, latest.requestMeta)
+          })
           this.#hidden.delete(taskID)
         }
       } finally {
@@ -761,7 +773,7 @@ class ManagedTasks implements TaskManager {
     this.#disposal.abort()
     clearInterval(this.#timer)
     for (const taskID of this.#controllers.keys())
-      this.#abort(taskID, new Error('Task manager disposed'))
+      this.#abort(taskID, new TaskManagerDisposedError())
   }
 }
 

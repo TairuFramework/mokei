@@ -52,7 +52,7 @@ revision to its definition.
 - `2026-07-28` is stateless. There is no handshake: a client reads capabilities from
   `server/discover` and sets itself up on its first call. The log level travels per request in
   `_meta`. Servers send no requests: `sampling`, `elicitation` and `roots` work here too, through
-  multi round-trip requests (MRTR, SEP-2322) instead of server-initiated ones — a `tools/call` /
+  multi round-trip requests (MRTR, SEP-2322) instead of server-initiated ones -- a `tools/call` /
   `prompts/get` / `resources/read` handler that needs client input suspends by returning a
   terminal `resultType: 'input_required'` result, and is re-invoked once the client answers with
   `inputResponses`. The client's `createMessage`/`elicit`/`listRoots` handlers are driven
@@ -189,7 +189,7 @@ binding.
   tool's `execute` both receive `{ input, signal }` (the handler also gets `client` and
   `progress`), and `ToolApprovalFn` receives `{ toolCall, iteration, history, tool, signal }`
 - **A call carries `arguments`; a handler receives `input`.** `arguments` is MCP's wire field
-  (`tools/call`, `prompts/get`) and stays that way on every *call* — `callTool({ name,
+  (`tools/call`, `prompts/get`) and stays that way on every *call* -- `callTool({ name,
   arguments })`. What a *handler* is given is named `input`, because that is what its
   `inputSchema` describes, and because `arguments` is a reserved binding name in strict mode:
   `({ arguments }) => ...` is a SyntaxError in an ES module, so the field could never be
@@ -247,6 +247,7 @@ packages/
 +-- session-node/         # Node stdio session entry
 +-- decision-flow/       # System One decide nodes for flow-graph
 +-- decision-flow-server/ # MCP task server and Session wiring for decision flows
++-- flow-host/            # Portable flow run lifecycle, approval queue, inbox and recovery
 +-- model-provider/       # Provider interface definitions
 +-- openai-provider/      # OpenAI integration
 +-- anthropic-provider/   # Anthropic Claude integration
@@ -257,7 +258,7 @@ packages/
 +-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
 ```
 
-`@mokei/host`, `@mokei/context-server` and `@mokei/session` are Node-free so they bundle under React Native /
+`@mokei/host`, `@mokei/context-server`, `@mokei/session` and `@mokei/flow-host` are Node-free so they bundle under React Native /
 Metro. Node-only entry points live in the `-node` packages: `serveProcess` is in
 `@mokei/context-server-node`, and `addLocalContext` (now a method on `NodeContextHost`),
 `spawnHostedContext`, `createClient`, `runDaemon` and `ProxyHost` are in `@mokei/host-node`.
@@ -288,6 +289,8 @@ website/                  # documentation site (private)
 | Protocol revisions | `packages/context-protocol/src/versions/` |
 | Server creation | `packages/context-server/src/` |
 | Client implementation | `packages/context-client/src/` |
+| Flow runtime | `packages/flow-host/src/` |
+| Flow rig facade | `scripts/flow-rig/` |
 | Host orchestration | `packages/host/src/` |
 | HTTP transports and OAuth | `packages/http-client/src/oauth/`, `packages/http-server/src/auth/`, `packages/host-node/src/oauth/` |
 | MRTR and subscriptions | `packages/context-client/src/{mrtr,subscriptions}.ts`, `packages/context-server/src/{mrtr,subscriptions}.ts` |
@@ -299,6 +302,31 @@ website/                  # documentation site (private)
 | Package tests, where present | `packages/*/test/` (not every package has tests) |
 | Integration tests | `integration-tests/` |
 | SDK interop harness | `integration-tests/support/interop/` |
+
+---
+
+## Flow runtime
+
+`@mokei/flow-host` exports `createFlowHost({ session, flows, predictor, approval, runStore, taskStore })`.
+It registers decision flows on the session and requires elicitation support.
+The runtime owns run IDs, approval plans, task watching, input reconciliation and tracing.
+Memory run and task stores are the defaults. Injected stores allow recovery when a host is recreated.
+
+`start` accepts a registered flow ID or an inline definition. Allowlisted tool plans launch immediately.
+Other plans produce an `awaiting_approval` run and an approval inbox item. Approval re-authorises the plan before minting a single-use grant.
+`get`, `list` and `cancel` expose run snapshots. States are `awaiting_approval`, `denied`, `working`, `input_required`, `completed`, `failed` and `cancelled`.
+
+The inbox exposes `list`, `get`, `answer`, `decline` and `cancel` for approval and form input items.
+Events are `run:state`, `inbox:added` and `inbox:settled`.
+Successful runs expose outcome, output and MCP content. Failed runs expose a typed error with an optional code.
+With an OpenTelemetry SDK, runs carry a `traceID` and a `flow.run` span.
+
+`dispose` suspends watching and flow work for recovery. Callers cancel runs explicitly when shutdown should stop them.
+Recovered tasks retain their request trace context. Input requested by sibling tools still uses the session's elicitation handler.
+
+The flow rig wraps the runtime with MCP facade tools and one `createDesktopInputSurface` from `@mokei/host-desktop`.
+It sends inbox notifications, prompts inputs and approvals, and aborts dialogs when their items settle.
+Rig shutdown cancels non-terminal runs before disposing the runtime, surface and session.
 
 ---
 

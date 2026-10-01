@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, open, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
@@ -22,13 +25,6 @@ const queryFlow = {
       done: { kind: 'end', outcome: 'queried', output: { rows: { ref: ['results', 'q'] } } },
     },
   },
-}
-
-function expectDenied(result: Awaited<ReturnType<RigDriver['call']>>) {
-  expect(result.isError).toBe(true)
-  const entry = result.content[0]
-  assert.ok(entry?.type === 'text')
-  expect(entry.text).toMatch(/^Flow denied/)
 }
 
 describe('inbox rig', () => {
@@ -147,7 +143,12 @@ describe('inbox rig', () => {
     await withRuns(async (driver, runIDs) => {
       const w1 = await driver.watermark()
       const runID = await start(driver, runIDs, { flow: 'demo/ask' })
-      await driver.waitForDialog(w1, (call) => call.type === 'notify', 'inbox notification')
+      const notification = await driver.waitForDialog(
+        w1,
+        (call) => call.type === 'notify',
+        'inbox notification',
+      )
+      expect(notification.text).toContain('flow-rig: demo/ask needs your input')
       const pending = await driver.waitFor(
         runID,
         (s) => s.pending.length === 1,
@@ -189,27 +190,28 @@ describe('inbox rig', () => {
     test(`confirms a flow outside the allowlist with ${approved ? 'yes' : 'no'}`, async () => {
       await withRuns(async (driver, runIDs) => {
         const watermark = await driver.watermark()
-        const started = driver.startBlocking('start_flow', queryFlow)
+        const runID = await start(driver, runIDs, queryFlow)
         const ask = await driver.waitForDialog(
           watermark,
           (call) => call.type === 'ask' && call.pending,
           'confirm dialog',
         )
         expect(ask).toMatchObject({ backend: 'zenity', kind: 'confirm' })
+        expect(driver.data(await driver.call('flow_status', { runID }))).toMatchObject({
+          state: 'awaiting_approval',
+          pending: [],
+        })
         driver.data(
           await driver.call('stub_answer', {
             index: ask.index,
             result: { status: 'answered', value: approved },
           }),
         )
-        const result = await started.promise
         if (!approved) {
-          expectDenied(result)
+          const denied = await driver.waitFor(runID, (s) => s.state === 'denied', 'denied run')
+          expect(denied.error).toMatchObject({ type: 'FlowDenied', message: 'Flow denied' })
           return
         }
-        const { runID } = driver.data<{ runID: string }>(result)
-        expect(runID).toBeTypeOf('string')
-        runIDs.push(runID)
         const done = await driver.waitFor(
           runID,
           (s) => s.state === 'completed',
@@ -222,27 +224,39 @@ describe('inbox rig', () => {
     })
   }
 
-  test('cleanup aborts an outstanding blocking call', async () => {
-    await withRuns(async (driver, runIDs) => {
+  test('shutdown cancels a queued run and closes its confirm dialog', async () => {
+    const driver = await startRig({ input: 'inbox' })
+    try {
       const watermark = await driver.watermark()
-      const started = driver.startBlocking('start_flow', queryFlow)
+      const { runID } = driver.data<{ runID: string }>(await driver.call('start_flow', queryFlow))
+      expect(runID).toBeTypeOf('string')
       const ask = await driver.waitForDialog(
         watermark,
         (call) => call.type === 'ask' && call.pending,
         'abandoned confirm dialog',
       )
+      expect(driver.data(await driver.call('flow_status', { runID }))).toMatchObject({
+        state: 'awaiting_approval',
+        pending: [],
+      })
       const cleanupStartedAt = performance.now()
-      await driver.cleanup([])
+      driver.data(await driver.call('stub_shutdown'))
       expect(performance.now() - cleanupStartedAt).toBeLessThan(5000)
-      const settled = await Promise.allSettled([started.promise])
-      expect(settled[0]).toMatchObject({ status: 'rejected' })
+      expect(driver.data(await driver.call('flow_status', { runID }))).toMatchObject({
+        state: 'cancelled',
+        pending: [],
+      })
       await driver.waitForDialog(
         watermark,
         (call) => call.index === ask.index && !call.pending,
         'withdrawn confirm dialog',
       )
+    } finally {
+      await driver.dispose()
+    }
+    await withRuns(async (driver, runIDs) => {
       const fresh = await driver.watermark()
-      const next = driver.startBlocking('start_flow', queryFlow)
+      const nextRunID = await start(driver, runIDs, queryFlow)
       const nextAsk = await driver.waitForDialog(
         fresh,
         (call) => call.type === 'ask' && call.pending,
@@ -255,7 +269,8 @@ describe('inbox rig', () => {
           result: { status: 'answered', value: false },
         }),
       )
-      expectDenied(await next.promise)
+      const denied = await driver.waitFor(nextRunID, (s) => s.state === 'denied', 'denied run')
+      expect(denied.error).toMatchObject({ type: 'FlowDenied', message: 'Flow denied' })
       const runID = await start(driver, runIDs, { flow: 'demo/ask' })
       const pending = await driver.waitFor(
         runID,
@@ -305,11 +320,10 @@ describe('inbox rig', () => {
       })
       const done = await driver.waitFor(
         runID,
-        (s) => s.state === 'completed',
+        (s) => s.state === 'failed',
         'failed flow completion',
       )
-      expect(done.result?.isError).toBe(true)
-      expect(done.result?.structuredContent).toMatchObject({ error: { code: 'node_failed' } })
+      expect(done.error).toMatchObject({ code: 'node_failed' })
     })
   })
 
@@ -435,15 +449,29 @@ describe('dialog rig', () => {
 
 describe('startRig', () => {
   test('startRig rejects for an invalid config', async () => {
-    await expect(
-      startRig({
-        input: 'inbox',
-        configOverrides: {
-          flowsDir: fileURLToPath(
-            new URL('../support/flow-rig/nonexistent-flows', import.meta.url),
-          ),
-        },
-      }),
-    ).rejects.toThrow()
+    // Child stdio needs a real file descriptor, so capture stderr through a temp file.
+    const dir = await mkdtemp(join(tmpdir(), 'flow-rig-stderr-'))
+    const path = join(dir, 'stderr.log')
+    const sink = await open(path, 'w')
+    try {
+      await expect(
+        startRig({
+          input: 'inbox',
+          stderr: sink.fd,
+          configOverrides: {
+            flowsDir: fileURLToPath(
+              new URL('../support/flow-rig/nonexistent-flows', import.meta.url),
+            ),
+          },
+        }),
+      ).rejects.toThrow()
+      await sink.close()
+      const stderr = await readFile(path, 'utf8')
+      expect(stderr).toContain('ENOENT')
+      expect(stderr).toContain('nonexistent-flows')
+    } finally {
+      await sink.close()
+      await rm(dir, { recursive: true, force: true })
+    }
   }, 60_000)
 })

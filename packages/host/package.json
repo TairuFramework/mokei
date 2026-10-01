@@ -47,7 +47,9 @@
     "@mokei/context-server": "workspace:^",
     "@mokei/http-client": "workspace:^",
     "@sozai/async": "catalog:",
-    "@sozai/event": "catalog:"
+    "@sozai/event": "catalog:",
+    "@sozai/json": "catalog:",
+    "@sozai/schema": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:"

@@ -34,6 +34,7 @@ export {
 export { type ToolNode, toolKind } from './tool-node.js'
 export {
   type AddDecisionFlowParams,
+  type AuthorizeResult,
   addDecisionFlow,
   type DecisionFlowWiring,
   type FlowApprovalRequest,
