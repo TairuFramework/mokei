@@ -17,6 +17,8 @@ export type RigConfig = {
   input: 'inbox' | 'dialog'
   fakeAnswers?: Record<string, unknown>
   configOverrides?: Record<string, unknown>
+  /** File descriptor for the rig's stderr; inherited when omitted. */
+  stderr?: number
 }
 export type FlowStatus = {
   state: FlowRunSnapshot['state']
@@ -92,7 +94,7 @@ export async function startRig(config: RigConfig): Promise<RigDriver> {
       command: process.execPath,
       args: [absolute('./stub-rig.mjs')],
       env: { ...process.env, FLOW_RIG_CONFIG: configPath },
-      stderr: 'inherit',
+      stderr: config.stderr ?? 'inherit',
     })
     await host.setup({ key: 'rig', timeout: START_MS })
   } catch (error) {

@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, open, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
@@ -446,9 +449,14 @@ describe('dialog rig', () => {
 
 describe('startRig', () => {
   test('startRig rejects for an invalid config', async () => {
+    // Child stdio needs a real file descriptor, so capture stderr through a temp file.
+    const dir = await mkdtemp(join(tmpdir(), 'flow-rig-stderr-'))
+    const path = join(dir, 'stderr.log')
+    const sink = await open(path, 'w')
     await expect(
       startRig({
         input: 'inbox',
+        stderr: sink.fd,
         configOverrides: {
           flowsDir: fileURLToPath(
             new URL('../support/flow-rig/nonexistent-flows', import.meta.url),
@@ -456,5 +464,10 @@ describe('startRig', () => {
         },
       }),
     ).rejects.toThrow()
+    await sink.close()
+    const stderr = await readFile(path, 'utf8')
+    await rm(dir, { recursive: true, force: true })
+    expect(stderr).toContain('ENOENT')
+    expect(stderr).toContain('nonexistent-flows')
   }, 60_000)
 })

@@ -33,7 +33,7 @@ test('createRig returns the facade tools without serving stdio', async () => {
   const { dir, configPath } = await writeConfig()
 
   try {
-    const rig = await createRig({ configPath })
+    const rig = await createRig({ configPath, logger: () => {} })
     assert.deepEqual(Object.keys(rig.tools).sort(), [
       'answer_input',
       'cancel_flow',
@@ -70,6 +70,7 @@ test('createRig accepts the injected desktop options', async () => {
     const rig = await createRig({
       configPath,
       desktop: { createBackend, runner, platform: 'linux', env: {} },
+      logger: () => {},
     })
     await rig.shutdown()
     assert.equal(runner.calls, 0)
@@ -97,6 +98,7 @@ test('a rejected desktop prompt leaves the input open for a valid answer', async
   const stub = createStubDesktop()
   const rig = await createRig({
     configPath,
+    logger: () => {},
     desktop: {
       ...stub.desktop,
       createBackend: (name) => ({
@@ -111,9 +113,18 @@ test('a rejected desktop prompt leaves the input open for a valid answer', async
   try {
     const { runID } = (await call(rig, 'start_flow', { flow: 'demo/ask' })).structuredContent
     const entry = await pendingInput(rig, runID)
-    const failed = await call(rig, 'prompt_input', { id: entry.id })
+    const errors = []
+    const originalError = console.error
+    console.error = (...args) => errors.push(args)
+    let failed
+    try {
+      failed = await call(rig, 'prompt_input', { id: entry.id })
+    } finally {
+      console.error = originalError
+    }
     assert.equal(failed.isError, true)
     assert.match(failed.content[0].text, /backend failed/)
+    assert.ok(errors.some((args) => args.some((value) => /backend failed/.test(String(value)))))
     assert.equal((await pendingInput(rig, runID)).id, entry.id)
     const invalid = await call(rig, 'answer_input', { id: entry.id, value: { value: 12 } })
     assert.equal(invalid.isError, true)

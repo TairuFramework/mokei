@@ -230,7 +230,7 @@ function openItem(flowHost, id) {
   }
 }
 
-async function disposeAll(steps) {
+async function disposeAll(steps, log) {
   for (const [name, step] of steps) {
     try {
       await step()
@@ -250,7 +250,8 @@ function inputRequest(item, label = item.runID, signal = new AbortController().s
   }
 }
 
-export async function createRig({ configPath, desktop }) {
+export async function createRig({ configPath, desktop, logger = console.error }) {
+  const log = (...args) => logger('[flow-rig]', ...args)
   const config = await loadConfig(configPath)
   const fake = config.predictor === 'fake'
   const surface = createDesktopInputSurface(desktop ?? {})
@@ -379,7 +380,7 @@ export async function createRig({ configPath, desktop }) {
       })
     })
   } catch (err) {
-    await disposeAll(cleanup)
+    await disposeAll(cleanup, log)
     throw err
   }
 
@@ -418,7 +419,7 @@ export async function createRig({ configPath, desktop }) {
       for (const entry of dialogs.values())
         entry.controller.abort(new Error('Rig is shutting down'))
       await Promise.allSettled([...dialogs.values()].map((entry) => entry.promise))
-      await disposeAll(cleanup)
+      await disposeAll(cleanup, log)
       log('Shutdown complete')
     })()
     return shutdownPromise

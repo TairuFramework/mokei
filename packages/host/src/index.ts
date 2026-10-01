@@ -27,10 +27,7 @@ export {
   elicitIssuesOf,
   elicitMessageOf,
   elicitPropertyValidationSchema,
-  elicitValidatorStats,
   type RequestedSchema,
-  resetElicitValidators,
-  validateElicitContent,
 } from './elicit-content.js'
 export {
   type AddDirectContextParams,

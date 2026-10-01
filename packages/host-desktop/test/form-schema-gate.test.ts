@@ -1,4 +1,3 @@
-import { resetElicitValidators } from '@mokei/host'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { type FieldPlan, type FormParams, planForm } from '../src/form.js'
@@ -54,7 +53,6 @@ function fresh(extra: Record<string, unknown> = {}): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  resetElicitValidators()
   createValidator.mockClear()
 })
 afterEach(() => {
@@ -112,25 +110,6 @@ describe('number parsing', () => {
     ['.5', 0.5],
   ])('%j parses as %s', (answer, value) => {
     expect(single({ type: 'number' }).toValue(answer)).toEqual({ ok: true, value })
-  })
-})
-
-describe('compiled validator cache', () => {
-  test('identical schemas in fresh objects compile once', () => {
-    const extra = fresh()
-    for (let i = 0; i < 50; i++) {
-      single({ ...extra }).toValue('a')
-    }
-    expect(createValidator).toHaveBeenCalledTimes(1)
-  })
-
-  test('the cache is bounded and evicts the least recently used schema', () => {
-    const first = fresh()
-    single(first)
-    for (let i = 0; i < 64; i++) single(fresh())
-    createValidator.mockClear()
-    single({ ...first })
-    expect(createValidator).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -54,10 +54,11 @@ describe('desktop input surface', () => {
       env: { PATH: binDir, DISPLAY: ':0', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/x' },
       createBackend: (name): DesktopBackend => ({
         name,
-        ask: (_request, options) =>
-          new Promise((resolve, reject) => {
+        ask: (_request, options) => {
+          return new Promise((resolve, reject) => {
             calls.push({ options, resolve, reject })
-          }),
+          })
+        },
         notify: async (notification) => {
           notifications.push(notification)
         },
