@@ -169,12 +169,12 @@ function createFacadeTools({ session, runs, inbox }) {
   tools.prompt_input = createTool({
     description: 'Open desktop dialogs for a pending input and return the settled action',
     inputSchema: idSchema,
-    handler: async ({ input }) => {
+    handler: async ({ input, signal }) => {
       if (inbox.get(input.id) === undefined) {
         return errorResult(`Unknown input: ${input.id}`)
       }
       try {
-        const result = await inbox.prompt(input.id)
+        const result = await inbox.prompt(input.id, { signal })
         return successResult({ id: input.id, action: result.action })
       } catch (err) {
         return errorResult(errorMessage(err))

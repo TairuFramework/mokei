@@ -240,6 +240,82 @@ describe('input inbox', () => {
       await promise
     })
 
+    test('prompt rejects with the signal reason and leaves the entry pending', async () => {
+      inbox = createInputInbox()
+      let promptSignal: AbortSignal | undefined
+      const prompt = vi.fn((signal: AbortSignal) => {
+        promptSignal = signal
+        return new Promise<ElicitResult>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+      })
+      const answer = inbox.add(request(), { prompt })
+      const { id } = pending(0)
+      const caller = new AbortController()
+      const reason = new Error('stop')
+      const prompting = inbox.prompt(id, { signal: caller.signal })
+      caller.abort(reason)
+      await expect(prompting).rejects.toBe(reason)
+      expect(promptSignal?.aborted).toBe(true)
+      expect(inbox.get(id)).toBeDefined()
+      const retry = inbox.prompt(id)
+      expect(prompt).toHaveBeenCalledTimes(2)
+      inbox.cancel(id)
+      await expect(retry).resolves.toEqual({ action: 'cancel' })
+      await answer
+    })
+
+    test('prompt with an already aborted signal does not open a dialog', async () => {
+      inbox = createInputInbox()
+      const prompt = vi.fn(async () => ({ action: 'cancel' as const }))
+      const answer = inbox.add(request(), { prompt })
+      const { id } = pending(0)
+      const caller = new AbortController()
+      const reason = new Error('stop')
+      caller.abort(reason)
+      await expect(inbox.prompt(id, { signal: caller.signal })).rejects.toBe(reason)
+      expect(prompt).not.toHaveBeenCalled()
+      expect(inbox.get(id)).toBeDefined()
+      inbox.cancel(id)
+      await answer
+    })
+
+    test('an abort after the entry settles elsewhere resolves with the outcome', async () => {
+      inbox = createInputInbox()
+      const d = deferred<ElicitResult>()
+      const answer = inbox.add(request(), { prompt: () => d.promise })
+      const { id } = pending(0)
+      const caller = new AbortController()
+      const prompting = inbox.prompt(id, { signal: caller.signal })
+      const content = { name: 'answered' }
+      inbox.answer(id, content)
+      caller.abort(new Error('late'))
+      await expect(prompting).resolves.toEqual({ action: 'accept', content })
+      d.resolve({ action: 'cancel' })
+      await answer
+    })
+
+    test('aborting a concurrent caller does not abort the shared prompt', async () => {
+      inbox = createInputInbox()
+      const d = deferred<ElicitResult>()
+      let promptSignal: AbortSignal | undefined
+      const prompt = vi.fn((signal: AbortSignal) => {
+        promptSignal = signal
+        return d.promise
+      })
+      const answer = inbox.add(request(), { prompt })
+      const { id } = pending(0)
+      const first = inbox.prompt(id)
+      const secondCaller = new AbortController()
+      const second = inbox.prompt(id, { signal: secondCaller.signal })
+      secondCaller.abort(new Error('second stopped'))
+      await expect(second).rejects.toThrow('second stopped')
+      expect(promptSignal?.aborted).toBe(false)
+      d.resolve({ action: 'accept', content: { name: 'shared' } })
+      await expect(first).resolves.toEqual({ action: 'accept', content: { name: 'shared' } })
+      await answer
+    })
+
     test('external answer aborts the open prompt and ignores its late result', async () => {
       inbox = createInputInbox()
       const d = deferred<ElicitResult>()
