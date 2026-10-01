@@ -64,6 +64,10 @@ Each sub-project gets its own spec, plan and PR from `main`.
 | 4 | CLI and MCP | `mokei daemon`, `flows`, `runs` and `inbox` commands; `mokei flows mcp`. `scripts/flow-rig` and its suite are deleted. | End-to-end suite green; manual macOS QA done. | not started |
 | 5 | Monitor | Runs, run detail and inbox pages. | Manual QA of the monitor pages. | not started |
 
+Completed sub-projects link their summary in `completed/` here.
+
+- Sub-project 1: [`completed/2026-10-01-flow-host.complete.md`](../completed/2026-10-01-flow-host.complete.md)
+
 ## Findings carried over from the flow rig
 
 - No public "call a tool with approval" outside `AgentSession` -- sub-project 1 (`authorize`).
