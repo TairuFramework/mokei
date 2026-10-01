@@ -1,13 +1,13 @@
 import { TaskInputWithdrawnError } from '@mokei/context-client'
 import type { ElicitRequest, ElicitResult } from '@mokei/context-protocol'
+import {
+  createElicitContentValidator,
+  type ElicitContentValidator,
+  type RequestedSchema,
+} from '@mokei/host'
 import { EventEmitter } from '@sozai/event'
 
-import {
-  type ContentValidator,
-  createContentValidator,
-  type FormParams,
-  type RequestedSchema,
-} from './form.js'
+import type { FormParams } from './form.js'
 
 export type DesktopElicitRequest = {
   key?: string
@@ -78,7 +78,7 @@ export class InboxAnswerInvalidError extends Error {
 type Entry = {
   input: PendingInput
   /** Compiled at `add`, so a schema that cannot be compiled is known before any answer. */
-  validate: ContentValidator
+  validate: ElicitContentValidator
   signal: AbortSignal
   onAbort: () => void
   resolve: (result: ElicitResult) => void
@@ -148,7 +148,7 @@ export function createInputInbox(): InputInbox {
       }
       const entry: Entry = {
         input,
-        validate: createContentValidator(params.requestedSchema),
+        validate: createElicitContentValidator(params.requestedSchema),
         signal: request.signal,
         onAbort: () => {
           const reason = request.signal.reason

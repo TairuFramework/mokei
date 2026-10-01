@@ -1,12 +1,7 @@
+import { resetElicitValidators } from '@mokei/host'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import {
-  type FieldPlan,
-  type FormParams,
-  planForm,
-  resetFormValidators,
-  validateContent,
-} from '../src/form.js'
+import { type FieldPlan, type FormParams, planForm } from '../src/form.js'
 import { createInputInbox, InboxAnswerInvalidError } from '../src/inbox.js'
 
 // Counts compiles made on any validator factory
@@ -59,7 +54,7 @@ function fresh(extra: Record<string, unknown> = {}): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  resetFormValidators()
+  resetElicitValidators()
   createValidator.mockClear()
 })
 afterEach(() => {
@@ -70,11 +65,6 @@ describe('keyword whitelist', () => {
   test('a whitelisted keyword with a wrong value type is ignored', () => {
     expect(bad({ type: 'string', minLength: 'x' }, 'a')).toBeNull()
     expect(bad({ type: 'number', minimum: 'x' }, '1')).toBeNull()
-    expect(
-      validateContent(params({ s: { type: 'string', minLength: 'x' } }).requestedSchema, {
-        s: 'a',
-      }),
-    ).toEqual([])
   })
 
   test.each([
@@ -88,7 +78,6 @@ describe('keyword whitelist', () => {
   ])('%s is dropped', (_name, extra) => {
     const schema = { type: 'string', ...extra }
     expect(bad(schema, 'a')).toBeNull()
-    expect(validateContent(params({ s: schema }).requestedSchema, { s: 'a' })).toEqual([])
   })
 
   test('an unknown format is dropped without a console warning', () => {
@@ -104,31 +93,6 @@ describe('keyword whitelist', () => {
   test('each field compiles in planForm, before any answer', () => {
     single(fresh())
     expect(createValidator).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('multi-select messages', () => {
-  const content = (schema: Record<string, unknown>, value: unknown) =>
-    validateContent(
-      params({ m: { type: 'array', items: { enum: ['x', 'y'] }, ...schema } }).requestedSchema,
-      {
-        m: value,
-      },
-    )
-
-  test('minItems, maxItems and uniqueItems read as choices', () => {
-    expect(content({ minItems: 1 }, [])).toEqual(['m: choose at least 1 option'])
-    expect(content({ minItems: 2 }, ['x'])).toEqual(['m: choose at least 2 options'])
-    expect(content({ maxItems: 1 }, ['x', 'y'])).toEqual(['m: choose at most 1 option'])
-    expect(content({ uniqueItems: true }, ['x', 'x'])).toEqual(['m: choose each option only once'])
-  })
-
-  test('items given as anyOf consts', () => {
-    const schema = params({
-      m: { type: 'array', items: { anyOf: [{ const: 'x' }] } },
-    }).requestedSchema
-    expect(validateContent(schema, { m: ['x'] })).toEqual([])
-    expect(validateContent(schema, { m: ['z'] })).toEqual(['m: "z" is not an offered choice'])
   })
 })
 
@@ -155,11 +119,9 @@ describe('compiled validator cache', () => {
   test('identical schemas in fresh objects compile once', () => {
     const extra = fresh()
     for (let i = 0; i < 50; i++) {
-      validateContent(params({ s: { ...extra } }).requestedSchema, { s: 'a' })
       single({ ...extra }).toValue('a')
     }
-    // One for the form, one for its field
-    expect(createValidator).toHaveBeenCalledTimes(2)
+    expect(createValidator).toHaveBeenCalledTimes(1)
   })
 
   test('the cache is bounded and evicts the least recently used schema', () => {
@@ -202,25 +164,5 @@ describe('a schema that fails to compile', () => {
       expect.stringMatching(/^the requested schema cannot be validated: /),
     ])
     inbox.dispose()
-  })
-})
-
-describe('malformed requested schemas', () => {
-  test('a property named __proto__ is reported on that field only', () => {
-    const schema = JSON.parse(
-      '{"type":"object","properties":{"__proto__":{"type":"string"},"b":{"type":"string"}}}',
-    )
-    expect(validateContent(schema, JSON.parse('{"__proto__":"a","b":"x"}'))).toEqual([
-      '__proto__: unknown property',
-    ])
-  })
-
-  test('a non-string entry in required keeps the other requirements', () => {
-    const schema = {
-      type: 'object',
-      properties: { a: { type: 'string' } },
-      required: ['a', 5],
-    } as unknown as FormParams['requestedSchema']
-    expect(validateContent(schema, {})).not.toEqual([])
   })
 })

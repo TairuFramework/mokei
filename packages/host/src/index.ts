@@ -19,6 +19,20 @@ export {
 } from '@mokei/http-client'
 
 export {
+  createElicitContentValidator,
+  type ElicitContentValidator,
+  type ElicitValidator,
+  elicitCompile,
+  elicitDescribeIssue,
+  elicitIssuesOf,
+  elicitMessageOf,
+  elicitPropertyValidationSchema,
+  elicitValidatorStats,
+  type RequestedSchema,
+  resetElicitValidators,
+  validateElicitContent,
+} from './elicit-content.js'
+export {
   type AddDirectContextParams,
   type AllowToolCalls,
   ContextHost,

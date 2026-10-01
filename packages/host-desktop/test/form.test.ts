@@ -1,14 +1,7 @@
+import { elicitValidatorStats, resetElicitValidators } from '@mokei/host'
 import { beforeEach, describe, expect, test } from 'vitest'
 
-import {
-  type FieldPlan,
-  type FormParams,
-  formValidatorStats,
-  planForm,
-  resetFormValidators,
-  validateContent,
-  withViolation,
-} from '../src/form.js'
+import { type FieldPlan, type FormParams, planForm, withViolation } from '../src/form.js'
 
 const options = { appName: 'App', source: 'Server "s"' }
 
@@ -224,11 +217,6 @@ describe('constraints via toValue', () => {
     expect(bad({ type: 'string', maxLength: 1 }, 'a\u{1F600}')).toBe('must be at most 1 character')
   })
 
-  test('validateContent counts code points too', () => {
-    const emoji = params({ s: { type: 'string', maxLength: 1 } }).requestedSchema
-    expect(validateContent(emoji, { s: '\u{1F600}' })).toEqual([])
-  })
-
   test('pattern follows JSON Schema: unanchored, anchors when the schema says so', () => {
     expect(bad({ type: 'string', pattern: '[a-c]+' }, 'abcd')).toBeNull()
     expect(bad({ type: 'string', pattern: '[a-c]+' }, 'xyz')).toBe('must match the pattern [a-c]+')
@@ -270,104 +258,6 @@ describe('constraints via toValue', () => {
   })
 })
 
-describe('validateContent', () => {
-  const schema = params(
-    {
-      s: { type: 'string', minLength: 2 },
-      n: { type: 'integer', minimum: 1 },
-      b: { type: 'boolean' },
-      e: { type: 'string', enum: ['a', 'b'] },
-      o: { type: 'string', oneOf: [{ const: 'x' }, { const: 'y' }] },
-      m1: { type: 'array', items: { type: 'string', enum: ['p', 'q'] } },
-      m2: { type: 'array', items: { anyOf: [{ const: 'p' }, { const: 'q', title: 'Q' }] } },
-    },
-    ['s'],
-  ).requestedSchema
-
-  test('valid content', () => {
-    expect(
-      validateContent(schema, {
-        s: 'ok',
-        n: 2,
-        b: true,
-        e: 'a',
-        o: 'y',
-        m1: ['p'],
-        m2: ['q', 'p'],
-      }),
-    ).toEqual([])
-    expect(validateContent(schema, { s: 'ok' })).toEqual([])
-  })
-
-  test('non-object content', () => {
-    expect(validateContent(schema, null)).toEqual(['content must be an object'])
-    expect(validateContent(schema, [])).toEqual(['content must be an object'])
-  })
-
-  test('unknown key', () => {
-    expect(validateContent(schema, { s: 'ok', extra: 1 })).toEqual(['extra: unknown property'])
-  })
-
-  test('missing required', () => {
-    expect(validateContent(schema, {})).toEqual(['s: required'])
-  })
-
-  test('wrong type', () => {
-    expect(validateContent(schema, { s: 1 })).toEqual(['s: must be a string'])
-    expect(validateContent(schema, { s: 'ok', n: '2' })).toEqual(['n: must be a whole number'])
-    expect(validateContent(schema, { s: 'ok', b: 'true' })).toEqual(['b: must be a boolean'])
-    expect(validateContent(schema, { s: 'ok', n: Number.NaN })).toEqual([
-      'n: must be a whole number',
-    ])
-  })
-
-  test('enum and oneOf miss', () => {
-    expect(validateContent(schema, { s: 'ok', e: 'z' })).toEqual([
-      'e: must be one of the offered choices',
-    ])
-    expect(validateContent(schema, { s: 'ok', o: 'z' })).toEqual([
-      'o: must be one of the offered choices',
-    ])
-  })
-
-  test('multi-select unknown item and non-array', () => {
-    expect(validateContent(schema, { s: 'ok', m1: ['p', 'z'] })).toEqual([
-      'm1: "z" is not an offered choice',
-    ])
-    expect(validateContent(schema, { s: 'ok', m2: ['z'] })).toEqual([
-      'm2: "z" is not an offered choice',
-    ])
-    expect(validateContent(schema, { s: 'ok', m1: 'p' })).toEqual([
-      'm1: must be an array of strings',
-    ])
-    expect(validateContent(schema, { s: 'ok', m1: [1] })).toEqual([
-      'm1: must be an array of strings',
-    ])
-  })
-
-  test('a declared $schema does not change the dialect', () => {
-    const declared = {
-      $schema: 'http://json-schema.org/draft-07/schema#',
-      ...params({ s: { type: 'string', minLength: 2 } }).requestedSchema,
-    } as typeof schema
-    expect(validateContent(declared, { s: 'ok' })).toEqual([])
-    expect(validateContent(declared, { s: 'x' })).toEqual(['s: must be at least 2 characters'])
-  })
-
-  test('an uncompilable schema gives an issue instead of throwing', () => {
-    const broken = params({ s: { type: 'string', pattern: '(' } }).requestedSchema
-    const issues = validateContent(broken, { s: 'x' })
-    expect(issues).toHaveLength(1)
-    expect(issues[0]).toMatch(/^the requested schema cannot be validated: /)
-  })
-
-  test('constraint failures name the property', () => {
-    expect(validateContent(schema, { s: 'x' })).toEqual(['s: must be at least 2 characters'])
-    expect(validateContent(schema, { s: 'ok', n: 0 })).toEqual(['n: must be at least 1'])
-    expect(validateContent(schema, { s: 'ok', n: 1.5 })).toEqual(['n: must be a whole number'])
-  })
-})
-
 describe('withViolation', () => {
   test('puts the violation on the first line', () => {
     const ask = { kind: 'text' as const, title: 'T', text: 'body' }
@@ -377,7 +267,7 @@ describe('withViolation', () => {
 
 describe('form validator factory', () => {
   beforeEach(() => {
-    resetFormValidators()
+    resetElicitValidators()
   })
 
   function numberForm(index: number): FormParams {
@@ -388,23 +278,23 @@ describe('form validator factory', () => {
     const first = params({ a: { type: 'string', minLength: 1 } })
     const second = params({ a: { minLength: 1, type: 'string' } })
     planForm(first, options)
-    const { compiles } = formValidatorStats()
+    const { compiles } = elicitValidatorStats()
     planForm(second, options)
-    expect(formValidatorStats().compiles).toBe(compiles)
+    expect(elicitValidatorStats().compiles).toBe(compiles)
   })
 
   test('the 257th distinct compile recycles the factory and clears the cache', () => {
     for (let index = 0; index < 256; index++) planForm(numberForm(index), options)
-    expect(formValidatorStats()).toEqual({ generation: 0, compiles: 256, entries: 64 })
+    expect(elicitValidatorStats()).toEqual({ generation: 0, compiles: 256, entries: 64 })
     planForm(numberForm(256), options)
-    expect(formValidatorStats()).toEqual({ generation: 1, compiles: 1, entries: 1 })
+    expect(elicitValidatorStats()).toEqual({ generation: 1, compiles: 1, entries: 1 })
   })
 
   test('a validator obtained before a recycle still validates', () => {
     const plan = planForm(numberForm(0), options)
     if (!plan.ok) throw new Error('expected a plan')
     for (let index = 1; index <= 256; index++) planForm(numberForm(index), options)
-    expect(formValidatorStats().generation).toBe(1)
+    expect(elicitValidatorStats().generation).toBe(1)
     const field = plan.fields[0]
     if (field === undefined) throw new Error('expected a field')
     expect(field.toValue('x')).toEqual({ ok: true, value: 'x' })
@@ -415,9 +305,9 @@ describe('form validator factory', () => {
     const bad = params({ a: { type: 'string', pattern: '(' } })
     const first = planForm(bad, options)
     expect(first.ok).toBe(false)
-    const { compiles } = formValidatorStats()
+    const { compiles } = elicitValidatorStats()
     const second = planForm(bad, options)
     expect(second).toEqual(first)
-    expect(formValidatorStats().compiles).toBe(compiles)
+    expect(elicitValidatorStats().compiles).toBe(compiles)
   })
 })
