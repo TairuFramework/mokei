@@ -139,6 +139,7 @@ versioning:
       - '@mokei/decision-flow'
       - '@mokei/decision-flow-server'
       - '@mokei/flow-host'
+      - '@mokei/flow-host-node'
       - '@mokei/host'
       - '@mokei/host-desktop'
       - '@mokei/host-node'
