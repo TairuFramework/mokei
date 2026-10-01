@@ -910,3 +910,24 @@ test('approval uses registry snapshots', async () => {
   expect(started.isError).not.toBe(true)
   expect(flows.map((item) => item.id)).toEqual(['other', 'extra'])
 })
+
+test.each([null, 12_345, undefined])('task TTL is passed through: %s', async (taskTTLMs) => {
+  const value = session()
+  const store = createMemoryTaskStore()
+  const wiring = await addDecisionFlow(value, { key: 'flow', store, taskTTLMs })
+  wirings.push(wiring)
+  const authorized = await wiring.authorize({
+    toolName: 'run_flow',
+    arguments: { definition: flow as unknown as JSONValue },
+  })
+  if (!authorized.ok) throw new Error(authorized.issues.join('\n'))
+  await value.contextHost.getContext('flow').client.callTool({
+    name: 'run_flow',
+    arguments: { definition: flow },
+    _meta: authorized.grant(),
+    task: 'handle',
+  })
+  const tasks = await store.list({ status: ['working', 'completed'] })
+  expect(tasks).toHaveLength(1)
+  expect(tasks[0]?.ttlMs).toBe(taskTTLMs === undefined ? 3_600_000 : taskTTLMs)
+})

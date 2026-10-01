@@ -64,6 +64,17 @@ Each sub-project gets its own spec, plan and PR from `main`.
 | 4 | CLI and MCP | `mokei daemon`, `flows`, `runs` and `inbox` commands; `mokei flows mcp`. `scripts/flow-rig` and its suite are deleted. | End-to-end suite green; manual macOS QA done. | not started |
 | 5 | Monitor | Runs, run detail and inbox pages. | Manual QA of the monitor pages. | not started |
 
+## Requirements carried forward from sub-project 1
+
+- **Recovery events fire during `createFlowHost`.** Recovered approval items and failed runs emit before the caller
+  can subscribe. The daemon (sub-project 3) must reconcile from `list()` and `inbox.list()` after creation, then
+  rely on events.
+- **Sibling tool calls are at-least-once across a restart.** A sibling task started after the last checkpoint is
+  neither cancelled on dispose nor persisted. The recovered flow replays the tool node and starts it again. Tools
+  with side effects can run twice. A possible fix is to cancel, on dispose, siblings missing from the last checkpoint.
+- **An allowlisted run is stored `awaiting_approval` before its claim.** A crash in that window recovers the run as
+  needing approval. Persistent stores (sub-project 2) should consider creating allowlisted runs as `working`.
+
 ## Findings carried over from the flow rig
 
 - No public "call a tool with approval" outside `AgentSession` -- sub-project 1 (`authorize`).

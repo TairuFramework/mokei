@@ -132,7 +132,7 @@ test('an expired input settles withdrawn', async () => {
   const item = await pending(host, run.runID)
   expect(await completed(host, run.runID)).toMatchObject({ result: { outcome: 'timed' } })
   expect(settled).toHaveBeenCalledExactlyOnceWith({ item, outcome: 'withdrawn' })
-  expect(host.inbox.get(item.id)).toBeUndefined()
+  expect(() => host.inbox.get(item.id)).toThrow(InboxItemNotFoundError)
 })
 test('polls cannot withdraw or re-list an input while its answer is in flight', async () => {
   const { host, session } = await fixture()
@@ -220,13 +220,12 @@ test.each(['cancelled', 'completed', 'withdrawn'] as const)(
       if (outcome === 'completed') await completed(host, run.runID)
       else await vi.waitFor(() => expect(polled.mock.calls.length).toBeGreaterThanOrEqual(2))
     }
-    expect(settled).not.toHaveBeenCalled()
     update.reject(new Error('Transport failed'))
     await answer
     expect(host.inbox.list({ runID: run.runID })).toEqual([])
     expect(settled).toHaveBeenCalledExactlyOnceWith({
       item,
-      outcome: outcome === 'cancelled' ? 'cancelled' : 'withdrawn',
+      outcome: 'withdrawn',
     })
     await expect(host.inbox.answer(item.id, { value: 'again' })).rejects.toBeInstanceOf(
       InboxItemNotFoundError,
@@ -405,4 +404,106 @@ test('late snapshots cannot re-list a settled input or add an older request', as
     if (id === undefined) throw new Error('Expected task ID')
     return id
   }
+})
+
+test('a missing task withdraws its open input and removes it', async () => {
+  const { host, session } = await fixture()
+  const settled = vi.fn()
+  host.events.on('inbox:settled', settled)
+  const run = await host.start({ definition: inputFlow })
+  const item = await pending(host, run.runID)
+  vi.spyOn(session.contextHost.getContext('flow').client.tasks, 'get').mockRejectedValue({
+    code: -32602,
+    message: 'Task not found',
+  })
+  await vi.waitFor(async () =>
+    expect(await host.get(run.runID)).toMatchObject({
+      state: 'failed',
+      error: { type: 'Interrupted' },
+    }),
+  )
+  expect(settled).toHaveBeenCalledExactlyOnceWith({ item, outcome: 'withdrawn' })
+  expect(host.inbox.list()).toEqual([])
+  expect(() => host.inbox.get(item.id)).toThrow(InboxItemNotFoundError)
+})
+
+test('terminal runs prune their inbox entries and per-run maps', async () => {
+  const { host } = await fixture()
+  const entries: Array<{ map: Map<unknown, unknown>; key: unknown; value: unknown }> = []
+  const set = Map.prototype.set
+  vi.spyOn(Map.prototype, 'set').mockImplementation(function (
+    this: Map<unknown, unknown>,
+    key,
+    value,
+  ) {
+    if (typeof key === 'string') entries.push({ map: this, key, value })
+    return set.call(this, key, value)
+  })
+  const run = await host.start({ definition: inputFlow })
+  const item = await pending(host, run.runID)
+  await host.inbox.answer(item.id, { value: 'Ada' })
+  await completed(host, run.runID)
+  const related = entries.filter(
+    ({ key, value }) =>
+      (key === run.runID || key === item.id) &&
+      !(value !== null && typeof value === 'object' && 'revision' in value),
+  )
+  expect(related.length).toBeGreaterThan(0)
+  for (const { map, key, value } of related) {
+    expect(map.has(key)).toBe(false)
+    if (key === item.id) expect(value).not.toHaveProperty('validate')
+  }
+  expect(() => host.inbox.get(item.id)).toThrow(InboxItemNotFoundError)
+})
+
+test('unsupported cancellation retries even when the task stops requesting input', async () => {
+  const { host, client, get } = await synthetic({ method: 'roots/list', params: {} })
+  const cancel = vi
+    .spyOn(client.tasks, 'cancel')
+    .mockImplementationOnce(async () => {
+      get.mockImplementation(async (taskID) => ({ ...taskBase, taskId: taskID, status: 'working' }))
+      throw new Error('Transport failed')
+    })
+    .mockResolvedValue({ resultType: 'complete' })
+  await host.start({ definition: inputFlow })
+  await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(2))
+})
+
+test('terminal cleanup prunes URL tracking and a late URL response cannot restore it', async () => {
+  const { host, client, get } = await synthetic({
+    method: 'elicitation/create',
+    params: {
+      mode: 'url',
+      message: 'Open',
+      url: 'https://example.com',
+      elicitationId: 'url-input',
+    },
+  })
+  const entries: Array<{ map: Map<unknown, unknown>; key: unknown }> = []
+  const set = Map.prototype.set
+  vi.spyOn(Map.prototype, 'set').mockImplementation(function (
+    this: Map<unknown, unknown>,
+    key,
+    value,
+  ) {
+    if (typeof key === 'string' && (typeof value === 'number' || value instanceof Set))
+      entries.push({ map: this, key })
+    return set.call(this, key, value)
+  })
+  const entered = deferred<void>()
+  const release = deferred<void>()
+  vi.spyOn(client.tasks, 'update').mockImplementation(async () => {
+    entered.resolve()
+    await release.promise
+    return { resultType: 'complete' }
+  })
+  const run = await host.start({ definition: inputFlow })
+  await entered.promise
+  get.mockImplementation(async (taskID) => ({ ...taskBase, taskId: taskID, status: 'cancelled' }))
+  expect(await host.cancel(run.runID)).toMatchObject({ state: 'cancelled' })
+  release.resolve()
+  await host.dispose()
+  const related = entries.filter(({ key }) => key === run.runID)
+  expect(related.length).toBeGreaterThan(0)
+  for (const { map, key } of related) expect(map.has(key)).toBe(false)
 })

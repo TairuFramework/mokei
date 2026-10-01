@@ -109,7 +109,7 @@ test('queued approvals expose the plan and answering launches once', async () =>
   expect(answers[1]).toMatchObject({ reason: expect.any(InboxItemNotFoundError) })
   await waitState(host, run.runID, 'completed')
   expect(echo).toHaveBeenCalledTimes(1)
-  expect(host.inbox.get(id)).toBeUndefined()
+  expect(() => host.inbox.get(id)).toThrow(InboxItemNotFoundError)
 })
 test.each([
   ['no', 'no'],
@@ -458,4 +458,169 @@ test('re-authorization errors fail with FlowChanged before dispatch', async () =
     error: { type: 'FlowChanged' },
   })
   expect(echo).not.toHaveBeenCalled()
+})
+
+test('flow-host tasks default to no expiry', async () => {
+  const runStore = createMemoryRunStore()
+  const taskStore = createMemoryTaskStore()
+  const { host } = await fixture({ runStore, taskStore, allow: ['local:*'] })
+  const run = await host.start({ definition: holdFlow })
+  const taskID = (await runStore.get(run.runID))?.taskID
+  if (taskID === undefined) throw new Error('Expected task')
+  expect((await taskStore.get(taskID))?.ttlMs).toBeNull()
+})
+
+test('unchanged working polls preserve revision and update time', async () => {
+  const runStore = createMemoryRunStore()
+  const { host, session } = await fixture({ runStore, allow: ['local:*'] })
+  const run = await host.start({ definition: holdFlow })
+  const get = vi.spyOn(session.contextHost.getContext('flow').client.tasks, 'get')
+  await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThanOrEqual(2))
+  const before = await runStore.get(run.runID)
+  get.mockClear()
+  await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThanOrEqual(2))
+  const after = await runStore.get(run.runID)
+  expect(after?.revision).toBe(before?.revision)
+  expect(after?.updatedAt).toBe(before?.updatedAt)
+})
+
+test('cancel of a missing task returns a cancelled snapshot', async () => {
+  const { host, session } = await fixture({ allow: ['local:*'] })
+  const run = await host.start({ definition: holdFlow })
+  vi.spyOn(session.contextHost.getContext('flow').client.tasks, 'cancel').mockRejectedValueOnce({
+    code: -32602,
+    message: 'Task not found',
+  })
+  expect(await host.cancel(run.runID)).toMatchObject({ state: 'cancelled' })
+})
+
+test.each(['throws', 'issues', 'plan'] as const)(
+  'cancel during changed authorization wins: %s',
+  async (mode) => {
+    const original = wiringModule.addDecisionFlow
+    const entered = deferred<void>()
+    const release = deferred<void>()
+    vi.spyOn(wiringModule, 'addDecisionFlow').mockImplementation(async (...args) => {
+      const wiring = await original(...args)
+      let calls = 0
+      return {
+        ...wiring,
+        authorize: async (request) => {
+          if (++calls === 1) return wiring.authorize(request)
+          entered.resolve()
+          await release.promise
+          if (mode === 'throws') throw new Error('Authorisation failed')
+          return mode === 'issues'
+            ? { ok: false, issues: ['changed'] }
+            : { ok: true, plan: ['local:hold'], grant: () => ({}) }
+        },
+      }
+    })
+    const { host } = await fixture()
+    const run = await host.start({ definition: echoFlow })
+    const answer = host.inbox.answer(`${run.runID}:approval`)
+    await entered.promise
+    await host.cancel(run.runID)
+    release.resolve()
+    await answer
+    expect(await host.get(run.runID)).toMatchObject({ state: 'cancelled' })
+  },
+)
+
+test.each([false, true])(
+  'link failure cancels the created task before failing the run, cleanup fails: %s',
+  async (cleanupFails) => {
+    const runStore = createMemoryRunStore()
+    const taskStore = createMemoryTaskStore()
+    const { host, session } = await fixture({ runStore, taskStore, allow: ['local:*'] })
+    const cancel = vi.spyOn(session.contextHost.getContext('flow').client.tasks, 'cancel')
+    if (cleanupFails) cancel.mockRejectedValueOnce(new Error('Cleanup failed'))
+    const update = runStore.update.bind(runStore)
+    vi.spyOn(runStore, 'update')
+      .mockImplementationOnce(update)
+      .mockImplementationOnce(async () => {
+        throw new Error('Link write failed')
+      })
+      .mockImplementationOnce(async (...args) => {
+        expect(cancel).toHaveBeenCalledTimes(1)
+        return update(...args)
+      })
+    const run = await host.start({ definition: holdFlow })
+    if (!cleanupFails) {
+      expect(await taskStore.list({ status: ['working'] })).toEqual([])
+      expect(await taskStore.list({ status: ['cancelled'] })).toHaveLength(1)
+    }
+    expect(await host.get(run.runID)).toMatchObject({
+      state: 'failed',
+      error: { type: 'StartFailed', message: 'Link write failed' },
+    })
+  },
+)
+
+test('an allowlisted start returns the snapshot when concurrent cancellation wins its claim', async () => {
+  const runStore = createMemoryRunStore()
+  const { host } = await fixture({ runStore, allow: ['local:*'] })
+  const get = runStore.get.bind(runStore)
+  const entered = deferred<void>()
+  const release = deferred<void>()
+  let createdRunID: string | undefined
+  vi.spyOn(runStore, 'get').mockImplementationOnce(async (runID) => {
+    createdRunID = runID
+    entered.resolve()
+    await release.promise
+    return get(runID)
+  })
+  const start = host.start({ definition: holdFlow })
+  await entered.promise
+  if (createdRunID === undefined) throw new Error('Expected run')
+  const cancel = host.cancel(createdRunID)
+  release.resolve()
+  expect(await cancel).toMatchObject({ state: 'cancelled' })
+  expect(await start).toMatchObject({ state: 'cancelled' })
+})
+
+test('public exports exclude lifecycle and approval internals', async () => {
+  const exports = await import('../src/index.js')
+  for (const name of ['transition', 'createRunQueue', 'matchesAllow', 'isAllowed']) {
+    expect(exports).not.toHaveProperty(name)
+  }
+  expect(exports).toHaveProperty('TERMINAL_STATES')
+})
+
+test('unchanged snapshots advance the watermark and reject older input requests', async () => {
+  const { host, session } = await fixture({ allow: ['local:*'] })
+  const client = session.contextHost.getContext('flow').client
+  const get = vi.spyOn(client.tasks, 'get').mockImplementation(async (taskID) => ({
+    ...taskBase,
+    resultType: 'complete',
+    taskId: taskID,
+    status: 'working',
+    lastUpdatedAt: new Date(10).toISOString(),
+  }))
+  const run = await host.start({ definition: holdFlow })
+  await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThanOrEqual(2))
+  get.mockClear().mockImplementation(async (taskID) => ({
+    ...taskBase,
+    resultType: 'complete',
+    taskId: taskID,
+    status: 'working',
+    lastUpdatedAt: new Date(20).toISOString(),
+  }))
+  await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThanOrEqual(2))
+  get.mockClear().mockImplementation(async (taskID) => ({
+    ...taskBase,
+    resultType: 'complete',
+    taskId: taskID,
+    status: 'input_required',
+    lastUpdatedAt: new Date(15).toISOString(),
+    inputRequests: {
+      older: {
+        method: 'elicitation/create',
+        params: { message: 'Old', requestedSchema: { type: 'object', properties: {} } },
+      },
+    },
+  }))
+  await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThanOrEqual(2))
+  expect(await host.get(run.runID)).toMatchObject({ state: 'working' })
+  expect(host.inbox.list()).toEqual([])
 })

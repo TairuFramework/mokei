@@ -2,6 +2,8 @@ import type { ContextClient } from '@mokei/context-client'
 import type { DetailedTask } from '@mokei/context-protocol'
 import { getMokeiLogger } from '@mokei/logger'
 
+import { isTaskNotFound } from './run-helpers.js'
+
 export function createWatchers(params: {
   client: ContextClient
   pollMs: number
@@ -35,14 +37,7 @@ export function createWatchers(params: {
       } catch (error) {
         if (signal.aborted) return
         logger.warn('Task poll failed for {runID}: {error}', { runID, error })
-        if (
-          error !== null &&
-          typeof error === 'object' &&
-          'code' in error &&
-          error.code === -32602 &&
-          'message' in error &&
-          error.message === 'Task not found'
-        ) {
+        if (isTaskNotFound(error)) {
           await params.interrupted(runID)
           return
         }

@@ -1,6 +1,8 @@
 import type { TaskStore } from '@mokei/context-server'
+import { getMokeiLogger } from '@mokei/logger'
 
 import type { ChangeRun } from './launch.js'
+import { approvalItem, interruptedError } from './run-helpers.js'
 import type { RunStore } from './run-store.js'
 import type { InboxItem, RunRecord } from './types.js'
 
@@ -16,34 +18,31 @@ export async function recoverRuns(params: {
   const runs = await params.store.list({
     states: ['awaiting_approval', 'working', 'input_required'],
   })
-  const unlinked = runs.some((run) => run.state === 'working' && run.taskID === undefined)
-  const tasks = unlinked
-    ? await params.taskStore.list({
-        status: ['working', 'input_required', 'completed', 'failed', 'cancelled'],
-      })
-    : []
+  const logger = getMokeiLogger('flow-host')
   for (let run of runs) {
-    params.resume(run)
-    if (run.state === 'awaiting_approval') {
-      params.addApproval({
-        id: `${run.runID}:approval`,
-        runID: run.runID,
-        kind: 'approval',
-        plan: structuredClone(run.plan),
-        createdAt: run.createdAt,
-      })
-      continue
+    try {
+      params.resume(run)
+      if (run.state === 'awaiting_approval') {
+        params.addApproval(approvalItem(run))
+        continue
+      }
+      if (run.state === 'working' && run.taskID === undefined) {
+        const tasks = await params.taskStore.list({
+          status: ['working', 'input_required', 'completed', 'failed', 'cancelled'],
+        })
+        const task = tasks.find((task) => task.requestMeta?.['dev.mokei/flow-run'] === run.runID)
+        run = await params.change(run.runID, () =>
+          task === undefined
+            ? { state: 'failed', error: interruptedError() }
+            : { taskID: task.taskID },
+        )
+      }
+      if (run.taskID === undefined) continue
+      if (run.cancelRequested) await params.cancelTask(run.runID, run.taskID)
+      else params.watch(run.runID, run.taskID)
+    } catch (error) {
+      logger.error('Run recovery failed for {runID}: {error}', { runID: run.runID, error })
+      await params.change(run.runID, () => ({ state: 'failed', error: interruptedError(error) }))
     }
-    if (run.state === 'working' && run.taskID === undefined) {
-      const task = tasks.find((task) => task.requestMeta?.['dev.mokei/flow-run'] === run.runID)
-      run = await params.change(run.runID, () =>
-        task === undefined
-          ? { state: 'failed', error: { type: 'Interrupted', message: 'Task not found' } }
-          : { taskID: task.taskID },
-      )
-    }
-    if (run.taskID === undefined) continue
-    if (run.cancelRequested) await params.cancelTask(run.runID, run.taskID)
-    else params.watch(run.runID, run.taskID)
   }
 }

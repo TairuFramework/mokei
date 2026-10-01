@@ -69,6 +69,7 @@ export type FlowHostParams = {
   predictor?: Predictor | PredictorFactory
   approval?: { allow?: Array<string> }
   runStore?: RunStore
+  taskTTLMs?: number | null
   taskStore?: TaskStore
   pollMs?: number
 }
@@ -92,8 +93,8 @@ export type FlowHost = {
 }
 
 export type StartRunParams =
-  | { flow: string; input?: Record<string, unknown>; label?: string }
-  | { definition: FlowDefinition; input?: Record<string, unknown>; label?: string }
+  | { flow: string; input?: Record<string, JSONValue>; label?: string }
+  | { definition: FlowDefinition; input?: Record<string, JSONValue>; label?: string }
 
 export type RunRecord = FlowRunSnapshot & {
   revision: number

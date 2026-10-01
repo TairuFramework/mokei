@@ -21,16 +21,21 @@ export function createLauncher(params: {
 }) {
   return async (record: RunRecord): Promise<RunRecord> => {
     const runID = record.runID
+    const flowChanged = (current: RunRecord): Partial<RunRecord> => {
+      return current.cancelRequested
+        ? { state: 'cancelled' }
+        : {
+            state: 'failed',
+            error: { type: 'FlowChanged', message: 'Flow changed since approval' },
+          }
+    }
     let authorized: AuthorizeResult
     try {
       authorized = await params.wiring.authorize(record.request)
     } catch {
-      return params.change(runID, () => ({
-        state: 'failed',
-        error: { type: 'FlowChanged', message: 'Flow changed since approval' },
-      }))
+      return params.change(runID, flowChanged)
     }
-    let taskID: string
+    let taskID: string | undefined
     let linked: RunRecord
     try {
       if (
@@ -39,10 +44,7 @@ export function createLauncher(params: {
         JSON.stringify([...authorized.plan].sort()) !==
           JSON.stringify([...record.plan.tools].sort())
       ) {
-        return params.change(runID, () => ({
-          state: 'failed',
-          error: { type: 'FlowChanged', message: 'Flow changed since approval' },
-        }))
+        return params.change(runID, flowChanged)
       }
       const result = await params.tracing.withRun(runID, () =>
         params.client.callTool({
@@ -62,6 +64,7 @@ export function createLauncher(params: {
       taskID = result.taskId
       linked = await params.change(runID, () => ({ taskID }))
     } catch (error) {
+      if (taskID !== undefined) await params.client.tasks.cancel(taskID).catch(() => undefined)
       return params.change(runID, (current) =>
         current.cancelRequested
           ? { state: 'cancelled' }

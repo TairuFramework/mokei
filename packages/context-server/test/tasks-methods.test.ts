@@ -461,3 +461,14 @@ describe('task methods', () => {
     expect(response.error?.code).toBe(-32600)
   })
 })
+
+test('a task with null TTL never expires', async () => {
+  let now = 0
+  const store = createMemoryTaskStore()
+  const manager = createTaskManager({ store, ttlMs: null, now: () => now })
+  cleanup.push(() => manager.dispose())
+  const created = await createTask(manager, () => result)
+  now = 10 * 3_600_000
+  expect((await manager.get(created.taskId)).ttlMs).toBeNull()
+  expect(await store.get(created.taskId)).toBeDefined()
+})

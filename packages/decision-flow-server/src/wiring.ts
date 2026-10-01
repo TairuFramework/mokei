@@ -28,6 +28,7 @@ export type AddDecisionFlowParams = {
   flows?: Array<FlowDefinition>
   predictor?: Predictor | PredictorFactory
   store?: TaskStore
+  taskTTLMs?: number | null
 }
 
 /** Flow details are present for checked flow runs and absent for other tool calls. */
@@ -128,6 +129,7 @@ export async function addDecisionFlow(
   try {
     tasks = createTaskManager({
       store: params.store,
+      ttlMs: params.taskTTLMs,
       recover: (record, resume) => {
         if (server === undefined) throw new Error('Flow server unavailable during recovery')
         return server.recover(record, resume)

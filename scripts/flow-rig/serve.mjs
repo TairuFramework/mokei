@@ -177,7 +177,7 @@ function createFacadeTools({ session, flowHost, surface, config, dialogs, prompt
     inputSchema: idSchema,
     handler: async ({ input, signal }) => {
       try {
-        const item = flowHost.inbox.get(input.id)
+        const item = openItem(flowHost, input.id)
         if (item?.kind !== 'input') return errorResult(`Unknown input: ${input.id}`)
         const result = await promptItem(item, signal)
         return successResult({ id: input.id, action: result.action })
@@ -195,7 +195,7 @@ function createFacadeTools({ session, flowHost, surface, config, dialogs, prompt
     },
     handler: async ({ input }) => {
       try {
-        if (flowHost.inbox.get(input.id)?.kind !== 'input')
+        if (openItem(flowHost, input.id)?.kind !== 'input')
           return errorResult(`Unknown input: ${input.id}`)
         await flowHost.inbox.answer(input.id, input.value)
         return successResult({ id: input.id, action: 'accept' })
@@ -209,7 +209,7 @@ function createFacadeTools({ session, flowHost, surface, config, dialogs, prompt
     inputSchema: idSchema,
     handler: async ({ input }) => {
       try {
-        if (flowHost.inbox.get(input.id)?.kind !== 'input')
+        if (openItem(flowHost, input.id)?.kind !== 'input')
           return errorResult(`Unknown input: ${input.id}`)
         await flowHost.inbox.decline(input.id)
         return successResult({ id: input.id, action: 'decline' })
@@ -219,6 +219,15 @@ function createFacadeTools({ session, flowHost, surface, config, dialogs, prompt
     },
   })
   return tools
+}
+
+// Settled items of terminal runs are pruned, so `get` throws for them.
+function openItem(flowHost, id) {
+  try {
+    return flowHost.inbox.get(id)
+  } catch {
+    return undefined
+  }
 }
 
 async function disposeAll(steps) {
@@ -365,7 +374,8 @@ export async function createRig({ configPath, desktop }) {
       }
       // Dialogs must not hold up the run queue that settles their inbox items.
       pending.catch((err) => {
-        if (!stopping && flowHost.inbox.get(item.id) !== undefined) log('Desktop input failed', err)
+        if (!stopping && flowHost.inbox.list().some((open) => open.id === item.id))
+          log('Desktop input failed', err)
       })
     })
   } catch (err) {

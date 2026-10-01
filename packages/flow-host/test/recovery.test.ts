@@ -428,3 +428,47 @@ test('sibling wait survives disposal without cancelling or relaunching the sibli
   expect(await siblingStore.list({ status: ['working', 'completed', 'cancelled'] })).toHaveLength(1)
   expect((await siblingStore.get(sibling.taskID))?.status).toBe('completed')
 })
+
+test('recovery cancels a missing task and leaves the host usable', async () => {
+  const f = await crash(true)
+  await f.first.host.dispose()
+  await f.runStore.update(
+    f.record.runID,
+    { taskID: f.taskID, cancelRequested: true },
+    { revision: 0 },
+  )
+  await f.taskStore.delete(required(f.taskID))
+  const second = await fixture(f)
+  expect(await second.host.get(f.record.runID)).toMatchObject({ state: 'cancelled' })
+  const run = await second.host.start({ definition: emptyFlow })
+  await state(second.host, run.runID, 'completed')
+})
+
+test('a recovery error fails only its run and leaves other runs usable', async () => {
+  const f = await crash(true)
+  const queued = await f.first.host.start({ definition: echoFlow })
+  await f.first.host.dispose()
+  await f.runStore.update(
+    f.record.runID,
+    { taskID: f.taskID, cancelRequested: true },
+    { revision: 0 },
+  )
+  vi.restoreAllMocks()
+  const original = wiringModule.addDecisionFlow
+  vi.spyOn(wiringModule, 'addDecisionFlow').mockImplementation(async (...args) => {
+    const wiring = await original(...args)
+    vi.spyOn(
+      args[0].contextHost.getContext(args[1].key).client.tasks,
+      'cancel',
+    ).mockRejectedValueOnce(new Error('Recovery transport failed'))
+    return wiring
+  })
+  const second = await fixture(f)
+  expect(await second.host.get(f.record.runID)).toMatchObject({
+    state: 'failed',
+    error: { type: 'Interrupted', message: 'Recovery transport failed' },
+  })
+  expect(second.host.inbox.list()).toHaveLength(1)
+  await second.host.inbox.answer(`${queued.runID}:approval`)
+  await state(second.host, queued.runID, 'completed')
+})

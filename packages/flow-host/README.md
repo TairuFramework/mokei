@@ -7,3 +7,12 @@ Run decision flows in the background: approval, an inbox for inputs and approval
 ```sh
 pnpm add @mokei/flow-host
 ```
+
+## Task lifetime and recovery
+
+`createFlowHost` accepts `taskTTLMs?: number | null`. It defaults to `null`, so tasks do not expire while awaiting input.
+Set a number to expire tasks that many milliseconds after creation. Direct `addDecisionFlow` calls retain the one-hour default when omitted.
+
+Recovery events fire during `createFlowHost`, before callers can subscribe. After creation resolves, reconcile from `list()` and `inbox.list()`, then rely on events.
+
+Terminal runs withdraw remaining inbox items and remove their in-memory entries. Reading a removed item throws `InboxItemNotFoundError`.

@@ -95,8 +95,8 @@ export type TaskContext = {
 }
 export type TaskManagerParams = {
   store?: TaskStore
-  /** Task lifetime in milliseconds. Defaults to 3,600,000. */
-  ttlMs?: number
+  /** Task lifetime in milliseconds; null disables expiry. Defaults to 3,600,000. */
+  ttlMs?: number | null
   /** Suggested client poll interval in milliseconds. Defaults to 1,000. */
   pollIntervalMs?: number
   recover?: (record: TaskRecord, resume: TaskResume) => Promise<void> | void
@@ -220,7 +220,7 @@ const WITHDRAW_BACKOFF_MS = { initial: 10, max: 1_000 }
 
 class ManagedTasks implements TaskManager {
   #store: TaskStore
-  #ttlMs: number
+  #ttlMs: number | null
   #pollIntervalMs: number
   #now: () => number
   #recoverCallback?: TaskManagerParams['recover']
@@ -240,7 +240,7 @@ class ManagedTasks implements TaskManager {
 
   constructor(params: TaskManagerParams) {
     this.#store = params.store ?? createMemoryTaskStore()
-    this.#ttlMs = params.ttlMs ?? 3_600_000
+    this.#ttlMs = params.ttlMs === undefined ? 3_600_000 : params.ttlMs
     this.#pollIntervalMs = params.pollIntervalMs ?? 1_000
     this.#now = params.now ?? Date.now
     this.#recoverCallback = params.recover
@@ -252,7 +252,7 @@ class ManagedTasks implements TaskManager {
           this.#events.fire('taskError', { error })
         })
       },
-      Math.max(1, Math.min(this.#ttlMs, 1_000)),
+      Math.max(1, Math.min(this.#ttlMs ?? 1_000, 1_000)),
     )
     this.#timer.unref?.()
   }
