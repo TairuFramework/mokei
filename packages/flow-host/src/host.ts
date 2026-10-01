@@ -19,6 +19,7 @@ import {
 import { createInbox } from './inbox.js'
 import { createLauncher } from './launch.js'
 import { mapTaskSnapshot } from './map-task.js'
+import { recoverRuns } from './recovery.js'
 import { createMemoryRunStore } from './run-store.js'
 import { createRunQueue, TERMINAL_STATES, transition } from './transitions.js'
 import type {
@@ -51,11 +52,12 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
   const registry = createFlowRegistry(params.flows ?? [])
   const summaries = flowSummaries(registry)
   const store = params.runStore ?? createMemoryRunStore()
+  const taskStore = params.taskStore ?? createMemoryTaskStore()
   const wiring = await addDecisionFlow(params.session, {
     key,
     flows: params.flows,
     predictor: params.predictor,
-    store: params.taskStore ?? createMemoryTaskStore(),
+    store: taskStore,
   })
   const client = params.session.contextHost.getContext(key).client
   const events = new EventEmitter<FlowHostEvents>()
@@ -169,7 +171,31 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
       inbox.settle(id, outcome)
     })
   }
-  return {
+  await recoverRuns({
+    store,
+    taskStore,
+    change,
+    addApproval: inbox.add,
+    watch: watchers.watch,
+    cancelTask,
+  })
+  let disposed = false
+  let disposal: Promise<void> | undefined
+  const inFlight = new Set<Promise<unknown>>()
+  function requireActive() {
+    if (disposed) throw new Error('Flow host disposed')
+  }
+  async function admitted<T>(work: () => Promise<T>): Promise<T> {
+    requireActive()
+    const pending = Promise.resolve().then(work)
+    inFlight.add(pending)
+    try {
+      return await pending
+    } finally {
+      inFlight.delete(pending)
+    }
+  }
+  const host: FlowHost = {
     flows: () => structuredClone(summaries),
     check: wiring.check,
     async start(request) {
@@ -253,11 +279,34 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
           : await cancelTask(runID, record.taskID),
       )
     },
-    inbox: inbox.api,
+    inbox: {
+      list(filter) {
+        requireActive()
+        return inbox.api.list(filter)
+      },
+      get(id) {
+        requireActive()
+        return inbox.api.get(id)
+      },
+      answer: (id, content) => admitted(() => inbox.api.answer(id, content)),
+      decline: (id, reason) => admitted(() => inbox.api.decline(id, reason)),
+      cancel: (id) => admitted(() => inbox.api.cancel(id)),
+    },
     events,
-    async dispose() {
-      watchers.stop()
-      await wiring.dispose()
+    dispose() {
+      if (disposal !== undefined) return disposal
+      disposed = true
+      disposal = (async () => {
+        await Promise.allSettled(inFlight)
+        watchers.stop()
+        await wiring.dispose()
+      })()
+      return disposal
     },
   }
+  const start = host.start
+  const cancel = host.cancel
+  host.start = (request) => admitted(() => start(request))
+  host.cancel = (runID) => admitted(() => cancel(runID))
+  return host
 }
