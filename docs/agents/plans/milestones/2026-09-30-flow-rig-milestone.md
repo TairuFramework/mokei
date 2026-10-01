@@ -1,6 +1,6 @@
 # Milestone: flow rig
 
-**Status:** open -- phase 1 (local rig) built, manual QA pending
+**Status:** open -- phase 1 (local rig) complete, phase 2 next
 **Opened:** 2026-09-30
 **Branch / PR:** phase 1 on `feat/flow-rig`
 
@@ -18,7 +18,7 @@ starts, since each depends on what the previous phase finds.
 
 | # | Phase | Scope | Exit criteria | Status |
 |---|-------|-------|---------------|--------|
-| 1 | Local rig | A Node script under `scripts/flow-rig/` that owns a `NodeSession` with sibling servers, `addDecisionFlow` and the desktop elicit handler, and exposes a facade MCP server to Claude Code (`start_flow`, `flow_status`, input tools). Sample flows, smoke run, manual QA checklist. No package changes. | Smoke run passes; manual QA checklist done on macOS; findings recorded below. | built, manual QA pending |
+| 1 | Local rig | A Node script under `scripts/flow-rig/` that owns a `NodeSession` with sibling servers, `addDecisionFlow` and the desktop elicit handler, and exposes a facade MCP server to Claude Code (`start_flow`, `flow_status`, input tools). Sample flows, smoke run, manual QA checklist. No package changes. | Smoke run passes; manual QA checklist done on macOS; findings recorded below. | complete |
 | 2 | Integration/e2e harness | Move the rig's scenarios into `integration-tests/`: fake predictor, stub desktop backend or answers through the facade tools, run in `pnpm test:integration` and CI. | Rig scenarios run in CI without a desktop or System One. | not started |
 | 3 | Session, host and CLI features | Address the findings: public APIs the rig had to work around, CLI surfaces for flows and the input inbox, desktop notifications in the CLI. | Every finding below is shipped or explicitly deferred. | not started |
 
@@ -57,3 +57,11 @@ Gaps found while building and using the rig. Phase 3 consumes this list.
   rejections from inputs it has withdrawn itself (the rig does).
 - **`@mokei/host-desktop` elicit handling and the flow task API have no shared notion of a run.** The rig keeps its
   own runID-to-task map and passes the run id as the inbox key.
+- **A predictor failure hides its message.** The flow error reports only `lastFailure: { type: "SystemOneError" }`.
+  A missing System One model needed a manual repro against the sibling server to diagnose.
+- **The system-one server needs a model with no fallback.** Without `model` or `SYSTEM_ONE_MODEL` every predict
+  call fails, although `laya-serve` picks a default itself. The smoke run cannot catch this with the fake predictor.
+- **A failed flow reports `state: completed`.** The task completes and the failure shows only as `isError` in the
+  result, so `flow_status` callers must inspect the result.
+- **An inline flow started without `input` fails with `Invalid flow input`.** The rig does not default a missing
+  `input` to `{}`, and the error does not say that `input` is missing.

@@ -3,7 +3,7 @@
     "system-one": {
       "command": "node",
       "args": ["mcp-servers/system-one/lib/serve.js"],
-      "env": { "SYSTEM_ONE_URL": "http://localhost:8000" }
+      "env": { "SYSTEM_ONE_URL": "http://localhost:8000", "SYSTEM_ONE_MODEL": "laya-rl-agent" }
     },
     "sqlite": { "command": "node", "args": ["mcp-servers/sqlite/lib/serve.js"] }
   },

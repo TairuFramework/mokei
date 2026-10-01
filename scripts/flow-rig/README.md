@@ -79,10 +79,10 @@ and `flow_status` on an unknown `runID` returns an error result.
 
 Run these from Claude Code on macOS with the rig built and System One running.
 
-- [ ] `start_flow` with `demo/triage` against a running System One completes with a predicted label.
-- [ ] `start_flow` with `demo/ask` shows an inbox notification. `flow_status` lists one pending entry. `prompt_input`
+- [x] `start_flow` with `demo/triage` against a running System One completes with a predicted label.
+- [x] `start_flow` with `demo/ask` shows an inbox notification. `flow_status` lists one pending entry. `prompt_input`
       opens the dialog, and answering it completes the run with that answer.
-- [ ] With `input` set to `dialog`, `start_flow` with `demo/ask` opens the dialog directly.
-- [ ] A flow with a tool outside `allow` shows the confirm dialog. Approving runs the flow; denying returns
+- [x] With `input` set to `dialog`, `start_flow` with `demo/ask` opens the dialog directly.
+- [x] A flow with a tool outside `allow` shows the confirm dialog. Approving runs the flow; denying returns
       `Flow denied`.
-- [ ] `cancel_flow` during a pending input removes the inbox entry and the run ends as `cancelled`.
+- [x] `cancel_flow` during a pending input removes the inbox entry and the run ends as `cancelled`.
