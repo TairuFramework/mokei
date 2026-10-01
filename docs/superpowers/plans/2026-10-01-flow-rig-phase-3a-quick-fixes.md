@@ -228,6 +228,5 @@ git add .changeset docs/agents/plans/milestones scripts/flow-rig/README.md
 git commit -m "docs: record flow rig quick fixes"
 ```
 
-- [ ] **Step 6 (controller): sozai backlog doc** with two asks, each with the observed behaviour, the wanted
-  behaviour and why: `Invalid flow input` carries the validation issues; an `end` node `outcome` accepts a `ref`
-  so a nested flow's outcome can pass through. No mokei paths in it beyond package names.
+- [x] **Step 6 (controller): sozai backlog doc.** Written on 2026-10-01 in the sozai repo:
+  `docs/agents/plans/backlog/2026-10-01-flow-graph-consumer-asks.md`.
