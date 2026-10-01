@@ -16,6 +16,7 @@ import {
   InboxItemNotFoundError,
   RunNotFoundError,
 } from './errors.js'
+import { createInbox } from './inbox.js'
 import { createLauncher } from './launch.js'
 import { mapTaskSnapshot } from './map-task.js'
 import { createMemoryRunStore } from './run-store.js'
@@ -26,7 +27,6 @@ import type {
   FlowHostParams,
   FlowRunSnapshot,
   InboxItem,
-  InboxOutcome,
   RunRecord,
 } from './types.js'
 import { createWatchers } from './watcher.js'
@@ -60,16 +60,9 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
   const client = params.session.contextHost.getContext(key).client
   const events = new EventEmitter<FlowHostEvents>()
   const queue = createRunQueue()
-  const items = new Map<string, { item: InboxItem; status: 'open' | 'settling' | 'settled' }>()
   const lastApplied = new Map<string, number>()
   function emit<Event extends keyof FlowHostEvents>(event: Event, value: FlowHostEvents[Event]) {
     void events.emit(event, value).catch(() => undefined)
-  }
-  function settle(runID: string, outcome: InboxOutcome) {
-    const entry = items.get(`${runID}:approval`)
-    if (entry === undefined || entry.status === 'settled') return
-    entry.status = 'settled'
-    emit('inbox:settled', { item: structuredClone(entry.item), outcome })
   }
   async function change(
     runID: string,
@@ -81,17 +74,44 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
       return result.record
     })
   }
+  const inbox = createInbox({
+    client,
+    queue,
+    emit,
+    approve: async (runID, id) => {
+      await launch(await claim(runID, id))
+    },
+    rejectApproval: approval,
+  })
   async function apply(runID: string, task: DetailedTask): Promise<boolean> {
-    return queue.run(runID, async () => {
+    const applied = await queue.run(runID, async () => {
       const timestamp = Date.parse(task.lastUpdatedAt)
+      let accepted = false
+      const unsupported =
+        task.status === 'input_required'
+          ? Object.values(task.inputRequests).find(
+              (request) => request.method !== 'elicitation/create',
+            )?.method
+          : undefined
       const result = await transition(store, runID, () => {
         if (timestamp < (lastApplied.get(runID) ?? Number.NEGATIVE_INFINITY)) return undefined
-        return mapTaskSnapshot(task)
+        accepted = true
+        return unsupported === undefined
+          ? mapTaskSnapshot(task)
+          : { state: 'failed', error: { type: 'UnsupportedInput', message: unsupported } }
       })
       if (result.changed) lastApplied.set(runID, timestamp)
       if (result.stateChanged) emit('run:state', runSnapshot(result.record))
-      return TERMINAL_STATES.has(result.record.state)
+      const terminal = TERMINAL_STATES.has(result.record.state)
+      if (accepted) inbox.reconcile(runID, terminal ? undefined : task)
+      return { terminal, accepted, unsupported }
     })
+    // Network calls stay outside the run queue so pending responses cannot block transitions.
+    if (applied.accepted) {
+      if (applied.unsupported !== undefined) await client.tasks.cancel(task.taskId)
+      else if (!applied.terminal) await inbox.cancelURLs(runID, task)
+    }
+    return applied.terminal
   }
   const watchers = createWatchers({
     client,
@@ -116,22 +136,20 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
   const launch = createLauncher({ client, wiring, change, cancelTask, watch: watchers.watch })
   async function claim(runID: string, approvalID?: string): Promise<RunRecord> {
     return queue.run(runID, async () => {
-      if (approvalID !== undefined && items.get(approvalID)?.status !== 'open')
-        throw new InboxItemNotFoundError(approvalID)
+      if (approvalID !== undefined) inbox.requireOpen(approvalID)
       const claimed = await transition(store, runID, (record) =>
         record.state === 'awaiting_approval' ? { state: 'working' } : undefined,
       )
       if (!claimed.changed) throw new InboxItemNotFoundError(approvalID ?? `${runID}:approval`)
       if (claimed.stateChanged) emit('run:state', runSnapshot(claimed.record))
-      if (approvalID !== undefined) settle(runID, 'answered')
+      if (approvalID !== undefined) inbox.settle(approvalID, 'answered')
       return claimed.record
     })
   }
   async function approval(id: string, outcome: 'declined' | 'cancelled', reason?: string) {
-    const runID = items.get(id)?.item.runID
-    if (runID === undefined) throw new InboxItemNotFoundError(id)
+    const runID = inbox.requireOpen(id).item.runID
     await queue.run(runID, async () => {
-      if (items.get(id)?.status !== 'open') throw new InboxItemNotFoundError(id)
+      inbox.requireOpen(id)
       const result = await transition(store, runID, () =>
         outcome === 'declined'
           ? { state: 'denied', error: { type: 'FlowDenied', message: reason ?? 'Flow denied' } }
@@ -139,7 +157,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
       )
       if (!result.changed) throw new InboxItemNotFoundError(id)
       if (result.stateChanged) emit('run:state', runSnapshot(result.record))
-      settle(runID, outcome)
+      inbox.settle(id, outcome)
     })
   }
   return {
@@ -194,8 +212,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
           plan: structuredClone(current.plan),
           createdAt: current.createdAt,
         }
-        items.set(item.id, { item, status: 'open' })
-        emit('inbox:added', structuredClone(item))
+        inbox.add(item)
         return current
       })
       if (allowed) return runSnapshot(await launch(await claim(current.runID)))
@@ -217,7 +234,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
         })
         if (result.stateChanged) {
           emit('run:state', runSnapshot(result.record))
-          settle(runID, 'cancelled')
+          inbox.settle(`${runID}:approval`, 'cancelled')
         }
         return result.record
       })
@@ -227,27 +244,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
           : await cancelTask(runID, record.taskID),
       )
     },
-    inbox: {
-      list(filter) {
-        return [...items.values()]
-          .filter(
-            ({ item, status }) =>
-              status === 'open' && (filter?.runID === undefined || item.runID === filter.runID),
-          )
-          .map(({ item }) => structuredClone(item))
-      },
-      get(id) {
-        const entry = items.get(id)
-        return entry?.status === 'open' ? structuredClone(entry.item) : undefined
-      },
-      async answer(id) {
-        const runID = items.get(id)?.item.runID
-        if (runID === undefined) throw new InboxItemNotFoundError(id)
-        await launch(await claim(runID, id))
-      },
-      decline: (id, reason) => approval(id, 'declined', reason),
-      cancel: (id) => approval(id, 'cancelled'),
-    },
+    inbox: inbox.api,
     events,
     async dispose() {
       watchers.stop()
