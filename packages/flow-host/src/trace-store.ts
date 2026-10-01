@@ -43,6 +43,16 @@ function copy<TValue>(value: TValue): TValue {
 export function createMemoryTraceStore(): TraceStore {
   const spans = new Map<string, SpanRow>()
   const logs: Array<LogRow> = []
+  // Compacts in place: spreading every row into splice() can exceed the argument limit.
+  function removeLogs(matches: (value: StoredLog) => boolean): number {
+    let kept = 0
+    for (const row of logs) {
+      if (!matches(row.value)) logs[kept++] = row
+    }
+    const removed = logs.length - kept
+    logs.length = kept
+    return removed
+  }
   let sequence = 0
 
   return {
@@ -82,9 +92,7 @@ export function createMemoryTraceStore(): TraceStore {
           spanCount++
         }
       }
-      const remainingLogs = logs.filter(({ value }) => !selected.has(value.traceID))
-      const logCount = logs.length - remainingLogs.length
-      logs.splice(0, logs.length, ...remainingLogs)
+      const logCount = removeLogs((value) => selected.has(value.traceID))
       return { spans: spanCount, logs: logCount }
     },
     async deleteBefore(time, keepTraceIDs) {
@@ -96,11 +104,7 @@ export function createMemoryTraceStore(): TraceStore {
           spanCount++
         }
       }
-      const remainingLogs = logs.filter(
-        ({ value }) => !(value.timestamp < time && !kept.has(value.traceID)),
-      )
-      const logCount = logs.length - remainingLogs.length
-      logs.splice(0, logs.length, ...remainingLogs)
+      const logCount = removeLogs((value) => value.timestamp < time && !kept.has(value.traceID))
       return { spans: spanCount, logs: logCount }
     },
   }
