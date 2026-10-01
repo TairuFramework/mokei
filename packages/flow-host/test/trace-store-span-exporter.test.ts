@@ -117,6 +117,20 @@ test.each(['sync', 'async'])('reports exporter failure through the callback (%s)
   })
   expect(reports).toHaveBeenCalledTimes(1)
 })
+test('wraps a non-error rejection that cannot be stringified', async () => {
+  const store = createMemoryTraceStore()
+  const rejection = Object.create(null)
+  vi.spyOn(store, 'addSpans').mockRejectedValue(rejection)
+  const exporter = createTraceStoreSpanExporter(store)
+  const callback = vi.fn()
+  exporter.export([], callback)
+  await required(exporter.forceFlush).call(exporter)
+  expect(callback).toHaveBeenCalledTimes(1)
+  const result = callback.mock.calls[0]?.[0]
+  expect(result.code).toBe(ExportResultCode.FAILED)
+  expect(result.error).toBeInstanceOf(Error)
+  expect(result.error.cause).toBe(rejection)
+})
 test('flush and shutdown await outstanding exports without closing the store', async () => {
   const store = createMemoryTraceStore()
   let release!: () => void

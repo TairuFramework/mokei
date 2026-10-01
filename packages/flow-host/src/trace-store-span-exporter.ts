@@ -26,15 +26,16 @@ function storedSpan(span: ReadableSpan): StoredSpan {
     endTime: milliseconds(span.endTime),
     status: { ...span.status },
     attributes: attributes(span.attributes),
-    events: span.events.map((event) => ({
-      name: event.name,
-      time: milliseconds(event.time),
-      attributes: attributes(event.attributes),
-    })),
-    links: span.links.map((link) => ({
-      traceID: link.context.traceId,
-      spanID: link.context.spanId,
-    })),
+    events: span.events.map((event) => {
+      return {
+        name: event.name,
+        time: milliseconds(event.time),
+        attributes: attributes(event.attributes),
+      }
+    }),
+    links: span.links.map((link) => {
+      return { traceID: link.context.traceId, spanID: link.context.spanId }
+    }),
   }
 }
 
@@ -54,7 +55,11 @@ export function createTraceStoreSpanExporter(store: TraceStore): SpanExporter {
             report('Failed to capture span batch', error)
             callback({
               code: ExportResultCode.FAILED,
-              error: error instanceof Error ? error : new Error(String(error)),
+              // Wrap rather than stringify: String() throws on some rejection values.
+              error:
+                error instanceof Error
+                  ? error
+                  : new Error('Failed to capture span batch', { cause: error }),
             })
           },
         )
