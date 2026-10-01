@@ -6,7 +6,7 @@ import type { QuestionMap, State } from './types.js'
  * `validateResult` validates them and maps `usage` to the camelCase `Usage`.
  */
 export type SystemOneResult = {
-  model?: string
+  model: string
   answers: Record<string, unknown>
   usage: { input_tokens: number; output_tokens: number }
 }
