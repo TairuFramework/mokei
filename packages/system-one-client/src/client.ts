@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@sozai/schema'
 
 import type { SystemOneBackend } from './backend.js'
-import { SystemOneError, SystemOneInputError, SystemOneResponseError } from './errors.js'
+import { SystemOneInputError, SystemOneResponseError } from './errors.js'
 import { HTTPSystemOneBackend, type SystemOneHTTPClientParams } from './http.js'
 import type { PredictResult, QuestionMap, State } from './types.js'
 import { validateQuestions, validateResult, validateState } from './validation.js'
@@ -32,14 +32,8 @@ export class SystemOneClient {
     this.#defaultModel = params.defaultModel
   }
 
-  #resolveModel(model?: string): string {
-    const resolved = model ?? this.#defaultModel
-    if (resolved == null) {
-      throw new SystemOneError({
-        message: 'A model is required: pass `model` or set `defaultModel`',
-      })
-    }
-    return resolved
+  #resolveModel(model?: string): string | undefined {
+    return model ?? this.#defaultModel
   }
 
   async predict<TQuestions extends QuestionMap>(

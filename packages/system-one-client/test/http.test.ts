@@ -74,6 +74,21 @@ describe('HTTPSystemOneBackend', () => {
     expect(res.model).toBe('english')
   })
 
+  test.each([undefined, 'english'])(
+    'the request body includes model only when given (%s)',
+    async (model) => {
+      let body: Record<string, unknown> = {}
+      const fetcher: typeof fetch = async (input) => {
+        body = await (input as Request).json()
+        return Response.json(rawResult)
+      }
+      const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000', fetch: fetcher })
+      await backend.predict({ state: 'hi', questions, ...(model === undefined ? {} : { model }) })
+      expect(body).toEqual({ state: 'hi', questions, ...(model === undefined ? {} : { model }) })
+      expect(Object.hasOwn(body, 'model')).toBe(model !== undefined)
+    },
+  )
+
   test('maps 401 to SystemOneAuthError', async () => {
     stubJSON({ error: 'unauthorized' }, { status: 401 })
     const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })

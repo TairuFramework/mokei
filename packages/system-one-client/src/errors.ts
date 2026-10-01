@@ -119,3 +119,49 @@ export class SystemOneModelError extends SystemOneError {
   }
 }
 export type SystemOneModelErrorParams = SystemOneErrorParams
+
+export const SYSTEM_ONE_ERROR_META = 'dev.mokei/system-one-error'
+
+export type SystemOneErrorInfo = {
+  name: string
+  status?: number
+  retryAfterMs?: number
+}
+
+export function systemOneErrorInfo(error: SystemOneError): SystemOneErrorInfo {
+  const info: SystemOneErrorInfo = { name: error.name }
+  if (error instanceof SystemOneConnectionError && error.status !== undefined) {
+    info.status = error.status
+  }
+  if (error instanceof RetryableError && error.retryAfterMs !== undefined) {
+    info.retryAfterMs = error.retryAfterMs
+  }
+  return info
+}
+
+const ERROR_CONSTRUCTORS = new Map<
+  string,
+  new (
+    params: SystemOneRetryableErrorParams & { issues: ReadonlyArray<ValidationIssue> },
+  ) => SystemOneError
+>([
+  ['SystemOneError', SystemOneError],
+  ['SystemOneInputError', SystemOneInputError],
+  ['SystemOneConnectionError', SystemOneConnectionError],
+  ['SystemOneRateLimitError', SystemOneRateLimitError],
+  ['SystemOneOverloadedError', SystemOneOverloadedError],
+  ['SystemOneAuthError', SystemOneAuthError],
+  ['SystemOneResponseError', SystemOneResponseError],
+  ['SystemOneModelError', SystemOneModelError],
+])
+
+export function systemOneErrorFromInfo(info: SystemOneErrorInfo, message: string): SystemOneError {
+  const ErrorClass = ERROR_CONSTRUCTORS.get(info.name) ?? SystemOneError
+  const params = {
+    message,
+    status: info.status,
+    retryAfterMs: info.retryAfterMs,
+    issues: [],
+  }
+  return new ErrorClass(params)
+}

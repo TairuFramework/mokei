@@ -11,11 +11,13 @@ export {
   type SystemOnePredictParams,
 } from './client.js'
 export {
+  SYSTEM_ONE_ERROR_META,
   SystemOneAuthError,
   type SystemOneAuthErrorParams,
   SystemOneConnectionError,
   type SystemOneConnectionErrorParams,
   SystemOneError,
+  type SystemOneErrorInfo,
   type SystemOneErrorParams,
   SystemOneInputError,
   type SystemOneInputErrorParams,
@@ -28,6 +30,8 @@ export {
   SystemOneResponseError,
   type SystemOneResponseErrorParams,
   type SystemOneRetryableErrorParams,
+  systemOneErrorFromInfo,
+  systemOneErrorInfo,
   type ValidationIssue,
 } from './errors.js'
 export {
