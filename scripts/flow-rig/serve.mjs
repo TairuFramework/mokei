@@ -7,20 +7,13 @@ import { readdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { TaskInputWithdrawnError } from '../../packages/context-client/lib/index.js'
 import { createTool } from '../../packages/context-server/lib/index.js'
 import { serveProcess } from '../../packages/context-server-node/lib/index.js'
-import { addDecisionFlow, flowToolName } from '../../packages/decision-flow-server/lib/index.js'
-import {
-  createDesktopElicitHandler,
-  createInputInbox,
-  InboxAnswerInvalidError,
-} from '../../packages/host-desktop/lib/index.js'
+import { createFlowHost } from '../../packages/flow-host/lib/index.js'
+import { createDesktopInputSurface } from '../../packages/host-desktop/lib/index.js'
 import { NodeSession } from '../../packages/session-node/lib/index.js'
-import { createApprovalStrategy, createApprove } from './approval.mjs'
 import { loadConfig } from './config.mjs'
 import { createFakePredictor } from './fake-predictor.mjs'
-import { createRunManager } from './runs.mjs'
 
 const FLOW_KEY = 'flow'
 const DEFAULT_CONFIG_PATH = join(dirname(fileURLToPath(import.meta.url)), 'rig.config.json')
@@ -44,15 +37,6 @@ function successResult(structuredContent) {
   }
 }
 
-/** Readable prompt source for a run: its flow id, or `inline flow`. */
-function describeRun(runs, runID) {
-  const label = runID === undefined ? undefined : runs?.label(runID)
-  if (label !== undefined) {
-    return `flow-rig: ${label}`
-  }
-  return runID === undefined ? 'flow-rig' : `flow-rig run ${runID.slice(0, 8)}`
-}
-
 async function loadFlows(flowsDir) {
   const files = (await readdir(flowsDir)).filter((name) => name.endsWith('.json')).sort()
   const flows = []
@@ -66,25 +50,7 @@ async function loadFlows(flowsDir) {
   return { files, flows }
 }
 
-function createConfirmDialog(confirm) {
-  return async (flow, signal) => {
-    const title = `Run flow "${flow.name}" with tools: ${flow.tools.join(', ') || 'none'}`
-    const result = await confirm({
-      params: {
-        message: title,
-        requestedSchema: {
-          type: 'object',
-          properties: { approve: { type: 'boolean', title } },
-          required: ['approve'],
-        },
-      },
-      signal,
-    })
-    return result.action === 'accept' && result.content?.approve === true
-  }
-}
-
-function createFacadeTools({ session, runs, inbox }) {
+function createFacadeTools({ session, flowHost, surface, config, dialogs, promptItem, start }) {
   const host = session.contextHost
 
   const tools = {
@@ -119,21 +85,20 @@ function createFacadeTools({ session, runs, inbox }) {
           input: { type: 'object' },
         },
       },
-      handler: ({ input, signal }) => {
+      handler: async ({ input }) => {
         const { flow, definition } = input
         if ((flow === undefined) === (definition === undefined)) {
           return errorResult('Provide exactly one of `flow` or `definition`')
         }
-        if (flow !== undefined) {
-          return runs.start({
-            toolName: flowToolName(flow),
-            args: input.input ?? {},
-            signal,
-            label: flow,
+        try {
+          const snapshot = await start({
+            ...(flow === undefined ? { definition } : { flow }),
+            ...(input.input === undefined ? {} : { input: input.input }),
           })
+          return successResult({ runID: snapshot.runID })
+        } catch (err) {
+          return errorResult(errorMessage(err))
         }
-        const args = input.input === undefined ? { definition } : { definition, input: input.input }
-        return runs.start({ toolName: 'run_flow', args, signal, label: 'inline flow' })
       },
     }),
     flow_status: createTool({
@@ -143,7 +108,42 @@ function createFacadeTools({ session, runs, inbox }) {
         properties: { runID: { type: 'string' } },
         required: ['runID'],
       },
-      handler: ({ input }) => runs.status(input.runID),
+      handler: async ({ input }) => {
+        const snapshot = await flowHost.get(input.runID)
+        if (snapshot === undefined) return errorResult(`Unknown run: ${input.runID}`)
+        const pending = TERMINAL.has(snapshot.state)
+          ? []
+          : flowHost.inbox
+              .list({ runID: input.runID })
+              .filter(
+                (item) =>
+                  item.kind === 'input' && !(config.input === 'dialog' && dialogs.has(item.id)),
+              )
+              .map((item) => ({
+                id: item.id,
+                message: item.message,
+                requestedSchema: item.requestedSchema,
+                canPrompt: surface.canPrompt(inputRequest(item, snapshot.label)),
+              }))
+        const result =
+          snapshot.result === undefined
+            ? undefined
+            : {
+                content: snapshot.result.content,
+                structuredContent: {
+                  ...(snapshot.result.outcome === undefined
+                    ? {}
+                    : { outcome: snapshot.result.outcome }),
+                  ...('output' in snapshot.result ? { output: snapshot.result.output } : {}),
+                },
+              }
+        return successResult({
+          state: snapshot.state,
+          pending,
+          ...(result === undefined ? {} : { result }),
+          ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
+        })
+      },
     }),
     cancel_flow: createTool({
       description: 'Cancel a run',
@@ -152,11 +152,17 @@ function createFacadeTools({ session, runs, inbox }) {
         properties: { runID: { type: 'string' } },
         required: ['runID'],
       },
-      handler: ({ input }) => runs.cancel(input.runID),
+      handler: async ({ input }) => {
+        try {
+          return successResult({ state: (await flowHost.cancel(input.runID)).state })
+        } catch (err) {
+          return errorResult(errorMessage(err))
+        }
+      },
     }),
   }
 
-  if (inbox === undefined) {
+  if (config.input !== 'inbox') {
     return tools
   }
 
@@ -170,11 +176,10 @@ function createFacadeTools({ session, runs, inbox }) {
     description: 'Open desktop dialogs for a pending input and return the settled action',
     inputSchema: idSchema,
     handler: async ({ input, signal }) => {
-      if (inbox.get(input.id) === undefined) {
-        return errorResult(`Unknown input: ${input.id}`)
-      }
       try {
-        const result = await inbox.prompt(input.id, { signal })
+        const item = flowHost.inbox.get(input.id)
+        if (item?.kind !== 'input') return errorResult(`Unknown input: ${input.id}`)
+        const result = await promptItem(item, signal)
         return successResult({ id: input.id, action: result.action })
       } catch (err) {
         return errorResult(errorMessage(err))
@@ -188,28 +193,29 @@ function createFacadeTools({ session, runs, inbox }) {
       properties: { id: { type: 'string' }, value: { type: 'object' } },
       required: ['id', 'value'],
     },
-    handler: ({ input }) => {
+    handler: async ({ input }) => {
       try {
-        if (!inbox.answer(input.id, input.value)) {
+        if (flowHost.inbox.get(input.id)?.kind !== 'input')
           return errorResult(`Unknown input: ${input.id}`)
-        }
+        await flowHost.inbox.answer(input.id, input.value)
+        return successResult({ id: input.id, action: 'accept' })
       } catch (err) {
-        if (err instanceof InboxAnswerInvalidError) {
-          return errorResult(err.message)
-        }
-        throw err
+        return errorResult(errorMessage(err))
       }
-      return successResult({ id: input.id, action: 'accept' })
     },
   })
   tools.decline_input = createTool({
     description: 'Decline a pending input',
     inputSchema: idSchema,
-    handler: ({ input }) => {
-      if (!inbox.decline(input.id)) {
-        return errorResult(`Unknown input: ${input.id}`)
+    handler: async ({ input }) => {
+      try {
+        if (flowHost.inbox.get(input.id)?.kind !== 'input')
+          return errorResult(`Unknown input: ${input.id}`)
+        await flowHost.inbox.decline(input.id)
+        return successResult({ id: input.id, action: 'decline' })
+      } catch (err) {
+        return errorResult(errorMessage(err))
       }
-      return successResult({ id: input.id, action: 'decline' })
     },
   })
   return tools
@@ -225,38 +231,84 @@ async function disposeAll(steps) {
   }
 }
 
+const TERMINAL = new Set(['denied', 'completed', 'failed', 'cancelled'])
+
+function inputRequest(item, label = item.runID, signal = new AbortController().signal) {
+  return {
+    key: `flow-rig: ${label}`,
+    params: { message: item.message, requestedSchema: item.requestedSchema },
+    signal,
+  }
+}
+
 export async function createRig({ configPath, desktop }) {
   const config = await loadConfig(configPath)
   const fake = config.predictor === 'fake'
-
-  let inbox
-  let releaseSurface
-  if (config.input === 'inbox') {
-    inbox = createInputInbox()
-    releaseSurface = inbox.registerAnswerSurface()
-  }
-  let runs
-  const inputs = createDesktopElicitHandler({
-    ...(desktop === undefined ? {} : desktop),
-    mode: config.input,
-    inbox,
-    describeSource: (request) => describeRun(runs, request.key),
+  const surface = createDesktopInputSurface(desktop ?? {})
+  const session = new NodeSession({
+    elicit: (request) => surface.prompt(request, { signal: request.signal }),
   })
-  const confirm = createDesktopElicitHandler({
-    ...(desktop === undefined ? {} : desktop),
-    mode: 'dialog',
-  })
-  const session = new NodeSession({ elicit: (request) => inputs(request) })
-
-  let wiring
+  let flowHost
+  const dialogs = new Map()
+  const starts = new Set()
+  let stopping = false
   const cleanup = [
-    ['inbox', () => inbox?.dispose()],
-    ['inbox answer surface', () => releaseSurface?.()],
-    ['input handler', () => inputs.dispose()],
-    ['confirm handler', () => confirm.dispose()],
-    ['flow wiring', () => wiring?.dispose()],
+    ['flow host', () => flowHost?.dispose()],
+    ['desktop surface', () => surface.dispose()],
     ['session', () => session.dispose()],
   ]
+
+  function promptItem(item, signal) {
+    const existing = dialogs.get(item.id)
+    if (existing !== undefined) return existing.promise
+    const controller = new AbortController()
+    const stop =
+      signal === undefined ? controller.signal : AbortSignal.any([controller.signal, signal])
+    const entry = { controller, promise: undefined }
+    dialogs.set(item.id, entry)
+    entry.promise = (async () => {
+      const snapshot = await flowHost.get(item.runID)
+      stop.throwIfAborted()
+      let request
+      if (item.kind === 'approval') {
+        const title = `Run flow "${snapshot.label}" with tools: ${item.plan.tools.join(', ') || 'none'}`
+        request = {
+          key: `flow-rig: ${snapshot.label}`,
+          params: {
+            message: title,
+            requestedSchema: {
+              type: 'object',
+              properties: { approve: { type: 'boolean', title } },
+              required: ['approve'],
+            },
+          },
+          signal: stop,
+        }
+      } else {
+        request = inputRequest(item, snapshot.label, stop)
+      }
+      if (!surface.canPrompt(request)) throw new Error(`Input ${item.id} cannot be prompted`)
+      const result = await surface.prompt(request, { signal: stop })
+      stop.throwIfAborted()
+      if (item.kind === 'approval') {
+        if (result.action === 'accept' && result.content?.approve === true) {
+          await flowHost.inbox.answer(item.id)
+        } else {
+          await flowHost.inbox.decline(item.id)
+        }
+      } else if (result.action === 'accept') {
+        await flowHost.inbox.answer(item.id, result.content)
+      } else if (result.action === 'decline') {
+        await flowHost.inbox.decline(item.id)
+      } else {
+        await flowHost.inbox.cancel(item.id)
+      }
+      return result
+    })().finally(() => {
+      if (dialogs.get(item.id) === entry) dialogs.delete(item.id)
+    })
+    return entry.promise
+  }
 
   try {
     for (const [key, sibling] of Object.entries(config.siblings)) {
@@ -276,13 +328,14 @@ export async function createRig({ configPath, desktop }) {
       }
       log(`Sibling ${key} ready`)
     }
-
     const { files, flows } = await loadFlows(config.flowsDir)
     try {
-      wiring = await addDecisionFlow(session, {
+      flowHost = await createFlowHost({
+        session,
         key: FLOW_KEY,
         flows,
         predictor: fake ? createFakePredictor(config.fakeAnswers) : undefined,
+        approval: { allow: config.allow },
       })
     } catch (err) {
       throw new Error(`Failed to register flows from ${files.join(', ')}: ${errorMessage(err)}`, {
@@ -290,49 +343,76 @@ export async function createRig({ configPath, desktop }) {
       })
     }
     log(`Registered flows: ${flows.map((flow) => flow.id).join(', ')}`)
-
-    const strategy = createApprovalStrategy({
-      allow: config.allow,
-      confirm: config.confirm,
-      confirmDialog: createConfirmDialog(confirm),
+    flowHost.events.on('inbox:settled', ({ item }) => {
+      dialogs.get(item.id)?.controller.abort(new Error(`Input ${item.id} settled`))
     })
-    runs = createRunManager({
-      client: session.contextHost.getContext(FLOW_KEY).client,
-      approve: createApprove({ wrapped: wiring.wrapApproval(strategy) }),
-      ask: (runID, _key, request, signal) => inputs({ key: runID, params: request.params, signal }),
-      listPending: (runID) =>
-        inbox === undefined
-          ? []
-          : inbox
-              .list()
-              .filter((entry) => entry.key === runID)
-              .map(({ id, message, requestedSchema, canPrompt }) => ({
-                id,
-                message,
-                requestedSchema,
-                canPrompt,
-              })),
-      log,
-      withdrawReason: (params) => new TaskInputWithdrawnError(params),
+    flowHost.events.on('inbox:added', (item) => {
+      let pending
+      if (item.kind === 'approval') {
+        pending =
+          config.confirm === 'approve'
+            ? flowHost.inbox.answer(item.id)
+            : config.confirm === 'deny'
+              ? flowHost.inbox.decline(item.id)
+              : promptItem(item)
+      } else {
+        pending =
+          config.input === 'dialog'
+            ? promptItem(item)
+            : flowHost.get(item.runID).then((snapshot) => {
+                return surface.notify(inputRequest(item, snapshot.flowID ?? 'inline flow'))
+              })
+      }
+      // Dialogs must not hold up the run queue that settles their inbox items.
+      pending.catch((err) => {
+        if (!stopping && flowHost.inbox.get(item.id) !== undefined) log('Desktop input failed', err)
+      })
     })
   } catch (err) {
     await disposeAll(cleanup)
     throw err
   }
 
-  const tools = createFacadeTools({ session, runs, inbox })
-
+  async function start(params) {
+    if (stopping) throw new Error('Rig is shutting down')
+    const pending = flowHost.start(params)
+    starts.add(pending)
+    try {
+      return await pending
+    } finally {
+      starts.delete(pending)
+    }
+  }
+  const tools = createFacadeTools({
+    session,
+    flowHost,
+    surface,
+    config,
+    dialogs,
+    promptItem,
+    start,
+  })
   let shutdownPromise
   function shutdown() {
+    stopping = true
     shutdownPromise ??= (async () => {
       log('Shutting down')
-      await runs.shutdown()
+      await Promise.allSettled(starts)
+      for (const run of await flowHost.list()) {
+        if (!TERMINAL.has(run.state)) {
+          await flowHost
+            .cancel(run.runID)
+            .catch((err) => log(`Failed to cancel run ${run.runID}`, err))
+        }
+      }
+      for (const entry of dialogs.values())
+        entry.controller.abort(new Error('Rig is shutting down'))
+      await Promise.allSettled([...dialogs.values()].map((entry) => entry.promise))
       await disposeAll(cleanup)
       log('Shutdown complete')
     })()
     return shutdownPromise
   }
-
   return { tools, shutdown }
 }
 

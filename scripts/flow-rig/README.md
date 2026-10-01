@@ -1,12 +1,11 @@
 # Flow rig
 
-The flow rig runs decision flows locally and lets Claude Code drive them over MCP. It is a plain Node ESM script,
-not a package. It starts a `NodeSession` with sibling MCP servers (System One, SQLite), registers the sample flows
-with `addDecisionFlow`, and serves a small facade MCP server on stdio. Flow input goes to the desktop through
-`@mokei/host-desktop` (notifications, an input inbox and dialogs).
+The flow rig runs decision flows locally and lets Claude Code drive them over MCP. It is a plain Node ESM script.
+It starts a `NodeSession` with sibling MCP servers (System One, SQLite) and creates an `@mokei/flow-host` runtime.
+A small facade MCP server serves the runtime over stdio. One `@mokei/host-desktop` input surface provides notifications and dialogs.
 
-The rig exists because Claude Code cannot call the decision-flow server directly: flow tools run as tasks and need
-an approval grant. The rig approves runs, drives the tasks, and exposes blocking tools instead.
+The runtime owns run IDs, approval, task watching and the inbox. The facade exposes these through ordinary MCP tool calls.
+Shutdown cancels non-terminal runs, then disposes the runtime, desktop surface and session.
 
 ## Prerequisites
 
@@ -39,8 +38,8 @@ model.
 | `allow` | `[]` | Tool-id globs. A run whose tool plan fits these globs is approved without asking. `*` matches within one segment, so `sqlite:*` matches every sqlite tool but not tools of other contexts. |
 | `predictor` | `real` | `real` uses the sibling `system-one:predict`. `fake` answers `decide` questions from `fakeAnswers`. |
 | `fakeAnswers` | `{}` | Used when `predictor` is `fake`. Maps each question key to a complete typed answer for that question kind, exactly as System One would return it. A missing key fails the prediction with `No fake answer for <key>`. |
-| `input` | `inbox` | `inbox` sends flow input to the desktop inbox, to be opened with `prompt_input`. `dialog` opens a blocking dialog directly. |
-| `confirm` | `desktop` | What to do with a run that is not fully covered by `allow`. `desktop` shows a confirm dialog that lists the flow and its tool plan (cancel or timeout denies). `deny` and `approve` skip the dialog. |
+| `input` | `inbox` | `inbox` sends a notification for runtime input items, opened with `prompt_input`. `dialog` opens a dialog automatically. |
+| `confirm` | `desktop` | How to answer an approval item for a run outside `allow`. `desktop` shows a confirm dialog that lists the flow and its tool plan (cancel or timeout denies). `deny` and `approve` settle the approval item immediately. |
 
 ## Tools
 
@@ -48,20 +47,26 @@ model.
 |------|-------|--------|
 | `list_flows` | none | The flow server's list of registered flows |
 | `check_flow` | `{ definition }` | The flow server's check of an inline definition, without running it |
-| `start_flow` | `{ flow?, definition?, input? }` | `{ runID }`, or an error result. Give exactly one of `flow` (a registered id) or `definition` (an inline flow). For inline flows, missing `input` defaults to `{}`. Returns `Flow denied: <reason>` when approval is refused, and `Rig is shutting down` once shutdown has begun. |
+| `start_flow` | `{ flow?, definition?, input? }` | `{ runID }`, or an error result. Give exactly one of `flow` (a registered id) or `definition` (an inline flow). For inline flows, missing `input` defaults to `{}`. Queued runs return a `runID` immediately. Refused approval gives a `denied` run. Starting after shutdown returns `Rig is shutting down`. |
 | `flow_status` | `{ runID }` | `{ state, pending, result?, error? }`. `pending` entries are `{ id, message, requestedSchema, canPrompt }`. |
 | `cancel_flow` | `{ runID }` | `{ state }` after the cancel is sent |
 | `prompt_input` | `{ id }` | Opens desktop dialogs for the inbox entry and blocks until it settles. Returns `{ id, action }`. |
 | `answer_input` | `{ id, value }` | Answers the inbox entry with a value matching its requested schema. Returns `{ id, action }` with action `accept`. An invalid value or unknown id returns an error result. |
 | `decline_input` | `{ id }` | Declines the inbox entry. Returns `{ id, action }` with action `decline`. |
 
-`state` is one of `working`, `input_required`, `completed`, `failed`, `cancelled`, or `unknown` when polling the task
-keeps failing (the last poll error is then in `error`). `pending` lists the run's inbox entries while the run is
-`input_required`, and is always empty in `dialog` mode. `canPrompt` tells whether `prompt_input` can open a dialog
-for the entry.
+`state` is one of `awaiting_approval`, `denied`, `working`, `input_required`, `completed`, `failed` or `cancelled`.
+A flow error reports `failed`, with `error: { type, message, code? }`. Denial reports `denied`, with a `FlowDenied` error.
+Successful `result` values keep the MCP shape: `{ content, structuredContent: { outcome?, output? } }`.
+Polling errors retry with backoff and preserve the current state.
 
-`prompt_input`, `answer_input` and `decline_input` exist only when `input` is `inbox`. Runs do not survive a restart,
-and `flow_status` on an unknown `runID` returns an error result.
+`pending` lists the run's input items, excluding items under open automatic dialogs. Approval items do not appear in `pending`.
+`canPrompt` tells whether the desktop surface can show the requested form.
+A rejected desktop prompt returns a tool error and leaves its input item open for another attempt.
+Accept, decline and cancel responses settle through the runtime inbox. Settling elsewhere aborts the item's open dialog.
+
+`prompt_input`, `answer_input` and `decline_input` exist only when `input` is `inbox`.
+The rig uses memory stores, so runs do not survive a process restart.
+`flow_status` on an unknown `runID` returns an error result.
 
 ## Sample flows
 
@@ -84,6 +89,7 @@ Run these from Claude Code on macOS with the rig built and System One running. T
 - [x] `start_flow` with `demo/ask` shows an inbox notification. `flow_status` lists one pending entry. `prompt_input`
       opens the dialog, and answering it completes the run with that answer.
 - [x] With `input` set to `dialog`, `start_flow` with `demo/ask` opens the dialog directly.
-- [x] A flow with a tool outside `allow` shows the confirm dialog. Approving runs the flow; denying returns
-      `Flow denied`.
+- [ ] A flow outside `allow` returns a queued `runID` and shows the confirm dialog. Approval runs it. Denial reports `denied`.
 - [x] `cancel_flow` during a pending input removes the inbox entry and the run ends as `cancelled`.
+
+- [ ] Shutdown with a queued approval closes its confirm dialog and cancels the run.

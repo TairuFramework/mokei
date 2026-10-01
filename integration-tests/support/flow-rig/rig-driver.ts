@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { setTimeout as poll } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import type { CallToolResult } from '@mokei/context-protocol'
+import type { FlowRunSnapshot } from '@mokei/flow-host'
 import { NodeContextHost } from '@mokei/host-node'
 
 const WAIT_MS = 10_000
@@ -18,10 +19,10 @@ export type RigConfig = {
   configOverrides?: Record<string, unknown>
 }
 export type FlowStatus = {
-  state: string
+  state: FlowRunSnapshot['state']
   pending: Array<{ id: string; message: string; canPrompt: boolean }>
   result?: CallToolResult
-  error?: string
+  error?: FlowRunSnapshot['error']
 }
 export type StubCall = {
   index: number

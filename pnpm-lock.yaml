@@ -497,6 +497,9 @@ importers:
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../packages/context-rpc
+      '@mokei/flow-host':
+        specifier: workspace:^
+        version: link:../packages/flow-host
       '@mokei/host-monitor':
         specifier: workspace:^
         version: link:../packages/host-monitor
