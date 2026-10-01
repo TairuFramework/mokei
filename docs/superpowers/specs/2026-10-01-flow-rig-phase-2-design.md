@@ -55,10 +55,16 @@ The stub desktop:
   later dialogs.
 - Each `notify` call is recorded and resolves at once.
 
-Lifecycle: the stub entry installs idempotent `SIGINT`, `SIGTERM` and stdin-end handlers. Each awaits
-`rig.shutdown()`, removes the temporary executables directory, and exits. When `createRig` throws, the entry logs
-the error to stderr, removes the directory and exits with code 1. Host disposal kills only the direct child, so
-the rig's own shutdown must stop its `sqlite` sibling.
+Lifecycle:
+
+- One idempotent `stop()` awaits `rig.shutdown()` and removes the temporary executables directory.
+- The `stub_shutdown` tool calls `stop()` and returns once it settles. The process stays up until stdin ends.
+- `SIGINT`, `SIGTERM` and stdin end call `stop()`, then exit the process.
+- When `createRig` throws, the entry logs the error to stderr, removes the directory and exits with code 1.
+
+Host disposal kills only the direct child, and sends `SIGKILL` 5 seconds after `SIGTERM`. The rig's own shutdown
+can take longer: run shutdown waits up to 5 seconds, then the `sqlite` sibling is disposed. So the suite calls
+`stub_shutdown` before it disposes the host. Then the signal path only runs as a fallback.
 
 Test-only tools:
 
@@ -66,6 +72,7 @@ Test-only tools:
 |------|-------|--------|
 | `stub_dialogs` | none | `{ calls, runnerCalls }`. Each call is `{ index, backend, type, kind?, title, text, pending }`, where `type` is `ask` or `notify`. `index` grows for the life of the process. |
 | `stub_answer` | `{ index, result }` | Settles the pending `ask` call at `index` with `result`, an `AskResult` (`answered` with `value`, `declined`, `dismissed` or `timeout`). An unknown or settled index returns an error result. |
+| `stub_shutdown` | none | `{}` once the rig and its siblings have shut down. |
 
 ### `integration-tests/suites/flow-rig.test.ts`
 
@@ -87,16 +94,27 @@ Helpers:
   signal, so an awaited call cannot outlive a helper deadline.
 - `waitFor(runID, predicate)` polls `flow_status`. `waitForDialog(after, predicate)` polls `stub_dialogs` for a
   new call with `index > after`. Both fail at their deadline with the last observed state. No fixed sleeps.
-- `beforeAll` and `afterAll` have explicit deadlines.
+- `beforeAll` and `afterAll` have explicit deadlines. The `afterAll` deadline covers `stub_shutdown` (up to
+  10 seconds) plus host disposal.
 
 Sequencing rules:
 
 - Tests in a file run sequentially (no `test.concurrent`).
-- `prompt_input` blocks until its dialog settles, and `start_flow` blocks during a confirm dialog. A test that
-  answers a dialog captures the highest dialog `index` first, starts the blocking call without awaiting it,
-  waits for a new pending dialog after that index, answers it, then awaits the call.
-- Each test cancels its runs in `finally` (`cancel_flow`, errors ignored), so a failed test leaves no pending
-  input behind for the next one.
+- `prompt_input` blocks until its dialog settles. `start_flow` blocks while a confirm dialog is open.
+- A watermark is the highest dialog `index` seen so far. Capture it just before the action that causes the
+  dialog or notification.
+- To answer a dialog behind a blocking call, follow these steps:
+  1. Capture the watermark.
+  2. Start the blocking call without awaiting it.
+  3. Wait for a new pending `ask` call after the watermark.
+  4. Answer it with `stub_answer`.
+  5. Await the blocking call.
+- Every call started without `await` gets its own `AbortController` and a rejection handler at once. This
+  prevents an unhandled rejection when the call times out.
+- In `finally`, each test aborts and joins its outstanding calls, then cancels its known runs. Errors are
+  ignored. This cleanup has its own fresh deadline.
+- A run still in approval has no run ID yet. Aborting its `start_flow` call aborts the approval, so the abort
+  covers that case.
 
 Both rigs use `predictor: fake`, `allow: ['system-one:predict', 'sqlite:sqlite_get']`, `confirm: 'desktop'`,
 the real `sqlite` sibling, and the sample flows in `scripts/flow-rig/flows`.
@@ -114,8 +132,13 @@ Inbox rig (`input: 'inbox'`):
 4. `demo/ask` declined through `decline_input` completes with outcome `declined`, output `{}`.
 5. `demo/nested` shows the inner input in the outer run's `pending`. Answering it completes the outer run with
    outcome `answered`, output `{ output: { value: <answer> } }`.
-6. `demo/ask` through `prompt_input`: the stub records a new `notify` call and one new `ask` call. Answering the
-   ask with `stub_answer` settles `prompt_input` with `accept`, and the run completes as in scenario 3.
+6. `demo/ask` through `prompt_input`. The inbox notifies when the entry is added, before any prompt. So the test
+   captures one watermark before `start_flow` and expects a new `notify` call after it. It captures a second
+   watermark before `prompt_input` and expects one new `ask` call after that. Answering the ask with
+   `stub_answer` settles `prompt_input` with `accept`. The run completes as in scenario 3.
+Inline scenarios always pass `input: {}` to `start_flow`. The rig does not default a missing `input` yet (a
+phase 3 finding), and without it `start_flow` returns `Invalid flow input`.
+
 7. An inline flow using `sqlite:sqlite_all` (outside `allow`) opens the stub confirm dialog. Answered yes, the
    run completes with the query rows in its output. Answered no, `start_flow` returns an error result starting
    with `Flow denied`.
