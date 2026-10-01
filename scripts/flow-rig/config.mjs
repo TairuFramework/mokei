@@ -17,13 +17,13 @@ const DEFAULTS = {
 }
 
 /** Match a tool id against `*` globs; `*` never crosses a `:` segment boundary. */
-export function matchesAllow(toolId, globs) {
+export function matchesAllow(toolID, globs) {
   return globs.some((glob) => {
     const source = glob
       .split('*')
       .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
       .join('[^:]*')
-    return new RegExp(`^${source}$`).test(toolId)
+    return new RegExp(`^${source}$`).test(toolID)
   })
 }
 

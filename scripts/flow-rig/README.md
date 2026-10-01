@@ -45,9 +45,9 @@ The rig reads `scripts/flow-rig/rig.config.json`, or the file named by `FLOW_RIG
 |------|-------|--------|
 | `list_flows` | none | The flow server's list of registered flows |
 | `check_flow` | `{ definition }` | The flow server's check of an inline definition, without running it |
-| `start_flow` | `{ flow?, definition?, input? }` | `{ runId }`, or an error result. Give exactly one of `flow` (a registered id) or `definition` (an inline flow). Returns `Flow denied: <reason>` when approval is refused, and `Rig is shutting down` once shutdown has begun. |
-| `flow_status` | `{ runId }` | `{ state, pending, result?, error? }`. `pending` entries are `{ id, message, requestedSchema, canPrompt }`. |
-| `cancel_flow` | `{ runId }` | `{ state }` after the cancel is sent |
+| `start_flow` | `{ flow?, definition?, input? }` | `{ runID }`, or an error result. Give exactly one of `flow` (a registered id) or `definition` (an inline flow). Returns `Flow denied: <reason>` when approval is refused, and `Rig is shutting down` once shutdown has begun. |
+| `flow_status` | `{ runID }` | `{ state, pending, result?, error? }`. `pending` entries are `{ id, message, requestedSchema, canPrompt }`. |
+| `cancel_flow` | `{ runID }` | `{ state }` after the cancel is sent |
 | `prompt_input` | `{ id }` | Opens desktop dialogs for the inbox entry and blocks until it settles. Returns `{ id, action }`. |
 | `answer_input` | `{ id, value }` | Answers the inbox entry with a value matching its requested schema. Returns `{ id, action }` with action `accept`. An invalid value or unknown id returns an error result. |
 | `decline_input` | `{ id }` | Declines the inbox entry. Returns `{ id, action }` with action `decline`. |
@@ -58,7 +58,7 @@ keeps failing (the last poll error is then in `error`). `pending` lists the run'
 for the entry.
 
 `prompt_input`, `answer_input` and `decline_input` exist only when `input` is `inbox`. Runs do not survive a restart,
-and `flow_status` on an unknown `runId` returns an error result.
+and `flow_status` on an unknown `runID` returns an error result.
 
 ## Sample flows
 

@@ -82,7 +82,7 @@ test('createApprove builds the request', async () => {
       return true
     },
   })
-  await approve({ runId: 'r1', toolName: 'run_flow', args, signal: controller.signal })
+  await approve({ runID: 'r1', toolName: 'run_flow', args, signal: controller.signal })
   assert.deepEqual(seen, {
     toolCall: { id: 'r1', name: 'flow:run_flow', arguments: JSON.stringify(args) },
     iteration: 1,
@@ -91,10 +91,10 @@ test('createApprove builds the request', async () => {
   })
 })
 
-test('createApprove normalizes results', async () => {
+test('createApprove normalises results', async () => {
   const run = (result) =>
     createApprove({ wrapped: async () => result })({
-      runId: 'r',
+      runID: 'r',
       toolName: 't',
       args: {},
       signal: undefined,

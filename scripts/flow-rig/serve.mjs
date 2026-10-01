@@ -45,12 +45,12 @@ function successResult(structuredContent) {
 }
 
 /** Readable prompt source for a run: its flow id, or `inline flow`. */
-function describeRun(runs, runId) {
-  const label = runId === undefined ? undefined : runs?.label(runId)
+function describeRun(runs, runID) {
+  const label = runID === undefined ? undefined : runs?.label(runID)
   if (label !== undefined) {
     return `flow-rig: ${label}`
   }
-  return runId === undefined ? 'flow-rig' : `flow-rig run ${runId.slice(0, 8)}`
+  return runID === undefined ? 'flow-rig' : `flow-rig run ${runID.slice(0, 8)}`
 }
 
 async function loadFlows(flowsDir) {
@@ -110,7 +110,7 @@ function createFacadeTools({ session, runs, inbox }) {
     }),
     start_flow: createTool({
       description:
-        'Start a registered flow (`flow` id) or an inline flow (`definition`); returns a runId',
+        'Start a registered flow (`flow` id) or an inline flow (`definition`); returns a runID',
       inputSchema: {
         type: 'object',
         properties: {
@@ -140,19 +140,19 @@ function createFacadeTools({ session, runs, inbox }) {
       description: 'Get the state, pending inputs and result of a run',
       inputSchema: {
         type: 'object',
-        properties: { runId: { type: 'string' } },
-        required: ['runId'],
+        properties: { runID: { type: 'string' } },
+        required: ['runID'],
       },
-      handler: ({ input }) => runs.status(input.runId),
+      handler: ({ input }) => runs.status(input.runID),
     }),
     cancel_flow: createTool({
       description: 'Cancel a run',
       inputSchema: {
         type: 'object',
-        properties: { runId: { type: 'string' } },
-        required: ['runId'],
+        properties: { runID: { type: 'string' } },
+        required: ['runID'],
       },
-      handler: ({ input }) => runs.cancel(input.runId),
+      handler: ({ input }) => runs.cancel(input.runID),
     }),
   }
 
@@ -295,13 +295,13 @@ export async function main({ configPath, stdio = true }) {
     runs = createRunManager({
       client: session.contextHost.getContext(FLOW_KEY).client,
       approve: createApprove({ wrapped: wiring.wrapApproval(strategy) }),
-      ask: (runId, _key, request, signal) => inputs({ key: runId, params: request.params, signal }),
-      listPending: (runId) =>
+      ask: (runID, _key, request, signal) => inputs({ key: runID, params: request.params, signal }),
+      listPending: (runID) =>
         inbox === undefined
           ? []
           : inbox
               .list()
-              .filter((entry) => entry.key === runId)
+              .filter((entry) => entry.key === runID)
               .map(({ id, message, requestedSchema, canPrompt }) => ({
                 id,
                 message,

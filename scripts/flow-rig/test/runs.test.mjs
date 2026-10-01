@@ -25,8 +25,8 @@ async function flushMany(count = 5) {
   }
 }
 
-function taskResult(taskId = 'task-1') {
-  return { resultType: 'task', taskId, status: 'working' }
+function taskResult(taskID = 'task-1') {
+  return { resultType: 'task', taskId: taskID, status: 'working' }
 }
 
 // Fake client: every `tasks.get` call is a deferred the test settles in order.
@@ -38,18 +38,18 @@ function setup(options = {}) {
       return options.callTool ? options.callTool(params) : Promise.resolve(taskResult())
     },
     tasks: {
-      get(taskId) {
+      get(taskID) {
         const d = deferred()
-        calls.get.push({ taskId, ...d })
+        calls.get.push({ taskID, ...d })
         return d.promise
       },
-      update(taskId, responses) {
-        calls.update.push({ taskId, responses })
+      update(taskID, responses) {
+        calls.update.push({ taskID, responses })
         return Promise.resolve({})
       },
-      cancel(taskId) {
-        calls.cancel.push(taskId)
-        return options.cancel ? options.cancel(taskId) : Promise.resolve({})
+      cancel(taskID) {
+        calls.cancel.push(taskID)
+        return options.cancel ? options.cancel(taskID) : Promise.resolve({})
       },
     },
   }
@@ -59,12 +59,12 @@ function setup(options = {}) {
       calls.approve.push(request)
       return options.approve ? options.approve(request) : { approved: true, meta: { grant: 'g' } }
     },
-    ask(runId, requestKey, request, signal) {
-      calls.ask.push({ runId, requestKey, request, signal })
+    ask(runID, requestKey, request, signal) {
+      calls.ask.push({ runID, requestKey, request, signal })
       return new Promise(() => {})
     },
-    listPending(runId) {
-      return [{ id: `${runId}:entry`, message: 'Pick one', requestedSchema: {} }]
+    listPending(runID) {
+      return [{ id: `${runID}:entry`, message: 'Pick one', requestedSchema: {} }]
     },
     log() {},
     withdrawReason: options.withdrawReason,
@@ -94,7 +94,7 @@ test('start approves then calls the tool with the identical args object', async 
   const approval = calls.approve[0]
   assert.equal(approval.toolName, 'flow_demo')
   assert.equal(approval.args, args)
-  assert.equal(typeof approval.runId, 'string')
+  assert.equal(typeof approval.runID, 'string')
   assert.ok(approval.signal instanceof AbortSignal)
   assert.equal(calls.callTool.length, 1)
   const params = calls.callTool[0]
@@ -102,11 +102,11 @@ test('start approves then calls the tool with the identical args object', async 
   assert.equal(params.arguments, args)
   assert.deepEqual(params._meta, { grant: 'g' })
   assert.equal(params.task, 'handle')
-  assert.deepEqual(result.structuredContent, { runId: approval.runId })
-  assert.equal(manager.label(approval.runId), 'demo')
+  assert.deepEqual(result.structuredContent, { runID: approval.runID })
+  assert.equal(manager.label(approval.runID), 'demo')
   assert.equal(manager.label('nope'), undefined)
   assert.deepEqual(result.content, [
-    { type: 'text', text: JSON.stringify({ runId: approval.runId }) },
+    { type: 'text', text: JSON.stringify({ runID: approval.runID }) },
   ])
   await manager.shutdown({ timeoutMs: 10 })
 })
@@ -126,7 +126,7 @@ test('a synchronous CallToolResult is returned as is and registers no run', asyn
   const { manager, calls } = setup({ callTool: () => Promise.resolve(sync) })
   const result = await manager.start({ toolName: 'flow_demo', args: {} })
   assert.equal(result, sync)
-  const status = manager.status(calls.approve[0].runId)
+  const status = manager.status(calls.approve[0].runID)
   assert.equal(status.isError, true)
   await flush()
   assert.equal(calls.get.length, 0)
@@ -135,23 +135,23 @@ test('a synchronous CallToolResult is returned as is and registers no run', asyn
 test('the watcher tracks working, input_required and completed', async () => {
   const { manager, calls } = setup()
   const { structuredContent } = await manager.start({ toolName: 'flow_demo', args: {} })
-  const { runId } = structuredContent
+  const { runID } = structuredContent
 
   const first = await nextGet(calls, 0)
-  assert.equal(first.taskId, 'task-1')
+  assert.equal(first.taskID, 'task-1')
   first.resolve({ taskId: 'task-1', status: 'working' })
   await flush()
-  assert.deepEqual(manager.status(runId).structuredContent, { state: 'working', pending: [] })
+  assert.deepEqual(manager.status(runID).structuredContent, { state: 'working', pending: [] })
 
   const second = await nextGet(calls, 1)
   second.resolve({ taskId: 'task-1', status: 'input_required', inputRequests: { k1: REQUEST } })
   await flush()
-  assert.deepEqual(manager.status(runId).structuredContent, {
+  assert.deepEqual(manager.status(runID).structuredContent, {
     state: 'input_required',
-    pending: [{ id: `${runId}:entry`, message: 'Pick one', requestedSchema: {} }],
+    pending: [{ id: `${runID}:entry`, message: 'Pick one', requestedSchema: {} }],
   })
   assert.equal(calls.ask.length, 1)
-  assert.equal(calls.ask[0].runId, runId)
+  assert.equal(calls.ask[0].runID, runID)
   assert.equal(calls.ask[0].requestKey, 'k1')
   assert.deepEqual(calls.ask[0].request, REQUEST)
 
@@ -159,7 +159,7 @@ test('the watcher tracks working, input_required and completed', async () => {
   const third = await nextGet(calls, 2)
   third.resolve({ taskId: 'task-1', status: 'completed', result })
   await flush()
-  const status = manager.status(runId)
+  const status = manager.status(runID)
   assert.deepEqual(status.structuredContent, { state: 'completed', pending: [], result })
   assert.equal(calls.ask[0].signal.aborted, true)
   await flushMany()
@@ -168,16 +168,16 @@ test('the watcher tracks working, input_required and completed', async () => {
 
 test('three poll failures report unknown and a later success restores the state', async () => {
   const { manager, calls } = setup()
-  const { runId } = (await manager.start({ toolName: 'flow_demo', args: {} })).structuredContent
+  const { runID } = (await manager.start({ toolName: 'flow_demo', args: {} })).structuredContent
 
   for (let i = 0; i < 2; i++) {
     ;(await nextGet(calls, i)).reject(new Error(`down ${i}`))
     await flush()
-    assert.equal(manager.status(runId).structuredContent.state, 'working')
+    assert.equal(manager.status(runID).structuredContent.state, 'working')
   }
   ;(await nextGet(calls, 2)).reject(new Error('down 2'))
   await flush()
-  assert.deepEqual(manager.status(runId).structuredContent, {
+  assert.deepEqual(manager.status(runID).structuredContent, {
     state: 'unknown',
     pending: [],
     error: 'down 2',
@@ -188,21 +188,21 @@ test('three poll failures report unknown and a later success restores the state'
   await flush()
   ;(await nextGet(calls, 5)).resolve({ taskId: 'task-1', status: 'working' })
   await flush()
-  assert.deepEqual(manager.status(runId).structuredContent, { state: 'working', pending: [] })
+  assert.deepEqual(manager.status(runID).structuredContent, { state: 'working', pending: [] })
   assert.deepEqual(calls.sleep.slice(0, 6), [100, 100, 200, 300, 300, 100])
   await manager.shutdown({ timeoutMs: 10 })
 })
 
 test('a failed task reports its error', async () => {
   const { manager, calls } = setup()
-  const { runId } = (await manager.start({ toolName: 'flow_demo', args: {} })).structuredContent
+  const { runID } = (await manager.start({ toolName: 'flow_demo', args: {} })).structuredContent
   ;(await nextGet(calls, 0)).resolve({
     taskId: 'task-1',
     status: 'failed',
     error: { code: -32603, message: 'flow crashed' },
   })
   await flush()
-  assert.deepEqual(manager.status(runId).structuredContent, {
+  assert.deepEqual(manager.status(runID).structuredContent, {
     state: 'failed',
     pending: [],
     error: 'flow crashed',
@@ -211,10 +211,10 @@ test('a failed task reports its error', async () => {
 
 test('cancel calls tasks.cancel and returns the refreshed state', async () => {
   const { manager, calls } = setup()
-  const { runId } = (await manager.start({ toolName: 'flow_demo', args: {} })).structuredContent
+  const { runID } = (await manager.start({ toolName: 'flow_demo', args: {} })).structuredContent
   ;(await nextGet(calls, 0)).resolve({ taskId: 'task-1', status: 'working' })
   await flush()
-  const pending = manager.cancel(runId)
+  const pending = manager.cancel(runID)
   await flush()
   assert.deepEqual(calls.cancel, ['task-1'])
   // Settle both the refresh and any watcher poll in flight.
@@ -223,7 +223,7 @@ test('cancel calls tasks.cancel and returns the refreshed state', async () => {
   }
   const result = await pending
   assert.deepEqual(result.structuredContent, { state: 'cancelled' })
-  assert.equal(manager.status(runId).structuredContent.state, 'cancelled')
+  assert.equal(manager.status(runID).structuredContent.state, 'cancelled')
   await manager.shutdown({ timeoutMs: 10 })
 })
 

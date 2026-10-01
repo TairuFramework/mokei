@@ -61,10 +61,10 @@ export function createRunManager({
   const wait = sleep ?? abortableSleep(stopController.signal)
   let shutdownPromise
 
-  function cancelTask(taskId) {
+  function cancelTask(taskID) {
     return Promise.resolve()
-      .then(() => client.tasks.cancel(taskId))
-      .catch((err) => log(`Failed to cancel task ${taskId}`, err))
+      .then(() => client.tasks.cancel(taskID))
+      .catch((err) => log(`Failed to cancel task ${taskID}`, err))
   }
 
   function isStopped() {
@@ -87,7 +87,7 @@ export function createRunManager({
     while (!isStopped() && !TERMINAL.has(run.state)) {
       let snapshot
       try {
-        snapshot = await client.tasks.get(run.taskId)
+        snapshot = await client.tasks.get(run.taskID)
       } catch (err) {
         if (isStopped()) {
           return
@@ -111,9 +111,9 @@ export function createRunManager({
     }
   }
 
-  function register(runId, task, label) {
+  function register(runID, task, label) {
     const run = {
-      taskId: task.taskId,
+      taskID: task.taskId,
       label,
       state: task.status ?? 'working',
       result: undefined,
@@ -123,14 +123,14 @@ export function createRunManager({
       tracker: undefined,
     }
     run.tracker = createInputTracker({
-      ask: (requestKey, request, signal) => ask(runId, requestKey, request, signal),
-      update: (responses) => client.tasks.update(run.taskId, responses),
+      ask: (requestKey, request, signal) => ask(runID, requestKey, request, signal),
+      update: (responses) => client.tasks.update(run.taskID, responses),
       log,
-      withdrawReason: withdrawReason && ((key) => withdrawReason({ taskID: run.taskId, key })),
+      withdrawReason: withdrawReason && ((key) => withdrawReason({ taskID: run.taskID, key })),
     })
-    runs.set(runId, run)
+    runs.set(runID, run)
     watch(run).catch((err) => {
-      log(`Watcher for run ${runId} failed`, err)
+      log(`Watcher for run ${runID} failed`, err)
     })
   }
 
@@ -138,7 +138,7 @@ export function createRunManager({
     return run.failures >= UNKNOWN_AFTER_FAILURES ? 'unknown' : run.state
   }
 
-  async function callFlowTool(runId, toolName, args, meta, label) {
+  async function callFlowTool(runID, toolName, args, meta, label) {
     let result
     try {
       result = await client.callTool({
@@ -158,8 +158,8 @@ export function createRunManager({
       lateCancels.push(cancelTask(result.taskId))
       return errorResult('Rig is shutting down')
     }
-    register(runId, result, label)
-    return successResult({ runId })
+    register(runID, result, label)
+    return successResult({ runID })
   }
 
   return {
@@ -167,14 +167,14 @@ export function createRunManager({
       if (isStopped()) {
         return errorResult('Rig is shutting down')
       }
-      const runId = randomUUID()
+      const runID = randomUUID()
       const controller = new AbortController()
       approvals.add(controller)
       const approvalSignal =
         signal === undefined ? controller.signal : AbortSignal.any([controller.signal, signal])
       let decision
       try {
-        decision = await approve({ runId, toolName, args, signal: approvalSignal })
+        decision = await approve({ runID, toolName, args, signal: approvalSignal })
       } catch (err) {
         return errorResult(`Flow denied: ${errorMessage(err)}`)
       } finally {
@@ -189,7 +189,7 @@ export function createRunManager({
       if (!decision?.approved) {
         return errorResult(`Flow denied: ${decision?.reason}`)
       }
-      const pending = callFlowTool(runId, toolName, args, decision.meta, label)
+      const pending = callFlowTool(runID, toolName, args, decision.meta, label)
       starts.add(pending)
       try {
         return await pending
@@ -198,19 +198,19 @@ export function createRunManager({
       }
     },
 
-    label(runId) {
-      return runs.get(runId)?.label
+    label(runID) {
+      return runs.get(runID)?.label
     },
 
-    status(runId) {
-      const run = runs.get(runId)
+    status(runID) {
+      const run = runs.get(runID)
       if (run == null) {
-        return errorResult(`Unknown run: ${runId}`)
+        return errorResult(`Unknown run: ${runID}`)
       }
       const state = reportedState(run)
       const structured = {
         state,
-        pending: state === 'input_required' ? listPending(runId) : [],
+        pending: state === 'input_required' ? listPending(runID) : [],
       }
       if (run.result !== undefined) {
         structured.result = run.result
@@ -222,18 +222,18 @@ export function createRunManager({
       return successResult(structured)
     },
 
-    async cancel(runId) {
-      const run = runs.get(runId)
+    async cancel(runID) {
+      const run = runs.get(runID)
       if (run == null) {
-        return errorResult(`Unknown run: ${runId}`)
+        return errorResult(`Unknown run: ${runID}`)
       }
       try {
-        await client.tasks.cancel(run.taskId)
+        await client.tasks.cancel(run.taskID)
       } catch (err) {
-        return errorResult(`Failed to cancel run ${runId}: ${errorMessage(err)}`)
+        return errorResult(`Failed to cancel run ${runID}: ${errorMessage(err)}`)
       }
       try {
-        const snapshot = await client.tasks.get(run.taskId)
+        const snapshot = await client.tasks.get(run.taskID)
         if (!isStopped()) {
           apply(run, snapshot)
         }
@@ -257,7 +257,7 @@ export function createRunManager({
         for (const run of runs.values()) {
           work.push(run.tracker.settled())
           if (!TERMINAL.has(run.state)) {
-            work.push(cancelTask(run.taskId))
+            work.push(cancelTask(run.taskID))
           }
         }
         let timer

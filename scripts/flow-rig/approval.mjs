@@ -18,9 +18,9 @@ export function createApprovalStrategy({ allow, confirm, confirmDialog }) {
 
 /** Adapt the decision-flow `wrapApproval` output to the run manager's `approve` contract. */
 export function createApprove({ wrapped }) {
-  return async ({ runId, toolName, args, signal }) => {
+  return async ({ runID, toolName, args, signal }) => {
     const result = await wrapped({
-      toolCall: { id: runId, name: `flow:${toolName}`, arguments: JSON.stringify(args) },
+      toolCall: { id: runID, name: `flow:${toolName}`, arguments: JSON.stringify(args) },
       iteration: 1,
       history: [],
       signal,

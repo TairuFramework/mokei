@@ -46,11 +46,11 @@ function data(result) {
   return result.structuredContent ?? result
 }
 
-async function waitFor(runId, predicate, what) {
+async function waitFor(runID, predicate, what) {
   const deadline = Date.now() + WAIT_LIMIT_MS
   let last
   while (Date.now() < deadline) {
-    last = data(await call('flow_status', { runId }))
+    last = data(await call('flow_status', { runID }))
     if (predicate(last)) return last
     await sleep(POLL_MS)
   }
@@ -61,10 +61,10 @@ const isDone = (status) => status.state === 'completed'
 const ended = (status) => status.result?.structuredContent ?? {}
 
 async function startAndAwaitPending(flow) {
-  const { runId } = data(await call('start_flow', { flow }))
-  assert.ok(runId, 'start_flow returned no runId')
-  const status = await waitFor(runId, (s) => s.pending.length === 1, 'one pending input')
-  return { runId, inputId: status.pending[0].id }
+  const { runID } = data(await call('start_flow', { flow }))
+  assert.ok(runID, 'start_flow returned no runID')
+  const status = await waitFor(runID, (s) => s.pending.length === 1, 'one pending input')
+  return { runID, inputID: status.pending[0].id }
 }
 
 function ok(name) {
@@ -121,9 +121,9 @@ async function run() {
 
   // 3. answer
   {
-    const { runId, inputId } = await startAndAwaitPending('demo/ask')
-    data(await call('answer_input', { id: inputId, value: { value: 'hi' } }))
-    const done = await waitFor(runId, isDone, 'demo/ask completion')
+    const { runID, inputID } = await startAndAwaitPending('demo/ask')
+    data(await call('answer_input', { id: inputID, value: { value: 'hi' } }))
+    const done = await waitFor(runID, isDone, 'demo/ask completion')
     assert.equal(ended(done).outcome, 'answered')
     assert.equal(ended(done).output?.value, 'hi')
     ok('demo/ask answered')
@@ -131,18 +131,18 @@ async function run() {
 
   // 4. decline
   {
-    const { runId, inputId } = await startAndAwaitPending('demo/ask')
-    data(await call('decline_input', { id: inputId }))
-    const done = await waitFor(runId, isDone, 'demo/ask decline completion')
+    const { runID, inputID } = await startAndAwaitPending('demo/ask')
+    data(await call('decline_input', { id: inputID }))
+    const done = await waitFor(runID, isDone, 'demo/ask decline completion')
     assert.equal(ended(done).outcome, 'declined')
     ok('demo/ask declined')
   }
 
   // 5. nested
   {
-    const { runId, inputId } = await startAndAwaitPending('demo/nested')
-    data(await call('answer_input', { id: inputId, value: { value: 'hi' } }))
-    const done = await waitFor(runId, isDone, 'demo/nested completion')
+    const { runID, inputID } = await startAndAwaitPending('demo/nested')
+    data(await call('answer_input', { id: inputID, value: { value: 'hi' } }))
+    const done = await waitFor(runID, isDone, 'demo/nested completion')
     assert.equal(ended(done).outcome, 'answered')
     ok('demo/nested answered')
   }
@@ -177,8 +177,8 @@ async function run() {
 
   // 7. triage with fake predictor
   {
-    const { runId } = data(await call('start_flow', { flow: 'demo/triage' }))
-    const done = await waitFor(runId, isDone, 'demo/triage completion')
+    const { runID } = data(await call('start_flow', { flow: 'demo/triage' }))
+    const done = await waitFor(runID, isDone, 'demo/triage completion')
     assert.equal(ended(done).outcome, 'triaged')
     assert.equal(ended(done).output?.row?.label, 'question')
     ok('demo/triage uses fake label')
@@ -186,10 +186,10 @@ async function run() {
 
   // 8. cancel
   {
-    const { runId } = await startAndAwaitPending('demo/ask')
-    const cancelled = data(await call('cancel_flow', { runId }))
+    const { runID } = await startAndAwaitPending('demo/ask')
+    const cancelled = data(await call('cancel_flow', { runID }))
     assert.equal(cancelled.state, 'cancelled')
-    const after = data(await call('flow_status', { runId }))
+    const after = data(await call('flow_status', { runID }))
     assert.equal(after.state, 'cancelled')
     assert.deepEqual(after.pending, [])
     ok('cancel_flow clears pending')

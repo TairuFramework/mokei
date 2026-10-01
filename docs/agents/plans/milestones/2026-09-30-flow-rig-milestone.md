@@ -1,6 +1,6 @@
 # Milestone: flow rig
 
-**Status:** open — phase 1 (local rig) built, manual QA pending
+**Status:** open -- phase 1 (local rig) built, manual QA pending
 **Opened:** 2026-09-30
 **Branch / PR:** phase 1 on `feat/flow-rig`
 
@@ -56,4 +56,4 @@ Gaps found while building and using the rig. Phase 3 consumes this list.
   the inbox record the entry as `withdrawn`, but the handler promise still rejects, so a host must ignore
   rejections from inputs it has withdrawn itself (the rig does).
 - **`@mokei/host-desktop` elicit handling and the flow task API have no shared notion of a run.** The rig keeps its
-  own runId-to-task map and passes the run id as the inbox key.
+  own runID-to-task map and passes the run id as the inbox key.
