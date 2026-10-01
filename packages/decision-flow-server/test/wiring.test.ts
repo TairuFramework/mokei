@@ -1,5 +1,5 @@
 import type { CallToolResult } from '@mokei/context-protocol'
-import { createMemoryTaskStore } from '@mokei/context-server'
+import { createMemoryTaskStore, type JSONValue } from '@mokei/context-server'
 import {
   type AgentEvent,
   AgentSession,
@@ -10,7 +10,7 @@ import {
 import type { FlowDefinition } from '@sozai/flow-graph'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import type { FlowApprovalRequest } from '../src/index.js'
+import { type AuthorizeResult, type FlowApprovalRequest, flowToolName } from '../src/index.js'
 import {
   hostToolCaller,
   markDecisionFlowContext,
@@ -128,6 +128,120 @@ afterEach(async () => {
   for (const wiring of wirings.splice(0)) await wiring.dispose()
   for (const value of sessions.splice(0)) await value.dispose()
   vi.useRealTimers()
+})
+
+test('authorize returns plan, digest and a grant for a registered flow', async () => {
+  const value = session()
+  value.contextHost.addLocalTool({
+    name: 'echo',
+    inputSchema: { type: 'object' },
+    execute: () => ({ content: [] }),
+  })
+  const wiring = await addDecisionFlow(value, { key: 'flow', flows: [toolFlow] })
+  wirings.push(wiring)
+  const toolName = flowToolName('uses-echo')
+  const result: AuthorizeResult = await wiring.authorize({ toolName, arguments: {} })
+  expect(result.ok).toBe(true)
+  if (!result.ok) throw new Error(result.issues.join('\n'))
+  expect(result.plan).toEqual(['local:echo'])
+  expect(result.digest).toEqual(expect.any(String))
+  expect(result.digest?.length).toBeGreaterThan(0)
+  const meta = result.grant()
+  expect(meta).toEqual({ 'dev.mokei/flow-grant': expect.any(String) })
+  const invoke = () =>
+    value.contextHost.callNamespacedTool({
+      id: `flow:${toolName}`,
+      arguments: {},
+      _meta: meta,
+    })
+  expect((await invoke()).isError).not.toBe(true)
+  expect(text(await invoke())).toBe('Flow denied')
+})
+
+test('authorize for run_flow has no digest', async () => {
+  const value = session()
+  const wiring = await addDecisionFlow(value, { key: 'flow', flows: [flow] })
+  wirings.push(wiring)
+  const result = await wiring.authorize({
+    toolName: 'run_flow',
+    arguments: { definition: flow as unknown as JSONValue },
+  })
+  expect(result.ok).toBe(true)
+  if (!result.ok) throw new Error(result.issues.join('\n'))
+  expect(result.digest).toBeUndefined()
+  expect(result.plan).toEqual([])
+  expect(
+    (
+      await value.contextHost.callNamespacedTool({
+        id: 'flow:run_flow',
+        arguments: { definition: flow },
+        _meta: result.grant(),
+      })
+    ).isError,
+  ).not.toBe(true)
+})
+
+test('authorize reports issues for an invalid inline definition', async () => {
+  const value = session()
+  const wiring = await addDecisionFlow(value, { key: 'flow' })
+  wirings.push(wiring)
+  const result = await wiring.authorize({
+    toolName: 'run_flow',
+    arguments: { definition: { id: 'x' } },
+  })
+  expect(result.ok).toBe(false)
+  if (result.ok) throw new Error('Expected invalid definition')
+  expect(result.issues.length).toBeGreaterThan(0)
+  expect(result.issues.every((issue) => typeof issue === 'string' && issue.length > 0)).toBe(true)
+})
+
+test('authorize rejects an unknown tool name', async () => {
+  const value = session()
+  const wiring = await addDecisionFlow(value, { key: 'flow' })
+  wirings.push(wiring)
+  expect(await wiring.authorize({ toolName: 'flow_nope', arguments: {} })).toEqual({
+    ok: false,
+    issues: ['Unknown flow tool: flow_nope'],
+  })
+})
+
+test('grant is minted only when called', async () => {
+  vi.useFakeTimers()
+  const value = session()
+  const wiring = await addDecisionFlow(value, { key: 'flow' })
+  wirings.push(wiring)
+  const args = { definition: flow as unknown as JSONValue }
+  const first = await wiring.authorize({ toolName: 'run_flow', arguments: args })
+  const second = await wiring.authorize({ toolName: 'run_flow', arguments: args })
+  expect(first.ok).toBe(true)
+  expect(second.ok).toBe(true)
+  expect(text(await call(value, 'flow:run_flow', args))).toBe('Flow denied')
+  if (!first.ok) throw new Error(first.issues.join('\n'))
+  vi.setSystemTime(Date.now() + 300_001)
+  expect(
+    (
+      await value.contextHost.callNamespacedTool({
+        id: 'flow:run_flow',
+        arguments: args,
+        _meta: first.grant(),
+      })
+    ).isError,
+  ).not.toBe(true)
+})
+
+test('check returns the checkFlow result', async () => {
+  const value = session()
+  const wiring = await addDecisionFlow(value, { key: 'flow', flows: [flow] })
+  wirings.push(wiring)
+  const checked = await wiring.check(flow)
+  expect(checked.issues).toBeUndefined()
+  expect(checked).toMatchObject({ value: flow, warnings: [], formatted: '' })
+  expect(checked.graphFor({ depth: 0, approved: new Set() }).check(flow).issues).toBeUndefined()
+  const invalid = await wiring.check({ ...flow, id: 'invalid', start: 'missing' })
+  expect(invalid.issues).toEqual(
+    expect.arrayContaining([expect.objectContaining({ code: 'unknown_target', path: ['start'] })]),
+  )
+  expect(invalid.formatted).toContain('missing')
 })
 
 test('new AgentSession advertises and executes inline and registered flows without host.setup', async () => {
