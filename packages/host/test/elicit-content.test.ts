@@ -69,6 +69,12 @@ describe('elicitation content validation', () => {
     expect(validateElicitContent(requestedSchema, { s: 'ok', n: Number.NaN })).toEqual([
       'n: must be a whole number',
     ])
+    expect(validateElicitContent(requestedSchema, { s: 'ok', n: 0 })).toEqual([
+      'n: must be at least 1',
+    ])
+    expect(validateElicitContent(requestedSchema, { s: 'ok', n: 1.5 })).toEqual([
+      'n: must be a whole number',
+    ])
     expect(validateElicitContent(requestedSchema, { s: 'ok', e: 'z' })).toEqual([
       'e: must be one of the offered choices',
     ])
@@ -200,5 +206,36 @@ describe('compiled elicitation validator cache', () => {
     }
     expect(elicitValidatorStats().generation).toBe(1)
     expect(validator({ s: 'xx' })).toEqual(['s: must be at most 1 character'])
+  })
+
+  test('schemas differing only in key order share one compile', () => {
+    const first = schema({ a: { type: 'string', minLength: 1 } })
+    const second = schema({ a: { minLength: 1, type: 'string' } })
+    validateElicitContent(first, { a: 'x' })
+    const { compiles } = elicitValidatorStats()
+    validateElicitContent(second, { a: 'x' })
+    expect(elicitValidatorStats().compiles).toBe(compiles)
+  })
+
+  test('the 257th distinct compile recycles the factory and clears the cache', () => {
+    for (let index = 0; index < 256; index++) {
+      validateElicitContent(schema({ field: { type: 'string', maxLength: index + 1 } }), {
+        field: 'x',
+      })
+    }
+    expect(elicitValidatorStats()).toEqual({ generation: 0, compiles: 256, entries: 64 })
+    validateElicitContent(schema({ field: { type: 'string', maxLength: 257 } }), { field: 'x' })
+    expect(elicitValidatorStats()).toEqual({ generation: 1, compiles: 1, entries: 1 })
+  })
+
+  test('a compile error is cached and rethrown', () => {
+    const broken = schema({ a: { type: 'string', pattern: '(' } })
+    const first = validateElicitContent(broken, { a: 'x' })
+    const { compiles } = elicitValidatorStats()
+    const second = validateElicitContent(broken, { a: 'x' })
+    expect(second).toEqual(first)
+    expect(second).toHaveLength(1)
+    expect(second[0]).toMatch(/^the requested schema cannot be validated: /)
+    expect(elicitValidatorStats().compiles).toBe(compiles)
   })
 })

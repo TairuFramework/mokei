@@ -286,7 +286,7 @@ export function createElicitContentValidator(schema: RequestedSchema): ElicitCon
   }
 }
 
-/** Validates elicitation content against the requested schema. Empty result means valid. */
+/** Converts a thrown validation error into a readable message. */
 export function elicitMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }

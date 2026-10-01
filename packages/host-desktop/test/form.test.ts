@@ -1,5 +1,4 @@
-import { elicitValidatorStats, resetElicitValidators } from '@mokei/host'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 import { type FieldPlan, type FormParams, planForm, withViolation } from '../src/form.js'
 
@@ -262,52 +261,5 @@ describe('withViolation', () => {
   test('puts the violation on the first line', () => {
     const ask = { kind: 'text' as const, title: 'T', text: 'body' }
     expect(withViolation(ask, 'too short')).toEqual({ ...ask, text: 'too short\nbody' })
-  })
-})
-
-describe('form validator factory', () => {
-  beforeEach(() => {
-    resetElicitValidators()
-  })
-
-  function numberForm(index: number): FormParams {
-    return params({ field: { type: 'string', maxLength: index + 1 } }, ['field'])
-  }
-
-  test('schemas differing only in key order share one compile', () => {
-    const first = params({ a: { type: 'string', minLength: 1 } })
-    const second = params({ a: { minLength: 1, type: 'string' } })
-    planForm(first, options)
-    const { compiles } = elicitValidatorStats()
-    planForm(second, options)
-    expect(elicitValidatorStats().compiles).toBe(compiles)
-  })
-
-  test('the 257th distinct compile recycles the factory and clears the cache', () => {
-    for (let index = 0; index < 256; index++) planForm(numberForm(index), options)
-    expect(elicitValidatorStats()).toEqual({ generation: 0, compiles: 256, entries: 64 })
-    planForm(numberForm(256), options)
-    expect(elicitValidatorStats()).toEqual({ generation: 1, compiles: 1, entries: 1 })
-  })
-
-  test('a validator obtained before a recycle still validates', () => {
-    const plan = planForm(numberForm(0), options)
-    if (!plan.ok) throw new Error('expected a plan')
-    for (let index = 1; index <= 256; index++) planForm(numberForm(index), options)
-    expect(elicitValidatorStats().generation).toBe(1)
-    const field = plan.fields[0]
-    if (field === undefined) throw new Error('expected a field')
-    expect(field.toValue('x')).toEqual({ ok: true, value: 'x' })
-    expect(field.toValue('xx')).toMatchObject({ ok: false })
-  })
-
-  test('a compile error is cached and rethrown', () => {
-    const bad = params({ a: { type: 'string', pattern: '(' } })
-    const first = planForm(bad, options)
-    expect(first.ok).toBe(false)
-    const { compiles } = elicitValidatorStats()
-    const second = planForm(bad, options)
-    expect(second).toEqual(first)
-    expect(elicitValidatorStats().compiles).toBe(compiles)
   })
 })
