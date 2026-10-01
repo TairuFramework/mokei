@@ -302,15 +302,19 @@ appear and settle.
 
 `dispose()` suspends the host:
 
-1. It stops the watchers. Tasks stay non-terminal in `taskStore`, so a later host on the same stores resumes them.
-2. It ends open spans.
-3. It disposes the flow wiring.
+1. It closes admission: `start`, `cancel` and inbox calls made after it begins throw. It waits for launches in
+   flight, so each one links its task or fails before the wiring goes away.
+2. It stops the watchers. Tasks stay non-terminal in `taskStore`, so a later host on the same stores resumes them.
+3. It ends open spans.
+4. It disposes the flow wiring.
 
 Today, disposing the task manager aborts task work with a plain error, and the flow driver treats that abort as a
 cancel: it cancels its sibling tasks. A recovered flow then finds those siblings cancelled. This sub-project fixes
 that:
 
 - `@mokei/context-server` exports `TaskManagerDisposedError`, used as the abort reason on dispose.
+- `TaskManager.create` checks disposal again after its awaited store write. A manager disposed by then does not
+  start the work. The record stays non-terminal, so recovery resumes it.
 - The flow driver skips sibling cleanup when the abort reason is `TaskManagerDisposedError`.
 
 The rig and daemon shutdown cancel runs explicitly when they mean to.
@@ -401,7 +405,9 @@ from `addDecisionFlow`, flows with `input` and `decide` nodes, and a fake predic
 - `authorize`: plan, digest and grant for an allowlisted call; issues for an invalid inline definition;
   `wrapApproval` tests unchanged.
 - `@mokei/context-server`: dispose aborts work with `TaskManagerDisposedError`; recovered work runs under its
-  stored trace context.
+  stored trace context; with the store write held open, dispose then release never starts the work, and a new
+  manager on the same store recovers the task.
+- Dispose during a launch waits for it; a host recreated on the same stores watches the linked task.
 - `@mokei/host-desktop`: `createDesktopInputSurface` `prompt` rejects on backend failure and resolves user
   decline and cancel; `notify` sends one notification.
 - Content validator tests move to `@mokei/host` with the code.
