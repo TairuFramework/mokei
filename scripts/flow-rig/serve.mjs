@@ -225,7 +225,7 @@ async function disposeAll(steps) {
   }
 }
 
-export async function main({ configPath, stdio = true }) {
+export async function createRig({ configPath, desktop }) {
   const config = await loadConfig(configPath)
   const fake = config.predictor === 'fake'
 
@@ -237,11 +237,15 @@ export async function main({ configPath, stdio = true }) {
   }
   let runs
   const inputs = createDesktopElicitHandler({
+    ...(desktop === undefined ? {} : desktop),
     mode: config.input,
     inbox,
     describeSource: (request) => describeRun(runs, request.key),
   })
-  const confirm = createDesktopElicitHandler({ mode: 'dialog' })
+  const confirm = createDesktopElicitHandler({
+    ...(desktop === undefined ? {} : desktop),
+    mode: 'dialog',
+  })
   const session = new NodeSession({ elicit: (request) => inputs(request) })
 
   let wiring
@@ -329,23 +333,20 @@ export async function main({ configPath, stdio = true }) {
     return shutdownPromise
   }
 
-  if (stdio) {
-    serveProcess({
-      name: 'flow-rig',
-      version: '0.1.0',
-      protocolVersions: ['2026-07-28', '2025-11-25'],
-      tools,
-    })
-    log('Facade serving on stdio')
-  }
-
   return { tools, shutdown }
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const configPath = process.env.FLOW_RIG_CONFIG ?? DEFAULT_CONFIG_PATH
-  main({ configPath }).then(
-    ({ shutdown }) => {
+  createRig({ configPath }).then(
+    ({ tools, shutdown }) => {
+      serveProcess({
+        name: 'flow-rig',
+        version: '0.1.0',
+        protocolVersions: ['2026-07-28', '2025-11-25'],
+        tools,
+      })
+      log('Facade serving on stdio')
       const exit = () => {
         shutdown().then(
           () => process.exit(0),
