@@ -115,7 +115,12 @@ export function createFlowHost(params: FlowHostParams): Promise<FlowHost>
 
 `createFlowHost` calls `addDecisionFlow(session, { key, flows, predictor, store: taskStore })`, then recovers runs
 (see Recovery). It throws when `session.contextHost.elicitationEnabled` is false, since flows that ask for input need
-the capability advertised. The session's own elicit handler is never called for runs.
+the capability advertised. Input requested by the flow itself goes to the run inbox, never to the session's elicit
+handler.
+
+Input requested by a sibling tool that a flow calls is out of scope. The flow driver waits on sibling tasks with
+`tasks.wait`, which answers their input through the session's elicit handler, as today. Routing sibling input into the
+run inbox is a later change.
 
 ### Run store
 
@@ -152,8 +157,9 @@ record, and writes it with `update(..., { revision })`. On `RunStoreConflictErro
 5 attempts, then throws. Terminal states (`denied`, `completed`, `failed`, `cancelled`) are absorbing: a transition
 computed against a terminal record is a no-op. `run:state` fires only after a successful write that changed `state`.
 
-Each run also has one in-process serial queue. Poll application, inbox answers, cancel and start launch for that run
-run through it, so they never interleave inside one host.
+Each run also has one in-process serial queue for its transitions and their follow-up events. Awaited calls
+(`authorize`, the tool call, `tasks.update`, `tasks.cancel`) run outside the queue, so a cancel can land while launch
+waits on the tool call.
 
 ### Start and approval
 
@@ -182,7 +188,8 @@ Launch is the only path that mints a grant:
 3. **Call.** `grant()` mints the token, and the run calls the flow tool (see Execution).
 4. **Link.** The returned task ID is stored on the run. When `cancelRequested` is set by then, the run cancels the
    task at once.
-5. **Failure.** When the call throws, the run moves to `failed` with `{ type: 'StartFailed' }` and the error message.
+5. **Failure.** When the call throws or returns no task, the run moves to `cancelled` if `cancelRequested` is set.
+   Otherwise it moves to `failed` with `{ type: 'StartFailed' }` and the error or result text as the message.
 
 ### `DecisionFlowWiring.authorize`
 
@@ -204,8 +211,8 @@ The run calls `client.callTool({ name, arguments, _meta, task: 'handle' })` on t
 `flow.run` span context. `_meta` holds the grant, the trace context, and `dev.mokei/flow-run: runID`. The task manager
 stores this `_meta` as the task's `requestMeta`, so a task names its run.
 
-A result without a task (an error returned before task creation) settles the run as `failed`, with
-`{ type: 'StartFailed' }` and the result's text as the message. Otherwise the run links the task, and a watcher
+A result without a task (an error returned before task creation) follows the launch failure rule. Otherwise the run
+links the task, and a watcher
 polls `client.tasks.get(taskID)` every `pollMs`, one poll at a time:
 
 - A snapshot whose `lastUpdatedAt` is older than the last applied one is dropped.
@@ -253,8 +260,8 @@ each failure with `@mokei/logger`.
 `cancel(runID)` works as follows:
 
 - On an `awaiting_approval` run, it moves the run to `cancelled` and settles the approval item with `cancelled`.
-- On a `working` run without a `taskID` (launch in progress), it sets `cancelRequested`. Launch cancels the task once
-  linked, and moves the run to `cancelled` when the call fails.
+- On a `working` run without a `taskID` (launch in progress), it sets `cancelRequested` and returns. Launch cancels
+  the task once linked, or moves the run to `cancelled` when the call fails.
 - On a run with a task, it calls `client.tasks.cancel(taskID)` and applies the next snapshot.
 - On a terminal run, it returns the snapshot unchanged.
 - An unknown run ID throws `RunNotFoundError`.
@@ -286,10 +293,10 @@ appear and settle.
 - An `awaiting_approval` run gets its approval item back. Its answer re-authorises, so a changed flow fails with
   `FlowChanged` and never runs an unapproved plan.
 - A `working` run without a `taskID` crashed during launch. The host looks for a task whose `requestMeta` carries
-  its run ID (`taskStore.list` on non-terminal statuses). A match is linked and watched. Without a match, the run
-  moves to `failed` with `{ type: 'Interrupted' }`. The run never launches again, so a crash cannot start a second
-  task.
-- When `cancelRequested` is set on a run with a task, the host cancels that task.
+  its run ID, with `taskStore.list` on every status. A match is linked and watched, so a task that already finished
+  settles the run on the first poll. Without a match, the run moves to `failed` with `{ type: 'Interrupted' }`. The
+  run never launches again, so a crash cannot start a second task.
+- When `cancelRequested` is set on a run, the host cancels its task right after linking.
 
 ### Dispose
 
@@ -318,14 +325,25 @@ when it does not already have it.
 ## Rig shim
 
 `scripts/flow-rig/serve.mjs` builds a `FlowHost` in place of the run manager. The facade tool names and argument
-shapes stay. The rig keeps one desktop elicit handler in dialog mode for its dialogs. `@mokei/host-desktop` exposes
-whether that handler can show a request as dialogs (`canPrompt`), from the same dialog plan its inbox uses.
+shapes stay.
+
+`@mokei/host-desktop` gains `createDesktopInputSurface({ appName, backend })`, built from the code its elicit handler
+already uses. It returns:
+
+- `canPrompt(request)`: whether the backend can show the form as dialogs, from the same dialog plan as the inbox.
+- `prompt(request, { signal })`: shows the dialogs and resolves with the `ElicitResult`. A backend failure rejects,
+  as the inbox prompt path does today, so the caller leaves the item open for a retry.
+- `notify(request)`: sends the same new-input notification as the inbox path.
+
+The rig uses one surface:
 
 - `start_flow` returns `{ runID }` for a queued run too.
 - `flow_status` returns `{ state, pending, result?, error? }` built from the snapshot. `pending` lists the run's
-  input items as `{ id, message, requestedSchema, canPrompt }`.
-- `prompt_input` shows the item's dialogs with the handler, then maps `accept`, `decline` and `cancel` onto the
-  matching `inbox` method. It fails when `canPrompt` is false.
+  input items as `{ id, message, requestedSchema, canPrompt }`. Items under an open dialog-mode dialog are left
+  out, as today.
+- With `input: inbox`, an `inbox:added` listener calls `notify` for each input item.
+- `prompt_input` calls `prompt` for the item, then maps `accept`, `decline` and `cancel` onto the matching `inbox`
+  method. It fails when `canPrompt` is false. A rejected `prompt` leaves the item open and fails the tool call.
 - `answer_input` and `decline_input` map onto the `inbox` methods.
 - With `input: dialog`, an `inbox:added` listener prompts each input item the same way, without a tool call.
 - Every dialog gets an abort signal that fires when its item settles elsewhere, so a withdrawn or answered item
@@ -359,7 +377,8 @@ from `addDecisionFlow`, flows with `input` and `decide` nodes, and a fake predic
 - Allowlisted plans start at once. Others queue as `awaiting_approval` with an approval item. Approve starts the
   run. Decline gives `denied`. Cancel while queued gives `cancelled` and settles the item.
 - Two concurrent approval answers start one task; the second throws `InboxItemNotFoundError`.
-- Cancel during launch cancels the task once linked.
+- With task creation held open, cancel returns at once; the task is cancelled once linked. A launch that fails after
+  a cancel gives `cancelled`.
 - An input item appears with `requestedSchema`. Valid answers resume the run. Invalid answers throw with issues and
   keep the item. Decline and cancel reach the flow as their own actions.
 - A withdrawn input settles with `withdrawn`. A second answer on a settled item throws `InboxItemNotFoundError`.
@@ -371,7 +390,9 @@ from `addDecisionFlow`, flows with `input` and `decide` nodes, and a fake predic
   - a host disposed mid-input lists the input item again and completes when it is answered;
   - a queued approval survives;
   - a host disposed while the flow awaits a sibling task resumes that wait, and the sibling is not cancelled;
-  - a `working` run without a `taskID` links the task that names it, or fails with `Interrupted`;
+  - a `working` run without a `taskID` links the task that names it, including a completed one, or fails with
+    `Interrupted`;
+  - a run with `cancelRequested` and a task is cancelled after recovery;
   - a registered flow changed between queueing and approval fails with `FlowChanged`.
 - Tracing, with an in-memory span exporter from `@opentelemetry/sdk-trace-base` (dev dependency only):
   - server spans share the run's `traceID`, and `flow.run` ends with the run;
@@ -381,6 +402,8 @@ from `addDecisionFlow`, flows with `input` and `decide` nodes, and a fake predic
   `wrapApproval` tests unchanged.
 - `@mokei/context-server`: dispose aborts work with `TaskManagerDisposedError`; recovered work runs under its
   stored trace context.
+- `@mokei/host-desktop`: `createDesktopInputSurface` `prompt` rejects on backend failure and resolves user
+  decline and cancel; `notify` sends one notification.
 - Content validator tests move to `@mokei/host` with the code.
 
 The rig unit tests that cover deleted modules are deleted. `create-rig.test.mjs` and `config.test.mjs` stay. The
@@ -390,6 +413,10 @@ integration suite runs on the shim.
 
 - **Grant binding.** The grant binds tool name, arguments and plan. Launch re-authorises the stored request and
   checks plan and digest, so the grant matches what the approver saw.
+- **Late cancel after restart.** A run cancelled during launch, just before a crash, is cancelled only after task
+  recovery. Its work can run briefly before the cancel lands. Cancelling through `tasks.cancel` keeps sibling cleanup
+  in the flow driver.
+- **Sibling input.** Sibling tools that ask for input still use the session's elicit handler, outside the run inbox.
 - **Single-host queue.** The per-run queue serialises work inside one host only. Two hosts on one store are not
   supported. Compare-and-set still keeps the store consistent.
 - **Poll cost.** A 500 ms poll per running run is fine for a single user. Subscriptions can replace polling later.
