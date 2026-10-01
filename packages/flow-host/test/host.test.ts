@@ -13,7 +13,7 @@ import {
 } from '../src/errors.js'
 import { createFlowHost } from '../src/host.js'
 import { createMemoryRunStore } from '../src/run-store.js'
-import type { FlowHost, RunState } from '../src/types.js'
+import type { FlowHost, RunRecord, RunState } from '../src/types.js'
 import { createFixture, deferred, echoFlow, emptyFlow } from './fixture.js'
 
 const taskBase = {
@@ -133,6 +133,85 @@ test('cancelling queued approval settles once', async () => {
   expect(settled).toHaveBeenCalledTimes(1)
   expect(settled.mock.calls[0]?.[0]).toMatchObject({ outcome: 'cancelled' })
 })
+test('cancel during run creation preserves publication and approval ordering', async () => {
+  const runStore = createMemoryRunStore()
+  const created = deferred<RunRecord>()
+  const gate = deferred<void>()
+  const create = runStore.create.bind(runStore)
+  vi.spyOn(runStore, 'create').mockImplementation(async (record) => {
+    await create(record)
+    created.resolve(record)
+    await gate.promise
+  })
+  const { host } = await fixture({ runStore })
+  const events: Array<string> = []
+  host.events.on('run:state', (run) => {
+    events.push(run.state)
+  })
+  host.events.on('inbox:added', () => {
+    events.push('added')
+  })
+  host.events.on('inbox:settled', ({ outcome }) => {
+    events.push(outcome)
+  })
+  const start = host.start({ definition: echoFlow })
+  const record = await created.promise
+  expect(await host.list()).toMatchObject([{ runID: record.runID }])
+  const cancel = host.cancel(record.runID)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  gate.resolve()
+  await Promise.all([start, cancel])
+  expect((await host.get(record.runID))?.state).toBe('cancelled')
+  expect(host.inbox.list()).toEqual([])
+  expect(events).toEqual(['awaiting_approval', 'added', 'cancelled', 'cancelled'])
+})
+
+test.each(['cancel', 'complete'] as const)(
+  'a rejected launch cancellation keeps watching until tasks %s',
+  async (finish) => {
+    const runStore = createMemoryRunStore()
+    const { host, session, held } = await fixture({ runStore })
+    const client = session.contextHost.getContext('flow').client
+    const toolClient = client as ToolClient
+    const gate = deferred<void>()
+    const entered = deferred<void>()
+    const original = toolClient.callTool.bind(toolClient)
+    vi.spyOn(toolClient, 'callTool').mockImplementation(async (params) => {
+      entered.resolve()
+      await gate.promise
+      return original(params)
+    })
+    const failure = new Error('Cancellation transport failed')
+    vi.spyOn(client.tasks, 'cancel').mockRejectedValueOnce(failure)
+    const polled = deferred<void>()
+    const get = client.tasks.get.bind(client.tasks)
+    vi.spyOn(client.tasks, 'get').mockImplementation(async (taskID) => {
+      const task = await get(taskID)
+      polled.resolve()
+      return task
+    })
+    const run = await host.start({ definition: holdFlow })
+    const answer = host.inbox.answer(`${run.runID}:approval`)
+    const answered = Promise.allSettled([answer])
+    await entered.promise
+    expect((await host.cancel(run.runID)).state).toBe('working')
+    gate.resolve()
+    expect(await answered).toEqual([{ status: 'rejected', reason: failure }])
+    await polled.promise
+    const linked = await runStore.get(run.runID)
+    expect(linked).toMatchObject({ state: 'working', taskID: expect.any(String) })
+    expect(linked?.error).toBeUndefined()
+    if (finish === 'cancel') {
+      expect((await host.cancel(run.runID)).state).toBe('cancelled')
+    } else {
+      held.resolve()
+      expect(await waitState(host, run.runID, 'completed')).toMatchObject({
+        result: { outcome: 'done' },
+      })
+    }
+  },
+)
+
 test.each([false, true])('cancel during launch survives call failure %s', async (fails) => {
   const { host, session } = await fixture()
   const client = session.contextHost.getContext('flow').client as ToolClient

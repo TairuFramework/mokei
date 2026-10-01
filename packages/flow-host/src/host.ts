@@ -179,22 +179,27 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
         digest: authorized.digest,
         plan: { tools: [...authorized.plan] },
       }
-      await store.create(record)
-      if (isAllowed(authorized.plan, params.approval?.allow ?? []))
-        return runSnapshot(await launch(await claim(record.runID)))
-      await queue.run(record.runID, async () => {
-        emit('run:state', runSnapshot(record))
+      const allowed = isAllowed(authorized.plan, params.approval?.allow ?? [])
+      const current = await queue.run(record.runID, async () => {
+        await store.create(record)
+        const current = await store.get(record.runID)
+        if (current === undefined) throw new RunNotFoundError(record.runID)
+        if (allowed) return current
+        emit('run:state', runSnapshot(current))
+        if (current.state !== 'awaiting_approval') return current
         const item: InboxItem = {
-          id: `${record.runID}:approval`,
-          runID: record.runID,
+          id: `${current.runID}:approval`,
+          runID: current.runID,
           kind: 'approval',
-          plan: structuredClone(record.plan),
-          createdAt: now,
+          plan: structuredClone(current.plan),
+          createdAt: current.createdAt,
         }
         items.set(item.id, { item, status: 'open' })
         emit('inbox:added', structuredClone(item))
+        return current
       })
-      return runSnapshot(record)
+      if (allowed) return runSnapshot(await launch(await claim(current.runID)))
+      return runSnapshot(current)
     },
     async get(runID) {
       const record = await store.get(runID)

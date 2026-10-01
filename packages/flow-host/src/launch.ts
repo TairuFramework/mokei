@@ -28,6 +28,8 @@ export function createLauncher(params: {
         error: { type: 'FlowChanged', message: 'Flow changed since approval' },
       }))
     }
+    let taskID: string
+    let linked: RunRecord
     try {
       if (
         !authorized.ok ||
@@ -53,11 +55,8 @@ export function createLauncher(params: {
             : { state: 'failed', error: { type: 'StartFailed', message: resultText(result) } },
         )
       }
-      const taskID = result.taskId
-      const linked = await params.change(runID, () => ({ taskID }))
-      if (linked.cancelRequested) return await params.cancelTask(runID, taskID)
-      params.watch(runID, taskID)
-      return linked
+      taskID = result.taskId
+      linked = await params.change(runID, () => ({ taskID }))
     } catch (error) {
       return params.change(runID, (current) =>
         current.cancelRequested
@@ -71,5 +70,8 @@ export function createLauncher(params: {
             },
       )
     }
+    params.watch(runID, taskID)
+    if (linked.cancelRequested) return params.cancelTask(runID, taskID)
+    return linked
   }
 }
