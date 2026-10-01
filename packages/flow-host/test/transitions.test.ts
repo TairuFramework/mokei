@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 import { createMemoryRunStore, RunStoreConflictError } from '../src/run-store.js'
 import { createRunQueue, transition } from '../src/transitions.js'
@@ -18,7 +18,7 @@ function record(): RunRecord {
 }
 
 describe('transitions', () => {
-  it('does not change terminal records', async () => {
+  test('does not change terminal records', async () => {
     const store = createMemoryRunStore()
     await store.create({ ...record(), state: 'completed' })
     const result = await transition(store, 'one', () => ({ state: 'failed' }))
@@ -26,7 +26,7 @@ describe('transitions', () => {
     expect(result.record.state).toBe('completed')
   })
 
-  it('recomputes after concurrent compare-and-set conflicts', async () => {
+  test('recomputes after concurrent compare-and-set conflicts', async () => {
     const store = createMemoryRunStore()
     await store.create(record())
     await Promise.all([
@@ -40,7 +40,7 @@ describe('transitions', () => {
     expect((await store.get('one'))?.plan.tools).toEqual(['a', 'b'])
   })
 
-  it('rethrows after five conflicts', async () => {
+  test('rethrows after five attempts', async () => {
     const store = createMemoryRunStore()
     await store.create(record())
     const conflict = new RunStoreConflictError('conflict')
@@ -53,10 +53,10 @@ describe('transitions', () => {
       },
     }
     await expect(transition(conflicted, 'one', () => ({ state: 'failed' }))).rejects.toBe(conflict)
-    expect(calls).toBe(6)
+    expect(calls).toBe(5)
   })
 
-  it('reports state changes only when state differs', async () => {
+  test('reports state changes only when state differs', async () => {
     const store = createMemoryRunStore()
     await store.create(record())
     expect((await transition(store, 'one', () => ({ updatedAt: 2 }))).stateChanged).toBe(false)
@@ -67,7 +67,7 @@ describe('transitions', () => {
 })
 
 describe('run queue', () => {
-  it('serialises jobs for one run and allows different runs concurrently', async () => {
+  test('serialises jobs for one run and allows different runs concurrently', async () => {
     const queue = createRunQueue()
     let release: (() => void) | undefined
     let entered = 0
@@ -91,7 +91,7 @@ describe('run queue', () => {
     expect(entered).toBe(3)
   })
 
-  it('continues after a job rejects', async () => {
+  test('continues after a job rejects', async () => {
     const queue = createRunQueue()
     await expect(queue.run('one', async () => Promise.reject(new Error('failed')))).rejects.toThrow(
       'failed',

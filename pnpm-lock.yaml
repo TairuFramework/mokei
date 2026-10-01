@@ -1010,6 +1010,9 @@ importers:
       '@mokei/context-server':
         specifier: workspace:^
         version: link:../context-server
+      '@mokei/decision-flow':
+        specifier: workspace:^
+        version: link:../decision-flow
       '@mokei/decision-flow-server':
         specifier: workspace:^
         version: link:../decision-flow-server

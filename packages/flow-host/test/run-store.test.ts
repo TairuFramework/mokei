@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 import { createMemoryRunStore, RunStoreConflictError } from '../src/run-store.js'
 import type { RunRecord } from '../src/types.js'
@@ -17,7 +17,7 @@ function record(runID: string, createdAt: number): RunRecord {
 }
 
 describe('memory run store', () => {
-  it('copies records in and out', async () => {
+  test('copies records in and out', async () => {
     const store = createMemoryRunStore()
     const value = record('one', 1)
     await store.create(value)
@@ -27,7 +27,7 @@ describe('memory run store', () => {
     expect((await store.get('one'))?.plan.tools).toEqual([])
   })
 
-  it('compares revisions and increments on update', async () => {
+  test('compares revisions and increments on update', async () => {
     const store = createMemoryRunStore()
     await store.create(record('one', 1))
     await expect(
@@ -37,7 +37,7 @@ describe('memory run store', () => {
     expect(updated.revision).toBe(1)
   })
 
-  it('lists newest first and applies state and limit filters', async () => {
+  test('lists newest first and applies state and limit filters', async () => {
     const store = createMemoryRunStore()
     await store.create(record('old', 1))
     await store.create({ ...record('new', 3), state: 'completed' })
@@ -47,7 +47,7 @@ describe('memory run store', () => {
     )
   })
 
-  it('deletes a record', async () => {
+  test('deletes a record', async () => {
     const store = createMemoryRunStore()
     await store.create(record('one', 1))
     await store.delete('one')

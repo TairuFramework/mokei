@@ -16,7 +16,7 @@ export async function transition(
   compute: (record: RunRecord) => Partial<RunRecord> | undefined,
   options?: { now?: () => number },
 ): Promise<{ record: RunRecord; changed: boolean; stateChanged: boolean }> {
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     const current = await store.get(runID)
     if (current == null) throw new RunNotFoundError(runID)
     if (TERMINAL_STATES.has(current.state))
@@ -31,7 +31,7 @@ export async function transition(
       )
       return { record, changed: true, stateChanged: record.state !== current.state }
     } catch (error) {
-      if (!(error instanceof RunStoreConflictError) || attempt === 5) throw error
+      if (!(error instanceof RunStoreConflictError) || attempt === 4) throw error
     }
   }
   throw new Error('Unreachable transition retry state')

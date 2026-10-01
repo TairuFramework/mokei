@@ -4,6 +4,7 @@ import type { checkFlow, FlowSummary, PredictorFactory } from '@mokei/decision-f
 
 export type { AuthorizeResult } from '@mokei/decision-flow-server'
 
+import type { Predictor } from '@mokei/decision-flow'
 import type { RequestedSchema } from '@mokei/host'
 import type { Session } from '@mokei/session'
 import type { EventEmitter } from '@sozai/event'
@@ -65,7 +66,7 @@ export type FlowHostParams = {
   session: Session
   key?: string
   flows?: Array<FlowDefinition>
-  predictor?: ReturnType<PredictorFactory> | PredictorFactory
+  predictor?: Predictor | PredictorFactory
   approval?: { allow?: Array<string> }
   runStore?: RunStore
   taskStore?: TaskStore
