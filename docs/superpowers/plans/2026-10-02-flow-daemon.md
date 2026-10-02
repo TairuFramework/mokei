@@ -10,7 +10,7 @@
 
 **Spec:** [Flow daemon design](../specs/2026-10-02-flow-daemon-design.md)
 
-**Stage:** reviewing
+**Stage:** qa
 **Mode:** tasks
 
 ## Global Constraints
@@ -588,20 +588,64 @@ This plan adds no command families, monitor pages, new packages or event persist
 
 ## Execution handoff
 
-The user approved the written spec and plan and selected subagent-driven execution.
-Tasks 1–8 have implementation commits and task-level reviews. Task 9 completed documentation and the repository validation gate.
-The controller owns whole-branch review after Task 9; manual desktop QA, completion and branch finishing remain open.
+The user approved the spec and plan and selected subagent-driven execution.
+All nine implementation tasks and task reviews passed.
+The whole-branch review found missing production protocol validation and a shutdown deadline shorter than telemetry cleanup.
+Commit `d5435b72` addressed both; scoped final re-review found no new Critical or Important breakage.
 
-Final validation: lint checked 721 files without fixes; build passed 30 type-build and 29 JS-build tasks.
-The first full test attempt overlapped the build and hit nine five-second flow-host-node timeouts.
-A clean full rerun passed all package suites, the 13 flow-rig tests, and 133 integration tests (35 integration tests skipped).
-Resource contention is an inference; no production or timeout configuration changes were made.
-`pnpm change status` passed with the existing 29-package fixed group advancing from 0.14.0 to 0.14.1.
-No versions were applied and nothing was published. The upstream Enkaku release/adoption gate remains open.
+Final validation: lint checked 724 files without fixes; the full root build and later affected package builds passed.
+The final full `pnpm test` passed 3,385 tests with 41 expected skips, including 14 daemon process scenarios.
+The normal commit hooks passed all 60 type-check tasks. Two existing third-party declaration exclusions remain in their separate follow-on.
+The first earlier full test attempt overlapped a build and timed out nine fixtures; its unchanged clean rerun passed.
+Contention remains an inference, and no test-timeout stabilization was needed.
+`pnpm change status` confirmed the existing 29-package fixed group moving from 0.14.0 to 0.14.1.
+No versions were applied and nothing was published.
+
+The composed daemon uses a 60-second outer shutdown limit with 10-second remote telemetry phases.
+Optional remote timeouts do not release owned local writes; local capture drains before SQLite closes.
+Permanently stuck work can exhaust the outer deadline and cause a reported failure exit.
+The upstream Enkaku release/adoption and unpatched-consumer publication gate remains open.
 
 ## Remaining review and QA gates
 
-- [ ] Whole-branch review and any focused fixes.
+- [x] Whole-branch review and focused fixes.
 - [ ] Manual desktop QA with `desktop.notifications: true` and the user's result.
 - [ ] Complete the plan lifecycle and finish the branch after accepted QA.
 - [ ] Lift the upstream Enkaku publication gate before releasing packages.
+
+## Manual desktop QA
+
+QA remains pending and must use the real native adapter, with notifications explicitly enabled.
+The existing process suite uses an injected recording adapter and cannot establish native UI quality.
+
+1. Use an isolated short temporary directory with explicit socket, pid, config and database
+   paths. Put a deterministic input flow and approval flow there, using the fixtures'
+   definitions as examples. Configure the deterministic echo sibling and set
+   `"desktop": { "notifications": true }`; restart after every configuration change.
+   Start `node packages/cli/lib/daemon-entry.js --socket-path <dir>/daemon.sock
+   --pid-path <dir>/daemon.pid --config-path <dir>/config.json --database-path <dir>/flows.db`.
+   The default adapter is native. Do not use the recording fixture entry for this QA.
+2. Connect a script/Node REPL from packages/cli through `createClient` from host-node.
+   Query `info` until flow status is ready. Start registered flows with
+   `client.request('runs.start', { param: { flow: 'input', label: 'QA input' } })` and
+  `client.request('runs.start', { param: { flow: 'approval', label: 'QA approval' } })`.
+   Inspect `inbox.list`. Each new item should notify once with a generic message and no
+   input preview; no dialog should open on startup, run creation, listing or subscription.
+3. Stop gracefully with SIGTERM leaving one pending item, then restart with the same paths.
+   Check one item notification. Repeat with three pending items and verify one
+   `3 pending prompts` notification; after clearing all pending items, restart and verify
+   no notification. Listing, subscribing and reconnecting must not add notifications.
+4. Explicitly call `client.request('inbox.prompt', { param: { id: item.id } })` on a pending
+   approval. Check that its label and planned tools are visible and approval is explicit.
+   Approve and verify completion; repeat with decline/cancel and verify runtime settlement.
+   Prompt a supported input and verify schema labels, validated answers and final completion.
+5. From a second client settle an item while its native dialog is open. Check the dialog
+   closes and a late answer cannot change the settled run. Disconnect a prompt caller while
+   another item is pending; inspect through the second client, confirm it remains pending,
+   and explicitly prompt it again to check ownership was released.
+6. Set notifications false and restart. Confirm pending work sends no notifications while
+   an explicit supported `inbox.prompt` still opens a dialog. Check an unsupported schema
+   leaves its item available to a direct `inbox.answer` call.
+7. Stop gracefully, reconnect after replacement, and verify the same run and inbox IDs,
+   recoverable pending work and stored trace capture. Report OS/native backend, observed
+   notification/dialog behavior and any mismatch before completing or finishing the branch.
