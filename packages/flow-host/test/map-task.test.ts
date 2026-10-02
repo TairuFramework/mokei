@@ -1,5 +1,6 @@
 import type { DetailedTask } from '@mokei/context-protocol'
-import { expect, test } from 'vitest'
+import type { JSONValue } from '@mokei/context-server'
+import { expect, expectTypeOf, test } from 'vitest'
 
 import { mapTaskSnapshot } from '../src/map-task.js'
 
@@ -14,7 +15,9 @@ test('completed result preserves outcome, output and content', () => {
     content: [{ type: 'text' as const, text: 'done' }],
     structuredContent: { outcome: 'done', output: { value: 1 } },
   }
-  expect(mapTaskSnapshot({ ...taskBase, status: 'completed', result })).toEqual({
+  const mapped = mapTaskSnapshot({ ...taskBase, status: 'completed', result })
+  expectTypeOf(mapped.result?.output).toEqualTypeOf<JSONValue | undefined>()
+  expect(mapped).toEqual({
     state: 'completed',
     result: { content: result.content, outcome: 'done', output: { value: 1 } },
   })
@@ -48,4 +51,20 @@ test.each(['working', 'input_required', 'cancelled'] as const)('maps %s', (statu
   expect(mapTaskSnapshot({ ...taskBase, status, inputRequests: {} } as DetailedTask)).toEqual({
     state: status,
   })
+})
+
+test('mapped output uses JSON copy semantics', () => {
+  const mapped = mapTaskSnapshot({
+    ...taskBase,
+    status: 'completed',
+    result: { content: [], structuredContent: { output: undefined } },
+  })
+  expect(mapped.result).not.toHaveProperty('output')
+  expect(
+    mapTaskSnapshot({
+      ...taskBase,
+      status: 'completed',
+      result: { content: [], structuredContent: { output: [null, true, 'hello', 2] } },
+    }).result?.output,
+  ).toEqual([null, true, 'hello', 2])
 })

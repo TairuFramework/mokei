@@ -41,7 +41,7 @@ export type TaskRecord = {
   requestMeta?: Record<string, JSONValue>
   resumeData?: JSONValue
   result?: CallToolResult & { resultType: 'complete' }
-  error?: { code: number; message: string; data?: unknown }
+  error?: { code: number; message: string; data?: JSONValue }
   /** Every input request the task has made, in id order. The last entry is the latest. */
   inputs: Array<InputRecord>
 }

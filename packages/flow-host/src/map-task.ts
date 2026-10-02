@@ -1,4 +1,5 @@
 import type { CallToolResult, DetailedTask } from '@mokei/context-protocol'
+import type { JSONValue } from '@mokei/context-server'
 
 import type { FlowRunSnapshot, RunState } from './types.js'
 
@@ -35,12 +36,14 @@ export function mapTaskSnapshot(task: DetailedTask): {
       },
     }
   }
+  const output: JSONValue | undefined =
+    structured.output === undefined ? undefined : JSON.parse(JSON.stringify(structured.output))
   return {
     state: 'completed',
     result: {
       content: result.content,
       ...(typeof structured.outcome === 'string' ? { outcome: structured.outcome } : {}),
-      ...('output' in structured ? { output: structured.output } : {}),
+      ...(output === undefined ? {} : { output }),
     },
   }
 }

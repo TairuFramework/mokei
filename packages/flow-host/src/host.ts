@@ -71,24 +71,34 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
   const tracing = createRunTracing()
   const lastApplied = new Map<string, number>()
   function emit<Event extends keyof FlowHostEvents>(event: Event, value: FlowHostEvents[Event]) {
-    if (event === 'run:state') {
-      const snapshot = value as FlowRunSnapshot
-      tracing.state(snapshot.runID, snapshot.state)
-    }
-    void events.emit(event, value).catch(() => undefined)
+    const runID =
+      event === 'inbox:settled'
+        ? (value as FlowHostEvents['inbox:settled']).item.runID
+        : (value as FlowRunSnapshot | FlowHostEvents['inbox:added']).runID
+    // Capture context before terminal state cleanup removes the open span.
+    tracing.withRun(runID, () => {
+      if (event === 'run:state') {
+        const snapshot = value as FlowRunSnapshot
+        tracing.state(snapshot.runID, snapshot.state)
+      }
+      void events.emit(event, value).catch(() => undefined)
+    })
   }
   async function change(
     runID: string,
     compute: (record: RunRecord) => Partial<RunRecord> | undefined,
   ) {
-    return queue.run(runID, async () => {
-      const result = await transition(store, runID, compute)
-      if (result.stateChanged) emit('run:state', runSnapshot(result.record))
-      terminal(result.record)
-      return result.record
+    return tracing.withRun(runID, () => {
+      return queue.run(runID, async () => {
+        const result = await transition(store, runID, compute)
+        if (result.stateChanged) emit('run:state', runSnapshot(result.record))
+        terminal(result.record)
+        return result.record
+      })
     })
   }
   const inbox = createInbox({
+    withRun: tracing.withRun,
     client,
     store,
     queue,
@@ -104,53 +114,56 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     lastApplied.delete(record.runID)
   }
   async function apply(runID: string, task: DetailedTask): Promise<boolean> {
-    const applied = await queue.run(runID, async () => {
-      const timestamp = Date.parse(task.lastUpdatedAt)
-      let accepted = false
-      const unsupported =
-        task.status === 'input_required'
-          ? Object.values(task.inputRequests).find(
-              (request) => request.method !== 'elicitation/create',
-            )?.method
-          : undefined
-      const result = await transition(store, runID, (current) => {
-        if (timestamp < (lastApplied.get(runID) ?? Number.NEGATIVE_INFINITY)) return undefined
-        accepted = true
-        const mapped =
-          unsupported === undefined
-            ? mapTaskSnapshot(task)
-            : {
-                state: 'failed' as const,
-                error: { type: 'UnsupportedInput', message: unsupported },
-              }
-        return mapped.state === current.state &&
-          equalValue(mapped.result, current.result) &&
-          equalValue(mapped.error, current.error)
-          ? undefined
-          : mapped
+    return tracing.withRun(runID, async () => {
+      const applied = await queue.run(runID, async () => {
+        const timestamp = Date.parse(task.lastUpdatedAt)
+        let accepted = false
+        const unsupported =
+          task.status === 'input_required'
+            ? Object.values(task.inputRequests).find(
+                (request) => request.method !== 'elicitation/create',
+              )?.method
+            : undefined
+        const result = await transition(store, runID, (current) => {
+          if (timestamp < (lastApplied.get(runID) ?? Number.NEGATIVE_INFINITY)) return undefined
+          accepted = true
+          const mapped =
+            unsupported === undefined
+              ? mapTaskSnapshot(task)
+              : {
+                  state: 'failed' as const,
+                  error: { type: 'UnsupportedInput', message: unsupported },
+                }
+          return mapped.state === current.state &&
+            equalValue(mapped.result, current.result) &&
+            equalValue(mapped.error, current.error)
+            ? undefined
+            : mapped
+        })
+        if (accepted) lastApplied.set(runID, timestamp)
+        if (result.stateChanged) emit('run:state', runSnapshot(result.record))
+        const terminalState = TERMINAL_STATES.has(result.record.state)
+        if (accepted && !terminalState) inbox.reconcile(runID, task)
+        terminal(result.record)
+        return {
+          terminal: terminalState,
+          accepted,
+          cancelUnsupported:
+            result.record.error?.type === 'UnsupportedInput' &&
+            (task.status === 'working' || task.status === 'input_required'),
+        }
       })
-      if (accepted) lastApplied.set(runID, timestamp)
-      if (result.stateChanged) emit('run:state', runSnapshot(result.record))
-      const terminalState = TERMINAL_STATES.has(result.record.state)
-      if (accepted && !terminalState) inbox.reconcile(runID, task)
-      terminal(result.record)
-      return {
-        terminal: terminalState,
-        accepted,
-        cancelUnsupported:
-          result.record.error?.type === 'UnsupportedInput' &&
-          (task.status === 'working' || task.status === 'input_required'),
+      // Network calls stay outside the run queue so pending responses cannot block transitions.
+      if (applied.cancelUnsupported) {
+        await client.tasks.cancel(task.taskId)
+      } else if (applied.accepted && !applied.terminal) {
+        await inbox.cancelURLs(runID, task)
       }
+      return applied.terminal
     })
-    // Network calls stay outside the run queue so pending responses cannot block transitions.
-    if (applied.cancelUnsupported) {
-      await client.tasks.cancel(task.taskId)
-    } else if (applied.accepted && !applied.terminal) {
-      await inbox.cancelURLs(runID, task)
-    }
-    return applied.terminal
   }
   const watchers = createWatchers({
+    withRun: tracing.withRun,
     client,
     pollMs: params.pollMs ?? 500,
     apply,
@@ -159,18 +172,20 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     },
   })
   async function cancelTask(runID: string, taskID: string): Promise<RunRecord> {
-    try {
-      await client.tasks.cancel(taskID)
-      const task = await client.tasks.get(taskID)
-      await apply(runID, task)
-    } catch (error) {
-      if (!isTaskNotFound(error)) throw error
-      return change(runID, () => ({ state: 'cancelled' }))
-    }
-    const record = await store.get(runID)
-    if (record === undefined) throw new RunNotFoundError(runID)
-    if (!TERMINAL_STATES.has(record.state)) watchers.watch(runID, taskID)
-    return record
+    return tracing.withRun(runID, async () => {
+      try {
+        await client.tasks.cancel(taskID)
+        const task = await client.tasks.get(taskID)
+        await apply(runID, task)
+      } catch (error) {
+        if (!isTaskNotFound(error)) throw error
+        return change(runID, () => ({ state: 'cancelled' }))
+      }
+      const record = await store.get(runID)
+      if (record === undefined) throw new RunNotFoundError(runID)
+      if (!TERMINAL_STATES.has(record.state)) watchers.watch(runID, taskID)
+      return record
+    })
   }
   const launch = createLauncher({
     client,
@@ -181,15 +196,18 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     tracing,
   })
   async function claim(runID: string, approvalID?: string): Promise<RunRecord> {
-    return queue.run(runID, async () => {
-      if (approvalID !== undefined) inbox.requireOpen(approvalID)
-      const claimed = await transition(store, runID, (record) =>
-        record.state === 'awaiting_approval' ? { state: 'working' } : undefined,
-      )
-      if (!claimed.changed && approvalID !== undefined) throw new InboxItemNotFoundError(approvalID)
-      if (claimed.stateChanged) emit('run:state', runSnapshot(claimed.record))
-      if (approvalID !== undefined) inbox.settle(approvalID, 'answered')
-      return claimed.record
+    return tracing.withRun(runID, () => {
+      return queue.run(runID, async () => {
+        if (approvalID !== undefined) inbox.requireOpen(approvalID)
+        const claimed = await transition(store, runID, (record) =>
+          record.state === 'awaiting_approval' ? { state: 'working' } : undefined,
+        )
+        if (!claimed.changed && approvalID !== undefined)
+          throw new InboxItemNotFoundError(approvalID)
+        if (claimed.stateChanged) emit('run:state', runSnapshot(claimed.record))
+        if (approvalID !== undefined) inbox.settle(approvalID, 'answered')
+        return claimed.record
+      })
     })
   }
   async function launchAllowed(runID: string): Promise<RunRecord> {
@@ -198,21 +216,24 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
   }
   async function approval(id: string, outcome: 'declined' | 'cancelled', reason?: string) {
     const runID = inbox.requireOpen(id).item.runID
-    await queue.run(runID, async () => {
-      inbox.requireOpen(id)
-      const result = await transition(store, runID, () =>
-        outcome === 'declined'
-          ? { state: 'denied', error: { type: 'FlowDenied', message: reason ?? 'Flow denied' } }
-          : { state: 'cancelled' },
-      )
-      if (!result.changed) throw new InboxItemNotFoundError(id)
-      if (result.stateChanged) emit('run:state', runSnapshot(result.record))
-      inbox.settle(id, outcome)
-      terminal(result.record)
+    await tracing.withRun(runID, () => {
+      return queue.run(runID, async () => {
+        inbox.requireOpen(id)
+        const result = await transition(store, runID, () =>
+          outcome === 'declined'
+            ? { state: 'denied', error: { type: 'FlowDenied', message: reason ?? 'Flow denied' } }
+            : { state: 'cancelled' },
+        )
+        if (!result.changed) throw new InboxItemNotFoundError(id)
+        if (result.stateChanged) emit('run:state', runSnapshot(result.record))
+        inbox.settle(id, outcome)
+        terminal(result.record)
+      })
     })
   }
   try {
     await recoverRuns({
+      withRun: tracing.withRun,
       store,
       taskStore,
       change,
@@ -281,27 +302,29 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
         plan: { tools: [...authorized.plan] },
       }
       Object.assign(record, tracing.start(record))
-      const allowed = isAllowed(authorized.plan, params.approval?.allow ?? [])
-      let current: RunRecord
-      try {
-        current = await queue.run(record.runID, async () => {
-          await store.create(record)
-          const current = await store.get(record.runID)
-          if (current === undefined) throw new RunNotFoundError(record.runID)
-          if (allowed) return current
-          emit('run:state', runSnapshot(current))
-          if (current.state !== 'awaiting_approval') return current
-          inbox.add(approvalItem(current))
-          return current
-        })
-      } catch (error) {
-        tracing.end(record.runID)
-        throw error
-      }
-      if (allowed) {
-        return runSnapshot(await launchAllowed(current.runID))
-      }
-      return runSnapshot(current)
+      return tracing.withRun(record.runID, async () => {
+        const allowed = isAllowed(authorized.plan, params.approval?.allow ?? [])
+        let current: RunRecord
+        try {
+          current = await queue.run(record.runID, async () => {
+            await store.create(record)
+            const current = await store.get(record.runID)
+            if (current === undefined) throw new RunNotFoundError(record.runID)
+            if (allowed) return current
+            emit('run:state', runSnapshot(current))
+            if (current.state !== 'awaiting_approval') return current
+            inbox.add(approvalItem(current))
+            return current
+          })
+        } catch (error) {
+          tracing.end(record.runID)
+          throw error
+        }
+        if (allowed) {
+          return runSnapshot(await launchAllowed(current.runID))
+        }
+        return runSnapshot(current)
+      })
     },
     async get(runID) {
       const record = await store.get(runID)
@@ -311,24 +334,26 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
       return (await store.list(filter ?? {})).map(runSnapshot)
     },
     async cancel(runID) {
-      const record = await queue.run(runID, async () => {
-        const result = await transition(store, runID, (current) => {
-          if (current.state === 'awaiting_approval') return { state: 'cancelled' }
-          if (current.taskID === undefined) return { cancelRequested: true }
-          return undefined
+      return tracing.withRun(runID, async () => {
+        const record = await queue.run(runID, async () => {
+          const result = await transition(store, runID, (current) => {
+            if (current.state === 'awaiting_approval') return { state: 'cancelled' }
+            if (current.taskID === undefined) return { cancelRequested: true }
+            return undefined
+          })
+          if (result.stateChanged) {
+            emit('run:state', runSnapshot(result.record))
+            inbox.settle(`${runID}:approval`, 'cancelled')
+          }
+          terminal(result.record)
+          return result.record
         })
-        if (result.stateChanged) {
-          emit('run:state', runSnapshot(result.record))
-          inbox.settle(`${runID}:approval`, 'cancelled')
-        }
-        terminal(result.record)
-        return result.record
+        return runSnapshot(
+          TERMINAL_STATES.has(record.state) || record.taskID === undefined
+            ? record
+            : await cancelTask(runID, record.taskID),
+        )
       })
-      return runSnapshot(
-        TERMINAL_STATES.has(record.state) || record.taskID === undefined
-          ? record
-          : await cancelTask(runID, record.taskID),
-      )
     },
     inbox: {
       list(filter) {

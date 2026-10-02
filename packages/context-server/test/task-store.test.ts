@@ -1,7 +1,8 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, expectTypeOf, test } from 'vitest'
 
 import {
   createMemoryTaskStore,
+  type JSONValue,
   type TaskRecord,
   TaskStoreConflictError,
 } from '../src/task-store.js'
@@ -78,6 +79,9 @@ describe('createMemoryTaskStore', () => {
     await expect(
       store.update(record.taskID, { statusMessage: 'stale' }, { revision: 0 }),
     ).rejects.toBeInstanceOf(TaskStoreConflictError)
+    await expect(store.update(record.taskID, {}, { revision: 0 })).rejects.toMatchObject({
+      message: 'Task revision conflict',
+    })
   })
 
   test('allows exactly one concurrent write from the same revision', async () => {
@@ -123,8 +127,12 @@ describe('createMemoryTaskStore', () => {
     const store = createMemoryTaskStore()
     const record = createRecord()
     await store.create(record)
-    await expect(store.create(record)).rejects.toThrow()
-    await expect(store.update(crypto.randomUUID(), {}, { revision: 0 })).rejects.toThrow()
+    await expect(store.create(record)).rejects.toMatchObject({
+      message: `Task already exists: ${record.taskID}`,
+    })
+    await expect(store.update('missing', {}, { revision: 0 })).rejects.toMatchObject({
+      message: 'Task not found: missing',
+    })
   })
 
   test('keeps the task ID and revision controlled by the store on update', async () => {
@@ -138,5 +146,31 @@ describe('createMemoryTaskStore', () => {
     )
     expect(changed).toMatchObject({ taskID: record.taskID, revision: 1, statusMessage: 'running' })
     expect(await store.get(record.taskID)).toEqual(changed)
+  })
+
+  test('preserves insertion order across updates', async () => {
+    const store = createMemoryTaskStore()
+    await store.create(createRecord({ taskID: 'b', createdAt: '2026-09-29T12:00:00.000Z' }))
+    await store.create(createRecord({ taskID: 'a', createdAt: '2026-09-29T13:00:00.000Z' }))
+    await store.update('b', { statusMessage: 'updated' }, { revision: 0 })
+    expect((await store.list({ status: ['working'] })).map((record) => record.taskID)).toEqual([
+      'b',
+      'a',
+    ])
+  })
+
+  test('preserves a null TTL and JSON copy semantics', async () => {
+    const store = createMemoryTaskStore()
+    const record = createRecord({
+      ttlMs: null,
+      statusMessage: undefined,
+      resumeData: [null, true, 'hello', 2],
+    })
+    await store.create(record)
+    const fetched = await store.get(record.taskID)
+    expectTypeOf(fetched?.error?.data).toEqualTypeOf<JSONValue | undefined>()
+    expect(fetched?.ttlMs).toBeNull()
+    expect(fetched?.resumeData).toEqual([null, true, 'hello', 2])
+    expect(fetched).not.toHaveProperty('statusMessage')
   })
 })

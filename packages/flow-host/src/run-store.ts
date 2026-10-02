@@ -2,6 +2,7 @@ import type { RunRecord, RunState } from './types.js'
 
 export type { RunRecord } from './types.js'
 
+/** Callers must treat denied, completed, failed and cancelled run records as immutable. */
 export type RunStore = {
   create(record: RunRecord): Promise<void>
   get(runID: string): Promise<RunRecord | undefined>
@@ -10,7 +11,11 @@ export type RunStore = {
     patch: Partial<RunRecord>,
     expected: { revision: number },
   ): Promise<RunRecord>
-  list(filter: { states?: Array<RunState>; limit?: number }): Promise<Array<RunRecord>>
+  list(filter: {
+    states?: Array<RunState>
+    limit?: number
+    updatedBefore?: number
+  }): Promise<Array<RunRecord>>
   delete(runID: string): Promise<void>
 }
 
@@ -22,7 +27,7 @@ export class RunStoreConflictError extends Error {
 }
 
 function copy(record: RunRecord): RunRecord {
-  return structuredClone(record)
+  return JSON.parse(JSON.stringify(record)) as RunRecord
 }
 
 export function createMemoryRunStore(): RunStore {
@@ -41,15 +46,22 @@ export function createMemoryRunStore(): RunStore {
       const record = records.get(runID)
       if (record == null) throw new Error(`Run not found: ${runID}`)
       if (record.revision !== expected.revision) throw new RunStoreConflictError()
-      const updated = { ...record, ...structuredClone(patch), revision: record.revision + 1 }
+      const updated = copy({ ...record, ...patch, runID, revision: record.revision + 1 })
       records.set(runID, updated)
       return copy(updated)
     },
     async list(filter) {
+      if (filter.limit != null && (!Number.isInteger(filter.limit) || filter.limit < 0)) {
+        throw new RangeError('Run list limit must be a non-negative integer')
+      }
       let result = [...records.values()]
       if (filter.states != null) {
         const states = new Set<RunState>(filter.states)
         result = result.filter(({ state }) => states.has(state))
+      }
+      if (filter.updatedBefore != null) {
+        const updatedBefore = filter.updatedBefore
+        result = result.filter(({ updatedAt }) => updatedAt < updatedBefore)
       }
       result.sort((left, right) => right.createdAt - left.createdAt)
       if (filter.limit != null) result = result.slice(0, filter.limit)

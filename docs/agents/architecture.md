@@ -219,6 +219,9 @@ binding.
 | System One classification | `@mokei/system-one-client`, `@mokei/mcp-system-one` | `HTTPSystemOneBackend`, `createSystemOneTools` |
 | Desktop elicitation and input inbox | `@mokei/host-desktop` | `createDesktopElicitHandler`, `createInputInbox`, `createDesktopTools` |
 | Decision flows as MCP tasks | `@mokei/decision-flow`, `@mokei/decision-flow-server` | `createDecisionFlowGraph`, `addDecisionFlow`, `createDecisionFlowServer` |
+| Durable flow stores | `@mokei/flow-host-node` | `openFlowDatabase`, `createSQLiteRunStore`, `createSQLiteTaskStore`, `createSQLiteTraceStore` |
+| Flow telemetry, configuration and retention | `@mokei/flow-host-node` | `setupFlowTelemetry`, `loadFlowConfig`, `loadFlowDirs`, `startRetention` |
+| Portable trace capture and pruning | `@mokei/flow-host` | `TraceStore`, `createMemoryTraceStore`, `createTraceStoreSpanExporter`, `createTraceStoreLogSink`, `pruneRuns` |
 | CLI | `mokei` | `packages/cli/src/program.ts` |
 | Monitor | `@mokei/host-monitor`, `monitor` | `packages/host-monitor/src/index.ts`, `monitor/src/main.tsx` |
 
@@ -248,6 +251,7 @@ packages/
 +-- decision-flow/       # System One decide nodes for flow-graph
 +-- decision-flow-server/ # MCP task server and Session wiring for decision flows
 +-- flow-host/            # Portable flow run lifecycle, approval queue, inbox and recovery
++-- flow-host-node/       # Node-only SQLite stores, telemetry, configuration and retention
 +-- model-provider/       # Provider interface definitions
 +-- openai-provider/      # OpenAI integration
 +-- anthropic-provider/   # Anthropic Claude integration
@@ -290,6 +294,9 @@ website/                  # documentation site (private)
 | Server creation | `packages/context-server/src/` |
 | Client implementation | `packages/context-client/src/` |
 | Flow runtime | `packages/flow-host/src/` |
+| Flow database and stores | `packages/flow-host-node/src/{database,sqlite-run-store,sqlite-task-store,sqlite-trace-store}.ts` |
+| Flow telemetry, configuration and retention | `packages/flow-host-node/src/{telemetry,config,flow-dirs,retention}.ts` |
+| Portable trace storage and pruning | `packages/flow-host/src/{trace-store,trace-store-span-exporter,trace-store-log-sink,prune-runs}.ts` |
 | Flow rig facade | `scripts/flow-rig/` |
 | Host orchestration | `packages/host/src/` |
 | HTTP transports and OAuth | `packages/http-client/src/oauth/`, `packages/http-server/src/auth/`, `packages/host-node/src/oauth/` |
@@ -323,6 +330,20 @@ With an OpenTelemetry SDK, runs carry a `traceID` and a `flow.run` span.
 
 `dispose` suspends watching and flow work for recovery. Callers cancel runs explicitly when shutdown should stop them.
 Recovered tasks retain their request trace context. Input requested by sibling tools still uses the session's elicitation handler.
+
+`@mokei/flow-host` defines portable JSON store contracts, including `TraceStore` and `createMemoryTraceStore`.
+`createTraceStoreSpanExporter` and `createTraceStoreLogSink` capture spans and correlated logs without Node imports.
+Each new run owns a trace. Recovery retains its stored trace context.
+
+`@mokei/flow-host-node` supplies SQLite run, task and trace stores sharing one database owned by one process.
+Its configuration loaders resolve paths and load flow definitions at startup. Configuration changes apply on restart.
+Telemetry installs once per process and captures local spans and logs. Sibling-process telemetry is not ingested locally.
+Shutdown awaits retention, host and session disposal, telemetry disposal, then database closure.
+The [package lifecycle guide](../../packages/flow-host-node/README.md) describes setup, defaults and configuration.
+
+Portable `pruneRuns` deletes old terminal runs and their traces and tasks. Active tasks protect their associated runs.
+Its final sweep preserves traces referenced by every retained run and removes older orphan spans and logs.
+`startRetention` schedules non-overlapping pruning passes and awaits pending pruning when stopped.
 
 The flow rig wraps the runtime with MCP facade tools and one `createDesktopInputSurface` from `@mokei/host-desktop`.
 It sends inbox notifications, prompts inputs and approvals, and aborts dialogs when their items settle.

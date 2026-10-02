@@ -2904,9 +2904,45 @@ exports[`createDecisionFlowGraph > provides the default retry policy and compose
                 "description": "Node kind",
               },
               "outcome": {
-                "description": "Node ID or label",
-                "minLength": 1,
-                "type": "string",
+                "description": "Literal outcome or reference resolving to a string",
+                "oneOf": [
+                  {
+                    "description": "Node ID or label",
+                    "minLength": 1,
+                    "type": "string",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ref": {
+                        "description": "Scope-rooted path",
+                        "examples": [
+                          [
+                            "state",
+                            "count",
+                          ],
+                        ],
+                        "items": {
+                          "description": "Safe path segment",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "constructor",
+                              "prototype",
+                            ],
+                          },
+                          "type": "string",
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "ref",
+                    ],
+                    "type": "object",
+                  },
+                ],
               },
               "output": {
                 "additionalProperties": {

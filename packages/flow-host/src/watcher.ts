@@ -5,6 +5,7 @@ import { getMokeiLogger } from '@mokei/logger'
 import { isTaskNotFound } from './run-helpers.js'
 
 export function createWatchers(params: {
+  withRun<T>(runID: string, work: () => T): T
   client: ContextClient
   pollMs: number
   apply(runID: string, task: DetailedTask): Promise<boolean>
@@ -52,9 +53,11 @@ export function createWatchers(params: {
       if (stopped || watchers.has(runID)) return
       const controller = new AbortController()
       watchers.set(runID, controller)
-      const work = loop(runID, taskID, controller.signal)
-        .catch((error) => {
-          logger.error('Task watcher failed for {runID}: {error}', { runID, error })
+      const work = params
+        .withRun(runID, () => {
+          return loop(runID, taskID, controller.signal).catch((error) => {
+            logger.error('Task watcher failed for {runID}: {error}', { runID, error })
+          })
         })
         .finally(() => {
           pending.delete(work)

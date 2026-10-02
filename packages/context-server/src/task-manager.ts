@@ -441,7 +441,12 @@ class ManagedTasks implements TaskManager {
               ? undefined
               : 'result' in settled
                 ? { status: 'completed', result: { ...settled.result, resultType: 'complete' } }
-                : { status: 'failed', error: settled.error },
+                : {
+                    status: 'failed',
+                    error: JSON.parse(JSON.stringify(settled.error)) as NonNullable<
+                      TaskRecord['error']
+                    >,
+                  },
           )
           return
         } catch (error) {

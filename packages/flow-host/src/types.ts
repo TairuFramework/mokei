@@ -32,7 +32,7 @@ export type FlowRunSnapshot = {
   updatedAt: number
   traceID?: string
   plan: { tools: Array<string> }
-  result?: { outcome?: string; output?: unknown; content: Array<ContentBlock> }
+  result?: { outcome?: string; output?: JSONValue; content: Array<ContentBlock> }
   error?: { type: string; message: string; code?: string }
 }
 
@@ -82,7 +82,11 @@ export type FlowHost = {
   check(definition: unknown): ReturnType<typeof checkFlow>
   start(params: StartRunParams): Promise<FlowRunSnapshot>
   get(runID: string): Promise<FlowRunSnapshot | undefined>
-  list(filter?: { states?: Array<RunState>; limit?: number }): Promise<Array<FlowRunSnapshot>>
+  list(filter?: {
+    states?: Array<RunState>
+    limit?: number
+    updatedBefore?: number
+  }): Promise<Array<FlowRunSnapshot>>
   cancel(runID: string): Promise<FlowRunSnapshot>
   inbox: {
     list(filter?: { runID?: string }): Array<InboxItem>
