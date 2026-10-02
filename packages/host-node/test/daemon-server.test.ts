@@ -3,9 +3,9 @@ import { Client } from '@enkaku/client'
 import { serve } from '@enkaku/server'
 import { DirectTransports } from '@enkaku/transport'
 import type {
-  ClientMessage as HostClientMessage,
-  ServerMessage as HostServerMessage,
-  Protocol,
+  BaseProtocol,
+  BaseClientMessage as HostClientMessage,
+  BaseServerMessage as HostServerMessage,
 } from '@mokei/host-protocol'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -39,8 +39,12 @@ describe('spawn handler child-exit cleanup', () => {
       startedTime: Date.now(),
     })
     const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
-    const server = serve<Protocol>({ handlers, transport: transports.server, requireAuth: false })
-    const client = new Client<Protocol>({ transport: transports.client })
+    const server = serve<BaseProtocol>({
+      handlers,
+      transport: transports.server,
+      requireAuth: false,
+    })
+    const client = new Client<BaseProtocol>({ transport: transports.client })
 
     const stops: Array<Record<string, unknown>> = []
     const events = client.createStream('events')

@@ -13,6 +13,38 @@
 import type { AnyClientMessageOf, AnyServerMessageOf, ProtocolDefinition } from '@enkaku/protocol'
 import type { FromSchema, Schema } from '@sozai/schema'
 
+import {
+  flowCheckResultSchema,
+  flowRunSnapshotSchema,
+  flowServiceStatusSchema,
+  flowSummarySchema,
+  inboxItemSchema,
+  jsonDefinitions,
+  jsonObjectSchema,
+  runStateSchema,
+  storedLogSchema,
+  storedSpanSchema,
+} from './flow-schemas.js'
+
+export {
+  type FlowCheckResult,
+  type FlowIssue,
+  type FlowRunSnapshot,
+  type FlowServiceStatus,
+  type FlowSummary,
+  flowCheckResultSchema,
+  flowIssueSchema,
+  flowRunSnapshotSchema,
+  flowServiceStatusSchema,
+  flowSummarySchema,
+  type InboxItem,
+  inboxItemSchema,
+  type StoredLog,
+  type StoredSpan,
+  storedLogSchema,
+  storedSpanSchema,
+} from './flow-schemas.js'
+
 export const hostEventMetaSchema = {
   type: 'object',
   properties: {
@@ -25,7 +57,17 @@ export const hostEventMetaSchema = {
 } as const satisfies Schema
 export type HostEventMeta = FromSchema<typeof hostEventMetaSchema>
 
+export const serviceEventMetaSchema = {
+  type: 'object',
+  properties: { eventID: { type: 'string' }, time: { type: 'integer' } },
+  required: ['eventID', 'time'],
+  additionalProperties: false,
+} as const satisfies Schema
+export type ServiceEventMeta = FromSchema<typeof serviceEventMetaSchema>
+
 export const hostEventSchema = {
+  type: 'object',
+  definitions: jsonDefinitions,
   anyOf: [
     {
       type: 'object',
@@ -40,6 +82,62 @@ export const hostEventSchema = {
             args: { type: 'array', items: { type: 'string' } },
           },
           required: ['transport', 'command', 'args'],
+          additionalProperties: false,
+        },
+      },
+      required: ['type', 'meta', 'data'],
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      properties: {
+        type: { type: 'string', const: 'service:status' },
+        meta: serviceEventMetaSchema,
+        data: {
+          type: 'object',
+          properties: {
+            service: { type: 'string', const: 'flow' },
+            status: flowServiceStatusSchema,
+          },
+          required: ['service', 'status'],
+          additionalProperties: false,
+        },
+      },
+      required: ['type', 'meta', 'data'],
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      properties: {
+        type: { type: 'string', const: 'run:state' },
+        meta: serviceEventMetaSchema,
+        data: flowRunSnapshotSchema,
+      },
+      required: ['type', 'meta', 'data'],
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      properties: {
+        type: { type: 'string', const: 'inbox:added' },
+        meta: serviceEventMetaSchema,
+        data: inboxItemSchema,
+      },
+      required: ['type', 'meta', 'data'],
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      properties: {
+        type: { type: 'string', const: 'inbox:settled' },
+        meta: serviceEventMetaSchema,
+        data: {
+          type: 'object',
+          properties: {
+            item: inboxItemSchema,
+            outcome: { type: 'string', enum: ['answered', 'declined', 'cancelled', 'withdrawn'] },
+          },
+          required: ['item', 'outcome'],
           additionalProperties: false,
         },
       },
@@ -94,16 +192,38 @@ export const hostInfoResultSchema = {
       additionalProperties: activeContextInfoSchema,
     },
     startedTime: { type: 'integer' },
+    flowService: flowServiceStatusSchema,
   },
-  required: ['activeContexts', 'startedTime'],
+  required: ['activeContexts', 'startedTime', 'flowService'],
   additionalProperties: false,
 } as const satisfies Schema
 export type HostInfoResult = FromSchema<typeof hostInfoResultSchema>
 
+const runIDParamSchema = {
+  type: 'object',
+  properties: { runID: { type: 'string' } },
+  required: ['runID'],
+  additionalProperties: false,
+} as const satisfies Schema
+
+const inboxIDParamSchema = {
+  type: 'object',
+  properties: { id: { type: 'string' } },
+  required: ['id'],
+  additionalProperties: false,
+} as const satisfies Schema
+
+const settledResultSchema = {
+  type: 'object',
+  properties: { settled: { type: 'boolean', const: true } },
+  required: ['settled'],
+  additionalProperties: false,
+} as const satisfies Schema
+
 export const protocol = {
   events: {
     type: 'stream',
-    receive: { type: 'object' }, // hostEventSchema
+    receive: hostEventSchema,
   },
   info: {
     type: 'request',
@@ -127,8 +247,123 @@ export const protocol = {
     send: { type: 'object' }, // clientMessage
     receive: { type: 'object' }, // serverMessage
   },
+  'flows.list': {
+    type: 'request',
+    result: { definitions: jsonDefinitions, type: 'array', items: flowSummarySchema },
+  },
+  'flows.check': {
+    type: 'request',
+    param: {
+      definitions: jsonDefinitions,
+      type: 'object',
+      properties: { definition: jsonObjectSchema },
+      required: ['definition'],
+      additionalProperties: false,
+    },
+    result: flowCheckResultSchema,
+  },
+  'runs.start': {
+    type: 'request',
+    param: {
+      definitions: jsonDefinitions,
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            flow: { type: 'string' },
+            input: jsonObjectSchema,
+            label: { type: 'string' },
+          },
+          required: ['flow'],
+          additionalProperties: false,
+        },
+        {
+          type: 'object',
+          properties: {
+            definition: jsonObjectSchema,
+            input: jsonObjectSchema,
+            label: { type: 'string' },
+          },
+          required: ['definition'],
+          additionalProperties: false,
+        },
+      ],
+    },
+    result: flowRunSnapshotSchema,
+  },
+  'runs.get': { type: 'request', param: runIDParamSchema, result: flowRunSnapshotSchema },
+  'runs.list': {
+    type: 'request',
+    param: {
+      type: 'object',
+      properties: {
+        states: { type: 'array', items: runStateSchema },
+        limit: { type: 'integer', minimum: 0 },
+        updatedBefore: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+    result: { definitions: jsonDefinitions, type: 'array', items: flowRunSnapshotSchema },
+  },
+  'runs.cancel': { type: 'request', param: runIDParamSchema, result: flowRunSnapshotSchema },
+  'runs.trace': {
+    type: 'request',
+    param: runIDParamSchema,
+    result: {
+      definitions: jsonDefinitions,
+      type: 'object',
+      properties: {
+        spans: { type: 'array', items: storedSpanSchema },
+        logs: { type: 'array', items: storedLogSchema },
+      },
+      required: ['spans', 'logs'],
+      additionalProperties: false,
+    },
+  },
+  'inbox.list': {
+    type: 'request',
+    param: {
+      type: 'object',
+      properties: { runID: { type: 'string' } },
+      additionalProperties: false,
+    },
+    result: { definitions: jsonDefinitions, type: 'array', items: inboxItemSchema },
+  },
+  'inbox.get': { type: 'request', param: inboxIDParamSchema, result: inboxItemSchema },
+  'inbox.answer': {
+    type: 'request',
+    param: {
+      definitions: jsonDefinitions,
+      ...inboxIDParamSchema,
+      properties: { ...inboxIDParamSchema.properties, content: jsonObjectSchema },
+    },
+    result: settledResultSchema,
+  },
+  'inbox.decline': {
+    type: 'request',
+    param: {
+      ...inboxIDParamSchema,
+      properties: { ...inboxIDParamSchema.properties, reason: { type: 'string' } },
+    },
+    result: settledResultSchema,
+  },
+  'inbox.cancel': { type: 'request', param: inboxIDParamSchema, result: settledResultSchema },
+  'inbox.prompt': {
+    type: 'request',
+    param: inboxIDParamSchema,
+    result: {
+      type: 'object',
+      properties: { action: { type: 'string', enum: ['accept', 'decline', 'cancel'] } },
+      required: ['action'],
+      additionalProperties: false,
+    },
+  },
 } as const satisfies ProtocolDefinition
 export type Protocol = typeof protocol
+export type BaseProtocol = Pick<Protocol, 'events' | 'info' | 'shutdown' | 'spawn'>
+export type FlowProcedure = Exclude<keyof Protocol, keyof BaseProtocol>
 
 export type ClientMessage = AnyClientMessageOf<Protocol>
 export type ServerMessage = AnyServerMessageOf<Protocol>
+export type BaseClientMessage = AnyClientMessageOf<BaseProtocol>
+export type BaseServerMessage = AnyServerMessageOf<BaseProtocol>

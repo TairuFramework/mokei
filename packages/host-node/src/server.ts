@@ -4,7 +4,12 @@ import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { createTransportStream } from '@enkaku/node-streams'
 import { type ProcedureHandlers, serve } from '@enkaku/server'
-import type { ActiveContextInfo, HostEventMeta, Protocol } from '@mokei/host-protocol'
+import type {
+  ActiveContextInfo,
+  BaseProtocol,
+  HostEvent,
+  HostEventMeta,
+} from '@mokei/host-protocol'
 import { tap } from '@sozai/stream'
 import { runDaemon as tejikaRunDaemon } from '@tejika/process'
 
@@ -40,7 +45,7 @@ export function createHandlers({
   events,
   startedTime,
   shutdown,
-}: HandlersContext): ProcedureHandlers<Protocol> {
+}: HandlersContext): ProcedureHandlers<BaseProtocol> {
   return {
     events: (ctx) => {
       const writer = ctx.writable.getWriter()
@@ -49,7 +54,7 @@ export function createHandlers({
 
       const handleEvent = (event: Event) => {
         const e = event as CustomEvent<{ data?: unknown; meta: HostEventMeta }>
-        const msg = { type: e.type, data: e.detail.data, meta: e.detail.meta }
+        const msg = { type: e.type, data: e.detail.data, meta: e.detail.meta } as HostEvent
         writer.write(msg).catch(() => sub.abort())
       }
       events.addEventListener('context:message', handleEvent, { signal: sub.signal })
@@ -60,7 +65,14 @@ export function createHandlers({
         ctx.signal.addEventListener('abort', () => resolve())
       })
     },
-    info: () => ({ activeContexts, startedTime }),
+    info: () => ({
+      activeContexts,
+      startedTime,
+      flowService: {
+        state: 'failed',
+        error: { type: 'FlowServiceUnavailableError', message: 'Flow service is not configured.' },
+      },
+    }),
     shutdown: async () => {
       await shutdown?.()
     },
@@ -148,7 +160,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
   const children = new Map<string, ChildProcess>()
 
-  await tejikaRunDaemon<Protocol>({
+  await tejikaRunDaemon<BaseProtocol>({
     app: 'mokei',
     socketPath,
     serve: (transport) => {
@@ -164,7 +176,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         },
       }
       const handlers = createHandlers(context)
-      return serve<Protocol>({ handlers, transport, requireAuth: false })
+      return serve<BaseProtocol>({ handlers, transport, requireAuth: false })
     },
     onShutdown: async () => {
       killChildren(children)

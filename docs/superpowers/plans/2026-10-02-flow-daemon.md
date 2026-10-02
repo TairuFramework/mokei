@@ -71,7 +71,7 @@ Task 9 validates the branch and records release intent.
 These types are defined by their owning tasks rather than duplicated across packages.
 
 - `FlowServiceStatus`: `{ state: 'starting' } | { state: 'ready' } | { state: 'failed'; error: { type: string; message: string; path?: string; issues?: Array<string> } }`.
-- `FlowProcedure`: the 14 `flows.*`, `runs.*` and `inbox.*` keys listed in Task 1.
+- `FlowProcedure`: the 13 `flows.*`, `runs.*` and `inbox.*` keys listed in Task 1.
 - `BaseProtocol`: `Pick<Protocol, 'events' | 'info' | 'shutdown' | 'spawn'>`.
 - `FlowHandlers`: `Pick<ProcedureHandlers<Protocol>, FlowProcedure>`.
 - `FlowDesktopAdapter`: `{ canPrompt(request: DesktopElicitRequest): boolean; prompt(request: DesktopElicitRequest): Promise<ElicitResult>; notify(message: string): Promise<void>; dispose(): Promise<void> }`.
@@ -576,7 +576,7 @@ Wait for the user's QA result before completing and finishing the branch.
 
 ## Plan self-review
 
-Spec ownership and all 14 flow procedures map to Tasks 1, 2, 5, 6 and 7.
+Spec ownership and all 13 flow procedures map to Tasks 1, 2, 5, 6 and 7.
 Startup, readiness, failure visibility and cleanup map to Tasks 2, 3, 5 and 7.
 Desktop policy and concurrency map to Task 4 and process coverage in Task 8.
 Events and reconnect behaviour map to Tasks 1, 2 and 8, with consumer guidance in Task 9.
