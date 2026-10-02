@@ -289,12 +289,24 @@ test.each(['caller', 'settlement', 'shutdown'] as const)(
       (error: unknown) => ({ error }),
     )
     await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1))
+    let disposing: Promise<void> | undefined
+    let disposed = false
     if (source === 'caller') caller.abort(new Error('Disconnected'))
     else if (source === 'settlement') await host.inbox.decline(item.id)
-    else await controller.dispose()
+    else {
+      disposing = controller.dispose().then(() => {
+        disposed = true
+      })
+    }
     expect(await outcome).toMatchObject({ error: expect.any(Error) })
     expect(prompt.mock.calls[0]?.[0].signal.aborted).toBe(true)
-    gate.resolve({ action: 'accept', content: { value: 'late' } })
+    try {
+      for (let turn = 0; turn < 10; turn++) await Promise.resolve()
+      if (source === 'shutdown') expect(disposed).toBe(false)
+    } finally {
+      gate.resolve({ action: 'accept', content: { value: 'late' } })
+      await disposing
+    }
     if (source === 'caller') {
       expect(host.inbox.get(item.id)).toEqual(item)
       await expect(controller.prompt(item.id, new AbortController().signal)).resolves.toEqual({
@@ -354,3 +366,53 @@ test('adapter disposal failure still drains notifications before rejecting shutd
   gate.resolve()
   expect(await disposal).toMatchObject({ name: 'AggregateError', errors: [failure] })
 })
+
+test.each(['active', 'caller-cancelled'] as const)(
+  'shutdown drains the %s adapter prompt before reporting adapter disposal failure',
+  async (state) => {
+    const { host, item } = await runtime()
+    const gate = deferred<ElicitResult>()
+    const prompt = vi.fn<FlowDesktopAdapter['prompt']>().mockReturnValue(gate.promise)
+    const failure = new Error('Adapter disposal failed')
+    const { controller } = setup({
+      host,
+      adapter: {
+        prompt,
+        dispose: () => {
+          throw failure
+        },
+      },
+    })
+    // The failing disposer is observed here instead of by the common cleanup.
+    cleanup.pop()
+    const caller = new AbortController()
+    const answer = controller.prompt(item.id, caller.signal).catch((error: unknown) => error)
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1))
+    if (state === 'caller-cancelled') {
+      caller.abort(new Error('Disconnected'))
+      expect(await answer).toMatchObject({ message: 'Disconnected' })
+      expect(host.inbox.get(item.id)).toEqual(item)
+    }
+    let disposed = false
+    const disposal = controller.dispose().then(
+      () => {
+        disposed = true
+      },
+      (error: unknown) => {
+        disposed = true
+        return error
+      },
+    )
+    expect(await answer).toBeInstanceOf(Error)
+    expect(prompt.mock.calls[0]?.[0].signal.aborted).toBe(true)
+    try {
+      for (let turn = 0; turn < 10; turn++) await Promise.resolve()
+      expect(disposed).toBe(false)
+      expect(host.inbox.get(item.id)).toEqual(item)
+    } finally {
+      gate.resolve({ action: 'accept', content: { value: 'late' } })
+    }
+    expect(await disposal).toMatchObject({ name: 'AggregateError', errors: [failure] })
+    expect(host.inbox.get(item.id)).toEqual(item)
+  },
+)

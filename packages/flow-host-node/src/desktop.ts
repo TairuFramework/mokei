@@ -49,6 +49,7 @@ export function createFlowDesktopController(params: {
   const represented = new Set<string>()
   const owners = new Map<string, AbortController>()
   const prompts = new Set<Promise<unknown>>()
+  const desktopPrompts = new Set<Promise<ElicitResult>>()
   const notifications = new Set<Promise<void>>()
   let live = false
   let disposing: Promise<void> | undefined
@@ -105,7 +106,13 @@ export function createFlowDesktopController(params: {
         signal: stop,
       }
       if (!adapter.canPrompt(request)) throw new DesktopPromptUnavailableError(id)
-      const result = await abortable(adapter.prompt(request), stop)
+      const desktopPrompt = adapter.prompt(request)
+      desktopPrompts.add(desktopPrompt)
+      void desktopPrompt.then(
+        () => desktopPrompts.delete(desktopPrompt),
+        () => desktopPrompts.delete(desktopPrompt),
+      )
+      const result = await abortable(desktopPrompt, stop)
       stop.throwIfAborted()
       let action = result.action
       if (item.kind === 'approval' && action === 'accept') {
@@ -156,6 +163,8 @@ export function createFlowDesktopController(params: {
             await adapter?.dispose()
           })(),
           ...notifications,
+          // Caller abort releases ownership before the native dialog has necessarily exited.
+          ...[...desktopPrompts].map((operation) => operation.catch(() => undefined)),
           ...[...prompts].map((operation) => operation.catch(() => undefined)),
         ])
         const failures = results
