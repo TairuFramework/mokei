@@ -1,4 +1,8 @@
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Client } from '@enkaku/client'
 import { serve } from '@enkaku/server'
 import { DirectTransports } from '@enkaku/transport'
@@ -9,12 +13,11 @@ import type {
 } from '@mokei/host-protocol'
 import { describe, expect, test, vi } from 'vitest'
 
+import { createClient } from '../src/daemon.js'
+import { serveHostDaemon } from '../src/daemon-server.js'
 import { createHandlers, killChildren } from '../src/server.js'
 
-// The socket bind / chmod 0600 / pidfile lifecycle now belongs to
-// @tejika/process (covered by its own tests + the integration PTY suite). These
-// tests exercise the host's own request handlers directly over an in-process
-// transport pair, with no socket server.
+// Tejika owns socket permissions and pid ownership.
 
 describe('killChildren', () => {
   test('kills every tracked child and empties the map', async () => {
@@ -76,4 +79,35 @@ describe('spawn handler child-exit cleanup', () => {
     await server.dispose()
     await transports.dispose()
   })
+})
+
+test('serves standalone flow errors and acknowledges shutdown over a socket', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mokei-host-daemon-'))
+  const socketPath = join(directory, 'daemon.sock')
+  const pidPath = join(directory, 'daemon.pid')
+  const onShutdown = vi.fn(async () => {})
+  const daemon = await serveHostDaemon({
+    socketPath,
+    pidPath,
+    events: new EventTarget(),
+    handleSignals: false,
+    onShutdown,
+  })
+  const client = await createClient(socketPath)
+  try {
+    const info = await client.request('info')
+    expect(info.activeContexts).toEqual({})
+    expect(info.flowService).toMatchObject({ state: 'failed', error: { type: 'FlowUnavailable' } })
+    await expect(client.request('flows.list')).rejects.toMatchObject({ code: 'FLOW_UNAVAILABLE' })
+    await expect(client.request('shutdown')).resolves.toBeUndefined()
+    await vi.waitFor(() => {
+      expect(onShutdown).toHaveBeenCalledTimes(1)
+      expect(existsSync(socketPath)).toBe(false)
+      expect(existsSync(pidPath)).toBe(false)
+    })
+  } finally {
+    await client.dispose()
+    await daemon.close()
+    await rm(directory, { recursive: true, force: true })
+  }
 })

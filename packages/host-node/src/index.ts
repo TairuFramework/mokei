@@ -5,6 +5,7 @@
  */
 
 export { createClient, type DaemonOptions, type HostClient, runDaemon } from './daemon.js'
+export { composeHandlers, type HostDaemonParams, serveHostDaemon } from './daemon-server.js'
 export {
   type AddLocalContextParams,
   NodeContextHost,
