@@ -10,7 +10,7 @@
 
 **Spec:** [Flow daemon design](../specs/2026-10-02-flow-daemon-design.md)
 
-**Stage:** planning
+**Stage:** executing
 **Mode:** tasks
 
 ## Global Constraints
