@@ -8,6 +8,7 @@ export {
   InboxPromptInProgressError,
 } from './desktop.js'
 export { loadFlowDirs } from './flow-dirs.js'
+export { createFlowHandlers, type FlowHandlers } from './handlers.js'
 export { startRetention } from './retention.js'
 export type { FlowResources, FlowService, FlowServiceParams, FlowServiceStatus } from './service.js'
 export { createFlowService, FlowServiceUnavailableError } from './service.js'
