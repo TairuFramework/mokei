@@ -54,11 +54,11 @@ export function createWatchers(params: {
       const controller = new AbortController()
       watchers.set(runID, controller)
       const work = params
-        .withRun(runID, () =>
-          loop(runID, taskID, controller.signal).catch((error) => {
+        .withRun(runID, () => {
+          return loop(runID, taskID, controller.signal).catch((error) => {
             logger.error('Task watcher failed for {runID}: {error}', { runID, error })
-          }),
-        )
+          })
+        })
         .finally(() => {
           pending.delete(work)
           if (watchers.get(runID) === controller) watchers.delete(runID)

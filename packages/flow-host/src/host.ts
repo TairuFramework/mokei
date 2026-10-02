@@ -88,14 +88,14 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     runID: string,
     compute: (record: RunRecord) => Partial<RunRecord> | undefined,
   ) {
-    return tracing.withRun(runID, () =>
-      queue.run(runID, async () => {
+    return tracing.withRun(runID, () => {
+      return queue.run(runID, async () => {
         const result = await transition(store, runID, compute)
         if (result.stateChanged) emit('run:state', runSnapshot(result.record))
         terminal(result.record)
         return result.record
-      }),
-    )
+      })
+    })
   }
   const inbox = createInbox({
     withRun: tracing.withRun,
@@ -196,8 +196,8 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     tracing,
   })
   async function claim(runID: string, approvalID?: string): Promise<RunRecord> {
-    return tracing.withRun(runID, () =>
-      queue.run(runID, async () => {
+    return tracing.withRun(runID, () => {
+      return queue.run(runID, async () => {
         if (approvalID !== undefined) inbox.requireOpen(approvalID)
         const claimed = await transition(store, runID, (record) =>
           record.state === 'awaiting_approval' ? { state: 'working' } : undefined,
@@ -207,8 +207,8 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
         if (claimed.stateChanged) emit('run:state', runSnapshot(claimed.record))
         if (approvalID !== undefined) inbox.settle(approvalID, 'answered')
         return claimed.record
-      }),
-    )
+      })
+    })
   }
   async function launchAllowed(runID: string): Promise<RunRecord> {
     const claimed = await claim(runID)
@@ -216,8 +216,8 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
   }
   async function approval(id: string, outcome: 'declined' | 'cancelled', reason?: string) {
     const runID = inbox.requireOpen(id).item.runID
-    await tracing.withRun(runID, () =>
-      queue.run(runID, async () => {
+    await tracing.withRun(runID, () => {
+      return queue.run(runID, async () => {
         inbox.requireOpen(id)
         const result = await transition(store, runID, () =>
           outcome === 'declined'
@@ -228,8 +228,8 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
         if (result.stateChanged) emit('run:state', runSnapshot(result.record))
         inbox.settle(id, outcome)
         terminal(result.record)
-      }),
-    )
+      })
+    })
   }
   try {
     await recoverRuns({

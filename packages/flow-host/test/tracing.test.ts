@@ -314,9 +314,12 @@ test('without an SDK an active remote parent does not create stored trace fields
 test('starts independent root traces linked to the caller', async () => {
   const f = await fixture()
   const caller = trace.getTracer('caller').startSpan('caller')
-  const [first, second] = await context.with(trace.setSpan(context.active(), caller), () =>
-    Promise.all([f.host.start({ definition: emptyFlow }), f.host.start({ definition: emptyFlow })]),
-  )
+  const [first, second] = await context.with(trace.setSpan(context.active(), caller), () => {
+    return Promise.all([
+      f.host.start({ definition: emptyFlow }),
+      f.host.start({ definition: emptyFlow }),
+    ])
+  })
   expect(first.traceID).not.toBe(second.traceID)
   expect(first.traceID).not.toBe(caller.spanContext().traceId)
   await state(f, first.runID, 'completed')

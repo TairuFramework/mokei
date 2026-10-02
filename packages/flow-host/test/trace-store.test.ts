@@ -30,6 +30,11 @@ function log(timestamp: number, traceID = 'trace'): StoredLog {
   }
 }
 
+function required<T>(value: T | undefined): T {
+  if (value === undefined) throw new Error('Expected trace record')
+  return value
+}
+
 describe('memory trace store', () => {
   test('orders spans and logs with stable insertion ties', async () => {
     const store = createMemoryTraceStore()
@@ -62,17 +67,21 @@ describe('memory trace store', () => {
     await store.addLogs([entry])
 
     ;(value.attributes.nested as { values: Array<string> }).values.push('input')
-    value.events[0]!.attributes.value = 'input'
+    required(value.events[0]).attributes.value = 'input'
     ;(entry.properties.nested as { values: Array<string> }).values.push('input')
     const fetched = await store.getTrace('trace')
-    ;(fetched.spans[0]!.attributes.nested as { values: Array<string> }).values.push('output')
-    fetched.spans[0]!.events[0]!.attributes.value = 'output'
-    ;(fetched.logs[0]!.properties.nested as { values: Array<string> }).values.push('output')
+    const fetchedSpan = required(fetched.spans[0])
+    const fetchedLog = required(fetched.logs[0])
+    ;(fetchedSpan.attributes.nested as { values: Array<string> }).values.push('output')
+    required(fetchedSpan.events[0]).attributes.value = 'output'
+    ;(fetchedLog.properties.nested as { values: Array<string> }).values.push('output')
 
     const later = await store.getTrace('trace')
-    expect(later.spans[0]!.attributes.nested).toEqual({ values: ['original'] })
-    expect(later.spans[0]!.events[0]!.attributes).toEqual({ value: 'original' })
-    expect(later.logs[0]!.properties.nested).toEqual({ values: ['original'] })
+    const laterSpan = required(later.spans[0])
+    const laterLog = required(later.logs[0])
+    expect(laterSpan.attributes.nested).toEqual({ values: ['original'] })
+    expect(required(laterSpan.events[0]).attributes).toEqual({ value: 'original' })
+    expect(laterLog.properties.nested).toEqual({ values: ['original'] })
   })
 
   test('deletes strictly older rows except kept traces', async () => {
