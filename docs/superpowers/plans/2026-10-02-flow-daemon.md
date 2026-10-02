@@ -10,7 +10,7 @@
 
 **Spec:** [Flow daemon design](../specs/2026-10-02-flow-daemon-design.md)
 
-**Stage:** executing
+**Stage:** reviewing
 **Mode:** tasks
 
 ## Global Constraints
@@ -45,7 +45,7 @@
 
 Read the spec, `docs/agents/architecture.md` and relevant kigu skills before implementation.
 The branch is `feat/flow-daemon`.
-No implementation work has started.
+Tasks 1–9 are implemented. Focused task checks/reviews and the final lint, build, full test and release-preview checks passed. Whole-branch review and user desktop QA remain open.
 
 | Unit | Files | Responsibility |
 |------|-------|----------------|
@@ -95,7 +95,7 @@ Create `integration-tests/suites/host-protocol.test.ts`.
 **Interfaces:** Export `FlowServiceStatus`, `FlowProcedure`, `BaseProtocol`, expanded `HostEvent` and `Protocol`.
 Export schemas for run snapshots, inbox items, stored spans, stored logs and public validation results.
 
-- [ ] **Step 1: Add failing wire-contract tests.**
+- [x] **Step 1: Add failing wire-contract tests.**
 
 ```typescript
 test('flow events require run identity without context identity', () => {
@@ -112,10 +112,10 @@ Fixtures use real UUIDs and valid public payloads.
 Also assert rejection of invalid states, mixed registered/inline starts, malformed inbox unions and unknown status properties.
 Accept all three existing context event forms and their unchanged metadata.
 
-- [ ] **Step 2: Run `pnpm --filter mokei-integration-tests exec vitest run suites/host-protocol.test.ts`.**
+- [x] **Step 2: Run `pnpm --filter mokei-integration-tests exec vitest run suites/host-protocol.test.ts`.**
 Expected: tests fail because flow schemas and procedures are absent.
 
-- [ ] **Step 3: Implement the schemas and procedure definitions.**
+- [x] **Step 3: Implement the schemas and procedure definitions.**
 
 Define `flows.list`, `flows.check`, `runs.start`, `runs.get`, `runs.list`, `runs.cancel`, `runs.trace`.
 Define `inbox.list`, `inbox.get`, `inbox.answer`, `inbox.decline`, `inbox.cancel`, `inbox.prompt`.
@@ -138,10 +138,10 @@ Replace the loose event stream receive schema with the complete discriminated un
 Avoid imports from runtime packages into host-protocol.
 Keep existing host server typing against `BaseProtocol` during this preparatory task.
 
-- [ ] **Step 4: Run the new tests and `pnpm --filter @mokei/host-protocol test`.**
+- [x] **Step 4: Run the new tests and `pnpm --filter @mokei/host-protocol test`.**
 Expected: schema tests and portable type checks pass.
 
-- [ ] **Step 5: Commit as `feat(host-protocol): define flow daemon procedures and events`.**
+- [x] **Step 5: Commit as `feat(host-protocol): define flow daemon procedures and events`.**
 
 ### Task 2: Compose generic daemon handlers and shared state
 
@@ -158,7 +158,7 @@ Export `serveHostDaemon(params: HostDaemonParams): Promise<DaemonHandle>`.
 The entry also receives one shared `events: EventTarget`.
 Extend `DaemonOptions` with optional `entry: string` while retaining `socketPath`.
 
-- [ ] **Step 1: Add composition and two-connection tests.**
+- [x] **Step 1: Add composition and two-connection tests.**
 
 ```typescript
 test('rejects duplicate registrations', () => {
@@ -176,10 +176,10 @@ Assert already-aborted event subscriptions settle and do not leak writers.
 Assert standalone flow procedures return `FLOW_UNAVAILABLE`.
 Mock `ensureDaemon` and assert an explicit `entry` overrides the existing default.
 
-- [ ] **Step 2: Run `pnpm --filter @mokei/host-node exec vitest run test/daemon-composition.test.ts test/daemon-server.test.ts`.**
+- [x] **Step 2: Run `pnpm --filter @mokei/host-node exec vitest run test/daemon-composition.test.ts test/daemon-server.test.ts`.**
 Expected: composition and shared-state assertions fail against existing per-connection state.
 
-- [ ] **Step 3: Implement composition and shared daemon serving.**
+- [x] **Step 3: Implement composition and shared daemon serving.**
 
 Allocate context maps, children, event source and start time once before the Tejika `serve` callback.
 Compose base handlers, injected flow handlers and unavailable fallbacks in that order without duplicate overrides.
@@ -192,10 +192,10 @@ Retain `createHandlers` for existing tests and expose generic serving from the p
 RPC shutdown schedules daemon closure after its acknowledgement rather than awaiting closure inside its own request.
 Shutdown calls injected cleanup once and always cleans up tracked proxy children.
 
-- [ ] **Step 4: Run focused tests and `pnpm --filter @mokei/host-node test`.**
+- [x] **Step 4: Run focused tests and `pnpm --filter @mokei/host-node test`.**
 Expected: existing proxy, elicitation and daemon tests remain green.
 
-- [ ] **Step 5: Commit as `feat(host-node): compose daemon handlers with shared process state`.**
+- [x] **Step 5: Commit as `feat(host-node): compose daemon handlers with shared process state`.**
 
 ### Task 3: Await initial recovery reconciliation
 
@@ -209,7 +209,7 @@ It rejects on initial non-missing task-read failure or interrupted shutdown.
 `createFlowHost(params: FlowHostParams): Promise<FlowHost>` keeps its public signature.
 Its resolution now guarantees initial reconciliation for recovered runs.
 
-- [ ] **Step 1: Add failing readiness tests.**
+- [x] **Step 1: Add failing readiness tests.**
 
 ```typescript
 test('returns recovered inputs before host creation resolves', async () => {
@@ -226,10 +226,10 @@ An initial transport error rejects readiness and leaves no watcher or wiring lea
 Later poll errors retain existing retry behaviour.
 Stopping a watcher rejects unsettled initial readiness and drains its loop.
 
-- [ ] **Step 2: Run `pnpm --filter @mokei/flow-host exec vitest run test/recovery.test.ts test/watcher.test.ts`.**
+- [x] **Step 2: Run `pnpm --filter @mokei/flow-host exec vitest run test/recovery.test.ts test/watcher.test.ts`.**
 Expected: immediate inbox readiness assertions fail against asynchronous watcher startup.
 
-- [ ] **Step 3: Implement the first-snapshot barrier.**
+- [x] **Step 3: Implement the first-snapshot barrier.**
 
 Associate each watcher with its controller, loop and initial reconciliation promise.
 Reuse the promise for duplicate watches.
@@ -242,10 +242,10 @@ Collect first-snapshot promises during recovery and await them outside the per-r
 Await initial watcher promises before returning the host.
 Preserve existing construction failure cleanup.
 
-- [ ] **Step 4: Run portable recovery tests and `pnpm --filter @mokei/flow-host-node exec vitest run test/restart.test.ts`.**
+- [x] **Step 4: Run portable recovery tests and `pnpm --filter @mokei/flow-host-node exec vitest run test/restart.test.ts`.**
 Expected: recovered inbox assertions need no polling after host creation resolves.
 
-- [ ] **Step 5: Commit as `fix(flow-host): await initial recovered task reconciliation`.**
+- [x] **Step 5: Commit as `fix(flow-host): await initial recovered task reconciliation`.**
 
 ### Task 4: Add opt-in notification aggregation and explicit prompting
 
@@ -261,7 +261,7 @@ Define the shared `FlowDesktopAdapter` and `FlowDesktopController` types in `des
 Export `createFlowDesktopController(params: { adapter?: FlowDesktopAdapter; notifications: boolean; host(): FlowHost; onError(error: unknown): void }): FlowDesktopController`.
 Add `desktop: { notifications: boolean }` to normalized `FlowConfig`.
 
-- [ ] **Step 1: Add failing configuration and desktop tests.**
+- [x] **Step 1: Add failing configuration and desktop tests.**
 
 ```typescript
 test('desktop notifications default to off', async () => {
@@ -288,12 +288,12 @@ Remote settlement aborts the signal and prevents a late answer.
 Caller cancellation leaves the inbox item pending and permits a later prompt request.
 Shutdown aborts and drains prompts and notifications.
 
-- [ ] **Step 2: Run focused config, desktop and notifier tests.**
+- [x] **Step 2: Run focused config, desktop and notifier tests.**
 Run `pnpm --filter @mokei/flow-host-node exec vitest run test/config.test.ts test/desktop.test.ts`.
 Run `pnpm --filter @mokei/host-desktop exec vitest run test/notification.test.ts`.
 Expected: new defaults, aggregation and notifier APIs fail until implemented.
 
-- [ ] **Step 3: Implement the notifier, controller and configuration extension.**
+- [x] **Step 3: Implement the notifier, controller and configuration extension.**
 
 Use existing detection, backend factories, runner cancellation and the existing 5000ms notification timeout.
 Preserve runner ownership when dependencies are injected.
@@ -308,10 +308,10 @@ Pass approval answers to `host.inbox.answer(id)` only after explicit confirmatio
 Use runtime inbox cancellation only for an actual desktop cancel result.
 Do not settle items on transport or lifecycle abort.
 
-- [ ] **Step 4: Run focused tests and existing host-desktop tests.**
+- [x] **Step 4: Run focused tests and existing host-desktop tests.**
 Expected: all existing in-process desktop behaviour remains green.
 
-- [ ] **Step 5: Commit as `feat(flow-host-node): add opt-in desktop inbox policy`.**
+- [x] **Step 5: Commit as `feat(flow-host-node): add opt-in desktop inbox policy`.**
 
 ### Task 5: Own shared flow startup and resource lifetime
 
@@ -323,7 +323,7 @@ The factory creates status and admission state synchronously.
 `start()` begins asynchronous resource acquisition.
 Domain unavailable errors carry status for Task 6's mapping.
 
-- [ ] **Step 1: Add failing service lifecycle tests with injected acquisition functions.**
+- [x] **Step 1: Add failing service lifecycle tests with injected acquisition functions.**
 
 ```typescript
 test('publishes ready after restored inbox reconciliation', async () => {
@@ -346,10 +346,10 @@ Assert no ready event, no retained session and exactly one resource cleanup.
 Call start and dispose twice and assert idempotence.
 Make one disposer reject and assert all later disposers still run.
 
-- [ ] **Step 2: Run `pnpm --filter @mokei/flow-host-node exec vitest run test/service.test.ts`.**
+- [x] **Step 2: Run `pnpm --filter @mokei/flow-host-node exec vitest run test/service.test.ts`.**
 Expected: service APIs are absent.
 
-- [ ] **Step 3: Implement service ownership and startup order.**
+- [x] **Step 3: Implement service ownership and startup order.**
 
 Load configuration and flow files before consuming global telemetry registration.
 Use `NodeSession({ elicit: true })` and existing configured sibling connections.
@@ -366,11 +366,11 @@ The adapter is owned by the service after factory handoff and disposed even if c
 Add direct production dependencies on session-node, host-protocol and other imported types.
 Update the pnpm lockfile using pnpm.
 
-- [ ] **Step 4: Run service tests and `pnpm --filter @mokei/flow-host-node test`.**
+- [x] **Step 4: Run service tests and `pnpm --filter @mokei/flow-host-node test`.**
 Expected: tests pass without global telemetry reinstallation in a single process.
 Use injected telemetry for unit failures and child-process isolation for real registration.
 
-- [ ] **Step 5: Commit as `feat(flow-host-node): own daemon flow service lifecycle`.**
+- [x] **Step 5: Commit as `feat(flow-host-node): own daemon flow service lifecycle`.**
 
 ### Task 6: Bind flow handlers and public error mapping
 
@@ -382,7 +382,7 @@ Modify `packages/flow-host-node/src/index.ts` and package dependency edges.
 Export `FlowHandlers` from this package.
 Define `toHandlerError(error: unknown): HandlerError<string>` in `handler-errors.ts`.
 
-- [ ] **Step 1: Add failing handler tests over Enkaku DirectTransports.**
+- [x] **Step 1: Add failing handler tests over Enkaku DirectTransports.**
 
 ```typescript
 test('projects validation without runtime closures', async () => {
@@ -402,10 +402,10 @@ Assert status gating applies to every flow procedure.
 Assert unexpected exceptions return a generic error without secret-bearing exception messages.
 Assert prompt passes the request cancellation signal to the service.
 
-- [ ] **Step 2: Run `pnpm --filter @mokei/flow-host-node exec vitest run test/handlers.test.ts`.**
+- [x] **Step 2: Run `pnpm --filter @mokei/flow-host-node exec vitest run test/handlers.test.ts`.**
 Expected: handler factory and mapped errors are absent.
 
-- [ ] **Step 3: Implement public handlers and errors.**
+- [x] **Step 3: Implement public handlers and errors.**
 
 Use Enkaku `HandlerError({ code, message, data })`.
 Map unavailable to `FLOW_UNAVAILABLE`, missing flow to `FLOW_NOT_FOUND` and missing run to `RUN_NOT_FOUND`.
@@ -420,10 +420,10 @@ Ensure disconnected requests cannot free resources while an admitted mutation is
 Trace lookup first verifies the run and uses only its `traceID`.
 Return wire acknowledgements defined in Task 1.
 
-- [ ] **Step 4: Run handlers tests and affected package type checks.**
+- [x] **Step 4: Run handlers tests and affected package type checks.**
 Expected: all wire results satisfy the protocol types and public validation schemas.
 
-- [ ] **Step 5: Commit as `feat(flow-host-node): expose flow daemon procedure handlers`.**
+- [x] **Step 5: Commit as `feat(flow-host-node): expose flow daemon procedure handlers`.**
 
 ### Task 7: Compose the CLI-owned daemon entry
 
@@ -436,7 +436,7 @@ Resolve `./daemon-entry.js` relative to that module and pass its path into host-
 Export `startMokeiDaemon(params: { socketPath?: string; pidPath?: string; configPath?: string; databasePath?: string; handleSignals?: boolean; desktop?: FlowDesktopAdapter }): Promise<DaemonHandle>` from `daemon-entry.ts`.
 Importing the entry must not start a process.
 
-- [ ] **Step 1: Add entry and launch tests.**
+- [x] **Step 1: Add entry and launch tests.**
 
 ```typescript
 test('proxy and monitor select the composed entry', async () => {
@@ -451,10 +451,10 @@ Assert initialization failure leaves `info`, `events` and proxy handlers callabl
 Assert one entry creates one service for two connections.
 Assert configured desktop notifications do not create model-callable notify or ask tools.
 
-- [ ] **Step 2: Run `pnpm --filter mokei exec vitest run test/daemon.test.ts`.**
+- [x] **Step 2: Run `pnpm --filter mokei exec vitest run test/daemon.test.ts`.**
 Expected: CLI wrapper and entry composition are absent.
 
-- [ ] **Step 3: Implement the composed application entry and launch wrapper.**
+- [x] **Step 3: Implement the composed application entry and launch wrapper.**
 
 Create one shared event target, service and desktop adapter before accepting client connections.
 Wrap service events into CustomEvents matching the generic event bridge.
@@ -468,12 +468,12 @@ Use existing default data paths when absent.
 Keep CLI command names and help output unchanged.
 Let Tejika own process termination after cleanup rather than adding competing signal handlers.
 
-- [ ] **Step 4: Run CLI daemon tests and existing proxy/help integration tests.**
+- [x] **Step 4: Run CLI daemon tests and existing proxy/help integration tests.**
 Run `pnpm run build` before process-based tests.
 Run `pnpm --filter mokei-integration-tests exec vitest run suites/cli-proxy.test.ts suites/cli-help.test.ts`.
 Expected: existing commands launch successfully with the composed entry.
 
-- [ ] **Step 5: Commit as `feat(cli): launch the composed flow daemon entry`.**
+- [x] **Step 5: Commit as `feat(cli): launch the composed flow daemon entry`.**
 
 ### Task 8: Prove process restart, shared services and desktop behaviour
 
@@ -486,7 +486,7 @@ Add direct test dependency edges in `integration-tests/package.json` and update 
 Its application paths, socket, pidfile, database and notification evidence all live in one temporary directory.
 The fixture entry imports the built CLI `startMokeiDaemon` and injects a file-recording desktop adapter.
 
-- [ ] **Step 1: Add failing process-level tests.**
+- [x] **Step 1: Add failing process-level tests.**
 
 ```typescript
 test('resumes waiting input after daemon replacement', async () => {
@@ -520,10 +520,10 @@ Repeated list requests and client reconnection produce no additional records.
 Prompt tests simulate caller cancellation and settlement through another client.
 Assert cancellation leaves the item pending and remote settlement prevents a late answer.
 
-- [ ] **Step 2: Run `pnpm --filter mokei-integration-tests exec vitest run suites/flow-daemon.test.ts`.**
+- [x] **Step 2: Run `pnpm --filter mokei-integration-tests exec vitest run suites/flow-daemon.test.ts`.**
 Expected: fixture or assertions expose missing process-level behaviour.
 
-- [ ] **Step 3: Implement the isolated driver and deterministic fixtures.**
+- [x] **Step 3: Implement the isolated driver and deterministic fixtures.**
 
 Use actual Node child processes and real unix sockets.
 Use simple deterministic input, approval and end-node flows without a remote predictor or model.
@@ -534,11 +534,11 @@ Dispose clients, process handles and temporary resources in `finally`.
 Never use the real per-user pidfile or notification backends.
 Fix production failures in their owning units and rerun those focused unit tests.
 
-- [ ] **Step 4: Rebuild changed packages and run the daemon integration suite.**
+- [x] **Step 4: Rebuild changed packages and run the daemon integration suite.**
 Expected: all scenarios pass with real process replacement and opt-in desktop evidence.
 Check no fixture child or socket remains after cleanup.
 
-- [ ] **Step 5: Commit as `test: cover flow daemon restart and inbox surfaces`.**
+- [x] **Step 5: Commit as `test: cover flow daemon restart and inbox surfaces`.**
 
 ### Task 9: Document, validate and prepare review
 
@@ -549,30 +549,31 @@ Update the milestone status without referencing ephemeral spec or plan paths.
 **Interfaces:** Published guidance describes service status, configuration, lifecycle and reconnect semantics from the approved spec.
 Release intent covers only public packages actually changed.
 
-- [ ] **Step 1: Document `desktop.notifications: false`, startup count messages and explicit prompting.**
+- [x] **Step 1: Document `desktop.notifications: false`, startup count messages and explicit prompting.**
 Document the CLI-owned entry and generic host extension API.
 Explain flow failure visibility, restart-only configuration and initial reconciliation guarantees.
 Explain trace batching and public error codes.
 Describe subscribe-before-query reconciliation without claiming event replay.
 State direct sibling elicitation outside task inbox uses the existing decline fallback.
 
-- [ ] **Step 2: Record patch intent using the kigu releasing workflow.**
+- [x] **Step 2: Record patch intent using the kigu releasing workflow.**
 Include host-protocol, host-node, flow-host, flow-host-node, host-desktop and mokei only if each changed.
 Do not apply versions or publish packages.
 
-- [ ] **Step 3: Run repository validation.**
+- [x] **Step 3: Run repository validation.**
 Run `pnpm run lint`, `pnpm run build` and `pnpm test`.
 Expected: all required checks pass, including the new daemon suite.
 Run `pnpm change status` and confirm the existing fixed group includes the affected packages.
 Do not broaden unrelated declaration dependency work into this phase.
 
-- [ ] **Step 4: Commit documentation and intent as `docs: describe composed flow daemon lifecycle`.**
+- [x] **Step 4: Commit documentation and intent as `docs: describe composed flow daemon lifecycle`.**
 
-- [ ] **Step 5: Update Stage to `reviewing` after all implementation tasks pass.**
+- [x] **Step 5: Update Stage to `reviewing` after all implementation tasks pass.**
 Request a whole-branch review through the selected execution workflow.
 Address review findings with focused verification.
 Provide manual desktop QA steps with notifications explicitly enabled.
 Wait for the user's QA result before completing and finishing the branch.
+The checkbox records implementation validation and review handoff; whole-branch review and user QA are tracked separately below.
 
 ## Plan self-review
 
@@ -587,7 +588,20 @@ This plan adds no command families, monitor pages, new packages or event persist
 
 ## Execution handoff
 
-The written spec is approved.
-The user must review this plan before implementation starts.
-The previous phase used subagent-driven execution, but no execution method has been selected for this phase.
-Subagent-driven execution is recommended because lifecycle and protocol boundaries benefit from independent task reviews.
+The user approved the written spec and plan and selected subagent-driven execution.
+Tasks 1–8 have implementation commits and task-level reviews. Task 9 completed documentation and the repository validation gate.
+The controller owns whole-branch review after Task 9; manual desktop QA, completion and branch finishing remain open.
+
+Final validation: lint checked 721 files without fixes; build passed 30 type-build and 29 JS-build tasks.
+The first full test attempt overlapped the build and hit nine five-second flow-host-node timeouts.
+A clean full rerun passed all package suites, the 13 flow-rig tests, and 133 integration tests (35 integration tests skipped).
+Resource contention is an inference; no production or timeout configuration changes were made.
+`pnpm change status` passed with the existing 29-package fixed group advancing from 0.14.0 to 0.14.1.
+No versions were applied and nothing was published. The upstream Enkaku release/adoption gate remains open.
+
+## Remaining review and QA gates
+
+- [ ] Whole-branch review and any focused fixes.
+- [ ] Manual desktop QA with `desktop.notifications: true` and the user's result.
+- [ ] Complete the plan lifecycle and finish the branch after accepted QA.
+- [ ] Lift the upstream Enkaku publication gate before releasing packages.

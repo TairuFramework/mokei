@@ -3,11 +3,12 @@ import { join } from 'node:path'
 import { startMokeiDaemon } from 'mokei/lib/daemon-entry.js'
 
 const directory = process.argv[2]
-const record = (event) =>
+const record = (event) => {
   appendFileSync(
     join(directory, 'desktop.jsonl'),
     `${JSON.stringify({ pid: process.pid, ...event })}\n`,
   )
+}
 const prompts = new Map()
 let index = 0
 process.on('message', (message) => {

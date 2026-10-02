@@ -2,8 +2,9 @@ import { appendFileSync } from 'node:fs'
 import { createTool } from '@mokei/context-server'
 import { serveProcess } from '@mokei/context-server-node'
 
-const record = (event) =>
+const record = (event) => {
   appendFileSync(process.argv[2], `${JSON.stringify({ pid: process.pid, ...event })}\n`)
+}
 record({ type: 'started' })
 process.stdin.once('end', () => process.exit(0))
 serveProcess({

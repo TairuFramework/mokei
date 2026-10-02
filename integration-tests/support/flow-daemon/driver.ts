@@ -58,8 +58,9 @@ export async function startFlowDaemonFixture(
   }
   const desktopRecords = () => records<DesktopRecord>(join(directory, 'desktop.jsonl'))
   const siblingRecords = () => records<SiblingRecord>(join(directory, 'sibling.jsonl'))
-  const diagnostics = () =>
-    `daemon pid=${child?.pid}, exit=${child?.exitCode}, signal=${child?.signalCode}\n${stderr}`
+  const diagnostics = () => {
+    return `daemon pid=${child?.pid}, exit=${child?.exitCode}, signal=${child?.signalCode}\n${stderr}`
+  }
 
   async function within<T>(label: string, operation: Promise<T>, timeout = WAIT_MS): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined

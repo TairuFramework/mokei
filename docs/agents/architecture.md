@@ -221,6 +221,7 @@ binding.
 | Decision flows as MCP tasks | `@mokei/decision-flow`, `@mokei/decision-flow-server` | `createDecisionFlowGraph`, `addDecisionFlow`, `createDecisionFlowServer` |
 | Durable flow stores | `@mokei/flow-host-node` | `openFlowDatabase`, `createSQLiteRunStore`, `createSQLiteTaskStore`, `createSQLiteTraceStore` |
 | Flow telemetry, configuration and retention | `@mokei/flow-host-node` | `setupFlowTelemetry`, `loadFlowConfig`, `loadFlowDirs`, `startRetention` |
+| Shared daemon flow service | `@mokei/flow-host-node`, `@mokei/host-node`, `mokei` | `createFlowService`, `createFlowHandlers`, `serveHostDaemon`, CLI `daemon-entry.js` |
 | Portable trace capture and pruning | `@mokei/flow-host` | `TraceStore`, `createMemoryTraceStore`, `createTraceStoreSpanExporter`, `createTraceStoreLogSink`, `pruneRuns` |
 | CLI | `mokei` | `packages/cli/src/program.ts` |
 | Monitor | `@mokei/host-monitor`, `monitor` | `packages/host-monitor/src/index.ts`, `monitor/src/main.tsx` |
@@ -240,9 +241,9 @@ packages/
 +-- context-server-node/  # Node stdio entry for context-server (serveProcess)
 +-- context-client/       # MCP client implementation
 +-- host/                 # Multi-context orchestrator (RN/Metro-safe)
-+-- host-node/            # Node stdio + daemon entry for host
++-- host-node/            # Node stdio + generic daemon composition for host
 +-- host-desktop/         # Desktop dialogs, notifications and input inbox (Node-only)
-+-- host-protocol/        # Host <-> monitor protocol types
++-- host-protocol/        # Portable host, flow, run and inbox wire schemas
 +-- host-monitor/         # Monitor UI for host contexts
 +-- http-client/          # Streamable HTTP, OAuth 2.1 client middleware, x-mcp-header encoding
 +-- http-server/          # serveHTTP, bearer/JWKS/DID gate, stateless + subscription exchanges
@@ -251,7 +252,7 @@ packages/
 +-- decision-flow/       # System One decide nodes for flow-graph
 +-- decision-flow-server/ # MCP task server and Session wiring for decision flows
 +-- flow-host/            # Portable flow run lifecycle, approval queue, inbox and recovery
-+-- flow-host-node/       # Node-only SQLite stores, telemetry, configuration and retention
++-- flow-host-node/       # Node-only shared flow service, handlers, stores and telemetry
 +-- model-provider/       # Provider interface definitions
 +-- openai-provider/      # OpenAI integration
 +-- anthropic-provider/   # Anthropic Claude integration
@@ -259,7 +260,7 @@ packages/
 +-- llama-provider/       # Local GGUF inference via node-llama-cpp
 +-- system-one-client/    # System One HTTP backend for laya-serve or hosted classification
 +-- logger/               # Shared logger utility
-+-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
++-- cli/                  # mokei CLI commands + composed daemon application entry
 ```
 
 `@mokei/host`, `@mokei/context-server`, `@mokei/session` and `@mokei/flow-host` are Node-free so they bundle under React Native /
@@ -340,6 +341,59 @@ Its configuration loaders resolve paths and load flow definitions at startup. Co
 Telemetry installs once per process and captures local spans and logs. Sibling-process telemetry is not ingested locally.
 Shutdown awaits retention, host and session disposal, telemetry disposal, then database closure.
 The [package lifecycle guide](../../packages/flow-host-node/README.md) describes setup, defaults and configuration.
+
+### Composed flow daemon
+
+The CLI owns `mokei/lib/daemon-entry.js`, selected by existing proxy and monitor commands when
+ensuring a daemon exists. It composes `serveHostDaemon`, one `createFlowService` and native
+desktop operations. Host-node accepts injected handlers, an event source, flow status and
+shutdown hooks; it keeps shared proxy state and imports no flow or desktop implementation.
+`composeHandlers` rejects duplicate procedure registrations. The generic standalone host
+entry still works and reports flow services unavailable. `runDaemon({ entry, socketPath? })`
+lets custom applications select an executable entry without changing the normal socket default.
+
+`info.flowService` reports `starting`, `ready` or `failed`; failures carry a public type and
+message, with sanitized configuration path/issues when available. Proxy serving and monitor
+status inspection remain available while flows start or after startup fails. Ready publication
+follows initial task and inbox reconciliation for recovered runs, without waiting for their
+completion or user answers. Recovery retains run, task, inbox and trace identities. Individual
+recovery failures become failed runs; fatal startup failures clean up partial resources.
+Configuration changes and fatal-startup recovery require restart, with no hot reload or retry.
+Direct sibling elicitation outside the durable task inbox uses the existing decline fallback.
+
+The portable host protocol exposes `flows.list`, `flows.check`, `runs.start`, `runs.get`,
+`runs.list`, `runs.cancel`, `runs.trace`, `inbox.list`, `inbox.get`, `inbox.answer`,
+`inbox.decline`, `inbox.cancel` and `inbox.prompt`. Wire snapshots exclude private persistence
+metadata and validation functions. Trace reads are run-scoped, can lag batched capture and do
+not force flushing. A known run without a trace yields empty spans/logs. Public error codes
+distinguish unavailable, missing, invalid, unsupported and competing-prompt requests; unexpected
+failures return `INTERNAL_ERROR` with a generic message. The
+[procedure guide](../../packages/flow-host-node/README.md#procedures-and-live-events) lists exact codes.
+
+Every connection shares the service and event source. `service:status`, `run:state`,
+`inbox:added` and `inbox:settled` join existing context events with event IDs and timestamps.
+Events provide live changes, without replay. Clients subscribe before querying status, runs
+and inbox, buffer events during queries, then re-read affected identifiers to reconcile.
+Reconnect repeats this sequence. Stream cancellation cleans up only that subscriber.
+
+Desktop notifications default to `false` through `desktop.notifications` in `flows.json`.
+After initial reconciliation, zero pending items send nothing, one sends an approval/input
+notification and multiple send one count message, such as `3 pending prompts`. New items notify
+individually without input previews. Startup IDs are recorded before delivery so settling
+items cannot receive duplicate live notifications. Polling and reconnects never notify;
+restart announces the current pending population again. Delivery failure leaves items pending.
+Dialogs require explicit `inbox.prompt`, independently of notification opt-in. Runtime
+validation and approval policy govern settlement. Caller cancellation or disconnect releases
+prompt ownership while preserving the pending item; settlement elsewhere rejects late answers.
+
+Shutdown closes flow admission and aborts dialogs, waits for admitted operations, stops
+retention, suspends stored runs, disconnects siblings, drains telemetry and closes SQLite.
+It attempts every cleanup despite failures and prevents late initialization from publishing
+ready. The flow rig remains available until the CLI/MCP command phase; monitor pages follow.
+
+Publication is gated on the
+[upstream protocol fix and adoption](plans/next/2026-10-02-enkaku-protocol-schema-rebasing.md):
+the checked-in workspace patch does not reach consumers of published Mokei packages.
 
 Portable `pruneRuns` deletes old terminal runs and their traces and tasks. Active tasks protect their associated runs.
 Its final sweep preserves traces referenced by every retained run and removes older orphan spans and logs.

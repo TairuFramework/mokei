@@ -1,6 +1,6 @@
 # Milestone: flow daemon
 
-**Status:** open -- sub-projects 1 and 2 complete -- sub-project 3 (daemon) next
+**Status:** open -- sub-projects 1 and 2 complete -- sub-project 3 (daemon) implemented and validated; whole-branch review and desktop QA pending
 **Opened:** 2026-10-01
 **Replaces:** phase 3 of the [flow rig milestone](2026-09-30-flow-rig-milestone.md), from sub-project B onwards
 
@@ -48,7 +48,9 @@ monitor/                   runs, run detail (trace and logs) and inbox pages
 - **Storage.** One `node:sqlite` database in `getDataDir('mokei')`. Terminal runs are pruned after a retention
   period, with their spans and logs.
 - **Config.** `flows.json` in `getDataDir('mokei')`: sibling servers, flow directories, predictor, approval globs,
-  tracing and retention. Changes apply on daemon restart.
+  tracing, retention and `desktop.notifications` (default `false`). Changes apply on daemon restart.
+  Dialogs require explicit inbox prompting. Startup sends no notification for zero pending items,
+  one item notification for one, or one generic pending-count notification for multiple items.
 - **tejika for local plumbing.** `@tejika/process` (daemon lifecycle), `@tejika/env` (paths), `@tejika/log` (log
   files), `@tejika/server` (monitor bridge) and `@tejika/test` (end-to-end harness).
 
@@ -60,7 +62,7 @@ Each sub-project gets its own spec, plan and PR from `main`.
 |---|-------------|----------|---------------|--------|
 | 1 | Flow runtime | `@mokei/flow-host` with memory stores; `DecisionFlowWiring.authorize`; a portable elicitation content validator; the `flow.run` span. The rig becomes a thin shim over it. | Unit suite green; the rig integration suite green on the shim. | complete |
 | 2 | Node storage and observability | `@mokei/flow-host-node`: sqlite stores, span and log capture, OTLP option, config loader, retention. | Store, capture and config tests green. | complete |
-| 3 | Daemon | `host-protocol` procedures and events, handler composition in `host-node`, daemon entry in the CLI, recovery on boot, desktop notifier. | Daemon integration suite green, including restart and resume. | not started |
+| 3 | Daemon | `host-protocol` procedures and events, handler composition in `host-node`, daemon entry in the CLI, recovery on boot, desktop notifier. | Daemon integration suite green, including restart and resume. | implementation checks passed; whole-branch review and desktop QA pending |
 | 4 | CLI and MCP | `mokei daemon`, `flows`, `runs` and `inbox` commands; `mokei flows mcp`. `scripts/flow-rig` and its suite are deleted. | End-to-end suite green; manual macOS QA done. | not started |
 | 5 | Monitor | Runs, run detail and inbox pages. | Manual QA of the monitor pages. | not started |
 
@@ -68,6 +70,15 @@ Completed sub-projects link their summary in `completed/` here.
 
 - Sub-project 1: [`completed/2026-10-01-flow-host.complete.md`](../completed/2026-10-01-flow-host.complete.md)
 - Sub-project 2: [`completed/2026-10-02-flow-host-node.complete.md`](../completed/2026-10-02-flow-host-node.complete.md)
+
+Sub-project 3 implements one flow service per daemon process and initial recovery reconciliation
+before ready publication. Flow startup failure leaves proxy and monitor status serving available.
+Clients subscribe before querying snapshots and reconcile current records on reconnect; events
+are live without durable replay. The rig remains until sub-project 4 replaces its user surface.
+
+Publication remains blocked on the
+[upstream Enkaku fix and dependency adoption](../next/2026-10-02-enkaku-protocol-schema-rebasing.md).
+The checked-in workspace patch provides local verification only and does not reach published consumers.
 
 ## Findings carried over from the flow rig
 
