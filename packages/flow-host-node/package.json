@@ -46,6 +46,8 @@
     "@mokei/context-server": "workspace:^",
     "@mokei/flow-host": "workspace:^",
     "@mokei/host-desktop": "workspace:^",
+    "@mokei/host-protocol": "workspace:^",
+    "@mokei/session-node": "workspace:^",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/context-async-hooks": "catalog:",
     "@opentelemetry/exporter-trace-otlp-http": "catalog:",

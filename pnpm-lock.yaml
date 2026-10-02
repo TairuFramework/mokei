@@ -1089,6 +1089,12 @@ importers:
       '@mokei/host-desktop':
         specifier: workspace:^
         version: link:../host-desktop
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../host-protocol
+      '@mokei/session-node':
+        specifier: workspace:^
+        version: link:../session-node
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1

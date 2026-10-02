@@ -9,6 +9,8 @@ export {
 } from './desktop.js'
 export { loadFlowDirs } from './flow-dirs.js'
 export { startRetention } from './retention.js'
+export type { FlowResources, FlowService, FlowServiceParams, FlowServiceStatus } from './service.js'
+export { createFlowService, FlowServiceUnavailableError } from './service.js'
 export { createSQLiteRunStore } from './sqlite-run-store.js'
 export { createSQLiteTaskStore } from './sqlite-task-store.js'
 export { createSQLiteTraceStore } from './sqlite-trace-store.js'
