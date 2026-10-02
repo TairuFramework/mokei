@@ -429,9 +429,10 @@ test('a transient poll failure retries without changing state', async () => {
   const original = client.tasks.get.bind(client.tasks)
   const get = vi
     .spyOn(client.tasks, 'get')
+    .mockImplementationOnce(original)
     .mockRejectedValueOnce(new Error('Temporary transport failure'))
   const run = await host.start({ definition: holdFlow })
-  await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThanOrEqual(2))
+  await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThanOrEqual(3))
   expect((await host.get(run.runID))?.state).toBe('working')
   get.mockImplementation(original)
   expect((await host.cancel(run.runID)).state).toBe('cancelled')

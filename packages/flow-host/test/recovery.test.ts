@@ -63,13 +63,220 @@ test('input survives a restart with the same item ID', async () => {
   const item = required(first.host.inbox.list()[0])
   await first.host.dispose()
   const second = await fixture(shared)
-  await vi.waitFor(() => expect(second.host.inbox.list()[0]?.id).toBe(item.id))
+  expect(second.host.inbox.list()).toHaveLength(1)
+  expect(second.host.inbox.list()[0]?.id).toBe(item.id)
   await second.host.inbox.answer(item.id, { value: 'Ada' })
   await state(second.host, run.runID, 'completed')
   expect(await second.host.get(run.runID)).toMatchObject({
     result: { output: { answer: { value: 'Ada' } } },
   })
 })
+test('creation waits for the first recovered task read without waiting for an answer', async () => {
+  const shared = stores()
+  const first = await fixture(shared)
+  const run = await first.host.start({ definition: inputFlow })
+  await state(first.host, run.runID, 'input_required')
+  const item = required(first.host.inbox.list()[0])
+  await first.host.dispose()
+  const entered = deferred<void>()
+  const release = deferred<void>()
+  const original = wiringModule.addDecisionFlow
+  vi.spyOn(wiringModule, 'addDecisionFlow').mockImplementation(async (...args) => {
+    const wiring = await original(...args)
+    const client = args[0].contextHost.getContext(args[1].key).client
+    const get = client.tasks.get.bind(client.tasks)
+    vi.spyOn(client.tasks, 'get').mockImplementationOnce(async (taskID) => {
+      entered.resolve()
+      await release.promise
+      return get(taskID)
+    })
+    return wiring
+  })
+  let created = false
+  const creating = fixture(shared).then((f) => {
+    created = true
+    return f
+  })
+  try {
+    await entered.promise
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(created).toBe(false)
+  } finally {
+    release.resolve()
+    await creating
+  }
+  const second = await creating
+  expect(second.host.inbox.list()).toHaveLength(1)
+  expect(second.host.inbox.list()[0]?.id).toBe(item.id)
+  expect((await second.host.get(run.runID))?.state).toBe('input_required')
+})
+
+test.each(['input', 'allowlisted approval'] as const)(
+  'an initial recovered %s task transport error rejects creation and disposes wiring',
+  async (source) => {
+    const shared = stores()
+    const first = await fixture(shared)
+    const run = await first.host.start({ definition: source === 'input' ? inputFlow : echoFlow })
+    if (source === 'input') await state(first.host, run.runID, 'input_required')
+    await first.host.dispose()
+    const session = new Session({ elicit: true })
+    session.contextHost.addLocalTool({
+      name: 'echo',
+      inputSchema: { type: 'object' },
+      execute: () => ({ content: [] }),
+    })
+    cleanups.push(() => session.dispose())
+    const original = wiringModule.addDecisionFlow
+    const failure = new Error('Initial task transport failed')
+    let disposed = false
+    let reads = 0
+    vi.spyOn(wiringModule, 'addDecisionFlow').mockImplementation(async (...args) => {
+      const wiring = await original(...args)
+      const dispose = wiring.dispose.bind(wiring)
+      wiring.dispose = async () => {
+        disposed = true
+        await dispose()
+      }
+      vi.spyOn(args[0].contextHost.getContext(args[1].key).client.tasks, 'get').mockImplementation(
+        async () => {
+          reads += 1
+          throw failure
+        },
+      )
+      return wiring
+    })
+    const creating = createFlowHost({
+      ...shared,
+      session,
+      pollMs: 1,
+      approval: { allow: ['local:echo'] },
+    }).then((host) => {
+      cleanups.unshift(() => host.dispose())
+      return host
+    })
+    await expect(creating).rejects.toBe(failure)
+    expect(disposed).toBe(true)
+    expect(() => session.contextHost.getContext('flow')).toThrow()
+    await new Promise<void>((resolve) => setTimeout(resolve, 20))
+    expect(reads).toBe(1)
+    expect((await shared.runStore.get(run.runID))?.state).toBe(
+      source === 'input' ? 'input_required' : 'working',
+    )
+  },
+)
+
+test('creation reconciles input from an approval allowlisted during recovery', async () => {
+  const shared = stores()
+  const definition: FlowDefinition = {
+    ...inputFlow,
+    start: 'echo',
+    nodes: {
+      ...inputFlow.nodes,
+      echo: { kind: 'tool', tool: 'local:echo', args: {}, next: 'ask' },
+    },
+  }
+  const first = await fixture(shared)
+  const run = await first.host.start({ definition })
+  expect(run.state).toBe('awaiting_approval')
+  await first.host.dispose()
+  const entered = deferred<void>()
+  const release = deferred<void>()
+  const original = wiringModule.addDecisionFlow
+  vi.spyOn(wiringModule, 'addDecisionFlow').mockImplementation(async (...args) => {
+    const wiring = await original(...args)
+    const client = args[0].contextHost.getContext(args[1].key).client
+    const get = client.tasks.get.bind(client.tasks)
+    vi.spyOn(client.tasks, 'get').mockImplementationOnce(async (taskID) => {
+      entered.resolve()
+      await release.promise
+      return get(taskID)
+    })
+    return wiring
+  })
+  let created = false
+  const creating = fixture({ ...shared, allow: ['local:echo'] }).then((f) => {
+    created = true
+    return f
+  })
+  try {
+    await entered.promise
+    await vi.waitFor(async () => {
+      expect(await shared.taskStore.list({ status: ['input_required'] })).toHaveLength(1)
+    })
+    expect(created).toBe(false)
+  } finally {
+    release.resolve()
+    await creating
+  }
+  const second = await creating
+  expect(second.host.inbox.list()).toEqual([
+    expect.objectContaining({ runID: run.runID, kind: 'input' }),
+  ])
+})
+
+test('a missing recovered task is failed before creation resolves', async () => {
+  const shared = stores()
+  const first = await fixture(shared)
+  const run = await first.host.start({ definition: inputFlow })
+  await state(first.host, run.runID, 'input_required')
+  await first.host.dispose()
+  await shared.taskStore.delete(required((await shared.runStore.get(run.runID))?.taskID))
+  const second = await fixture(shared)
+  expect(await second.host.get(run.runID)).toMatchObject({
+    state: 'failed',
+    error: { type: 'Interrupted' },
+  })
+  expect(second.host.inbox.list()).toEqual([])
+})
+
+test('recovery readiness survives persistent unsupported-input cancellation failures', async () => {
+  const shared = stores()
+  const first = await fixture(shared)
+  const run = await first.host.start({ definition: inputFlow })
+  await state(first.host, run.runID, 'input_required')
+  await first.host.dispose()
+  const entered = deferred<void>()
+  const release = deferred<void>()
+  const original = wiringModule.addDecisionFlow
+  vi.spyOn(wiringModule, 'addDecisionFlow').mockImplementation(async (...args) => {
+    const wiring = await original(...args)
+    const client = args[0].contextHost.getContext(args[1].key).client
+    const get = client.tasks.get.bind(client.tasks)
+    vi.spyOn(client.tasks, 'get').mockImplementation(async (taskID) => {
+      return {
+        ...(await get(taskID)),
+        status: 'input_required',
+        inputRequests: { unsupported: { method: 'roots/list', params: {} } },
+      }
+    })
+    vi.spyOn(client.tasks, 'cancel').mockImplementation(async () => {
+      entered.resolve()
+      await release.promise
+      throw new Error('Cancellation transport failed')
+    })
+    return wiring
+  })
+  let created = false
+  const creating = fixture(shared).then((f) => {
+    created = true
+    return f
+  })
+  try {
+    await entered.promise
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(created).toBe(true)
+  } finally {
+    release.resolve()
+    await creating.catch(() => undefined)
+  }
+  const second = await creating
+  expect(await second.host.get(run.runID)).toMatchObject({
+    state: 'failed',
+    error: { type: 'UnsupportedInput', message: 'roots/list' },
+  })
+  expect(second.host.inbox.list()).toEqual([])
+})
+
 test('queued approval survives a restart', async () => {
   const shared = { ...stores(), flows: [echoFlow] }
   const first = await fixture(shared)
@@ -91,10 +298,10 @@ test('input keeps its item and task IDs across two sequential recoveries', async
   const taskID = required((await shared.runStore.get(run.runID))?.taskID)
   await first.host.dispose()
   const second = await fixture(shared)
-  await vi.waitFor(() => expect(second.host.inbox.list()[0]?.id).toBe(item.id))
+  expect(second.host.inbox.list()[0]?.id).toBe(item.id)
   await second.host.dispose()
   const third = await fixture(shared)
-  await vi.waitFor(() => expect(third.host.inbox.list()[0]?.id).toBe(item.id))
+  expect(third.host.inbox.list()[0]?.id).toBe(item.id)
   expect((await shared.runStore.get(run.runID))?.taskID).toBe(taskID)
   await third.host.inbox.answer(item.id, { value: 'Ada' })
   await state(third.host, run.runID, 'completed')
@@ -361,7 +568,7 @@ test.each(['start', 'approval'] as const)(
 test('sibling wait survives disposal without cancelling or relaunching the sibling', async () => {
   const shared = stores()
   const siblingStore = createMemoryTaskStore()
-  const tasks = createTaskManager({ store: siblingStore })
+  const tasks = createTaskManager({ store: siblingStore, pollIntervalMs: 10 })
   const held = deferred<void>()
   const tool = createTool({
     description: 'Held work',

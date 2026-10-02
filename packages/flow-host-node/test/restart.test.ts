@@ -79,7 +79,7 @@ test('recovers waiting input from a reopened sqlite database', async () => {
       listeners: { 'inbox:added': recovered },
     })
     host = secondHost
-    await vi.waitFor(() => expect(secondHost.inbox.list({ runID })).toHaveLength(1))
+    expect(secondHost.inbox.list({ runID })).toHaveLength(1)
     expect((await secondHost.get(runID))?.traceID).toBe(traceID)
     expect(secondHost.inbox.list({ runID })).toHaveLength(1)
     expect(secondHost.inbox.list({ runID })[0]?.id).toBe(item.id)
