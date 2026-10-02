@@ -1,0 +1,314 @@
+import { type ChildProcess, spawn } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+import { setTimeout as poll } from 'node:timers/promises'
+import { fileURLToPath } from 'node:url'
+import type { TaskRecord } from '@mokei/context-server'
+import type { RunRecord } from '@mokei/flow-host'
+import { createSQLiteTraceStore } from '@mokei/flow-host-node'
+import { createClient, type HostClient } from '@mokei/host-node'
+import type { HostEvent } from '@mokei/host-protocol'
+
+import { flows } from './flows.js'
+
+const WAIT_MS = 15_000
+const absolute = (path: string) => fileURLToPath(new URL(path, import.meta.url))
+export type DesktopRecord = { pid: number; type: string; message?: string; index?: number }
+type SiblingRecord = { pid: number; type: 'started' | 'echo'; value?: string }
+export type FlowDaemonFixture = Awaited<ReturnType<typeof startFlowDaemonFixture>>
+
+function records<T>(path: string): Array<T> {
+  if (!existsSync(path)) return []
+  return readFileSync(path, 'utf8')
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as T)
+}
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false
+    throw error
+  }
+}
+
+export async function startFlowDaemonFixture(
+  options: { notifications?: boolean; invalidConfig?: boolean } = {},
+) {
+  // Keep Unix socket paths below sockaddr_un's limit, including macOS's long TMPDIR.
+  const directory = await mkdtemp('/tmp/mokei-flow-daemon-')
+  const socketPath = join(directory, 'daemon.sock')
+  const pidPath = join(directory, 'daemon.pid')
+  const databasePath = join(directory, 'flows.db')
+  const clients = new Set<HostClient>()
+  const subscriptions = new Set<() => Promise<void>>()
+  const children: Array<ChildProcess> = []
+  let child: ChildProcess | undefined
+  let stderr = ''
+  let spawnError: Error | undefined
+  let disposed = false
+  const sibling = {
+    command: process.execPath,
+    args: [absolute('./sibling.mjs'), join(directory, 'sibling.jsonl')],
+  }
+  const desktopRecords = () => records<DesktopRecord>(join(directory, 'desktop.jsonl'))
+  const siblingRecords = () => records<SiblingRecord>(join(directory, 'sibling.jsonl'))
+  const diagnostics = () =>
+    `daemon pid=${child?.pid}, exit=${child?.exitCode}, signal=${child?.signalCode}\n${stderr}`
+
+  async function within<T>(label: string, operation: Promise<T>, timeout = WAIT_MS): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Timed out during ${label}\n${diagnostics()}`)),
+            timeout,
+          )
+        }),
+      ])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  async function wait<T>(label: string, check: () => T | Promise<T>): Promise<NonNullable<T>> {
+    const deadline = Date.now() + WAIT_MS
+    let last: unknown
+    while (Date.now() < deadline) {
+      try {
+        const value = await within(label, Promise.resolve().then(check), deadline - Date.now())
+        if (value) return value as NonNullable<T>
+      } catch (error) {
+        last = error
+      }
+      await poll(20)
+    }
+    throw new Error(`Timed out waiting for ${label}: ${String(last)}\n${diagnostics()}`, {
+      cause: last,
+    })
+  }
+  async function connect() {
+    if (spawnError) throw spawnError
+    const client = await within('socket connection', createClient(socketPath))
+    clients.add(client)
+    return client
+  }
+  async function closeClients() {
+    const closing = [
+      ...[...subscriptions].map((close) => close()),
+      ...[...clients].map((client) => within('client disposal', client.dispose())),
+    ]
+    subscriptions.clear()
+    clients.clear()
+    const results = await Promise.allSettled(closing)
+    const errors = results
+      .filter((result) => result.status === 'rejected')
+      .map((result) => result.reason)
+    if (errors.length) throw new AggregateError(errors, 'Client cleanup failed')
+  }
+  async function end(signal: NodeJS.Signals) {
+    if (child == null) return
+    let clientError: unknown
+    try {
+      await closeClients()
+    } catch (error) {
+      clientError = error
+    } finally {
+      if (child.exitCode == null && child.signalCode == null) child.kill(signal)
+    }
+    await wait('daemon exit', () => child?.exitCode != null || child?.signalCode != null)
+    if (signal === 'SIGTERM') {
+      if (child.exitCode !== 0) throw new Error(`Graceful shutdown failed: ${diagnostics()}`)
+      if (existsSync(socketPath) || existsSync(pidPath))
+        throw new Error(`Shutdown left socket or pidfile: ${diagnostics()}`)
+    }
+    await wait('sibling exit', () => siblingRecords().every(({ pid }) => !alive(pid)))
+    child = undefined
+    if (clientError) throw clientError
+  }
+  async function restart() {
+    if (child != null) throw new Error('Stop the existing daemon before replacement')
+    spawnError = undefined
+    child = spawn(process.execPath, [absolute('./entry.mjs'), directory], {
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+      env: {
+        ...process.env,
+        MOKEI_DATA_DIR: directory,
+        MOKEI_STATE_DIR: directory,
+        MOKEI_LOG_DIR: join(directory, 'logs'),
+      },
+    })
+    children.push(child)
+    child.once('error', (error) => {
+      spawnError = error
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
+    const client = await wait('daemon socket', () => connect())
+    const info = await wait('flow service startup', async () => {
+      const info = await client.request('info', { timeout: 1000 })
+      return info.flowService.state !== 'starting' ? info : undefined
+    })
+    const expected = options.invalidConfig ? 'failed' : 'ready'
+    if (info.flowService.state !== expected)
+      throw new Error(
+        `Unexpected flow status: ${JSON.stringify(info.flowService)}\n${diagnostics()}`,
+      )
+  }
+  async function dispose() {
+    if (disposed) return
+    disposed = true
+    const errors: Array<unknown> = []
+    const attempt = async (work: () => Promise<unknown>) => {
+      try {
+        await work()
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    await attempt(() => end('SIGTERM'))
+    await attempt(closeClients)
+    for (const process of children) {
+      if (process.exitCode == null && process.signalCode == null) process.kill('SIGKILL')
+    }
+    const pids = new Set([
+      ...children.flatMap((process) => (process.pid == null ? [] : [process.pid])),
+      ...siblingRecords().map(({ pid }) => pid),
+    ])
+    for (const pid of pids) {
+      try {
+        if (alive(pid)) process.kill(pid, 'SIGKILL')
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    await attempt(() =>
+      wait('all fixture processes reaped', () => [...pids].every((pid) => !alive(pid))),
+    )
+    await attempt(() => rm(directory, { recursive: true, force: true }))
+    if (existsSync(socketPath)) errors.push(new Error('Fixture socket survived cleanup'))
+    if (errors.length) throw new AggregateError(errors, 'Fixture cleanup failed')
+  }
+
+  const fixture = {
+    directory,
+    socketPath,
+    pidPath,
+    sibling,
+    connect,
+    wait,
+    within,
+    restart,
+    dispose,
+    stop: () => end('SIGTERM'),
+    kill: () => end('SIGKILL'),
+    desktopRecords,
+    siblingRecords,
+    notifications: () =>
+      desktopRecords().flatMap((record) =>
+        record.type === 'notification' && record.message != null ? [record.message] : [],
+      ),
+    readDatabase() {
+      // This isolated reader sees committed WAL records and never migrates or writes the database.
+      const db = new DatabaseSync(databasePath, { readOnly: true })
+      try {
+        db.exec('BEGIN')
+        return {
+          runs: db
+            .prepare('SELECT data FROM runs ORDER BY seq')
+            .all()
+            .map((row) => JSON.parse(row.data as string) as RunRecord),
+          tasks: db
+            .prepare('SELECT data FROM tasks ORDER BY seq')
+            .all()
+            .map((row) => JSON.parse(row.data as string) as TaskRecord),
+        }
+      } finally {
+        db.close()
+      }
+    },
+    async readTrace(traceID: string) {
+      const db = new DatabaseSync(databasePath, { readOnly: true })
+      try {
+        return await createSQLiteTraceStore(db).getTrace(traceID)
+      } finally {
+        db.close()
+      }
+    },
+    pending(client: HostClient, runID: string) {
+      return wait(
+        'pending input or approval',
+        async () => (await client.request('inbox.list', { param: { runID }, timeout: 1000 }))[0],
+      )
+    },
+    terminal(client: HostClient, runID: string) {
+      return wait('terminal run', async () => {
+        const run = await client.request('runs.get', { param: { runID }, timeout: 1000 })
+        return ['completed', 'failed', 'cancelled', 'denied'].includes(run.state) ? run : undefined
+      })
+    },
+    async subscribe(client: HostClient) {
+      const events: Array<HostEvent> = []
+      const stream = client.createStream('events')
+      void stream.catch(() => {})
+      const reading = (async () => {
+        for await (const event of stream.readable) events.push(event)
+      })()
+      void reading.catch(() => {})
+      const close = async () => {
+        stream.close()
+        subscriptions.delete(close)
+        await within(
+          'subscriber disposal',
+          reading.catch(() => {}),
+        )
+      }
+      subscriptions.add(close)
+      // The info response follows event-handler registration on this connection.
+      await client.request('info', { timeout: 1000 })
+      return { events, close }
+    },
+    async answerPrompt(index: number, value: string) {
+      if (child == null) throw new Error('No running daemon')
+      child.send({ type: 'answer', index, value })
+      await wait('native prompt completion', () =>
+        desktopRecords().some(
+          (record) =>
+            record.pid === child?.pid && record.type === 'resolved' && record.index === index,
+        ),
+      )
+    },
+  }
+  try {
+    await mkdir(join(directory, 'flows'))
+    for (const flow of flows)
+      await writeFile(join(directory, 'flows', `${flow.id}.json`), JSON.stringify(flow))
+    await writeFile(
+      join(directory, 'config.json'),
+      options.invalidConfig
+        ? '{invalid'
+        : JSON.stringify({
+            flowDirs: ['./flows'],
+            siblings: { sibling },
+            logs: { level: 'debug' },
+            ...(options.notifications == null
+              ? {}
+              : { desktop: { notifications: options.notifications } }),
+          }),
+    )
+    await restart()
+    return fixture
+  } catch (error) {
+    await dispose().catch((cleanupError: unknown) => {
+      throw new AggregateError([error, cleanupError], 'Fixture startup and cleanup failed')
+    })
+    throw error
+  }
+}

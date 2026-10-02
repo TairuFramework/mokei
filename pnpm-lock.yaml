@@ -521,6 +521,9 @@ importers:
       '@mokei/flow-host':
         specifier: workspace:^
         version: link:../packages/flow-host
+      '@mokei/flow-host-node':
+        specifier: workspace:^
+        version: link:../packages/flow-host-node
       '@mokei/host-monitor':
         specifier: workspace:^
         version: link:../packages/host-monitor
