@@ -282,7 +282,7 @@ test('run_flow with null input fails validation', async () => {
       }),
     ).resolves.toMatchObject({
       isError: true,
-      content: [{ type: 'text', text: 'Invalid flow input' }],
+      content: [{ type: 'text', text: 'Invalid flow input: must be object' }],
     })
   } finally {
     await client.dispose()
