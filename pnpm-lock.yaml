@@ -760,9 +760,15 @@ importers:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
+      '@mokei/flow-host-node':
+        specifier: workspace:^
+        version: link:../flow-host-node
       '@mokei/host':
         specifier: workspace:^
         version: link:../host
+      '@mokei/host-desktop':
+        specifier: workspace:^
+        version: link:../host-desktop
       '@mokei/host-monitor':
         specifier: workspace:^
         version: link:../host-monitor
@@ -793,6 +799,9 @@ importers:
       '@tejika/cli':
         specifier: 'catalog:'
         version: 0.4.1(@types/react@19.3.0)
+      '@tejika/process':
+        specifier: 'catalog:'
+        version: 0.5.1(@logtape/logtape@2.3.0)
       '@tejika/ui':
         specifier: 'catalog:'
         version: 0.4.1(@types/react@19.3.0)
@@ -2986,26 +2995,17 @@ packages:
   '@enkaku/node-streams@0.21.3':
     resolution: {integrity: sha512-i/ETV3PhbmJ3y6Qg2Ww6VMZ8YOluAENtHTr0ROLJT8lTOHzDYpstdrFwH66UYcBi0XRmN+Ky7tNltJ2B/rDMkg==}
 
-  '@enkaku/otel@0.21.0':
-    resolution: {integrity: sha512-lf/2gyuuz4v5jzjKqx2pZlbaFzW/Ajnr4zeSOgjLgBV3QdTaOKKlMDmD5R1XJV1rvsPGMwKRkZI7Bnd0kQReHw==}
-
   '@enkaku/otel@0.21.3':
     resolution: {integrity: sha512-Dy6AaOFlIVmWnGFJVBlOc0ltEK+hE4bmPKvS666i4cvtsjZOcPCM3GC057moQJiy9F/k5WUk5ELgj4OgEHiwiQ==}
 
   '@enkaku/protocol@0.21.0':
     resolution: {integrity: sha512-ihr2btoqWj7GHFrHcGhizqmwnAg4nBxXeSJy4Tq33MllRb6Pwt7jbqlIzV1mCKMGShdqcronipB3cz6XOJj/Zg==}
 
-  '@enkaku/protocol@0.21.1':
-    resolution: {integrity: sha512-c961LzIwmDHn1D1HDVAFPCJw4B3FY/w1KngESS/DcWpMOHUVCe9uq+zt/nNGcBb6hSpBflW69n9eGtHo1UrIZA==}
-
   '@enkaku/protocol@0.21.3':
     resolution: {integrity: sha512-Fu+mmo6FFajkpOseLQCbp9Uj+pGpyVXAl775m6ltXgj3fXD54HgTjZQLRtlX+rgsv9M9xIOe0jt0X1i9YYBclg==}
 
   '@enkaku/server@0.21.3':
     resolution: {integrity: sha512-CCkBsyPInrHkOh788/YQpON36bm8IlYpjR9JUvvwOBh3/OPU9gQIAUiSfgd5Ct1S0AJDemkD7mM68FucJ2eY5g==}
-
-  '@enkaku/socket@0.21.0':
-    resolution: {integrity: sha512-ubzXkS20fnuC4RD+i44AxAc72QoWUTqIvAaTsbtNSxmAEOT0T/kHuvFdj0PgLPuKY8+sQbfD2Gy1w++cY1AyBQ==}
 
   '@enkaku/socket@0.21.3':
     resolution: {integrity: sha512-cI+uafY0zXZQS20s0NknnoYYJr++HDh72ZCc1TE5FJenu3awWGU00ooeDJ6uC7h+u1fQMPHrLce9zkt0w85EAQ==}
@@ -13311,13 +13311,6 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/otel@0.21.0(@logtape/logtape@2.3.0)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
-    transitivePeerDependencies:
-      - '@logtape/logtape'
-
   '@enkaku/otel@0.21.3(@logtape/logtape@2.3.0)':
     dependencies:
       '@opentelemetry/api': 1.9.1
@@ -13328,12 +13321,6 @@ snapshots:
   '@enkaku/protocol@0.21.0(@logtape/logtape@2.3.0)':
     dependencies:
       '@kokuin/token': 0.4.0(@logtape/logtape@2.3.0)
-    transitivePeerDependencies:
-      - '@logtape/logtape'
-
-  '@enkaku/protocol@0.21.1(@logtape/logtape@2.3.0)':
-    dependencies:
-      '@kokuin/token': 0.5.0(@logtape/logtape@2.3.0)
     transitivePeerDependencies:
       - '@logtape/logtape'
 
@@ -13356,15 +13343,6 @@ snapshots:
       '@sozai/runtime': 0.1.0
       '@sozai/schema': 0.1.4
       '@sozai/stream': 0.2.0
-    transitivePeerDependencies:
-      - '@logtape/logtape'
-
-  '@enkaku/socket@0.21.0(@logtape/logtape@2.3.0)':
-    dependencies:
-      '@enkaku/otel': 0.21.0(@logtape/logtape@2.3.0)
-      '@enkaku/transport': 0.21.3(@logtape/logtape@2.3.0)
-      '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
-      '@sozai/stream': 0.2.1
     transitivePeerDependencies:
       - '@logtape/logtape'
 
@@ -15304,9 +15282,9 @@ snapshots:
   '@tejika/process@0.5.1(@logtape/logtape@2.3.0)':
     dependencies:
       '@enkaku/client': 0.21.3(@logtape/logtape@2.3.0)
-      '@enkaku/protocol': 0.21.1(@logtape/logtape@2.3.0)
+      '@enkaku/protocol': 0.21.3(patch_hash=8bcdf75051926e98df5e7c956779c4a429ee3090792d63dbae12e23859a2ae70)(@logtape/logtape@2.3.0)
       '@enkaku/server': 0.21.3(@logtape/logtape@2.3.0)
-      '@enkaku/socket': 0.21.0(@logtape/logtape@2.3.0)
+      '@enkaku/socket': 0.21.3(@logtape/logtape@2.3.0)
       '@sozai/lock': 0.1.0
       '@tejika/env': 0.5.0
       nano-spawn: 2.1.0
