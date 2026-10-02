@@ -128,7 +128,7 @@ describe('flow configuration', () => {
     await writeFile(
       path,
       JSON.stringify({
-        flowDirs: ['flows', '~/flows', '/var/flows', '~other/flows'],
+        flowDirs: ['flows', '~/flows', '/var/flows', '~other/flows', 'x:worker.js'],
         siblings: {
           worker: {
             command: 'node',
@@ -142,6 +142,7 @@ describe('flow configuration', () => {
               '--config=settings.js',
               'https://example.com/code.js',
               'file:worker.js',
+              'x:worker.js',
               'node:worker',
               'ordinary',
             ],
@@ -156,6 +157,7 @@ describe('flow configuration', () => {
       join(homedir(), 'flows'),
       '/var/flows',
       '~other/flows',
+      'x:worker.js',
     ])
     expect(config.siblings.worker?.args).toEqual([
       join(directory, 'worker.js'),
@@ -167,6 +169,7 @@ describe('flow configuration', () => {
       '--config=settings.js',
       'https://example.com/code.js',
       'file:worker.js',
+      'x:worker.js',
       'node:worker',
       'ordinary',
     ])

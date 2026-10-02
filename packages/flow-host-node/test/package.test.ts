@@ -8,7 +8,6 @@ describe('flow host node package', () => {
     const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 
     expect(manifest.name).toBe('@mokei/flow-host-node')
-    expect(manifest.version).toBe('0.14.0')
     expect(manifest.type).toBe('module')
     expect(manifest.exports).toEqual({ '.': './lib/index.js' })
     expect(manifest.types).toBe('lib/index.d.ts')

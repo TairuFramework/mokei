@@ -121,13 +121,13 @@ function issuePath(issue: { path?: ReadonlyArray<unknown>; details?: unknown }):
 function resolveConfiguredPath(value: string, configDirectory: string): string {
   if (value.startsWith('~/')) return join(homedir(), value.slice(2))
   if (value === '~') return homedir()
-  if (value.startsWith('~') || isAbsolute(value) || /^[a-z][a-z\d+.-]+:/i.test(value)) return value
+  if (value.startsWith('~') || isAbsolute(value) || /^[a-z][a-z\d+.-]*:/i.test(value)) return value
   return resolve(configDirectory, value)
 }
 
 function isScriptPath(value: string): boolean {
   return (
-    /\.(?:js|mjs|cjs)$/i.test(value) && !value.startsWith('-') && !/^[a-z][a-z\d+.-]+:/i.test(value)
+    /\.(?:js|mjs|cjs)$/i.test(value) && !value.startsWith('-') && !/^[a-z][a-z\d+.-]*:/i.test(value)
   )
 }
 

@@ -4,9 +4,14 @@ import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-ho
 import type * as TraceSDK from '@opentelemetry/sdk-trace-base'
 import * as logging from '@sozai/log'
 import { createFileSink } from '@tejika/log'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { setupFlowTelemetry } from '../src/index.js'
+let setupFlowTelemetry: typeof import('../src/telemetry.js').setupFlowTelemetry
+
+beforeEach(async () => {
+  vi.resetModules()
+  setupFlowTelemetry = (await import('../src/telemetry.js')).setupFlowTelemetry
+})
 
 const owned = vi.hoisted(() => ({
   forceFlush: vi.fn(async () => {}),

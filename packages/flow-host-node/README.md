@@ -177,7 +177,7 @@ Both deletion methods return `{ spans, logs }` counts. Times use epoch milliseco
 
 `setupFlowTelemetry` installs an asynchronous context manager and a global OpenTelemetry tracer provider.
 Existing logging configuration, a global tracer provider or a global context manager prevents installation.
-A successful installation remains once-per-process, even after disposal. Restart the process to install telemetry again.
+Successful global tracer-provider registration consumes the process lifetime, even if later file-sink or logging setup fails. Owned resources are cleaned up, but cached tracers retain the original provider. Restart the process after such a failure or after disposal to install telemetry again. Failures before provider registration can be retried after their cause is corrected.
 Host recreation can reuse the installed telemetry while its database remains open.
 
 Local span capture is batched. Optional OTLP HTTP export runs alongside local capture.

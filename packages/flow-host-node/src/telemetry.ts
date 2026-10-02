@@ -60,6 +60,8 @@ export function setupFlowTelemetry(params: {
     if (!trace.setGlobalTracerProvider(provider)) {
       throw new Error('Failed to register the global tracer provider')
     }
+    // Cached tracers retain this provider even if later setup fails.
+    installed = true
     rollback.push(() => trace.disable())
 
     const sink = createTraceStoreLogSink(params.traceStore)
@@ -91,7 +93,6 @@ export function setupFlowTelemetry(params: {
         { category: ['mokei', 'flow-host', 'capture'], lowestLevel: 'error', sinks: ['errors'] },
       ],
     })
-    installed = true
     let disposal: Promise<void> | undefined
     return {
       dispose() {
