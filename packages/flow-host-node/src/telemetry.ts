@@ -9,6 +9,24 @@ import { getConsoleSink, isSetup, reset, setup } from '@sozai/log'
 import { createFileSink } from '@tejika/log'
 
 let installed = false
+const EXPORT_TIMEOUT_MS = 10_000
+
+async function shutdownProvider(provider: BasicTracerProvider): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      provider.shutdown(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Telemetry shutdown timed out after ${EXPORT_TIMEOUT_MS}ms`)),
+          EXPORT_TIMEOUT_MS,
+        )
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 export function setupFlowTelemetry(params: {
   traceStore: TraceStore
@@ -30,7 +48,10 @@ export function setupFlowTelemetry(params: {
 
   const rollback: Array<() => void | Promise<void>> = []
   try {
-    const localProcessor = new BatchSpanProcessor(createTraceStoreSpanExporter(params.traceStore))
+    const localExporter = createTraceStoreSpanExporter(params.traceStore)
+    const localProcessor = new BatchSpanProcessor(localExporter, {
+      exportTimeoutMillis: EXPORT_TIMEOUT_MS,
+    })
     const processors = [localProcessor]
     rollback.push(() => localProcessor.shutdown())
     if (params.otlp) {
@@ -38,14 +59,19 @@ export function setupFlowTelemetry(params: {
         new OTLPTraceExporter({
           url: params.otlp.endpoint,
           headers: params.otlp.headers,
+          timeoutMillis: EXPORT_TIMEOUT_MS,
         }),
+        { exportTimeoutMillis: EXPORT_TIMEOUT_MS },
       )
       processors.push(processor)
       rollback.push(() => processor.shutdown())
     }
-    const provider = new BasicTracerProvider({ spanProcessors: processors })
+    const provider = new BasicTracerProvider({
+      spanProcessors: processors,
+      forceFlushTimeoutMillis: EXPORT_TIMEOUT_MS,
+    })
     rollback.length = 0
-    rollback.push(() => provider.shutdown())
+    rollback.push(() => shutdownProvider(provider))
     const manager = new AsyncLocalStorageContextManager()
     let contextRegistered = false
     rollback.push(() => {
@@ -100,7 +126,11 @@ export function setupFlowTelemetry(params: {
           const errors: Array<unknown> = []
           for (const cleanup of [
             () => provider.forceFlush(),
-            () => provider.shutdown(),
+            // Exporter shutdown may wait on an HTTP response after the processor's timeout.
+            () => shutdownProvider(provider),
+            // Never release storage while a local write outlives a provider/export timeout.
+            () => localProcessor.shutdown(),
+            () => localExporter.shutdown(),
             () => sink.flush(),
             reset,
             () => trace.disable(),

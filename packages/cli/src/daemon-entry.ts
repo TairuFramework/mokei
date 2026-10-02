@@ -53,6 +53,8 @@ export async function startMokeiDaemon(params: {
       socketPath: params.socketPath,
       pidPath: params.pidPath,
       handleSignals: params.handleSignals,
+      // Telemetry has two bounded 10s phases; allow acquisition and admitted work to drain too.
+      shutdownTimeoutMs: 60_000,
       handlers: createFlowHandlers(service),
       flowStatus: () => service.status(),
       onShutdown: () => service.dispose(),

@@ -203,3 +203,34 @@ test('attempts all disposal steps after failures', async () => {
   expect(owned.flush).toHaveBeenCalledOnce()
   expect(() => setupFlowTelemetry({ traceStore: createMemoryTraceStore() })).toThrow()
 })
+
+test('bounds a stalled exporter shutdown and still drains local logs and registrations', async () => {
+  vi.useFakeTimers()
+  const failure = new Error('remote flush failed')
+  owned.forceFlush.mockRejectedValueOnce(failure)
+  owned.shutdown.mockImplementationOnce(() => new Promise(() => {}))
+  vi.mocked(createTraceStoreLogSink).mockReturnValueOnce(
+    Object.assign(vi.fn(), { flush: owned.flush }),
+  )
+  const handle = setupFlowTelemetry({ traceStore: createMemoryTraceStore(), logs: { file: false } })
+  let result: unknown
+  const disposal = handle.dispose().catch((error: unknown) => {
+    result = error
+  })
+  try {
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(result).toBeInstanceOf(AggregateError)
+    expect(result).toMatchObject({
+      errors: [
+        failure,
+        expect.objectContaining({ message: 'Telemetry shutdown timed out after 10000ms' }),
+      ],
+    })
+    expect(owned.flush).toHaveBeenCalledOnce()
+    expect(logging.reset).toHaveBeenCalledOnce()
+    expect(logging.isSetup()).toBe(false)
+    await disposal
+  } finally {
+    vi.useRealTimers()
+  }
+})

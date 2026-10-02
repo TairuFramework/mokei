@@ -38,7 +38,12 @@ function alive(pid: number): boolean {
 }
 
 export async function startFlowDaemonFixture(
-  options: { notifications?: boolean; invalidConfig?: boolean } = {},
+  options: {
+    notifications?: boolean
+    invalidConfig?: boolean
+    productionEntry?: boolean
+    otlp?: { endpoint: string }
+  } = {},
 ) {
   // Keep Unix socket paths below sockaddr_un's limit, including macOS's long TMPDIR.
   const directory = await mkdtemp('/tmp/mokei-flow-daemon-')
@@ -113,7 +118,7 @@ export async function startFlowDaemonFixture(
       .map((result) => result.reason)
     if (errors.length) throw new AggregateError(errors, 'Client cleanup failed')
   }
-  async function end(signal: NodeJS.Signals) {
+  async function end(signal: NodeJS.Signals, expectedExitCode = 0) {
     if (child == null) return
     let clientError: unknown
     try {
@@ -125,7 +130,8 @@ export async function startFlowDaemonFixture(
     }
     await wait('daemon exit', () => child?.exitCode != null || child?.signalCode != null)
     if (signal === 'SIGTERM') {
-      if (child.exitCode !== 0) throw new Error(`Graceful shutdown failed: ${diagnostics()}`)
+      if (child.exitCode !== expectedExitCode)
+        throw new Error(`Graceful shutdown failed: ${diagnostics()}`)
       if (existsSync(socketPath) || existsSync(pidPath))
         throw new Error(`Shutdown left socket or pidfile: ${diagnostics()}`)
     }
@@ -136,7 +142,20 @@ export async function startFlowDaemonFixture(
   async function restart() {
     if (child != null) throw new Error('Stop the existing daemon before replacement')
     spawnError = undefined
-    child = spawn(process.execPath, [absolute('./entry.mjs'), directory], {
+    const args = options.productionEntry
+      ? [
+          absolute('../../../packages/cli/lib/daemon-entry.js'),
+          '--socket-path',
+          socketPath,
+          '--pid-path',
+          pidPath,
+          '--config-path',
+          join(directory, 'config.json'),
+          '--database-path',
+          databasePath,
+        ]
+      : [absolute('./entry.mjs'), directory]
+    child = spawn(process.execPath, args, {
       stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
       env: {
         ...process.env,
@@ -208,7 +227,8 @@ export async function startFlowDaemonFixture(
     within,
     restart,
     dispose,
-    stop: () => end('SIGTERM'),
+    diagnostics,
+    stop: (expectedExitCode = 0) => end('SIGTERM', expectedExitCode),
     kill: () => end('SIGKILL'),
     desktopRecords,
     siblingRecords,
@@ -299,6 +319,7 @@ export async function startFlowDaemonFixture(
             flowDirs: ['./flows'],
             siblings: { sibling },
             logs: { level: 'debug' },
+            ...(options.otlp ? { tracing: { otlp: options.otlp } } : {}),
             ...(options.notifications == null
               ? {}
               : { desktop: { notifications: options.notifications } }),

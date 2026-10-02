@@ -1,15 +1,17 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
+import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client } from '@enkaku/client'
-import { serve } from '@enkaku/server'
+import { type ProcedureHandlers, serve } from '@enkaku/server'
 import { DirectTransports } from '@enkaku/transport'
 import type {
   BaseProtocol,
   BaseClientMessage as HostClientMessage,
   BaseServerMessage as HostServerMessage,
+  Protocol,
 } from '@mokei/host-protocol'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -106,6 +108,67 @@ test('serves standalone flow errors and acknowledges shutdown over a socket', as
       expect(existsSync(pidPath)).toBe(false)
     })
   } finally {
+    await client.dispose()
+    await daemon.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('validates unsigned start requests before dispatch over the production socket', async () => {
+  const directory = await mkdtemp('/tmp/mokei-host-validation-')
+  const socketPath = join(directory, 'daemon.sock')
+  const start = vi.fn<ProcedureHandlers<Protocol>['runs.start']>(({ param }) => ({
+    runID: 'validated',
+    label: 'Validated',
+    state: 'completed' as const,
+    createdAt: 1,
+    updatedAt: 1,
+    plan: { tools: [] },
+    result: { content: [], output: param.input },
+  }))
+  const daemon = await serveHostDaemon({
+    socketPath,
+    pidPath: join(directory, 'daemon.pid'),
+    events: new EventTarget(),
+    handleSignals: false,
+    handlers: { 'runs.start': start },
+  })
+  const client = await createClient(socketPath)
+  const socket = createConnection(socketPath)
+  try {
+    const responses: Array<{ payload: { rid: string; code?: string } }> = []
+    let buffered = ''
+    socket.setEncoding('utf8').on('data', (chunk: string) => {
+      buffered += chunk
+      let end = buffered.indexOf('\n')
+      while (end !== -1) {
+        responses.push(JSON.parse(buffered.slice(0, end)))
+        buffered = buffered.slice(end + 1)
+        end = buffered.indexOf('\n')
+      }
+    })
+    const malformed = [
+      '{"flow":"registered","definition":{},"input":7,"extra":"unexpected"}',
+      '{"flow":"registered","input":7}',
+      '{"flow":"registered","extra":"unexpected"}',
+      // JSON parsing preserves this as Infinity, which is not a JSON value.
+      '{"flow":"registered","input":{"nested":[{"number":1e400}]}}',
+    ]
+    for (const [index, param] of malformed.entries()) {
+      socket.write(
+        `{"header":{"typ":"JWT","alg":"none"},"payload":{"typ":"request","rid":"invalid-${index}","prc":"runs.start","prm":${param}}}\n`,
+      )
+    }
+    await vi.waitFor(() => expect(responses).toHaveLength(malformed.length))
+    expect(responses.map(({ payload }) => payload.code)).toEqual(malformed.map(() => 'EK08'))
+    expect(start).not.toHaveBeenCalled()
+    const input = { nested: [null, true, 7, { value: ['ok', { deeper: false }] }] }
+    await expect(
+      client.request('runs.start', { param: { flow: 'registered', input } }),
+    ).resolves.toMatchObject({ result: { output: input } })
+    expect(start).toHaveBeenCalledOnce()
+  } finally {
+    socket.destroy()
     await client.dispose()
     await daemon.close()
     await rm(directory, { recursive: true, force: true })

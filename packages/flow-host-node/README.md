@@ -267,6 +267,14 @@ Successful global tracer-provider registration consumes the process lifetime, ev
 Host recreation can reuse the installed telemetry while its database remains open.
 
 Local span capture is batched. Optional OTLP HTTP export runs alongside local capture.
+Export requests, span batches and provider flushes each have a fixed 10-second timeout, overriding corresponding OpenTelemetry environment defaults.
+Telemetry disposal also bounds provider shutdown to 10 seconds, then attempts log drainage and registration cleanup even after export failures.
+The shutdown timeout stops waiting for remote completion. It does not cancel an outstanding HTTP request.
+Owned local span writes are drained separately before disposal returns, including when the provider times out.
+The composed daemon allows 60 seconds for its entire shutdown hook, including initialization and admitted calls before telemetry and SQLite disposal.
+This limit reserves time for ordinary cleanup. An acquisition or admitted call that never settles can exhaust it and cause a failure exit.
+The service does not close SQLite underneath active calls. Remote export failures remain aggregated disposal errors after later cleanup attempts.
+The standalone generic host retains its default shutdown timeout.
 Each new run has its own trace. Recovered runs retain their stored trace context.
 Log capture includes records with a valid active span context and records their trace and span IDs.
 Logs without that context are not stored in the trace store.

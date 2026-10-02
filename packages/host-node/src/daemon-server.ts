@@ -11,6 +11,7 @@ import type {
   HostEventMeta,
   Protocol,
 } from '@mokei/host-protocol'
+import { protocol } from '@mokei/host-protocol'
 import { tap } from '@sozai/stream'
 import { type DaemonHandle, runDaemon as tejikaRunDaemon } from '@tejika/process'
 
@@ -276,7 +277,7 @@ export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonH
     handleSignals: params.handleSignals,
     shutdownTimeoutMs: params.shutdownTimeoutMs,
     onError,
-    serve: (transport) => serve<Protocol>({ handlers, transport, requireAuth: false }),
+    serve: (transport) => serve<Protocol>({ protocol, handlers, transport, requireAuth: false }),
     onShutdown: () => {
       cleanup ??= (async () => {
         killChildren(children)
