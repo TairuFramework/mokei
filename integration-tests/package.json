@@ -35,6 +35,7 @@
     "nano-spawn": "catalog:"
   },
   "devDependencies": {
+    "@enkaku/protocol": "catalog:",
     "@modelcontextprotocol/client": "catalog:",
     "@modelcontextprotocol/core": "catalog:",
     "@modelcontextprotocol/ext-tasks": "catalog:",

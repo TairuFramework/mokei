@@ -405,6 +405,9 @@ catalogs:
 overrides:
   css-select: 5.2.0
 
+patchedDependencies:
+  '@enkaku/protocol@0.21.3': 83c3d210c65d80f1e75ad21405aeed612476cbe73334d03741bb27ff10ad5dea
+
 importers:
 
   .:
@@ -494,6 +497,9 @@ importers:
         specifier: 'catalog:'
         version: 2.1.0
     devDependencies:
+      '@enkaku/protocol':
+        specifier: 'catalog:'
+        version: 0.21.3(patch_hash=83c3d210c65d80f1e75ad21405aeed612476cbe73334d03741bb27ff10ad5dea)(@logtape/logtape@2.3.0)
       '@modelcontextprotocol/client':
         specifier: 'catalog:'
         version: 2.2.0
@@ -668,7 +674,7 @@ importers:
     devDependencies:
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.3.0)
+        version: 0.21.3(patch_hash=83c3d210c65d80f1e75ad21405aeed612476cbe73334d03741bb27ff10ad5dea)(@logtape/logtape@2.3.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../packages/context-protocol
@@ -1074,6 +1080,9 @@ importers:
 
   packages/flow-host-node:
     dependencies:
+      '@enkaku/server':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.0)
       '@logtape/logtape':
         specifier: 'catalog:'
         version: 2.3.0
@@ -1123,6 +1132,18 @@ importers:
         specifier: 'catalog:'
         version: 0.4.0(@logtape/logtape@2.3.0)
     devDependencies:
+      '@enkaku/client':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.0)
+      '@enkaku/protocol':
+        specifier: 'catalog:'
+        version: 0.21.3(patch_hash=83c3d210c65d80f1e75ad21405aeed612476cbe73334d03741bb27ff10ad5dea)(@logtape/logtape@2.3.0)
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.0)
+      '@kokuin/token':
+        specifier: 'catalog:'
+        version: 0.5.0(@logtape/logtape@2.3.0)
       '@mokei/decision-flow':
         specifier: workspace:^
         version: link:../decision-flow
@@ -1282,7 +1303,7 @@ importers:
     dependencies:
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.3.0)
+        version: 0.21.3(patch_hash=83c3d210c65d80f1e75ad21405aeed612476cbe73334d03741bb27ff10ad5dea)(@logtape/logtape@2.3.0)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.4
@@ -13262,7 +13283,7 @@ snapshots:
   '@enkaku/http-fetch@0.21.3(@logtape/logtape@2.3.0)':
     dependencies:
       '@enkaku/otel': 0.21.3(@logtape/logtape@2.3.0)
-      '@enkaku/protocol': 0.21.3(@logtape/logtape@2.3.0)
+      '@enkaku/protocol': 0.21.3(patch_hash=83c3d210c65d80f1e75ad21405aeed612476cbe73334d03741bb27ff10ad5dea)(@logtape/logtape@2.3.0)
       '@enkaku/transport': 0.21.3(@logtape/logtape@2.3.0)
       '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/runtime': 0.1.0
@@ -13274,7 +13295,7 @@ snapshots:
   '@enkaku/http-serve@0.21.3(@logtape/logtape@2.3.0)':
     dependencies:
       '@enkaku/otel': 0.21.3(@logtape/logtape@2.3.0)
-      '@enkaku/protocol': 0.21.3(@logtape/logtape@2.3.0)
+      '@enkaku/protocol': 0.21.3(patch_hash=83c3d210c65d80f1e75ad21405aeed612476cbe73334d03741bb27ff10ad5dea)(@logtape/logtape@2.3.0)
       '@enkaku/transport': 0.21.3(@logtape/logtape@2.3.0)
       '@sozai/async': 0.2.1
       '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
@@ -13316,7 +13337,7 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/protocol@0.21.3(@logtape/logtape@2.3.0)':
+  '@enkaku/protocol@0.21.3(patch_hash=83c3d210c65d80f1e75ad21405aeed612476cbe73334d03741bb27ff10ad5dea)(@logtape/logtape@2.3.0)':
     dependencies:
       '@kokuin/token': 0.5.0(@logtape/logtape@2.3.0)
     transitivePeerDependencies:
@@ -13325,7 +13346,7 @@ snapshots:
   '@enkaku/server@0.21.3(@logtape/logtape@2.3.0)':
     dependencies:
       '@enkaku/otel': 0.21.3(@logtape/logtape@2.3.0)
-      '@enkaku/protocol': 0.21.3(@logtape/logtape@2.3.0)
+      '@enkaku/protocol': 0.21.3(patch_hash=83c3d210c65d80f1e75ad21405aeed612476cbe73334d03741bb27ff10ad5dea)(@logtape/logtape@2.3.0)
       '@kokuin/capability': 0.3.0(@logtape/logtape@2.3.0)
       '@kokuin/token': 0.5.0(@logtape/logtape@2.3.0)
       '@sozai/async': 0.2.1
@@ -13333,8 +13354,8 @@ snapshots:
       '@sozai/log': 0.3.1(@logtape/logtape@2.3.0)
       '@sozai/otel': 0.3.2(@logtape/logtape@2.3.0)
       '@sozai/runtime': 0.1.0
-      '@sozai/schema': 0.1.2
-      '@sozai/stream': 0.2.1
+      '@sozai/schema': 0.1.4
+      '@sozai/stream': 0.2.0
     transitivePeerDependencies:
       - '@logtape/logtape'
 

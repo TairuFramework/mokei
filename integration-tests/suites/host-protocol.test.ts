@@ -45,6 +45,91 @@ function valid(schema: Schema, value: unknown): boolean {
   return createValidator(schema)(value).issues === undefined
 }
 
+test.each(['signed', 'unsigned', 'any'] as const)(
+  'compiles recursive JSON schemas inside %s Enkaku envelopes',
+  (type) => {
+    const before = structuredClone(hostProtocol.protocol)
+    const client = createValidator(createClientMessageSchema(hostProtocol.protocol, type))
+    const server = createValidator(createServerMessageSchema(hostProtocol.protocol, type))
+    expect(hostProtocol.protocol).toEqual(before)
+    const signed = type === 'signed'
+    const envelope = signed
+      ? { header: { typ: 'JWT', alg: 'EdDSA' }, signature: 'schema-validation-signature' }
+      : { header: { typ: 'JWT', alg: 'none' } }
+    const claims = signed ? { iss: 'did:key:validation-fixture' } : {}
+    const request = {
+      ...envelope,
+      payload: {
+        ...claims,
+        typ: 'request',
+        prc: 'runs.start',
+        rid: runID,
+        prm: { definition: emptyFlow, input: { nested: [null, true, { number: 42 }] } },
+      },
+    }
+    expect(client(request).issues).toBeUndefined()
+    expect(
+      client({
+        ...request,
+        payload: {
+          ...request.payload,
+          prm: { ...request.payload.prm, input: { bad: [() => {}] } },
+        },
+      }).issues,
+    ).toBeDefined()
+    const response = {
+      ...envelope,
+      payload: {
+        ...claims,
+        typ: 'result',
+        rid: runID,
+        val: {
+          ...run,
+          result: { content: [{ type: 'text', text: 'ok', nested: [null, { ok: true }] }] },
+        },
+      },
+    }
+    expect(server(response).issues).toBeUndefined()
+    expect(
+      server({
+        ...response,
+        payload: {
+          ...response.payload,
+          val: {
+            ...response.payload.val,
+            result: { content: [{ type: 'text', text: 'ok', nested: [() => {}] }] },
+          },
+        },
+      }).issues,
+    ).toBeDefined()
+  },
+)
+
+test('preserves local definition references inside schema ID resources', () => {
+  const resource = {
+    $id: 'https://mokei.dev/test/schema-resource',
+    definitions: { value: { type: 'number' } },
+    type: 'object',
+    properties: { value: { $ref: '#/definitions/value' } },
+  } as const
+  const protocol = { check: { type: 'request', param: resource, result: resource } } as const
+  const before = structuredClone(protocol)
+  const clientSchema = createClientMessageSchema(protocol, 'unsigned')
+  const serverSchema = createServerMessageSchema(protocol, 'unsigned')
+  expect(JSON.stringify(clientSchema)).toContain('"$ref":"#/definitions/value"')
+  expect(JSON.stringify(serverSchema)).toContain('"$ref":"#/definitions/value"')
+  expect(protocol).toEqual(before)
+  const client = createValidator(clientSchema)
+  const request = {
+    header: { typ: 'JWT', alg: 'none' },
+    payload: { typ: 'request', prc: 'check', rid: runID, prm: { value: 42 } },
+  }
+  expect(client(request).issues).toBeUndefined()
+  expect(
+    client({ ...request, payload: { ...request.payload, prm: { value: 'invalid' } } }).issues,
+  ).toBeDefined()
+})
+
 describe('host events', () => {
   test('flow events require run identity without context identity', () => {
     const runEvent = { type: 'run:state', meta, data: run }
@@ -369,3 +454,5 @@ describe('flow procedures', () => {
     ).toBe(false)
   })
 })
+
+import { createClientMessageSchema, createServerMessageSchema } from '@enkaku/protocol'

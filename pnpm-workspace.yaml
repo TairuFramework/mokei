@@ -174,3 +174,6 @@ allowBuilds:
   node-pty: true
   unrs-resolver: true
   yarn: true
+
+patchedDependencies:
+  '@enkaku/protocol@0.21.3': patches/@enkaku__protocol@0.21.3.patch

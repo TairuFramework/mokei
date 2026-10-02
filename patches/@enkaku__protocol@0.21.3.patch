@@ -1,0 +1,73 @@
+diff --git a/lib/schemas/client.js b/lib/schemas/client.js
+index 6d65d019378d5d9bb2f798ee56c31329a88bc94c..89db2a251aa549b06994fefcf9ea15bf3b68111c 100644
+--- a/lib/schemas/client.js
++++ b/lib/schemas/client.js
+@@ -1,4 +1,4 @@
+-import { createMessageSchema } from './message.js';
++import { createMessageSchema, rebaseDefinitionReferences } from './message.js';
+ /** @internal */ export const abortMessagePayload = {
+     type: 'object',
+     properties: {
+@@ -201,7 +201,7 @@ export function createClientMessageSchema(protocol, type) {
+     if (addAbort) {
+         schemasRecord.abort = createAbortMessageSchema(type);
+     }
+-    return {
++    return rebaseDefinitionReferences({
+         anyOf: Object.values(schemasRecord)
+-    };
++    });
+ }
+diff --git a/lib/schemas/message.js b/lib/schemas/message.js
+index b6613554a1d63c68c2a70819cd1f640ed9326348..95eaf284dd472c398e0ab6ad99052dd1c5ba3525 100644
+--- a/lib/schemas/message.js
++++ b/lib/schemas/message.js
+@@ -1,4 +1,28 @@
+ import { signedHeaderSchema, signedPayloadSchema, unsignedHeaderSchema } from '@kokuin/token';
++// Definition references must resolve at the composed message root. Keep ID-qualified resources intact.
++export function rebaseDefinitionReferences(schema) {
++    function visit(value, path, scopes) {
++        if (Array.isArray(value)) {
++            return value.map((item, index)=>visit(item, `${path}/${index}`, scopes));
++        }
++        if (value === null || typeof value !== 'object') return value;
++        if (typeof value.$id === 'string') return value;
++        const next = value.definitions || value.$defs ? [...scopes, { value, path }] : scopes;
++        return Object.fromEntries(Object.entries(value).map(([key, item])=>{
++            if (key === '$ref' && typeof item === 'string') {
++                const match = /^#\/(definitions|\$defs)\/([^/]+)(.*)$/.exec(item);
++                if (match) {
++                    const name = match[2].replace(/~1/g, '/').replace(/~0/g, '~');
++                    const scope = next.findLast(({ value })=>Object.hasOwn(value[match[1]] ?? {}, name));
++                    if (scope) return [key, `#${scope.path}/${match[1]}/${match[2]}${match[3]}`];
++                }
++            }
++            const segment = key.replace(/~/g, '~0').replace(/\//g, '~1');
++            return [key, visit(item, `${path}/${segment}`, next)];
++        }));
++    }
++    return visit(schema, '', []);
++}
+ /**
+  * Upper bound for the DID-valued claims (iss/sub/aud). A did:peer:4 long form
+  * inlines its DID document, so it far exceeds a did:key length; 1024 admits a
+diff --git a/lib/schemas/server.js b/lib/schemas/server.js
+index c3e4ed2333452ebd07216b7a2a9cbb7687819aad..fd1c1564f503cd5b6da72f436c9c1a79f97c0817 100644
+--- a/lib/schemas/server.js
++++ b/lib/schemas/server.js
+@@ -1,4 +1,4 @@
+-import { createMessageSchema } from './message.js';
++import { createMessageSchema, rebaseDefinitionReferences } from './message.js';
+ /** @internal */ export const errorMessagePayload = {
+     type: 'object',
+     properties: {
+@@ -136,7 +136,7 @@ export function createServerMessageSchema(protocol, type) {
+                 }
+         }
+     }
+-    return {
++    return rebaseDefinitionReferences({
+         anyOf: Object.values(schemasRecord)
+-    };
++    });
+ }
