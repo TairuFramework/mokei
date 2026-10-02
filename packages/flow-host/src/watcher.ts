@@ -35,7 +35,13 @@ export function createWatchers(params: {
       if (signal.aborted) finish()
     })
   }
-  async function loop(runID: string, taskID: string, signal: AbortSignal, ready: () => void) {
+  async function loop(
+    runID: string,
+    taskID: string,
+    signal: AbortSignal,
+    ready: () => void,
+    rejectInitial: (error: unknown) => void,
+  ) {
     let failures = 0
     let readSnapshot = false
     while (!signal.aborted) {
@@ -56,7 +62,8 @@ export function createWatchers(params: {
           ready()
           return
         }
-        if (!readSnapshot) throw error
+        // Recovery owns readiness failure cleanup. Ordinary launches retain polling retries.
+        if (!readSnapshot) rejectInitial(error)
         failures += 1
         delay = Math.min(5000, Math.max(1, params.pollMs) * 2 ** Math.min(failures, 20))
       }
@@ -79,7 +86,7 @@ export function createWatchers(params: {
       const work = Promise.resolve()
         .then(() => {
           return params.withRun(runID, () => {
-            return loop(runID, taskID, controller.signal, initial.resolve)
+            return loop(runID, taskID, controller.signal, initial.resolve, initial.reject)
           })
         })
         .catch((error) => {

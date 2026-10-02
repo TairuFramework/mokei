@@ -114,16 +114,26 @@ test('missing tasks settle readiness only after interrupted mapping', async () =
   expect(failed).toBe(true)
 })
 
-test('an initial transport error rejects readiness and ends polling', async () => {
+test('an initial transport error rejects readiness while polling retries', async () => {
   vi.useFakeTimers()
-  const { watchers, get } = await fixture()
+  const applied: Array<string> = []
+  const { watchers, get } = await fixture({
+    apply: async (_runID, task) => {
+      applied.push(task.status)
+      return task.status === 'completed'
+    },
+  })
   const error = new Error('Transport disconnected')
-  get.mockRejectedValue(error)
+  get
+    .mockRejectedValueOnce(error)
+    .mockResolvedValue({ ...snapshot, status: 'completed', result: { content: [] } })
   const initial = watchers.watch('run', 'task')
-  expect(initial).toBeInstanceOf(Promise)
   await expect(initial).rejects.toBe(error)
-  await vi.advanceTimersByTimeAsync(10_000)
-  expect(get).toHaveBeenCalledTimes(1)
+  expect(watchers.watch('run', 'task')).toBe(initial)
+  await vi.advanceTimersByTimeAsync(100)
+  expect(applied).toEqual(['completed'])
+  expect(get).toHaveBeenCalledTimes(2)
+  await expect(initial).rejects.toBe(error)
 })
 
 test('later transport errors retry after readiness', async () => {
