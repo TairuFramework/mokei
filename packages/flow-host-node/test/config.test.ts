@@ -27,6 +27,7 @@ describe('flow configuration', () => {
       tracing: {},
       logs: { level: 'info' },
       retention: { days: 30 },
+      desktop: { notifications: false },
     })
   })
 
@@ -58,6 +59,7 @@ describe('flow configuration', () => {
         tracing: { otlp: { endpoint: 'http://localhost:4318/v1/traces', headers: {} } },
         logs: { level: 'debug' },
         retention: { days: 30 },
+        desktop: { notifications: false },
       }),
     )
 
@@ -74,6 +76,7 @@ describe('flow configuration', () => {
       tracing: { otlp: { endpoint: 'http://localhost:4318/v1/traces', headers: {} } },
       logs: { level: 'debug' },
       retention: { days: 30 },
+      desktop: { notifications: false },
     })
   })
 
@@ -103,6 +106,9 @@ describe('flow configuration', () => {
     const { FlowConfigError, loadFlowConfig } = await import('../src/index.js')
     const directory = await createDirectory()
     const cases: Array<[string, string, string]> = [
+      ['desktop-value.json', '{"desktop":{"notifications":"yes"}}', 'desktop.notifications'],
+      ['desktop-extra.json', '{"desktop":{"notifications":true,"extra":true}}', 'desktop.extra'],
+      ['desktop-null.json', '{"desktop":null}', 'desktop'],
       ['unknown.json', '{"predictor":"fake"}', 'predictor'],
       ['malformed.json', '{', 'JSON'],
       ['zero.json', '{"retention":{"days":0}}', 'retention.days'],
@@ -174,4 +180,17 @@ describe('flow configuration', () => {
       'ordinary',
     ])
   })
+})
+
+test('desktop notification opt-in and an empty desktop config are normalised', async () => {
+  const { loadFlowConfig } = await import('../src/config.js')
+  const directory = await createDirectory()
+  const path = join(directory, 'desktop.json')
+  for (const [desktop, expected] of [
+    [{}, false],
+    [{ notifications: true }, true],
+  ] as const) {
+    await writeFile(path, JSON.stringify({ desktop }))
+    expect((await loadFlowConfig(path)).desktop).toEqual({ notifications: expected })
+  }
 })

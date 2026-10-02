@@ -42,8 +42,10 @@
   },
   "dependencies": {
     "@logtape/logtape": "catalog:",
+    "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/flow-host": "workspace:^",
+    "@mokei/host-desktop": "workspace:^",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/context-async-hooks": "catalog:",
     "@opentelemetry/exporter-trace-otlp-http": "catalog:",

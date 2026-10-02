@@ -1,6 +1,12 @@
 export type { FlowConfig } from './config.js'
 export { FlowConfigError, loadFlowConfig } from './config.js'
 export { openFlowDatabase } from './database.js'
+export type { FlowDesktopAdapter, FlowDesktopController } from './desktop.js'
+export {
+  createFlowDesktopController,
+  DesktopPromptUnavailableError,
+  InboxPromptInProgressError,
+} from './desktop.js'
 export { loadFlowDirs } from './flow-dirs.js'
 export { startRetention } from './retention.js'
 export { createSQLiteRunStore } from './sqlite-run-store.js'

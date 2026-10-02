@@ -12,6 +12,7 @@ export type FlowConfig = {
   tracing: { otlp?: { endpoint: string; headers?: Record<string, string> } }
   logs: { level: LogLevel }
   retention: { days: number }
+  desktop: { notifications: boolean }
 }
 
 type FlowConfigErrorParams = { path: string; issues: Array<string> }
@@ -82,6 +83,11 @@ const configurationSchema = {
       required: ['level'],
       additionalProperties: false,
     },
+    desktop: {
+      type: 'object',
+      properties: { notifications: { type: 'boolean' } },
+      additionalProperties: false,
+    },
     retention: {
       type: 'object',
       properties: { days: { type: 'integer', minimum: 1 } },
@@ -101,6 +107,7 @@ function createDefaults(): FlowConfig {
     tracing: {},
     logs: { level: 'info' },
     retention: { days: 30 },
+    desktop: { notifications: false },
   }
 }
 
@@ -165,6 +172,7 @@ export async function loadFlowConfig(
     tracing: supplied.tracing ?? {},
     logs: supplied.logs ?? { level: 'info' },
     retention: supplied.retention ?? { days: 30 },
+    desktop: { notifications: supplied.desktop?.notifications ?? false },
   }
   const configDirectory = dirname(resolve(path))
   return {

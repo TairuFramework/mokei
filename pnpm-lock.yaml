@@ -1077,12 +1077,18 @@ importers:
       '@logtape/logtape':
         specifier: 'catalog:'
         version: 2.3.0
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
       '@mokei/context-server':
         specifier: workspace:^
         version: link:../context-server
       '@mokei/flow-host':
         specifier: workspace:^
         version: link:../flow-host
+      '@mokei/host-desktop':
+        specifier: workspace:^
+        version: link:../host-desktop
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
