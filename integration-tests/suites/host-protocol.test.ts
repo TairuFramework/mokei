@@ -130,6 +130,52 @@ test('preserves local definition references inside schema ID resources', () => {
   ).toBeDefined()
 })
 
+test('preserves literal references in constants and schema annotations', () => {
+  const literal = { $ref: '#/definitions/value' }
+  const param = {
+    definitions: { value: { type: 'string' } },
+    type: 'object',
+    properties: {
+      payload: { const: literal },
+      choice: { enum: [literal] },
+      fallback: { type: 'object', default: literal },
+      documented: { type: 'object', examples: [literal] },
+    },
+    required: ['payload', 'choice'],
+  } as const
+  const protocol = { check: { type: 'request', param, result: param } } as const
+  const before = structuredClone(protocol)
+  const clientSchema = createClientMessageSchema(protocol, 'unsigned')
+  const serverSchema = createServerMessageSchema(protocol, 'unsigned')
+  const client = createValidator(clientSchema)
+  const server = createValidator(serverSchema)
+  const header = { typ: 'JWT', alg: 'none' }
+  const value = { payload: literal, choice: literal }
+  const request = { header, payload: { typ: 'request', prc: 'check', rid: runID, prm: value } }
+  const response = { header, payload: { typ: 'result', rid: runID, val: value } }
+  expect(client(request).issues).toBeUndefined()
+  expect(server(response).issues).toBeUndefined()
+  const rebased = { $ref: '#/anyOf/0/properties/payload/properties/prm/definitions/value' }
+  expect(
+    client({
+      ...request,
+      payload: { ...request.payload, prm: { payload: rebased, choice: rebased } },
+    }).issues,
+  ).toBeDefined()
+  expect(protocol).toEqual(before)
+  for (const schema of [clientSchema, serverSchema]) {
+    const text = JSON.stringify(schema)
+    expect(text).toContain('"default":{"$ref":"#/definitions/value"}')
+    expect(text).toContain('"examples":[{"$ref":"#/definitions/value"}]')
+  }
+  const annotated = {
+    check: { type: 'request', param: { ...param, 'x-annotation': literal } },
+  } as const
+  expect(JSON.stringify(createClientMessageSchema(annotated))).toContain(
+    '"x-annotation":{"$ref":"#/definitions/value"}',
+  )
+})
+
 describe('host events', () => {
   test('flow events require run identity without context identity', () => {
     const runEvent = { type: 'run:state', meta, data: run }
