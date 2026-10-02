@@ -40,8 +40,7 @@ connection to share and injects native desktop operations from `@mokei/host-desk
 desktop implementations. Custom applications can compose the same service through
 [`serveHostDaemon`](../host-node/README.md#daemon-composition).
 
-The entry accepts `--socket-path`, `--pid-path`, `--config-path` and `--database-path` for isolated
-application instances. Configuration otherwise comes from `getDataDir('mokei')/flows.json`.
+Configuration comes from `getDataDir('mokei')/flows.json`.
 The service's `start()` is idempotent. Generic proxy and monitor status inspection are available
 while flows initialize, and stay available if flow startup fails.
 
