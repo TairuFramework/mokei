@@ -81,70 +81,83 @@ export function createHandlers({
       await shutdown?.()
     },
     spawn: async (ctx) => {
+      if (ctx.signal.aborted) return
       const contextID = randomUUID()
       const spawned = await spawnContextServer(ctx.param)
-      activeContexts[contextID] = { startedTime: Date.now() }
-      children.set(contextID, spawned.childProcess)
-      events.dispatchEvent(
-        new CustomEvent('context:start', {
-          detail: {
-            meta: createEventMeta(contextID),
-            data: { transport: 'stdio', command: ctx.param.command, args: ctx.param.args ?? [] },
-          },
-        }),
-      )
-
-      const stream = await createTransportStream(spawned.streams)
-
+      if (ctx.signal.aborted) {
+        spawned.childProcess.kill()
+        return
+      }
+      const controller = new AbortController()
       let stopped = false
       const stopContext = () => {
+        if (stopped) return
+        stopped = true
+        controller.abort()
+        spawned.childProcess.off('exit', stopContext)
+        ctx.signal.removeEventListener('abort', stopContext)
+        try {
+          spawned.childProcess.kill()
+        } finally {
+          delete activeContexts[contextID]
+          children.delete(contextID)
+          events.dispatchEvent(
+            new CustomEvent('context:stop', { detail: { meta: createEventMeta(contextID) } }),
+          )
+        }
+      }
+      activeContexts[contextID] = { startedTime: Date.now() }
+      children.set(contextID, spawned.childProcess)
+      // Own cancellation before transport conversion can yield.
+      spawned.childProcess.once('exit', stopContext)
+      ctx.signal.addEventListener('abort', stopContext, { once: true })
+      try {
+        events.dispatchEvent(
+          new CustomEvent('context:start', {
+            detail: {
+              meta: createEventMeta(contextID),
+              data: { transport: 'stdio', command: ctx.param.command, args: ctx.param.args ?? [] },
+            },
+          }),
+        )
+        const stream = await createTransportStream(spawned.streams)
         if (stopped) {
+          await Promise.allSettled([stream.readable.cancel(), stream.writable.abort()])
           return
         }
-        stopped = true
-        spawned.childProcess.kill()
-        delete activeContexts[contextID]
-        children.delete(contextID)
-        events.dispatchEvent(
-          new CustomEvent('context:stop', { detail: { meta: createEventMeta(contextID) } }),
-        )
+        await Promise.all([
+          ctx.readable
+            .pipeThrough(
+              tap((message) => {
+                events.dispatchEvent(
+                  new CustomEvent('context:message', {
+                    detail: {
+                      meta: createEventMeta(contextID),
+                      data: { from: 'client', message },
+                    },
+                  }),
+                )
+              }),
+            )
+            .pipeTo(stream.writable, { signal: controller.signal }),
+          stream.readable
+            .pipeThrough(
+              tap((message) => {
+                events.dispatchEvent(
+                  new CustomEvent('context:message', {
+                    detail: {
+                      meta: createEventMeta(contextID),
+                      data: { from: 'server', message },
+                    },
+                  }),
+                )
+              }),
+            )
+            .pipeTo(ctx.writable, { signal: controller.signal }),
+        ])
+      } finally {
+        stopContext()
       }
-
-      // A child that exits on its own must leave activeContexts and notify
-      // proxy clients, exactly as an explicit abort would.
-      spawned.childProcess.once('exit', stopContext)
-      ctx.signal.addEventListener('abort', stopContext)
-
-      await Promise.all([
-        ctx.readable
-          .pipeThrough(
-            tap((message) => {
-              events.dispatchEvent(
-                new CustomEvent('context:message', {
-                  detail: {
-                    meta: createEventMeta(contextID),
-                    data: { from: 'client', message },
-                  },
-                }),
-              )
-            }),
-          )
-          .pipeTo(stream.writable),
-        stream.readable
-          .pipeThrough(
-            tap((message) => {
-              events.dispatchEvent(
-                new CustomEvent('context:message', {
-                  detail: {
-                    meta: createEventMeta(contextID),
-                    data: { from: 'server', message },
-                  },
-                }),
-              )
-            }),
-          )
-          .pipeTo(ctx.writable),
-      ])
     },
   }
 }
@@ -196,6 +209,7 @@ export type HostDaemonParams = {
   handlers?: Partial<ProcedureHandlers<Protocol>>
   flowStatus?: () => FlowServiceStatus
   onShutdown?: () => Promise<void>
+  onError?: (error: unknown) => void
 }
 
 export function composeHandlers(
@@ -215,6 +229,11 @@ export function composeHandlers(
 
 export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonHandle> {
   const children = new Map<string, ChildProcess>()
+  const onError =
+    params.onError ??
+    ((error: unknown) => {
+      console.error(error)
+    })
   let daemon: DaemonHandle | undefined
   let shutdownScheduled = false
   const baseHandlers = createHandlers({
@@ -228,7 +247,7 @@ export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonH
       shutdownScheduled = true
       // Let Enkaku send the acknowledgement before closing its transport.
       setTimeout(() => {
-        void daemon?.close().catch(() => {})
+        void daemon?.close().catch(onError)
       }, 0)
     },
   })
@@ -256,6 +275,7 @@ export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonH
     signal: params.signal,
     handleSignals: params.handleSignals,
     shutdownTimeoutMs: params.shutdownTimeoutMs,
+    onError,
     serve: (transport) => serve<Protocol>({ handlers, transport, requireAuth: false }),
     onShutdown: () => {
       cleanup ??= (async () => {

@@ -1,6 +1,7 @@
 import { ChildProcess } from 'node:child_process'
 import { getEventListeners } from 'node:events'
 import { Client } from '@enkaku/client'
+import * as nodeStreams from '@enkaku/node-streams'
 import type { ProcedureHandlers, Server } from '@enkaku/server'
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, HostEvent, Protocol, ServerMessage } from '@mokei/host-protocol'
@@ -10,7 +11,10 @@ import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from 'vi
 
 import { runDaemon } from '../src/daemon.js'
 import { composeHandlers, serveHostDaemon } from '../src/daemon-server.js'
-import { createHandlers } from '../src/server.js'
+import { createHandlers, killChildren } from '../src/server.js'
+import * as spawnModule from '../src/spawn.js'
+
+vi.mock('@enkaku/node-streams', { spy: true })
 
 const mocks = vi.hoisted(() => ({ runDaemon: vi.fn(), ensureDaemon: vi.fn() }))
 vi.mock('@tejika/process', async (original) => ({
@@ -53,6 +57,7 @@ afterEach(async () => {
   for (const client of clients) await client.dispose()
   await close()
   await Promise.all(transports.map((pair) => pair.dispose()))
+  vi.restoreAllMocks()
   vi.clearAllMocks()
 })
 
@@ -179,6 +184,47 @@ describe('daemon composition', () => {
     expect(onShutdown).toHaveBeenCalledTimes(1)
   })
 
+  test('reports RPC shutdown cleanup failure after acknowledging the request', async () => {
+    const failure = new Error('cleanup failed')
+    const onError = vi.fn()
+    await serveHostDaemon({
+      events: new EventTarget(),
+      onError,
+      onShutdown: async () => {
+        throw failure
+      },
+    })
+    const client = connect()
+    try {
+      await expect(client.request('shutdown')).resolves.toBeUndefined()
+      expect(onError).not.toHaveBeenCalled()
+      await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(failure))
+      expect(options?.onError).toBe(onError)
+    } finally {
+      await close().catch(() => {})
+      close = vi.fn(async () => {})
+    }
+  })
+
+  test('logs RPC shutdown cleanup failure when no error callback is injected', async () => {
+    const failure = new Error('cleanup failed')
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await serveHostDaemon({
+      events: new EventTarget(),
+      onShutdown: async () => {
+        throw failure
+      },
+    })
+    const client = connect()
+    try {
+      await expect(client.request('shutdown')).resolves.toBeUndefined()
+      await vi.waitFor(() => expect(log).toHaveBeenCalledWith(failure))
+    } finally {
+      await close().catch(() => {})
+      close = vi.fn(async () => {})
+    }
+  })
+
   test('kills tracked children while injected cleanup is pending', async () => {
     const { promise: pendingCleanup, resolve: finishCleanup } = Promise.withResolvers<void>()
     const onShutdown = vi.fn(() => pendingCleanup)
@@ -300,4 +346,135 @@ test('an explicit daemon entry overrides the default', async () => {
   })
   await runDaemon()
   expect(mocks.ensureDaemon.mock.lastCall?.[0].entry).toMatch(/\/server\.js$/)
+})
+
+describe('proxy spawn cancellation', () => {
+  test('does not acquire a child for an already-aborted request', async () => {
+    const spawn = vi
+      .spyOn(spawnModule, 'spawnContextServer')
+      .mockRejectedValueOnce(new Error('unexpected spawn'))
+    const handler = createHandlers({
+      activeContexts: {},
+      children: new Map(),
+      events: new EventTarget(),
+      startedTime: 0,
+    }).spawn
+    await expect(
+      handler({ signal: AbortSignal.abort(), param: { command: process.execPath } } as Parameters<
+        typeof handler
+      >[0]),
+    ).resolves.toBeUndefined()
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  test('kills a child acquired after cancellation and daemon cleanup', async () => {
+    const acquired = await spawnModule.spawnContextServer({
+      command: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 1e9)'],
+    })
+    const exited = new Promise<void>((resolve) =>
+      acquired.childProcess.once('exit', () => resolve()),
+    )
+    const gate = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    const spawn = vi.spyOn(spawnModule, 'spawnContextServer').mockImplementationOnce(async () => {
+      entered.resolve()
+      await gate.promise
+      return acquired
+    })
+    const children = new Map<string, ChildProcess>()
+    const activeContexts = {}
+    const events = new EventTarget()
+    const started = vi.fn()
+    events.addEventListener('context:start', started)
+    const signal = new AbortController()
+    let input: ReadableStreamDefaultController | undefined
+    const readable = new ReadableStream({
+      start: (controller) => {
+        input = controller
+      },
+    })
+    const handler = createHandlers({ activeContexts, children, events, startedTime: 0 }).spawn
+    const pending = Promise.resolve(
+      handler({
+        signal: signal.signal,
+        param: { command: process.execPath },
+        readable,
+        writable: new WritableStream(),
+      } as Parameters<typeof handler>[0]),
+    ).catch(() => {})
+    try {
+      await entered.promise
+      signal.abort()
+      killChildren(children)
+      gate.resolve()
+      await vi.waitFor(() => expect(acquired.childProcess.killed).toBe(true))
+      await pending
+      expect(children.size).toBe(0)
+      expect(activeContexts).toEqual({})
+      expect(started).not.toHaveBeenCalled()
+    } finally {
+      gate.resolve()
+      acquired.childProcess.kill()
+      try {
+        input?.close()
+      } catch {}
+      await pending
+      await exited
+      spawn.mockRestore()
+    }
+  })
+
+  test('retains cleanup ownership during asynchronous transport conversion', async () => {
+    const convert = nodeStreams.createTransportStream
+    const gate = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    const conversion = vi
+      .spyOn(nodeStreams, 'createTransportStream')
+      .mockImplementationOnce(async (...args) => {
+        entered.resolve()
+        await gate.promise
+        return await convert(...args)
+      })
+    const children = new Map<string, ChildProcess>()
+    const activeContexts = {}
+    const events = new EventTarget()
+    const stopped = vi.fn()
+    events.addEventListener('context:stop', stopped)
+    const signal = new AbortController()
+    let input: ReadableStreamDefaultController | undefined
+    const readable = new ReadableStream({
+      start: (controller) => {
+        input = controller
+      },
+    })
+    const handler = createHandlers({ activeContexts, children, events, startedTime: 0 }).spawn
+    const pending = Promise.resolve(
+      handler({
+        signal: signal.signal,
+        param: { command: process.execPath, args: ['-e', 'setInterval(() => {}, 1e9)'] },
+        readable,
+        writable: new WritableStream(),
+      } as Parameters<typeof handler>[0]),
+    ).catch(() => {})
+    let acquired: ChildProcess | undefined
+    try {
+      await entered.promise
+      acquired = [...children.values()][0]
+      expect(acquired).toBeDefined()
+      signal.abort()
+      await vi.waitFor(() => expect(acquired?.killed).toBe(true))
+      expect(children.size).toBe(0)
+      expect(activeContexts).toEqual({})
+      expect(stopped).toHaveBeenCalledTimes(1)
+    } finally {
+      gate.resolve()
+      acquired?.kill()
+      try {
+        input?.close()
+      } catch {}
+      await pending
+      conversion.mockRestore()
+    }
+  })
 })
