@@ -22,7 +22,7 @@ export const monitorPresenceParamSchema = {
   properties: { attachmentID: { type: 'string' } },
   required: ['attachmentID'],
   additionalProperties: false,
-} satisfies Schema
+} as const satisfies Schema
 
 const monitorStateSchema = {
   type: 'object',
