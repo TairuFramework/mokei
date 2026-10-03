@@ -189,23 +189,99 @@ test('followRun interactive answers an input and an approval, then resolves comp
   expect(stdout.join('')).toContain('"done"')
 })
 
-test('followRun interactive declines an approval the user rejects', async () => {
+test('followRun leaves an approval pending when the user does not approve', async () => {
   const memory = createMemoryControl()
   memory.setRun(snapshot('r1', 'awaiting_approval'))
   memory.addItem(approvalItem('a1', 'r1'))
-  const decline = memory.control.inbox.decline
-  vi.spyOn(memory.control.inbox, 'decline').mockImplementation(async (id, reason) => {
-    await decline(id, reason)
-    memory.setRun(snapshot('r1', 'denied'))
-  })
+  const decline = vi.spyOn(memory.control.inbox, 'decline')
+  const answer = vi.spyOn(memory.control.inbox, 'answer')
   vi.mocked(promptApproval).mockResolvedValue(false)
-  const status = await followRun(memory.control, 'r1', {
+
+  const pending = followRun(memory.control, 'r1', {
     interactive: true,
     json: false,
     signal: new AbortController().signal,
   })
-  expect(status.state).toBe('denied')
-  expect(memory.control.inbox.decline).toHaveBeenCalledWith('a1')
+  await vi.waitFor(() => expect(promptApproval).toHaveBeenCalledTimes(1))
+  await flush()
+  expect(promptApproval).toHaveBeenCalledTimes(1)
+  expect(decline).not.toHaveBeenCalled()
+  expect(answer).not.toHaveBeenCalled()
+  expect(await memory.control.inbox.list({ runID: 'r1' })).toHaveLength(1)
+  expect(stderr.join('')).toContain('mokei inbox decline a1')
+
+  memory.setRun(snapshot('r1', 'cancelled'))
+  await expect(pending).resolves.toMatchObject({ state: 'cancelled' })
+  expect(decline).not.toHaveBeenCalled()
+})
+
+test('followRun abort closes an open prompt, rejects and leaves the item pending', async () => {
+  const memory = createMemoryControl()
+  memory.setRun(snapshot('r1', 'input_required'))
+  memory.addItem(inputItem('i1', 'r1'))
+  const answer = vi.spyOn(memory.control.inbox, 'answer')
+  const decline = vi.spyOn(memory.control.inbox, 'decline')
+  const cancel = vi.spyOn(memory.control.inbox, 'cancel')
+  const closed = vi.fn()
+  // A prompt blocked on user input that honours the signal, as the real prompts do.
+  vi.mocked(promptForm).mockImplementation(
+    (_item, options) =>
+      new Promise((_resolve, reject) => {
+        const signal = options?.signal
+        signal?.addEventListener(
+          'abort',
+          () => {
+            closed()
+            reject(signal.reason)
+          },
+          { once: true },
+        )
+      }),
+  )
+  const controller = new AbortController()
+  const pending = followRun(memory.control, 'r1', {
+    interactive: true,
+    json: false,
+    signal: controller.signal,
+  })
+  await vi.waitFor(() => expect(promptForm).toHaveBeenCalledTimes(1))
+  expect(vi.mocked(promptForm).mock.calls[0]?.[1]?.signal).toBe(controller.signal)
+
+  controller.abort(new Error('interrupted'))
+  await expect(pending).rejects.toThrow('interrupted')
+  expect(closed).toHaveBeenCalledTimes(1)
+  expect(answer).not.toHaveBeenCalled()
+  expect(decline).not.toHaveBeenCalled()
+  expect(cancel).not.toHaveBeenCalled()
+  expect(await memory.control.inbox.list({ runID: 'r1' })).toHaveLength(1)
+  expect(memory.openSubscriptions()).toBe(0)
+})
+
+test('followRun abort during an approval prompt never settles the item', async () => {
+  const memory = createMemoryControl()
+  memory.setRun(snapshot('r1', 'awaiting_approval'))
+  memory.addItem(approvalItem('a1', 'r1'))
+  const decline = vi.spyOn(memory.control.inbox, 'decline')
+  const answer = vi.spyOn(memory.control.inbox, 'answer')
+  vi.mocked(promptApproval).mockImplementation(
+    (_item, options) =>
+      new Promise((_resolve, reject) => {
+        const signal = options?.signal
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+      }),
+  )
+  const controller = new AbortController()
+  const pending = followRun(memory.control, 'r1', {
+    interactive: true,
+    json: false,
+    signal: controller.signal,
+  })
+  await vi.waitFor(() => expect(promptApproval).toHaveBeenCalledTimes(1))
+  controller.abort(new Error('interrupted'))
+  await expect(pending).rejects.toThrow('interrupted')
+  expect(answer).not.toHaveBeenCalled()
+  expect(decline).not.toHaveBeenCalled()
+  expect(await memory.control.inbox.list({ runID: 'r1' })).toHaveLength(1)
 })
 
 test('followRun interactive re-prompts when the answer is invalid', async () => {

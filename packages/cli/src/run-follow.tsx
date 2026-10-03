@@ -73,18 +73,18 @@ function createLiveStatus(): LiveStatus {
 async function answerInput(control: FlowControl, id: string, signal: AbortSignal): Promise<void> {
   const item = await control.inbox.get(id)
   if (item.kind === 'approval') {
-    const approved = await promptApproval(item)
-    signal.throwIfAborted()
-    if (approved) {
+    // `n` and Esc are indistinguishable here, so neither denies: denial is `mokei inbox decline`.
+    if (await promptApproval(item, { signal })) {
       await control.inbox.answer(item.id)
     } else {
-      await control.inbox.decline(item.id)
+      process.stderr.write(
+        `Left ${item.id} pending; deny it with: mokei inbox decline ${item.id}\n`,
+      )
     }
     return
   }
   for (;;) {
-    const values = await promptForm(item)
-    signal.throwIfAborted()
+    const values = await promptForm(item, { signal })
     if (values === undefined) {
       process.stderr.write(
         `Left ${item.id} pending; answer it later with: mokei inbox answer ${item.id}\n`,
@@ -188,8 +188,8 @@ async function followChanges(
 
 /**
  * Watches a run until it is terminal and resolves its final status. Interactive mode (never with
- * `json`) shows a live status line and answers each pending item in the terminal; Esc leaves an
- * item pending and keeps watching. Otherwise it prints each changed status once, as NDJSON when
+ * `json`) shows a live status line and answers each pending item in the terminal; Esc in a form,
+ * or not approving, leaves the item pending and keeps watching. An abort closes an open prompt. Otherwise it prints each changed status once, as NDJSON when
  * `json` is set. Rejects with the signal's reason when aborted.
  */
 export async function followRun(
