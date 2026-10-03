@@ -50,7 +50,7 @@ export type DesktopNotifyOptions = {
   /** Notifications sharing a group replace each other (alerter only). */
   group?: string
   /** Called at most once when the user clicks the notification (alerter only). */
-  onClick?: () => void
+  onClick?: () => void | Promise<void>
 }
 export type DesktopNotifier = {
   /** Resolves once the notification is delivered; a click is reported later through `onClick`. */
@@ -71,7 +71,9 @@ export function createDesktopNotifier(options: DesktopElicitOptions = {}): Deskt
   })
   const backends = new Map<BackendName, DesktopBackend>()
   const disposal = new AbortController()
-  const deliveries = new Set<Promise<void>>()
+  const deliveries = new Set<Promise<unknown>>()
+  // Exits of notifications still showing after delivery
+  const live = new Set<Promise<void>>()
   let disposing: Promise<void> | undefined
 
   async function notify(message: string, callOptions: DesktopNotifyOptions = {}): Promise<void> {
@@ -111,13 +113,15 @@ export function createDesktopNotifier(options: DesktopElicitOptions = {}): Deskt
             ? undefined
             : () => {
                 if (lifetime.aborted) return
-                try {
-                  onClick()
-                } catch (error) {
+                const failed = (error: unknown) =>
                   report(
                     options.onUnsupported,
                     `Notification click handler failed: ${error instanceof Error ? error.message : String(error)}`,
                   )
+                try {
+                  void Promise.resolve(onClick()).catch(failed)
+                } catch (error) {
+                  failed(error)
                 }
               },
       })
@@ -126,7 +130,12 @@ export function createDesktopNotifier(options: DesktopElicitOptions = {}): Deskt
         () => deliveries.delete(delivery),
         () => deliveries.delete(delivery),
       )
-      await untilAbort(delivery, signal)
+      const delivered = await untilAbort(delivery, signal)
+      if (delivered != null) {
+        const closed = delivered.closed
+        live.add(closed)
+        void closed.then(() => live.delete(closed))
+      }
     } finally {
       clearTimeout(timer)
     }
@@ -139,6 +148,7 @@ export function createDesktopNotifier(options: DesktopElicitOptions = {}): Deskt
         const results = await Promise.allSettled([
           ...(ownsRunner ? [runner.dispose()] : []),
           ...[...deliveries].map((delivery) => delivery.catch(() => undefined)),
+          ...live,
         ])
         const failures = results
           .filter((result) => result.status === 'rejected')

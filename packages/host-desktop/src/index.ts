@@ -11,6 +11,7 @@ export type {
   DesktopBackend,
   NotifyBackendName,
   NotifyCallOptions,
+  NotifyDelivery,
   NotifyRequest,
 } from './backends/types.js'
 export { createZenityBackend } from './backends/zenity.js'

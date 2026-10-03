@@ -128,6 +128,39 @@ describe('dispose', () => {
     expect(runner.dispose).not.toHaveBeenCalled()
   })
 
+  test('dispose removes live notifications without disposing an injected runner', async () => {
+    const runner = { run: vi.fn(), dispose: vi.fn(async () => {}) }
+    let exit!: () => void
+    let lifetime: AbortSignal | undefined
+    const tools = createDesktopTools({
+      platform: 'linux',
+      env: LINUX_ENV,
+      runner,
+      createBackend: (name) => ({
+        name,
+        notify: async (_request, options) => {
+          lifetime = options.lifetime
+          const closed = new Promise<void>((resolve) => {
+            exit = resolve
+          })
+          return { closed }
+        },
+      }),
+    })
+    const host = new ContextHost()
+    host.addLocalTools(tools)
+    await host.callLocalTool({ name: 'notify', arguments: { message: 'm' } })
+    expect(lifetime?.aborted).toBe(false)
+    const done = vi.fn()
+    const disposing = tools.dispose().then(done)
+    expect(lifetime?.aborted).toBe(true)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(done).not.toHaveBeenCalled()
+    exit()
+    await disposing
+    expect(runner.dispose).not.toHaveBeenCalled()
+  })
+
   test('notify after dispose reports an error and starts no runner', async () => {
     const created: Array<Runner> = []
     const tools = createDesktopTools({

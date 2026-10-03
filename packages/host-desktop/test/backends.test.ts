@@ -306,13 +306,15 @@ describe('alerter', () => {
     const { runner, signals } = liveRunner()
     const lifetime = new AbortController()
     const onClick = vi.fn()
-    await createAlerterBackend(runner).notify?.(
+    const delivered = await createAlerterBackend(runner).notify?.(
       { title: 'T', message: 'M' },
       { timeoutMs: 10, signal, lifetime: lifetime.signal, onClick },
     )
     expect(signals[0]?.aborted).toBe(false)
     lifetime.abort(new Error('Settled'))
     expect(signals[0]?.aborted).toBe(true)
+    // `closed` settles without rejecting once the killed process has exited
+    await expect(delivered?.closed).resolves.toBeUndefined()
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(onClick).not.toHaveBeenCalled()
   })

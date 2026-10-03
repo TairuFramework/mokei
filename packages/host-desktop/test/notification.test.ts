@@ -243,3 +243,50 @@ test('darwin prefers alerter and falls back to osascript for an option-like mess
     rmSync(darwinBin, { recursive: true, force: true })
   }
 })
+
+test('dispose waits for a delivered notification process to exit on an injected runner', async () => {
+  let exit!: () => void
+  let lifetime: AbortSignal | undefined
+  const runner: Runner = {
+    run: async () => {
+      throw new Error('Unexpected runner call')
+    },
+    dispose: vi.fn(async () => {}),
+  }
+  const { notifier } = create({
+    runner,
+    createBackend: (name) => ({
+      name,
+      notify: async (_request, options) => {
+        lifetime = options.lifetime
+        // Like alerter: delivered now, the process exits some time after being killed
+        const closed = new Promise<void>((resolve) => {
+          exit = resolve
+        })
+        return { closed }
+      },
+    }),
+  })
+  await notifier.notify('Pending')
+  const done = vi.fn()
+  const disposing = notifier.dispose().then(done)
+  expect(lifetime?.aborted).toBe(true)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  expect(done).not.toHaveBeenCalled()
+  exit()
+  await disposing
+  expect(done).toHaveBeenCalledTimes(1)
+  expect(runner.dispose).not.toHaveBeenCalled()
+})
+
+test('a rejecting async click handler is reported, not left unhandled', async () => {
+  const reports: Array<string> = []
+  const { notifier, calls } = create({ onUnsupported: (reason) => reports.push(reason) })
+  await notifier.notify('Pending', {
+    onClick: async () => {
+      throw new Error('Async boom')
+    },
+  })
+  calls[0]?.options.onClick?.()
+  await vi.waitFor(() => expect(reports).toEqual(['Notification click handler failed: Async boom']))
+})

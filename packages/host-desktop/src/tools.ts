@@ -168,6 +168,9 @@ export function createDesktopTools(options: DesktopToolsOptions): DesktopTools {
   const tools: Array<LocalToolDefinition> = []
   let ownRunner: Runner | undefined
   let disposed = false
+  // Removes notifications still showing after delivery, including on an injected runner
+  const lifetime = new AbortController()
+  const live = new Set<Promise<void>>()
 
   if (options.notify !== false) {
     const createBackend = options.createBackend ?? defaultCreateBackend(appName)
@@ -232,10 +235,19 @@ export function createDesktopTools(options: DesktopToolsOptions): DesktopTools {
         const deliverySignal =
           signal == null ? timeout.signal : AbortSignal.any([timeout.signal, signal])
         try {
-          await untilAbort(
-            backend.notify(request, { timeoutMs: NOTIFY_TIMEOUT_MS, signal: deliverySignal }),
+          const delivered = await untilAbort(
+            backend.notify(request, {
+              timeoutMs: NOTIFY_TIMEOUT_MS,
+              signal: deliverySignal,
+              lifetime: lifetime.signal,
+            }),
             deliverySignal,
           )
+          if (delivered != null) {
+            const closed = delivered.closed
+            live.add(closed)
+            void closed.then(() => live.delete(closed))
+          }
         } catch (error) {
           return errorResult(
             `Notification failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -308,7 +320,8 @@ export function createDesktopTools(options: DesktopToolsOptions): DesktopTools {
 
   async function dispose(): Promise<void> {
     disposed = true
-    await ownRunner?.dispose()
+    lifetime.abort(new Error(DISPOSED_MESSAGE))
+    await Promise.all([ownRunner?.dispose(), ...live])
   }
 
   return Object.assign(tools, { dispose })

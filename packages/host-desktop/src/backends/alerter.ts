@@ -5,6 +5,7 @@ import {
   type DesktopBackend,
   getNativeTimeoutSeconds,
   type NotifyCallOptions,
+  type NotifyDelivery,
   type NotifyRequest,
   requireChoices,
   unexpectedExit,
@@ -119,7 +120,7 @@ async function notifyWithAlerter(
   runner: Runner,
   request: NotifyRequest,
   { timeoutMs, signal, group, lifetime, onClick }: NotifyCallOptions,
-): Promise<void> {
+): Promise<NotifyDelivery> {
   signal.throwIfAborted()
   const kill = new AbortController()
   const processSignal = lifetime == null ? kill.signal : AbortSignal.any([kill.signal, lifetime])
@@ -148,7 +149,10 @@ async function notifyWithAlerter(
     kill.abort(error)
     throw error
   }
+  return { closed: exit.then(noop, noop) }
 }
+
+function noop(): void {}
 
 export function buildAlerterArgs(request: AskRequest, nativeTimeoutSeconds: number): Array<string> {
   const args = [

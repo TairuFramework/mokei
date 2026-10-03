@@ -492,10 +492,13 @@ test('click prompt errors never escape and expected ones are not reported', asyn
 })
 test('a click on an unpromptable item is ignored', async () => {
   const { host, item } = await runtime()
-  const { controller, adapter, errors } = setup({ host, adapter: { canPrompt: () => false } })
+  const canPrompt = vi.fn(() => false)
+  const { controller, adapter, errors } = setup({ host, adapter: { canPrompt } })
   controller.restored([item])
   notifyOptions(adapter).onClick?.()
-  await controller.dispose()
+  await vi.waitFor(() => expect(canPrompt).toHaveBeenCalledTimes(1))
+  // Let the rejected click prompt reach its handler before asserting
+  await new Promise((resolve) => setTimeout(resolve, 10))
   expect(adapter.prompt).not.toHaveBeenCalled()
   expect(errors).toEqual([])
 })
