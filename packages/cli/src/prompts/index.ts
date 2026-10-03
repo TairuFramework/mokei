@@ -4,11 +4,13 @@ import { createElement, type ReactElement } from 'react'
 
 import { ApprovalRunner } from './ApprovalPrompt.js'
 import { ExitOnAbort } from './ExitOnAbort.js'
+import { InterruptOnCtrlC } from './InterruptOnCtrlC.js'
 import { FormRunner } from './SchemaForm.js'
 import { parseElicitationForm } from './schema-form.js'
 
 export { ApprovalPrompt, ApprovalRunner } from './ApprovalPrompt.js'
 export { ExitOnAbort } from './ExitOnAbort.js'
+export { InterruptOnCtrlC } from './InterruptOnCtrlC.js'
 export { FormRunner, SchemaForm } from './SchemaForm.js'
 export {
   type FieldValidation,
@@ -19,17 +21,22 @@ export {
   validateFieldInput,
 } from './schema-form.js'
 
+/** Ink must not swallow Ctrl-C: `InterruptOnCtrlC` re-raises it as SIGINT instead. */
+const PROMPT_RENDER_OPTIONS = { exitOnCtrlC: false }
+
 /**
- * Runs a prompt app. With a signal, an abort closes and unmounts the prompt, then rejects with the
- * abort reason (also when already aborted), whatever the prompt reported.
+ * Runs a prompt app. Ctrl-C raises SIGINT, which aborts the command signal (see
+ * `withCommandSignal`). With a signal, an abort closes and unmounts the prompt, then rejects with
+ * the abort reason (also when already aborted), whatever the prompt reported.
  */
 async function runPrompt(element: ReactElement, signal?: AbortSignal): Promise<void> {
+  const interruptible = createElement(InterruptOnCtrlC, null, element)
   if (signal == null) {
-    await runInk(element)
+    await runInk(interruptible, PROMPT_RENDER_OPTIONS)
     return
   }
   signal.throwIfAborted()
-  await runInk(createElement(ExitOnAbort, { signal }, element))
+  await runInk(createElement(ExitOnAbort, { signal }, interruptible), PROMPT_RENDER_OPTIONS)
   signal.throwIfAborted()
 }
 

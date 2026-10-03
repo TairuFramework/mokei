@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import type { InboxItem } from '@mokei/flow-client'
+import { runInk } from '@tejika/cli'
 import { type Instance, render } from 'ink'
 import type { ReactElement } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -119,4 +120,25 @@ test('promptApproval with a signal still resolves the answer', async () => {
   await new Promise((resolve) => setImmediate(resolve))
   mounted[0]?.stdin.write('y')
   await expect(pending).resolves.toBe(true)
+})
+
+test('Ctrl-C in a prompt raises SIGINT, which aborts the command and closes the prompt', async () => {
+  // Stands in for withCommandSignal's SIGINT listener; never signal the test runner itself.
+  const controller = new AbortController()
+  const kill = vi.spyOn(process, 'kill').mockImplementation(((_pid: number, signal: string) => {
+    if (signal === 'SIGINT') controller.abort(new Error('SIGINT'))
+    return true
+  }) as never)
+  try {
+    const pending = promptForm(input, { signal: controller.signal })
+    await vi.waitFor(() => expect(mounted).toHaveLength(1))
+    expect(vi.mocked(runInk).mock.calls.at(-1)?.[1]).toMatchObject({ exitOnCtrlC: false })
+    await new Promise((resolve) => setImmediate(resolve))
+    mounted[0]?.stdin.write('\u0003')
+    await expect(pending).rejects.toThrow('SIGINT')
+    expect(kill).toHaveBeenCalledWith(process.pid, 'SIGINT')
+    expect(mounted[0]?.exited).toBe(true)
+  } finally {
+    kill.mockRestore()
+  }
 })
