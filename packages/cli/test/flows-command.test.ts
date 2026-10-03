@@ -56,9 +56,11 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => {
+afterEach(async () => {
   process.exitCode = undefined
   vi.restoreAllMocks()
+  const { rm } = await import('node:fs/promises')
+  await Promise.all(directories.splice(0).map((d) => rm(d, { recursive: true, force: true })))
 })
 
 test('list prints one line per flow and auto-starts the daemon', async () => {
@@ -82,11 +84,14 @@ test('list reports a connection failure with exit code 1', async () => {
   expect(process.exitCode).toBe(1)
 })
 
+const directories: Array<string> = []
+
 async function writeDefinition(): Promise<string> {
   const { mkdtemp, writeFile } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
   const directory = await mkdtemp(join(tmpdir(), 'mokei-flows-cmd-'))
+  directories.push(directory)
   const file = join(directory, 'flow.json')
   await writeFile(file, JSON.stringify({ id: 'x' }))
   return file
@@ -146,6 +151,26 @@ test('mcp serves the flow server and disposes the connection when the transport 
   expect(dispose).toHaveBeenCalled()
   expect(stdout.join('')).toBe('')
   expect(connectFlowControl).toHaveBeenCalledWith({ socketPath: SOCKET, autoStart: true })
+})
+
+test('mcp disposes the server and the connection exactly once when stdin ends', async () => {
+  const dispose = connect()
+  let close: () => void = () => {}
+  const disposed = new Promise<void>((resolve) => {
+    close = resolve
+  })
+  const serverDispose = vi.fn(async () => close())
+  vi.mocked(serveProcess).mockReturnValue({ disposed, dispose: serverDispose } as never)
+  const before = process.stdin.listenerCount('end')
+  const pending = run('mcp', '-s', SOCKET)
+  await vi.waitFor(() => expect(serveProcess).toHaveBeenCalled())
+  await vi.waitFor(() => expect(process.stdin.listenerCount('end')).toBe(before + 1))
+  process.stdin.emit('end')
+  await pending
+  expect(serverDispose).toHaveBeenCalledTimes(1)
+  expect(dispose).toHaveBeenCalledTimes(1)
+  expect(process.stdin.listenerCount('end')).toBe(before)
+  expect(process.stdin.listenerCount('close')).toBe(0)
 })
 
 test('mcp reports a connection failure on stderr only', async () => {

@@ -71,15 +71,19 @@ async function runMCP(options: CommandOptions): Promise<void> {
     const server = serveProcess(
       createFlowControlServer(connection.control, { version: CLI_VERSION }),
     )
-    // Stdout belongs to the MCP transport. Stop serving on SIGINT/SIGTERM, otherwise run until
-    // the transport closes (stdin ends).
+    // Stdout belongs to the MCP transport. The server does not dispose itself when stdin reaches
+    // EOF, so stdin closure, SIGINT and SIGTERM all dispose it explicitly.
     await withCommandSignal(async (signal) => {
-      const onAbort = () => void server.dispose()
-      signal.addEventListener('abort', onAbort, { once: true })
+      const stop = () => void server.dispose()
+      signal.addEventListener('abort', stop, { once: true })
+      process.stdin.once('end', stop)
+      process.stdin.once('close', stop)
       try {
         await server.disposed
       } finally {
-        signal.removeEventListener('abort', onAbort)
+        signal.removeEventListener('abort', stop)
+        process.stdin.off('end', stop)
+        process.stdin.off('close', stop)
       }
     })
   } catch (error) {
