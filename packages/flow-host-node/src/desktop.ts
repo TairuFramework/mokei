@@ -129,6 +129,7 @@ export function createFlowDesktopController(params: {
     owners.set(id, outcome)
     const stop = begin(id)
     const signal = AbortSignal.any([stop.signal, caller, disposal.signal])
+    const promptDeliveries = new Set<SurfaceDelivery>()
     const abort = () => outcome.reject(signal.reason)
     signal.addEventListener('abort', abort, { once: true })
     const routing = (async () => {
@@ -138,6 +139,7 @@ export function createFlowDesktopController(params: {
         if (surface.prompt == null) continue
         const delivery = await surface.prompt(item, { signal })
         if (delivery == null) continue
+        promptDeliveries.add(delivery)
         keep(id, delivery, signal)
         if (signal.aborted) return outcome.promise
         const settled = await Promise.race([
@@ -159,7 +161,7 @@ export function createFlowDesktopController(params: {
       stop.abort(new Error('Inbox prompt finished'))
       end(id, stop)
       owners.delete(id)
-      for (const delivery of deliveries.get(id) ?? []) delivery.close()
+      for (const delivery of promptDeliveries) delivery.close()
     }
   }
   return {

@@ -497,6 +497,34 @@ test('clicking the pending summary opens no prompt', async () => {
   await controller.dispose()
   expect(adapter.prompt).not.toHaveBeenCalled()
 })
+test('a competing request preserves the click-opened dialog and its notification', async () => {
+  const { host, item, connect } = await runtime()
+  const gate = deferred<ElicitResult>()
+  const prompt = vi.fn<FlowDesktopAdapter['prompt']>(() => gate.promise)
+  const { controller, adapter, errors } = setup({ host, adapter: { prompt } })
+  connect(controller)
+  controller.restored([item])
+  const notification = notifyOptions(adapter)
+  notification.onClick?.()
+  try {
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1))
+    const dialog = prompt.mock.calls[0]?.[0]
+    expect(dialog?.signal.aborted).toBe(false)
+    await expect(controller.prompt(item.id, new AbortController().signal)).rejects.toMatchObject({
+      name: 'InboxPromptInProgressError',
+    })
+    expect(dialog?.signal.aborted).toBe(false)
+    expect(notification.signal?.aborted).toBe(false)
+    expect(host.inbox.get(item.id)).toEqual(item)
+    expect(errors).toEqual([])
+  } finally {
+    gate.resolve({ action: 'accept', content: { value: 'Ada' } })
+  }
+  await vi.waitFor(() => expect(host.inbox.list()).toEqual([]))
+  expect(notification.signal?.aborted).toBe(true)
+  expect(prompt).toHaveBeenCalledTimes(1)
+  expect(errors).toEqual([])
+})
 test('click prompt errors never escape and expected ones are not reported', async () => {
   const { host, item } = await runtime()
   const gate = deferred<ElicitResult>()
@@ -564,17 +592,21 @@ test('verified monitor attention suppresses native notifications', async () => {
   await controller.dispose()
 })
 
-test('a frozen visible monitor falls back to native after five seconds', async () => {
-  vi.useFakeTimers()
-  const { surface } = monitor({ visible: true, canNotify: false, frozen: true })
-  const { controller, adapter } = setup({ surfaces: [surface] })
-  controller.restored([])
-  controller.added(second)
-  await vi.advanceTimersByTimeAsync(4_999)
-  expect(adapter.notify).not.toHaveBeenCalled()
-  await vi.advanceTimersByTimeAsync(1)
-  expect(adapter.notify).toHaveBeenCalledTimes(1)
-})
+test.each([true, false])(
+  'a frozen visible monitor with canNotify=%s falls back to native after five seconds',
+  async (canNotify) => {
+    vi.useFakeTimers()
+    const { surface, messages } = monitor({ visible: true, canNotify, frozen: true })
+    const { controller, adapter } = setup({ surfaces: [surface] })
+    controller.restored([])
+    controller.added(second)
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(adapter.notify).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(adapter.notify).toHaveBeenCalledTimes(1)
+    expect(messages.map((message) => message.type)).toEqual(['ping'])
+  },
+)
 
 test.each([true, false])(
   'monitor notification shown=%s controls native fallback',

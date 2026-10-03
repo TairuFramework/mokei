@@ -125,6 +125,8 @@ export function createMonitorPresence(
     const nonce = randomID()
     return waitForReply(tab, tab.pings, nonce, { type: 'ping', nonce }, signal, () => {
       tab.state.visible = false
+      // Reuse failed liveness until a fresh state, avoiding a second fallback timeout.
+      tab.state.canNotify = false
     })
   }
 
