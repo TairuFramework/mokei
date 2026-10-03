@@ -40,15 +40,17 @@ test('dispose closes the client', async () => {
 
 test('withCommandSignal aborts on SIGINT and removes listeners afterwards', async () => {
   const before = process.listenerCount('SIGINT')
+  const termBefore = process.listenerCount('SIGTERM')
   const result = await withCommandSignal(async (signal) => {
     expect(process.listenerCount('SIGINT')).toBe(before + 1)
+    expect(process.listenerCount('SIGTERM')).toBe(termBefore + 1)
     process.emit('SIGINT')
     expect(signal.aborted).toBe(true)
     return 'done'
   })
   expect(result).toBe('done')
   expect(process.listenerCount('SIGINT')).toBe(before)
-  expect(process.listenerCount('SIGTERM')).toBe(process.listenerCount('SIGTERM'))
+  expect(process.listenerCount('SIGTERM')).toBe(termBefore)
 })
 
 test('withCommandSignal removes listeners when work throws', async () => {

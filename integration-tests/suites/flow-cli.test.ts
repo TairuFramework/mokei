@@ -357,6 +357,11 @@ describe('flows mcp over stdio', () => {
       expect(refused.isError).toBe(true)
       expect(refused.content[0]?.text).toMatch(/^INBOX_ANSWER_INVALID: .*prompt_input/)
     }
+    // Neither refusal settled the approval: it is still pending.
+    expect(ok(await mcp.call('flow_status', { runID: run.runID }))).toMatchObject({
+      state: 'awaiting_approval',
+      pending: [{ id, kind: 'approval' }],
+    })
     ok(await mcp.call('cancel_flow', { runID: run.runID }))
   })
 
@@ -523,11 +528,11 @@ test('daemon start, stop and restart run the production entry in isolated direct
     expect(fromStopped.stdout).toContain('flow service: ready')
 
     const restarted = await cli.json<{
-      stop: { outcome: string; pid?: number }
+      stop: { state: string; pid?: number; forced?: boolean }
       start: { pid: number; flowService: unknown }
     }>(['daemon', 'restart'])
     pids.add(restarted.start.pid)
-    expect(restarted.stop.outcome).toBe('stopped')
+    expect(restarted.stop).toMatchObject({ state: 'stopped', forced: false })
     if (restarted.stop.pid != null) pids.add(restarted.stop.pid)
     expect(restarted.start).toMatchObject({ flowService: { state: 'ready' } })
     expect(restarted.start.pid).not.toBe(restarted.stop.pid)
@@ -539,8 +544,11 @@ test('daemon start, stop and restart run the production entry in isolated direct
     await cli.json(['inbox', 'answer', item.id, '--value', '{"value":"Ada"}'])
     await runState(cli, run.runID, 'completed')
 
-    const final = await cli.json<{ state: string; pid?: number }>(['daemon', 'stop'])
-    expect(final).toEqual({ state: 'stopped', pid: restarted.start.pid })
+    const final = await cli.json<{ state: string; pid?: number; forced?: boolean }>([
+      'daemon',
+      'stop',
+    ])
+    expect(final).toEqual({ state: 'stopped', pid: restarted.start.pid, forced: false })
   } finally {
     // Never leave a daemon behind, whatever failed above.
     try {
