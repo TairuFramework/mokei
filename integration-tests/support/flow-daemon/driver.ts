@@ -75,6 +75,9 @@ export async function startFlowDaemonFixture(
     MOKEI_DATA_DIR: directory,
     MOKEI_STATE_DIR: directory,
     MOKEI_LOG_DIR: join(directory, 'logs'),
+    // Pin every path override so inherited MOKEI_* variables cannot escape the temp directory.
+    MOKEI_PID_PATH: join(directory, 'mokei.pid'),
+    MOKEI_SOCKET_PATH: socketPath,
   }
   // Resolve the pid file with the CLI's own call so the fixture and `mokei daemon` agree.
   const pidPath = withEnv(env, () => getPIDPath('mokei'))
