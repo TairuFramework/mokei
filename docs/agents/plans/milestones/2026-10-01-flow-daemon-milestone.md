@@ -1,6 +1,6 @@
 # Milestone: flow daemon
 
-**Status:** open -- sub-projects 1, 2 and 3 complete -- native desktop QA deferred -- sub-project 4 implemented, pending manual macOS QA
+**Status:** open -- sub-projects 1 to 4 complete -- sub-project 5 (monitor) next
 **Opened:** 2026-10-01
 **Replaces:** phase 3 of the [flow rig milestone](2026-09-30-flow-rig-milestone.md), from sub-project B onwards
 
@@ -64,8 +64,8 @@ Each sub-project gets its own spec, plan and PR from `main`.
 |---|-------------|----------|---------------|--------|
 | 1 | Flow runtime | `@mokei/flow-host` with memory stores; `DecisionFlowWiring.authorize`; a portable elicitation content validator; the `flow.run` span. The rig becomes a thin shim over it. | Unit suite green; the rig integration suite green on the shim. | complete |
 | 2 | Node storage and observability | `@mokei/flow-host-node`: sqlite stores, span and log capture, OTLP option, config loader, retention. | Store, capture and config tests green. | complete |
-| 3 | Daemon | `host-protocol` procedures and events, handler composition in `host-node`, daemon entry in the CLI, recovery on boot, desktop notifier. | Daemon integration suite green, including restart and resume. | complete; native desktop QA deferred |
-| 4 | CLI and MCP | `mokei daemon`, `flows`, `runs` and `inbox` commands; `mokei flows mcp`. `scripts/flow-rig` and its suite are deleted. The MCP server lives in the portable `@mokei/flow-client` (not `@mokei/flow-host-node`), over a `FlowControl` interface with a daemon adapter and a local `@mokei/flow-host` adapter. Folds in the published declaration dependency fixes (context-server, context-client, context-rpc, context-protocol, model-provider) and the `pnpm test:packed` packed-consumer check. | End-to-end suite green; packed consumer check green; manual macOS QA done. | implemented; pending manual macOS QA |
+| 3 | Daemon | `host-protocol` procedures and events, handler composition in `host-node`, daemon entry in the CLI, recovery on boot, desktop notifier. | Daemon integration suite green, including restart and resume. | complete (native desktop QA done in sub-project 4) |
+| 4 | CLI and MCP | `mokei daemon`, `flows`, `runs` and `inbox` commands; `mokei flows mcp`. `scripts/flow-rig` and its suite are deleted. The MCP server lives in the portable `@mokei/flow-client` (not `@mokei/flow-host-node`), over a `FlowControl` interface with a daemon adapter and a local `@mokei/flow-host` adapter. Folds in the published declaration dependency fixes (context-server, context-client, context-rpc, context-protocol, model-provider) and the `pnpm test:packed` packed-consumer check. | End-to-end suite green; packed consumer check green; manual macOS QA done. | complete |
 | 5 | Monitor | Runs, run detail and inbox pages. Revisit desktop notification clicks: while the monitor is running, a click could open its inbox screen instead of the item dialog. | Manual QA of the monitor pages. | not started |
 
 Completed sub-projects link their summary in `completed/` here.
@@ -73,8 +73,9 @@ Completed sub-projects link their summary in `completed/` here.
 - Sub-project 1: [`completed/2026-10-01-flow-host.complete.md`](../completed/2026-10-01-flow-host.complete.md)
 - Sub-project 2: [`completed/2026-10-02-flow-host-node.complete.md`](../completed/2026-10-02-flow-host-node.complete.md)
 - Sub-project 3: [`completed/2026-10-02-flow-daemon.complete.md`](../completed/2026-10-02-flow-daemon.complete.md)
+- Sub-project 4: [`completed/2026-10-03-flow-cli.complete.md`](../completed/2026-10-03-flow-cli.complete.md)
 
-[Native desktop QA](../next/2026-10-02-flow-daemon-native-desktop-qa.md) remains a user-deferred acceptance pass.
+Native desktop QA, deferred from sub-project 3, passed during sub-project 4 manual macOS QA.
 
 Sub-project 3 implements one flow service per daemon process and initial recovery reconciliation
 before ready publication. Flow startup failure leaves proxy and monitor status serving available.

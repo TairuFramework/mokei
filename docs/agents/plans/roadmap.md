@@ -53,14 +53,18 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **Flow daemon milestone** (`milestones/2026-10-01-flow-daemon-milestone.md`) -- sub-projects 1 to 3 complete;
-  sub-project 4 (CLI and MCP, `mokei flows mcp`) is implemented and awaits manual macOS QA
-  (`next/2026-10-02-flow-daemon-native-desktop-qa.md`). The monitor pages (sub-project 5) follow.
+- **Flow daemon milestone** (`milestones/2026-10-01-flow-daemon-milestone.md`) -- sub-projects 1 to 4 complete
+  (CLI and MCP shipped with `mokei flows mcp`; native desktop QA passed). The monitor pages (sub-project 5) are next.
 
 The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) -- both
 revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
+
+- **Flow CLI and MCP** (2026-10-03) -- `mokei daemon`, `flows`, `runs` and `inbox` commands and
+  `mokei flows mcp` over the new portable `@mokei/flow-client`; clickable `alerter` notifications on
+  macOS open an item's desktop prompt; the packed-consumer check guards published declarations.
+  See `completed/2026-10-03-flow-cli.complete.md`.
 
 - **Flow rig, phase 1** (2026-09-30) -- a local rig ran decision flows with System One, MCP siblings
   and desktop input, driven from Claude Code through a facade MCP server. Replaced by the flow CLI and
