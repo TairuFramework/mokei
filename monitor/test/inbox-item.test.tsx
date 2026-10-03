@@ -96,6 +96,7 @@ test('observes settlement while open and reports presence on mount and unmount',
   f.emit({ type: 'inbox:settled', data: { item: f.entry, outcome: 'declined' } })
   expect(await screen.findByText(/Outcome: declined/)).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+  expect(setActiveItem).toHaveBeenLastCalledWith(undefined)
   view.unmount()
   expect(setActiveItem).toHaveBeenLastCalledWith(undefined)
 })
@@ -107,6 +108,7 @@ test('not-found on load shows No longer pending', async () => {
   )
   render(f.view())
   expect(await screen.findByText('No longer pending')).toBeTruthy()
+  expect(setActiveItem).not.toHaveBeenCalledWith('item-1')
 })
 
 test.each(['Approve', 'Deny'])(
@@ -120,6 +122,8 @@ test.each(['Approve', 'Deny'])(
         action === 'Approve' ? f.control.inbox.answer : f.control.inbox.decline,
       ).toHaveBeenCalledWith('item-1'),
     )
+    await screen.findByText(/already settled/)
+    expect(setActiveItem).toHaveBeenLastCalledWith(undefined)
   },
 )
 
@@ -132,6 +136,7 @@ test('a submit race shows an already settled notice', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
   expect(await screen.findByText(/already settled/)).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+  expect(setActiveItem).toHaveBeenLastCalledWith(undefined)
 })
 
 test.each(['Accept', 'Decline', 'Cancel'])(
@@ -173,6 +178,7 @@ test('actions disappear when disconnected', async () => {
   await screen.findByRole('button', { name: 'Approve' })
   view.rerender(f.view({ ...f.value, connected: false }))
   expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+  expect(setActiveItem).toHaveBeenLastCalledWith(undefined)
 })
 
 test('daemon validation errors keep typed values and allow a corrected retry', async () => {

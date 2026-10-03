@@ -1,6 +1,5 @@
 import { Alert, Anchor, Loader, Stack, Text, Title } from '@mantine/core'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useEffect } from 'react'
 
 import { PendingItemActions } from '../components/PendingItemActions.js'
 import { useFlow } from '../flow/FlowProvider.js'
@@ -17,10 +16,6 @@ function InboxItemDetail({ itemID }: { itemID: string }) {
   const { item, outcome, loading, error } = useInboxItem(itemID)
   const { setActiveItem } = usePresence()
   const ready = connected && status?.state === 'ready'
-  useEffect(() => {
-    setActiveItem(itemID)
-    return () => setActiveItem(undefined)
-  }, [itemID, setActiveItem])
   return (
     <Stack>
       <Title order={1}>Inbox item</Title>
@@ -42,7 +37,7 @@ function InboxItemDetail({ itemID }: { itemID: string }) {
             )}>
             {item.runID}
           </Anchor>
-          <PendingItemActions key={item.id} item={item} />
+          <PendingItemActions key={item.id} item={item} onActiveItemChange={setActiveItem} />
         </>
       )}
     </Stack>

@@ -1,18 +1,29 @@
 import { Alert, Stack, Text } from '@mantine/core'
 import { type InboxItem, isFlowControlError } from '@mokei/flow-client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useFlow } from '../flow/FlowProvider.js'
 import { ApprovalCard } from './ApprovalCard.js'
 import { SchemaForm } from './SchemaForm.js'
 
-export function PendingItemActions({ item }: { item: InboxItem }) {
+export function PendingItemActions({
+  item,
+  onActiveItemChange,
+}: {
+  item: InboxItem
+  onActiveItemChange?: (itemID?: string) => void
+}) {
   const { control, connected, status } = useFlow()
   const itemID = item.id
   const [busy, setBusy] = useState(false)
   const [settled, setSettled] = useState(false)
   const [errors, setErrors] = useState<Array<string>>([])
   const ready = connected && status?.state === 'ready'
+  useEffect(() => {
+    if (!ready || settled) return
+    onActiveItemChange?.(itemID)
+    return () => onActiveItemChange?.(undefined)
+  }, [itemID, ready, settled, onActiveItemChange])
   async function act(action: 'answer' | 'decline' | 'cancel', values?: Record<string, unknown>) {
     if (!ready || busy || settled) return
     setBusy(true)
