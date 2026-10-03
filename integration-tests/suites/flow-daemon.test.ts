@@ -308,11 +308,11 @@ test.each(['abort', 'disconnect'] as const)(
       await fixture.wait('replacement dialog', () =>
         fixture.desktopRecords().some((record) => record.type === 'prompt' && record.index === 1),
       )
-      await fixture.answerPrompt(0, 'late answer')
+      await fixture.answerPrompt(0, { action: 'accept', content: { value: 'late answer' } })
       expect(
         await second.request('inbox.get', { timeout: 10_000, param: { id: item.id } }),
       ).toEqual(item)
-      await fixture.answerPrompt(1, 'Ada')
+      await fixture.answerPrompt(1, { action: 'accept', content: { value: 'Ada' } })
       expect(await retry).toEqual({ action: 'accept' })
       expect(await fixture.terminal(second, run.runID)).toMatchObject({
         state: 'completed',
@@ -345,7 +345,7 @@ test('remote settlement aborts a dialog and prevents its late answer', async () 
     await fixture.wait('dialog aborted', () =>
       fixture.desktopRecords().some((record) => record.type === 'aborted'),
     )
-    await fixture.answerPrompt(0, 'late answer')
+    await fixture.answerPrompt(0, { action: 'accept', content: { value: 'late answer' } })
     expect(await fixture.terminal(second, run.runID)).toMatchObject({
       state: 'completed',
       result: { output: { answer: { value: 'remote' } } },
@@ -356,6 +356,35 @@ test('remote settlement aborts a dialog and prevents its late answer', async () 
     await events.close()
     expect(events.events.filter((event) => event.type === 'inbox:settled')).toHaveLength(1)
     expect(await second.request('inbox.list', { timeout: 10_000, param: {} })).toEqual([])
+  } finally {
+    await fixture.dispose()
+  }
+})
+
+test('an approval prompt answered with approve moves the run out of awaiting_approval', async () => {
+  const fixture = await startFlowDaemonFixture()
+  try {
+    const client = await fixture.connect()
+    const run = await client.request('runs.start', { timeout: 10_000, param: { flow: 'approval' } })
+    const item = await fixture.pending(client, run.runID)
+    expect(item.kind).toBe('approval')
+    expect(
+      await client.request('runs.get', { timeout: 10_000, param: { runID: run.runID } }),
+    ).toMatchObject({
+      state: 'awaiting_approval',
+    })
+    const prompting = client.request('inbox.prompt', { timeout: 10_000, param: { id: item.id } })
+    await fixture.wait('approval dialog', () =>
+      fixture.desktopRecords().some((record) => record.type === 'prompt' && record.index === 0),
+    )
+    expect(
+      fixture.desktopRecords().find((record) => record.type === 'prompt')?.requestedSchema,
+    ).toMatchObject({
+      type: 'object',
+    })
+    await fixture.answerPrompt(0, { action: 'accept', content: { approve: true } })
+    await prompting
+    expect(await fixture.terminal(client, run.runID)).toMatchObject({ state: 'completed' })
   } finally {
     await fixture.dispose()
   }

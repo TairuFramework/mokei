@@ -54,6 +54,7 @@
     "@sozai/flow-graph": "catalog:",
     "@sozai/generator": "catalog:",
     "@sozai/schema": "catalog:",
+    "@tejika/env": "catalog:",
     "@types/node": "catalog:",
     "node-pty": "^1.1.0",
     "strip-ansi": "^7.2.0"

@@ -1,5 +1,6 @@
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { getPIDPath } from '@tejika/env'
 import { startMokeiDaemon } from 'mokei/lib/daemon-entry.js'
 
 const directory = process.argv[2]
@@ -16,23 +17,27 @@ process.on('message', (message) => {
   const resolve = prompts.get(message.index)
   if (resolve == null) throw new Error(`Unknown prompt: ${message.index}`)
   prompts.delete(message.index)
-  resolve({ action: 'accept', content: { value: message.value } })
+  resolve(
+    message.content === undefined
+      ? { action: message.action }
+      : { action: message.action, content: message.content },
+  )
   record({ type: 'resolved', index: message.index })
 })
 // IPC is a control surface, not a reason to keep a closed daemon alive.
 process.channel.unref()
 await startMokeiDaemon({
   socketPath: join(directory, 'daemon.sock'),
-  pidPath: join(directory, 'daemon.pid'),
+  pidPath: getPIDPath('mokei'),
   databasePath: join(directory, 'flows.db'),
   configPath: join(directory, 'config.json'),
   desktop: {
     canPrompt: () => true,
-    prompt: ({ signal }) =>
+    prompt: ({ params, signal }) =>
       new Promise((resolve) => {
         const current = index++
         prompts.set(current, resolve)
-        record({ type: 'prompt', index: current })
+        record({ type: 'prompt', index: current, requestedSchema: params.requestedSchema })
         // Deliberately defer native completion to exercise late answers after cancellation.
         const aborted = () => record({ type: 'aborted', index: current })
         signal.addEventListener('abort', aborted, { once: true })
