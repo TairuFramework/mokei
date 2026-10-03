@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises'
 import type { Monitor } from '@mokei/host-monitor'
 import type { MonitorPresenceReceive, MonitorPresenceSend } from '@mokei/host-protocol'
 
@@ -6,10 +7,12 @@ export async function connectTab(
   options: { visible: boolean; canNotify: boolean; pong?: boolean; ack?: boolean; shown?: boolean },
 ) {
   const controller = new AbortController()
-  const rid = crypto.randomUUID()
+  let rid = crypto.randomUUID()
+  let connections = 0
   let sessionID: string | null = null
   const messages: Array<MonitorPresenceReceive> = []
   const failures: Array<unknown> = []
+  const completedReplies: Array<MonitorPresenceSend> = []
   async function post(payload: unknown) {
     const response = await fetch(new URL('api', monitor.url), {
       method: 'POST',
@@ -25,22 +28,55 @@ export async function connectTab(
     if (!response.ok) throw new Error(`Tab HTTP ${response.status}: ${await response.text()}`)
     return response
   }
-  const response = await post({
-    typ: 'channel',
-    prc: 'monitor.presence',
-    rid,
-    prm: { attachmentID: 'bridge-stamps-this' },
-  })
-  sessionID = response.headers.get('enkaku-session-id')
-  if (sessionID == null || response.body == null) {
-    controller.abort()
-    throw new Error('Expected a presence SSE session')
-  }
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
   const send = async (value: MonitorPresenceSend) => {
     await post({ typ: 'send', prc: 'monitor.presence', rid, val: value })
   }
-  const ended = (async () => {
+  async function barrier() {
+    // This request follows prior sends through the monitor's shared daemon socket.
+    const response = await post({ typ: 'request', prc: 'info', rid: crypto.randomUUID() })
+    const result = await response.json()
+    if (result.payload.typ === 'error') throw new Error(result.payload.msg)
+  }
+  async function open() {
+    // A replaced bridge cannot reuse the ended SSE session. Keep the page/client object.
+    sessionID = null
+    rid = crypto.randomUUID()
+    const response = await post({
+      typ: 'channel',
+      prc: 'monitor.presence',
+      rid,
+      prm: { attachmentID: 'bridge-stamps-this' },
+    })
+    sessionID = response.headers.get('enkaku-session-id')
+    if (sessionID == null || response.body == null) {
+      await response.body?.cancel()
+      throw new Error('Expected a presence SSE session')
+    }
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+    try {
+      await send({ type: 'state', visible: options.visible, canNotify: options.canNotify })
+      await barrier()
+      connections++
+      return reader
+    } catch (error) {
+      await reader.cancel()
+      reader.releaseLock()
+      throw error
+    }
+  }
+  let reader: ReadableStreamDefaultReader<string>
+  try {
+    reader = await open()
+  } catch (error) {
+    controller.abort()
+    throw error
+  }
+  async function reply(value: MonitorPresenceSend) {
+    await send(value)
+    await barrier()
+    completedReplies.push(value)
+  }
+  async function consume() {
     let buffer = ''
     try {
       while (true) {
@@ -59,12 +95,12 @@ export async function connectTab(
             const message = payload.val as MonitorPresenceReceive
             messages.push(message)
             if (message.type === 'ping' && options.pong !== false) {
-              await send({ type: 'pong', nonce: message.nonce })
+              await reply({ type: 'pong', nonce: message.nonce })
             } else if (
               (message.type === 'notify' || message.type === 'prompt') &&
               options.ack !== false
             ) {
-              await send({
+              await reply({
                 type: 'ack',
                 attemptID: message.attemptID,
                 shown: options.shown ?? true,
@@ -79,20 +115,29 @@ export async function connectTab(
     } finally {
       reader.releaseLock()
     }
-  })()
-  try {
-    await send({ type: 'state', visible: options.visible, canNotify: options.canNotify })
-    // This short request follows channel registration and state on the same socket.
-    const barrier = await post({ typ: 'request', prc: 'info', rid: crypto.randomUUID() })
-    const result = await barrier.json()
-    if (result.payload.typ === 'error') throw new Error(result.payload.msg)
-  } catch (error) {
-    controller.abort()
-    await ended
-    throw error
   }
+  const ended = (async () => {
+    while (!controller.signal.aborted) {
+      await consume()
+      let backoff = 250
+      while (!controller.signal.aborted) {
+        try {
+          await sleep(backoff, undefined, { signal: controller.signal })
+          reader = await open()
+          break
+        } catch {
+          backoff = Math.min(backoff * 2, 5_000)
+        }
+      }
+    }
+  })()
   return {
     messages,
+    completedReplies,
+    barrier,
+    get connections() {
+      return connections
+    },
     failures,
     ended,
     send,

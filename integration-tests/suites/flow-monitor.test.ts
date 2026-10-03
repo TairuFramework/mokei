@@ -48,9 +48,10 @@ test('a visible tab suppresses native notifications', async () => {
   const fixture = await setup()
   const tab = await fixture.tab({ visible: true, canNotify: true })
   await fixture.pending()
-  await expect.poll(() => tab.messages.filter((message) => message.type === 'ping').length).toBe(1)
-  // A subsequent HTTP request lets the tab's pong drain before checking suppression.
-  await fixture.client.request('info')
+  await expect
+    .poll(() => tab.completedReplies.filter((reply) => reply.type === 'pong').length)
+    .toBe(1)
+  await tab.barrier()
   expect(fixture.notify).not.toHaveBeenCalled()
   expect(tab.messages.filter((message) => message.type === 'notify')).toEqual([])
 })
@@ -62,15 +63,29 @@ test('a hidden notification-capable tab receives the notification', async () => 
   await expect
     .poll(() => tab.messages)
     .toContainEqual(expect.objectContaining({ type: 'notify', itemID: item.id }))
+  const notification = tab.messages.find(
+    (message) => message.type === 'notify' && message.itemID === item.id,
+  )
+  if (notification?.type !== 'notify') throw new Error('Expected tab notification')
+  await expect
+    .poll(() => tab.completedReplies)
+    .toContainEqual({
+      type: 'ack',
+      attemptID: notification.attemptID,
+      shown: true,
+    })
+  await tab.barrier()
   expect(fixture.notify).not.toHaveBeenCalled()
   expect(tab.failures).toEqual([])
 })
 
 test('a frozen tab falls back to the native notifier', async () => {
   const fixture = await setup()
-  await fixture.tab({ visible: true, canNotify: true, pong: false })
+  const tab = await fixture.tab({ visible: true, canNotify: true, pong: false })
   await fixture.pending()
   await expect.poll(() => fixture.notify.mock.calls.length, { timeout: 12_000 }).toBe(1)
+  await tab.barrier()
+  expect(tab.completedReplies).toEqual([])
 }, 30_000)
 
 test('a socket prompt routes to the tab and accepts its HTTP answer', async () => {
@@ -123,38 +138,41 @@ test('native notification click opens the monitor item URL', async () => {
   expect(fixture.prompt).not.toHaveBeenCalled()
 })
 
-test('daemon restart re-attaches the running monitor and accepts a new tab', async () => {
+test('daemon restart re-attaches the monitor and the same open tab recovers', async () => {
   const fixture = await setup()
-  const tab = await fixture.tab({ visible: true, canNotify: true })
+  const tab = await fixture.tab({ visible: false, canNotify: true })
+  const tabClient = tab.client
   const { url, token, port } = fixture.monitor
   const client = await fixture.restart()
-  await tab.ended
-  // Reconnection is complete once a presence channel is accepted by the new daemon.
-  await expect
-    .poll(
-      async () => {
-        try {
-          const probe = await fixture.tab({ visible: false, canNotify: false })
-          await probe.close()
-          return true
-        } catch {
-          return false
-        }
-      },
-      { timeout: 15_000 },
-    )
-    .toBe(true)
+  await expect.poll(() => tab.connections, { timeout: 15_000 }).toBe(2)
+  expect(tab.client).toBe(tabClient)
   expect(fixture.monitor).toMatchObject({ url, token, port })
-  const next = await fixture.tab({ visible: false, canNotify: true })
+  const nativeCalls = fixture.notify.mock.calls.length
   const item = await fixture.pending(client)
   await expect
-    .poll(() => next.messages)
+    .poll(() => tab.messages)
     .toContainEqual(expect.objectContaining({ type: 'notify', itemID: item.id }))
-  expect(next.failures).toEqual([])
-  await next.close()
+  const notification = tab.messages.find(
+    (message) => message.type === 'notify' && message.itemID === item.id,
+  )
+  if (notification?.type !== 'notify') throw new Error('Expected recovered tab notification')
+  await expect
+    .poll(() => tab.completedReplies)
+    .toContainEqual({
+      type: 'ack',
+      attemptID: notification.attemptID,
+      shown: true,
+    })
+  await tab.barrier()
+  expect(fixture.notify.mock.calls.length).toBe(nativeCalls)
+  expect(tab.failures).toEqual([])
+  expect(
+    await tabClient.request('inbox.answer', { id: item.id, content: { value: 'reconnected' } }),
+  ).toEqual({ settled: true })
+  await tab.close()
   const nativeItem = await fixture.pending(client)
-  await expect.poll(() => fixture.notify.mock.calls.length).toBe(1)
-  fixture.notify.mock.calls[0]?.[1]?.onClick()
+  await expect.poll(() => fixture.notify.mock.calls.length).toBe(nativeCalls + 1)
+  fixture.notify.mock.calls[nativeCalls]?.[1]?.onClick()
   // Opening this URL proves the new presence instance has its currentURL again.
   await expect
     .poll(() => fixture.openURL.mock.calls)
