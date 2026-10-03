@@ -1,3 +1,4 @@
+import { raceAbort } from './abort.js'
 import { FlowControlError, isFlowControlError } from './errors.js'
 import {
   type FlowControl,
@@ -121,28 +122,6 @@ function isRetryable(error: unknown): boolean {
   return false
 }
 
-/** Rejects with the signal's reason as soon as it aborts. */
-function raceStop<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason)
-    if (signal.aborted) {
-      onAbort()
-      return
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-    promise.then(
-      (value) => {
-        signal.removeEventListener('abort', onAbort)
-        resolve(value)
-      },
-      (error) => {
-        signal.removeEventListener('abort', onAbort)
-        reject(error)
-      },
-    )
-  })
-}
-
 /** Resolves after `ms`, or as soon as the signal aborts. */
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -167,6 +146,8 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
  * the status, and rereads it on every event for the run. A lost connection, or a flow service
  * still starting, is retried with backoff (250 ms doubling to 2 s) within the timeout. On timeout
  * it returns the latest status with `timedOut: true`; on abort it rejects with the signal's reason.
+ * If the timeout passes before any status read succeeded, there is no status to return: it rejects
+ * with the last retryable error (`DISCONNECTED`, or `FLOW_UNAVAILABLE` while starting).
  */
 export async function waitForRun(
   control: FlowControl,
@@ -186,7 +167,7 @@ export async function waitForRun(
   let backoff = INITIAL_BACKOFF_MS
 
   const read = async (): Promise<RunStatus> => {
-    const status = await raceStop(runStatus(control, runID), stop.signal)
+    const status = await raceAbort(runStatus(control, runID), stop.signal)
     latest = status
     return status
   }
@@ -194,7 +175,7 @@ export async function waitForRun(
   try {
     while (!stop.signal.aborted) {
       try {
-        const subscription = await raceStop(control.subscribe(stop.signal), stop.signal)
+        const subscription = await raceAbort(control.subscribe(stop.signal), stop.signal)
         try {
           const status = await read()
           if (until(status)) return { status, timedOut: false }

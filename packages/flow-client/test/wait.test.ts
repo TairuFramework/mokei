@@ -214,21 +214,58 @@ describe('waitForRun', () => {
     memory.control.subscribe = async (signal) => {
       const subscription = await subscribe(signal)
       order.push('subscribe')
+      // The run completes after the subscription is live but before the first read lands.
       memory.setRun(snapshot('completed'))
       return subscription
     }
     const get = memory.control.runs.get
-    memory.control.runs.get = (runID) => {
+    let gets = 0
+    memory.control.runs.get = async (runID) => {
       order.push('get')
+      gets++
+      // The initial runStatus (get, list, get) observes an older snapshot, so only the queued
+      // event can trigger the read that sees the completion.
+      if (gets <= 2) return snapshot('working')
       return get(runID)
     }
     const result = await waitForRun(memory.control, 'run-1', {
       until: isCompleted,
-      timeoutMs: 60_000,
+      timeoutMs: 1_000,
     })
-    expect(result.status.state).toBe('completed')
-    expect(result.timedOut).toBe(false)
+    expect(result).toMatchObject({ status: { state: 'completed' }, timedOut: false })
     expect(order[0]).toBe('subscribe')
+    expect(gets).toBe(3)
+  })
+
+  test('wakes on inbox:added for the run', async () => {
+    const memory = createMemoryControl()
+    memory.setRun(snapshot('input_required'))
+    const waiting = waitForRun(memory.control, 'run-1', { until: isActionable, timeoutMs: 1_000 })
+    await vi.waitFor(() => expect(memory.openSubscriptions()).toBe(1))
+    memory.addItem(inputItem('item-1'))
+    await expect(waiting).resolves.toMatchObject({
+      status: { state: 'input_required', pending: [{ id: 'item-1' }] },
+      timedOut: false,
+    })
+  })
+
+  test('wakes on inbox:settled for the run', async () => {
+    const memory = createMemoryControl()
+    memory.setRun(snapshot('input_required'))
+    memory.addItem(inputItem('item-1'))
+    const initial = await runStatus(memory.control, 'run-1')
+    const waiting = waitForRun(memory.control, 'run-1', {
+      until: hasChanged(initial),
+      timeoutMs: 1_000,
+    })
+    await vi.waitFor(() => expect(memory.openSubscriptions()).toBe(1))
+    memory.addItem(inputItem('other', 'run-2'))
+    memory.settle('other')
+    memory.settle('item-1')
+    await expect(waiting).resolves.toMatchObject({
+      status: { state: 'input_required', pending: [] },
+      timedOut: false,
+    })
   })
 
   test('times out with the latest status and closes the subscription', async () => {

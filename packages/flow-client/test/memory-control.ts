@@ -4,13 +4,13 @@ import {
   FlowControlError,
   type FlowEvent,
   type FlowRunSnapshot,
-  type FlowSubscription,
   type FlowSummary,
   type InboxItem,
   type InboxOutcome,
   type PromptAction,
   TERMINAL_RUN_STATES,
 } from '../src/index.js'
+import { createEventQueue, type EventQueue } from '../src/subscription.js'
 
 export type UnavailableState = 'starting' | 'failed'
 
@@ -31,88 +31,9 @@ export type MemoryControl = {
   openSubscriptions(): number
 }
 
-type Waiter = {
-  resolve: (result: IteratorResult<FlowEvent>) => void
-  reject: (error: unknown) => void
-}
-
-type MemorySubscription = FlowSubscription & {
-  push(event: FlowEvent): void
-  fail(error: FlowControlError): void
-  isOpen(): boolean
-}
-
-function createSubscription(onEnd: () => void, signal?: AbortSignal): MemorySubscription {
-  const buffer: Array<FlowEvent> = []
-  const waiters: Array<Waiter> = []
-  let state: 'open' | 'closed' | 'failed' = 'open'
-  let failure: FlowControlError | undefined
-
-  const onAbort = () => close()
-  signal?.addEventListener('abort', onAbort, { once: true })
-
-  function teardown() {
-    signal?.removeEventListener('abort', onAbort)
-    onEnd()
-  }
-
-  function close() {
-    if (state === 'closed') return
-    if (state === 'open') teardown()
-    state = 'closed'
-    buffer.length = 0
-    failure = undefined
-    for (const waiter of waiters.splice(0)) waiter.resolve({ done: true, value: undefined })
-  }
-
-  function fail(error: FlowControlError) {
-    if (state !== 'open') return
-    state = 'failed'
-    failure = error
-    teardown()
-    const pending = waiters.splice(0)
-    if (pending.length > 0) failure = undefined
-    for (const waiter of pending) waiter.reject(error)
-  }
-
-  function push(event: FlowEvent) {
-    if (state !== 'open') return
-    const waiter = waiters.shift()
-    if (waiter == null) buffer.push(event)
-    else waiter.resolve({ done: false, value: event })
-  }
-
-  const iterator: AsyncIterator<FlowEvent> = {
-    next() {
-      const event = buffer.shift()
-      if (event != null) return Promise.resolve({ done: false, value: event })
-      if (failure != null) {
-        const error = failure
-        failure = undefined
-        return Promise.reject(error)
-      }
-      if (state !== 'open') return Promise.resolve({ done: true, value: undefined })
-      return new Promise((resolve, reject) => {
-        waiters.push({ resolve, reject })
-      })
-    },
-    return() {
-      close()
-      return Promise.resolve({ done: true, value: undefined })
-    },
-  }
-
-  return {
-    [Symbol.asyncIterator]: () => iterator,
-    close,
-    push,
-    fail,
-    isOpen: () => state === 'open',
-  }
-}
-
 /**
- * In-memory `FlowControl` test double reproducing the remote adapter's semantics: subscriptions
+ * In-memory `FlowControl` test double. Subscriptions use the same event queue as the remote
+ * adapter, reproducing the remote adapter's semantics: subscriptions
  * are live once `subscribe` resolves, `disconnect()` ends them with `DISCONNECTED` (delivered once
  * after buffered events, then done), an abort after `subscribe` resolved ends iteration, and
  * `setUnavailable` makes reads throw `FLOW_UNAVAILABLE` with `data.status.state`.
@@ -120,12 +41,12 @@ function createSubscription(onEnd: () => void, signal?: AbortSignal): MemorySubs
 export function createMemoryControl(options: MemoryControlOptions = {}): MemoryControl {
   const runs = new Map<string, FlowRunSnapshot>()
   const items = new Map<string, InboxItem>()
-  const subscriptions = new Set<MemorySubscription>()
+  const subscriptions = new Set<EventQueue>()
   let unavailable: UnavailableState | undefined
   let nextRun = 1
 
   function emit(event: FlowEvent) {
-    for (const subscription of subscriptions) subscription.push(event)
+    for (const queue of subscriptions) queue.push(event)
   }
 
   function ensureAvailable() {
@@ -242,9 +163,9 @@ export function createMemoryControl(options: MemoryControlOptions = {}): MemoryC
     },
     subscribe: async (signal) => {
       signal?.throwIfAborted()
-      const subscription = createSubscription(() => subscriptions.delete(subscription), signal)
-      subscriptions.add(subscription)
-      return subscription
+      const queue = createEventQueue({ signal, teardown: () => subscriptions.delete(queue) })
+      subscriptions.add(queue)
+      return queue.subscription
     },
   }
 
@@ -254,8 +175,8 @@ export function createMemoryControl(options: MemoryControlOptions = {}): MemoryC
     addItem,
     settle,
     disconnect: () => {
-      for (const subscription of [...subscriptions]) {
-        subscription.fail(
+      for (const queue of [...subscriptions]) {
+        queue.fail(
           new FlowControlError({
             code: 'DISCONNECTED',
             message: 'Lost connection to the flow daemon',

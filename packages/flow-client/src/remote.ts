@@ -2,7 +2,9 @@ import type { Client } from '@enkaku/client'
 import type { HostEvent, Protocol } from '@mokei/host-protocol'
 import type { FromSchema } from '@sozai/schema'
 
+import { raceAbort } from './abort.js'
 import { FlowControlError, type FlowControlErrorCode, isFlowControlError } from './errors.js'
+import { createEventQueue } from './subscription.js'
 import type { FlowControl, FlowEvent, FlowSubscription } from './types.js'
 
 type CheckParam = FromSchema<Protocol['flows.check']['param']>
@@ -68,87 +70,23 @@ async function call<T>(work: () => Promise<T>, signal?: AbortSignal): Promise<T>
   }
 }
 
-/** Rejects with the signal's reason as soon as it aborts, without waiting for `promise`. */
-function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (signal == null) return promise
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason)
-    if (signal.aborted) {
-      onAbort()
-      return
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-    promise.then(
-      (value) => {
-        signal.removeEventListener('abort', onAbort)
-        resolve(value)
-      },
-      (error) => {
-        signal.removeEventListener('abort', onAbort)
-        reject(error)
-      },
-    )
-  })
-}
-
-type Waiter = {
-  resolve: (result: IteratorResult<FlowEvent>) => void
-  reject: (error: unknown) => void
-}
-
 async function subscribe(
   client: Client<Protocol>,
   signal?: AbortSignal,
 ): Promise<FlowSubscription> {
   signal?.throwIfAborted()
 
-  const buffer: Array<FlowEvent> = []
-  const waiters: Array<Waiter> = []
-  let state: 'open' | 'closed' | 'failed' = 'open'
-  let failure: FlowControlError | undefined
-
   const stream = client.createStream('events')
-  const offReplaced = client.events.on('transportReplaced', () => {
-    fail(createDisconnectedError())
+  const queue = createEventQueue({
+    signal,
+    teardown: () => {
+      offReplaced()
+      stream.close()
+    },
   })
-  const onAbort = () => close()
-  signal?.addEventListener('abort', onAbort, { once: true })
-
-  function teardown() {
-    offReplaced()
-    signal?.removeEventListener('abort', onAbort)
-    stream.close()
-  }
-
-  function close() {
-    if (state === 'closed') return
-    // A failed subscription is already torn down; closing it discards what it still holds.
-    if (state === 'open') teardown()
-    state = 'closed'
-    buffer.length = 0
-    failure = undefined
-    for (const waiter of waiters.splice(0)) waiter.resolve({ done: true, value: undefined })
-  }
-
-  function fail(error: FlowControlError) {
-    if (state !== 'open') return
-    state = 'failed'
-    failure = error
-    teardown()
-    // Buffered events are still delivered before the failure surfaces; a pending waiter
-    // implies an empty buffer, so it receives the failure and later reads are done.
-    const pending = waiters.splice(0)
-    if (pending.length > 0) failure = undefined
-    for (const waiter of pending) waiter.reject(error)
-  }
-
-  function push(event: HostEvent) {
-    if (state !== 'open' || !FLOW_EVENT_TYPES.has(event.type)) return
-    const flowEvent = { type: event.type, data: (event as { data: unknown }).data } as FlowEvent
-    const waiter = waiters.shift()
-    if (waiter == null) buffer.push(flowEvent)
-    else waiter.resolve({ done: false, value: flowEvent })
-  }
+  const offReplaced = client.events.on('transportReplaced', () => {
+    queue.fail(createDisconnectedError())
+  })
 
   // Start reading at once so events emitted before the barrier resolves are buffered.
   void (async () => {
@@ -157,12 +95,15 @@ async function subscribe(
       while (true) {
         const next = await reader.read()
         if (next.done) break
-        push(next.value)
+        const event = next.value as HostEvent
+        if (FLOW_EVENT_TYPES.has(event.type)) {
+          queue.push({ type: event.type, data: (event as { data: unknown }).data } as FlowEvent)
+        }
       }
       // The stream ended without the caller closing it: the daemon or transport went away.
-      fail(createDisconnectedError())
+      queue.fail(createDisconnectedError())
     } catch (error) {
-      fail(createDisconnectedError(error))
+      queue.fail(createDisconnectedError(error))
     } finally {
       reader.releaseLock()
     }
@@ -173,39 +114,16 @@ async function subscribe(
     // registered once `info` returns.
     await raceAbort(client.request('info', { signal }), signal)
   } catch (error) {
-    close()
+    queue.subscription.close()
     normalize(error, signal)
   }
-  if (failure != null && buffer.length === 0) {
+  const failure = queue.undeliveredFailure()
+  if (failure != null) {
     // Lost the connection while waiting for the barrier: nothing can be delivered.
     throw failure
   }
 
-  const iterator: AsyncIterator<FlowEvent> = {
-    next() {
-      const event = buffer.shift()
-      if (event != null) return Promise.resolve({ done: false, value: event })
-      if (failure != null) {
-        const error = failure
-        // Surface the failure once, then behave as a finished iterator.
-        failure = undefined
-        return Promise.reject(error)
-      }
-      if (state !== 'open') return Promise.resolve({ done: true, value: undefined })
-      return new Promise((resolve, reject) => {
-        waiters.push({ resolve, reject })
-      })
-    },
-    return() {
-      close()
-      return Promise.resolve({ done: true, value: undefined })
-    },
-  }
-
-  return {
-    [Symbol.asyncIterator]: () => iterator,
-    close,
-  }
+  return queue.subscription
 }
 
 /**
