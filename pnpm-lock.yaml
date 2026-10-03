@@ -763,6 +763,12 @@ importers:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
+      '@mokei/context-server-node':
+        specifier: workspace:^
+        version: link:../context-server-node
+      '@mokei/flow-client':
+        specifier: workspace:^
+        version: link:../flow-client
       '@mokei/flow-host-node':
         specifier: workspace:^
         version: link:../flow-host-node
