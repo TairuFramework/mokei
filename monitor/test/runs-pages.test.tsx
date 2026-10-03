@@ -3,6 +3,7 @@ import {
   type FlowControl,
   FlowControlError,
   type FlowRunSnapshot,
+  type InboxItem,
   type RunTrace,
 } from '@mokei/flow-client'
 import { createMemoryHistory, createRouter, Outlet, RouterProvider } from '@tanstack/react-router'
@@ -166,4 +167,80 @@ test('terminal run detail shows the result and disables cancellation', async () 
   expect(await screen.findByRole('heading', { name: 'Result' })).toBeTruthy()
   expect(screen.getByText(/Saved document/)).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Cancel run' }).hasAttribute('disabled')).toBe(true)
+})
+
+test.each(['Approve', 'Deny'])('run detail settles approvals inline with %s', async (action) => {
+  const f = fixture('/runs/run-1')
+  render(f.view())
+  fireEvent.click(await screen.findByRole('button', { name: action }))
+  await waitFor(() =>
+    expect(
+      action === 'Approve' ? f.control.inbox.answer : f.control.inbox.decline,
+    ).toHaveBeenCalledWith('item-1'),
+  )
+  expect(await screen.findByText('This item is already settled.')).toBeTruthy()
+  expect(screen.getByRole('link', { name: 'Approval: search' })).toBeTruthy()
+})
+
+const inputItem: InboxItem = {
+  id: 'input-1',
+  runID: 'run-1',
+  kind: 'input',
+  inputKey: 'details',
+  createdAt: 2,
+  message: 'Enter details',
+  requestedSchema: { type: 'object', properties: { count: { type: 'integer', default: 3 } } },
+}
+
+test.each(['Accept', 'Decline', 'Cancel'])(
+  'run detail settles inputs inline with %s',
+  async (action) => {
+    const f = fixture('/runs/run-1')
+    vi.mocked(f.control.inbox.list).mockResolvedValue([inputItem])
+    render(f.view())
+    fireEvent.click(await screen.findByRole('button', { name: action }))
+    await waitFor(() => {
+      if (action === 'Accept')
+        expect(f.control.inbox.answer).toHaveBeenCalledWith('input-1', { count: 3 })
+      else
+        expect(
+          action === 'Decline' ? f.control.inbox.decline : f.control.inbox.cancel,
+        ).toHaveBeenCalledWith('input-1')
+    })
+    expect(await screen.findByText('This item is already settled.')).toBeTruthy()
+  },
+)
+
+test('run detail shows already settled when an inline answer races another client', async () => {
+  const f = fixture('/runs/run-1')
+  vi.mocked(f.control.inbox.answer).mockRejectedValue(
+    new FlowControlError({ code: 'INBOX_ITEM_NOT_FOUND', message: 'Missing' }),
+  )
+  render(f.view())
+  fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+  expect(await screen.findByText('This item is already settled.')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+})
+
+test('inline input validation keeps values and allows retry independently of other pending items', async () => {
+  const f = fixture('/runs/run-1')
+  vi.mocked(f.control.inbox.list).mockResolvedValue([inputItem, item()])
+  vi.mocked(f.control.inbox.answer).mockRejectedValueOnce(
+    new FlowControlError({
+      code: 'INBOX_ANSWER_INVALID',
+      message: 'Invalid',
+      data: { issues: ['Count is too small'] },
+    }),
+  )
+  render(f.view())
+  fireEvent.click(await screen.findByRole('button', { name: 'Accept' }))
+  expect(await screen.findByText('Count is too small')).toBeTruthy()
+  expect((screen.getByLabelText('count') as HTMLInputElement).value).toBe('3')
+  fireEvent.change(screen.getByLabelText('count'), { target: { value: '5' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+  await waitFor(() =>
+    expect(f.control.inbox.answer).toHaveBeenLastCalledWith('input-1', { count: 5 }),
+  )
+  expect(await screen.findByText('This item is already settled.')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
 })

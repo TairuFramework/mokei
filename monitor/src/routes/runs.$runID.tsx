@@ -15,6 +15,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { LogList } from '../components/LogList.js'
+import { PendingItemActions } from '../components/PendingItemActions.js'
 import { RunStateBadge } from '../components/RunStateBadge.js'
 import { TraceWaterfall } from '../components/TraceWaterfall.js'
 import { useFlow } from '../flow/FlowProvider.js'
@@ -153,9 +154,12 @@ function RunDetail({ runID }: { runID: string }) {
         <Text c="dimmed">No pending items.</Text>
       ) : null}
       {items.map((item) => (
-        <Anchor key={item.id} component={Link} to={`/inbox/${encodeURIComponent(item.id)}`}>
-          {item.kind === 'input' ? item.message : `Approval: ${item.plan.tools.join(', ')}`}
-        </Anchor>
+        <Stack key={item.id}>
+          <Anchor component={Link} to={`/inbox/${encodeURIComponent(item.id)}`}>
+            {item.kind === 'input' ? item.message : `Approval: ${item.plan.tools.join(', ')}`}
+          </Anchor>
+          <PendingItemActions item={item} />
+        </Stack>
       ))}
       {traceError == null ? null : (
         <Alert color="red" title="Trace request failed">

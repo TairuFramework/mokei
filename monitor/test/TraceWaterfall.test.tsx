@@ -89,3 +89,39 @@ test('renders nested span names and selecting a span filters logs and shows its 
   fireEvent.click(screen.getByRole('button', { name: 'Clear span selection' }))
   expect(onSelectSpan).toHaveBeenLastCalledWith(undefined)
 })
+
+test('expands newly polled nested spans after an empty trace while preserving user choices', () => {
+  const snapshot = run()
+  const view = (spans: Array<ReturnType<typeof span>>) => (
+    <MantineProvider>
+      <TraceWaterfall run={snapshot} spans={spans} onSelectSpan={() => {}} />
+    </MantineProvider>
+  )
+  const rendered = render(view([]))
+  rendered.rerender(view([span('parent'), span('child', 'parent')]))
+  expect(screen.getByRole('button', { name: 'child' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse parent' }))
+  rendered.rerender(
+    view([
+      span('parent'),
+      span('child', 'parent'),
+      span('new-parent'),
+      span('new-child', 'new-parent'),
+    ]),
+  )
+  expect(screen.queryByRole('button', { name: 'child' })).toBeNull()
+  expect(screen.getByRole('button', { name: 'Expand parent' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'new-child' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Expand parent' }))
+  rendered.rerender(
+    view([
+      span('parent'),
+      span('child', 'parent'),
+      span('grandchild', 'child'),
+      span('new-parent'),
+      span('new-child', 'new-parent'),
+    ]),
+  )
+  expect(screen.getByRole('button', { name: 'child' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'grandchild' })).toBeTruthy()
+})

@@ -23,7 +23,7 @@ export type TraceWaterfallProps = {
 }
 
 export function TraceWaterfall({ run, spans, onSelectSpan }: TraceWaterfallProps) {
-  const { root, start, end, nodes, data, expandedState } = useMemo(() => {
+  const { root, start, end, nodes, data, defaultExpandedState } = useMemo(() => {
     const range = buildSpanTree(spans, run)
     const nodes = new Map<string, SpanNode>()
     const expandedState: Record<string, boolean> = {}
@@ -32,11 +32,17 @@ export function TraceWaterfall({ run, spans, onSelectSpan }: TraceWaterfallProps
       expandedState[node.id] = true
       return { value: node.id, label: node.name, children: node.children.map(toTree) }
     }
-    return { ...range, nodes, expandedState, data: [toTree(range.root)] }
+    return { ...range, nodes, defaultExpandedState: expandedState, data: [toTree(range.root)] }
   }, [spans, run])
   const [selectedState, setSelectedState] = useState<Array<string>>([])
+  const [expansionChoices, setExpansionChoices] = useState<Record<string, boolean>>({})
+  const expandedState = useMemo(
+    () => ({ ...defaultExpandedState, ...expansionChoices }),
+    [defaultExpandedState, expansionChoices],
+  )
   const tree = useTree({
-    initialExpandedState: expandedState,
+    expandedState,
+    onExpandedStateChange: setExpansionChoices,
     selectedState,
     onSelectedStateChange: (values) => {
       setSelectedState(values)
