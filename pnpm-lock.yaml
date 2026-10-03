@@ -1030,6 +1030,24 @@ importers:
         specifier: 'catalog:'
         version: 26.6.3
 
+  packages/flow-client:
+    dependencies:
+      '@enkaku/client':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.10)
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+      '@mokei/context-server':
+        specifier: workspace:^
+        version: link:../context-server
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../host-protocol
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.5
+
   packages/flow-host:
     dependencies:
       '@logtape/logtape':
