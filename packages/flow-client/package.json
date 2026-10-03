@@ -44,6 +44,7 @@
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
+    "@sozai/async": "catalog:",
     "@sozai/schema": "catalog:"
   },
   "devDependencies": {

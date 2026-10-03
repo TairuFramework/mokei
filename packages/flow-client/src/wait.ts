@@ -1,3 +1,5 @@
+import { sleep } from '@sozai/async'
+
 import { raceAbort } from './abort.js'
 import { isFlowControlError } from './errors.js'
 import {
@@ -123,25 +125,6 @@ function isRetryable(error: unknown): boolean {
   return false
 }
 
-/** Resolves after `ms`, or as soon as the signal aborts. */
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) {
-      resolve()
-      return
-    }
-    const onAbort = () => {
-      clearTimeout(timer)
-      resolve()
-    }
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort)
-      resolve()
-    }, ms)
-    signal.addEventListener('abort', onAbort, { once: true })
-  })
-}
-
 /**
  * Waits until `until` matches the run status. Subscribes first (awaiting readiness), then reads
  * the status, and rereads it on every event for the run. A lost connection, or a flow service
@@ -199,7 +182,8 @@ export async function waitForRun(
         if (!isRetryable(error)) throw error
         lastError = error
       }
-      await sleep(backoff, stop.signal)
+      // A stop ends the backoff early; the loop condition then exits.
+      await sleep(backoff, stop.signal).catch(() => {})
       backoff = Math.min(backoff * 2, MAX_BACKOFF_MS)
     }
 
