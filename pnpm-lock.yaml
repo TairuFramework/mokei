@@ -808,6 +808,9 @@ importers:
       '@tejika/cli':
         specifier: 'catalog:'
         version: 0.4.1(@types/react@19.3.0)
+      '@tejika/env':
+        specifier: 'catalog:'
+        version: 0.5.0
       '@tejika/process':
         specifier: 'catalog:'
         version: 0.5.1(@logtape/logtape@2.3.10)

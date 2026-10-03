@@ -5,6 +5,7 @@ import { buildProgram as tejikaBuildProgram } from '@tejika/cli'
 import type { Command } from 'commander'
 
 import { createChatCommand } from './commands/chat.js'
+import { createDaemonCommand } from './commands/daemon.js'
 import { createInspectCommand } from './commands/inspect.js'
 import { createMonitorCommand } from './commands/monitor.js'
 import { createProxyCommand } from './commands/proxy.js'
@@ -24,6 +25,7 @@ export function buildProgram(): Command {
       createInspectCommand(),
       createMonitorCommand(),
       createProxyCommand(),
+      createDaemonCommand(),
     ],
   })
   program.description(pkg.description)

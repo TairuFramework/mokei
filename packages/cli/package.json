@@ -59,6 +59,7 @@
     "@mokei/session": "workspace:^",
     "@mokei/session-node": "workspace:^",
     "@tejika/cli": "catalog:",
+    "@tejika/env": "catalog:",
     "@tejika/process": "catalog:",
     "@tejika/ui": "catalog:",
     "commander": "catalog:",

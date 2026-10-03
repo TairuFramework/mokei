@@ -31,8 +31,8 @@ describe('buildProgram', () => {
   const program = buildProgram()
   const commandNames = program.commands.map((c) => c.name())
 
-  test('exposes exactly 4 commands', () => {
-    expect(commandNames).toEqual(['chat', 'inspect', 'monitor', 'proxy'])
+  test('exposes exactly 5 commands', () => {
+    expect(commandNames).toEqual(['chat', 'inspect', 'monitor', 'proxy', 'daemon'])
   })
 
   test('chat has --provider with short -p', () => {
