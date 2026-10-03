@@ -58,6 +58,17 @@ function readCatalogVersion(name) {
   return version
 }
 
+// Packages exempt from pnpm's release-age gate. The consumer must share them, or it resolves
+// older sibling releases than the repository was tested against.
+function readReleaseAgeExclude() {
+  const text = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8')
+  const list = text.match(/^minimumReleaseAgeExclude:\n((?: {2}- .*\n)+)/m)?.[1] ?? ''
+  return list
+    .split('\n')
+    .map((entry) => entry.replace(/^\s*-\s*/, '').replace(/^['"]|['"]$/g, ''))
+    .filter((entry) => entry !== '')
+}
+
 // Public packages: `versioning.fixed` in pnpm-workspace.yaml, which also lists `mokei`.
 function readPublicPackageNames() {
   const text = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8')
@@ -131,6 +142,7 @@ function writeConsumer(consumer, packed) {
   )
   const settings = {
     overrides,
+    minimumReleaseAgeExclude: readReleaseAgeExclude(),
     // Upstream gaps that the isolated linker exposes and mokei cannot fix from its own
     // manifests: `@enkaku/client` imports types from `@enkaku/protocol`, and `@enkaku/protocol`
     // from `@enkaku/transport`; `@inkjs/ui` imports `react` without declaring a peer. Drop each
