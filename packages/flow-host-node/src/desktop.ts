@@ -1,9 +1,10 @@
 import type { ElicitResult } from '@mokei/context-protocol'
-import type { FlowHost, InboxItem } from '@mokei/flow-host'
-import { InboxAnswerInvalidError, InboxItemNotFoundError } from '@mokei/flow-host'
+import type { FlowHost, InboxItem, InboxOutcome } from '@mokei/flow-host'
+import { InboxItemNotFoundError } from '@mokei/flow-host'
 import type { DesktopElicitRequest, DesktopNotifyOptions } from '@mokei/host-desktop'
 
-import { inboxItemMessage } from './inbox-message.js'
+import type { createNativeSurface } from './native-surface.js'
+import type { InboxSurface, PromptOutcome, SurfaceDelivery } from './surfaces.js'
 
 export type FlowDesktopAdapter = {
   canPrompt(request: DesktopElicitRequest): boolean
@@ -15,8 +16,8 @@ export type FlowDesktopAdapter = {
 export type FlowDesktopController = {
   restored(items: Array<InboxItem>): void
   added(item: InboxItem): void
-  settled(item: InboxItem): void
-  prompt(id: string, signal: AbortSignal): Promise<{ action: 'accept' | 'decline' | 'cancel' }>
+  settled(item: InboxItem, outcome: InboxOutcome): void
+  prompt(id: string, signal: AbortSignal): Promise<PromptOutcome>
   dispose(): Promise<void>
 }
 export class InboxPromptInProgressError extends Error {
@@ -32,177 +33,178 @@ export class DesktopPromptUnavailableError extends Error {
   }
 }
 
-/** Notification group of the restart summary; each item uses its own group. */
-const SUMMARY_GROUP = 'mokei-inbox-pending'
-/** Expected outcomes of a click-started prompt, which the user sees no further feedback for. */
-const QUIET_CLICK_ERRORS = new Set([
-  'InboxPromptInProgressError',
-  'DesktopPromptUnavailableError',
-  'InboxItemNotFoundError',
-])
-
-function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const abort = () => reject(signal.reason)
-    signal.addEventListener('abort', abort, { once: true })
-    if (signal.aborted) abort()
-    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
-  })
-}
-
 export function createFlowDesktopController(params: {
-  adapter?: FlowDesktopAdapter
-  notifications: boolean
+  surfaces: Array<InboxSurface>
+  native: ReturnType<typeof createNativeSurface>
   host(): FlowHost
   onError(error: unknown): void
 }): FlowDesktopController {
-  const { adapter } = params
   const disposal = new AbortController()
   const represented = new Set<string>()
-  const owners = new Map<string, AbortController>()
-  const prompts = new Set<Promise<unknown>>()
-  const desktopPrompts = new Set<Promise<ElicitResult>>()
-  const notifications = new Set<Promise<void>>()
-  // Live item notifications, aborted on settlement to remove them
-  const notices = new Map<string, AbortController>()
+  const settledIDs = new Set<string>()
+  const deliveries = new Map<string, Set<SurfaceDelivery>>()
+  const attempts = new Map<string, Set<AbortController>>()
+  const owners = new Map<string, ReturnType<typeof Promise.withResolvers<PromptOutcome>>>()
+  const operations = new Set<Promise<unknown>>()
   let live = false
   let disposing: Promise<void> | undefined
 
-  function notify(message: string, options: DesktopNotifyOptions): void {
-    if (!params.notifications || adapter == null || disposal.signal.aborted) return
-    // Call now, after represented IDs are recorded, so synchronous additions see the boundary.
-    const delivery = (async () => {
+  function track<T>(operation: Promise<T>): Promise<T> {
+    operations.add(operation)
+    void operation.then(
+      () => operations.delete(operation),
+      () => operations.delete(operation),
+    )
+    return operation
+  }
+  function begin(id: string) {
+    const stop = new AbortController()
+    const current = attempts.get(id) ?? new Set<AbortController>()
+    current.add(stop)
+    attempts.set(id, current)
+    return stop
+  }
+  function end(id: string, stop: AbortController): void {
+    const current = attempts.get(id)
+    current?.delete(stop)
+    if (current?.size === 0) attempts.delete(id)
+  }
+  function keep(id: string, delivery: SurfaceDelivery, signal: AbortSignal): void {
+    // A surface can finish delivering after its attempt was cancelled.
+    if (signal.aborted || settledIDs.has(id)) {
+      delivery.close()
+      return
+    }
+    const current = deliveries.get(id) ?? new Set<SurfaceDelivery>()
+    current.add(delivery)
+    deliveries.set(id, current)
+    const forget = () => {
+      current.delete(delivery)
+      if (current.size === 0) deliveries.delete(id)
+    }
+    void delivery.closed.then(forget, forget)
+  }
+  function pending(item: InboxItem, signal: AbortSignal): boolean {
+    return !signal.aborted && !settledIDs.has(item.id) && params.host().inbox.get(item.id) != null
+  }
+  function notify(item: InboxItem, surfaces: Array<InboxSurface>, attention: boolean): void {
+    const stop = begin(item.id)
+    const signal = AbortSignal.any([stop.signal, disposal.signal])
+    const operation = (async () => {
       try {
-        await adapter.notify(message, options)
+        if (attention) {
+          const attended = await Promise.any(
+            params.surfaces.map(async (surface) => {
+              if (await surface.isAttended(signal)) return true
+              throw new Error('Surface unattended')
+            }),
+          ).catch(() => false)
+          if (attended) return
+        }
+        for (const surface of surfaces) {
+          if (!pending(item, signal)) return
+          if (surface.status() !== 'reachable') continue
+          const delivery = await surface.notify(item, { signal })
+          if (delivery != null) {
+            keep(item.id, delivery, signal)
+            return
+          }
+        }
       } catch (error) {
-        params.onError(error)
+        if (!signal.aborted) params.onError(error)
+      } finally {
+        end(item.id, stop)
       }
     })()
-    notifications.add(delivery)
-    void delivery.then(() => notifications.delete(delivery))
+    track(operation)
   }
-  /** One notification per item: a click opens that item's desktop prompt. */
-  function notifyItem(item: InboxItem): void {
-    if (!params.notifications || adapter == null || disposal.signal.aborted) return
-    const notice = new AbortController()
-    notices.set(item.id, notice)
-    notify(inboxItemMessage(item), {
-      group: `mokei-inbox-${item.id}`,
-      signal: notice.signal,
-      onClick: () => {
-        if (disposal.signal.aborted || notice.signal.aborted) return
-        prompt(item.id, disposal.signal).catch((error: unknown) => {
-          const quiet =
-            disposal.signal.aborted ||
-            (error instanceof Error && QUIET_CLICK_ERRORS.has(error.name))
-          if (!quiet) params.onError(error)
-        })
-      },
-    })
-  }
-  async function prompt(id: string, caller: AbortSignal) {
+  async function prompt(id: string, caller: AbortSignal): Promise<PromptOutcome> {
     disposal.signal.throwIfAborted()
     caller.throwIfAborted()
     if (owners.has(id)) throw new InboxPromptInProgressError(id)
-    const host = params.host()
-    const item = host.inbox.get(id)
+    const item = params.host().inbox.get(id)
     if (item == null) throw new InboxItemNotFoundError(id)
-    if (adapter == null) throw new DesktopPromptUnavailableError(id)
-    const settlement = new AbortController()
-    const stop = AbortSignal.any([caller, settlement.signal, disposal.signal])
-    // Ownership precedes all awaits, including the run label lookup.
-    owners.set(id, settlement)
-    const operation = (async () => {
-      const run = await abortable(host.get(item.runID), stop)
-      stop.throwIfAborted()
-      if (host.inbox.get(id) == null) throw new InboxItemNotFoundError(id)
-      const message =
-        item.kind === 'approval'
-          ? `Run flow "${run?.label ?? item.runID}" with tools: ${item.plan.tools.join(', ') || 'none'}`
-          : item.message
-      const request: DesktopElicitRequest = {
-        key: `Flow: ${run?.label ?? item.runID}`,
-        params: {
-          message,
-          requestedSchema:
-            item.kind === 'approval'
-              ? {
-                  type: 'object',
-                  properties: { approve: { type: 'boolean', title: message } },
-                  required: ['approve'],
-                }
-              : item.requestedSchema,
-        },
-        signal: stop,
+    const outcome = Promise.withResolvers<PromptOutcome>()
+    // Settlement must be observed before any surface gets a chance to deliver.
+    owners.set(id, outcome)
+    const stop = begin(id)
+    const signal = AbortSignal.any([stop.signal, caller, disposal.signal])
+    const abort = () => outcome.reject(signal.reason)
+    signal.addEventListener('abort', abort, { once: true })
+    const routing = (async () => {
+      for (const surface of params.surfaces) {
+        if (signal.aborted) return outcome.promise
+        if (!pending(item, signal)) throw new InboxItemNotFoundError(id)
+        if (surface.prompt == null) continue
+        const delivery = await surface.prompt(item, { signal })
+        if (delivery == null) continue
+        keep(id, delivery, signal)
+        if (signal.aborted) return outcome.promise
+        const settled = await Promise.race([
+          outcome.promise.then(() => true),
+          delivery.closed.then(() => false),
+        ])
+        if (settled || signal.aborted) return outcome.promise
+        // Target loss only advances to the next surface while the item is pending.
       }
-      if (!adapter.canPrompt(request)) throw new DesktopPromptUnavailableError(id)
-      const desktopPrompt = adapter.prompt(request)
-      desktopPrompts.add(desktopPrompt)
-      void desktopPrompt.then(
-        () => desktopPrompts.delete(desktopPrompt),
-        () => desktopPrompts.delete(desktopPrompt),
-      )
-      const result = await abortable(desktopPrompt, stop)
-      stop.throwIfAborted()
-      let action = result.action
-      if (item.kind === 'approval' && action === 'accept') {
-        if (result.content?.approve === false) action = 'decline'
-        else if (result.content?.approve !== true) {
-          throw new InboxAnswerInvalidError(['approve: explicit approval boolean required'])
-        }
-      }
-      if (action === 'accept')
-        await host.inbox.answer(id, item.kind === 'input' ? result.content : undefined)
-      else if (action === 'decline') await host.inbox.decline(id)
-      else await host.inbox.cancel(id)
-      return { action }
+      if (signal.aborted) return outcome.promise
+      if (!pending(item, signal)) throw new InboxItemNotFoundError(id)
+      throw new DesktopPromptUnavailableError(id)
     })()
-    prompts.add(operation)
+    track(routing)
     try {
-      return await operation
+      return await Promise.race([outcome.promise, routing])
     } finally {
+      signal.removeEventListener('abort', abort)
+      stop.abort(new Error('Inbox prompt finished'))
+      end(id, stop)
       owners.delete(id)
-      prompts.delete(operation)
+      for (const delivery of deliveries.get(id) ?? []) delivery.close()
     }
   }
   return {
     restored(items) {
       if (live || disposal.signal.aborted) return
-      // The snapshot owns these IDs for the daemon lifetime, regardless of delivery or settlement.
       for (const item of items) represented.add(item.id)
       live = true
       const only = items[0]
-      if (items.length === 1 && only != null) notifyItem(only)
-      // A summary click only dismisses it: there is no single item to prompt for
-      else if (items.length > 1) notify(`${items.length} pending prompts`, { group: SUMMARY_GROUP })
+      if (items.length === 1 && only != null) notify(only, [params.native], false)
+      else if (items.length > 1) params.native.notifySummary(items.length)
     },
     added(item) {
       if (!live || disposal.signal.aborted || represented.has(item.id)) return
       represented.add(item.id)
-      notifyItem(item)
+      notify(item, params.surfaces, true)
     },
-    settled(item) {
-      owners.get(item.id)?.abort(new InboxItemNotFoundError(item.id))
-      notices.get(item.id)?.abort(new InboxItemNotFoundError(item.id))
-      notices.delete(item.id)
+    settled(item, outcome) {
+      settledIDs.add(item.id)
+      const waiter = owners.get(item.id)
+      if (outcome === 'withdrawn') waiter?.reject(new InboxItemNotFoundError(item.id))
+      else
+        waiter?.resolve({
+          action: outcome === 'answered' ? 'accept' : outcome === 'declined' ? 'decline' : 'cancel',
+        })
+      for (const stop of attempts.get(item.id) ?? [])
+        stop.abort(new InboxItemNotFoundError(item.id))
+      for (const delivery of deliveries.get(item.id) ?? []) delivery.close()
+      deliveries.delete(item.id)
     },
     prompt,
     dispose() {
       if (disposing != null) return disposing
       disposal.abort(new Error('Flow desktop controller disposed'))
+      for (const current of deliveries.values()) for (const delivery of current) delivery.close()
+      deliveries.clear()
       disposing = (async () => {
         const results = await Promise.allSettled([
-          (async () => {
-            await adapter?.dispose()
-          })(),
-          ...notifications,
-          // Caller abort releases ownership before the native dialog has necessarily exited.
-          ...[...desktopPrompts].map((operation) => operation.catch(() => undefined)),
-          ...[...prompts].map((operation) => operation.catch(() => undefined)),
+          params.native.dispose(),
+          ...[...operations].map((operation) => operation.catch(() => undefined)),
         ])
         const failures = results
           .filter((result) => result.status === 'rejected')
-          .map((result) => result.reason)
+          .flatMap((result) =>
+            result.reason instanceof AggregateError ? result.reason.errors : [result.reason],
+          )
         if (failures.length > 0) throw new AggregateError(failures, 'Flow desktop disposal failed')
       })()
       return disposing

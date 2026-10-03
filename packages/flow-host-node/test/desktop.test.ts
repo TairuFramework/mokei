@@ -1,5 +1,5 @@
 import type { ElicitResult } from '@mokei/context-protocol'
-import type { FlowHost, InboxItem } from '@mokei/flow-host'
+import type { FlowHost, InboxItem, InboxOutcome } from '@mokei/flow-host'
 import { createFlowHost, InboxAnswerInvalidError } from '@mokei/flow-host'
 import { Session } from '@mokei/session'
 import type { FlowDefinition } from '@sozai/flow-graph'
@@ -7,6 +7,10 @@ import { afterEach, expect, test, vi } from 'vitest'
 
 import type { FlowDesktopAdapter, FlowDesktopController } from '../src/desktop.js'
 import { createFlowDesktopController } from '../src/desktop.js'
+import { createMonitorPresence } from '../src/monitor-presence.js'
+import { createMonitorSurface } from '../src/monitor-surface.js'
+import { createNativeSurface } from '../src/native-surface.js'
+import type { InboxSurface } from '../src/surfaces.js'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -35,9 +39,15 @@ const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((dispose) => dispose()))
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 function setup(
-  options: { notifications?: boolean; host?: FlowHost; adapter?: Partial<FlowDesktopAdapter> } = {},
+  options: {
+    notifications?: boolean
+    host?: FlowHost
+    adapter?: Partial<FlowDesktopAdapter>
+    surfaces?: Array<InboxSurface>
+  } = {},
 ) {
   const adapter: FlowDesktopAdapter = {
     canPrompt: () => true,
@@ -50,12 +60,20 @@ function setup(
     ...options.adapter,
   }
   const errors: Array<unknown> = []
-  const controller = createFlowDesktopController({
+  const native = createNativeSurface({
     adapter,
     notifications: options.notifications ?? true,
     host: () => {
-      if (options.host == null) throw new Error('Unexpected host access')
-      return options.host
+      return options.host ?? ({ inbox: { get: () => second } } as unknown as FlowHost)
+    },
+    monitorURL: () => undefined,
+    onError: (error) => errors.push(error),
+  })
+  const controller = createFlowDesktopController({
+    surfaces: [...(options.surfaces ?? []), native],
+    native,
+    host: () => {
+      return options.host ?? ({ inbox: { get: () => second } } as unknown as FlowHost)
     },
     onError: (error) => errors.push(error),
   })
@@ -83,11 +101,12 @@ test('startup bookkeeping survives settlement and delayed delivery without dupli
   const gate = deferred<void>()
   const { controller, adapter } = setup({ adapter: { notify: vi.fn(() => gate.promise) } })
   controller.restored([first, second])
-  controller.settled(first)
+  controller.settled(first, 'withdrawn')
   controller.added(first)
   controller.added(second)
   controller.added({ ...second, id: 'three:input' })
   controller.added({ ...second, id: 'three:input' })
+  await vi.waitFor(() => expect(adapter.notify).toHaveBeenCalledTimes(2))
   gate.resolve()
   await controller.dispose()
   expect(vi.mocked(adapter.notify).mock.calls.map(([message]) => message)).toEqual([
@@ -127,7 +146,8 @@ test('each item notification has its own group and the summary a fixed one', asy
   controller.restored([first, second])
   controller.added({ ...second, id: 'three:input' })
   controller.added({ ...first, id: 'four:approval' })
-  expect(notifyOptions(adapter, 0)).toEqual({ group: 'mokei-inbox-pending' })
+  await vi.waitFor(() => expect(adapter.notify).toHaveBeenCalledTimes(3))
+  expect(notifyOptions(adapter, 0).group).toBe('mokei-inbox-pending')
   expect(notifyOptions(adapter, 1).group).toBe('mokei-inbox-three:input')
   expect(notifyOptions(adapter, 2).group).toBe('mokei-inbox-four:approval')
   expect(notifyOptions(adapter, 1).onClick).toEqual(expect.any(Function))
@@ -136,9 +156,10 @@ test('settlement removes the item notification', async () => {
   const { controller, adapter } = setup()
   controller.restored([])
   controller.added(second)
+  await vi.waitFor(() => expect(adapter.notify).toHaveBeenCalledTimes(1))
   const options = notifyOptions(adapter)
   expect(options.signal?.aborted).toBe(false)
-  controller.settled(second)
+  controller.settled(second, 'answered')
   expect(options.signal?.aborted).toBe(true)
 })
 const inputFlow: FlowDefinition = {
@@ -176,7 +197,7 @@ async function runtime(approval = false) {
       },
     },
     pollMs: 10,
-    listeners: { 'inbox:settled': ({ item }) => controller?.settled(item) },
+    listeners: { 'inbox:settled': ({ item, outcome }) => controller?.settled(item, outcome) },
   })
   cleanup.push(async () => {
     await host.dispose()
@@ -283,10 +304,11 @@ test('unsupported forms and backend failures leave the item pending', async () =
   expect(host.inbox.get(item.id)).toEqual(item)
 })
 test('duplicate ownership is rejected before a delayed run lookup completes', async () => {
-  const { host, item } = await runtime()
+  const { host, item, connect } = await runtime()
   const gate = deferred<Awaited<ReturnType<FlowHost['get']>>>()
   const lookup = vi.spyOn(host, 'get').mockReturnValueOnce(gate.promise)
   const { controller } = setup({ host, adapter: { prompt: async () => ({ action: 'cancel' }) } })
+  connect(controller)
   const firstPrompt = controller.prompt(item.id, new AbortController().signal)
   await expect(controller.prompt(item.id, new AbortController().signal)).rejects.toMatchObject({
     name: 'InboxPromptInProgressError',
@@ -322,7 +344,9 @@ test.each(['caller', 'settlement', 'shutdown'] as const)(
         disposed = true
       })
     }
-    expect(await outcome).toMatchObject({ error: expect.any(Error) })
+    expect(await outcome).toMatchObject(
+      source === 'settlement' ? { value: { action: 'decline' } } : { error: expect.any(Error) },
+    )
     expect(prompt.mock.calls[0]?.[0].signal.aborted).toBe(true)
     try {
       for (let turn = 0; turn < 10; turn++) await Promise.resolve()
@@ -459,6 +483,7 @@ test.each([
   const { controller, adapter, errors } = setup({ host, adapter: { prompt } })
   connect(controller)
   show(controller, item)
+  await vi.waitFor(() => expect(adapter.notify).toHaveBeenCalledTimes(1))
   notifyOptions(adapter).onClick?.()
   await vi.waitFor(() => expect(host.inbox.list()).toEqual([]))
   expect(prompt).toHaveBeenCalledTimes(1)
@@ -468,7 +493,7 @@ test.each([
 test('clicking the pending summary opens no prompt', async () => {
   const { controller, adapter } = setup()
   controller.restored([first, second])
-  expect(notifyOptions(adapter).onClick).toBeUndefined()
+  notifyOptions(adapter).onClick?.()
   await controller.dispose()
   expect(adapter.prompt).not.toHaveBeenCalled()
 })
@@ -501,4 +526,224 @@ test('a click on an unpromptable item is ignored', async () => {
   await new Promise((resolve) => setTimeout(resolve, 10))
   expect(adapter.prompt).not.toHaveBeenCalled()
   expect(errors).toEqual([])
+})
+
+function monitor(
+  options: { visible?: boolean; canNotify?: boolean; frozen?: boolean; shown?: boolean } = {},
+) {
+  const presence = createMonitorPresence()
+  const { attachmentID } = presence.attach('http://127.0.0.1:4000/')
+  const messages: Array<{ type: string; attemptID?: string }> = []
+  const tab = presence.connect(attachmentID, {
+    close() {},
+    send(message) {
+      messages.push(message)
+      if (message.type === 'ping' && !options.frozen)
+        tab.receive({ type: 'pong', nonce: message.nonce })
+      if (message.type === 'notify' || message.type === 'prompt')
+        tab.receive({ type: 'ack', attemptID: message.attemptID, shown: options.shown ?? true })
+    },
+  })
+  tab.receive({
+    type: 'state',
+    visible: options.visible ?? false,
+    canNotify: options.canNotify ?? true,
+  })
+  cleanup.push(async () => presence.dispose())
+  return { surface: createMonitorSurface(presence), messages, tab }
+}
+
+test('verified monitor attention suppresses native notifications', async () => {
+  const { surface } = monitor({ visible: true })
+  const { controller, adapter } = setup({ surfaces: [surface] })
+  controller.restored([])
+  controller.added(second)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  expect(surface.status()).toBe('attended')
+  expect(adapter.notify).not.toHaveBeenCalled()
+  await controller.dispose()
+})
+
+test('a frozen visible monitor falls back to native after five seconds', async () => {
+  vi.useFakeTimers()
+  const { surface } = monitor({ visible: true, canNotify: false, frozen: true })
+  const { controller, adapter } = setup({ surfaces: [surface] })
+  controller.restored([])
+  controller.added(second)
+  await vi.advanceTimersByTimeAsync(4_999)
+  expect(adapter.notify).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(1)
+  expect(adapter.notify).toHaveBeenCalledTimes(1)
+})
+
+test.each([true, false])(
+  'monitor notification shown=%s controls native fallback',
+  async (shown) => {
+    const { surface, messages } = monitor({ shown })
+    const { controller, adapter } = setup({ surfaces: [surface] })
+    controller.restored([])
+    controller.added(second)
+    await vi.waitFor(() => expect(messages.some((message) => message.type === 'notify')).toBe(true))
+    if (!shown) await vi.waitFor(() => expect(adapter.notify).toHaveBeenCalledTimes(1))
+    else {
+      await controller.dispose()
+      expect(adapter.notify).not.toHaveBeenCalled()
+      expect(messages.some((message) => message.type === 'withdraw')).toBe(true)
+    }
+  },
+)
+
+test('native notification opt-out leaves monitor notifications enabled', async () => {
+  const { surface, messages } = monitor()
+  const { controller, adapter } = setup({ surfaces: [surface], notifications: false })
+  controller.restored([])
+  controller.added(second)
+  await vi.waitFor(() => expect(messages.some((message) => message.type === 'notify')).toBe(true))
+  controller.settled(second, 'answered')
+  expect(messages.some((message) => message.type === 'withdraw')).toBe(true)
+  expect(adapter.notify).not.toHaveBeenCalled()
+})
+
+test('restored items notify natively even with an attended monitor', async () => {
+  const { surface, messages } = monitor({ visible: true })
+  const { controller, adapter } = setup({ surfaces: [surface] })
+  controller.restored([second])
+  expect(adapter.notify).toHaveBeenCalledTimes(1)
+  expect(messages).toEqual([])
+})
+
+test.each([
+  ['answered', 'accept'],
+  ['declined', 'decline'],
+  ['cancelled', 'cancel'],
+  ['withdrawn', null],
+] satisfies Array<[InboxOutcome, string | null]>)(
+  'monitor prompt observes %s settlement',
+  async (settlement, action) => {
+    const { host, item, connect } = await runtime()
+    const { surface, messages } = monitor({ visible: true })
+    const { controller, adapter } = setup({ host, surfaces: [surface] })
+    connect(controller)
+    const prompting = controller.prompt(item.id, new AbortController().signal)
+    const observed = prompting.catch((error: unknown) => error)
+    await vi.waitFor(() => expect(messages.some((message) => message.type === 'prompt')).toBe(true))
+    controller.settled(item, settlement)
+    if (action == null) expect(await observed).toMatchObject({ name: 'InboxItemNotFoundError' })
+    else expect(await observed).toEqual({ action })
+    expect(messages.some((message) => message.type === 'withdraw')).toBe(true)
+    expect(adapter.prompt).not.toHaveBeenCalled()
+  },
+)
+
+test('monitor target loss falls back to the native dialog', async () => {
+  const { host, item, connect } = await runtime()
+  const { surface, messages, tab } = monitor({ visible: true })
+  const { controller, adapter } = setup({
+    host,
+    surfaces: [surface],
+    adapter: {
+      prompt: vi.fn<FlowDesktopAdapter['prompt']>(async () => ({
+        action: 'accept',
+        content: { value: 'Ada' },
+      })),
+    },
+  })
+  connect(controller)
+  const prompting = controller.prompt(item.id, new AbortController().signal)
+  await vi.waitFor(() => expect(messages.some((message) => message.type === 'prompt')).toBe(true))
+  tab.disconnect()
+  await expect(prompting).resolves.toEqual({ action: 'accept' })
+  expect(adapter.prompt).toHaveBeenCalledTimes(1)
+})
+
+test('caller abort withdraws a monitor prompt and immediately releases ownership', async () => {
+  const { host, item, connect } = await runtime()
+  const { surface, messages } = monitor({ visible: true })
+  const { controller } = setup({ host, surfaces: [surface] })
+  connect(controller)
+  const caller = new AbortController()
+  const prompting = controller.prompt(item.id, caller.signal).catch((error: unknown) => error)
+  await vi.waitFor(() => expect(messages.some((message) => message.type === 'prompt')).toBe(true))
+  await expect(controller.prompt(item.id, new AbortController().signal)).rejects.toMatchObject({
+    name: 'InboxPromptInProgressError',
+  })
+  caller.abort(new Error('Disconnected'))
+  expect(await prompting).toMatchObject({ message: 'Disconnected' })
+  expect(messages.some((message) => message.type === 'withdraw')).toBe(true)
+  expect(host.inbox.get(item.id)).toEqual(item)
+  const next = controller.prompt(item.id, new AbortController().signal)
+  await vi.waitFor(() =>
+    expect(messages.filter((message) => message.type === 'prompt')).toHaveLength(2),
+  )
+  await host.inbox.decline(item.id)
+  await expect(next).resolves.toEqual({ action: 'decline' })
+})
+
+test('settlement during delivery wins over fallback and closes a late delivery', async () => {
+  const { host, item, connect } = await runtime()
+  const gate = deferred<Awaited<ReturnType<NonNullable<InboxSurface['prompt']>>>>()
+  const started = deferred<void>()
+  const close = vi.fn()
+  const surface: InboxSurface = {
+    name: 'delayed',
+    status: () => 'reachable',
+    isAttended: async () => false,
+    notify: async () => null,
+    prompt: () => {
+      started.resolve()
+      return gate.promise
+    },
+  }
+  const { controller, adapter } = setup({ host, surfaces: [surface] })
+  connect(controller)
+  const prompting = controller.prompt(item.id, new AbortController().signal)
+  await started.promise
+  await host.inbox.decline(item.id)
+  await expect(prompting).resolves.toEqual({ action: 'decline' })
+  gate.resolve({ close, closed: Promise.resolve() })
+  await vi.waitFor(() => expect(close).toHaveBeenCalled())
+  expect(adapter.prompt).not.toHaveBeenCalled()
+})
+
+test('settlement while monitor notify is pending prevents native fallback', async () => {
+  const gate = deferred<null>()
+  const entered = deferred<void>()
+  const surface: InboxSurface = {
+    name: 'delayed',
+    status: () => 'reachable',
+    isAttended: async () => false,
+    notify: () => {
+      entered.resolve()
+      return gate.promise
+    },
+  }
+  const { controller, adapter } = setup({ surfaces: [surface] })
+  controller.restored([])
+  controller.added(second)
+  await entered.promise
+  controller.settled(second, 'answered')
+  gate.resolve(null)
+  await controller.dispose()
+  expect(adapter.notify).not.toHaveBeenCalled()
+})
+
+test('settlement closes both notification and prompt deliveries for the item', async () => {
+  const { host, item, connect } = await runtime()
+  const { surface, messages } = monitor({ visible: false })
+  const { controller } = setup({ host, surfaces: [surface] })
+  connect(controller)
+  controller.restored([])
+  controller.added(item)
+  await vi.waitFor(() => expect(messages.some((message) => message.type === 'notify')).toBe(true))
+  const prompting = controller.prompt(item.id, new AbortController().signal)
+  await vi.waitFor(() => expect(messages.some((message) => message.type === 'prompt')).toBe(true))
+  await host.inbox.decline(item.id)
+  await expect(prompting).resolves.toEqual({ action: 'decline' })
+  const withdrawn = messages
+    .filter((message) => message.type === 'withdraw')
+    .map((message) => message.attemptID)
+  const attempts = messages
+    .filter((message) => message.type === 'notify' || message.type === 'prompt')
+    .map((message) => message.attemptID)
+  expect(withdrawn.sort()).toEqual(attempts.sort())
 })

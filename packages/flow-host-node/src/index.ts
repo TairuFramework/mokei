@@ -19,6 +19,7 @@ export {
   parseMonitorURL,
 } from './monitor-presence.js'
 export { createMonitorSurface } from './monitor-surface.js'
+export { createNativeSurface } from './native-surface.js'
 export { startRetention } from './retention.js'
 export type { FlowResources, FlowService, FlowServiceParams, FlowServiceStatus } from './service.js'
 export { createFlowService, FlowServiceUnavailableError } from './service.js'
