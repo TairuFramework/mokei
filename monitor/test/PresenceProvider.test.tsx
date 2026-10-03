@@ -219,6 +219,68 @@ test('prompt navigates and acknowledges', async () => {
     shown: true,
   })
 })
+test('rejected prompt navigation acknowledges failure', async () => {
+  navigate.mockRejectedValueOnce(new Error('route failed'))
+  const f = fixture()
+  await f.receive(prompt())
+  expect(f.channels[0].send).toHaveBeenLastCalledWith({
+    type: 'ack',
+    attemptID: 'attempt',
+    shown: false,
+  })
+})
+test('prompt waits for successful navigation before acknowledging', async () => {
+  let resolve!: () => void
+  navigate.mockReturnValueOnce(
+    new Promise<void>((done) => {
+      resolve = done
+    }),
+  )
+  const f = fixture()
+  await f.receive(prompt())
+  expect(f.channels[0].send.mock.calls.some(([message]) => message.type === 'ack')).toBe(false)
+  await f.receive({ type: 'ping', nonce: 'navigating' })
+  expect(f.channels[0].send).toHaveBeenLastCalledWith({ type: 'pong', nonce: 'navigating' })
+  await act(async () => resolve())
+  expect(f.channels[0].send).toHaveBeenLastCalledWith({
+    type: 'ack',
+    attemptID: 'attempt',
+    shown: true,
+  })
+})
+test.each([
+  ['withdraw', true],
+  ['withdraw', false],
+  ['deadline', true],
+  ['deadline', false],
+  ['pagehide', true],
+  ['pagehide', false],
+] as const)(
+  'prompt navigation settling after %s with success=%s does not acknowledge',
+  async (reason, succeeds) => {
+    let resolve!: () => void
+    let reject!: (error: Error) => void
+    navigate.mockReturnValueOnce(
+      new Promise<void>((done, fail) => {
+        resolve = done
+        reject = fail
+      }),
+    )
+    const f = fixture()
+    await f.receive(prompt())
+    if (reason === 'withdraw') await f.receive({ type: 'withdraw', attemptID: 'attempt' })
+    else if (reason === 'pagehide') fireEvent(window, new Event('pagehide'))
+    else
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5001)
+      })
+    await act(async () => {
+      if (succeeds) resolve()
+      else reject(new Error('route failed'))
+    })
+    expect(f.channels[0].send.mock.calls.some(([message]) => message.type === 'ack')).toBe(false)
+  },
+)
 test('another form gets toast and hidden notification; withdraw closes both', async () => {
   visible = 'hidden'
   const f = fixture()
@@ -293,6 +355,34 @@ test('pagehide closes channel and stops retry', async () => {
     await vi.advanceTimersByTimeAsync(20_000)
   })
   expect(f.createChannel).toHaveBeenCalledTimes(1)
+})
+test('persisted pageshow reopens presence and sends current state without remounting', async () => {
+  const f = fixture()
+  fireEvent(window, new Event('pagehide'))
+  expect(f.channels[0].close).toHaveBeenCalledOnce()
+  fireEvent(window, new PageTransitionEvent('pageshow', { persisted: false }))
+  expect(f.createChannel).toHaveBeenCalledTimes(1)
+  fireEvent.click(screen.getByText('active'))
+  permission = 'denied'
+  visible = 'hidden'
+  await act(async () => {
+    fireEvent(window, new PageTransitionEvent('pageshow', { persisted: true }))
+  })
+  expect(f.createChannel).toHaveBeenCalledTimes(2)
+  expect(f.channels[1].send).toHaveBeenNthCalledWith(1, {
+    type: 'state',
+    visible: false,
+    canNotify: false,
+    activeItemID: 'other',
+  })
+  await f.receive({ type: 'ping', nonce: 'restored' })
+  expect(f.channels[1].send).toHaveBeenLastCalledWith({ type: 'pong', nonce: 'restored' })
+  fireEvent(window, new PageTransitionEvent('pageshow', { persisted: true }))
+  expect(f.createChannel).toHaveBeenCalledTimes(2)
+  f.view.unmount()
+  fireEvent(window, new PageTransitionEvent('pageshow', { persisted: true }))
+  expect(f.channels[1].close).toHaveBeenCalledOnce()
+  expect(f.createChannel).toHaveBeenCalledTimes(2)
 })
 test('permission request updates context and state from a user gesture', async () => {
   permission = 'default'

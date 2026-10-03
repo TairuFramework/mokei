@@ -169,6 +169,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           }
           if (Date.now() > message.deadline) return
           let shown = false
+          let navigation: Promise<void> | undefined
           const delivery: Delivery = { itemID: message.itemID }
           closeDelivery(message.attemptID)
           try {
@@ -178,8 +179,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
             const body =
               message.type === 'notify' ? message.message : 'Open the inbox item to respond'
             if (message.type === 'prompt' && !otherForm) {
-              void openItem(message.itemID).catch(() => {})
-              shown = visible
+              navigation = openItem(message.itemID)
             }
             if (
               (message.type === 'prompt' && otherForm) ||
@@ -199,7 +199,22 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
             // A failed display must let the daemon try its next surface.
           }
           deliveries.current.set(message.attemptID, delivery)
-          send({ type: 'ack', attemptID: message.attemptID, shown })
+          const acknowledge = (shown: boolean) => {
+            if (
+              deliveries.current.get(message.attemptID) === delivery &&
+              Date.now() <= message.deadline
+            ) {
+              send({ type: 'ack', attemptID: message.attemptID, shown })
+            }
+          }
+          if (navigation != null) {
+            void navigation.then(
+              () => acknowledge(shown || document.visibilityState === 'visible'),
+              () => acknowledge(false),
+            )
+          } else {
+            acknowledge(shown)
+          }
         }
         void (async () => {
           try {
@@ -225,13 +240,21 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       if (timer != null) clearTimeout(timer)
       teardown()
     }
+    const restore = (event: PageTransitionEvent) => {
+      if (!event.persisted || !stopped) return
+      stopped = false
+      failures = 0
+      connect()
+    }
     document.addEventListener('visibilitychange', visibilityChanged)
     window.addEventListener('pagehide', stop)
+    window.addEventListener('pageshow', restore)
     connect()
     return () => {
       stop()
       document.removeEventListener('visibilitychange', visibilityChanged)
       window.removeEventListener('pagehide', stop)
+      window.removeEventListener('pageshow', restore)
     }
   }, [client, control, epoch, restarted, closeDelivery, openItem, showToast])
   useEffect(
