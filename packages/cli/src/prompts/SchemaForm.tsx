@@ -1,7 +1,7 @@
 import { TextInput } from '@inkjs/ui'
 import { ConfirmCard, SelectCard } from '@tejika/ui'
 import { Box, Text, useApp, useInput } from 'ink'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { type FormField, validateFieldInput } from './schema-form.js'
 
@@ -28,11 +28,24 @@ export function SchemaForm({ title, fields, onSubmit, onCancel, onInvalid }: Sch
   })
 
   const field = fields[index]
+  const empty = fields.length === 0
+  const onSubmitRef = useRef(onSubmit)
+  onSubmitRef.current = onSubmit
+  useEffect(() => {
+    if (empty) onSubmitRef.current({})
+  }, [empty])
   if (field == null) return null
 
   const advance = (value: unknown) => {
     if (cancelled.current) return
-    if (value !== undefined) values.current[field.key] = value
+    if (value !== undefined) {
+      Object.defineProperty(values.current, field.key, {
+        value,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      })
+    }
     setError(null)
     if (index + 1 >= fields.length) {
       onSubmit(values.current)

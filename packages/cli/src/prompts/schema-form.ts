@@ -112,6 +112,7 @@ export function validateFieldInput(field: FormField, raw: string): FieldValidati
   switch (field.kind) {
     case 'number':
     case 'integer': {
+      if (raw.trim() === '') return { error: `${field.label} must be a number` }
       const value = Number(raw)
       if (!Number.isFinite(value)) return { error: `${field.label} must be a number` }
       if (field.kind === 'integer' && !Number.isInteger(value)) {
@@ -136,10 +137,10 @@ export function validateFieldInput(field: FormField, raw: string): FieldValidati
       return { error: `${field.label} must be yes or no` }
     }
     default:
-      if (field.minLength != null && raw.length < field.minLength) {
+      if (field.minLength != null && [...raw].length < field.minLength) {
         return { error: `${field.label} must be at least ${field.minLength} characters` }
       }
-      if (field.maxLength != null && raw.length > field.maxLength) {
+      if (field.maxLength != null && [...raw].length > field.maxLength) {
         return { error: `${field.label} must be at most ${field.maxLength} characters` }
       }
       return { value: raw }

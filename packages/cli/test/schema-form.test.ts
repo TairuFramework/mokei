@@ -77,6 +77,14 @@ describe('validateFieldInput', () => {
     expect(validateFieldInput(field({ kind: 'integer' }), '4').value).toBe(4)
   })
 
+  test('whitespace-only number is rejected', () => {
+    expect(validateFieldInput(field({ kind: 'number' }), '  ').error).toBeDefined()
+  })
+
+  test('string length counts code points', () => {
+    expect(validateFieldInput(field({ maxLength: 1 }), '😀').value).toBe('😀')
+  })
+
   test('string length bounds', () => {
     expect(validateFieldInput(field({ minLength: 3 }), 'ab').error).toBeDefined()
     expect(validateFieldInput(field({ maxLength: 2 }), 'abc').error).toBeDefined()
