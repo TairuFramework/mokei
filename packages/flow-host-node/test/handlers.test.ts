@@ -134,6 +134,8 @@ async function setup() {
       events: () => {},
       shutdown: () => {},
       spawn: () => {},
+      'monitor.attach': () => {},
+      'monitor.presence': () => {},
     },
     identity,
     accessRules: { '*': { allow: true } },
