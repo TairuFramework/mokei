@@ -515,6 +515,9 @@ importers:
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../packages/context-rpc
+      '@mokei/flow-client':
+        specifier: workspace:^
+        version: link:../packages/flow-client
       '@mokei/flow-host':
         specifier: workspace:^
         version: link:../packages/flow-host
@@ -1072,6 +1075,9 @@ importers:
       '@mokei/decision-flow-server':
         specifier: workspace:^
         version: link:../decision-flow-server
+      '@mokei/flow-client':
+        specifier: workspace:^
+        version: link:../flow-client
       '@mokei/host':
         specifier: workspace:^
         version: link:../host

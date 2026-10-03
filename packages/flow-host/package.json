@@ -46,6 +46,7 @@
     "@mokei/context-server": "workspace:^",
     "@mokei/decision-flow": "workspace:^",
     "@mokei/decision-flow-server": "workspace:^",
+    "@mokei/flow-client": "workspace:^",
     "@mokei/host": "workspace:^",
     "@mokei/logger": "workspace:^",
     "@mokei/session": "workspace:^",

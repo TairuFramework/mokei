@@ -13,5 +13,6 @@
 export * from './errors.js'
 export * from './remote.js'
 export * from './server.js'
+export { createEventQueue, type EventQueue, type EventQueueParams } from './subscription.js'
 export * from './types.js'
 export * from './wait.js'

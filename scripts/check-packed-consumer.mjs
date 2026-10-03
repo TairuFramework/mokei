@@ -19,8 +19,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 // Entries the consumer imports, as `export type *` re-exports, and the packages it depends on.
-const TYPE_IMPORTS = { FlowHostNode: '@mokei/flow-host-node' }
-const CONSUMER_DEPENDENCIES = ['@mokei/flow-host-node', 'mokei']
+const TYPE_IMPORTS = {
+  FlowClient: '@mokei/flow-client',
+  FlowHostNode: '@mokei/flow-host-node',
+}
+const CONSUMER_DEPENDENCIES = ['@mokei/flow-client', '@mokei/flow-host-node', 'mokei']
 
 function readJSON(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
