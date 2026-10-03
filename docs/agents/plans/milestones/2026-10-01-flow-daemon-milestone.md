@@ -66,7 +66,7 @@ Each sub-project gets its own spec, plan and PR from `main`.
 | 2 | Node storage and observability | `@mokei/flow-host-node`: sqlite stores, span and log capture, OTLP option, config loader, retention. | Store, capture and config tests green. | complete |
 | 3 | Daemon | `host-protocol` procedures and events, handler composition in `host-node`, daemon entry in the CLI, recovery on boot, desktop notifier. | Daemon integration suite green, including restart and resume. | complete; native desktop QA deferred |
 | 4 | CLI and MCP | `mokei daemon`, `flows`, `runs` and `inbox` commands; `mokei flows mcp`. `scripts/flow-rig` and its suite are deleted. The MCP server lives in the portable `@mokei/flow-client` (not `@mokei/flow-host-node`), over a `FlowControl` interface with a daemon adapter and a local `@mokei/flow-host` adapter. Folds in the published declaration dependency fixes (context-server, context-client, context-rpc, context-protocol, model-provider) and the `pnpm test:packed` packed-consumer check. | End-to-end suite green; packed consumer check green; manual macOS QA done. | implemented; pending manual macOS QA |
-| 5 | Monitor | Runs, run detail and inbox pages. | Manual QA of the monitor pages. | not started |
+| 5 | Monitor | Runs, run detail and inbox pages. Revisit desktop notification clicks: while the monitor is running, a click could open its inbox screen instead of the item dialog. | Manual QA of the monitor pages. | not started |
 
 Completed sub-projects link their summary in `completed/` here.
 
