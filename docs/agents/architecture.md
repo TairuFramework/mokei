@@ -225,7 +225,7 @@ binding.
 | Portable trace capture and pruning | `@mokei/flow-host` | `TraceStore`, `createMemoryTraceStore`, `createTraceStoreSpanExporter`, `createTraceStoreLogSink`, `pruneRuns` |
 | Flow control contract, wait helpers and MCP facade | `@mokei/flow-client` | `FlowControl`, `createRemoteFlowControl`, `waitForRun`, `createFlowControlServer` |
 | In-process flow control | `@mokei/flow-host` | `createLocalFlowControl` |
-| CLI | `mokei` | `packages/cli/src/program.ts`, `packages/cli/src/commands/{daemon,flows,runs,inbox}/` |
+| CLI | `mokei` | `packages/cli/src/program.ts`, `packages/cli/src/commands/{daemon,flows,runs,inbox}.ts` |
 | Monitor | `@mokei/host-monitor`, `monitor` | `packages/host-monitor/src/index.ts`, `monitor/src/main.tsx` |
 
 `@mokei/session` uses `ContextHost` and is React Native / Metro-safe. `@mokei/session-node`
@@ -302,7 +302,7 @@ website/                  # documentation site (private)
 | Flow telemetry, configuration and retention | `packages/flow-host-node/src/{telemetry,config,flow-dirs,retention}.ts` |
 | Portable trace storage and pruning | `packages/flow-host/src/{trace-store,trace-store-span-exporter,trace-store-log-sink,prune-runs}.ts` |
 | Flow control and MCP facade | `packages/flow-client/src/` |
-| Flow CLI commands | `packages/cli/src/commands/{daemon,flows,runs,inbox}/` |
+| Flow CLI commands | `packages/cli/src/commands/{daemon,flows,runs,inbox}.ts`, `packages/cli/src/run-follow.tsx`, `packages/cli/src/prompts/` |
 | Host orchestration | `packages/host/src/` |
 | HTTP transports and OAuth | `packages/http-client/src/oauth/`, `packages/http-server/src/auth/`, `packages/host-node/src/oauth/` |
 | MRTR and subscriptions | `packages/context-client/src/{mrtr,subscriptions}.ts`, `packages/context-server/src/{mrtr,subscriptions}.ts` |
@@ -413,8 +413,8 @@ Two adapters implement `FlowControl`: `createRemoteFlowControl(client)` over the
 `createLocalFlowControl(host, extras?)` from `@mokei/flow-host` over an in-process `FlowHost`.
 
 The CLI exposes the daemon and flows through `mokei daemon start|stop|status|restart|logs`,
-`mokei flows list|check|mcp`, `mokei runs start|get|list|cancel|trace` (`--wait` blocks until the run is settled or
-needs input) and `mokei inbox list|show|answer|decline|cancel|prompt`. `mokei flows mcp` serves the flow control
+`mokei flows list|check|mcp`, `mokei runs start|get|list|cancel|trace` (`runs start --wait` follows the run to a
+terminal state, answering its inputs and approvals in a terminal) and `mokei inbox list|show|answer|decline|cancel|prompt`. `mokei flows mcp` serves the flow control
 MCP server over stdio against the daemon; the repository `.mcp.json` `flow` entry runs it. Inbox dialogs and
 notifications come from `@mokei/host-desktop` inside the daemon, so the MCP server and the CLI stay headless.
 

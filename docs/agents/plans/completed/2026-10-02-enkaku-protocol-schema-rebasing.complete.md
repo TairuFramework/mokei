@@ -25,4 +25,5 @@ Its probe validated signed and unsigned recursive request/result schemas, reject
 The packed CLI daemon served a real socket and completed an inline input flow with nested JSON input and output.
 Validation snapshots, inbox settlement, run reads and trace reads succeeded.
 
-The separate [published declaration dependency work](../backlog/2026-10-03-flow-client-follow-ons.md) remains open.
+The separate published declaration dependency work was folded into the flow CLI and MCP sub-project, which shipped
+it with the `pnpm test:packed` check (see the [flow client follow-ons](../backlog/2026-10-03-flow-client-follow-ons.md)).

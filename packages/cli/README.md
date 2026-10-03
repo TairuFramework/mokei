@@ -97,6 +97,11 @@ mokei daemon restart               stop then start, applying flows.json changes
 mokei daemon logs [-n <count>] [-f]  print the daemon log (default 50 lines); -f follows
 ```
 
+`stop` waits up to 75 s for in-flight work to drain, then force-kills the daemon and says so. It
+only signals a daemon serving the selected socket. With `--json`, `stop` prints
+`{ state, pid?, forced? }` (`forced` when `state` is `stopped`), and `restart` prints the same shape
+as its `stop` field next to `start`.
+
 ### `mokei flows`
 
 ```
@@ -117,7 +122,8 @@ mokei runs trace <runID>           span tree with durations, then the run logs
 
 With `--wait`, `start` watches the run until it ends and, in a terminal, answers each pending item
 in place. It exits 0 when the run completes and 1 otherwise. Without a terminal, or with `--json`,
-it only watches and prints each changed status.
+it only watches and prints each changed status. Ctrl-C, also inside a prompt, stops the command
+and leaves the item pending.
 
 ### `mokei inbox`
 

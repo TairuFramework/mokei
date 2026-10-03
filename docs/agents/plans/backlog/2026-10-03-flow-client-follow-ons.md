@@ -14,11 +14,6 @@ Claude Code does not support MCP tasks today. Revisit when it does. Tasks would 
 reach the MCP client directly instead of the run's inbox item, so the approval and notification path needs a design
 before adoption.
 
-## Adopt `@tejika/process` improvements
-
-Adopt `expectedSocketPath` and the forced-stop result once available (requested upstream). They would replace the
-CLI's own socket path derivation and its guess at whether `daemon stop` had to force the process down.
-
 ## Upstream dependency gaps worked around by `packageExtensions`
 
 The packed-consumer check installs published tarballs in isolation. It uses `packageExtensions` to cover gaps in
