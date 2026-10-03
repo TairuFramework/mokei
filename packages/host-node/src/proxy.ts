@@ -61,7 +61,10 @@ export class ProxyHost extends NodeContextHost {
     const channel = this.#client.createChannel('spawn', {
       param: { ...spawnParam, env: filterEnv(env) },
     })
-    const transport = new Transport({ stream: channel }) as ClientTransport
+    // The channel is also a Promise for RPC completion. Never await it as a stream.
+    const transport = new Transport({
+      stream: { readable: channel.readable, writable: channel.writable },
+    }) as ClientTransport
 
     return this.createContext({
       key,

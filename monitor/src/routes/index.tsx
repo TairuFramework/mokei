@@ -117,7 +117,11 @@ function EventDetails({ event }: { event: HostEvent }) {
 
 function HomePage() {
   const env = useEnvironment()
-  const events = useHostEvents()
+  const events = useHostEvents().filter(
+    (event): event is Extract<HostEvent, { type: `context:${string}` }> => {
+      return event.type.startsWith('context:')
+    },
+  )
   const [displayEventDetails, setDisplayEventDetails] = useState<HostEvent | null>(null)
 
   const eventRows = useMemo(() => {

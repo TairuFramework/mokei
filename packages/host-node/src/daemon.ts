@@ -7,6 +7,7 @@ export type HostClient = Client<Protocol>
 
 export type DaemonOptions = {
   socketPath?: string
+  entry?: string
 }
 
 const DAEMON_ENTRY = fileURLToPath(new URL('./server.js', import.meta.url))
@@ -26,7 +27,7 @@ export async function createClient(socketPath?: string): Promise<HostClient> {
 export async function runDaemon(options: DaemonOptions = {}): Promise<HostClient> {
   return ensureDaemon<Protocol>({
     app: 'mokei',
-    entry: DAEMON_ENTRY,
+    entry: options.entry ?? DAEMON_ENTRY,
     socketPath: options.socketPath,
   })
 }

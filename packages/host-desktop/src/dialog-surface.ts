@@ -1,8 +1,5 @@
 import type { ElicitResult } from '@mokei/context-protocol'
 
-import { createAlerterBackend } from './backends/alerter.js'
-import { createNotifySendBackend } from './backends/notify-send.js'
-import { createOsascriptBackend } from './backends/osascript.js'
 import type {
   AskBackendName,
   AskRequest,
@@ -10,18 +7,19 @@ import type {
   BackendName,
   DesktopBackend,
 } from './backends/types.js'
-import { createZenityBackend } from './backends/zenity.js'
 import { askBackendFor, createDetector } from './detect.js'
 import type { DesktopElicitOptions } from './elicit-handler.js'
 import { type FieldPlan, type FormParams, planForm, withViolation } from './form.js'
 import type { DesktopElicitRequest } from './inbox.js'
+import { createDesktopNotifier, defaultCreateBackend, untilAbort } from './notification.js'
 import { report } from './report.js'
-import { createRunner, type Runner } from './runner.js'
+import { createRunner } from './runner.js'
+
+export { defaultCreateBackend, untilAbort } from './notification.js'
 
 const DEFAULT_TIMEOUT_SECONDS = 90
 const DEFAULT_MAX_TIMEOUT_SECONDS = 600
 const MAX_ATTEMPTS = 3
-const NOTIFY_TIMEOUT_MS = 5000
 const PREVIEW_LENGTH = 200
 export const URL_MODE_REASON = 'URL mode elicitation is not supported by desktop dialogs'
 const DISPOSED_MESSAGE = 'Desktop elicit handler disposed'
@@ -33,21 +31,6 @@ const DECLINE: ElicitResult = { action: 'decline' }
 type Step = { ask: AskRequest; backend: AskBackendName; field?: FieldPlan }
 
 type Content = NonNullable<ElicitResult['content']>
-
-export function defaultCreateBackend(appName: string) {
-  return (name: BackendName, runner: Runner): DesktopBackend => {
-    switch (name) {
-      case 'alerter':
-        return createAlerterBackend(runner)
-      case 'osascript':
-        return createOsascriptBackend(runner)
-      case 'zenity':
-        return createZenityBackend(runner)
-      case 'notify-send':
-        return createNotifySendBackend(runner, appName)
-    }
-  }
-}
 
 export function isUrlMode(params: DesktopElicitRequest['params']): boolean {
   return !('requestedSchema' in params) || params.mode === 'url'
@@ -68,24 +51,6 @@ export function timeoutSecondsOption(
     throw new TypeError(`${name} must be a finite number greater than 0, got ${String(seconds)}`)
   }
   return seconds
-}
-
-/** Settles with the promise, or rejects with the signal's reason as soon as it aborts. */
-export function untilAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason)
-    signal.addEventListener('abort', onAbort, { once: true })
-    promise.then(
-      (value) => {
-        signal.removeEventListener('abort', onAbort)
-        resolve(value)
-      },
-      (error) => {
-        signal.removeEventListener('abort', onAbort)
-        reject(error)
-      },
-    )
-  })
 }
 
 /** FIFO gate allowing one open dialog at a time. */
@@ -162,6 +127,7 @@ export function createDialogSurface(options: DesktopElicitOptions) {
     forced: options.backends,
   })
   const backends = new Map<BackendName, DesktopBackend>()
+  const notifier = createDesktopNotifier({ ...options, runner, createBackend: getBackend })
   const queue = createDialogQueue()
   const disposal = new AbortController()
   let disposing: Promise<void> | undefined
@@ -350,45 +316,24 @@ export function createDialogSurface(options: DesktopElicitOptions) {
 
   /** Best-effort notification about a new inbox entry; failures are reported, never thrown. */
   async function notifyAdded(request: DesktopElicitRequest, source: string): Promise<void> {
-    let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      const { selection } = detect()
-      if (selection.notify == null) {
-        report(
-          options.onUnsupported,
-          `Input notification failed: ${selection.notifyProblem ?? 'No notification backend is available'}`,
-        )
-        return
-      }
       let message = `${source} needs your input`
       if (options.notificationPromptPreview === true) {
         message += `: ${request.params.message.slice(0, PREVIEW_LENGTH)}`
       }
-      const timeout = new AbortController()
-      timer = setTimeout(() => {
-        timeout.abort(new Error('Notification delivery timed out'))
-      }, NOTIFY_TIMEOUT_MS)
-      const signal = AbortSignal.any([timeout.signal, disposal.signal])
-      const backend = getBackend(selection.notify.name)
-      if (backend.notify == null) {
-        throw new Error(`${backend.name} cannot show notifications`)
-      }
-      await untilAbort(
-        backend.notify({ title: appName, message }, { timeoutMs: NOTIFY_TIMEOUT_MS, signal }),
-        signal,
-      )
+      await notifier.notify(message)
     } catch (error) {
       if (!disposal.signal.aborted) {
         report(options.onUnsupported, `Input notification failed: ${messageOf(error)}`)
       }
-    } finally {
-      clearTimeout(timer)
     }
   }
 
   function dispose(): Promise<void> {
     if (disposing == null) {
       disposal.abort(new Error(DISPOSED_MESSAGE))
+      // This surface owns native cleanup through its runner, not injected backend lifetimes.
+      void notifier.dispose()
       disposing = ownsRunner ? runner.dispose() : Promise.resolve()
     }
     return disposing

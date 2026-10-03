@@ -1,4 +1,4 @@
-import type { StreamCall } from '@enkaku/client'
+import type { ClientDefinitionsType, StreamCall } from '@enkaku/client'
 import type { HostEvent, Protocol } from '@mokei/host-protocol'
 
 import { useCall, useCallStateResult } from '../enkaku/call.js'
@@ -11,6 +11,8 @@ export function useEventsStream() {
 }
 
 export function useHostInfo() {
-  const state = useRequestState<Protocol>({ procedure: 'info' })
+  const state = useRequestState<Protocol, ClientDefinitionsType<Protocol>, 'info'>({
+    procedure: 'info',
+  })
   return useCallStateResult(state)
 }

@@ -136,15 +136,18 @@ test('correlates concurrent watcher inbox and terminal listener work after await
   const update = client.tasks.update.bind(client.tasks)
   const cancel = client.tasks.cancel.bind(client.tasks)
   const owners = new Map<string, string>()
+  const readTasks = new Set<string>()
   let failed = false
   let urlCancelled = false
   let urlTaskID: string | undefined
   vi.spyOn(client.tasks, 'get').mockImplementation(async (taskID) => {
     const task = await get(taskID)
+    const initial = !readTasks.has(taskID)
+    readTasks.add(taskID)
     const runID = owners.get(taskID)
     if (runID !== undefined) {
       logger.info('poll', { runID })
-      if (!failed) {
+      if (!initial && !failed) {
         failed = true
         throw new Error('Injected poll failure')
       }

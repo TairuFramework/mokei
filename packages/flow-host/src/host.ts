@@ -44,6 +44,7 @@ export function runSnapshot(record: RunRecord): FlowRunSnapshot {
 /**
  * Recovery events fire during creation. Pass listeners to receive them, or
  * reconcile list() and inbox.list() after creation resolves, then rely on events.
+ * Creation awaits the first applied snapshot of every recovered task-backed run.
  */
 export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> {
   if (!params.session.contextHost.elicitationEnabled)
@@ -113,7 +114,11 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     inbox.prune(record.runID)
     lastApplied.delete(record.runID)
   }
-  async function apply(runID: string, task: DetailedTask): Promise<boolean> {
+  async function apply(
+    runID: string,
+    task: DetailedTask,
+    reconciled?: () => void,
+  ): Promise<boolean> {
     return tracing.withRun(runID, async () => {
       const applied = await queue.run(runID, async () => {
         const timestamp = Date.parse(task.lastUpdatedAt)
@@ -153,6 +158,8 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
             (task.status === 'working' || task.status === 'input_required'),
         }
       })
+      // Readiness covers committed state and inbox, before retryable cancellation effects.
+      reconciled?.()
       // Network calls stay outside the run queue so pending responses cannot block transitions.
       if (applied.cancelUnsupported) {
         await client.tasks.cancel(task.taskId)
