@@ -121,10 +121,12 @@ async function subscribe(
   }
 
   function close() {
-    if (state !== 'open') return
+    if (state === 'closed') return
+    // A failed subscription is already torn down; closing it discards what it still holds.
+    if (state === 'open') teardown()
     state = 'closed'
     buffer.length = 0
-    teardown()
+    failure = undefined
     for (const waiter of waiters.splice(0)) waiter.resolve({ done: true, value: undefined })
   }
 
@@ -134,8 +136,10 @@ async function subscribe(
     failure = error
     teardown()
     // Buffered events are still delivered before the failure surfaces; a pending waiter
-    // implies an empty buffer.
-    for (const waiter of waiters.splice(0)) waiter.reject(error)
+    // implies an empty buffer, so it receives the failure and later reads are done.
+    const pending = waiters.splice(0)
+    if (pending.length > 0) failure = undefined
+    for (const waiter of pending) waiter.reject(error)
   }
 
   function push(event: HostEvent) {

@@ -330,6 +330,33 @@ describe('createRemoteFlowControl', () => {
     expect(stub.listeners.size).toBe(0)
   })
 
+  test('closing after a disconnect discards buffered events and the failure', async () => {
+    const stub = createStubClient({ info: () => ({}) })
+    const control = createRemoteFlowControl(stub.client)
+    const subscription = await control.subscribe()
+    stub.streamAt(0).push({ type: 'run:state', meta, data: snapshot })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    stub.replaceTransport()
+    subscription.close()
+
+    const iterator = subscription[Symbol.asyncIterator]()
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })
+    expect(stub.streamAt(0).close).toHaveBeenCalledTimes(1)
+  })
+
+  test('a disconnect delivered to a pending read is reported once', async () => {
+    const stub = createStubClient({ info: () => ({}) })
+    const control = createRemoteFlowControl(stub.client)
+    const subscription = await control.subscribe()
+    const iterator = subscription[Symbol.asyncIterator]()
+    const next = iterator.next()
+    stub.replaceTransport()
+
+    expect(((await caught(next)) as FlowControlError).code).toBe('DISCONNECTED')
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })
+  })
+
   test('subscribe rejects and closes the stream when the barrier fails', async () => {
     const stub = createStubClient({
       info: () => {
