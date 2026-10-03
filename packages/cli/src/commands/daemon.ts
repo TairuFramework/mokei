@@ -1,6 +1,7 @@
 import { type FSWatcher, watch } from 'node:fs'
 import { open, readFile, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { FlowServiceStatus } from '@mokei/host-protocol'
 import { getLogDir, getPIDPath } from '@tejika/env'
 import { getDaemonStatus, stopDaemon } from '@tejika/process'
@@ -24,14 +25,15 @@ export type DaemonIdentity = {
 
 /**
  * Identifies the daemon by its pid file, which records the socket path it serves. A daemon
- * serving a different socket than the selected one is reported as `not-running` for the selected
- * socket, with the other path named.
+ * serving a different socket than the selected one (compared after `path.resolve`, as
+ * `stopDaemon` does) is reported as `not-running` for the selected socket, with the other path
+ * named.
  */
 export async function resolveDaemonIdentity(socketPath: string): Promise<DaemonIdentity> {
   const status = await getDaemonStatus({ app: APP, pidPath: getPIDPath(APP) })
   if (status.state === 'not-running') return { state: 'not-running' }
   if (status.state === 'stale') return { state: 'stale', pid: status.pid }
-  if (status.socketPath !== socketPath) {
+  if (resolve(status.socketPath) !== resolve(socketPath)) {
     return { state: 'not-running', otherSocketPath: status.socketPath }
   }
   return {
@@ -45,18 +47,6 @@ function mismatchMessage(socketPath: string, other: string): string {
 }
 
 type CommandOptions = { socketPath: string; json?: boolean }
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(done, ms)
-    function done() {
-      clearTimeout(timer)
-      signal.removeEventListener('abort', done)
-      resolve()
-    }
-    signal.addEventListener('abort', done, { once: true })
-  })
-}
 
 type StartResult = { pid?: number; socketPath: string; flowService: FlowServiceStatus }
 type Outcome<T> = { ok: true; value: T } | { ok: false; message: string; value?: T }
@@ -101,7 +91,12 @@ async function runStart(socketPath: string): Promise<Outcome<StartResult>> {
     try {
       let info = await bounded(connection.client.request('info'), signal, deadline)
       while (info.flowService.state === 'starting') {
-        await bounded(sleep(START_POLL_MS, signal), signal, deadline)
+        // `bounded` reports the abort; the delay's own AbortError is not needed.
+        await bounded(
+          delay(START_POLL_MS, undefined, { signal }).catch(() => {}),
+          signal,
+          deadline,
+        )
         info = await bounded(connection.client.request('info'), signal, deadline)
       }
       const identity = await resolveDaemonIdentity(socketPath)
@@ -135,45 +130,64 @@ function reportStart(outcome: Outcome<StartResult>, json: boolean | undefined): 
 }
 
 type StopOutcome =
-  | { outcome: 'stopped'; pid?: number }
-  | { outcome: 'not-running' }
-  | { outcome: 'failed'; message: string }
+  | { state: 'stopped'; pid?: number; forced: boolean }
+  | { state: 'not-running' }
+  | { state: 'failed'; message: string }
+
+/** The JSON shape of a stop, shared by `daemon stop --json` and the `stop` field of `restart`. */
+type StopJSON = { state: 'stopped'; pid?: number; forced: boolean } | { state: 'not-running' }
+
+function stopJSON(stop: StopOutcome & { state: 'stopped' | 'not-running' }): StopJSON {
+  if (stop.state === 'not-running') return { state: 'not-running' }
+  const json: StopJSON = { state: 'stopped', forced: stop.forced }
+  if (stop.pid != null) json.pid = stop.pid
+  return json
+}
 
 async function runStop(socketPath: string): Promise<StopOutcome> {
   const identity = await resolveDaemonIdentity(socketPath)
   if (identity.otherSocketPath != null) {
-    return { outcome: 'failed', message: mismatchMessage(socketPath, identity.otherSocketPath) }
+    return { state: 'failed', message: mismatchMessage(socketPath, identity.otherSocketPath) }
   }
   const result = await stopDaemon({
     app: APP,
     pidPath: getPIDPath(APP),
     waitForExit: true,
     killTimeoutMs: STOP_KILL_TIMEOUT_MS,
+    // Checked under the boot mutex: a daemon replaced since the identity read is not signalled.
+    expectedSocketPath: socketPath,
   })
-  if (result.stopped) return { outcome: 'stopped', pid: result.pid }
-  if (result.reason === 'not-running') return { outcome: 'not-running' }
+  if (result.stopped) return { state: 'stopped', pid: result.pid, forced: result.forced === true }
+  if (result.reason === 'not-running') return { state: 'not-running' }
+  if (result.reason === 'socket-mismatch') {
+    const current = await resolveDaemonIdentity(socketPath)
+    const other = current.otherSocketPath ?? 'another socket'
+    return { state: 'failed', message: mismatchMessage(socketPath, other) }
+  }
   const detail = result.error instanceof Error ? `: ${result.error.message}` : ''
   return {
-    outcome: 'failed',
+    state: 'failed',
     message: `Could not stop the daemon (${result.reason ?? 'unknown'})${detail}`,
   }
 }
 
 function reportStop(stop: StopOutcome, json: boolean | undefined): void {
-  if (stop.outcome === 'failed') {
+  if (stop.state === 'failed') {
     fail(stop.message)
     return
   }
   if (json) {
-    printJSON(
-      stop.outcome === 'stopped' ? { state: 'stopped', pid: stop.pid } : { state: 'not-running' },
-    )
+    printJSON(stopJSON(stop))
     return
   }
-  if (stop.outcome === 'stopped') {
-    process.stdout.write(`daemon stopped${stop.pid == null ? '' : ` (pid ${stop.pid})`}\n`)
-  } else {
+  if (stop.state === 'not-running') {
     process.stdout.write('daemon not running\n')
+  } else if (stop.forced) {
+    process.stdout.write(
+      `daemon did not exit in time; force-killed${stop.pid == null ? '' : ` (pid ${stop.pid})`}\n`,
+    )
+  } else {
+    process.stdout.write(`daemon stopped${stop.pid == null ? '' : ` (pid ${stop.pid})`}\n`)
   }
 }
 
@@ -321,7 +335,7 @@ export function createDaemonCommand(): Command {
     const stopped = await runStop(options.socketPath)
     // An absent daemon is fine to start; any other non-stopped outcome (socket mismatch, stop
     // failure) must not start anything.
-    if (stopped.outcome === 'failed') {
+    if (stopped.state === 'failed') {
       reportStop(stopped, options.json)
       return
     }
@@ -331,7 +345,7 @@ export function createDaemonCommand(): Command {
       reportStart(started, false)
       return
     }
-    if (started.value != null) printJSON({ stop: stopped, start: started.value })
+    if (started.value != null) printJSON({ stop: stopJSON(stopped), start: started.value })
     if (!started.ok) fail(started.message)
   })
 

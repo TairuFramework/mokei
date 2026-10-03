@@ -71,6 +71,20 @@ test('resolveDaemonIdentity compares the recorded socket with the selected one',
   expect(await resolveDaemonIdentity(SOCKET)).toEqual({ state: 'stale', pid: 9 })
 })
 
+test('resolveDaemonIdentity compares resolved paths', async () => {
+  vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'running', pid: 7, socketPath: SOCKET })
+  expect(await resolveDaemonIdentity('/run/x/../mokei-a.sock')).toEqual({
+    state: 'running',
+    pid: 7,
+  })
+  vi.mocked(getDaemonStatus).mockResolvedValue({
+    state: 'running',
+    pid: 7,
+    socketPath: join(process.cwd(), 'mokei.sock'),
+  })
+  expect(await resolveDaemonIdentity('./mokei.sock')).toEqual({ state: 'running', pid: 7 })
+})
+
 test('status reports not-running and the other socket on mismatch', async () => {
   vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'running', pid: 7, socketPath: OTHER })
   await run('status', '-s', SOCKET)
@@ -125,13 +139,45 @@ test('stop with a mismatched socket fails naming both paths', async () => {
 
 test('stop waits for exit within the shutdown budget', async () => {
   vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'running', pid: 7, socketPath: SOCKET })
-  vi.mocked(stopDaemon).mockResolvedValue({ stopped: true, pid: 7 })
+  vi.mocked(stopDaemon).mockResolvedValue({ stopped: true, pid: 7, forced: false })
   await run('stop', '-s', SOCKET)
   expect(stopDaemon).toHaveBeenCalledWith(
-    expect.objectContaining({ app: 'mokei', waitForExit: true, killTimeoutMs: 75_000 }),
+    expect.objectContaining({
+      app: 'mokei',
+      waitForExit: true,
+      killTimeoutMs: 75_000,
+      expectedSocketPath: SOCKET,
+    }),
   )
-  expect(stdout.join('')).toContain('stopped')
+  expect(stdout.join('')).toBe('daemon stopped (pid 7)\n')
   expect(process.exitCode).toBeUndefined()
+})
+
+test('stop reports a forced stop', async () => {
+  vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'running', pid: 7, socketPath: SOCKET })
+  vi.mocked(stopDaemon).mockResolvedValue({ stopped: true, pid: 7, forced: true })
+  await run('stop', '-s', SOCKET)
+  expect(stdout.join('')).toBe('daemon did not exit in time; force-killed (pid 7)\n')
+  expect(process.exitCode).toBeUndefined()
+})
+
+test('stop --json prints the state and forced', async () => {
+  vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'running', pid: 7, socketPath: SOCKET })
+  vi.mocked(stopDaemon).mockResolvedValue({ stopped: true, pid: 7, forced: true })
+  await run('stop', '-s', SOCKET, '--json')
+  expect(JSON.parse(stdout.join(''))).toEqual({ state: 'stopped', pid: 7, forced: true })
+})
+
+test('stop fails on a socket mismatch found under the mutex', async () => {
+  vi.mocked(getDaemonStatus)
+    .mockResolvedValueOnce({ state: 'running', pid: 7, socketPath: SOCKET })
+    .mockResolvedValueOnce({ state: 'running', pid: 8, socketPath: OTHER })
+  vi.mocked(stopDaemon).mockResolvedValue({ stopped: false, pid: 8, reason: 'socket-mismatch' })
+  await run('stop', '-s', SOCKET)
+  expect(process.exitCode).toBe(1)
+  expect(stderr.join('')).toContain(SOCKET)
+  expect(stderr.join('')).toContain(OTHER)
+  expect(stdout.join('')).toBe('')
 })
 
 test('stop reports a failed stop with exit code 1', async () => {
@@ -257,11 +303,11 @@ test('SIGINT interrupts a pending info request and disposes the connection', asy
 
 test('restart --json prints a single JSON document', async () => {
   vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'running', pid: 7, socketPath: SOCKET })
-  vi.mocked(stopDaemon).mockResolvedValue({ stopped: true, pid: 7 })
+  vi.mocked(stopDaemon).mockResolvedValue({ stopped: true, pid: 7, forced: false })
   connection({ flowService: { state: 'ready' } })
   await run('restart', '-s', SOCKET, '--json')
   expect(JSON.parse(stdout.join(''))).toEqual({
-    stop: { outcome: 'stopped', pid: 7 },
+    stop: { state: 'stopped', pid: 7, forced: false },
     start: { pid: 7, socketPath: SOCKET, flowService: { state: 'ready' } },
   })
 })
