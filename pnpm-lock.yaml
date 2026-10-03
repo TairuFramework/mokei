@@ -1252,6 +1252,9 @@ importers:
       '@mokei/host':
         specifier: workspace:^
         version: link:../host
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.3.0
       '@sozai/event':
         specifier: 'catalog:'
         version: 0.1.4(@logtape/logtape@2.3.10)

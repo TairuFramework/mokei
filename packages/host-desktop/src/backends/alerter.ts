@@ -1,3 +1,5 @@
+import { sleep } from '@sozai/async'
+
 import type { Runner, RunResult } from '../runner.js'
 import {
   type AskRequest,
@@ -101,21 +103,6 @@ export function parseAlerterNotifyResult(result: RunResult): boolean {
   return output.activationType === 'contentsClicked' || output.activationType === 'actionClicked'
 }
 
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const onAbort = () => {
-      clearTimeout(timer)
-      reject(signal.reason)
-    }
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort)
-      resolve()
-    }, ms)
-    signal.addEventListener('abort', onAbort, { once: true })
-    if (signal.aborted) onAbort()
-  })
-}
-
 async function notifyWithAlerter(
   runner: Runner,
   request: NotifyRequest,
@@ -143,7 +130,7 @@ async function notifyWithAlerter(
     // An option error exits at once; a shown notification keeps alerter running
     await Promise.race([
       clicked.then(() => undefined),
-      delay(Math.min(ALERTER_DELIVERY_MS, timeoutMs), signal),
+      sleep(Math.min(ALERTER_DELIVERY_MS, timeoutMs), signal),
     ])
   } catch (error) {
     kill.abort(error)
