@@ -39,5 +39,5 @@ The [dependency adoption](2026-10-02-enkaku-protocol-schema-rebasing.complete.md
 
 The user deferred native desktop QA for this chunk. Automated adapters do not establish native UI quality.
 [Native desktop QA](../next/2026-10-02-flow-daemon-native-desktop-qa.md) remains explicit follow-on work.
-Existing [declaration dependency work](../next/2026-10-02-published-declaration-dependencies.md) and
+Existing [declaration dependency work](../backlog/2026-10-03-flow-client-follow-ons.md) and
 [historical tracing work](../backlog/2026-10-02-flow-host-node-follow-ons.md) remain separately tracked.

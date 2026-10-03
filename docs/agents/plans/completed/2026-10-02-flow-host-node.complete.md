@@ -33,6 +33,6 @@ An isolated declaration probe confirmed the Node package dependency resolves, wi
 
 ## Follow-on
 
-[Published declaration dependencies](../next/2026-10-02-published-declaration-dependencies.md) remain incomplete in existing packages outside this implementation.
+[Published declaration dependencies](../backlog/2026-10-03-flow-client-follow-ons.md) remain incomplete in existing packages outside this implementation.
 [Historical tracing and file-sink compatibility](../backlog/2026-10-02-flow-host-node-follow-ons.md) remain deferred.
 Daemon composition, CLI, MCP and monitor work remain later sub-projects of the milestone.

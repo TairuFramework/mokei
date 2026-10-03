@@ -1,6 +1,6 @@
 # Milestone: flow daemon
 
-**Status:** open -- sub-projects 1, 2 and 3 complete -- native desktop QA deferred -- sub-project 4 next
+**Status:** open -- sub-projects 1, 2 and 3 complete -- native desktop QA deferred -- sub-project 4 implemented, pending manual macOS QA
 **Opened:** 2026-10-01
 **Replaces:** phase 3 of the [flow rig milestone](2026-09-30-flow-rig-milestone.md), from sub-project B onwards
 
@@ -8,8 +8,8 @@
 
 Run decision flows in the background under the per-user `mokei` daemon, and drive them from scripts, agents (MCP),
 the CLI and the monitor. Runs survive daemon restarts. Inputs and approvals go to one inbox with desktop
-notifications. Every run has a trace and logs. The flow rig under `scripts/flow-rig/` is ephemeral: all its logic
-moves into packages, and the CLI replaces it.
+notifications. Every run has a trace and logs. The former flow rig is gone: all its logic moved into packages, and the CLI
+replaced it.
 
 ## Architecture
 
@@ -21,10 +21,12 @@ moves into packages, and the CLI replaces it.
   node:sqlite stores (tasks, runs, spans, logs) under getDataDir('mokei')
   OTel SDK span processor into the store, optional OTLP exporter
   @sozai/log sink into the store (run-correlated) and a @tejika/log file sink
-  config loader, daemon handlers, the MCP facade server
+  config loader, daemon handlers
+@mokei/flow-client (portable)
+  FlowControl contract, daemon adapter, wait helpers, the flow MCP server (createFlowControlServer)
 @mokei/host-protocol       flow, run and inbox procedures; run:* and inbox:* events
 @mokei/host-node           daemon composes injected handler sets; no flow or desktop code
-@mokei/cli                 daemon entry wires flow-host-node and host-desktop; flows, runs, inbox, daemon commands
+@mokei/cli                 daemon entry wires flow-host-node and host-desktop; flows, runs, inbox, daemon commands; `flows mcp` serves the flow MCP server
 monitor/                   runs, run detail (trace and logs) and inbox pages
 ```
 
@@ -63,7 +65,7 @@ Each sub-project gets its own spec, plan and PR from `main`.
 | 1 | Flow runtime | `@mokei/flow-host` with memory stores; `DecisionFlowWiring.authorize`; a portable elicitation content validator; the `flow.run` span. The rig becomes a thin shim over it. | Unit suite green; the rig integration suite green on the shim. | complete |
 | 2 | Node storage and observability | `@mokei/flow-host-node`: sqlite stores, span and log capture, OTLP option, config loader, retention. | Store, capture and config tests green. | complete |
 | 3 | Daemon | `host-protocol` procedures and events, handler composition in `host-node`, daemon entry in the CLI, recovery on boot, desktop notifier. | Daemon integration suite green, including restart and resume. | complete; native desktop QA deferred |
-| 4 | CLI and MCP | `mokei daemon`, `flows`, `runs` and `inbox` commands; `mokei flows mcp`. `scripts/flow-rig` and its suite are deleted. | End-to-end suite green; manual macOS QA done. | not started |
+| 4 | CLI and MCP | `mokei daemon`, `flows`, `runs` and `inbox` commands; `mokei flows mcp`. `scripts/flow-rig` and its suite are deleted. The MCP server lives in the portable `@mokei/flow-client` (not `@mokei/flow-host-node`), over a `FlowControl` interface with a daemon adapter and a local `@mokei/flow-host` adapter. Folds in the published declaration dependency fixes (context-server, context-client, context-rpc, context-protocol, model-provider) and the `pnpm test:packed` packed-consumer check. | End-to-end suite green; packed consumer check green; manual macOS QA done. | implemented; pending manual macOS QA |
 | 5 | Monitor | Runs, run detail and inbox pages. | Manual QA of the monitor pages. | not started |
 
 Completed sub-projects link their summary in `completed/` here.
@@ -77,7 +79,7 @@ Completed sub-projects link their summary in `completed/` here.
 Sub-project 3 implements one flow service per daemon process and initial recovery reconciliation
 before ready publication. Flow startup failure leaves proxy and monitor status serving available.
 Clients subscribe before querying snapshots and reconcile current records on reconnect; events
-are live without durable replay. The rig remains until sub-project 4 replaces its user surface.
+are live without durable replay. Sub-project 4 replaced the rig's user surface and removed it.
 
 The [Enkaku fix and dependency adoption](../completed/2026-10-02-enkaku-protocol-schema-rebasing.complete.md)
 passed verification with protocol 0.21.4 and a fresh packed consumer installation.
@@ -90,3 +92,5 @@ The workspace patch was removed, satisfying this publication prerequisite.
 - `tasks.wait` answers task input automatically -- sub-project 1 (the runtime drives `tasks.get` and `tasks.update`).
 - Host elicit handling and the flow task API share no notion of a run -- sub-project 1.
 - A failed flow reports `state: completed` -- sub-project 1 (`failed` run state).
+
+Sub-project 4 follow-ons are in the [flow client follow-ons](../backlog/2026-10-03-flow-client-follow-ons.md) backlog.

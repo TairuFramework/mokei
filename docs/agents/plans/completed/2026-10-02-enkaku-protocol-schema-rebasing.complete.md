@@ -25,4 +25,4 @@ Its probe validated signed and unsigned recursive request/result schemas, reject
 The packed CLI daemon served a real socket and completed an inline input flow with nested JSON input and output.
 Validation snapshots, inbox settlement, run reads and trace reads succeeded.
 
-The separate [published declaration dependency work](../next/2026-10-02-published-declaration-dependencies.md) remains open.
+The separate [published declaration dependency work](../backlog/2026-10-03-flow-client-follow-ons.md) remains open.

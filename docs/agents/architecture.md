@@ -223,7 +223,9 @@ binding.
 | Flow telemetry, configuration and retention | `@mokei/flow-host-node` | `setupFlowTelemetry`, `loadFlowConfig`, `loadFlowDirs`, `startRetention` |
 | Shared daemon flow service | `@mokei/flow-host-node`, `@mokei/host-node`, `mokei` | `createFlowService`, `createFlowHandlers`, `serveHostDaemon`, CLI `daemon-entry.js` |
 | Portable trace capture and pruning | `@mokei/flow-host` | `TraceStore`, `createMemoryTraceStore`, `createTraceStoreSpanExporter`, `createTraceStoreLogSink`, `pruneRuns` |
-| CLI | `mokei` | `packages/cli/src/program.ts` |
+| Flow control contract, wait helpers and MCP facade | `@mokei/flow-client` | `FlowControl`, `createRemoteFlowControl`, `waitForRun`, `createFlowControlServer` |
+| In-process flow control | `@mokei/flow-host` | `createLocalFlowControl` |
+| CLI | `mokei` | `packages/cli/src/program.ts`, `packages/cli/src/commands/{daemon,flows,runs,inbox}/` |
 | Monitor | `@mokei/host-monitor`, `monitor` | `packages/host-monitor/src/index.ts`, `monitor/src/main.tsx` |
 
 `@mokei/session` uses `ContextHost` and is React Native / Metro-safe. `@mokei/session-node`
@@ -253,6 +255,7 @@ packages/
 +-- decision-flow-server/ # MCP task server and Session wiring for decision flows
 +-- flow-host/            # Portable flow run lifecycle, approval queue, inbox and recovery
 +-- flow-host-node/       # Node-only shared flow service, handlers, stores and telemetry
++-- flow-client/          # Portable FlowControl contract, daemon adapter, wait helpers, flow MCP server
 +-- model-provider/       # Provider interface definitions
 +-- openai-provider/      # OpenAI integration
 +-- anthropic-provider/   # Anthropic Claude integration
@@ -298,7 +301,8 @@ website/                  # documentation site (private)
 | Flow database and stores | `packages/flow-host-node/src/{database,sqlite-run-store,sqlite-task-store,sqlite-trace-store}.ts` |
 | Flow telemetry, configuration and retention | `packages/flow-host-node/src/{telemetry,config,flow-dirs,retention}.ts` |
 | Portable trace storage and pruning | `packages/flow-host/src/{trace-store,trace-store-span-exporter,trace-store-log-sink,prune-runs}.ts` |
-| Flow rig facade | `scripts/flow-rig/` |
+| Flow control and MCP facade | `packages/flow-client/src/` |
+| Flow CLI commands | `packages/cli/src/commands/{daemon,flows,runs,inbox}/` |
 | Host orchestration | `packages/host/src/` |
 | HTTP transports and OAuth | `packages/http-client/src/oauth/`, `packages/http-server/src/auth/`, `packages/host-node/src/oauth/` |
 | MRTR and subscriptions | `packages/context-client/src/{mrtr,subscriptions}.ts`, `packages/context-server/src/{mrtr,subscriptions}.ts` |
@@ -389,7 +393,7 @@ prompt ownership while preserving the pending item; settlement elsewhere rejects
 Shutdown closes flow admission and aborts dialogs, waits for admitted operations, stops
 retention, suspends stored runs, disconnects siblings, drains telemetry and closes SQLite.
 It attempts every cleanup despite failures and prevents late initialization from publishing
-ready. The flow rig remains available until the CLI/MCP command phase; monitor pages follow.
+ready. The CLI and MCP command surface drives the service; monitor pages follow.
 
 Publication is gated on the
 [upstream protocol fix and adoption](plans/next/2026-10-02-enkaku-protocol-schema-rebasing.md):
@@ -399,9 +403,20 @@ Portable `pruneRuns` deletes old terminal runs and their traces and tasks. Activ
 Its final sweep preserves traces referenced by every retained run and removes older orphan spans and logs.
 `startRetention` schedules non-overlapping pruning passes and awaits pending pruning when stopped.
 
-The flow rig wraps the runtime with MCP facade tools and one `createDesktopInputSurface` from `@mokei/host-desktop`.
-It sends inbox notifications, prompts inputs and approvals, and aborts dialogs when their items settle.
-Rig shutdown cancels non-terminal runs before disposing the runtime, surface and session.
+### Flow control, CLI and MCP
+
+`@mokei/flow-client` (portable) defines the `FlowControl` interface (flows, runs and inbox operations), the wait
+helpers (`runStatus`, `isActionable`, `hasChanged`, `waitForRun`) and `createFlowControlServer(control, options?)`,
+an MCP `ServerConfig` with the tools `list_flows`, `check_flow`, `start_flow`, `flow_status`, `wait_flow`,
+`list_runs`, `cancel_flow`, `answer_input`, `decline_input` and `prompt_input`.
+Two adapters implement `FlowControl`: `createRemoteFlowControl(client)` over the daemon's Enkaku client, and
+`createLocalFlowControl(host, extras?)` from `@mokei/flow-host` over an in-process `FlowHost`.
+
+The CLI exposes the daemon and flows through `mokei daemon start|stop|status|restart|logs`,
+`mokei flows list|check|mcp`, `mokei runs start|get|list|cancel|trace` (`--wait` blocks until the run is settled or
+needs input) and `mokei inbox list|show|answer|decline|cancel|prompt`. `mokei flows mcp` serves the flow control
+MCP server over stdio against the daemon; the repository `.mcp.json` `flow` entry runs it. Inbox dialogs and
+notifications come from `@mokei/host-desktop` inside the daemon, so the MCP server and the CLI stay headless.
 
 ---
 
