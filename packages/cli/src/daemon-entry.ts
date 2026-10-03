@@ -3,10 +3,12 @@ import { parseArgs } from 'node:util'
 import {
   createFlowHandlers,
   createFlowService,
+  createMonitorHandlers,
+  createMonitorPresence,
   type FlowDesktopAdapter,
 } from '@mokei/flow-host-node'
-import { createDesktopInputSurface, createDesktopNotifier } from '@mokei/host-desktop'
-import { serveHostDaemon } from '@mokei/host-node'
+import { createDesktopInputSurface, createDesktopNotifier, openURL } from '@mokei/host-desktop'
+import { composeHandlers, serveHostDaemon } from '@mokei/host-node'
 import type { DaemonHandle } from '@tejika/process'
 
 function createDesktopAdapter(): FlowDesktopAdapter {
@@ -38,9 +40,13 @@ export async function startMokeiDaemon(params: {
   databasePath?: string
   handleSignals?: boolean
   desktop?: FlowDesktopAdapter
+  openURL?: (url: string) => Promise<void>
 }): Promise<DaemonHandle> {
   const events = new EventTarget()
+  const presence = createMonitorPresence()
   const service = createFlowService({
+    monitor: presence,
+    openURL: params.openURL ?? ((url) => openURL(url)),
     configPath: params.configPath,
     databasePath: params.databasePath,
     desktop: params.desktop ?? createDesktopAdapter(),
@@ -55,11 +61,15 @@ export async function startMokeiDaemon(params: {
       handleSignals: params.handleSignals,
       // Telemetry has two bounded 10s phases; allow acquisition and admitted work to drain too.
       shutdownTimeoutMs: 60_000,
-      handlers: createFlowHandlers(service),
+      handlers: composeHandlers(createFlowHandlers(service), createMonitorHandlers(presence)),
       flowStatus: () => service.status(),
-      onShutdown: () => service.dispose(),
+      onShutdown: async () => {
+        presence.dispose()
+        await service.dispose()
+      },
     })
   } catch (error) {
+    presence.dispose()
     try {
       await service.dispose()
     } catch (cleanupError) {
