@@ -6,6 +6,7 @@ import {
   type InboxItem,
   isActionable,
   isFlowControlError,
+  isTerminalRun,
   type RunState,
   type RunStatus,
   runStatus,
@@ -132,6 +133,17 @@ describe('runStatus', () => {
     memory.control.runs.get = async () => snapshot(states[calls++ % 2] as RunState)
     await runStatus(memory.control, 'run-1')
     expect(calls).toBe(4)
+  })
+})
+
+describe('isTerminalRun', () => {
+  test('only terminal states are terminal', () => {
+    for (const state of ['completed', 'failed', 'cancelled', 'denied'] as const) {
+      expect(isTerminalRun(status(state))).toBe(true)
+    }
+    for (const state of ['working', 'input_required', 'awaiting_approval'] as const) {
+      expect(isTerminalRun(status(state))).toBe(false)
+    }
   })
 })
 

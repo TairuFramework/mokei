@@ -36,6 +36,7 @@ const run = await control.runs.start({ flow: 'review', input: {} })
 ## Helpers
 
 - `runStatus(control, runID)` returns a `RunStatus`: the run state, its pending input and approval items (empty for terminal runs), and the result or error. It rereads at most three times if the state changes while it reads.
+- `isTerminalRun(run)` is true when a run snapshot or status is in a terminal state.
 - `isActionable(status)` is true when the run is terminal or has a pending item.
 - `hasChanged(previous)` returns a predicate true when a status differs from `previous`.
 - `waitForRun(control, runID, { until, timeoutMs, signal })` resolves with `{ status, timedOut }`. It subscribes first, rereads on each event for the run, and retries a lost connection with backoff (250 ms doubling to 2 s) within the timeout. On timeout it returns the latest status with `timedOut: true`. If the timeout passes before any read succeeded, it rejects with the last retryable error (`DISCONNECTED`, or `FLOW_UNAVAILABLE` while the service starts); if no error occurred, it reads once more, bounded only by `signal`, and returns that status with `timedOut: true` or rejects with the read's own error (such as `RUN_NOT_FOUND`).

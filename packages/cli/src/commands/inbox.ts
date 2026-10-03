@@ -1,8 +1,9 @@
-import { type FlowControl, type InboxItem, isFlowControlError } from '@mokei/flow-client'
+import type { FlowControl, InboxItem } from '@mokei/flow-client'
 import { Command } from 'commander'
 
+import { answerInputInTerminal, submitAnswer } from '../answer-input.js'
 import { withCommandSignal } from '../flow-control.js'
-import { withControl, withSocketPath } from '../options.js'
+import { withSocketPath } from '../options.js'
 import {
   addJSONOption,
   fail,
@@ -12,12 +13,8 @@ import {
   printJSON,
   renderTable,
 } from '../output.js'
-import {
-  canPromptInTerminal,
-  promptApproval,
-  promptForm,
-  UnsupportedSchemaError,
-} from '../prompts/index.js'
+import { canPromptInTerminal, promptApproval, UnsupportedSchemaError } from '../prompts/index.js'
+import { withControl } from '../with-control.js'
 
 type CommandOptions = { socketPath: string; json?: boolean }
 
@@ -50,11 +47,6 @@ function formatItem(item: InboxItem): string {
     lines.push(`  planned tools: ${item.plan.tools.join(', ') || '(none)'}`)
   }
   return lines.join('\n')
-}
-
-function invalidIssues(error: { message: string; data?: Record<string, unknown> }): Array<string> {
-  const issues = error.data?.issues
-  return Array.isArray(issues) && issues.length > 0 ? issues.map(String) : [error.message]
 }
 
 async function runList(options: ListOptions): Promise<void> {
@@ -111,19 +103,20 @@ async function answerApproval(
   printOutcome(item.id, 'answered', options.json)
 }
 
+/** Reads `--value` (inline JSON or `@file`) as the answer object, before any connection. */
+async function parseAnswerValue(value: string): Promise<Record<string, unknown>> {
+  const content = await parseJSONArg('--value', value)
+  if (!isObject(content)) throw new Error('--value must be a JSON object')
+  return content
+}
+
 async function answerInputWithValue(
   control: FlowControl,
   item: InboxItem,
-  value: string,
+  content: Record<string, unknown>,
   json: boolean | undefined,
 ): Promise<void> {
-  const content = await parseJSONArg('--value', value)
-  if (!isObject(content)) throw new Error('--value must be a JSON object')
-  try {
-    await control.inbox.answer(item.id, content)
-  } catch (error) {
-    if (!isFlowControlError(error, 'INBOX_ANSWER_INVALID')) throw error
-    for (const line of invalidIssues(error)) process.stderr.write(`✘ ${line}\n`)
+  if (!(await submitAnswer(control, item.id, content))) {
     process.exitCode = 1
     return
   }
@@ -138,46 +131,34 @@ async function answerInputInteractively(
   if (!canPromptInTerminal()) {
     throw new Error(`Cannot prompt without a terminal: pass --value <json> to answer ${item.id}`)
   }
-  await withCommandSignal(async (signal) => {
-    for (;;) {
-      let values: Record<string, unknown> | undefined
-      try {
-        values = await promptForm(item, { signal })
-      } catch (error) {
-        if (error instanceof UnsupportedSchemaError) {
-          throw new Error(`${error.message} (mokei inbox answer ${item.id} --value <json>)`, {
-            cause: error,
-          })
-        }
-        throw error
-      }
-      if (values === undefined) {
-        process.stderr.write(
-          `Left ${item.id} pending; answer it later with: mokei inbox answer ${item.id}\n`,
-        )
-        process.exitCode = 1
-        return
-      }
-      try {
-        await control.inbox.answer(item.id, values)
-        printOutcome(item.id, 'answered', json)
-        return
-      } catch (error) {
-        if (!isFlowControlError(error, 'INBOX_ANSWER_INVALID')) throw error
-        for (const line of invalidIssues(error)) process.stderr.write(`✘ ${line}\n`)
-      }
+  let answered: boolean
+  try {
+    answered = await withCommandSignal((signal) => answerInputInTerminal(control, item, signal))
+  } catch (error) {
+    if (error instanceof UnsupportedSchemaError) {
+      throw new Error(`${error.message} (mokei inbox answer ${item.id} --value <json>)`, {
+        cause: error,
+      })
     }
-  })
+    throw error
+  }
+  if (answered) {
+    printOutcome(item.id, 'answered', json)
+  } else {
+    process.exitCode = 1
+  }
 }
 
 async function runAnswer(id: string, options: AnswerOptions): Promise<void> {
   try {
+    // Parse before connecting: a malformed value never starts the daemon or reads the item.
+    const content = options.value == null ? undefined : await parseAnswerValue(options.value)
     await withControl(options.socketPath, async (control) => {
       const item = await control.inbox.get(id)
       if (item.kind === 'approval') {
         await answerApproval(control, item, options)
-      } else if (options.value != null) {
-        await answerInputWithValue(control, item, options.value, options.json)
+      } else if (content != null) {
+        await answerInputWithValue(control, item, content, options.json)
       } else {
         await answerInputInteractively(control, item, options.json)
       }

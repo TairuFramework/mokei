@@ -15,8 +15,9 @@ const MAX_STATUS_READS = 3
 const INITIAL_BACKOFF_MS = 250
 const MAX_BACKOFF_MS = 2_000
 
-function isTerminal(snapshot: { state: FlowRunSnapshot['state'] }): boolean {
-  return TERMINAL_RUN_STATES.includes(snapshot.state)
+/** True when a run (snapshot or status) is in a terminal state. */
+export function isTerminalRun(run: { state: FlowRunSnapshot['state'] }): boolean {
+  return TERMINAL_RUN_STATES.includes(run.state)
 }
 
 function toPendingItem(item: InboxItem, canPrompt: boolean): PendingItem {
@@ -48,11 +49,11 @@ export async function runStatus(control: FlowControl, runID: string): Promise<Ru
   const canPrompt = typeof control.inbox.prompt === 'function'
   let snapshot = await control.runs.get(runID)
   for (let reads = 1; ; reads++) {
-    if (isTerminal(snapshot)) return toRunStatus(snapshot, [])
+    if (isTerminalRun(snapshot)) return toRunStatus(snapshot, [])
     const items = await control.inbox.list({ runID })
     const latest = await control.runs.get(runID)
     if (latest.state === snapshot.state || reads >= MAX_STATUS_READS) {
-      const pending = isTerminal(latest)
+      const pending = isTerminalRun(latest)
         ? []
         : items.filter((item) => item.runID === runID).map((item) => toPendingItem(item, canPrompt))
       return toRunStatus(latest, pending)
@@ -66,7 +67,7 @@ export async function runStatus(control: FlowControl, runID: string): Promise<Ru
  * approval with no pending item (an answer settled, the state has not advanced yet) is not.
  */
 export function isActionable(status: RunStatus): boolean {
-  return TERMINAL_RUN_STATES.includes(status.state) || status.pending.length > 0
+  return isTerminalRun(status) || status.pending.length > 0
 }
 
 function pendingKey(status: RunStatus): string {

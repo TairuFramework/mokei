@@ -3,7 +3,6 @@ import {
   PROTOCOL_VERSIONS,
   type ProtocolVersion,
 } from '@mokei/context-protocol'
-import type { FlowControl } from '@mokei/flow-client'
 import { withSocketPath as tejikaWithSocketPath } from '@tejika/cli'
 import type { Command } from 'commander'
 
@@ -46,19 +45,4 @@ export function withChatOptions(cmd: Command): Command {
  */
 export function withSocketPath(cmd: Command): Command {
   return tejikaWithSocketPath(cmd, 'mokei')
-}
-
-/** Runs `work` on a connection that auto-starts the daemon and is always disposed. */
-export async function withControl<T>(
-  socketPath: string,
-  work: (control: FlowControl) => Promise<T>,
-): Promise<T> {
-  // Loaded lazily: flow-control pulls in the daemon entry, which chat and proxy never need.
-  const { connectFlowControl } = await import('./flow-control.js')
-  const connection = await connectFlowControl({ socketPath, autoStart: true })
-  try {
-    return await work(connection.control)
-  } finally {
-    await connection.dispose()
-  }
 }

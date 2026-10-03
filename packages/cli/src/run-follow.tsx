@@ -3,16 +3,17 @@ import {
   hasChanged,
   isActionable,
   isFlowControlError,
+  isTerminalRun,
   type PendingItem,
   type RunStatus,
-  TERMINAL_RUN_STATES,
   waitForRun,
 } from '@mokei/flow-client'
 import { StatusLine } from '@tejika/ui'
 import { type Instance, render } from 'ink'
 
+import { answerInputInTerminal } from './answer-input.js'
 import { formatRunStatus, printNDJSON } from './output.js'
-import { promptApproval, promptForm, UnsupportedSchemaError } from './prompts/index.js'
+import { promptApproval, UnsupportedSchemaError } from './prompts/index.js'
 
 /** Each wait is bounded; on timeout the loop simply waits again. */
 const WAIT_TIMEOUT_MS = 5 * 60_000
@@ -23,10 +24,6 @@ export type FollowRunOptions = {
   /** Print one `RunStatus` per change as NDJSON. */
   json: boolean
   signal: AbortSignal
-}
-
-function isTerminal(status: RunStatus): boolean {
-  return TERMINAL_RUN_STATES.includes(status.state)
 }
 
 /** `formatRunStatus` followed by the run result, when present. */
@@ -83,25 +80,7 @@ async function answerInput(control: FlowControl, id: string, signal: AbortSignal
     }
     return
   }
-  for (;;) {
-    const values = await promptForm(item, { signal })
-    if (values === undefined) {
-      process.stderr.write(
-        `Left ${item.id} pending; answer it later with: mokei inbox answer ${item.id}\n`,
-      )
-      return
-    }
-    try {
-      await control.inbox.answer(item.id, values)
-      return
-    } catch (error) {
-      if (!isFlowControlError(error, 'INBOX_ANSWER_INVALID')) throw error
-      const issues = error.data?.issues
-      const lines =
-        Array.isArray(issues) && issues.length > 0 ? issues.map(String) : [error.message]
-      for (const line of lines) printError(line)
-    }
-  }
+  await answerInputInTerminal(control, item, signal)
 }
 
 /** Answers one pending item. Errors that leave the run watchable are reported, not thrown. */
@@ -138,14 +117,14 @@ async function followInteractive(
       const previous = last
       const { status, timedOut } = await waitForRun(control, runID, {
         until: (next) =>
-          (isActionable(next) && (isTerminal(next) || hasUnhandled(next))) ||
+          (isActionable(next) && (isTerminalRun(next) || hasUnhandled(next))) ||
           previous == null ||
           hasChanged(previous)(next),
         timeoutMs: WAIT_TIMEOUT_MS,
         signal,
       })
       last = status
-      if (isTerminal(status)) {
+      if (isTerminalRun(status)) {
         live?.clear()
         printStatus(status, false)
         return status
@@ -182,7 +161,7 @@ async function followChanges(
       printStatus(status, json)
       last = status
     }
-    if (isTerminal(status)) return status
+    if (isTerminalRun(status)) return status
   }
 }
 

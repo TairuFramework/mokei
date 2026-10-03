@@ -165,6 +165,21 @@ test('answer --value that is not an object exits 1', async () => {
   expect(spy).not.toHaveBeenCalled()
 })
 
+test('answer with a malformed --value fails without connecting', async () => {
+  connect()
+  await run('answer', 'i1', '--value', '{not json', '-s', SOCKET)
+  expect(process.exitCode).toBe(1)
+  expect(stderr.join('')).toContain('--value')
+  expect(connectFlowControl).not.toHaveBeenCalled()
+})
+
+test('answer with a missing --value file fails without connecting', async () => {
+  connect()
+  await run('answer', 'i1', '--value', '@/nonexistent/answer.json', '-s', SOCKET)
+  expect(process.exitCode).toBe(1)
+  expect(connectFlowControl).not.toHaveBeenCalled()
+})
+
 test('answer --value invalid reports the issues and exits 1', async () => {
   const { memory } = connect()
   memory.addItem(inputItem('i1'))

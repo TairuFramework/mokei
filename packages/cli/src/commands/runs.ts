@@ -7,7 +7,7 @@ import {
 import { Command, Option } from 'commander'
 
 import { withCommandSignal } from '../flow-control.js'
-import { withControl, withSocketPath } from '../options.js'
+import { withSocketPath } from '../options.js'
 import {
   addJSONOption,
   fail,
@@ -20,6 +20,7 @@ import {
 } from '../output.js'
 import { canPromptInTerminal } from '../prompts/index.js'
 import { followRun, formatRunDetails } from '../run-follow.js'
+import { withControl } from '../with-control.js'
 
 type CommandOptions = { socketPath: string; json?: boolean }
 

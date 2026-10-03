@@ -6,8 +6,9 @@ import { createFlowControlServer } from '@mokei/flow-client'
 import { Command } from 'commander'
 
 import { connectFlowControl, withCommandSignal } from '../flow-control.js'
-import { withControl, withSocketPath } from '../options.js'
+import { withSocketPath } from '../options.js'
 import { addJSONOption, fail, parseJSONArg, printJSON } from '../output.js'
+import { withControl } from '../with-control.js'
 
 type CommandOptions = { socketPath: string; json?: boolean }
 
