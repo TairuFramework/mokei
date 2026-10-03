@@ -66,6 +66,65 @@ function fixture() {
 
 afterEach(() => vi.useRealTimers())
 
+test('live run events still update the list after a snapshot read rejects', async () => {
+  const f = fixture()
+  const error = new Error('Snapshot unavailable')
+  vi.mocked(f.control.runs.list).mockRejectedValue(error)
+  const { result } = renderHook(() => useRuns(), { wrapper: f.wrapper })
+  await waitFor(() => expect(result.current.error).toBe(error))
+  act(() => {
+    f.emit({ type: 'run:state', data: run('run-1', 'completed') })
+  })
+  expect(result.current.runs).toEqual([run('run-1', 'completed')])
+  expect(result.current.loading).toBe(false)
+})
+
+test('a rejected snapshot drains buffered IDs and newer live events win over their reads', async () => {
+  const f = fixture()
+  const snapshot = deferred<Array<ReturnType<typeof run>>>()
+  const affected = deferred<ReturnType<typeof run>>()
+  const error = new Error('Snapshot unavailable')
+  vi.mocked(f.control.runs.list).mockReturnValue(snapshot.promise)
+  vi.mocked(f.control.runs.get).mockReturnValue(affected.promise)
+  const { result } = renderHook(() => useRuns(), { wrapper: f.wrapper })
+  act(() => {
+    f.emit({ type: 'run:state', data: run('run-1', 'input_required') })
+  })
+  await act(async () => {
+    snapshot.reject(error)
+  })
+  expect(f.control.runs.get).toHaveBeenCalledWith('run-1')
+  act(() => {
+    f.emit({ type: 'run:state', data: run('run-1', 'completed') })
+  })
+  await act(async () => {
+    affected.resolve(run('run-1', 'working'))
+  })
+  expect(result.current.runs).toEqual([run('run-1', 'completed')])
+  expect(result.current.loading).toBe(false)
+  expect(result.current.error).toBe(error)
+})
+
+test('a limited working list backfills the older run when the newest completes', async () => {
+  const f = fixture()
+  const older = run('older', 'working')
+  const newest = { ...run('newest', 'working'), createdAt: 3 }
+  vi.mocked(f.control.runs.list).mockImplementation(async (filter) => {
+    const matching = [newest, older].filter((entry) => {
+      return filter?.states == null || filter.states.includes(entry.state)
+    })
+    return filter?.limit == null ? matching : matching.slice(0, filter.limit)
+  })
+  const { result } = renderHook(() => useRuns({ states: ['working'], limit: 1 }), {
+    wrapper: f.wrapper,
+  })
+  await waitFor(() => expect(result.current.runs).toEqual([newest]))
+  act(() => {
+    f.emit({ type: 'run:state', data: { ...newest, state: 'completed' } })
+  })
+  await waitFor(() => expect(result.current.runs).toEqual([older]))
+})
+
 test('buffered run events re-read affected IDs rather than replay stale data', async () => {
   const f = fixture()
   const snapshot = deferred<Array<ReturnType<typeof run>>>()

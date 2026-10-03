@@ -46,25 +46,27 @@ export function useReconciledQuery<Data, Entry>(query: ReconciledQuery<Data, Ent
         const snapshot = await query.read()
         if (!current()) return
         setState({ data: snapshot, loading: true })
-        buffering = false
-        await Promise.all(
-          [...buffered].map(async (id) => {
-            const version = versions.get(id)
-            try {
-              const entry = await query.readAffected(id)
-              if (current() && versions.get(id) === version) {
-                setState((value) => ({ ...value, data: query.merge(value.data, id, entry) }))
-              }
-            } catch (error) {
-              if (current() && versions.get(id) === version)
-                setState((value) => ({ ...value, error }))
-            }
-          }),
-        )
-        if (current()) setState((value) => ({ ...value, loading: false }))
       } catch (error) {
-        if (current()) setState((value) => ({ ...value, loading: false, error }))
+        if (!current()) return
+        setState((value) => ({ ...value, error }))
       }
+      // Failed snapshots still drain affected IDs and resume live updates.
+      buffering = false
+      await Promise.all(
+        [...buffered].map(async (id) => {
+          const version = versions.get(id)
+          try {
+            const entry = await query.readAffected(id)
+            if (current() && versions.get(id) === version) {
+              setState((value) => ({ ...value, data: query.merge(value.data, id, entry) }))
+            }
+          } catch (error) {
+            if (current() && versions.get(id) === version)
+              setState((value) => ({ ...value, error }))
+          }
+        }),
+      )
+      if (current()) setState((value) => ({ ...value, loading: false }))
     })()
     return () => {
       off()

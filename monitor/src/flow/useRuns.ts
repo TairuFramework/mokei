@@ -15,12 +15,7 @@ function filterRuns(runs: Map<string, FlowRunSnapshot>, filter?: RunListFilter) 
       )
     })
     .sort((a, b) => b.createdAt - a.createdAt)
-  return new Map(
-    (filter?.limit == null ? entries : entries.slice(0, filter.limit)).map((run) => [
-      run.runID,
-      run,
-    ]),
-  )
+  return new Map(entries.map((run) => [run.runID, run]))
 }
 
 export function useRuns(filter?: RunListFilter) {
@@ -30,6 +25,8 @@ export function useRuns(filter?: RunListFilter) {
     ReconciledQuery<Map<string, FlowRunSnapshot>, FlowRunSnapshot | undefined>
   >(() => {
     const params: RunListFilter = JSON.parse(filterKey)
+    // Keep the matching population so entries leaving a limited list can be replaced.
+    const { limit: _limit, ...readParams } = params
     const merge = (runs: Map<string, FlowRunSnapshot>, runID: string, run?: FlowRunSnapshot) => {
       const next = new Map(runs)
       next.delete(runID)
@@ -38,7 +35,12 @@ export function useRuns(filter?: RunListFilter) {
     }
     return {
       initial: new Map(),
-      read: async () => new Map((await control.runs.list(params)).map((run) => [run.runID, run])),
+      read: async () => {
+        return filterRuns(
+          new Map((await control.runs.list(readParams)).map((run) => [run.runID, run])),
+          params,
+        )
+      },
       affected: (event) => (event.type === 'run:state' ? event.data.runID : undefined),
       readAffected: async (runID) => {
         try {
@@ -52,5 +54,6 @@ export function useRuns(filter?: RunListFilter) {
     }
   }, [control, filterKey])
   const { data, ...state } = useReconciledQuery(query)
-  return { runs: [...data.values()], ...state }
+  const runs = [...data.values()]
+  return { runs: filter?.limit == null ? runs : runs.slice(0, filter.limit), ...state }
 }
