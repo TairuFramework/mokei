@@ -384,7 +384,8 @@ Desktop notifications default to `false` through `desktop.notifications` in `flo
 After initial reconciliation, zero pending items send nothing, one sends an approval/input
 notification and multiple send one count message, such as `3 pending prompts`. New items notify
 individually without input previews. On macOS with `alerter`, clicking a single-item
-notification opens that item's desktop prompt, as `inbox prompt` does; each item has its own
+notification opens that item's monitor inbox page when a monitor is attached, or its desktop
+prompt otherwise; each item has its own
 notification group, the count message's click only dismisses it, and settling an item removes its
 notification. Clicking an `osascript` notification does not open a prompt. Startup IDs are recorded before delivery so settling
 items cannot receive duplicate live notifications. Polling and reconnects never notify;
@@ -393,10 +394,35 @@ Dialogs require explicit `inbox.prompt`, independently of notification opt-in. R
 validation and approval policy govern settlement. Caller cancellation or disconnect releases
 prompt ownership while preserving the pending item; settlement elsewhere rejects late answers.
 
+### Monitor surface and presence
+
+The monitor is an inbox surface beside the native desktop. The daemon tries monitor delivery
+before native delivery. Each monitor server registers with `monitor.attach`; each browser tab
+opens `monitor.presence` for that attachment and reports Page Visibility API state, notification
+permission and its active inbox item.
+
+The daemon pings a tab before trusting its state. A verified visible tab suppresses native
+notifications for new items. If no visible tab answers, a tab with browser notification
+permission can receive a notification. Items suppressed while attended are not sent later.
+Recovery summaries remain native-only, and the monitor reads pending state when it connects.
+
+Prompts route to a verified visible tab first. A hidden tab can receive a browser notification
+that links to the prompt. If the monitor cannot deliver, the daemon tries the native dialog.
+The flow host remains the only inbox settler; the monitor uses inbox answer, decline and cancel
+procedures. A lost monitor target falls back to the next surface. Ping and delivery
+acknowledgements expire after five seconds. Stale replies are ignored, and withdrawals close
+deliveries that are no longer needed.
+
+The daemon validates monitor attachment URLs as root-path HTTP loopback URLs. Browser sessions
+cannot create attachments. The monitor server reconnects after a daemon restart, closes existing
+browser streams and attaches again. Open tabs then reconnect and reconcile current state.
+Events remain live without replay. Disabling native notifications does not disable the monitor
+surface.
+
 Shutdown closes flow admission and aborts dialogs, waits for admitted operations, stops
 retention, suspends stored runs, disconnects siblings, drains telemetry and closes SQLite.
 It attempts every cleanup despite failures and prevents late initialization from publishing
-ready. The CLI and MCP command surface drives the service; monitor pages follow.
+ready. The CLI, MCP and monitor drive the service.
 
 Publication is gated on the
 [upstream protocol fix and adoption](plans/next/2026-10-02-enkaku-protocol-schema-rebasing.md):
