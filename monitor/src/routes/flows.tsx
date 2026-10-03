@@ -1,43 +1,25 @@
 import { Alert, Button, Group, Loader, Stack, Table, Text, Title } from '@mantine/core'
-import type { FlowCheckResult, FlowSummary } from '@mokei/flow-client'
+import type { FlowSummary } from '@mokei/flow-client'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { CheckDefinition } from '../components/CheckDefinition.js'
 import { StartRunForm } from '../components/StartRunForm.js'
 import { useFlow } from '../flow/FlowProvider.js'
 import { useFlows } from '../flow/useFlows.js'
 
-// The daemon currently lists summaries without definitions.
-type CheckableFlow = FlowSummary & { definition?: Record<string, unknown> }
-
 export function FlowsPage() {
-  const { control, connected, status } = useFlow()
+  const { connected, status } = useFlow()
   const { flows, loading, error } = useFlows()
   const navigate = useNavigate()
   const [selected, setSelected] = useState<FlowSummary>()
-  const [checking, setChecking] = useState<string>()
-  const [checks, setChecks] = useState<Record<string, FlowCheckResult>>({})
-  const [checkError, setCheckError] = useState<string>()
   const disabled = !connected || status?.state !== 'ready'
-  async function check(flow: CheckableFlow) {
-    if (disabled || checking != null || flow.definition == null) return
-    setChecking(flow.id)
-    setCheckError(undefined)
-    try {
-      const result = await control.flows.check(flow.definition)
-      setChecks((previous) => ({ ...previous, [flow.id]: result }))
-    } catch (error) {
-      setCheckError(String(error))
-    } finally {
-      setChecking(undefined)
-    }
-  }
   return (
     <Stack>
       <Title order={1}>Flows</Title>
-      {error == null && checkError == null ? null : (
+      {error == null ? null : (
         <Alert color="red" title="Flow request failed">
-          {String(checkError ?? error)}
+          {String(error)}
         </Alert>
       )}
       {loading ? <Loader size="sm" aria-label="Loading flows" /> : null}
@@ -53,60 +35,29 @@ export function FlowsPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {flows.map((flow: CheckableFlow) => {
-                const result = Object.hasOwn(checks, flow.id) ? checks[flow.id] : undefined
-                const issues =
-                  result == null
-                    ? []
-                    : [...('issues' in result ? result.issues : []), ...result.warnings]
-                return (
-                  <Table.Tr key={flow.id}>
-                    <Table.Td>{flow.name}</Table.Td>
-                    <Table.Td>{flow.id}</Table.Td>
-                    <Table.Td>{flow.version}</Table.Td>
-                    <Table.Td>{flow.outputs.join(', ') || '—'}</Table.Td>
-                    <Table.Td>{flow.outcomes.join(', ') || '—'}</Table.Td>
-                    <Table.Td>
-                      <Stack gap="xs">
-                        <Group>
-                          <Button size="xs" disabled={disabled} onClick={() => setSelected(flow)}>
-                            Start run
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="default"
-                            disabled={disabled || checking != null || flow.definition == null}
-                            loading={checking === flow.id}
-                            onClick={() => void check(flow)}>
-                            Check
-                          </Button>
-                        </Group>
-                        {flow.definition == null ? (
-                          <Text size="xs" c="dimmed">
-                            Definition unavailable for checking.
-                          </Text>
-                        ) : null}
-                        {issues.map((issue, index) => (
-                          <Alert
-                            key={`${index}:${issue.code}`}
-                            color={issue.severity === 'error' ? 'red' : 'yellow'}
-                            title={`${issue.severity}: ${issue.code}`}>
-                            {issue.path.join('.')}: {issue.message}
-                            {issue.hint == null ? null : <Text size="sm">{issue.hint}</Text>}
-                          </Alert>
-                        ))}
-                        {result != null && issues.length === 0 ? (
-                          <Text size="sm">No issues found.</Text>
-                        ) : null}
-                      </Stack>
-                    </Table.Td>
-                  </Table.Tr>
-                )
-              })}
+              {flows.map((flow) => (
+                <Table.Tr key={flow.id}>
+                  <Table.Td>{flow.name}</Table.Td>
+                  <Table.Td>{flow.id}</Table.Td>
+                  <Table.Td>{flow.version}</Table.Td>
+                  <Table.Td>{flow.outputs.join(', ') || '—'}</Table.Td>
+                  <Table.Td>{flow.outcomes.join(', ') || '—'}</Table.Td>
+                  <Table.Td>
+                    <Stack gap="xs">
+                      <Group>
+                        <Button size="xs" disabled={disabled} onClick={() => setSelected(flow)}>
+                          Start run
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
       )}
+      <CheckDefinition />
       {selected == null ? null : (
         <Stack>
           <Group justify="space-between">

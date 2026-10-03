@@ -11,7 +11,7 @@ const state = vi.hoisted(() => ({
   start: vi.fn(),
   check: vi.fn(),
   navigate: vi.fn(),
-  flows: [] as Array<FlowSummary & { definition?: Record<string, unknown> }>,
+  flows: [] as Array<FlowSummary>,
   connected: true,
   status: { state: 'ready' },
 }))
@@ -142,7 +142,9 @@ test('flows table opens the start form and navigates to the returned run', async
   for (const value of ['Greeting', 'greet', '1', 'message', 'success']) {
     expect(screen.getByRole('cell', { name: value })).toBeTruthy()
   }
-  expect(screen.getByRole('button', { name: 'Check' }).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('button', { name: 'Check definition' }).hasAttribute('disabled')).toBe(
+    false,
+  )
   fireEvent.click(screen.getByRole('button', { name: 'Start run' }))
   fireEvent.change(screen.getByLabelText(/Name/), { target: { value: 'Ada' } })
   fireEvent.click(screen.getAllByRole('button', { name: 'Start run' })[1])
@@ -150,9 +152,8 @@ test('flows table opens the start form and navigates to the returned run', async
     expect(state.navigate).toHaveBeenCalledWith({ to: '/runs/$runID', params: { runID: 'run-1' } }),
   )
 })
-test('check submits the available definition and shows issues and warnings', async () => {
+test('check submits a pasted definition and shows issues and warnings', async () => {
   const definition = { name: 'Greeting', version: 1, input: flow.input, steps: [] }
-  state.flows = [{ ...flow, definition }]
   state.check.mockResolvedValue({
     issues: [
       {
@@ -169,16 +170,28 @@ test('check submits the available definition and shows issues and warnings', asy
     formatted: '',
   })
   showPage()
-  fireEvent.click(screen.getByRole('button', { name: 'Check' }))
+  fireEvent.change(screen.getByLabelText('Flow definition JSON'), {
+    target: { value: JSON.stringify(definition) },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Check definition' }))
   expect(await screen.findByText(/Tool unavailable/)).toBeTruthy()
   expect(screen.getByText('Connect the tool server')).toBeTruthy()
   expect(screen.getByText(/No output declared/)).toBeTruthy()
   expect(state.check).toHaveBeenCalledWith(definition)
 })
+test('invalid definition JSON blocks checking', () => {
+  showPage()
+  fireEvent.change(screen.getByLabelText('Flow definition JSON'), { target: { value: '{' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Check definition' }))
+  expect(state.check).not.toHaveBeenCalled()
+  expect(screen.getByText('Enter a valid JSON object')).toBeTruthy()
+})
 test('check shows daemon errors', async () => {
-  state.flows = [{ ...flow, definition: { name: 'Greeting' } }]
   state.check.mockRejectedValue(new Error('Check failed'))
   showPage()
-  fireEvent.click(screen.getByRole('button', { name: 'Check' }))
+  fireEvent.change(screen.getByLabelText('Flow definition JSON'), {
+    target: { value: '{"name":"Greeting"}' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Check definition' }))
   expect(await screen.findByText('Error: Check failed')).toBeTruthy()
 })
