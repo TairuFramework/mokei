@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { wireMonitorStreams } from '../src/pipes.js'
+import { createMonitorFilter, wireMonitorStreams } from '../src/pipes.js'
 
 function passthrough() {
   return new TransformStream<unknown, unknown>()
@@ -50,4 +50,81 @@ describe('wireMonitorStreams', () => {
 
     await expect(pipes.dispose()).resolves.toBeUndefined()
   })
+})
+
+test('filters browser messages and merges injected messages and local replies', async () => {
+  const sent: Array<unknown> = []
+  const received: Array<unknown> = []
+  const bridge = passthrough()
+  const socket = passthrough()
+  const injected = passthrough()
+  const pipes = wireMonitorStreams({
+    socketReadable: socket.readable,
+    socketWritable: new WritableStream({
+      write(value) {
+        sent.push(value)
+      },
+    }),
+    bridgeReadable: bridge.readable,
+    bridgeWritable: new WritableStream({
+      write(value) {
+        received.push(value)
+      },
+    }),
+    injected: injected.readable,
+    filter: (message) =>
+      message === 'reserved' ? { reply: 'forbidden' } : { forward: `${message}-stamped` },
+  })
+  try {
+    const browserWriter = bridge.writable.getWriter()
+    await browserWriter.write('reserved')
+    await browserWriter.write('presence')
+    await expect.poll(() => sent).toEqual(['presence-stamped'])
+    await expect.poll(() => received).toEqual(['forbidden'])
+    await injected.writable.getWriter().write('abort')
+    await socket.writable.getWriter().write('daemon-reply')
+    await expect.poll(() => sent).toEqual(['presence-stamped', 'abort'])
+    await expect.poll(() => received).toEqual(['forbidden', 'daemon-reply'])
+  } finally {
+    await pipes.dispose()
+  }
+})
+
+test('presence filtering reads the current attachment and preserves channel sends', () => {
+  let attachmentID = 'attachment-one'
+  const filter = createMonitorFilter(() => attachmentID)
+  const open = {
+    header: { trace: 'trace' },
+    payload: {
+      typ: 'channel',
+      prc: 'monitor.presence',
+      rid: 'presence',
+      prm: { attachmentID: 'forged' },
+    },
+  }
+  expect(filter(open)).toEqual({
+    forward: {
+      ...open,
+      payload: {
+        ...open.payload,
+        prm: { attachmentID: 'attachment-one' },
+      },
+    },
+  })
+  attachmentID = 'attachment-two'
+  expect(filter(open)).toEqual({
+    forward: {
+      ...open,
+      payload: {
+        ...open.payload,
+        prm: { attachmentID: 'attachment-two' },
+      },
+    },
+  })
+  const send = {
+    header: {},
+    payload: { typ: 'send', prc: 'monitor.presence', rid: 'presence', val: { type: 'pong' } },
+  }
+  expect(filter(send)).toEqual({ forward: send })
+  expect(open.payload.prm.attachmentID).toBe('forged')
 })

@@ -18,7 +18,7 @@ import { Disposer } from '@sozai/async'
 import { getSocketPath } from '@tejika/env'
 import { createLocalServer, serveStaticSPA } from '@tejika/server'
 
-import { wireMonitorStreams } from './pipes.js'
+import { createMonitorFilter, wireMonitorStreams } from './pipes.js'
 
 export type MonitorParams = {
   socketPath?: string
@@ -35,7 +35,6 @@ export type Monitor = {
 export async function startMonitor(params: MonitorParams = {}): Promise<Monitor> {
   const socketPath = params.socketPath ?? getSocketPath('mokei')
   const socketStream = await createTransportStream(connectSocket(socketPath))
-  const serverBridge = createServerBridge<Protocol>()
 
   // `@tejika/server` builds the loopback Hono server (127.0.0.1 only),
   // generates the bearer token, and gates `/api` with the Host/Origin/token
@@ -45,12 +44,29 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
   if (token == null) {
     throw new Error('Expected a bearer token from the loopback monitor server')
   }
+  let injectedController: ReadableStreamDefaultController<unknown>
+  const injected = new ReadableStream<unknown>({
+    start(controller) {
+      injectedController = controller
+    },
+  })
+  const serverBridge = createServerBridge<Protocol>({
+    allowedOrigin: new URL(url).origin,
+    onRequestAborted: ({ rid }) => {
+      injectedController.enqueue({
+        header: {},
+        payload: { typ: 'abort', rid, rsn: 'ClientDisconnected' },
+      })
+    },
+  })
   app.all('/api', (ctx) => serverBridge.handleRequest(ctx.req.raw))
 
   const distDir = join(import.meta.dirname, '../dist')
   serveStaticSPA(app, { dir: distDir, token })
 
   const pipes = wireMonitorStreams({
+    filter: createMonitorFilter(),
+    injected,
     socketReadable: socketStream.readable,
     socketWritable: socketStream.writable,
     bridgeReadable: serverBridge.stream.readable,
@@ -63,5 +79,5 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
   })
 
   const port = Number.parseInt(new URL(url).port, 10)
-  return { disposer, port, token, url }
+  return { disposer, port, token, url: new URL(url).href }
 }
