@@ -16,15 +16,34 @@ export type AskResult =
   | { status: 'timeout' }
 export type NotifyRequest = { title: string; message: string; subtitle?: string; sound?: boolean }
 export type BackendCallOptions = { timeoutMs: number; signal: AbortSignal }
+/**
+ * `timeoutMs` and `signal` bound delivery. A backend whose notification outlives delivery
+ * (alerter) keeps it until interaction, its native timeout, or `lifetime` aborts, which removes it.
+ * Backends without click support ignore `group`, `lifetime` and `onClick`.
+ */
+export type NotifyCallOptions = BackendCallOptions & {
+  /** Notifications sharing a group replace each other. */
+  group?: string
+  lifetime?: AbortSignal
+  /** Called at most once, when the user clicks the notification. */
+  onClick?: () => void
+}
+
+/** Returned by a backend whose notification outlives delivery. */
+export type NotifyDelivery = {
+  /** Settles, never rejecting, once the notification process has exited. */
+  closed: Promise<void>
+}
 
 export type AskBackendName = 'alerter' | 'osascript' | 'zenity'
-export type NotifyBackendName = 'osascript' | 'notify-send'
+export type NotifyBackendName = 'alerter' | 'osascript' | 'notify-send'
 export type BackendName = AskBackendName | NotifyBackendName
 
 export type DesktopBackend = {
   name: BackendName
   ask?: (request: AskRequest, options: BackendCallOptions) => Promise<AskResult>
-  notify?: (request: NotifyRequest, options: BackendCallOptions) => Promise<void>
+  // biome-ignore lint/suspicious/noConfusingVoidType: backends without a live process resolve with nothing
+  notify?: (request: NotifyRequest, options: NotifyCallOptions) => Promise<NotifyDelivery | void>
 }
 
 /** Native dialog timeout, shorter than the runner timeout so the native timeout reports first. */

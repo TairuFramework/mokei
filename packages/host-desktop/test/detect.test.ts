@@ -6,6 +6,7 @@ import {
   createDetector,
   detectAvailability,
   type ForcedBackends,
+  notifyBackendFor,
   selectBackends,
 } from '../src/detect.js'
 import type { AskRequest, BackendName } from '../src/index.js'
@@ -106,9 +107,10 @@ describe('selectBackends', () => {
   test('darwin auto prefers alerter, falls back to osascript', () => {
     const both = select(detect('darwin', GUI, 'alerter', 'osascript'), {}, 'darwin')
     expect(both.ask).toEqual({ name: 'alerter', forced: false })
-    expect(both.notify).toEqual({ name: 'osascript', forced: false })
+    expect(both.notify).toEqual({ name: 'alerter', forced: false })
     const one = select(detect('darwin', GUI, 'osascript'), {}, 'darwin')
     expect(one.ask).toEqual({ name: 'osascript', forced: false })
+    expect(one.notify).toEqual({ name: 'osascript', forced: false })
   })
 
   test('linux auto picks zenity and notify-send', () => {
@@ -123,6 +125,7 @@ describe('selectBackends', () => {
     expect(s.askProblem).toContain('alerter')
     expect(s.askProblem).toContain('osascript')
     expect(s.askProblem).toContain('GUI session')
+    expect(s.notifyProblem).toContain('alerter')
     expect(s.notifyProblem).toContain('osascript')
     expect(s.notifyProblem).toContain('GUI session')
   })
@@ -236,6 +239,55 @@ describe('askBackendFor', () => {
     const a = detect('linux', GUI)
     const s = select(a, {}, 'linux')
     expect(askBackendFor(plain, s, a)).toEqual({ ok: false, reason: s.askProblem })
+  })
+})
+
+describe('notifyBackendFor', () => {
+  const plain = { title: 'mokei', message: 'Flow needs your input' }
+  const dash = { title: 'mokei', message: '--sender' }
+
+  test('auto alerter shows plain notifications', () => {
+    const a = detect('darwin', GUI, 'alerter', 'osascript')
+    expect(notifyBackendFor(plain, 'g', select(a, {}, 'darwin'), a)).toEqual({
+      ok: true,
+      name: 'alerter',
+    })
+  })
+
+  test('auto alerter falls back to osascript for an option-like value', () => {
+    const a = detect('darwin', GUI, 'alerter', 'osascript')
+    const s = select(a, {}, 'darwin')
+    expect(notifyBackendFor(dash, undefined, s, a)).toEqual({ ok: true, name: 'osascript' })
+    expect(notifyBackendFor(plain, '-g', s, a)).toEqual({ ok: true, name: 'osascript' })
+  })
+
+  test('forced alerter or no fallback refuses an option-like value', () => {
+    const a = detect('darwin', GUI, 'alerter', 'osascript')
+    expect(
+      notifyBackendFor(dash, undefined, select(a, { notify: 'alerter' }, 'darwin'), a),
+    ).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('another notification backend'),
+    })
+    const only = detect('darwin', GUI, 'alerter')
+    expect(notifyBackendFor(dash, undefined, select(only, {}, 'darwin'), only)).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('osascript fallback is unavailable'),
+    })
+  })
+
+  test('other backends and missing backends', () => {
+    const linux = detect('linux', GUI, 'notify-send')
+    expect(notifyBackendFor(dash, undefined, select(linux, {}, 'linux'), linux)).toEqual({
+      ok: true,
+      name: 'notify-send',
+    })
+    const none = detect('linux', GUI)
+    const s = select(none, {}, 'linux')
+    expect(notifyBackendFor(plain, undefined, s, none)).toEqual({
+      ok: false,
+      reason: s.notifyProblem,
+    })
   })
 })
 

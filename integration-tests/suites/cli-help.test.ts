@@ -25,12 +25,20 @@ function runCLI(
 }
 
 describe('CLI help and version', () => {
-  test('--help lists all 4 commands', async () => {
+  test('--help lists every command', async () => {
     const { stdout } = await runCLI(['--help'])
-    expect(stdout).toContain('chat')
-    expect(stdout).toContain('inspect')
-    expect(stdout).toContain('monitor')
-    expect(stdout).toContain('proxy')
+    for (const command of [
+      'chat',
+      'inspect',
+      'monitor',
+      'proxy',
+      'daemon',
+      'flows',
+      'runs',
+      'inbox',
+    ]) {
+      expect(stdout).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'))
+    }
   })
 
   test('--version outputs a semver string', async () => {

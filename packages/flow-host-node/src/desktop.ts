@@ -1,12 +1,13 @@
 import type { ElicitResult } from '@mokei/context-protocol'
 import type { FlowHost, InboxItem } from '@mokei/flow-host'
 import { InboxAnswerInvalidError, InboxItemNotFoundError } from '@mokei/flow-host'
-import type { DesktopElicitRequest } from '@mokei/host-desktop'
+import type { DesktopElicitRequest, DesktopNotifyOptions } from '@mokei/host-desktop'
 
 export type FlowDesktopAdapter = {
   canPrompt(request: DesktopElicitRequest): boolean
   prompt(request: DesktopElicitRequest): Promise<ElicitResult>
-  notify(message: string): Promise<void>
+  /** Resolves once delivered; `onClick` may fire later, until `signal` aborts. */
+  notify(message: string, options?: DesktopNotifyOptions): Promise<void>
   dispose(): Promise<void>
 }
 export type FlowDesktopController = {
@@ -28,6 +29,15 @@ export class DesktopPromptUnavailableError extends Error {
     this.name = 'DesktopPromptUnavailableError'
   }
 }
+
+/** Notification group of the restart summary; each item uses its own group. */
+const SUMMARY_GROUP = 'mokei-inbox-pending'
+/** Expected outcomes of a click-started prompt, which the user sees no further feedback for. */
+const QUIET_CLICK_ERRORS = new Set([
+  'InboxPromptInProgressError',
+  'DesktopPromptUnavailableError',
+  'InboxItemNotFoundError',
+])
 
 function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -51,21 +61,42 @@ export function createFlowDesktopController(params: {
   const prompts = new Set<Promise<unknown>>()
   const desktopPrompts = new Set<Promise<ElicitResult>>()
   const notifications = new Set<Promise<void>>()
+  // Live item notifications, aborted on settlement to remove them
+  const notices = new Map<string, AbortController>()
   let live = false
   let disposing: Promise<void> | undefined
 
-  function notify(message: string): void {
+  function notify(message: string, options: DesktopNotifyOptions): void {
     if (!params.notifications || adapter == null || disposal.signal.aborted) return
     // Call now, after represented IDs are recorded, so synchronous additions see the boundary.
     const delivery = (async () => {
       try {
-        await adapter.notify(message)
+        await adapter.notify(message, options)
       } catch (error) {
         params.onError(error)
       }
     })()
     notifications.add(delivery)
     void delivery.then(() => notifications.delete(delivery))
+  }
+  /** One notification per item: a click opens that item's desktop prompt. */
+  function notifyItem(item: InboxItem): void {
+    if (!params.notifications || adapter == null || disposal.signal.aborted) return
+    const notice = new AbortController()
+    notices.set(item.id, notice)
+    notify(itemMessage(item), {
+      group: `mokei-inbox-${item.id}`,
+      signal: notice.signal,
+      onClick: () => {
+        if (disposal.signal.aborted || notice.signal.aborted) return
+        prompt(item.id, disposal.signal).catch((error: unknown) => {
+          const quiet =
+            disposal.signal.aborted ||
+            (error instanceof Error && QUIET_CLICK_ERRORS.has(error.name))
+          if (!quiet) params.onError(error)
+        })
+      },
+    })
   }
   function itemMessage(item: InboxItem): string {
     return item.kind === 'approval' ? 'Flow needs your approval' : 'Flow needs your input'
@@ -142,16 +173,19 @@ export function createFlowDesktopController(params: {
       for (const item of items) represented.add(item.id)
       live = true
       const only = items[0]
-      if (items.length === 1 && only != null) notify(itemMessage(only))
-      else if (items.length > 1) notify(`${items.length} pending prompts`)
+      if (items.length === 1 && only != null) notifyItem(only)
+      // A summary click only dismisses it: there is no single item to prompt for
+      else if (items.length > 1) notify(`${items.length} pending prompts`, { group: SUMMARY_GROUP })
     },
     added(item) {
       if (!live || disposal.signal.aborted || represented.has(item.id)) return
       represented.add(item.id)
-      notify(itemMessage(item))
+      notifyItem(item)
     },
     settled(item) {
       owners.get(item.id)?.abort(new InboxItemNotFoundError(item.id))
+      notices.get(item.id)?.abort(new InboxItemNotFoundError(item.id))
+      notices.delete(item.id)
     },
     prompt,
     dispose() {

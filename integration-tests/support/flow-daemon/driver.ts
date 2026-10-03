@@ -10,12 +10,23 @@ import type { RunRecord } from '@mokei/flow-host'
 import { createSQLiteTraceStore } from '@mokei/flow-host-node'
 import { createClient, type HostClient } from '@mokei/host-node'
 import type { HostEvent } from '@mokei/host-protocol'
+import { getPIDPath } from '@tejika/env'
 
 import { flows } from './flows.js'
 
 const WAIT_MS = 15_000
 const absolute = (path: string) => fileURLToPath(new URL(path, import.meta.url))
-export type DesktopRecord = { pid: number; type: string; message?: string; index?: number }
+export type DesktopRecord = {
+  pid: number
+  type: string
+  message?: string
+  index?: number
+  requestedSchema?: Record<string, unknown>
+}
+export type PromptAnswer = {
+  action: 'accept' | 'decline' | 'cancel'
+  content?: Record<string, unknown>
+}
 type SiblingRecord = { pid: number; type: 'started' | 'echo'; value?: string }
 export type FlowDaemonFixture = Awaited<ReturnType<typeof startFlowDaemonFixture>>
 
@@ -26,6 +37,18 @@ function records<T>(path: string): Array<T> {
     .split('\n')
     .filter(Boolean)
     .map((line) => JSON.parse(line) as T)
+}
+function withEnv<T>(env: Record<string, string>, run: () => T): T {
+  const previous = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]))
+  Object.assign(process.env, env)
+  try {
+    return run()
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
 }
 function alive(pid: number): boolean {
   try {
@@ -48,7 +71,16 @@ export async function startFlowDaemonFixture(
   // Keep Unix socket paths below sockaddr_un's limit, including macOS's long TMPDIR.
   const directory = await mkdtemp('/tmp/mokei-flow-daemon-')
   const socketPath = join(directory, 'daemon.sock')
-  const pidPath = join(directory, 'daemon.pid')
+  const env = {
+    MOKEI_DATA_DIR: directory,
+    MOKEI_STATE_DIR: directory,
+    MOKEI_LOG_DIR: join(directory, 'logs'),
+    // Pin every path override so inherited MOKEI_* variables cannot escape the temp directory.
+    MOKEI_PID_PATH: join(directory, 'mokei.pid'),
+    MOKEI_SOCKET_PATH: socketPath,
+  }
+  // Resolve the pid file with the CLI's own call so the fixture and `mokei daemon` agree.
+  const pidPath = withEnv(env, () => getPIDPath('mokei'))
   const databasePath = join(directory, 'flows.db')
   const clients = new Set<HostClient>()
   const subscriptions = new Set<() => Promise<void>>()
@@ -157,12 +189,7 @@ export async function startFlowDaemonFixture(
       : [absolute('./entry.mjs'), directory]
     child = spawn(process.execPath, args, {
       stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
-      env: {
-        ...process.env,
-        MOKEI_DATA_DIR: directory,
-        MOKEI_STATE_DIR: directory,
-        MOKEI_LOG_DIR: join(directory, 'logs'),
-      },
+      env: { ...process.env, ...env },
     })
     children.push(child)
     child.once('error', (error) => {
@@ -221,6 +248,7 @@ export async function startFlowDaemonFixture(
     directory,
     socketPath,
     pidPath,
+    env,
     sibling,
     connect,
     wait,
@@ -296,9 +324,9 @@ export async function startFlowDaemonFixture(
       await client.request('info', { timeout: 1000 })
       return { events, close }
     },
-    async answerPrompt(index: number, value: string) {
+    async answerPrompt(index: number, result: PromptAnswer) {
       if (child == null) throw new Error('No running daemon')
-      child.send({ type: 'answer', index, value })
+      child.send({ type: 'answer', index, action: result.action, content: result.content })
       await wait('native prompt completion', () =>
         desktopRecords().some(
           (record) =>

@@ -42,6 +42,7 @@
     "@modelcontextprotocol/node": "catalog:",
     "@modelcontextprotocol/server": "catalog:",
     "@mokei/context-rpc": "workspace:^",
+    "@mokei/flow-client": "workspace:^",
     "@mokei/flow-host": "workspace:^",
     "@mokei/flow-host-node": "workspace:^",
     "@mokei/host-monitor": "workspace:^",
@@ -53,6 +54,7 @@
     "@sozai/flow-graph": "catalog:",
     "@sozai/generator": "catalog:",
     "@sozai/schema": "catalog:",
+    "@tejika/env": "catalog:",
     "@types/node": "catalog:",
     "node-pty": "^1.1.0",
     "strip-ansi": "^7.2.0"

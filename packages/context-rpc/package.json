@@ -40,12 +40,10 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@enkaku/transport": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@sozai/async": "catalog:",
-    "@sozai/event": "catalog:"
-  },
-  "devDependencies": {
-    "@enkaku/transport": "catalog:",
+    "@sozai/event": "catalog:",
     "@sozai/schema": "catalog:"
   }
 }

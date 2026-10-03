@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "flow-rig": {
+    "flow": {
       "command": "node",
-      "args": ["scripts/flow-rig/serve.mjs"]
+      "args": ["packages/cli/bin/run.js", "flows", "mcp"]
     }
   }
 }

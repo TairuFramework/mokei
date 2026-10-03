@@ -16,7 +16,7 @@ function createDesktopAdapter(): FlowDesktopAdapter {
   return {
     canPrompt: (request) => surface.canPrompt(request),
     prompt: (request) => surface.prompt(request),
-    notify: (message) => notifier.notify(message),
+    notify: (message, options) => notifier.notify(message, options),
     dispose() {
       disposal ??= (async () => {
         const results = await Promise.allSettled([surface.dispose(), notifier.dispose()])

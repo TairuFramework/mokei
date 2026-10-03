@@ -5,9 +5,13 @@ import { buildProgram as tejikaBuildProgram } from '@tejika/cli'
 import type { Command } from 'commander'
 
 import { createChatCommand } from './commands/chat.js'
+import { createDaemonCommand } from './commands/daemon.js'
+import { createFlowsCommand } from './commands/flows.js'
+import { createInboxCommand } from './commands/inbox.js'
 import { createInspectCommand } from './commands/inspect.js'
 import { createMonitorCommand } from './commands/monitor.js'
 import { createProxyCommand } from './commands/proxy.js'
+import { createRunsCommand } from './commands/runs.js'
 
 const pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), '../package.json')
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string; description: string }
@@ -24,6 +28,10 @@ export function buildProgram(): Command {
       createInspectCommand(),
       createMonitorCommand(),
       createProxyCommand(),
+      createDaemonCommand(),
+      createFlowsCommand(),
+      createRunsCommand(),
+      createInboxCommand(),
     ],
   })
   program.description(pkg.description)

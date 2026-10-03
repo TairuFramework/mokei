@@ -10,6 +10,8 @@ export type {
   BackendName,
   DesktopBackend,
   NotifyBackendName,
+  NotifyCallOptions,
+  NotifyDelivery,
   NotifyRequest,
 } from './backends/types.js'
 export { createZenityBackend } from './backends/zenity.js'
@@ -21,6 +23,7 @@ export {
   type DetectOptions,
   detectAvailability,
   type ForcedBackends,
+  notifyBackendFor,
   selectBackends,
 } from './detect.js'
 export {
@@ -39,6 +42,10 @@ export {
   type PendingInput,
 } from './inbox.js'
 export { createDesktopInputSurface, type DesktopInputSurface } from './input-surface.js'
-export { createDesktopNotifier } from './notification.js'
+export {
+  createDesktopNotifier,
+  type DesktopNotifier,
+  type DesktopNotifyOptions,
+} from './notification.js'
 export { createRunner, type Runner, type RunOptions, type RunResult } from './runner.js'
 export { createDesktopTools, type DesktopTools, type DesktopToolsOptions } from './tools.js'

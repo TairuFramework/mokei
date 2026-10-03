@@ -291,14 +291,14 @@ catalogs:
       specifier: ^0.4.1
       version: 0.4.1
     '@tejika/env':
-      specifier: ^0.5.0
-      version: 0.5.0
+      specifier: ^0.5.1
+      version: 0.5.1
     '@tejika/log':
       specifier: ^0.4.0
       version: 0.4.0
     '@tejika/process':
-      specifier: ^0.5.1
-      version: 0.5.1
+      specifier: ^0.5.2
+      version: 0.5.2
     '@tejika/server':
       specifier: ^0.4.1
       version: 0.4.1
@@ -309,8 +309,8 @@ catalogs:
       specifier: ^3.7.6
       version: 3.7.6
     '@types/node':
-      specifier: ^26.6.3
-      version: 26.6.3
+      specifier: ^26.6.4
+      version: 26.6.4
     '@types/react':
       specifier: ^19.3.0
       version: 19.3.0
@@ -515,6 +515,9 @@ importers:
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../packages/context-rpc
+      '@mokei/flow-client':
+        specifier: workspace:^
+        version: link:../packages/flow-client
       '@mokei/flow-host':
         specifier: workspace:^
         version: link:../packages/flow-host
@@ -548,9 +551,12 @@ importers:
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.5
+      '@tejika/env':
+        specifier: 'catalog:'
+        version: 0.5.1
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
       node-pty:
         specifier: ^1.1.0
         version: 1.1.0
@@ -587,7 +593,7 @@ importers:
         version: link:../../packages/context-protocol
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
       '@types/turndown':
         specifier: 'catalog:'
         version: 5.0.6
@@ -612,7 +618,7 @@ importers:
         version: link:../../packages/context-protocol
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   mcp-servers/system-one:
     dependencies:
@@ -631,7 +637,7 @@ importers:
         version: 0.1.5
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   monitor:
     dependencies:
@@ -686,13 +692,13 @@ importers:
         version: 1.167.2(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@tanstack/router-core@1.171.34)(csstype@3.2.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@tanstack/router-plugin':
         specifier: 'catalog:'
-        version: 1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.5)(supports-color@8.1.1)(vite@8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))(webpack@5.108.4(@swc/core@1.16.1)(@swc/html@1.15.43)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3))
+        version: 1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.5)(supports-color@8.1.1)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))(webpack@5.108.4(@swc/core@1.16.1)(@swc/html@1.15.43)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3))
       '@types/luxon':
         specifier: 'catalog:'
         version: 3.7.6
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
@@ -701,7 +707,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
-        version: 6.1.1(vite@8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))
+        version: 6.1.1(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))
       globals:
         specifier: 'catalog:'
         version: 17.13.0
@@ -719,7 +725,7 @@ importers:
         version: 6.0.3
       vite:
         specifier: 'catalog:'
-        version: 8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
+        version: 8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
 
   packages/anthropic-provider:
     dependencies:
@@ -760,6 +766,12 @@ importers:
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
+      '@mokei/context-server-node':
+        specifier: workspace:^
+        version: link:../context-server-node
+      '@mokei/flow-client':
+        specifier: workspace:^
+        version: link:../flow-client
       '@mokei/flow-host-node':
         specifier: workspace:^
         version: link:../flow-host-node
@@ -799,9 +811,12 @@ importers:
       '@tejika/cli':
         specifier: 'catalog:'
         version: 0.4.1(@types/react@19.3.0)
+      '@tejika/env':
+        specifier: 'catalog:'
+        version: 0.5.1
       '@tejika/process':
         specifier: 'catalog:'
-        version: 0.5.1(@logtape/logtape@2.3.10)
+        version: 0.5.2(@logtape/logtape@2.3.10)
       '@tejika/ui':
         specifier: 'catalog:'
         version: 0.4.1(@types/react@19.3.0)
@@ -826,7 +841,7 @@ importers:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
@@ -847,11 +862,14 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(@vitest/ui@5.0.0)(jsdom@30.1.1(@noble/hashes@2.4.0))(vite@8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.0)(jsdom@30.1.1(@noble/hashes@2.4.0))(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))
 
   packages/context-client:
     dependencies:
       '@enkaku/node-streams':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.10)
+      '@enkaku/transport':
         specifier: 'catalog:'
         version: 0.21.3(@logtape/logtape@2.3.10)
       '@mokei/context-protocol':
@@ -872,19 +890,18 @@ importers:
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.1
-    devDependencies:
-      '@enkaku/transport':
-        specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.3.10)
 
   packages/context-protocol:
-    devDependencies:
+    dependencies:
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.5
 
   packages/context-rpc:
     dependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.10)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -894,16 +911,15 @@ importers:
       '@sozai/event':
         specifier: 'catalog:'
         version: 0.1.4(@logtape/logtape@2.3.10)
-    devDependencies:
-      '@enkaku/transport':
-        specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.3.10)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.5
 
   packages/context-server:
     dependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.10)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -923,15 +939,12 @@ importers:
         specifier: 'catalog:'
         version: 0.1.5
     devDependencies:
-      '@enkaku/transport':
-        specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.3.10)
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/context-server-node:
     dependencies:
@@ -947,7 +960,7 @@ importers:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/decision-flow:
     dependencies:
@@ -981,7 +994,7 @@ importers:
         version: 0.3.1(@logtape/logtape@2.3.10)
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/decision-flow-server:
     dependencies:
@@ -1030,7 +1043,32 @@ importers:
         version: link:../../mcp-servers/system-one
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
+
+  packages/flow-client:
+    dependencies:
+      '@enkaku/client':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.10)
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+      '@mokei/context-server':
+        specifier: workspace:^
+        version: link:../context-server
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../host-protocol
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.3.0
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.5
+    devDependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.10)
 
   packages/flow-host:
     dependencies:
@@ -1052,6 +1090,9 @@ importers:
       '@mokei/decision-flow-server':
         specifier: workspace:^
         version: link:../decision-flow-server
+      '@mokei/flow-client':
+        specifier: workspace:^
+        version: link:../flow-client
       '@mokei/host':
         specifier: workspace:^
         version: link:../host
@@ -1085,7 +1126,7 @@ importers:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/flow-host-node:
     dependencies:
@@ -1136,7 +1177,7 @@ importers:
         version: 0.1.5
       '@tejika/env':
         specifier: 'catalog:'
-        version: 0.5.0
+        version: 0.5.1
       '@tejika/log':
         specifier: 'catalog:'
         version: 0.4.0(@logtape/logtape@2.3.10)
@@ -1161,7 +1202,7 @@ importers:
         version: link:../session
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/host:
     dependencies:
@@ -1198,7 +1239,7 @@ importers:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/host-desktop:
     dependencies:
@@ -1211,6 +1252,9 @@ importers:
       '@mokei/host':
         specifier: workspace:^
         version: link:../host
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.3.0
       '@sozai/event':
         specifier: 'catalog:'
         version: 0.1.4(@logtape/logtape@2.3.10)
@@ -1232,7 +1276,7 @@ importers:
         version: link:../host-node
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/host-monitor:
     dependencies:
@@ -1250,14 +1294,14 @@ importers:
         version: 0.3.0
       '@tejika/env':
         specifier: 'catalog:'
-        version: 0.5.0
+        version: 0.5.1
       '@tejika/server':
         specifier: 'catalog:'
         version: 0.4.1(@logtape/logtape@2.3.10)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/host-node:
     dependencies:
@@ -1293,7 +1337,7 @@ importers:
         version: 0.2.1
       '@tejika/process':
         specifier: 'catalog:'
-        version: 0.5.1(@logtape/logtape@2.3.10)
+        version: 0.5.2(@logtape/logtape@2.3.10)
       nano-spawn:
         specifier: 'catalog:'
         version: 2.1.0
@@ -1306,7 +1350,7 @@ importers:
         version: link:../context-server-node
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/host-protocol:
     dependencies:
@@ -1382,7 +1426,7 @@ importers:
         version: 0.1.4(@logtape/logtape@2.3.10)
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/llama-provider:
     dependencies:
@@ -1404,7 +1448,7 @@ importers:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/logger:
     dependencies:
@@ -1414,13 +1458,13 @@ importers:
 
   packages/model-provider:
     dependencies:
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.5
     devDependencies:
-      '@mokei/context-protocol':
-        specifier: workspace:^
-        version: link:../context-protocol
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.4.1)(@vitest/ui@5.0.0)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))
@@ -1501,7 +1545,7 @@ importers:
         version: link:../http-client
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/session-node:
     dependencies:
@@ -1532,7 +1576,7 @@ importers:
         version: link:../context-server-node
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   packages/system-one-client:
     dependencies:
@@ -1548,7 +1592,7 @@ importers:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
-        version: 26.6.3
+        version: 26.6.4
 
   website:
     dependencies:
@@ -4455,8 +4499,8 @@ packages:
   '@sozai/json@0.2.0':
     resolution: {integrity: sha512-yGfDawu+8gYNigjjJHjcstRvBbRaKoUw+ec1F7MCA85V84L/ClL+yYzFmnZDKUQD8cxC4k2Hw8RxF+PvlbZW8w==}
 
-  '@sozai/lock@0.1.0':
-    resolution: {integrity: sha512-A9Gkw7DlG7kj0wDlK9RuUMd+PIZoIFlRAI19TCTmPW/G7wvx/c1/OQ8b66d4rFQZVkpeb6G/GAyOglx8rC84BA==}
+  '@sozai/lock@0.1.1':
+    resolution: {integrity: sha512-Eqahfd5NDCsZ7FVuV0dGLp0AIvcHxVrp70VT02uBKhq4YZtsU3GMh5l7GEk6K8Q3Fm5a3Rrd3jrUJ+FAZd1RXw==}
 
   '@sozai/log@0.3.1':
     resolution: {integrity: sha512-IblWrhbUOd6KCkG+Dzr9ZS+Dgyhqr5W3Zb1CbZUN5r2ybBAN5WL9GTn7L45bLuQOSp0RzjDeqB7OH39InMm0yg==}
@@ -4968,16 +5012,18 @@ packages:
   '@tejika/cli@0.4.1':
     resolution: {integrity: sha512-6b4Iri55ms5G7HtzuYIROtrL8SqJbCIEU+U9qS2hV+gFkunXP6idy8GKYelfM2oK2F8gn/Kr29uGZnICvNA0Ow==}
 
-  '@tejika/env@0.5.0':
-    resolution: {integrity: sha512-ww+4H7bQi+9iCbOcmOZfjv/3ZNF2phBWEXZyILN1jfUb6wgx+X7FkPm+Vqx0Z6ChnHeTz7uYhh725WqxescIbw==}
+  '@tejika/env@0.5.1':
+    resolution: {integrity: sha512-wMkEGS1D+d+qEy+ZkHI2M+xOK9Tpt7ypf35DpLPon7qkiJdI/3kHb1TemDfKZ8JHxusyHtbF4+0v57a3lmO8qA==}
+    engines: {node: '>=24'}
 
   '@tejika/log@0.4.0':
     resolution: {integrity: sha512-73cnuKrXfWyES+LsgmMUmngughcjVfQBAWigCFmPpeuyK7M/k9cbf6yn1R1E0chrijxnrg/LtcydQ1uIz5+GpA==}
     peerDependencies:
       '@logtape/logtape': ^2.3.0
 
-  '@tejika/process@0.5.1':
-    resolution: {integrity: sha512-OzXgzmeUdeM+ZZAuEvoRQ2Na2/GoIDwk4RH0j+CZOcXBamTfBLYoX2uxKafOXHx2j2OsQuLQfCKBxc02CdXJug==}
+  '@tejika/process@0.5.2':
+    resolution: {integrity: sha512-Tp4CQyV0nptnjXC7Z5n8ZPG1O3HKJksyrSLqH2q2Yx1xDUSPNqeC81VD9HFD72Pw5Mkor4CI2NnpTzrR8Q8wCw==}
+    engines: {node: '>=24'}
 
   '@tejika/server@0.4.1':
     resolution: {integrity: sha512-JDUiWRSabhLGq2uNQG40s9RubOgmxDPBMRdoR95m49mMaRMPRrhdG8L+WtyWkpEGGWFxuOAwQR9gMaRitNnetg==}
@@ -5128,8 +5174,8 @@ packages:
   '@types/node@26.4.1':
     resolution: {integrity: sha512-k97ENvZWtvA6yqz5/FS6a7duDgOPEeOQOc2iKS/nY6mX6qJUKtLnWzQS+Xj6tXweyj6ZcTAK2Qecetnvi9nCLA==}
 
-  '@types/node@26.6.3':
-    resolution: {integrity: sha512-dsqMQQoeTLqu9wynDD00q573mNzso3IdQOAfHRJqLCcmCFPoGo9A1bDpUcv/9tnKpErQWv9uKeGfl37EIS02Yg==}
+  '@types/node@26.6.4':
+    resolution: {integrity: sha512-ldVPDCzj7fsaGZrLB0NuHuTvJcsNasysBAqMolr/cgxrLd1xbqxIr3XJiPnHHJUCxj5sNF1vnRj9aWnrVh5Jcg==}
 
   '@types/parse5@6.0.3':
     resolution: {integrity: sha512-SuT16Q1K51EAVPz1K29DJ/sXjhSQ0zjvsypYJ6tlwVsRV9jwW5Adq2ch8Dq8kDBCkYnELS7N7VNCSB5nC56t/g==}
@@ -14729,9 +14775,9 @@ snapshots:
 
   '@sozai/json@0.2.0': {}
 
-  '@sozai/lock@0.1.0':
+  '@sozai/lock@0.1.1':
     dependencies:
-      '@sozai/async': 0.2.1
+      '@sozai/async': 0.3.0
 
   '@sozai/log@0.3.1(@logtape/logtape@2.3.10)':
     dependencies:
@@ -15160,7 +15206,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-plugin@1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.5)(supports-color@8.1.1)(vite@8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))(webpack@5.108.4(@swc/core@1.16.1)(@swc/html@1.15.43)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3))':
+  '@tanstack/router-plugin@1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.5)(supports-color@8.1.1)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))(webpack@5.108.4(@swc/core@1.16.1)(@swc/html@1.15.43)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3))':
     dependencies:
       '@babel/core': 7.29.7(supports-color@8.1.1)
       '@babel/template': 7.29.7
@@ -15169,11 +15215,11 @@ snapshots:
       '@tanstack/router-generator': 1.167.40(supports-color@8.1.1)
       '@tanstack/router-utils': 1.162.3(supports-color@8.1.1)
       chokidar: 5.0.0
-      unplugin: 3.3.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.5)(vite@8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))(webpack@5.108.4(@swc/core@1.16.1)(@swc/html@1.15.43)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3))
+      unplugin: 3.3.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.5)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))(webpack@5.108.4(@swc/core@1.16.1)(@swc/html@1.15.43)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3))
       zod: 4.6.5
     optionalDependencies:
       '@tanstack/react-router': 1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      vite: 8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
       webpack: 5.108.4(@swc/core@1.16.1)(@swc/html@1.15.43)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3)
     transitivePeerDependencies:
       - '@farmfe/core'
@@ -15206,7 +15252,7 @@ snapshots:
 
   '@tejika/cli@0.4.1(@types/react@19.3.0)':
     dependencies:
-      '@tejika/env': 0.5.0
+      '@tejika/env': 0.5.1
       commander: 15.0.0
       ink: 7.1.1(@types/react@19.3.0)(react@19.3.0)
       react: 19.3.0
@@ -15216,7 +15262,7 @@ snapshots:
       - react-devtools-core
       - utf-8-validate
 
-  '@tejika/env@0.5.0':
+  '@tejika/env@0.5.1':
     dependencies:
       env-paths: 4.0.0
       get-port: 7.2.0
@@ -15225,16 +15271,16 @@ snapshots:
     dependencies:
       '@logtape/file': 2.3.10(@logtape/logtape@2.3.10)
       '@logtape/logtape': 2.3.10
-      '@tejika/env': 0.5.0
+      '@tejika/env': 0.5.1
 
-  '@tejika/process@0.5.1(@logtape/logtape@2.3.10)':
+  '@tejika/process@0.5.2(@logtape/logtape@2.3.10)':
     dependencies:
       '@enkaku/client': 0.21.3(@logtape/logtape@2.3.10)
       '@enkaku/protocol': 0.21.4(@logtape/logtape@2.3.10)
       '@enkaku/server': 0.21.3(@logtape/logtape@2.3.10)
       '@enkaku/socket': 0.21.3(@logtape/logtape@2.3.10)
-      '@sozai/lock': 0.1.0
-      '@tejika/env': 0.5.0
+      '@sozai/lock': 0.1.1
+      '@tejika/env': 0.5.1
       nano-spawn: 2.1.0
     transitivePeerDependencies:
       - '@logtape/logtape'
@@ -15244,7 +15290,7 @@ snapshots:
       '@enkaku/http-serve': 0.21.3(@logtape/logtape@2.3.10)
       '@enkaku/protocol': 0.21.4(@logtape/logtape@2.3.10)
       '@hono/node-server': 2.1.0(hono@4.13.1)
-      '@tejika/env': 0.5.0
+      '@tejika/env': 0.5.1
       hono: 4.13.1
     transitivePeerDependencies:
       - '@logtape/logtape'
@@ -15412,7 +15458,7 @@ snapshots:
     dependencies:
       undici-types: 8.3.0
 
-  '@types/node@26.6.3':
+  '@types/node@26.6.4':
     dependencies:
       undici-types: 8.9.0
 
@@ -15500,10 +15546,10 @@ snapshots:
 
   '@ungap/structured-clone@1.3.3': {}
 
-  '@vitejs/plugin-react@6.1.1(vite@8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))':
+  '@vitejs/plugin-react@6.1.1(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
 
   '@vitest/mocker@5.0.0(vite@8.3.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))':
     dependencies:
@@ -15523,14 +15569,14 @@ snapshots:
     optionalDependencies:
       vite: 8.3.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
 
-  '@vitest/mocker@5.0.3(vite@8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))':
+  '@vitest/mocker@5.0.3(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.0.3
       estree-walker: 3.0.3
       magic-string: 1.2.3
     optionalDependencies:
-      vite: 8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
 
   '@vitest/pretty-format@5.0.0':
     dependencies:
@@ -18100,7 +18146,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 26.6.3
+      '@types/node': 26.6.4
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -21847,7 +21893,7 @@ snapshots:
 
   unpipe@1.0.0: {}
 
-  unplugin@3.3.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.5)(vite@8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))(webpack@5.108.4(@swc/core@1.16.1)(@swc/html@1.15.43)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3)):
+  unplugin@3.3.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.5)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))(webpack@5.108.4(@swc/core@1.16.1)(@swc/html@1.15.43)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3)):
     dependencies:
       '@jridgewell/remapping': 2.3.5
       picomatch: 4.0.7
@@ -21856,7 +21902,7 @@ snapshots:
       '@rspack/core': 1.7.12
       esbuild: 0.28.2
       rolldown: 1.2.5
-      vite: 8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
       webpack: 5.108.4(@swc/core@1.16.1)(@swc/html@1.15.43)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3)
 
   update-browserslist-db@1.2.3(browserslist@4.28.5):
@@ -21988,7 +22034,7 @@ snapshots:
       tsx: 4.23.13
       yaml: 2.9.0
 
-  vite@8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0):
+  vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -21996,7 +22042,7 @@ snapshots:
       rolldown: 1.2.12
       tinyglobby: 0.2.17
     optionalDependencies:
-      '@types/node': 26.6.3
+      '@types/node': 26.6.4
       esbuild: 0.28.2
       fsevents: 2.3.3
       jiti: 2.7.0
@@ -22053,10 +22099,10 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
-  vitest@5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(@vitest/ui@5.0.0)(jsdom@30.1.1(@noble/hashes@2.4.0))(vite@8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)):
+  vitest@5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.0)(jsdom@30.1.1(@noble/hashes@2.4.0))(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.3(vite@8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))
+      '@vitest/mocker': 5.0.3(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))
       chai: 6.2.2
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -22067,11 +22113,11 @@ snapshots:
       tinybench: 6.1.4
       tinyexec: 1.3.0
       tinyglobby: 0.2.17
-      vite: 8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0)
       why-is-node-running: 3.2.1
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
-      '@types/node': 26.6.3
+      '@types/node': 26.6.4
       '@vitest/ui': 5.0.0(vitest@5.0.0)
       jsdom: 30.1.1(@noble/hashes@2.4.0)
     transitivePeerDependencies:

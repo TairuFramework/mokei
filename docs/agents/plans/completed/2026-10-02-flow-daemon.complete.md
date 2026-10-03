@@ -38,6 +38,7 @@ Published Enkaku protocol 0.21.4 replaced the workspace patch.
 The [dependency adoption](2026-10-02-enkaku-protocol-schema-rebasing.complete.md) passed fresh packed-consumer verification without patches or workspace links.
 
 The user deferred native desktop QA for this chunk. Automated adapters do not establish native UI quality.
-[Native desktop QA](../next/2026-10-02-flow-daemon-native-desktop-qa.md) remains explicit follow-on work.
-Existing [declaration dependency work](../next/2026-10-02-published-declaration-dependencies.md) and
-[historical tracing work](../backlog/2026-10-02-flow-host-node-follow-ons.md) remain separately tracked.
+Native desktop QA passed later, during [flow CLI and MCP](2026-10-03-flow-cli.complete.md) manual macOS QA.
+The declaration dependency work was folded into the flow CLI and MCP sub-project (see the
+[flow client follow-ons](../backlog/2026-10-03-flow-client-follow-ons.md)).
+[Historical tracing work](../backlog/2026-10-02-flow-host-node-follow-ons.md) remains separately tracked.
