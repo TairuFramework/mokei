@@ -35,6 +35,60 @@ describe('wireMonitorStreams', () => {
     await pipes.dispose()
   })
 
+  test('daemon EOF settles done after destination cleanup and releases writer locks', async () => {
+    const cancelled: Array<string> = []
+    const aborted: Array<string> = []
+    const cleanup = Promise.withResolvers<void>()
+    const socketWritable = new WritableStream({
+      async abort() {
+        await cleanup.promise
+        aborted.push('socket')
+      },
+    })
+    const bridgeWritable = new WritableStream({
+      async abort() {
+        await cleanup.promise
+        aborted.push('bridge')
+      },
+    })
+    const pipes = wireMonitorStreams({
+      socketReadable: new ReadableStream({
+        start(controller) {
+          controller.close()
+        },
+      }),
+      socketWritable,
+      bridgeReadable: new ReadableStream({
+        cancel() {
+          cancelled.push('bridge')
+        },
+      }),
+      bridgeWritable,
+      injected: new ReadableStream({
+        cancel() {
+          cancelled.push('injected')
+        },
+      }),
+    })
+    let settled = false
+    void pipes.done.then(() => {
+      settled = true
+    })
+    try {
+      await expect.poll(() => cancelled.toSorted()).toEqual(['bridge', 'injected'])
+      expect(settled).toBe(false)
+      cleanup.resolve()
+      await expect.poll(() => settled).toBe(true)
+      expect(aborted.toSorted()).toEqual(['bridge', 'socket'])
+      expect(socketWritable.locked).toBe(false)
+      expect(bridgeWritable.locked).toBe(false)
+      await expect(pipes.dispose()).resolves.toBeUndefined()
+    } finally {
+      cleanup.resolve()
+      await pipes.dispose()
+    }
+  })
+
   test('dispose resolves while pipes are active (no close-on-locked-stream throw)', async () => {
     const socket = passthrough()
     const bridge = passthrough()

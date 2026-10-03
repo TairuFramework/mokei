@@ -23,11 +23,14 @@ export function wireMonitorStreams(params: WireMonitorStreamsParams): MonitorPip
   // One writer per destination serialises daemon traffic and locally generated messages.
   const socketWriter = params.socketWritable.getWriter()
   const bridgeWriter = params.bridgeWritable.getWriter()
+  let destinationCleanup: Promise<unknown> | undefined
   controller.signal.addEventListener(
     'abort',
     () => {
-      void socketWriter.abort().catch(() => {})
-      void bridgeWriter.abort().catch(() => {})
+      destinationCleanup = Promise.all([
+        socketWriter.abort().catch(() => {}),
+        bridgeWriter.abort().catch(() => {}),
+      ])
     },
     { once: true },
   )
@@ -40,7 +43,9 @@ export function wireMonitorStreams(params: WireMonitorStreamsParams): MonitorPip
       })
   }
   const pending = [
-    pipe(params.socketReadable, (message) => bridgeWriter.write(message)),
+    pipe(params.socketReadable, (message) => bridgeWriter.write(message)).then(() => {
+      controller.abort()
+    }),
     pipe(params.bridgeReadable, (message) => {
       const filtered = params.filter?.(message) ?? { forward: message }
       return 'reply' in filtered
@@ -51,7 +56,8 @@ export function wireMonitorStreams(params: WireMonitorStreamsParams): MonitorPip
   if (params.injected != null) {
     pending.push(pipe(params.injected, (message) => socketWriter.write(message)))
   }
-  const done = Promise.all(pending).then(() => {
+  const done = Promise.all(pending).then(async () => {
+    await destinationCleanup
     socketWriter.releaseLock()
     bridgeWriter.releaseLock()
   })
