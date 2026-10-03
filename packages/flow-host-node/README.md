@@ -105,7 +105,13 @@ An item represented at startup is not notified again during that daemon lifetime
 settles while delivery is pending. Restart intentionally announces the current population again.
 Notification failures are logged without retrying or changing inbox items.
 
-Dialogs open only through `inbox.prompt`, including when notifications are disabled. Approval
+On macOS with `alerter`, clicking a single-item notification opens that item's dialog through
+the same path as `inbox.prompt`; a click while that item's dialog is open, or on an item whose
+form cannot be shown, does nothing. Each item notification has its own group, so new items do
+not replace earlier ones, and settling an item removes its notification. Clicking the count
+message only dismisses it. `osascript` notifications open no dialog.
+
+Otherwise dialogs open only through `inbox.prompt`, including when notifications are disabled. Approval
 dialogs show the flow label and planned tools and require explicit approval. Input dialogs use
 the requested schema; the runtime validates answers before settlement. Native dialogs serialize
 across items. Settlement elsewhere aborts an active dialog and rejects its late answer.

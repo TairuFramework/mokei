@@ -90,9 +90,9 @@ test('startup bookkeeping survives settlement and delayed delivery without dupli
   controller.added({ ...second, id: 'three:input' })
   gate.resolve()
   await controller.dispose()
-  expect(vi.mocked(adapter.notify).mock.calls).toEqual([
-    ['2 pending prompts'],
-    ['Flow needs your input'],
+  expect(vi.mocked(adapter.notify).mock.calls.map(([message]) => message)).toEqual([
+    '2 pending prompts',
+    'Flow needs your input',
   ])
 })
 test('disabled notifications never call the backend', async () => {
@@ -116,6 +116,30 @@ test('notification errors report once without retry', async () => {
   await controller.dispose()
   expect(adapter.notify).toHaveBeenCalledTimes(1)
   expect(errors).toEqual([failure])
+})
+function notifyOptions(adapter: FlowDesktopAdapter, index = 0) {
+  const options = vi.mocked(adapter.notify).mock.calls[index]?.[1]
+  if (options == null) throw new Error('Expected notification options')
+  return options
+}
+test('each item notification has its own group and the summary a fixed one', async () => {
+  const { controller, adapter } = setup()
+  controller.restored([first, second])
+  controller.added({ ...second, id: 'three:input' })
+  controller.added({ ...first, id: 'four:approval' })
+  expect(notifyOptions(adapter, 0)).toEqual({ group: 'mokei-inbox-pending' })
+  expect(notifyOptions(adapter, 1).group).toBe('mokei-inbox-three:input')
+  expect(notifyOptions(adapter, 2).group).toBe('mokei-inbox-four:approval')
+  expect(notifyOptions(adapter, 1).onClick).toEqual(expect.any(Function))
+})
+test('settlement removes the item notification', async () => {
+  const { controller, adapter } = setup()
+  controller.restored([])
+  controller.added(second)
+  const options = notifyOptions(adapter)
+  expect(options.signal?.aborted).toBe(false)
+  controller.settled(second)
+  expect(options.signal?.aborted).toBe(true)
 })
 const inputFlow: FlowDefinition = {
   id: 'input',
@@ -416,3 +440,62 @@ test.each(['active', 'caller-cancelled'] as const)(
     expect(host.inbox.get(item.id)).toEqual(item)
   },
 )
+
+test.each([
+  ['restored', (controller: FlowDesktopController, item: InboxItem) => controller.restored([item])],
+  [
+    'added',
+    (controller: FlowDesktopController, item: InboxItem) => {
+      controller.restored([])
+      controller.added(item)
+    },
+  ],
+] as const)('clicking a %s item notification opens its desktop prompt', async (_name, show) => {
+  const { host, item, connect } = await runtime()
+  const prompt = vi.fn<FlowDesktopAdapter['prompt']>(async () => ({
+    action: 'accept',
+    content: { value: 'Ada' },
+  }))
+  const { controller, adapter, errors } = setup({ host, adapter: { prompt } })
+  connect(controller)
+  show(controller, item)
+  notifyOptions(adapter).onClick?.()
+  await vi.waitFor(() => expect(host.inbox.list()).toEqual([]))
+  expect(prompt).toHaveBeenCalledTimes(1)
+  expect(prompt.mock.calls[0]?.[0].params.message).toBe('Choose')
+  expect(errors).toEqual([])
+})
+test('clicking the pending summary opens no prompt', async () => {
+  const { controller, adapter } = setup()
+  controller.restored([first, second])
+  expect(notifyOptions(adapter).onClick).toBeUndefined()
+  await controller.dispose()
+  expect(adapter.prompt).not.toHaveBeenCalled()
+})
+test('click prompt errors never escape and expected ones are not reported', async () => {
+  const { host, item } = await runtime()
+  const gate = deferred<ElicitResult>()
+  const prompt = vi.fn<FlowDesktopAdapter['prompt']>(() => gate.promise)
+  const { controller, adapter, errors } = setup({ host, adapter: { prompt } })
+  controller.restored([item])
+  const onClick = notifyOptions(adapter).onClick
+  onClick?.()
+  await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1))
+  // A second click while the prompt is open hits the in-progress guard
+  onClick?.()
+  await Promise.resolve()
+  gate.resolve({ action: 'accept', content: {} })
+  // Invalid content rejects the prompt: reported, not thrown
+  await vi.waitFor(() => expect(errors).toHaveLength(1))
+  expect(errors[0]).toBeInstanceOf(InboxAnswerInvalidError)
+  expect(host.inbox.get(item.id)).toEqual(item)
+})
+test('a click on an unpromptable item is ignored', async () => {
+  const { host, item } = await runtime()
+  const { controller, adapter, errors } = setup({ host, adapter: { canPrompt: () => false } })
+  controller.restored([item])
+  notifyOptions(adapter).onClick?.()
+  await controller.dispose()
+  expect(adapter.prompt).not.toHaveBeenCalled()
+  expect(errors).toEqual([])
+})

@@ -4,9 +4,23 @@ import {
   type AskResult,
   type DesktopBackend,
   getNativeTimeoutSeconds,
+  type NotifyCallOptions,
+  type NotifyRequest,
   requireChoices,
   unexpectedExit,
 } from './types.js'
+
+/**
+ * How long a notification stays clickable. alerter keeps running until the user interacts, and
+ * removes the notification when it exits, so this bounds both: long enough to come back from a
+ * short break and click it in Notification Center, short enough that idle notifications do not
+ * pile up live processes.
+ */
+export const ALERTER_NOTIFY_TIMEOUT_SECONDS = 600
+/** alerter prints nothing until interaction: still running after this long counts as delivered. */
+export const ALERTER_DELIVERY_MS = 1000
+/** Runner timeout margin over the native timeout, so the native timeout reports first. */
+const ALERTER_EXIT_GRACE_MS = 10_000
 
 const ALERTER_COMMA_REASON = 'alerter cannot show a choice label containing a comma'
 const ALERTER_DASH_REASON =
@@ -34,6 +48,106 @@ export function alerterCanShow(request: AskRequest): { ok: true } | { ok: false;
     return { ok: false, reason: ALERTER_DASH_REASON }
   }
   return { ok: true }
+}
+
+/** Whether alerter can show the notification without reading a value as an option. */
+export function alerterCanNotify(
+  request: NotifyRequest,
+  group?: string,
+): { ok: true } | { ok: false; reason: string } {
+  const values = [request.title, request.message, request.subtitle ?? '', group ?? '']
+  if (values.some((value) => value.startsWith('-'))) {
+    return { ok: false, reason: ALERTER_DASH_REASON }
+  }
+  return { ok: true }
+}
+
+export function buildAlerterNotifyArgs(
+  request: NotifyRequest,
+  nativeTimeoutSeconds: number,
+  group?: string,
+): Array<string> {
+  const args = [
+    '--json',
+    '--timeout',
+    String(nativeTimeoutSeconds),
+    '--title',
+    request.title,
+    '--message',
+    request.message,
+  ]
+  if (request.subtitle != null && request.subtitle !== '') args.push('--subtitle', request.subtitle)
+  if (request.sound === true) args.push('--sound', 'default')
+  if (group != null && group !== '') args.push('--group', group)
+  return args
+}
+
+/** Whether the user clicked the notification body or its action button. */
+export function parseAlerterNotifyResult(result: RunResult): boolean {
+  if (result.timedOut) {
+    return false
+  }
+  if (result.code !== 0) {
+    throw unexpectedExit('alerter', result)
+  }
+  let output: AlerterOutput
+  try {
+    output = JSON.parse(result.stdout) as AlerterOutput
+  } catch (cause) {
+    throw new Error('alerter printed output that is not valid JSON', { cause })
+  }
+  // `closed`, `timeout` and a replaced notification (reported as `closed`) are not clicks
+  return output.activationType === 'contentsClicked' || output.activationType === 'actionClicked'
+}
+
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(signal.reason)
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal.addEventListener('abort', onAbort, { once: true })
+    if (signal.aborted) onAbort()
+  })
+}
+
+async function notifyWithAlerter(
+  runner: Runner,
+  request: NotifyRequest,
+  { timeoutMs, signal, group, lifetime, onClick }: NotifyCallOptions,
+): Promise<void> {
+  signal.throwIfAborted()
+  const kill = new AbortController()
+  const processSignal = lifetime == null ? kill.signal : AbortSignal.any([kill.signal, lifetime])
+  const exit = runner.run(
+    'alerter',
+    buildAlerterNotifyArgs(request, ALERTER_NOTIFY_TIMEOUT_SECONDS, group),
+    {
+      timeoutMs: ALERTER_NOTIFY_TIMEOUT_SECONDS * 1000 + ALERTER_EXIT_GRACE_MS,
+      signal: processSignal,
+    },
+  )
+  const clicked = exit.then(parseAlerterNotifyResult)
+  // After delivery, a failure or kill only means the notification is gone
+  void clicked
+    .then((wasClicked) => {
+      if (wasClicked) onClick?.()
+    })
+    .catch(() => {})
+  try {
+    // An option error exits at once; a shown notification keeps alerter running
+    await Promise.race([
+      clicked.then(() => undefined),
+      delay(Math.min(ALERTER_DELIVERY_MS, timeoutMs), signal),
+    ])
+  } catch (error) {
+    kill.abort(error)
+    throw error
+  }
 }
 
 export function buildAlerterArgs(request: AskRequest, nativeTimeoutSeconds: number): Array<string> {
@@ -116,6 +230,9 @@ export function createAlerterBackend(runner: Runner): DesktopBackend {
       const args = buildAlerterArgs(request, getNativeTimeoutSeconds(timeoutMs))
       const result = await runner.run('alerter', args, { timeoutMs, signal })
       return parseAlerterResult(request, result)
+    },
+    notify(request, options) {
+      return notifyWithAlerter(runner, request, options)
     },
   }
 }

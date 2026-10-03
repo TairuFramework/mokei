@@ -383,7 +383,10 @@ Reconnect repeats this sequence. Stream cancellation cleans up only that subscri
 Desktop notifications default to `false` through `desktop.notifications` in `flows.json`.
 After initial reconciliation, zero pending items send nothing, one sends an approval/input
 notification and multiple send one count message, such as `3 pending prompts`. New items notify
-individually without input previews. Startup IDs are recorded before delivery so settling
+individually without input previews. On macOS with `alerter`, clicking a single-item
+notification opens that item's desktop prompt, as `inbox prompt` does; each item has its own
+notification group, the count message's click only dismisses it, and settling an item removes its
+notification. Clicking an `osascript` notification does not open a prompt. Startup IDs are recorded before delivery so settling
 items cannot receive duplicate live notifications. Polling and reconnects never notify;
 restart announces the current pending population again. Delivery failure leaves items pending.
 Dialogs require explicit `inbox.prompt`, independently of notification opt-in. Runtime

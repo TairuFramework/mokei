@@ -28,6 +28,7 @@ Restart after configuration changes, retaining the same isolated database.
 - Start input and approval flows. New pending items notify once without content previews or automatic dialogs.
 - Restart with zero, one and three pending items. Expect no notification, one item notification, or one `3 pending prompts` notification.
 - List, subscribe and reconnect repeatedly. Expect no additional notifications.
+- With `alerter` installed, click an item notification. Expect its dialog, as with `inbox.prompt`; clicking the `3 pending prompts` message opens nothing. Settle an item elsewhere and check its notification disappears.
 - Call `inbox.prompt` explicitly. Check readable labels, requested input fields, planned tools and explicit approval.
 - Accept, decline and cancel fresh dialogs. Check validated runtime settlement and resulting run states.
 - Settle an item from another client while its dialog is open. Check cancellation and rejection of late answers.

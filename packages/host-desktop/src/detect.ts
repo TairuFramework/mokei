@@ -1,11 +1,12 @@
 import { accessSync, constants } from 'node:fs'
 
-import { alerterCanShow } from './backends/alerter.js'
+import { alerterCanNotify, alerterCanShow } from './backends/alerter.js'
 import type {
   AskBackendName,
   AskRequest,
   BackendName,
   NotifyBackendName,
+  NotifyRequest,
 } from './backends/types.js'
 
 export type DetectOptions = {
@@ -91,7 +92,7 @@ function installHint(
     const base =
       capability === 'dialog'
         ? 'No dialog backend found. Install alerter (brew install vjeantet/tap/alerter) or make osascript available.'
-        : 'No notification backend found. Make osascript available.'
+        : 'No notification backend found. Install alerter (brew install vjeantet/tap/alerter) or make osascript available.'
     return `${base} ${GUI_SESSION_NOTE}`
   }
   if (platform === 'linux') {
@@ -140,7 +141,7 @@ export function selectBackends(
   const askOrder: Array<AskBackendName> =
     platform === 'darwin' ? ['alerter', 'osascript'] : platform === 'linux' ? ['zenity'] : []
   const notifyOrder: Array<NotifyBackendName> =
-    platform === 'darwin' ? ['osascript'] : platform === 'linux' ? ['notify-send'] : []
+    platform === 'darwin' ? ['alerter', 'osascript'] : platform === 'linux' ? ['notify-send'] : []
   const ask = select('dialog', askOrder, forced.ask, availability, platform)
   const notify = select('notify', notifyOrder, forced.notify, availability, platform)
   return {
@@ -179,6 +180,36 @@ export function askBackendFor(
   return {
     ok: false,
     reason: `${shown.reason}, and the osascript fallback is unavailable: ${availability.missing.osascript ?? 'unavailable'}. Make osascript available or change the request.`,
+  }
+}
+
+/** The notify backend for a request: an auto-selected alerter falls back to osascript when it cannot show it. */
+export function notifyBackendFor(
+  request: NotifyRequest,
+  group: string | undefined,
+  selection: BackendSelection,
+  availability: Availability,
+): { ok: true; name: NotifyBackendName } | { ok: false; reason: string } {
+  const notify = selection.notify
+  if (notify == null) {
+    return { ok: false, reason: selection.notifyProblem ?? 'No notification backend is available' }
+  }
+  if (notify.name !== 'alerter') {
+    return { ok: true, name: notify.name }
+  }
+  const shown = alerterCanNotify(request, group)
+  if (shown.ok) {
+    return { ok: true, name: notify.name }
+  }
+  if (notify.forced) {
+    return { ok: false, reason: `${shown.reason}; use another notification backend` }
+  }
+  if (availability.available.has('osascript')) {
+    return { ok: true, name: 'osascript' }
+  }
+  return {
+    ok: false,
+    reason: `${shown.reason}, and the osascript fallback is unavailable: ${availability.missing.osascript ?? 'unavailable'}`,
   }
 }
 

@@ -270,9 +270,10 @@ test('desktop adapter uses explicit prompts and generic notifications without mo
     }
     expect(serviceParams.desktop?.canPrompt(request)).toBe(true)
     expect(await serviceParams.desktop?.prompt(request)).toEqual({ action: 'cancel' })
-    await serviceParams.desktop?.notify('Flow needs your input')
+    const onClick = () => {}
+    await serviceParams.desktop?.notify('Flow needs your input', { group: 'g', onClick })
     expect(surface.prompt).toHaveBeenCalledWith(request)
-    expect(notifier.notify).toHaveBeenCalledWith('Flow needs your input')
+    expect(notifier.notify).toHaveBeenCalledWith('Flow needs your input', { group: 'g', onClick })
     expect(surface.notify).not.toHaveBeenCalled()
     expect(createDesktopTools).not.toHaveBeenCalled()
   } finally {
