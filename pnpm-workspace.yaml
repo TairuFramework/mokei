@@ -61,6 +61,7 @@ catalog:
   '@inkjs/ui': ^2.0.0
   '@mantine/core': ^9.6.3
   '@mantine/hooks': ^9.6.3
+  '@mantine/notifications': ^9.6.3
   '@modelcontextprotocol/client': 2.2.0
   '@modelcontextprotocol/core': 2.2.0
   '@modelcontextprotocol/ext-tasks': 0.1.0
@@ -68,6 +69,8 @@ catalog:
   '@modelcontextprotocol/server': 2.2.0
   '@swc/cli': ^0.8.1
   '@swc/core': ^1.15.41
+  '@testing-library/react': ^16.3.3
+  '@testing-library/user-event': ^14.6.7
   '@tabler/icons-react': ^3.48.0
   '@tanstack/react-router': ^1.170.41
   '@tanstack/react-virtual': ^3.14.13
