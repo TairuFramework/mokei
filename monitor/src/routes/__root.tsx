@@ -14,8 +14,10 @@ import { lazy, Suspense, useMemo } from 'react'
 
 import { AppHeader } from '../components/AppHeader.js'
 import { ConnectionBanner } from '../components/ConnectionBanner.js'
+import { NotificationPermissionButton } from '../components/NotificationPermissionButton.js'
 import { EnvironmentContext } from '../enkaku/context.js'
 import { FlowProvider, useFlow } from '../flow/FlowProvider.js'
+import { PresenceProvider } from '../presence/PresenceProvider.js'
 
 const TanStackRouterDevtools =
   process.env.NODE_ENV === 'production'
@@ -63,8 +65,15 @@ function MonitorApp() {
   return (
     <EnvironmentContext value={environment}>
       <AppShell header={{ height: 60 }} padding="md">
-        <AppShell.Header style={{ backgroundColor: '#04809d' }}>
+        <AppShell.Header
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: '#04809d',
+          }}>
           <AppHeader />
+          <NotificationPermissionButton />
         </AppShell.Header>
         <AppShell.Main>
           <ConnectionBanner />
@@ -82,7 +91,9 @@ export const Route = createRootRoute({
         <MantineProvider theme={theme}>
           <Notifications />
           <FlowProvider>
-            <MonitorApp />
+            <PresenceProvider>
+              <MonitorApp />
+            </PresenceProvider>
           </FlowProvider>
         </MantineProvider>
         <Suspense>
