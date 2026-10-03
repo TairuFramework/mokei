@@ -9,6 +9,7 @@ import type {
   FlowServiceStatus,
   HostEvent,
   HostEventMeta,
+  MonitorProcedure,
   Protocol,
 } from '@mokei/host-protocol'
 import { protocol } from '@mokei/host-protocol'
@@ -192,6 +193,11 @@ const FLOW_PROCEDURES = [
   'inbox.prompt',
 ] as const satisfies Array<FlowProcedure>
 
+const MONITOR_PROCEDURES = [
+  'monitor.attach',
+  'monitor.presence',
+] as const satisfies Array<MonitorProcedure>
+
 function unavailableStatus(): Extract<FlowServiceStatus, { state: 'failed' }> {
   return {
     state: 'failed',
@@ -262,6 +268,16 @@ export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonH
         throw new HandlerError({
           code: 'FLOW_UNAVAILABLE',
           message: unavailableStatus().error.message,
+        })
+      }
+    }
+  }
+  for (const procedure of MONITOR_PROCEDURES) {
+    if (params.handlers?.[procedure] == null) {
+      unavailable[procedure] = () => {
+        throw new HandlerError({
+          code: 'MONITOR_UNAVAILABLE',
+          message: 'Monitor presence is unavailable in this daemon entry.',
         })
       }
     }
