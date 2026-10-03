@@ -27,7 +27,7 @@ assumption that the environment has one.
 | `session`, `agent`, `host`, `cli-chat*` | a chat backend (below) |
 | `cli-*` | the CLI built (`pnpm build` — the dev binary loads from `lib/`) and a working PTY |
 | `llama-provider`, `cli-chat-llama` | `MOKEI_LLAMA_GGUF` |
-| `laya`, `laya-decision-flow` | `MOKEI_LAYA_SERVE_BIN` |
+| `system-one`, `system-one-decision-flow`, `system-one-decision-flow-server` | `MOKEI_LAYA_SERVE_BIN` and/or a llama.cpp decision server (`MOKEI_LLAMA_DECISION_*`) |
 
 The `test:types` script also typechecks the published declarations as a consumer
 (`dts-consumer/`), with `skipLibCheck: false`. Build the packages first.
@@ -80,13 +80,24 @@ deterministic suite cannot quietly become flaky.
 `MOKEI_LLAMA_GGUF` is separate: it points at a local GGUF **file** for `@mokei/llama-provider`,
 which runs inference in-process via node-llama-cpp rather than over HTTP.
 
-`MOKEI_LAYA_SERVE_BIN` points at a `laya-serve` executable for the `laya` suites. Both run in their
-own Vitest project (`laya`), whose global setup starts one server on a free port with only the
-english checkpoint and shares it. `laya` drives it through `HTTPSystemOneBackend`;
-`laya-decision-flow` runs decision flows against it. Targeted runs of other suites, or
-`vitest run --project default`, never start `laya-serve`. Install
-it with `uv venv --python 3.12 && uv pip install "laya[serve]"`; it runs on CPU, CUDA and Apple
-Silicon (MPS). The first start downloads the checkpoint from Hugging Face, so allow a few minutes.
+The `system-one*` suites run against every System One server the environment provides, one
+`describe.each` entry per server, so each backend gets the same tests. They run in their own Vitest
+project (`system-one`), whose global setup starts the servers (or connects to running ones) and
+shares them. `system-one` drives them through `HTTPSystemOneBackend`; `system-one-decision-flow*`
+runs decision flows against them. With no server configured the per-server suites have no entries
+and only the static graph-checking tests run. Targeted runs of other suites, or
+`vitest run --project default`, never start a server.
+
+- **laya-serve** -- `MOKEI_LAYA_SERVE_BIN` points at the executable. The setup starts it on a free
+  port with only the english checkpoint. Install it with
+  `uv venv --python 3.12 && uv pip install "laya[serve]"`; it runs on CPU, CUDA and Apple Silicon
+  (MPS). The first start downloads the checkpoint from Hugging Face, so allow a few minutes.
+- **llama.cpp decision model** -- the `/v1/systemone` endpoint of `llama-server` loaded with a
+  decision GGUF (for example `ggml-org/Clef-GGUF`). Either point `MOKEI_LLAMA_DECISION_URL` at a
+  running server, or set `MOKEI_LLAMA_DECISION_BIN` (the `llama-server` executable) and
+  `MOKEI_LLAMA_DECISION_MODEL` (a GGUF path, or a Hugging Face repo passed to `-hf`) and the setup
+  starts it on a free port with an API key. Only a server the setup started, or one given
+  `MOKEI_LLAMA_DECISION_API_KEY`, is assumed to enforce auth; the wrong-API-key tests skip otherwise.
 
 ## Environment variables
 
@@ -99,4 +110,8 @@ needs no mokei-specific setup. `MOKEI_*` is reserved for things only mokei defin
 | `LLAMA_SERVER_URL` | llama.cpp `llama-server` URL (scheme optional). Unset, the default `http://127.0.0.1:8080` is probed |
 | `OLLAMA_HOST` | Ollama base URL (scheme optional). Set it to use ollama instead; unset, ollama is the fallback at `http://127.0.0.1:11434` |
 | `MOKEI_LLAMA_GGUF` | Local GGUF path enabling the in-process llama-provider suites |
-| `MOKEI_LAYA_SERVE_BIN` | `laya-serve` executable enabling the `laya` and `laya-decision-flow` suites |
+| `MOKEI_LAYA_SERVE_BIN` | `laya-serve` executable adding laya to the `system-one*` suites |
+| `MOKEI_LLAMA_DECISION_URL` | URL of a running llama.cpp decision server, adding it to the `system-one*` suites |
+| `MOKEI_LLAMA_DECISION_BIN` / `MOKEI_LLAMA_DECISION_MODEL` | `llama-server` executable and decision model (GGUF path or `-hf` repo) the setup starts instead of a URL |
+| `MOKEI_LLAMA_DECISION_API_KEY` | API key for `MOKEI_LLAMA_DECISION_URL`, if the server enforces one |
+| `MOKEI_LLAMA_DECISION_REQUEST_MODEL` | Value sent as the request `model`; unset, it is omitted |
