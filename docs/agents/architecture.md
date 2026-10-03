@@ -385,8 +385,8 @@ After initial reconciliation, zero pending items send nothing, one sends an appr
 notification and multiple send one count message, such as `3 pending prompts`. New items notify
 individually without input previews. On macOS with `alerter`, clicking a single-item
 notification opens that item's monitor inbox page when a monitor is attached, or its desktop
-prompt otherwise; each item has its own
-notification group, the count message's click only dismisses it, and settling an item removes its
+prompt otherwise. Clicking the count message opens `/inbox` when a monitor is attached, or only dismisses it otherwise.
+Each item has its own notification group, and settling an item removes its
 notification. Clicking an `osascript` notification does not open a prompt. Startup IDs are recorded before delivery so settling
 items cannot receive duplicate live notifications. Polling and reconnects never notify;
 restart announces the current pending population again. Delivery failure leaves items pending.

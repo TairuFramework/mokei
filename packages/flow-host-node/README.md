@@ -131,9 +131,9 @@ Notification failures are logged without retrying or changing inbox items.
 On macOS with `alerter`, clicking a single-item notification opens that item's dialog through
 the same path as `inbox.prompt`; a click while that item's dialog is open, or on an item whose
 form cannot be shown, does nothing. Each item notification has its own group, so new items do
-not replace earlier ones, and settling an item removes its notification. Clicking the count
-message only dismisses it. When a monitor is attached, the click opens the item's monitor inbox
-page instead. `osascript` notifications open no dialog.
+not replace earlier ones, and settling an item removes its notification. When a monitor is attached,
+clicking an item opens its monitor inbox page, and clicking the count message opens `/inbox`.
+Without a monitor, clicking the count message only dismisses it. `osascript` notifications open no dialog.
 
 Otherwise dialogs open only through `inbox.prompt`, including when notifications are disabled. Approval
 dialogs show the flow label and planned tools and require explicit approval. Input dialogs use
