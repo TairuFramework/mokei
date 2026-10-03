@@ -291,8 +291,8 @@ catalogs:
       specifier: ^0.4.1
       version: 0.4.1
     '@tejika/env':
-      specifier: ^0.5.0
-      version: 0.5.0
+      specifier: ^0.5.1
+      version: 0.5.1
     '@tejika/log':
       specifier: ^0.4.0
       version: 0.4.0
@@ -553,7 +553,7 @@ importers:
         version: 0.1.5
       '@tejika/env':
         specifier: 'catalog:'
-        version: 0.5.0
+        version: 0.5.1
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -813,7 +813,7 @@ importers:
         version: 0.4.1(@types/react@19.3.0)
       '@tejika/env':
         specifier: 'catalog:'
-        version: 0.5.0
+        version: 0.5.1
       '@tejika/process':
         specifier: 'catalog:'
         version: 0.5.2(@logtape/logtape@2.3.10)
@@ -1174,7 +1174,7 @@ importers:
         version: 0.1.5
       '@tejika/env':
         specifier: 'catalog:'
-        version: 0.5.0
+        version: 0.5.1
       '@tejika/log':
         specifier: 'catalog:'
         version: 0.4.0(@logtape/logtape@2.3.10)
@@ -1288,7 +1288,7 @@ importers:
         version: 0.3.0
       '@tejika/env':
         specifier: 'catalog:'
-        version: 0.5.0
+        version: 0.5.1
       '@tejika/server':
         specifier: 'catalog:'
         version: 0.4.1(@logtape/logtape@2.3.10)
@@ -5006,8 +5006,9 @@ packages:
   '@tejika/cli@0.4.1':
     resolution: {integrity: sha512-6b4Iri55ms5G7HtzuYIROtrL8SqJbCIEU+U9qS2hV+gFkunXP6idy8GKYelfM2oK2F8gn/Kr29uGZnICvNA0Ow==}
 
-  '@tejika/env@0.5.0':
-    resolution: {integrity: sha512-ww+4H7bQi+9iCbOcmOZfjv/3ZNF2phBWEXZyILN1jfUb6wgx+X7FkPm+Vqx0Z6ChnHeTz7uYhh725WqxescIbw==}
+  '@tejika/env@0.5.1':
+    resolution: {integrity: sha512-wMkEGS1D+d+qEy+ZkHI2M+xOK9Tpt7ypf35DpLPon7qkiJdI/3kHb1TemDfKZ8JHxusyHtbF4+0v57a3lmO8qA==}
+    engines: {node: '>=24'}
 
   '@tejika/log@0.4.0':
     resolution: {integrity: sha512-73cnuKrXfWyES+LsgmMUmngughcjVfQBAWigCFmPpeuyK7M/k9cbf6yn1R1E0chrijxnrg/LtcydQ1uIz5+GpA==}
@@ -15268,7 +15269,7 @@ snapshots:
 
   '@tejika/cli@0.4.1(@types/react@19.3.0)':
     dependencies:
-      '@tejika/env': 0.5.0
+      '@tejika/env': 0.5.1
       commander: 15.0.0
       ink: 7.1.1(@types/react@19.3.0)(react@19.3.0)
       react: 19.3.0
@@ -15278,7 +15279,7 @@ snapshots:
       - react-devtools-core
       - utf-8-validate
 
-  '@tejika/env@0.5.0':
+  '@tejika/env@0.5.1':
     dependencies:
       env-paths: 4.0.0
       get-port: 7.2.0
@@ -15287,7 +15288,7 @@ snapshots:
     dependencies:
       '@logtape/file': 2.3.10(@logtape/logtape@2.3.10)
       '@logtape/logtape': 2.3.10
-      '@tejika/env': 0.5.0
+      '@tejika/env': 0.5.1
 
   '@tejika/process@0.5.2(@logtape/logtape@2.3.10)':
     dependencies:
@@ -15296,7 +15297,7 @@ snapshots:
       '@enkaku/server': 0.21.3(@logtape/logtape@2.3.10)
       '@enkaku/socket': 0.21.3(@logtape/logtape@2.3.10)
       '@sozai/lock': 0.1.1
-      '@tejika/env': 0.5.0
+      '@tejika/env': 0.5.1
       nano-spawn: 2.1.0
     transitivePeerDependencies:
       - '@logtape/logtape'
@@ -15306,7 +15307,7 @@ snapshots:
       '@enkaku/http-serve': 0.21.3(@logtape/logtape@2.3.10)
       '@enkaku/protocol': 0.21.4(@logtape/logtape@2.3.10)
       '@hono/node-server': 2.1.0(hono@4.13.1)
-      '@tejika/env': 0.5.0
+      '@tejika/env': 0.5.1
       hono: 4.13.1
     transitivePeerDependencies:
       - '@logtape/logtape'
