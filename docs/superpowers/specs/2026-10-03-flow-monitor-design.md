@@ -53,8 +53,10 @@ Prerequisites, verified against the installed `@enkaku/http-serve` and `@enkaku/
 - **Reserved procedures.** The bridge-to-socket pipe rejects `monitor.attach` from browser sessions with an error reply;
   only the monitor process attaches.
 - **Daemon reconnection.** When the daemon socket closes (daemon restart), `startMonitor` keeps its HTTP server and
-  token, reconnects to the socket with backoff, creates a new bridge and re-opens `monitor.attach`. Browser sessions on
-  the old bridge fail ("Invalid session ID"); the monitor app treats that as a lost connection and reconnects (below).
+  token, reconnects to the socket with backoff, creates a new bridge and re-opens `monitor.attach`. The bridge has no
+  dispose API and its existing SSE responses stay open, so `startMonitor` wraps the body of every SSE response it
+  returns and, before switching bridges, closes all wrapped bodies. Tabs then see their streams end and reconnect
+  (below). A bridge `dispose()` that ends its sessions is requested upstream; adopt it when available.
 - **URL.** `startMonitor` returns `url` normalised with a trailing slash.
 
 ## Protocol (`@mokei/host-protocol`)
@@ -76,7 +78,9 @@ Two procedures, typed as a separate `MonitorProcedure` group so `FlowProcedure` 
 - Param: `{ attachmentID: string }`. `startMonitor` injects its current `attachmentID` into the SPA next to the token.
   An unknown or detached `attachmentID` fails the call; the tab reloads its attachment ID by reloading the page config
   (see reconnection).
-- Every delivery message carries an `attemptID` so late or stale replies are ignored.
+- Every delivery message carries an `attemptID` so late or stale replies are ignored, and a `deadline` (epoch ms, same
+  machine clock): a tab drops a `notify` or `prompt` received after its deadline, which the daemon sets to the ack
+  timeout. A message that arrives in time but after the daemon gave up is withdrawn by the `withdraw` that follows.
 
 | Direction | Message | When |
 |---|---|---|
@@ -84,8 +88,8 @@ Two procedures, typed as a separate `MonitorProcedure` group so `FlowProcedure` 
 | tab → daemon | `{ type: 'pong', nonce: string }` | reply to `ping` |
 | tab → daemon | `{ type: 'ack', attemptID: string, shown: boolean }` | reply to `notify` or `prompt` |
 | daemon → tab | `{ type: 'ping', nonce: string }` | before relying on the tab |
-| daemon → tab | `{ type: 'notify', attemptID: string, itemID: string, title: string, message: string }` | new item |
-| daemon → tab | `{ type: 'prompt', attemptID: string, itemID: string }` | `inbox.prompt` routed to the monitor |
+| daemon → tab | `{ type: 'notify', attemptID: string, deadline: number, itemID: string, title: string, message: string }` | new item |
+| daemon → tab | `{ type: 'prompt', attemptID: string, deadline: number, itemID: string }` | `inbox.prompt` routed to the monitor |
 | daemon → tab | `{ type: 'withdraw', attemptID: string }` | the delivery is no longer wanted (settled, timed out, caller aborted, disposal) |
 
 Timeouts: `pong` and `ack` within 5 s (sends from a tab queue behind its in-flight requests, which are short).
@@ -124,10 +128,14 @@ type InboxSurface = {
 The flow host stays the only settler. The service calls `controller.settled(item, outcome)` with the inbox outcome
 (`answered`, `declined`, `cancelled`, `withdrawn`); today the outcome is discarded, so this widens the call.
 
-- A native prompt keeps settling the item itself from the dialog result, as today.
-- A monitor prompt never settles: the tab settles through `inbox.answer`, `inbox.decline` or `inbox.cancel`, and the
-  controller resolves the pending `prompt(id)` from `settled(item, outcome)`: `answered` → `accept`, `declined` →
-  `decline`, `cancelled` → `cancel`, `withdrawn` → reject with `InboxItemNotFoundError`.
+Every `prompt(id)` resolves the same way, from `settled(item, outcome)`: `answered` → `accept`, `declined` →
+`decline`, `cancelled` → `cancel`, `withdrawn` → reject with `InboxItemNotFoundError`.
+
+- The native surface's `prompt` wraps today's path: it shows the dialog, turns the `ElicitResult` into
+  `inbox.answer`, `inbox.decline` or `inbox.cancel` on the host (as the controller does today), and returns a delivery
+  whose `close()` aborts the dialog. It no longer returns the action; the resulting settlement does.
+- The monitor surface's `prompt` never settles: the tab settles through `inbox.answer`, `inbox.decline` or
+  `inbox.cancel`.
 - The controller registers its settlement waiter before delivering a prompt, and re-checks that the item is still
   pending before any fallback.
 - Ownership stays per item (`InboxPromptInProgressError`); a caller abort releases ownership and closes the delivery
@@ -164,7 +172,7 @@ Wraps the existing `FlowDesktopAdapter` (`@mokei/host-desktop`), which stays nat
   `new URL('inbox/' + encodeURIComponent(itemID), url)` (summary: `new URL('inbox', url)`) with the platform opener
   (`open` on macOS, `xdg-open` on Linux) through the host-desktop runner, passing the URL as a single argument;
   otherwise prompt the item as today (summary: no action).
-- `prompt`: today's desktop dialog, unchanged; it settles the item itself.
+- `prompt`: today's desktop dialog and settle, wrapped as described under settlement ownership.
 
 ### Desktop controller routing
 
@@ -197,8 +205,9 @@ Wraps the existing `FlowDesktopAdapter` (`@mokei/host-desktop`), which stays nat
   client with backoff and bumps an epoch. On 403 it re-fetches the page config; if the token changed (monitor
   restarted) it shows a full-page "monitor restarted, reload" state. The provider wraps `fetch` to observe HTTP status,
   since `createRemoteFlowControl` normalises transport failures to `INTERNAL_ERROR`.
-- Service status: the provider calls `info` on each epoch and consumes `service:status` from the raw `events` stream
-  (`FlowControl.subscribe()` filters it out). Connectivity comes from the subscription state. Actions are disabled
+- Service status: on each epoch the provider first opens the raw `events` stream (`FlowControl.subscribe()` filters
+  `service:status` out), then calls `info`; a `service:status` event received after `info` was issued wins over the
+  `info` result. Connectivity comes from the subscription state. Actions are disabled
   while disconnected or while the flow service is not ready, with a banner.
 
 ### Data layer (`monitor/src/flow/`)
@@ -209,7 +218,8 @@ Wraps the existing `FlowDesktopAdapter` (`@mokei/host-desktop`), which stays nat
   1. start buffering events for the query before issuing its read;
   2. issue the read tagged with the current generation (epoch and filter);
   3. discard the response if the generation changed;
-  4. apply the snapshot, then the buffered events, then live events.
+  4. apply the snapshot; buffered events are not replayed as data but trigger a re-read of the affected IDs
+     (`runs.get`, `inbox.get`) through the same generation check; live events after that apply directly.
   Inbox state keeps tombstones for items settled during the page session so a stale snapshot cannot resurrect them.
 - Event application is pure (`applyRunEvent`, `applyInboxEvent`) and unit tested.
 - `useRunTrace`: the store holds only ended spans, so a running trace is partial and the root `flow.run` span appears
@@ -262,8 +272,8 @@ An item that settles while its page is open shows the observed outcome. An item 
 ## Testing
 
 - **host-monitor:** a request with a browser `Origin` header succeeds; abrupt SSE disconnect aborts the daemon-side
-  handler signal; browser `monitor.attach` is rejected; daemon socket loss reconnects and re-attaches; `url` has a
-  trailing slash.
+  handler signal; browser `monitor.attach` is rejected; daemon socket loss closes open SSE responses, reconnects and
+  re-attaches; `url` has a trailing slash.
 - **Protocol:** schemas, URL validation cases, `MonitorProcedure` typing.
 - **`MonitorPresence` (fake timers):** attach, detach closing only its tabs, latest URL wins; `isAttended` with live,
   frozen (no pong) and multiple tabs; notify ping timeout, ack timeout, `shown: false`, late ack ignored, withdraw sent;
