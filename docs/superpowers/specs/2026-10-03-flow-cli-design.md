@@ -64,7 +64,8 @@ needed `@sozai/*` packages, and `@enkaku/client` for the `Client` type. It never
 `PromptAction` (`'accept' | 'decline' | 'cancel'`). Wire fields that are generic objects (result `content`, an
 input item's `requestedSchema`, `output`) stay generic in these types; consumers that need narrower shapes validate
 them where they use them (the terminal prompts, section [Terminal prompts](#terminal-prompts)). `FlowHost` values
-are structurally assignable to these types; the local adapter's tests check it.
+are structurally assignable to these types except check results, which the local adapter projects; its tests
+check both.
 
 ```ts
 type FlowEvent =
@@ -133,9 +134,14 @@ first and then read snapshots (subscribe-then-query). A lost connection ends ite
   2. On each event for the run (`run:state` with that run, or `inbox:*` with that `runID`), reread `runStatus` and
      test `until`.
   3. On `DISCONNECTED`, resubscribe with backoff (250 ms doubling to 2 s) until the timeout, then go back to step 1.
-     This lets a wait survive a daemon restart, since runs are durable.
+     After a restart the `info` barrier succeeds while the flow service is still recovering, so a read failing with
+     `FLOW_UNAVAILABLE` whose `data.status.state` is `starting` is retried with the same backoff. A `failed` service
+     rejects. This lets a wait survive a daemon restart, since runs are durable.
   4. On timeout, close the subscription and return the latest status with `timedOut: true`. On abort, close and
      reject with the signal's reason.
+- `hasChanged(previous)`: a predicate true when the status differs from `previous` (state, pending item ids, result
+  or error). Watch-only loops use it so they block until something changes instead of returning at once on an
+  unanswered item.
 - `isActionable(status)`: true when the run is terminal or has at least one pending item. An `input_required` or
   `awaiting_approval` run with no pending items (an answer settled, the watcher has not advanced the state yet) is
   not actionable.
@@ -147,6 +153,9 @@ first and then read snapshots (subscribe-then-query). A lost connection ends ite
 
 - Adapts the synchronous inbox methods to promises.
 - Converts `undefined` from `get` to the not-found codes.
+- `flows.check` projects the result like the daemon handler does: copies `issues` into a mutable array and returns
+  only `{ value, warnings, formatted }` or `{ issues, warnings, formatted }`. Other methods return host values
+  directly where they are structurally assignable to the wire types.
 - Normalizes every error the host throws to `FlowControlError`, using the same code mapping as
   `flow-host-node`'s `toHandlerError` (`FlowCheckError` to `FLOW_INVALID`, `FlowNotFoundError` to
   `FLOW_NOT_FOUND`, `RunNotFoundError` to `RUN_NOT_FOUND`, `InboxItemNotFoundError` (including the inbox's own
@@ -196,7 +205,8 @@ type RunStatus = {
 - Accept or decline in the dialog settles the item; the result reports the action.
 - Cancel in the dialog settles the item as cancelled.
 - Cancelling the tool call (request signal) closes the dialog and leaves the item pending.
-- Settling the item elsewhere while the dialog is open closes it; the result reports `cancel`.
+- Settling the item elsewhere while the dialog is open closes it; the call fails with `INBOX_ITEM_NOT_FOUND` (the
+  controller aborts the prompt with that error), returned as an error saying the item was settled elsewhere.
 - `PROMPT_UNSUPPORTED` (schema the desktop cannot render) and `PROMPT_IN_PROGRESS` (another caller owns the dialog)
   return errors that name the item, which stays pending.
 
@@ -224,13 +234,19 @@ terminal; it never prompts, as if stdin were not a TTY. `daemon logs` prints raw
 path from `@tejika/env` for app `mokei` (`mokei.pid` in the state dir, overridable with `MOKEI_STATE_DIR`). `status`
 and `stop` read it with `getDaemonStatus`/`stopDaemon` and compare the recorded socket path with the selected
 `--socket-path`. If they differ, `status` reports `not-running` for the selected socket and names the other one, and
-`stop` refuses with an error naming both paths. It never signals a daemon serving a different socket.
+`stop` refuses with an error naming both paths.
+
+The comparison happens before `stopDaemon` takes its lock, so a daemon replaced in between could still be signalled.
+The window is small for a per-user daemon and is accepted for this sub-project. An `expectedSocketPath` option
+checked inside `stopDaemon`'s critical section is requested upstream from `@tejika/process`; adopt it when
+released.
 
 - `start`: ensure running, wait until `info.flowService` leaves `starting`, print pid, socket path and flow service
   state. A `failed` service prints the error and issues and exits 1.
 - `stop`: `stopDaemon` with `waitForExit: true` and `killTimeoutMs: 75_000`, longer than the daemon's 60 s
-  shutdown budget, so in-flight work drains and durable runs suspend before any SIGKILL. Reports whether the daemon
-  exited gracefully or was killed.
+  shutdown budget, so in-flight work drains and durable runs suspend before any SIGKILL. Reports only that the
+  daemon stopped: `stopDaemon` does not say whether it escalated to SIGKILL. A result field for that is requested
+  upstream from `@tejika/process`.
 - `status`: `not-running`, `stale`, `booting` or `running`; when running, adds uptime, active contexts and flow
   service state. Never auto-starts.
 - `restart`: `stop`, confirm exit, then `start`. Applies `flows.json` changes.
@@ -248,7 +264,8 @@ and `stop` read it with `getDaemonStatus`/`stopDaemon` and compare the recorded 
 - `start <flow> | --file <definition.json>`, `--input <json|@file>`, `--label <text>`, `--wait`: without `--wait`
   prints run id and state. With `--wait`, runs `waitForRun` with `isActionable` in a loop: shows state changes
   (`Spinner`, `StatusLine`), answers each pending item in the terminal, prints the result, and exits 0 on
-  `completed`, 1 otherwise. It survives a daemon restart through `waitForRun`'s resubscription.
+  `completed`, 1 otherwise. When it does not answer (no TTY, or `--json`), it waits with `hasChanged` and prints
+  each changed status once. It survives a daemon restart through `waitForRun`'s resubscription.
 - `get <runID>`: status, pending items, result or error.
 - `list [--state <state>...] [--limit <n>]`: table of id, flow, label, state, updated.
 - `cancel <runID>`.
@@ -306,8 +323,9 @@ CI after build:
    workspace `node_modules` or `pnpm-workspace.yaml` is reachable.
 2. Write a consumer `package.json` depending on `@mokei/flow-host-node`, `@mokei/flow-client` and `mokei` (tarball
    paths), with dev dependencies pinned to the workspace catalog versions of `typescript` and `@types/node` (from
-   the registry). `pnpm.overrides` maps every packed package name to its tarball. `.npmrc`: `node-linker=isolated`,
-   `hoist=false`, `public-hoist-pattern=` (empty), `link-workspace-packages=false`. Install.
+   the registry). The workspace pins pnpm 12, which ignores `package.json#pnpm` and non-registry `.npmrc` settings,
+   so the consumer writes its own `pnpm-workspace.yaml` with `overrides` (every packed package name to its tarball),
+   `nodeLinker: isolated`, `hoist: false`, `publicHoistPattern: []` and `linkWorkspacePackages: false`. Install.
 3. Fail if the lockfile contains a `link:` or `workspace:` reference, or any `@mokei/*`/`mokei` resolution that is
    not a tarball.
 4. Type-check `index.ts` importing the public entries of `@mokei/flow-host-node` and `@mokei/flow-client` with the
@@ -357,7 +375,7 @@ The check must fail before the declaration fix and pass after it.
     `answer_input`, approval refusal, `prompt_input` accepting an approval and an input, dialog cancel settling the
     item, tool-call cancellation leaving the item pending, and a late answer after settlement rejected.
   - `daemon start/stop/restart` against the production entry with isolated `MOKEI_*_DIR`, notifications off, as
-    in `cli-proxy.test.ts`; `stop` reports a graceful exit.
+    in `cli-proxy.test.ts`; `stop` reports the daemon stopped and the run store shows suspended runs intact.
   - `cli-help.test.ts` lists the new commands.
 - **Packed consumer**: `pnpm test:packed`.
 - **Manual macOS QA**: `daemon start`, `flows mcp` from Claude Code, `inbox prompt` with native dialogs and
