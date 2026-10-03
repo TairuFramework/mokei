@@ -215,3 +215,90 @@ test('logs reports a missing log file', async () => {
   expect(process.exitCode).toBe(1)
   expect(stderr.join('')).toContain('daemon.log')
 })
+
+test('start fails after the deadline when an info request never settles', async () => {
+  vi.useFakeTimers()
+  try {
+    vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'running', pid: 7, socketPath: SOCKET })
+    const dispose = vi.fn(async () => {})
+    vi.mocked(connectFlowControl).mockResolvedValue({
+      control: {},
+      client: { request: () => new Promise(() => {}) },
+      dispose,
+    } as never)
+    const running = run('start', '-s', SOCKET)
+    await vi.advanceTimersByTimeAsync(30_001)
+    await running
+    expect(process.exitCode).toBe(1)
+    expect(stderr.join('')).toContain('still starting')
+    expect(dispose).toHaveBeenCalledTimes(1)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('SIGINT interrupts a pending info request and disposes the connection', async () => {
+  vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'running', pid: 7, socketPath: SOCKET })
+  const dispose = vi.fn(async () => {})
+  vi.mocked(connectFlowControl).mockResolvedValue({
+    control: {},
+    client: { request: () => new Promise(() => {}) },
+    dispose,
+  } as never)
+  const running = run('start', '-s', SOCKET)
+  await vi.waitFor(() => expect(connectFlowControl).toHaveBeenCalled())
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  process.emit('SIGINT')
+  await running
+  expect(process.exitCode).toBe(1)
+  expect(stderr.join('')).toContain('Interrupted')
+  expect(dispose).toHaveBeenCalledTimes(1)
+})
+
+test('restart --json prints a single JSON document', async () => {
+  vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'running', pid: 7, socketPath: SOCKET })
+  vi.mocked(stopDaemon).mockResolvedValue({ stopped: true, pid: 7 })
+  connection({ flowService: { state: 'ready' } })
+  await run('restart', '-s', SOCKET, '--json')
+  expect(JSON.parse(stdout.join(''))).toEqual({
+    stop: { outcome: 'stopped', pid: 7 },
+    start: { pid: 7, socketPath: SOCKET, flowService: { state: 'ready' } },
+  })
+})
+
+test('restart of a not-running daemon proceeds to start', async () => {
+  vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'not-running' })
+  vi.mocked(stopDaemon).mockResolvedValue({ stopped: false, reason: 'not-running' })
+  connection({ flowService: { state: 'ready' } })
+  await run('restart', '-s', SOCKET)
+  expect(connectFlowControl).toHaveBeenCalledWith({ socketPath: SOCKET, autoStart: true })
+  expect(process.exitCode).toBeUndefined()
+})
+
+test('restart with a mismatched socket never stops or starts', async () => {
+  vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'running', pid: 7, socketPath: OTHER })
+  await run('restart', '-s', SOCKET)
+  expect(process.exitCode).toBe(1)
+  expect(stopDaemon).not.toHaveBeenCalled()
+  expect(connectFlowControl).not.toHaveBeenCalled()
+})
+
+test('logs rejects a malformed line count', async () => {
+  await writeFile(join(directory, 'daemon.log'), 'a\n')
+  await run('logs', '-n', '3abc')
+  expect(process.exitCode).toBe(1)
+  expect(stderr.join('')).toContain('Invalid line count')
+})
+
+test('logs -f reports a failure after following begins and cleans up', async () => {
+  const logPath = join(directory, 'daemon.log')
+  await writeFile(logPath, 'one\n')
+  const sigintBefore = process.listenerCount('SIGINT')
+  const following = run('logs', '-f')
+  await vi.waitFor(() => expect(process.listenerCount('SIGINT')).toBe(sigintBefore + 1))
+  await rm(logPath)
+  await following
+  expect(process.exitCode).toBe(1)
+  expect(stderr.join('')).toContain('Cannot follow')
+  expect(process.listenerCount('SIGINT')).toBe(sigintBefore)
+})

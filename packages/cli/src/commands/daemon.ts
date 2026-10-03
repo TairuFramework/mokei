@@ -1,6 +1,7 @@
 import { type FSWatcher, watch } from 'node:fs'
 import { open, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { FlowServiceStatus } from '@mokei/host-protocol'
 import { getLogDir, getPIDPath } from '@tejika/env'
 import { getDaemonStatus, stopDaemon } from '@tejika/process'
 import { Command } from 'commander'
@@ -62,56 +63,91 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   })
 }
 
-async function runStart(options: CommandOptions): Promise<boolean> {
-  const { socketPath } = options
+type StartResult = { pid?: number; socketPath: string; flowService: FlowServiceStatus }
+type Outcome<T> = { ok: true; value: T } | { ok: false; message: string; value?: T }
+
+/** Rejects when the signal aborts or the deadline passes, even if `work` never settles. */
+function bounded<T>(work: Promise<T>, signal: AbortSignal, deadline: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', onAbort)
+    }
+    const onAbort = () => {
+      cleanup()
+      reject(new Error('Interrupted while waiting for the flow service'))
+    }
+    const timer = setTimeout(
+      () => {
+        cleanup()
+        reject(new Error(`The flow service is still starting after ${START_TIMEOUT_MS / 1000}s`))
+      },
+      Math.max(0, deadline - Date.now()),
+    )
+    if (signal.aborted) return onAbort()
+    signal.addEventListener('abort', onAbort, { once: true })
+    work.then(
+      (value) => {
+        cleanup()
+        resolve(value)
+      },
+      (error) => {
+        cleanup()
+        reject(error)
+      },
+    )
+  })
+}
+
+async function runStart(socketPath: string): Promise<Outcome<StartResult>> {
   return await withCommandSignal(async (signal) => {
+    const deadline = Date.now() + START_TIMEOUT_MS
     const connection = await connectFlowControl({ socketPath, autoStart: true })
     try {
-      const deadline = Date.now() + START_TIMEOUT_MS
-      let info = await connection.client.request('info')
+      let info = await bounded(connection.client.request('info'), signal, deadline)
       while (info.flowService.state === 'starting') {
-        if (signal.aborted) {
-          fail('Interrupted while waiting for the flow service')
-          return false
-        }
-        if (Date.now() >= deadline) {
-          fail(`The flow service is still starting after ${START_TIMEOUT_MS / 1000}s`)
-          return false
-        }
-        await sleep(START_POLL_MS, signal)
-        info = await connection.client.request('info')
+        await bounded(sleep(START_POLL_MS, signal), signal, deadline)
+        info = await bounded(connection.client.request('info'), signal, deadline)
       }
       const identity = await resolveDaemonIdentity(socketPath)
-      const flowService = info.flowService
-      if (flowService.state === 'failed') {
-        const { message, issues = [] } = flowService.error
+      const value = { pid: identity.pid, socketPath, flowService: info.flowService }
+      if (info.flowService.state === 'failed') {
+        const { message, issues = [] } = info.flowService.error
         const lines = [`Flow service failed: ${message}`, ...issues.map((issue) => `  ${issue}`)]
-        if (options.json) {
-          printJSON({ pid: identity.pid, socketPath, flowService })
-        }
-        fail(lines.join('\n'))
-        return false
+        return { ok: false, message: lines.join('\n'), value }
       }
-      if (options.json) {
-        printJSON({ pid: identity.pid, socketPath, flowService })
-      } else {
-        process.stdout.write(
-          `daemon running (pid ${identity.pid ?? 'unknown'})\nsocket: ${socketPath}\nflow service: ${flowService.state}\n`,
-        )
-      }
-      return true
+      return { ok: true, value }
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) }
     } finally {
       await connection.dispose()
     }
   })
 }
 
-async function runStop(options: CommandOptions): Promise<boolean> {
-  const { socketPath } = options
+function reportStart(outcome: Outcome<StartResult>, json: boolean | undefined): void {
+  if (json && outcome.value != null) printJSON(outcome.value)
+  if (!outcome.ok) {
+    fail(outcome.message)
+    return
+  }
+  if (!json) {
+    const { pid, socketPath, flowService } = outcome.value
+    process.stdout.write(
+      `daemon running (pid ${pid ?? 'unknown'})\nsocket: ${socketPath}\nflow service: ${flowService.state}\n`,
+    )
+  }
+}
+
+type StopOutcome =
+  | { outcome: 'stopped'; pid?: number }
+  | { outcome: 'not-running' }
+  | { outcome: 'failed'; message: string }
+
+async function runStop(socketPath: string): Promise<StopOutcome> {
   const identity = await resolveDaemonIdentity(socketPath)
   if (identity.otherSocketPath != null) {
-    fail(mismatchMessage(socketPath, identity.otherSocketPath))
-    return false
+    return { outcome: 'failed', message: mismatchMessage(socketPath, identity.otherSocketPath) }
   }
   const result = await stopDaemon({
     app: APP,
@@ -119,19 +155,31 @@ async function runStop(options: CommandOptions): Promise<boolean> {
     waitForExit: true,
     killTimeoutMs: STOP_KILL_TIMEOUT_MS,
   })
-  if (result.stopped) {
-    if (options.json) printJSON({ state: 'stopped', pid: result.pid })
-    else process.stdout.write(`daemon stopped${result.pid == null ? '' : ` (pid ${result.pid})`}\n`)
-    return true
-  }
-  if (result.reason === 'not-running') {
-    if (options.json) printJSON({ state: 'not-running' })
-    else process.stdout.write('daemon not running\n')
-    return true
-  }
+  if (result.stopped) return { outcome: 'stopped', pid: result.pid }
+  if (result.reason === 'not-running') return { outcome: 'not-running' }
   const detail = result.error instanceof Error ? `: ${result.error.message}` : ''
-  fail(`Could not stop the daemon (${result.reason ?? 'unknown'})${detail}`)
-  return false
+  return {
+    outcome: 'failed',
+    message: `Could not stop the daemon (${result.reason ?? 'unknown'})${detail}`,
+  }
+}
+
+function reportStop(stop: StopOutcome, json: boolean | undefined): void {
+  if (stop.outcome === 'failed') {
+    fail(stop.message)
+    return
+  }
+  if (json) {
+    printJSON(
+      stop.outcome === 'stopped' ? { state: 'stopped', pid: stop.pid } : { state: 'not-running' },
+    )
+    return
+  }
+  if (stop.outcome === 'stopped') {
+    process.stdout.write(`daemon stopped${stop.pid == null ? '' : ` (pid ${stop.pid})`}\n`)
+  } else {
+    process.stdout.write('daemon not running\n')
+  }
 }
 
 async function runStatus(options: CommandOptions): Promise<void> {
@@ -180,8 +228,8 @@ function lastLines(text: string, count: number): string {
 }
 
 async function runLogs(options: { lines: string; follow?: boolean }): Promise<void> {
-  const count = Number.parseInt(options.lines, 10)
-  if (!Number.isInteger(count) || count < 0) {
+  const count = Number(options.lines)
+  if (!/^\d+$/.test(options.lines) || !Number.isSafeInteger(count)) {
     fail(`Invalid line count "${options.lines}"`)
     return
   }
@@ -196,12 +244,18 @@ async function runLogs(options: { lines: string; follow?: boolean }): Promise<vo
   const tail = count === 0 ? '' : lastLines(content, count)
   if (tail !== '') process.stdout.write(`${tail}\n`)
   if (!options.follow) return
-  await withCommandSignal((signal) => followLog(logPath, Buffer.byteLength(content), signal))
+  try {
+    await withCommandSignal((signal) => followLog(logPath, Buffer.byteLength(content), signal))
+  } catch (error) {
+    fail(`Cannot follow ${logPath}: ${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
 async function followLog(path: string, start: number, signal: AbortSignal): Promise<void> {
   let offset = start
   let reading = Promise.resolve()
+  let failure: unknown
+  let wake: (() => void) | undefined
   const readMore = async () => {
     const size = (await stat(path)).size
     if (size < offset) offset = 0 // truncated or rotated
@@ -216,26 +270,33 @@ async function followLog(path: string, start: number, signal: AbortSignal): Prom
       await handle.close()
     }
   }
+  const stopWith = (error: unknown) => {
+    failure ??= error
+    wake?.()
+  }
   const schedule = () => {
-    reading = reading.then(readMore).catch(() => {})
+    reading = reading.then(readMore).catch(stopWith)
   }
   let watcher: FSWatcher | undefined
-  await new Promise<void>((resolve) => {
-    if (signal.aborted) return resolve()
+  let timer: NodeJS.Timeout | undefined
+  const onAbort = () => wake?.()
+  try {
     watcher = watch(path, schedule)
+    watcher.on('error', stopWith)
     // Polling covers platforms where fs.watch misses appends.
-    const timer = setInterval(schedule, 1000)
-    signal.addEventListener(
-      'abort',
-      () => {
-        clearInterval(timer)
-        resolve()
-      },
-      { once: true },
-    )
-  })
-  watcher?.close()
-  await reading
+    timer = setInterval(schedule, 1000)
+    await new Promise<void>((resolve) => {
+      wake = resolve
+      if (signal.aborted || failure != null) return resolve()
+      signal.addEventListener('abort', onAbort, { once: true })
+    })
+  } finally {
+    clearInterval(timer)
+    signal.removeEventListener('abort', onAbort)
+    watcher?.close()
+    await reading
+  }
+  if (failure != null) throw failure
 }
 
 export function createDaemonCommand(): Command {
@@ -245,12 +306,12 @@ export function createDaemonCommand(): Command {
     .command('start')
     .description('Start the daemon and wait for the flow service')
   addJSONOption(withSocketPath(start)).action(async (options: CommandOptions) => {
-    if (!(await runStart(options))) process.exitCode = 1
+    reportStart(await runStart(options.socketPath), options.json)
   })
 
   const stop = daemon.command('stop').description('Stop the daemon, letting in-flight work drain')
   addJSONOption(withSocketPath(stop)).action(async (options: CommandOptions) => {
-    await runStop(options)
+    reportStop(await runStop(options.socketPath), options.json)
   })
 
   const status = daemon.command('status').description('Show whether the daemon is running')
@@ -262,7 +323,21 @@ export function createDaemonCommand(): Command {
     .command('restart')
     .description('Stop then start the daemon, applying flows.json changes')
   addJSONOption(withSocketPath(restart)).action(async (options: CommandOptions) => {
-    if (await runStop(options)) await runStart(options)
+    const stopped = await runStop(options.socketPath)
+    // An absent daemon is fine to start; any other non-stopped outcome (socket mismatch, stop
+    // failure) must not start anything.
+    if (stopped.outcome === 'failed') {
+      reportStop(stopped, options.json)
+      return
+    }
+    const started = await runStart(options.socketPath)
+    if (!options.json) {
+      reportStop(stopped, false)
+      reportStart(started, false)
+      return
+    }
+    if (started.value != null) printJSON({ stop: stopped, start: started.value })
+    if (!started.ok) fail(started.message)
   })
 
   daemon
