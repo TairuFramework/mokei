@@ -24,5 +24,17 @@ serveProcess({
         return { content: [{ type: 'text', text: input.value }] }
       },
     }),
+    sleep: createTool({
+      description: 'Resolve after a delay, keeping a run working',
+      inputSchema: {
+        type: 'object',
+        properties: { ms: { type: 'number' } },
+        required: ['ms'],
+      },
+      handler: async ({ input }) => {
+        await new Promise((resolve) => setTimeout(resolve, input.ms))
+        return { content: [{ type: 'text', text: 'slept' }] }
+      },
+    }),
   },
 })
