@@ -18,6 +18,7 @@ type SchemaFormProps = {
   onSubmit(values: Record<string, unknown>): void
   onDecline?(): void
   onCancel?(): void
+  submitLabel?: string
   errors?: Array<string>
 }
 
@@ -31,6 +32,7 @@ export function SchemaForm({
   onDecline,
   onCancel,
   errors = [],
+  submitLabel = 'Accept',
 }: SchemaFormProps) {
   const fields = useMemo(() => schemaToFields(schema), [schema])
   const [values, setValues] = useState<Record<string, unknown>>(() =>
@@ -191,7 +193,7 @@ export function SchemaForm({
           })
         )}
         <Group>
-          <Button type="submit">Accept</Button>
+          <Button type="submit">{submitLabel}</Button>
           {onDecline == null ? null : (
             <Button variant="light" color="red" onClick={onDecline}>
               Decline

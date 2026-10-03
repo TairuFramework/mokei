@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as FlowsRouteImport } from './routes/flows'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as InboxItemIDRouteImport } from './routes/inbox.$itemID'
 import { Route as RunsIndexRouteImport } from './routes/runs.index'
@@ -18,6 +19,11 @@ import { Route as RunsRunIDRouteImport } from './routes/runs.$runID'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FlowsRoute = FlowsRouteImport.update({
+  id: '/flows',
+  path: '/flows',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InboxIndexRoute = InboxIndexRouteImport.update({
@@ -43,6 +49,7 @@ const RunsRunIDRoute = RunsRunIDRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/flows': typeof FlowsRoute
   '/inbox/$itemID': typeof InboxItemIDRoute
   '/runs/$runID': typeof RunsRunIDRoute
   '/inbox/': typeof InboxIndexRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/flows': typeof FlowsRoute
   '/inbox/$itemID': typeof InboxItemIDRoute
   '/runs/$runID': typeof RunsRunIDRoute
   '/inbox': typeof InboxIndexRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/flows': typeof FlowsRoute
   '/inbox/$itemID': typeof InboxItemIDRoute
   '/runs/$runID': typeof RunsRunIDRoute
   '/inbox/': typeof InboxIndexRoute
@@ -65,15 +74,23 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/inbox/$itemID' | '/runs/$runID' | '/inbox/' | '/runs/'
+  fullPaths:
+    '/' | '/flows' | '/inbox/$itemID' | '/runs/$runID' | '/inbox/' | '/runs/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/inbox/$itemID' | '/runs/$runID' | '/inbox' | '/runs'
+  to: '/' | '/flows' | '/inbox/$itemID' | '/runs/$runID' | '/inbox' | '/runs'
   id:
-    '__root__' | '/' | '/inbox/$itemID' | '/runs/$runID' | '/inbox/' | '/runs/'
+    | '__root__'
+    | '/'
+    | '/flows'
+    | '/inbox/$itemID'
+    | '/runs/$runID'
+    | '/inbox/'
+    | '/runs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  FlowsRoute: typeof FlowsRoute
   InboxItemIDRoute: typeof InboxItemIDRoute
   RunsRunIDRoute: typeof RunsRunIDRoute
   InboxIndexRoute: typeof InboxIndexRoute
@@ -87,6 +104,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/flows': {
+      id: '/flows'
+      path: '/flows'
+      fullPath: '/flows'
+      preLoaderRoute: typeof FlowsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/inbox/': {
@@ -122,6 +146,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  FlowsRoute: FlowsRoute,
   InboxItemIDRoute: InboxItemIDRoute,
   RunsRunIDRoute: RunsRunIDRoute,
   InboxIndexRoute: InboxIndexRoute,
