@@ -3,6 +3,8 @@ import type { FlowHost, InboxItem } from '@mokei/flow-host'
 import { InboxAnswerInvalidError, InboxItemNotFoundError } from '@mokei/flow-host'
 import type { DesktopElicitRequest, DesktopNotifyOptions } from '@mokei/host-desktop'
 
+import { inboxItemMessage } from './inbox-message.js'
+
 export type FlowDesktopAdapter = {
   canPrompt(request: DesktopElicitRequest): boolean
   prompt(request: DesktopElicitRequest): Promise<ElicitResult>
@@ -84,7 +86,7 @@ export function createFlowDesktopController(params: {
     if (!params.notifications || adapter == null || disposal.signal.aborted) return
     const notice = new AbortController()
     notices.set(item.id, notice)
-    notify(itemMessage(item), {
+    notify(inboxItemMessage(item), {
       group: `mokei-inbox-${item.id}`,
       signal: notice.signal,
       onClick: () => {
@@ -97,9 +99,6 @@ export function createFlowDesktopController(params: {
         })
       },
     })
-  }
-  function itemMessage(item: InboxItem): string {
-    return item.kind === 'approval' ? 'Flow needs your approval' : 'Flow needs your input'
   }
   async function prompt(id: string, caller: AbortSignal) {
     disposal.signal.throwIfAborted()

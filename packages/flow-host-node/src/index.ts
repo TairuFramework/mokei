@@ -18,10 +18,12 @@ export {
   PRESENCE_REPLY_TIMEOUT_MS,
   parseMonitorURL,
 } from './monitor-presence.js'
+export { createMonitorSurface } from './monitor-surface.js'
 export { startRetention } from './retention.js'
 export type { FlowResources, FlowService, FlowServiceParams, FlowServiceStatus } from './service.js'
 export { createFlowService, FlowServiceUnavailableError } from './service.js'
 export { createSQLiteRunStore } from './sqlite-run-store.js'
 export { createSQLiteTaskStore } from './sqlite-task-store.js'
 export { createSQLiteTraceStore } from './sqlite-trace-store.js'
+export type { InboxSurface, PromptOutcome, SurfaceDelivery, SurfaceStatus } from './surfaces.js'
 export { setupFlowTelemetry } from './telemetry.js'
