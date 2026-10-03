@@ -109,8 +109,9 @@ test('a limited working list backfills the older run when the newest completes',
   const f = fixture()
   const older = run('older', 'working')
   const newest = { ...run('newest', 'working'), createdAt: 3 }
+  let population = [newest, older]
   vi.mocked(f.control.runs.list).mockImplementation(async (filter) => {
-    const matching = [newest, older].filter((entry) => {
+    const matching = population.filter((entry) => {
       return filter?.states == null || filter.states.includes(entry.state)
     })
     return filter?.limit == null ? matching : matching.slice(0, filter.limit)
@@ -119,10 +120,14 @@ test('a limited working list backfills the older run when the newest completes',
     wrapper: f.wrapper,
   })
   await waitFor(() => expect(result.current.runs).toEqual([newest]))
+  expect(f.control.runs.list).toHaveBeenCalledWith({ states: ['working'], limit: 1 })
+  population = [{ ...newest, state: 'completed' }, older]
   act(() => {
     f.emit({ type: 'run:state', data: { ...newest, state: 'completed' } })
   })
   await waitFor(() => expect(result.current.runs).toEqual([older]))
+  expect(f.control.runs.list).toHaveBeenCalledTimes(2)
+  expect(f.control.runs.list).toHaveBeenLastCalledWith({ states: ['working'], limit: 1 })
 })
 
 test('buffered run events re-read affected IDs rather than replay stale data', async () => {

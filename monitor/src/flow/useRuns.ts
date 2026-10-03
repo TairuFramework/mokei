@@ -25,8 +25,6 @@ export function useRuns(filter?: RunListFilter) {
     ReconciledQuery<Map<string, FlowRunSnapshot>, FlowRunSnapshot | undefined>
   >(() => {
     const params: RunListFilter = JSON.parse(filterKey)
-    // Keep the matching population so entries leaving a limited list can be replaced.
-    const { limit: _limit, ...readParams } = params
     const merge = (runs: Map<string, FlowRunSnapshot>, runID: string, run?: FlowRunSnapshot) => {
       const next = new Map(runs)
       next.delete(runID)
@@ -37,8 +35,15 @@ export function useRuns(filter?: RunListFilter) {
       initial: new Map(),
       read: async () => {
         return filterRuns(
-          new Map((await control.runs.list(readParams)).map((run) => [run.runID, run])),
+          new Map((await control.runs.list(params)).map((run) => [run.runID, run])),
           params,
+        )
+      },
+      refreshOn: (event) => {
+        if (params.limit == null || event.type !== 'run:state') return false
+        return (
+          (params.states != null && !params.states.includes(event.data.state)) ||
+          (params.updatedBefore != null && event.data.updatedAt >= params.updatedBefore)
         )
       },
       affected: (event) => (event.type === 'run:state' ? event.data.runID : undefined),
@@ -49,6 +54,7 @@ export function useRuns(filter?: RunListFilter) {
           if (!isFlowControlError(error, 'RUN_NOT_FOUND')) throw error
         }
       },
+      refreshAfterAffected: (run) => params.limit != null && run == null,
       merge,
       apply: (runs, event) => filterRuns(applyRunEvent(runs, event), params),
     }
