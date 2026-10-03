@@ -854,6 +854,9 @@ importers:
       '@enkaku/node-streams':
         specifier: 'catalog:'
         version: 0.21.3(@logtape/logtape@2.3.10)
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.10)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -872,19 +875,18 @@ importers:
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.1
-    devDependencies:
-      '@enkaku/transport':
-        specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.3.10)
 
   packages/context-protocol:
-    devDependencies:
+    dependencies:
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.5
 
   packages/context-rpc:
     dependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.10)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -894,16 +896,15 @@ importers:
       '@sozai/event':
         specifier: 'catalog:'
         version: 0.1.4(@logtape/logtape@2.3.10)
-    devDependencies:
-      '@enkaku/transport':
-        specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.3.10)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.5
 
   packages/context-server:
     dependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.10)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -923,9 +924,6 @@ importers:
         specifier: 'catalog:'
         version: 0.1.5
     devDependencies:
-      '@enkaku/transport':
-        specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.3.10)
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -1414,13 +1412,13 @@ importers:
 
   packages/model-provider:
     dependencies:
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.5
     devDependencies:
-      '@mokei/context-protocol':
-        specifier: workspace:^
-        version: link:../context-protocol
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.4.1)(@vitest/ui@5.0.0)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.28))(terser@5.49.0)(tsx@4.23.13)(yaml@2.9.0))

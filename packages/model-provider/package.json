@@ -39,10 +39,10 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@mokei/context-protocol": "workspace:^",
     "@sozai/schema": "catalog:"
   },
   "devDependencies": {
-    "@mokei/context-protocol": "workspace:^",
     "vitest": "catalog:"
   }
 }
