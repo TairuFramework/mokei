@@ -50,7 +50,7 @@ export type DesktopNotifyOptions = {
   /** Notifications sharing a group replace each other (alerter only). */
   group?: string
   /** Called at most once when the user clicks the notification (alerter only). */
-  onClick?: () => void | Promise<void>
+  onClick?: () => void
 }
 export type DesktopNotifier = {
   /** Resolves once the notification is delivered; a click is reported later through `onClick`. */
