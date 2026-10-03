@@ -51,6 +51,38 @@ async function flush() {
   await vi.advanceTimersByTimeAsync(0)
 }
 
+test('two frozen visible tabs exhaust prompt attention in one timeout', async () => {
+  const { surface, connect } = setup()
+  const first = connect(true, false)
+  const second = connect(true, false)
+  const finished = vi.fn()
+  const operation = surface.prompt?.(item, options()).then(finished)
+  expect(first.messages[0]?.type).toBe('ping')
+  expect(second.messages[0]?.type).toBe('ping')
+  await vi.advanceTimersByTimeAsync(4_999)
+  expect(finished).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(1)
+  expect(finished).toHaveBeenCalledWith(null)
+  await operation
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+test('prompt uses the first visible pong without waiting for a frozen tab', async () => {
+  const { surface, connect } = setup()
+  const frozen = connect(true, false)
+  const target = connect(true, false)
+  const operation = surface.prompt?.(item, options())
+  pong(target)
+  await flush()
+  expect(target.messages.at(-1)?.type).toBe('prompt')
+  target.tab.receive({ type: 'ack', attemptID: 'attempt', shown: true })
+  const delivery = await operation
+  expect(delivery).not.toBeNull()
+  delivery?.close()
+  expect(frozen.messages.map((message) => message.type)).toEqual(['ping'])
+  expect(vi.getTimerCount()).toBe(0)
+})
+
 test.each([
   [item, 'Flow needs your approval'],
   [input, 'Flow needs your input'],

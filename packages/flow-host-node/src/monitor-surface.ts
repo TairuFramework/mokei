@@ -90,13 +90,20 @@ export function createMonitorSurface(
     async prompt(item, { signal }) {
       if (signal.aborted) return null
       const attemptID = randomID()
-      const tried = new Set<string>()
-      for (const tab of presence.tabs().filter((tab) => tab.visible)) {
-        tried.add(tab.key)
-        if (await verify(tab, attemptID, signal)) {
-          return request('prompt', tab, item, attemptID, signal)
-        }
-        if (signal.aborted) return null
+      const visible = presence.tabs().filter((tab) => tab.visible)
+      const tried = new Set(visible.map((tab) => tab.key))
+      const verification = new AbortController()
+      const verifying = AbortSignal.any([signal, verification.signal])
+      const attended = await Promise.any(
+        visible.map(async (tab) => {
+          if (await verify(tab, attemptID, verifying)) return tab
+          throw new Error('Monitor tab unattended')
+        }),
+      ).catch(() => undefined)
+      verification.abort()
+      if (signal.aborted) return null
+      if (attended != null) {
+        return request('prompt', attended, item, attemptID, signal)
       }
       const tab = latestNotificationTab(presence.tabs().filter((tab) => !tried.has(tab.key)))
       if (tab == null || !(await verify(tab, attemptID, signal))) return null

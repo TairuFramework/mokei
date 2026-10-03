@@ -64,10 +64,14 @@ export function createFlowDesktopController(params: {
     attempts.set(id, current)
     return stop
   }
+  function pruneSettled(id: string): void {
+    if (!attempts.has(id) && !owners.has(id)) settledIDs.delete(id)
+  }
   function end(id: string, stop: AbortController): void {
     const current = attempts.get(id)
     current?.delete(stop)
     if (current?.size === 0) attempts.delete(id)
+    pruneSettled(id)
   }
   function keep(id: string, delivery: SurfaceDelivery, signal: AbortSignal): void {
     // A surface can finish delivering after its attempt was cancelled.
@@ -161,6 +165,7 @@ export function createFlowDesktopController(params: {
       stop.abort(new Error('Inbox prompt finished'))
       end(id, stop)
       owners.delete(id)
+      pruneSettled(id)
       for (const delivery of promptDeliveries) delivery.close()
     }
   }
@@ -190,6 +195,7 @@ export function createFlowDesktopController(params: {
         stop.abort(new InboxItemNotFoundError(item.id))
       for (const delivery of deliveries.get(item.id) ?? []) delivery.close()
       deliveries.delete(item.id)
+      pruneSettled(item.id)
     },
     prompt,
     dispose() {

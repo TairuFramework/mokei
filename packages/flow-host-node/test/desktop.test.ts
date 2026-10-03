@@ -779,3 +779,42 @@ test('settlement closes both notification and prompt deliveries for the item', a
     .map((message) => message.attemptID)
   expect(withdrawn.sort()).toEqual(attempts.sort())
 })
+
+test('settlement markers are released once a pending notification attempt finishes', async () => {
+  const gate = deferred<null>()
+  const entered = deferred<void>()
+  const surface: InboxSurface = {
+    name: 'delayed',
+    status: () => 'reachable',
+    isAttended: async () => false,
+    notify: () => {
+      entered.resolve()
+      return gate.promise
+    },
+  }
+  const { controller } = setup({ surfaces: [surface] })
+  controller.restored([])
+  controller.added(second)
+  await entered.promise
+  const add = vi.spyOn(Set.prototype, 'add')
+  controller.settled(second, 'answered')
+  const marker = add.mock.contexts[add.mock.calls.findIndex(([value]) => value === second.id)]
+  add.mockRestore()
+  expect(marker).toBeInstanceOf(Set)
+  if (!(marker instanceof Set)) throw new Error('Missing settlement marker set')
+  expect(marker.has(second.id)).toBe(true)
+  gate.resolve(null)
+  await controller.dispose()
+  expect(marker.has(second.id)).toBe(false)
+})
+
+test('settlement without attempts or owners retains no marker', () => {
+  const { controller } = setup()
+  const add = vi.spyOn(Set.prototype, 'add')
+  controller.settled(first, 'withdrawn')
+  const marker = add.mock.contexts[add.mock.calls.findIndex(([value]) => value === first.id)]
+  add.mockRestore()
+  expect(marker).toBeInstanceOf(Set)
+  if (!(marker instanceof Set)) throw new Error('Missing settlement marker set')
+  expect(marker.has(first.id)).toBe(false)
+})
