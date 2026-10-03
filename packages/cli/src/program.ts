@@ -10,6 +10,7 @@ import { createFlowsCommand } from './commands/flows.js'
 import { createInspectCommand } from './commands/inspect.js'
 import { createMonitorCommand } from './commands/monitor.js'
 import { createProxyCommand } from './commands/proxy.js'
+import { createRunsCommand } from './commands/runs.js'
 
 const pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), '../package.json')
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string; description: string }
@@ -28,6 +29,7 @@ export function buildProgram(): Command {
       createProxyCommand(),
       createDaemonCommand(),
       createFlowsCommand(),
+      createRunsCommand(),
     ],
   })
   program.description(pkg.description)
