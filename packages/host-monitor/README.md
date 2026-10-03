@@ -12,8 +12,8 @@ npm install @mokei/host-monitor
 ## Monitor server
 
 `startMonitor()` serves the monitor UI over HTTP and connects it to the daemon. It returns the
-monitor URL with a trailing slash. The daemon accepts monitor connections only from the local
-loopback address. Browser requests include the monitor's allowed origin.
+monitor URL with a trailing slash. The daemon only registers a monitor URL that is a loopback root
+URL (`http://127.0.0.1:<port>/`). Browser requests include the monitor's allowed origin.
 
 The monitor process registers with the daemon for as long as its attachment stream remains open.
 Each page receives a token and attachment ID. A browser page can report its visibility and
