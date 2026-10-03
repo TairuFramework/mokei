@@ -33,6 +33,15 @@ export type Monitor = {
   url: string
 }
 
+class MonitorUnavailableError extends Error {
+  constructor() {
+    super(
+      'The running daemon does not support the monitor. Restart it with `mokei daemon stop`, then rerun `mokei monitor`.',
+    )
+    this.name = 'MonitorUnavailableError'
+  }
+}
+
 export async function startMonitor(params: MonitorParams = {}): Promise<Monitor> {
   const socketPath = params.socketPath ?? getSocketPath('mokei')
   const stop = new AbortController()
@@ -126,7 +135,7 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
       },
     })
     const bridge = createServerBridge<Protocol>({
-      allowedOrigin: new URL(url).origin,
+      allowedOrigin: [new URL(url).origin, `http://localhost:${new URL(url).port}`],
       onRequestAborted: ({ rid }) => {
         try {
           injectedController.enqueue({
@@ -153,8 +162,20 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
             attachmentID = msg.payload.val.attachmentID
             attached.resolve()
           } else if (msg.payload.typ === 'error' || msg.payload.typ === 'result') {
+            const unsupported =
+              msg.payload.typ === 'error' &&
+              (msg.payload.code === 'UNKNOWN_PROCEDURE' ||
+                msg.payload.code === 'PROCEDURE_NOT_FOUND' ||
+                msg.payload.code === 'INVALID_MESSAGE' ||
+                msg.payload.code === 'MONITOR_UNAVAILABLE' ||
+                (msg.payload.code === 'HANDLER_ERROR' &&
+                  msg.payload.msg === 'No handler for procedure: monitor.attach'))
             attached.reject(
-              new Error(msg.payload.typ === 'error' ? msg.payload.msg : 'Monitor attachment ended'),
+              unsupported
+                ? new MonitorUnavailableError()
+                : new Error(
+                    msg.payload.typ === 'error' ? msg.payload.msg : 'Monitor attachment ended',
+                  ),
             )
             void pipes.dispose()
           }
@@ -221,10 +242,14 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
           active = connection
           await connection.attached
           break
-        } catch {
+        } catch (error) {
           await active?.pipes.dispose()
           active = undefined
           endBodies()
+          if (error instanceof MonitorUnavailableError) {
+            console.error(error.message)
+            return
+          }
           backoff = Math.min(backoff * 2, 5_000)
         }
       }

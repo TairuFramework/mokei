@@ -7,6 +7,7 @@ import { type Monitor, startMonitor } from '../src/index.js'
 const local = vi.hoisted(() => ({
   inMemory: false,
   handler: undefined as ((ctx: { req: { raw: Request } }) => Promise<Response>) | undefined,
+  close: vi.fn(async () => {}),
 }))
 vi.mock('@tejika/server', async (importOriginal) => {
   const actual = await importOriginal<typeof LocalServer>()
@@ -22,7 +23,7 @@ vi.mock('@tejika/server', async (importOriginal) => {
             },
             url: 'http://127.0.0.1:19347',
             token: 'browser-token',
-            close: async () => {},
+            close: local.close,
           })
         : actual.createLocalServer(params),
     serveStaticSPA: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock('@tejika/server', async (importOriginal) => {
 const daemon = vi.hoisted(() => ({
   readable: undefined as ReadableStream<unknown> | undefined,
   writable: undefined as WritableStream<unknown> | undefined,
+  attachError: undefined as string | undefined,
 }))
 vi.mock('@enkaku/socket', () => ({
   connectSocket: vi.fn(),
@@ -50,6 +52,8 @@ const browserMessages = () =>
 beforeEach(() => {
   messages = []
   attachments = []
+  daemon.attachError = undefined
+  local.close.mockClear()
   vi.mocked(createTransportStream).mockReset()
   vi.mocked(connectSocket).mockClear()
   daemon.readable = new ReadableStream({
@@ -65,11 +69,23 @@ beforeEach(() => {
         attachments.push(msg)
         replies.enqueue({
           header: {},
-          payload: {
-            typ: 'receive',
-            rid: msg.payload.rid,
-            val: { type: 'attached', attachmentID: `attachment-${attachments.length}` },
-          },
+          payload:
+            daemon.attachError != null
+              ? {
+                  typ: 'error',
+                  rid: msg.payload.rid,
+                  code: daemon.attachError,
+                  msg:
+                    daemon.attachError === 'HANDLER_ERROR'
+                      ? 'No handler for procedure: monitor.attach'
+                      : 'Monitor attachment unsupported',
+                  data: {},
+                }
+              : {
+                  typ: 'receive',
+                  rid: msg.payload.rid,
+                  val: { type: 'attached', attachmentID: `attachment-${attachments.length}` },
+                },
         })
       }
     },
@@ -84,14 +100,14 @@ afterEach(async () => {
   monitor = undefined
 })
 
-async function post(payload: unknown, signal?: AbortSignal) {
+async function post(payload: unknown, signal?: AbortSignal, origin?: string) {
   if (monitor == null) throw new Error('Monitor not started')
   const request = new Request(
     new URL('api', monitor.url.endsWith('/') ? monitor.url : `${monitor.url}/`),
     {
       method: 'POST',
       headers: {
-        Origin: new URL(monitor.url).origin,
+        Origin: origin ?? new URL(monitor.url).origin,
         Authorization: `Bearer ${monitor.token}`,
         'Content-Type': 'application/json',
       },
@@ -119,6 +135,37 @@ describe.each(['in memory', 'localhost'])('monitor browser transport (%s)', (mod
     await expect.poll(() => browserMessages().length).toBe(1)
     replies.enqueue({ header: {}, payload: { typ: 'result', rid: 'request', val: [] } })
     expect((await pending).status).toBe(200)
+  })
+
+  test('accepts the localhost alias with the listening port', async () => {
+    monitor = await startMonitor({ port: 19347 })
+    const pending = post(
+      { typ: 'request', prc: 'context.list', rid: 'alias', prm: {} },
+      undefined,
+      'http://localhost:19347',
+    )
+    await expect.poll(() => browserMessages().length).toBe(1)
+    replies.enqueue({ header: {}, payload: { typ: 'result', rid: 'alias', val: [] } })
+    const response = await pending
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:19347')
+  })
+
+  test.each([
+    'http://localhost:19348',
+    'http://127.0.0.1:19348',
+    'https://localhost:19347',
+    'http://localhost:19347.evil.example',
+    'http://evil.example:19347',
+  ])('rejects an unrelated origin: %s', async (origin) => {
+    monitor = await startMonitor({ port: 19347 })
+    const response = await post(
+      { typ: 'request', prc: 'context.list', rid: 'denied', prm: {} },
+      undefined,
+      origin,
+    )
+    expect(response.status).toBe(403)
+    expect(browserMessages()).toEqual([])
   })
 
   test('forwards SSE disconnection aborts to the daemon', async () => {
@@ -198,6 +245,66 @@ describe('monitor daemon lifecycle (in memory)', () => {
   beforeEach(() => {
     local.inMemory = true
   })
+
+  test.each(['UNKNOWN_PROCEDURE', 'INVALID_MESSAGE', 'HANDLER_ERROR', 'MONITOR_UNAVAILABLE'])(
+    'explains how to restart a daemon rejecting attachment with %s',
+    async (code) => {
+      daemon.attachError = code
+      await expect(startMonitor()).rejects.toThrow(/restart.*mokei daemon stop.*rerun/i)
+      expect(local.close).toHaveBeenCalledTimes(1)
+      expect(daemon.writable?.locked).toBe(false)
+      expect(daemon.readable?.locked).toBe(false)
+    },
+  )
+
+  test.each(['UNKNOWN_PROCEDURE', 'INVALID_MESSAGE', 'HANDLER_ERROR', 'MONITOR_UNAVAILABLE'])(
+    'stops reconnecting and logs restart instructions after %s',
+    async (code) => {
+      vi.useFakeTimers()
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        monitor = await startMonitor()
+        const oldReplies = replies
+        daemon.attachError = code
+        daemon.readable = new ReadableStream({
+          start(controller) {
+            replies = controller
+          },
+        })
+        daemon.writable = new WritableStream({
+          write(message) {
+            const msg = message as (typeof attachments)[number] & { payload: { prc?: string } }
+            if (msg.payload.prc !== 'monitor.attach') return
+            replies.enqueue({
+              header: {},
+              payload: {
+                typ: 'error',
+                rid: msg.payload.rid,
+                code,
+                msg:
+                  code === 'HANDLER_ERROR'
+                    ? 'No handler for procedure: monitor.attach'
+                    : 'Monitor attachment unsupported',
+                data: {},
+              },
+            })
+          },
+        })
+        oldReplies.close()
+        await vi.advanceTimersByTimeAsync(0)
+        await vi.advanceTimersByTimeAsync(250)
+        expect(log).toHaveBeenCalledWith(
+          expect.stringMatching(/restart.*mokei daemon stop.*rerun/i),
+        )
+        await vi.advanceTimersByTimeAsync(20_000)
+        expect(createTransportStream).toHaveBeenCalledTimes(2)
+        expect((await post({ typ: 'stream', prc: 'events', rid: 'offline' })).status).toBe(503)
+      } finally {
+        log.mockRestore()
+        vi.useRealTimers()
+      }
+    },
+  )
 
   test('attaches with its listening URL and closes the attachment on disposal', async () => {
     monitor = await startMonitor()
