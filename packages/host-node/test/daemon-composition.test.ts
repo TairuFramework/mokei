@@ -71,14 +71,18 @@ function connect(): Client<Protocol> {
   return client
 }
 
-function subscribe(client: Client<Protocol>): { close(): void; received: Array<HostEvent> } {
+function subscribe(client: Client<Protocol>): {
+  id: string
+  close(): void
+  received: Array<HostEvent>
+} {
   const stream = client.createStream('events')
   void stream.catch(() => {})
   const received: Array<HostEvent> = []
   void (async () => {
     for await (const event of stream.readable) received.push(event)
   })().catch(() => {})
-  return { close: () => stream.close(), received }
+  return { id: stream.id, close: () => stream.close(), received }
 }
 
 describe('daemon composition', () => {
@@ -91,7 +95,7 @@ describe('daemon composition', () => {
     expect(() => composeHandlers({ info }, { info })).toThrow('Duplicate procedure: info')
   })
 
-  test('shares context state and events across connections, with independent cancellation', async () => {
+  test('shares context state and events across connections, with delayed independent cancellation', async () => {
     const events = new EventTarget()
     await serveHostDaemon({ events, handleSignals: false })
     const firstClient = connect()
@@ -110,8 +114,33 @@ describe('daemon composition', () => {
     })
     const firstInfo = await firstClient.request('info')
     expect((await secondClient.request('info')).startedTime).toBe(firstInfo.startedTime)
+    const pair = transports[0]
+    const server = servers[0]
+    if (pair == null || server == null) throw new Error('First connection was not registered')
+    const transport = pair.client
+    const write = transport.write.bind(transport)
+    vi.spyOn(transport, 'write').mockImplementation(async (message) => {
+      if (message.payload.typ === 'abort' && message.payload.rid === first.id) {
+        await new Promise((resolve) => setTimeout(resolve, 1200))
+      }
+      return write(message)
+    })
+    const ended = server.events.once('handlerEnd', {
+      filter: ({ rid }) => rid === first.id,
+    })
     first.close()
-    await vi.waitFor(() => expect(getEventListeners(events, 'context:start')).toHaveLength(1))
+    await ended
+    for (const type of [
+      'context:start',
+      'context:stop',
+      'context:message',
+      'service:status',
+      'run:state',
+      'inbox:added',
+      'inbox:settled',
+    ]) {
+      expect(getEventListeners(events, type)).toHaveLength(1)
+    }
     proxy.close()
     await vi.waitFor(() => {
       expect(second.received.filter((event) => event.type === 'context:stop')).toHaveLength(1)
@@ -320,18 +349,19 @@ describe('event subscription cleanup', () => {
     const pending = handler({ signal: controller.signal, writable } as Parameters<
       typeof handler
     >[0])
-    events.dispatchEvent(
-      new CustomEvent('context:stop', {
-        detail: { meta: { contextID: 'test', eventID: 'stop', time: Date.now() } },
-      }),
-    )
+    const stopped = new CustomEvent('context:stop', {
+      detail: { meta: { contextID: 'test', eventID: 'stop', time: Date.now() } },
+    })
+    events.dispatchEvent(stopped)
     await pending
     expect(writable.locked).toBe(false)
     expect(getEventListeners(events, 'context:stop')).toHaveLength(1)
     expect(received).toHaveLength(1)
     expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0)
     otherController.abort()
+    events.dispatchEvent(stopped)
     await otherPending
+    expect(received).toHaveLength(1)
     expect(otherWritable.locked).toBe(false)
     expect(getEventListeners(events, 'context:stop')).toHaveLength(0)
   })

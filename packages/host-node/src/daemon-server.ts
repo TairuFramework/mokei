@@ -55,7 +55,9 @@ export function createHandlers({
       if (ctx.signal.aborted) return
       const writer = ctx.writable.getWriter()
       const sub = new AbortController()
+      const abortSubscription = () => sub.abort()
       const handleEvent = (event: Event) => {
+        if (sub.signal.aborted) return
         const e = event as CustomEvent<Omit<HostEvent, 'type'>>
         const message = { type: e.type, ...e.detail } as HostEvent
         void writer.write(message).catch(() => sub.abort())
@@ -63,17 +65,18 @@ export function createHandlers({
       try {
         await new Promise<void>((resolve) => {
           sub.signal.addEventListener('abort', () => resolve(), { once: true })
-          ctx.signal.addEventListener('abort', () => sub.abort(), {
-            signal: sub.signal,
-            once: true,
-          })
+          ctx.signal.addEventListener('abort', abortSubscription, { once: true })
           for (const type of EVENT_TYPES) {
-            events.addEventListener(type, handleEvent, { signal: sub.signal })
+            events.addEventListener(type, handleEvent)
           }
           if (ctx.signal.aborted) sub.abort()
         })
       } finally {
         sub.abort()
+        ctx.signal.removeEventListener('abort', abortSubscription)
+        for (const type of EVENT_TYPES) {
+          events.removeEventListener(type, handleEvent)
+        }
         writer.releaseLock()
       }
     },
