@@ -4,14 +4,17 @@ import type { Protocol } from '@mokei/host-protocol'
 
 export type HostClient = Client<Protocol>
 
-export function createHostClient(url: string): HostClient {
+export function createHostClient(
+  url: string,
+  fetchImpl: typeof fetch = globalThis.fetch,
+): HostClient {
   const token = (globalThis as { __APP_TOKEN__?: string }).__APP_TOKEN__
   const authFetch: typeof fetch = (input, init) => {
     const headers = new Headers(init?.headers)
     if (token != null) {
       headers.set('authorization', `Bearer ${token}`)
     }
-    return fetch(input, { ...init, headers })
+    return fetchImpl(input, { ...init, headers })
   }
   const transport = new ClientTransport<Protocol>({ url, fetch: authFetch })
   return new Client<Protocol>({ transport })

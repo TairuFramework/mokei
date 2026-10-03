@@ -6,7 +6,9 @@ import { useRequestState } from '../enkaku/request.js'
 import { useStreamState } from '../enkaku/stream.js'
 
 export function useEventsStream() {
-  const state = useStreamState<Protocol>({ procedure: 'events' })
+  const state = useStreamState<Protocol, ClientDefinitionsType<Protocol>, 'events'>({
+    procedure: 'events',
+  })
   return useCall(state) as StreamCall<HostEvent, void>
 }
 
