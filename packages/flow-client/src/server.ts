@@ -255,6 +255,12 @@ export function createFlowControlServer(
       handler: async (req) => {
         const { id } = req.input
         try {
+          // An unknown or already settled id surfaces its real not-found before the dialog opens.
+          await control.inbox.get(id)
+        } catch (error) {
+          return toFailure(error)
+        }
+        try {
           const action = await prompt(id, req.signal)
           return success({ id, action })
         } catch (error) {
@@ -264,6 +270,7 @@ export function createFlowControlServer(
           if (isFlowControlError(error)) {
             switch (error.code) {
               case 'INBOX_ITEM_NOT_FOUND':
+                // The item existed when the dialog opened: another caller settled it meanwhile.
                 return failure(`Item ${id} was settled elsewhere`, error.code)
               case 'PROMPT_IN_PROGRESS':
                 return failure(

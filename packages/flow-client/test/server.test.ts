@@ -361,6 +361,8 @@ describe('createFlowControlServer', () => {
           throw new FlowControlError({ code: 'PROMPT_IN_PROGRESS', message: 'busy' })
         },
       })
+      t.memory.setRun(snapshot('input_required'))
+      t.memory.addItem(inputItem('i-1'))
       const result = await t.call('prompt_input', { id: 'i-1' })
       expect(result.isError).toBe(true)
       expect(result.content[0]?.text).toContain('i-1')
@@ -374,6 +376,8 @@ describe('createFlowControlServer', () => {
           throw new FlowControlError({ code: 'PROMPT_UNSUPPORTED', message: 'no render' })
         },
       })
+      t.memory.setRun(snapshot('input_required'))
+      t.memory.addItem(inputItem('i-1'))
       const result = await t.call('prompt_input', { id: 'i-1' })
       expect(result.isError).toBe(true)
       expect(result.content[0]?.text).toContain('i-1')
@@ -381,16 +385,29 @@ describe('createFlowControlServer', () => {
       await t.dispose()
     })
 
-    test('INBOX_ITEM_NOT_FOUND says the item was settled elsewhere', async () => {
+    test('INBOX_ITEM_NOT_FOUND after the dialog opened says the item was settled elsewhere', async () => {
       const t = setup({
         prompt: async () => {
           throw new FlowControlError({ code: 'INBOX_ITEM_NOT_FOUND', message: 'gone' })
         },
       })
+      t.memory.setRun(snapshot('input_required'))
+      t.memory.addItem(inputItem('i-1'))
       const result = await t.call('prompt_input', { id: 'i-1' })
       expect(result.isError).toBe(true)
       expect(result.content[0]?.text).toMatch(/settled elsewhere/i)
       expect(result.content[0]?.text).toContain('i-1')
+      await t.dispose()
+    })
+
+    test('an unknown id is a real not-found and never opens the dialog', async () => {
+      const prompt = vi.fn(async (_id: string): Promise<PromptAction> => 'accept')
+      const t = setup({ prompt })
+      const result = await t.call('prompt_input', { id: 'missing' })
+      expect(result.isError).toBe(true)
+      expect(result.content[0]?.text).toContain('INBOX_ITEM_NOT_FOUND')
+      expect(result.content[0]?.text).not.toMatch(/settled elsewhere/i)
+      expect(prompt).not.toHaveBeenCalled()
       await t.dispose()
     })
 
@@ -404,10 +421,11 @@ describe('createFlowControlServer', () => {
           })
         },
       })
+      t.memory.setRun(snapshot('input_required'))
+      t.memory.addItem(inputItem('i-1'))
       const controller = new AbortController()
       const pending = t.callDirect('prompt_input', { id: 'i-1' }, controller.signal)
-      await Promise.resolve()
-      expect(received).toBe(controller.signal)
+      await vi.waitFor(() => expect(received).toBe(controller.signal))
       controller.abort(new Error('stop'))
       const result = await pending
       expect(result.isError).toBe(true)

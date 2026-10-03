@@ -1,5 +1,5 @@
 import { raceAbort } from './abort.js'
-import { FlowControlError, isFlowControlError } from './errors.js'
+import { isFlowControlError } from './errors.js'
 import {
   type FlowControl,
   type FlowEvent,
@@ -146,8 +146,11 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
  * the status, and rereads it on every event for the run. A lost connection, or a flow service
  * still starting, is retried with backoff (250 ms doubling to 2 s) within the timeout. On timeout
  * it returns the latest status with `timedOut: true`; on abort it rejects with the signal's reason.
- * If the timeout passes before any status read succeeded, there is no status to return: it rejects
- * with the last retryable error (`DISCONNECTED`, or `FLOW_UNAVAILABLE` while starting).
+ * If the timeout passes before any status read succeeded and a retryable error occurred, there is
+ * no status to return: it rejects with that error (`DISCONNECTED`, or `FLOW_UNAVAILABLE` while
+ * starting). If no error occurred (the timeout was shorter than the first read), it reads the status
+ * once more, bounded only by `signal`, and returns it with `timedOut: true`, or rejects with that
+ * read's error (for example `RUN_NOT_FOUND`).
  */
 export async function waitForRun(
   control: FlowControl,
@@ -201,14 +204,13 @@ export async function waitForRun(
 
     if (signal?.aborted) throw signal.reason
     if (latest == null) {
-      // Timed out before any read succeeded: there is no status to return.
-      throw (
-        lastError ??
-        new FlowControlError({
-          code: 'DISCONNECTED',
-          message: `Could not reach the flow daemon before the wait for run ${runID} timed out`,
-        })
-      )
+      // A retryable error occurred and no read succeeded: the daemon could not be read.
+      if (lastError !== undefined) throw lastError
+      // The timeout passed before the first read completed, with no error: read once more,
+      // bounded only by the caller's signal, so a short timeout on a healthy daemon still
+      // returns a status (or the read's real error, such as RUN_NOT_FOUND).
+      const status = await raceAbort(runStatus(control, runID), signal)
+      return { status, timedOut: true }
     }
     return { status: latest, timedOut: true }
   } finally {

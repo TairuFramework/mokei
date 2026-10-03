@@ -408,4 +408,30 @@ describe('waitForRun', () => {
     ).rejects.toSatisfy((error) => isFlowControlError(error, 'RUN_NOT_FOUND'))
     expect(memory.openSubscriptions()).toBe(0)
   })
+
+  test('returns the status with timedOut when the timeout is shorter than the first read', async () => {
+    const memory = createMemoryControl()
+    memory.setRun(snapshot('working'))
+    const get = memory.control.runs.get
+    memory.control.runs.get = async (runID) => {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      return get(runID)
+    }
+    await expect(
+      waitForRun(memory.control, 'run-1', { until: isCompleted, timeoutMs: 5 }),
+    ).resolves.toMatchObject({ status: { runID: 'run-1', state: 'working' }, timedOut: true })
+    expect(memory.openSubscriptions()).toBe(0)
+  })
+
+  test('surfaces RUN_NOT_FOUND when the timeout is shorter than the first read', async () => {
+    const memory = createMemoryControl()
+    const get = memory.control.runs.get
+    memory.control.runs.get = async (runID) => {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      return get(runID)
+    }
+    await expect(
+      waitForRun(memory.control, 'missing', { until: isCompleted, timeoutMs: 5 }),
+    ).rejects.toSatisfy((error) => isFlowControlError(error, 'RUN_NOT_FOUND'))
+  })
 })
