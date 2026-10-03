@@ -92,7 +92,7 @@ test('observes settlement while open and reports presence on mount and unmount',
   const view = render(f.view())
   await screen.findByRole('button', { name: 'Approve' })
   expect(screen.getByText('search')).toBeTruthy()
-  expect(setActiveItem).toHaveBeenCalledWith('item-1')
+  await waitFor(() => expect(setActiveItem).toHaveBeenCalledWith('item-1'))
   f.emit({ type: 'inbox:settled', data: { item: f.entry, outcome: 'declined' } })
   expect(await screen.findByText(/Outcome: declined/)).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
