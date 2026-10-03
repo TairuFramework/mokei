@@ -12,5 +12,6 @@
 
 export * from './errors.js'
 export * from './remote.js'
+export * from './server.js'
 export * from './types.js'
 export * from './wait.js'

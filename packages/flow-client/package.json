@@ -45,5 +45,8 @@
     "@mokei/context-server": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "@sozai/schema": "catalog:"
+  },
+  "devDependencies": {
+    "@enkaku/transport": "catalog:"
   }
 }

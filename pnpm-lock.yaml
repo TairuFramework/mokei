@@ -1047,6 +1047,10 @@ importers:
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.5
+    devDependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.10)
 
   packages/flow-host:
     dependencies:
