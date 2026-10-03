@@ -21,7 +21,7 @@ export function schemaToFields(schema: unknown): Array<FormField> | null {
   if (
     schema.required != null &&
     (!Array.isArray(schema.required) ||
-      !schema.required.every((name) => typeof name === 'string' && name in properties))
+      !schema.required.every((name) => typeof name === 'string' && Object.hasOwn(properties, name)))
   )
     return null
   const required = new Set(Array.isArray(schema.required) ? schema.required : [])

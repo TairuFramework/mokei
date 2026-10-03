@@ -21,6 +21,10 @@ type SchemaFormProps = {
   errors?: Array<string>
 }
 
+function ownValue<TValue>(record: Record<string, TValue>, key: string): TValue | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined
+}
+
 export function SchemaForm({
   schema,
   onSubmit,
@@ -59,8 +63,12 @@ export function SchemaForm({
     const content: Record<string, unknown> = {}
     const invalid: Record<string, string> = {}
     for (const field of fields) {
-      const value = values[field.name]
-      if (value === undefined || value === '') {
+      const value = ownValue(values, field.name)
+      if (
+        value === undefined ||
+        (value === '' &&
+          !(field.kind === 'enum' && field.options?.some((option) => option.value === '')))
+      ) {
         if (field.required) invalid[field.name] = 'Required'
         continue
       }
@@ -70,9 +78,13 @@ export function SchemaForm({
           invalid[field.name] = field.kind === 'integer' ? 'Enter an integer' : 'Enter a number'
           continue
         }
-        content[field.name] = number
+        Object.defineProperty(content, field.name, {
+          value: number,
+          enumerable: true,
+          writable: true,
+        })
       } else {
-        content[field.name] = value
+        Object.defineProperty(content, field.name, { value, enumerable: true, writable: true })
       }
     }
     setFieldErrors(invalid)
@@ -105,9 +117,9 @@ export function SchemaForm({
             const props = {
               label: field.title ?? field.name,
               description: field.description,
-              error: fieldErrors[field.name],
+              error: ownValue(fieldErrors, field.name),
             }
-            const value = values[field.name]
+            const value = ownValue(values, field.name)
             if (field.kind === 'boolean')
               return (
                 <Checkbox

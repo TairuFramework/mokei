@@ -113,3 +113,75 @@ test('clearing an optional enum omits it from the submitted answer', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
   expect(onSubmit).toHaveBeenCalledWith({})
 })
+
+test('submits an empty string selected from a required enum', () => {
+  const onSubmit = vi.fn()
+  render(
+    <MantineProvider>
+      <SchemaForm
+        schema={{
+          type: 'object',
+          properties: { choice: { type: 'string', enum: ['', 'a'] } },
+          required: ['choice'],
+        }}
+        onSubmit={onSubmit}
+      />
+    </MantineProvider>,
+  )
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: '0' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+  expect(onSubmit).toHaveBeenCalledWith({ choice: '' })
+})
+
+test('submits an empty string selected from an optional enum', () => {
+  const onSubmit = vi.fn()
+  render(
+    <MantineProvider>
+      <SchemaForm
+        schema={{ type: 'object', properties: { choice: { type: 'string', enum: ['', 'a'] } } }}
+        onSubmit={onSubmit}
+      />
+    </MantineProvider>,
+  )
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: '0' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+  expect(onSubmit).toHaveBeenCalledWith({ choice: '' })
+})
+
+test('submits prototype-named properties as own answer properties', () => {
+  const onSubmit = vi.fn()
+  render(
+    <MantineProvider>
+      <SchemaForm
+        schema={{
+          type: 'object',
+          properties: {
+            constructor: { type: 'string' },
+            toString: { type: 'string' },
+            ['__proto__']: { type: 'string' },
+          },
+          required: ['constructor', 'toString', '__proto__'],
+        }}
+        onSubmit={onSubmit}
+      />
+    </MantineProvider>,
+  )
+  fireEvent.change(screen.getByRole('textbox', { name: 'constructor' }), {
+    target: { value: 'ctor' },
+  })
+  fireEvent.change(screen.getByRole('textbox', { name: 'toString' }), {
+    target: { value: 'stringifier' },
+  })
+  fireEvent.change(screen.getByRole('textbox', { name: '__proto__' }), {
+    target: { value: 'proto' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+  expect(onSubmit).toHaveBeenCalledOnce()
+  const answer = onSubmit.mock.calls[0][0]
+  expect(Object.hasOwn(answer, 'constructor')).toBe(true)
+  expect(Object.hasOwn(answer, 'toString')).toBe(true)
+  expect(Object.hasOwn(answer, '__proto__')).toBe(true)
+  expect(answer.constructor).toBe('ctor')
+  expect(answer.toString).toBe('stringifier')
+  expect(Object.getOwnPropertyDescriptor(answer, '__proto__')?.value).toBe('proto')
+})
