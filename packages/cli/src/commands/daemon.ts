@@ -8,7 +8,7 @@ import { Command } from 'commander'
 
 import { connectFlowControl, withCommandSignal } from '../flow-control.js'
 import { withSocketPath } from '../options.js'
-import { addJSONOption, printJSON } from '../output.js'
+import { addJSONOption, fail, printJSON } from '../output.js'
 
 const APP = 'mokei'
 const STOP_KILL_TIMEOUT_MS = 75_000
@@ -38,11 +38,6 @@ export async function resolveDaemonIdentity(socketPath: string): Promise<DaemonI
     state: status.state === 'booting' ? 'booting' : 'running',
     pid: status.pid,
   }
-}
-
-function fail(message: string): void {
-  process.stderr.write(`✘ ${message}\n`)
-  process.exitCode = 1
 }
 
 function mismatchMessage(socketPath: string, other: string): string {

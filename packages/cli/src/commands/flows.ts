@@ -2,35 +2,17 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { serveProcess } from '@mokei/context-server-node'
-import { createFlowControlServer, type FlowControl } from '@mokei/flow-client'
+import { createFlowControlServer } from '@mokei/flow-client'
 import { Command } from 'commander'
 
 import { connectFlowControl, withCommandSignal } from '../flow-control.js'
-import { withSocketPath } from '../options.js'
-import { addJSONOption, parseJSONArg, printJSON } from '../output.js'
+import { withControl, withSocketPath } from '../options.js'
+import { addJSONOption, fail, parseJSONArg, printJSON } from '../output.js'
 
 type CommandOptions = { socketPath: string; json?: boolean }
 
 const pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../package.json')
 const CLI_VERSION = (JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string }).version
-
-function fail(error: unknown): void {
-  process.stderr.write(`✘ ${error instanceof Error ? error.message : String(error)}\n`)
-  process.exitCode = 1
-}
-
-/** Runs `work` on a connection that auto-starts the daemon and is always disposed. */
-async function withControl<T>(
-  socketPath: string,
-  work: (control: FlowControl) => Promise<T>,
-): Promise<T> {
-  const connection = await connectFlowControl({ socketPath, autoStart: true })
-  try {
-    return await work(connection.control)
-  } finally {
-    await connection.dispose()
-  }
-}
 
 async function runList(options: CommandOptions): Promise<void> {
   try {

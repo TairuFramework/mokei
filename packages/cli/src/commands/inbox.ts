@@ -1,9 +1,17 @@
 import { type FlowControl, type InboxItem, isFlowControlError } from '@mokei/flow-client'
 import { Command } from 'commander'
 
-import { connectFlowControl, withCommandSignal } from '../flow-control.js'
-import { withSocketPath } from '../options.js'
-import { addJSONOption, formatInboxRow, parseJSONArg, printJSON, renderTable } from '../output.js'
+import { withCommandSignal } from '../flow-control.js'
+import { withControl, withSocketPath } from '../options.js'
+import {
+  addJSONOption,
+  fail,
+  formatInboxRow,
+  isObject,
+  parseJSONArg,
+  printJSON,
+  renderTable,
+} from '../output.js'
 import {
   canPromptInTerminal,
   promptApproval,
@@ -25,28 +33,6 @@ const INBOX_COLUMNS = [
   { key: 'kind', label: 'KIND' },
   { key: 'summary', label: 'SUMMARY' },
 ]
-
-function fail(error: unknown): void {
-  process.stderr.write(`✘ ${error instanceof Error ? error.message : String(error)}\n`)
-  process.exitCode = 1
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/** Runs `work` on a connection that auto-starts the daemon and is always disposed. */
-async function withControl<T>(
-  socketPath: string,
-  work: (control: FlowControl) => Promise<T>,
-): Promise<T> {
-  const connection = await connectFlowControl({ socketPath, autoStart: true })
-  try {
-    return await work(connection.control)
-  } finally {
-    await connection.dispose()
-  }
-}
 
 function printOutcome(id: string, outcome: string, json: boolean | undefined): void {
   if (json) {
@@ -117,6 +103,7 @@ async function answerApproval(
       process.stderr.write(
         `Left ${item.id} pending; deny it with: mokei inbox decline ${item.id}\n`,
       )
+      process.exitCode = 1
       return
     }
   }
@@ -168,6 +155,7 @@ async function answerInputInteractively(
         process.stderr.write(
           `Left ${item.id} pending; answer it later with: mokei inbox answer ${item.id}\n`,
         )
+        process.exitCode = 1
         return
       }
       try {

@@ -1,5 +1,4 @@
 import {
-  type FlowControl,
   type RunListFilter,
   type RunState,
   runStatus,
@@ -7,12 +6,14 @@ import {
 } from '@mokei/flow-client'
 import { Command, Option } from 'commander'
 
-import { connectFlowControl, withCommandSignal } from '../flow-control.js'
-import { withSocketPath } from '../options.js'
+import { withCommandSignal } from '../flow-control.js'
+import { withControl, withSocketPath } from '../options.js'
 import {
   addJSONOption,
+  fail,
   formatSnapshotRow,
   formatTrace,
+  isObject,
   parseJSONArg,
   printJSON,
   renderTable,
@@ -48,28 +49,6 @@ const RUN_COLUMNS = [
   { key: 'state', label: 'STATE' },
   { key: 'updated', label: 'UPDATED' },
 ]
-
-function fail(error: unknown): void {
-  process.stderr.write(`✘ ${error instanceof Error ? error.message : String(error)}\n`)
-  process.exitCode = 1
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/** Runs `work` on a connection that auto-starts the daemon and is always disposed. */
-async function withControl<T>(
-  socketPath: string,
-  work: (control: FlowControl) => Promise<T>,
-): Promise<T> {
-  const connection = await connectFlowControl({ socketPath, autoStart: true })
-  try {
-    return await work(connection.control)
-  } finally {
-    await connection.dispose()
-  }
-}
 
 async function parseStartParams(
   flow: string | undefined,

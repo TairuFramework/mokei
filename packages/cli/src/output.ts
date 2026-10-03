@@ -37,6 +37,16 @@ export async function parseJSONArg(flag: string, value: string): Promise<unknown
   }
 }
 
+/** Prints `✘ <message>` to stderr and sets exit code 1. */
+export function fail(error: unknown): void {
+  process.stderr.write(`✘ ${errorMessage(error)}\n`)
+  process.exitCode = 1
+}
+
+export function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 export function printJSON(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`)
 }

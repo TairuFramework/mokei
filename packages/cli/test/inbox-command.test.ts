@@ -228,7 +228,7 @@ test('answer an approval leaves it pending when the prompt returns false', async
   await run('answer', 'a1', '-s', SOCKET)
   expect(answer).not.toHaveBeenCalled()
   expect(decline).not.toHaveBeenCalled()
-  expect(process.exitCode).toBeUndefined()
+  expect(process.exitCode).toBe(1)
   expect(stderr.join('')).toContain('mokei inbox decline a1')
 })
 
@@ -280,7 +280,7 @@ test('Esc in the form leaves the item pending', async () => {
   await run('answer', 'i1', '-s', SOCKET)
   expect(spy).not.toHaveBeenCalled()
   expect(stderr.join('')).toContain('pending')
-  expect(process.exitCode).toBeUndefined()
+  expect(process.exitCode).toBe(1)
 })
 
 test('an unsupported schema exits 1 suggesting --value', async () => {
