@@ -9,6 +9,15 @@ export {
 } from './desktop.js'
 export { loadFlowDirs } from './flow-dirs.js'
 export { createFlowHandlers, type FlowHandlers } from './handlers.js'
+export { createMonitorHandlers, type MonitorHandlers } from './monitor-handlers.js'
+export type { MonitorPresence, MonitorTab, MonitorTabState } from './monitor-presence.js'
+export {
+  createMonitorPresence,
+  MonitorAttachmentNotFoundError,
+  MonitorURLError,
+  PRESENCE_REPLY_TIMEOUT_MS,
+  parseMonitorURL,
+} from './monitor-presence.js'
 export { startRetention } from './retention.js'
 export type { FlowResources, FlowService, FlowServiceParams, FlowServiceStatus } from './service.js'
 export { createFlowService, FlowServiceUnavailableError } from './service.js'
