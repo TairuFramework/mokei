@@ -210,6 +210,9 @@ describe('createRemoteFlowControl', () => {
       'inbox.cancel': () => {
         throw 'TransportDisposed'
       },
+      'inbox.decline': () => {
+        throw Object.assign(new Error('write EPIPE'), { code: 'EPIPE', syscall: 'write' })
+      },
     })
     const control = createRemoteFlowControl(stub.client)
 
@@ -229,6 +232,11 @@ describe('createRemoteFlowControl', () => {
     const lost = await caught(control.inbox.cancel('i1'))
     expect(lost).toBeInstanceOf(FlowControlError)
     expect((lost as FlowControlError).code).toBe('DISCONNECTED')
+
+    // A socket error from a daemon restart is a lost connection, not a handler failure.
+    const broken = await caught(control.inbox.decline('i1'))
+    expect(broken).toBeInstanceOf(FlowControlError)
+    expect((broken as FlowControlError).code).toBe('DISCONNECTED')
   })
 
   test('passes the abort reason through unchanged', async () => {

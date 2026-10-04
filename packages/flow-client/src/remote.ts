@@ -32,14 +32,26 @@ function createDisconnectedError(cause?: unknown): FlowControlError {
   })
 }
 
+/** A Node socket or stream failure (`EPIPE`, `ECONNRESET`, `ERR_STREAM_DESTROYED`...). */
+function isTransportFailure(error: object): boolean {
+  if ('syscall' in error) return true
+  const { code } = error as { code?: unknown }
+  return typeof code === 'string' && code.startsWith('ERR_STREAM_')
+}
+
 /**
  * Normalizes a rejected daemon call. Error replies carry a `code` (Enkaku `RequestError`); a
- * rejection without one means the call never got a reply (transport disposed or replaced, client
- * aborted), so it is a lost connection.
+ * rejection without one, or a socket failure, means the call never got a reply (transport
+ * disposed, replaced or broken by a daemon restart, client aborted), so it is a lost connection.
  */
 function toFlowControlError(error: unknown): FlowControlError {
   if (isFlowControlError(error)) return error
-  if (typeof error === 'object' && error !== null && 'code' in error) {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    !isTransportFailure(error)
+  ) {
     const { code, message, data } = error as { code: unknown; message?: unknown; data?: unknown }
     const msg = typeof message === 'string' ? message : 'Flow request failed'
     if (typeof code === 'string' && HANDLER_CODES.has(code as FlowControlErrorCode)) {
