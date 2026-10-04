@@ -14,6 +14,12 @@ afterEach(async () => {
 })
 
 const targets = inject('systemOne')
+
+// Keeps the file non-empty when no System One server is configured.
+test('system-one setup supplies a gate', () => {
+  expect(targets).not.toBeUndefined()
+})
+
 describe.each(targets.map((target) => [target.name, target] as const))(
   'decision flow with %s',
   (_name, target) => {
