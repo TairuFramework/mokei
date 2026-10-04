@@ -1,9 +1,9 @@
 import { startMonitor } from '@mokei/host-monitor'
-import { runDaemon } from '@mokei/host-node'
 import { runInk } from '@tejika/cli'
 import { Command } from 'commander'
 import { Box, Text } from 'ink'
 
+import { ensureMokeiDaemon } from '../daemon.js'
 import { withSocketPath } from '../options.js'
 
 function MonitorStatus({ url }: { url: string }) {
@@ -23,14 +23,13 @@ export function createMonitorCommand(): Command {
   cmd.action(async (opts: Record<string, string | undefined>) => {
     const socketPath = opts.socketPath
     const port = opts.port != null ? Number.parseInt(opts.port, 10) : undefined
-    await runDaemon({ socketPath })
+    await ensureMokeiDaemon({ socketPath })
     const monitor = await startMonitor({ port, socketPath })
-    const url = `${monitor.url}/`
     // Rely on ink's own Ctrl+C handling (exitOnCtrlC) instead of a manual SIGINT
     // handler: when the user quits, waitUntilExit() resolves and we dispose below.
     // A non-TTY signal (e.g. `kill -INT`) bypasses this -- acceptable for an
     // interactive monitor.
-    await runInk(<MonitorStatus url={url} />, { exitOnCtrlC: true })
+    await runInk(<MonitorStatus url={monitor.url} />, { exitOnCtrlC: true })
     await monitor.disposer.dispose()
   })
 

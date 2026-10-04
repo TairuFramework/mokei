@@ -221,8 +221,11 @@ binding.
 | Decision flows as MCP tasks | `@mokei/decision-flow`, `@mokei/decision-flow-server` | `createDecisionFlowGraph`, `addDecisionFlow`, `createDecisionFlowServer` |
 | Durable flow stores | `@mokei/flow-host-node` | `openFlowDatabase`, `createSQLiteRunStore`, `createSQLiteTaskStore`, `createSQLiteTraceStore` |
 | Flow telemetry, configuration and retention | `@mokei/flow-host-node` | `setupFlowTelemetry`, `loadFlowConfig`, `loadFlowDirs`, `startRetention` |
+| Shared daemon flow service | `@mokei/flow-host-node`, `@mokei/host-node`, `mokei` | `createFlowService`, `createFlowHandlers`, `serveHostDaemon`, CLI `daemon-entry.js` |
 | Portable trace capture and pruning | `@mokei/flow-host` | `TraceStore`, `createMemoryTraceStore`, `createTraceStoreSpanExporter`, `createTraceStoreLogSink`, `pruneRuns` |
-| CLI | `mokei` | `packages/cli/src/program.ts` |
+| Flow control contract, wait helpers and MCP facade | `@mokei/flow-client` | `FlowControl`, `createRemoteFlowControl`, `waitForRun`, `createFlowControlServer` |
+| In-process flow control | `@mokei/flow-host` | `createLocalFlowControl` |
+| CLI | `mokei` | `packages/cli/src/program.ts`, `packages/cli/src/commands/{daemon,flows,runs,inbox}.ts` |
 | Monitor | `@mokei/host-monitor`, `monitor` | `packages/host-monitor/src/index.ts`, `monitor/src/main.tsx` |
 
 `@mokei/session` uses `ContextHost` and is React Native / Metro-safe. `@mokei/session-node`
@@ -240,9 +243,9 @@ packages/
 +-- context-server-node/  # Node stdio entry for context-server (serveProcess)
 +-- context-client/       # MCP client implementation
 +-- host/                 # Multi-context orchestrator (RN/Metro-safe)
-+-- host-node/            # Node stdio + daemon entry for host
++-- host-node/            # Node stdio + generic daemon composition for host
 +-- host-desktop/         # Desktop dialogs, notifications and input inbox (Node-only)
-+-- host-protocol/        # Host <-> monitor protocol types
++-- host-protocol/        # Portable host, flow, run and inbox wire schemas
 +-- host-monitor/         # Monitor UI for host contexts
 +-- http-client/          # Streamable HTTP, OAuth 2.1 client middleware, x-mcp-header encoding
 +-- http-server/          # serveHTTP, bearer/JWKS/DID gate, stateless + subscription exchanges
@@ -251,7 +254,8 @@ packages/
 +-- decision-flow/       # System One decide nodes for flow-graph
 +-- decision-flow-server/ # MCP task server and Session wiring for decision flows
 +-- flow-host/            # Portable flow run lifecycle, approval queue, inbox and recovery
-+-- flow-host-node/       # Node-only SQLite stores, telemetry, configuration and retention
++-- flow-host-node/       # Node-only shared flow service, handlers, stores and telemetry
++-- flow-client/          # Portable FlowControl contract, daemon adapter, wait helpers, flow MCP server
 +-- model-provider/       # Provider interface definitions
 +-- openai-provider/      # OpenAI integration
 +-- anthropic-provider/   # Anthropic Claude integration
@@ -259,7 +263,7 @@ packages/
 +-- llama-provider/       # Local GGUF inference via node-llama-cpp
 +-- system-one-client/    # System One HTTP backend for laya-serve or hosted classification
 +-- logger/               # Shared logger utility
-+-- cli/                  # mokei CLI (chat, inspect, monitor, proxy commands)
++-- cli/                  # mokei CLI commands + composed daemon application entry
 ```
 
 `@mokei/host`, `@mokei/context-server`, `@mokei/session` and `@mokei/flow-host` are Node-free so they bundle under React Native /
@@ -297,7 +301,8 @@ website/                  # documentation site (private)
 | Flow database and stores | `packages/flow-host-node/src/{database,sqlite-run-store,sqlite-task-store,sqlite-trace-store}.ts` |
 | Flow telemetry, configuration and retention | `packages/flow-host-node/src/{telemetry,config,flow-dirs,retention}.ts` |
 | Portable trace storage and pruning | `packages/flow-host/src/{trace-store,trace-store-span-exporter,trace-store-log-sink,prune-runs}.ts` |
-| Flow rig facade | `scripts/flow-rig/` |
+| Flow control and MCP facade | `packages/flow-client/src/` |
+| Flow CLI commands | `packages/cli/src/commands/{daemon,flows,runs,inbox}.ts`, `packages/cli/src/run-follow.tsx`, `packages/cli/src/prompts/` |
 | Host orchestration | `packages/host/src/` |
 | HTTP transports and OAuth | `packages/http-client/src/oauth/`, `packages/http-server/src/auth/`, `packages/host-node/src/oauth/` |
 | MRTR and subscriptions | `packages/context-client/src/{mrtr,subscriptions}.ts`, `packages/context-server/src/{mrtr,subscriptions}.ts` |
@@ -341,13 +346,106 @@ Telemetry installs once per process and captures local spans and logs. Sibling-p
 Shutdown awaits retention, host and session disposal, telemetry disposal, then database closure.
 The [package lifecycle guide](../../packages/flow-host-node/README.md) describes setup, defaults and configuration.
 
+### Composed flow daemon
+
+The CLI owns `mokei/lib/daemon-entry.js`, selected by existing proxy and monitor commands when
+ensuring a daemon exists. It composes `serveHostDaemon`, one `createFlowService` and native
+desktop operations. Host-node accepts injected handlers, an event source, flow status and
+shutdown hooks; it keeps shared proxy state and imports no flow or desktop implementation.
+`composeHandlers` rejects duplicate procedure registrations. The generic standalone host
+entry still works and reports flow services unavailable. `runDaemon({ entry, socketPath? })`
+lets custom applications select an executable entry without changing the normal socket default.
+
+`info.flowService` reports `starting`, `ready` or `failed`; failures carry a public type and
+message, with sanitized configuration path/issues when available. Proxy serving and monitor
+status inspection remain available while flows start or after startup fails. Ready publication
+follows initial task and inbox reconciliation for recovered runs, without waiting for their
+completion or user answers. Recovery retains run, task, inbox and trace identities. Individual
+recovery failures become failed runs; fatal startup failures clean up partial resources.
+Configuration changes and fatal-startup recovery require restart, with no hot reload or retry.
+Direct sibling elicitation outside the durable task inbox uses the existing decline fallback.
+
+The portable host protocol exposes `flows.list`, `flows.check`, `runs.start`, `runs.get`,
+`runs.list`, `runs.cancel`, `runs.trace`, `inbox.list`, `inbox.get`, `inbox.answer`,
+`inbox.decline`, `inbox.cancel` and `inbox.prompt`. Wire snapshots exclude private persistence
+metadata and validation functions. Trace reads are run-scoped, can lag batched capture and do
+not force flushing. A known run without a trace yields empty spans/logs. Public error codes
+distinguish unavailable, missing, invalid, unsupported and competing-prompt requests; unexpected
+failures return `INTERNAL_ERROR` with a generic message. The
+[procedure guide](../../packages/flow-host-node/README.md#procedures-and-live-events) lists exact codes.
+
+Every connection shares the service and event source. `service:status`, `run:state`,
+`inbox:added` and `inbox:settled` join existing context events with event IDs and timestamps.
+Events provide live changes, without replay. Clients subscribe before querying status, runs
+and inbox, buffer events during queries, then re-read affected identifiers to reconcile.
+Reconnect repeats this sequence. Stream cancellation cleans up only that subscriber.
+
+Desktop notifications default to `false` through `desktop.notifications` in `flows.json`.
+After initial reconciliation, zero pending items send nothing, one sends an approval/input
+notification and multiple send one count message, such as `3 pending prompts`. New items notify
+individually without input previews. On macOS with `alerter`, clicking a single-item
+notification opens that item's monitor inbox page when a monitor is attached, or its desktop
+prompt otherwise. Clicking the count message opens `/inbox` when a monitor is attached, or only dismisses it otherwise.
+Each item has its own notification group, and settling an item removes its
+notification. Clicking an `osascript` notification does not open a prompt. Startup IDs are recorded before delivery so settling
+items cannot receive duplicate live notifications. Polling and reconnects never notify;
+restart announces the current pending population again. Delivery failure leaves items pending.
+Dialogs require explicit `inbox.prompt`, independently of notification opt-in. Runtime
+validation and approval policy govern settlement. Caller cancellation or disconnect releases
+prompt ownership while preserving the pending item; settlement elsewhere rejects late answers.
+
+### Monitor surface and presence
+
+The monitor is an inbox surface beside the native desktop. The daemon tries monitor delivery
+before native delivery. Each monitor server registers with `monitor.attach`; each browser tab
+opens `monitor.presence` for that attachment and reports Page Visibility API state, notification
+permission and its active inbox item.
+
+The daemon pings a tab before trusting its state. A verified visible tab suppresses native
+notifications for new items. If no visible tab answers, a tab with browser notification
+permission can receive a notification. Items suppressed while attended are not sent later.
+Recovery summaries remain native-only, and the monitor reads pending state when it connects.
+
+Prompts route to a verified visible tab first. A hidden tab can receive a browser notification
+that links to the prompt. If the monitor cannot deliver, the daemon tries the native dialog.
+The flow host remains the only inbox settler; the monitor uses inbox answer, decline and cancel
+procedures. A lost monitor target falls back to the next surface. Ping and delivery
+acknowledgements expire after five seconds. Stale replies are ignored, and withdrawals close
+deliveries that are no longer needed.
+
+The daemon validates monitor attachment URLs as root-path HTTP loopback URLs. Browser sessions
+cannot create attachments. The monitor server reconnects after a daemon restart, closes existing
+browser streams and attaches again. Open tabs then reconnect and reconcile current state.
+Events remain live without replay. Disabling native notifications does not disable the monitor
+surface.
+
+Shutdown closes flow admission and aborts dialogs, waits for admitted operations, stops
+retention, suspends stored runs, disconnects siblings, drains telemetry and closes SQLite.
+It attempts every cleanup despite failures and prevents late initialization from publishing
+ready. The CLI, MCP and monitor drive the service.
+
+Publication is gated on the
+[upstream protocol fix and adoption](plans/next/2026-10-02-enkaku-protocol-schema-rebasing.md):
+the checked-in workspace patch does not reach consumers of published Mokei packages.
+
 Portable `pruneRuns` deletes old terminal runs and their traces and tasks. Active tasks protect their associated runs.
 Its final sweep preserves traces referenced by every retained run and removes older orphan spans and logs.
 `startRetention` schedules non-overlapping pruning passes and awaits pending pruning when stopped.
 
-The flow rig wraps the runtime with MCP facade tools and one `createDesktopInputSurface` from `@mokei/host-desktop`.
-It sends inbox notifications, prompts inputs and approvals, and aborts dialogs when their items settle.
-Rig shutdown cancels non-terminal runs before disposing the runtime, surface and session.
+### Flow control, CLI and MCP
+
+`@mokei/flow-client` (portable) defines the `FlowControl` interface (flows, runs and inbox operations), the wait
+helpers (`runStatus`, `isActionable`, `hasChanged`, `waitForRun`) and `createFlowControlServer(control, options?)`,
+an MCP `ServerConfig` with the tools `list_flows`, `check_flow`, `start_flow`, `flow_status`, `wait_flow`,
+`list_runs`, `cancel_flow`, `answer_input`, `decline_input` and `prompt_input`.
+Two adapters implement `FlowControl`: `createRemoteFlowControl(client)` over the daemon's Enkaku client, and
+`createLocalFlowControl(host, extras?)` from `@mokei/flow-host` over an in-process `FlowHost`.
+
+The CLI exposes the daemon and flows through `mokei daemon start|stop|status|restart|logs`,
+`mokei flows list|check|mcp`, `mokei runs start|get|list|cancel|trace` (`runs start --wait` follows the run to a
+terminal state, answering its inputs and approvals in a terminal) and `mokei inbox list|show|answer|decline|cancel|prompt`. `mokei flows mcp` serves the flow control
+MCP server over stdio against the daemon; the repository `.mcp.json` `flow` entry runs it. Inbox dialogs and
+notifications come from `@mokei/host-desktop` inside the daemon, so the MCP server and the CLI stay headless.
 
 ---
 

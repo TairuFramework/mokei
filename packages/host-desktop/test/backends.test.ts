@@ -1,6 +1,14 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
-import { alerterCanShow, buildAlerterArgs, parseAlerterResult } from '../src/backends/alerter.js'
+import {
+  ALERTER_NOTIFY_TIMEOUT_SECONDS,
+  alerterCanNotify,
+  alerterCanShow,
+  buildAlerterArgs,
+  buildAlerterNotifyArgs,
+  parseAlerterNotifyResult,
+  parseAlerterResult,
+} from '../src/backends/alerter.js'
 import { buildNotifySendArgs } from '../src/backends/notify-send.js'
 import {
   buildOsascriptAskArgs,
@@ -196,6 +204,131 @@ describe('alerter', () => {
     const { runner, calls } = fakeRunner(json('timeout'))
     await createAlerterBackend(runner).ask?.(text, { timeoutMs: 3_000, signal })
     expect(firstCall(calls).args[2]).toBe('1')
+  })
+
+  test('notify args', () => {
+    const base = ['--json', '--timeout', '600', '--title', 'T', '--message', 'M']
+    expect(buildAlerterNotifyArgs({ title: 'T', message: 'M' }, 600)).toEqual(base)
+    expect(
+      buildAlerterNotifyArgs({ title: 'T', message: 'M', subtitle: 'S', sound: true }, 600, 'g1'),
+    ).toEqual([...base, '--subtitle', 'S', '--sound', 'default', '--group', 'g1'])
+    expect(buildAlerterNotifyArgs({ title: 'T', message: 'M', subtitle: '' }, 600, '')).toEqual(
+      base,
+    )
+  })
+
+  test('alerterCanNotify refuses option-like values', () => {
+    expect(alerterCanNotify({ title: 'T', message: 'a-b' }, 'g')).toEqual({ ok: true })
+    for (const [request, group] of [
+      [{ title: '-T', message: 'M' }, undefined],
+      [{ title: 'T', message: '--sender' }, undefined],
+      [{ title: 'T', message: 'M', subtitle: '-s' }, undefined],
+      [{ title: 'T', message: 'M' }, '-g'],
+    ] as const) {
+      expect(alerterCanNotify(request, group)).toMatchObject({ ok: false })
+    }
+  })
+
+  test.each([
+    ['contentsClicked', stdout(captured.contentsClicked), true],
+    ['actionClicked', stdout(captured.actionClicked('Show', 0)), true],
+    ['closed', stdout(captured.closed), false],
+    ['timeout', stdout(captured.timeout), false],
+    ['unknown', json('weird'), false],
+    ['runner timedOut', result({ code: null, timedOut: true }), false],
+  ])('parse notify %s', (_name, run, clicked) => {
+    expect(parseAlerterNotifyResult(run)).toBe(clicked)
+  })
+
+  test('parse notify rejects failures', () => {
+    expect(() => parseAlerterNotifyResult(result({ code: 64, stderr: 'Missing value' }))).toThrow(
+      'Missing value',
+    )
+    expect(() => parseAlerterNotifyResult(result({ stdout: 'nope' }))).toThrow('not valid JSON')
+  })
+
+  test('notify reports a click once the notification exits', async () => {
+    const { runner, calls } = fakeRunner(stdout(captured.contentsClicked))
+    const onClick = vi.fn()
+    await createAlerterBackend(runner).notify?.(
+      { title: 'T', message: 'M' },
+      { timeoutMs: 5000, signal, group: 'g1', onClick },
+    )
+    expect(firstCall(calls).args).toEqual(
+      buildAlerterNotifyArgs({ title: 'T', message: 'M' }, ALERTER_NOTIFY_TIMEOUT_SECONDS, 'g1'),
+    )
+    expect(firstCall(calls).options.timeoutMs).toBeGreaterThan(
+      ALERTER_NOTIFY_TIMEOUT_SECONDS * 1000,
+    )
+    await vi.waitFor(() => expect(onClick).toHaveBeenCalledTimes(1))
+  })
+
+  test('notify does not report a dismissal as a click', async () => {
+    const { runner } = fakeRunner(stdout(captured.closed))
+    const onClick = vi.fn()
+    await createAlerterBackend(runner).notify?.(
+      { title: 'T', message: 'M' },
+      { timeoutMs: 5000, signal, onClick },
+    )
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  test('notify rejects an immediate alerter failure', async () => {
+    const { runner } = fakeRunner(
+      result({ code: 64, stderr: "Error: Missing value for '--title'" }),
+    )
+    await expect(
+      createAlerterBackend(runner).notify?.(
+        { title: 'T', message: 'M' },
+        { timeoutMs: 5000, signal },
+      ),
+    ).rejects.toThrow('Missing value')
+  })
+
+  function liveRunner() {
+    const signals: Array<AbortSignal | undefined> = []
+    const runner: Runner = {
+      run: (_command, _args, options) => {
+        signals.push(options.signal)
+        return new Promise((_resolve, reject) => {
+          options.signal?.addEventListener('abort', () => reject(options.signal?.reason), {
+            once: true,
+          })
+        })
+      },
+      async dispose() {},
+    }
+    return { runner, signals }
+  }
+
+  test('notify resolves while alerter keeps running and lifetime abort removes it', async () => {
+    const { runner, signals } = liveRunner()
+    const lifetime = new AbortController()
+    const onClick = vi.fn()
+    const delivered = await createAlerterBackend(runner).notify?.(
+      { title: 'T', message: 'M' },
+      { timeoutMs: 10, signal, lifetime: lifetime.signal, onClick },
+    )
+    expect(signals[0]?.aborted).toBe(false)
+    lifetime.abort(new Error('Settled'))
+    expect(signals[0]?.aborted).toBe(true)
+    // `closed` settles without rejecting once the killed process has exited
+    await expect(delivered?.closed).resolves.toBeUndefined()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  test('aborting delivery kills alerter', async () => {
+    const { runner, signals } = liveRunner()
+    const delivery = new AbortController()
+    const notified = createAlerterBackend(runner).notify?.(
+      { title: 'T', message: 'M' },
+      { timeoutMs: 5000, signal: delivery.signal },
+    )
+    delivery.abort(new Error('Stopped'))
+    await expect(notified).rejects.toThrow('Stopped')
+    expect(signals[0]?.aborted).toBe(true)
   })
 })
 

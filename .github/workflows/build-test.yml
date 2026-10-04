@@ -34,11 +34,17 @@ jobs:
       - name: Build
         run: pnpm run build:ci
 
+      - name: Packed consumer
+        run: pnpm run test:packed
+
       - name: Lint
         run: pnpm run lint
 
       - name: Test
         run: pnpm run test
+
+      - name: Monitor build and bundle check
+        run: pnpm --filter monitor run build && pnpm --filter monitor run test:bundle
 
       - name: Desktop dialogs (Linux)
         if: matrix.node == 24

@@ -8,13 +8,21 @@ export function createWatchers(params: {
   withRun<T>(runID: string, work: () => T): T
   client: ContextClient
   pollMs: number
-  apply(runID: string, task: DetailedTask): Promise<boolean>
+  apply(runID: string, task: DetailedTask, reconciled: () => void): Promise<boolean>
   interrupted(runID: string): Promise<void>
 }) {
   const logger = getMokeiLogger('flow-host')
-  const watchers = new Map<string, AbortController>()
-  const pending = new Set<Promise<void>>()
+  const watchers = new Map<
+    string,
+    {
+      controller: AbortController
+      initial: Promise<void>
+      reject(error: unknown): void
+      loop: Promise<void>
+    }
+  >()
   let stopped = false
+  let stopping: Promise<void> | undefined
   function sleep(ms: number, signal: AbortSignal): Promise<void> {
     return new Promise((resolve) => {
       const finish = () => {
@@ -27,21 +35,35 @@ export function createWatchers(params: {
       if (signal.aborted) finish()
     })
   }
-  async function loop(runID: string, taskID: string, signal: AbortSignal) {
+  async function loop(
+    runID: string,
+    taskID: string,
+    signal: AbortSignal,
+    ready: () => void,
+    rejectInitial: (error: unknown) => void,
+  ) {
     let failures = 0
+    let readSnapshot = false
     while (!signal.aborted) {
       let delay = params.pollMs
       try {
         const task = await params.client.tasks.get(taskID)
-        if (signal.aborted || (await params.apply(runID, task))) return
+        readSnapshot = true
+        if (signal.aborted) return
+        const terminal = await params.apply(runID, task, ready)
+        ready()
+        if (signal.aborted || terminal) return
         failures = 0
       } catch (error) {
         if (signal.aborted) return
         logger.warn('Task poll failed for {runID}: {error}', { runID, error })
         if (isTaskNotFound(error)) {
           await params.interrupted(runID)
+          ready()
           return
         }
+        // Recovery owns readiness failure cleanup. Ordinary launches retain polling retries.
+        if (!readSnapshot) rejectInitial(error)
         failures += 1
         delay = Math.min(5000, Math.max(1, params.pollMs) * 2 ** Math.min(failures, 20))
       }
@@ -49,27 +71,51 @@ export function createWatchers(params: {
     }
   }
   return {
-    watch(runID: string, taskID: string) {
-      if (stopped || watchers.has(runID)) return
+    watch(runID: string, taskID: string): Promise<void> {
+      const existing = watchers.get(runID)
+      if (existing !== undefined && !stopped) return existing.initial
+      const initial = Promise.withResolvers<void>()
+      // Launch callers do not await readiness. Recovery still receives its rejection.
+      void initial.promise.catch(() => undefined)
+      if (stopped) {
+        initial.reject(new Error('Task watcher stopped'))
+        return initial.promise
+      }
       const controller = new AbortController()
-      watchers.set(runID, controller)
-      const work = params
-        .withRun(runID, () => {
-          return loop(runID, taskID, controller.signal).catch((error) => {
-            logger.error('Task watcher failed for {runID}: {error}', { runID, error })
+      // Defer execution until both readiness and the loop are registered for shutdown.
+      const work = Promise.resolve()
+        .then(() => {
+          return params.withRun(runID, () => {
+            return loop(runID, taskID, controller.signal, initial.resolve, initial.reject)
           })
         })
-        .finally(() => {
-          pending.delete(work)
-          if (watchers.get(runID) === controller) watchers.delete(runID)
+        .catch((error) => {
+          initial.reject(error)
+          logger.error('Task watcher failed for {runID}: {error}', { runID, error })
         })
-      pending.add(work)
+        .finally(() => {
+          if (watchers.get(runID)?.controller === controller) watchers.delete(runID)
+        })
+      watchers.set(runID, {
+        controller,
+        initial: initial.promise,
+        reject: initial.reject,
+        loop: work,
+      })
+      return initial.promise
     },
-    async stop() {
+    stop(): Promise<void> {
+      if (stopping !== undefined) return stopping
       stopped = true
-      for (const controller of watchers.values()) controller.abort()
-      await Promise.allSettled(pending)
-      watchers.clear()
+      const pending = Array.from(watchers.values())
+      for (const watcher of pending) {
+        watcher.controller.abort()
+        watcher.reject(new Error('Task watcher stopped'))
+      }
+      stopping = Promise.allSettled(pending.map((watcher) => watcher.loop)).then(() => {
+        watchers.clear()
+      })
+      return stopping
     },
   }
 }

@@ -4,7 +4,8 @@ Desktop dialogs, notifications and input inbox for Mokei hosts.
 
 When a server asks for input (MCP elicitation), `createDesktopElicitHandler` answers it through
 the desktop of the user running the host: native dialogs (`alerter` or `osascript` on macOS,
-`zenity` on Linux) and notifications (`osascript` or `notify-send`). It is a `HostElicitHandler`,
+`zenity` on Linux) and notifications (`alerter` or `osascript` on macOS, `notify-send` on
+Linux). It is a `HostElicitHandler`,
 so it plugs into `ContextHost`, `NodeContextHost`, `Session` and `NodeSession` through `elicit`.
 The package is Node-only: it spawns the dialog and notification commands.
 
@@ -149,6 +150,23 @@ which may expose private input on a lock screen or in notification history. A de
 notification only means the OS accepted it; the OS may still suppress it, so the answer surface
 is what the user relies on.
 
+`createDesktopNotifier` sends standalone notifications. `notify(message, { signal, group, onClick })`
+resolves once the notification is delivered. With `alerter`, `onClick` fires once if the user
+clicks the notification body or its action button, notifications sharing a `group` replace each
+other, and aborting `signal` after delivery removes a notification that is still showing.
+`osascript` and `notify-send` ignore `group` and never call `onClick`. `dispose()` removes every
+live notification.
+
+`openURL(url, { runner, platform, signal })` opens a URL with the operating system's default
+browser (`open` on macOS, `xdg-open` on Linux). It passes the URL as one command argument and
+rejects when the command fails or the platform is unsupported. The runner and platform options
+are useful when integrating or testing a host.
+
+The flow daemon uses this URL opener for a single-item notification when a monitor is attached.
+The click opens that item's monitor inbox page. Without an attached monitor, an `alerter` click
+opens the native prompt when the item supports one. Other notification backends do not report
+clicks.
+
 ## Composing with `onElicitation`
 
 The desktop handler is the host's base handler, so an `AgentSession` without `onElicitation`
@@ -254,12 +272,18 @@ anything.
 
 - **macOS:** the process must run in the user's GUI session (Terminal, a LaunchAgent). A
   LaunchDaemon runs outside it: `osascript` dialogs fail, and `display notification` can be
-  dropped silently. A `display notification` is attributed to Script Editor and dropped when
-  that app's notifications are off. `alerter` (`brew install vjeantet/tap/alerter`) is preferred
-  for dialogs; `osascript` is the fallback. alerter has no `--` option terminator, so a request
+  dropped silently. A `display notification` is attributed to Script Editor, which opens when
+  the notification is clicked, and is dropped when that app's notifications are off. `alerter`
+  (`brew install vjeantet/tap/alerter`) is preferred for dialogs and notifications; `osascript`
+  is the fallback. An alerter notification is a running `alerter` process: it stays clickable
+  in Notification Center for 10 minutes, then alerter removes it, and killing the process
+  (abort or `dispose()`) removes it too. Delivery counts once alerter is still running after one
+  second, since it prints nothing until the user interacts. alerter has no `--` option terminator, so a request
   whose alerter option values would include a choice label containing a comma, or a title,
-  text, reply default or actions list starting with `-`, uses `osascript` instead. When
-  `alerter` is forced, such a request is declined and reported through `onUnsupported`.
+  text, reply default or actions list starting with `-`, uses `osascript` instead. A
+  notification whose title, message, subtitle or group starts with `-` also uses `osascript`.
+  When `alerter` is forced, such a request is declined and reported through `onUnsupported`,
+  and such a notification fails.
 - **Linux:** `zenity` needs `DISPLAY` or `WAYLAND_DISPLAY`, and `notify-send` (`libnotify-bin`)
   needs `DBUS_SESSION_BUS_ADDRESS`. Cron jobs and system services usually lack them, so
   detection finds nothing. A user systemd service, or a job that exports the desktop session's

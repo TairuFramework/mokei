@@ -28,12 +28,13 @@ catalog:
   '@enkaku/http-fetch': ^0.21.3
   '@enkaku/http-serve': ^0.21.3
   '@enkaku/node-streams': ^0.21.3
-  '@enkaku/protocol': ^0.21.3
+  '@enkaku/protocol': ^0.21.4
+  '@enkaku/react': ^0.21.3
   '@enkaku/server': ^0.21.3
   '@enkaku/socket': ^0.21.3
   '@enkaku/transport': ^0.21.3
   '@kokuin/token': ^0.5.0
-  '@logtape/logtape': ^2.3.0
+  '@logtape/logtape': ^2.3.10
   '@sozai/async': ^0.3.0
   '@sozai/codec': ^0.4.1
   '@sozai/event': ^0.1.4
@@ -43,7 +44,7 @@ catalog:
   '@sozai/flow-graph': ^0.2.2
   '@sozai/json': ^0.2.0
   '@sozai/runtime': ^0.1.0
-  '@sozai/schema': ^0.1.4
+  '@sozai/schema': ^0.1.5
   '@opentelemetry/api': ^1.9.1
   '@opentelemetry/core': ^2.11.0
   '@opentelemetry/context-async-hooks': ^2.11.0
@@ -52,15 +53,16 @@ catalog:
   '@sozai/stream': ^0.2.1
   '@standard-schema/spec': ^1.1.0
   '@tejika/cli': ^0.4.1
-  '@tejika/env': ^0.5.0
+  '@tejika/env': ^0.5.1
   '@tejika/log': ^0.4.0
-  '@tejika/process': ^0.5.1
+  '@tejika/process': ^0.5.2
   '@tejika/server': ^0.4.1
   '@tejika/ui': ^0.4.1
   '@hono/node-server': ^2.1.3
   '@inkjs/ui': ^2.0.0
   '@mantine/core': ^9.6.3
   '@mantine/hooks': ^9.6.3
+  '@mantine/notifications': ^9.6.3
   '@modelcontextprotocol/client': 2.2.0
   '@modelcontextprotocol/core': 2.2.0
   '@modelcontextprotocol/ext-tasks': 0.1.0
@@ -68,13 +70,15 @@ catalog:
   '@modelcontextprotocol/server': 2.2.0
   '@swc/cli': ^0.8.1
   '@swc/core': ^1.15.41
+  '@testing-library/react': ^16.3.3
+  '@testing-library/user-event': ^14.6.7
   '@tabler/icons-react': ^3.48.0
   '@tanstack/react-router': ^1.170.41
   '@tanstack/react-virtual': ^3.14.13
   '@tanstack/router-devtools': ^1.167.2
   '@tanstack/router-plugin': ^1.168.42
   '@types/luxon': ^3.7.6
-  '@types/node': ^26.6.3
+  '@types/node': ^26.6.4
   '@types/react': ^19.3.0
   '@types/react-dom': ^19.3.0
   '@types/turndown': ^5.0.6
@@ -85,7 +89,7 @@ catalog:
   eventsource-parser: ^4.1.1
   execa: ^10.0.1
   get-port: ^7.2.0
-  globals: ^17.12.0
+  globals: ^17.13.0
   hono: ^4.13.12
   ink: ^7.1.1
   commander: ^15.0.0
@@ -109,7 +113,7 @@ catalog:
   typedoc: ^0.28.20
   typedoc-plugin-markdown: ^4.13.1
   typescript: ^6.0.3
-  vite: ^8.3.1
+  vite: ^8.3.2
   vitest: ^5.0.3
 
 catalogMode: manual
@@ -138,6 +142,7 @@ versioning:
       - '@mokei/context-server-node'
       - '@mokei/decision-flow'
       - '@mokei/decision-flow-server'
+      - '@mokei/flow-client'
       - '@mokei/flow-host'
       - '@mokei/flow-host-node'
       - '@mokei/host'

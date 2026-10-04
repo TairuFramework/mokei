@@ -34,8 +34,9 @@
     "build:types": "del 'lib/**/*.d.ts' 'lib/**/*.d.ts.map' && tsc --emitDeclarationOnly --skipLibCheck",
     "build:types:ci": "tsc --emitDeclarationOnly --skipLibCheck --declarationMap false",
     "prepublishOnly": "pnpm run build",
-    "test": "pnpm run test:types",
-    "test:types": "tsc --noEmit --skipLibCheck"
+    "test": "pnpm run test:types && pnpm run test:unit",
+    "test:types": "tsc --noEmit --skipLibCheck",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@enkaku/protocol": "catalog:",

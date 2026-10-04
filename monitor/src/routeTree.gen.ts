@@ -10,33 +10,91 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as FlowsRouteImport } from './routes/flows'
+import { Route as InboxIndexRouteImport } from './routes/inbox.index'
+import { Route as InboxItemIDRouteImport } from './routes/inbox.$itemID'
+import { Route as RunsIndexRouteImport } from './routes/runs.index'
+import { Route as RunsRunIDRouteImport } from './routes/runs.$runID'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FlowsRoute = FlowsRouteImport.update({
+  id: '/flows',
+  path: '/flows',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InboxIndexRoute = InboxIndexRouteImport.update({
+  id: '/inbox/',
+  path: '/inbox/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InboxItemIDRoute = InboxItemIDRouteImport.update({
+  id: '/inbox/$itemID',
+  path: '/inbox/$itemID',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RunsIndexRoute = RunsIndexRouteImport.update({
+  id: '/runs/',
+  path: '/runs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RunsRunIDRoute = RunsRunIDRouteImport.update({
+  id: '/runs/$runID',
+  path: '/runs/$runID',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/flows': typeof FlowsRoute
+  '/inbox/$itemID': typeof InboxItemIDRoute
+  '/runs/$runID': typeof RunsRunIDRoute
+  '/inbox/': typeof InboxIndexRoute
+  '/runs/': typeof RunsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/flows': typeof FlowsRoute
+  '/inbox/$itemID': typeof InboxItemIDRoute
+  '/runs/$runID': typeof RunsRunIDRoute
+  '/inbox': typeof InboxIndexRoute
+  '/runs': typeof RunsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/flows': typeof FlowsRoute
+  '/inbox/$itemID': typeof InboxItemIDRoute
+  '/runs/$runID': typeof RunsRunIDRoute
+  '/inbox/': typeof InboxIndexRoute
+  '/runs/': typeof RunsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    '/' | '/flows' | '/inbox/$itemID' | '/runs/$runID' | '/inbox/' | '/runs/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/flows' | '/inbox/$itemID' | '/runs/$runID' | '/inbox' | '/runs'
+  id:
+    | '__root__'
+    | '/'
+    | '/flows'
+    | '/inbox/$itemID'
+    | '/runs/$runID'
+    | '/inbox/'
+    | '/runs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  FlowsRoute: typeof FlowsRoute
+  InboxItemIDRoute: typeof InboxItemIDRoute
+  RunsRunIDRoute: typeof RunsRunIDRoute
+  InboxIndexRoute: typeof InboxIndexRoute
+  RunsIndexRoute: typeof RunsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +106,51 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/flows': {
+      id: '/flows'
+      path: '/flows'
+      fullPath: '/flows'
+      preLoaderRoute: typeof FlowsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inbox/': {
+      id: '/inbox/'
+      path: '/inbox'
+      fullPath: '/inbox/'
+      preLoaderRoute: typeof InboxIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inbox/$itemID': {
+      id: '/inbox/$itemID'
+      path: '/inbox/$itemID'
+      fullPath: '/inbox/$itemID'
+      preLoaderRoute: typeof InboxItemIDRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/runs/': {
+      id: '/runs/'
+      path: '/runs'
+      fullPath: '/runs/'
+      preLoaderRoute: typeof RunsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/runs/$runID': {
+      id: '/runs/$runID'
+      path: '/runs/$runID'
+      fullPath: '/runs/$runID'
+      preLoaderRoute: typeof RunsRunIDRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  FlowsRoute: FlowsRoute,
+  InboxItemIDRoute: InboxItemIDRoute,
+  RunsRunIDRoute: RunsRunIDRoute,
+  InboxIndexRoute: InboxIndexRoute,
+  RunsIndexRoute: RunsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

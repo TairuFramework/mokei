@@ -1,6 +1,6 @@
 # @mokei/flow-host-node
 
-Node-only SQLite storage, telemetry, configuration and retention for `@mokei/flow-host`.
+Node-only durable flow service, SQLite storage, telemetry, configuration and retention for `@mokei/flow-host`.
 The portable runtime remains Node-free. See the [architecture](../../docs/agents/architecture.md#flow-runtime).
 
 ## Installation
@@ -23,11 +23,125 @@ The package requires Node.js with `node:sqlite` support. One process owns the da
 | `loadFlowConfig(path?)` | Reads and validates configuration, applies defaults and resolves configured paths. |
 | `loadFlowDirs(dirs)` | Returns `{ files, flows }` from JSON files in the supplied directories. |
 | `startRetention({ runStore, taskStore, traceStore, days, intervalMs? })` | Starts immediate and periodic pruning and returns asynchronous `stop`. |
+| `createFlowService({ configPath?, databasePath?, desktop?, onEvent })` | Owns shared initialization, recovery, desktop policy and cleanup. |
+| `createFlowHandlers(service)` | Binds the 13 flow, run and inbox host-protocol procedures to that service. |
 
 The default database is `join(getDataDir('mokei'), 'mokei.db')`. An explicit `:memory:` path creates an in-memory database.
 SQLite uses `journal_mode = WAL`, `busy_timeout = 5000` and `foreign_keys = ON`.
 Opening a database with a newer schema version fails rather than changing it.
 All three stores share the database. Their factories take the database positionally.
+
+## Composed daemon
+
+The `mokei` CLI owns the executable `mokei/lib/daemon-entry.js`. Its proxy and monitor commands
+select that entry when starting the per-user daemon. It creates one flow service for every
+connection to share and injects native desktop operations from `@mokei/host-desktop`.
+`@mokei/host-node` supplies generic serving and handler composition without importing flow or
+desktop implementations. Custom applications can compose the same service through
+[`serveHostDaemon`](../host-node/README.md#daemon-composition).
+
+Configuration comes from `getDataDir('mokei')/flows.json`.
+The service's `start()` is idempotent. Generic proxy and monitor status inspection are available
+while flows initialize, and stay available if flow startup fails.
+
+`info.flowService` reports `{ state: 'starting' }`, `{ state: 'ready' }`, or
+`{ state: 'failed', error: { type, message, path?, issues? } }`. Configuration errors identify
+the configuration path and sanitized validation issues; messages exclude credentials and
+configured environment values. Other fatal startup errors identify the failing initialization
+stage. Flow procedures reject while starting, failed or shutting down. Correct the cause and
+restart the daemon: there is no automatic startup retry or hot reload.
+
+Ready status follows configuration and flow loading, SQLite and telemetry setup, sibling
+connections, flow registration and recovery, initial task/inbox reconciliation, and retention
+startup. The reconciliation barrier waits for recovered tasks' first snapshots so pending
+inputs are queryable when ready; it does not wait for flows to finish or for user answers.
+Individual recovery failures become failed runs without disabling the service.
+The session enables task input elicitation. Direct sibling elicitation outside the task inbox
+uses the existing decline fallback.
+
+Shutdown closes flow admission, aborts desktop operations and awaits admitted calls. It then
+stops retention, suspends stored runs, disconnects siblings, drains telemetry and closes SQLite.
+Shutdown is idempotent, attempts every cleanup even after an earlier failure, and also cleans
+up resources acquired during an initialization race. Stored runs remain recoverable after
+graceful shutdown. An abrupt process exit can lose unflushed telemetry.
+
+## Procedures and live events
+
+| Procedures | Purpose |
+|------------|---------|
+| `flows.list`, `flows.check` | List registered flows or validate an inline definition. Validation results contain public data, never internal functions. |
+| `runs.start`, `runs.get`, `runs.list`, `runs.cancel` | Start registered or inline flows and inspect or cancel runs. Approval policy applies to both start forms. |
+| `runs.trace` | Read only the selected run's captured `{ spans, logs }`; a known run without a trace returns empty arrays. |
+| `inbox.list`, `inbox.get` | Inspect currently pending approval or input items. |
+| `inbox.answer`, `inbox.decline`, `inbox.cancel` | Settle through runtime validation and single-use approval authorization; return `{ settled: true }`. |
+| `inbox.prompt` | Route a pending item to the monitor or native dialog and return `{ action: 'accept' \| 'decline' \| 'cancel' }` after validated settlement. |
+
+Trace capture is batched: reads can lag active work and do not force a flush.
+The shared `events` stream includes `service:status`, `run:state`, `inbox:added` and
+`inbox:settled` alongside existing context events, each with an event ID and timestamp.
+Events are live changes with no durable replay. Subscribe before querying `info`, `runs.list`
+and `inbox.list`; buffer events during the reads, then re-read affected run and item IDs.
+A settled item is absent from the pending inbox. Reconcile by reading current state rather
+than applying an older buffered snapshot over a newer query result. Repeat this sequence
+after reconnecting; event IDs do not provide a replay cursor.
+
+| Public error code | Meaning |
+|-------------------|---------|
+| `FLOW_UNAVAILABLE` | Service is starting, failed or shutting down; composed handlers include safe status in error data. |
+| `FLOW_NOT_FOUND`, `RUN_NOT_FOUND`, `INBOX_ITEM_NOT_FOUND` | Requested registered flow, run or pending inbox item is missing. |
+| `FLOW_INVALID`, `INBOX_ANSWER_INVALID` | Definition or answer validation failed; error data contains `issues`. |
+| `PROMPT_UNSUPPORTED` | No desktop adapter or supported dialog is available for the item. |
+| `PROMPT_IN_PROGRESS` | Another prompt operation owns the same item. |
+| `INTERNAL_ERROR` | Unexpected failure; public message is `Flow request failed`, with details logged locally. |
+
+## Monitor surface
+
+The daemon routes inbox notifications and prompts through the monitor surface before the native
+desktop surface. Each open monitor tab reports Page Visibility API state and browser notification
+permission. The daemon verifies claimed visibility with a fresh ping before suppressing a
+notification or routing a prompt.
+
+An attended tab suppresses desktop notifications for new items. If no attended tab answers,
+the daemon tries a reachable monitor tab with browser notification permission, then the native
+surface. Notifications suppressed while the monitor is attended are not delivered later.
+Recovery summaries remain native-only; the monitor reads pending items when it connects.
+
+Prompts go to an attended monitor tab first. A hidden tab can receive a browser notification
+that opens the item form. If no monitor tab can show the prompt, the native dialog is tried.
+The flow host remains the only component that settles inbox items. The monitor uses
+`inbox.answer`, `inbox.decline` or `inbox.cancel`; a tab that disconnects before settlement
+allows the prompt to fall back to the native surface.
+
+Monitor presence and delivery replies have five-second ping and acknowledgement timeouts. Stale
+replies are ignored, and withdrawals close a notification or prompt that is no longer wanted.
+Disabling `desktop.notifications` disables only native notifications. The monitor still handles
+notifications when its browser permission allows them.
+
+## Desktop policy
+
+`desktop.notifications` defaults to `false`. Set it to `true` in configuration and restart to
+enable notifications. Recovery gathers the startup population before notification delivery:
+zero pending items send nothing; one sends `Flow needs your approval` or `Flow needs your input`;
+multiple send one count message such as `3 pending prompts`. New items notify individually.
+Messages contain no input content previews. Polling, subscriptions and reconnects do not notify.
+An item represented at startup is not notified again during that daemon lifetime, even if it
+settles while delivery is pending. Restart intentionally announces the current population again.
+Notification failures are logged without retrying or changing inbox items.
+
+On macOS with `alerter`, clicking a single-item notification opens that item's dialog through
+the same path as `inbox.prompt`; a click while that item's dialog is open, or on an item whose
+form cannot be shown, does nothing. Each item notification has its own group, so new items do
+not replace earlier ones, and settling an item removes its notification. When a monitor is attached,
+clicking an item opens its monitor inbox page, and clicking the count message opens `/inbox`.
+Without a monitor, clicking the count message only dismisses it. `osascript` notifications open no dialog.
+
+Otherwise dialogs open only through `inbox.prompt`, including when notifications are disabled. Approval
+dialogs show the flow label and planned tools and require explicit approval. Input dialogs use
+the requested schema; the runtime validates answers before settlement. Native dialogs serialize
+across items. Settlement elsewhere aborts an active dialog and rejects its late answer.
+Caller cancellation, disconnect or shutdown releases prompt ownership and aborts the dialog
+while leaving its item pending; a user-selected cancel follows runtime inbox cancellation.
+Unsupported dialogs leave the item available for another answer surface.
 
 ## Setup and shutdown
 
@@ -119,8 +233,9 @@ Recovery events can fire during `createFlowHost`. Its `listeners` option receive
 
 `loadFlowConfig()` defaults to `join(getDataDir('mokei'), 'flows.json')`.
 A missing file returns defaults. Invalid JSON or schema violations throw `FlowConfigError`, with `path`, `issues` and a message.
-Unknown properties are rejected. Each supplied section must contain its required fields.
-Omitted sections use defaults: empty siblings and flow directories, empty approval allowlist, no OTLP, `info` logs and 30-day retention.
+Unknown properties are rejected. Supplied sections must satisfy their schema's required fields;
+an empty `desktop: {}` section is allowed and keeps notifications disabled.
+Omitted sections use defaults: empty siblings and flow directories, empty approval allowlist, no OTLP, `info` logs, 30-day retention and `desktop.notifications: false`.
 The loader runs at startup. Configuration changes take effect on restart, without a file watcher.
 
 A complete configuration example:
@@ -143,7 +258,8 @@ A complete configuration example:
     }
   },
   "logs": { "level": "info" },
-  "retention": { "days": 30 }
+  "retention": { "days": 30 },
+  "desktop": { "notifications": false }
 }
 ```
 
@@ -181,6 +297,14 @@ Successful global tracer-provider registration consumes the process lifetime, ev
 Host recreation can reuse the installed telemetry while its database remains open.
 
 Local span capture is batched. Optional OTLP HTTP export runs alongside local capture.
+Export requests, span batches and provider flushes each have a fixed 10-second timeout, overriding corresponding OpenTelemetry environment defaults.
+Telemetry disposal also bounds provider shutdown to 10 seconds, then attempts log drainage and registration cleanup even after export failures.
+The shutdown timeout stops waiting for remote completion. It does not cancel an outstanding HTTP request.
+Owned local span writes are drained separately before disposal returns, including when the provider times out.
+The composed daemon allows 60 seconds for its entire shutdown hook, including initialization and admitted calls before telemetry and SQLite disposal.
+This limit reserves time for ordinary cleanup. An acquisition or admitted call that never settles can exhaust it and cause a failure exit.
+The service does not close SQLite underneath active calls. Remote export failures remain aggregated disposal errors after later cleanup attempts.
+The standalone generic host retains its default shutdown timeout.
 Each new run has its own trace. Recovered runs retain their stored trace context.
 Log capture includes records with a valid active span context and records their trace and span IDs.
 Logs without that context are not stored in the trace store.

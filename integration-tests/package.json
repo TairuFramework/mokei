@@ -35,13 +35,16 @@
     "nano-spawn": "catalog:"
   },
   "devDependencies": {
+    "@enkaku/protocol": "catalog:",
     "@modelcontextprotocol/client": "catalog:",
     "@modelcontextprotocol/core": "catalog:",
     "@modelcontextprotocol/ext-tasks": "catalog:",
     "@modelcontextprotocol/node": "catalog:",
     "@modelcontextprotocol/server": "catalog:",
     "@mokei/context-rpc": "workspace:^",
+    "@mokei/flow-client": "workspace:^",
     "@mokei/flow-host": "workspace:^",
+    "@mokei/flow-host-node": "workspace:^",
     "@mokei/host-monitor": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "@mokei/logger": "workspace:^",
@@ -51,6 +54,7 @@
     "@sozai/flow-graph": "catalog:",
     "@sozai/generator": "catalog:",
     "@sozai/schema": "catalog:",
+    "@tejika/env": "catalog:",
     "@types/node": "catalog:",
     "node-pty": "^1.1.0",
     "strip-ansi": "^7.2.0"

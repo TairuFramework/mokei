@@ -14,9 +14,9 @@
     "postinstall": "node scripts/fix-node-pty-permissions.mjs",
     "lint": "biome check --write ./integration-tests ./mcp-servers ./monitor ./packages ./scripts ./website",
     "prepare": "git config core.hooksPath .githooks",
-    "test": "pnpm run --filter './packages/**' --filter './mcp-servers/**' test && pnpm run test:flow-rig && pnpm run test:integration",
-    "test:flow-rig": "node --test 'scripts/flow-rig/test/*.test.mjs'",
+    "test": "pnpm run --filter './packages/**' --filter './mcp-servers/**' --filter monitor test && pnpm run test:integration",
     "test:integration": "pnpm run --filter mokei-integration-tests test",
+    "test:packed": "node scripts/check-packed-consumer.mjs",
     "test:types": "turbo run test:types"
   },
   "devDependencies": {

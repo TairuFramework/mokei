@@ -429,13 +429,36 @@ test('a transient poll failure retries without changing state', async () => {
   const original = client.tasks.get.bind(client.tasks)
   const get = vi
     .spyOn(client.tasks, 'get')
+    .mockImplementationOnce(original)
     .mockRejectedValueOnce(new Error('Temporary transport failure'))
   const run = await host.start({ definition: holdFlow })
-  await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThanOrEqual(2))
+  await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThanOrEqual(3))
   expect((await host.get(run.runID))?.state).toBe('working')
   get.mockImplementation(original)
   expect((await host.cancel(run.runID)).state).toBe('cancelled')
 })
+
+test.each(['start', 'approval'] as const)(
+  'an ordinary %s reaches completion after a transient first task-read failure',
+  async (source) => {
+    const { host, session, held } = await fixture({
+      allow: source === 'start' ? ['local:*'] : [],
+    })
+    const client = session.contextHost.getContext('flow').client
+    const get = vi
+      .spyOn(client.tasks, 'get')
+      .mockRejectedValueOnce(new Error('Initial task transport failed'))
+    const run = await host.start({ definition: holdFlow })
+    if (source === 'approval') await host.inbox.answer(`${run.runID}:approval`)
+    await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThanOrEqual(2))
+    expect((await host.get(run.runID))?.state).toBe('working')
+    held.resolve()
+    expect(await waitState(host, run.runID, 'completed')).toMatchObject({
+      result: { outcome: 'done' },
+    })
+    expect(host.inbox.list()).toEqual([])
+  },
+)
 
 test('re-authorization errors fail with FlowChanged before dispatch', async () => {
   const original = wiringModule.addDecisionFlow

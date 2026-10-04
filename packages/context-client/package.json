@@ -41,14 +41,12 @@
   },
   "dependencies": {
     "@enkaku/node-streams": "catalog:",
+    "@enkaku/transport": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^",
     "@sozai/async": "catalog:",
     "@sozai/otel": "catalog:",
     "@sozai/schema": "catalog:",
     "@sozai/stream": "catalog:"
-  },
-  "devDependencies": {
-    "@enkaku/transport": "catalog:"
   }
 }

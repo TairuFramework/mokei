@@ -47,33 +47,90 @@ afterAll(async () => {
 
 function proxyRoundTrip(
   request: Record<string, unknown>,
+  args: Array<string> = [CLI_BINARY, 'proxy', process.execPath, FETCH_SERVER],
 ): Promise<{ stdout: Buffer; hasAnsi: boolean }> {
   return new Promise((resolve, reject) => {
-    const child = spawn('node', [CLI_BINARY, 'proxy', 'node', FETCH_SERVER], {
+    const child = spawn(process.execPath, args, {
       cwd: CLI_CWD,
       env: DAEMON_ENV,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
 
     const chunks: Array<Buffer> = []
-    child.stdout.on('data', (d: Buffer) => chunks.push(d))
+    const errors: Array<Buffer> = []
+    let received = false
+    let failure: Error | undefined
+    const timer = setTimeout(() => {
+      failure = new Error(`Proxy response timed out: ${Buffer.concat(errors).toString('utf8')}`)
+      child.kill()
+    }, 15_000)
+    child.stdout.on('data', (chunk: Buffer) => {
+      chunks.push(chunk)
+      const completeLines = Buffer.concat(chunks).toString('utf8').split('\n').slice(0, -1)
+      if (!received && completeLines.some((line) => line.trim().length > 0)) {
+        received = true
+        clearTimeout(timer)
+        child.kill()
+      }
+    })
+    child.stderr.on('data', (chunk: Buffer) => errors.push(chunk))
+    child.stdin.on('error', (error: Error) => {
+      failure = error
+      child.kill()
+    })
+    child.on('error', (error: Error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    child.on('close', (code, signal) => {
+      clearTimeout(timer)
+      if (failure != null || !received) {
+        reject(
+          failure ??
+            new Error(
+              `Proxy exited before a response (${code ?? signal}): ${Buffer.concat(errors).toString('utf8')}`,
+            ),
+        )
+        return
+      }
+      const stdout = Buffer.concat(chunks)
+      resolve({ stdout, hasAnsi: stdout.includes(0x1b) })
+    })
 
     // The proxy transport (@enkaku/node-streams) frames messages as
     // newline-delimited JSON (JSON Lines), not Content-Length framing.
     child.stdin.write(`${JSON.stringify(request)}\n`)
-
-    setTimeout(() => {
-      child.kill()
-      const stdout = Buffer.concat(chunks)
-      const hasAnsi = stdout.includes(0x1b)
-      resolve({ stdout, hasAnsi })
-    }, 5_000)
-
-    child.on('error', reject)
   })
 }
 
 describe('CLI proxy — stdio round-trip', () => {
+  test('waits for a complete response after delayed subprocess startup', async () => {
+    const { stdout, hasAnsi } = await proxyRoundTrip({ jsonrpc: '2.0', id: 1 }, [
+      '-e',
+      `process.stdin.once('data', () => {
+        setTimeout(() => {
+          process.stdout.write('{"jsonrpc":"2.0",');
+          setTimeout(() => process.stdout.write('"id":1,"result":{}}\\n'), 50);
+        }, 5500);
+      });`,
+    ])
+    expect(hasAnsi).toBe(false)
+    expect(JSON.parse(stdout.toString('utf8').trim())).toEqual({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {},
+    })
+  }, 20_000)
+
+  test('reports subprocess failure with stderr instead of accepting empty output', async () => {
+    await expect(
+      proxyRoundTrip({ jsonrpc: '2.0', id: 1 }, [
+        '-e',
+        "process.stderr.write('proxy startup failed'); process.exit(1)",
+      ]),
+    ).rejects.toThrow('proxy startup failed')
+  }, 20_000)
+
   test('MCP initialize returns a JSON-RPC response with zero ANSI bytes', async () => {
     const request = {
       jsonrpc: '2.0',
@@ -96,5 +153,5 @@ describe('CLI proxy — stdio round-trip', () => {
     expect(response.jsonrpc).toBe('2.0')
     expect(response.id).toBe(1)
     expect(response.result).toBeDefined()
-  }, 15_000)
+  }, 30_000)
 })

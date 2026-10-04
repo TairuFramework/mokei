@@ -41,9 +41,14 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@enkaku/server": "catalog:",
     "@logtape/logtape": "catalog:",
+    "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/flow-host": "workspace:^",
+    "@mokei/host-desktop": "workspace:^",
+    "@mokei/host-protocol": "workspace:^",
+    "@mokei/session-node": "workspace:^",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/context-async-hooks": "catalog:",
     "@opentelemetry/exporter-trace-otlp-http": "catalog:",
@@ -55,6 +60,10 @@
     "@tejika/log": "catalog:"
   },
   "devDependencies": {
+    "@enkaku/client": "catalog:",
+    "@enkaku/protocol": "catalog:",
+    "@enkaku/transport": "catalog:",
+    "@kokuin/token": "catalog:",
     "@mokei/decision-flow": "workspace:^",
     "@mokei/session": "workspace:^",
     "@types/node": "catalog:"

@@ -38,7 +38,7 @@
     "test:types": "tsc --noEmit --skipLibCheck -p tsconfig.test.json",
     "test:unit": "vitest run"
   },
-  "devDependencies": {
+  "dependencies": {
     "@sozai/schema": "catalog:"
   }
 }

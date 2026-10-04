@@ -2,7 +2,7 @@ import type { CallToolResult, ElicitResult, InputSchema } from '@mokei/context-p
 import type { LocalToolDefinition } from '@mokei/host'
 
 import type { BackendName, DesktopBackend } from './backends/types.js'
-import { createDetector, type ForcedBackends } from './detect.js'
+import { createDetector, type ForcedBackends, notifyBackendFor } from './detect.js'
 import { defaultCreateBackend, timeoutSecondsOption, untilAbort } from './elicit-handler.js'
 import type { DesktopElicitRequest } from './inbox.js'
 import { createRunner, type Runner } from './runner.js'
@@ -168,6 +168,9 @@ export function createDesktopTools(options: DesktopToolsOptions): DesktopTools {
   const tools: Array<LocalToolDefinition> = []
   let ownRunner: Runner | undefined
   let disposed = false
+  // Removes notifications still showing after delivery, including on an injected runner
+  const lifetime = new AbortController()
+  const live = new Set<Promise<void>>()
 
   if (options.notify !== false) {
     const createBackend = options.createBackend ?? defaultCreateBackend(appName)
@@ -203,9 +206,16 @@ export function createDesktopTools(options: DesktopToolsOptions): DesktopTools {
         if (disposed) {
           return errorResult(DISPOSED_MESSAGE)
         }
-        const { selection } = detect()
-        if (selection.notify == null) {
-          return errorResult(selection.notifyProblem ?? 'No notification backend is available')
+        const request = {
+          title: isNonEmptyString(title) && title.trim() !== '' ? title : appName,
+          message,
+          subtitle: subtitle as string | undefined,
+          sound: sound as boolean | undefined,
+        }
+        const { availability, selection } = detect()
+        const chosen = notifyBackendFor(request, undefined, selection, availability)
+        if (!chosen.ok) {
+          return errorResult(chosen.reason)
         }
 
         let runner = options.runner
@@ -213,7 +223,7 @@ export function createDesktopTools(options: DesktopToolsOptions): DesktopTools {
           ownRunner ??= createRunner()
           runner = ownRunner
         }
-        const backend = createBackend(selection.notify.name, runner)
+        const backend = createBackend(chosen.name, runner)
         if (backend.notify == null) {
           return errorResult(`${backend.name} cannot show notifications`)
         }
@@ -225,18 +235,19 @@ export function createDesktopTools(options: DesktopToolsOptions): DesktopTools {
         const deliverySignal =
           signal == null ? timeout.signal : AbortSignal.any([timeout.signal, signal])
         try {
-          await untilAbort(
-            backend.notify(
-              {
-                title: isNonEmptyString(title) && title.trim() !== '' ? title : appName,
-                message,
-                subtitle: subtitle as string | undefined,
-                sound: sound as boolean | undefined,
-              },
-              { timeoutMs: NOTIFY_TIMEOUT_MS, signal: deliverySignal },
-            ),
+          const delivered = await untilAbort(
+            backend.notify(request, {
+              timeoutMs: NOTIFY_TIMEOUT_MS,
+              signal: deliverySignal,
+              lifetime: lifetime.signal,
+            }),
             deliverySignal,
           )
+          if (delivered != null) {
+            const closed = delivered.closed
+            live.add(closed)
+            void closed.then(() => live.delete(closed))
+          }
         } catch (error) {
           return errorResult(
             `Notification failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -309,7 +320,8 @@ export function createDesktopTools(options: DesktopToolsOptions): DesktopTools {
 
   async function dispose(): Promise<void> {
     disposed = true
-    await ownRunner?.dispose()
+    lifetime.abort(new Error(DISPOSED_MESSAGE))
+    await Promise.all([ownRunner?.dispose(), ...live])
   }
 
   return Object.assign(tools, { dispose })

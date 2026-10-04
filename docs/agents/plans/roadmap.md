@@ -53,17 +53,22 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **Flow rig milestone** (`milestones/2026-09-30-flow-rig-milestone.md`) -- phase 1, the local rig driven from
-  Claude Code, is built; its manual macOS QA checklist is open. Phase 2 (integration/e2e harness) is next.
+- **Flow monitor follow-ons** (`next/2026-10-04-flow-monitor-follow-ons.md`) -- monitor UI pass and flow service
+  startup error causes. The flow daemon milestone is complete (sub-project 5, the monitor, shipped with manual QA).
 
 The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) -- both
 revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
-- **Flow rig, phase 1** (2026-09-30) -- `scripts/flow-rig/` runs decision flows with System One, MCP siblings
-  and desktop input, driven from Claude Code through a facade MCP server (`.mcp.json`). See
-  `completed/2026-09-30-flow-rig.complete.md`.
+- **Flow CLI and MCP** (2026-10-03) -- `mokei daemon`, `flows`, `runs` and `inbox` commands and
+  `mokei flows mcp` over the new portable `@mokei/flow-client`; clickable `alerter` notifications on
+  macOS open an item's desktop prompt; the packed-consumer check guards published declarations.
+  See `completed/2026-10-03-flow-cli.complete.md`.
+
+- **Flow rig, phase 1** (2026-09-30) -- a local rig ran decision flows with System One, MCP siblings
+  and desktop input, driven from Claude Code through a facade MCP server. Replaced by the flow CLI and
+  `mokei flows mcp`; the rig is removed. See `completed/2026-09-30-flow-rig.complete.md`.
 - **OAuth hardening** (2026-09-25) -- the refresh path clears the token store when the token
   endpoint answers `invalid_grant`, JWKS and AS-metadata fetch failures surface as HTTP 500
   instead of 401, non-2xx OAuth bodies are drained, and the server's loopback check matches
@@ -169,9 +174,9 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 
 ## Milestones
 
-- **Flow rig** (`milestones/2026-09-30-flow-rig-milestone.md`) -- open. Decision flows, System One, MCP siblings
-  and desktop input run locally: phase 1 a rig driven from Claude Code, phase 2 an integration/e2e harness, phase 3
-  session, host and CLI features from the rig's findings.
+- **Flow daemon** (`milestones/2026-10-01-flow-daemon-milestone.md`) -- open. Decision flows run in the per-user
+  daemon with a shared inbox, driven by the `mokei` CLI and the `mokei flows mcp` server. It replaces the closed
+  flow rig milestone (`milestones/2026-09-30-flow-rig-milestone.md`).
 
 - **MCP `2026-07-28` spec migration** (`completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md`) —
   complete. Phase 0 groundwork (G1–G4, G6, G7) shipped on `2025-11-25`

@@ -1,7 +1,7 @@
 import { createTransportStream } from '@enkaku/node-streams'
-import { runDaemon } from '@mokei/host-node'
 import { Command } from 'commander'
 
+import { ensureMokeiDaemon } from '../daemon.js'
 import { withSocketPath } from '../options.js'
 
 export function createProxyCommand(): Command {
@@ -15,7 +15,7 @@ export function createProxyCommand(): Command {
 
   cmd.action(
     async (command: string, args: Array<string>, opts: Record<string, string | undefined>) => {
-      const client = await runDaemon({ socketPath: opts.socketPath })
+      const client = await ensureMokeiDaemon({ socketPath: opts.socketPath })
       const channel = client.createChannel('spawn', {
         param: { command, args },
       })
