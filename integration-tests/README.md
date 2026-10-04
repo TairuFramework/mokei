@@ -96,7 +96,10 @@ and only the static graph-checking tests run. Targeted runs of other suites, or
   decision GGUF (for example `ggml-org/Clef-GGUF`). Either point `MOKEI_LLAMA_DECISION_URL` at a
   running server, or set `MOKEI_LLAMA_DECISION_BIN` (the `llama-server` executable) and
   `MOKEI_LLAMA_DECISION_MODEL` (a GGUF path, or a Hugging Face repo passed to `-hf`) and the setup
-  starts it on a free port with an API key. Only a server the setup started, or one given
+  starts it on a free port with an API key and a 2048-token batch (laya- and clef-family
+  models evaluate the whole prompt in one batch). The `/v1/systemone` endpoint and the decision
+  models' tokenizers need a recent llama.cpp build: Homebrew `llama.cpp` 0.5.0 (build 11146) has
+  neither. Only a server the setup started, or one given
   `MOKEI_LLAMA_DECISION_API_KEY`, is assumed to enforce auth; the wrong-API-key tests skip otherwise.
 
 ## Environment variables

@@ -202,6 +202,11 @@ async function startLlamaCpp(cleanups: Array<Cleanup>): Promise<SystemOneTarget 
       String(port),
       '--api-key',
       API_KEY,
+      // laya- and clef-family decision models evaluate the whole prompt in one batch.
+      '--ubatch-size',
+      '2048',
+      '--batch-size',
+      '2048',
     ],
     { stdio: ['ignore', 'ignore', 'pipe'] },
   )
