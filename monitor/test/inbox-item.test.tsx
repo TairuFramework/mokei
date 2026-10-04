@@ -96,7 +96,7 @@ test('observes settlement while open and reports presence on mount and unmount',
   f.emit({ type: 'inbox:settled', data: { item: f.entry, outcome: 'declined' } })
   expect(await screen.findByText(/Outcome: declined/)).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
-  expect(setActiveItem).toHaveBeenLastCalledWith(undefined)
+  await waitFor(() => expect(setActiveItem).toHaveBeenLastCalledWith(undefined))
   view.unmount()
   expect(setActiveItem).toHaveBeenLastCalledWith(undefined)
 })
@@ -123,7 +123,7 @@ test.each(['Approve', 'Deny'])(
       ).toHaveBeenCalledWith('item-1'),
     )
     await screen.findByText(/already settled/)
-    expect(setActiveItem).toHaveBeenLastCalledWith(undefined)
+    await waitFor(() => expect(setActiveItem).toHaveBeenLastCalledWith(undefined))
   },
 )
 

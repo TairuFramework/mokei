@@ -27,7 +27,7 @@ type ValidationErrorParams = SystemOneErrorParams & { issues: ReadonlyArray<Vali
 
 /**
  * Caller-supplied questions or state failed validation: in the client before any request, or in
- * the backend (a 422 response).
+ * the backend (a 400 or 422 response).
  */
 export class SystemOneInputError extends ValidationError {
   constructor(params: SystemOneInputErrorParams) {

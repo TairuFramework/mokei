@@ -175,6 +175,30 @@ describe('HTTPSystemOneBackend', () => {
     expect((error as SystemOneInputError).issues).toEqual(issues)
   })
 
+  test('maps a llama.cpp 400 to SystemOneInputError', async () => {
+    stubJSON(
+      {
+        error: {
+          code: 400,
+          message: 'questions.department: "instructions" must be provided',
+          type: 'invalid_request_error',
+        },
+      },
+      { status: 400 },
+    )
+    const backend = new HTTPSystemOneBackend({ url: 'http://localhost:8000' })
+    const error = await backend
+      .predict({ state: 'hi', questions, model: 'english' })
+      .catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(SystemOneInputError)
+    expect((error as SystemOneInputError).message).toBe(
+      'System One backend rejected the request (400): questions.department: "instructions" must be provided',
+    )
+    expect((error as SystemOneInputError).issues).toEqual([
+      { message: 'questions.department: "instructions" must be provided' },
+    ])
+  })
+
   test.each([
     [429, SystemOneRateLimitError, 'SystemOneRateLimitError', 'rate limited'],
     [529, SystemOneOverloadedError, 'SystemOneOverloadedError', 'overloaded'],

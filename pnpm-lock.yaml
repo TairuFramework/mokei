@@ -213,20 +213,20 @@ catalogs:
       specifier: ^9.6.3
       version: 9.6.3
     '@modelcontextprotocol/client':
-      specifier: 2.2.0
-      version: 2.2.0
+      specifier: 2.3.0
+      version: 2.3.0
     '@modelcontextprotocol/core':
-      specifier: 2.2.0
-      version: 2.2.0
+      specifier: 2.3.0
+      version: 2.3.0
     '@modelcontextprotocol/ext-tasks':
-      specifier: 0.1.0
-      version: 0.1.0
+      specifier: 0.2.2
+      version: 0.2.2
     '@modelcontextprotocol/node':
-      specifier: 2.1.0
-      version: 2.1.0
+      specifier: 2.1.1
+      version: 2.1.1
     '@modelcontextprotocol/server':
-      specifier: 2.2.0
-      version: 2.2.0
+      specifier: 2.3.0
+      version: 2.3.0
     '@opentelemetry/api':
       specifier: ^1.9.1
       version: 1.9.1
@@ -511,19 +511,19 @@ importers:
         version: 0.21.4(@logtape/logtape@2.3.10)
       '@modelcontextprotocol/client':
         specifier: 'catalog:'
-        version: 2.2.0
+        version: 2.3.0
       '@modelcontextprotocol/core':
         specifier: 'catalog:'
-        version: 2.2.0
+        version: 2.3.0
       '@modelcontextprotocol/ext-tasks':
         specifier: 'catalog:'
-        version: 0.1.0(@modelcontextprotocol/client@2.2.0)
+        version: 0.2.2(@modelcontextprotocol/client@2.3.0)
       '@modelcontextprotocol/node':
         specifier: 'catalog:'
-        version: 2.1.0(@modelcontextprotocol/server@2.2.0)(hono@4.13.12)
+        version: 2.1.1(@modelcontextprotocol/server@2.3.0)
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
-        version: 2.2.0
+        version: 2.3.0
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../packages/context-rpc
@@ -3601,34 +3601,30 @@ packages:
   '@mixmark-io/domino@2.2.0':
     resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
 
-  '@modelcontextprotocol/client@2.2.0':
-    resolution: {integrity: sha512-LxCou/CSYQ6dwEnjhLZY0KnEuc8V4UJ3IEQCl/uR2yHobSQIEdJKUlKLRYRF5i5FqRGHy1eK7une3aAWDHLtig==}
+  '@modelcontextprotocol/client@2.3.0':
+    resolution: {integrity: sha512-pbHtGj6EeFCHngFE8gtNPaKrsj8Mb1IMw45BLcaPML/m2WTxI7pyYmeNQvaux88Lw8BSO5r7nyRbUyIkICmGrg==}
     engines: {node: '>=20'}
 
-  '@modelcontextprotocol/core@2.2.0':
-    resolution: {integrity: sha512-iLhmprRmWI8EcosOA3wVvww22z02NkgqhV4fBH6f/odQBsi7xnJc0HGmi21yWO+/iKw2yzqVE127Zhna5/+JXw==}
+  '@modelcontextprotocol/core@2.3.0':
+    resolution: {integrity: sha512-09BHFaNVBe5pB2AhzCfLj0cqmsKLERvZQ4FblzP90UMGLaXVqdZPByFjURwsUYCmxonUW2yAwgTTvle+8O2/8w==}
     engines: {node: '>=20'}
 
-  '@modelcontextprotocol/ext-tasks@0.1.0':
-    resolution: {integrity: sha512-N6kQdDoR8bQcXFvoB0qsPh2k5/hr+aQDKngiJH8P2u3L68bdX0yMuPRMAZ6JHBGTA51rRFc3ajhiosEaeW9U1A==}
+  '@modelcontextprotocol/ext-tasks@0.2.2':
+    resolution: {integrity: sha512-qpyxUGaameAdtFF09NVPhe82xo70kkED7Kel5c+jAfPTUAh/V5xzWjd9iRBIZFNhK+r9egGIFglDZh0kPbXeoA==}
     peerDependencies:
       '@modelcontextprotocol/client': ^2.0.0
     peerDependenciesMeta:
       '@modelcontextprotocol/client':
         optional: true
 
-  '@modelcontextprotocol/node@2.1.0':
-    resolution: {integrity: sha512-6xg3iWVcOfiL8Y7rI6xUqXD0lI2AY5q3djsa/cOi1IJUSwx06t0gvhSwU/6mIIohrFlt40/ANUG56DQ0HLhILQ==}
+  '@modelcontextprotocol/node@2.1.1':
+    resolution: {integrity: sha512-EY92OAXN2xYL7tNS/MVsWJW1v8VHAPwl9B4Ca3pCrjmvqyC+S1C/6UHsMxF2GoFPraS5Yyg56vFz9brVpFojMA==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@modelcontextprotocol/server': ^2.1.0
-      hono: ^4.11.4
-    peerDependenciesMeta:
-      hono:
-        optional: true
+      '@modelcontextprotocol/server': ^2.3.0
 
-  '@modelcontextprotocol/server@2.2.0':
-    resolution: {integrity: sha512-qFnltjus6Gk8Lx6J1w2RXmr3YPN22MNT6qD6zjAkaiWIlFIFxWClz0rXHNuJF/KSUyn5YGhkSvXkWDbQHVLFEQ==}
+  '@modelcontextprotocol/server@2.3.0':
+    resolution: {integrity: sha512-+6b0LdsQLmHsvS7J6sQJ4weTpzUn61fU1JKS+321/+IyDYoHW5CR2Tgqcs6GgAAQvlesCo6yX3xttgmx+XGtJw==}
     engines: {node: '>=20'}
 
   '@module-federation/error-codes@0.22.0':
@@ -14061,9 +14057,9 @@ snapshots:
 
   '@mixmark-io/domino@2.2.0': {}
 
-  '@modelcontextprotocol/client@2.2.0':
+  '@modelcontextprotocol/client@2.3.0':
     dependencies:
-      '@modelcontextprotocol/core': 2.2.0
+      '@modelcontextprotocol/core': 2.3.0
       cross-spawn: 7.0.6
       eventsource: 3.0.7
       eventsource-parser: 3.1.0
@@ -14071,26 +14067,25 @@ snapshots:
       pkce-challenge: 5.0.1
       zod: 4.6.5
 
-  '@modelcontextprotocol/core@2.2.0':
+  '@modelcontextprotocol/core@2.3.0':
     dependencies:
       zod: 4.6.5
 
-  '@modelcontextprotocol/ext-tasks@0.1.0(@modelcontextprotocol/client@2.2.0)':
+  '@modelcontextprotocol/ext-tasks@0.2.2(@modelcontextprotocol/client@2.3.0)':
     dependencies:
       zod: 4.6.5
     optionalDependencies:
-      '@modelcontextprotocol/client': 2.2.0
+      '@modelcontextprotocol/client': 2.3.0
 
-  '@modelcontextprotocol/node@2.1.0(@modelcontextprotocol/server@2.2.0)(hono@4.13.12)':
+  '@modelcontextprotocol/node@2.1.1(@modelcontextprotocol/server@2.3.0)':
     dependencies:
       '@hono/node-server': 1.19.15(hono@4.13.12)
-      '@modelcontextprotocol/server': 2.2.0
-    optionalDependencies:
+      '@modelcontextprotocol/server': 2.3.0
       hono: 4.13.12
 
-  '@modelcontextprotocol/server@2.2.0':
+  '@modelcontextprotocol/server@2.3.0':
     dependencies:
-      '@modelcontextprotocol/core': 2.2.0
+      '@modelcontextprotocol/core': 2.3.0
       zod: 4.6.5
 
   '@module-federation/error-codes@0.22.0': {}
@@ -14207,33 +14202,47 @@ snapshots:
 
   '@noble/hashes@2.4.0': {}
 
-  '@node-llama-cpp/linux-arm64@3.19.0': {}
+  '@node-llama-cpp/linux-arm64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-armv7l@3.19.0': {}
+  '@node-llama-cpp/linux-armv7l@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-riscv64@3.19.0': {}
+  '@node-llama-cpp/linux-riscv64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0': {}
+  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64-cuda@3.19.0': {}
+  '@node-llama-cpp/linux-x64-cuda@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64-vulkan@3.19.0': {}
+  '@node-llama-cpp/linux-x64-vulkan@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/linux-x64@3.19.0': {}
+  '@node-llama-cpp/linux-x64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/mac-arm64-metal@3.19.0': {}
+  '@node-llama-cpp/mac-arm64-metal@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/mac-x64@3.19.0': {}
+  '@node-llama-cpp/mac-x64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-arm64@3.19.0': {}
+  '@node-llama-cpp/win-arm64@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64-cuda-ext@3.19.0': {}
+  '@node-llama-cpp/win-x64-cuda-ext@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64-cuda@3.19.0': {}
+  '@node-llama-cpp/win-x64-cuda@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64-vulkan@3.19.0': {}
+  '@node-llama-cpp/win-x64-vulkan@3.19.0':
+    optional: true
 
-  '@node-llama-cpp/win-x64@3.19.0': {}
+  '@node-llama-cpp/win-x64@3.19.0':
+    optional: true
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -14563,21 +14572,29 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@reflink/reflink-darwin-arm64@0.1.19': {}
+  '@reflink/reflink-darwin-arm64@0.1.19':
+    optional: true
 
-  '@reflink/reflink-darwin-x64@0.1.19': {}
+  '@reflink/reflink-darwin-x64@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-arm64-gnu@0.1.19': {}
+  '@reflink/reflink-linux-arm64-gnu@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-arm64-musl@0.1.19': {}
+  '@reflink/reflink-linux-arm64-musl@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-x64-gnu@0.1.19': {}
+  '@reflink/reflink-linux-x64-gnu@0.1.19':
+    optional: true
 
-  '@reflink/reflink-linux-x64-musl@0.1.19': {}
+  '@reflink/reflink-linux-x64-musl@0.1.19':
+    optional: true
 
-  '@reflink/reflink-win32-arm64-msvc@0.1.19': {}
+  '@reflink/reflink-win32-arm64-msvc@0.1.19':
+    optional: true
 
-  '@reflink/reflink-win32-x64-msvc@0.1.19': {}
+  '@reflink/reflink-win32-x64-msvc@0.1.19':
+    optional: true
 
   '@reflink/reflink@0.1.19':
     optionalDependencies:
@@ -14589,6 +14606,7 @@ snapshots:
       '@reflink/reflink-linux-x64-musl': 0.1.19
       '@reflink/reflink-win32-arm64-msvc': 0.1.19
       '@reflink/reflink-win32-x64-msvc': 0.1.19
+    optional: true
 
   '@rolldown/binding-android-arm-eabi@1.2.12':
     optional: true

@@ -8,9 +8,9 @@ export default defineConfig({
       {
         extends: true,
         test: {
-          name: 'laya',
-          include: ['suites/laya*.test.ts'],
-          globalSetup: ['support/laya-setup.ts'],
+          name: 'system-one',
+          include: ['suites/system-one*.test.ts'],
+          globalSetup: ['support/system-one-setup.ts'],
         },
       },
       {
@@ -18,7 +18,7 @@ export default defineConfig({
         test: {
           name: 'default',
           include: ['suites/**/*.test.ts'],
-          exclude: ['suites/laya*.test.ts'],
+          exclude: ['suites/system-one*.test.ts'],
         },
       },
     ],
