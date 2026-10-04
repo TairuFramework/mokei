@@ -1,6 +1,6 @@
 # Milestone: flow daemon
 
-**Status:** open -- sub-projects 1 to 4 complete -- sub-project 5 (monitor) next
+**Status:** complete -- sub-projects 1 to 5 complete
 **Opened:** 2026-10-01
 **Replaces:** phase 3 of the [flow rig milestone](2026-09-30-flow-rig-milestone.md), from sub-project B onwards
 
@@ -66,7 +66,7 @@ Each sub-project gets its own spec, plan and PR from `main`.
 | 2 | Node storage and observability | `@mokei/flow-host-node`: sqlite stores, span and log capture, OTLP option, config loader, retention. | Store, capture and config tests green. | complete |
 | 3 | Daemon | `host-protocol` procedures and events, handler composition in `host-node`, daemon entry in the CLI, recovery on boot, desktop notifier. | Daemon integration suite green, including restart and resume. | complete (native desktop QA done in sub-project 4) |
 | 4 | CLI and MCP | `mokei daemon`, `flows`, `runs` and `inbox` commands; `mokei flows mcp`. `scripts/flow-rig` and its suite are deleted. The MCP server lives in the portable `@mokei/flow-client` (not `@mokei/flow-host-node`), over a `FlowControl` interface with a daemon adapter and a local `@mokei/flow-host` adapter. Folds in the published declaration dependency fixes (context-server, context-client, context-rpc, context-protocol, model-provider) and the `pnpm test:packed` packed-consumer check. | End-to-end suite green; packed consumer check green; manual macOS QA done. | complete |
-| 5 | Monitor | Runs, run detail, inbox and flows pages; monitor presence routes notifications and prompts before native desktop surfaces, and notification clicks open the item in the monitor when attached. | Manual QA of the monitor pages. | in progress |
+| 5 | Monitor | Runs, run detail, inbox and flows pages; monitor presence routes notifications and prompts before native desktop surfaces, and notification clicks open the item in the monitor when attached. | Manual QA of the monitor pages. | complete |
 
 Completed sub-projects link their summary in `completed/` here.
 
@@ -74,6 +74,7 @@ Completed sub-projects link their summary in `completed/` here.
 - Sub-project 2: [`completed/2026-10-02-flow-host-node.complete.md`](../completed/2026-10-02-flow-host-node.complete.md)
 - Sub-project 3: [`completed/2026-10-02-flow-daemon.complete.md`](../completed/2026-10-02-flow-daemon.complete.md)
 - Sub-project 4: [`completed/2026-10-03-flow-cli.complete.md`](../completed/2026-10-03-flow-cli.complete.md)
+- Sub-project 5: [`completed/2026-10-04-flow-monitor.complete.md`](../completed/2026-10-04-flow-monitor.complete.md)
 
 Native desktop QA, deferred from sub-project 3, passed during sub-project 4 manual macOS QA.
 
@@ -100,3 +101,5 @@ The workspace patch was removed, satisfying this publication prerequisite.
 - A failed flow reports `state: completed` -- sub-project 1 (`failed` run state).
 
 Sub-project 4 follow-ons are in the [flow client follow-ons](../backlog/2026-10-03-flow-client-follow-ons.md) backlog.
+Sub-project 5 follow-ons are in the [flow monitor follow-ons](../next/2026-10-04-flow-monitor-follow-ons.md) and the
+[flow monitor backlog](../backlog/2026-10-04-flow-monitor-backlog.md).
