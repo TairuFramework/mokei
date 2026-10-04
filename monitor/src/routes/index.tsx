@@ -16,7 +16,7 @@ import { DateTime } from 'luxon'
 import { useMemo, useState } from 'react'
 
 import EventBadge from '../components/EventBadge.js'
-import { useEnvironment } from '../enkaku/context.js'
+import { useFlow } from '../flow/FlowProvider.js'
 import { useHostEvents } from '../hooks.js'
 
 function getEventTime(event: HostEvent): string {
@@ -116,7 +116,7 @@ function EventDetails({ event }: { event: HostEvent }) {
 }
 
 function HomePage() {
-  const env = useEnvironment()
+  const { connected } = useFlow()
   const events = useHostEvents().filter(
     (event): event is Extract<HostEvent, { type: `context:${string}` }> => {
       return event.type.startsWith('context:')
@@ -147,19 +147,17 @@ function HomePage() {
       .reverse()
   }, [events])
 
-  const alert =
-    env.status === 'connected' ? (
-      <Alert
-        variant="light"
-        title={events.length === 0 ? 'Waiting for events...' : 'Receiving events...'}
-        icon={<Loader size="sm" />}
-      />
-    ) : (
-      <Alert color="red" variant="light" title="Client disconnected">
-        {env.reason instanceof Error ? <Text>{env.reason.message}</Text> : null}
-        <Button onClick={() => env.connect()}>Reconnect</Button>
-      </Alert>
-    )
+  const alert = connected ? (
+    <Alert
+      variant="light"
+      title={events.length === 0 ? 'Waiting for events...' : 'Receiving events...'}
+      icon={<Loader size="sm" />}
+    />
+  ) : (
+    <Alert color="red" variant="light" title="Client disconnected">
+      <Button onClick={() => window.location.reload()}>Reconnect</Button>
+    </Alert>
+  )
 
   return (
     <>

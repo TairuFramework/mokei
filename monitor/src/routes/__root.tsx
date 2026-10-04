@@ -1,20 +1,23 @@
+import { EnkakuProvider } from '@enkaku/react'
 import '@mantine/core/styles.css'
+import '@mantine/notifications/styles.css'
 import {
   AppShell,
+  Center,
   createTheme,
-  Group,
-  Image,
   type MantineColorsTuple,
   MantineProvider,
-  Title,
 } from '@mantine/core'
-import type { Protocol } from '@mokei/host-protocol'
+import { Notifications } from '@mantine/notifications'
 import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { Provider as JotaiProvider } from 'jotai'
 import { lazy, Suspense } from 'react'
 
-import { EnkakuProvider } from '../enkaku/Provider.js'
-import { createHostClient, type HostClient } from '../host/client.js'
+import { AppHeader } from '../components/AppHeader.js'
+import { ConnectionBanner } from '../components/ConnectionBanner.js'
+import { NotificationPermissionButton } from '../components/NotificationPermissionButton.js'
+import { FlowProvider, useFlow } from '../flow/FlowProvider.js'
+import { PresenceProvider } from '../presence/PresenceProvider.js'
 
 const TanStackRouterDevtools =
   process.env.NODE_ENV === 'production'
@@ -44,8 +47,34 @@ const theme = createTheme({
   },
 })
 
-function createClient(): HostClient {
-  return createHostClient(import.meta.env.VITE_API_URL || `${window.location.origin}/api`)
+function MonitorApp() {
+  const { client, restarted } = useFlow()
+  if (restarted)
+    return (
+      <Center mih="100vh">
+        <ConnectionBanner />
+      </Center>
+    )
+  return (
+    <EnkakuProvider client={client}>
+      <AppShell header={{ height: 60 }} padding="md">
+        <AppShell.Header
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: '#04809d',
+          }}>
+          <AppHeader />
+          <NotificationPermissionButton />
+        </AppShell.Header>
+        <AppShell.Main>
+          <ConnectionBanner />
+          <Outlet />
+        </AppShell.Main>
+      </AppShell>
+    </EnkakuProvider>
+  )
 }
 
 export const Route = createRootRoute({
@@ -53,27 +82,12 @@ export const Route = createRootRoute({
     return (
       <JotaiProvider>
         <MantineProvider theme={theme}>
-          <EnkakuProvider<Protocol> createClient={createClient}>
-            <AppShell header={{ height: 60 }} padding="md">
-              <AppShell.Header style={{ backgroundColor: '#04809d' }}>
-                <Group p="10px" align="center">
-                  <Image
-                    src="/logo.svg"
-                    alt="Mokei logo"
-                    h={40}
-                    w={40}
-                    style={{ border: '2px solid white', borderRadius: 20 }}
-                  />
-                  <Title c="white" order={3}>
-                    Mokei Monitor
-                  </Title>
-                </Group>
-              </AppShell.Header>
-              <AppShell.Main>
-                <Outlet />
-              </AppShell.Main>
-            </AppShell>
-          </EnkakuProvider>
+          <Notifications />
+          <FlowProvider>
+            <PresenceProvider>
+              <MonitorApp />
+            </PresenceProvider>
+          </FlowProvider>
         </MantineProvider>
         <Suspense>
           <TanStackRouterDevtools />

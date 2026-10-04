@@ -333,7 +333,6 @@ test('remote settlement aborts a dialog and prevents its late answer', async () 
     const run = await first.request('runs.start', { timeout: 10_000, param: { flow: 'input' } })
     const item = await fixture.pending(first, run.runID)
     const prompting = first.request('inbox.prompt', { timeout: 10_000, param: { id: item.id } })
-    const rejected = prompting.catch((error: unknown) => error)
     await fixture.wait('dialog open', () =>
       fixture.desktopRecords().some((record) => record.type === 'prompt'),
     )
@@ -341,7 +340,8 @@ test('remote settlement aborts a dialog and prevents its late answer', async () 
       timeout: 10_000,
       param: { id: item.id, content: { value: 'remote' } },
     })
-    expect(await rejected).toMatchObject({ code: 'INBOX_ITEM_NOT_FOUND' })
+    // Every prompt resolves from the item's settlement, wherever it was answered
+    expect(await prompting).toEqual({ action: 'accept' })
     await fixture.wait('dialog aborted', () =>
       fixture.desktopRecords().some((record) => record.type === 'aborted'),
     )

@@ -12,7 +12,8 @@ import { FlowConfigError, loadFlowConfig } from '../src/config.js'
 import { openFlowDatabase } from '../src/database.js'
 import type { FlowDesktopAdapter } from '../src/desktop.js'
 import { loadFlowDirs } from '../src/flow-dirs.js'
-import type { FlowServiceDependencies } from '../src/service.js'
+import { createMonitorPresence } from '../src/monitor-presence.js'
+import type { FlowServiceDependencies, FlowServiceParams } from '../src/service.js'
 import { createFlowServiceWithDependencies, FlowServiceUnavailableError } from '../src/service.js'
 import { runRecord } from './support/records.js'
 
@@ -40,6 +41,7 @@ function setup(
   overrides: Partial<FlowServiceDependencies> = {},
   desktopOverrides: Partial<FlowDesktopAdapter> = {},
   onEvent?: (event: HostEvent) => void,
+  params: Partial<FlowServiceParams> = {},
 ) {
   const order: Array<string> = []
   const events: Array<HostEvent> = []
@@ -104,6 +106,7 @@ function setup(
   }
   const service = createFlowServiceWithDependencies(
     {
+      ...params,
       desktop: adapter,
       onEvent: (event) => {
         events.push(event)
@@ -547,3 +550,55 @@ test('shutdown from ready publication suppresses startup notifications', async (
   expect(fixture.messages).toEqual([])
   expect(fixture.order).toEqual(['desktop', 'retention', 'session', 'telemetry', 'database'])
 })
+
+test.each(['answered', 'declined', 'cancelled', 'withdrawn'] as const)(
+  'service monitor prompt receives %s outcome',
+  async (outcome) => {
+    const monitor = createMonitorPresence()
+    const { attachmentID } = monitor.attach('http://127.0.0.1:4000/')
+    let shown = false
+    const tab = monitor.connect(attachmentID, {
+      close() {},
+      send(message) {
+        if (message.type === 'ping') tab.receive({ type: 'pong', nonce: message.nonce })
+        if (message.type === 'prompt') {
+          shown = true
+          tab.receive({ type: 'ack', attemptID: message.attemptID, shown: true })
+        }
+      },
+    })
+    tab.receive({ type: 'state', visible: true, canNotify: false })
+    cleanup.push(async () => monitor.dispose())
+    const fixture = setup(
+      {
+        createHost: async (params) => {
+          await params.runStore?.create(
+            runRecord({ state: 'awaiting_approval', result: undefined, error: undefined }),
+          )
+          return createFlowHost(params)
+        },
+      },
+      {},
+      undefined,
+      { monitor },
+    )
+    await fixture.service.start()
+    const host = fixture.service.resources().host
+    const item = host.inbox.list()[0]
+    if (item == null) throw new Error('Expected approval')
+    const prompting = fixture.service
+      .prompt(item.id, new AbortController().signal)
+      .catch((error: unknown) => error)
+    await vi.waitFor(() => expect(shown).toBe(true))
+    if (outcome === 'answered') await host.inbox.answer(item.id)
+    else if (outcome === 'declined') await host.inbox.decline(item.id)
+    else if (outcome === 'cancelled') await host.inbox.cancel(item.id)
+    else await host.events.emit('inbox:settled', { item, outcome: 'withdrawn' })
+    if (outcome === 'withdrawn')
+      expect(await prompting).toMatchObject({ name: 'InboxItemNotFoundError' })
+    else
+      expect(await prompting).toEqual({
+        action: outcome === 'answered' ? 'accept' : outcome === 'declined' ? 'decline' : 'cancel',
+      })
+  },
+)

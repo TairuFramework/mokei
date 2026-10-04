@@ -52,7 +52,7 @@ export function getNativeTimeoutSeconds(timeoutMs: number): number {
 }
 
 /** Error for an exit code the adapter's parser does not recognise. */
-export function unexpectedExit(name: BackendName, result: RunResult): Error {
+export function unexpectedExit(name: string, result: RunResult): Error {
   const line = result.stderr.split('\n').find((l) => l.trim() !== '')
   return new Error(line?.trim() ?? `${name} exited with code ${result.code}`)
 }

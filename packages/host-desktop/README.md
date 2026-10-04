@@ -157,6 +157,16 @@ other, and aborting `signal` after delivery removes a notification that is still
 `osascript` and `notify-send` ignore `group` and never call `onClick`. `dispose()` removes every
 live notification.
 
+`openURL(url, { runner, platform, signal })` opens a URL with the operating system's default
+browser (`open` on macOS, `xdg-open` on Linux). It passes the URL as one command argument and
+rejects when the command fails or the platform is unsupported. The runner and platform options
+are useful when integrating or testing a host.
+
+The flow daemon uses this URL opener for a single-item notification when a monitor is attached.
+The click opens that item's monitor inbox page. Without an attached monitor, an `alerter` click
+opens the native prompt when the item supports one. Other notification backends do not report
+clicks.
+
 ## Composing with `onElicitation`
 
 The desktop handler is the host's base handler, so an `AgentSession` without `onElicitation`

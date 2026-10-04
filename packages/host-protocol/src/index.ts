@@ -25,6 +25,13 @@ import {
   storedLogSchema,
   storedSpanSchema,
 } from './flow-schemas.js'
+import {
+  monitorAttachParamSchema,
+  monitorAttachReceiveSchema,
+  monitorPresenceParamSchema,
+  monitorPresenceReceiveSchema,
+  monitorPresenceSendSchema,
+} from './monitor-schemas.js'
 
 export {
   type FlowCheckResult,
@@ -44,6 +51,15 @@ export {
   storedLogSchema,
   storedSpanSchema,
 } from './flow-schemas.js'
+export {
+  type MonitorPresenceReceive,
+  type MonitorPresenceSend,
+  monitorAttachParamSchema,
+  monitorAttachReceiveSchema,
+  monitorPresenceParamSchema,
+  monitorPresenceReceiveSchema,
+  monitorPresenceSendSchema,
+} from './monitor-schemas.js'
 
 export const hostEventMetaSchema = {
   type: 'object',
@@ -232,6 +248,17 @@ export const protocol = {
   shutdown: {
     type: 'request',
   },
+  'monitor.attach': {
+    type: 'stream',
+    param: monitorAttachParamSchema,
+    receive: monitorAttachReceiveSchema,
+  },
+  'monitor.presence': {
+    type: 'channel',
+    param: monitorPresenceParamSchema,
+    send: { anyOf: [...monitorPresenceSendSchema.anyOf] },
+    receive: { anyOf: [...monitorPresenceReceiveSchema.anyOf] },
+  },
   spawn: {
     type: 'channel',
     param: {
@@ -361,7 +388,8 @@ export const protocol = {
 } as const satisfies ProtocolDefinition
 export type Protocol = typeof protocol
 export type BaseProtocol = Pick<Protocol, 'events' | 'info' | 'shutdown' | 'spawn'>
-export type FlowProcedure = Exclude<keyof Protocol, keyof BaseProtocol>
+export type MonitorProcedure = 'monitor.attach' | 'monitor.presence'
+export type FlowProcedure = Exclude<keyof Protocol, keyof BaseProtocol | MonitorProcedure>
 
 export type ClientMessage = AnyClientMessageOf<Protocol>
 export type ServerMessage = AnyServerMessageOf<Protocol>

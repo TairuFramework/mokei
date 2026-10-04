@@ -6,13 +6,20 @@
   "scripts": {
     "build": "tsc -b && vite build",
     "dev": "vite",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "pnpm run test:types && pnpm run test:unit",
+    "test:bundle": "ls dist/assets/*.js > /dev/null && ! grep -l \"createFlowControlServer\" dist/assets/*.js",
+    "test:types": "tsc -p tsconfig.test.json",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@enkaku/client": "catalog:",
     "@enkaku/http-fetch": "catalog:",
+    "@enkaku/react": "catalog:",
     "@mantine/core": "catalog:",
     "@mantine/hooks": "catalog:",
+    "@mantine/notifications": "catalog:",
+    "@mokei/flow-client": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "@tabler/icons-react": "catalog:",
     "@tanstack/react-router": "catalog:",
@@ -28,16 +35,20 @@
     "@sozai/schema": "catalog:",
     "@tanstack/router-devtools": "catalog:",
     "@tanstack/router-plugin": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
     "@types/luxon": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "globals": "catalog:",
+    "jsdom": "catalog:",
     "postcss": "catalog:",
     "postcss-preset-mantine": "catalog:",
     "postcss-simple-vars": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

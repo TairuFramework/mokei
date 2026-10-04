@@ -114,6 +114,53 @@ test('serves standalone flow errors and acknowledges shutdown over a socket', as
   }
 })
 
+test('reports monitor procedures as unavailable when no monitor handlers are provided', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mokei-host-monitor-'))
+  const socketPath = join(directory, 'daemon.sock')
+  const daemon = await serveHostDaemon({
+    socketPath,
+    pidPath: join(directory, 'daemon.pid'),
+    events: new EventTarget(),
+    handleSignals: false,
+  })
+  const client = await createClient(socketPath)
+  try {
+    const stream = client.createStream('monitor.attach', {
+      param: { url: 'http://127.0.0.1:1234/' },
+    })
+    await expect(stream).rejects.toMatchObject({ code: 'MONITOR_UNAVAILABLE' })
+  } finally {
+    await client.dispose()
+    await daemon.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('uses a provided monitor handler without installing a duplicate fallback', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mokei-host-monitor-handler-'))
+  const socketPath = join(directory, 'daemon.sock')
+  const attach = vi.fn<ProcedureHandlers<Protocol>['monitor.attach']>(() => {})
+  const daemon = await serveHostDaemon({
+    socketPath,
+    pidPath: join(directory, 'daemon.pid'),
+    events: new EventTarget(),
+    handleSignals: false,
+    handlers: { 'monitor.attach': attach },
+  })
+  const client = await createClient(socketPath)
+  try {
+    const stream = client.createStream('monitor.attach', {
+      param: { url: 'http://127.0.0.1:1234/' },
+    })
+    await stream
+    expect(attach).toHaveBeenCalledOnce()
+  } finally {
+    await client.dispose()
+    await daemon.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('validates unsigned start requests before dispatch over the production socket', async () => {
   const directory = await mkdtemp('/tmp/mokei-host-validation-')
   const socketPath = join(directory, 'daemon.sock')

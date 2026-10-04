@@ -23,6 +23,7 @@ import {
   InboxPromptInProgressError,
 } from '../src/desktop.js'
 import { createFlowHandlers } from '../src/index.js'
+import { createNativeSurface } from '../src/native-surface.js'
 import type { FlowService } from '../src/service.js'
 import { FlowServiceUnavailableError } from '../src/service.js'
 import { inputFlow, predictor } from './support/input-flow.js'
@@ -75,7 +76,8 @@ async function setup() {
   let status: FlowServiceStatus = { state: 'ready' }
   let stopping = false
   const operations = new Set<Promise<unknown>>()
-  const desktop = createFlowDesktopController({
+  const native = createNativeSurface({
+    monitorURL: () => undefined,
     notifications: false,
     host: () => host,
     onError: () => {},
@@ -86,6 +88,13 @@ async function setup() {
       dispose: async () => {},
     },
   })
+  const desktop = createFlowDesktopController({
+    surfaces: [native],
+    native,
+    host: () => host,
+    onError: () => {},
+  })
+  host.events.on('inbox:settled', ({ item, outcome }) => desktop.settled(item, outcome))
   const service: FlowService = {
     status: () => status,
     resources() {
@@ -134,6 +143,8 @@ async function setup() {
       events: () => {},
       shutdown: () => {},
       spawn: () => {},
+      'monitor.attach': () => {},
+      'monitor.presence': () => {},
     },
     identity,
     accessRules: { '*': { allow: true } },

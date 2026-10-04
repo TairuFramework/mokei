@@ -53,6 +53,14 @@ run snapshots and the pending inbox; buffer incoming events during those queries
 affected identifiers to reconcile current state. Repeat on reconnect. Closing one stream
 removes its listeners without affecting other clients or runtime transitions.
 
+## Monitor handlers
+
+`serveHostDaemon` can receive handlers for `monitor.attach` and `monitor.presence` alongside
+flow handlers. The host package only composes and serves these procedures; the application
+owns attachment tracking, tab liveness and inbox delivery policy. The default standalone daemon
+does not register monitor presence handlers. The composed Mokei daemon connects them to its
+monitor server and flow surfaces.
+
 ## Elicitation
 
 Enable elicitation when constructing a host. The capability is fixed when each client is built,

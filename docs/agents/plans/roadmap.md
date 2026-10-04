@@ -53,8 +53,8 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **Flow daemon milestone** (`milestones/2026-10-01-flow-daemon-milestone.md`) -- sub-projects 1 to 4 complete
-  (CLI and MCP shipped with `mokei flows mcp`; native desktop QA passed). The monitor pages (sub-project 5) are next.
+- **Flow monitor follow-ons** (`next/2026-10-04-flow-monitor-follow-ons.md`) -- monitor UI pass and flow service
+  startup error causes. The flow daemon milestone is complete (sub-project 5, the monitor, shipped with manual QA).
 
 The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) -- both
 revisions at capability parity, nothing open.

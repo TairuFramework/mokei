@@ -74,7 +74,7 @@ graceful shutdown. An abrupt process exit can lose unflushed telemetry.
 | `runs.trace` | Read only the selected run's captured `{ spans, logs }`; a known run without a trace returns empty arrays. |
 | `inbox.list`, `inbox.get` | Inspect currently pending approval or input items. |
 | `inbox.answer`, `inbox.decline`, `inbox.cancel` | Settle through runtime validation and single-use approval authorization; return `{ settled: true }`. |
-| `inbox.prompt` | Explicitly open a supported desktop dialog and return `{ action: 'accept' \| 'decline' \| 'cancel' }` after validated settlement. |
+| `inbox.prompt` | Route a pending item to the monitor or native dialog and return `{ action: 'accept' \| 'decline' \| 'cancel' }` after validated settlement. |
 
 Trace capture is batched: reads can lag active work and do not force a flush.
 The shared `events` stream includes `service:status`, `run:state`, `inbox:added` and
@@ -94,6 +94,29 @@ after reconnecting; event IDs do not provide a replay cursor.
 | `PROMPT_IN_PROGRESS` | Another prompt operation owns the same item. |
 | `INTERNAL_ERROR` | Unexpected failure; public message is `Flow request failed`, with details logged locally. |
 
+## Monitor surface
+
+The daemon routes inbox notifications and prompts through the monitor surface before the native
+desktop surface. Each open monitor tab reports Page Visibility API state and browser notification
+permission. The daemon verifies claimed visibility with a fresh ping before suppressing a
+notification or routing a prompt.
+
+An attended tab suppresses desktop notifications for new items. If no attended tab answers,
+the daemon tries a reachable monitor tab with browser notification permission, then the native
+surface. Notifications suppressed while the monitor is attended are not delivered later.
+Recovery summaries remain native-only; the monitor reads pending items when it connects.
+
+Prompts go to an attended monitor tab first. A hidden tab can receive a browser notification
+that opens the item form. If no monitor tab can show the prompt, the native dialog is tried.
+The flow host remains the only component that settles inbox items. The monitor uses
+`inbox.answer`, `inbox.decline` or `inbox.cancel`; a tab that disconnects before settlement
+allows the prompt to fall back to the native surface.
+
+Monitor presence and delivery replies have five-second ping and acknowledgement timeouts. Stale
+replies are ignored, and withdrawals close a notification or prompt that is no longer wanted.
+Disabling `desktop.notifications` disables only native notifications. The monitor still handles
+notifications when its browser permission allows them.
+
 ## Desktop policy
 
 `desktop.notifications` defaults to `false`. Set it to `true` in configuration and restart to
@@ -108,8 +131,9 @@ Notification failures are logged without retrying or changing inbox items.
 On macOS with `alerter`, clicking a single-item notification opens that item's dialog through
 the same path as `inbox.prompt`; a click while that item's dialog is open, or on an item whose
 form cannot be shown, does nothing. Each item notification has its own group, so new items do
-not replace earlier ones, and settling an item removes its notification. Clicking the count
-message only dismisses it. `osascript` notifications open no dialog.
+not replace earlier ones, and settling an item removes its notification. When a monitor is attached,
+clicking an item opens its monitor inbox page, and clicking the count message opens `/inbox`.
+Without a monitor, clicking the count message only dismisses it. `osascript` notifications open no dialog.
 
 Otherwise dialogs open only through `inbox.prompt`, including when notifications are disabled. Approval
 dialogs show the flow label and planned tools and require explicit approval. Input dialogs use

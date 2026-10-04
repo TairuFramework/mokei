@@ -10,6 +10,9 @@ import { openFlowDatabase } from './database.js'
 import type { FlowDesktopAdapter, FlowDesktopController } from './desktop.js'
 import { createFlowDesktopController } from './desktop.js'
 import { loadFlowDirs } from './flow-dirs.js'
+import type { MonitorPresence } from './monitor-presence.js'
+import { createMonitorSurface } from './monitor-surface.js'
+import { createNativeSurface } from './native-surface.js'
 import { startRetention } from './retention.js'
 import { createSQLiteRunStore } from './sqlite-run-store.js'
 import { createSQLiteTaskStore } from './sqlite-task-store.js'
@@ -22,6 +25,8 @@ export type FlowServiceParams = {
   configPath?: string
   databasePath?: string
   desktop?: FlowDesktopAdapter
+  monitor?: MonitorPresence
+  openURL?: (url: string) => Promise<void>
   onEvent(event: HostEvent): void
 }
 export type FlowService = {
@@ -199,9 +204,21 @@ export function createFlowServiceWithDependencies(
       if (stopping) return
       stage = 'create the flow session'
       session = dependencies.createSession()
-      desktop = createFlowDesktopController({
+      const native = createNativeSurface({
         adapter: params.desktop,
         notifications: config.desktop.notifications,
+        monitorURL: () => params.monitor?.currentURL(),
+        openURL: params.openURL,
+        host: () => {
+          if (host == null) throw new FlowServiceUnavailableError({ status, stopping })
+          return host
+        },
+        onError: dependencies.report,
+      })
+      desktop = createFlowDesktopController({
+        surfaces:
+          params.monitor == null ? [native] : [createMonitorSurface(params.monitor), native],
+        native,
         host: () => {
           if (host == null) throw new FlowServiceUnavailableError({ status, stopping })
           return host
@@ -228,7 +245,7 @@ export function createFlowServiceWithDependencies(
             emit({ type: 'inbox:added', meta: { eventID: randomUUID(), time: Date.now() }, data })
           },
           'inbox:settled': (data) => {
-            desktop?.settled(data.item)
+            desktop?.settled(data.item, data.outcome)
             emit({ type: 'inbox:settled', meta: { eventID: randomUUID(), time: Date.now() }, data })
           },
         },

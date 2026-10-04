@@ -47,5 +47,6 @@ export {
   type DesktopNotifier,
   type DesktopNotifyOptions,
 } from './notification.js'
+export { type OpenURLOptions, openURL } from './open-url.js'
 export { createRunner, type Runner, type RunOptions, type RunResult } from './runner.js'
 export { createDesktopTools, type DesktopTools, type DesktopToolsOptions } from './tools.js'
