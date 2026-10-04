@@ -179,6 +179,9 @@ catalogs:
     '@enkaku/protocol':
       specifier: ^0.21.4
       version: 0.21.4
+    '@enkaku/react':
+      specifier: ^0.21.3
+      version: 0.21.3
     '@enkaku/server':
       specifier: ^0.21.3
       version: 0.21.3
@@ -654,6 +657,9 @@ importers:
         specifier: 'catalog:'
         version: 0.21.3(@logtape/logtape@2.3.10)
       '@enkaku/http-fetch':
+        specifier: 'catalog:'
+        version: 0.21.3(@logtape/logtape@2.3.10)
+      '@enkaku/react':
         specifier: 'catalog:'
         version: 0.21.3(@logtape/logtape@2.3.10)
       '@mantine/core':
@@ -3072,6 +3078,9 @@ packages:
   '@enkaku/protocol@0.21.4':
     resolution: {integrity: sha512-VGPN/Crx3OCToy0cKF30ro/QBEh7FQoUf+tQo/GONV3ui0urohNf2lDkrojyljrX17352ytdqA7iG+B9BrZubQ==}
 
+  '@enkaku/react@0.21.3':
+    resolution: {integrity: sha512-GGW3/MDmUnZRaEjcWCxKXnPb3RDHSQACZI+sOsFph2gHRTKgzeQKchY4KF0Ce4stLDY94r2GkQBlD1u/hQ1P7w==}
+
   '@enkaku/server@0.21.3':
     resolution: {integrity: sha512-CCkBsyPInrHkOh788/YQpON36bm8IlYpjR9JUvvwOBh3/OPU9gQIAUiSfgd5Ct1S0AJDemkD7mM68FucJ2eY5g==}
 
@@ -4535,6 +4544,9 @@ packages:
 
   '@sozai/generator@0.2.1':
     resolution: {integrity: sha512-pU1YZlCL9emOvpcLEGFoLYULPnH+2fQTMrNa5dq8Z/M2loIJvuvvbMFUW4O4Qn3bdMEMO3Rpr5auCTjxL+FdjA==}
+
+  '@sozai/json@0.1.1':
+    resolution: {integrity: sha512-5ftTPdDYVeFj14VZWBKi4jV5Xu0XC2yioNEWXgSfrdw9QkCY+R6nNwkukHaVwyFAnz8qLnKHYNjg+42gxAOo4Q==}
 
   '@sozai/json@0.2.0':
     resolution: {integrity: sha512-yGfDawu+8gYNigjjJHjcstRvBbRaKoUw+ec1F7MCA85V84L/ClL+yYzFmnZDKUQD8cxC4k2Hw8RxF+PvlbZW8w==}
@@ -13450,6 +13462,13 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
+  '@enkaku/react@0.21.3(@logtape/logtape@2.3.10)':
+    dependencies:
+      '@enkaku/client': 0.21.3(@logtape/logtape@2.3.10)
+      '@sozai/json': 0.1.1
+    transitivePeerDependencies:
+      - '@logtape/logtape'
+
   '@enkaku/server@0.21.3(@logtape/logtape@2.3.10)':
     dependencies:
       '@enkaku/otel': 0.21.3(@logtape/logtape@2.3.10)
@@ -14883,6 +14902,8 @@ snapshots:
   '@sozai/generator@0.2.1':
     dependencies:
       '@sozai/async': 0.3.0
+
+  '@sozai/json@0.1.1': {}
 
   '@sozai/json@0.2.0': {}
 

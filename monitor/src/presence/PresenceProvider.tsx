@@ -1,7 +1,8 @@
+import { useDidUpdate, useDocumentVisibility, useSetState, useWindowEvent } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import type { MonitorPresenceReceive, MonitorPresenceSend } from '@mokei/host-protocol'
 import { useNavigate } from '@tanstack/react-router'
-import { createContext, type ReactNode, use, useCallback, useEffect, useRef, useState } from 'react'
+import { createContext, type ReactNode, use, useCallback, useEffect, useRef } from 'react'
 
 import { useFlow } from '../flow/FlowProvider.js'
 import {
@@ -29,8 +30,15 @@ export function usePresence(): PresenceContextValue {
 export function PresenceProvider({ children }: { children: ReactNode }) {
   const { client, control, epoch, on, restarted } = useFlow()
   const navigate = useNavigate()
-  const [activeItemID, setActiveItemID] = useState<string>()
-  const [canNotify, setCanNotify] = useState(browserCanNotify)
+  const [{ activeItemID, canNotify }, setPresence] = useSetState<{
+    activeItemID?: string
+    canNotify: boolean
+  }>({ canNotify: browserCanNotify() })
+  const visibility = useDocumentVisibility()
+  const lastSentState = useRef<Extract<MonitorPresenceSend, { type: 'state' }> | null>(null)
+  const lifecycle = useRef({ stop: () => {}, restore: (_event: PageTransitionEvent) => {} })
+  useWindowEvent('pagehide', () => lifecycle.current.stop())
+  useWindowEvent('pageshow', (event) => lifecycle.current.restore(event))
   const active = useRef<string | undefined>(undefined)
   const sendState = useRef(() => {})
   const deliveries = useRef(new Map<string, Delivery>())
@@ -70,21 +78,29 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     },
     [openItem],
   )
-  const setActiveItem = useCallback((id?: string) => {
-    active.current = id
-    setActiveItemID(id)
-    sendState.current()
-  }, [])
+  const setActiveItem = useCallback(
+    (id?: string) => {
+      active.current = id
+      setPresence({ activeItemID: id })
+      sendState.current()
+    },
+    [setPresence],
+  )
   const refreshPermission = useCallback(() => {
-    setCanNotify(browserCanNotify())
+    setPresence({ canNotify: browserCanNotify() })
     sendState.current()
-  }, [])
+  }, [setPresence])
   const requestPermission = useCallback(async () => {
     await requestNotificationPermission()
     refreshPermission()
   }, [refreshPermission])
 
+  // Some browsers do not expose notification permission through Permissions API.
+  useWindowEvent('focus', refreshPermission)
   useEffect(() => observeNotificationPermission(refreshPermission), [refreshPermission])
+  useDidUpdate(() => {
+    sendState.current()
+  }, [visibility])
   useEffect(
     () =>
       on((event) => {
@@ -134,16 +150,29 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
         const send = (message: MonitorPresenceSend) => {
           if (live && !stopped) void channel.send(message).catch(fail)
         }
-        sendState.current = () => {
-          setCanNotify(browserCanNotify())
-          send({
+        lastSentState.current = null
+        const sendCurrentState = () => {
+          if (!live || stopped) return
+          setPresence({ canNotify: browserCanNotify() })
+          const state: Extract<MonitorPresenceSend, { type: 'state' }> = {
             type: 'state',
+            // Read live visibility so ping replies cannot overtake state before React commits.
             visible: document.visibilityState === 'visible',
             canNotify: browserCanNotify(),
             ...(active.current == null ? {} : { activeItemID: active.current }),
-          })
+          }
+          const previous = lastSentState.current
+          if (
+            previous?.visible === state.visible &&
+            previous.canNotify === state.canNotify &&
+            previous.activeItemID === state.activeItemID
+          )
+            return
+          send(state)
+          lastSentState.current = state
         }
-        sendState.current()
+        sendState.current = sendCurrentState
+        sendCurrentState()
         void channel.catch(fail)
         const existing = new Map(deliveries.current)
         void control.inbox
@@ -160,6 +189,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
         function receive(message: MonitorPresenceReceive) {
           if (message.type === 'ping') {
             failures = 0
+            sendCurrentState()
             send({ type: 'pong', nonce: message.nonce })
             return
           }
@@ -204,6 +234,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
               deliveries.current.get(message.attemptID) === delivery &&
               Date.now() <= message.deadline
             ) {
+              sendCurrentState()
               send({ type: 'ack', attemptID: message.attemptID, shown })
             }
           }
@@ -234,7 +265,6 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
         fail()
       }
     }
-    const visibilityChanged = () => sendState.current()
     const stop = () => {
       stopped = true
       if (timer != null) clearTimeout(timer)
@@ -246,17 +276,13 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       failures = 0
       connect()
     }
-    document.addEventListener('visibilitychange', visibilityChanged)
-    window.addEventListener('pagehide', stop)
-    window.addEventListener('pageshow', restore)
+    lifecycle.current = { stop, restore }
     connect()
     return () => {
       stop()
-      document.removeEventListener('visibilitychange', visibilityChanged)
-      window.removeEventListener('pagehide', stop)
-      window.removeEventListener('pageshow', restore)
+      lifecycle.current = { stop: () => {}, restore: () => {} }
     }
-  }, [client, control, epoch, restarted, closeDelivery, openItem, showToast])
+  }, [client, control, epoch, restarted, closeDelivery, openItem, showToast, setPresence])
   useEffect(
     () => () => {
       for (const id of deliveries.current.keys()) closeDelivery(id)

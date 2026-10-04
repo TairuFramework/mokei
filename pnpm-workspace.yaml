@@ -29,6 +29,7 @@ catalog:
   '@enkaku/http-serve': ^0.21.3
   '@enkaku/node-streams': ^0.21.3
   '@enkaku/protocol': ^0.21.4
+  '@enkaku/react': ^0.21.3
   '@enkaku/server': ^0.21.3
   '@enkaku/socket': ^0.21.3
   '@enkaku/transport': ^0.21.3

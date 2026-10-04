@@ -1,12 +1,12 @@
 import { Code, Group, NativeSelect, Stack, Table, Text, TextInput } from '@mantine/core'
+import { useInputState } from '@mantine/hooks'
 import type { StoredLog } from '@mokei/host-protocol'
-import { useState } from 'react'
 
 export type LogListProps = { logs: Array<StoredLog>; spanID?: string }
 
 export function LogList({ logs, spanID }: LogListProps) {
-  const [level, setLevel] = useState('all')
-  const [text, setText] = useState('')
+  const [level, setLevel] = useInputState('all')
+  const [text, setText] = useInputState('')
   const filtered = logs.filter((log) => {
     return (
       (spanID == null || log.spanID === spanID) &&
@@ -20,14 +20,10 @@ export function LogList({ logs, spanID }: LogListProps) {
         <NativeSelect
           label="Log level"
           value={level}
-          onChange={(event) => setLevel(event.currentTarget.value)}
+          onChange={setLevel}
           data={['all', 'trace', 'debug', 'info', 'warning', 'error', 'fatal']}
         />
-        <TextInput
-          label="Search logs"
-          value={text}
-          onChange={(event) => setText(event.currentTarget.value)}
-        />
+        <TextInput label="Search logs" value={text} onChange={setText} />
         {spanID == null ? null : <Text size="sm">Span: {spanID}</Text>}
       </Group>
       {filtered.length === 0 ? (

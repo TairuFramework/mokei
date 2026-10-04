@@ -1,9 +1,15 @@
+import { useInterval, useTimeout } from '@mantine/hooks'
 import { type RunTrace, TERMINAL_RUN_STATES } from '@mokei/flow-client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useFlow } from './FlowProvider.js'
 import { createGenerationGuard } from './reconcile.js'
 import { useRun } from './useRun.js'
+
+type TraceState = { trace?: RunTrace } & (
+  | { status: 'idle' | 'loading' | 'ready'; error?: never }
+  | { status: 'error'; error: unknown }
+)
 
 export function useRunTrace(runID: string) {
   const { control, connected, epoch, on, status } = useFlow()
@@ -12,21 +18,21 @@ export function useRunTrace(runID: string) {
   const terminal = run == null ? undefined : TERMINAL_RUN_STATES.includes(run.state)
   const guard = useRef(createGenerationGuard())
   const fetchTrace = useRef<() => void>(() => {})
-  const [state, setState] = useState<{ trace?: RunTrace; loading: boolean; error?: unknown }>({
-    loading: true,
-  })
+  const [state, setState] = useState<TraceState>({ status: 'loading' })
+  const poll = useRef(() => {})
+  const { start: startPolling, stop: stopPolling } = useInterval(() => poll.current(), 2_000)
+  const { start: startDeadline, clear: clearDeadline } = useTimeout(stopPolling, 10_000)
   const refresh = useCallback(() => fetchTrace.current(), [])
 
   useEffect(() => {
     const generation = guard.current.next()
     const current = () => guard.current.isCurrent(generation)
-    setState({ loading: ready && terminal != null })
+    setState({ status: ready && terminal != null ? 'loading' : 'idle' })
     if (!ready || terminal == null) return
     let inFlight = false
     let dirty = false
     let previous: string | undefined
     let stable = false
-    let interval: ReturnType<typeof setInterval> | undefined
     const deadline = terminal ? Date.now() + 10_000 : undefined
     const expired = () => deadline != null && Date.now() >= deadline
     async function read() {
@@ -36,7 +42,7 @@ export function useRunTrace(runID: string) {
         return
       }
       inFlight = true
-      setState((value) => ({ ...value, loading: true, error: undefined }))
+      setState((value) => ({ trace: value.trace, status: 'loading' }))
       try {
         if (control.runs.trace == null) throw new Error('Run traces are unavailable')
         const trace = await control.runs.trace(runID)
@@ -44,11 +50,11 @@ export function useRunTrace(runID: string) {
         const signature = JSON.stringify(trace)
         stable = terminal === true && previous === signature
         previous = signature
-        setState({ trace, loading: false })
-        if (stable && interval != null) clearInterval(interval)
+        setState({ trace, status: 'ready' })
+        if (stable) stopPolling()
       } catch (error) {
         previous = undefined
-        if (current()) setState((value) => ({ ...value, loading: false, error }))
+        if (current()) setState((value) => ({ trace: value.trace, status: 'error', error }))
       } finally {
         inFlight = false
         if (current() && dirty) {
@@ -69,23 +75,37 @@ export function useRunTrace(runID: string) {
             : event.data.item.runID
       if (eventRunID === runID) void read()
     })
-    interval = setInterval(() => {
+    poll.current = () => {
       if (!stable && !expired()) void read()
-    }, 2_000)
-    const timeout = terminal
-      ? setTimeout(() => {
-          clearInterval(interval)
-        }, 10_000)
-      : undefined
+    }
+    startPolling()
+    if (terminal) startDeadline()
     void read()
     return () => {
       guard.current.next()
       off()
-      clearInterval(interval)
-      if (timeout != null) clearTimeout(timeout)
+      stopPolling()
+      clearDeadline()
+      poll.current = () => {}
       fetchTrace.current = () => {}
     }
-  }, [control, epoch, on, ready, runID, terminal])
+  }, [
+    control,
+    epoch,
+    on,
+    ready,
+    runID,
+    terminal,
+    startPolling,
+    stopPolling,
+    startDeadline,
+    clearDeadline,
+  ])
 
-  return { ...state, error: state.error ?? runError, refresh }
+  return {
+    trace: state.trace,
+    loading: state.status === 'loading',
+    error: state.error ?? runError,
+    refresh,
+  }
 }

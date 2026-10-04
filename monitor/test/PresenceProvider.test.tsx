@@ -174,6 +174,46 @@ test('answers ping', async () => {
   await f.receive({ type: 'ping', nonce: 'nonce' })
   expect(f.channels[0].send).toHaveBeenLastCalledWith({ type: 'pong', nonce: 'nonce' })
 })
+test('sends live hidden state before pong and deduplicates the visibility effect', async () => {
+  const f = fixture()
+  await act(async () => {})
+  f.channels[0].send.mockClear()
+  await act(async () => {
+    visible = 'hidden'
+    f.channels[0].controller.enqueue({ type: 'ping', nonce: 'hidden' })
+    await Promise.resolve()
+    expect(f.channels[0].send.mock.calls).toEqual([
+      [{ type: 'state', visible: false, canNotify: true }],
+      [{ type: 'pong', nonce: 'hidden' }],
+    ])
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  expect(f.channels[0].send).toHaveBeenCalledTimes(2)
+})
+test('sends live presence before navigation acknowledgement without duplicate state', async () => {
+  let resolve!: () => void
+  navigate.mockReturnValueOnce(
+    new Promise<void>((done) => {
+      resolve = done
+    }),
+  )
+  const f = fixture()
+  await f.receive(prompt())
+  fireEvent.click(screen.getByText('active'))
+  f.channels[0].send.mockClear()
+  await act(async () => {
+    visible = 'hidden'
+    permission = 'denied'
+    resolve()
+    await Promise.resolve()
+    expect(f.channels[0].send.mock.calls).toEqual([
+      [{ type: 'state', visible: false, canNotify: false, activeItemID: 'other' }],
+      [{ type: 'ack', attemptID: 'attempt', shown: false }],
+    ])
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  expect(f.channels[0].send).toHaveBeenCalledTimes(2)
+})
 test('hidden notify displays, acknowledges and links a tagged notification', async () => {
   visible = 'hidden'
   const focus = vi.spyOn(window, 'focus').mockImplementation(() => {})
@@ -456,4 +496,24 @@ test('hidden prompt without notification permission declines delivery', async ()
     attemptID: 'attempt',
     shown: false,
   })
+})
+
+test('initial hidden presence sends once and visibility changes resend without reopening', () => {
+  visible = 'hidden'
+  const f = fixture()
+  expect(f.channels[0].send).toHaveBeenCalledOnce()
+  expect(f.channels[0].send).toHaveBeenLastCalledWith({
+    type: 'state',
+    visible: false,
+    canNotify: true,
+  })
+  visible = 'visible'
+  fireEvent(document, new Event('visibilitychange'))
+  expect(f.channels[0].send).toHaveBeenCalledTimes(2)
+  expect(f.channels[0].send).toHaveBeenLastCalledWith({
+    type: 'state',
+    visible: true,
+    canNotify: true,
+  })
+  expect(f.createChannel).toHaveBeenCalledOnce()
 })

@@ -39,11 +39,8 @@ export function observeNotificationPermission(changed: () => void): () => void {
       })
       .catch(() => {})
   }
-  // Some browsers do not expose notification permission through Permissions API.
-  window.addEventListener('focus', changed)
   return () => {
     stopped = true
     status?.removeEventListener('change', changed)
-    window.removeEventListener('focus', changed)
   }
 }

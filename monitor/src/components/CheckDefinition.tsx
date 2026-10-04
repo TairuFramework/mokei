@@ -1,17 +1,26 @@
 import { Alert, Button, JsonInput, Stack, Text } from '@mantine/core'
+import { useSetState } from '@mantine/hooks'
 import type { FlowCheckResult } from '@mokei/flow-client'
 import { useState } from 'react'
 
 import { useFlow } from '../flow/FlowProvider.js'
 import { isRecord } from '../flow/schema-fields.js'
 
+type CheckState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'error'; error: string }
+  | { status: 'done'; result: FlowCheckResult }
+
 export function CheckDefinition() {
   const { control, connected, status } = useFlow()
-  const [json, setJSON] = useState('{}')
-  const [jsonError, setJSONError] = useState<string>()
-  const [error, setError] = useState<string>()
-  const [result, setResult] = useState<FlowCheckResult>()
-  const [checking, setChecking] = useState(false)
+  const [{ json, jsonError }, setInput] = useSetState<{ json: string; jsonError?: string }>({
+    json: '{}',
+  })
+  const [state, setState] = useState<CheckState>({ status: 'idle' })
+  const checking = state.status === 'checking'
+  const error = state.status === 'error' ? state.error : undefined
+  const result = state.status === 'done' ? state.result : undefined
   const disabled = !connected || status?.state !== 'ready' || checking
 
   async function check() {
@@ -21,19 +30,15 @@ export function CheckDefinition() {
       definition = JSON.parse(json)
       if (!isRecord(definition)) throw new Error('Expected object')
     } catch {
-      setJSONError('Enter a valid JSON object')
+      setInput({ jsonError: 'Enter a valid JSON object' })
       return
     }
-    setJSONError(undefined)
-    setError(undefined)
-    setResult(undefined)
-    setChecking(true)
+    setInput({ jsonError: undefined })
+    setState({ status: 'checking' })
     try {
-      setResult(await control.flows.check(definition))
+      setState({ status: 'done', result: await control.flows.check(definition) })
     } catch (error) {
-      setError(String(error))
-    } finally {
-      setChecking(false)
+      setState({ status: 'error', error: String(error) })
     }
   }
 
@@ -46,7 +51,7 @@ export function CheckDefinition() {
       <JsonInput
         label="Flow definition JSON"
         value={json}
-        onChange={setJSON}
+        onChange={(json) => setInput({ json })}
         error={jsonError}
         formatOnBlur
         rows={8}

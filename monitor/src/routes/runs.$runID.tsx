@@ -39,20 +39,21 @@ function RunDetail({ runID }: { runID: string }) {
   } = useRunTrace(runID)
   const { items, loading: inboxLoading, error: inboxError } = useInbox({ runID })
   const [spanID, setSpanID] = useState<string>()
-  const [cancelling, setCancelling] = useState(false)
-  const [actionError, setActionError] = useState<unknown>()
+  const [action, setAction] = useState<{ cancelling: boolean; error?: unknown }>({
+    cancelling: false,
+  })
+  const { cancelling, error: actionError } = action
   const ready = connected && status?.state === 'ready'
   async function cancel() {
-    setCancelling(true)
-    setActionError(undefined)
+    setAction({ cancelling: true })
     try {
       await control.runs.cancel(runID)
       refresh()
       refreshTrace()
     } catch (error) {
-      setActionError(error)
+      setAction((value) => ({ ...value, error }))
     } finally {
-      setCancelling(false)
+      setAction((value) => ({ ...value, cancelling: false }))
     }
   }
   if (run == null)

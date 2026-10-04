@@ -15,6 +15,7 @@
   "dependencies": {
     "@enkaku/client": "catalog:",
     "@enkaku/http-fetch": "catalog:",
+    "@enkaku/react": "catalog:",
     "@mantine/core": "catalog:",
     "@mantine/hooks": "catalog:",
     "@mantine/notifications": "catalog:",

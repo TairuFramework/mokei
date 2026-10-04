@@ -32,18 +32,17 @@ function RunsPage() {
   const { control, connected, status } = useFlow()
   const [state, setState] = useState<RunState>()
   const { runs, loading, error, refresh } = useRuns(state == null ? undefined : { states: [state] })
-  const [cancelling, setCancelling] = useState<string>()
-  const [actionError, setActionError] = useState<unknown>()
+  const [action, setAction] = useState<{ cancelling?: string; error?: unknown }>({})
+  const { cancelling, error: actionError } = action
   async function cancel(runID: string) {
-    setCancelling(runID)
-    setActionError(undefined)
+    setAction({ cancelling: runID })
     try {
       await control.runs.cancel(runID)
       refresh()
     } catch (error) {
-      setActionError(error)
+      setAction((value) => ({ ...value, error }))
     } finally {
-      setCancelling(undefined)
+      setAction((value) => ({ ...value, cancelling: undefined }))
     }
   }
   return (

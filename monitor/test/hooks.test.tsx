@@ -331,3 +331,51 @@ test('terminal trace polling stops after ten seconds even if reads differ', asyn
   })
   expect(vi.mocked(f.control.runs.trace).mock.calls.length).toBe(reads)
 })
+
+test('trace coalesces polling and manual refreshes while a read is in flight', async () => {
+  vi.useFakeTimers()
+  const f = fixture()
+  const pending = deferred<RunTrace>()
+  vi.mocked(f.control.runs.trace).mockReturnValueOnce(pending.promise)
+  const { result, unmount } = renderHook(() => useRunTrace('run-1'), { wrapper: f.wrapper })
+  await act(async () => {})
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(4_000)
+    result.current.refresh()
+    result.current.refresh()
+  })
+  expect(f.control.runs.trace).toHaveBeenCalledOnce()
+  await act(async () => {
+    pending.resolve({ spans: [], logs: [] })
+  })
+  expect(f.control.runs.trace).toHaveBeenCalledTimes(2)
+  unmount()
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20_000)
+  })
+  expect(f.control.runs.trace).toHaveBeenCalledTimes(2)
+})
+
+test('trace discards an old epoch read and restarts the polling cadence', async () => {
+  vi.useFakeTimers()
+  const f = fixture()
+  const pending = deferred<RunTrace>()
+  vi.mocked(f.control.runs.trace).mockReturnValueOnce(pending.promise)
+  const { result, rerender } = renderHook(() => useRunTrace('run-1'), { wrapper: f.wrapper })
+  await act(async () => {})
+  f.epoch()
+  rerender()
+  await act(async () => {})
+  expect(f.control.runs.trace).toHaveBeenCalledTimes(3)
+  await act(async () => {
+    pending.reject(new Error('Old transport failed'))
+    await vi.advanceTimersByTimeAsync(1_999)
+  })
+  expect(result.current.error).toBeUndefined()
+  expect(result.current.trace).toEqual({ spans: [], logs: [] })
+  expect(f.control.runs.trace).toHaveBeenCalledTimes(3)
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1)
+  })
+  expect(f.control.runs.trace).toHaveBeenCalledTimes(4)
+})

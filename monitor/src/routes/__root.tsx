@@ -1,3 +1,4 @@
+import { EnkakuProvider } from '@enkaku/react'
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
 import {
@@ -10,12 +11,11 @@ import {
 import { Notifications } from '@mantine/notifications'
 import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { Provider as JotaiProvider } from 'jotai'
-import { lazy, Suspense, useMemo } from 'react'
+import { lazy, Suspense } from 'react'
 
 import { AppHeader } from '../components/AppHeader.js'
 import { ConnectionBanner } from '../components/ConnectionBanner.js'
 import { NotificationPermissionButton } from '../components/NotificationPermissionButton.js'
-import { EnvironmentContext } from '../enkaku/context.js'
 import { FlowProvider, useFlow } from '../flow/FlowProvider.js'
 import { PresenceProvider } from '../presence/PresenceProvider.js'
 
@@ -48,14 +48,7 @@ const theme = createTheme({
 })
 
 function MonitorApp() {
-  const { client, connected, restarted } = useFlow()
-  const environment = useMemo(
-    () =>
-      connected
-        ? { status: 'connected' as const, client }
-        : { status: 'disconnected' as const, connect: () => window.location.reload() },
-    [client, connected],
-  )
+  const { client, restarted } = useFlow()
   if (restarted)
     return (
       <Center mih="100vh">
@@ -63,7 +56,7 @@ function MonitorApp() {
       </Center>
     )
   return (
-    <EnvironmentContext value={environment}>
+    <EnkakuProvider client={client}>
       <AppShell header={{ height: 60 }} padding="md">
         <AppShell.Header
           style={{
@@ -80,7 +73,7 @@ function MonitorApp() {
           <Outlet />
         </AppShell.Main>
       </AppShell>
-    </EnvironmentContext>
+    </EnkakuProvider>
   )
 }
 

@@ -9,7 +9,8 @@ import {
   Stack,
   TextInput,
 } from '@mantine/core'
-import { useMemo, useState } from 'react'
+import { useSetState } from '@mantine/hooks'
+import { useMemo } from 'react'
 
 import { isRecord, schemaToFields } from '../flow/schema-fields.js'
 
@@ -35,30 +36,36 @@ export function SchemaForm({
   submitLabel = 'Accept',
 }: SchemaFormProps) {
   const fields = useMemo(() => schemaToFields(schema), [schema])
-  const [values, setValues] = useState<Record<string, unknown>>(() =>
-    Object.fromEntries(
+  const [{ values, fieldErrors, json, jsonError }, setState] = useSetState<{
+    values: Record<string, unknown>
+    fieldErrors: Record<string, string>
+    json: string
+    jsonError?: string
+  }>({
+    values: Object.fromEntries(
       (fields ?? []).flatMap((field) => {
         if (field.default !== undefined) return [[field.name, field.default]]
         return field.kind === 'boolean' ? [[field.name, false]] : []
       }),
     ),
-  )
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
-  const [json, setJSON] = useState('{}')
-  const [jsonError, setJSONError] = useState<string>()
+    fieldErrors: {},
+    json: '{}',
+  })
   function change(name: string, value: unknown) {
-    setValues((previous) => ({ ...previous, [name]: value }))
-    setFieldErrors((previous) => ({ ...previous, [name]: '' }))
+    setState((previous) => ({
+      values: { ...previous.values, [name]: value },
+      fieldErrors: { ...previous.fieldErrors, [name]: '' },
+    }))
   }
   function submit() {
     if (fields == null) {
       try {
         const content: unknown = JSON.parse(json)
         if (!isRecord(content)) throw new Error('Enter a JSON object')
-        setJSONError(undefined)
+        setState({ jsonError: undefined })
         onSubmit(content)
       } catch {
-        setJSONError('Enter a valid JSON object')
+        setState({ jsonError: 'Enter a valid JSON object' })
       }
       return
     }
@@ -89,7 +96,7 @@ export function SchemaForm({
         Object.defineProperty(content, field.name, { value, enumerable: true, writable: true })
       }
     }
-    setFieldErrors(invalid)
+    setState({ fieldErrors: invalid })
     if (Object.keys(invalid).length === 0) onSubmit(content)
   }
   return (
@@ -109,7 +116,7 @@ export function SchemaForm({
           <JsonInput
             label="JSON input"
             value={json}
-            onChange={setJSON}
+            onChange={(json) => setState({ json })}
             error={jsonError}
             formatOnBlur
             rows={4}

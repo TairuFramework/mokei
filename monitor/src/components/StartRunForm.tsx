@@ -1,10 +1,13 @@
 import { Alert, Button, JsonInput, Stack, TextInput } from '@mantine/core'
+import { useInputState, useSetState } from '@mantine/hooks'
 import type { FlowSummary } from '@mokei/flow-client'
 import { useState } from 'react'
 
 import { useFlow } from '../flow/FlowProvider.js'
 import { isRecord, schemaToFields } from '../flow/schema-fields.js'
 import { SchemaForm } from './SchemaForm.js'
+
+type StartState = { status: 'idle' } | { status: 'starting' } | { status: 'error'; error: string }
 
 type StartRunFormProps = {
   flow: FlowSummary
@@ -13,23 +16,23 @@ type StartRunFormProps = {
 
 export function StartRunForm({ flow, onStarted }: StartRunFormProps) {
   const { control, connected, status } = useFlow()
-  const [label, setLabel] = useState('')
-  const [json, setJSON] = useState('{}')
-  const [jsonError, setJSONError] = useState<string>()
-  const [error, setError] = useState<string>()
-  const [starting, setStarting] = useState(false)
+  const [label, setLabel] = useInputState('')
+  const [{ json, jsonError }, setInput] = useSetState<{ json: string; jsonError?: string }>({
+    json: '{}',
+  })
+  const [state, setState] = useState<StartState>({ status: 'idle' })
+  const starting = state.status === 'starting'
+  const error = state.status === 'error' ? state.error : undefined
   const disabled = !connected || status?.state !== 'ready' || starting
   async function start(input: Record<string, unknown>) {
     if (disabled) return
-    setStarting(true)
-    setError(undefined)
+    setState({ status: 'starting' })
     try {
       const run = await control.runs.start({ flow: flow.id, input, label: label || undefined })
       onStarted(run.runID)
+      setState({ status: 'idle' })
     } catch (error) {
-      setError(String(error))
-    } finally {
-      setStarting(false)
+      setState({ status: 'error', error: String(error) })
     }
   }
   function submitJSON() {
@@ -38,10 +41,10 @@ export function StartRunForm({ flow, onStarted }: StartRunFormProps) {
       input = JSON.parse(json)
       if (!isRecord(input)) throw new Error('Expected object')
     } catch {
-      setJSONError('Enter a valid JSON object')
+      setInput({ jsonError: 'Enter a valid JSON object' })
       return
     }
-    setJSONError(undefined)
+    setInput({ jsonError: undefined })
     void start(input)
   }
   return (
@@ -51,7 +54,7 @@ export function StartRunForm({ flow, onStarted }: StartRunFormProps) {
           label="Label"
           description="Optional run label"
           value={label}
-          onChange={(event) => setLabel(event.currentTarget.value)}
+          onChange={setLabel}
         />
         {schemaToFields(flow.input) != null ? (
           <SchemaForm
@@ -71,7 +74,7 @@ export function StartRunForm({ flow, onStarted }: StartRunFormProps) {
               <JsonInput
                 label="JSON input"
                 value={json}
-                onChange={setJSON}
+                onChange={(json) => setInput({ json })}
                 error={jsonError}
                 formatOnBlur
                 rows={4}
