@@ -79,6 +79,20 @@ test('live run events still update the list after a snapshot read rejects', asyn
   expect(result.current.loading).toBe(false)
 })
 
+test('refresh keeps the current list until the new snapshot lands', async () => {
+  const f = fixture()
+  const { result } = renderHook(() => useRuns(), { wrapper: f.wrapper })
+  await waitFor(() => expect(result.current.loading).toBe(false))
+  const snapshot = deferred<Array<ReturnType<typeof run>>>()
+  vi.mocked(f.control.runs.list).mockReturnValue(snapshot.promise)
+  act(() => result.current.refresh())
+  expect(result.current.runs).toEqual([run()])
+  expect(result.current.loading).toBe(true)
+  await act(async () => snapshot.resolve([run('run-1', 'cancelled')]))
+  await waitFor(() => expect(result.current.loading).toBe(false))
+  expect(result.current.runs).toEqual([run('run-1', 'cancelled')])
+})
+
 test('a rejected snapshot drains buffered IDs and newer live events win over their reads', async () => {
   const f = fixture()
   const snapshot = deferred<Array<ReturnType<typeof run>>>()

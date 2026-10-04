@@ -26,11 +26,21 @@ export function useReconciledQuery<Data, Entry>(query: ReconciledQuery<Data, Ent
     loading: ready,
   })
   const refresh = useCallback(() => setRevision((value) => value + 1), [])
+  const source = useRef<{ epoch: number; query: ReconciledQuery<Data, Entry>; ready: boolean }>(
+    undefined,
+  )
 
   useEffect(() => {
     const generation = guard.current.next()
     const current = () => guard.current.isCurrent(generation)
-    setState({ data: query.initial, loading: ready })
+    // A plain refresh keeps the current data until the new snapshot lands, so lists do not remount.
+    const previous = source.current
+    const refreshing =
+      previous?.epoch === epoch && previous.query === query && previous.ready === ready
+    source.current = { epoch, query, ready }
+    setState((value) =>
+      refreshing ? { data: value.data, loading: ready } : { data: query.initial, loading: ready },
+    )
     if (!ready) return
     let buffering = true
     let refreshAfterBuffer = false
