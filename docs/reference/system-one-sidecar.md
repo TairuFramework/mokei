@@ -38,7 +38,7 @@ classify several states with one `predict` call each.
 |--------|--------------|
 | `401`, `403` | `SystemOneAuthError` |
 | `404` | `SystemOneModelError` |
-| `422` | `SystemOneInputError`, the same class the client throws on local validation |
+| `400`, `422` | `SystemOneInputError`, the same class the client throws on local validation (llama.cpp answers an invalid request with `400`, laya-serve with `422`) |
 | `429` | `SystemOneRateLimitError` |
 | `529` | `SystemOneOverloadedError` |
 | other (`5xx`, ...) or no response | `SystemOneConnectionError` |
@@ -51,7 +51,7 @@ date).
 
 When the error body carries a reason (a FastAPI `detail` string or `{ loc, msg }` list, a `message`,
 an `error` string or `{ message }`, or plain text), the client appends it to the message, cut to
-300 characters. On a `422` the reasons are also in `error.issues`, for example
+300 characters. On a `400` or `422` the reasons are also in `error.issues`, for example
 `System One backend rejected the request (422): question 'dept': no 'instructions'; add the text the model should answer`.
 
 ## Answer Shapes

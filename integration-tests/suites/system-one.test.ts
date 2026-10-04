@@ -4,7 +4,6 @@ import {
   type PredictResult,
   type QuestionMap,
   SystemOneAuthError,
-  SystemOneConnectionError,
   SystemOneInputError,
 } from '@mokei/system-one-client'
 import { describe, expect, inject, test } from 'vitest'
@@ -117,7 +116,7 @@ describe.each(targets.map((target) => [target.name, target] as const))(
       },
     )
 
-    test('an invalid request rejects carrying the server reason', async () => {
+    test('an invalid request rejects with SystemOneInputError carrying the server reason', async () => {
       // The backend skips client validation, so the server sees the missing instructions.
       const backend = new HTTPSystemOneBackend({ url: target.url, apiKey: target.apiKey })
       const request = backend.predict({
@@ -125,20 +124,8 @@ describe.each(targets.map((target) => [target.name, target] as const))(
         questions: { department: { type: 'noul' } } as unknown as QuestionMap,
         model: target.model,
       })
-      if (target.isLaya) {
-        await expect(request).rejects.toThrow(SystemOneInputError)
-        await expect(request).rejects.toThrow(/rejected the request \(422\): .*instructions/)
-      } else {
-        // llama.cpp rejects malformed bodies with its own status and error shape, which the client
-        // maps to either class depending on the code.
-        const error = await request.then(
-          () => undefined,
-          (reason: unknown) => reason,
-        )
-        expect(
-          error instanceof SystemOneInputError || error instanceof SystemOneConnectionError,
-        ).toBe(true)
-      }
+      await expect(request).rejects.toThrow(SystemOneInputError)
+      await expect(request).rejects.toThrow(/rejected the request \((400|422)\): .*instructions/)
     })
   },
 )

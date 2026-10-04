@@ -60,8 +60,8 @@ function isPathKey(value: unknown): value is string | number {
 
 /**
  * Pull the reasons out of an error body. Covers FastAPI (`laya-serve`: `detail` as a string or a
- * validation list of `{ loc, msg }`), a top-level `message`, an `error` string or `{ message }`,
- * and plain text.
+ * validation list of `{ loc, msg }`), a top-level `message`, an `error` string or `{ message }`
+ * (llama.cpp), and plain text.
  */
 function errorIssues(data: unknown): Array<ValidationIssue> {
   if (typeof data === 'string') {
@@ -128,8 +128,9 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
         throw mapped
       }
       const issues = errorIssues(cause.data)
-      if (status === 422) {
-        const message = withReason('System One backend rejected the request (422)', issues)
+      // laya-serve (FastAPI) rejects an invalid request with 422, llama.cpp with 400.
+      if (status === 400 || status === 422) {
+        const message = withReason(`System One backend rejected the request (${status})`, issues)
         const mapped = new SystemOneInputError({ message, issues, cause })
         throw mapped
       }
