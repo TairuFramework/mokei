@@ -1,9 +1,10 @@
 import { createTaskManager, createTool } from '@mokei/context-server'
 import { ContextHost } from '@mokei/host'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
 import { callMeta, readFlowDepth } from '../src/call-meta.js'
 import {
+  cancelSibling,
   hostToolCaller,
   markDecisionFlowContext,
   ToolUnavailableError,
@@ -215,5 +216,19 @@ test('readFlowDepth accepts absence and non-negative integers only', () => {
   expect(readFlowDepth({ 'dev.mokei/flow-depth': 2 })).toBe(2)
   for (const value of [-1, 1.5, 'x']) {
     expect(readFlowDepth({ 'dev.mokei/flow-depth': value })).toBeUndefined()
+  }
+})
+
+test('bounds sibling cancellation with its timeout message', async () => {
+  vi.useFakeTimers()
+  try {
+    const caller = hostToolCaller(host())
+    vi.spyOn(caller, 'cancelTask').mockImplementation(() => new Promise(() => {}))
+    const cancellation = cancelSibling(caller, { id: 'tasks:work', taskId: 'stalled-task' })
+    const assertion = expect(cancellation).rejects.toThrow('Sibling cancellation timed out')
+    await vi.advanceTimersByTimeAsync(5_000)
+    await assertion
+  } finally {
+    vi.useRealTimers()
   }
 })

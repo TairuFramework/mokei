@@ -53,6 +53,7 @@
     "@opentelemetry/context-async-hooks": "catalog:",
     "@opentelemetry/exporter-trace-otlp-http": "catalog:",
     "@opentelemetry/sdk-trace-base": "catalog:",
+    "@sozai/async": "catalog:",
     "@sozai/flow-graph": "catalog:",
     "@sozai/log": "catalog:",
     "@sozai/schema": "catalog:",

@@ -3,6 +3,7 @@ import { inputRequest } from '@mokei/context-protocol'
 import type { FlowHost, InboxItem } from '@mokei/flow-host'
 import { InboxAnswerInvalidError, InboxItemNotFoundError } from '@mokei/flow-host'
 import type { DesktopElicitRequest, DesktopNotifyOptions } from '@mokei/host-desktop'
+import { raceSignal } from '@sozai/async'
 import { createValidator } from '@sozai/schema'
 
 import {
@@ -94,12 +95,9 @@ export function createNativeSurface(params: {
     const current = delivery(signal)
     const release = () => owners.delete(item.id)
     void current.value.closed.then(release, release)
-    const abort = Promise.withResolvers<never>()
-    const onAbort = () => abort.reject(current.signal.reason)
-    current.signal.addEventListener('abort', onAbort, { once: true })
     let unsubscribe = () => {}
     try {
-      const run = await Promise.race([host.get(item.runID), abort.promise])
+      const run = await raceSignal(host.get(item.runID), current.signal)
       current.signal.throwIfAborted()
       if (host.inbox.get(item.id) == null) throw new InboxItemNotFoundError({ itemID: item.id })
       const message =
@@ -135,7 +133,7 @@ export function createNativeSurface(params: {
       const nativePrompt = track(adapter.prompt(request))
       const operation = (async () => {
         try {
-          const result: ElicitResult = await Promise.race([nativePrompt, abort.promise])
+          const result: ElicitResult = await raceSignal(nativePrompt, current.signal)
           current.signal.throwIfAborted()
           let action = result.action
           if (item.kind === 'approval' && action === 'accept') {
@@ -153,7 +151,6 @@ export function createNativeSurface(params: {
           if (!current.signal.aborted) current.finish(error)
         } finally {
           unsubscribe()
-          current.signal.removeEventListener('abort', onAbort)
         }
       })()
       track(operation)
@@ -161,7 +158,6 @@ export function createNativeSurface(params: {
     } catch (error) {
       current.finish()
       unsubscribe()
-      current.signal.removeEventListener('abort', onAbort)
       throw error
     }
   }

@@ -348,3 +348,18 @@ test('logs -f reports a failure after following begins and cleans up', async () 
   expect(stderr.join('')).toContain('Cannot follow')
   expect(process.listenerCount('SIGINT')).toBe(sigintBefore)
 })
+
+test('bounds a stalled service request with its startup timeout message', async () => {
+  const request = connection(undefined)
+  request.mockImplementation(() => new Promise(() => {}))
+  vi.useFakeTimers()
+  try {
+    const starting = run('start', '-s', SOCKET)
+    await vi.advanceTimersByTimeAsync(30_000)
+    await starting
+    expect(stderr.join('')).toContain('The flow service is still starting after 30s')
+    expect(process.exitCode).toBe(1)
+  } finally {
+    vi.useRealTimers()
+  }
+})

@@ -1,3 +1,5 @@
+import { raceSignal } from '@sozai/async'
+
 import { createAlerterBackend } from './backends/alerter.js'
 import { createNotifySendBackend } from './backends/notify-send.js'
 import { createOsascriptBackend } from './backends/osascript.js'
@@ -27,21 +29,7 @@ export function defaultCreateBackend(appName: string) {
 
 /** Settles with the promise, or rejects with the signal's reason as soon as it aborts. */
 export function untilAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason)
-    signal.addEventListener('abort', onAbort, { once: true })
-    if (signal.aborted) onAbort()
-    promise.then(
-      (value) => {
-        signal.removeEventListener('abort', onAbort)
-        resolve(value)
-      },
-      (error) => {
-        signal.removeEventListener('abort', onAbort)
-        reject(error)
-      },
-    )
-  })
+  return raceSignal(promise, signal)
 }
 
 export type DesktopNotifyOptions = {
@@ -131,6 +119,7 @@ export function createDesktopNotifier(options: DesktopElicitOptions = {}): Deskt
         () => deliveries.delete(delivery),
       )
       const delivered = await untilAbort(delivery, signal)
+      signal.throwIfAborted()
       if (delivered != null) {
         const closed = delivered.closed
         live.add(closed)

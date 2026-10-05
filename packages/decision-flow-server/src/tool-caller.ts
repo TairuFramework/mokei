@@ -1,6 +1,7 @@
 import { type CallToolResult, isCreateTaskResult } from '@mokei/context-protocol'
 import type { JSONValue } from '@mokei/context-server'
 import type { ContextHost } from '@mokei/host'
+import { raceAttempt, TimeoutInterruption } from '@sozai/async'
 import type { Schema } from '@sozai/schema'
 
 export type CatalogTool = { id: string; inputSchema: Schema; outputSchema?: Schema }
@@ -23,19 +24,16 @@ export async function cancelSibling(
   caller: ToolCaller,
   target: { id: string; taskId: string },
 ): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    await Promise.race([
-      caller.cancelTask(target),
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(
-          () => reject(new Error('Sibling cancellation timed out')),
-          SIBLING_CANCEL_TIMEOUT_MS,
-        )
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
+    await raceAttempt({
+      fn: () => caller.cancelTask(target),
+      timeoutMs: SIBLING_CANCEL_TIMEOUT_MS,
+    })
+  } catch (error) {
+    if (error instanceof TimeoutInterruption) {
+      throw new Error('Sibling cancellation timed out', { cause: error })
+    }
+    throw error
   }
 }
 

@@ -841,6 +841,9 @@ importers:
       '@mokei/session-node':
         specifier: workspace:^
         version: link:../session-node
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.3.0
       '@tejika/cli':
         specifier: 'catalog:'
         version: 0.4.1(@types/react@19.3.0)
@@ -1055,6 +1058,9 @@ importers:
       '@mokei/system-one-client':
         specifier: workspace:^
         version: link:../system-one-client
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.3.0
       '@sozai/flow-graph':
         specifier: 'catalog:'
         version: 0.2.2(@logtape/logtape@2.3.10)
@@ -1147,6 +1153,9 @@ importers:
       '@opentelemetry/sdk-trace-base':
         specifier: 'catalog:'
         version: 2.11.0(@opentelemetry/api@1.9.1)
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.3.0
       '@sozai/event':
         specifier: 'catalog:'
         version: 0.1.4(@logtape/logtape@2.3.10)
@@ -1202,6 +1211,9 @@ importers:
       '@opentelemetry/sdk-trace-base':
         specifier: 'catalog:'
         version: 2.11.0(@opentelemetry/api@1.9.1)
+      '@sozai/async':
+        specifier: 'catalog:'
+        version: 0.3.0
       '@sozai/flow-graph':
         specifier: 'catalog:'
         version: 0.2.2(@logtape/logtape@2.3.10)

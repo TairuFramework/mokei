@@ -58,6 +58,7 @@
     "@mokei/openai-provider": "workspace:^",
     "@mokei/session": "workspace:^",
     "@mokei/session-node": "workspace:^",
+    "@sozai/async": "catalog:",
     "@tejika/cli": "catalog:",
     "@tejika/env": "catalog:",
     "@tejika/process": "catalog:",

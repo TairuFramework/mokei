@@ -3,6 +3,7 @@ import { open, readFile, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { FlowServiceStatus } from '@mokei/host-protocol'
+import { raceAttempt, TimeoutInterruption } from '@sozai/async'
 import { getLogDir, getPIDPath } from '@tejika/env'
 import { getDaemonStatus, stopDaemon } from '@tejika/process'
 import { Command } from 'commander'
@@ -53,34 +54,16 @@ type Outcome<T> = { ok: true; value: T } | { ok: false; message: string; value?:
 
 /** Rejects when the signal aborts or the deadline passes, even if `work` never settles. */
 function bounded<T>(work: Promise<T>, signal: AbortSignal, deadline: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const cleanup = () => {
-      clearTimeout(timer)
-      signal.removeEventListener('abort', onAbort)
+  return raceAttempt({ fn: () => work, signal, deadline }).catch((error: unknown) => {
+    if (signal.aborted && error === signal.reason) {
+      throw new Error('Interrupted while waiting for the flow service', { cause: error })
     }
-    const onAbort = () => {
-      cleanup()
-      reject(new Error('Interrupted while waiting for the flow service'))
+    if (error instanceof TimeoutInterruption) {
+      throw new Error(`The flow service is still starting after ${START_TIMEOUT_MS / 1000}s`, {
+        cause: error,
+      })
     }
-    const timer = setTimeout(
-      () => {
-        cleanup()
-        reject(new Error(`The flow service is still starting after ${START_TIMEOUT_MS / 1000}s`))
-      },
-      Math.max(0, deadline - Date.now()),
-    )
-    if (signal.aborted) return onAbort()
-    signal.addEventListener('abort', onAbort, { once: true })
-    work.then(
-      (value) => {
-        cleanup()
-        resolve(value)
-      },
-      (error) => {
-        cleanup()
-        reject(error)
-      },
-    )
+    throw error
   })
 }
 
