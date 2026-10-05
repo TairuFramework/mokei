@@ -7,6 +7,19 @@ import { migrateFlowDatabase } from './migrations.js'
 
 type OpenFlowDatabaseParams = {
   path?: string
+  migrations?: Array<string>
+}
+
+export function withTransaction<T>(db: DatabaseSync, fn: () => T): T {
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const result = fn()
+    db.exec('COMMIT')
+    return result
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
 }
 
 export const openFlowDatabase = (
@@ -20,17 +33,10 @@ export const openFlowDatabase = (
   const db = new DatabaseSync(path)
 
   try {
-    const { user_version: version } = db.prepare('PRAGMA user_version').get() as {
-      user_version: number
-    }
-    if (version > 1) {
-      throw new Error(`Database schema version ${version} is newer than supported version 1`)
-    }
-
     db.exec('PRAGMA journal_mode = WAL')
     db.exec('PRAGMA busy_timeout = 5000')
     db.exec('PRAGMA foreign_keys = ON')
-    migrateFlowDatabase(db)
+    migrateFlowDatabase(db, params.migrations)
 
     return { db, close: () => db.close() }
   } catch (error) {
