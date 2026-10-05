@@ -55,8 +55,8 @@ monitor/                   runs, run detail (trace and logs) and inbox pages
   Dialogs require explicit inbox prompting. Startup sends no notification for zero pending items,
   one item notification for one, or one generic pending-count notification for multiple items.
 - **tejika for local plumbing.** `@tejika/process` (daemon lifecycle), `@tejika/env` (paths), `@tejika/log` (log
-  files) and `@tejika/server` (monitor bridge). `@tejika/test` provides polling helpers to the end-to-end drivers.
-  Changes to its CLI spawn and test profile helpers are requested upstream.
+  files) and `@tejika/server` (monitor bridge). `@tejika/test` provides the polling, CLI spawn and test profile helpers for the
+  end-to-end drivers. `@tejika/cli` provides the `mokei daemon` command group and the CLI output helpers.
 
 ## Sub-projects
 

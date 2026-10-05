@@ -24,8 +24,3 @@ upstream manifests (each requested upstream):
 - `@inkjs/ui` imports `react` without declaring a peer dependency.
 
 Drop each extension once the upstream package fixes its manifest, and confirm `pnpm test:packed` still passes.
-
-## Verification gaps
-
-The production-entry daemon end-to-end test was verified on macOS only. Run it on Linux before claiming support
-there.
