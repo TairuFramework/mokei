@@ -2,7 +2,7 @@
 
 **Status:** complete -- sub-projects 1 to 5 complete
 **Opened:** 2026-10-01
-**Replaces:** phase 3 of the [flow rig milestone](2026-09-30-flow-rig-milestone.md), from sub-project B onwards
+**Replaces:** phase 3 of the [flow rig milestone](2026-09-30-flow-rig-milestone.complete.md), from sub-project B onwards
 
 ## Goal
 
@@ -49,12 +49,14 @@ monitor/                   runs, run detail (trace and logs) and inbox pages
   wiring, and detail grows with the logic.
 - **Storage.** One `node:sqlite` database in `getDataDir('mokei')`. Terminal runs are pruned after a retention
   period, with their spans and logs.
-- **Config.** `flows.json` in `getDataDir('mokei')`: sibling servers, flow directories, predictor, approval globs,
+- **Config.** `flows.json` in `getDataDir('mokei')`: sibling servers, flow directories, approval globs,
   tracing, retention and `desktop.notifications` (default `false`). Changes apply on daemon restart.
+  The predictor is always `system-one:predict` through a configured sibling.
   Dialogs require explicit inbox prompting. Startup sends no notification for zero pending items,
   one item notification for one, or one generic pending-count notification for multiple items.
 - **tejika for local plumbing.** `@tejika/process` (daemon lifecycle), `@tejika/env` (paths), `@tejika/log` (log
-  files), `@tejika/server` (monitor bridge) and `@tejika/test` (end-to-end harness).
+  files) and `@tejika/server` (monitor bridge). `@tejika/test` provides polling helpers to the end-to-end drivers.
+  Its CLI spawn and test profile helpers are requested upstream.
 
 ## Sub-projects
 
@@ -70,25 +72,25 @@ Each sub-project gets its own spec, plan and PR from `main`.
 
 Completed sub-projects link their summary in `completed/` here.
 
-- Sub-project 1: [`completed/2026-10-01-flow-host.complete.md`](../completed/2026-10-01-flow-host.complete.md)
-- Sub-project 2: [`completed/2026-10-02-flow-host-node.complete.md`](../completed/2026-10-02-flow-host-node.complete.md)
-- Sub-project 3: [`completed/2026-10-02-flow-daemon.complete.md`](../completed/2026-10-02-flow-daemon.complete.md)
-- Sub-project 4: [`completed/2026-10-03-flow-cli.complete.md`](../completed/2026-10-03-flow-cli.complete.md)
-- Sub-project 5: [`completed/2026-10-04-flow-monitor.complete.md`](../completed/2026-10-04-flow-monitor.complete.md)
+- Sub-project 1: [`completed/2026-10-01-flow-host.complete.md`](2026-10-01-flow-host.complete.md)
+- Sub-project 2: [`completed/2026-10-02-flow-host-node.complete.md`](2026-10-02-flow-host-node.complete.md)
+- Sub-project 3: [`completed/2026-10-02-flow-daemon.complete.md`](2026-10-02-flow-daemon.complete.md)
+- Sub-project 4: [`completed/2026-10-03-flow-cli.complete.md`](2026-10-03-flow-cli.complete.md)
+- Sub-project 5: [`completed/2026-10-04-flow-monitor.complete.md`](2026-10-04-flow-monitor.complete.md)
 
 Native desktop QA, deferred from sub-project 3, passed during sub-project 4 manual macOS QA.
 
 Sub-project 3 implements one flow service per daemon process and initial recovery reconciliation
 before ready publication. Flow startup failure leaves proxy and monitor status serving available.
-Clients subscribe before querying snapshots and reconcile current records on reconnect; events
+Clients subscribe before querying snapshots and reconcile current records on reconnect. Events
 are live without durable replay. Sub-project 4 replaced the rig's user surface and removed it.
 
 Sub-project 5 adds monitor attachment and tab-presence procedures. Attended tabs suppress new
-item notifications; hidden tabs can receive browser notifications when permission is granted.
+item notifications. Hidden tabs can receive browser notifications when permission is granted.
 Prompts route to the monitor first and fall back to native dialogs when delivery is unavailable.
 Recovery summaries remain native-only, and reconnecting tabs reconcile current state.
 
-The [Enkaku fix and dependency adoption](../completed/2026-10-02-enkaku-protocol-schema-rebasing.complete.md)
+The [Enkaku fix and dependency adoption](2026-10-02-enkaku-protocol-schema-rebasing.complete.md)
 passed verification with protocol 0.21.4 and a fresh packed consumer installation.
 The workspace patch was removed, satisfying this publication prerequisite.
 

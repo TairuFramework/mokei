@@ -1,7 +1,7 @@
 # Milestone: flow rig
 
-**Status:** closed -- phases 1 and 2 complete; phase 3 quick fixes complete, the rest replaced by the
-[flow daemon milestone](2026-10-01-flow-daemon-milestone.md)
+**Status:** complete -- phases 1 and 2 complete. Phase 3 quick fixes complete, the rest replaced by the
+[flow daemon milestone](2026-10-01-flow-daemon-milestone.complete.md)
 **Opened:** 2026-09-30
 **Branch / PR:** phases 1 to 3 quick fixes on `feat/flow-rig` (PR #68, merged)
 
@@ -25,9 +25,9 @@ starts, since each depends on what the previous phase finds.
 
 Completed phases link their summary in `completed/` here.
 
-- Phase 1: [`completed/2026-09-30-flow-rig.complete.md`](../completed/2026-09-30-flow-rig.complete.md)
-- Phase 2: [`completed/2026-10-01-flow-rig-phase-2.complete.md`](../completed/2026-10-01-flow-rig-phase-2.complete.md)
-- Phase 3, quick fixes: [`completed/2026-10-01-flow-rig-phase-3a-quick-fixes.complete.md`](../completed/2026-10-01-flow-rig-phase-3a-quick-fixes.complete.md)
+- Phase 1: [`completed/2026-09-30-flow-rig.complete.md`](2026-09-30-flow-rig.complete.md)
+- Phase 2: [`completed/2026-10-01-flow-rig-phase-2.complete.md`](2026-10-01-flow-rig-phase-2.complete.md)
+- Phase 3, quick fixes: [`completed/2026-10-01-flow-rig-phase-3a-quick-fixes.complete.md`](2026-10-01-flow-rig-phase-3a-quick-fixes.complete.md)
 
 ## Decisions
 

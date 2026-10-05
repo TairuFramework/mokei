@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-09-25
+**Last updated:** 2026-10-05
 
 ## Vision
 
@@ -61,10 +61,17 @@ revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
-- **Flow CLI and MCP** (2026-10-03) -- `mokei daemon`, `flows`, `runs` and `inbox` commands and
-  `mokei flows mcp` over the new portable `@mokei/flow-client`; clickable `alerter` notifications on
-  macOS open an item's desktop prompt; the packed-consumer check guards published declarations.
-  See `completed/2026-10-03-flow-cli.complete.md`.
+- **Flow monitor** (2026-10-04) -- runs, trace and log inspection, inbox actions, flow validation and run controls.
+  Monitor presence routes prompts and notifications before native desktop surfaces.
+  See [flow monitor](completed/2026-10-04-flow-monitor.complete.md).
+- **Flow CLI and MCP surfaces** (2026-10-03) -- `mokei daemon`, `flows`, `runs`, `inbox` and `flows mcp` replaced the rig.
+  Packed-consumer checks cover published declarations. See [flow CLI](completed/2026-10-03-flow-cli.complete.md).
+- **Flow daemon** (2026-10-02) -- shared flow service, restart recovery, protocol procedures and desktop notifications.
+  See [flow daemon](completed/2026-10-02-flow-daemon.complete.md).
+- **Node flow storage** (2026-10-02) -- SQLite run, task and trace stores, telemetry capture, configuration and retention.
+  See [node storage](completed/2026-10-02-flow-host-node.complete.md).
+- **Flow runtime** (2026-10-01) -- portable background runs, approval policy, a shared inbox and recovery.
+  See [flow runtime](completed/2026-10-01-flow-host.complete.md).
 
 - **Flow rig, phase 1** (2026-09-30) -- a local rig ran decision flows with System One, MCP siblings
   and desktop input, driven from Claude Code through a facade MCP server. Replaced by the flow CLI and
@@ -174,9 +181,9 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 
 ## Milestones
 
-- **Flow daemon** (`milestones/2026-10-01-flow-daemon-milestone.md`) -- open. Decision flows run in the per-user
-  daemon with a shared inbox, driven by the `mokei` CLI and the `mokei flows mcp` server. It replaces the closed
-  flow rig milestone (`milestones/2026-09-30-flow-rig-milestone.md`).
+- **Flow daemon** (`completed/2026-10-01-flow-daemon-milestone.complete.md`) -- complete. Decision flows run in the per-user
+  daemon with a shared inbox, driven by the `mokei` CLI and the `mokei flows mcp` server. It replaces the completed
+  flow rig milestone (`completed/2026-09-30-flow-rig-milestone.complete.md`).
 
 - **MCP `2026-07-28` spec migration** (`completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md`) —
   complete. Phase 0 groundwork (G1–G4, G6, G7) shipped on `2025-11-25`

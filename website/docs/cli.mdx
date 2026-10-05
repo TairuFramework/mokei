@@ -26,7 +26,7 @@ import TabItem from '@theme/TabItem'
 
 ### `mokei chat`
 
-Interactive chat with a model provider. One command handles every provider — if
+Interactive chat with a model provider. One command handles every provider -- if
 `--provider` is omitted, an interactive selection prompt appears.
 
 Usage: `mokei chat --provider ollama --model "llama3.1:8b"`
@@ -35,7 +35,7 @@ Usage: `mokei chat --provider ollama --model "llama3.1:8b"`
 
 - `-p, --provider <name>`: model provider (`ollama`, `openai`, `anthropic` or `llama`)
 - `-k, --api-key <key>`: provider API key. Prefer the `OPENAI_API_KEY` /
-  `ANTHROPIC_API_KEY` environment variables — a key passed on the command line leaks via
+  `ANTHROPIC_API_KEY` environment variables -- a key passed on the command line leaks via
   `ps` and shell history
 - `-u, --api-url <url>`: provider API URL, overriding the default endpoint
 - `-m, --model <name>`: model name, or a GGUF file path for the `llama` provider
@@ -48,7 +48,7 @@ an MCP server. `--protocol` accepts `2026-07-28`, `2025-11-25` or `auto`, and de
 ### `mokei inspect <command> [args...]`
 
 Spawns a local MCP server and asks it to describe itself. On `2026-07-28` that is a
-`server/discover` request; on `2025-11-25` it is the `initialize` handshake.
+`server/discover` request. On `2025-11-25` it is the `initialize` handshake.
 
 Usage: `mokei inspect npx -y @modelcontextprotocol/server-filesystem ./`
 
@@ -59,8 +59,8 @@ Usage: `mokei inspect npx -y @modelcontextprotocol/server-filesystem ./`
 
 #### Flags
 
-- `-p, --protocol <version>`: protocol revision to speak — `2026-07-28`, `2025-11-25` or
-  `auto` (default: `auto`). Must come before the server command; everything after the
+- `-p, --protocol <version>`: protocol revision to speak -- `2026-07-28`, `2025-11-25` or
+  `auto` (default: `auto`). Must come before the server command. Everything after the
   command belongs to the server
 
 ### `mokei monitor`
@@ -89,3 +89,132 @@ Usage: `mokei proxy npx -y @modelcontextprotocol/server-filesystem ./`
 #### Flags
 
 - `-s, --socket-path <path>`: path to the socket used by the host daemon (optional)
+
+### `mokei daemon`
+
+Manage the per-user host daemon. Restart it to apply changes to `flows.json`.
+
+Usage: `mokei daemon start`
+
+#### Subcommands
+
+- `start`: start the daemon and wait for the flow service
+- `stop`: stop the daemon, letting in-flight work drain
+- `status`: show whether the daemon is running
+- `restart`: stop then start the daemon, applying configuration changes
+- `logs`: print the daemon log
+
+#### Flags
+
+For `start`, `stop`, `status` and `restart`:
+
+- `-s, --socket-path <path>`: unix socket path (optional)
+- `--json`: print the result as JSON
+
+For `logs`:
+
+- `-n, --lines <count>`: number of lines to show (default: `50`)
+- `-f, --follow`: follow the log until interrupted
+
+### `mokei flows`
+
+Inspect configured flows, validate definitions and serve the flow MCP server.
+
+Usage: `mokei flows list --json`
+
+#### Subcommands
+
+- `list`: list configured flows
+- `check <file>`: validate a flow definition JSON file
+- `mcp`: serve the flow MCP server over stdio, with diagnostics sent to stderr
+
+Usage: `mokei flows check ./flows/example.json`
+
+Usage: `mokei flows mcp --socket-path /tmp/mokei.sock`
+
+#### Arguments
+
+- `file`: path to a flow definition JSON file (required for `check`)
+
+#### Flags
+
+- `-s, --socket-path <path>`: unix socket path (optional, all subcommands)
+- `--json`: print the result as JSON (`list` and `check` only)
+
+### `mokei runs`
+
+Start, inspect and cancel flow runs. Trace inspection shows spans with durations, then logs.
+
+Usage: `mokei runs start example --input '{"name":"Ada"}' --wait`
+
+#### Subcommands
+
+- `start [flow]`: start a configured flow, or an inline definition with `--file`
+- `get <runID>`: show run status, pending items and result
+- `list`: list runs
+- `cancel <runID>`: cancel a run
+- `trace <runID>`: show the run trace
+
+#### Arguments
+
+- `flow`: ID of a configured flow (optional when using `--file`)
+- `runID`: run ID (required for `get`, `cancel` and `trace`)
+
+#### Flags
+
+For all subcommands:
+
+- `-s, --socket-path <path>`: unix socket path (optional)
+- `--json`: print the result as JSON
+
+For `start`:
+
+- `--file <definition.json>`: start an inline flow definition instead of a flow ID
+- `--input <json|@file>`: run input as a JSON object, or `@path` to a JSON file
+- `--label <text>`: label for the run
+- `--wait`: watch until the run ends, answering pending items when interactive
+
+For `list`:
+
+- `--state <state...>`: filter by `awaiting_approval`, `denied`, `working`,
+  `input_required`, `completed`, `failed` or `cancelled`
+- `--limit <n>`: maximum number of runs
+
+### `mokei inbox`
+
+List and settle pending input and approval items. Declining an approval item denies its run.
+
+Usage: `mokei inbox list --json`
+
+#### Subcommands
+
+- `list`: list pending items
+- `show <id>`: show the input request or planned tools
+- `answer <id>`: answer an input item or approve an approval item
+- `decline <id>`: decline an item
+- `cancel <id>`: cancel an item
+- `prompt <id>`: open the desktop dialog and report the chosen action
+
+#### Arguments
+
+- `id`: inbox item ID (required for every subcommand except `list`)
+
+#### Flags
+
+For all subcommands:
+
+- `-s, --socket-path <path>`: unix socket path (optional)
+- `--json`: print the result as JSON
+
+For `list`:
+
+- `--run <runID>`: show only items for this run
+
+For `answer`:
+
+- `--value <json|@file>`: answer an input item with a JSON object, or `@path` to a JSON file
+- `--yes`: approve an approval item without asking
+
+For `decline`:
+
+- `--reason <text>`: reason for declining

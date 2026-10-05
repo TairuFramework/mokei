@@ -1,6 +1,6 @@
 # Flow client follow-ons
 
-**Origin:** [flow daemon milestone](../milestones/2026-10-01-flow-daemon-milestone.md), sub-project 4 (flow CLI and MCP)
+**Origin:** [flow daemon milestone](../completed/2026-10-01-flow-daemon-milestone.complete.md), sub-project 4 (flow CLI and MCP)
 
 The published declaration dependency fixes that used to be tracked separately are folded into sub-project 4,
 and `pnpm test:packed` now guards them in CI. The remaining items below are follow-ons.

@@ -39,7 +39,7 @@ const run = await control.runs.start({ flow: 'review', input: {} })
 - `isTerminalRun(run)` is true when a run snapshot or status is in a terminal state.
 - `isActionable(status)` is true when the run is terminal or has a pending item.
 - `hasChanged(previous)` returns a predicate true when a status differs from `previous`.
-- `waitForRun(control, runID, { until, timeoutMs, signal })` resolves with `{ status, timedOut }`. It subscribes first, rereads on each event for the run, and retries a lost connection with backoff (250 ms doubling to 2 s) within the timeout. On timeout it returns the latest status with `timedOut: true`. If the timeout passes before any read succeeded, it rejects with the last retryable error (`DISCONNECTED`, or `FLOW_UNAVAILABLE` while the service starts); if no error occurred, it reads once more, bounded only by `signal`, and returns that status with `timedOut: true` or rejects with the read's own error (such as `RUN_NOT_FOUND`).
+- `waitForRun(control, runID, { until, timeoutMs, signal })` resolves with `{ status, timedOut }`. It subscribes first, rereads on each event for the run, and retries a lost connection with backoff (250 ms doubling to 2 s) within the timeout. On timeout it returns the latest status with `timedOut: true`. If the timeout passes before any read succeeded, it rejects with the last retryable error (`DISCONNECTED`, or `FLOW_UNAVAILABLE` while the service starts). If no error occurred, it reads once more, bounded only by `signal`, and returns that status with `timedOut: true` or rejects with the read's own error (such as `RUN_NOT_FOUND`).
 
 ## MCP server
 
@@ -57,14 +57,14 @@ Tools never throw: failures are `isError` results that name the error code. Stat
 | Tool | Params | Behaviour |
 |------|--------|-----------|
 | `list_flows` | none | Registered flows. |
-| `check_flow` | `{ definition }` | Validates a definition; text is the formatted result. |
-| `start_flow` | `{ flow }` or `{ definition }`, `input?`, `label?` | Starts a run and returns its status at once. Exactly one of `flow` or `definition`; `input` defaults to `{}`. |
+| `check_flow` | `{ definition }` | Validates a definition. Text is the formatted result. |
+| `start_flow` | `{ flow }` or `{ definition }`, `input?`, `label?` | Starts a run and returns its status at once. Supply exactly one of `flow` or `definition`. `input` defaults to `{}`. |
 | `flow_status` | `{ runID }` | Run status with pending items. |
 | `wait_flow` | `{ runID, timeoutMs? }` | Blocks until the run is terminal or has a pending item. Default 60 000 ms, maximum 300 000 ms. Returns the status and `timedOut`. |
 | `list_runs` | `{ states?, limit? }` | Recent runs without `pending`. Default limit 20. |
 | `cancel_flow` | `{ runID }` | Cancels the run and returns its status. |
 | `answer_input` | `{ id, value }` | Answers an input item. Approval items are refused: use `prompt_input`. |
 | `decline_input` | `{ id, reason? }` | Declines an input item. Approval items are refused: use `prompt_input`. |
-| `prompt_input` | `{ id }` | Registered only when `control.inbox.prompt` exists. Opens the dialog and blocks until it settles; returns `{ id, action }`. |
+| `prompt_input` | `{ id }` | Registered only when `control.inbox.prompt` exists. Opens the dialog and blocks until it settles. Returns `{ id, action }`. |
 
-Cancelling a `wait_flow` or `prompt_input` call aborts it through the request signal; a cancelled prompt leaves the item pending.
+Cancelling a `wait_flow` or `prompt_input` call aborts it through the request signal. A cancelled prompt leaves the item pending.

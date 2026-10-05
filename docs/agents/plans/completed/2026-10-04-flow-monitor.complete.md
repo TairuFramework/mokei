@@ -2,7 +2,7 @@
 
 **Status:** complete
 **Date:** 2026-10-04
-**Milestone:** [flow daemon](../milestones/2026-10-01-flow-daemon-milestone.md), sub-project 5
+**Milestone:** [flow daemon](../completed/2026-10-01-flow-daemon-milestone.complete.md), sub-project 5
 **Branch:** `feat/flow-monitor`
 
 ## Outcome

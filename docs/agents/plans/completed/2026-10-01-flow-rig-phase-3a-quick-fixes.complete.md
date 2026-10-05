@@ -2,7 +2,7 @@
 
 **Status:** complete
 **Date:** 2026-10-01
-**Milestone:** [flow rig](../milestones/2026-09-30-flow-rig-milestone.md), phase 3, sub-project A
+**Milestone:** [flow rig](../completed/2026-09-30-flow-rig-milestone.complete.md), phase 3, sub-project A
 **Branch:** `feat/flow-rig`
 
 ## Goal

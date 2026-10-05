@@ -2,14 +2,14 @@
 
 **Status:** complete
 **Date:** 2026-10-02
-**Milestone:** [flow daemon](../milestones/2026-10-01-flow-daemon-milestone.md), sub-project 3
+**Milestone:** [flow daemon](../completed/2026-10-01-flow-daemon-milestone.complete.md), sub-project 3
 **Branch:** `feat/flow-daemon`
 
 ## Outcome
 
 The CLI-owned daemon composes one shared durable flow service, generic proxy serving and an injected desktop adapter.
 Portable wire contracts expose flow, run and inbox procedures, service status and live events.
-Recovery reconciles stored tasks and inbox items before readiness. Failed flow initialization leaves proxy and monitor status available.
+Recovery reconciles stored tasks and inbox items before readiness. Failed flow initialisation leaves proxy and monitor status available.
 Host-node remains independent of flow and desktop implementations.
 
 ## Key decisions

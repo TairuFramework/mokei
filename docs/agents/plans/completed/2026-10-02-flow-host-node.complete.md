@@ -2,7 +2,7 @@
 
 **Status:** complete
 **Date:** 2026-10-02
-**Milestone:** [flow daemon](../milestones/2026-10-01-flow-daemon-milestone.md), sub-project 2
+**Milestone:** [flow daemon](../completed/2026-10-01-flow-daemon-milestone.complete.md), sub-project 2
 **Branch:** `feat/flow-host-node`
 
 ## Outcome
