@@ -7,7 +7,6 @@ import { checkFlowDatabaseVersion, migrateFlowDatabase } from './migrations.js'
 
 type OpenFlowDatabaseParams = {
   path?: string
-  migrations?: Array<string>
 }
 
 export const openFlowDatabase = (
@@ -22,11 +21,11 @@ export const openFlowDatabase = (
 
   try {
     // Reject a newer schema before WAL mode persists a change to the file.
-    checkFlowDatabaseVersion(db, params.migrations)
+    checkFlowDatabaseVersion(db)
     db.exec('PRAGMA journal_mode = WAL')
     db.exec('PRAGMA busy_timeout = 5000')
     db.exec('PRAGMA foreign_keys = ON')
-    migrateFlowDatabase(db, params.migrations)
+    migrateFlowDatabase(db)
 
     return { db, close: () => db.close() }
   } catch (error) {

@@ -162,7 +162,7 @@ When a waited request is withdrawn, the signal passed to the input handler abort
 `TaskInputWithdrawnError`. A subscribed wait still checks a finite task TTL and fails with
 `TaskExpiredError` once the task is gone. Public task snapshots list only unanswered input keys.
 
-### HTTP Authorization
+### HTTP Authorisation
 
 `@mokei/http-client` provides OAuth 2.1 client middleware through `createOAuthMiddleware` and
 `TokenStore` (`createMemoryTokenStore`), including protected-resource metadata discovery, PKCE and

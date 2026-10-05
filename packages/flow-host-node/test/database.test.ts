@@ -105,21 +105,22 @@ describe('flow database', () => {
   test('opens a database at a schema version above 1 when migrations support it', async () => {
     const directory = await createTemporaryDirectory()
     const path = join(directory, 'migrated.db')
-    const { openFlowDatabase } = await import('../src/database.js')
+    const { DatabaseSync } = await import('node:sqlite')
+    const { migrateFlowDatabase } = await import('../src/migrations.js')
     const migrations = ['CREATE TABLE first (value TEXT)', 'CREATE TABLE second (value TEXT)']
 
-    const first = openFlowDatabase({ path, migrations })
-    expect(first.db.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 2 })
+    const first = new DatabaseSync(path)
+    migrateFlowDatabase(first, migrations)
+    expect(first.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 2 })
     first.close()
 
-    expect(() => {
-      const second = openFlowDatabase({ path, migrations })
-      try {
-        expect(second.db.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 2 })
-      } finally {
-        second.close()
-      }
-    }).not.toThrow()
+    const second = new DatabaseSync(path)
+    try {
+      expect(() => migrateFlowDatabase(second, migrations)).not.toThrow()
+      expect(second.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 2 })
+    } finally {
+      second.close()
+    }
   })
 
   test('rejects a database newer than the supported version', async () => {

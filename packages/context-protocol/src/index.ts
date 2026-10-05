@@ -17,6 +17,7 @@ export {
   type ElicitRequest,
   type ElicitResult,
   elicitationCompleteNotification,
+  elicitRequestFormParams,
 } from './elicitation.js'
 export {
   type ElicitFormChoice,

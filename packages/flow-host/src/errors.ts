@@ -1,3 +1,5 @@
+import type { FlowControlErrorCode } from '@mokei/flow-client'
+
 export type FlowNotFoundErrorParams = { flowID: string }
 
 export class FlowNotFoundError extends Error {
@@ -58,12 +60,14 @@ export class InboxAnswerInvalidError extends Error {
 }
 
 export type FlowHostErrorDescription = {
-  code:
+  code: Extract<
+    FlowControlErrorCode,
     | 'FLOW_INVALID'
     | 'FLOW_NOT_FOUND'
     | 'RUN_NOT_FOUND'
     | 'INBOX_ITEM_NOT_FOUND'
     | 'INBOX_ANSWER_INVALID'
+  >
   message: string
   data?: { issues: Array<string> }
 }

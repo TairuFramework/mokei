@@ -1,5 +1,5 @@
 import type { ElicitResult } from '@mokei/context-protocol'
-import { inputRequest } from '@mokei/context-protocol'
+import { elicitRequestFormParams } from '@mokei/context-protocol'
 import type { FlowHost, InboxItem } from '@mokei/flow-host'
 import { InboxAnswerInvalidError, InboxItemNotFoundError } from '@mokei/flow-host'
 import type { DesktopElicitRequest, DesktopNotifyOptions } from '@mokei/host-desktop'
@@ -21,9 +21,7 @@ const QUIET_CLICK_ERRORS = new Set([
 ])
 
 function createRequestedSchemaValidator() {
-  return createValidator(
-    inputRequest.anyOf[1].properties.params.anyOf[0].properties.requestedSchema,
-  )
+  return createValidator(elicitRequestFormParams.properties.requestedSchema)
 }
 
 let requestedSchemaValidator: ReturnType<typeof createRequestedSchemaValidator> | undefined

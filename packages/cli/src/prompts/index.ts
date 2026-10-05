@@ -1,5 +1,3 @@
-export type { ElicitFormField, ElicitFormFieldKind } from '@mokei/context-protocol'
-
 import type { InboxItem } from '@mokei/flow-client'
 import { runInk } from '@tejika/cli'
 import { createElement, type ReactElement } from 'react'
@@ -9,6 +7,8 @@ import { ExitOnAbort } from './ExitOnAbort.js'
 import { InterruptOnCtrlC } from './InterruptOnCtrlC.js'
 import { FormRunner } from './SchemaForm.js'
 import { parseElicitationForm } from './schema-form.js'
+
+export type { ElicitFormField, ElicitFormFieldKind } from '@mokei/context-protocol'
 
 export { ApprovalPrompt, ApprovalRunner } from './ApprovalPrompt.js'
 export { ExitOnAbort } from './ExitOnAbort.js'
