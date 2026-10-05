@@ -56,3 +56,34 @@ export class InboxAnswerInvalidError extends Error {
     return this.#issues
   }
 }
+
+export type FlowHostErrorDescription = {
+  code:
+    | 'FLOW_INVALID'
+    | 'FLOW_NOT_FOUND'
+    | 'RUN_NOT_FOUND'
+    | 'INBOX_ITEM_NOT_FOUND'
+    | 'INBOX_ANSWER_INVALID'
+  message: string
+  data?: { issues: Array<string> }
+}
+
+export function describeFlowHostError(error: unknown): FlowHostErrorDescription | undefined {
+  if (error instanceof FlowCheckError || error instanceof InboxAnswerInvalidError) {
+    return {
+      code: error instanceof FlowCheckError ? 'FLOW_INVALID' : 'INBOX_ANSWER_INVALID',
+      message: error.message,
+      data: { issues: [...error.issues] },
+    }
+  }
+  if (error instanceof FlowNotFoundError) {
+    return { code: 'FLOW_NOT_FOUND', message: error.message }
+  }
+  if (error instanceof RunNotFoundError) {
+    return { code: 'RUN_NOT_FOUND', message: error.message }
+  }
+  if (error instanceof InboxItemNotFoundError) {
+    return { code: 'INBOX_ITEM_NOT_FOUND', message: error.message }
+  }
+  return undefined
+}

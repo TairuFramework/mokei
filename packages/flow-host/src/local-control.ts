@@ -7,13 +7,7 @@ import {
   isFlowControlError,
 } from '@mokei/flow-client'
 
-import {
-  FlowCheckError,
-  FlowNotFoundError,
-  InboxAnswerInvalidError,
-  InboxItemNotFoundError,
-  RunNotFoundError,
-} from './errors.js'
+import { describeFlowHostError, InboxItemNotFoundError, RunNotFoundError } from './errors.js'
 import type { FlowHost, StartRunParams } from './types.js'
 
 export type LocalFlowControlExtras = {
@@ -23,26 +17,9 @@ export type LocalFlowControlExtras = {
 
 function toFlowControlError(error: unknown): FlowControlError {
   if (isFlowControlError(error)) return error
-  if (error instanceof FlowCheckError || error instanceof InboxAnswerInvalidError) {
-    return new FlowControlError({
-      code: error instanceof FlowCheckError ? 'FLOW_INVALID' : 'INBOX_ANSWER_INVALID',
-      message: error.message,
-      data: { issues: [...error.issues] },
-      cause: error,
-    })
-  }
-  if (error instanceof FlowNotFoundError) {
-    return new FlowControlError({ code: 'FLOW_NOT_FOUND', message: error.message, cause: error })
-  }
-  if (error instanceof RunNotFoundError) {
-    return new FlowControlError({ code: 'RUN_NOT_FOUND', message: error.message, cause: error })
-  }
-  if (error instanceof InboxItemNotFoundError) {
-    return new FlowControlError({
-      code: 'INBOX_ITEM_NOT_FOUND',
-      message: error.message,
-      cause: error,
-    })
+  const description = describeFlowHostError(error)
+  if (description != null) {
+    return new FlowControlError({ ...description, cause: error })
   }
   return new FlowControlError({
     code: 'INTERNAL_ERROR',

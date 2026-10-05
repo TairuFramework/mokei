@@ -3,24 +3,21 @@ import type { HostEvent, Protocol } from '@mokei/host-protocol'
 import type { FromSchema } from '@sozai/schema'
 
 import { raceAbort } from './abort.js'
-import { FlowControlError, type FlowControlErrorCode, isFlowControlError } from './errors.js'
+import {
+  FLOW_CONTROL_ERROR_CODES,
+  FlowControlError,
+  type FlowControlErrorCode,
+  isFlowControlError,
+} from './errors.js'
 import { createEventQueue } from './subscription.js'
 import type { FlowControl, FlowEvent, FlowSubscription } from './types.js'
 
 type CheckParam = FromSchema<Protocol['flows.check']['param']>
 type AnswerParam = FromSchema<Protocol['inbox.answer']['param']>
 
-const HANDLER_CODES: ReadonlySet<FlowControlErrorCode> = new Set<FlowControlErrorCode>([
-  'FLOW_UNAVAILABLE',
-  'FLOW_INVALID',
-  'FLOW_NOT_FOUND',
-  'RUN_NOT_FOUND',
-  'INBOX_ITEM_NOT_FOUND',
-  'INBOX_ANSWER_INVALID',
-  'PROMPT_UNSUPPORTED',
-  'PROMPT_IN_PROGRESS',
-  'INTERNAL_ERROR',
-])
+const HANDLER_CODES: ReadonlySet<FlowControlErrorCode> = new Set(
+  FLOW_CONTROL_ERROR_CODES.filter((code) => code !== 'DISCONNECTED'),
+)
 
 const FLOW_EVENT_TYPES: ReadonlySet<string> = new Set(['run:state', 'inbox:added', 'inbox:settled'])
 
