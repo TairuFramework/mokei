@@ -1,16 +1,44 @@
+import type { ElicitFormField } from '@mokei/context-protocol'
 import { render } from 'ink-testing-library'
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { SchemaForm } from '../src/prompts/SchemaForm.js'
-import type { FormField } from '../src/prompts/schema-form.js'
 
-const fields: Array<FormField> = [
-  { key: 'name', label: 'name', kind: 'text', required: true },
-  { key: 'ok', label: 'ok', kind: 'boolean', required: true },
+const fields: Array<ElicitFormField> = [
+  { name: 'name', title: 'name', kind: 'text', required: true },
+  { name: 'ok', title: 'ok', kind: 'boolean', required: true },
 ]
 
 describe('SchemaForm', () => {
+  test('submits selected multi-choice values as an array', () => {
+    const onSubmit = vi.fn()
+    const { stdin } = render(
+      <SchemaForm
+        fields={[
+          {
+            name: 'tags',
+            kind: 'multi',
+            required: true,
+            choices: [
+              { value: 'a', label: 'Alpha' },
+              { value: 'b', label: 'Beta' },
+            ],
+          },
+        ]}
+        onSubmit={onSubmit}
+        onCancel={() => {}}
+      />,
+    )
+    act(() => {
+      stdin.write(' ')
+    })
+    act(() => {
+      stdin.write('\r')
+    })
+    expect(onSubmit).toHaveBeenCalledWith({ tags: ['a'] })
+  })
+
   test('an empty form submits {} once', () => {
     const onSubmit = vi.fn()
     render(<SchemaForm fields={[]} onSubmit={onSubmit} onCancel={() => {}} />)
@@ -22,7 +50,7 @@ describe('SchemaForm', () => {
     const onSubmit = vi.fn()
     const { stdin } = render(
       <SchemaForm
-        fields={[{ key: '__proto__', label: 'p', kind: 'text', required: true }]}
+        fields={[{ name: '__proto__', title: 'p', kind: 'text', required: true }]}
         onSubmit={onSubmit}
         onCancel={() => {}}
       />,
@@ -58,7 +86,7 @@ describe('SchemaForm', () => {
     const onInvalid = vi.fn()
     const { stdin, lastFrame } = render(
       <SchemaForm
-        fields={[{ key: 'n', label: 'n', kind: 'number', required: true }]}
+        fields={[{ name: 'n', title: 'n', kind: 'number', required: true }]}
         onSubmit={onSubmit}
         onCancel={() => {}}
         onInvalid={onInvalid}
@@ -88,7 +116,7 @@ describe('SchemaForm', () => {
       const onCancel = vi.fn()
       const { stdin } = render(
         <SchemaForm
-          fields={[{ key: 'ok', label: 'ok', kind: 'boolean', required: true }]}
+          fields={[{ name: 'ok', title: 'ok', kind: 'boolean', required: true }]}
           onSubmit={onSubmit}
           onCancel={onCancel}
         />,

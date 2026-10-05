@@ -73,11 +73,7 @@ export function SchemaForm({
     const invalid: Record<string, string> = {}
     for (const field of fields) {
       const value = ownValue(values, field.name)
-      if (
-        value === undefined ||
-        (value === '' &&
-          !(field.kind === 'enum' && field.options?.some((option) => option.value === '')))
-      ) {
+      if (value === undefined || value === '') {
         if (field.required) invalid[field.name] = 'Required'
         continue
       }
@@ -138,8 +134,8 @@ export function SchemaForm({
                   onChange={(event) => change(field.name, event.currentTarget.checked)}
                 />
               )
-            if (field.kind === 'enum') {
-              const options = field.options ?? []
+            if (field.kind === 'choice') {
+              const options = field.choices ?? []
               return (
                 <NativeSelect
                   key={field.name}
@@ -166,6 +162,26 @@ export function SchemaForm({
                     )
                   }
                 />
+              )
+            }
+            if (field.kind === 'multi') {
+              return (
+                <Checkbox.Group
+                  key={field.name}
+                  {...props}
+                  required={field.required}
+                  value={
+                    Array.isArray(value)
+                      ? value.filter((item): item is string => typeof item === 'string')
+                      : []
+                  }
+                  onChange={(value) => change(field.name, value)}>
+                  <Stack>
+                    {(field.choices ?? []).map((choice) => (
+                      <Checkbox key={choice.value} value={choice.value} label={choice.label} />
+                    ))}
+                  </Stack>
+                </Checkbox.Group>
               )
             }
             if (field.kind === 'number' || field.kind === 'integer')

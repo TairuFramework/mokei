@@ -18,6 +18,13 @@ export {
   type ElicitResult,
   elicitationCompleteNotification,
 } from './elicitation.js'
+export {
+  type ElicitFormChoice,
+  type ElicitFormField,
+  type ElicitFormFieldKind,
+  type ElicitFormResult,
+  elicitFormFields,
+} from './elicitation-form.js'
 export type {
   ClientCapabilities,
   Implementation,

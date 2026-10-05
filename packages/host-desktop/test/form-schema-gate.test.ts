@@ -66,16 +66,25 @@ describe('keyword whitelist', () => {
   })
 
   test.each([
-    ['$ref', { $ref: 'https://evil.example/x' }],
-    ['not', { not: { type: 'string' } }],
-    ['allOf', { allOf: [{ maxLength: 0 }] }],
     // biome-ignore lint/suspicious/noThenProperty: a JSON Schema if/then, not a thenable
     ['if', { if: { type: 'string' }, then: { maxLength: 0 } }],
-    ['const', { const: 'nope' }],
     ['$id', { $id: 'http://x/y' }],
   ])('%s is dropped', (_name, extra) => {
     const schema = { type: 'string', ...extra }
     expect(bad(schema, 'a')).toBeNull()
+  })
+
+  test.each([
+    ['$ref', { $ref: 'https://evil.example/x' }],
+    ['not', { not: { type: 'string' } }],
+    ['allOf', { allOf: [{ maxLength: 0 }] }],
+    ['const', { const: 'nope' }],
+  ])('%s is rejected before compiling', (keyword, extra) => {
+    expect(planForm(params({ f: { type: 'string', ...extra } }), options)).toEqual({
+      ok: false,
+      reason: `property "f" has an unsupported ${keyword}`,
+    })
+    expect(createValidator).not.toHaveBeenCalled()
   })
 
   test('an unknown format is dropped without a console warning', () => {

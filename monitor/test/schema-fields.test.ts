@@ -23,7 +23,7 @@ test('maps primitives, required fields, defaults and string formats', () => {
   ).toEqual([
     {
       name: 'name',
-      kind: 'string',
+      kind: 'text',
       title: 'Name',
       description: 'Your name',
       default: 'Ada',
@@ -55,27 +55,27 @@ test('maps enums and both titled enum encodings', () => {
   ).toEqual([
     {
       name: 'plain',
-      kind: 'enum',
+      kind: 'choice',
       required: false,
-      options: [
+      choices: [
         { value: 'a', label: 'a' },
         { value: 'b', label: 'b' },
       ],
     },
     {
       name: 'named',
-      kind: 'enum',
+      kind: 'choice',
       required: false,
-      options: [
+      choices: [
         { value: 'a', label: 'Alpha' },
         { value: 'b', label: 'Beta' },
       ],
     },
     {
       name: 'titled',
-      kind: 'enum',
+      kind: 'choice',
       required: false,
-      options: [
+      choices: [
         { value: 'a', label: 'Alpha' },
         { value: 'b', label: 'Beta' },
       ],

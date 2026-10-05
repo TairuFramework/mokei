@@ -1,13 +1,14 @@
-import { TextInput } from '@inkjs/ui'
+import { MultiSelect, TextInput } from '@inkjs/ui'
+import type { ElicitFormField } from '@mokei/context-protocol'
 import { ConfirmCard, SelectCard } from '@tejika/ui'
 import { Box, Text, useApp, useInput } from 'ink'
 import { useEffect, useRef, useState } from 'react'
 
-import { type FormField, validateFieldInput } from './schema-form.js'
+import { validateFieldInput } from './schema-form.js'
 
 export type SchemaFormProps = {
   title?: string
-  fields: Array<FormField>
+  fields: Array<ElicitFormField>
   onSubmit: (values: Record<string, unknown>) => void
   onCancel: () => void
   onInvalid?: (issues: Array<string>) => void
@@ -39,7 +40,7 @@ export function SchemaForm({ title, fields, onSubmit, onCancel, onInvalid }: Sch
   const advance = (value: unknown) => {
     if (cancelled.current) return
     if (value !== undefined) {
-      Object.defineProperty(values.current, field.key, {
+      Object.defineProperty(values.current, field.name, {
         value,
         enumerable: true,
         writable: true,
@@ -64,32 +65,47 @@ export function SchemaForm({ title, fields, onSubmit, onCancel, onInvalid }: Sch
     advance(result.skip ? undefined : result.value)
   }
 
-  const label = `${field.label}${field.required ? '' : ' (optional)'}`
+  const label = `${field.title ?? field.name}${field.required ? '' : ' (optional)'}`
   const heading = title == null ? undefined : `${title} [${index + 1}/${fields.length}]`
 
   let input: React.ReactNode
   if (field.kind === 'boolean') {
     input = (
       <ConfirmCard
-        key={field.key}
+        key={field.name}
         message={label}
         onConfirm={() => advance(true)}
         onCancel={() => queueMicrotask(() => advance(false))}
       />
     )
-  } else if (field.kind === 'select') {
+  } else if (field.kind === 'choice') {
     input = (
       <SelectCard
-        key={field.key}
+        key={field.name}
         title={label}
-        items={field.options ?? []}
+        items={field.choices ?? []}
         onSelect={(value) => advance(value)}
         onCancel={() => {}}
       />
     )
+  } else if (field.kind === 'multi') {
+    input = (
+      <Box key={field.name} flexDirection="column">
+        <Text>{label}</Text>
+        <MultiSelect
+          options={field.choices ?? []}
+          defaultValue={
+            Array.isArray(field.default)
+              ? field.default.filter((value): value is string => typeof value === 'string')
+              : undefined
+          }
+          onSubmit={(value) => advance(value)}
+        />
+      </Box>
+    )
   } else {
     input = (
-      <Box key={field.key} flexDirection="column" borderStyle="round" borderColor="cyan">
+      <Box key={field.name} flexDirection="column" borderStyle="round" borderColor="cyan">
         <Text color="cyan">{label}</Text>
         <Box>
           <Text color="cyan">› </Text>
