@@ -133,7 +133,7 @@ An entry holds its requests, its responses and, once settled, an `outcome` of `a
 `withdrawn`. A request is open when the task status is `input_required` and the latest entry has
 no outcome. Four transitions change it, each a single CAS write: ask appends an entry and sets
 `input_required`. Answer adds a response and, with the last key, sets `answered` and `working`.
-withdraw sets `withdrawn` and `working`. A terminal status ends an open request. A settled entry
+Withdraw sets `withdrawn` and `working`. A terminal status ends an open request. A settled entry
 never changes, and keys are never reused. Waiters register a listener, then read the record, and
 resolve only from committed records, so a late or reordered notification cannot change the
 result. Expiry deletes the record and notifies the waiters, which fail.
