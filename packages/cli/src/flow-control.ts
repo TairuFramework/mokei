@@ -3,8 +3,6 @@ import { createClient, type HostClient } from '@mokei/host-node'
 
 import { ensureMokeiDaemon } from './daemon.js'
 
-export { withCommandSignal } from '@tejika/cli'
-
 export type FlowControlConnection = {
   control: FlowControl
   client: HostClient

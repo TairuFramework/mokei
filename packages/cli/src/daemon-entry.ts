@@ -22,9 +22,8 @@ function createDesktopAdapter(): FlowDesktopAdapter {
     notify: (message, options) => notifier.notify(message, options),
     dispose() {
       disposal ??= (async () => {
-        const pending = [surface.dispose(), notifier.dispose()]
         await settleAll(
-          pending.map((operation) => () => operation),
+          [() => surface.dispose(), () => notifier.dispose()],
           'Desktop adapter disposal failed',
         )
       })()

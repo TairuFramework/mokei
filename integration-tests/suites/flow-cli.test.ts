@@ -476,8 +476,7 @@ test('daemon start, stop and restart run the production entry in isolated direct
   const socketPath = join(directory, 'daemon.sock')
   const pidPath = join(directory, 'mokei.pid')
   const env = {
-    MOKEI_DATA_DIR: directory,
-    MOKEI_STATE_DIR: directory,
+    ...profile.env,
     MOKEI_LOG_DIR: join(directory, 'logs'),
     MOKEI_PID_PATH: pidPath,
     MOKEI_SOCKET_PATH: socketPath,

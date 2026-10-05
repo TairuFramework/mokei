@@ -236,12 +236,9 @@ export function createNativeSurface(params: {
       if (disposing != null) return disposing
       disposal.abort(new Error('Native surface disposed'))
       for (const current of deliveries) current.close()
-      const adapterDisposal = (async () => {
-        await adapter?.dispose()
-      })()
       disposing = settleAll(
         [
-          () => adapterDisposal,
+          () => adapter?.dispose(),
           ...[...operations].map((operation) => () => operation.catch(() => undefined)),
         ],
         'Native surface disposal failed',

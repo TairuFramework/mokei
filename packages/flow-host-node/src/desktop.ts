@@ -209,10 +209,9 @@ export function createFlowDesktopController(params: {
       for (const current of deliveries.values()) for (const delivery of current) delivery.close()
       deliveries.clear()
       disposing = (async () => {
-        const nativeDisposal = params.native.dispose()
         await settleAll(
           [
-            () => nativeDisposal,
+            () => params.native.dispose(),
             ...[...operations].map((operation) => () => operation.catch(() => undefined)),
           ],
           'Flow desktop disposal failed',

@@ -1,5 +1,6 @@
 import { createTaskManager, createTool } from '@mokei/context-server'
 import { ContextHost } from '@mokei/host'
+import { whenAborted } from '@sozai/async'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { callMeta, readFlowDepth } from '../src/call-meta.js'
@@ -164,9 +165,7 @@ test('cancelTask sends tasks/cancel', async () => {
           handler: ({ task }) => {
             if (task == null) throw new Error('Expected task context')
             return task.run(async (handle) => {
-              await new Promise<void>((resolve) => {
-                handle.signal.addEventListener('abort', () => resolve(), { once: true })
-              })
+              await whenAborted(handle.signal)
               return { content: [] }
             })
           },

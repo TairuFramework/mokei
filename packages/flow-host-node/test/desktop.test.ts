@@ -390,8 +390,7 @@ test('shutdown waits for an outstanding notification and disposes the adapter on
   const disposing = controller.dispose().then(() => {
     done = true
   })
-  await Promise.resolve()
-  expect(adapter.dispose).toHaveBeenCalledTimes(1)
+  await expect.poll(() => vi.mocked(adapter.dispose).mock.calls.length).toBe(1)
   expect(done).toBe(false)
   gate.resolve()
   await disposing

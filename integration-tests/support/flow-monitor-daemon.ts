@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createClient, type HostClient } from '@mokei/host-node'
+import { settleAll } from '@sozai/async'
 import { createTestProfile, poll } from '@tejika/test'
 import { vi } from 'vitest'
 
@@ -92,7 +93,13 @@ export async function startFlowMonitorDaemon() {
   }
   async function stop() {
     const current = child
-    const results = await Promise.allSettled([...clients].map((client) => client.dispose()))
+    let cleanupError: unknown
+    await settleAll(
+      [...clients].map((client) => () => client.dispose()),
+      'Client cleanup failed',
+    ).catch((error: unknown) => {
+      cleanupError = error
+    })
     clients.clear()
     if (current != null && current.exitCode == null && current.signalCode == null)
       current.kill('SIGTERM')
@@ -104,10 +111,7 @@ export async function startFlowMonitorDaemon() {
     if (current != null && current.exitCode == null && current.signalCode == null)
       throw new Error(`Daemon failed to stop\n${stderr}`)
     child = undefined
-    const failures = results
-      .filter((result) => result.status === 'rejected')
-      .map((result) => result.reason)
-    if (failures.length) throw new AggregateError(failures, 'Client cleanup failed')
+    if (cleanupError != null) throw cleanupError
     if (current != null && current.exitCode !== 0)
       throw new Error(`Daemon exit ${current.exitCode}/${current.signalCode}\n${stderr}`)
   }

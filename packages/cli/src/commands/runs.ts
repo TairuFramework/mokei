@@ -4,9 +4,9 @@ import {
   runStatus,
   type StartRunParams,
 } from '@mokei/flow-client'
+import { withCommandSignal } from '@tejika/cli'
 import { Command, Option } from 'commander'
 
-import { withCommandSignal } from '../flow-control.js'
 import { withSocketPath } from '../options.js'
 import {
   addJSONOption,

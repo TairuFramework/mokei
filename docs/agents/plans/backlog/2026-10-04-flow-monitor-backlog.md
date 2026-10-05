@@ -18,12 +18,6 @@
 The final review suggested disposing presence and monitor handlers before the flow service. This was declined for
 now; revisit if shutdown races appear.
 
-## Daemon commands ignore custom pid paths
-
-`mokei daemon start/stop/status/restart` identify the daemon through the default pid file. A daemon started with a
-custom `--pid-path` (for an isolated test setup) cannot be stopped or restarted through the CLI. Consider a
-`--pid-path` option, or deriving the pid file from the selected socket.
-
 ## Upstream and small cleanups
 
 - The monitor bridge has no `dispose()`. `startMonitor` wraps SSE bodies to close them on daemon reconnect. A bridge

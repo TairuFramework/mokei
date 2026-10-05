@@ -21,6 +21,7 @@ import {
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import type { ContextClient } from '@mokei/context-client'
 import { META_SUBSCRIPTION_ID } from '@mokei/context-protocol'
+import { poll } from '@tejika/test'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import {
@@ -46,21 +47,6 @@ type WireFrame = {
 /** The graceful terminal listen results seen on the wire (a `result` carrying a subscription id). */
 function terminalFrames(frames: ReadonlyArray<WireFrame>): Array<WireFrame> {
   return frames.filter((frame) => frame.result?._meta?.[META_SUBSCRIPTION_ID] != null)
-}
-
-/** Polls `read` until it returns a non-empty array, or throws after `timeoutMs`. */
-async function poll<T>(read: () => Array<T>, timeoutMs = 5_000): Promise<Array<T>> {
-  const deadline = Date.now() + timeoutMs
-  for (;;) {
-    const value = read()
-    if (value.length > 0) {
-      return value
-    }
-    if (Date.now() >= deadline) {
-      throw new Error(`Timed out after ${timeoutMs}ms waiting for a frame`)
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25))
-  }
 }
 
 /**
@@ -253,7 +239,17 @@ describe.each(ROWS)('mokei subscriptions client against the SDK v2 server $name'
     // generation retired its predecessor), and its terminal `result._meta` names the same
     // subscription id the delivered notifications carried.
     await harness.gracefulTeardown()
-    const terminals = await poll(() => terminalFrames(harness?.frames() ?? []))
+    const timeoutMs = 5_000
+    const terminals = await poll(
+      () => {
+        const frames = terminalFrames(harness?.frames() ?? [])
+        return frames.length > 0 ? frames : undefined
+      },
+      { timeoutMs, intervalMs: 25 },
+    )
+    if (terminals == null) {
+      throw new Error(`Timed out after ${timeoutMs}ms waiting for a frame`)
+    }
     expect(terminals).toHaveLength(1)
     const terminal = terminals[0]
     expect(terminal?.result?._meta?.[META_SUBSCRIPTION_ID]).toBe(deliveredSubscriptionID)

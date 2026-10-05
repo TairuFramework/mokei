@@ -2,8 +2,6 @@ import { fileURLToPath } from 'node:url'
 import type { CLIResult, RunCLIOptions, SpawnedCLI } from '@tejika/test'
 import { runCLI as run, spawnCLI as spawn } from '@tejika/test'
 
-export type { CLIResult, SpawnedCLI } from '@tejika/test'
-
 export const CLI_CWD = fileURLToPath(new URL('../../../packages/cli', import.meta.url))
 export const CLI_BINARY = fileURLToPath(
   new URL('../../../packages/cli/bin/dev.js', import.meta.url),

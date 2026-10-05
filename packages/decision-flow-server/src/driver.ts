@@ -8,6 +8,7 @@ import {
   TaskInputKeyReusedError,
   TaskManagerDisposedError,
 } from '@mokei/context-server'
+import { sleep } from '@sozai/async'
 import {
   type FlowDefinition,
   type FlowGraph,
@@ -63,18 +64,7 @@ function hasDeclineEdge(decline: unknown): boolean {
 
 function waitUntil(when: string, signal: AbortSignal): Promise<void> {
   const remaining = Math.max(0, new Date(when).getTime() - Date.now())
-  if (signal.aborted) return Promise.reject(signal.reason)
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', abort)
-      resolve()
-    }, remaining)
-    const abort = () => {
-      clearTimeout(timer)
-      reject(signal.reason)
-    }
-    signal.addEventListener('abort', abort, { once: true })
-  })
+  return sleep(remaining, signal)
 }
 
 export function terminalResult(state: RunState): CallToolResult | undefined {

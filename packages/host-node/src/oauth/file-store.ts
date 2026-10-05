@@ -36,22 +36,19 @@ async function writeAll(path: string, data: Record<string, StoredTokens>): Promi
 export function createFileTokenStore(path: string): TokenStore {
   // Resolve once so differently-spelled paths (`./t.json` vs its absolute form) share one chain.
   const resolved = resolve(path)
-  const serialize = <T>(op: () => Promise<T>): Promise<T> => {
-    return pathQueue.run(resolved, op)
-  }
   return {
     get(key) {
-      return serialize(async () => (await readAll(resolved))[key])
+      return pathQueue.run(resolved, async () => (await readAll(resolved))[key])
     },
     set(key, tokens) {
-      return serialize(async () => {
+      return pathQueue.run(resolved, async () => {
         const all = await readAll(resolved)
         all[key] = tokens
         await writeAll(resolved, all)
       })
     },
     clear(key) {
-      return serialize(async () => {
+      return pathQueue.run(resolved, async () => {
         const all = await readAll(resolved)
         delete all[key]
         await writeAll(resolved, all)

@@ -32,6 +32,7 @@ function bounded<T>(work: Promise<T>, signal: AbortSignal, deadline: number): Pr
 }
 
 async function waitReady({ socketPath, signal }: DaemonCommandContext) {
+  // Readiness gets its own budget after the factory's socket startup budget.
   const deadline = Date.now() + START_TIMEOUT_MS
   if (!(await isSocketLive(socketPath))) {
     await waitForSocket(socketPath, {

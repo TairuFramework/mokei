@@ -31,7 +31,7 @@ vi.mock('@tejika/process', async (importOriginal) => {
 vi.mock('../src/daemon.js', () => ({ ensureMokeiDaemon: vi.fn() }))
 vi.mock('@tejika/cli', async (importOriginal) => {
   const actual = await importOriginal<typeof TejikaCLI>()
-  // Inline the real factory so its process imports use the test doubles.
+  // @tejika/cli/lib/daemon.js is inlined so the factory's process imports use test doubles.
   const path = new URL('../node_modules/@tejika/cli/lib/daemon.js?inline', import.meta.url).href
   const daemon = (await import(path)) as Pick<typeof TejikaCLI, 'createDaemonCommand'>
   return { ...actual, ...daemon }
@@ -168,7 +168,7 @@ test('start connects immediately when the socket is accepting', async () => {
   expect(stdout.join('')).toBe(`daemon running (pid 7)\nsocket: ${SOCKET}\n`)
 })
 
-test('socket startup and flow readiness share the start budget', async () => {
+test('socket waiting inside waitReady shares its 30s readiness budget', async () => {
   vi.mocked(isSocketLive).mockResolvedValue(false)
   vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'booting', pid: 7, socketPath: SOCKET })
   vi.useFakeTimers()

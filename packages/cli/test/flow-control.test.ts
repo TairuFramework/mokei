@@ -3,9 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type * as HostNodeExports from '@mokei/host-node'
 import { createClient } from '@mokei/host-node'
+import { withCommandSignal } from '@tejika/cli'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { connectFlowControl, withCommandSignal } from '../src/flow-control.js'
+import { connectFlowControl } from '../src/flow-control.js'
 
 vi.mock('@mokei/host-node', async (importOriginal) => {
   const actual = await importOriginal<typeof HostNodeExports>()

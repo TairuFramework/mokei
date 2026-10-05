@@ -13,11 +13,12 @@ import { fileURLToPath } from 'node:url'
 import { type IPty, spawn } from 'node-pty'
 import stripAnsi from 'strip-ansi'
 
+import { CLI_BINARY, CLI_CWD } from './flow-cli/run-cli.js'
 import { chatBackend } from './requirements.js'
 
+export { CLI_BINARY, CLI_CWD } from './flow-cli/run-cli.js'
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-export const CLI_CWD = resolve(ROOT, 'packages/cli')
-export const CLI_BINARY = resolve(CLI_CWD, 'bin/dev.js')
 export const FETCH_SERVER = resolve(ROOT, 'mcp-servers/fetch/lib/serve.js')
 
 /**

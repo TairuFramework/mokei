@@ -1,4 +1,5 @@
 import { createTool, type ServerConfig } from '@mokei/context-server'
+import { whenAborted } from '@sozai/async'
 
 export const TASK_COMPLETE_TOOL = 'completeTask'
 export const TASK_INPUT_TOOL = 'askNameTask'
@@ -62,9 +63,7 @@ export function createMokeiTasksConfig(
         handler: ({ task }) => {
           if (task == null) throw new Error('Expected task context')
           return task.run(async (handle) => {
-            await new Promise<void>((resolve) => {
-              handle.signal.addEventListener('abort', () => resolve(), { once: true })
-            })
+            await whenAborted(handle.signal)
             return taskResult('ignored')
           })
         },

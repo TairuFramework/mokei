@@ -9,6 +9,7 @@ import type { RunRecord } from '@mokei/flow-host'
 import { createSQLiteTraceStore } from '@mokei/flow-host-node'
 import { createClient, type HostClient } from '@mokei/host-node'
 import type { HostEvent } from '@mokei/host-protocol'
+import { settleAll } from '@sozai/async'
 import { getPIDPath } from '@tejika/env'
 import { createTestProfile, poll } from '@tejika/test'
 
@@ -142,16 +143,12 @@ export async function startFlowDaemonFixture(
   }
   async function closeClients() {
     const closing = [
-      ...[...subscriptions].map((close) => close()),
-      ...[...clients].map((client) => within('client disposal', client.dispose())),
+      ...subscriptions,
+      ...[...clients].map((client) => () => within('client disposal', client.dispose())),
     ]
     subscriptions.clear()
     clients.clear()
-    const results = await Promise.allSettled(closing)
-    const errors = results
-      .filter((result) => result.status === 'rejected')
-      .map((result) => result.reason)
-    if (errors.length) throw new AggregateError(errors, 'Client cleanup failed')
+    await settleAll(closing, 'Client cleanup failed')
   }
   async function end(signal: NodeJS.Signals, expectedExitCode = 0) {
     if (child == null) return

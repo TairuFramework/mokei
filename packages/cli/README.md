@@ -97,6 +97,9 @@ mokei daemon restart               stop then start, applying flows.json changes
 mokei daemon logs [-n <count>] [-f]  print the daemon log (default 50 lines); -f follows
 ```
 
+`start`, `stop`, `status` and `restart` accept `--pid-path <path>` to select a custom pid file.
+The default comes from `@tejika/env` for the app `mokei`.
+
 `stop` waits up to 75 s for in-flight work to drain, then force-kills the daemon and says so. It
 only signals a daemon serving the selected socket. With `--json`, `stop` prints
 `{ state, pid?, forced? }` (`forced` when `state` is `stopped`), and `restart` prints the same shape

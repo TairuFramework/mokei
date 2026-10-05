@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url'
 import { createTestProfile } from '@tejika/test'
 import { afterAll, describe, expect, test } from 'vitest'
 
+import { CLI_BINARY, CLI_CWD } from '../support/flow-cli/run-cli.js'
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const CLI_CWD = resolve(ROOT, 'packages/cli')
-const CLI_BINARY = resolve(CLI_CWD, 'bin/dev.js')
 const FETCH_SERVER = resolve(ROOT, 'mcp-servers/fetch/lib/serve.js')
 
 // `mokei proxy` goes through the host daemon, which binds the per-user default socket. Point the

@@ -1,8 +1,8 @@
 import type { FlowControl, InboxItem } from '@mokei/flow-client'
+import { withCommandSignal } from '@tejika/cli'
 import { Command } from 'commander'
 
 import { answerInputInTerminal, submitAnswer } from '../answer-input.js'
-import { withCommandSignal } from '../flow-control.js'
 import { withSocketPath } from '../options.js'
 import {
   addJSONOption,

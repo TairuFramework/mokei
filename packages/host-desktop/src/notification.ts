@@ -130,10 +130,9 @@ export function createDesktopNotifier(options: DesktopElicitOptions = {}): Deskt
       // Aborting the lifetime signal also removes notifications that are still live
       disposal.abort(new Error('Desktop notifier disposed'))
       disposing = (async () => {
-        const runnerDisposal = ownsRunner ? [runner.dispose()] : []
         await settleAll(
           [
-            ...runnerDisposal.map((pending) => () => pending),
+            ...(ownsRunner ? [() => runner.dispose()] : []),
             ...[...deliveries].map((delivery) => () => delivery.catch(() => undefined)),
             ...[...live].map((closed) => () => closed),
           ],
