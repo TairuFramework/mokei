@@ -207,9 +207,9 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     return tracing.withRun(runID, () => {
       return queue.run(runID, async () => {
         if (approvalID !== undefined) inbox.requireOpen(approvalID)
-        const claimed = await transition(store, runID, (record) =>
-          record.state === 'awaiting_approval' ? { state: 'working' } : undefined,
-        )
+        const claimed = await transition(store, runID, (record) => {
+          return record.state === 'awaiting_approval' ? { state: 'working' } : undefined
+        })
         if (!claimed.changed && approvalID !== undefined)
           throw new InboxItemNotFoundError({ itemID: approvalID })
         if (claimed.stateChanged) emit('run:state', runSnapshot(claimed.record))
@@ -227,11 +227,11 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     await tracing.withRun(runID, () => {
       return queue.run(runID, async () => {
         inbox.requireOpen(id)
-        const result = await transition(store, runID, () =>
-          outcome === 'declined'
+        const result = await transition(store, runID, () => {
+          return outcome === 'declined'
             ? { state: 'denied', error: { type: 'FlowDenied', message: reason ?? 'Flow denied' } }
-            : { state: 'cancelled' },
-        )
+            : { state: 'cancelled' }
+        })
         if (!result.changed) throw new InboxItemNotFoundError({ itemID: id })
         if (result.stateChanged) emit('run:state', runSnapshot(result.record))
         inbox.settle(id, outcome)

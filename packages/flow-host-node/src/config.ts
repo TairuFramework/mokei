@@ -112,9 +112,11 @@ function createDefaults(): FlowConfig {
 }
 
 function issuePath(issue: { path?: ReadonlyArray<unknown>; details?: unknown }): string {
-  const parts = [...(issue.path ?? [])].map((part) =>
-    typeof part === 'object' && part !== null && 'key' in part ? String(part.key) : String(part),
-  )
+  const parts = [...(issue.path ?? [])].map((part) => {
+    return typeof part === 'object' && part !== null && 'key' in part
+      ? String(part.key)
+      : String(part)
+  })
   const details = issue.details
   if (typeof details === 'object' && details !== null && 'params' in details) {
     const params = details.params
@@ -179,17 +181,21 @@ export async function loadFlowConfig(
     ...config,
     flowDirs: config.flowDirs.map((directory) => resolveConfiguredPath(directory, configDirectory)),
     siblings: Object.fromEntries(
-      Object.entries(config.siblings).map(([name, sibling]) => [
-        name,
-        {
-          ...sibling,
-          ...(sibling.args && {
-            args: sibling.args.map((argument) =>
-              isScriptPath(argument) ? resolveConfiguredPath(argument, configDirectory) : argument,
-            ),
-          }),
-        },
-      ]),
+      Object.entries(config.siblings).map(([name, sibling]) => {
+        return [
+          name,
+          {
+            ...sibling,
+            ...(sibling.args && {
+              args: sibling.args.map((argument) => {
+                return isScriptPath(argument)
+                  ? resolveConfiguredPath(argument, configDirectory)
+                  : argument
+              }),
+            }),
+          },
+        ]
+      }),
     ),
   }
 }

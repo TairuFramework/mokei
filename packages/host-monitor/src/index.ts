@@ -190,9 +190,9 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
       bridgeReadable: bridge.stream.readable,
       bridgeWritable: bridge.stream.writable,
     })
-    void pipes.done.then(() =>
-      attached.reject(new Error('Daemon connection closed before attachment')),
-    )
+    void pipes.done.then(() => {
+      return attached.reject(new Error('Daemon connection closed before attachment'))
+    })
     return {
       bridge,
       pipes,

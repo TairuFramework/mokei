@@ -49,9 +49,9 @@ async function subscribe(host: FlowHost, signal?: AbortSignal): Promise<FlowSubs
   offs.push(
     host.events.on('run:state', (data) => queue.push({ type: 'run:state', data })),
     host.events.on('inbox:added', (data) => queue.push({ type: 'inbox:added', data })),
-    host.events.on('inbox:settled', (data) =>
-      queue.push({ type: 'inbox:settled', data } satisfies FlowEvent),
-    ),
+    host.events.on('inbox:settled', (data) => {
+      return queue.push({ type: 'inbox:settled', data } satisfies FlowEvent)
+    }),
   )
   return queue.subscription
 }
@@ -67,34 +67,37 @@ export function createLocalFlowControl(
   const control: FlowControl = {
     flows: {
       list: () => call(() => host.flows()),
-      check: (definition) =>
-        call(async () => {
+      check: (definition) => {
+        return call(async () => {
           const checked = await host.check(definition)
           const details = { warnings: checked.warnings, formatted: checked.formatted }
           return checked.issues
             ? { issues: [...checked.issues], ...details }
             : { value: checked.value, ...details }
-        }),
+        })
+      },
     },
     runs: {
       start: (params) => call(() => host.start(params as StartRunParams)),
-      get: (runID) =>
-        call(async () => {
+      get: (runID) => {
+        return call(async () => {
           const snapshot = await host.get(runID)
           if (snapshot == null) throw new RunNotFoundError({ runID })
           return snapshot
-        }),
+        })
+      },
       list: (filter) => call(() => host.list(filter)),
       cancel: (runID) => call(() => host.cancel(runID)),
     },
     inbox: {
       list: (filter) => call(() => host.inbox.list(filter)),
-      get: (id) =>
-        call(() => {
+      get: (id) => {
+        return call(() => {
           const item = host.inbox.get(id)
           if (item == null) throw new InboxItemNotFoundError({ itemID: id })
           return item
-        }),
+        })
+      },
       answer: (id, content) => call(() => host.inbox.answer(id, content)),
       decline: (id, reason) => call(() => host.inbox.decline(id, reason)),
       cancel: (id) => call(() => host.inbox.cancel(id)),

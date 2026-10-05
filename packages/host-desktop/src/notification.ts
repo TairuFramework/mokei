@@ -101,11 +101,12 @@ export function createDesktopNotifier(options: DesktopElicitOptions = {}): Deskt
             ? undefined
             : () => {
                 if (lifetime.aborted) return
-                const failed = (error: unknown) =>
-                  report(
+                const failed = (error: unknown) => {
+                  return report(
                     options.onUnsupported,
                     `Notification click handler failed: ${error instanceof Error ? error.message : String(error)}`,
                   )
+                }
                 try {
                   void Promise.resolve(onClick()).catch(failed)
                 } catch (error) {

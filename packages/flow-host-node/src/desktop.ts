@@ -214,9 +214,9 @@ export function createFlowDesktopController(params: {
         ])
         const failures = results
           .filter((result) => result.status === 'rejected')
-          .flatMap((result) =>
-            result.reason instanceof AggregateError ? result.reason.errors : [result.reason],
-          )
+          .flatMap((result) => {
+            return result.reason instanceof AggregateError ? result.reason.errors : [result.reason]
+          })
         if (failures.length > 0) throw new AggregateError(failures, 'Flow desktop disposal failed')
       })()
       return disposing

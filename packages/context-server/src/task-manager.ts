@@ -273,9 +273,9 @@ class ManagedTasks implements TaskManager {
   }
 
   async #failInterrupted(taskID: string): Promise<void> {
-    await this.#mutate(taskID, (record) =>
-      isTerminal(record) ? undefined : { status: 'failed', error: INTERRUPTED },
-    )
+    await this.#mutate(taskID, (record) => {
+      return isTerminal(record) ? undefined : { status: 'failed', error: INTERRUPTED }
+    })
     this.#hidden.delete(taskID)
   }
 
@@ -419,8 +419,9 @@ class ManagedTasks implements TaskManager {
       checkpoint: async (resumeData) => {
         await this.#activeMutation(taskID, controller, () => ({ resumeData }))
       },
-      requestInput: (requests, options) =>
-        this.#requestInput(taskID, controller, requests, options),
+      requestInput: (requests, options) => {
+        return this.#requestInput(taskID, controller, requests, options)
+      },
       awaitInput: (options) => this.#awaitInput(taskID, controller, options),
       cancel: (reason) => this.#cancelFromHandle(taskID, controller, reason),
     }
@@ -436,8 +437,8 @@ class ManagedTasks implements TaskManager {
         if (controller.signal.aborted || this.#disposed) return
         try {
           const settled = settleToolOutcome(tool, outcome)
-          await this.#mutate(taskID, (record) =>
-            isTerminal(record)
+          await this.#mutate(taskID, (record) => {
+            return isTerminal(record)
               ? undefined
               : 'result' in settled
                 ? { status: 'completed', result: { ...settled.result, resultType: 'complete' } }
@@ -446,8 +447,8 @@ class ManagedTasks implements TaskManager {
                     error: JSON.parse(JSON.stringify(settled.error)) as NonNullable<
                       TaskRecord['error']
                     >,
-                  },
-          )
+                  }
+          })
           return
         } catch (error) {
           try {
@@ -477,10 +478,11 @@ class ManagedTasks implements TaskManager {
     let won = false
     await this.#mutate(
       taskID,
-      (record) =>
-        isTerminal(record) || controller.signal.aborted || this.#disposed
+      (record) => {
+        return isTerminal(record) || controller.signal.aborted || this.#disposed
           ? undefined
-          : { status: 'cancelled' },
+          : { status: 'cancelled' }
+      },
       () => {
         // Abort before observers see the cancelled record, so waiters reject with this reason.
         won = true
@@ -527,9 +529,9 @@ class ManagedTasks implements TaskManager {
         id = same.id
         return undefined
       }
-      const reused = keys.find((key) =>
-        record.inputs.some((entry) => Object.hasOwn(entry.requests, key)),
-      )
+      const reused = keys.find((key) => {
+        return record.inputs.some((entry) => Object.hasOwn(entry.requests, key))
+      })
       if (reused !== undefined) throw new TaskInputKeyReusedError(reused)
       if (signal?.aborted) throw signal.reason
       if (openInput(record) !== undefined) throw new Error('Input is already outstanding')
@@ -606,13 +608,13 @@ class ManagedTasks implements TaskManager {
       if (entry?.outcome === 'withdrawn')
         return settle(() => reject(new InputRequestWithdrawnError({ taskID, id })))
       if (isTerminal(record))
-        settle(() =>
-          reject(
+        settle(() => {
+          return reject(
             controller.signal.aborted
               ? controller.signal.reason
               : new Error('Task is no longer active'),
-          ),
-        )
+          )
+        })
     }
     const onAbort = () => settle(() => reject(controller.signal.reason))
     const unlisten = this.#listen(taskID, check)

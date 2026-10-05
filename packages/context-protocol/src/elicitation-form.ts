@@ -32,10 +32,9 @@ function parseChoices(
   schema: Record<string, unknown>,
   keyword: 'oneOf' | 'anyOf',
 ): ChoiceResult {
-  const fail = (reason: string): ChoiceResult => ({
-    ok: false,
-    reason: `property "${name}" ${reason}`,
-  })
+  const fail = (reason: string): ChoiceResult => {
+    return { ok: false, reason: `property "${name}" ${reason}` }
+  }
   const choices: Array<ElicitFormChoice> = []
   if ('enum' in schema) {
     if (keyword in schema) return fail('has conflicting choices')
@@ -107,10 +106,9 @@ export function elicitFormFields(schema: unknown): ElicitFormResult {
   const required = new Set(Array.isArray(schema.required) ? schema.required : [])
   const fields: Array<ElicitFormField> = []
   for (const [name, property] of Object.entries(properties)) {
-    const fail = (reason: string): ElicitFormResult => ({
-      ok: false,
-      reason: `property "${name}" ${reason}`,
-    })
+    const fail = (reason: string): ElicitFormResult => {
+      return { ok: false, reason: `property "${name}" ${reason}` }
+    }
     if (!isRecord(property)) return fail('is not a schema object')
     // String oneOf is the supported titled-choice encoding, not general composition.
     const unsupported = COMPOSITION_KEYS.find((key) => {

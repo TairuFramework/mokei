@@ -46,17 +46,15 @@ export function createMemoryTraceStore(): TraceStore {
     async getTrace(traceID) {
       const traceSpans = [...spans.values()]
         .filter(({ value }) => value.traceID === traceID)
-        .sort(
-          (left, right) =>
-            left.value.startTime - right.value.startTime || left.sequence - right.sequence,
-        )
+        .sort((left, right) => {
+          return left.value.startTime - right.value.startTime || left.sequence - right.sequence
+        })
         .map(({ value }) => copy(value))
       const traceLogs = logs
         .filter(({ value }) => value.traceID === traceID)
-        .sort(
-          (left, right) =>
-            left.value.timestamp - right.value.timestamp || left.sequence - right.sequence,
-        )
+        .sort((left, right) => {
+          return left.value.timestamp - right.value.timestamp || left.sequence - right.sequence
+        })
         .map(({ value }) => copy(value))
       return { spans: traceSpans, logs: traceLogs }
     },

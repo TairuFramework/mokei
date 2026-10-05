@@ -271,8 +271,9 @@ export async function startRun(params: {
         throw new RPCError({ code: -32603, message: 'Flow input key reused', cause: error })
       }
     }
-    const isTimeout = (error: unknown) =>
-      error === expired || error instanceof InputRequestWithdrawnError
+    const isTimeout = (error: unknown) => {
+      return error === expired || error instanceof InputRequestWithdrawnError
+    }
 
     /**
      * The value event for an accepted answer. Declining or cancelling takes the node's `decline`

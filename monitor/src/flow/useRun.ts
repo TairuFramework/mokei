@@ -19,8 +19,9 @@ export function useRun(runID: string) {
     return {
       initial: undefined,
       read,
-      affected: (event) =>
-        event.type === 'run:state' && event.data.runID === runID ? runID : undefined,
+      affected: (event) => {
+        return event.type === 'run:state' && event.data.runID === runID ? runID : undefined
+      },
       readAffected: read,
       merge: (_data, _id, run) => run,
       apply: (run, event) => (event.type === 'run:state' ? event.data : run),

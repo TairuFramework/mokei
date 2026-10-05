@@ -101,26 +101,24 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
   useDidUpdate(() => {
     sendState.current()
   }, [visibility])
-  useEffect(
-    () =>
-      on((event) => {
-        if (event.type === 'inbox:settled') {
-          for (const [id, delivery] of deliveries.current) {
-            if (delivery.itemID === event.data.item.id) closeDelivery(id)
-          }
-        } else if (event.type === 'inbox:added' && document.visibilityState === 'visible') {
-          const id = `inbox:${event.data.id}`
-          showToast(
-            id,
-            event.data.id,
-            'New inbox item',
-            event.data.kind === 'input' ? event.data.message : 'Approval requested',
-          )
-          deliveries.current.set(id, { itemID: event.data.id, toast: id })
+  useEffect(() => {
+    return on((event) => {
+      if (event.type === 'inbox:settled') {
+        for (const [id, delivery] of deliveries.current) {
+          if (delivery.itemID === event.data.item.id) closeDelivery(id)
         }
-      }),
-    [on, closeDelivery, showToast],
-  )
+      } else if (event.type === 'inbox:added' && document.visibilityState === 'visible') {
+        const id = `inbox:${event.data.id}`
+        showToast(
+          id,
+          event.data.id,
+          'New inbox item',
+          event.data.kind === 'input' ? event.data.message : 'Approval requested',
+        )
+        deliveries.current.set(id, { itemID: event.data.id, toast: id })
+      }
+    })
+  }, [on, closeDelivery, showToast])
 
   useEffect(() => {
     if (restarted) return
@@ -138,7 +136,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       }
       try {
         // The bridge replaces this parameter with its current attachment ID.
-        const channel = client.createChannel('monitor.presence', { param: { attachmentID: '' } })
+        const channel = client.createChannel('monitor.presence', { param: {} })
         const reader = channel.readable.getReader()
         teardown = () => {
           if (!live) return
@@ -283,12 +281,11 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       lifecycle.current = { stop: () => {}, restore: () => {} }
     }
   }, [client, control, epoch, restarted, closeDelivery, openItem, showToast, setPresence])
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    return () => {
       for (const id of deliveries.current.keys()) closeDelivery(id)
-    },
-    [closeDelivery],
-  )
+    }
+  }, [closeDelivery])
 
   return (
     <PresenceContext value={{ activeItemID, setActiveItem, canNotify, requestPermission }}>

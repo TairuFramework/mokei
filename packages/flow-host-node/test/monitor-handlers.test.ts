@@ -79,6 +79,15 @@ test('attach emits attached and keeps registration until abort', async () => {
   await vi.waitFor(() => expect(presence.currentURL()).toBeUndefined())
 })
 
+test('presence rejects a missing attachment ID with INVALID_PARAMS', async () => {
+  const { client, presence } = setup()
+  await expect(client.createChannel('monitor.presence', { param: {} })).rejects.toMatchObject({
+    code: 'INVALID_PARAMS',
+    message: 'Missing monitor attachment ID',
+  })
+  expect(presence.tabs()).toEqual([])
+})
+
 test('presence rejects unknown attachments', async () => {
   const { client } = setup()
   await expect(

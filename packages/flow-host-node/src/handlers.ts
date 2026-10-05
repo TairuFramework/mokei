@@ -18,54 +18,61 @@ export function createFlowHandlers(service: FlowService): FlowHandlers {
   }
   return {
     'flows.list': () => run(({ host }) => host.flows()),
-    'flows.check': ({ param }) =>
-      run(async ({ host }) => {
+    'flows.check': ({ param }) => {
+      return run(async ({ host }) => {
         const checked = await host.check(param.definition)
         const details = { warnings: checked.warnings, formatted: checked.formatted }
         return checked.issues
           ? { issues: [...checked.issues], ...details }
           : { value: checked.value, ...details }
-      }),
+      })
+    },
     // The wire validates JSON inputs; the runtime validates inline flow definitions.
     'runs.start': ({ param }) => run(({ host }) => host.start(param as StartRunParams)),
-    'runs.get': ({ param }) =>
-      run(async ({ host }) => {
+    'runs.get': ({ param }) => {
+      return run(async ({ host }) => {
         const snapshot = await host.get(param.runID)
         if (snapshot == null) throw new RunNotFoundError({ runID: param.runID })
         return snapshot
-      }),
+      })
+    },
     'runs.list': ({ param }) => run(({ host }) => host.list(param)),
     'runs.cancel': ({ param }) => run(({ host }) => host.cancel(param.runID)),
-    'runs.trace': ({ param }) =>
-      run(async ({ host, traceStore }) => {
+    'runs.trace': ({ param }) => {
+      return run(async ({ host, traceStore }) => {
         const snapshot = await host.get(param.runID)
         if (snapshot == null) throw new RunNotFoundError({ runID: param.runID })
         return snapshot.traceID == null
           ? { spans: [], logs: [] }
           : traceStore.getTrace(snapshot.traceID)
-      }),
+      })
+    },
     'inbox.list': ({ param }) => run(({ host }) => host.inbox.list(param)),
-    'inbox.get': ({ param }) =>
-      run(({ host }) => {
+    'inbox.get': ({ param }) => {
+      return run(({ host }) => {
         const item = host.inbox.get(param.id)
         if (item == null) throw new InboxItemNotFoundError({ itemID: param.id })
         return item
-      }),
-    'inbox.answer': ({ param }) =>
-      run(async ({ host }) => {
+      })
+    },
+    'inbox.answer': ({ param }) => {
+      return run(async ({ host }) => {
         await host.inbox.answer(param.id, param.content)
         return { settled: true as const }
-      }),
-    'inbox.decline': ({ param }) =>
-      run(async ({ host }) => {
+      })
+    },
+    'inbox.decline': ({ param }) => {
+      return run(async ({ host }) => {
         await host.inbox.decline(param.id, param.reason)
         return { settled: true as const }
-      }),
-    'inbox.cancel': ({ param }) =>
-      run(async ({ host }) => {
+      })
+    },
+    'inbox.cancel': ({ param }) => {
+      return run(async ({ host }) => {
         await host.inbox.cancel(param.id)
         return { settled: true as const }
-      }),
+      })
+    },
     'inbox.prompt': ({ param, signal }) => run(() => service.prompt(param.id, signal)),
   }
 }

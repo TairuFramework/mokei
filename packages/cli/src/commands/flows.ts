@@ -33,9 +33,9 @@ async function runList(options: CommandOptions): Promise<void> {
 async function runCheck(file: string, options: CommandOptions): Promise<void> {
   try {
     const definition = await parseJSONArg('<file>', `@${file}`)
-    const result = await withControl(options.socketPath, (control) =>
-      control.flows.check(definition),
-    )
+    const result = await withControl(options.socketPath, (control) => {
+      return control.flows.check(definition)
+    })
     if (options.json) {
       printJSON(result)
     } else {

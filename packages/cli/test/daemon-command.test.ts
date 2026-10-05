@@ -6,12 +6,13 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { createDaemonCommand, resolveDaemonIdentity } from '../src/commands/daemon.js'
 import { ensureMokeiDaemon } from '../src/daemon.js'
+import type * as FlowControl from '../src/flow-control.js'
 import { connectFlowControl } from '../src/flow-control.js'
 
 vi.mock('@tejika/process', () => ({ getDaemonStatus: vi.fn(), stopDaemon: vi.fn() }))
 vi.mock('../src/daemon.js', () => ({ ensureMokeiDaemon: vi.fn() }))
 vi.mock('../src/flow-control.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/flow-control.js')>()
+  const actual = await importOriginal<typeof FlowControl>()
   return { ...actual, connectFlowControl: vi.fn() }
 })
 

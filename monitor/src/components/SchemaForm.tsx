@@ -52,10 +52,12 @@ export function SchemaForm({
     json: '{}',
   })
   function change(name: string, value: unknown) {
-    setState((previous) => ({
-      values: { ...previous.values, [name]: value },
-      fieldErrors: { ...previous.fieldErrors, [name]: '' },
-    }))
+    setState((previous) => {
+      return {
+        values: { ...previous.values, [name]: value },
+        fieldErrors: { ...previous.fieldErrors, [name]: '' },
+      }
+    })
   }
   function submit() {
     if (fields == null) {
@@ -148,19 +150,21 @@ export function SchemaForm({
                   }
                   data={[
                     { value: '', label: 'Choose an option' },
-                    ...options.map((option, index) => ({
-                      value: String(index),
-                      label: option.label,
-                    })),
+                    ...options.map((option, index) => {
+                      return {
+                        value: String(index),
+                        label: option.label,
+                      }
+                    }),
                   ]}
-                  onChange={(event) =>
-                    change(
+                  onChange={(event) => {
+                    return change(
                       field.name,
                       event.currentTarget.value === ''
                         ? undefined
                         : options[Number(event.currentTarget.value)]?.value,
                     )
-                  }
+                  }}
                 />
               )
             }

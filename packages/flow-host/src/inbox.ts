@@ -184,10 +184,9 @@ export function createInbox(params: {
   const api: FlowHost['inbox'] = {
     list(filter) {
       return [...items.values()]
-        .filter(
-          ({ item, status }) =>
-            status === 'open' && (filter?.runID === undefined || item.runID === filter.runID),
-        )
+        .filter(({ item, status }) => {
+          return status === 'open' && (filter?.runID === undefined || item.runID === filter.runID)
+        })
         .map(({ item }) => structuredClone(item))
     },
     get(id) {

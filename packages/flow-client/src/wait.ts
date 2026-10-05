@@ -87,11 +87,14 @@ export function hasChanged(previous: RunStatus): (status: RunStatus) => boolean 
   const previousPending = pendingKey(previous)
   const previousResult = JSON.stringify(previous.result)
   const previousError = JSON.stringify(previous.error)
-  return (status) =>
-    status.state !== previous.state ||
-    pendingKey(status) !== previousPending ||
-    JSON.stringify(status.result) !== previousResult ||
-    JSON.stringify(status.error) !== previousError
+  return (status) => {
+    return (
+      status.state !== previous.state ||
+      pendingKey(status) !== previousPending ||
+      JSON.stringify(status.result) !== previousResult ||
+      JSON.stringify(status.error) !== previousError
+    )
+  }
 }
 
 export type WaitForRunOptions = {

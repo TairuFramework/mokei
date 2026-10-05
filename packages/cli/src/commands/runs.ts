@@ -88,13 +88,13 @@ async function runStart(flow: string | undefined, options: StartOptions): Promis
         return
       }
       const json = options.json === true
-      const status = await withCommandSignal((signal) =>
-        followRun(control, snapshot.runID, {
+      const status = await withCommandSignal((signal) => {
+        return followRun(control, snapshot.runID, {
           interactive: !json && canPromptInTerminal(),
           json,
           signal,
-        }),
-      )
+        })
+      })
       if (status.state !== 'completed') process.exitCode = 1
     })
   } catch (error) {

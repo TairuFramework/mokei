@@ -66,27 +66,28 @@ export function renderTable(
   columns: Array<{ key: string; label: string }>,
   rows: Array<Record<string, string>>,
 ): void {
-  const widths = columns.map((column) =>
-    Math.max(column.label.length, ...rows.map((row) => (row[column.key] ?? '').length)),
-  )
-  const line = (cell: (column: { key: string; label: string }) => string, bold = false) =>
-    createElement(
+  const widths = columns.map((column) => {
+    return Math.max(column.label.length, ...rows.map((row) => (row[column.key] ?? '').length))
+  })
+  const line = (cell: (column: { key: string; label: string }) => string, bold = false) => {
+    return createElement(
       Text,
       { bold },
       columns.map((column, i) => cell(column).padEnd(widths[i] ?? 0)).join('  '),
     )
+  }
   renderStatic(
     createElement(
       Box,
       { flexDirection: 'column', paddingX: 1 },
       line((column) => column.label, true),
-      ...rows.map((row, i) =>
-        createElement(
+      ...rows.map((row, i) => {
+        return createElement(
           Box,
           { key: i },
           line((column) => row[column.key] ?? ''),
-        ),
-      ),
+        )
+      }),
     ),
   )
 }

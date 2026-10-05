@@ -97,14 +97,14 @@ function failedStatus(error: unknown, stage: string): FlowServiceStatus {
         type: 'FlowConfigError',
         message: 'Invalid flow configuration',
         path: error.path,
-        issues: error.issues.map((issue) =>
-          issue.startsWith('JSON:')
+        issues: error.issues.map((issue) => {
+          return issue.startsWith('JSON:')
             ? 'Invalid JSON'
             : issue
                 .split('.')
                 .map((part) => (fields.has(part) ? part : '*'))
-                .join('.'),
-        ),
+                .join('.')
+        }),
       },
     }
   }
@@ -243,8 +243,13 @@ export function createFlowServiceWithDependencies(
         runStore,
         taskStore,
         listeners: {
-          'run:state': (data) =>
-            emit({ type: 'run:state', meta: { eventID: randomUUID(), time: Date.now() }, data }),
+          'run:state': (data) => {
+            return emit({
+              type: 'run:state',
+              meta: { eventID: randomUUID(), time: Date.now() },
+              data,
+            })
+          },
           'inbox:added': (data) => {
             desktop?.added(data)
             emit({ type: 'inbox:added', meta: { eventID: randomUUID(), time: Date.now() }, data })

@@ -97,11 +97,11 @@ export async function addDecisionFlow(
   for (const flow of registry.flows) {
     if (
       !host.elicitationEnabled &&
-      reachableFlows(flow, registry.lookup, 'all').some((reached) =>
-        Object.values(reached.nodes).some(
+      reachableFlows(flow, registry.lookup, 'all').some((reached) => {
+        return Object.values(reached.nodes).some(
           (node) => typeof node === 'object' && node !== null && node.kind === 'input',
-        ),
-      )
+        )
+      })
     ) {
       throw new Error(`Registered flow ${flow.id} requires elicitation`)
     }
@@ -144,20 +144,23 @@ export async function addDecisionFlow(
       tasks,
       registry,
       elicitation: () => host.elicitationEnabled,
-      approval: ({ toolName, arguments: args, meta }) =>
-        grants.consume({ token: meta[FLOW_GRANT_META], toolName, arguments: args }),
+      approval: ({ toolName, arguments: args, meta }) => {
+        return grants.consume({ token: meta[FLOW_GRANT_META], toolName, arguments: args })
+      },
     })
     await tasks.recover(server.recoveryTools)
-    const tools: Array<ContextTool> = Object.entries(server.tools).map(([name, definition]) => ({
-      id: `${params.key}:${name}`,
-      tool: {
-        name,
-        description: definition.description,
-        inputSchema: definition.inputSchema,
-        outputSchema: definition.outputSchema,
-      },
-      enabled: true,
-    }))
+    const tools: Array<ContextTool> = Object.entries(server.tools).map(([name, definition]) => {
+      return {
+        id: `${params.key}:${name}`,
+        tool: {
+          name,
+          description: definition.description,
+          inputSchema: definition.inputSchema,
+          outputSchema: definition.outputSchema,
+        },
+        enabled: true,
+      }
+    })
     if (host.getContextKeys().includes(params.key)) {
       throw new Error(`Context ${params.key} already exists`)
     }
@@ -208,9 +211,11 @@ export async function addDecisionFlow(
       ok: true,
       plan: [...planned],
       digest: flow === undefined ? undefined : registry.digest(flow.id),
-      grant: () => ({
-        [FLOW_GRANT_META]: grants.issue({ toolName, arguments: args, tools: planned }),
-      }),
+      grant: () => {
+        return {
+          [FLOW_GRANT_META]: grants.issue({ toolName, arguments: args, tools: planned }),
+        }
+      },
     }
   }
 

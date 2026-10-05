@@ -64,11 +64,12 @@ export function createDesktopElicitHandler(
     // Promptable when the form maps to dialogs and a dialog backend can show every one of them
     const canPrompt = planSteps(request).ok
     const prompt = canPrompt
-      ? (promptSignal: AbortSignal) =>
-          showDialogs(
+      ? (promptSignal: AbortSignal) => {
+          return showDialogs(
             { ...request, signal: AbortSignal.any([promptSignal, request.signal]) },
             'reject',
           )
+        }
       : undefined
     const answer = inbox.add(request, { prompt })
     // A disposed inbox or handler has rejected the request already; nobody needs the notification

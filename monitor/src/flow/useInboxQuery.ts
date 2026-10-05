@@ -11,8 +11,9 @@ export function useInboxQuery(itemID?: string, runID?: string) {
   const settled = useRef(new Map<string, InboxOutcome>())
   const query = useMemo<ReconciledQuery<InboxState, InboxItem | undefined>>(() => {
     const history = () => new Map([...sessionSettled, ...settled.current])
-    const matches = (item: InboxItem) =>
-      (itemID == null || item.id === itemID) && (runID == null || item.runID === runID)
+    const matches = (item: InboxItem) => {
+      return (itemID == null || item.id === itemID) && (runID == null || item.runID === runID)
+    }
     const get = async (id: string) => {
       if (history().has(id)) return
       try {

@@ -116,10 +116,13 @@ async function followInteractive(
     for (;;) {
       const previous = last
       const { status, timedOut } = await waitForRun(control, runID, {
-        until: (next) =>
-          (isActionable(next) && (isTerminalRun(next) || hasUnhandled(next))) ||
-          previous == null ||
-          hasChanged(previous)(next),
+        until: (next) => {
+          return (
+            (isActionable(next) && (isTerminalRun(next) || hasUnhandled(next))) ||
+            previous == null ||
+            hasChanged(previous)(next)
+          )
+        },
         timeoutMs: WAIT_TIMEOUT_MS,
         signal,
       })

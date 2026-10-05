@@ -206,10 +206,11 @@ export function createNativeSurface(params: {
   }
   return {
     name: 'native',
-    status: () =>
-      adapter != null && params.notifications && !disposal.signal.aborted
+    status: () => {
+      return adapter != null && params.notifications && !disposal.signal.aborted
         ? 'reachable'
-        : 'unavailable',
+        : 'unavailable'
+    },
     isAttended: async () => false,
     notify,
     prompt,

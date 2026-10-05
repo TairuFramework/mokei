@@ -6,21 +6,24 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { createMemoryControl, type MemoryControl } from '../../flow-client/test/memory-control.js'
 import { createRunsCommand } from '../src/commands/runs.js'
+import type * as FlowControl from '../src/flow-control.js'
 import { connectFlowControl } from '../src/flow-control.js'
+import type * as Output from '../src/output.js'
 import { formatTrace, renderTable } from '../src/output.js'
+import type * as Prompts from '../src/prompts/index.js'
 import { canPromptInTerminal, promptApproval, promptForm } from '../src/prompts/index.js'
 import { followRun } from '../src/run-follow.js'
 
 vi.mock('../src/flow-control.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/flow-control.js')>()
+  const actual = await importOriginal<typeof FlowControl>()
   return { ...actual, connectFlowControl: vi.fn() }
 })
 vi.mock('../src/output.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/output.js')>()
+  const actual = await importOriginal<typeof Output>()
   return { ...actual, renderTable: vi.fn() }
 })
 vi.mock('../src/prompts/index.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/prompts/index.js')>()
+  const actual = await importOriginal<typeof Prompts>()
   return {
     ...actual,
     canPromptInTerminal: vi.fn(() => false),

@@ -41,6 +41,12 @@ export function createMonitorHandlers(presence: MonitorPresence): MonitorHandler
     },
     'monitor.presence': async ({ param, signal, readable, writable }) => {
       if (signal.aborted) return
+      if (param.attachmentID === undefined) {
+        throw new HandlerError({
+          code: 'INVALID_PARAMS',
+          message: 'Missing monitor attachment ID',
+        })
+      }
       const controller = new AbortController()
       const abort = () => controller.abort()
       const writer = writable.getWriter()
