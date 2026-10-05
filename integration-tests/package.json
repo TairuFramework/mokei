@@ -51,6 +51,7 @@
     "@mokei/mcp-sqlite": "workspace:^",
     "@mokei/mcp-system-one": "workspace:^",
     "@mokei/session-node": "workspace:^",
+    "@sozai/async": "catalog:",
     "@sozai/flow-graph": "catalog:",
     "@sozai/generator": "catalog:",
     "@sozai/schema": "catalog:",

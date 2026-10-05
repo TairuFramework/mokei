@@ -60,14 +60,10 @@
     "@mokei/session-node": "workspace:^",
     "@sozai/async": "catalog:",
     "@tejika/cli": "catalog:",
-    "@tejika/env": "catalog:",
     "@tejika/process": "catalog:",
     "@tejika/ui": "catalog:",
     "commander": "catalog:",
-    "eventsource-parser": "catalog:",
     "ink": "catalog:",
-    "ky": "catalog:",
-    "nano-spawn": "catalog:",
     "react": "catalog:"
   },
   "devDependencies": {
