@@ -1,53 +1,38 @@
-import { type FSWatcher, watch } from 'node:fs'
-import { open, readFile, stat } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { fileURLToPath } from 'node:url'
 import type { FlowServiceStatus } from '@mokei/host-protocol'
 import { raceAttempt, TimeoutInterruption } from '@sozai/async'
-import { getLogDir, getPIDPath } from '@tejika/env'
-import { getDaemonStatus, stopDaemon } from '@tejika/process'
-import { Command } from 'commander'
+import type { DaemonCommandContext, DaemonIdentity } from '@tejika/cli'
+import {
+  createDaemonCommand as createTejikaDaemonCommand,
+  resolveDaemonIdentity as resolveTejikaDaemonIdentity,
+  withCommandSignal,
+} from '@tejika/cli'
+import { getPIDPath } from '@tejika/env'
+import { createDeadline, spawnDaemon, stopDaemon, waitForSocket } from '@tejika/process'
+import type { Command } from 'commander'
 
-import { connectFlowControl, withCommandSignal } from '../flow-control.js'
-import { withSocketPath } from '../options.js'
-import { addJSONOption, fail, printJSON } from '../output.js'
+import { connectFlowControl } from '../flow-control.js'
+import { fail, printJSON } from '../output.js'
 
 const APP = 'mokei'
 const STOP_KILL_TIMEOUT_MS = 75_000
 const START_TIMEOUT_MS = 30_000
 const START_POLL_MS = 100
-const DEFAULT_LOG_LINES = 50
+const DAEMON_ENTRY = fileURLToPath(new URL('../daemon-entry.js', import.meta.url))
 
-export type DaemonIdentity = {
-  state: 'not-running' | 'stale' | 'booting' | 'running'
-  pid?: number
-  otherSocketPath?: string
-}
-
-/**
- * Identifies the daemon by its pid file, which records the socket path it serves. A daemon
- * serving a different socket than the selected one (compared after `path.resolve`, as
- * `stopDaemon` does) is reported as `not-running` for the selected socket, with the other path
- * named.
- */
-export async function resolveDaemonIdentity(socketPath: string): Promise<DaemonIdentity> {
-  const status = await getDaemonStatus({ app: APP, pidPath: getPIDPath(APP) })
-  if (status.state === 'not-running') return { state: 'not-running' }
-  if (status.state === 'stale') return { state: 'stale', pid: status.pid }
-  if (resolve(status.socketPath) !== resolve(socketPath)) {
-    return { state: 'not-running', otherSocketPath: status.socketPath }
-  }
-  return {
-    state: status.state === 'booting' ? 'booting' : 'running',
-    pid: status.pid,
-  }
+export async function resolveDaemonIdentity(
+  socketPath: string,
+  pidPath = getPIDPath(APP),
+): Promise<DaemonIdentity> {
+  return await resolveTejikaDaemonIdentity(APP, socketPath, pidPath)
 }
 
 function mismatchMessage(socketPath: string, other: string): string {
   return `The daemon serves ${other}, not the selected socket ${socketPath}`
 }
 
-type CommandOptions = { socketPath: string; json?: boolean }
+type CommandOptions = { socketPath: string; pidPath: string; json?: boolean }
 
 type StartResult = { pid?: number; socketPath: string; flowService: FlowServiceStatus }
 type Outcome<T> = { ok: true; value: T } | { ok: false; message: string; value?: T }
@@ -69,33 +54,74 @@ function bounded<T>(work: Promise<T>, signal: AbortSignal, deadline: number): Pr
   })
 }
 
-async function runStart(socketPath: string): Promise<Outcome<StartResult>> {
+async function waitReady(
+  { socketPath, signal }: DaemonCommandContext,
+  deadline = Date.now() + START_TIMEOUT_MS,
+) {
+  const connection = await connectFlowControl({ socketPath, autoStart: false })
+  try {
+    let info = await bounded(connection.client.request('info'), signal, deadline)
+    while (info.flowService.state === 'starting') {
+      // `bounded` reports the abort; the delay's own AbortError is not needed.
+      await bounded(
+        delay(START_POLL_MS, undefined, { signal }).catch(() => {}),
+        signal,
+        deadline,
+      )
+      info = await bounded(connection.client.request('info'), signal, deadline)
+    }
+    return { flowService: info.flowService }
+  } finally {
+    await connection.dispose()
+  }
+}
+
+async function describeStatus({ socketPath, signal }: DaemonCommandContext) {
+  const connection = await connectFlowControl({ socketPath, autoStart: false })
+  try {
+    const info = await raceAttempt({ fn: () => connection.client.request('info'), signal })
+    return {
+      uptimeMs: Math.max(0, Date.now() - info.startedTime),
+      activeContexts: Object.keys(info.activeContexts).length,
+      flowService: info.flowService,
+    }
+  } finally {
+    await connection.dispose()
+  }
+}
+
+// The factory cannot include failed readiness fields or mokei's start summary in its output.
+async function runStart(socketPath: string, pidPath: string): Promise<Outcome<StartResult>> {
   return await withCommandSignal(async (signal) => {
     const deadline = Date.now() + START_TIMEOUT_MS
-    const connection = await connectFlowControl({ socketPath, autoStart: true })
     try {
-      let info = await bounded(connection.client.request('info'), signal, deadline)
-      while (info.flowService.state === 'starting') {
-        // `bounded` reports the abort; the delay's own AbortError is not needed.
-        await bounded(
-          delay(START_POLL_MS, undefined, { signal }).catch(() => {}),
-          signal,
-          deadline,
-        )
-        info = await bounded(connection.client.request('info'), signal, deadline)
+      const identity = await resolveDaemonIdentity(socketPath, pidPath)
+      if (identity.otherSocketPath != null) {
+        return { ok: false, message: mismatchMessage(socketPath, identity.otherSocketPath) }
       }
-      const identity = await resolveDaemonIdentity(socketPath)
-      const value = { pid: identity.pid, socketPath, flowService: info.flowService }
-      if (info.flowService.state === 'failed') {
-        const { message, issues = [] } = info.flowService.error
+      if (identity.state !== 'running' && identity.state !== 'booting') {
+        await spawnDaemon({
+          app: APP,
+          entry: DAEMON_ENTRY,
+          socketPath,
+          pidPath,
+          timeoutMs: START_TIMEOUT_MS,
+          signal,
+        })
+      } else if (identity.state === 'booting') {
+        await waitForSocket(socketPath, { deadline: createDeadline(START_TIMEOUT_MS, signal) })
+      }
+      const { flowService } = await waitReady({ socketPath, pidPath, signal }, deadline)
+      const current = await resolveDaemonIdentity(socketPath, pidPath)
+      const value = { pid: current.pid, socketPath, flowService }
+      if (flowService.state === 'failed') {
+        const { message, issues = [] } = flowService.error
         const lines = [`Flow service failed: ${message}`, ...issues.map((issue) => `  ${issue}`)]
         return { ok: false, message: lines.join('\n'), value }
       }
       return { ok: true, value }
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : String(error) }
-    } finally {
-      await connection.dispose()
     }
   })
 }
@@ -129,23 +155,28 @@ function stopJSON(stop: StopOutcome & { state: 'stopped' | 'not-running' }): Sto
   return json
 }
 
-async function runStop(socketPath: string): Promise<StopOutcome> {
-  const identity = await resolveDaemonIdentity(socketPath)
+async function runStop(
+  socketPath: string,
+  pidPath: string,
+  signal: AbortSignal,
+): Promise<StopOutcome> {
+  const identity = await resolveDaemonIdentity(socketPath, pidPath)
   if (identity.otherSocketPath != null) {
     return { state: 'failed', message: mismatchMessage(socketPath, identity.otherSocketPath) }
   }
   const result = await stopDaemon({
     app: APP,
-    pidPath: getPIDPath(APP),
+    pidPath,
     waitForExit: true,
     killTimeoutMs: STOP_KILL_TIMEOUT_MS,
     // Checked under the boot mutex: a daemon replaced since the identity read is not signalled.
     expectedSocketPath: socketPath,
+    signal,
   })
   if (result.stopped) return { state: 'stopped', pid: result.pid, forced: result.forced === true }
   if (result.reason === 'not-running') return { state: 'not-running' }
   if (result.reason === 'socket-mismatch') {
-    const current = await resolveDaemonIdentity(socketPath)
+    const current = await resolveDaemonIdentity(socketPath, pidPath)
     const other = current.otherSocketPath ?? 'another socket'
     return { state: 'failed', message: mismatchMessage(socketPath, other) }
   }
@@ -176,170 +207,45 @@ function reportStop(stop: StopOutcome, json: boolean | undefined): void {
   }
 }
 
-async function runStatus(options: CommandOptions): Promise<void> {
-  const { socketPath } = options
-  const identity = await resolveDaemonIdentity(socketPath)
-  const result: Record<string, unknown> = { state: identity.state }
-  if (identity.pid != null) result.pid = identity.pid
-  if (identity.otherSocketPath != null) result.otherSocketPath = identity.otherSocketPath
-  if (identity.state === 'running' || identity.state === 'booting') result.socketPath = socketPath
-  if (identity.state === 'running') {
-    try {
-      const connection = await connectFlowControl({ socketPath, autoStart: false })
-      try {
-        const info = await connection.client.request('info')
-        result.uptimeMs = Math.max(0, Date.now() - info.startedTime)
-        result.activeContexts = Object.keys(info.activeContexts).length
-        result.flowService = info.flowService
-      } finally {
-        await connection.dispose()
-      }
-    } catch (error) {
-      result.error = error instanceof Error ? error.message : String(error)
-    }
-  }
-  if (options.json) {
-    printJSON(result)
-    return
-  }
-  const lines = [`${identity.state}${identity.pid == null ? '' : ` (pid ${identity.pid})`}`]
-  if (identity.otherSocketPath != null) {
-    lines.push(`another daemon serves ${identity.otherSocketPath}`)
-  }
-  if (result.uptimeMs != null) lines.push(`uptime: ${Math.round(Number(result.uptimeMs) / 1000)}s`)
-  if (result.activeContexts != null) lines.push(`active contexts: ${result.activeContexts}`)
-  if (result.flowService != null) {
-    lines.push(`flow service: ${(result.flowService as { state: string }).state}`)
-  }
-  if (result.error != null) lines.push(`could not query the daemon: ${result.error}`)
-  process.stdout.write(`${lines.join('\n')}\n`)
-}
-
-function lastLines(text: string, count: number): string {
-  const lines = text.split('\n')
-  if (lines.at(-1) === '') lines.pop()
-  return lines.slice(-count).join('\n')
-}
-
-async function runLogs(options: { lines: string; follow?: boolean }): Promise<void> {
-  const count = Number(options.lines)
-  if (!/^\d+$/.test(options.lines) || !Number.isSafeInteger(count)) {
-    fail(`Invalid line count "${options.lines}"`)
-    return
-  }
-  const logPath = join(getLogDir(APP), 'daemon.log')
-  let content: string
-  try {
-    content = await readFile(logPath, 'utf8')
-  } catch (error) {
-    fail(`Cannot read ${logPath}: ${error instanceof Error ? error.message : String(error)}`)
-    return
-  }
-  const tail = count === 0 ? '' : lastLines(content, count)
-  if (tail !== '') process.stdout.write(`${tail}\n`)
-  if (!options.follow) return
-  try {
-    await withCommandSignal((signal) => followLog(logPath, Buffer.byteLength(content), signal))
-  } catch (error) {
-    fail(`Cannot follow ${logPath}: ${error instanceof Error ? error.message : String(error)}`)
-  }
-}
-
-async function followLog(path: string, start: number, signal: AbortSignal): Promise<void> {
-  let offset = start
-  let reading = Promise.resolve()
-  let failure: unknown
-  let wake: (() => void) | undefined
-  const readMore = async () => {
-    const size = (await stat(path)).size
-    if (size < offset) offset = 0 // truncated or rotated
-    if (size === offset) return
-    const handle = await open(path, 'r')
-    try {
-      const buffer = Buffer.alloc(size - offset)
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset)
-      offset += bytesRead
-      process.stdout.write(buffer.subarray(0, bytesRead))
-    } finally {
-      await handle.close()
-    }
-  }
-  const stopWith = (error: unknown) => {
-    failure ??= error
-    wake?.()
-  }
-  const schedule = () => {
-    reading = reading.then(readMore).catch(stopWith)
-  }
-  let watcher: FSWatcher | undefined
-  let timer: NodeJS.Timeout | undefined
-  const onAbort = () => wake?.()
-  try {
-    watcher = watch(path, schedule)
-    watcher.on('error', stopWith)
-    // Polling covers platforms where fs.watch misses appends.
-    timer = setInterval(schedule, 1000)
-    await new Promise<void>((resolve) => {
-      wake = resolve
-      if (signal.aborted || failure != null) return resolve()
-      signal.addEventListener('abort', onAbort, { once: true })
-    })
-  } finally {
-    clearInterval(timer)
-    signal.removeEventListener('abort', onAbort)
-    watcher?.close()
-    await reading
-  }
-  if (failure != null) throw failure
-}
-
 export function createDaemonCommand(): Command {
-  const daemon = new Command('daemon').description('Manage the mokei host daemon')
+  const daemon = createTejikaDaemonCommand({
+    app: APP,
+    entry: DAEMON_ENTRY,
+    description: 'Manage the mokei host daemon',
+    startTimeoutMs: START_TIMEOUT_MS,
+    stopKillTimeoutMs: STOP_KILL_TIMEOUT_MS,
+    waitReady,
+    describeStatus,
+  })
+  const start = daemon.commands.find((command) => command.name() === 'start')
+  const restart = daemon.commands.find((command) => command.name() === 'restart')
+  if (start == null || restart == null) throw new Error('Daemon lifecycle commands are missing')
 
-  const start = daemon
-    .command('start')
+  start
     .description('Start the daemon and wait for the flow service')
-  addJSONOption(withSocketPath(start)).action(async (options: CommandOptions) => {
-    reportStart(await runStart(options.socketPath), options.json)
-  })
+    .action(async (options: CommandOptions) => {
+      reportStart(await runStart(options.socketPath, options.pidPath), options.json)
+    })
 
-  const stop = daemon.command('stop').description('Stop the daemon, letting in-flight work drain')
-  addJSONOption(withSocketPath(stop)).action(async (options: CommandOptions) => {
-    reportStop(await runStop(options.socketPath), options.json)
-  })
-
-  const status = daemon.command('status').description('Show whether the daemon is running')
-  addJSONOption(withSocketPath(status)).action(async (options: CommandOptions) => {
-    await runStatus(options)
-  })
-
-  const restart = daemon
-    .command('restart')
+  restart
     .description('Stop then start the daemon, applying flows.json changes')
-  addJSONOption(withSocketPath(restart)).action(async (options: CommandOptions) => {
-    const stopped = await runStop(options.socketPath)
-    // An absent daemon is fine to start; any other non-stopped outcome (socket mismatch, stop
-    // failure) must not start anything.
-    if (stopped.state === 'failed') {
-      reportStop(stopped, options.json)
-      return
-    }
-    const started = await runStart(options.socketPath)
-    if (!options.json) {
-      reportStop(stopped, false)
-      reportStart(started, false)
-      return
-    }
-    if (started.value != null) printJSON({ stop: stopJSON(stopped), start: started.value })
-    if (!started.ok) fail(started.message)
-  })
-
-  daemon
-    .command('logs')
-    .description('Print the daemon log')
-    .option('-n, --lines <count>', 'number of lines to show', String(DEFAULT_LOG_LINES))
-    .option('-f, --follow', 'follow the log until interrupted')
-    .action(runLogs)
+    .action(async (options: CommandOptions) => {
+      const stopped = await withCommandSignal((signal) => {
+        return runStop(options.socketPath, options.pidPath, signal)
+      })
+      if (stopped.state === 'failed') {
+        reportStop(stopped, options.json)
+        return
+      }
+      const started = await runStart(options.socketPath, options.pidPath)
+      if (!options.json) {
+        reportStop(stopped, false)
+        reportStart(started, false)
+        return
+      }
+      if (started.value != null) printJSON({ stop: stopJSON(stopped), start: started.value })
+      if (!started.ok) fail(started.message)
+    })
 
   return daemon
 }

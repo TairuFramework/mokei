@@ -3,6 +3,8 @@ import { createClient, type HostClient } from '@mokei/host-node'
 
 import { ensureMokeiDaemon } from './daemon.js'
 
+export { withCommandSignal } from '@tejika/cli'
+
 export type FlowControlConnection = {
   control: FlowControl
   client: HostClient
@@ -26,22 +28,5 @@ export async function connectFlowControl(options: {
     dispose: async () => {
       await client.dispose()
     },
-  }
-}
-
-/**
- * Runs `work` with a signal aborted by SIGINT or SIGTERM. The listeners are removed once the work
- * settles, so the process regains default signal behaviour.
- */
-export async function withCommandSignal<T>(work: (signal: AbortSignal) => Promise<T>): Promise<T> {
-  const controller = new AbortController()
-  const onSignal = () => controller.abort()
-  process.on('SIGINT', onSignal)
-  process.on('SIGTERM', onSignal)
-  try {
-    return await work(controller.signal)
-  } finally {
-    process.off('SIGINT', onSignal)
-    process.off('SIGTERM', onSignal)
   }
 }
