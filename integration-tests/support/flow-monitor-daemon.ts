@@ -1,9 +1,9 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { setTimeout as poll } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { createClient, type HostClient } from '@mokei/host-node'
+import { poll } from '@tejika/test'
 import { vi } from 'vitest'
 
 import { flows } from './flow-daemon/flows.js'
@@ -21,16 +21,22 @@ export async function startFlowMonitorDaemon() {
   async function wait<T>(label: string, check: () => T | Promise<T>): Promise<NonNullable<T>> {
     const deadline = Date.now() + 15_000
     let last: unknown
-    while (Date.now() < deadline) {
-      try {
-        const result = await check()
-        if (result) return result as NonNullable<T>
-      } catch (error) {
-        last = error
-      }
-      if (child?.exitCode != null || child?.signalCode != null) break
-      await poll(20)
-    }
+    const exited = Symbol('daemon exited')
+    const result = await poll(
+      async () => {
+        if (Date.now() >= deadline) return undefined
+        try {
+          const value = await check()
+          if (value) return value
+        } catch (error) {
+          last = error
+        }
+        if (child?.exitCode != null || child?.signalCode != null) return exited
+        return undefined
+      },
+      { timeoutMs: 15_000, intervalMs: 20 },
+    )
+    if (result && result !== exited) return result as NonNullable<T>
     throw new Error(`Failed waiting for ${label}: ${String(last)}\n${stderr}`, { cause: last })
   }
   async function connect() {
@@ -92,14 +98,10 @@ export async function startFlowMonitorDaemon() {
     if (current != null && current.exitCode == null && current.signalCode == null)
       current.kill('SIGTERM')
     // Exiting is expected here, so wait independently of the startup liveness check.
-    const deadline = Date.now() + 15_000
-    while (
-      current != null &&
-      current.exitCode == null &&
-      current.signalCode == null &&
-      Date.now() < deadline
-    )
-      await poll(20)
+    await poll(() => current == null || current.exitCode != null || current.signalCode != null, {
+      timeoutMs: 15_000,
+      intervalMs: 20,
+    })
     if (current != null && current.exitCode == null && current.signalCode == null)
       throw new Error(`Daemon failed to stop\n${stderr}`)
     child = undefined

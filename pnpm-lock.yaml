@@ -308,6 +308,9 @@ catalogs:
     '@tejika/server':
       specifier: ^0.4.1
       version: 0.4.1
+    '@tejika/test':
+      specifier: ^0.4.2
+      version: 0.4.2
     '@tejika/ui':
       specifier: ^0.4.1
       version: 0.4.1
@@ -566,6 +569,9 @@ importers:
       '@tejika/env':
         specifier: 'catalog:'
         version: 0.5.1
+      '@tejika/test':
+        specifier: 'catalog:'
+        version: 0.4.2(@logtape/logtape@2.3.10)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -5079,6 +5085,10 @@ packages:
     resolution: {integrity: sha512-wMkEGS1D+d+qEy+ZkHI2M+xOK9Tpt7ypf35DpLPon7qkiJdI/3kHb1TemDfKZ8JHxusyHtbF4+0v57a3lmO8qA==}
     engines: {node: '>=24'}
 
+  '@tejika/env@0.5.2':
+    resolution: {integrity: sha512-IAZueUfEOwlmmSpYD3bOiWytF+BJZJk9eWNPfnOzmW1AumW+Kjr/vXqSm2rmwWmp8k1wfkUwfnR9jjJMXM0ufA==}
+    engines: {node: '>=24'}
+
   '@tejika/log@0.4.0':
     resolution: {integrity: sha512-73cnuKrXfWyES+LsgmMUmngughcjVfQBAWigCFmPpeuyK7M/k9cbf6yn1R1E0chrijxnrg/LtcydQ1uIz5+GpA==}
     peerDependencies:
@@ -5090,6 +5100,10 @@ packages:
 
   '@tejika/server@0.4.1':
     resolution: {integrity: sha512-JDUiWRSabhLGq2uNQG40s9RubOgmxDPBMRdoR95m49mMaRMPRrhdG8L+WtyWkpEGGWFxuOAwQR9gMaRitNnetg==}
+
+  '@tejika/test@0.4.2':
+    resolution: {integrity: sha512-8k9nHq3Jx5MmKkw+5jM1CyERu9T0D3T61R1St55T1HvdRJ+bgDwFKw+PxShNOdMgiea6u2TY3w6sZNiIsCLnXg==}
+    engines: {node: '>=24'}
 
   '@tejika/ui@0.4.1':
     resolution: {integrity: sha512-quxjglwe4mCRojqKtH8HpZYHC4p+FO3pfh7A0AbF5ZgURvTiMTdKuuyYBnDUeV1IYVE+P8ukLicxqCzEGphucQ==}
@@ -15409,6 +15423,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@tejika/env@0.5.2':
+    dependencies:
+      env-paths: 4.0.0
+      get-port: 7.2.0
+
   '@tanstack/store@0.11.2': {}
 
   '@tanstack/virtual-core@3.17.11': {}
@@ -15437,6 +15456,15 @@ snapshots:
       '@logtape/file': 2.3.10(@logtape/logtape@2.3.10)
       '@logtape/logtape': 2.3.10
       '@tejika/env': 0.5.1
+  '@tejika/test@0.4.2(@logtape/logtape@2.3.10)':
+    dependencies:
+      '@tejika/env': 0.5.2
+      '@tejika/process': 0.5.2(@logtape/logtape@2.3.10)
+      node-pty: 1.1.0
+      strip-ansi: 7.2.0
+    transitivePeerDependencies:
+      - '@logtape/logtape'
+
 
   '@tejika/process@0.5.2(@logtape/logtape@2.3.10)':
     dependencies:

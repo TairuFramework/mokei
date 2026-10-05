@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { setTimeout as poll } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import type { TaskRecord } from '@mokei/context-server'
 import type { RunRecord } from '@mokei/flow-host'
@@ -11,6 +10,7 @@ import { createSQLiteTraceStore } from '@mokei/flow-host-node'
 import { createClient, type HostClient } from '@mokei/host-node'
 import type { HostEvent } from '@mokei/host-protocol'
 import { getPIDPath } from '@tejika/env'
+import { poll } from '@tejika/test'
 
 import { flows } from './flows.js'
 
@@ -118,15 +118,19 @@ export async function startFlowDaemonFixture(
   async function wait<T>(label: string, check: () => T | Promise<T>): Promise<NonNullable<T>> {
     const deadline = Date.now() + WAIT_MS
     let last: unknown
-    while (Date.now() < deadline) {
-      try {
-        const value = await within(label, Promise.resolve().then(check), deadline - Date.now())
-        if (value) return value as NonNullable<T>
-      } catch (error) {
-        last = error
-      }
-      await poll(20)
-    }
+    const result = await poll(
+      async () => {
+        if (Date.now() >= deadline) return undefined
+        try {
+          return await within(label, Promise.resolve().then(check), deadline - Date.now())
+        } catch (error) {
+          last = error
+          return undefined
+        }
+      },
+      { timeoutMs: WAIT_MS, intervalMs: 20 },
+    )
+    if (result) return result as NonNullable<T>
     throw new Error(`Timed out waiting for ${label}: ${String(last)}\n${diagnostics()}`, {
       cause: last,
     })
