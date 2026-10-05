@@ -424,9 +424,9 @@ retention, suspends stored runs, disconnects siblings, drains telemetry and clos
 It attempts every cleanup despite failures and prevents late initialisation from publishing
 ready. The CLI, MCP and monitor drive the service.
 
-Publication is gated on the
-[upstream protocol fix and adoption](plans/next/2026-10-02-enkaku-protocol-schema-rebasing.md):
-the checked-in workspace patch does not reach consumers of published Mokei packages.
+Publication was gated on an
+[upstream protocol fix and its adoption](plans/completed/2026-10-05-flow-daemon-milestone.complete.md).
+Published `@enkaku/protocol` 0.21.4 replaced the workspace patch, so the gate is satisfied.
 
 Portable `pruneRuns` deletes old terminal runs and their traces and tasks. Active tasks protect their associated runs.
 Its final sweep preserves traces referenced by every retained run and removes older orphan spans and logs.

@@ -1,6 +1,6 @@
 # Flow monitor backlog
 
-**Origin:** [flow monitor](../completed/2026-10-04-flow-monitor.complete.md), flow daemon milestone sub-project 5
+**Origin:** flow monitor, sub-project 5 of the [flow daemon milestone](../completed/2026-10-05-flow-daemon-milestone.complete.md)
 
 ## Performance
 

@@ -1,6 +1,6 @@
 # Decision-flow server follow-ons
 
-**Status:** open · follow-on of [decision-flow server](../completed/2026-09-29-decision-flow-server.complete.md)
+**Status:** open · follow-on of the decision-flow server in [decision flows](../completed/2026-09-29-decision-flow.complete.md)
 **Package:** `@mokei/decision-flow-server`
 
 ## Items

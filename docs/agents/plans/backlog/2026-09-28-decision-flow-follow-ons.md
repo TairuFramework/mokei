@@ -1,13 +1,13 @@
 # Decision flow follow-ons
 
-**Status:** open · follow-on of [decision flows](../completed/2026-09-28-decision-flow.complete.md) and
-[laya suite and HTTP retries](../completed/2026-09-29-decision-flow-laya-and-retries.complete.md)
+**Status:** open · follow-on of [decision flows](../completed/2026-09-29-decision-flow.complete.md), including the
+laya suite and HTTP retries
 **Package:** `@mokei/decision-flow` (and consumers)
 
 ## Items
 
 - **MCP tools and `AgentSession` integration.** Done by
-  [decision-flow server](../completed/2026-09-29-decision-flow-server.complete.md) (`check_flow`,
+  the [decision-flow server](../completed/2026-09-29-decision-flow.complete.md) (`check_flow`,
   `run_flow` and registered-flow task tools, wired into `AgentSession`). Flows gating or routing
   session turns without a tool call remain open.
 - **Tracer version.** Pass the package version to `createTracerFactory` once the build keeps JSON
