@@ -1,5 +1,12 @@
 import { readFile } from 'node:fs/promises'
-import type { FlowRunSnapshot, InboxItem, RunStatus, RunTrace } from '@mokei/flow-client'
+import type {
+  FlowRunSnapshot,
+  InboxItem,
+  RunStatus,
+  RunTrace,
+  SpanTreeNode,
+} from '@mokei/flow-client'
+import { nestSpans } from '@mokei/flow-client'
 import { renderStatic } from '@tejika/cli'
 import type { Command } from 'commander'
 import { Box, Text } from 'ink'
@@ -127,27 +134,15 @@ export function formatInboxRow(item: InboxItem): Record<string, string> {
 
 /** Span tree indented by `parentSpanID` with durations in ms, followed by the logs. */
 export function formatTrace(trace: RunTrace): string {
-  const ids = new Set(trace.spans.map((span) => span.spanID))
-  const children = new Map<string | undefined, RunTrace['spans']>()
-  for (const span of trace.spans) {
-    // Spans whose parent is absent from the trace are treated as roots.
-    const key = span.parentSpanID && ids.has(span.parentSpanID) ? span.parentSpanID : undefined
-    const siblings = children.get(key) ?? []
-    siblings.push(span)
-    children.set(key, siblings)
-  }
   const lines: Array<string> = []
-  const visit = (parent: string | undefined, depth: number, seen: Set<string>) => {
-    const siblings = (children.get(parent) ?? []).toSorted((a, b) => a.startTime - b.startTime)
-    for (const span of siblings) {
-      if (seen.has(span.spanID)) continue
-      seen.add(span.spanID)
+  const visit = (nodes: Array<SpanTreeNode>, depth: number) => {
+    for (const { span, children } of nodes) {
       const duration = Math.round(span.endTime - span.startTime)
       lines.push(`${'  '.repeat(depth)}${span.name}  ${duration}ms`)
-      visit(span.spanID, depth + 1, seen)
+      visit(children, depth + 1)
     }
   }
-  visit(undefined, 0, new Set())
+  visit(nestSpans(trace.spans), 0)
   if (trace.logs.length > 0) {
     lines.push('', 'logs:')
     for (const log of trace.logs) {

@@ -1,4 +1,5 @@
-import { TERMINAL_RUN_STATES } from '@mokei/flow-client'
+import type { SpanTreeNode } from '@mokei/flow-client'
+import { nestSpans, TERMINAL_RUN_STATES } from '@mokei/flow-client'
 import type { FlowRunSnapshot, StoredSpan } from '@mokei/host-protocol'
 
 export type SpanNode = {
@@ -30,30 +31,22 @@ export function buildSpanTree(
     attributes: { runID: run.runID, state: run.state },
     children: [],
   }
-  const nodes = new Map<string, SpanNode>(
-    spans.map((span) => [
-      span.spanID,
-      {
-        id: span.spanID,
-        name: span.name,
-        start: span.startTime,
-        end: span.endTime,
-        status: span.status.code === 1 ? 'ok' : span.status.code === 2 ? 'error' : 'unset',
-        attributes: span.attributes,
-        children: [],
-      },
-    ]),
-  )
   let start = root.start
   let end = root.end ?? Date.now()
-  for (const span of [...spans].sort((a, b) => a.startTime - b.startTime)) {
-    const node = nodes.get(span.spanID)
-    if (node == null) continue
-    const parent = span.parentSpanID == null ? undefined : nodes.get(span.parentSpanID)
-    ;(parent ?? root).children.push(node)
-    start = Math.min(start, node.start)
-    end = Math.max(end, node.end ?? node.start)
+  const toSpanNode = ({ span, children }: SpanTreeNode): SpanNode => {
+    start = Math.min(start, span.startTime)
+    end = Math.max(end, span.endTime)
+    return {
+      id: span.spanID,
+      name: span.name,
+      start: span.startTime,
+      end: span.endTime,
+      status: span.status.code === 1 ? 'ok' : span.status.code === 2 ? 'error' : 'unset',
+      attributes: span.attributes,
+      children: children.map(toSpanNode),
+    }
   }
+  root.children = nestSpans(spans).map(toSpanNode)
   return { root, start, end: Math.max(start, end) }
 }
 
