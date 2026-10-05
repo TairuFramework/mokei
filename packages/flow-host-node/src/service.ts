@@ -3,6 +3,7 @@ import type { FlowHost, TraceStore } from '@mokei/flow-host'
 import { createFlowHost } from '@mokei/flow-host'
 import type { FlowServiceStatus, HostEvent } from '@mokei/host-protocol'
 import { NodeSession } from '@mokei/session-node'
+import { lazy } from '@sozai/async'
 import { getReporter } from '@sozai/log'
 
 import { FlowConfigError, loadFlowConfig } from './config.js'
@@ -133,7 +134,6 @@ export function createFlowServiceWithDependencies(
   let stopping = false
   let starting: Promise<void> | undefined
   let disposal: Promise<void> | undefined
-  let cleanup: Promise<void> | undefined
   let desktopDisposal: Promise<void> | undefined
   let database: ReturnType<typeof openFlowDatabase> | undefined
   let telemetry: ReturnType<typeof setupFlowTelemetry> | undefined
@@ -171,19 +171,16 @@ export function createFlowServiceWithDependencies(
     desktopDisposal ??= attempt(() => (desktop ? desktop.dispose() : params.desktop?.dispose()))
     return desktopDisposal
   }
-  function cleanupResources(): Promise<void> {
-    cleanup ??= (async () => {
-      await disposeDesktop()
-      await Promise.allSettled([...operations])
-      await attempt(() => retention?.stop())
-      await attempt(() => host?.dispose())
-      await attempt(() => session?.dispose())
-      await attempt(() => telemetry?.dispose())
-      await attempt(() => database?.close())
-      resources = undefined
-    })()
-    return cleanup
-  }
+  const cleanup = lazy(async () => {
+    await disposeDesktop()
+    await Promise.allSettled([...operations])
+    await attempt(() => retention?.stop())
+    await attempt(() => host?.dispose())
+    await attempt(() => session?.dispose())
+    await attempt(() => telemetry?.dispose())
+    await attempt(() => database?.close())
+    resources = undefined
+  })
   async function initialize(): Promise<void> {
     if (stopping) return
     let stage = 'load configuration'
@@ -280,7 +277,7 @@ export function createFlowServiceWithDependencies(
         status = failedStatus(error, stage)
         publishStatus()
       }
-      await cleanupResources()
+      await cleanup
     }
   }
   function requireResources(): FlowResources {
@@ -320,7 +317,7 @@ export function createFlowServiceWithDependencies(
         void disposeDesktop()
         disposal = (async () => {
           await starting
-          await cleanupResources()
+          await cleanup
           if (cleanupErrors.length > 0)
             throw new AggregateError(cleanupErrors, 'Failed to dispose flow service')
         })()
