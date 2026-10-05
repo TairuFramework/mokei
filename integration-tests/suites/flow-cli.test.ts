@@ -524,8 +524,12 @@ test('daemon start, stop and restart run the production entry in isolated direct
 
     const fromStopped = await cli.run(['daemon', 'restart'])
     expect(fromStopped.code, fromStopped.stderr).toBe(0)
-    expect(fromStopped.stdout).toMatch(/^daemon not running\ndaemon running \(pid \d+\)\n/)
-    expect(fromStopped.stdout).toContain('flow service: ready')
+    expect(fromStopped.stdout.split('\n')).toEqual([
+      'daemon not running',
+      expect.stringMatching(/^daemon running \(pid \d+\)$/),
+      `socket: ${socketPath}`,
+      '',
+    ])
 
     const restarted = await cli.json<{
       stop: { state: string; pid?: number; forced?: boolean }
