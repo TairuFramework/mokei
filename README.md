@@ -81,10 +81,10 @@ mokei monitor            # Start the monitor UI for MCP server traffic
 mokei inspect            # Inspect an MCP server (prints how it describes itself)
 mokei chat -p openai     # Interactive chat
 mokei proxy <command>    # Proxy an MCP server through the daemon
-mokei daemon status     # Manage the per-user daemon
-mokei flows list        # Inspect configured flows
-mokei runs list         # Inspect flow runs
-mokei inbox list        # Inspect pending inputs and approvals
+mokei daemon status      # Manage the per-user daemon
+mokei flows list         # Inspect configured flows
+mokei runs list          # Inspect flow runs
+mokei inbox list         # Inspect pending inputs and approvals
 ```
 
 ## Contributing

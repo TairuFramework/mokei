@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 
-import { withTransaction } from './database.js'
+import { withTransaction } from './transaction.js'
 
 export const migrations: Array<string> = [
   `CREATE TABLE runs (
@@ -45,16 +45,23 @@ CREATE INDEX logs_trace ON logs (trace_id, timestamp, seq);
 CREATE INDEX logs_time ON logs (timestamp);`,
 ]
 
-export const migrateFlowDatabase = (db: DatabaseSync, list: Array<string> = migrations): void => {
+export const checkFlowDatabaseVersion = (
+  db: DatabaseSync,
+  list: Array<string> = migrations,
+): number => {
   const { user_version: version } = db.prepare('PRAGMA user_version').get() as {
     user_version: number
   }
-
   if (version > list.length) {
     throw new Error(
       `Database schema version ${version} is newer than supported version ${list.length}`,
     )
   }
+  return version
+}
+
+export const migrateFlowDatabase = (db: DatabaseSync, list: Array<string> = migrations): void => {
+  const version = checkFlowDatabaseVersion(db, list)
 
   if (version === list.length) {
     return

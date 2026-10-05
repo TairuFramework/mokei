@@ -79,6 +79,7 @@ export function createInbox(params: {
       }
       for (const [inputKey, request] of Object.entries(requests)) {
         if (request.method !== 'elicitation/create' || request.params.mode === 'url') continue
+        if (items.has(`${runID}:${inputKey}`)) continue
         add(
           {
             id: `${runID}:${inputKey}`,

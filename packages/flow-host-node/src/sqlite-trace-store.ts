@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { StoredLog, StoredSpan, TraceStore } from '@mokei/flow-host'
 
-import { withTransaction } from './database.js'
+import { withTransaction } from './transaction.js'
 
 export function createSQLiteTraceStore(db: DatabaseSync): TraceStore {
   const addSpan =

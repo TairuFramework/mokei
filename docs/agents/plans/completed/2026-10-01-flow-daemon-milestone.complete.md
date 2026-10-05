@@ -56,7 +56,7 @@ monitor/                   runs, run detail (trace and logs) and inbox pages
   one item notification for one, or one generic pending-count notification for multiple items.
 - **tejika for local plumbing.** `@tejika/process` (daemon lifecycle), `@tejika/env` (paths), `@tejika/log` (log
   files) and `@tejika/server` (monitor bridge). `@tejika/test` provides polling helpers to the end-to-end drivers.
-  Its CLI spawn and test profile helpers are requested upstream.
+  Changes to its CLI spawn and test profile helpers are requested upstream.
 
 ## Sub-projects
 

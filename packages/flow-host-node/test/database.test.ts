@@ -134,6 +134,7 @@ describe('flow database', () => {
     expect(() => openFlowDatabase({ path })).toThrow(/newer than supported version/i)
     const check = new DatabaseSync(path)
     expect(check.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 99 })
+    expect(check.prepare('PRAGMA journal_mode').get()).toMatchObject({ journal_mode: 'delete' })
     check.close()
   })
 
@@ -170,7 +171,7 @@ describe('flow database', () => {
 
   test('withTransaction rolls back on throw', async () => {
     const { DatabaseSync } = await import('node:sqlite')
-    const { withTransaction } = await import('../src/database.js')
+    const { withTransaction } = await import('../src/transaction.js')
     const db = new DatabaseSync(':memory:')
     const error = new Error('Transaction failed')
     try {
@@ -191,7 +192,7 @@ describe('flow database', () => {
 
   test('withTransaction commits and returns the callback result', async () => {
     const { DatabaseSync } = await import('node:sqlite')
-    const { withTransaction } = await import('../src/database.js')
+    const { withTransaction } = await import('../src/transaction.js')
     const db = new DatabaseSync(':memory:')
     try {
       db.exec('CREATE TABLE entries (value TEXT)')
