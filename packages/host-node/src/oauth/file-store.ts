@@ -1,27 +1,24 @@
 import { randomBytes } from 'node:crypto'
-import { readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type { StoredTokens, TokenStore } from '@mokei/http-client'
 import { createKeyedQueue } from '@sozai/async'
+import { readJSONFile } from '@tejika/env'
 
 // Stores sharing a resolved path must not interleave read-modify-write operations.
 const pathQueue = createKeyedQueue<string>()
 
 async function readAll(path: string): Promise<Record<string, StoredTokens>> {
-  let raw: string
+  let parsed: unknown
   try {
-    raw = await readFile(path, 'utf8')
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {}
-    throw err
+    parsed = await readJSONFile(path, { default: {} })
+  } catch (error) {
+    // A subsequent write repairs corrupt JSON; filesystem failures must still propagate.
+    if (error instanceof Error && error.cause instanceof SyntaxError) return {}
+    throw error
   }
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
-    return parsed as Record<string, StoredTokens>
-  } catch {
-    return {} // corrupt JSON -> treat as empty (a subsequent write repairs it)
-  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
+  return parsed as Record<string, StoredTokens>
 }
 
 async function writeAll(path: string, data: Record<string, StoredTokens>): Promise<void> {

@@ -144,5 +144,8 @@ test('a non-ENOENT read error propagates instead of being masked as empty', asyn
   const dirAsFile = join(dir, 'a-directory')
   await mkdir(dirAsFile)
   const store = createFileTokenStore(dirAsFile)
-  await expect(store.get('anything')).rejects.toThrow()
+  await expect(store.get('anything')).rejects.toMatchObject({
+    message: expect.stringContaining(`failed to read ${dirAsFile}:`),
+    cause: expect.objectContaining({ code: 'EISDIR' }),
+  })
 })
