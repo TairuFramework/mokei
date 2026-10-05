@@ -57,6 +57,7 @@
     "@sozai/async": "catalog:",
     "@sozai/event": "catalog:",
     "@sozai/flow-graph": "catalog:",
+    "@sozai/json": "catalog:",
     "@sozai/log": "catalog:",
     "@sozai/otel": "catalog:"
   },
