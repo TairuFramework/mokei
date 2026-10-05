@@ -1,15 +1,16 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createClient, type HostClient } from '@mokei/host-node'
-import { poll } from '@tejika/test'
+import { createTestProfile, poll } from '@tejika/test'
 import { vi } from 'vitest'
 
 import { flows } from './flow-daemon/flows.js'
 
 export async function startFlowMonitorDaemon() {
-  const directory = await mkdtemp('/tmp/mokei-flow-monitor-')
+  const profile = createTestProfile('mokei', { baseDir: '/tmp' })
+  const directory = profile.dir
   const socketPath = join(directory, 'daemon.sock')
   const clients = new Set<HostClient>()
   const children: Array<ChildProcess> = []
@@ -52,9 +53,7 @@ export async function startFlowMonitorDaemon() {
       {
         stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
         env: {
-          ...process.env,
-          MOKEI_DATA_DIR: directory,
-          MOKEI_STATE_DIR: directory,
+          ...profile.env,
           MOKEI_LOG_DIR: join(directory, 'logs'),
           MOKEI_SOCKET_PATH: socketPath,
           MOKEI_PID_PATH: join(directory, 'daemon.pid'),
@@ -123,7 +122,7 @@ export async function startFlowMonitorDaemon() {
           await exited
         }
       }
-      await rm(directory, { recursive: true, force: true })
+      await profile[Symbol.asyncDispose]()
     }
   }
   try {

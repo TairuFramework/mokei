@@ -1,28 +1,6 @@
-import { spawn } from 'node:child_process'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const CLI_CWD = resolve(ROOT, 'packages/cli')
-const CLI_BINARY = resolve(CLI_CWD, 'bin/dev.js')
-
-function runCLI(
-  args: Array<string>,
-): Promise<{ stdout: string; stderr: string; code: number | null }> {
-  return new Promise((resolve) => {
-    const child = spawn('node', [CLI_BINARY, ...args], { cwd: CLI_CWD })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', (d: Buffer) => {
-      stdout += d.toString()
-    })
-    child.stderr.on('data', (d: Buffer) => {
-      stderr += d.toString()
-    })
-    child.on('close', (code) => resolve({ stdout, stderr, code }))
-  })
-}
+import { runCLI } from '../support/flow-cli/run-cli.js'
 
 describe('CLI help and version', () => {
   test('--help lists every command', async () => {

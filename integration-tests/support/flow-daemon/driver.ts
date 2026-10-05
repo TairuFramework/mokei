@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
@@ -10,7 +10,7 @@ import { createSQLiteTraceStore } from '@mokei/flow-host-node'
 import { createClient, type HostClient } from '@mokei/host-node'
 import type { HostEvent } from '@mokei/host-protocol'
 import { getPIDPath } from '@tejika/env'
-import { poll } from '@tejika/test'
+import { createTestProfile, poll } from '@tejika/test'
 
 import { flows } from './flows.js'
 
@@ -68,12 +68,11 @@ export async function startFlowDaemonFixture(
     otlp?: { endpoint: string }
   } = {},
 ) {
-  // Keep Unix socket paths below sockaddr_un's limit, including macOS's long TMPDIR.
-  const directory = await mkdtemp('/tmp/mokei-flow-daemon-')
+  const profile = createTestProfile('mokei', { baseDir: '/tmp' })
+  const directory = profile.dir
   const socketPath = join(directory, 'daemon.sock')
   const env = {
-    MOKEI_DATA_DIR: directory,
-    MOKEI_STATE_DIR: directory,
+    ...profile.env,
     MOKEI_LOG_DIR: join(directory, 'logs'),
     // Pin every path override so inherited MOKEI_* variables cannot escape the temp directory.
     MOKEI_PID_PATH: join(directory, 'mokei.pid'),
@@ -243,7 +242,9 @@ export async function startFlowDaemonFixture(
     await attempt(() =>
       wait('all fixture processes reaped', () => [...pids].every((pid) => !alive(pid))),
     )
-    await attempt(() => rm(directory, { recursive: true, force: true }))
+    await attempt(async () => {
+      await profile[Symbol.asyncDispose]()
+    })
     if (existsSync(socketPath)) errors.push(new Error('Fixture socket survived cleanup'))
     if (errors.length) throw new AggregateError(errors, 'Fixture cleanup failed')
   }
