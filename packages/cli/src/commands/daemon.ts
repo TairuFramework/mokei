@@ -54,6 +54,8 @@ type Outcome<T> = { ok: true; value: T } | { ok: false; message: string; value?:
 
 /** Rejects when the signal aborts or the deadline passes, even if `work` never settles. */
 function bounded<T>(work: Promise<T>, signal: AbortSignal, deadline: number): Promise<T> {
+  // raceAttempt never calls `fn` once aborted or past the deadline, so `work` needs its own handler.
+  work.catch(() => {})
   return raceAttempt({ fn: () => work, signal, deadline }).catch((error: unknown) => {
     if (signal.aborted && error === signal.reason) {
       throw new Error('Interrupted while waiting for the flow service', { cause: error })

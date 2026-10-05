@@ -363,3 +363,36 @@ test('bounds a stalled service request with its startup timeout message', async 
     vi.useRealTimers()
   }
 })
+
+test('a request rejecting after the startup deadline is not left unhandled', async () => {
+  const unhandled: Array<unknown> = []
+  const onUnhandled = (reason: unknown) => {
+    unhandled.push(reason)
+  }
+  process.on('unhandledRejection', onUnhandled)
+  vi.useFakeTimers()
+  try {
+    let requested = false
+    // A plain function: vi.fn attaches handlers to returned promises, masking the rejection.
+    const request = () => {
+      requested = true
+      return new Promise((_resolve, reject) => {
+        setTimeout(() => reject(new Error('connection closed')), 10)
+      })
+    }
+    vi.mocked(connectFlowControl).mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 31_000))
+      return { control: {}, client: { request }, dispose: vi.fn(async () => {}) } as never
+    })
+    const starting = run('start', '-s', SOCKET)
+    await vi.advanceTimersByTimeAsync(31_100)
+    await starting
+    expect(requested).toBe(true)
+    expect(stderr.join('')).toContain('The flow service is still starting after 30s')
+  } finally {
+    vi.useRealTimers()
+  }
+  await new Promise((resolve) => setImmediate(resolve))
+  process.off('unhandledRejection', onUnhandled)
+  expect(unhandled).toEqual([])
+})
