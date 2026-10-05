@@ -2,6 +2,7 @@ import type { DetailedTask } from '@mokei/context-protocol'
 import type { JSONValue } from '@mokei/context-server'
 import { createMemoryTaskStore } from '@mokei/context-server'
 import { addDecisionFlow, flowToolName } from '@mokei/decision-flow-server'
+import { isTerminalRunState } from '@mokei/flow-client'
 import { EventEmitter } from '@sozai/event'
 
 import { isAllowed } from './approval.js'
@@ -18,7 +19,7 @@ import { recoverRuns } from './recovery.js'
 import { approvalItem, equalValue, interruptedError, isTaskNotFound } from './run-helpers.js'
 import { createMemoryRunStore } from './run-store.js'
 import { createRunTracing } from './tracing.js'
-import { createRunQueue, TERMINAL_STATES, transition } from './transitions.js'
+import { createRunQueue, transition } from './transitions.js'
 import type {
   FlowHost,
   FlowHostEvents,
@@ -110,7 +111,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     rejectApproval: approval,
   })
   function terminal(record: RunRecord) {
-    if (!TERMINAL_STATES.has(record.state)) return
+    if (!isTerminalRunState(record.state)) return
     inbox.prune(record.runID)
     lastApplied.delete(record.runID)
   }
@@ -147,7 +148,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
         })
         if (accepted) lastApplied.set(runID, timestamp)
         if (result.stateChanged) emit('run:state', runSnapshot(result.record))
-        const terminalState = TERMINAL_STATES.has(result.record.state)
+        const terminalState = isTerminalRunState(result.record.state)
         if (accepted && !terminalState) inbox.reconcile(runID, task)
         terminal(result.record)
         return {
@@ -190,7 +191,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
       }
       const record = await store.get(runID)
       if (record === undefined) throw new RunNotFoundError({ runID })
-      if (!TERMINAL_STATES.has(record.state)) watchers.watch(runID, taskID)
+      if (!isTerminalRunState(record.state)) watchers.watch(runID, taskID)
       return record
     })
   }
@@ -219,7 +220,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
   }
   async function launchAllowed(runID: string): Promise<RunRecord> {
     const claimed = await claim(runID)
-    return TERMINAL_STATES.has(claimed.state) ? claimed : launch(claimed)
+    return isTerminalRunState(claimed.state) ? claimed : launch(claimed)
   }
   async function approval(id: string, outcome: 'declined' | 'cancelled', reason?: string) {
     const runID = inbox.requireOpen(id).item.runID
@@ -357,7 +358,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
           return result.record
         })
         return runSnapshot(
-          TERMINAL_STATES.has(record.state) || record.taskID === undefined
+          isTerminalRunState(record.state) || record.taskID === undefined
             ? record
             : await cancelTask(runID, record.taskID),
         )

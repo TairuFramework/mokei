@@ -1,58 +1,17 @@
-import type { CallToolResult } from '@mokei/context-protocol'
 import type { JSONValue, TaskStore } from '@mokei/context-server'
 import type { checkFlow, FlowSummary, PredictorFactory } from '@mokei/decision-flow-server'
+import type { FlowRunSnapshot, InboxItem, RunState } from '@mokei/flow-client'
 
 export type { AuthorizeResult } from '@mokei/decision-flow-server'
 
 import type { Predictor } from '@mokei/decision-flow'
-import type { RequestedSchema } from '@mokei/host'
 import type { Session } from '@mokei/session'
 import type { EventEmitter } from '@sozai/event'
 import type { FlowDefinition } from '@sozai/flow-graph'
 
 import type { RunStore } from './run-store.js'
 
-type ContentBlock = CallToolResult['content'][number]
-
-export type RunState =
-  | 'awaiting_approval'
-  | 'denied'
-  | 'working'
-  | 'input_required'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-
-export type FlowRunSnapshot = {
-  runID: string
-  flowID?: string
-  label: string
-  state: RunState
-  createdAt: number
-  updatedAt: number
-  traceID?: string
-  plan: { tools: Array<string> }
-  result?: { outcome?: string; output?: JSONValue; content: Array<ContentBlock> }
-  error?: { type: string; message: string; code?: string }
-}
-
-export type InboxItem =
-  | {
-      id: string
-      runID: string
-      kind: 'approval'
-      plan: { tools: Array<string> }
-      createdAt: number
-    }
-  | {
-      id: string
-      runID: string
-      kind: 'input'
-      inputKey: string
-      message: string
-      requestedSchema: RequestedSchema
-      createdAt: number
-    }
+export type { FlowRunSnapshot, InboxItem, RunState } from '@mokei/flow-client'
 
 export type InboxOutcome = 'answered' | 'declined' | 'cancelled' | 'withdrawn'
 

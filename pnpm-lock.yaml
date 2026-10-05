@@ -1129,6 +1129,9 @@ importers:
       '@mokei/host':
         specifier: workspace:^
         version: link:../host
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../host-protocol
       '@mokei/logger':
         specifier: workspace:^
         version: link:../logger

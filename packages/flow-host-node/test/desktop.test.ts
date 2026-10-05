@@ -270,6 +270,21 @@ test.each<ElicitResult['content']>([undefined, {}, { approve: 'true' }])(
     expect(host.inbox.get(item.id)).toEqual(item)
   },
 )
+test('unsupported wire input schemas leave the item pending without prompting', async () => {
+  const { host, item } = await runtime()
+  if (item.kind !== 'input') throw new Error('Expected input item')
+  const wireItem: InboxItem = { ...item, requestedSchema: { type: 'object' } }
+  vi.spyOn(host.inbox, 'get').mockReturnValue(wireItem)
+  const canPrompt = vi.fn(() => true)
+  const { controller, adapter } = setup({ host, adapter: { canPrompt } })
+  await expect(controller.prompt(item.id, new AbortController().signal)).rejects.toMatchObject({
+    name: 'DesktopPromptUnavailableError',
+  })
+  expect(canPrompt).not.toHaveBeenCalled()
+  expect(adapter.prompt).not.toHaveBeenCalled()
+  expect(host.inbox.list()).toEqual([item])
+})
+
 test('input content goes through runtime validation', async () => {
   const { host, item, connect } = await runtime()
   const prompt = vi

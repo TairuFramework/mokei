@@ -607,7 +607,7 @@ test('public exports exclude lifecycle and approval internals', async () => {
   for (const name of ['transition', 'createRunQueue', 'matchesAllow', 'isAllowed']) {
     expect(exports).not.toHaveProperty(name)
   }
-  expect(exports).toHaveProperty('TERMINAL_STATES')
+  expect(exports).not.toHaveProperty('TERMINAL_STATES')
 })
 
 test('unchanged snapshots advance the watermark and reject older input requests', async () => {

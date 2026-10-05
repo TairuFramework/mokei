@@ -1,7 +1,9 @@
 import type { ElicitResult } from '@mokei/context-protocol'
+import { inputRequest } from '@mokei/context-protocol'
 import type { FlowHost, InboxItem } from '@mokei/flow-host'
 import { InboxAnswerInvalidError, InboxItemNotFoundError } from '@mokei/flow-host'
 import type { DesktopElicitRequest, DesktopNotifyOptions } from '@mokei/host-desktop'
+import { createValidator } from '@sozai/schema'
 
 import {
   DesktopPromptUnavailableError,
@@ -16,6 +18,14 @@ const QUIET_CLICK_ERRORS = new Set([
   'DesktopPromptUnavailableError',
   'InboxItemNotFoundError',
 ])
+
+function createRequestedSchemaValidator() {
+  return createValidator(
+    inputRequest.anyOf[1].properties.params.anyOf[0].properties.requestedSchema,
+  )
+}
+
+let requestedSchemaValidator: ReturnType<typeof createRequestedSchemaValidator> | undefined
 
 export function createNativeSurface(params: {
   adapter?: FlowDesktopAdapter
@@ -96,19 +106,23 @@ export function createNativeSurface(params: {
         item.kind === 'approval'
           ? `Run flow "${run?.label ?? item.runID}" with tools: ${item.plan.tools.join(', ') || 'none'}`
           : item.message
+      requestedSchemaValidator ??= createRequestedSchemaValidator()
+      const validated = requestedSchemaValidator(
+        item.kind === 'approval'
+          ? {
+              type: 'object',
+              properties: { approve: { type: 'boolean', title: message } },
+              required: ['approve'],
+            }
+          : item.requestedSchema,
+      )
+      if (validated.issues) {
+        current.finish()
+        return null
+      }
       const request: DesktopElicitRequest = {
         key: `Flow: ${run?.label ?? item.runID}`,
-        params: {
-          message,
-          requestedSchema:
-            item.kind === 'approval'
-              ? {
-                  type: 'object',
-                  properties: { approve: { type: 'boolean', title: message } },
-                  required: ['approve'],
-                }
-              : item.requestedSchema,
-        },
+        params: { message, requestedSchema: validated.value },
         signal: current.signal,
       }
       if (!adapter.canPrompt(request)) {

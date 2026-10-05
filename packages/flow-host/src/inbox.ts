@@ -1,5 +1,6 @@
 import type { ContextClient } from '@mokei/context-client'
 import type { DetailedTask, ElicitResult, InputResponse } from '@mokei/context-protocol'
+import { isTerminalRunState } from '@mokei/flow-client'
 import type { ElicitContentValidator } from '@mokei/host'
 import { createElicitContentValidator } from '@mokei/host'
 import { getMokeiLogger } from '@mokei/logger'
@@ -8,7 +9,6 @@ import { InboxAnswerInvalidError, InboxItemNotFoundError } from './errors.js'
 import { isTaskNotFound } from './run-helpers.js'
 import type { RunStore } from './run-store.js'
 import type { createRunQueue } from './transitions.js'
-import { TERMINAL_STATES } from './transitions.js'
 import type { FlowHost, FlowHostEvents, InboxItem, InboxOutcome } from './types.js'
 
 type Entry = {
@@ -52,16 +52,14 @@ export function createInbox(params: {
     cancelledURLs.delete(runID)
     latestInputKeys.delete(runID)
   }
-  function add(item: InboxItem, taskID?: string) {
+  function add(item: InboxItem, taskID?: string, validate?: ElicitContentValidator) {
     if (items.has(item.id)) return
     const copy = structuredClone(item)
     items.set(item.id, {
       item: copy,
       status: 'open',
       taskID,
-      ...(copy.kind === 'input'
-        ? { validate: createElicitContentValidator(copy.requestedSchema) }
-        : {}),
+      validate,
     })
     params.emit('inbox:added', structuredClone(copy))
   }
@@ -92,6 +90,7 @@ export function createInbox(params: {
             createdAt: Date.now(),
           },
           task?.taskId,
+          createElicitContentValidator(structuredClone(request.params.requestedSchema)),
         )
       }
     })
@@ -111,7 +110,7 @@ export function createInbox(params: {
         await params.client.tasks.update(task.taskId, { [inputKey]: { action: 'cancel' } })
         await params.queue.run(runID, async () => {
           const record = await params.store.get(runID)
-          if (record === undefined || TERMINAL_STATES.has(record.state)) return
+          if (record === undefined || isTerminalRunState(record.state)) return
           const keys = cancelledURLs.get(runID) ?? new Set<string>()
           keys.add(id)
           cancelledURLs.set(runID, keys)
@@ -164,7 +163,7 @@ export function createInbox(params: {
           const record = await params.store.get(runID)
           if (
             record === undefined ||
-            TERMINAL_STATES.has(record.state) ||
+            isTerminalRunState(record.state) ||
             !latestInputKeys.get(runID)?.has(claimed.inputKey)
           ) {
             settle(id, 'withdrawn')

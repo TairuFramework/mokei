@@ -1,5 +1,4 @@
 import type { DetailedTask } from '@mokei/context-protocol'
-import type { JSONValue } from '@mokei/context-server'
 import { expect, expectTypeOf, test } from 'vitest'
 
 import { mapTaskSnapshot } from '../src/map-task.js'
@@ -16,7 +15,7 @@ test('completed result preserves outcome, output and content', () => {
     structuredContent: { outcome: 'done', output: { value: 1 } },
   }
   const mapped = mapTaskSnapshot({ ...taskBase, status: 'completed', result })
-  expectTypeOf(mapped.result?.output).toEqualTypeOf<JSONValue | undefined>()
+  expectTypeOf(mapped.result?.output).toEqualTypeOf<unknown>()
   expect(mapped).toEqual({
     state: 'completed',
     result: { content: result.content, outcome: 'done', output: { value: 1 } },

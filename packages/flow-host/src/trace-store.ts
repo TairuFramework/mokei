@@ -1,29 +1,6 @@
-import type { LogLevel } from '@logtape/logtape'
-import type { JSONValue } from '@mokei/context-server'
+import type { StoredLog, StoredSpan } from '@mokei/host-protocol'
 
-export type StoredSpan = {
-  traceID: string
-  spanID: string
-  parentSpanID?: string
-  name: string
-  kind: number
-  startTime: number
-  endTime: number
-  status: { code: number; message?: string }
-  attributes: Record<string, JSONValue>
-  events: Array<{ name: string; time: number; attributes: Record<string, JSONValue> }>
-  links: Array<{ traceID: string; spanID: string }>
-}
-
-export type StoredLog = {
-  traceID: string
-  spanID: string
-  timestamp: number
-  level: LogLevel
-  category: Array<string>
-  message: string
-  properties: Record<string, JSONValue>
-}
+export type { StoredLog, StoredSpan } from '@mokei/host-protocol'
 
 export type TraceStore = {
   addSpans(spans: Array<StoredSpan>): Promise<void>

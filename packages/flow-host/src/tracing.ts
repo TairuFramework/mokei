@@ -1,3 +1,4 @@
+import { isTerminalRunState } from '@mokei/flow-client'
 import { isSpanContextValid } from '@opentelemetry/api'
 import type { Context, Span } from '@sozai/otel'
 import {
@@ -11,7 +12,6 @@ import {
   withActiveContext,
 } from '@sozai/otel'
 
-import { TERMINAL_STATES } from './transitions.js'
 import type { RunRecord, RunState } from './types.js'
 
 export function createRunTracing() {
@@ -73,7 +73,7 @@ export function createRunTracing() {
       if (active === undefined) return
       active.span.addEvent('run.state', { 'run.state': state })
       if (state === 'failed') active.span.setStatus({ code: SpanStatusCode.ERROR })
-      if (TERMINAL_STATES.has(state)) end(runID)
+      if (isTerminalRunState(state)) end(runID)
     },
     withRun<T>(runID: string, work: () => T): T {
       return withActiveContext(open.get(runID)?.context, work)
