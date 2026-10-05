@@ -1,4 +1,5 @@
 import { isTerminalRunState } from '@mokei/flow-client'
+import { createKeyedQueue } from '@sozai/async'
 
 import { RunNotFoundError } from './errors.js'
 import type { RunStore } from './run-store.js'
@@ -33,18 +34,5 @@ export async function transition(
 }
 
 export function createRunQueue(): { run<T>(runID: string, work: () => Promise<T>): Promise<T> } {
-  const queues = new Map<string, Promise<unknown>>()
-  return {
-    run<T>(runID: string, work: () => Promise<T>): Promise<T> {
-      const previous = queues.get(runID) ?? Promise.resolve()
-      const current = previous.catch(() => undefined).then(work)
-      queues.set(runID, current)
-      void current
-        .finally(() => {
-          if (queues.get(runID) === current) queues.delete(runID)
-        })
-        .catch(() => undefined)
-      return current
-    },
-  }
+  return createKeyedQueue<string>()
 }

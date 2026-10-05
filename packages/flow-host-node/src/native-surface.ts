@@ -3,7 +3,7 @@ import { elicitRequestFormParams } from '@mokei/context-protocol'
 import type { FlowHost, InboxItem } from '@mokei/flow-host'
 import { InboxAnswerInvalidError, InboxItemNotFoundError } from '@mokei/flow-host'
 import type { DesktopElicitRequest, DesktopNotifyOptions } from '@mokei/host-desktop'
-import { raceSignal } from '@sozai/async'
+import { raceSignal, settleAll } from '@sozai/async'
 import { createValidator } from '@sozai/schema'
 
 import {
@@ -236,18 +236,16 @@ export function createNativeSurface(params: {
       if (disposing != null) return disposing
       disposal.abort(new Error('Native surface disposed'))
       for (const current of deliveries) current.close()
-      disposing = (async () => {
-        const results = await Promise.allSettled([
-          (async () => {
-            await adapter?.dispose()
-          })(),
-          ...[...operations].map((operation) => operation.catch(() => undefined)),
-        ])
-        const errors = results
-          .filter((result) => result.status === 'rejected')
-          .map((result) => result.reason)
-        if (errors.length > 0) throw new AggregateError(errors, 'Native surface disposal failed')
+      const adapterDisposal = (async () => {
+        await adapter?.dispose()
       })()
+      disposing = settleAll(
+        [
+          () => adapterDisposal,
+          ...[...operations].map((operation) => () => operation.catch(() => undefined)),
+        ],
+        'Native surface disposal failed',
+      )
       return disposing
     },
   }

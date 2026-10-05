@@ -7,7 +7,7 @@ import type { DesktopElicitRequest, InputInbox } from './inbox.js'
 import { report } from './report.js'
 import type { Runner } from './runner.js'
 
-export { defaultCreateBackend, timeoutSecondsOption, untilAbort } from './dialog-surface.js'
+export { defaultCreateBackend, timeoutSecondsOption } from './dialog-surface.js'
 
 export type DesktopElicitOptions = {
   mode?: 'dialog' | 'inbox'

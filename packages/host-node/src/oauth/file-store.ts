@@ -2,11 +2,10 @@ import { randomBytes } from 'node:crypto'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type { StoredTokens, TokenStore } from '@mokei/http-client'
+import { createKeyedQueue } from '@sozai/async'
 
-// Serialization chain per resolved absolute path, at module scope so every store instance
-// pointing at the same file shares it: an in-process mutex that stops concurrent
-// read-modify-write from interleaving and clobbering. See `serialize` below.
-const pathTails = new Map<string, Promise<unknown>>()
+// Stores sharing a resolved path must not interleave read-modify-write operations.
+const pathQueue = createKeyedQueue<string>()
 
 async function readAll(path: string): Promise<Record<string, StoredTokens>> {
   let raw: string
@@ -41,17 +40,7 @@ export function createFileTokenStore(path: string): TokenStore {
   // Resolve once so differently-spelled paths (`./t.json` vs its absolute form) share one chain.
   const resolved = resolve(path)
   const serialize = <T>(op: () => Promise<T>): Promise<T> => {
-    const prev = pathTails.get(resolved) ?? Promise.resolve()
-    const run = prev.then(op, op)
-    const tail = run.catch(() => {})
-    pathTails.set(resolved, tail)
-    // Reclaim the entry once its tail settles, but only if it is still the live chain -- the
-    // identity check prevents deleting a chain a concurrent op has already extended. Without it,
-    // `pathTails` would grow one permanent entry per distinct resolved path.
-    void tail.then(() => {
-      if (pathTails.get(resolved) === tail) pathTails.delete(resolved)
-    })
-    return run
+    return pathQueue.run(resolved, op)
   }
   return {
     get(key) {

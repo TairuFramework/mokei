@@ -2,6 +2,7 @@ import type { ElicitResult } from '@mokei/context-protocol'
 import type { FlowHost, InboxItem, InboxOutcome } from '@mokei/flow-host'
 import { InboxItemNotFoundError } from '@mokei/flow-host'
 import type { DesktopElicitRequest, DesktopNotifyOptions } from '@mokei/host-desktop'
+import { settleAll } from '@sozai/async'
 
 import type { createNativeSurface } from './native-surface.js'
 import type { InboxSurface, PromptOutcome, SurfaceDelivery } from './surfaces.js'
@@ -208,16 +209,14 @@ export function createFlowDesktopController(params: {
       for (const current of deliveries.values()) for (const delivery of current) delivery.close()
       deliveries.clear()
       disposing = (async () => {
-        const results = await Promise.allSettled([
-          params.native.dispose(),
-          ...[...operations].map((operation) => operation.catch(() => undefined)),
-        ])
-        const failures = results
-          .filter((result) => result.status === 'rejected')
-          .flatMap((result) => {
-            return result.reason instanceof AggregateError ? result.reason.errors : [result.reason]
-          })
-        if (failures.length > 0) throw new AggregateError(failures, 'Flow desktop disposal failed')
+        const nativeDisposal = params.native.dispose()
+        await settleAll(
+          [
+            () => nativeDisposal,
+            ...[...operations].map((operation) => () => operation.catch(() => undefined)),
+          ],
+          'Flow desktop disposal failed',
+        )
       })()
       return disposing
     },

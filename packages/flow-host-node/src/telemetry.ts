@@ -5,7 +5,7 @@ import { context, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
-import { raceAttempt, TimeoutInterruption } from '@sozai/async'
+import { raceAttempt, settleSequential, TimeoutInterruption } from '@sozai/async'
 import { getConsoleSink, isSetup, reset, setup } from '@sozai/log'
 import { createFileSink } from '@tejika/log'
 
@@ -118,9 +118,8 @@ export function setupFlowTelemetry(params: {
     let disposal: Promise<void> | undefined
     return {
       dispose() {
-        disposal ??= (async () => {
-          const errors: Array<unknown> = []
-          for (const cleanup of [
+        disposal ??= settleSequential(
+          [
             () => provider.forceFlush(),
             // Exporter shutdown may wait on an HTTP response after the processor's timeout.
             () => shutdownProvider(provider),
@@ -131,16 +130,9 @@ export function setupFlowTelemetry(params: {
             reset,
             () => trace.disable(),
             () => context.disable(),
-          ]) {
-            try {
-              await cleanup()
-            } catch (error) {
-              errors.push(error)
-            }
-          }
-          if (errors.length > 0)
-            throw new AggregateError(errors, 'Failed to dispose flow telemetry')
-        })()
+          ],
+          'Failed to dispose flow telemetry',
+        )
         return disposal
       },
     }

@@ -1,4 +1,5 @@
 import type { ElicitResult } from '@mokei/context-protocol'
+import { raceSignal } from '@sozai/async'
 
 import type {
   AskBackendName,
@@ -11,11 +12,11 @@ import { askBackendFor, createDetector } from './detect.js'
 import type { DesktopElicitOptions } from './elicit-handler.js'
 import { type FieldPlan, type FormParams, planForm, withViolation } from './form.js'
 import type { DesktopElicitRequest } from './inbox.js'
-import { createDesktopNotifier, defaultCreateBackend, untilAbort } from './notification.js'
+import { createDesktopNotifier, defaultCreateBackend } from './notification.js'
 import { report } from './report.js'
 import { createRunner } from './runner.js'
 
-export { defaultCreateBackend, untilAbort } from './notification.js'
+export { defaultCreateBackend } from './notification.js'
 
 const DEFAULT_TIMEOUT_SECONDS = 90
 const DEFAULT_MAX_TIMEOUT_SECONDS = 600
@@ -202,7 +203,7 @@ export function createDialogSurface(options: DesktopElicitOptions) {
     }
     const dialog = backend.ask(ask, { timeoutMs: remaining, signal })
     onOpen(dialog)
-    return untilAbort(dialog, signal)
+    return raceSignal(dialog, signal)
   }
 
   async function runSteps(

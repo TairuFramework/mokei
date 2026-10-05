@@ -1,9 +1,9 @@
 import type { Attributes, HrTime } from '@opentelemetry/api'
 import { ExportResultCode } from '@opentelemetry/core'
 import type { ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace-base'
+import { toJSONValue } from '@sozai/json'
 import { getReporter } from '@sozai/log'
 
-import { toJSONValue } from './to-json-value.js'
 import type { StoredSpan, TraceStore } from './trace-store.js'
 
 function milliseconds(time: HrTime): number {
