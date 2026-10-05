@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { RunRecord } from '@mokei/flow-host'
 import type { FlowDefinition } from '@sozai/flow-graph'
+import { createTestProfile } from '@tejika/test'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import { connectMCP, type MCPConnection, type ToolResult } from '../support/flow-cli/mcp-client.js'
@@ -470,8 +471,8 @@ test('runs start --wait --json follows a run across a daemon restart', async () 
 })
 
 test('daemon start, stop and restart run the production entry in isolated directories', async () => {
-  // Short path: Unix socket paths must fit sockaddr_un, even with macOS's long TMPDIR.
-  const directory = await mkdtemp('/tmp/mokei-flow-cli-')
+  const profile = createTestProfile('mokei')
+  const directory = profile.dir
   const socketPath = join(directory, 'daemon.sock')
   const pidPath = join(directory, 'mokei.pid')
   const env = {
@@ -564,6 +565,6 @@ test('daemon start, stop and restart run the production entry in isolated direct
     for (const pid of pids) {
       if (alive(pid)) process.kill(pid, 'SIGKILL')
     }
-    await rm(directory, { recursive: true, force: true })
+    await profile[Symbol.asyncDispose]()
   }
 })
