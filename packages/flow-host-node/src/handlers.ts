@@ -31,7 +31,7 @@ export function createFlowHandlers(service: FlowService): FlowHandlers {
     'runs.get': ({ param }) =>
       run(async ({ host }) => {
         const snapshot = await host.get(param.runID)
-        if (snapshot == null) throw new RunNotFoundError(param.runID)
+        if (snapshot == null) throw new RunNotFoundError({ runID: param.runID })
         return snapshot
       }),
     'runs.list': ({ param }) => run(({ host }) => host.list(param)),
@@ -39,7 +39,7 @@ export function createFlowHandlers(service: FlowService): FlowHandlers {
     'runs.trace': ({ param }) =>
       run(async ({ host, traceStore }) => {
         const snapshot = await host.get(param.runID)
-        if (snapshot == null) throw new RunNotFoundError(param.runID)
+        if (snapshot == null) throw new RunNotFoundError({ runID: param.runID })
         return snapshot.traceID == null
           ? { spans: [], logs: [] }
           : traceStore.getTrace(snapshot.traceID)
@@ -48,7 +48,7 @@ export function createFlowHandlers(service: FlowService): FlowHandlers {
     'inbox.get': ({ param }) =>
       run(({ host }) => {
         const item = host.inbox.get(param.id)
-        if (item == null) throw new InboxItemNotFoundError(param.id)
+        if (item == null) throw new InboxItemNotFoundError({ itemID: param.id })
         return item
       }),
     'inbox.answer': ({ param }) =>

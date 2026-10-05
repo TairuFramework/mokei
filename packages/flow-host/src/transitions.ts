@@ -18,7 +18,7 @@ export async function transition(
 ): Promise<{ record: RunRecord; changed: boolean; stateChanged: boolean }> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const current = await store.get(runID)
-    if (current == null) throw new RunNotFoundError(runID)
+    if (current == null) throw new RunNotFoundError({ runID })
     if (TERMINAL_STATES.has(current.state))
       return { record: current, changed: false, stateChanged: false }
     const patch = compute(current)

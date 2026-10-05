@@ -43,7 +43,7 @@ describe('transitions', () => {
   test('rethrows after five attempts', async () => {
     const store = createMemoryRunStore()
     await store.create(record())
-    const conflict = new RunStoreConflictError('conflict')
+    const conflict = new RunStoreConflictError({ message: 'conflict' })
     let calls = 0
     const conflicted = {
       ...store,

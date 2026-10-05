@@ -300,7 +300,7 @@ test('Esc in the form leaves the item pending', async () => {
 
 test('an unsupported schema exits 1 suggesting --value', async () => {
   vi.mocked(canPromptInTerminal).mockReturnValue(true)
-  vi.mocked(promptForm).mockRejectedValue(new UnsupportedSchemaError('Nested objects'))
+  vi.mocked(promptForm).mockRejectedValue(new UnsupportedSchemaError({ reason: 'Nested objects' }))
   const { memory } = connect()
   memory.addItem(inputItem('i1'))
   await run('answer', 'i1', '-s', SOCKET)

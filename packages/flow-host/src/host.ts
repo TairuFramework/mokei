@@ -189,7 +189,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
         return change(runID, () => ({ state: 'cancelled' }))
       }
       const record = await store.get(runID)
-      if (record === undefined) throw new RunNotFoundError(runID)
+      if (record === undefined) throw new RunNotFoundError({ runID })
       if (!TERMINAL_STATES.has(record.state)) watchers.watch(runID, taskID)
       return record
     })
@@ -210,7 +210,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
           record.state === 'awaiting_approval' ? { state: 'working' } : undefined,
         )
         if (!claimed.changed && approvalID !== undefined)
-          throw new InboxItemNotFoundError(approvalID)
+          throw new InboxItemNotFoundError({ itemID: approvalID })
         if (claimed.stateChanged) emit('run:state', runSnapshot(claimed.record))
         if (approvalID !== undefined) inbox.settle(approvalID, 'answered')
         return claimed.record
@@ -231,7 +231,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
             ? { state: 'denied', error: { type: 'FlowDenied', message: reason ?? 'Flow denied' } }
             : { state: 'cancelled' },
         )
-        if (!result.changed) throw new InboxItemNotFoundError(id)
+        if (!result.changed) throw new InboxItemNotFoundError({ itemID: id })
         if (result.stateChanged) emit('run:state', runSnapshot(result.record))
         inbox.settle(id, outcome)
         terminal(result.record)
@@ -278,7 +278,8 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
     check: wiring.check,
     async start(request) {
       const flow = 'flow' in request ? wiring.lookupFlow(request.flow) : undefined
-      if ('flow' in request && flow === undefined) throw new FlowNotFoundError(request.flow)
+      if ('flow' in request && flow === undefined)
+        throw new FlowNotFoundError({ flowID: request.flow })
       const resolved =
         'flow' in request
           ? { toolName: flowToolName(request.flow), arguments: request.input ?? {} }
@@ -291,7 +292,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
             }
       const storedRequest = structuredClone(resolved)
       const authorized = await wiring.authorize(storedRequest)
-      if (!authorized.ok) throw new FlowCheckError(authorized.issues)
+      if (!authorized.ok) throw new FlowCheckError({ issues: authorized.issues })
       const now = Date.now()
       const record: RunRecord = {
         runID: crypto.randomUUID(),
@@ -316,7 +317,7 @@ export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> 
           current = await queue.run(record.runID, async () => {
             await store.create(record)
             const current = await store.get(record.runID)
-            if (current === undefined) throw new RunNotFoundError(record.runID)
+            if (current === undefined) throw new RunNotFoundError({ runID: record.runID })
             if (allowed) return current
             emit('run:state', runSnapshot(current))
             if (current.state !== 'awaiting_approval') return current

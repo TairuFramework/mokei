@@ -38,10 +38,15 @@ export type FlowService = {
   prompt(id: string, signal: AbortSignal): Promise<{ action: 'accept' | 'decline' | 'cancel' }>
   dispose(): Promise<void>
 }
+export type FlowServiceUnavailableErrorParams = {
+  status: FlowServiceStatus
+  stopping?: boolean
+}
+
 export class FlowServiceUnavailableError extends Error {
   #status: FlowServiceStatus
 
-  constructor(params: { status: FlowServiceStatus; stopping?: boolean }) {
+  constructor(params: FlowServiceUnavailableErrorParams) {
     super(params.stopping ? 'Flow service is shutting down' : 'Flow service is unavailable')
     this.name = 'FlowServiceUnavailableError'
     this.#status = structuredClone(params.status)

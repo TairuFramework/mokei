@@ -33,7 +33,7 @@ export function createInbox(params: {
   const logger = getMokeiLogger('flow-host')
   function requireOpen(id: string): Entry {
     const entry = items.get(id)
-    if (entry?.status !== 'open') throw new InboxItemNotFoundError(id)
+    if (entry?.status !== 'open') throw new InboxItemNotFoundError({ itemID: id })
     return entry
   }
   function settle(id: string, outcome: InboxOutcome) {
@@ -137,10 +137,10 @@ export function createInbox(params: {
       const claimed = await params.queue.run(runID, async () => {
         const entry = requireOpen(id)
         if (entry.item.kind !== 'input' || entry.taskID === undefined)
-          throw new InboxItemNotFoundError(id)
+          throw new InboxItemNotFoundError({ itemID: id })
         if (action === 'accept') {
           const issues = entry.validate?.(content) ?? []
-          if (issues.length > 0) throw new InboxAnswerInvalidError(issues)
+          if (issues.length > 0) throw new InboxAnswerInvalidError({ issues })
         }
         const response: InputResponse =
           action === 'accept' ? { action, content: content as ElicitResult['content'] } : { action }
@@ -159,7 +159,7 @@ export function createInbox(params: {
               error.code === -32602)
           ) {
             settle(id, 'withdrawn')
-            throw new InboxItemNotFoundError(id)
+            throw new InboxItemNotFoundError({ itemID: id })
           }
           const record = await params.store.get(runID)
           if (
@@ -193,7 +193,7 @@ export function createInbox(params: {
     },
     get(id) {
       const entry = items.get(id)
-      if (entry === undefined) throw new InboxItemNotFoundError(id)
+      if (entry === undefined) throw new InboxItemNotFoundError({ itemID: id })
       return entry.status === 'open' ? structuredClone(entry.item) : undefined
     },
     answer: (id, content) => respond(id, 'accept', content),

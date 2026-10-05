@@ -1,6 +1,8 @@
+export type UnsupportedSchemaErrorParams = { reason: string }
+
 export class UnsupportedSchemaError extends Error {
-  constructor(reason: string) {
-    super(`${reason}; pass the answer with --value instead`)
+  constructor(params: UnsupportedSchemaErrorParams) {
+    super(`${params.reason}; pass the answer with --value instead`)
     this.name = 'UnsupportedSchemaError'
   }
 }
@@ -35,7 +37,9 @@ function parseOptions(key: string, prop: Record<string, unknown>): FormField['op
     const names = Array.isArray(prop.enumNames) ? prop.enumNames : []
     return prop.enum.map((value, index) => {
       if (typeof value !== 'string') {
-        throw new UnsupportedSchemaError(`Property "${key}" has a non-string enum value`)
+        throw new UnsupportedSchemaError({
+          reason: `Property "${key}" has a non-string enum value`,
+        })
       }
       const name = names[index]
       return { label: typeof name === 'string' ? name : value, value }
@@ -44,7 +48,9 @@ function parseOptions(key: string, prop: Record<string, unknown>): FormField['op
   if (Array.isArray(prop.oneOf)) {
     return prop.oneOf.map((entry) => {
       if (!isRecord(entry) || typeof entry.const !== 'string') {
-        throw new UnsupportedSchemaError(`Property "${key}" has an unsupported oneOf entry`)
+        throw new UnsupportedSchemaError({
+          reason: `Property "${key}" has an unsupported oneOf entry`,
+        })
       }
       return {
         label: typeof entry.title === 'string' ? entry.title : entry.const,
@@ -58,14 +64,14 @@ function parseOptions(key: string, prop: Record<string, unknown>): FormField['op
 /** Converts an elicitation form schema into ordered form fields. */
 export function parseElicitationForm(schema: Record<string, unknown>): Array<FormField> {
   if (schema.type !== 'object' || !isRecord(schema.properties)) {
-    throw new UnsupportedSchemaError('The requested schema is not an object form')
+    throw new UnsupportedSchemaError({ reason: 'The requested schema is not an object form' })
   }
   const required = new Set(
     Array.isArray(schema.required) ? schema.required.filter((k) => typeof k === 'string') : [],
   )
   return Object.entries(schema.properties).map(([key, prop]) => {
     if (!isRecord(prop)) {
-      throw new UnsupportedSchemaError(`Property "${key}" is not a schema object`)
+      throw new UnsupportedSchemaError({ reason: `Property "${key}" is not a schema object` })
     }
     const base = {
       key,
@@ -95,9 +101,9 @@ export function parseElicitationForm(schema: Record<string, unknown>): Array<For
         } satisfies FormField
       }
       default:
-        throw new UnsupportedSchemaError(
-          `Property "${key}" has unsupported type ${JSON.stringify(prop.type)}`,
-        )
+        throw new UnsupportedSchemaError({
+          reason: `Property "${key}" has unsupported type ${JSON.stringify(prop.type)}`,
+        })
     }
   })
 }

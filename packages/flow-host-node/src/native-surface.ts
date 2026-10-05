@@ -76,10 +76,10 @@ export function createNativeSurface(params: {
     { signal }: { signal: AbortSignal },
   ): Promise<SurfaceDelivery | null> {
     if (signal.aborted || disposal.signal.aborted) return null
-    if (owners.has(item.id)) throw new InboxPromptInProgressError(item.id)
+    if (owners.has(item.id)) throw new InboxPromptInProgressError({ itemID: item.id })
     if (adapter == null) return null
     const host = params.host()
-    if (host.inbox.get(item.id) == null) throw new InboxItemNotFoundError(item.id)
+    if (host.inbox.get(item.id) == null) throw new InboxItemNotFoundError({ itemID: item.id })
     owners.add(item.id)
     const current = delivery(signal)
     const release = () => owners.delete(item.id)
@@ -91,7 +91,7 @@ export function createNativeSurface(params: {
     try {
       const run = await Promise.race([host.get(item.runID), abort.promise])
       current.signal.throwIfAborted()
-      if (host.inbox.get(item.id) == null) throw new InboxItemNotFoundError(item.id)
+      if (host.inbox.get(item.id) == null) throw new InboxItemNotFoundError({ itemID: item.id })
       const message =
         item.kind === 'approval'
           ? `Run flow "${run?.label ?? item.runID}" with tools: ${item.plan.tools.join(', ') || 'none'}`
@@ -127,7 +127,9 @@ export function createNativeSurface(params: {
           if (item.kind === 'approval' && action === 'accept') {
             if (result.content?.approve === false) action = 'decline'
             else if (result.content?.approve !== true)
-              throw new InboxAnswerInvalidError(['approve: explicit approval boolean required'])
+              throw new InboxAnswerInvalidError({
+                issues: ['approve: explicit approval boolean required'],
+              })
           }
           if (action === 'accept')
             await host.inbox.answer(item.id, item.kind === 'input' ? result.content : undefined)
@@ -157,7 +159,7 @@ export function createNativeSurface(params: {
         await params.openURL?.(new URL(`inbox/${encodeURIComponent(item.id)}`, url).href)
       else {
         const shown = await prompt(item, { signal })
-        if (shown == null) throw new DesktopPromptUnavailableError(item.id)
+        if (shown == null) throw new DesktopPromptUnavailableError({ itemID: item.id })
         await shown.closed
       }
     })()

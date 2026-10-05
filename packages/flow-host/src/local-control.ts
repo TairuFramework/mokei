@@ -104,7 +104,7 @@ export function createLocalFlowControl(
       get: (runID) =>
         call(async () => {
           const snapshot = await host.get(runID)
-          if (snapshot == null) throw new RunNotFoundError(runID)
+          if (snapshot == null) throw new RunNotFoundError({ runID })
           return snapshot
         }),
       list: (filter) => call(() => host.list(filter)),
@@ -115,7 +115,7 @@ export function createLocalFlowControl(
       get: (id) =>
         call(() => {
           const item = host.inbox.get(id)
-          if (item == null) throw new InboxItemNotFoundError(id)
+          if (item == null) throw new InboxItemNotFoundError({ itemID: id })
           return item
         }),
       answer: (id, content) => call(() => host.inbox.answer(id, content)),
