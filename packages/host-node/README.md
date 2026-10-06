@@ -9,7 +9,7 @@ ensures one is running, selecting an executable module through `entry`. The defa
 the standalone host server: it serves proxy and monitor procedures and reports flow services
 unavailable. The `mokei` CLI's proxy and monitor commands select its composed
 `mokei/lib/daemon-entry.js`, which owns the shared flow service and desktop adapter.
-Selecting an entry affects a newly started daemon; it does not replace an already running one.
+Selecting an entry affects a newly started daemon. It does not replace an already running one.
 
 Custom applications inject handlers, events, status and cleanup into the generic host:
 
@@ -34,11 +34,11 @@ await service.start()
 ```
 
 Create the service once before serving so every connection shares its runtime and event source.
-If binding fails, the application must dispose its service; the CLI entry handles that failure.
+If binding fails, the application must dispose its service. The CLI entry handles that failure.
 `serveHostDaemon` accepts socket and pid paths, an abort signal, signal-handler policy,
 shutdown timeout and error callback. It owns shared proxy state, child cleanup and one
 shutdown lifecycle. `composeHandlers(...sets)` combines additional handler sets and rejects
-duplicate procedure names; base `events`, `info`, `shutdown` and `spawn` handlers cannot be
+duplicate procedure names. Base `events`, `info`, `shutdown` and `spawn` handlers cannot be
 silently overridden. Missing flow handlers return `FLOW_UNAVAILABLE`.
 The host package imports no flow or desktop implementation.
 
@@ -49,14 +49,14 @@ for initial reconciliation, resource shutdown, desktop policy and public error c
 
 The `events` stream includes context, flow service status, run and inbox changes with event IDs
 and timestamps. Events are live and have no replay cursor. Subscribe before querying `info`,
-run snapshots and the pending inbox; buffer incoming events during those queries, then re-read
+run snapshots and the pending inbox. Buffer incoming events during those queries, then re-read
 affected identifiers to reconcile current state. Repeat on reconnect. Closing one stream
 removes its listeners without affecting other clients or runtime transitions.
 
 ## Monitor handlers
 
 `serveHostDaemon` can receive handlers for `monitor.attach` and `monitor.presence` alongside
-flow handlers. The host package only composes and serves these procedures; the application
+flow handlers. The host package only composes and serves these procedures. The application
 owns attachment tracking, tab liveness and inbox delivery policy. The default standalone daemon
 does not register monitor presence handlers. The composed Mokei daemon connects them to its
 monitor server and flow surfaces.
@@ -65,7 +65,7 @@ monitor server and flow surfaces.
 
 Enable elicitation when constructing a host. The capability is fixed when each client is built,
 so servers can send `elicitation/create` requests from the start. A function handles each request
-with its context `key`; `elicit: true` enables the capability and declines requests by default.
+with its context `key`. `elicit: true` enables the capability and declines requests by default.
 
 ```typescript
 const host = new NodeContextHost({

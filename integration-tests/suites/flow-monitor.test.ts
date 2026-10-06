@@ -1,4 +1,5 @@
 import { startMonitor } from '@mokei/host-monitor'
+import { settleSequential } from '@sozai/async'
 import { afterEach, expect, test } from 'vitest'
 
 import { connectTab } from '../support/connect-tab.js'
@@ -6,15 +7,7 @@ import { startFlowMonitorDaemon } from '../support/flow-monitor-daemon.js'
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
-  const failures: Array<unknown> = []
-  for (const cleanup of cleanups.splice(0).reverse()) {
-    try {
-      await cleanup()
-    } catch (error) {
-      failures.push(error)
-    }
-  }
-  if (failures.length) throw new AggregateError(failures, 'Fixture cleanup failed')
+  await settleSequential(cleanups.splice(0).reverse(), 'Fixture cleanup failed')
 })
 
 async function setup() {

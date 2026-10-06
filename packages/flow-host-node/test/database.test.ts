@@ -102,18 +102,40 @@ describe('flow database', () => {
     close()
   })
 
-  test('rejects newer schema versions without changing the database', async () => {
+  test('opens a database at a schema version above 1 when migrations support it', async () => {
+    const directory = await createTemporaryDirectory()
+    const path = join(directory, 'migrated.db')
+    const { DatabaseSync } = await import('node:sqlite')
+    const { migrateFlowDatabase } = await import('../src/migrations.js')
+    const migrations = ['CREATE TABLE first (value TEXT)', 'CREATE TABLE second (value TEXT)']
+
+    const first = new DatabaseSync(path)
+    migrateFlowDatabase(first, migrations)
+    expect(first.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 2 })
+    first.close()
+
+    const second = new DatabaseSync(path)
+    try {
+      expect(() => migrateFlowDatabase(second, migrations)).not.toThrow()
+      expect(second.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 2 })
+    } finally {
+      second.close()
+    }
+  })
+
+  test('rejects a database newer than the supported version', async () => {
     const directory = await createTemporaryDirectory()
     const path = join(directory, 'future.db')
     const { DatabaseSync } = await import('node:sqlite')
     const initial = new DatabaseSync(path)
-    initial.exec('PRAGMA user_version = 2')
+    initial.exec('PRAGMA user_version = 99')
     initial.close()
     const { openFlowDatabase } = await import('../src/index.js')
 
     expect(() => openFlowDatabase({ path })).toThrow(/newer than supported version/i)
     const check = new DatabaseSync(path)
-    expect(check.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 2 })
+    expect(check.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 99 })
+    expect(check.prepare('PRAGMA journal_mode').get()).toMatchObject({ journal_mode: 'delete' })
     check.close()
   })
 
@@ -146,5 +168,43 @@ describe('flow database', () => {
       name: 'runs',
     })
     close()
+  })
+
+  test('withTransaction rolls back on throw', async () => {
+    const { DatabaseSync } = await import('node:sqlite')
+    const { withTransaction } = await import('../src/transaction.js')
+    const db = new DatabaseSync(':memory:')
+    const error = new Error('Transaction failed')
+    try {
+      db.exec('CREATE TABLE entries (value TEXT)')
+      expect(() => {
+        withTransaction(db, () => {
+          db.prepare('INSERT INTO entries (value) VALUES (?)').run('rolled back')
+          throw error
+        })
+      }).toThrow(error)
+      expect(db.prepare('SELECT value FROM entries').all()).toEqual([])
+      db.prepare('INSERT INTO entries (value) VALUES (?)').run('after rollback')
+      expect(db.prepare('SELECT value FROM entries').all()).toEqual([{ value: 'after rollback' }])
+    } finally {
+      db.close()
+    }
+  })
+
+  test('withTransaction commits and returns the callback result', async () => {
+    const { DatabaseSync } = await import('node:sqlite')
+    const { withTransaction } = await import('../src/transaction.js')
+    const db = new DatabaseSync(':memory:')
+    try {
+      db.exec('CREATE TABLE entries (value TEXT)')
+      const result = withTransaction(db, () => {
+        db.prepare('INSERT INTO entries (value) VALUES (?)').run('committed')
+        return { value: 'result' }
+      })
+      expect(result).toEqual({ value: 'result' })
+      expect(db.prepare('SELECT value FROM entries').all()).toEqual([{ value: 'committed' }])
+    } finally {
+      db.close()
+    }
   })
 })

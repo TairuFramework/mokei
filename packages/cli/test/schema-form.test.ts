@@ -1,7 +1,7 @@
+import type { ElicitFormField } from '@mokei/context-protocol'
 import { describe, expect, test } from 'vitest'
 
 import {
-  type FormField,
   parseElicitationForm,
   UnsupportedSchemaError,
   validateFieldInput,
@@ -19,15 +19,15 @@ describe('parseElicitationForm', () => {
       },
       required: ['a'],
     })
-    expect(fields.map((f) => f.key)).toEqual(['b', 'a', 'n', 'i'])
+    expect(fields.map((f) => f.name)).toEqual(['b', 'a', 'n', 'i'])
     expect(fields.map((f) => f.kind)).toEqual(['text', 'boolean', 'number', 'integer'])
     expect(fields.map((f) => f.required)).toEqual([false, true, false, false])
-    expect(fields[0]?.label).toBe('B field')
+    expect(fields[0]?.title).toBe('B field')
     expect(fields[1]?.default).toBe(true)
-    expect(fields[2]).toMatchObject({ min: 1, max: 9 })
+    expect(fields[2]).toMatchObject({ minimum: 1, maximum: 9 })
   })
 
-  test('maps enum + enumNames and oneOf titles to select', () => {
+  test('maps enum + enumNames and oneOf titles to choices', () => {
     const fields = parseElicitationForm({
       type: 'object',
       properties: {
@@ -37,14 +37,14 @@ describe('parseElicitationForm', () => {
       },
     })
     expect(fields[0]).toMatchObject({
-      kind: 'select',
-      options: [
+      kind: 'choice',
+      choices: [
         { label: 'Ex', value: 'x' },
         { label: 'Why', value: 'y' },
       ],
     })
-    expect(fields[1]?.options).toEqual([{ label: 'q', value: 'q' }])
-    expect(fields[2]?.options).toEqual([
+    expect(fields[1]?.choices).toEqual([{ label: 'q', value: 'q' }])
+    expect(fields[2]?.choices).toEqual([
       { label: 'Are', value: 'r' },
       { label: 's', value: 's' },
     ])
@@ -59,9 +59,8 @@ describe('parseElicitationForm', () => {
   })
 })
 
-const field = (overrides: Partial<FormField>): FormField => ({
-  key: 'k',
-  label: 'k',
+const field = (overrides: Partial<ElicitFormField>): ElicitFormField => ({
+  name: 'k',
   kind: 'text',
   required: false,
   ...overrides,
@@ -71,8 +70,8 @@ describe('validateFieldInput', () => {
   test('number parsing and bounds', () => {
     expect(validateFieldInput(field({ kind: 'number' }), 'abc').error).toBeDefined()
     expect(validateFieldInput(field({ kind: 'number' }), '2.5').value).toBe(2.5)
-    expect(validateFieldInput(field({ kind: 'number', max: 3 }), '5').error).toBeDefined()
-    expect(validateFieldInput(field({ kind: 'number', min: 3 }), '1').error).toBeDefined()
+    expect(validateFieldInput(field({ kind: 'number', maximum: 3 }), '5').error).toBeDefined()
+    expect(validateFieldInput(field({ kind: 'number', minimum: 3 }), '1').error).toBeDefined()
     expect(validateFieldInput(field({ kind: 'integer' }), '2.5').error).toBeDefined()
     expect(validateFieldInput(field({ kind: 'integer' }), '4').value).toBe(4)
   })

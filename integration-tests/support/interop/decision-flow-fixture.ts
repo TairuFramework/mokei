@@ -3,6 +3,7 @@ import { addDecisionFlow } from '@mokei/decision-flow-server'
 import { createSystemOneConfig } from '@mokei/mcp-system-one'
 import { type AgentSession, Session } from '@mokei/session'
 import { SystemOneClient, type SystemOneResult } from '@mokei/system-one-client'
+import { whenAborted } from '@sozai/async'
 import type { FlowDefinition } from '@sozai/flow-graph'
 
 import example from '../../../packages/decision-flow/examples/support-triage.json' with {
@@ -104,10 +105,7 @@ export async function createDecisionFlowFixture(
             return task.run(async (handle) => {
               startTicket()
               if (options.pauseTicket) {
-                await new Promise<void>((resolve) => {
-                  if (handle.signal.aborted) resolve()
-                  else handle.signal.addEventListener('abort', () => resolve(), { once: true })
-                })
+                await whenAborted(handle.signal)
               } else {
                 tickets.push(input.ticket as Ticket)
               }

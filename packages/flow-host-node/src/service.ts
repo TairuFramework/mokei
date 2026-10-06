@@ -3,6 +3,7 @@ import type { FlowHost, TraceStore } from '@mokei/flow-host'
 import { createFlowHost } from '@mokei/flow-host'
 import type { FlowServiceStatus, HostEvent } from '@mokei/host-protocol'
 import { NodeSession } from '@mokei/session-node'
+import { lazy } from '@sozai/async'
 import { getReporter } from '@sozai/log'
 
 import { FlowConfigError, loadFlowConfig } from './config.js'
@@ -38,10 +39,15 @@ export type FlowService = {
   prompt(id: string, signal: AbortSignal): Promise<{ action: 'accept' | 'decline' | 'cancel' }>
   dispose(): Promise<void>
 }
+export type FlowServiceUnavailableErrorParams = {
+  status: FlowServiceStatus
+  stopping?: boolean
+}
+
 export class FlowServiceUnavailableError extends Error {
   #status: FlowServiceStatus
 
-  constructor(params: { status: FlowServiceStatus; stopping?: boolean }) {
+  constructor(params: FlowServiceUnavailableErrorParams) {
     super(params.stopping ? 'Flow service is shutting down' : 'Flow service is unavailable')
     this.name = 'FlowServiceUnavailableError'
     this.#status = structuredClone(params.status)
@@ -92,14 +98,14 @@ function failedStatus(error: unknown, stage: string): FlowServiceStatus {
         type: 'FlowConfigError',
         message: 'Invalid flow configuration',
         path: error.path,
-        issues: error.issues.map((issue) =>
-          issue.startsWith('JSON:')
+        issues: error.issues.map((issue) => {
+          return issue.startsWith('JSON:')
             ? 'Invalid JSON'
             : issue
                 .split('.')
                 .map((part) => (fields.has(part) ? part : '*'))
-                .join('.'),
-        ),
+                .join('.')
+        }),
       },
     }
   }
@@ -128,7 +134,6 @@ export function createFlowServiceWithDependencies(
   let stopping = false
   let starting: Promise<void> | undefined
   let disposal: Promise<void> | undefined
-  let cleanup: Promise<void> | undefined
   let desktopDisposal: Promise<void> | undefined
   let database: ReturnType<typeof openFlowDatabase> | undefined
   let telemetry: ReturnType<typeof setupFlowTelemetry> | undefined
@@ -166,19 +171,16 @@ export function createFlowServiceWithDependencies(
     desktopDisposal ??= attempt(() => (desktop ? desktop.dispose() : params.desktop?.dispose()))
     return desktopDisposal
   }
-  function cleanupResources(): Promise<void> {
-    cleanup ??= (async () => {
-      await disposeDesktop()
-      await Promise.allSettled([...operations])
-      await attempt(() => retention?.stop())
-      await attempt(() => host?.dispose())
-      await attempt(() => session?.dispose())
-      await attempt(() => telemetry?.dispose())
-      await attempt(() => database?.close())
-      resources = undefined
-    })()
-    return cleanup
-  }
+  const cleanup = lazy(async () => {
+    await disposeDesktop()
+    await Promise.allSettled([...operations])
+    await attempt(() => retention?.stop())
+    await attempt(() => host?.dispose())
+    await attempt(() => session?.dispose())
+    await attempt(() => telemetry?.dispose())
+    await attempt(() => database?.close())
+    resources = undefined
+  })
   async function initialize(): Promise<void> {
     if (stopping) return
     let stage = 'load configuration'
@@ -238,8 +240,13 @@ export function createFlowServiceWithDependencies(
         runStore,
         taskStore,
         listeners: {
-          'run:state': (data) =>
-            emit({ type: 'run:state', meta: { eventID: randomUUID(), time: Date.now() }, data }),
+          'run:state': (data) => {
+            return emit({
+              type: 'run:state',
+              meta: { eventID: randomUUID(), time: Date.now() },
+              data,
+            })
+          },
           'inbox:added': (data) => {
             desktop?.added(data)
             emit({ type: 'inbox:added', meta: { eventID: randomUUID(), time: Date.now() }, data })
@@ -270,7 +277,7 @@ export function createFlowServiceWithDependencies(
         status = failedStatus(error, stage)
         publishStatus()
       }
-      await cleanupResources()
+      await cleanup
     }
   }
   function requireResources(): FlowResources {
@@ -310,7 +317,7 @@ export function createFlowServiceWithDependencies(
         void disposeDesktop()
         disposal = (async () => {
           await starting
-          await cleanupResources()
+          await cleanup
           if (cleanupErrors.length > 0)
             throw new AggregateError(cleanupErrors, 'Failed to dispose flow service')
         })()

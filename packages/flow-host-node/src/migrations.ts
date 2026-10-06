@@ -1,5 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 
+import { withTransaction } from './transaction.js'
+
 export const migrations: Array<string> = [
   `CREATE TABLE runs (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,34 +45,35 @@ CREATE INDEX logs_trace ON logs (trace_id, timestamp, seq);
 CREATE INDEX logs_time ON logs (timestamp);`,
 ]
 
-export const migrateFlowDatabase = (db: DatabaseSync): void => {
+export const checkFlowDatabaseVersion = (
+  db: DatabaseSync,
+  list: Array<string> = migrations,
+): number => {
   const { user_version: version } = db.prepare('PRAGMA user_version').get() as {
     user_version: number
   }
-
-  if (version > migrations.length) {
+  if (version > list.length) {
     throw new Error(
-      `Database schema version ${version} is newer than supported version ${migrations.length}`,
+      `Database schema version ${version} is newer than supported version ${list.length}`,
     )
   }
+  return version
+}
 
-  if (version === migrations.length) {
+export const migrateFlowDatabase = (db: DatabaseSync, list: Array<string> = migrations): void => {
+  const version = checkFlowDatabaseVersion(db, list)
+
+  if (version === list.length) {
     return
   }
 
-  db.exec('BEGIN IMMEDIATE')
-
-  try {
-    for (const [index, migration] of migrations.entries()) {
+  withTransaction(db, () => {
+    for (const [index, migration] of list.entries()) {
       if (index < version) {
         continue
       }
       db.exec(migration)
       db.exec(`PRAGMA user_version = ${index + 1}`)
     }
-    db.exec('COMMIT')
-  } catch (error) {
-    db.exec('ROLLBACK')
-    throw error
-  }
+  })
 }

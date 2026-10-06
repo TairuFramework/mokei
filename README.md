@@ -67,6 +67,11 @@ const response = await session.chat({
 | `@mokei/llama-provider` | Local GGUF inference via node-llama-cpp |
 | `@mokei/http-client` | MCP Streamable HTTP client transport |
 | `@mokei/http-server` | MCP Streamable HTTP server transport |
+| `@mokei/flow-host` | Mokei flow host: run decision flows in the background with approval, inbox and recovery |
+| `@mokei/flow-host-node` | Mokei Node flow host: durable storage and observability for decision flows |
+| `@mokei/flow-client` | Mokei flow client: portable flow control interface, types and errors for the flow daemon |
+| `@mokei/host-desktop` | Desktop dialogs, notifications and input inbox for Mokei hosts |
+| `@mokei/decision-flow` | Mokei decision flow node kind for flow graphs |
 | `mokei` | CLI tool |
 
 ## CLI
@@ -76,6 +81,10 @@ mokei monitor            # Start the monitor UI for MCP server traffic
 mokei inspect            # Inspect an MCP server (prints how it describes itself)
 mokei chat -p openai     # Interactive chat
 mokei proxy <command>    # Proxy an MCP server through the daemon
+mokei daemon status      # Manage the per-user daemon
+mokei flows list         # Inspect configured flows
+mokei runs list          # Inspect flow runs
+mokei inbox list         # Inspect pending inputs and approvals
 ```
 
 ## Contributing

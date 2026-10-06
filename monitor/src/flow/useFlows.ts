@@ -6,17 +6,16 @@ import { type ReconciledQuery, useReconciledQuery } from './useReconciledQuery.j
 
 export function useFlows() {
   const { control } = useFlow()
-  const query = useMemo<ReconciledQuery<Array<FlowSummary>, never>>(
-    () => ({
+  const query = useMemo<ReconciledQuery<Array<FlowSummary>, never>>(() => {
+    return {
       initial: [],
       read: () => control.flows.list(),
       affected: () => undefined,
       readAffected: () => Promise.reject(new Error('Flow definitions have no live events')),
       merge: (data) => data,
       apply: (data) => data,
-    }),
-    [control],
-  )
+    }
+  }, [control])
   const { data, ...state } = useReconciledQuery(query)
   return { flows: data, ...state }
 }

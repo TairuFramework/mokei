@@ -1,3 +1,5 @@
+import { raceSignal, settleAll } from '@sozai/async'
+
 import { createAlerterBackend } from './backends/alerter.js'
 import { createNotifySendBackend } from './backends/notify-send.js'
 import { createOsascriptBackend } from './backends/osascript.js'
@@ -23,25 +25,6 @@ export function defaultCreateBackend(appName: string) {
         return createNotifySendBackend(runner, appName)
     }
   }
-}
-
-/** Settles with the promise, or rejects with the signal's reason as soon as it aborts. */
-export function untilAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason)
-    signal.addEventListener('abort', onAbort, { once: true })
-    if (signal.aborted) onAbort()
-    promise.then(
-      (value) => {
-        signal.removeEventListener('abort', onAbort)
-        resolve(value)
-      },
-      (error) => {
-        signal.removeEventListener('abort', onAbort)
-        reject(error)
-      },
-    )
-  })
 }
 
 export type DesktopNotifyOptions = {
@@ -113,11 +96,12 @@ export function createDesktopNotifier(options: DesktopElicitOptions = {}): Deskt
             ? undefined
             : () => {
                 if (lifetime.aborted) return
-                const failed = (error: unknown) =>
-                  report(
+                const failed = (error: unknown) => {
+                  return report(
                     options.onUnsupported,
                     `Notification click handler failed: ${error instanceof Error ? error.message : String(error)}`,
                   )
+                }
                 try {
                   void Promise.resolve(onClick()).catch(failed)
                 } catch (error) {
@@ -130,7 +114,8 @@ export function createDesktopNotifier(options: DesktopElicitOptions = {}): Deskt
         () => deliveries.delete(delivery),
         () => deliveries.delete(delivery),
       )
-      const delivered = await untilAbort(delivery, signal)
+      const delivered = await raceSignal(delivery, signal)
+      signal.throwIfAborted()
       if (delivered != null) {
         const closed = delivered.closed
         live.add(closed)
@@ -145,16 +130,14 @@ export function createDesktopNotifier(options: DesktopElicitOptions = {}): Deskt
       // Aborting the lifetime signal also removes notifications that are still live
       disposal.abort(new Error('Desktop notifier disposed'))
       disposing = (async () => {
-        const results = await Promise.allSettled([
-          ...(ownsRunner ? [runner.dispose()] : []),
-          ...[...deliveries].map((delivery) => delivery.catch(() => undefined)),
-          ...live,
-        ])
-        const failures = results
-          .filter((result) => result.status === 'rejected')
-          .map((result) => result.reason)
-        if (failures.length > 0)
-          throw new AggregateError(failures, 'Desktop notifier disposal failed')
+        await settleAll(
+          [
+            ...(ownsRunner ? [() => runner.dispose()] : []),
+            ...[...deliveries].map((delivery) => () => delivery.catch(() => undefined)),
+            ...[...live].map((closed) => () => closed),
+          ],
+          'Desktop notifier disposal failed',
+        )
       })()
     }
     return disposing

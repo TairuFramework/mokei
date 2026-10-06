@@ -1,6 +1,7 @@
 import type { ContextClient } from '@mokei/context-client'
 import type { DetailedTask } from '@mokei/context-protocol'
 import { getMokeiLogger } from '@mokei/logger'
+import { sleep } from '@sozai/async'
 
 import { isTaskNotFound } from './run-helpers.js'
 
@@ -23,18 +24,6 @@ export function createWatchers(params: {
   >()
   let stopped = false
   let stopping: Promise<void> | undefined
-  function sleep(ms: number, signal: AbortSignal): Promise<void> {
-    return new Promise((resolve) => {
-      const finish = () => {
-        clearTimeout(timer)
-        signal.removeEventListener('abort', finish)
-        resolve()
-      }
-      const timer = setTimeout(finish, ms)
-      signal.addEventListener('abort', finish, { once: true })
-      if (signal.aborted) finish()
-    })
-  }
   async function loop(
     runID: string,
     taskID: string,
@@ -67,7 +56,7 @@ export function createWatchers(params: {
         failures += 1
         delay = Math.min(5000, Math.max(1, params.pollMs) * 2 ** Math.min(failures, 20))
       }
-      await sleep(delay, signal)
+      await sleep(delay, signal).catch(() => {})
     }
   }
   return {

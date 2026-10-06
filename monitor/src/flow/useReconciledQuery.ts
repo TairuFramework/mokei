@@ -38,9 +38,11 @@ export function useReconciledQuery<Data, Entry>(query: ReconciledQuery<Data, Ent
     const refreshing =
       previous?.epoch === epoch && previous.query === query && previous.ready === ready
     source.current = { epoch, query, ready }
-    setState((value) =>
-      refreshing ? { data: value.data, loading: ready } : { data: query.initial, loading: ready },
-    )
+    setState((value) => {
+      return refreshing
+        ? { data: value.data, loading: ready }
+        : { data: query.initial, loading: ready }
+    })
     if (!ready) return
     let buffering = true
     let refreshAfterBuffer = false

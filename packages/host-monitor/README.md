@@ -23,7 +23,7 @@ Browser sessions cannot create daemon monitor attachments.
 
 When the daemon restarts, the monitor server reconnects and attaches again. Open browser streams
 close so pages can reconnect through the new bridge and its current attachment. A page that reconnects reads
-the current flow and inbox state; events are live and do not replay missed changes.
+the current flow and inbox state. Events are live and do not replay missed changes.
 
 See the [flow service guide](../flow-host-node/README.md#monitor-surface) for delivery and
 fallback behaviour.

@@ -3,24 +3,21 @@ import type { HostEvent, Protocol } from '@mokei/host-protocol'
 import type { FromSchema } from '@sozai/schema'
 
 import { raceAbort } from './abort.js'
-import { FlowControlError, type FlowControlErrorCode, isFlowControlError } from './errors.js'
+import {
+  FLOW_CONTROL_ERROR_CODES,
+  FlowControlError,
+  type FlowControlErrorCode,
+  isFlowControlError,
+} from './errors.js'
 import { createEventQueue } from './subscription.js'
 import type { FlowControl, FlowEvent, FlowSubscription } from './types.js'
 
 type CheckParam = FromSchema<Protocol['flows.check']['param']>
 type AnswerParam = FromSchema<Protocol['inbox.answer']['param']>
 
-const HANDLER_CODES: ReadonlySet<FlowControlErrorCode> = new Set<FlowControlErrorCode>([
-  'FLOW_UNAVAILABLE',
-  'FLOW_INVALID',
-  'FLOW_NOT_FOUND',
-  'RUN_NOT_FOUND',
-  'INBOX_ITEM_NOT_FOUND',
-  'INBOX_ANSWER_INVALID',
-  'PROMPT_UNSUPPORTED',
-  'PROMPT_IN_PROGRESS',
-  'INTERNAL_ERROR',
-])
+const HANDLER_CODES: ReadonlySet<FlowControlErrorCode> = new Set(
+  FLOW_CONTROL_ERROR_CODES.filter((code) => code !== 'DISCONNECTED'),
+)
 
 const FLOW_EVENT_TYPES: ReadonlySet<string> = new Set(['run:state', 'inbox:added', 'inbox:settled'])
 
@@ -146,8 +143,9 @@ export function createRemoteFlowControl(client: Client<Protocol>): FlowControl {
   return {
     flows: {
       list: () => call(() => client.request('flows.list')),
-      check: (definition) =>
-        call(() => client.request('flows.check', { param: { definition } as CheckParam })),
+      check: (definition) => {
+        return call(() => client.request('flows.check', { param: { definition } as CheckParam }))
+      },
     },
     runs: {
       start: (params) => call(() => client.request('runs.start', { param: params })),
@@ -159,27 +157,31 @@ export function createRemoteFlowControl(client: Client<Protocol>): FlowControl {
     inbox: {
       list: (filter) => call(() => client.request('inbox.list', { param: filter ?? {} })),
       get: (id) => call(() => client.request('inbox.get', { param: { id } })),
-      answer: (id, content) =>
-        call(async () => {
+      answer: (id, content) => {
+        return call(async () => {
           const param = (content === undefined ? { id } : { id, content }) as AnswerParam
           await client.request('inbox.answer', { param })
-        }),
-      decline: (id, reason) =>
-        call(async () => {
+        })
+      },
+      decline: (id, reason) => {
+        return call(async () => {
           await client.request('inbox.decline', {
             param: reason === undefined ? { id } : { id, reason },
           })
-        }),
-      cancel: (id) =>
-        call(async () => {
+        })
+      },
+      cancel: (id) => {
+        return call(async () => {
           await client.request('inbox.cancel', { param: { id } })
-        }),
-      prompt: (id, signal) =>
-        call(async () => {
+        })
+      },
+      prompt: (id, signal) => {
+        return call(async () => {
           const config = signal === undefined ? { param: { id } } : { param: { id }, signal }
           const result = await client.request('inbox.prompt', config)
           return result.action
-        }, signal),
+        }, signal)
+      },
     },
     subscribe: (signal) => subscribe(client, signal),
   }

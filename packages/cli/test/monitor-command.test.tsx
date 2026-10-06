@@ -1,4 +1,5 @@
 import { type Monitor, startMonitor } from '@mokei/host-monitor'
+import type * as TejikaCLI from '@tejika/cli'
 import { runInk } from '@tejika/cli'
 import { expect, test, vi } from 'vitest'
 
@@ -7,7 +8,7 @@ import { ensureMokeiDaemon } from '../src/daemon.js'
 
 vi.mock('@mokei/host-monitor', () => ({ startMonitor: vi.fn() }))
 vi.mock('@tejika/cli', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@tejika/cli')>()),
+  ...(await importOriginal<typeof TejikaCLI>()),
   runInk: vi.fn(async () => {}),
 }))
 vi.mock('../src/daemon.js', () => ({ ensureMokeiDaemon: vi.fn(async () => {}) }))

@@ -51,10 +51,12 @@
     "@mokei/mcp-sqlite": "workspace:^",
     "@mokei/mcp-system-one": "workspace:^",
     "@mokei/session-node": "workspace:^",
+    "@sozai/async": "catalog:",
     "@sozai/flow-graph": "catalog:",
     "@sozai/generator": "catalog:",
     "@sozai/schema": "catalog:",
     "@tejika/env": "catalog:",
+    "@tejika/test": "catalog:",
     "@types/node": "catalog:",
     "node-pty": "^1.1.0",
     "strip-ansi": "^7.2.0"

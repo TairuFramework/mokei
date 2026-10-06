@@ -1,21 +1,18 @@
 import type { InboxItem } from '@mokei/flow-client'
 import { runInk } from '@tejika/cli'
+import { ExitOnAbort, InterruptOnCtrlC } from '@tejika/ui'
 import { createElement, type ReactElement } from 'react'
 
 import { ApprovalRunner } from './ApprovalPrompt.js'
-import { ExitOnAbort } from './ExitOnAbort.js'
-import { InterruptOnCtrlC } from './InterruptOnCtrlC.js'
 import { FormRunner } from './SchemaForm.js'
 import { parseElicitationForm } from './schema-form.js'
 
+export type { ElicitFormField, ElicitFormFieldKind } from '@mokei/context-protocol'
+
 export { ApprovalPrompt, ApprovalRunner } from './ApprovalPrompt.js'
-export { ExitOnAbort } from './ExitOnAbort.js'
-export { InterruptOnCtrlC } from './InterruptOnCtrlC.js'
 export { FormRunner, SchemaForm } from './SchemaForm.js'
 export {
   type FieldValidation,
-  type FormField,
-  type FormFieldKind,
   parseElicitationForm,
   UnsupportedSchemaError,
   validateFieldInput,
@@ -55,7 +52,7 @@ export async function promptForm(
   item: InboxItem & { kind: 'input' },
   options: PromptOptions & { onInvalid?: (issues: Array<string>) => void } = {},
 ): Promise<Record<string, unknown> | undefined> {
-  const fields = parseElicitationForm(item.requestedSchema as Record<string, unknown>)
+  const fields = parseElicitationForm(item.requestedSchema)
   let answer: Record<string, unknown> | undefined
   await runPrompt(
     createElement(FormRunner, {

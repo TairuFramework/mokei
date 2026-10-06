@@ -3,7 +3,7 @@
 **Status:** complete
 **Date:** 2026-09-30
 **Branch:** `feat/task-input-lifecycle`
-**Origin:** input races left open by the [decision-flow server](2026-09-29-decision-flow-server.complete.md)
+**Origin:** input races left open by the [decision-flow server](2026-09-29-decision-flow.complete.md)
 and the contract the host desktop interaction work relies on (withdrawal reaches the handler, a
 late answer is harmless, snapshots are consistent). Builds on the
 [MCP Tasks extension](2026-09-29-mcp-tasks-extension.complete.md).

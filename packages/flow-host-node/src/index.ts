@@ -1,7 +1,12 @@
 export type { FlowConfig } from './config.js'
 export { FlowConfigError, loadFlowConfig } from './config.js'
 export { openFlowDatabase } from './database.js'
-export type { FlowDesktopAdapter, FlowDesktopController } from './desktop.js'
+export type {
+  DesktopPromptUnavailableErrorParams,
+  FlowDesktopAdapter,
+  FlowDesktopController,
+  InboxPromptInProgressErrorParams,
+} from './desktop.js'
 export {
   createFlowDesktopController,
   DesktopPromptUnavailableError,
@@ -10,7 +15,13 @@ export {
 export { loadFlowDirs } from './flow-dirs.js'
 export { createFlowHandlers, type FlowHandlers } from './handlers.js'
 export { createMonitorHandlers, type MonitorHandlers } from './monitor-handlers.js'
-export type { MonitorPresence, MonitorTab, MonitorTabState } from './monitor-presence.js'
+export type {
+  MonitorAttachmentNotFoundErrorParams,
+  MonitorPresence,
+  MonitorTab,
+  MonitorTabState,
+  MonitorURLErrorParams,
+} from './monitor-presence.js'
 export {
   createMonitorPresence,
   MonitorAttachmentNotFoundError,
@@ -21,7 +32,13 @@ export {
 export { createMonitorSurface } from './monitor-surface.js'
 export { createNativeSurface } from './native-surface.js'
 export { startRetention } from './retention.js'
-export type { FlowResources, FlowService, FlowServiceParams, FlowServiceStatus } from './service.js'
+export type {
+  FlowResources,
+  FlowService,
+  FlowServiceParams,
+  FlowServiceStatus,
+  FlowServiceUnavailableErrorParams,
+} from './service.js'
 export { createFlowService, FlowServiceUnavailableError } from './service.js'
 export { createSQLiteRunStore } from './sqlite-run-store.js'
 export { createSQLiteTaskStore } from './sqlite-task-store.js'

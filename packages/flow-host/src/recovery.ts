@@ -45,11 +45,11 @@ export async function recoverRuns(params: {
             status: ['working', 'input_required', 'completed', 'failed', 'cancelled'],
           })
           const task = tasks.find((task) => task.requestMeta?.['dev.mokei/flow-run'] === run.runID)
-          run = await params.change(run.runID, () =>
-            task === undefined
+          run = await params.change(run.runID, () => {
+            return task === undefined
               ? { state: 'failed', error: interruptedError() }
-              : { taskID: task.taskID },
-          )
+              : { taskID: task.taskID }
+          })
         }
         if (run.taskID === undefined) return
         if (run.cancelRequested) await params.cancelTask(run.runID, run.taskID)

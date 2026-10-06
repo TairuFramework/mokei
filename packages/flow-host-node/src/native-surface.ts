@@ -1,7 +1,10 @@
 import type { ElicitResult } from '@mokei/context-protocol'
+import { elicitRequestFormParams } from '@mokei/context-protocol'
 import type { FlowHost, InboxItem } from '@mokei/flow-host'
 import { InboxAnswerInvalidError, InboxItemNotFoundError } from '@mokei/flow-host'
 import type { DesktopElicitRequest, DesktopNotifyOptions } from '@mokei/host-desktop'
+import { raceSignal, settleAll } from '@sozai/async'
+import { createValidator } from '@sozai/schema'
 
 import {
   DesktopPromptUnavailableError,
@@ -16,6 +19,12 @@ const QUIET_CLICK_ERRORS = new Set([
   'DesktopPromptUnavailableError',
   'InboxItemNotFoundError',
 ])
+
+function createRequestedSchemaValidator() {
+  return createValidator(elicitRequestFormParams.properties.requestedSchema)
+}
+
+let requestedSchemaValidator: ReturnType<typeof createRequestedSchemaValidator> | undefined
 
 export function createNativeSurface(params: {
   adapter?: FlowDesktopAdapter
@@ -76,39 +85,40 @@ export function createNativeSurface(params: {
     { signal }: { signal: AbortSignal },
   ): Promise<SurfaceDelivery | null> {
     if (signal.aborted || disposal.signal.aborted) return null
-    if (owners.has(item.id)) throw new InboxPromptInProgressError(item.id)
+    if (owners.has(item.id)) throw new InboxPromptInProgressError({ itemID: item.id })
     if (adapter == null) return null
     const host = params.host()
-    if (host.inbox.get(item.id) == null) throw new InboxItemNotFoundError(item.id)
+    if (host.inbox.get(item.id) == null) throw new InboxItemNotFoundError({ itemID: item.id })
     owners.add(item.id)
     const current = delivery(signal)
     const release = () => owners.delete(item.id)
     void current.value.closed.then(release, release)
-    const abort = Promise.withResolvers<never>()
-    const onAbort = () => abort.reject(current.signal.reason)
-    current.signal.addEventListener('abort', onAbort, { once: true })
     let unsubscribe = () => {}
     try {
-      const run = await Promise.race([host.get(item.runID), abort.promise])
+      const run = await raceSignal(host.get(item.runID), current.signal)
       current.signal.throwIfAborted()
-      if (host.inbox.get(item.id) == null) throw new InboxItemNotFoundError(item.id)
+      if (host.inbox.get(item.id) == null) throw new InboxItemNotFoundError({ itemID: item.id })
       const message =
         item.kind === 'approval'
           ? `Run flow "${run?.label ?? item.runID}" with tools: ${item.plan.tools.join(', ') || 'none'}`
           : item.message
+      requestedSchemaValidator ??= createRequestedSchemaValidator()
+      const validated = requestedSchemaValidator(
+        item.kind === 'approval'
+          ? {
+              type: 'object',
+              properties: { approve: { type: 'boolean', title: message } },
+              required: ['approve'],
+            }
+          : item.requestedSchema,
+      )
+      if (validated.issues) {
+        current.finish()
+        return null
+      }
       const request: DesktopElicitRequest = {
         key: `Flow: ${run?.label ?? item.runID}`,
-        params: {
-          message,
-          requestedSchema:
-            item.kind === 'approval'
-              ? {
-                  type: 'object',
-                  properties: { approve: { type: 'boolean', title: message } },
-                  required: ['approve'],
-                }
-              : item.requestedSchema,
-        },
+        params: { message, requestedSchema: validated.value },
         signal: current.signal,
       }
       if (!adapter.canPrompt(request)) {
@@ -121,13 +131,15 @@ export function createNativeSurface(params: {
       const nativePrompt = track(adapter.prompt(request))
       const operation = (async () => {
         try {
-          const result: ElicitResult = await Promise.race([nativePrompt, abort.promise])
+          const result: ElicitResult = await raceSignal(nativePrompt, current.signal)
           current.signal.throwIfAborted()
           let action = result.action
           if (item.kind === 'approval' && action === 'accept') {
             if (result.content?.approve === false) action = 'decline'
             else if (result.content?.approve !== true)
-              throw new InboxAnswerInvalidError(['approve: explicit approval boolean required'])
+              throw new InboxAnswerInvalidError({
+                issues: ['approve: explicit approval boolean required'],
+              })
           }
           if (action === 'accept')
             await host.inbox.answer(item.id, item.kind === 'input' ? result.content : undefined)
@@ -137,7 +149,6 @@ export function createNativeSurface(params: {
           if (!current.signal.aborted) current.finish(error)
         } finally {
           unsubscribe()
-          current.signal.removeEventListener('abort', onAbort)
         }
       })()
       track(operation)
@@ -145,7 +156,6 @@ export function createNativeSurface(params: {
     } catch (error) {
       current.finish()
       unsubscribe()
-      current.signal.removeEventListener('abort', onAbort)
       throw error
     }
   }
@@ -157,7 +167,7 @@ export function createNativeSurface(params: {
         await params.openURL?.(new URL(`inbox/${encodeURIComponent(item.id)}`, url).href)
       else {
         const shown = await prompt(item, { signal })
-        if (shown == null) throw new DesktopPromptUnavailableError(item.id)
+        if (shown == null) throw new DesktopPromptUnavailableError({ itemID: item.id })
         await shown.closed
       }
     })()
@@ -194,10 +204,11 @@ export function createNativeSurface(params: {
   }
   return {
     name: 'native',
-    status: () =>
-      adapter != null && params.notifications && !disposal.signal.aborted
+    status: () => {
+      return adapter != null && params.notifications && !disposal.signal.aborted
         ? 'reachable'
-        : 'unavailable',
+        : 'unavailable'
+    },
     isAttended: async () => false,
     notify,
     prompt,
@@ -225,18 +236,13 @@ export function createNativeSurface(params: {
       if (disposing != null) return disposing
       disposal.abort(new Error('Native surface disposed'))
       for (const current of deliveries) current.close()
-      disposing = (async () => {
-        const results = await Promise.allSettled([
-          (async () => {
-            await adapter?.dispose()
-          })(),
-          ...[...operations].map((operation) => operation.catch(() => undefined)),
-        ])
-        const errors = results
-          .filter((result) => result.status === 'rejected')
-          .map((result) => result.reason)
-        if (errors.length > 0) throw new AggregateError(errors, 'Native surface disposal failed')
-      })()
+      disposing = settleAll(
+        [
+          () => adapter?.dispose(),
+          ...[...operations].map((operation) => () => operation.catch(() => undefined)),
+        ],
+        'Native surface disposal failed',
+      )
       return disposing
     },
   }

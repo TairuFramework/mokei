@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { getDataDir } from '@tejika/env'
 
-import { migrateFlowDatabase } from './migrations.js'
+import { checkFlowDatabaseVersion, migrateFlowDatabase } from './migrations.js'
 
 type OpenFlowDatabaseParams = {
   path?: string
@@ -20,13 +20,8 @@ export const openFlowDatabase = (
   const db = new DatabaseSync(path)
 
   try {
-    const { user_version: version } = db.prepare('PRAGMA user_version').get() as {
-      user_version: number
-    }
-    if (version > 1) {
-      throw new Error(`Database schema version ${version} is newer than supported version 1`)
-    }
-
+    // Reject a newer schema before WAL mode persists a change to the file.
+    checkFlowDatabaseVersion(db)
     db.exec('PRAGMA journal_mode = WAL')
     db.exec('PRAGMA busy_timeout = 5000')
     db.exec('PRAGMA foreign_keys = ON')

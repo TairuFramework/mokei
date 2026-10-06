@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { RunRecord } from '@mokei/flow-host'
 import type { FlowDefinition } from '@sozai/flow-graph'
+import { createTestProfile } from '@tejika/test'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import { connectMCP, type MCPConnection, type ToolResult } from '../support/flow-cli/mcp-client.js'
@@ -470,13 +471,12 @@ test('runs start --wait --json follows a run across a daemon restart', async () 
 })
 
 test('daemon start, stop and restart run the production entry in isolated directories', async () => {
-  // Short path: Unix socket paths must fit sockaddr_un, even with macOS's long TMPDIR.
-  const directory = await mkdtemp('/tmp/mokei-flow-cli-')
+  const profile = createTestProfile('mokei')
+  const directory = profile.dir
   const socketPath = join(directory, 'daemon.sock')
   const pidPath = join(directory, 'mokei.pid')
   const env = {
-    MOKEI_DATA_DIR: directory,
-    MOKEI_STATE_DIR: directory,
+    ...profile.env,
     MOKEI_LOG_DIR: join(directory, 'logs'),
     MOKEI_PID_PATH: pidPath,
     MOKEI_SOCKET_PATH: socketPath,
@@ -524,8 +524,12 @@ test('daemon start, stop and restart run the production entry in isolated direct
 
     const fromStopped = await cli.run(['daemon', 'restart'])
     expect(fromStopped.code, fromStopped.stderr).toBe(0)
-    expect(fromStopped.stdout).toMatch(/^daemon not running\ndaemon running \(pid \d+\)\n/)
-    expect(fromStopped.stdout).toContain('flow service: ready')
+    expect(fromStopped.stdout.split('\n')).toEqual([
+      'daemon not running',
+      expect.stringMatching(/^daemon running \(pid \d+\)$/),
+      `socket: ${socketPath}`,
+      '',
+    ])
 
     const restarted = await cli.json<{
       stop: { state: string; pid?: number; forced?: boolean }
@@ -560,6 +564,6 @@ test('daemon start, stop and restart run the production entry in isolated direct
     for (const pid of pids) {
       if (alive(pid)) process.kill(pid, 'SIGKILL')
     }
-    await rm(directory, { recursive: true, force: true })
+    await profile[Symbol.asyncDispose]()
   }
 })

@@ -54,18 +54,18 @@ export function createLauncher(params: {
           task: 'handle',
         })
         if (!isCreateTaskResult(result)) {
-          return params.change(runID, (current) =>
-            current.cancelRequested
+          return params.change(runID, (current) => {
+            return current.cancelRequested
               ? { state: 'cancelled' }
-              : { state: 'failed', error: { type: 'StartFailed', message: resultText(result) } },
-          )
+              : { state: 'failed', error: { type: 'StartFailed', message: resultText(result) } }
+          })
         }
         taskID = result.taskId
         linked = await params.change(runID, () => ({ taskID }))
       } catch (error) {
         if (taskID !== undefined) await params.client.tasks.cancel(taskID).catch(() => undefined)
-        return params.change(runID, (current) =>
-          current.cancelRequested
+        return params.change(runID, (current) => {
+          return current.cancelRequested
             ? { state: 'cancelled' }
             : {
                 state: 'failed',
@@ -73,8 +73,8 @@ export function createLauncher(params: {
                   type: 'StartFailed',
                   message: error instanceof Error ? error.message : String(error),
                 },
-              },
-        )
+              }
+        })
       }
       params.watch(runID, taskID)
       if (linked.cancelRequested) return params.cancelTask(runID, taskID)

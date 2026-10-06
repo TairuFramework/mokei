@@ -9,6 +9,7 @@ import {
 } from '@mokei/flow-host-node'
 import { createDesktopInputSurface, createDesktopNotifier, openURL } from '@mokei/host-desktop'
 import { composeHandlers, serveHostDaemon } from '@mokei/host-node'
+import { settleAll } from '@sozai/async'
 import type { DaemonHandle } from '@tejika/process'
 
 function createDesktopAdapter(): FlowDesktopAdapter {
@@ -21,12 +22,10 @@ function createDesktopAdapter(): FlowDesktopAdapter {
     notify: (message, options) => notifier.notify(message, options),
     dispose() {
       disposal ??= (async () => {
-        const results = await Promise.allSettled([surface.dispose(), notifier.dispose()])
-        const failures = results
-          .filter((result) => result.status === 'rejected')
-          .map((result) => result.reason)
-        if (failures.length > 0)
-          throw new AggregateError(failures, 'Desktop adapter disposal failed')
+        await settleAll(
+          [() => surface.dispose(), () => notifier.dispose()],
+          'Desktop adapter disposal failed',
+        )
       })()
       return disposal
     },

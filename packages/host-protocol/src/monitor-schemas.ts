@@ -20,7 +20,6 @@ export const monitorAttachReceiveSchema = {
 export const monitorPresenceParamSchema = {
   type: 'object',
   properties: { attachmentID: { type: 'string' } },
-  required: ['attachmentID'],
   additionalProperties: false,
 } as const satisfies Schema
 

@@ -80,6 +80,15 @@ describe('flow configuration', () => {
     })
   })
 
+  test('read failures name the config path and retain the filesystem cause', async () => {
+    const { loadFlowConfig } = await import('../src/config.js')
+    const directory = await createDirectory()
+    await expect(loadFlowConfig(directory)).rejects.toMatchObject({
+      message: expect.stringContaining(`failed to read ${directory}:`),
+      cause: expect.objectContaining({ code: 'EISDIR' }),
+    })
+  })
+
   test('names the file and every invalid field', async () => {
     const { FlowConfigError, loadFlowConfig } = await import('../src/index.js')
     const directory = await createDirectory()
@@ -134,7 +143,15 @@ describe('flow configuration', () => {
     await writeFile(
       path,
       JSON.stringify({
-        flowDirs: ['flows', '~/flows', '/var/flows', '~other/flows', 'x:worker.js'],
+        flowDirs: [
+          'flows',
+          '~/flows',
+          '/var/flows',
+          '~other/flows',
+          'x:worker.js',
+          '~',
+          '~\\flows',
+        ],
         siblings: {
           worker: {
             command: 'node',
@@ -164,6 +181,8 @@ describe('flow configuration', () => {
       '/var/flows',
       '~other/flows',
       'x:worker.js',
+      homedir(),
+      join(homedir(), 'flows'),
     ])
     expect(config.siblings.worker?.args).toEqual([
       join(directory, 'worker.js'),

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import type { InboxItem } from '@mokei/flow-client'
+import type * as TejikaCLI from '@tejika/cli'
 import { runInk } from '@tejika/cli'
 import { type Instance, render } from 'ink'
 import type { ReactElement } from 'react'
@@ -40,7 +41,7 @@ type Mounted = { instance: Instance; stdin: FakeStdin; exited: boolean }
 const mounted: Array<Mounted> = []
 
 vi.mock('@tejika/cli', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@tejika/cli')>()
+  const actual = await importOriginal<typeof TejikaCLI>()
   return {
     ...actual,
     runInk: vi.fn(async (element: ReactElement) => {

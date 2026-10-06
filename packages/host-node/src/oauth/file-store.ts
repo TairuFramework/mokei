@@ -1,28 +1,24 @@
 import { randomBytes } from 'node:crypto'
-import { readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type { StoredTokens, TokenStore } from '@mokei/http-client'
+import { createKeyedQueue } from '@sozai/async'
+import { readJSONFile } from '@tejika/env'
 
-// Serialization chain per resolved absolute path, at module scope so every store instance
-// pointing at the same file shares it: an in-process mutex that stops concurrent
-// read-modify-write from interleaving and clobbering. See `serialize` below.
-const pathTails = new Map<string, Promise<unknown>>()
+// Stores sharing a resolved path must not interleave read-modify-write operations.
+const pathQueue = createKeyedQueue<string>()
 
 async function readAll(path: string): Promise<Record<string, StoredTokens>> {
-  let raw: string
+  let parsed: unknown
   try {
-    raw = await readFile(path, 'utf8')
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {}
-    throw err
+    parsed = await readJSONFile(path, { default: {} })
+  } catch (error) {
+    // A subsequent write repairs corrupt JSON; filesystem failures must still propagate.
+    if (error instanceof Error && error.cause instanceof SyntaxError) return {}
+    throw error
   }
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
-    return parsed as Record<string, StoredTokens>
-  } catch {
-    return {} // corrupt JSON -> treat as empty (a subsequent write repairs it)
-  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
+  return parsed as Record<string, StoredTokens>
 }
 
 async function writeAll(path: string, data: Record<string, StoredTokens>): Promise<void> {
@@ -40,32 +36,19 @@ async function writeAll(path: string, data: Record<string, StoredTokens>): Promi
 export function createFileTokenStore(path: string): TokenStore {
   // Resolve once so differently-spelled paths (`./t.json` vs its absolute form) share one chain.
   const resolved = resolve(path)
-  const serialize = <T>(op: () => Promise<T>): Promise<T> => {
-    const prev = pathTails.get(resolved) ?? Promise.resolve()
-    const run = prev.then(op, op)
-    const tail = run.catch(() => {})
-    pathTails.set(resolved, tail)
-    // Reclaim the entry once its tail settles, but only if it is still the live chain -- the
-    // identity check prevents deleting a chain a concurrent op has already extended. Without it,
-    // `pathTails` would grow one permanent entry per distinct resolved path.
-    void tail.then(() => {
-      if (pathTails.get(resolved) === tail) pathTails.delete(resolved)
-    })
-    return run
-  }
   return {
     get(key) {
-      return serialize(async () => (await readAll(resolved))[key])
+      return pathQueue.run(resolved, async () => (await readAll(resolved))[key])
     },
     set(key, tokens) {
-      return serialize(async () => {
+      return pathQueue.run(resolved, async () => {
         const all = await readAll(resolved)
         all[key] = tokens
         await writeAll(resolved, all)
       })
     },
     clear(key) {
-      return serialize(async () => {
+      return pathQueue.run(resolved, async () => {
         const all = await readAll(resolved)
         delete all[key]
         await writeAll(resolved, all)

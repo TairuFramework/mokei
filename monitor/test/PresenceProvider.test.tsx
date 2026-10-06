@@ -139,7 +139,7 @@ const prompt = () => ({
 })
 test('sends first state and visibility, active item and permission changes', async () => {
   const f = fixture()
-  expect(f.createChannel).toHaveBeenCalledWith('monitor.presence', { param: { attachmentID: '' } })
+  expect(f.createChannel).toHaveBeenCalledWith('monitor.presence', { param: {} })
   expect(f.channels[0].send).toHaveBeenNthCalledWith(1, {
     type: 'state',
     visible: true,

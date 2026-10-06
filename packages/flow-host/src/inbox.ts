@@ -1,5 +1,6 @@
 import type { ContextClient } from '@mokei/context-client'
 import type { DetailedTask, ElicitResult, InputResponse } from '@mokei/context-protocol'
+import { isTerminalRunState } from '@mokei/flow-client'
 import type { ElicitContentValidator } from '@mokei/host'
 import { createElicitContentValidator } from '@mokei/host'
 import { getMokeiLogger } from '@mokei/logger'
@@ -8,7 +9,6 @@ import { InboxAnswerInvalidError, InboxItemNotFoundError } from './errors.js'
 import { isTaskNotFound } from './run-helpers.js'
 import type { RunStore } from './run-store.js'
 import type { createRunQueue } from './transitions.js'
-import { TERMINAL_STATES } from './transitions.js'
 import type { FlowHost, FlowHostEvents, InboxItem, InboxOutcome } from './types.js'
 
 type Entry = {
@@ -33,7 +33,7 @@ export function createInbox(params: {
   const logger = getMokeiLogger('flow-host')
   function requireOpen(id: string): Entry {
     const entry = items.get(id)
-    if (entry?.status !== 'open') throw new InboxItemNotFoundError(id)
+    if (entry?.status !== 'open') throw new InboxItemNotFoundError({ itemID: id })
     return entry
   }
   function settle(id: string, outcome: InboxOutcome) {
@@ -52,16 +52,14 @@ export function createInbox(params: {
     cancelledURLs.delete(runID)
     latestInputKeys.delete(runID)
   }
-  function add(item: InboxItem, taskID?: string) {
+  function add(item: InboxItem, taskID?: string, validate?: ElicitContentValidator) {
     if (items.has(item.id)) return
     const copy = structuredClone(item)
     items.set(item.id, {
       item: copy,
       status: 'open',
       taskID,
-      ...(copy.kind === 'input'
-        ? { validate: createElicitContentValidator(copy.requestedSchema) }
-        : {}),
+      validate,
     })
     params.emit('inbox:added', structuredClone(copy))
   }
@@ -81,6 +79,7 @@ export function createInbox(params: {
       }
       for (const [inputKey, request] of Object.entries(requests)) {
         if (request.method !== 'elicitation/create' || request.params.mode === 'url') continue
+        if (items.has(`${runID}:${inputKey}`)) continue
         add(
           {
             id: `${runID}:${inputKey}`,
@@ -92,6 +91,7 @@ export function createInbox(params: {
             createdAt: Date.now(),
           },
           task?.taskId,
+          createElicitContentValidator(structuredClone(request.params.requestedSchema)),
         )
       }
     })
@@ -111,7 +111,7 @@ export function createInbox(params: {
         await params.client.tasks.update(task.taskId, { [inputKey]: { action: 'cancel' } })
         await params.queue.run(runID, async () => {
           const record = await params.store.get(runID)
-          if (record === undefined || TERMINAL_STATES.has(record.state)) return
+          if (record === undefined || isTerminalRunState(record.state)) return
           const keys = cancelledURLs.get(runID) ?? new Set<string>()
           keys.add(id)
           cancelledURLs.set(runID, keys)
@@ -137,10 +137,10 @@ export function createInbox(params: {
       const claimed = await params.queue.run(runID, async () => {
         const entry = requireOpen(id)
         if (entry.item.kind !== 'input' || entry.taskID === undefined)
-          throw new InboxItemNotFoundError(id)
+          throw new InboxItemNotFoundError({ itemID: id })
         if (action === 'accept') {
           const issues = entry.validate?.(content) ?? []
-          if (issues.length > 0) throw new InboxAnswerInvalidError(issues)
+          if (issues.length > 0) throw new InboxAnswerInvalidError({ issues })
         }
         const response: InputResponse =
           action === 'accept' ? { action, content: content as ElicitResult['content'] } : { action }
@@ -159,12 +159,12 @@ export function createInbox(params: {
               error.code === -32602)
           ) {
             settle(id, 'withdrawn')
-            throw new InboxItemNotFoundError(id)
+            throw new InboxItemNotFoundError({ itemID: id })
           }
           const record = await params.store.get(runID)
           if (
             record === undefined ||
-            TERMINAL_STATES.has(record.state) ||
+            isTerminalRunState(record.state) ||
             !latestInputKeys.get(runID)?.has(claimed.inputKey)
           ) {
             settle(id, 'withdrawn')
@@ -185,15 +185,14 @@ export function createInbox(params: {
   const api: FlowHost['inbox'] = {
     list(filter) {
       return [...items.values()]
-        .filter(
-          ({ item, status }) =>
-            status === 'open' && (filter?.runID === undefined || item.runID === filter.runID),
-        )
+        .filter(({ item, status }) => {
+          return status === 'open' && (filter?.runID === undefined || item.runID === filter.runID)
+        })
         .map(({ item }) => structuredClone(item))
     },
     get(id) {
       const entry = items.get(id)
-      if (entry === undefined) throw new InboxItemNotFoundError(id)
+      if (entry === undefined) throw new InboxItemNotFoundError({ itemID: id })
       return entry.status === 'open' ? structuredClone(entry.item) : undefined
     },
     answer: (id, content) => respond(id, 'accept', content),

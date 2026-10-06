@@ -30,6 +30,10 @@ export const TERMINAL_RUN_STATES: ReadonlyArray<RunState> = [
   'cancelled',
 ]
 
+export function isTerminalRunState(state: RunState): boolean {
+  return TERMINAL_RUN_STATES.includes(state)
+}
+
 export type FlowEvent =
   | { type: 'run:state'; data: FlowRunSnapshot }
   | { type: 'inbox:added'; data: InboxItem }

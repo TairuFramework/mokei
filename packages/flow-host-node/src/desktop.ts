@@ -2,6 +2,7 @@ import type { ElicitResult } from '@mokei/context-protocol'
 import type { FlowHost, InboxItem, InboxOutcome } from '@mokei/flow-host'
 import { InboxItemNotFoundError } from '@mokei/flow-host'
 import type { DesktopElicitRequest, DesktopNotifyOptions } from '@mokei/host-desktop'
+import { settleAll } from '@sozai/async'
 
 import type { createNativeSurface } from './native-surface.js'
 import type { InboxSurface, PromptOutcome, SurfaceDelivery } from './surfaces.js'
@@ -20,15 +21,19 @@ export type FlowDesktopController = {
   prompt(id: string, signal: AbortSignal): Promise<PromptOutcome>
   dispose(): Promise<void>
 }
+export type InboxPromptInProgressErrorParams = { itemID: string }
+
 export class InboxPromptInProgressError extends Error {
-  constructor(id: string) {
-    super(`Inbox prompt already in progress: ${id}`)
+  constructor(params: InboxPromptInProgressErrorParams) {
+    super(`Inbox prompt already in progress: ${params.itemID}`)
     this.name = 'InboxPromptInProgressError'
   }
 }
+export type DesktopPromptUnavailableErrorParams = { itemID: string }
+
 export class DesktopPromptUnavailableError extends Error {
-  constructor(id: string) {
-    super(`Desktop prompt is unavailable for inbox item: ${id}`)
+  constructor(params: DesktopPromptUnavailableErrorParams) {
+    super(`Desktop prompt is unavailable for inbox item: ${params.itemID}`)
     this.name = 'DesktopPromptUnavailableError'
   }
 }
@@ -125,9 +130,9 @@ export function createFlowDesktopController(params: {
   async function prompt(id: string, caller: AbortSignal): Promise<PromptOutcome> {
     disposal.signal.throwIfAborted()
     caller.throwIfAborted()
-    if (owners.has(id)) throw new InboxPromptInProgressError(id)
+    if (owners.has(id)) throw new InboxPromptInProgressError({ itemID: id })
     const item = params.host().inbox.get(id)
-    if (item == null) throw new InboxItemNotFoundError(id)
+    if (item == null) throw new InboxItemNotFoundError({ itemID: id })
     const outcome = Promise.withResolvers<PromptOutcome>()
     // Settlement must be observed before any surface gets a chance to deliver.
     owners.set(id, outcome)
@@ -139,7 +144,7 @@ export function createFlowDesktopController(params: {
     const routing = (async () => {
       for (const surface of params.surfaces) {
         if (signal.aborted) return outcome.promise
-        if (!pending(item, signal)) throw new InboxItemNotFoundError(id)
+        if (!pending(item, signal)) throw new InboxItemNotFoundError({ itemID: id })
         if (surface.prompt == null) continue
         const delivery = await surface.prompt(item, { signal })
         if (delivery == null) continue
@@ -154,8 +159,8 @@ export function createFlowDesktopController(params: {
         // Target loss only advances to the next surface while the item is pending.
       }
       if (signal.aborted) return outcome.promise
-      if (!pending(item, signal)) throw new InboxItemNotFoundError(id)
-      throw new DesktopPromptUnavailableError(id)
+      if (!pending(item, signal)) throw new InboxItemNotFoundError({ itemID: id })
+      throw new DesktopPromptUnavailableError({ itemID: id })
     })()
     track(routing)
     try {
@@ -186,13 +191,13 @@ export function createFlowDesktopController(params: {
     settled(item, outcome) {
       settledIDs.add(item.id)
       const waiter = owners.get(item.id)
-      if (outcome === 'withdrawn') waiter?.reject(new InboxItemNotFoundError(item.id))
+      if (outcome === 'withdrawn') waiter?.reject(new InboxItemNotFoundError({ itemID: item.id }))
       else
         waiter?.resolve({
           action: outcome === 'answered' ? 'accept' : outcome === 'declined' ? 'decline' : 'cancel',
         })
       for (const stop of attempts.get(item.id) ?? [])
-        stop.abort(new InboxItemNotFoundError(item.id))
+        stop.abort(new InboxItemNotFoundError({ itemID: item.id }))
       for (const delivery of deliveries.get(item.id) ?? []) delivery.close()
       deliveries.delete(item.id)
       pruneSettled(item.id)
@@ -204,16 +209,13 @@ export function createFlowDesktopController(params: {
       for (const current of deliveries.values()) for (const delivery of current) delivery.close()
       deliveries.clear()
       disposing = (async () => {
-        const results = await Promise.allSettled([
-          params.native.dispose(),
-          ...[...operations].map((operation) => operation.catch(() => undefined)),
-        ])
-        const failures = results
-          .filter((result) => result.status === 'rejected')
-          .flatMap((result) =>
-            result.reason instanceof AggregateError ? result.reason.errors : [result.reason],
-          )
-        if (failures.length > 0) throw new AggregateError(failures, 'Flow desktop disposal failed')
+        await settleAll(
+          [
+            () => params.native.dispose(),
+            ...[...operations].map((operation) => () => operation.catch(() => undefined)),
+          ],
+          'Flow desktop disposal failed',
+        )
       })()
       return disposing
     },

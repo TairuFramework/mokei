@@ -47,6 +47,7 @@
     "@mokei/host": "workspace:^",
     "@mokei/session": "workspace:^",
     "@mokei/system-one-client": "workspace:^",
+    "@sozai/async": "catalog:",
     "@sozai/flow-graph": "catalog:",
     "@sozai/json": "catalog:",
     "@sozai/schema": "catalog:",

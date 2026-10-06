@@ -1,6 +1,6 @@
 # Flow monitor backlog
 
-**Origin:** [flow monitor](../completed/2026-10-04-flow-monitor.complete.md), flow daemon milestone sub-project 5
+**Origin:** flow monitor, sub-project 5 of the [flow daemon milestone](../completed/2026-10-05-flow-daemon-milestone.complete.md)
 
 ## Performance
 
@@ -17,12 +17,6 @@
 
 The final review suggested disposing presence and monitor handlers before the flow service. This was declined for
 now; revisit if shutdown races appear.
-
-## Daemon commands ignore custom pid paths
-
-`mokei daemon start/stop/status/restart` identify the daemon through the default pid file. A daemon started with a
-custom `--pid-path` (for an isolated test setup) cannot be stopped or restarted through the CLI. Consider a
-`--pid-path` option, or deriving the pid file from the selected socket.
 
 ## Upstream and small cleanups
 

@@ -1,9 +1,10 @@
 import type { CallToolResult, ElicitResult, InputSchema } from '@mokei/context-protocol'
 import type { LocalToolDefinition } from '@mokei/host'
+import { raceSignal } from '@sozai/async'
 
 import type { BackendName, DesktopBackend } from './backends/types.js'
 import { createDetector, type ForcedBackends, notifyBackendFor } from './detect.js'
-import { defaultCreateBackend, timeoutSecondsOption, untilAbort } from './elicit-handler.js'
+import { defaultCreateBackend, timeoutSecondsOption } from './elicit-handler.js'
 import type { DesktopElicitRequest } from './inbox.js'
 import { createRunner, type Runner } from './runner.js'
 
@@ -235,7 +236,7 @@ export function createDesktopTools(options: DesktopToolsOptions): DesktopTools {
         const deliverySignal =
           signal == null ? timeout.signal : AbortSignal.any([timeout.signal, signal])
         try {
-          const delivered = await untilAbort(
+          const delivered = await raceSignal(
             backend.notify(request, {
               timeoutMs: NOTIFY_TIMEOUT_MS,
               signal: deliverySignal,
@@ -281,7 +282,7 @@ export function createDesktopTools(options: DesktopToolsOptions): DesktopTools {
         const combined = signal == null ? timeout.signal : AbortSignal.any([signal, timeout.signal])
         let result: ElicitResult
         try {
-          result = await untilAbort(
+          result = await raceSignal(
             elicit({
               key: 'local',
               params: {

@@ -33,6 +33,26 @@ const schema = {
   required: ['name', 'enabled'],
 }
 
+test('submits selected multi-choice values as an array', () => {
+  const onSubmit = vi.fn()
+  render(
+    <MantineProvider>
+      <SchemaForm
+        schema={{
+          type: 'object',
+          properties: {
+            tags: { type: 'array', items: { enum: ['a', 'b'], enumNames: ['Alpha', 'Beta'] } },
+          },
+        }}
+        onSubmit={onSubmit}
+      />
+    </MantineProvider>,
+  )
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Alpha' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+  expect(onSubmit).toHaveBeenCalledWith({ tags: ['a'] })
+})
+
 test('blocks missing required values and accepts typed values including false and zero', () => {
   const onSubmit = vi.fn()
   render(
@@ -114,38 +134,21 @@ test('clearing an optional enum omits it from the submitted answer', () => {
   expect(onSubmit).toHaveBeenCalledWith({})
 })
 
-test('submits an empty string selected from a required enum', () => {
-  const onSubmit = vi.fn()
+test.each([true, false])('empty enum values use JSON input (required: %s)', (required) => {
   render(
     <MantineProvider>
       <SchemaForm
         schema={{
           type: 'object',
           properties: { choice: { type: 'string', enum: ['', 'a'] } },
-          required: ['choice'],
+          required: required ? ['choice'] : [],
         }}
-        onSubmit={onSubmit}
+        onSubmit={vi.fn()}
       />
     </MantineProvider>,
   )
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: '0' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
-  expect(onSubmit).toHaveBeenCalledWith({ choice: '' })
-})
-
-test('submits an empty string selected from an optional enum', () => {
-  const onSubmit = vi.fn()
-  render(
-    <MantineProvider>
-      <SchemaForm
-        schema={{ type: 'object', properties: { choice: { type: 'string', enum: ['', 'a'] } } }}
-        onSubmit={onSubmit}
-      />
-    </MantineProvider>,
-  )
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: '0' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
-  expect(onSubmit).toHaveBeenCalledWith({ choice: '' })
+  expect(screen.getByLabelText('JSON input')).toBeTruthy()
+  expect(screen.queryByRole('combobox')).toBeNull()
 })
 
 test('submits prototype-named properties as own answer properties', () => {

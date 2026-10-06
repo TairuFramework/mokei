@@ -2,6 +2,7 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createMemoryTaskStore } from '@mokei/context-server'
+import type { Predictor } from '@mokei/decision-flow'
 import type { Context } from '@opentelemetry/api'
 import { context, ROOT_CONTEXT, trace } from '@opentelemetry/api'
 import {
@@ -130,6 +131,57 @@ test('server spans share the run traceID and descend from flow.run', async () =>
       ancestor === parent || ancestor?.parentSpanContext?.spanId === parent.spanContext().spanId,
     ).toBe(true)
   }
+})
+test('decision.predict spans descend from flow.run', async () => {
+  const definition: FlowDefinition = {
+    ...emptyFlow,
+    start: 'decide',
+    nodes: {
+      decide: {
+        kind: 'decide',
+        state: { value: 'Is this urgent?' },
+        questions: { urgent: { type: 'noul', instructions: 'Assess urgency.' } },
+        cases: [],
+        default: 'done',
+      },
+      done: { kind: 'end', outcome: 'done' },
+    },
+  }
+  const predictor: Predictor = {
+    predict: async () => {
+      return {
+        model: 'test-model',
+        answers: { urgent: { type: 'noul', noul: 0.7 } },
+        usage: { inputTokens: 3, outputTokens: 2 },
+      }
+    },
+  }
+  const f = await fixture({ predictor })
+  const run = await f.host.start({ definition })
+  await state(f, run.runID, 'completed')
+  const spans = exporter.getFinishedSpans()
+  const runSpan = required(spans.find((span) => span.name === 'flow.run'))
+  const prediction = required(spans.find((span) => span.name === 'decision.predict'))
+  const ancestors = []
+  const visited = new Set<string>()
+  let ancestor = prediction
+  while (!visited.has(ancestor.spanContext().spanId)) {
+    visited.add(ancestor.spanContext().spanId)
+    ancestors.push(ancestor)
+    const parent = spans.find((span) => {
+      return (
+        span.spanContext().spanId === ancestor.parentSpanContext?.spanId &&
+        span.spanContext().traceId === ancestor.parentSpanContext?.traceId
+      )
+    })
+    if (parent === undefined) break
+    ancestor = parent
+  }
+  const chain = ancestors.map((span) => {
+    return { name: span.name, ...span.spanContext(), parent: span.parentSpanContext }
+  })
+  expect(prediction.spanContext().traceId, JSON.stringify(chain)).toBe(run.traceID)
+  expect(ancestors.slice(1), JSON.stringify(chain)).toContain(runSpan)
 })
 test('run.state events are recorded through input and completion', async () => {
   const f = await fixture()

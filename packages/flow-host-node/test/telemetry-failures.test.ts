@@ -6,7 +6,9 @@ import * as logging from '@sozai/log'
 import { createFileSink } from '@tejika/log'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-let setupFlowTelemetry: typeof import('../src/telemetry.js').setupFlowTelemetry
+import type * as Telemetry from '../src/telemetry.js'
+
+let setupFlowTelemetry: typeof Telemetry.setupFlowTelemetry
 
 beforeEach(async () => {
   vi.resetModules()

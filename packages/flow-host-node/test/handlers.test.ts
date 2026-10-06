@@ -360,11 +360,15 @@ test('passes the request cancellation signal to the prompt service', async () =>
 
 test('maps unsupported and already owned desktop prompts', async () => {
   const { client, service } = await setup()
-  vi.mocked(service.prompt).mockRejectedValueOnce(new DesktopPromptUnavailableError('item'))
+  vi.mocked(service.prompt).mockRejectedValueOnce(
+    new DesktopPromptUnavailableError({ itemID: 'item' }),
+  )
   await expect(client.request('inbox.prompt', { param: { id: 'item' } })).rejects.toMatchObject({
     code: 'PROMPT_UNSUPPORTED',
   })
-  vi.mocked(service.prompt).mockRejectedValueOnce(new InboxPromptInProgressError('item'))
+  vi.mocked(service.prompt).mockRejectedValueOnce(
+    new InboxPromptInProgressError({ itemID: 'item' }),
+  )
   await expect(client.request('inbox.prompt', { param: { id: 'item' } })).rejects.toMatchObject({
     code: 'PROMPT_IN_PROGRESS',
   })

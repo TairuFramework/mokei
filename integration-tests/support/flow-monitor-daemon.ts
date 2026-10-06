@@ -1,15 +1,17 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { setTimeout as poll } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { createClient, type HostClient } from '@mokei/host-node'
+import { settleAll } from '@sozai/async'
+import { createTestProfile, poll } from '@tejika/test'
 import { vi } from 'vitest'
 
 import { flows } from './flow-daemon/flows.js'
 
 export async function startFlowMonitorDaemon() {
-  const directory = await mkdtemp('/tmp/mokei-flow-monitor-')
+  const profile = createTestProfile('mokei', { baseDir: '/tmp' })
+  const directory = profile.dir
   const socketPath = join(directory, 'daemon.sock')
   const clients = new Set<HostClient>()
   const children: Array<ChildProcess> = []
@@ -21,16 +23,22 @@ export async function startFlowMonitorDaemon() {
   async function wait<T>(label: string, check: () => T | Promise<T>): Promise<NonNullable<T>> {
     const deadline = Date.now() + 15_000
     let last: unknown
-    while (Date.now() < deadline) {
-      try {
-        const result = await check()
-        if (result) return result as NonNullable<T>
-      } catch (error) {
-        last = error
-      }
-      if (child?.exitCode != null || child?.signalCode != null) break
-      await poll(20)
-    }
+    const exited = Symbol('daemon exited')
+    const result = await poll(
+      async () => {
+        if (Date.now() >= deadline) return undefined
+        try {
+          const value = await check()
+          if (value) return value
+        } catch (error) {
+          last = error
+        }
+        if (child?.exitCode != null || child?.signalCode != null) return exited
+        return undefined
+      },
+      { timeoutMs: 15_000, intervalMs: 20 },
+    )
+    if (result && result !== exited) return result as NonNullable<T>
     throw new Error(`Failed waiting for ${label}: ${String(last)}\n${stderr}`, { cause: last })
   }
   async function connect() {
@@ -46,9 +54,7 @@ export async function startFlowMonitorDaemon() {
       {
         stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
         env: {
-          ...process.env,
-          MOKEI_DATA_DIR: directory,
-          MOKEI_STATE_DIR: directory,
+          ...profile.env,
           MOKEI_LOG_DIR: join(directory, 'logs'),
           MOKEI_SOCKET_PATH: socketPath,
           MOKEI_PID_PATH: join(directory, 'daemon.pid'),
@@ -87,26 +93,25 @@ export async function startFlowMonitorDaemon() {
   }
   async function stop() {
     const current = child
-    const results = await Promise.allSettled([...clients].map((client) => client.dispose()))
+    let cleanupError: unknown
+    await settleAll(
+      [...clients].map((client) => () => client.dispose()),
+      'Client cleanup failed',
+    ).catch((error: unknown) => {
+      cleanupError = error
+    })
     clients.clear()
     if (current != null && current.exitCode == null && current.signalCode == null)
       current.kill('SIGTERM')
     // Exiting is expected here, so wait independently of the startup liveness check.
-    const deadline = Date.now() + 15_000
-    while (
-      current != null &&
-      current.exitCode == null &&
-      current.signalCode == null &&
-      Date.now() < deadline
-    )
-      await poll(20)
+    await poll(() => current == null || current.exitCode != null || current.signalCode != null, {
+      timeoutMs: 15_000,
+      intervalMs: 20,
+    })
     if (current != null && current.exitCode == null && current.signalCode == null)
       throw new Error(`Daemon failed to stop\n${stderr}`)
     child = undefined
-    const failures = results
-      .filter((result) => result.status === 'rejected')
-      .map((result) => result.reason)
-    if (failures.length) throw new AggregateError(failures, 'Client cleanup failed')
+    if (cleanupError != null) throw cleanupError
     if (current != null && current.exitCode !== 0)
       throw new Error(`Daemon exit ${current.exitCode}/${current.signalCode}\n${stderr}`)
   }
@@ -121,7 +126,7 @@ export async function startFlowMonitorDaemon() {
           await exited
         }
       }
-      await rm(directory, { recursive: true, force: true })
+      await profile[Symbol.asyncDispose]()
     }
   }
   try {

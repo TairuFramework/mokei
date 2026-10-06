@@ -5,6 +5,7 @@ import { context, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import { raceAttempt, settleSequential, TimeoutInterruption } from '@sozai/async'
 import { getConsoleSink, isSetup, reset, setup } from '@sozai/log'
 import { createFileSink } from '@tejika/log'
 
@@ -12,19 +13,14 @@ let installed = false
 const EXPORT_TIMEOUT_MS = 10_000
 
 async function shutdownProvider(provider: BasicTracerProvider): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    await Promise.race([
-      provider.shutdown(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`Telemetry shutdown timed out after ${EXPORT_TIMEOUT_MS}ms`)),
-          EXPORT_TIMEOUT_MS,
-        )
-      }),
-    ])
-  } finally {
-    clearTimeout(timer)
+    const shutdown = provider.shutdown()
+    await raceAttempt({ fn: () => shutdown, timeoutMs: EXPORT_TIMEOUT_MS })
+  } catch (error) {
+    if (error instanceof TimeoutInterruption) {
+      throw new Error(`Telemetry shutdown timed out after ${EXPORT_TIMEOUT_MS}ms`, { cause: error })
+    }
+    throw error
   }
 }
 
@@ -122,9 +118,8 @@ export function setupFlowTelemetry(params: {
     let disposal: Promise<void> | undefined
     return {
       dispose() {
-        disposal ??= (async () => {
-          const errors: Array<unknown> = []
-          for (const cleanup of [
+        disposal ??= settleSequential(
+          [
             () => provider.forceFlush(),
             // Exporter shutdown may wait on an HTTP response after the processor's timeout.
             () => shutdownProvider(provider),
@@ -135,16 +130,9 @@ export function setupFlowTelemetry(params: {
             reset,
             () => trace.disable(),
             () => context.disable(),
-          ]) {
-            try {
-              await cleanup()
-            } catch (error) {
-              errors.push(error)
-            }
-          }
-          if (errors.length > 0)
-            throw new AggregateError(errors, 'Failed to dispose flow telemetry')
-        })()
+          ],
+          'Failed to dispose flow telemetry',
+        )
         return disposal
       },
     }

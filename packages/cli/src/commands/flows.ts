@@ -3,9 +3,10 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { serveProcess } from '@mokei/context-server-node'
 import { createFlowControlServer } from '@mokei/flow-client'
+import { withCommandSignal } from '@tejika/cli'
 import { Command } from 'commander'
 
-import { connectFlowControl, withCommandSignal } from '../flow-control.js'
+import { connectFlowControl } from '../flow-control.js'
 import { withSocketPath } from '../options.js'
 import { addJSONOption, fail, parseJSONArg, printJSON } from '../output.js'
 import { withControl } from '../with-control.js'
@@ -33,9 +34,9 @@ async function runList(options: CommandOptions): Promise<void> {
 async function runCheck(file: string, options: CommandOptions): Promise<void> {
   try {
     const definition = await parseJSONArg('<file>', `@${file}`)
-    const result = await withControl(options.socketPath, (control) =>
-      control.flows.check(definition),
-    )
+    const result = await withControl(options.socketPath, (control) => {
+      return control.flows.check(definition)
+    })
     if (options.json) {
       printJSON(result)
     } else {

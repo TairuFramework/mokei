@@ -1,8 +1,8 @@
 import type { FlowControl, InboxItem } from '@mokei/flow-client'
+import { withCommandSignal } from '@tejika/cli'
 import { Command } from 'commander'
 
 import { answerInputInTerminal, submitAnswer } from '../answer-input.js'
-import { withCommandSignal } from '../flow-control.js'
 import { withSocketPath } from '../options.js'
 import {
   addJSONOption,
@@ -51,9 +51,9 @@ function formatItem(item: InboxItem): string {
 
 async function runList(options: ListOptions): Promise<void> {
   try {
-    const items = await withControl(options.socketPath, (control) =>
-      control.inbox.list(options.run == null ? {} : { runID: options.run }),
-    )
+    const items = await withControl(options.socketPath, (control) => {
+      return control.inbox.list(options.run == null ? {} : { runID: options.run })
+    })
     if (options.json) {
       printJSON(items)
       return

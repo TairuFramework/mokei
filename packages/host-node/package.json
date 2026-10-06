@@ -49,7 +49,9 @@
     "@mokei/host": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "@mokei/http-client": "workspace:^",
+    "@sozai/async": "catalog:",
     "@sozai/stream": "catalog:",
+    "@tejika/env": "catalog:",
     "@tejika/process": "catalog:",
     "nano-spawn": "catalog:"
   },

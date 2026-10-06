@@ -33,7 +33,7 @@ Mokei is a TypeScript toolkit for creating, interacting with, and monitoring cli
 
 ### Communication Flow
 
-1. `NodeContextHost` (`@mokei/host-node`) spawns MCP server processes over stdio;
+1. `NodeContextHost` (`@mokei/host-node`) spawns MCP server processes over stdio.
    `ContextHost.addHTTPContext` connects over Streamable HTTP
 2. Client resolves the protocol revision, then discovers tools and prompts -- through an
    `initialize` handshake on `2025-11-25`, or lazily on the first call on `2026-07-28`
@@ -59,20 +59,20 @@ revision to its definition.
   automatically by an auto-fulfilment loop, so callers see the same result type as on
   `2025-11-25` by default. Both revisions are now at capability parity. Resource and list-change
   notifications arrive through a long-lived `subscriptions/listen` request, not session
-  `resources/subscribe`. The client uses `SubscriptionDriver`; servers use
+  `resources/subscribe`. The client uses `SubscriptionDriver`. Servers use
   `createSubscriptionHub` and `SubscriptionWriter`. Over HTTP, each listen is a streamed
   exchange handled by `runSubscriptionExchange`.
 
 A client speaks one revision, fixed for the lifetime of its transport. `ContextClient` takes a
 `protocolVersion`: a revision, or `'auto'` to probe the server and settle on the newest revision
 both sides support. Host contexts and the CLI default to `'auto'`. A server takes
-`protocolVersions`, the list it serves; listing both serves both.
+`protocolVersions`, the list it serves. Listing both serves both.
 
 ### Session Elicitation
 
 `ContextHost` and `NodeContextHost` enable elicitation at construction with `elicit: true` or a
 host handler. This choice fixes the capabilities of every client the host builds. A
-`2025-11-25` client declares `elicitation` in `initialize`; a `2026-07-28` client declares it in
+`2025-11-25` client declares `elicitation` in `initialize`. A `2026-07-28` client declares it in
 each request's `_meta` client capabilities. A context can opt out with `elicit: false`.
 Caller-built clients registered through `registerHostedContext` keep their own capabilities.
 
@@ -80,10 +80,10 @@ The host binds each request to its context key. `handleElicitation` installs one
 override, owned by an `AgentSession` when one is attached. The override can answer directly or
 call `fallback()` to use the base handler. With `elicit: true` and no base handler, fallback
 declines, including before an agent attaches and after it is disposed. `Session` and
-`NodeSession` pass `elicit` to hosts they construct; a supplied host owns its configuration.
+`NodeSession` pass `elicit` to hosts they construct. A supplied host owns its configuration.
 
 On `2025-11-25`, a server sends a reverse `elicitation/create` RPC during its tool call. On
-`2026-07-28`, it returns an MRTR `input_required` result; the client answers the embedded
+`2026-07-28`, it returns an MRTR `input_required` result. The client answers the embedded
 `elicitation/create` request and retries the tool call with `inputResponses` and `requestState`.
 Handler errors return a reverse RPC error on the older revision. On the newer revision, they
 fail the MRTR call locally without sending an input response.
@@ -93,7 +93,7 @@ fail the MRTR call locally without sending an input response.
 attribution and sends those events through its run channel. The channel yields the request
 before awaiting the application answer. A per-tool settlement barrier emits every elicitation
 terminal event before the tool terminal event. Run, tool, stream-abandonment and disposal
-cancellation abort pending answers; unattributed requests reach `onEvent` only.
+cancellation abort pending answers. Unattributed requests reach `onEvent` only.
 
 `@mokei/host`, `@mokei/session` and `@mokei/context-server` remain Node-free. Stdio support
 lives in `@mokei/host-node` and `@mokei/session-node`. URL-mode requests reach the handler,
@@ -104,8 +104,8 @@ but `notifications/elicitation/complete` is not forwarded to the application yet
 on Linux), one dialog at a time, within a 90-second budget that ends as `cancel`. In `inbox` mode
 it adds the request to a `createInputInbox` inbox as a pending entry, sends a generic notification
 and returns when the application answers, declines, cancels or prompts the entry through its own
-registered answer surface; an aborted handler signal removes the entry. The inbox is in-process
-and single-user; after a restart, waiting on the task again re-adds the entry.
+registered answer surface. An aborted handler signal removes the entry. The inbox is in-process
+and single-user. After a restart, waiting on the task again re-adds the entry.
 `createDesktopTools` adds `notify` and `ask_user` local tools.
 
 On `2026-07-28` the HTTP client encodes the `Mcp-Method`, `Mcp-Name` and `Mcp-Param-*` request
@@ -114,14 +114,14 @@ caches per tool from `tools/list`, so a peer that changes a tool's schema afterw
 cache stale. The transport recovers on its own: a `tools/call` rejected with `-32020` naming an
 `Mcp-Param-*` header triggers its own `tools/list` to refresh the annotations, and the call is
 re-sent once if the header set changed. Callers see an ordinary successful call, at the cost of up
-to two extra round trips. The HTTP server does not read any of these headers; conformance of the
+to two extra round trips. The HTTP server does not read any of these headers. Conformance of the
 encoder, and the retry itself, are covered by SDK interop tests instead.
 
 ### MCP Tasks
 
 The `io.modelcontextprotocol/tasks` extension is available on `2026-07-28` when a server receives
-a `TaskManager`. The application owns that manager and its store. A memory store is the default;
-applications that need tasks to survive restarts provide a persistent `TaskStore`.
+a `TaskManager`. The application owns that manager and its store. A memory store is the default.
+Applications that need tasks to survive restarts provide a persistent `TaskStore`.
 
 The manager owns task records, detached workers, cancellation signals and expiry. Its store uses
 revision-based compare-and-swap (CAS): a write based on a stale revision conflicts, and the manager
@@ -132,8 +132,8 @@ Each task record keeps every input request it has made in `inputs`, ordered by i
 An entry holds its requests, its responses and, once settled, an `outcome` of `answered` or
 `withdrawn`. A request is open when the task status is `input_required` and the latest entry has
 no outcome. Four transitions change it, each a single CAS write: ask appends an entry and sets
-`input_required`; answer adds a response and, with the last key, sets `answered` and `working`;
-withdraw sets `withdrawn` and `working`; a terminal status ends an open request. A settled entry
+`input_required`. Answer adds a response and, with the last key, sets `answered` and `working`.
+Withdraw sets `withdrawn` and `working`. A terminal status ends an open request. A settled entry
 never changes, and keys are never reused. Waiters register a listener, then read the record, and
 resolve only from committed records, so a late or reordered notification cannot change the
 result. Expiry deletes the record and notifies the waiters, which fail.
@@ -148,32 +148,32 @@ requests, using the same tool definitions as the server.
 
 Tool handlers start detached work with `req.task.run(work)`, which resolves to the task creation
 result. The `work` callback receives the task handle, which exposes status updates, cancellation
-and input requests. A task created with verified HTTP authorization
+and input requests. A task created with verified HTTP authorisation
 is bound to the token's issuer, subject and scopes. Later requests must have the same issuer and
 subject, with scopes that include the recorded scopes. Unauthenticated tasks are ownerless and
 use their task ID as a bearer secret. Missing, expired, inaccessible and unrecovered tasks all
 return `Task not found`.
 
 On the client, `callTool` waits for a task automatically and returns its final tool result. Pass
-`task: 'handle'` to receive the task creation result instead; then use `client.tasks.wait(taskId)`
+`task: 'handle'` to receive the task creation result instead. Then use `client.tasks.wait(taskId)`
 to wait explicitly or `client.tasks.get(taskId)` to inspect its current state. Waiting listens for
 task notifications and falls back to polling when a listen is unavailable.
 When a waited request is withdrawn, the signal passed to the input handler aborts with
-`TaskInputWithdrawnError`; a subscribed wait still checks a finite task TTL and fails with
-`TaskExpiredError` once the task is gone; public task snapshots list only unanswered input keys.
+`TaskInputWithdrawnError`. A subscribed wait still checks a finite task TTL and fails with
+`TaskExpiredError` once the task is gone. Public task snapshots list only unanswered input keys.
 
-### HTTP Authorization
+### HTTP Authorisation
 
 `@mokei/http-client` provides OAuth 2.1 client middleware through `createOAuthMiddleware` and
 `TokenStore` (`createMemoryTokenStore`), including protected-resource metadata discovery, PKCE and
 token refresh. `@mokei/host-node` adds `createNodeOAuthMiddleware`, `createFileTokenStore` and
 `createLoopbackAuthorizationHandler` for Node consumers. `Session.addHTTPContext` accepts HTTP
-contexts; the CLI's `/context add-http` command accepts `--oauth-client-id`, `--oauth-resource`,
+contexts. The CLI's `/context add-http` command accepts `--oauth-client-id`, `--oauth-resource`,
 `--oauth-scope` and `--oauth-tokens`.
 
 On the server, `@mokei/http-server` offers `serveHTTP` with `createBearerAuthGate`,
 `createJWKSVerifier` or `createDIDVerifier`, and `protectedResourceMetadataResponse`. The gate
-verifies requests before MCP dispatch; verified identity is available to task handlers for owner
+verifies requests before MCP dispatch. Verified identity is available to task handlers for owner
 binding.
 
 ---
@@ -188,7 +188,7 @@ binding.
   `{ params, signal }`, `listRoots` receives `{ signal }`, a `createTool` handler and a local
   tool's `execute` both receive `{ input, signal }` (the handler also gets `client` and
   `progress`), and `ToolApprovalFn` receives `{ toolCall, iteration, history, tool, signal }`
-- **A call carries `arguments`; a handler receives `input`.** `arguments` is MCP's wire field
+- **A call carries `arguments`. A handler receives `input`.** `arguments` is MCP's wire field
   (`tools/call`, `prompts/get`) and stays that way on every *call* -- `callTool({ name,
   arguments })`. What a *handler* is given is named `input`, because that is what its
   `inputSchema` describes, and because `arguments` is a reserved binding name in strict mode:
@@ -214,7 +214,7 @@ binding.
 | MCP Tasks | `@mokei/context-client`, `@mokei/context-server`, `@mokei/http-server` | `createTaskManager`, `TaskStore`, `ContextClient.tasks` |
 | Tool namespacing and per-context tool switches | `@mokei/host` | `ContextHost.callNamespacedTool`, `enableContextTools`, `disableContextTools` |
 | Local tools | `@mokei/host` | `ContextHost.callLocalTool`, `packages/host/src/local-tools.ts` |
-| Chat and agent loop | `@mokei/session`, `@mokei/session-node` | Portable `Session` and `AgentSession`; Node stdio `NodeSession.addContext` |
+| Chat and agent loop | `@mokei/session`, `@mokei/session-node` | Portable `Session` and `AgentSession`. Node stdio `NodeSession.addContext` |
 | Provider abstraction and adapters | `@mokei/model-provider`, `@mokei/{openai,anthropic,ollama,llama}-provider` | `ModelProvider`, each provider package's `src/index.ts` |
 | System One classification | `@mokei/system-one-client`, `@mokei/mcp-system-one` | `HTTPSystemOneBackend`, `createSystemOneTools` |
 | Desktop elicitation and input inbox | `@mokei/host-desktop` | `createDesktopElicitHandler`, `createInputInbox`, `createDesktopTools` |
@@ -307,7 +307,7 @@ website/                  # documentation site (private)
 | HTTP transports and OAuth | `packages/http-client/src/oauth/`, `packages/http-server/src/auth/`, `packages/host-node/src/oauth/` |
 | MRTR and subscriptions | `packages/context-client/src/{mrtr,subscriptions}.ts`, `packages/context-server/src/{mrtr,subscriptions}.ts` |
 | Session/Agent | `packages/session/src/`, `packages/session-node/src/` |
-| System One | `packages/system-one-client/src/`, `mcp-servers/system-one/`; see `docs/reference/system-one-sidecar.md` |
+| System One | `packages/system-one-client/src/`, `mcp-servers/system-one/`. See `docs/reference/system-one-sidecar.md` |
 | Bundled MCP servers | `mcp-servers/*/`, development config `mcp-servers/config.json` |
 | Provider interface | `packages/model-provider/src/` |
 | CLI commands | `packages/cli/src/commands/` |
@@ -351,17 +351,17 @@ The [package lifecycle guide](../../packages/flow-host-node/README.md) describes
 The CLI owns `mokei/lib/daemon-entry.js`, selected by existing proxy and monitor commands when
 ensuring a daemon exists. It composes `serveHostDaemon`, one `createFlowService` and native
 desktop operations. Host-node accepts injected handlers, an event source, flow status and
-shutdown hooks; it keeps shared proxy state and imports no flow or desktop implementation.
+shutdown hooks. It keeps shared proxy state and imports no flow or desktop implementation.
 `composeHandlers` rejects duplicate procedure registrations. The generic standalone host
 entry still works and reports flow services unavailable. `runDaemon({ entry, socketPath? })`
 lets custom applications select an executable entry without changing the normal socket default.
 
-`info.flowService` reports `starting`, `ready` or `failed`; failures carry a public type and
-message, with sanitized configuration path/issues when available. Proxy serving and monitor
+`info.flowService` reports `starting`, `ready` or `failed`. Failures carry a public type and
+message, with sanitised configuration path/issues when available. Proxy serving and monitor
 status inspection remain available while flows start or after startup fails. Ready publication
 follows initial task and inbox reconciliation for recovered runs, without waiting for their
 completion or user answers. Recovery retains run, task, inbox and trace identities. Individual
-recovery failures become failed runs; fatal startup failures clean up partial resources.
+recovery failures become failed runs. Fatal startup failures clean up partial resources.
 Configuration changes and fatal-startup recovery require restart, with no hot reload or retry.
 Direct sibling elicitation outside the durable task inbox uses the existing decline fallback.
 
@@ -370,7 +370,7 @@ The portable host protocol exposes `flows.list`, `flows.check`, `runs.start`, `r
 `inbox.decline`, `inbox.cancel` and `inbox.prompt`. Wire snapshots exclude private persistence
 metadata and validation functions. Trace reads are run-scoped, can lag batched capture and do
 not force flushing. A known run without a trace yields empty spans/logs. Public error codes
-distinguish unavailable, missing, invalid, unsupported and competing-prompt requests; unexpected
+distinguish unavailable, missing, invalid, unsupported and competing-prompt requests. Unexpected
 failures return `INTERNAL_ERROR` with a generic message. The
 [procedure guide](../../packages/flow-host-node/README.md#procedures-and-live-events) lists exact codes.
 
@@ -388,16 +388,16 @@ notification opens that item's monitor inbox page when a monitor is attached, or
 prompt otherwise. Clicking the count message opens `/inbox` when a monitor is attached, or only dismisses it otherwise.
 Each item has its own notification group, and settling an item removes its
 notification. Clicking an `osascript` notification does not open a prompt. Startup IDs are recorded before delivery so settling
-items cannot receive duplicate live notifications. Polling and reconnects never notify;
-restart announces the current pending population again. Delivery failure leaves items pending.
+items cannot receive duplicate live notifications. Polling and reconnects never notify.
+Restart announces the current pending population again. Delivery failure leaves items pending.
 Dialogs require explicit `inbox.prompt`, independently of notification opt-in. Runtime
 validation and approval policy govern settlement. Caller cancellation or disconnect releases
-prompt ownership while preserving the pending item; settlement elsewhere rejects late answers.
+prompt ownership while preserving the pending item. Settlement elsewhere rejects late answers.
 
 ### Monitor surface and presence
 
 The monitor is an inbox surface beside the native desktop. The daemon tries monitor delivery
-before native delivery. Each monitor server registers with `monitor.attach`; each browser tab
+before native delivery. Each monitor server registers with `monitor.attach`. Each browser tab
 opens `monitor.presence` for that attachment and reports Page Visibility API state, notification
 permission and its active inbox item.
 
@@ -408,7 +408,7 @@ Recovery summaries remain native-only, and the monitor reads pending state when 
 
 Prompts route to a verified visible tab first. A hidden tab can receive a browser notification
 that links to the prompt. If the monitor cannot deliver, the daemon tries the native dialog.
-The flow host remains the only inbox settler; the monitor uses inbox answer, decline and cancel
+The flow host remains the only inbox settler. The monitor uses inbox answer, decline and cancel
 procedures. A lost monitor target falls back to the next surface. Ping and delivery
 acknowledgements expire after five seconds. Stale replies are ignored, and withdrawals close
 deliveries that are no longer needed.
@@ -421,12 +421,12 @@ surface.
 
 Shutdown closes flow admission and aborts dialogs, waits for admitted operations, stops
 retention, suspends stored runs, disconnects siblings, drains telemetry and closes SQLite.
-It attempts every cleanup despite failures and prevents late initialization from publishing
+It attempts every cleanup despite failures and prevents late initialisation from publishing
 ready. The CLI, MCP and monitor drive the service.
 
-Publication is gated on the
-[upstream protocol fix and adoption](plans/next/2026-10-02-enkaku-protocol-schema-rebasing.md):
-the checked-in workspace patch does not reach consumers of published Mokei packages.
+Publication was gated on an
+[upstream protocol fix and its adoption](plans/completed/2026-10-05-flow-daemon-milestone.complete.md).
+Published `@enkaku/protocol` 0.21.4 replaced the workspace patch, so the gate is satisfied.
 
 Portable `pruneRuns` deletes old terminal runs and their traces and tasks. Active tasks protect their associated runs.
 Its final sweep preserves traces referenced by every retained run and removes older orphan spans and logs.
@@ -444,7 +444,7 @@ Two adapters implement `FlowControl`: `createRemoteFlowControl(client)` over the
 The CLI exposes the daemon and flows through `mokei daemon start|stop|status|restart|logs`,
 `mokei flows list|check|mcp`, `mokei runs start|get|list|cancel|trace` (`runs start --wait` follows the run to a
 terminal state, answering its inputs and approvals in a terminal) and `mokei inbox list|show|answer|decline|cancel|prompt`. `mokei flows mcp` serves the flow control
-MCP server over stdio against the daemon; the repository `.mcp.json` `flow` entry runs it. Inbox dialogs and
+MCP server over stdio against the daemon. The repository `.mcp.json` `flow` entry runs it. Inbox dialogs and
 notifications come from `@mokei/host-desktop` inside the daemon, so the MCP server and the CLI stay headless.
 
 ---

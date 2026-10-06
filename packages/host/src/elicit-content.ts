@@ -94,10 +94,9 @@ export function elicitPropertyValidationSchema(schema: unknown): SchemaObject | 
 function contentValidationSchema(schema: RequestedSchema): SchemaObject {
   // fromEntries defines own properties, so a property named __proto__ stays a property
   const properties: Record<string, SchemaObject | false> = Object.fromEntries(
-    Object.entries(schema.properties ?? {}).map(([name, property]) => [
-      name,
-      elicitPropertyValidationSchema(property),
-    ]),
+    Object.entries(schema.properties ?? {}).map(([name, property]) => {
+      return [name, elicitPropertyValidationSchema(property)]
+    }),
   )
   const required: Array<unknown> = Array.isArray(schema.required) ? schema.required : []
   return {

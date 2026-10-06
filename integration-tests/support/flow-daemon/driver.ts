@@ -1,16 +1,17 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { setTimeout as poll } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import type { TaskRecord } from '@mokei/context-server'
 import type { RunRecord } from '@mokei/flow-host'
 import { createSQLiteTraceStore } from '@mokei/flow-host-node'
 import { createClient, type HostClient } from '@mokei/host-node'
 import type { HostEvent } from '@mokei/host-protocol'
+import { settleAll } from '@sozai/async'
 import { getPIDPath } from '@tejika/env'
+import { createTestProfile, poll } from '@tejika/test'
 
 import { flows } from './flows.js'
 
@@ -68,12 +69,11 @@ export async function startFlowDaemonFixture(
     otlp?: { endpoint: string }
   } = {},
 ) {
-  // Keep Unix socket paths below sockaddr_un's limit, including macOS's long TMPDIR.
-  const directory = await mkdtemp('/tmp/mokei-flow-daemon-')
+  const profile = createTestProfile('mokei', { baseDir: '/tmp' })
+  const directory = profile.dir
   const socketPath = join(directory, 'daemon.sock')
   const env = {
-    MOKEI_DATA_DIR: directory,
-    MOKEI_STATE_DIR: directory,
+    ...profile.env,
     MOKEI_LOG_DIR: join(directory, 'logs'),
     // Pin every path override so inherited MOKEI_* variables cannot escape the temp directory.
     MOKEI_PID_PATH: join(directory, 'mokei.pid'),
@@ -118,15 +118,19 @@ export async function startFlowDaemonFixture(
   async function wait<T>(label: string, check: () => T | Promise<T>): Promise<NonNullable<T>> {
     const deadline = Date.now() + WAIT_MS
     let last: unknown
-    while (Date.now() < deadline) {
-      try {
-        const value = await within(label, Promise.resolve().then(check), deadline - Date.now())
-        if (value) return value as NonNullable<T>
-      } catch (error) {
-        last = error
-      }
-      await poll(20)
-    }
+    const result = await poll(
+      async () => {
+        if (Date.now() >= deadline) return undefined
+        try {
+          return await within(label, Promise.resolve().then(check), deadline - Date.now())
+        } catch (error) {
+          last = error
+          return undefined
+        }
+      },
+      { timeoutMs: WAIT_MS, intervalMs: 20 },
+    )
+    if (result) return result as NonNullable<T>
     throw new Error(`Timed out waiting for ${label}: ${String(last)}\n${diagnostics()}`, {
       cause: last,
     })
@@ -139,16 +143,12 @@ export async function startFlowDaemonFixture(
   }
   async function closeClients() {
     const closing = [
-      ...[...subscriptions].map((close) => close()),
-      ...[...clients].map((client) => within('client disposal', client.dispose())),
+      ...subscriptions,
+      ...[...clients].map((client) => () => within('client disposal', client.dispose())),
     ]
     subscriptions.clear()
     clients.clear()
-    const results = await Promise.allSettled(closing)
-    const errors = results
-      .filter((result) => result.status === 'rejected')
-      .map((result) => result.reason)
-    if (errors.length) throw new AggregateError(errors, 'Client cleanup failed')
+    await settleAll(closing, 'Client cleanup failed')
   }
   async function end(signal: NodeJS.Signals, expectedExitCode = 0) {
     if (child == null) return
@@ -239,7 +239,9 @@ export async function startFlowDaemonFixture(
     await attempt(() =>
       wait('all fixture processes reaped', () => [...pids].every((pid) => !alive(pid))),
     )
-    await attempt(() => rm(directory, { recursive: true, force: true }))
+    await attempt(async () => {
+      await profile[Symbol.asyncDispose]()
+    })
     if (existsSync(socketPath)) errors.push(new Error('Fixture socket survived cleanup'))
     if (errors.length) throw new AggregateError(errors, 'Fixture cleanup failed')
   }

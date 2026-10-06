@@ -52,10 +52,12 @@ export function SchemaForm({
     json: '{}',
   })
   function change(name: string, value: unknown) {
-    setState((previous) => ({
-      values: { ...previous.values, [name]: value },
-      fieldErrors: { ...previous.fieldErrors, [name]: '' },
-    }))
+    setState((previous) => {
+      return {
+        values: { ...previous.values, [name]: value },
+        fieldErrors: { ...previous.fieldErrors, [name]: '' },
+      }
+    })
   }
   function submit() {
     if (fields == null) {
@@ -73,11 +75,7 @@ export function SchemaForm({
     const invalid: Record<string, string> = {}
     for (const field of fields) {
       const value = ownValue(values, field.name)
-      if (
-        value === undefined ||
-        (value === '' &&
-          !(field.kind === 'enum' && field.options?.some((option) => option.value === '')))
-      ) {
+      if (value === undefined || value === '') {
         if (field.required) invalid[field.name] = 'Required'
         continue
       }
@@ -138,8 +136,8 @@ export function SchemaForm({
                   onChange={(event) => change(field.name, event.currentTarget.checked)}
                 />
               )
-            if (field.kind === 'enum') {
-              const options = field.options ?? []
+            if (field.kind === 'choice') {
+              const options = field.choices ?? []
               return (
                 <NativeSelect
                   key={field.name}
@@ -152,20 +150,42 @@ export function SchemaForm({
                   }
                   data={[
                     { value: '', label: 'Choose an option' },
-                    ...options.map((option, index) => ({
-                      value: String(index),
-                      label: option.label,
-                    })),
+                    ...options.map((option, index) => {
+                      return {
+                        value: String(index),
+                        label: option.label,
+                      }
+                    }),
                   ]}
-                  onChange={(event) =>
-                    change(
+                  onChange={(event) => {
+                    return change(
                       field.name,
                       event.currentTarget.value === ''
                         ? undefined
                         : options[Number(event.currentTarget.value)]?.value,
                     )
-                  }
+                  }}
                 />
+              )
+            }
+            if (field.kind === 'multi') {
+              return (
+                <Checkbox.Group
+                  key={field.name}
+                  {...props}
+                  required={field.required}
+                  value={
+                    Array.isArray(value)
+                      ? value.filter((item): item is string => typeof item === 'string')
+                      : []
+                  }
+                  onChange={(value) => change(field.name, value)}>
+                  <Stack>
+                    {(field.choices ?? []).map((choice) => (
+                      <Checkbox key={choice.value} value={choice.value} label={choice.label} />
+                    ))}
+                  </Stack>
+                </Checkbox.Group>
               )
             }
             if (field.kind === 'number' || field.kind === 'integer')

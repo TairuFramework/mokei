@@ -5,11 +5,12 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { createMemoryControl } from '../../flow-client/test/memory-control.js'
 import { createFlowsCommand } from '../src/commands/flows.js'
+import type * as FlowControl from '../src/flow-control.js'
 import { connectFlowControl } from '../src/flow-control.js'
 
 vi.mock('@mokei/context-server-node', () => ({ serveProcess: vi.fn() }))
 vi.mock('../src/flow-control.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/flow-control.js')>()
+  const actual = await importOriginal<typeof FlowControl>()
   return { ...actual, connectFlowControl: vi.fn() }
 })
 

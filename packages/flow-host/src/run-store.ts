@@ -19,9 +19,11 @@ export type RunStore = {
   delete(runID: string): Promise<void>
 }
 
+export type RunStoreConflictErrorParams = { message?: string }
+
 export class RunStoreConflictError extends Error {
-  constructor(message = 'Run store revision conflict') {
-    super(message)
+  constructor(params: RunStoreConflictErrorParams = {}) {
+    super(params.message ?? 'Run store revision conflict')
     this.name = 'RunStoreConflictError'
   }
 }
@@ -35,7 +37,7 @@ export function createMemoryRunStore(): RunStore {
   return {
     async create(record) {
       if (records.has(record.runID))
-        throw new RunStoreConflictError(`Run already exists: ${record.runID}`)
+        throw new RunStoreConflictError({ message: `Run already exists: ${record.runID}` })
       records.set(record.runID, copy(record))
     },
     async get(runID) {

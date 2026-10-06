@@ -1,14 +1,10 @@
+import { isTerminalRunState } from '@mokei/flow-client'
+import { createKeyedQueue } from '@sozai/async'
+
 import { RunNotFoundError } from './errors.js'
 import type { RunStore } from './run-store.js'
 import { RunStoreConflictError } from './run-store.js'
-import type { RunRecord, RunState } from './types.js'
-
-export const TERMINAL_STATES: ReadonlySet<RunState> = new Set([
-  'denied',
-  'completed',
-  'failed',
-  'cancelled',
-])
+import type { RunRecord } from './types.js'
 
 export async function transition(
   store: RunStore,
@@ -18,8 +14,8 @@ export async function transition(
 ): Promise<{ record: RunRecord; changed: boolean; stateChanged: boolean }> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const current = await store.get(runID)
-    if (current == null) throw new RunNotFoundError(runID)
-    if (TERMINAL_STATES.has(current.state))
+    if (current == null) throw new RunNotFoundError({ runID })
+    if (isTerminalRunState(current.state))
       return { record: current, changed: false, stateChanged: false }
     const patch = compute(current)
     if (patch == null) return { record: current, changed: false, stateChanged: false }
@@ -38,18 +34,5 @@ export async function transition(
 }
 
 export function createRunQueue(): { run<T>(runID: string, work: () => Promise<T>): Promise<T> } {
-  const queues = new Map<string, Promise<unknown>>()
-  return {
-    run<T>(runID: string, work: () => Promise<T>): Promise<T> {
-      const previous = queues.get(runID) ?? Promise.resolve()
-      const current = previous.catch(() => undefined).then(work)
-      queues.set(runID, current)
-      void current
-        .finally(() => {
-          if (queues.get(runID) === current) queues.delete(runID)
-        })
-        .catch(() => undefined)
-      return current
-    },
-  }
+  return createKeyedQueue<string>()
 }

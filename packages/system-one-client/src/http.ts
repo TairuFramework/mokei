@@ -190,10 +190,11 @@ export class HTTPSystemOneBackend implements SystemOneBackend {
       return await retry(({ signal }) => mapError(() => this.#post(params, signal)), {
         policy: this.#retry,
         signal: params.signal,
-        retryable: (error) =>
-          error instanceof TimeoutInterruption && error.cause === 'attempt'
+        retryable: (error) => {
+          return error instanceof TimeoutInterruption && error.cause === 'attempt'
             ? true
-            : retryableSystemOneError(error),
+            : retryableSystemOneError(error)
+        },
       })
     } catch (error) {
       mapRetryError(error, params.signal)

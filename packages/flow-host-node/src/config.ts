@@ -1,9 +1,7 @@
-import { readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { LogLevel } from '@logtape/logtape'
 import { createValidator, type Schema } from '@sozai/schema'
-import { getDataDir } from '@tejika/env'
+import { expandHome, getDataDir, readJSONFile } from '@tejika/env'
 
 export type FlowConfig = {
   siblings: Record<string, { command: string; args?: Array<string>; env?: Record<string, string> }>
@@ -112,9 +110,11 @@ function createDefaults(): FlowConfig {
 }
 
 function issuePath(issue: { path?: ReadonlyArray<unknown>; details?: unknown }): string {
-  const parts = [...(issue.path ?? [])].map((part) =>
-    typeof part === 'object' && part !== null && 'key' in part ? String(part.key) : String(part),
-  )
+  const parts = [...(issue.path ?? [])].map((part) => {
+    return typeof part === 'object' && part !== null && 'key' in part
+      ? String(part.key)
+      : String(part)
+  })
   const details = issue.details
   if (typeof details === 'object' && details !== null && 'params' in details) {
     const params = details.params
@@ -126,8 +126,8 @@ function issuePath(issue: { path?: ReadonlyArray<unknown>; details?: unknown }):
 }
 
 function resolveConfiguredPath(value: string, configDirectory: string): string {
-  if (value.startsWith('~/')) return join(homedir(), value.slice(2))
-  if (value === '~') return homedir()
+  const expanded = expandHome(value)
+  if (expanded !== value) return expanded
   if (value.startsWith('~') || isAbsolute(value) || /^[a-z][a-z\d+.-]*:/i.test(value)) return value
   return resolve(configDirectory, value)
 }
@@ -141,23 +141,13 @@ function isScriptPath(value: string): boolean {
 export async function loadFlowConfig(
   path = join(getDataDir('mokei'), 'flows.json'),
 ): Promise<FlowConfig> {
-  let content: string
-  try {
-    content = await readFile(path, 'utf8')
-  } catch (error) {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
-      return createDefaults()
-    }
-    throw error
-  }
-
   let parsed: unknown
   try {
-    parsed = JSON.parse(content)
+    parsed = await readJSONFile(path, { default: createDefaults() })
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    const wrapped = new FlowConfigError({ path, issues: [`JSON: ${message}`] })
-    Object.defineProperty(wrapped, 'cause', { value: error })
+    if (!(error instanceof Error) || !(error.cause instanceof SyntaxError)) throw error
+    const wrapped = new FlowConfigError({ path, issues: [`JSON: ${error.cause.message}`] })
+    Object.defineProperty(wrapped, 'cause', { value: error.cause })
     throw wrapped
   }
   const result = validateConfiguration(parsed)
@@ -179,17 +169,21 @@ export async function loadFlowConfig(
     ...config,
     flowDirs: config.flowDirs.map((directory) => resolveConfiguredPath(directory, configDirectory)),
     siblings: Object.fromEntries(
-      Object.entries(config.siblings).map(([name, sibling]) => [
-        name,
-        {
-          ...sibling,
-          ...(sibling.args && {
-            args: sibling.args.map((argument) =>
-              isScriptPath(argument) ? resolveConfiguredPath(argument, configDirectory) : argument,
-            ),
-          }),
-        },
-      ]),
+      Object.entries(config.siblings).map(([name, sibling]) => {
+        return [
+          name,
+          {
+            ...sibling,
+            ...(sibling.args && {
+              args: sibling.args.map((argument) => {
+                return isScriptPath(argument)
+                  ? resolveConfiguredPath(argument, configDirectory)
+                  : argument
+              }),
+            }),
+          },
+        ]
+      }),
     ),
   }
 }

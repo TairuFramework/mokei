@@ -1,14 +1,17 @@
-export type FlowControlErrorCode =
-  | 'FLOW_UNAVAILABLE'
-  | 'FLOW_INVALID'
-  | 'FLOW_NOT_FOUND'
-  | 'RUN_NOT_FOUND'
-  | 'INBOX_ITEM_NOT_FOUND'
-  | 'INBOX_ANSWER_INVALID'
-  | 'PROMPT_UNSUPPORTED'
-  | 'PROMPT_IN_PROGRESS'
-  | 'INTERNAL_ERROR'
-  | 'DISCONNECTED'
+export const FLOW_CONTROL_ERROR_CODES = [
+  'FLOW_UNAVAILABLE',
+  'FLOW_INVALID',
+  'FLOW_NOT_FOUND',
+  'RUN_NOT_FOUND',
+  'INBOX_ITEM_NOT_FOUND',
+  'INBOX_ANSWER_INVALID',
+  'PROMPT_UNSUPPORTED',
+  'PROMPT_IN_PROGRESS',
+  'INTERNAL_ERROR',
+  'DISCONNECTED',
+] as const
+
+export type FlowControlErrorCode = (typeof FLOW_CONTROL_ERROR_CODES)[number]
 
 export type FlowControlErrorParams = {
   code: FlowControlErrorCode

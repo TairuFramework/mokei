@@ -88,11 +88,12 @@ export function createFlowControlServer(
     list_flows: createTool({
       description: 'List the registered flows',
       inputSchema: { type: 'object', additionalProperties: false } as const satisfies Schema,
-      handler: () =>
-        guard(async () => {
+      handler: () => {
+        return guard(async () => {
           const flows = await control.flows.list()
           return success({ flows }, JSON.stringify(flows))
-        }),
+        })
+      },
     }),
 
     check_flow: createTool({
@@ -103,11 +104,12 @@ export function createFlowControlServer(
         required: ['definition'],
         additionalProperties: false,
       } as const satisfies Schema,
-      handler: (req) =>
-        guard(async () => {
+      handler: (req) => {
+        return guard(async () => {
           const result = await control.flows.check(req.input.definition)
           return success({ ...result }, result.formatted)
-        }),
+        })
+      },
     }),
 
     start_flow: createTool({
@@ -123,8 +125,8 @@ export function createFlowControlServer(
         },
         additionalProperties: false,
       } as const satisfies Schema,
-      handler: (req) =>
-        guard(async () => {
+      handler: (req) => {
+        return guard(async () => {
           const { flow, definition, input, label } = req.input
           if ((flow == null) === (definition == null)) {
             return failure('Provide exactly one of flow or definition', 'FLOW_INVALID')
@@ -134,14 +136,16 @@ export function createFlowControlServer(
             flow != null ? { flow, ...base } : { definition: definition as never, ...base },
           )
           return success({ ...(await runStatus(control, run.runID)) })
-        }),
+        })
+      },
     }),
 
     flow_status: createTool({
       description: 'Get the status of a run, including pending input and approval items',
       inputSchema: runIDSchema,
-      handler: (req) =>
-        guard(async () => success({ ...(await runStatus(control, req.input.runID)) })),
+      handler: (req) => {
+        return guard(async () => success({ ...(await runStatus(control, req.input.runID)) }))
+      },
     }),
 
     wait_flow: createTool({
@@ -156,8 +160,8 @@ export function createFlowControlServer(
         required: ['runID'],
         additionalProperties: false,
       } as const satisfies Schema,
-      handler: (req) =>
-        guard(async () => {
+      handler: (req) => {
+        return guard(async () => {
           const timeoutMs = Math.min(req.input.timeoutMs ?? DEFAULT_WAIT_MS, MAX_WAIT_MS)
           const { status, timedOut } = await waitForRun(control, req.input.runID, {
             until: isActionable,
@@ -165,7 +169,8 @@ export function createFlowControlServer(
             signal: req.signal,
           })
           return success({ ...status, timedOut })
-        }),
+        })
+      },
     }),
 
     list_runs: createTool({
@@ -178,8 +183,8 @@ export function createFlowControlServer(
         },
         additionalProperties: false,
       } as const satisfies Schema,
-      handler: (req) =>
-        guard(async () => {
+      handler: (req) => {
+        return guard(async () => {
           const filter = {
             ...(req.input.states == null ? {} : { states: req.input.states }),
             limit: req.input.limit ?? DEFAULT_LIST_LIMIT,
@@ -192,17 +197,19 @@ export function createFlowControlServer(
             return run
           })
           return success({ runs })
-        }),
+        })
+      },
     }),
 
     cancel_flow: createTool({
       description: 'Cancel a run',
       inputSchema: runIDSchema,
-      handler: (req) =>
-        guard(async () => {
+      handler: (req) => {
+        return guard(async () => {
           await control.runs.cancel(req.input.runID)
           return success({ ...(await runStatus(control, req.input.runID)) })
-        }),
+        })
+      },
     }),
 
     answer_input: createTool({
@@ -217,10 +224,11 @@ export function createFlowControlServer(
         required: ['id', 'value'],
         additionalProperties: false,
       } as const satisfies Schema,
-      handler: (req) =>
-        guard(() =>
-          settle(req.input.id, () => control.inbox.answer(req.input.id, req.input.value)),
-        ),
+      handler: (req) => {
+        return guard(() => {
+          return settle(req.input.id, () => control.inbox.answer(req.input.id, req.input.value))
+        })
+      },
     }),
 
     decline_input: createTool({
@@ -235,10 +243,11 @@ export function createFlowControlServer(
         required: ['id'],
         additionalProperties: false,
       } as const satisfies Schema,
-      handler: (req) =>
-        guard(() =>
-          settle(req.input.id, () => control.inbox.decline(req.input.id, req.input.reason)),
-        ),
+      handler: (req) => {
+        return guard(() => {
+          return settle(req.input.id, () => control.inbox.decline(req.input.id, req.input.reason))
+        })
+      },
     }),
   }
 

@@ -1,6 +1,6 @@
 # Flow host Node follow-ons
 
-**Origin:** [flow host Node storage and observability](../completed/2026-10-02-flow-host-node.complete.md)
+**Origin:** flow host Node storage and observability, sub-project 2 of the [flow daemon milestone](../completed/2026-10-05-flow-daemon-milestone.complete.md)
 
 ## Historical tracing
 

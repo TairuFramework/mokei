@@ -30,7 +30,7 @@ export function createSQLiteRunStore(db: DatabaseSync): RunStore {
         data,
       )
       if (Number(result.changes) === 0)
-        throw new RunStoreConflictError(`Run already exists: ${stored.runID}`)
+        throw new RunStoreConflictError({ message: `Run already exists: ${stored.runID}` })
     },
     async get(runID) {
       return read(runID)

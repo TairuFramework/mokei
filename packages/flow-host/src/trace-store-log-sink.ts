@@ -1,8 +1,8 @@
 import type { LogRecord, Sink } from '@logtape/logtape'
 import { isSpanContextValid, trace } from '@opentelemetry/api'
-import { getReporter } from '@sozai/log'
+import { toJSONValue } from '@sozai/json'
+import { getReporter, renderLogMessage } from '@sozai/log'
 
-import { renderLogMessage, toJSONValue } from './to-json-value.js'
 import type { StoredLog, TraceStore } from './trace-store.js'
 
 export function createTraceStoreLogSink(store: TraceStore): Sink & { flush(): Promise<void> } {

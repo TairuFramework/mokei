@@ -1,9 +1,9 @@
 import type { TaskStore } from '@mokei/context-server'
+import { isTerminalRunState, TERMINAL_RUN_STATES } from '@mokei/flow-client'
 import { getReporter } from '@sozai/log'
 
 import type { RunStore } from './run-store.js'
 import type { TraceStore } from './trace-store.js'
-import { TERMINAL_STATES } from './transitions.js'
 
 export async function pruneRuns(params: {
   runStore: RunStore
@@ -14,12 +14,15 @@ export async function pruneRuns(params: {
   const { runStore, taskStore, traceStore, before } = params
   const report = getReporter(['mokei', 'flow-host', 'capture'], '@mokei/flow-host')
   const counts = { runs: 0, skipped: 0, spans: 0, logs: 0 }
-  const candidates = await runStore.list({ states: [...TERMINAL_STATES], updatedBefore: before })
+  const candidates = await runStore.list({
+    states: [...TERMINAL_RUN_STATES],
+    updatedBefore: before,
+  })
 
   for (const candidate of candidates) {
     try {
       const run = await runStore.get(candidate.runID)
-      if (run === undefined || !TERMINAL_STATES.has(run.state) || !(run.updatedAt < before)) {
+      if (run === undefined || !isTerminalRunState(run.state) || !(run.updatedAt < before)) {
         counts.skipped++
         continue
       }

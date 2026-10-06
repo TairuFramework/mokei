@@ -1,6 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { StoredLog, StoredSpan, TraceStore } from '@mokei/flow-host'
 
+import { withTransaction } from './transaction.js'
+
 export function createSQLiteTraceStore(db: DatabaseSync): TraceStore {
   const addSpan =
     db.prepare(`INSERT INTO spans (trace_id, span_id, start_time, end_time, data) VALUES (?, ?, ?, ?, ?)
@@ -13,8 +15,7 @@ export function createSQLiteTraceStore(db: DatabaseSync): TraceStore {
     'SELECT data FROM logs WHERE trace_id = ? ORDER BY timestamp ASC, seq ASC',
   )
   function deleteSelected(ids: Array<string>, before?: number): { spans: number; logs: number } {
-    db.exec('BEGIN IMMEDIATE')
-    try {
+    return withTransaction(db, () => {
       // One bound ID per insert avoids SQLite's variable limit for arbitrarily large sets.
       db.exec('CREATE TEMP TABLE flow_trace_selection (trace_id TEXT PRIMARY KEY)')
       const insert = db.prepare('INSERT OR IGNORE INTO flow_trace_selection (trace_id) VALUES (?)')
@@ -29,12 +30,8 @@ export function createSQLiteTraceStore(db: DatabaseSync): TraceStore {
       const spans = Number((before == null ? spanDelete.run() : spanDelete.run(before)).changes)
       const logs = Number((before == null ? logDelete.run() : logDelete.run(before)).changes)
       db.exec('DROP TABLE flow_trace_selection')
-      db.exec('COMMIT')
       return { spans, logs }
-    } catch (error) {
-      db.exec('ROLLBACK')
-      throw error
-    }
+    })
   }
   return {
     async addSpans(spans) {

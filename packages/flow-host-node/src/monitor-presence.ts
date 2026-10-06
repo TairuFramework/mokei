@@ -2,16 +2,20 @@ import type { MonitorPresenceReceive, MonitorPresenceSend } from '@mokei/host-pr
 
 export const PRESENCE_REPLY_TIMEOUT_MS = 5_000
 
+export type MonitorURLErrorParams = { url: string; cause?: unknown }
+
 export class MonitorURLError extends Error {
-  constructor(url: string, options?: ErrorOptions) {
-    super(`Invalid monitor URL: ${url}`, options)
+  constructor(params: MonitorURLErrorParams) {
+    super(`Invalid monitor URL: ${params.url}`, params)
     this.name = 'MonitorURLError'
   }
 }
 
+export type MonitorAttachmentNotFoundErrorParams = { attachmentID: string }
+
 export class MonitorAttachmentNotFoundError extends Error {
-  constructor(attachmentID: string) {
-    super(`Monitor attachment not found: ${attachmentID}`)
+  constructor(params: MonitorAttachmentNotFoundErrorParams) {
+    super(`Monitor attachment not found: ${params.attachmentID}`)
     this.name = 'MonitorAttachmentNotFoundError'
   }
 }
@@ -19,12 +23,13 @@ export class MonitorAttachmentNotFoundError extends Error {
 export function parseMonitorURL(url: string): URL {
   const match = /^http:\/\/127\.0\.0\.1:([0-9]+)\/$/.exec(url)
   if (match == null || Number(match[1]) < 1 || Number(match[1]) > 65535) {
-    throw new MonitorURLError(url)
+    throw new MonitorURLError({ url })
   }
   try {
     return new URL(url)
   } catch (cause) {
-    throw new MonitorURLError(url, { cause })
+    // biome-ignore lint/style/useErrorCause: Params forwards cause to Error.
+    throw new MonitorURLError({ url, cause })
   }
 }
 
@@ -146,7 +151,7 @@ export function createMonitorPresence(
       }
     },
     connect(attachmentID, channel) {
-      if (!attachments.has(attachmentID)) throw new MonitorAttachmentNotFoundError(attachmentID)
+      if (!attachments.has(attachmentID)) throw new MonitorAttachmentNotFoundError({ attachmentID })
       const key = randomID()
       const tab: TabRecord = {
         state: { key, attachmentID, visible: false, canNotify: false, lastVisibleAt: 0 },
