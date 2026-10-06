@@ -41,8 +41,9 @@ The predecessor plan is `docs/superpowers/plans/2026-10-06-flow-host-hozon.md`, 
 - **Package name: `@mokei/app-node`.** It holds the node app foundation (config, database, telemetry), not just stores. The user may rename it at plan review.
 - **Telemetry report categories become a parameter.** `setupMokeiTelemetry({ …, reportCategories })` routes each category to `errors` at `error` level and excludes it from the log store. The `['hozon']` route stays built in. flow-host-node exports `FLOW_REPORT_CATEGORY = ['mokei', 'flow-host', 'capture']` and the daemon passes it. Existing reporter call sites keep their category.
 - **CLI flag names:**
-  - `--config-path` / `configPath` keeps meaning `flows.json`;
-  - a new `--app-config-path` / `appConfigPath` points at `mokei.json`;
+  - `--config-path` / `configPath` now points at `mokei.json`, matching `MOKEI_CONFIG_PATH`;
+  - `flows.json` moves to a new `--flows-config-path` / `flowsConfigPath`. The daemon passes it to `createFlowService({ configPath })`, whose own param name is unchanged;
+  - the daemon flags have never shipped, so the rename needs no compatibility code;
   - `--database-path` / `databasePath` moves to the daemon.
 - **A bad `mokei.json` fails daemon boot** with `MokeiConfigError`, whose message names the path and the issues. A bad `flows.json` still only fails the flow service (`status: failed`), and the daemon stays up with telemetry installed.
 - **`mokei.json` schema:** `{ logs?: { level?: LogLevel; file?: boolean }, tracing?: { otlp?: { endpoint: string; headers?: Record<string, string> } } }`, with `additionalProperties: false` at every level. Defaults are `{ logs: { level: 'info', file: true }, tracing: {} }`. A missing file yields the defaults.
@@ -74,7 +75,8 @@ The predecessor plan is `docs/superpowers/plans/2026-10-06-flow-host-hozon.md`, 
 - **Produces, from `@mokei/app-node`:**
   - `type MokeiConfig = { logs: { level: LogLevel; file: boolean }; tracing: { otlp?: { endpoint: string; headers?: Record<string, string> } } }`
   - `class MokeiConfigError extends Error`, with `name: 'MokeiConfigError'`, getters `path` and `issues: Array<string>`, and message `Invalid mokei configuration <path>: <issues joined by ', '>`
-  - `loadMokeiConfig(path = join(getDataDir('mokei'), 'mokei.json')): Promise<MokeiConfig>`
+  - `getMokeiConfigPath(): string`, which returns `getAppEnvVar('mokei', 'CONFIG_PATH') ?? join(getDataDir('mokei'), 'mokei.json')`
+  - `loadMokeiConfig(path = getMokeiConfigPath()): Promise<MokeiConfig>`. Precedence: explicit path, then `MOKEI_CONFIG_PATH`, then the data dir.
   - `mokeiStoreDefinitions = [logStoreDefinition, telemetryStoreDefinition]`
   - `openMokeiDatabase(params?: { path?: string; stores?: ReadonlyArray<StoreDefinition<any, any>> }): Promise<HozonDB>`. It registers `[...mokeiStoreDefinitions, ...stores]`; match the element type `openLocalDatabase` accepts.
   - `setupMokeiTelemetry(params: { logStore: LogStore; telemetryStore: TelemetryStore; otlp?: …; logs?: { level?: LogLevel; file?: boolean }; reportCategories?: ReadonlyArray<ReadonlyArray<string>> }): { dispose(): Promise<void> }`
@@ -90,6 +92,7 @@ The predecessor plan is `docs/superpowers/plans/2026-10-06-flow-host-hozon.md`, 
 - [ ] **Step 1: Scaffold the package and run `pnpm install`.** Expected: the lockfile gains the `packages/app-node` importer.
 - [ ] **Step 2: Write the failing tests.**
   - `config.test.ts`:
+    - `honours MOKEI_CONFIG_PATH and lets an explicit path win`: `vi.stubEnv('MOKEI_CONFIG_PATH', <tmp>/env.json)` with `{ logs: { level: 'debug' } }`. `loadMokeiConfig()` reads it. `loadMokeiConfig(<tmp>/explicit.json)` reads the explicit file;
     - `returns defaults when mokei.json is missing`: equals `{ logs: { level: 'info', file: true }, tracing: {} }`;
     - `reads logs and tracing`: `{ logs: { level: 'debug', file: false }, tracing: { otlp: { endpoint: 'http://x' } } }` round-trips;
     - `rejects unknown keys`: `{ flowDirs: [] }` rejects with `MokeiConfigError`, and `issues` contains `'flowDirs'`;
@@ -166,13 +169,18 @@ The predecessor plan is `docs/superpowers/plans/2026-10-06-flow-host-hozon.md`, 
 - In the integration callers:
   - the database file becomes `mokei.db` (the driver's `flows.db` → `mokei.db`, the `-wal` check included);
   - `flow-cli.test.ts`'s pinned `MOKEI_DATABASE_PATH` → `<dir>/mokei.db`;
-  - the driver writes `logs`/`tracing` to a `mokei.json` (passed via `appConfigPath`, or placed in the data dir) instead of `flows.json`.
+  - the driver writes `logs`/`tracing` to a `mokei.json` (passed via `configPath` / `--config-path`) instead of `flows.json`.
 
 **Interfaces:**
 - Consumes: Task 1 (`loadMokeiConfig`, `openMokeiDatabase`, `setupMokeiTelemetry`) and Task 2 (`flowStoreDefinitions`, `FLOW_REPORT_CATEGORY`, `createFlowService({ database, … })`).
-- `startMokeiDaemon(params)` gains `appConfigPath?: string` and keeps `databasePath`. The CLI gains the `--app-config-path` flag.
+- `startMokeiDaemon(params)`:
+  - `configPath?: string` now means `mokei.json`;
+  - it gains `flowsConfigPath?: string`, which is forwarded as `createFlowService({ configPath: params.flowsConfigPath })`;
+  - it keeps `databasePath`.
+- CLI flags: `--config-path` (`mokei.json`), `--flows-config-path` (`flows.json`), `--database-path`.
+- Update every caller that passed `configPath` / `--config-path` meaning `flows.json`, so it uses the flows variant: `integration-tests/support/flow-daemon/entry.mjs`, `flow-monitor-entry.mjs`, `driver.ts` (`'--config-path'` at ~183), and the cli tests.
 - **Boot order:**
-  1. `config = await loadMokeiConfig(params.appConfigPath)`
+  1. `config = await loadMokeiConfig(params.configPath)`
   2. `database = await openMokeiDatabase({ path: params.databasePath, stores: flowStoreDefinitions })`
   3. `telemetry = setupMokeiTelemetry({ logStore: await getLogStore(database), telemetryStore: await getTelemetryStore(database), otlp: config.tracing.otlp, logs: config.logs, reportCategories: [FLOW_REPORT_CATEGORY] })`
   4. `createFlowService({ database, … })`
@@ -181,7 +189,7 @@ The predecessor plan is `docs/superpowers/plans/2026-10-06-flow-host-hozon.md`, 
 - For tests, `startMokeiDaemon` may take an internal dependencies object (as `createFlowServiceWithDependencies` does). It must not be exported from the package entry.
 
 - [ ] **Step 1: Write the failing tests** in `packages/cli/test/daemon-shutdown.test.ts`, or a new `daemon-boot.test.ts`:
-  - `rejects an invalid mokei.json before opening the database`: write `mokei.json` with `{ "bogus": 1 }`; `startMokeiDaemon({ appConfigPath, databasePath })` rejects with `MokeiConfigError`; `existsSync(databasePath)` is `false`.
+  - `rejects an invalid mokei.json before opening the database`: write `mokei.json` with `{ "bogus": 1 }`; `startMokeiDaemon({ configPath, databasePath })` rejects with `MokeiConfigError`; `existsSync(databasePath)` is `false`.
   - `disposes the flow service, then telemetry, then the database`: record the order through spies or dependency fakes; expect `['service', 'telemetry', 'database']`.
   - `releases the database when telemetry setup fails`: `setupMokeiTelemetry` throws `new Error('telemetry failed')`; the boot rejects with that error and `database.close` was called.
   - `captures telemetry while the flow service is failed`:
@@ -205,7 +213,7 @@ The predecessor plan is `docs/superpowers/plans/2026-10-06-flow-host-hozon.md`, 
 - Modify:
   - `packages/app-node/README.md`: API table, `mokei.json` schema and defaults, database path rules, `reportCategories`;
   - `packages/flow-host-node/README.md`: the service takes `database`; `flowStoreDefinitions`; no telemetry; config keys; rewrite the example for the daemon-style wiring;
-  - `packages/cli/README.md`: `mokei.json`, `--app-config-path`, `mokei.db`;
+  - `packages/cli/README.md`: `mokei.json`, `MOKEI_CONFIG_PATH`, `--config-path` / `--flows-config-path`, `mokei.db`;
   - `docs/agents/architecture.md`: new package row; the paragraph at ~343 now says the daemon owns one `HozonDB` (`mokei.db`) and telemetry, and flows register their stores;
   - `.changeset/flow-host-hozon.md`.
 - Changeset front matter: `'@mokei/app-node': patch`, `'@mokei/flow-host-node': patch`, `'@mokei/flow-host': patch`, `mokei: patch`. Body: "Add `@mokei/app-node`: `mokei.json` configuration, the single `mokei.db` hozon database (`openMokeiDatabase`) and telemetry (`setupMokeiTelemetry`), owned by the daemon. Flow runs and tasks are hozon stores registered in that database; `createFlowService` takes the database instead of opening one, and logging/tracing settings move from `flows.json` to `mokei.json`. `@mokei/flow-host` drops `createTraceStoreSpanExporter` and `createTraceStoreLogSink` in favour of `@hozon/otel` and `@hozon/logtape`."
