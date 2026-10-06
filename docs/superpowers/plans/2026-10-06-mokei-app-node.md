@@ -36,6 +36,8 @@ The predecessor plan is `docs/superpowers/plans/2026-10-06-flow-host-hozon.md`, 
 
 ## Rulings made while planning
 
+- **Tasks 2 and 3 are one dispatch and one commit.** The pre-commit hook runs `turbo run test:types` over every package, and Task 2 alone breaks `packages/cli`.
+
 - **Package name: `@mokei/app-node`.** It holds the node app foundation (config, database, telemetry), not just stores. The user may rename it at plan review.
 - **Telemetry report categories become a parameter.** `setupMokeiTelemetry({ …, reportCategories })` routes each category to `errors` at `error` level and excludes it from the log store. The `['hozon']` route stays built in. flow-host-node exports `FLOW_REPORT_CATEGORY = ['mokei', 'flow-host', 'capture']` and the daemon passes it. Existing reporter call sites keep their category.
 - **CLI flag names:**
@@ -142,8 +144,8 @@ The predecessor plan is `docs/superpowers/plans/2026-10-06-flow-host-hozon.md`, 
   - The `restart.test.ts` / `persistence.test.ts` forwarding telemetry wrapper goes away. Each service instance gets the database opened by the test and closed by the test after `dispose()`.
 - [ ] **Step 2: Run** `rtk proxy pnpm --filter @mokei/flow-host-node exec vitest run`. Expected: FAIL.
 - [ ] **Step 3: Implement.** Remove the telemetry stage and the database stage, plus the stage strings `'open the flow database'` and `'install flow telemetry'`.
-- [ ] **Step 4: Run** the package's `vitest run` and `test:types`. Expected: PASS. `packages/cli` and `integration-tests` are expected to fail type-checking until Task 3; don't touch them.
-- [ ] **Step 5: Commit** `refactor(flow-host-node): take the database from the caller and drop telemetry setup`.
+- [ ] **Step 4: Run** the package's `vitest run` and `test:types`. Expected: PASS. `packages/cli` and `integration-tests` still fail type-checking at this point.
+- [ ] **Step 5: Do not commit yet.** The pre-commit hook type-checks the whole workspace, so Tasks 2 and 3 run as one dispatch and land as one commit (Task 3 Step 5).
 
 ### Task 3: Daemon owns config, database and telemetry
 
@@ -195,7 +197,7 @@ The predecessor plan is `docs/superpowers/plans/2026-10-06-flow-host-hozon.md`, 
   - `rtk proxy pnpm run test` passes (packages and integration).
   - `rtk proxy pnpm run lint` passes.
   - `rg -n "openFlowDatabase|setupFlowTelemetry|flows\.db|flow\.db" packages integration-tests scripts -g '!**/lib/**' -g '!**/node_modules/**' -g '!**/CHANGELOG.md'` returns only README hits, which Task 4 fixes.
-- [ ] **Step 5: Commit** `feat(cli): own the mokei database and telemetry in the daemon`.
+- [ ] **Step 5: Commit** Tasks 2 and 3 together as `refactor: own the mokei database and telemetry in the daemon`.
 
 ### Task 4: Docs and release intent
 
