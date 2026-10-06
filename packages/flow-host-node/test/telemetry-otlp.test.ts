@@ -1,24 +1,14 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import type { HozonDB } from '@hozon/db'
 import { trace } from '@opentelemetry/api'
 import { getLogger } from '@sozai/log'
 import { createFileSink } from '@tejika/log'
-import { afterEach, expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 import { setupFlowTelemetry } from '../src/index.js'
-import { openTestStores } from './support/stores.js'
+import { useTestStores } from './support/stores.js'
 
-const databases: Array<HozonDB> = []
-afterEach(async () => {
-  for (const db of databases.splice(0)) await db.close()
-})
-
-async function stores() {
-  const result = await openTestStores()
-  databases.push(result.db)
-  return result
-}
+const stores = useTestStores()
 
 const file = vi.hoisted(() => ({ sink: vi.fn(), dispose: vi.fn() }))
 vi.mock('@tejika/log', () => ({

@@ -1,4 +1,3 @@
-import type { HozonDB } from '@hozon/db'
 import { createLogStoreSink } from '@hozon/logtape'
 import { context, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
@@ -8,18 +7,9 @@ import { createFileSink } from '@tejika/log'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import type * as Telemetry from '../src/telemetry.js'
-import { openTestStores } from './support/stores.js'
+import { useTestStores } from './support/stores.js'
 
-const databases: Array<HozonDB> = []
-afterEach(async () => {
-  for (const db of databases.splice(0)) await db.close()
-})
-
-async function stores() {
-  const result = await openTestStores()
-  databases.push(result.db)
-  return result
-}
+const stores = useTestStores()
 
 let setupFlowTelemetry: typeof Telemetry.setupFlowTelemetry
 

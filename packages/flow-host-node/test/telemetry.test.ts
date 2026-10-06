@@ -1,24 +1,14 @@
-import type { HozonDB } from '@hozon/db'
 import { context, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import * as logging from '@sozai/log'
 import { createFileSink } from '@tejika/log'
-import { afterEach, expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 import { setupFlowTelemetry } from '../src/index.js'
-import { openTestStores } from './support/stores.js'
+import { useTestStores } from './support/stores.js'
 
-const databases: Array<HozonDB> = []
-afterEach(async () => {
-  for (const db of databases.splice(0)) await db.close()
-})
-
-async function stores() {
-  const result = await openTestStores()
-  databases.push(result.db)
-  return result
-}
+const stores = useTestStores()
 
 vi.mock('@opentelemetry/sdk-trace-base', { spy: true })
 vi.mock('@opentelemetry/context-async-hooks', { spy: true })
