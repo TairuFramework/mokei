@@ -6,7 +6,7 @@ The portable runtime remains Node-free. See the [architecture](../../docs/agents
 ## Installation
 
 ```sh
-pnpm add @mokei/flow-host-node @mokei/flow-host @mokei/session-node
+pnpm add @mokei/flow-host-node @mokei/flow-host @mokei/session-node @hozon/store-log @hozon/store-telemetry
 ```
 
 The package requires Node.js with `node:sqlite` support. One process owns the database and telemetry installation.
