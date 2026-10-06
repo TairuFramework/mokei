@@ -9,12 +9,12 @@ import { afterEach, expect, test, vi } from 'vitest'
 
 import type { FlowConfig } from '../src/config.js'
 import { FlowConfigError, loadFlowConfig } from '../src/config.js'
-import { openFlowDatabase } from '../src/database.js'
 import type { FlowDesktopAdapter } from '../src/desktop.js'
 import { loadFlowDirs } from '../src/flow-dirs.js'
 import { createMonitorPresence } from '../src/monitor-presence.js'
 import type { FlowServiceDependencies, FlowServiceParams } from '../src/service.js'
 import { createFlowServiceWithDependencies, FlowServiceUnavailableError } from '../src/service.js'
+import { openFlowDatabase } from '../src/stores.js'
 import { runRecord } from './support/records.js'
 
 function deferred<T>() {
@@ -61,15 +61,14 @@ function setup(
   const dependencies: FlowServiceDependencies = {
     loadConfig: async () => config,
     loadFlows: async () => ({ files: [], flows: [] }),
-    openDatabase: () => {
-      const database = openFlowDatabase({ path: ':memory:' })
-      return {
-        ...database,
-        close: () => {
-          order.push('database')
-          database.close()
-        },
-      }
+    openDatabase: async () => {
+      const database = await openFlowDatabase({ path: ':memory:' })
+      const close = database.close.bind(database)
+      vi.spyOn(database, 'close').mockImplementation(async () => {
+        order.push('database')
+        await close()
+      })
+      return database
     },
     setupTelemetry: () => ({
       dispose: async () => {
@@ -192,6 +191,27 @@ test.each([
     expect(fixture.order).toEqual(['desktop', ...prior])
   },
 )
+
+test('stops before opening telemetry when disposed while the database opens', async () => {
+  const gate = deferred<void>()
+  const opening = deferred<void>()
+  const setupTelemetry = vi.fn(() => ({ dispose: async () => {} }))
+  const fixture = setup({ setupTelemetry })
+  const openDatabase = fixture.dependencies.openDatabase
+  fixture.dependencies.openDatabase = async (params) => {
+    opening.resolve()
+    await gate.promise
+    return openDatabase(params)
+  }
+  const starting = fixture.service.start()
+  await opening.promise
+  const stopping = fixture.service.dispose()
+  gate.resolve()
+  await Promise.all([starting, stopping])
+  expect(setupTelemetry).not.toHaveBeenCalled()
+  expect(fixture.order).toEqual(['desktop', 'database'])
+  expect(() => fixture.service.resources()).toThrow(FlowServiceUnavailableError)
+})
 
 test('failed sibling startup disposes the owning session and never registers flows', async () => {
   let disposed = false

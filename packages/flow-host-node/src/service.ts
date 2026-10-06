@@ -7,7 +7,6 @@ import { lazy } from '@sozai/async'
 import { getReporter } from '@sozai/log'
 
 import { FlowConfigError, loadFlowConfig } from './config.js'
-import { openFlowDatabase } from './database.js'
 import type { FlowDesktopAdapter, FlowDesktopController } from './desktop.js'
 import { createFlowDesktopController } from './desktop.js'
 import { loadFlowDirs } from './flow-dirs.js'
@@ -15,10 +14,11 @@ import type { MonitorPresence } from './monitor-presence.js'
 import { createMonitorSurface } from './monitor-surface.js'
 import { createNativeSurface } from './native-surface.js'
 import { startRetention } from './retention.js'
-import { createSQLiteRunStore } from './sqlite-run-store.js'
-import { createSQLiteTaskStore } from './sqlite-task-store.js'
-import { createSQLiteTraceStore } from './sqlite-trace-store.js'
+import { getFlowRunStore } from './run-store.js'
+import { openFlowDatabase } from './stores.js'
+import { getFlowTaskStore } from './task-store.js'
 import { setupFlowTelemetry } from './telemetry.js'
+import { createFlowTraceStore } from './trace-store.js'
 
 export type { FlowServiceStatus } from '@mokei/host-protocol'
 export type FlowResources = { host: FlowHost; traceStore: TraceStore }
@@ -135,7 +135,7 @@ export function createFlowServiceWithDependencies(
   let starting: Promise<void> | undefined
   let disposal: Promise<void> | undefined
   let desktopDisposal: Promise<void> | undefined
-  let database: ReturnType<typeof openFlowDatabase> | undefined
+  let database: Awaited<ReturnType<typeof openFlowDatabase>> | undefined
   let telemetry: ReturnType<typeof setupFlowTelemetry> | undefined
   let session: NodeSession | undefined
   let host: FlowHost | undefined
@@ -193,10 +193,11 @@ export function createFlowServiceWithDependencies(
       const { flows } = await dependencies.loadFlows(config.flowDirs)
       if (stopping) return
       stage = 'open the flow database'
-      database = dependencies.openDatabase({ path: params.databasePath })
-      const runStore = createSQLiteRunStore(database.db)
-      const taskStore = createSQLiteTaskStore(database.db)
-      const traceStore = createSQLiteTraceStore(database.db)
+      database = await dependencies.openDatabase({ path: params.databasePath })
+      if (stopping) return
+      const runStore = await getFlowRunStore(database)
+      const taskStore = await getFlowTaskStore(database)
+      const traceStore = createFlowTraceStore(database)
       stage = 'install flow telemetry'
       telemetry = dependencies.setupTelemetry({
         traceStore,

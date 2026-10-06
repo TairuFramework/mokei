@@ -15,10 +15,11 @@ The package requires Node.js with `node:sqlite` support. One process owns the da
 
 | Entry point | Behaviour |
 |-------------|-----------|
-| `openFlowDatabase({ path? })` | Creates parent directories, opens SQLite, migrates the schema and returns `{ db, close }`. |
-| `createSQLiteRunStore(db)` | Creates a portable `RunStore` with revision-based compare-and-swap updates. |
-| `createSQLiteTaskStore(db)` | Creates a persistent MCP `TaskStore` with revision-based compare-and-swap updates. |
-| `createSQLiteTraceStore(db)` | Creates a portable `TraceStore` for span and log capture, lookup and deletion. |
+| `openFlowDatabase({ path? })` | Asynchronously creates parent directories, opens the hozon SQLite database, migrates every flow store and returns a `HozonDB`. |
+| `getFlowRunStore(db)` | Resolves a portable `RunStore` with revision-based compare-and-swap updates. |
+| `getFlowTaskStore(db)` | Resolves a persistent MCP `TaskStore` with revision-based compare-and-swap updates. |
+| `createFlowTraceStore(db)` | Creates a portable `TraceStore` for span and log capture, lookup and deletion. |
+| `flowStoreDefinitions`, `runStoreDefinition`, `taskStoreDefinition` | Store definitions to register when opening a hozon database yourself. |
 | `setupFlowTelemetry({ traceStore, otlp?, logs? })` | Installs tracing and logging once per process and returns asynchronous `dispose`. |
 | `loadFlowConfig(path?)` | Reads and validates configuration, applies defaults and resolves configured paths. |
 | `loadFlowDirs(dirs)` | Returns `{ files, flows }` from JSON files in the supplied directories. |
@@ -26,8 +27,7 @@ The package requires Node.js with `node:sqlite` support. One process owns the da
 | `createFlowService({ configPath?, databasePath?, desktop?, onEvent })` | Owns shared initialisation, recovery, desktop policy and cleanup. |
 | `createFlowHandlers(service)` | Binds the 13 flow, run and inbox host-protocol procedures to that service. |
 
-The default database is `join(getDataDir('mokei'), 'mokei.db')`. An explicit `:memory:` path creates an in-memory database.
-SQLite uses `journal_mode = WAL`, `busy_timeout = 5000` and `foreign_keys = ON`.
+The default database is `join(getDataDir('mokei'), 'flow.db')`. An explicit `:memory:` path creates an in-memory database.
 Opening a database with a newer schema version fails rather than changing it.
 All three stores share the database. Their factories take the database positionally.
 
@@ -152,9 +152,9 @@ Configured sibling commands and flow definitions must be available before startu
 ```typescript
 import { createFlowHost } from '@mokei/flow-host'
 import {
-  createSQLiteRunStore,
-  createSQLiteTaskStore,
-  createSQLiteTraceStore,
+  createFlowTraceStore,
+  getFlowRunStore,
+  getFlowTaskStore,
   loadFlowConfig,
   loadFlowDirs,
   openFlowDatabase,
@@ -165,10 +165,10 @@ import { NodeSession } from '@mokei/session-node'
 
 const config = await loadFlowConfig()
 const { flows } = await loadFlowDirs(config.flowDirs)
-const database = openFlowDatabase({})
-const runStore = createSQLiteRunStore(database.db)
-const taskStore = createSQLiteTaskStore(database.db)
-const traceStore = createSQLiteTraceStore(database.db)
+const database = await openFlowDatabase({})
+const runStore = await getFlowRunStore(database)
+const taskStore = await getFlowTaskStore(database)
+const traceStore = createFlowTraceStore(database)
 const telemetry = setupFlowTelemetry({
   traceStore,
   otlp: config.tracing.otlp,
@@ -203,7 +203,7 @@ async function shutdown(): Promise<void> {
       try {
         await telemetry.dispose()
       } finally {
-        database.close()
+        await database.close()
       }
     }
   }

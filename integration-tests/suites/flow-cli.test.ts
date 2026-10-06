@@ -484,10 +484,10 @@ test('daemon start, stop and restart run the production entry in isolated direct
   const cli = createCLI(env, socketPath)
   const pids = new Set<number>()
   const readRuns = () => {
-    const db = new DatabaseSync(join(directory, 'mokei.db'), { readOnly: true })
+    const db = new DatabaseSync(join(directory, 'flow.db'), { readOnly: true })
     try {
       return db
-        .prepare('SELECT data FROM runs ORDER BY seq')
+        .prepare('SELECT data FROM mokei_flow_runs ORDER BY seq')
         .all()
         .map((row) => JSON.parse(row.data as string) as RunRecord)
     } finally {

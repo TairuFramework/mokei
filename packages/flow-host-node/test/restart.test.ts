@@ -8,9 +8,9 @@ import { getLogger } from '@sozai/log'
 import { expect, test, vi } from 'vitest'
 
 import {
-  createSQLiteRunStore,
-  createSQLiteTaskStore,
-  createSQLiteTraceStore,
+  createFlowTraceStore,
+  getFlowRunStore,
+  getFlowTaskStore,
   openFlowDatabase,
   setupFlowTelemetry,
 } from '../src/index.js'
@@ -24,8 +24,8 @@ function required<T>(value: T | undefined): T {
 test('recovers waiting input from a reopened sqlite database', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'flow-restart-'))
   const path = join(directory, 'flow.db')
-  let database = openFlowDatabase({ path })
-  let traceStore = createSQLiteTraceStore(database.db)
+  let database = await openFlowDatabase({ path })
+  let traceStore = createFlowTraceStore(database)
   const forwardingStore: TraceStore = {
     addSpans: (spans) => traceStore.addSpans(spans),
     addLogs: (logs) => traceStore.addLogs(logs),
@@ -37,8 +37,8 @@ test('recovers waiting input from a reopened sqlite database', async () => {
   let session = new Session({ elicit: true })
   let host: FlowHost | undefined
   try {
-    const firstRuns = createSQLiteRunStore(database.db)
-    const firstTasks = createSQLiteTaskStore(database.db)
+    const firstRuns = await getFlowRunStore(database)
+    const firstTasks = await getFlowTaskStore(database)
     host = await createFlowHost({
       session,
       flows: [inputFlow],
@@ -62,11 +62,11 @@ test('recovers waiting input from a reopened sqlite database', async () => {
     expect(await firstTasks.get(taskID)).toMatchObject({ status: 'input_required', ttlMs: null })
 
     // Replace the delegate before yielding so delayed exports never see the closed database.
-    database.close()
-    database = openFlowDatabase({ path })
-    traceStore = createSQLiteTraceStore(database.db)
-    const secondRuns = createSQLiteRunStore(database.db)
-    const secondTasks = createSQLiteTaskStore(database.db)
+    await database.close()
+    database = await openFlowDatabase({ path })
+    traceStore = createFlowTraceStore(database)
+    const secondRuns = await getFlowRunStore(database)
+    const secondTasks = await getFlowTaskStore(database)
     session = new Session({ elicit: true })
     const recovered = vi.fn(() => getLogger(['restart']).info('Recovered input'))
     const secondHost = await createFlowHost({
@@ -119,7 +119,7 @@ test('recovers waiting input from a reopened sqlite database', async () => {
       await session.dispose()
       await telemetry.dispose()
     } finally {
-      database.close()
+      await database.close()
       rmSync(directory, { recursive: true, force: true })
     }
   }

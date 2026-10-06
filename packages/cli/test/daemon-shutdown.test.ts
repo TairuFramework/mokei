@@ -56,15 +56,14 @@ test.each(['initialization', 'admitted call'] as const)(
           desktop: { notifications: false },
         }),
         loadFlows: async () => ({ files: [], flows: [] }),
-        openDatabase: () => {
-          const database = openFlowDatabase({ path: join(directory, 'flows.db') })
-          return {
-            ...database,
-            close: () => {
-              order.push('database')
-              database.close()
-            },
-          }
+        openDatabase: async () => {
+          const database = await openFlowDatabase({ path: join(directory, 'flows.db') })
+          const close = database.close.bind(database)
+          vi.spyOn(database, 'close').mockImplementation(async () => {
+            order.push('database')
+            await close()
+          })
+          return database
         },
         setupTelemetry: () => ({
           dispose: async () => {

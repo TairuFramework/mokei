@@ -1,6 +1,5 @@
 export type { FlowConfig } from './config.js'
 export { FlowConfigError, loadFlowConfig } from './config.js'
-export { openFlowDatabase } from './database.js'
 export type {
   DesktopPromptUnavailableErrorParams,
   FlowDesktopAdapter,
@@ -42,10 +41,9 @@ export type {
   FlowServiceUnavailableErrorParams,
 } from './service.js'
 export { createFlowService, FlowServiceUnavailableError } from './service.js'
-export { createSQLiteRunStore } from './sqlite-run-store.js'
-export { createSQLiteTaskStore } from './sqlite-task-store.js'
-export { createSQLiteTraceStore } from './sqlite-trace-store.js'
+export { flowStoreDefinitions, openFlowDatabase } from './stores.js'
 export type { InboxSurface, PromptOutcome, SurfaceDelivery, SurfaceStatus } from './surfaces.js'
 export type { FlowTaskTables } from './task-store.js'
 export { FLOW_TASK_STORE, getFlowTaskStore, taskStoreDefinition } from './task-store.js'
 export { setupFlowTelemetry } from './telemetry.js'
+export { createFlowTraceStore } from './trace-store.js'

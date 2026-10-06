@@ -7,14 +7,8 @@ import { createMemoryRunStore, createMemoryTraceStore } from '@mokei/flow-host'
 import { openLocalDatabase } from '@tejika/db'
 import { afterEach, describe, expect, test } from 'vitest'
 
-import {
-  createSQLiteRunStore,
-  createSQLiteTaskStore,
-  createSQLiteTraceStore,
-  openFlowDatabase,
-} from '../src/index.js'
 import { getFlowRunStore, runStoreDefinition } from '../src/run-store.js'
-import { openFlowDatabase as openHozonFlowDatabase } from '../src/stores.js'
+import { openFlowDatabase } from '../src/stores.js'
 import { getFlowTaskStore, taskStoreDefinition } from '../src/task-store.js'
 import { createFlowTraceStore } from '../src/trace-store.js'
 import { runStoreContract } from './contracts/run-store.js'
@@ -22,30 +16,21 @@ import { taskStoreContract } from './contracts/task-store.js'
 import { traceStoreContract } from './contracts/trace-store.js'
 import { logRecord, spanRecord } from './support/records.js'
 
-const handles: Array<ReturnType<typeof openFlowDatabase>> = []
 const hozonHandles: Array<Awaited<ReturnType<typeof openLocalDatabase>>> = []
 const temporaryDirectories: Array<string> = []
 async function open(path = ':memory:') {
-  const db = await openHozonFlowDatabase({ path })
+  const db = await openFlowDatabase({ path })
   hozonHandles.push(db)
   return db
 }
-function database() {
-  const handle = openFlowDatabase({ path: ':memory:' })
-  handles.push(handle)
-  return handle.db
-}
 afterEach(async () => {
-  for (const handle of handles.splice(0)) handle.close()
   for (const handle of hozonHandles.splice(0)) await handle.close()
   for (const directory of temporaryDirectories.splice(0)) {
     await rm(directory, { recursive: true, force: true })
   }
 })
 runStoreContract('memory runs', createMemoryRunStore)
-runStoreContract('SQLite runs', () => createSQLiteRunStore(database()))
 taskStoreContract('memory tasks', createMemoryTaskStore)
-taskStoreContract('SQLite tasks', () => createSQLiteTaskStore(database()))
 runStoreContract('hozon runs', async () => {
   const db = await openLocalDatabase({
     app: 'mokei',
@@ -65,7 +50,6 @@ taskStoreContract('hozon tasks', async () => {
   return getFlowTaskStore(db)
 })
 traceStoreContract('memory traces', createMemoryTraceStore)
-traceStoreContract('SQLite traces', () => createSQLiteTraceStore(database()))
 
 traceStoreContract('hozon traces', async () => createFlowTraceStore(await open()))
 

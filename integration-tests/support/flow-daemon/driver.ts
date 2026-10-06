@@ -5,8 +5,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import type { TaskRecord } from '@mokei/context-server'
-import type { RunRecord } from '@mokei/flow-host'
-import { createSQLiteTraceStore } from '@mokei/flow-host-node'
+import type { RunRecord, TraceStore } from '@mokei/flow-host'
 import { createClient, type HostClient } from '@mokei/host-node'
 import type { HostEvent } from '@mokei/host-protocol'
 import { settleAll } from '@sozai/async'
@@ -273,11 +272,11 @@ export async function startFlowDaemonFixture(
         db.exec('BEGIN')
         return {
           runs: db
-            .prepare('SELECT data FROM runs ORDER BY seq')
+            .prepare('SELECT data FROM mokei_flow_runs ORDER BY seq')
             .all()
             .map((row) => JSON.parse(row.data as string) as RunRecord),
           tasks: db
-            .prepare('SELECT data FROM tasks ORDER BY seq')
+            .prepare('SELECT data FROM mokei_flow_tasks ORDER BY seq')
             .all()
             .map((row) => JSON.parse(row.data as string) as TaskRecord),
         }
@@ -285,10 +284,19 @@ export async function startFlowDaemonFixture(
         db.close()
       }
     },
-    async readTrace(traceID: string) {
+    async readTrace(traceID: string): ReturnType<TraceStore['getTrace']> {
+      // Raw read-only SQL keeps the reader from ever migrating or writing the database.
       const db = new DatabaseSync(databasePath, { readOnly: true })
       try {
-        return await createSQLiteTraceStore(db).getTrace(traceID)
+        const read = (sql: string) =>
+          db
+            .prepare(sql)
+            .all(traceID)
+            .map((row) => JSON.parse(row.data as string))
+        return {
+          spans: read('SELECT data FROM hozon_spans WHERE trace_id = ? ORDER BY start_time, seq'),
+          logs: read('SELECT data FROM hozon_logs WHERE trace_id = ? ORDER BY timestamp, seq'),
+        }
       } finally {
         db.close()
       }
