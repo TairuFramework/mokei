@@ -21,9 +21,9 @@
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
-    "@kigu/dev": "^0.3.1",
+    "@kigu/dev": "^0.3.2",
     "typedoc": "catalog:",
     "typedoc-plugin-markdown": "catalog:"
   },
-  "packageManager": "pnpm@12.8.1"
+  "packageManager": "pnpm@12.9.1"
 }

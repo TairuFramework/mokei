@@ -11,8 +11,9 @@ process.channel.unref()
 await startMokeiDaemon({
   socketPath: join(directory, 'daemon.sock'),
   pidPath: join(directory, 'daemon.pid'),
-  databasePath: join(directory, 'flows.db'),
-  configPath: join(directory, 'flows.json'),
+  databasePath: join(directory, 'mokei.db'),
+  configPath: join(directory, 'mokei.json'),
+  flowsConfigPath: join(directory, 'flows.json'),
   desktop: {
     canPrompt: () => true,
     prompt: ({ signal }) =>

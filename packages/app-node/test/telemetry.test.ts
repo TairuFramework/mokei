@@ -1,4 +1,3 @@
-import { createMemoryTraceStore } from '@mokei/flow-host'
 import { context, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
@@ -6,7 +5,10 @@ import * as logging from '@sozai/log'
 import { createFileSink } from '@tejika/log'
 import { expect, test, vi } from 'vitest'
 
-import { setupFlowTelemetry } from '../src/index.js'
+import { setupMokeiTelemetry } from '../src/index.js'
+import { useTestStores } from './support/stores.js'
+
+const stores = useTestStores()
 
 vi.mock('@opentelemetry/sdk-trace-base', { spy: true })
 vi.mock('@opentelemetry/context-async-hooks', { spy: true })
@@ -19,14 +21,14 @@ test('rejects existing logging and telemetry without allocation', async () => {
     AsyncLocalStorageContextManager,
     createFileSink,
   ]
-  const store = createMemoryTraceStore()
+  const { logStore, telemetryStore } = await stores()
   const existingSink = vi.fn()
   logging.setup({
     sinks: { existing: existingSink },
     loggers: [{ category: [], sinks: ['existing'] }],
   })
   existingSink.mockClear()
-  expect(() => setupFlowTelemetry({ traceStore: store })).toThrow()
+  expect(() => setupMokeiTelemetry({ logStore, telemetryStore })).toThrow()
   logging.getLogger('existing').info('still configured')
   expect(existingSink).toHaveBeenCalledOnce()
   expect(logging.isSetup()).toBe(true)
@@ -37,7 +39,7 @@ test('rejects existing logging and telemetry without allocation', async () => {
   expect(trace.setGlobalTracerProvider(provider)).toBe(true)
   const manager = new AsyncLocalStorageContextManager().enable()
   for (const factory of constructors) vi.mocked(factory).mockClear()
-  expect(() => setupFlowTelemetry({ traceStore: store })).toThrow()
+  expect(() => setupMokeiTelemetry({ logStore, telemetryStore })).toThrow()
   const span = trace.getTracer('existing').startSpan('still recording')
   expect(span.isRecording()).toBe(true)
   span.end()
@@ -45,7 +47,7 @@ test('rejects existing logging and telemetry without allocation', async () => {
   await provider.shutdown()
 
   expect(context.setGlobalContextManager(manager)).toBe(true)
-  expect(() => setupFlowTelemetry({ traceStore: store })).toThrow()
+  expect(() => setupMokeiTelemetry({ logStore, telemetryStore })).toThrow()
   const key = Symbol('existing context')
   context.with(context.active().setValue(key, 'usable'), () => {
     expect(context.active().getValue(key)).toBe('usable')
@@ -55,13 +57,18 @@ test('rejects existing logging and telemetry without allocation', async () => {
 })
 
 test('captures an ordered span tree and logs for one lifetime', async () => {
-  const store = createMemoryTraceStore()
-  const addLogs = vi.spyOn(store, 'addLogs')
+  const { logStore, telemetryStore } = await stores()
+  const addLogs = vi.spyOn(logStore, 'addLogs')
   const stderr = vi.spyOn(console, 'error').mockImplementation(() => {})
   const shutdown = vi.spyOn(BasicTracerProvider.prototype, 'shutdown')
-  const handle = setupFlowTelemetry({ traceStore: store, logs: { file: false } })
+  const handle = setupMokeiTelemetry({
+    logStore,
+    telemetryStore,
+    logs: { file: false },
+    reportCategories: [['mokei', 'flow-host', 'capture']],
+  })
   expect(createFileSink).not.toHaveBeenCalled()
-  expect(() => setupFlowTelemetry({ traceStore: store })).toThrow()
+  expect(() => setupMokeiTelemetry({ logStore, telemetryStore })).toThrow()
   const tracer = trace.getTracer('telemetry-test')
   const logger = logging.getLogger(['application'])
   logger.info('outside')
@@ -100,7 +107,10 @@ test('captures an ordered span tree and logs for one lifetime', async () => {
   await disposal
   expect(handle.dispose()).toBe(disposal)
   expect(shutdown).toHaveBeenCalledOnce()
-  const captured = await store.getTrace(traceID)
+  const captured = {
+    spans: await telemetryStore.getSpans(traceID),
+    logs: await logStore.getTraceLogs(traceID),
+  }
   expect(captured.spans.map((span) => span.name)).toEqual(['root', 'child'])
   expect(captured.spans[1]?.parentSpanID).toBe(rootSpanID)
   expect(captured.logs.map((log) => [log.message, log.spanID])).toEqual([
@@ -110,8 +120,8 @@ test('captures an ordered span tree and logs for one lifetime', async () => {
   ])
   expect(addLogs.mock.calls.flatMap(([logs]) => logs)).toHaveLength(3)
   expect(stderr).toHaveBeenCalledOnce()
-  expect(String(stderr.mock.calls[0]?.[0])).toContain('capture failure')
+  expect(stderr.mock.calls.flat().map(String).join(' ')).toContain('capture failure')
   expect(logging.isSetup()).toBe(false)
-  expect(() => setupFlowTelemetry({ traceStore: store })).toThrow()
+  expect(() => setupMokeiTelemetry({ logStore, telemetryStore })).toThrow()
   vi.restoreAllMocks()
 })

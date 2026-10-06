@@ -219,10 +219,11 @@ binding.
 | System One classification | `@mokei/system-one-client`, `@mokei/mcp-system-one` | `HTTPSystemOneBackend`, `createSystemOneTools` |
 | Desktop elicitation and input inbox | `@mokei/host-desktop` | `createDesktopElicitHandler`, `createInputInbox`, `createDesktopTools` |
 | Decision flows as MCP tasks | `@mokei/decision-flow`, `@mokei/decision-flow-server` | `createDecisionFlowGraph`, `addDecisionFlow`, `createDecisionFlowServer` |
-| Durable flow stores | `@mokei/flow-host-node` | `openFlowDatabase`, `createSQLiteRunStore`, `createSQLiteTaskStore`, `createSQLiteTraceStore` |
-| Flow telemetry, configuration and retention | `@mokei/flow-host-node` | `setupFlowTelemetry`, `loadFlowConfig`, `loadFlowDirs`, `startRetention` |
+| App configuration, database and telemetry | `@mokei/app-node` | `loadMokeiConfig`, `openMokeiDatabase`, `setupMokeiTelemetry` |
+| Durable flow stores and service | `@mokei/flow-host-node` | `flowStoreDefinitions`, `getFlowRunStore`, `getFlowTaskStore`, `createFlowTraceStore`, `createFlowService` |
+| Flow configuration and retention | `@mokei/flow-host-node` | `loadFlowConfig`, `loadFlowDirs`, `startRetention` |
 | Shared daemon flow service | `@mokei/flow-host-node`, `@mokei/host-node`, `mokei` | `createFlowService`, `createFlowHandlers`, `serveHostDaemon`, CLI `daemon-entry.js` |
-| Portable trace capture and pruning | `@mokei/flow-host` | `TraceStore`, `createMemoryTraceStore`, `createTraceStoreSpanExporter`, `createTraceStoreLogSink`, `pruneRuns` |
+| Portable trace capture and pruning | `@mokei/flow-host` | `TraceStore`, `createMemoryTraceStore`, `pruneRuns` |
 | Flow control contract, wait helpers and MCP facade | `@mokei/flow-client` | `FlowControl`, `createRemoteFlowControl`, `waitForRun`, `createFlowControlServer` |
 | In-process flow control | `@mokei/flow-host` | `createLocalFlowControl` |
 | CLI | `mokei` | `packages/cli/src/program.ts`, `packages/cli/src/commands/{daemon,flows,runs,inbox}.ts` |
@@ -254,7 +255,8 @@ packages/
 +-- decision-flow/       # System One decide nodes for flow-graph
 +-- decision-flow-server/ # MCP task server and Session wiring for decision flows
 +-- flow-host/            # Portable flow run lifecycle, approval queue, inbox and recovery
-+-- flow-host-node/       # Node-only shared flow service, handlers, stores and telemetry
++-- app-node/             # Node app configuration, shared hozon database and telemetry
++-- flow-host-node/       # Node-only shared flow service, handlers and flow stores
 +-- flow-client/          # Portable FlowControl contract, daemon adapter, wait helpers, flow MCP server
 +-- model-provider/       # Provider interface definitions
 +-- openai-provider/      # OpenAI integration
@@ -298,9 +300,9 @@ website/                  # documentation site (private)
 | Server creation | `packages/context-server/src/` |
 | Client implementation | `packages/context-client/src/` |
 | Flow runtime | `packages/flow-host/src/` |
-| Flow database and stores | `packages/flow-host-node/src/{database,sqlite-run-store,sqlite-task-store,sqlite-trace-store}.ts` |
-| Flow telemetry, configuration and retention | `packages/flow-host-node/src/{telemetry,config,flow-dirs,retention}.ts` |
-| Portable trace storage and pruning | `packages/flow-host/src/{trace-store,trace-store-span-exporter,trace-store-log-sink,prune-runs}.ts` |
+| App configuration, database and telemetry | `packages/app-node/src/` |
+| Flow stores, configuration and retention | `packages/flow-host-node/src/{stores,run-store,task-store,trace-store,config,flow-dirs,retention}.ts` |
+| Portable trace storage and pruning | `packages/flow-host/src/{trace-store,prune-runs}.ts` |
 | Flow control and MCP facade | `packages/flow-client/src/` |
 | Flow CLI commands | `packages/cli/src/commands/{daemon,flows,runs,inbox}.ts`, `packages/cli/src/run-follow.tsx`, `packages/cli/src/prompts/` |
 | Host orchestration | `packages/host/src/` |
@@ -337,14 +339,10 @@ With an OpenTelemetry SDK, runs carry a `traceID` and a `flow.run` span.
 Recovered tasks retain their request trace context. Input requested by sibling tools still uses the session's elicitation handler.
 
 `@mokei/flow-host` defines portable JSON store contracts, including `TraceStore` and `createMemoryTraceStore`.
-`createTraceStoreSpanExporter` and `createTraceStoreLogSink` capture spans and correlated logs without Node imports.
+The daemon captures spans and correlated logs through `@hozon/otel` and `@hozon/logtape`, with setup owned by `@mokei/app-node`.
 Each new run owns a trace. Recovery retains its stored trace context.
 
-`@mokei/flow-host-node` supplies SQLite run, task and trace stores sharing one database owned by one process.
-Its configuration loaders resolve paths and load flow definitions at startup. Configuration changes apply on restart.
-Telemetry installs once per process and captures local spans and logs. Sibling-process telemetry is not ingested locally.
-Shutdown awaits retention, host and session disposal, telemetry disposal, then database closure.
-The [package lifecycle guide](../../packages/flow-host-node/README.md) describes setup, defaults and configuration.
+`@mokei/app-node` owns app configuration, telemetry and the one `HozonDB` (`mokei.db`) opened for the daemon. `MOKEI_DATABASE_PATH` overrides the default path. Flow runs and tasks register their hozon stores in this shared database; flow-host-node does not open a database or install telemetry. The daemon reads `mokei.json` for logging and tracing, and `flows.json` for flow configuration. Configuration changes apply on restart. Telemetry captures local spans and correlated logs; sibling-process telemetry is not ingested locally. Shutdown disposes the flow service, drains telemetry, then closes the database. See the [app foundation guide](../../packages/app-node/README.md) and [flow service guide](../../packages/flow-host-node/README.md).
 
 ### Composed flow daemon
 

@@ -1,16 +1,22 @@
-import { createMemoryTraceStore } from '@mokei/flow-host'
 import { context, trace } from '@opentelemetry/api'
 import { isSetup } from '@sozai/log'
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
-import { setupFlowTelemetry } from '../src/telemetry.js'
+import { setupMokeiTelemetry } from '../src/telemetry.js'
+import { useTestStores } from './support/stores.js'
+
+const stores = useTestStores()
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 test('requires a restart after registered telemetry fails to create its file sink', async () => {
-  const store = createMemoryTraceStore()
+  const { logStore, telemetryStore } = await stores()
   const cached = trace.getTracer('cached-before-setup')
   vi.stubEnv('MOKEI_LOG_DIR', '/dev/null/flow-telemetry-test')
   try {
-    expect(() => setupFlowTelemetry({ traceStore: store })).toThrow(
+    expect(() => setupMokeiTelemetry({ logStore, telemetryStore })).toThrow(
       expect.objectContaining({ code: 'ENOTDIR' }),
     )
     expect(isSetup()).toBe(false)
@@ -18,17 +24,16 @@ test('requires a restart after registered telemetry fails to create its file sin
     const span = cached.startSpan('cached-after-failure')
     const traceID = span.spanContext().traceId
     span.end()
-    let retry: ReturnType<typeof setupFlowTelemetry> | undefined
+    let retry: ReturnType<typeof setupMokeiTelemetry> | undefined
     try {
       expect(() => {
-        retry = setupFlowTelemetry({ traceStore: store, logs: { file: false } })
+        retry = setupMokeiTelemetry({ logStore, telemetryStore, logs: { file: false } })
       }).toThrow(/already installed/i)
     } finally {
       await retry?.dispose()
     }
-    expect((await store.getTrace(traceID)).spans).toEqual([])
+    expect(await telemetryStore.getSpans(traceID)).toEqual([])
   } finally {
-    vi.unstubAllEnvs()
     trace.disable()
     context.disable()
   }

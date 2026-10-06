@@ -1,11 +1,16 @@
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
+import { getLogStore } from '@hozon/store-log'
+import { getTelemetryStore } from '@hozon/store-telemetry'
+import { loadMokeiConfig, openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
 import {
   createFlowHandlers,
   createFlowService,
   createMonitorHandlers,
   createMonitorPresence,
+  FLOW_REPORT_CATEGORY,
   type FlowDesktopAdapter,
+  flowStoreDefinitions,
 } from '@mokei/flow-host-node'
 import { createDesktopInputSurface, createDesktopNotifier, openURL } from '@mokei/host-desktop'
 import { composeHandlers, serveHostDaemon } from '@mokei/host-node'
@@ -32,28 +37,81 @@ function createDesktopAdapter(): FlowDesktopAdapter {
   }
 }
 
-export async function startMokeiDaemon(params: {
+export type MokeiDaemonParams = {
   socketPath?: string
   pidPath?: string
+  /** Path to `mokei.json`. */
   configPath?: string
+  /** Path to `flows.json`. */
+  flowsConfigPath?: string
   databasePath?: string
   handleSignals?: boolean
   desktop?: FlowDesktopAdapter
   openURL?: (url: string) => Promise<void>
-}): Promise<DaemonHandle> {
-  const events = new EventTarget()
-  const presence = createMonitorPresence()
-  const service = createFlowService({
-    monitor: presence,
-    openURL: params.openURL ?? ((url) => openURL(url)),
-    configPath: params.configPath,
-    databasePath: params.databasePath,
-    desktop: params.desktop ?? createDesktopAdapter(),
-    onEvent: ({ type, ...detail }) => events.dispatchEvent(new CustomEvent(type, { detail })),
+}
+
+/** Internal acquisition boundary for tests; deliberately not part of a package entry point. */
+export type MokeiDaemonDependencies = {
+  loadConfig: typeof loadMokeiConfig
+  openDatabase: typeof openMokeiDatabase
+  setupTelemetry: typeof setupMokeiTelemetry
+}
+
+async function release(steps: Array<() => void | Promise<void>>): Promise<Array<unknown>> {
+  const errors: Array<unknown> = []
+  for (const step of steps) {
+    try {
+      await step()
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+  return errors
+}
+
+export function startMokeiDaemon(params: MokeiDaemonParams): Promise<DaemonHandle> {
+  return startMokeiDaemonWithDependencies(params, {
+    loadConfig: loadMokeiConfig,
+    openDatabase: openMokeiDatabase,
+    setupTelemetry: setupMokeiTelemetry,
   })
-  let daemon: DaemonHandle
+}
+
+export async function startMokeiDaemonWithDependencies(
+  params: MokeiDaemonParams,
+  dependencies: MokeiDaemonDependencies,
+): Promise<DaemonHandle> {
+  // A bad mokei.json rejects boot before any database file is created.
+  const config = await dependencies.loadConfig(params.configPath)
+  const database = await dependencies.openDatabase({
+    path: params.databasePath,
+    stores: flowStoreDefinitions,
+  })
+  // Acquired resources, released in reverse order on shutdown or a failed boot.
+  const acquired: Array<() => void | Promise<void>> = [() => database.close()]
+  const releaseAcquired = () => release([...acquired].reverse())
   try {
-    daemon = await serveHostDaemon({
+    const telemetry = dependencies.setupTelemetry({
+      logStore: await getLogStore(database),
+      telemetryStore: await getTelemetryStore(database),
+      otlp: config.tracing.otlp,
+      logs: config.logs,
+      reportCategories: [FLOW_REPORT_CATEGORY],
+    })
+    acquired.push(() => telemetry.dispose())
+    const events = new EventTarget()
+    const presence = createMonitorPresence()
+    const service = createFlowService({
+      database,
+      monitor: presence,
+      openURL: params.openURL ?? ((url) => openURL(url)),
+      configPath: params.flowsConfigPath,
+      desktop: params.desktop ?? createDesktopAdapter(),
+      onEvent: ({ type, ...detail }) => events.dispatchEvent(new CustomEvent(type, { detail })),
+    })
+    acquired.push(() => service.dispose())
+    acquired.push(() => presence.dispose())
+    const daemon = await serveHostDaemon({
       events,
       socketPath: params.socketPath,
       pidPath: params.pidPath,
@@ -63,25 +121,25 @@ export async function startMokeiDaemon(params: {
       handlers: composeHandlers(createFlowHandlers(service), createMonitorHandlers(presence)),
       flowStatus: () => service.status(),
       onShutdown: async () => {
-        presence.dispose()
-        await service.dispose()
+        // Presence, flow service, telemetry, then the database: no write lands on a closed database.
+        const errors = await releaseAcquired()
+        if (errors.length === 1) throw errors[0]
+        if (errors.length > 1) throw new AggregateError(errors, 'Daemon shutdown failed')
       },
     })
+    // Flow startup cannot delay proxy admission or reject an already bound daemon.
+    void service.start().catch((error: unknown) => console.error(error))
+    return daemon
   } catch (error) {
-    presence.dispose()
-    try {
-      await service.dispose()
-    } catch (cleanupError) {
+    const cleanupErrors = await releaseAcquired()
+    if (cleanupErrors.length > 0) {
       // biome-ignore lint/style/useErrorCause: AggregateError takes cause in its third argument.
-      throw new AggregateError([error, cleanupError], 'Daemon boot and cleanup failed', {
+      throw new AggregateError([error, ...cleanupErrors], 'Daemon boot and cleanup failed', {
         cause: error,
       })
     }
     throw error
   }
-  // Flow startup cannot delay proxy admission or reject an already bound daemon.
-  void service.start().catch((error: unknown) => console.error(error))
-  return daemon
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -90,6 +148,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       'socket-path': { type: 'string' },
       'pid-path': { type: 'string' },
       'config-path': { type: 'string' },
+      'flows-config-path': { type: 'string' },
       'database-path': { type: 'string' },
     },
   })
@@ -97,6 +156,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     socketPath: values['socket-path'],
     pidPath: values['pid-path'],
     configPath: values['config-path'],
+    flowsConfigPath: values['flows-config-path'],
     databasePath: values['database-path'],
   })
 }

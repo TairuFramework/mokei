@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type * as NodeStreamsExports from '@enkaku/node-streams'
 import { createTransportStream } from '@enkaku/node-streams'
+import type * as AppNodeExports from '@mokei/app-node'
 import type * as FlowHostNodeExports from '@mokei/flow-host-node'
 import { createFlowService, type FlowService, type FlowServiceParams } from '@mokei/flow-host-node'
 import {
@@ -28,6 +29,11 @@ import { startMokeiDaemon } from '../src/daemon-entry.js'
 vi.mock('@mokei/host-node', async (importOriginal) => {
   const actual = await importOriginal<typeof HostNodeExports>()
   return { ...actual, runDaemon: vi.fn(), serveHostDaemon: vi.fn(actual.serveHostDaemon) }
+})
+// Telemetry installs process-wide once; these tests boot many daemons in one process.
+vi.mock('@mokei/app-node', async (importOriginal) => {
+  const actual = await importOriginal<typeof AppNodeExports>()
+  return { ...actual, setupMokeiTelemetry: vi.fn(() => ({ dispose: async () => {} })) }
 })
 vi.mock('@mokei/flow-host-node', async (importOriginal) => {
   const actual = await importOriginal<typeof FlowHostNodeExports>()
@@ -58,6 +64,7 @@ let params: {
   socketPath: string
   pidPath: string
   configPath: string
+  flowsConfigPath: string
   databasePath: string
   handleSignals: false
 }
@@ -75,8 +82,9 @@ beforeEach(async () => {
   params = {
     socketPath: join(directory, 'daemon.sock'),
     pidPath: join(directory, 'daemon.pid'),
-    configPath: join(directory, 'flows.json'),
-    databasePath: join(directory, 'flows.db'),
+    configPath: join(directory, 'mokei.json'),
+    flowsConfigPath: join(directory, 'flows.json'),
+    databasePath: join(directory, 'mokei.db'),
     handleSignals: false,
   }
   vi.mocked(createDesktopInputSurface).mockReturnValue(surface)
@@ -165,7 +173,7 @@ test('generic serving is available while flow initialization is delayed', async 
 })
 
 test('failed flow initialization preserves info, events and proxy handlers', async () => {
-  await writeFile(params.configPath, '{ invalid')
+  await writeFile(params.flowsConfigPath, '{ invalid')
   const daemon = await startMokeiDaemon(params)
   const client = await createClient(params.socketPath)
   const stream = client.createStream('events')
@@ -252,7 +260,7 @@ test('two connections share one flow service and event bridge', async () => {
 })
 
 test('desktop adapter uses explicit prompts and generic notifications without model tools', async () => {
-  await writeFile(params.configPath, JSON.stringify({ desktop: { notifications: true } }))
+  await writeFile(params.flowsConfigPath, JSON.stringify({ desktop: { notifications: true } }))
   let serviceParams!: FlowServiceParams
   const actual = await vi.importActual<typeof FlowHostNodeExports>('@mokei/flow-host-node')
   vi.mocked(createFlowService).mockImplementationOnce((options) => {

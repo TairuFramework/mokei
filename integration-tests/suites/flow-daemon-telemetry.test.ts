@@ -46,13 +46,14 @@ test.each([
       expect(Date.now() - start).toBeLessThan(60_000)
       expect(replies).toBeGreaterThan(0)
       if (exitCode !== 0) {
-        expect(fixture.diagnostics()).toContain('Failed to dispose flow service')
-        expect(fixture.diagnostics()).toContain('Failed to dispose flow telemetry')
+        // The daemon, not the flow service, owns telemetry.
+        expect(fixture.diagnostics()).toContain('Failed to dispose mokei telemetry')
+        expect(fixture.diagnostics()).not.toContain('Failed to dispose flow service')
         expect(fixture.diagnostics()).not.toContain('onShutdown timed out')
       }
       if (run.traceID == null) throw new Error('Missing trace ID')
       // Check before opening another reader, which could itself checkpoint a leftover WAL.
-      expect(existsSync(join(fixture.directory, 'flows.db-wal'))).toBe(false)
+      expect(existsSync(join(fixture.directory, 'mokei.db-wal'))).toBe(false)
       expect((await fixture.readTrace(run.traceID)).spans).toContainEqual(
         expect.objectContaining({ name: 'flow.run', traceID: run.traceID }),
       )

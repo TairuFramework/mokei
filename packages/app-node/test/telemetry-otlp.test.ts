@@ -1,12 +1,14 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { createMemoryTraceStore } from '@mokei/flow-host'
 import { trace } from '@opentelemetry/api'
 import { getLogger } from '@sozai/log'
 import { createFileSink } from '@tejika/log'
 import { expect, test, vi } from 'vitest'
 
-import { setupFlowTelemetry } from '../src/index.js'
+import { setupMokeiTelemetry } from '../src/index.js'
+import { useTestStores } from './support/stores.js'
+
+const stores = useTestStores()
 
 const file = vi.hoisted(() => ({ sink: vi.fn(), dispose: vi.fn() }))
 vi.mock('@tejika/log', () => ({
@@ -14,7 +16,7 @@ vi.mock('@tejika/log', () => ({
 }))
 
 test('exports OTLP spans to a local HTTP receiver', async () => {
-  expect(setupFlowTelemetry).toBeTypeOf('function')
+  expect(setupMokeiTelemetry).toBeTypeOf('function')
   const requests: Array<{ path?: string; header?: string | Array<string>; body: string }> = []
   const server = createServer((request, response) => {
     const chunks: Array<Buffer> = []
@@ -33,12 +35,13 @@ test('exports OTLP spans to a local HTTP receiver', async () => {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', resolve)
   })
-  const store = createMemoryTraceStore()
+  const { logStore, telemetryStore } = await stores()
   const port = (server.address() as AddressInfo).port
-  let handle: ReturnType<typeof setupFlowTelemetry> | undefined
+  let handle: ReturnType<typeof setupMokeiTelemetry> | undefined
   try {
-    handle = setupFlowTelemetry({
-      traceStore: store,
+    handle = setupMokeiTelemetry({
+      logStore,
+      telemetryStore,
       otlp: {
         endpoint: `http://127.0.0.1:${port}/v1/traces`,
         headers: { 'x-telemetry-test': 'configured' },
@@ -60,7 +63,7 @@ test('exports OTLP spans to a local HTTP receiver', async () => {
     expect(requests[0]?.path).toBe('/v1/traces')
     expect(requests[0]?.header).toBe('configured')
     expect(requests[0]?.body).toContain('exported span')
-    expect((await store.getTrace(traceID)).logs.map((log) => log.message)).toEqual([
+    expect((await logStore.getTraceLogs(traceID)).map((log) => log.message)).toEqual([
       'included debug',
     ])
     expect(file.sink).toHaveBeenCalledOnce()

@@ -4,10 +4,10 @@ import { describe, expect, test } from 'vitest'
 
 import { mutateNested, runRecord } from '../support/records.js'
 
-export function runStoreContract(name: string, create: () => RunStore): void {
+export function runStoreContract(name: string, create: () => RunStore | Promise<RunStore>): void {
   describe(name, () => {
     test('rejects duplicates, missing updates and stale revisions', async () => {
-      const store = create()
+      const store = await create()
       const run = runRecord()
       await store.create(run)
       await expect(store.create(run)).rejects.toThrow(`Run already exists: ${run.runID}`)
@@ -23,7 +23,7 @@ export function runStoreContract(name: string, create: () => RunStore): void {
       )
     })
     test('forces the key and revision and admits one concurrent CAS winner', async () => {
-      const store = create()
+      const store = await create()
       const run = runRecord()
       await store.create(run)
       expect(
@@ -41,7 +41,7 @@ export function runStoreContract(name: string, create: () => RunStore): void {
       expect((await store.get(run.runID))?.revision).toBe(2)
     })
     test('isolates all nested input, patch, get, update and list boundaries', async () => {
-      const store = create()
+      const store = await create()
       const input = runRecord()
       const expected = runRecord()
       await store.create(input)
@@ -60,7 +60,7 @@ export function runStoreContract(name: string, create: () => RunStore): void {
       expect(await store.get(expected.runID)).toEqual(wanted)
     })
     test('orders creation ties by insertion and combines filters, limits and strict cutoff', async () => {
-      const store = create()
+      const store = await create()
       await store.create(runRecord({ runID: 'first', createdAt: 10, updatedAt: 19 }))
       await store.create(runRecord({ runID: 'second', createdAt: 10, updatedAt: 20 }))
       await store.create(
@@ -77,18 +77,18 @@ export function runStoreContract(name: string, create: () => RunStore): void {
       expect(await store.list({ updatedBefore: 18 })).toEqual([])
     })
     test('accepts large non-negative integer limits', async () => {
-      const store = create()
+      const store = await create()
       await store.create(runRecord())
       expect(await store.list({ limit: Number.MAX_VALUE })).toEqual([runRecord()])
     })
     test.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
       'rejects invalid limit %s',
       async (limit) => {
-        await expect(create().list({ limit })).rejects.toBeInstanceOf(RangeError)
+        await expect((await create()).list({ limit })).rejects.toBeInstanceOf(RangeError)
       },
     )
     test('deletes existing and missing records', async () => {
-      const store = create()
+      const store = await create()
       expect(await store.get('missing')).toBeUndefined()
       await store.create(runRecord())
       await store.delete('run-one')

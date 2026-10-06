@@ -36,12 +36,12 @@ catalog:
   '@kokuin/token': ^0.5.0
   '@logtape/logtape': ^2.3.11
   '@sozai/async': ^0.4.0
-  '@sozai/codec': ^0.4.1
-  '@sozai/event': ^0.1.4
-  '@sozai/generator': ^0.2.1
+  '@sozai/codec': ^0.4.2
+  '@sozai/event': ^0.1.5
+  '@sozai/generator': ^0.2.2
   '@sozai/log': ^0.4.0
   '@sozai/otel': ^0.3.3
-  '@sozai/flow-graph': ^0.2.2
+  '@sozai/flow-graph': ^0.2.3
   '@sozai/json': ^0.3.0
   '@sozai/runtime': ^0.1.0
   '@sozai/schema': ^0.1.6
@@ -50,30 +50,37 @@ catalog:
   '@opentelemetry/context-async-hooks': ^2.11.0
   '@opentelemetry/exporter-trace-otlp-http': ^0.222.0
   '@opentelemetry/sdk-trace-base': ^2.11.0
-  '@sozai/stream': ^0.2.1
+  '@sozai/stream': ^0.2.2
   '@standard-schema/spec': ^1.1.0
   '@tejika/cli': ^0.4.2
-  '@tejika/env': ^0.5.2
+  '@tejika/db': ^0.1.0
+  '@tejika/env': ^0.5.3
   '@tejika/log': ^0.4.1
   '@tejika/process': ^0.5.2
   '@tejika/server': ^0.4.1
   '@tejika/test': ^0.4.2
   '@tejika/ui': ^0.4.2
+  '@hozon/adapter': ^0.1.0
+  '@hozon/db': ^0.1.0
+  '@hozon/logtape': ^0.1.0
+  '@hozon/otel': ^0.1.0
+  '@hozon/store-log': ^0.1.0
+  '@hozon/store-telemetry': ^0.1.0
   '@hono/node-server': ^2.1.3
   '@inkjs/ui': ^2.0.0
-  '@mantine/core': ^9.6.3
-  '@mantine/hooks': ^9.6.3
-  '@mantine/notifications': ^9.6.3
-  '@modelcontextprotocol/client': 2.3.0
-  '@modelcontextprotocol/core': 2.3.0
+  '@mantine/core': ^9.7.0
+  '@mantine/hooks': ^9.7.0
+  '@mantine/notifications': ^9.7.0
+  '@modelcontextprotocol/client': 2.3.1
+  '@modelcontextprotocol/core': 2.3.1
   '@modelcontextprotocol/ext-tasks': 0.2.2
   '@modelcontextprotocol/node': 2.1.1
-  '@modelcontextprotocol/server': 2.3.0
+  '@modelcontextprotocol/server': 2.3.1
   '@swc/cli': ^0.8.1
   '@swc/core': ^1.15.41
   '@testing-library/react': ^16.3.3
   '@testing-library/user-event': ^14.6.7
-  '@tabler/icons-react': ^3.48.0
+  '@tabler/icons-react': ^3.49.0
   '@tanstack/react-router': ^1.170.41
   '@tanstack/react-virtual': ^3.14.13
   '@tanstack/router-devtools': ^1.167.2
@@ -83,7 +90,7 @@ catalog:
   '@types/react': ^19.3.0
   '@types/react-dom': ^19.3.0
   '@types/turndown': ^5.0.6
-  '@vitejs/plugin-react': ^6.1.1
+  '@vitejs/plugin-react': ^6.1.2
   '@vitest/ui': ^4.1.9
   ansi-colors: ^4.1.3
   del-cli: ^7.0.0
@@ -91,17 +98,18 @@ catalog:
   execa: ^10.0.1
   get-port: ^7.2.0
   globals: ^17.13.0
-  hono: ^4.13.12
+  hono: ^4.13.13
   ink: ^7.1.1
   commander: ^15.0.0
   ink-testing-library: ^4.0.0
   jotai: ^3.0.1
-  jsdom: ^30.1.1
+  jsdom: ^30.1.2
+  kysely: ^0.29.6
   ky: ^2.1.0
   luxon: ^3.7.2
   nano-spawn: ^2.1.0
   parse-sse: ^0.1.0
-  postcss: ^8.5.28
+  postcss: ^8.5.29
   postcss-preset-mantine: ^1.18.0
   postcss-simple-vars: ^7.0.1
   prism-react-renderer: ^2.3.0
@@ -124,6 +132,7 @@ overrides:
 
 minimumReleaseAgeExclude:
   - '@enkaku/*'
+  - '@hozon/*'
   - '@kigu/*'
   - '@kokuin/*'
   - '@sozai/*'
@@ -136,6 +145,7 @@ minimumReleaseAgeExclude:
 versioning:
   fixed:
     - - '@mokei/anthropic-provider'
+      - '@mokei/app-node'
       - '@mokei/context-client'
       - '@mokei/context-protocol'
       - '@mokei/context-rpc'

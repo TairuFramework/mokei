@@ -3,6 +3,8 @@ import type { RunStore, TraceStore } from '@mokei/flow-host'
 import { pruneRuns } from '@mokei/flow-host'
 import { getReporter } from '@sozai/log'
 
+import { FLOW_REPORT_CATEGORY } from './report.js'
+
 export function startRetention(params: {
   runStore: RunStore
   taskStore: TaskStore
@@ -11,7 +13,7 @@ export function startRetention(params: {
   intervalMs?: number
 }): { stop(): Promise<void> } {
   const { runStore, taskStore, traceStore, days, intervalMs = 86400000 } = params
-  const report = getReporter(['mokei', 'flow-host', 'capture'], '@mokei/flow-host')
+  const report = getReporter([...FLOW_REPORT_CATEGORY], '@mokei/flow-host')
   let running: Promise<void> | undefined
   let stopped = false
   let stopping: Promise<void> | undefined

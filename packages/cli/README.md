@@ -85,6 +85,19 @@ They all accept `-s, --socket-path <path>` (default: the mokei daemon socket, re
 `daemon logs`, `--json` to print one JSON document. `runs`, `inbox` and `flows` start the daemon
 when it is not running.
 
+## Daemon configuration and storage
+
+The daemon reads `<mokei data dir>/mokei.json` for app logging and tracing settings, then
+`<mokei data dir>/flows.json` for flow definitions, sibling servers, approval policy, retention
+and desktop notification settings. A missing file uses its defaults. `mokei.json` can be selected
+with `MOKEI_CONFIG_PATH`; `flows.json` has no environment override.
+
+The daemon stores flow runs, tasks, logs and spans in the single `<mokei data dir>/mokei.db`
+file. `MOKEI_DATABASE_PATH` overrides that default. Its daemon entry accepts `--config-path`
+(for `mokei.json`), `--flows-config-path` (for `flows.json`) and `--database-path` to select
+explicit paths. Invalid `mokei.json` prevents daemon startup; invalid `flows.json` leaves the
+daemon running while the flow service reports a failed state. Restart after changing either file.
+
 ### `mokei daemon`
 
 Manage the host daemon.
@@ -93,7 +106,7 @@ Manage the host daemon.
 mokei daemon start                 start the daemon and wait for the flow service
 mokei daemon stop                  stop the daemon, letting in-flight work drain
 mokei daemon status                show whether the daemon is running
-mokei daemon restart               stop then start, applying flows.json changes
+mokei daemon restart               stop then start, applying configuration changes
 mokei daemon logs [-n <count>] [-f]  print the daemon log (default 50 lines); -f follows
 ```
 

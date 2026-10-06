@@ -42,31 +42,32 @@
   },
   "dependencies": {
     "@enkaku/server": "catalog:",
-    "@logtape/logtape": "catalog:",
+    "@hozon/adapter": "catalog:",
+    "@hozon/db": "catalog:",
+    "@hozon/store-log": "catalog:",
+    "@hozon/store-telemetry": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/flow-host": "workspace:^",
     "@mokei/host-desktop": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "@mokei/session-node": "workspace:^",
-    "@opentelemetry/api": "catalog:",
-    "@opentelemetry/context-async-hooks": "catalog:",
-    "@opentelemetry/exporter-trace-otlp-http": "catalog:",
-    "@opentelemetry/sdk-trace-base": "catalog:",
     "@sozai/async": "catalog:",
     "@sozai/flow-graph": "catalog:",
     "@sozai/log": "catalog:",
     "@sozai/schema": "catalog:",
     "@tejika/env": "catalog:",
-    "@tejika/log": "catalog:"
+    "kysely": "catalog:"
   },
   "devDependencies": {
     "@enkaku/client": "catalog:",
     "@enkaku/protocol": "catalog:",
     "@enkaku/transport": "catalog:",
     "@kokuin/token": "catalog:",
+    "@mokei/app-node": "workspace:^",
     "@mokei/decision-flow": "workspace:^",
     "@mokei/session": "workspace:^",
+    "@tejika/db": "catalog:",
     "@types/node": "catalog:"
   }
 }

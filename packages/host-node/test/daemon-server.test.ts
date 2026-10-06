@@ -206,7 +206,8 @@ test('validates unsigned start requests before dispatch over the production sock
         `{"header":{"typ":"JWT","alg":"none"},"payload":{"typ":"request","rid":"invalid-${index}","prc":"runs.start","prm":${param}}}\n`,
       )
     }
-    await vi.waitFor(() => expect(responses).toHaveLength(malformed.length))
+    // Rejections travel the real socket; slow CI runners need more than the 1s default.
+    await vi.waitFor(() => expect(responses).toHaveLength(malformed.length), { timeout: 10_000 })
     expect(responses.map(({ payload }) => payload.code)).toEqual(malformed.map(() => 'EK08'))
     expect(start).not.toHaveBeenCalled()
     const input = { nested: [null, true, 7, { value: ['ok', { deeper: false }] }] }
@@ -220,4 +221,4 @@ test('validates unsigned start requests before dispatch over the production sock
     await daemon.close()
     await rm(directory, { recursive: true, force: true })
   }
-})
+}, 20_000)

@@ -1,35 +1,31 @@
 # @mokei/flow-host-node
 
-Node-only durable flow service, SQLite storage, telemetry, configuration and retention for `@mokei/flow-host`.
+Node-only flow service, hozon store definitions, configuration and retention for `@mokei/flow-host`.
 The portable runtime remains Node-free. See the [architecture](../../docs/agents/architecture.md#flow-runtime).
 
 ## Installation
 
 ```sh
-pnpm add @mokei/flow-host-node @mokei/flow-host @mokei/session-node
+pnpm add @mokei/flow-host-node @mokei/flow-host @mokei/session-node @mokei/app-node @mokei/host-node @hozon/store-log @hozon/store-telemetry
 ```
 
-The package requires Node.js with `node:sqlite` support. One process owns the database and telemetry installation.
+The package requires Node.js. The application owns the shared database and telemetry installation.
 
 ## Public entry points
 
 | Entry point | Behaviour |
 |-------------|-----------|
-| `openFlowDatabase({ path? })` | Creates parent directories, opens SQLite, migrates the schema and returns `{ db, close }`. |
-| `createSQLiteRunStore(db)` | Creates a portable `RunStore` with revision-based compare-and-swap updates. |
-| `createSQLiteTaskStore(db)` | Creates a persistent MCP `TaskStore` with revision-based compare-and-swap updates. |
-| `createSQLiteTraceStore(db)` | Creates a portable `TraceStore` for span and log capture, lookup and deletion. |
-| `setupFlowTelemetry({ traceStore, otlp?, logs? })` | Installs tracing and logging once per process and returns asynchronous `dispose`. |
-| `loadFlowConfig(path?)` | Reads and validates configuration, applies defaults and resolves configured paths. |
+| `getFlowRunStore(db)` | Resolves a portable `RunStore` with revision-based compare-and-swap updates. |
+| `getFlowTaskStore(db)` | Resolves a persistent MCP `TaskStore` with revision-based compare-and-swap updates. |
+| `createFlowTraceStore(db)` | Creates a portable `TraceStore` for span and log capture, lookup and deletion. |
+| `flowStoreDefinitions`, `runStoreDefinition`, `taskStoreDefinition` | Flow run and task store definitions to register in the app database. |
+| `loadFlowConfig(path?)` | Reads and validates `flows.json`, applies defaults and resolves configured paths. |
 | `loadFlowDirs(dirs)` | Returns `{ files, flows }` from JSON files in the supplied directories. |
 | `startRetention({ runStore, taskStore, traceStore, days, intervalMs? })` | Starts immediate and periodic pruning and returns asynchronous `stop`. |
-| `createFlowService({ configPath?, databasePath?, desktop?, onEvent })` | Owns shared initialisation, recovery, desktop policy and cleanup. |
+| `createFlowService({ database, configPath?, desktop?, onEvent, ... })` | Creates the service over an application-owned database. |
 | `createFlowHandlers(service)` | Binds the 13 flow, run and inbox host-protocol procedures to that service. |
 
-The default database is `join(getDataDir('mokei'), 'mokei.db')`. An explicit `:memory:` path creates an in-memory database.
-SQLite uses `journal_mode = WAL`, `busy_timeout = 5000` and `foreign_keys = ON`.
-Opening a database with a newer schema version fails rather than changing it.
-All three stores share the database. Their factories take the database positionally.
+`flowStoreDefinitions` contains only the flow run and task definitions. The daemon registers them alongside the log and telemetry stores when it opens the shared `mokei.db` through `@mokei/app-node`. Flow-host-node does not open a database or install telemetry.
 
 ## Composed daemon
 
@@ -40,7 +36,7 @@ connection to share and injects native desktop operations from `@mokei/host-desk
 desktop implementations. Custom applications can compose the same service through
 [`serveHostDaemon`](../host-node/README.md#daemon-composition).
 
-Configuration comes from `getDataDir('mokei')/flows.json`.
+Configuration comes from `getDataDir('mokei')/flows.json`, independently of app-level `mokei.json`.
 The service's `start()` is idempotent. Generic proxy and monitor status inspection are available
 while flows initialise, and stay available if flow startup fails.
 
@@ -143,99 +139,91 @@ Caller cancellation, disconnect or shutdown releases prompt ownership and aborts
 while leaving its item pending. A user-selected cancel follows runtime inbox cancellation.
 Unsupported dialogs leave the item available for another answer surface.
 
-## Setup and shutdown
+## Daemon wiring and shutdown
 
-This example loads configuration and flows, connects configured sibling MCP servers and recovers stored work.
-The default predictor uses the session's System One MCP tool when a flow contains decision nodes.
-Configured sibling commands and flow definitions must be available before startup.
+The daemon loads app-level configuration and opens the shared database before creating the flow service. A composed application can use the same wiring pattern:
 
 ```typescript
-import { createFlowHost } from '@mokei/flow-host'
+import { getLogStore } from '@hozon/store-log'
+import { getTelemetryStore } from '@hozon/store-telemetry'
+import { loadMokeiConfig, openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
 import {
-  createSQLiteRunStore,
-  createSQLiteTaskStore,
-  createSQLiteTraceStore,
-  loadFlowConfig,
-  loadFlowDirs,
-  openFlowDatabase,
-  setupFlowTelemetry,
-  startRetention,
+  createFlowHandlers,
+  createFlowService,
+  FLOW_REPORT_CATEGORY,
+  flowStoreDefinitions,
 } from '@mokei/flow-host-node'
-import { NodeSession } from '@mokei/session-node'
+import { composeHandlers, serveHostDaemon } from '@mokei/host-node'
 
-const config = await loadFlowConfig()
-const { flows } = await loadFlowDirs(config.flowDirs)
-const database = openFlowDatabase({})
-const runStore = createSQLiteRunStore(database.db)
-const taskStore = createSQLiteTaskStore(database.db)
-const traceStore = createSQLiteTraceStore(database.db)
-const telemetry = setupFlowTelemetry({
-  traceStore,
-  otlp: config.tracing.otlp,
-  logs: config.logs,
-})
-const session = new NodeSession({ elicit: true })
-for (const [key, sibling] of Object.entries(config.siblings)) {
-  await session.addContext({ key, ...sibling })
-}
-const host = await createFlowHost({
-  session,
-  flows,
-  approval: config.approval,
-  runStore,
-  taskStore,
-})
-const retention = startRetention({
-  runStore,
-  taskStore,
-  traceStore,
-  days: config.retention.days,
-})
-
-async function shutdown(): Promise<void> {
-  await retention.stop()
-  try {
-    await host.dispose()
-  } finally {
+// Release in reverse order, attempting every step and keeping every error.
+async function release(steps: Array<() => Promise<void> | undefined>): Promise<void> {
+  const errors: Array<unknown> = []
+  for (const step of steps) {
     try {
-      await session.dispose()
-    } finally {
-      try {
-        await telemetry.dispose()
-      } finally {
-        database.close()
-      }
+      await step()
+    } catch (error) {
+      errors.push(error)
     }
   }
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1) throw new AggregateError(errors, 'Shutdown failed')
 }
 
-process.once('SIGINT', () => {
-  void shutdown().catch((error: unknown) => {
-    console.error(error)
-    process.exitCode = 1
+const appConfig = await loadMokeiConfig()
+const database = await openMokeiDatabase({ stores: flowStoreDefinitions })
+let telemetry: ReturnType<typeof setupMokeiTelemetry> | undefined
+let service: ReturnType<typeof createFlowService> | undefined
+const shutdown = () =>
+  release([() => service?.dispose(), () => telemetry?.dispose(), () => database.close()])
+try {
+  telemetry = setupMokeiTelemetry({
+    logStore: await getLogStore(database),
+    telemetryStore: await getTelemetryStore(database),
+    otlp: appConfig.tracing.otlp,
+    logs: appConfig.logs,
+    reportCategories: [FLOW_REPORT_CATEGORY],
   })
-})
+  const events = new EventTarget()
+  const flows = createFlowService({
+    database,
+    onEvent: ({ type, ...detail }) => events.dispatchEvent(new CustomEvent(type, { detail })),
+  })
+  service = flows
+  await serveHostDaemon({
+    events,
+    handlers: composeHandlers(createFlowHandlers(flows)),
+    flowStatus: () => flows.status(),
+    onShutdown: shutdown,
+  })
+  await flows.start()
+} catch (error) {
+  // Partial boot: release what was acquired, then surface the original error.
+  await shutdown().catch(() => {})
+  throw error
+}
+// Closing the daemon runs onShutdown, which releases everything in reverse order.
 ```
 
-Shutdown order is retention, host and session, telemetry, then database.
+The flow service takes the shared database as `database`; it never opens or closes it. In the daemon, the service is disposed before telemetry, and the database closes last. The service stops retention, suspends stored runs, disconnects sibling sessions and disposes its host as part of its own shutdown.
 `stop()` prevents new retention passes and awaits an existing pass.
 Host disposal suspends work for recovery. It does not cancel stored runs.
 Task TTL defaults to `null`, including tasks waiting for input.
 Explicit cancellation before disposal ends runs instead of suspending them.
 
 Before shutdown, stop accepting requests and await application-owned pending calls.
-Await every disposal promise before closing SQLite. Telemetry disposal drains batched spans and queued logs.
+Await every disposal promise before closing the hozon database. Telemetry disposal drains batched spans and queued logs.
 Startup failures also require cleanup of resources already created, in the same order.
+Attempt every cleanup step even when an earlier one fails, so the database still closes.
 Recovery requires the same flow definitions and sibling tools on restart.
 Recovery events can fire during `createFlowHost`. Its `listeners` option receives those events during construction.
 
 ## Configuration
 
-`loadFlowConfig()` defaults to `join(getDataDir('mokei'), 'flows.json')`.
+`loadFlowConfig()` defaults to `join(getDataDir('mokei'), 'flows.json')`. This file configures `siblings`, `flowDirs`, `approval`, `retention` and `desktop`; app logging and tracing belong in `mokei.json` and are not accepted here.
 A missing file returns defaults. Invalid JSON or schema violations throw `FlowConfigError`, with `path`, `issues` and a message.
 Unknown properties are rejected. Supplied sections must satisfy their schema's required fields.
 An empty `desktop: {}` section is allowed and keeps notifications disabled.
-Omitted sections use defaults: empty siblings and flow directories, empty approval allowlist, no OTLP, `info` logs, 30-day retention and `desktop.notifications: false`.
+Omitted sections use defaults: empty siblings and flow directories, empty approval allowlist, 30-day retention and `desktop.notifications: false`.
 The loader runs at startup. Configuration changes take effect on restart, without a file watcher.
 
 A complete configuration example:
@@ -251,13 +239,6 @@ A complete configuration example:
   },
   "flowDirs": ["./flows", "~/shared-flows"],
   "approval": { "allow": ["system-one:predict"] },
-  "tracing": {
-    "otlp": {
-      "endpoint": "http://127.0.0.1:4318/v1/traces",
-      "headers": { "x-service": "mokei" }
-    }
-  },
-  "logs": { "level": "info" },
   "retention": { "days": 30 },
   "desktop": { "notifications": false }
 }
@@ -268,7 +249,6 @@ Sibling arguments ending in `.js`, `.mjs` or `.cjs` also resolve there, unless t
 `~` and `~/` expand to the home directory. Absolute paths, URLs and other tilde forms remain unchanged.
 Commands, environment values and other arguments remain unchanged.
 Retention days must be an integer of at least one.
-Log levels are `trace`, `debug`, `info`, `warning`, `error` and `fatal`.
 
 `loadFlowDirs` reads only top-level `.json` files, in sorted filename order within each directory.
 Directory order follows the supplied array. It parses JSON without validating flow definitions.
@@ -291,10 +271,10 @@ Both deletion methods return `{ spans, logs }` counts. Times use epoch milliseco
 
 ## Telemetry lifetime and capture
 
-`setupFlowTelemetry` installs an asynchronous context manager and a global OpenTelemetry tracer provider.
+`@mokei/app-node` installs an asynchronous context manager and a global OpenTelemetry tracer provider for the daemon.
 Existing logging configuration, a global tracer provider or a global context manager prevents installation.
 Successful global tracer-provider registration consumes the process lifetime, even if later file-sink or logging setup fails. Owned resources are cleaned up, but cached tracers retain the original provider. Restart the process after such a failure or after disposal to install telemetry again. Failures before provider registration can be retried after their cause is corrected.
-Host recreation can reuse the installed telemetry while its database remains open.
+The daemon installs telemetry once per process. Keep the database open until telemetry disposal finishes.
 
 Local span capture is batched. Optional OTLP HTTP export runs alongside local capture.
 Export requests, span batches and provider flushes each have a fixed 10-second timeout, overriding corresponding OpenTelemetry environment defaults.
