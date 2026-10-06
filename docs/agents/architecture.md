@@ -219,7 +219,7 @@ binding.
 | System One classification | `@mokei/system-one-client`, `@mokei/mcp-system-one` | `HTTPSystemOneBackend`, `createSystemOneTools` |
 | Desktop elicitation and input inbox | `@mokei/host-desktop` | `createDesktopElicitHandler`, `createInputInbox`, `createDesktopTools` |
 | Decision flows as MCP tasks | `@mokei/decision-flow`, `@mokei/decision-flow-server` | `createDecisionFlowGraph`, `addDecisionFlow`, `createDecisionFlowServer` |
-| Durable flow stores | `@mokei/flow-host-node` | `openFlowDatabase`, `createSQLiteRunStore`, `createSQLiteTaskStore`, `createSQLiteTraceStore` |
+| Durable flow stores | `@mokei/flow-host-node` | `openFlowDatabase`, `flowStoreDefinitions`, `getFlowRunStore`, `getFlowTaskStore`, `createFlowTraceStore` |
 | Flow telemetry, configuration and retention | `@mokei/flow-host-node` | `setupFlowTelemetry`, `loadFlowConfig`, `loadFlowDirs`, `startRetention` |
 | Shared daemon flow service | `@mokei/flow-host-node`, `@mokei/host-node`, `mokei` | `createFlowService`, `createFlowHandlers`, `serveHostDaemon`, CLI `daemon-entry.js` |
 | Portable trace capture and pruning | `@mokei/flow-host` | `TraceStore`, `createMemoryTraceStore`, `pruneRuns` |
@@ -298,9 +298,9 @@ website/                  # documentation site (private)
 | Server creation | `packages/context-server/src/` |
 | Client implementation | `packages/context-client/src/` |
 | Flow runtime | `packages/flow-host/src/` |
-| Flow database and stores | `packages/flow-host-node/src/{database,sqlite-run-store,sqlite-task-store,sqlite-trace-store}.ts` |
+| Flow database and stores | `packages/flow-host-node/src/{stores,run-store,task-store,trace-store}.ts` |
 | Flow telemetry, configuration and retention | `packages/flow-host-node/src/{telemetry,config,flow-dirs,retention}.ts` |
-| Portable trace storage and pruning | `packages/flow-host/src/{trace-store,trace-store-span-exporter,trace-store-log-sink,prune-runs}.ts` |
+| Portable trace storage and pruning | `packages/flow-host/src/{trace-store,prune-runs}.ts` |
 | Flow control and MCP facade | `packages/flow-client/src/` |
 | Flow CLI commands | `packages/cli/src/commands/{daemon,flows,runs,inbox}.ts`, `packages/cli/src/run-follow.tsx`, `packages/cli/src/prompts/` |
 | Host orchestration | `packages/host/src/` |
@@ -340,7 +340,7 @@ Recovered tasks retain their request trace context. Input requested by sibling t
 `@mokei/flow-host-node` captures spans and correlated logs through `@hozon/otel` and `@hozon/logtape`.
 Each new run owns a trace. Recovery retains its stored trace context.
 
-`@mokei/flow-host-node` supplies SQLite run, task and trace stores sharing one database owned by one process.
+`@mokei/flow-host-node` supplies hozon run, task, span and log stores in one `HozonDB` owned by one process. `openFlowDatabase` opens the default `flow.db` in mokei's data directory; `MOKEI_DATABASE_PATH` overrides it.
 Its configuration loaders resolve paths and load flow definitions at startup. Configuration changes apply on restart.
 Telemetry installs once per process and captures local spans and logs. Sibling-process telemetry is not ingested locally.
 Shutdown awaits retention, host and session disposal, telemetry disposal, then database closure.

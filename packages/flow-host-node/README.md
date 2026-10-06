@@ -27,7 +27,7 @@ The package requires Node.js with `node:sqlite` support. One process owns the da
 | `createFlowService({ configPath?, databasePath?, desktop?, onEvent })` | Owns shared initialisation, recovery, desktop policy and cleanup. |
 | `createFlowHandlers(service)` | Binds the 13 flow, run and inbox host-protocol procedures to that service. |
 
-The default database is `join(getDataDir('mokei'), 'flow.db')`. An explicit `:memory:` path creates an in-memory database.
+The default database is `getDatabasePath('mokei', 'flow')`, which resolves to `flow.db` in mokei's data directory. `MOKEI_DATABASE_PATH` overrides that path; an explicit `path` passed to `openFlowDatabase` takes precedence. An explicit `:memory:` path creates an in-memory database.
 Opening a database with a newer schema version fails rather than changing it.
 All three stores share the database. Their factories take the database positionally.
 
@@ -151,6 +151,8 @@ Configured sibling commands and flow definitions must be available before startu
 
 ```typescript
 import { createFlowHost } from '@mokei/flow-host'
+import { getLogStore } from '@hozon/store-log'
+import { getTelemetryStore } from '@hozon/store-telemetry'
 import {
   createFlowTraceStore,
   getFlowRunStore,
@@ -170,7 +172,8 @@ const runStore = await getFlowRunStore(database)
 const taskStore = await getFlowTaskStore(database)
 const traceStore = createFlowTraceStore(database)
 const telemetry = setupFlowTelemetry({
-  traceStore,
+  logStore: await getLogStore(database),
+  telemetryStore: await getTelemetryStore(database),
   otlp: config.tracing.otlp,
   logs: config.logs,
 })
@@ -224,7 +227,7 @@ Task TTL defaults to `null`, including tasks waiting for input.
 Explicit cancellation before disposal ends runs instead of suspending them.
 
 Before shutdown, stop accepting requests and await application-owned pending calls.
-Await every disposal promise before closing SQLite. Telemetry disposal drains batched spans and queued logs.
+Await every disposal promise before closing the hozon database. Telemetry disposal drains batched spans and queued logs.
 Startup failures also require cleanup of resources already created, in the same order.
 Recovery requires the same flow definitions and sibling tools on restart.
 Recovery events can fire during `createFlowHost`. Its `listeners` option receives those events during construction.
