@@ -477,6 +477,8 @@ test('daemon start, stop and restart run the production entry in isolated direct
   const pidPath = join(directory, 'mokei.pid')
   const env = {
     ...profile.env,
+    // runCLI merges process.env, so pin the path: an inherited override would move the daemon off the flow.db read below.
+    MOKEI_DATABASE_PATH: join(directory, 'flow.db'),
     MOKEI_LOG_DIR: join(directory, 'logs'),
     MOKEI_PID_PATH: pidPath,
     MOKEI_SOCKET_PATH: socketPath,

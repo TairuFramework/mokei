@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import type { HozonDB } from '@hozon/db'
 import { afterEach, expect, test } from 'vitest'
 
@@ -51,6 +52,22 @@ test('persists every store across reopening', async () => {
   await traces.addSpans([span])
   await first.close()
   handles.splice(handles.indexOf(first), 1)
+  const raw = new DatabaseSync(path, { readOnly: true })
+  try {
+    expect(
+      raw
+        .prepare('SELECT created_at, updated_at, trace_id, task_id, revision FROM mokei_flow_runs')
+        .get(),
+    ).toEqual({
+      created_at: 30,
+      updated_at: 40,
+      trace_id: 'trace-two',
+      task_id: 'task-one',
+      revision: 1,
+    })
+  } finally {
+    raw.close()
+  }
   const second = await open(path)
   const reopenedRuns = await getFlowRunStore(second)
   const reopenedTasks = await getFlowTaskStore(second)

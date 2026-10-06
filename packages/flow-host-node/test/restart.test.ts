@@ -61,10 +61,11 @@ test('recovers waiting input from a reopened sqlite database', async () => {
     await session.dispose()
     expect(await firstTasks.get(taskID)).toMatchObject({ status: 'input_required', ttlMs: null })
 
-    // Replace the delegate before yielding so delayed exports never see the closed database.
-    await database.close()
+    // Swap the delegate before closing the old database so delayed exports never see it closed.
+    const previous = database
     database = await openFlowDatabase({ path })
     traceStore = createFlowTraceStore(database)
+    await previous.close()
     const secondRuns = await getFlowRunStore(database)
     const secondTasks = await getFlowTaskStore(database)
     session = new Session({ elicit: true })
