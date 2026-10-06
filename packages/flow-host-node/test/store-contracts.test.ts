@@ -2,13 +2,14 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { openMokeiDatabase } from '@mokei/app-node'
 import { createMemoryTaskStore } from '@mokei/context-server'
 import { createMemoryRunStore, createMemoryTraceStore } from '@mokei/flow-host'
 import { openLocalDatabase } from '@tejika/db'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import { getFlowRunStore, runStoreDefinition } from '../src/run-store.js'
-import { openFlowDatabase } from '../src/stores.js'
+import { flowStoreDefinitions } from '../src/stores.js'
 import { getFlowTaskStore, taskStoreDefinition } from '../src/task-store.js'
 import { createFlowTraceStore } from '../src/trace-store.js'
 import { runStoreContract } from './contracts/run-store.js'
@@ -19,7 +20,7 @@ import { logRecord, spanRecord } from './support/records.js'
 const hozonHandles: Array<Awaited<ReturnType<typeof openLocalDatabase>>> = []
 const temporaryDirectories: Array<string> = []
 async function open(path = ':memory:') {
-  const db = await openFlowDatabase({ path })
+  const db = await openMokeiDatabase({ path, stores: flowStoreDefinitions })
   hozonHandles.push(db)
   return db
 }
@@ -57,7 +58,7 @@ describe('hozon trace transactions', () => {
   test('rolls back span deletion when log deletion fails', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'flow-trace-rollback-'))
     temporaryDirectories.push(directory)
-    const path = join(directory, 'flow.db')
+    const path = join(directory, 'mokei.db')
     const store = createFlowTraceStore(await open(path))
     await store.addSpans([spanRecord()])
     await store.addLogs([logRecord()])

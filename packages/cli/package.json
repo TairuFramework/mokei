@@ -40,8 +40,11 @@
   },
   "dependencies": {
     "@enkaku/node-streams": "catalog:",
+    "@hozon/store-log": "catalog:",
+    "@hozon/store-telemetry": "catalog:",
     "@inkjs/ui": "catalog:",
     "@mokei/anthropic-provider": "workspace:^",
+    "@mokei/app-node": "workspace:^",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server-node": "workspace:^",
@@ -67,6 +70,8 @@
     "react": "catalog:"
   },
   "devDependencies": {
+    "@opentelemetry/api": "catalog:",
+    "@sozai/log": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",

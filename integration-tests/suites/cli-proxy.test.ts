@@ -21,6 +21,9 @@ const DAEMON_ENV = {
   MOKEI_DATA_DIR: DAEMON_DIR,
   MOKEI_STATE_DIR: DAEMON_DIR,
   MOKEI_LOG_DIR: DAEMON_DIR,
+  // The daemon now loads mokei.json and opens mokei.db at boot; pin both against inherited overrides.
+  MOKEI_CONFIG_PATH: join(DAEMON_DIR, 'mokei.json'),
+  MOKEI_DATABASE_PATH: join(DAEMON_DIR, 'mokei.db'),
 }
 
 function isAlive(pid: number): boolean {

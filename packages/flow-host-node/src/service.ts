@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { getLogStore } from '@hozon/store-log'
-import { getTelemetryStore } from '@hozon/store-telemetry'
+import type { StoreProvider } from '@hozon/db'
 import type { FlowHost, TraceStore } from '@mokei/flow-host'
 import { createFlowHost } from '@mokei/flow-host'
 import type { FlowServiceStatus, HostEvent } from '@mokei/host-protocol'
@@ -15,18 +14,19 @@ import { loadFlowDirs } from './flow-dirs.js'
 import type { MonitorPresence } from './monitor-presence.js'
 import { createMonitorSurface } from './monitor-surface.js'
 import { createNativeSurface } from './native-surface.js'
+import { FLOW_REPORT_CATEGORY } from './report.js'
 import { startRetention } from './retention.js'
 import { getFlowRunStore } from './run-store.js'
-import { openFlowDatabase } from './stores.js'
 import { getFlowTaskStore } from './task-store.js'
-import { setupFlowTelemetry } from './telemetry.js'
 import { createFlowTraceStore } from './trace-store.js'
 
 export type { FlowServiceStatus } from '@mokei/host-protocol'
+
+export { FLOW_REPORT_CATEGORY } from './report.js'
 export type FlowResources = { host: FlowHost; traceStore: TraceStore }
 export type FlowServiceParams = {
   configPath?: string
-  databasePath?: string
+  database: StoreProvider
   desktop?: FlowDesktopAdapter
   monitor?: MonitorPresence
   openURL?: (url: string) => Promise<void>
@@ -64,8 +64,6 @@ export class FlowServiceUnavailableError extends Error {
 export type FlowServiceDependencies = {
   loadConfig: typeof loadFlowConfig
   loadFlows: typeof loadFlowDirs
-  openDatabase: typeof openFlowDatabase
-  setupTelemetry: typeof setupFlowTelemetry
   createSession(): NodeSession
   createHost: typeof createFlowHost
   startRetention: typeof startRetention
@@ -115,12 +113,10 @@ function failedStatus(error: unknown, stage: string): FlowServiceStatus {
 }
 
 export function createFlowService(params: FlowServiceParams): FlowService {
-  const report = getReporter(['mokei', 'flow-host', 'capture'], '@mokei/flow-host-node')
+  const report = getReporter([...FLOW_REPORT_CATEGORY], '@mokei/flow-host-node')
   return createFlowServiceWithDependencies(params, {
     loadConfig: loadFlowConfig,
     loadFlows: loadFlowDirs,
-    openDatabase: openFlowDatabase,
-    setupTelemetry: setupFlowTelemetry,
     createSession: () => new NodeSession({ elicit: true }),
     createHost: createFlowHost,
     startRetention: startRetention,
@@ -137,8 +133,6 @@ export function createFlowServiceWithDependencies(
   let starting: Promise<void> | undefined
   let disposal: Promise<void> | undefined
   let desktopDisposal: Promise<void> | undefined
-  let database: Awaited<ReturnType<typeof openFlowDatabase>> | undefined
-  let telemetry: ReturnType<typeof setupFlowTelemetry> | undefined
   let session: NodeSession | undefined
   let host: FlowHost | undefined
   let desktop: FlowDesktopController | undefined
@@ -179,8 +173,6 @@ export function createFlowServiceWithDependencies(
     await attempt(() => retention?.stop())
     await attempt(() => host?.dispose())
     await attempt(() => session?.dispose())
-    await attempt(() => telemetry?.dispose())
-    await attempt(() => database?.close())
     resources = undefined
   })
   async function initialize(): Promise<void> {
@@ -194,19 +186,10 @@ export function createFlowServiceWithDependencies(
       stage = 'load flow files'
       const { flows } = await dependencies.loadFlows(config.flowDirs)
       if (stopping) return
-      stage = 'open the flow database'
-      database = await dependencies.openDatabase({ path: params.databasePath })
-      if (stopping) return
-      const runStore = await getFlowRunStore(database)
-      const taskStore = await getFlowTaskStore(database)
-      const traceStore = createFlowTraceStore(database)
-      stage = 'install flow telemetry'
-      telemetry = dependencies.setupTelemetry({
-        logStore: await getLogStore(database),
-        telemetryStore: await getTelemetryStore(database),
-        otlp: config.tracing.otlp,
-        logs: config.logs,
-      })
+      stage = 'open the flow stores'
+      const runStore = await getFlowRunStore(params.database)
+      const taskStore = await getFlowTaskStore(params.database)
+      const traceStore = createFlowTraceStore(params.database)
       if (stopping) return
       stage = 'create the flow session'
       session = dependencies.createSession()

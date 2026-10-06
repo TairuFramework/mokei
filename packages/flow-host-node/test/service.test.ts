@@ -1,20 +1,23 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { HozonDB } from '@hozon/db'
+import { openMokeiDatabase } from '@mokei/app-node'
 import type { FlowHostParams } from '@mokei/flow-host'
 import { createFlowHost } from '@mokei/flow-host'
 import type { HostEvent } from '@mokei/host-protocol'
 import { NodeSession } from '@mokei/session-node'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import type { FlowConfig } from '../src/config.js'
 import { FlowConfigError, loadFlowConfig } from '../src/config.js'
 import type { FlowDesktopAdapter } from '../src/desktop.js'
 import { loadFlowDirs } from '../src/flow-dirs.js'
 import { createMonitorPresence } from '../src/monitor-presence.js'
+import { getFlowRunStore } from '../src/run-store.js'
 import type { FlowServiceDependencies, FlowServiceParams } from '../src/service.js'
 import { createFlowServiceWithDependencies, FlowServiceUnavailableError } from '../src/service.js'
-import { openFlowDatabase } from '../src/stores.js'
+import { flowStoreDefinitions } from '../src/stores.js'
 import { runRecord } from './support/records.js'
 
 function deferred<T>() {
@@ -25,15 +28,18 @@ function deferred<T>() {
   return { promise, resolve }
 }
 const cleanup: Array<() => Promise<void>> = []
+let database: HozonDB
+beforeEach(async () => {
+  database = await openMokeiDatabase({ path: ':memory:', stores: flowStoreDefinitions })
+})
 afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((dispose) => dispose()))
+  await database.close()
 })
 const config: FlowConfig = {
   siblings: {},
   flowDirs: [],
   approval: { allow: [] },
-  tracing: {},
-  logs: { level: 'info' },
   retention: { days: 30 },
   desktop: { notifications: true },
 }
@@ -61,20 +67,6 @@ function setup(
   const dependencies: FlowServiceDependencies = {
     loadConfig: async () => config,
     loadFlows: async () => ({ files: [], flows: [] }),
-    openDatabase: async () => {
-      const database = await openFlowDatabase({ path: ':memory:' })
-      const close = database.close.bind(database)
-      vi.spyOn(database, 'close').mockImplementation(async () => {
-        order.push('database')
-        await close()
-      })
-      return database
-    },
-    setupTelemetry: () => ({
-      dispose: async () => {
-        order.push('telemetry')
-      },
-    }),
     createSession: () => {
       const session = new NodeSession({ elicit: true })
       const dispose = session.dispose.bind(session)
@@ -105,6 +97,7 @@ function setup(
   }
   const service = createFlowServiceWithDependencies(
     {
+      database,
       ...params,
       desktop: adapter,
       onEvent: (event) => {
@@ -162,11 +155,9 @@ test('recovery gates readiness and announces the committed inbox snapshot once',
 test.each([
   ['loadConfig', []],
   ['loadFlows', []],
-  ['openDatabase', []],
-  ['setupTelemetry', ['database']],
-  ['createSession', ['telemetry', 'database']],
-  ['createHost', ['session', 'telemetry', 'database']],
-  ['startRetention', ['runtime', 'session', 'telemetry', 'database']],
+  ['createSession', []],
+  ['createHost', ['session']],
+  ['startRetention', ['runtime', 'session']],
 ] as const)(
   'failure acquiring %s disables service and cleans earlier resources',
   async (stage, prior) => {
@@ -192,27 +183,6 @@ test.each([
   },
 )
 
-test('stops before opening telemetry when disposed while the database opens', async () => {
-  const gate = deferred<void>()
-  const opening = deferred<void>()
-  const setupTelemetry = vi.fn(() => ({ dispose: async () => {} }))
-  const fixture = setup({ setupTelemetry })
-  const openDatabase = fixture.dependencies.openDatabase
-  fixture.dependencies.openDatabase = async (params) => {
-    opening.resolve()
-    await gate.promise
-    return openDatabase(params)
-  }
-  const starting = fixture.service.start()
-  await opening.promise
-  const stopping = fixture.service.dispose()
-  gate.resolve()
-  await Promise.all([starting, stopping])
-  expect(setupTelemetry).not.toHaveBeenCalled()
-  expect(fixture.order).toEqual(['desktop', 'database'])
-  expect(() => fixture.service.resources()).toThrow(FlowServiceUnavailableError)
-})
-
 test('failed sibling startup disposes the owning session and never registers flows', async () => {
   let disposed = false
   const fixture = setup({
@@ -231,7 +201,7 @@ test('failed sibling startup disposes the owning session and never registers flo
   await fixture.service.start()
   expect(fixture.service.status()).toMatchObject({ state: 'failed' })
   expect(disposed).toBe(true)
-  expect(fixture.order).toEqual(['desktop', 'telemetry', 'database'])
+  expect(fixture.order).toEqual(['desktop'])
 })
 
 test('shutdown waits for a late sibling connection, closes it once and never publishes ready', async () => {
@@ -281,7 +251,7 @@ test('shutdown waits for a late sibling connection, closes it once and never pub
       (event) => event.type === 'service:status' && event.data.status.state === 'ready',
     ),
   ).toBe(false)
-  expect(fixture.order).toEqual(['desktop', 'telemetry', 'database'])
+  expect(fixture.order).toEqual(['desktop'])
   expect(() => fixture.service.resources()).toThrow(FlowServiceUnavailableError)
 })
 
@@ -300,15 +270,18 @@ test('shutdown closes admission immediately and drains admitted work before stor
   gate.resolve()
   await working
   await stopping
-  expect(fixture.order).toEqual([
-    'desktop',
-    'retention',
-    'runtime',
-    'session',
-    'telemetry',
-    'database',
-  ])
+  expect(fixture.order).toEqual(['desktop', 'retention', 'runtime', 'session'])
   expect(fixture.service.status()).toEqual({ state: 'ready' })
+})
+
+test('does not close the provided database on dispose', async () => {
+  const fixture = setup()
+  await fixture.service.start()
+  expect(fixture.service.status()).toEqual({ state: 'ready' })
+  await fixture.service.dispose()
+  const runs = await getFlowRunStore(database)
+  await runs.create(runRecord())
+  expect(await runs.get('run-one')).toEqual(runRecord())
 })
 
 test('disposal before start owns the adapter without acquiring resources', async () => {
@@ -341,7 +314,7 @@ test('all resources close even when retention and adapter disposal throw', async
   )
   await fixture.service.start()
   await expect(fixture.service.dispose()).rejects.toBeInstanceOf(AggregateError)
-  expect(fixture.order).toEqual(['runtime', 'session', 'telemetry', 'database'])
+  expect(fixture.order).toEqual(['runtime', 'session'])
 })
 
 test('configuration JSON diagnostics and dynamic field names cannot leak secrets to status or events', async () => {
@@ -367,25 +340,38 @@ test('configuration JSON diagnostics and dynamic field names cannot leak secrets
   expect(fixture.errors).toContain(failure)
 })
 
-test('real malformed config and flow JSON fail before telemetry installation', async () => {
+test('names a moved tracing or logs key in the sanitized status', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'flow-service-'))
+  cleanup.push(() => rm(directory, { recursive: true, force: true }))
+  const path = join(directory, 'flows.json')
+  await writeFile(path, JSON.stringify({ tracing: { otlp: { endpoint: 'x' } }, logs: {} }))
+  const fixture = setup({ loadConfig: () => loadFlowConfig(path) })
+  await fixture.service.start()
+  expect(fixture.service.status()).toMatchObject({
+    state: 'failed',
+    error: { type: 'FlowConfigError', issues: expect.arrayContaining(['tracing', 'logs']) },
+  })
+})
+
+test('real malformed config and flow JSON fail before creating the session', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'flow-service-'))
   cleanup.push(() => rm(directory, { recursive: true, force: true }))
   const path = join(directory, 'flows.json')
   await writeFile(path, '{"secret-token":')
-  const telemetry = vi.fn(() => {
-    throw new Error('telemetry must not install')
+  const createSession = vi.fn(() => {
+    throw new Error('session must not be created')
   })
-  const invalidConfig = setup({ loadConfig: () => loadFlowConfig(path), setupTelemetry: telemetry })
+  const invalidConfig = setup({ loadConfig: () => loadFlowConfig(path), createSession })
   await invalidConfig.service.start()
   const invalidFlows = setup({
     loadFlows: () => loadFlowDirs([directory]),
-    setupTelemetry: telemetry,
+    createSession,
   })
   await invalidFlows.service.start()
   expect(invalidConfig.service.status()).toMatchObject({ state: 'failed' })
   expect(invalidFlows.service.status()).toMatchObject({ state: 'failed' })
   expect(JSON.stringify([invalidConfig.events, invalidFlows.events])).not.toContain('secret-token')
-  expect(telemetry).not.toHaveBeenCalled()
+  expect(createSession).not.toHaveBeenCalled()
 })
 
 test('immediate shutdown after start does not acquire configuration', async () => {
@@ -435,9 +421,7 @@ test.each(['loadConfig', 'loadFlows', 'createHost'] as const)(
     gate.resolve()
     await Promise.all([starting, stopping])
     expect(fixture.order).toEqual(
-      stage === 'createHost'
-        ? ['desktop', 'runtime', 'session', 'telemetry', 'database']
-        : ['desktop'],
+      stage === 'createHost' ? ['desktop', 'runtime', 'session'] : ['desktop'],
     )
     expect(
       fixture.events.some(
@@ -457,7 +441,7 @@ test('registered invalid flow fails with sanitized status and closes session and
   await fixture.service.start()
   expect(fixture.service.status()).toMatchObject({ state: 'failed' })
   expect(JSON.stringify(fixture.events)).not.toContain('secret-token')
-  expect(fixture.order).toEqual(['desktop', 'session', 'telemetry', 'database'])
+  expect(fixture.order).toEqual(['desktop', 'session'])
 })
 
 test('shutdown aborts an admitted prompt, drains its native completion and preserves pending input', async () => {
@@ -503,7 +487,7 @@ test('shutdown aborts an admitted prompt, drains its native completion and prese
   expect(host.inbox.get(item.id)).toBeDefined()
   native.resolve({ action: 'cancel' })
   await stopping
-  expect(fixture.order).toEqual(['desktop', 'retention', 'session', 'telemetry', 'database'])
+  expect(fixture.order).toEqual(['desktop', 'retention', 'session'])
 })
 
 test('operation rejection releases shutdown drainage and preserves the original error', async () => {
@@ -516,7 +500,7 @@ test('operation rejection releases shutdown drainage and preserves the original 
     }),
   ).rejects.toBe(failure)
   await fixture.service.dispose()
-  expect(fixture.order.at(-1)).toBe('database')
+  expect(fixture.order.at(-1)).toBe('session')
 })
 
 test('startup notification follows ready publication and retention startup', async () => {
@@ -568,7 +552,7 @@ test('shutdown from ready publication suppresses startup notifications', async (
   await fixture.service.start()
   await stopping
   expect(fixture.messages).toEqual([])
-  expect(fixture.order).toEqual(['desktop', 'retention', 'session', 'telemetry', 'database'])
+  expect(fixture.order).toEqual(['desktop', 'retention', 'session'])
 })
 
 test.each(['answered', 'declined', 'cancelled', 'withdrawn'] as const)(

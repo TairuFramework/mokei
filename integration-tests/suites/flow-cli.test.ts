@@ -477,8 +477,9 @@ test('daemon start, stop and restart run the production entry in isolated direct
   const pidPath = join(directory, 'mokei.pid')
   const env = {
     ...profile.env,
-    // runCLI merges process.env, so pin the path: an inherited override would move the daemon off the flow.db read below.
-    MOKEI_DATABASE_PATH: join(directory, 'flow.db'),
+    // runCLI merges process.env, so pin the paths: an inherited override would move the daemon off the mokei.db read below.
+    MOKEI_CONFIG_PATH: join(directory, 'mokei.json'),
+    MOKEI_DATABASE_PATH: join(directory, 'mokei.db'),
     MOKEI_LOG_DIR: join(directory, 'logs'),
     MOKEI_PID_PATH: pidPath,
     MOKEI_SOCKET_PATH: socketPath,
@@ -486,7 +487,7 @@ test('daemon start, stop and restart run the production entry in isolated direct
   const cli = createCLI(env, socketPath)
   const pids = new Set<number>()
   const readRuns = () => {
-    const db = new DatabaseSync(join(directory, 'flow.db'), { readOnly: true })
+    const db = new DatabaseSync(join(directory, 'mokei.db'), { readOnly: true })
     try {
       return db
         .prepare('SELECT data FROM mokei_flow_runs ORDER BY seq')

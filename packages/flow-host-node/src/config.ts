@@ -1,5 +1,4 @@
 import { dirname, isAbsolute, join, resolve } from 'node:path'
-import type { LogLevel } from '@logtape/logtape'
 import { createValidator, type Schema } from '@sozai/schema'
 import { expandHome, getDataDir, readJSONFile } from '@tejika/env'
 
@@ -7,8 +6,6 @@ export type FlowConfig = {
   siblings: Record<string, { command: string; args?: Array<string>; env?: Record<string, string> }>
   flowDirs: Array<string>
   approval: { allow: Array<string> }
-  tracing: { otlp?: { endpoint: string; headers?: Record<string, string> } }
-  logs: { level: LogLevel }
   retention: { days: number }
   desktop: { notifications: boolean }
 }
@@ -58,29 +55,6 @@ const configurationSchema = {
       required: ['allow'],
       additionalProperties: false,
     },
-    tracing: {
-      type: 'object',
-      properties: {
-        otlp: {
-          type: 'object',
-          properties: {
-            endpoint: { type: 'string' },
-            headers: { type: 'object', additionalProperties: { type: 'string' } },
-          },
-          required: ['endpoint'],
-          additionalProperties: false,
-        },
-      },
-      additionalProperties: false,
-    },
-    logs: {
-      type: 'object',
-      properties: {
-        level: { type: 'string', enum: ['trace', 'debug', 'info', 'warning', 'error', 'fatal'] },
-      },
-      required: ['level'],
-      additionalProperties: false,
-    },
     desktop: {
       type: 'object',
       properties: { notifications: { type: 'boolean' } },
@@ -102,8 +76,6 @@ function createDefaults(): FlowConfig {
     siblings: {},
     flowDirs: [],
     approval: { allow: [] },
-    tracing: {},
-    logs: { level: 'info' },
     retention: { days: 30 },
     desktop: { notifications: false },
   }
@@ -159,8 +131,6 @@ export async function loadFlowConfig(
     siblings: supplied.siblings ?? {},
     flowDirs: supplied.flowDirs ?? [],
     approval: supplied.approval ?? { allow: [] },
-    tracing: supplied.tracing ?? {},
-    logs: supplied.logs ?? { level: 'info' },
     retention: supplied.retention ?? { days: 30 },
     desktop: { notifications: supplied.desktop?.notifications ?? false },
   }

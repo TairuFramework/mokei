@@ -3,20 +3,21 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { HozonDB } from '@hozon/db'
+import { openMokeiDatabase } from '@mokei/app-node'
 import { afterEach, expect, test } from 'vitest'
 
 import {
   createFlowTraceStore,
+  flowStoreDefinitions,
   getFlowRunStore,
   getFlowTaskStore,
-  openFlowDatabase,
 } from '../src/index.js'
 import { logRecord, runRecord, spanRecord, taskRecord } from './support/records.js'
 
 const handles: Array<HozonDB> = []
 const directories: Array<string> = []
 async function open(path: string) {
-  const handle = await openFlowDatabase({ path })
+  const handle = await openMokeiDatabase({ path, stores: flowStoreDefinitions })
   handles.push(handle)
   return handle
 }
@@ -27,7 +28,7 @@ afterEach(async () => {
 test('persists every store across reopening', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'flow-stores-'))
   directories.push(directory)
-  const path = join(directory, 'flow.db')
+  const path = join(directory, 'mokei.db')
   const first = await open(path)
   const runs = await getFlowRunStore(first)
   const tasks = await getFlowTaskStore(first)

@@ -1,15 +1,16 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { openMokeiDatabase } from '@mokei/app-node'
 import type * as FlowHostNodeExports from '@mokei/flow-host-node'
-import { createFlowService, type FlowConfig, openFlowDatabase } from '@mokei/flow-host-node'
+import { createFlowService, type FlowConfig } from '@mokei/flow-host-node'
 import type { HostEvent } from '@mokei/host-protocol'
 import { NodeSession } from '@mokei/session-node'
 import { expect, test, vi } from 'vitest'
 
 import { createFlowHost } from '../../flow-host/src/host.js'
 import { createFlowServiceWithDependencies } from '../../flow-host-node/src/service.js'
-import { startMokeiDaemon } from '../src/daemon-entry.js'
+import { startMokeiDaemonWithDependencies } from '../src/daemon-entry.js'
 
 vi.mock('@mokei/flow-host-node', async (importOriginal) => {
   const actual = await importOriginal<typeof FlowHostNodeExports>()
@@ -38,26 +39,65 @@ test.each(['initialization', 'admitted call'] as const)(
         order.push('desktop')
       },
     }
-    const service = createFlowServiceWithDependencies(
-      {
-        desktop: adapter,
-        onEvent: (event) => {
-          events.push(event)
+    let service!: FlowHostNodeExports.FlowService
+    vi.mocked(createFlowService).mockImplementationOnce((params) => {
+      service = createFlowServiceWithDependencies(
+        {
+          ...params,
+          desktop: adapter,
+          onEvent: (event) => {
+            events.push(event)
+          },
         },
+        {
+          loadConfig: async (): Promise<FlowConfig> => ({
+            siblings: stage === 'initialization' ? { delayed: { command: 'injected' } } : {},
+            flowDirs: [],
+            approval: { allow: [] },
+            retention: { days: 30 },
+            desktop: { notifications: false },
+          }),
+          loadFlows: async () => ({ files: [], flows: [] }),
+          createSession: () => {
+            const session = new NodeSession({ elicit: true })
+            vi.spyOn(session, 'addContext').mockImplementation(async () => {
+              entered()
+              await gate
+              order.push('connected')
+              return []
+            })
+            const dispose = session.dispose.bind(session)
+            vi.spyOn(session, 'dispose').mockImplementation(async () => {
+              order.push('session')
+              await dispose()
+            })
+            return session
+          },
+          createHost: createFlowHost,
+          startRetention: () => ({
+            stop: async () => {
+              order.push('retention')
+            },
+          }),
+          report: (error) => {
+            throw error
+          },
+        },
+      )
+      return service
+    })
+    const daemon = await startMokeiDaemonWithDependencies(
+      {
+        socketPath: join(directory, 'daemon.sock'),
+        pidPath: join(directory, 'daemon.pid'),
+        databasePath: join(directory, 'mokei.db'),
+        desktop: adapter,
+        handleSignals: false,
       },
       {
-        loadConfig: async (): Promise<FlowConfig> => ({
-          siblings: stage === 'initialization' ? { delayed: { command: 'injected' } } : {},
-          flowDirs: [],
-          approval: { allow: [] },
-          tracing: {},
-          logs: { level: 'info' },
-          retention: { days: 30 },
-          desktop: { notifications: false },
-        }),
-        loadFlows: async () => ({ files: [], flows: [] }),
-        openDatabase: async () => {
-          const database = await openFlowDatabase({ path: join(directory, 'flows.db') })
+        loadConfig: async () => ({ logs: { level: 'info', file: false }, tracing: {} }),
+        openDatabase: async (params) => {
+          const database = await openMokeiDatabase(params)
           const close = database.close.bind(database)
           vi.spyOn(database, 'close').mockImplementation(async () => {
             order.push('database')
@@ -70,39 +110,8 @@ test.each(['initialization', 'admitted call'] as const)(
             order.push('telemetry')
           },
         }),
-        createSession: () => {
-          const session = new NodeSession({ elicit: true })
-          vi.spyOn(session, 'addContext').mockImplementation(async () => {
-            entered()
-            await gate
-            order.push('connected')
-            return []
-          })
-          const dispose = session.dispose.bind(session)
-          vi.spyOn(session, 'dispose').mockImplementation(async () => {
-            order.push('session')
-            await dispose()
-          })
-          return session
-        },
-        createHost: createFlowHost,
-        startRetention: () => ({
-          stop: async () => {
-            order.push('retention')
-          },
-        }),
-        report: (error) => {
-          throw error
-        },
       },
     )
-    vi.mocked(createFlowService).mockReturnValueOnce(service)
-    const daemon = await startMokeiDaemon({
-      socketPath: join(directory, 'daemon.sock'),
-      pidPath: join(directory, 'daemon.pid'),
-      desktop: adapter,
-      handleSignals: false,
-    })
     let working: Promise<unknown> | undefined
     try {
       if (stage === 'initialization') await entering

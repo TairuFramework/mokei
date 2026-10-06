@@ -80,7 +80,7 @@ export async function startFlowDaemonFixture(
   }
   // Resolve the pid file with the CLI's own call so the fixture and `mokei daemon` agree.
   const pidPath = withEnv(env, () => getPIDPath('mokei'))
-  const databasePath = join(directory, 'flows.db')
+  const databasePath = join(directory, 'mokei.db')
   const clients = new Set<HostClient>()
   const subscriptions = new Set<() => Promise<void>>()
   const children: Array<ChildProcess> = []
@@ -181,7 +181,9 @@ export async function startFlowDaemonFixture(
           '--pid-path',
           pidPath,
           '--config-path',
-          join(directory, 'config.json'),
+          join(directory, 'mokei.json'),
+          '--flows-config-path',
+          join(directory, 'flows.json'),
           '--database-path',
           databasePath,
         ]
@@ -350,14 +352,19 @@ export async function startFlowDaemonFixture(
     for (const flow of flows)
       await writeFile(join(directory, 'flows', `${flow.id}.json`), JSON.stringify(flow))
     await writeFile(
-      join(directory, 'config.json'),
+      join(directory, 'mokei.json'),
+      JSON.stringify({
+        logs: { level: 'debug' },
+        ...(options.otlp ? { tracing: { otlp: options.otlp } } : {}),
+      }),
+    )
+    await writeFile(
+      join(directory, 'flows.json'),
       options.invalidConfig
         ? '{invalid'
         : JSON.stringify({
             flowDirs: ['./flows'],
             siblings: { sibling },
-            logs: { level: 'debug' },
-            ...(options.otlp ? { tracing: { otlp: options.otlp } } : {}),
             ...(options.notifications == null
               ? {}
               : { desktop: { notifications: options.notifications } }),

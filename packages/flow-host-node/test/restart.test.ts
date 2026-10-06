@@ -1,10 +1,9 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { LogStore } from '@hozon/store-log'
 import { getLogStore } from '@hozon/store-log'
-import type { TelemetryStore } from '@hozon/store-telemetry'
 import { getTelemetryStore } from '@hozon/store-telemetry'
+import { openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
 import type { FlowHost } from '@mokei/flow-host'
 import { createFlowHost } from '@mokei/flow-host'
 import { Session } from '@mokei/session'
@@ -13,10 +12,10 @@ import { expect, test, vi } from 'vitest'
 
 import {
   createFlowTraceStore,
+  FLOW_REPORT_CATEGORY,
+  flowStoreDefinitions,
   getFlowRunStore,
   getFlowTaskStore,
-  openFlowDatabase,
-  setupFlowTelemetry,
 } from '../src/index.js'
 import { inputFlow, predictor } from './support/input-flow.js'
 
@@ -27,28 +26,16 @@ function required<T>(value: T | undefined): T {
 
 test('recovers waiting input from a reopened sqlite database', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'flow-restart-'))
-  const path = join(directory, 'flow.db')
-  let database = await openFlowDatabase({ path })
-  let traceStore = createFlowTraceStore(database)
-  let logStore = await getLogStore(database)
-  let telemetryStore = await getTelemetryStore(database)
-  const forwardingLogs: LogStore = {
-    addLogs: (logs) => logStore.addLogs(logs),
-    queryLogs: (params) => logStore.queryLogs(params),
-    getTraceLogs: (traceID) => logStore.getTraceLogs(traceID),
-    deleteByTrace: (traceIDs) => logStore.deleteByTrace(traceIDs),
-    deleteBefore: (time, params) => logStore.deleteBefore(time, params),
-  }
-  const forwardingTelemetry: TelemetryStore = {
-    addSpans: (spans) => telemetryStore.addSpans(spans),
-    getSpans: (traceID) => telemetryStore.getSpans(traceID),
-    deleteByTrace: (traceIDs) => telemetryStore.deleteByTrace(traceIDs),
-    deleteBefore: (time, params) => telemetryStore.deleteBefore(time, params),
-  }
-  const telemetry = setupFlowTelemetry({
-    logStore: forwardingLogs,
-    telemetryStore: forwardingTelemetry,
+  const path = join(directory, 'mokei.db')
+  let database = await openMokeiDatabase({ path, stores: flowStoreDefinitions })
+  // Telemetry outlives the simulated restart, as the daemon's database does on disk.
+  const telemetryDatabase = await openMokeiDatabase({ path: ':memory:' })
+  const traceStore = createFlowTraceStore(telemetryDatabase)
+  const telemetry = setupMokeiTelemetry({
+    logStore: await getLogStore(telemetryDatabase),
+    telemetryStore: await getTelemetryStore(telemetryDatabase),
     logs: { file: false },
+    reportCategories: [FLOW_REPORT_CATEGORY],
   })
   let session = new Session({ elicit: true })
   let host: FlowHost | undefined
@@ -77,13 +64,8 @@ test('recovers waiting input from a reopened sqlite database', async () => {
     await session.dispose()
     expect(await firstTasks.get(taskID)).toMatchObject({ status: 'input_required', ttlMs: null })
 
-    // Swap the delegate before closing the old database so delayed exports never see it closed.
-    const previous = database
-    database = await openFlowDatabase({ path })
-    traceStore = createFlowTraceStore(database)
-    logStore = await getLogStore(database)
-    telemetryStore = await getTelemetryStore(database)
-    await previous.close()
+    await database.close()
+    database = await openMokeiDatabase({ path, stores: flowStoreDefinitions })
     const secondRuns = await getFlowRunStore(database)
     const secondTasks = await getFlowTaskStore(database)
     session = new Session({ elicit: true })
@@ -139,6 +121,7 @@ test('recovers waiting input from a reopened sqlite database', async () => {
       await telemetry.dispose()
     } finally {
       await database.close()
+      await telemetryDatabase.close()
       rmSync(directory, { recursive: true, force: true })
     }
   }

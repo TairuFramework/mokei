@@ -24,8 +24,6 @@ describe('flow configuration', () => {
       siblings: {},
       flowDirs: [],
       approval: { allow: [] },
-      tracing: {},
-      logs: { level: 'info' },
       retention: { days: 30 },
       desktop: { notifications: false },
     })
@@ -56,8 +54,6 @@ describe('flow configuration', () => {
         },
         flowDirs: ['flows'],
         approval: { allow: ['system-one:predict'] },
-        tracing: { otlp: { endpoint: 'http://localhost:4318/v1/traces', headers: {} } },
-        logs: { level: 'debug' },
         retention: { days: 30 },
         desktop: { notifications: false },
       }),
@@ -73,8 +69,6 @@ describe('flow configuration', () => {
       },
       flowDirs: [join(directory, 'flows')],
       approval: { allow: ['system-one:predict'] },
-      tracing: { otlp: { endpoint: 'http://localhost:4318/v1/traces', headers: {} } },
-      logs: { level: 'debug' },
       retention: { days: 30 },
       desktop: { notifications: false },
     })
@@ -97,7 +91,6 @@ describe('flow configuration', () => {
       path,
       JSON.stringify({
         siblings: { 'system-one': { command: 1 } },
-        logs: { level: 'quiet' },
         retention: { days: 0 },
       }),
     )
@@ -107,7 +100,6 @@ describe('flow configuration', () => {
     if (!(error instanceof FlowConfigError)) throw error
     expect(error.path).toBe(path)
     expect(error.issues).toContain('siblings.system-one.command')
-    expect(error.issues).toContain('logs.level')
     expect(error.issues).toContain('retention.days')
   })
 
@@ -123,7 +115,7 @@ describe('flow configuration', () => {
       ['zero.json', '{"retention":{"days":0}}', 'retention.days'],
       ['negative.json', '{"retention":{"days":-1}}', 'retention.days'],
       ['fraction.json', '{"retention":{"days":1.5}}', 'retention.days'],
-      ['extra.json', '{"logs":{"level":"info","extra":true}}', 'logs.extra'],
+      ['extra.json', '{"retention":{"days":1,"extra":true}}', 'retention.extra'],
     ]
     for (const [name, content, issue] of cases) {
       const path = join(directory, name)
@@ -133,6 +125,19 @@ describe('flow configuration', () => {
       if (!(error instanceof FlowConfigError)) throw error
       expect(error.path).toBe(path)
       expect(error.issues.join(' ')).toContain(issue)
+    }
+  })
+
+  test('rejects the moved tracing and logs keys', async () => {
+    const { FlowConfigError, loadFlowConfig } = await import('../src/index.js')
+    const directory = await createDirectory()
+    for (const key of ['tracing', 'logs']) {
+      const path = join(directory, `${key}.json`)
+      await writeFile(path, JSON.stringify({ [key]: {} }))
+      const error = await loadFlowConfig(path).catch((value: unknown) => value)
+      expect(error).toBeInstanceOf(FlowConfigError)
+      if (!(error instanceof FlowConfigError)) throw error
+      expect(error.issues).toContain(key)
     }
   })
 

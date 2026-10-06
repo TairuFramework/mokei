@@ -40,10 +40,9 @@ export type {
   FlowServiceStatus,
   FlowServiceUnavailableErrorParams,
 } from './service.js'
-export { createFlowService, FlowServiceUnavailableError } from './service.js'
-export { flowStoreDefinitions, openFlowDatabase } from './stores.js'
+export { createFlowService, FLOW_REPORT_CATEGORY, FlowServiceUnavailableError } from './service.js'
+export { flowStoreDefinitions } from './stores.js'
 export type { InboxSurface, PromptOutcome, SurfaceDelivery, SurfaceStatus } from './surfaces.js'
 export type { FlowTaskTables } from './task-store.js'
 export { FLOW_TASK_STORE, getFlowTaskStore, taskStoreDefinition } from './task-store.js'
-export { setupFlowTelemetry } from './telemetry.js'
 export { createFlowTraceStore } from './trace-store.js'
