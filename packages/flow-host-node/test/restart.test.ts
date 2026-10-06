@@ -1,7 +1,11 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { FlowHost, TraceStore } from '@mokei/flow-host'
+import type { LogStore } from '@hozon/store-log'
+import { getLogStore } from '@hozon/store-log'
+import type { TelemetryStore } from '@hozon/store-telemetry'
+import { getTelemetryStore } from '@hozon/store-telemetry'
+import type { FlowHost } from '@mokei/flow-host'
 import { createFlowHost } from '@mokei/flow-host'
 import { Session } from '@mokei/session'
 import { getLogger } from '@sozai/log'
@@ -26,14 +30,26 @@ test('recovers waiting input from a reopened sqlite database', async () => {
   const path = join(directory, 'flow.db')
   let database = await openFlowDatabase({ path })
   let traceStore = createFlowTraceStore(database)
-  const forwardingStore: TraceStore = {
-    addSpans: (spans) => traceStore.addSpans(spans),
-    addLogs: (logs) => traceStore.addLogs(logs),
-    getTrace: (traceID) => traceStore.getTrace(traceID),
-    deleteTraces: (traceIDs) => traceStore.deleteTraces(traceIDs),
-    deleteBefore: (time, keepTraceIDs) => traceStore.deleteBefore(time, keepTraceIDs),
+  let logStore = await getLogStore(database)
+  let telemetryStore = await getTelemetryStore(database)
+  const forwardingLogs: LogStore = {
+    addLogs: (logs) => logStore.addLogs(logs),
+    queryLogs: (params) => logStore.queryLogs(params),
+    getTraceLogs: (traceID) => logStore.getTraceLogs(traceID),
+    deleteByTrace: (traceIDs) => logStore.deleteByTrace(traceIDs),
+    deleteBefore: (time, params) => logStore.deleteBefore(time, params),
   }
-  const telemetry = setupFlowTelemetry({ traceStore: forwardingStore, logs: { file: false } })
+  const forwardingTelemetry: TelemetryStore = {
+    addSpans: (spans) => telemetryStore.addSpans(spans),
+    getSpans: (traceID) => telemetryStore.getSpans(traceID),
+    deleteByTrace: (traceIDs) => telemetryStore.deleteByTrace(traceIDs),
+    deleteBefore: (time, params) => telemetryStore.deleteBefore(time, params),
+  }
+  const telemetry = setupFlowTelemetry({
+    logStore: forwardingLogs,
+    telemetryStore: forwardingTelemetry,
+    logs: { file: false },
+  })
   let session = new Session({ elicit: true })
   let host: FlowHost | undefined
   try {
@@ -65,6 +81,8 @@ test('recovers waiting input from a reopened sqlite database', async () => {
     const previous = database
     database = await openFlowDatabase({ path })
     traceStore = createFlowTraceStore(database)
+    logStore = await getLogStore(database)
+    telemetryStore = await getTelemetryStore(database)
     await previous.close()
     const secondRuns = await getFlowRunStore(database)
     const secondTasks = await getFlowTaskStore(database)

@@ -1,6 +1,8 @@
+import { createLogStoreSink } from '@hozon/logtape'
+import { createTelemetrySpanExporter } from '@hozon/otel'
+import type { LogStore } from '@hozon/store-log'
+import type { TelemetryStore } from '@hozon/store-telemetry'
 import type { LogLevel, Sink } from '@logtape/logtape'
-import type { TraceStore } from '@mokei/flow-host'
-import { createTraceStoreLogSink, createTraceStoreSpanExporter } from '@mokei/flow-host'
 import { context, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
@@ -25,7 +27,8 @@ async function shutdownProvider(provider: BasicTracerProvider): Promise<void> {
 }
 
 export function setupFlowTelemetry(params: {
-  traceStore: TraceStore
+  logStore: LogStore
+  telemetryStore: TelemetryStore
   otlp?: { endpoint: string; headers?: Record<string, string> }
   logs?: { level?: LogLevel; file?: boolean }
 }): { dispose(): Promise<void> } {
@@ -44,7 +47,7 @@ export function setupFlowTelemetry(params: {
 
   const rollback: Array<() => void | Promise<void>> = []
   try {
-    const localExporter = createTraceStoreSpanExporter(params.traceStore)
+    const localExporter = createTelemetrySpanExporter(params.telemetryStore)
     const localProcessor = new BatchSpanProcessor(localExporter, {
       exportTimeoutMillis: EXPORT_TIMEOUT_MS,
     })
@@ -86,7 +89,10 @@ export function setupFlowTelemetry(params: {
     installed = true
     rollback.push(() => trace.disable())
 
-    const sink = createTraceStoreLogSink(params.traceStore)
+    const sink = createLogStoreSink(params.logStore, {
+      tracedOnly: true,
+      excludeCategories: [['mokei', 'flow-host', 'capture']],
+    })
     rollback.push(() => sink.flush())
     const sinks: Record<string, Sink> = { capture: sink, errors: getConsoleSink() }
     const rootSinks = ['capture']
@@ -113,6 +119,7 @@ export function setupFlowTelemetry(params: {
         { category: [], lowestLevel: params.logs?.level ?? 'info', sinks: rootSinks },
         { category: ['logtape', 'meta'], lowestLevel: 'error', sinks: [] },
         { category: ['mokei', 'flow-host', 'capture'], lowestLevel: 'error', sinks: ['errors'] },
+        { category: ['hozon'], lowestLevel: 'error', sinks: ['errors'] },
       ],
     })
     let disposal: Promise<void> | undefined

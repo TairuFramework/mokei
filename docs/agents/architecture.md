@@ -222,7 +222,7 @@ binding.
 | Durable flow stores | `@mokei/flow-host-node` | `openFlowDatabase`, `createSQLiteRunStore`, `createSQLiteTaskStore`, `createSQLiteTraceStore` |
 | Flow telemetry, configuration and retention | `@mokei/flow-host-node` | `setupFlowTelemetry`, `loadFlowConfig`, `loadFlowDirs`, `startRetention` |
 | Shared daemon flow service | `@mokei/flow-host-node`, `@mokei/host-node`, `mokei` | `createFlowService`, `createFlowHandlers`, `serveHostDaemon`, CLI `daemon-entry.js` |
-| Portable trace capture and pruning | `@mokei/flow-host` | `TraceStore`, `createMemoryTraceStore`, `createTraceStoreSpanExporter`, `createTraceStoreLogSink`, `pruneRuns` |
+| Portable trace capture and pruning | `@mokei/flow-host` | `TraceStore`, `createMemoryTraceStore`, `pruneRuns` |
 | Flow control contract, wait helpers and MCP facade | `@mokei/flow-client` | `FlowControl`, `createRemoteFlowControl`, `waitForRun`, `createFlowControlServer` |
 | In-process flow control | `@mokei/flow-host` | `createLocalFlowControl` |
 | CLI | `mokei` | `packages/cli/src/program.ts`, `packages/cli/src/commands/{daemon,flows,runs,inbox}.ts` |
@@ -337,7 +337,7 @@ With an OpenTelemetry SDK, runs carry a `traceID` and a `flow.run` span.
 Recovered tasks retain their request trace context. Input requested by sibling tools still uses the session's elicitation handler.
 
 `@mokei/flow-host` defines portable JSON store contracts, including `TraceStore` and `createMemoryTraceStore`.
-`createTraceStoreSpanExporter` and `createTraceStoreLogSink` capture spans and correlated logs without Node imports.
+`@mokei/flow-host-node` captures spans and correlated logs through `@hozon/otel` and `@hozon/logtape`.
 Each new run owns a trace. Recovery retains its stored trace context.
 
 `@mokei/flow-host-node` supplies SQLite run, task and trace stores sharing one database owned by one process.

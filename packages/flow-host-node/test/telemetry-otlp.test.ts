@@ -1,12 +1,24 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { createMemoryTraceStore } from '@mokei/flow-host'
+import type { HozonDB } from '@hozon/db'
 import { trace } from '@opentelemetry/api'
 import { getLogger } from '@sozai/log'
 import { createFileSink } from '@tejika/log'
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
 import { setupFlowTelemetry } from '../src/index.js'
+import { openTestStores } from './support/stores.js'
+
+const databases: Array<HozonDB> = []
+afterEach(async () => {
+  for (const db of databases.splice(0)) await db.close()
+})
+
+async function stores() {
+  const result = await openTestStores()
+  databases.push(result.db)
+  return result
+}
 
 const file = vi.hoisted(() => ({ sink: vi.fn(), dispose: vi.fn() }))
 vi.mock('@tejika/log', () => ({
@@ -33,12 +45,13 @@ test('exports OTLP spans to a local HTTP receiver', async () => {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', resolve)
   })
-  const store = createMemoryTraceStore()
+  const { logStore, telemetryStore, traceStore: store } = await stores()
   const port = (server.address() as AddressInfo).port
   let handle: ReturnType<typeof setupFlowTelemetry> | undefined
   try {
     handle = setupFlowTelemetry({
-      traceStore: store,
+      logStore,
+      telemetryStore,
       otlp: {
         endpoint: `http://127.0.0.1:${port}/v1/traces`,
         headers: { 'x-telemetry-test': 'configured' },

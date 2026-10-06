@@ -20,7 +20,7 @@ The package requires Node.js with `node:sqlite` support. One process owns the da
 | `getFlowTaskStore(db)` | Resolves a persistent MCP `TaskStore` with revision-based compare-and-swap updates. |
 | `createFlowTraceStore(db)` | Creates a portable `TraceStore` for span and log capture, lookup and deletion. |
 | `flowStoreDefinitions`, `runStoreDefinition`, `taskStoreDefinition` | Store definitions to register when opening a hozon database yourself. |
-| `setupFlowTelemetry({ traceStore, otlp?, logs? })` | Installs tracing and logging once per process and returns asynchronous `dispose`. |
+| `setupFlowTelemetry({ logStore, telemetryStore, otlp?, logs? })` | Installs tracing and logging once per process and returns asynchronous `dispose`. |
 | `loadFlowConfig(path?)` | Reads and validates configuration, applies defaults and resolves configured paths. |
 | `loadFlowDirs(dirs)` | Returns `{ files, flows }` from JSON files in the supplied directories. |
 | `startRetention({ runStore, taskStore, traceStore, days, intervalMs? })` | Starts immediate and periodic pruning and returns asynchronous `stop`. |

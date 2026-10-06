@@ -1,22 +1,34 @@
-import { createMemoryTraceStore } from '@mokei/flow-host'
+import type { HozonDB } from '@hozon/db'
 import { trace } from '@opentelemetry/api'
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
 import { setupFlowTelemetry } from '../src/telemetry.js'
+import { openTestStores } from './support/stores.js'
+
+const databases: Array<HozonDB> = []
+afterEach(async () => {
+  for (const db of databases.splice(0)) await db.close()
+})
+
+async function stores() {
+  const result = await openTestStores()
+  databases.push(result.db)
+  return result
+}
 
 test('timed out provider cleanup still awaits an owned local span write', async () => {
   vi.useFakeTimers()
-  const store = createMemoryTraceStore()
+  const { logStore, telemetryStore, traceStore: store } = await stores()
   let release!: () => void
   const pending = new Promise<void>((resolve) => {
     release = resolve
   })
-  const addSpans = store.addSpans.bind(store)
-  vi.spyOn(store, 'addSpans').mockImplementation(async (spans) => {
+  const addSpans = telemetryStore.addSpans.bind(telemetryStore)
+  vi.spyOn(telemetryStore, 'addSpans').mockImplementation(async (spans) => {
     await pending
     await addSpans(spans)
   })
-  const telemetry = setupFlowTelemetry({ traceStore: store, logs: { file: false } })
+  const telemetry = setupFlowTelemetry({ logStore, telemetryStore, logs: { file: false } })
   const span = trace.getTracer('local-drain').startSpan('owned write')
   const traceID = span.spanContext().traceId
   span.end()
@@ -29,7 +41,7 @@ test('timed out provider cleanup still awaits an owned local span write', async 
     })
   try {
     await vi.advanceTimersByTimeAsync(20_000)
-    expect(store.addSpans).toHaveBeenCalledOnce()
+    expect(telemetryStore.addSpans).toHaveBeenCalledOnce()
     expect(settled).toBe(false)
     release()
     expect(await disposal).toBeInstanceOf(AggregateError)

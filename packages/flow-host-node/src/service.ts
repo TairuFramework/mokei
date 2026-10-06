@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { getLogStore } from '@hozon/store-log'
+import { getTelemetryStore } from '@hozon/store-telemetry'
 import type { FlowHost, TraceStore } from '@mokei/flow-host'
 import { createFlowHost } from '@mokei/flow-host'
 import type { FlowServiceStatus, HostEvent } from '@mokei/host-protocol'
@@ -200,7 +202,8 @@ export function createFlowServiceWithDependencies(
       const traceStore = createFlowTraceStore(database)
       stage = 'install flow telemetry'
       telemetry = dependencies.setupTelemetry({
-        traceStore,
+        logStore: await getLogStore(database),
+        telemetryStore: await getTelemetryStore(database),
         otlp: config.tracing.otlp,
         logs: config.logs,
       })
