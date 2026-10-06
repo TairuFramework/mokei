@@ -42,6 +42,12 @@
   },
   "dependencies": {
     "@enkaku/server": "catalog:",
+    "@hozon/adapter": "catalog:",
+    "@hozon/db": "catalog:",
+    "@hozon/logtape": "catalog:",
+    "@hozon/otel": "catalog:",
+    "@hozon/store-log": "catalog:",
+    "@hozon/store-telemetry": "catalog:",
     "@logtape/logtape": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
@@ -57,8 +63,10 @@
     "@sozai/flow-graph": "catalog:",
     "@sozai/log": "catalog:",
     "@sozai/schema": "catalog:",
+    "@tejika/db": "catalog:",
     "@tejika/env": "catalog:",
-    "@tejika/log": "catalog:"
+    "@tejika/log": "catalog:",
+    "kysely": "catalog:"
   },
   "devDependencies": {
     "@enkaku/client": "catalog:",

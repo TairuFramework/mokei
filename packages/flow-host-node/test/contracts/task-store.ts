@@ -4,10 +4,13 @@ import { describe, expect, test } from 'vitest'
 
 import { mutateNested, taskRecord } from '../support/records.js'
 
-export function taskStoreContract(name: string, create: () => TaskStore): void {
+export function taskStoreContract(
+  name: string,
+  create: () => TaskStore | Promise<TaskStore>,
+): void {
   describe(name, () => {
     test('rejects duplicates, missing updates and stale revisions', async () => {
-      const store = create()
+      const store = await create()
       const task = taskRecord()
       await store.create(task)
       await expect(store.create(task)).rejects.toThrow(`Task already exists: ${task.taskID}`)
@@ -23,7 +26,7 @@ export function taskStoreContract(name: string, create: () => TaskStore): void {
       )
     })
     test('forces the key and revision and admits one concurrent CAS winner', async () => {
-      const store = create()
+      const store = await create()
       const task = taskRecord()
       await store.create(task)
       expect(
@@ -41,7 +44,7 @@ export function taskStoreContract(name: string, create: () => TaskStore): void {
       expect((await store.get(task.taskID))?.revision).toBe(2)
     })
     test('isolates nested records, task inputs and nullable TTL across every boundary', async () => {
-      const store = create()
+      const store = await create()
       const input = taskRecord()
       const expected = taskRecord()
       await store.create(input)
@@ -69,7 +72,7 @@ export function taskStoreContract(name: string, create: () => TaskStore): void {
       ).toBeNull()
     })
     test('preserves insertion order and filters statuses including an empty set', async () => {
-      const store = create()
+      const store = await create()
       await store.create(taskRecord({ taskID: 'first' }))
       await store.create(taskRecord({ taskID: 'second', status: 'input_required' }))
       await store.create(taskRecord({ taskID: 'third' }))
@@ -83,7 +86,7 @@ export function taskStoreContract(name: string, create: () => TaskStore): void {
       expect(await store.list({ status: [] })).toEqual([])
     })
     test('deletes existing and missing records', async () => {
-      const store = create()
+      const store = await create()
       expect(await store.get('missing')).toBeUndefined()
       await store.create(taskRecord())
       await store.delete('task-one')

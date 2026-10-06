@@ -194,6 +194,24 @@ catalogs:
     '@hono/node-server':
       specifier: ^2.1.3
       version: 2.1.3
+    '@hozon/adapter':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@hozon/db':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@hozon/logtape':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@hozon/otel':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@hozon/store-log':
+      specifier: ^0.1.0
+      version: 0.1.0
+    '@hozon/store-telemetry':
+      specifier: ^0.1.0
+      version: 0.1.0
     '@inkjs/ui':
       specifier: ^2.0.0
       version: 2.0.0
@@ -296,6 +314,9 @@ catalogs:
     '@tejika/cli':
       specifier: ^0.4.2
       version: 0.4.2
+    '@tejika/db':
+      specifier: ^0.1.0
+      version: 0.1.0
     '@tejika/env':
       specifier: ^0.5.3
       version: 0.5.3
@@ -371,6 +392,9 @@ catalogs:
     ky:
       specifier: ^2.1.0
       version: 2.1.0
+    kysely:
+      specifier: ^0.29.6
+      version: 0.29.6
     luxon:
       specifier: ^3.7.2
       version: 3.7.2
@@ -1178,6 +1202,24 @@ importers:
       '@enkaku/server':
         specifier: 'catalog:'
         version: 0.21.3(@logtape/logtape@2.3.11)
+      '@hozon/adapter':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@hozon/db':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.11)
+      '@hozon/logtape':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.11)(@opentelemetry/api@1.9.1)
+      '@hozon/otel':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.11)(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
+      '@hozon/store-log':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.11)
+      '@hozon/store-telemetry':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.11)
       '@logtape/logtape':
         specifier: 'catalog:'
         version: 2.3.11
@@ -1223,12 +1265,18 @@ importers:
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6
+      '@tejika/db':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.11)
       '@tejika/env':
         specifier: 'catalog:'
         version: 0.5.3
       '@tejika/log':
         specifier: 'catalog:'
         version: 0.4.1(@logtape/logtape@2.3.11)
+      kysely:
+        specifier: 'catalog:'
+        version: 0.29.6
     devDependencies:
       '@enkaku/client':
         specifier: 'catalog:'
@@ -3331,6 +3379,36 @@ packages:
     peerDependencies:
       hono: ^4
 
+  '@hozon/adapter@0.1.0':
+    resolution: {integrity: sha512-OfwOdQneFmsCpxtbeQxI11VLWR1+hSHH8klq4QxYLqMTtK/SJpVyGqyTDqRPhRzpTeVtYaY8xw31K9m1drjciA==}
+    engines: {node: '>=24'}
+
+  '@hozon/db@0.1.0':
+    resolution: {integrity: sha512-2gzPqDIc7/E8ARti3GkcUXU5RJ0wa8wcdaiTHBnZqOwiuawdVmFtdJ+K2w6RkhBO3KMcX/1o0AADwHBkkHgzsw==}
+    engines: {node: '>=24'}
+
+  '@hozon/logtape@0.1.0':
+    resolution: {integrity: sha512-YwFuNfeU1Oe09aWNYYZXIt0kI9xFmTpxuJjPvApBMge80m2RR+OY2Abg7DCCx98l3voWzSyhVO3ZQy4gW8R5RQ==}
+    peerDependencies:
+      '@logtape/logtape': ^2.3.11
+      '@opentelemetry/api': ^1.9.1
+
+  '@hozon/node-sqlite@0.1.0':
+    resolution: {integrity: sha512-yUOEHgxSXI6QlpjJNOYa3R+Ytp3dS7VB50oISVnUHvX0rWqVEBa1XNfN90cYjrAyeGLTKO3zFLQhqdhv7Qz5Xw==}
+    engines: {node: '>=24'}
+
+  '@hozon/otel@0.1.0':
+    resolution: {integrity: sha512-YhgZVrIrFTFjnJkzvuj3YsDiPCxA9HHtZSJ7F+RrF62j+9gIjddObfxLyY0uFN+cMiknI0qL3/8zregSisP5Uw==}
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.1
+      '@opentelemetry/sdk-trace-base': ^2.11.0
+
+  '@hozon/store-log@0.1.0':
+    resolution: {integrity: sha512-I89h97gdplO6uhOXu3FGs452HTZikQ+8zF+ACtHdCpxTbvfXJIuZXJ4oXsAhlw6dvmEvxtryxvRqIVvy++CBhQ==}
+
+  '@hozon/store-telemetry@0.1.0':
+    resolution: {integrity: sha512-95SKzzmt+t9pwKukCvvwBZUAzZTBAPICe4Uxy5ap9G28YiMZyUj/ZJOWa9Qk3hnbVXZNQI/aDEFCWON0fibibg==}
+
   '@huggingface/jinja@0.5.9':
     resolution: {integrity: sha512-uWTG+l3VJRsl7EXxYizuL3P+cCPoc3cRqbWWRcQN0FhejRfbdq0RNhCmbY/YDtnTcz9icdLYuLDjsnz4d8JMuw==}
     engines: {node: '>=18'}
@@ -5015,6 +5093,10 @@ packages:
     peerDependencies:
       ink: ^7.0.0
       react: ^19.0.0
+
+  '@tejika/db@0.1.0':
+    resolution: {integrity: sha512-w9dohJwiQhcooNd3+3tnUbxp5LipYEnJvq/ml1JPFbCNRyPEsvnRoZEx3KrLsnx+wlNlD4mwijTNH1Px0O9vgw==}
+    engines: {node: '>=24'}
 
   '@tejika/env@0.5.2':
     resolution: {integrity: sha512-IAZueUfEOwlmmSpYD3bOiWytF+BJZJk9eWNPfnOzmW1AumW+Kjr/vXqSm2rmwWmp8k1wfkUwfnR9jjJMXM0ufA==}
@@ -7649,6 +7731,10 @@ packages:
   ky@2.1.0:
     resolution: {integrity: sha512-nIKwelw+7qVqKOlX4Eht6GXfEXlDHcdIjyLWV3s119kYt5s+70ayTnYS+0fRNmtgGRRAfqdeWQbh8YizqkS0ng==}
     engines: {node: '>=22'}
+
+  kysely@0.29.6:
+    resolution: {integrity: sha512-hHaB8C/rfzDDtr/t8YZwxAuPJTT0zHyaPoVzcXwDYhYNAgH/4sIfVhi/XLLIY+bL/FqaIJnjATDbi8ObSELmxg==}
+    engines: {node: '>=22.0.0'}
 
   latest-version@7.0.0:
     resolution: {integrity: sha512-KvNT4XqAMzdcL6ka6Tl3i2lYeFDgXNCuIX+xNx6ZMVR1dFq+idXd9FLKNMOIx0t9mJ9/HudyX4oZWXZQ0UJHeg==}
@@ -13528,6 +13614,60 @@ snapshots:
     dependencies:
       hono: 4.13.13
 
+  '@hozon/adapter@0.1.0':
+    dependencies:
+      kysely: 0.29.6
+
+  '@hozon/db@0.1.0(@logtape/logtape@2.3.11)':
+    dependencies:
+      '@hozon/adapter': 0.1.0
+      '@sozai/log': 0.4.0(@logtape/logtape@2.3.11)
+      kysely: 0.29.6
+    transitivePeerDependencies:
+      - '@logtape/logtape'
+
+  '@hozon/logtape@0.1.0(@logtape/logtape@2.3.11)(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@hozon/store-log': 0.1.0(@logtape/logtape@2.3.11)
+      '@logtape/logtape': 2.3.11
+      '@opentelemetry/api': 1.9.1
+      '@sozai/json': 0.3.0
+      '@sozai/log': 0.4.0(@logtape/logtape@2.3.11)
+
+  '@hozon/node-sqlite@0.1.0':
+    dependencies:
+      '@hozon/adapter': 0.1.0
+      kysely: 0.29.6
+
+  '@hozon/otel@0.1.0(@logtape/logtape@2.3.11)(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))':
+    dependencies:
+      '@hozon/store-telemetry': 0.1.0(@logtape/logtape@2.3.11)
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-base': 2.11.0(@opentelemetry/api@1.9.1)
+      '@sozai/json': 0.3.0
+      '@sozai/log': 0.4.0(@logtape/logtape@2.3.11)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
+
+  '@hozon/store-log@0.1.0(@logtape/logtape@2.3.11)':
+    dependencies:
+      '@hozon/adapter': 0.1.0
+      '@hozon/db': 0.1.0(@logtape/logtape@2.3.11)
+      '@sozai/json': 0.3.0
+      kysely: 0.29.6
+    transitivePeerDependencies:
+      - '@logtape/logtape'
+
+  '@hozon/store-telemetry@0.1.0(@logtape/logtape@2.3.11)':
+    dependencies:
+      '@hozon/adapter': 0.1.0
+      '@hozon/db': 0.1.0(@logtape/logtape@2.3.11)
+      '@sozai/json': 0.3.0
+      kysely: 0.29.6
+    transitivePeerDependencies:
+      - '@logtape/logtape'
+
   '@huggingface/jinja@0.5.9': {}
 
   '@inkjs/ui@2.0.0(ink@7.1.1(@types/react@19.3.0)(react@19.3.0))':
@@ -14099,47 +14239,33 @@ snapshots:
 
   '@noble/hashes@2.4.0': {}
 
-  '@node-llama-cpp/linux-arm64@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-arm64@3.19.0': {}
 
-  '@node-llama-cpp/linux-armv7l@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-armv7l@3.19.0': {}
 
-  '@node-llama-cpp/linux-riscv64@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-riscv64@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64-cuda-ext@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64-cuda@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64-cuda@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64-vulkan@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64-vulkan@3.19.0': {}
 
-  '@node-llama-cpp/linux-x64@3.19.0':
-    optional: true
+  '@node-llama-cpp/linux-x64@3.19.0': {}
 
-  '@node-llama-cpp/mac-arm64-metal@3.19.0':
-    optional: true
+  '@node-llama-cpp/mac-arm64-metal@3.19.0': {}
 
-  '@node-llama-cpp/mac-x64@3.19.0':
-    optional: true
+  '@node-llama-cpp/mac-x64@3.19.0': {}
 
-  '@node-llama-cpp/win-arm64@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-arm64@3.19.0': {}
 
-  '@node-llama-cpp/win-x64-cuda-ext@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64-cuda-ext@3.19.0': {}
 
-  '@node-llama-cpp/win-x64-cuda@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64-cuda@3.19.0': {}
 
-  '@node-llama-cpp/win-x64-vulkan@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64-vulkan@3.19.0': {}
 
-  '@node-llama-cpp/win-x64@3.19.0':
-    optional: true
+  '@node-llama-cpp/win-x64@3.19.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -14466,29 +14592,21 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@reflink/reflink-darwin-arm64@0.1.19':
-    optional: true
+  '@reflink/reflink-darwin-arm64@0.1.19': {}
 
-  '@reflink/reflink-darwin-x64@0.1.19':
-    optional: true
+  '@reflink/reflink-darwin-x64@0.1.19': {}
 
-  '@reflink/reflink-linux-arm64-gnu@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-arm64-gnu@0.1.19': {}
 
-  '@reflink/reflink-linux-arm64-musl@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-arm64-musl@0.1.19': {}
 
-  '@reflink/reflink-linux-x64-gnu@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-x64-gnu@0.1.19': {}
 
-  '@reflink/reflink-linux-x64-musl@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-x64-musl@0.1.19': {}
 
-  '@reflink/reflink-win32-arm64-msvc@0.1.19':
-    optional: true
+  '@reflink/reflink-win32-arm64-msvc@0.1.19': {}
 
-  '@reflink/reflink-win32-x64-msvc@0.1.19':
-    optional: true
+  '@reflink/reflink-win32-x64-msvc@0.1.19': {}
 
   '@reflink/reflink@0.1.19':
     optionalDependencies:
@@ -14500,7 +14618,6 @@ snapshots:
       '@reflink/reflink-linux-x64-musl': 0.1.19
       '@reflink/reflink-win32-arm64-msvc': 0.1.19
       '@reflink/reflink-win32-x64-msvc': 0.1.19
-    optional: true
 
   '@rolldown/binding-android-arm-eabi@1.2.12':
     optional: true
@@ -15288,6 +15405,14 @@ snapshots:
       commander: 15.0.0
       ink: 7.1.1(@types/react@19.3.0)(react@19.3.0)
       react: 19.3.0
+    transitivePeerDependencies:
+      - '@logtape/logtape'
+
+  '@tejika/db@0.1.0(@logtape/logtape@2.3.11)':
+    dependencies:
+      '@hozon/db': 0.1.0(@logtape/logtape@2.3.11)
+      '@hozon/node-sqlite': 0.1.0
+      '@tejika/env': 0.5.3
     transitivePeerDependencies:
       - '@logtape/logtape'
 
@@ -18347,6 +18472,8 @@ snapshots:
   kleur@4.1.5: {}
 
   ky@2.1.0: {}
+
+  kysely@0.29.6: {}
 
   latest-version@7.0.0:
     dependencies:

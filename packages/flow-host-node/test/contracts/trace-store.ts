@@ -2,10 +2,13 @@ import type { TraceStore } from '@mokei/flow-host'
 import { describe, expect, test } from 'vitest'
 
 import { logRecord, mutateNested, spanRecord } from '../support/records.js'
-export function traceStoreContract(name: string, create: () => TraceStore): void {
+export function traceStoreContract(
+  name: string,
+  create: () => TraceStore | Promise<TraceStore>,
+): void {
   describe(name, () => {
     test('round-trips fractional times and isolates every nested boundary', async () => {
-      const store = create()
+      const store = await create()
       const spans = [spanRecord()]
       const logs = [logRecord()]
       await store.addSpans(spans)
@@ -27,7 +30,7 @@ export function traceStoreContract(name: string, create: () => TraceStore): void
       expect((await store.getTrace('trace-one')).spans).toEqual([spanRecord({ name: 'updated' })])
     })
     test('upserts span pairs preserving sequence and orders timestamp ties', async () => {
-      const store = create()
+      const store = await create()
       await store.addSpans([
         spanRecord({ spanID: 'first', startTime: 3 }),
         spanRecord({ spanID: 'second', startTime: 1 }),
@@ -49,7 +52,7 @@ export function traceStoreContract(name: string, create: () => TraceStore): void
       expect((await store.getTrace('other')).spans).toHaveLength(1)
     })
     test('uses strict end-time cutoff, keeps traces and reports actual counts', async () => {
-      const store = create()
+      const store = await create()
       await store.addSpans([
         spanRecord({ traceID: 'old', endTime: 4 }),
         spanRecord({ traceID: 'boundary', startTime: 1, endTime: 5 }),
@@ -72,7 +75,7 @@ export function traceStoreContract(name: string, create: () => TraceStore): void
       expect(await store.deleteTraces(['missing'])).toEqual({ spans: 0, logs: 0 })
     })
     test('handles missing IDs and empty collections', async () => {
-      const store = create()
+      const store = await create()
       await store.addSpans([])
       await store.addLogs([])
       expect(await store.getTrace('missing')).toEqual({ spans: [], logs: [] })
@@ -83,7 +86,7 @@ export function traceStoreContract(name: string, create: () => TraceStore): void
       expect(await store.deleteTraces(['trace-one'])).toEqual({ spans: 1, logs: 1 })
     })
     test('protects a large keep set', async () => {
-      const store = create()
+      const store = await create()
       await store.addSpans([spanRecord()])
       await store.addLogs([logRecord()])
       const kept = Array.from({ length: 40000 }, (_, index) => `trace-${index}`)

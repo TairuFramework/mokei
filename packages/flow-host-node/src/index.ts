@@ -32,6 +32,8 @@ export {
 export { createMonitorSurface } from './monitor-surface.js'
 export { createNativeSurface } from './native-surface.js'
 export { startRetention } from './retention.js'
+export type { FlowRunTables } from './run-store.js'
+export { FLOW_RUN_STORE, getFlowRunStore, runStoreDefinition } from './run-store.js'
 export type {
   FlowResources,
   FlowService,
@@ -44,4 +46,6 @@ export { createSQLiteRunStore } from './sqlite-run-store.js'
 export { createSQLiteTaskStore } from './sqlite-task-store.js'
 export { createSQLiteTraceStore } from './sqlite-trace-store.js'
 export type { InboxSurface, PromptOutcome, SurfaceDelivery, SurfaceStatus } from './surfaces.js'
+export type { FlowTaskTables } from './task-store.js'
+export { FLOW_TASK_STORE, getFlowTaskStore, taskStoreDefinition } from './task-store.js'
 export { setupFlowTelemetry } from './telemetry.js'
