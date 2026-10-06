@@ -147,35 +147,61 @@ The daemon loads app-level configuration and opens the shared database before cr
 import { getLogStore } from '@hozon/store-log'
 import { getTelemetryStore } from '@hozon/store-telemetry'
 import { loadMokeiConfig, openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
-import { createFlowHandlers, createFlowService, flowStoreDefinitions } from '@mokei/flow-host-node'
+import {
+  createFlowHandlers,
+  createFlowService,
+  FLOW_REPORT_CATEGORY,
+  flowStoreDefinitions,
+} from '@mokei/flow-host-node'
 import { composeHandlers, serveHostDaemon } from '@mokei/host-node'
+
+// Release in reverse order, attempting every step and keeping every error.
+async function release(steps: Array<() => Promise<void> | undefined>): Promise<void> {
+  const errors: Array<unknown> = []
+  for (const step of steps) {
+    try {
+      await step()
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1) throw new AggregateError(errors, 'Shutdown failed')
+}
 
 const appConfig = await loadMokeiConfig()
 const database = await openMokeiDatabase({ stores: flowStoreDefinitions })
-const telemetry = setupMokeiTelemetry({
-  logStore: await getLogStore(database),
-  telemetryStore: await getTelemetryStore(database),
-  otlp: appConfig.tracing.otlp,
-  logs: appConfig.logs,
-  reportCategories: [['mokei', 'flow-host', 'capture']],
-})
-const events = new EventTarget()
-const service = createFlowService({
-  database,
-  onEvent: ({ type, ...detail }) => events.dispatchEvent(new CustomEvent(type, { detail })),
-})
-const daemon = await serveHostDaemon({
-  events,
-  handlers: composeHandlers(createFlowHandlers(service)),
-  flowStatus: () => service.status(),
-  onShutdown: async () => {
-    await service.dispose()
-    await telemetry.dispose()
-    await database.close()
-  },
-})
-await service.start()
-// Later, await daemon.close() to run the injected cleanup and close serving.
+let telemetry: ReturnType<typeof setupMokeiTelemetry> | undefined
+let service: ReturnType<typeof createFlowService> | undefined
+const shutdown = () =>
+  release([() => service?.dispose(), () => telemetry?.dispose(), () => database.close()])
+try {
+  telemetry = setupMokeiTelemetry({
+    logStore: await getLogStore(database),
+    telemetryStore: await getTelemetryStore(database),
+    otlp: appConfig.tracing.otlp,
+    logs: appConfig.logs,
+    reportCategories: [FLOW_REPORT_CATEGORY],
+  })
+  const events = new EventTarget()
+  const flows = createFlowService({
+    database,
+    onEvent: ({ type, ...detail }) => events.dispatchEvent(new CustomEvent(type, { detail })),
+  })
+  service = flows
+  await serveHostDaemon({
+    events,
+    handlers: composeHandlers(createFlowHandlers(flows)),
+    flowStatus: () => flows.status(),
+    onShutdown: shutdown,
+  })
+  await flows.start()
+} catch (error) {
+  // Partial boot: release what was acquired, then surface the original error.
+  await shutdown().catch(() => {})
+  throw error
+}
+// Closing the daemon runs onShutdown, which releases everything in reverse order.
 ```
 
 The flow service takes the shared database as `database`; it never opens or closes it. In the daemon, the service is disposed before telemetry, and the database closes last. The service stops retention, suspends stored runs, disconnects sibling sessions and disposes its host as part of its own shutdown.
@@ -187,6 +213,7 @@ Explicit cancellation before disposal ends runs instead of suspending them.
 Before shutdown, stop accepting requests and await application-owned pending calls.
 Await every disposal promise before closing the hozon database. Telemetry disposal drains batched spans and queued logs.
 Startup failures also require cleanup of resources already created, in the same order.
+Attempt every cleanup step even when an earlier one fails, so the database still closes.
 Recovery requires the same flow definitions and sibling tools on restart.
 Recovery events can fire during `createFlowHost`. Its `listeners` option receives those events during construction.
 
@@ -196,7 +223,7 @@ Recovery events can fire during `createFlowHost`. Its `listeners` option receive
 A missing file returns defaults. Invalid JSON or schema violations throw `FlowConfigError`, with `path`, `issues` and a message.
 Unknown properties are rejected. Supplied sections must satisfy their schema's required fields.
 An empty `desktop: {}` section is allowed and keeps notifications disabled.
-Omitted sections use defaults: empty siblings and flow directories, empty approval allowlist, no OTLP, `info` logs, 30-day retention and `desktop.notifications: false`.
+Omitted sections use defaults: empty siblings and flow directories, empty approval allowlist, 30-day retention and `desktop.notifications: false`.
 The loader runs at startup. Configuration changes take effect on restart, without a file watcher.
 
 A complete configuration example:
@@ -222,7 +249,6 @@ Sibling arguments ending in `.js`, `.mjs` or `.cjs` also resolve there, unless t
 `~` and `~/` expand to the home directory. Absolute paths, URLs and other tilde forms remain unchanged.
 Commands, environment values and other arguments remain unchanged.
 Retention days must be an integer of at least one.
-Log levels are `trace`, `debug`, `info`, `warning`, `error` and `fatal`.
 
 `loadFlowDirs` reads only top-level `.json` files, in sorted filename order within each directory.
 Directory order follows the supplied array. It parses JSON without validating flow definitions.
