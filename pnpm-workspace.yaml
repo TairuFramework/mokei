@@ -145,6 +145,7 @@ minimumReleaseAgeExclude:
 versioning:
   fixed:
     - - '@mokei/anthropic-provider'
+      - '@mokei/app-node'
       - '@mokei/context-client'
       - '@mokei/context-protocol'
       - '@mokei/context-rpc'
