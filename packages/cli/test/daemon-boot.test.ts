@@ -96,6 +96,61 @@ test('disposes the flow service, then telemetry, then the database', async () =>
   expect(order).toEqual(['service', 'telemetry', 'database'])
 })
 
+async function startWithFailingDisposal(failures: { service?: Error; telemetry?: Error }) {
+  const actual = await vi.importActual<typeof FlowHostNodeExports>('@mokei/flow-host-node')
+  vi.mocked(createFlowService).mockImplementationOnce((options) => {
+    const service = actual.createFlowService(options)
+    const dispose = service.dispose
+    return {
+      ...service,
+      dispose: async () => {
+        await dispose()
+        if (failures.service != null) throw failures.service
+      },
+    }
+  })
+  const closed = vi.fn()
+  const daemon = await startMokeiDaemonWithDependencies(params, {
+    loadConfig: async () => ({ logs: { level: 'info', file: false }, tracing: {} }),
+    openDatabase: async (options) => {
+      const database = await openMokeiDatabase(options)
+      const close = database.close.bind(database)
+      vi.spyOn(database, 'close').mockImplementation(async () => {
+        closed()
+        await close()
+      })
+      return database
+    },
+    setupTelemetry: () => ({
+      dispose: async () => {
+        if (failures.telemetry != null) throw failures.telemetry
+      },
+    }),
+  })
+  return { daemon, closed }
+}
+
+test('closes the database and rethrows a single disposal failure as is', async () => {
+  const failure = new Error('telemetry dispose failed')
+  const { daemon, closed } = await startWithFailingDisposal({ telemetry: failure })
+  await expect(daemon.close()).rejects.toBe(failure)
+  expect(closed).toHaveBeenCalledOnce()
+})
+
+test('closes the database and aggregates several disposal failures', async () => {
+  const service = new Error('service dispose failed')
+  const telemetry = new Error('telemetry dispose failed')
+  const { daemon, closed } = await startWithFailingDisposal({ service, telemetry })
+  const error = await daemon.close().then(
+    () => undefined,
+    (reason: unknown) => reason,
+  )
+  expect(error).toBeInstanceOf(AggregateError)
+  expect((error as AggregateError).message).toBe('Daemon shutdown failed')
+  expect((error as AggregateError).errors).toEqual([service, telemetry])
+  expect(closed).toHaveBeenCalledOnce()
+})
+
 test('releases the database when telemetry setup fails', async () => {
   let database: Awaited<ReturnType<typeof openMokeiDatabase>> | undefined
   const failure = new Error('telemetry failed')
