@@ -1,32 +1,21 @@
 # @mokei/app-node
 
-Mokei Node app foundation: configuration, database and telemetry.
+Node app foundation for Mokei configuration, the shared hozon database and process telemetry.
 
-```ts
-import { loadMokeiConfig, openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
-import { getLogStore } from '@hozon/store-log'
-import { getTelemetryStore } from '@hozon/store-telemetry'
+## Public API
 
-const config = await loadMokeiConfig()
-const db = await openMokeiDatabase()
-const telemetry = setupMokeiTelemetry({
-  logStore: await getLogStore(db),
-  telemetryStore: await getTelemetryStore(db),
-  logs: config.logs,
-  otlp: config.tracing.otlp,
-  reportCategories: [['my-app', 'report']],
-})
+| Export | Behaviour |
+|---|---|
+| `getMokeiConfigPath()` | Returns `MOKEI_CONFIG_PATH` or `<mokei data dir>/mokei.json`. |
+| `loadMokeiConfig(path?)` | Loads and validates configuration; missing files use defaults. |
+| `MokeiConfig`, `MokeiConfigError` | Configuration type and validation error (with `path` and `issues`). |
+| `mokeiStoreDefinitions` | Built-in hozon log and telemetry store definitions. |
+| `openMokeiDatabase({ path?, stores? }?)` | Opens and migrates the app database, registering built-in stores and any supplied definitions. |
+| `setupMokeiTelemetry({ logStore, telemetryStore, otlp?, logs?, reportCategories? })` | Installs process tracing and logging; returns asynchronous `dispose()`. |
 
-// Stop application work before draining telemetry and closing storage.
-await telemetry.dispose()
-await db.close()
-```
+## `mokei.json`
 
-`loadMokeiConfig(path?)` reads `mokei.json` from mokei's data directory.
-`MOKEI_CONFIG_PATH` overrides that default; an explicit path takes precedence.
-Missing files use `{ logs: { level: 'info', file: true }, tracing: {} }`.
-Unknown keys, invalid values and malformed JSON reject with `MokeiConfigError`,
-which exposes the configuration path and validation issues.
+The default path is `<mokei data dir>/mokei.json`; `MOKEI_CONFIG_PATH` overrides it and an explicit `loadMokeiConfig(path)` wins. The schema rejects unknown keys at every level. Missing file defaults are `{ "logs": { "level": "info", "file": true }, "tracing": {} }`.
 
 ```json
 {
@@ -40,14 +29,12 @@ which exposes the configuration path and validation issues.
 }
 ```
 
-`openMokeiDatabase({ path?, stores? })` opens `mokei.db` in mokei's data directory,
-registers the hozon log and telemetry stores plus any supplied stores, and runs migrations.
-`MOKEI_DATABASE_PATH` overrides the default; an explicit path wins. Use `:memory:`
-for ephemeral storage. `mokeiStoreDefinitions` exposes the two built-in store definitions.
+`logs.level` accepts `trace`, `debug`, `info`, `warning`, `error` or `fatal`; `logs.file` controls daily rotating file output. `tracing.otlp.endpoint` is required when `otlp` is present; `headers` is an optional string map. Invalid JSON and schema values throw `MokeiConfigError`, naming the path and validation issues.
 
-`setupMokeiTelemetry` installs tracing and logging once per process. It stores spans
-and correlated logs, optionally exports OTLP spans, and writes daily rotating log files
-unless `logs.file` is false. Report categories and hozon storage failures route to the
-console errors sink without being captured. Report categories default to an empty list.
-Disposal drains owned writes before releasing logging and tracing registrations;
-telemetry cannot be reinstalled in the same process.
+## Database and telemetry
+
+`openMokeiDatabase()` uses `<mokei data dir>/mokei.db`. `MOKEI_DATABASE_PATH` overrides the default; an explicit `path` takes precedence over the environment variable. `:memory:` selects in-memory storage. The database registers `mokeiStoreDefinitions` (the hozon log and telemetry stores) plus optional caller-provided stores.
+
+Telemetry stores spans and correlated logs locally, and can export spans to OTLP. File logging is enabled by default. `reportCategories` is an array of logger category paths; each is routed at error level to the console error sink and excluded from log capture. The `hozon` category is routed there automatically. Hozon storage failures also reach the console error sink without being captured.
+
+Dispose application work first, then telemetry, then close the database. Telemetry is process-wide and can only be installed once.
