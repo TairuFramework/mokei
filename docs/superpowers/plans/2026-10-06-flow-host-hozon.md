@@ -25,7 +25,7 @@
 
 ## Rulings made while planning
 
-- **`@mokei/flow-host`'s own `createTraceStoreSpanExporter` / `createTraceStoreLogSink` stay unchanged** (spec left this open). They are published API, tested in `flow-host`, and serve the in-memory `TraceStore` path. `flow-host-node` simply stops importing them. Cost if wrong: one follow-up deprecation.
+- **Delete `@mokei/flow-host`'s `createTraceStoreSpanExporter` / `createTraceStoreLogSink`** (user decision, superseding the planning ruling). hozon already holds their ports (`@hozon/otel` `createTelemetrySpanExporter`, `@hozon/logtape` `createLogStoreSink`). `@mokei/flow-host` is unpublished, so no deprecation is needed. `TraceStore` and `createMemoryTraceStore` stay: `pruneRuns`, the handlers and the memory contract use them.
 - **Public API of `flow-host-node` after the change:**
   - Added: `openFlowDatabase`, `flowStoreDefinitions`, `runStoreDefinition`, `taskStoreDefinition`, `FLOW_RUN_STORE`, `FLOW_TASK_STORE`, `getFlowRunStore`, `getFlowTaskStore`, `createFlowTraceStore`.
   - Removed: `createSQLiteRunStore`, `createSQLiteTaskStore`, `createSQLiteTraceStore`.
@@ -168,6 +168,8 @@
 - Modify: `packages/flow-host-node/src/telemetry.ts`, `src/service.ts` (call site: `setupTelemetry({ logStore: await getLogStore(database), telemetryStore: await getTelemetryStore(database), otlp, logs })`)
 - Modify: `test/restart.test.ts`, `test/persistence.test.ts` (forwarding wrapper forwards `logStore` / `telemetryStore`), `test/service.test.ts` if its fake `setupTelemetry` asserts params
 - Create: `packages/flow-host-node/test/support/stores.ts`
+- Delete: `packages/flow-host/src/trace-store-span-exporter.ts`, `packages/flow-host/src/trace-store-log-sink.ts`, `packages/flow-host/test/trace-store-span-exporter.test.ts`, `packages/flow-host/test/trace-store-log-sink.test.ts`; drop their two exports from `packages/flow-host/src/index.ts`.
+- Modify: `packages/flow-host/package.json`. Any of `@logtape/logtape`, `@opentelemetry/core`, `@opentelemetry/sdk-trace-base`, `@sozai/json` that `packages/flow-host/src` no longer imports (check with `rg`) moves to `devDependencies` if tests still use it, otherwise is removed. Update `packages/flow-host/README.md` and `docs/agents/architecture.md` if they list the deleted exports.
 - Modify: `test/telemetry.test.ts`, `test/telemetry-failures.test.ts`, `test/telemetry-drain.test.ts`, `test/telemetry-otlp.test.ts`, `test/telemetry-registration.test.ts`
 
 **Interfaces:**
@@ -190,6 +192,7 @@
   - Swap the local exporter to `createTelemetrySpanExporter(params.telemetryStore)` and the sink to `createLogStoreSink(params.logStore, { tracedOnly: true, excludeCategories: [['mokei', 'flow-host', 'capture']] })`.
   - Add the logger entry `{ category: ['hozon'], lowestLevel: 'error', sinks: ['errors'] }` beside the existing `['mokei', 'flow-host', 'capture']` entry.
   - Keep everything else (registration guards, rollback, dispose order) unchanged.
+  - Delete the two `@mokei/flow-host` files and tests listed above, and prune its dependencies.
 - [ ] **Step 4: Run** `rtk proxy pnpm run build`, `rtk proxy pnpm run test`, `rtk proxy pnpm run lint`, and the flow integration suites. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(flow-host-node): capture telemetry through hozon exporter and sink`.
 
