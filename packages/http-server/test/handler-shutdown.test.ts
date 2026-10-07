@@ -117,6 +117,69 @@ describe('HTTPHandler.shutdown()', () => {
     }
   })
 
+  test('shutdown completes a listen admitted before hub registration', async () => {
+    const hub = createSubscriptionHub({ events: new EventEmitter<ServerEvents>() })
+    const gate = Promise.withResolvers<void>()
+    const admitted = Promise.withResolvers<void>()
+    const registered = Promise.withResolvers<void>()
+    const handler = createHandler({
+      subscriptionHub: {
+        ...hub,
+        register: (entry) => {
+          const handle = hub.register(entry)
+          registered.resolve()
+          return handle
+        },
+      },
+      createServer: ({ transport, subscriptionHub, connectionID }) => {
+        const write = transport.write.bind(transport)
+        transport.write = async (message) => {
+          if (
+            'method' in message &&
+            message.method === 'notifications/subscriptions/acknowledged'
+          ) {
+            admitted.resolve()
+            await gate.promise
+          }
+          await write(message)
+        }
+        return new ContextServer({ ...SERVER_CONFIG, transport, subscriptionHub, connectionID })
+      },
+    })
+    const controller = new AbortController()
+    let messages: ReturnType<typeof readMessages> | undefined
+    try {
+      const request = postRequest(LISTEN_MESSAGE)
+      const response = handler.handleRequest(new Request(request, { signal: controller.signal }))
+      await admitted.promise
+      await handler.shutdown()
+      gate.resolve()
+      messages = readMessages(await response)
+      expect((await messages.next()).value).toMatchObject({
+        method: 'notifications/subscriptions/acknowledged',
+      })
+      await registered.promise
+      const terminal = messages.next()
+      const timeout = setTimeout(() => controller.abort(), 1000)
+      try {
+        expect((await terminal).value).toEqual({
+          jsonrpc: '2.0',
+          id: 2,
+          result: { _meta: { 'io.modelcontextprotocol/subscriptionId': 2 } },
+        })
+        expect((await messages.next()).done).toBe(true)
+      } finally {
+        clearTimeout(timeout)
+      }
+    } finally {
+      gate.resolve()
+      controller.abort()
+      await messages?.return(undefined)
+      await handler.dispose()
+      await hub.dispose()
+    }
+  })
+
   test('shutdown ends session-owned subscriptions', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const handler = createHandler({

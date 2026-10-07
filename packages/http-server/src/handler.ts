@@ -50,7 +50,8 @@ export type HTTPHandlerParams = {
    * owns or disposes the hub it is handed -- the caller does.
    *
    * An embedded handler's `dispose()` is the abrupt backstop. Call `handler.shutdown()`
-   * first to gracefully complete open subscriptions, or complete the hub through its owner.
+   * first to gracefully complete every subscription in the supplied hub, including those
+   * served by other handlers or transports sharing it. Shutdown does not dispose the hub.
    * The result of `await serveHTTP(...)` runs this shutdown automatically before closing
    * the handler. The caller still owns and disposes the shared hub separately.
    */
@@ -576,7 +577,22 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     requestID: string | number | null,
     auth?: AuthInfo,
   ): Promise<Response> {
-    const hub = subscriptionHub as SubscriptionHub
+    const suppliedHub = subscriptionHub as SubscriptionHub
+    const hub: SubscriptionHub = {
+      acceptTaskIDs: (taskIDs, auth) => suppliedHub.acceptTaskIDs(taskIDs, auth),
+      endAllGracefully: () => suppliedHub.endAllGracefully(),
+      dispose: () => suppliedHub.dispose(),
+      register(entry) {
+        const handle = suppliedHub.register(entry)
+        // Admission can precede shutdown while the acknowledgement delays registration.
+        if (shuttingDown) {
+          void handle.complete().catch((error) => {
+            logger.warn('Late subscription completion failed', { error })
+          })
+        }
+        return handle
+      },
+    }
     return await runSubscriptionExchange({
       message: body as unknown as ClientMessage,
       requestID,

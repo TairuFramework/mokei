@@ -53,8 +53,9 @@ console.log(`${server.url}/mcp`)
 await dispose()
 ```
 
-For an existing `@sozai/http-server` application, install `mcpPlugin` alongside other Teikyo
-plugins. OAuth resource protection comes from `@teikyo/oauth`:
+For an existing `@sozai/http-server` application, install `mcpPlugin` alongside
+other `@sozai/http-server` plugins, such as Teikyo's. OAuth resource protection comes from
+`@teikyo/oauth`:
 
 ```typescript
 import { createServer } from '@sozai/http-server'
@@ -71,6 +72,8 @@ const app = await createServer({
     }),
   ],
 })
+await app.listen()
+console.log(`${app.url}/mcp`)
 ```
 
 `mcpPlugin` registers a shutdown hook that ends subscriptions gracefully before the handler
@@ -112,10 +115,12 @@ const response = await handler.handleRequest(request)
 
 When `subscriptionHub` is passed to `serveHTTP` / `createHTTPHandler`, `2026-07-28`
 `subscriptions/listen` POSTs use per-request servers that borrow the hub. The application owns
-and disposes the hub separately.
+and disposes the hub separately. `handler.shutdown()` ends every subscription in the supplied hub,
+including those served by other handlers or transports sharing it. Shutdown does not dispose the hub.
 
 The result of `await serveHTTP(...)` delegates disposal to the HTTP server. Its shutdown hooks
-complete open subscriptions before closing the handler. Await `dispose()` to finish shutdown.
+complete open subscriptions with terminal frames before closing the handler. In-flight stateless
+requests may hold disposal up to `graceMs`. Await `dispose()` to finish shutdown.
 
 An embedded `createHTTPHandler` needs an explicit graceful shutdown before disposal:
 

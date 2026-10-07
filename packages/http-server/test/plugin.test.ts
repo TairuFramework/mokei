@@ -216,6 +216,58 @@ describe('mokei:mcp plugin', () => {
     expect(available).toBe(true)
   })
 
+  test('closes a handshake-session GET stream without forcing server shutdown', async () => {
+    const server = await setup({
+      createServer: ({ transport }) =>
+        new ContextServer({ ...SERVER_CONFIG, protocolVersions: ['2025-11-25'], transport }),
+    })
+    const initialized = await fetch(`${server.url}/mcp`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(3000),
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-11-25',
+          capabilities: {},
+          clientInfo: { name: 'test-client', version: '1.0.0' },
+        },
+      }),
+    })
+    expect(initialized.status).toBe(200)
+    await initialized.json()
+    const sessionID = initialized.headers.get('Mcp-Session-Id')
+    if (sessionID == null) throw new Error('Missing handshake session')
+    const response = await fetch(`${server.url}/mcp`, {
+      signal: AbortSignal.timeout(3000),
+      headers: {
+        Accept: 'text/event-stream',
+        'Mcp-Session-Id': sessionID,
+        'MCP-Protocol-Version': '2025-11-25',
+      },
+    })
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Content-Type')).toContain('text/event-stream')
+    if (response.body == null) throw new Error('Missing session stream')
+    const reader = response.body.getReader()
+    try {
+      expect((await reader.read()).done).toBe(false)
+      const draining = (async () => {
+        while (!(await reader.read()).done) {}
+      })()
+      await server.dispose()
+      await draining
+      expect(server.shutdownReport?.forced).toBe(false)
+    } finally {
+      reader.releaseLock()
+    }
+  })
+
   test('ends subscriptions during server shutdown', async () => {
     const hub = createSubscriptionHub({ events: new EventEmitter<ServerEvents>() })
     cleanups.push(() => hub.dispose())

@@ -37,7 +37,6 @@
   },
   "devDependencies": {
     "@enkaku/protocol": "catalog:",
-    "@hono/node-server": "catalog:",
     "@modelcontextprotocol/client": "catalog:",
     "@modelcontextprotocol/core": "catalog:",
     "@modelcontextprotocol/ext-tasks": "catalog:",
