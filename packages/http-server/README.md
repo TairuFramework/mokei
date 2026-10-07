@@ -25,14 +25,14 @@ there is no equivalent stream to deprecate on that revision — it simply doesn'
 `2025-11-25` session GET stream itself remains fully supported for the deprecation window. This
 does not affect the `2026-07-28` Streamable HTTP transport, which is current and not deprecated.
 
-`serveHTTP` starts an HTTP server (via `@hono/node-server`) that bridges each session
+`serveHTTP` starts an HTTP server (via `@sozai/http-server`) that bridges each session
 to a `ContextServer` you create per connection:
 
 ```typescript
 import { serveHTTP } from '@mokei/http-server'
 import { ContextServer } from '@mokei/context-server'
 
-const { server, dispose } = serveHTTP({
+const { server, dispose } = await serveHTTP({
   port: 3000,
   hostname: '127.0.0.1',
   path: '/mcp',
@@ -46,8 +46,11 @@ const { server, dispose } = serveHTTP({
     }),
 })
 
+// The bound URL includes the assigned port when port is 0.
+console.log(`${server.url}/mcp`)
+
 // Later, to shut down:
-dispose()
+await dispose()
 ```
 
 To embed the handler in an existing HTTP framework, use `createHTTPHandler` and route
@@ -74,21 +77,17 @@ const response = await handler.handleRequest(request)
 ## Subscriptions & graceful shutdown
 
 When `subscriptionHub` is passed to `serveHTTP` / `createHTTPHandler`, `2026-07-28`
-`subscriptions/listen` POSTs are served against transport-isolated per-POST servers that
-*borrow* that hub — they do not own it. The handler's own `dispose()` (the value returned by
-`serveHTTP`, or `handler.dispose()`) is therefore only the abrupt backstop: it does not
-gracefully complete open subscriptions, so any still-open `subscriptions/listen` stream is torn
-down abruptly with no terminal frame written.
+`subscriptions/listen` POSTs use per-request servers that borrow the hub. The application owns
+and disposes the hub separately.
 
-To shut down gracefully, dispose the durable hub-owning `ContextServer` first (or call
-`hub.endAllGracefully()` directly), and only then call the HTTP handler's `dispose()`:
+The result of `await serveHTTP(...)` delegates disposal to the HTTP server. Its shutdown hooks
+complete open subscriptions before closing the handler. Await `dispose()` to finish shutdown.
+
+An embedded `createHTTPHandler` needs an explicit graceful shutdown before disposal:
 
 ```typescript
-// 1. Gracefully complete every open subscription against the durable hub-owning server.
-await hub.endAllGracefully()
-
-// 2. Only now tear down the HTTP layer.
-await dispose()
+await handler.shutdown()
+await handler.dispose()
 ```
 
 ## Documentation

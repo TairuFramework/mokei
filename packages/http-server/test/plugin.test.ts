@@ -91,6 +91,20 @@ describe('mokei:mcp plugin', () => {
     await expectToolsList(await requestToolsList(server.url))
   })
 
+  test('routes GET and DELETE to the handler without auth', async () => {
+    const server = await setup()
+    for (const method of ['GET', 'DELETE']) {
+      const response = await fetch(`${server.url}/mcp`, { method })
+      expect(response.status).toBe(400)
+      expect(await response.text()).toBe('Mcp-Session-Id header required')
+    }
+  })
+
+  test('rejects a bare GET with 401 when auth is on', async () => {
+    const server = await setup({ auth: {} })
+    expectBearerChallenge(await fetch(`${server.url}/mcp`), 401)
+  })
+
   test('rejects a missing bearer with 401 when auth is on', async () => {
     const server = await setup({ auth: {} })
     expectBearerChallenge(await requestToolsList(server.url), 401)

@@ -10,20 +10,8 @@
  * @module http-server
  */
 
-export { createDIDVerifier, type DIDVerifierConfig } from './auth/did-verifier.js'
-export { createJWKSVerifier, type JWKSVerifierConfig } from './auth/jwks-verifier.js'
-export {
-  type ProtectedResourceMetadataConfig,
-  protectedResourceMetadataPath,
-  protectedResourceMetadataResponse,
-} from './auth/metadata.js'
-export { type BearerAuthOptions, createBearerAuthGate } from './auth/require-bearer.js'
-export {
-  type AuthInfo,
-  type OAuthTokenVerifier,
-  TokenVerificationError,
-  type TokenVerificationErrorParams,
-} from './auth/verifier.js'
+export type { AuthInfo } from '@teikyo/oauth'
+
 export {
   createHTTPHandler,
   DEFAULT_MAX_STATELESS_EXCHANGES,

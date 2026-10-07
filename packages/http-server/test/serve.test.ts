@@ -22,20 +22,22 @@ const SERVER_CONFIG: ServerConfig = {
 }
 
 describe('serveHTTP', () => {
-  let server: ReturnType<typeof serveHTTP> | null = null
+  let server: Awaited<ReturnType<typeof serveHTTP>> | null = null
 
-  afterEach(() => {
-    server?.dispose()
+  afterEach(async () => {
+    await server?.dispose()
     server = null
   })
 
-  test('creates a server with handler and dispose', () => {
-    server = serveHTTP({
+  test('creates a server with handler and dispose', async () => {
+    server = await serveHTTP({
       createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
       port: 0,
       hostname: '127.0.0.1',
     })
 
+    expect(Number(new URL(server.server.url).port)).toBeGreaterThan(0)
+    expect((await fetch(`${server.server.url}/mcp`)).status).toBe(400)
     expect(server.handler).toBeDefined()
     expect(server.dispose).toBeTypeOf('function')
   })

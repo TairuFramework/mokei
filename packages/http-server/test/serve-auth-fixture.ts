@@ -1,7 +1,7 @@
 import { ContextServer, type ServerConfig } from '@mokei/context-server'
+import type { OAuthTokenVerifier } from '@teikyo/oauth'
 import { expect } from 'vitest'
 
-import type { OAuthTokenVerifier } from '../src/auth/verifier.js'
 import { serveHTTP } from '../src/serve.js'
 
 export const RESOURCE = 'http://127.0.0.1/mcp'
@@ -23,38 +23,20 @@ const SERVER_CONFIG: ServerConfig = {
 export async function startGatedMCP(
   verifier: OAuthTokenVerifier,
   authorizationServer: string,
-): Promise<{ server: ReturnType<typeof serveHTTP>; baseURL: string }> {
-  const server = serveHTTP({
+): Promise<{ server: Awaited<ReturnType<typeof serveHTTP>>; baseURL: string }> {
+  const server = await serveHTTP({
     createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
     port: 0,
     hostname: '127.0.0.1',
     auth: {
       verifier,
       resource: RESOURCE,
-      resourceMetadataURL: RESOURCE_METADATA_URL,
       authorizationServers: [authorizationServer],
       requiredScopes: ['read', 'write'],
     },
   })
 
-  try {
-    const address = server.server.address()
-    const port =
-      address && typeof address !== 'string'
-        ? address.port
-        : await new Promise<number>((resolve, reject) => {
-            server.server.once('error', reject)
-            server.server.once('listening', () => {
-              server.server.off('error', reject)
-              const listening = server.server.address()
-              resolve((listening as { port: number }).port)
-            })
-          })
-    return { server, baseURL: `http://127.0.0.1:${port}` }
-  } catch (error) {
-    await server.dispose()
-    throw error
-  }
+  return { server, baseURL: server.server.url }
 }
 
 export function requestToolsList(baseURL: string, token?: string): Promise<Response> {

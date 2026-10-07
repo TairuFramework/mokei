@@ -24,7 +24,7 @@ const SERVER_CONFIG: ServerConfig = {
 }
 
 describe('HTTP transport end-to-end', () => {
-  let serverResult: ReturnType<typeof serveHTTP> | null = null
+  let serverResult: Awaited<ReturnType<typeof serveHTTP>> | null = null
   let client: ContextClient | null = null
 
   afterEach(async () => {
@@ -39,24 +39,13 @@ describe('HTTP transport end-to-end', () => {
   })
 
   test('full session lifecycle over HTTP', async () => {
-    serverResult = serveHTTP({
+    serverResult = await serveHTTP({
       createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
       port: 0,
       hostname: '127.0.0.1',
     })
 
-    // Wait for the server to start listening
-    const server = serverResult.server
-    await new Promise<void>((resolve) => {
-      if (server.listening) {
-        resolve()
-      } else {
-        server.on('listening', resolve)
-      }
-    })
-
-    const address = serverResult.server.address() as { port: number }
-    const url = `http://127.0.0.1:${address.port}/mcp`
+    const url = `${serverResult.server.url}/mcp`
 
     const transport = new HTTPTransport({ url })
     client = new ContextClient({

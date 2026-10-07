@@ -1,7 +1,7 @@
 import { randomIdentity, stringifyToken } from '@kokuin/token'
+import { createDIDVerifier } from '@teikyo/oauth'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
-import { createDIDVerifier } from '../src/auth/did-verifier.js'
 import {
   corruptSignature,
   expectBearerChallenge,

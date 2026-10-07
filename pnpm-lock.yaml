@@ -542,6 +542,9 @@ importers:
       '@enkaku/protocol':
         specifier: 'catalog:'
         version: 0.21.4(@logtape/logtape@2.3.11)
+      '@hono/node-server':
+        specifier: 'catalog:'
+        version: 2.1.3(hono@4.13.13)
       '@modelcontextprotocol/client':
         specifier: 'catalog:'
         version: 2.3.1
@@ -1544,12 +1547,6 @@ importers:
       '@enkaku/transport':
         specifier: 'catalog:'
         version: 0.21.3(@logtape/logtape@2.3.11)
-      '@hono/node-server':
-        specifier: 'catalog:'
-        version: 2.1.3(hono@4.13.13)
-      '@kokuin/token':
-        specifier: 'catalog:'
-        version: 0.5.0(@logtape/logtape@2.3.11)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -1575,6 +1572,9 @@ importers:
         specifier: 'catalog:'
         version: 4.13.13
     devDependencies:
+      '@kokuin/token':
+        specifier: 'catalog:'
+        version: 0.5.0(@logtape/logtape@2.3.11)
       '@mokei/http-client':
         specifier: workspace:^
         version: link:../http-client

@@ -1,8 +1,8 @@
 import { createServer, type Server as HTTPServer } from 'node:http'
 import { toB64U } from '@sozai/codec'
+import { createJWKSVerifier } from '@teikyo/oauth'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
-import { createJWKSVerifier } from '../src/auth/jwks-verifier.js'
 import {
   corruptSignature,
   expectBearerChallenge,
@@ -144,7 +144,7 @@ describe('serveHTTP with JWKS verifier', () => {
     expectBearerChallenge(await requestToolsList(baseURL), 401)
   })
 
-  test('answers 500, not 401, when the JWKS cannot be fetched', async () => {
+  test('answers 503 when the JWKS cannot be fetched', async () => {
     const outage = await startGatedMCP(
       createJWKSVerifier({ issuer, jwksURI: `${issuer}/missing`, fetchTimeoutMs: 2_000 }),
       issuer,
@@ -152,7 +152,7 @@ describe('serveHTTP with JWKS verifier', () => {
     try {
       const token = await mintToken('ES256', keys.ES256, issuer)
       const response = await requestToolsList(outage.baseURL, token)
-      expect(response.status).toBe(500)
+      expect(response.status).toBe(503)
       expect(response.headers.get('WWW-Authenticate')).toBeNull()
     } finally {
       await outage.server.dispose()

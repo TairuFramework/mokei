@@ -6,14 +6,14 @@ import {
   createOAuthMiddleware,
   HTTPTransport,
 } from '@mokei/http-client'
+import type { OAuthTokenVerifier } from '@teikyo/oauth'
+import { TokenVerificationError } from '@teikyo/oauth'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import type { OAuthTokenVerifier } from '../src/auth/verifier.js'
-import { TokenVerificationError } from '../src/auth/verifier.js'
 import { serveHTTP } from '../src/serve.js'
 
 /**
- * In-process end-to-end interop: a real `@mokei/http-server` protected by `requireBearerAuth`,
+ * In-process end-to-end interop: a real `@mokei/http-server` protected by `oauthResourcePlugin`,
  * driven by a real `@mokei/http-client` `HTTPTransport` carrying the OAuth `fetchMiddleware`,
  * against a minimal fake authorisation server. Proves the whole client<->server OAuth path works
  * together -- discovery, 401, authorise, token exchange, retry, and token reuse -- not just each
@@ -34,7 +34,7 @@ const SERVER_CONFIG: ServerConfig = {
 }
 
 /**
- * `resource`/`resourceMetadataURL` are baked into the Hono app at `serveHTTP()` call time, but
+ * `resource` and its metadata URL are configured before the server starts listening, but
  * `port: 0` only resolves an actual port once the socket is listening -- after the app (and its
  * auth config) already exists. Rather than a bind-then-rebind dance to learn the port first, both
  * sides simply agree on a port-less identifier for the resource; the fake-AS `fetch` shim below is
@@ -44,7 +44,6 @@ const SERVER_CONFIG: ServerConfig = {
  * a workaround for a mismatch.
  */
 const RESOURCE = 'http://127.0.0.1/mcp'
-const RESOURCE_METADATA_URL = 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp'
 
 const AS_ISSUER = 'https://as.example.test'
 const AS_METADATA_URL = `${AS_ISSUER}/.well-known/oauth-authorization-server`
@@ -66,24 +65,8 @@ function json(body: unknown): Response {
   })
 }
 
-/**
- * `server.address()` is `null` until the underlying TCP socket finishes binding, which is
- * asynchronous even for an IP-literal hostname on port 0 -- so callers must wait for the
- * `listening` event before reading the assigned port.
- */
-async function getPort(server: ReturnType<typeof serveHTTP>['server']): Promise<number> {
-  const addr = server.address()
-  if (addr && typeof addr !== 'string') return addr.port
-  return new Promise((resolve) => {
-    server.once('listening', () => {
-      const listening = server.address()
-      resolve((listening as { port: number }).port)
-    })
-  })
-}
-
 describe('OAuth client<->server interop', () => {
-  let server: ReturnType<typeof serveHTTP> | null = null
+  let server: Awaited<ReturnType<typeof serveHTTP>> | null = null
   let transport: HTTPTransport | null = null
 
   afterEach(async () => {
@@ -95,18 +78,17 @@ describe('OAuth client<->server interop', () => {
   })
 
   test('client authorizes against a protected server and reuses the token', async () => {
-    server = serveHTTP({
+    server = await serveHTTP({
       createServer: ({ transport: t }) => new ContextServer({ ...SERVER_CONFIG, transport: t }),
       port: 0,
       hostname: '127.0.0.1',
       auth: {
         verifier,
         resource: RESOURCE,
-        resourceMetadataURL: RESOURCE_METADATA_URL,
         authorizationServers: [AS_ISSUER],
       },
     })
-    const port = await getPort(server.server)
+    const port = Number(new URL(server.server.url).port)
 
     let authorizeCalls = 0
     const handler: AuthorizationHandler = {

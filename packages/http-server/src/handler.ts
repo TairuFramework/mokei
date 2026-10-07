@@ -16,8 +16,8 @@ import type {
 } from '@mokei/context-server'
 import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { createRuntime, type Runtime } from '@sozai/runtime'
+import type { AuthInfo } from '@teikyo/oauth'
 
-import type { AuthInfo } from './auth/verifier.js'
 import { appendReplay, eventsAfter, type Session, SessionManager } from './session.js'
 import { createSSEStream, SSE_RESPONSE_HEADERS, SSE_STREAM_HIGH_WATER_MARK } from './sse-stream.js'
 import { type SSEEvent, SSEWriter } from './sse-writer.js'
@@ -49,14 +49,10 @@ export type HTTPHandlerParams = {
    * *borrows* this hub; without one, a listen POST gets `METHOD_NOT_FOUND`. The handler never
    * owns or disposes the hub it is handed -- the caller does.
    *
-   * Dispose ordering matters. The per-POST servers this handler creates are *borrowers* of the
-   * hub, not its owner: calling `dispose()` on the value returned by `serveHTTP(...)` (or on
-   * `handler.dispose()`) does NOT gracefully complete open subscriptions -- it is the abrupt
-   * backstop only, and every open `subscriptions/listen` stream is torn down abruptly (no
-   * terminal frame written) if that's all that runs. To get graceful, terminal-writing teardown
-   * of open subscriptions, the caller must first call `handler.shutdown()`, gracefully
-   * complete/dispose the hub-owning `ContextServer`, or call `hub.endAllGracefully()` directly --
-   * and only then call `serveHTTP(...).dispose()` / `handler.dispose()`.
+   * An embedded handler's `dispose()` is the abrupt backstop. Call `handler.shutdown()`
+   * first to gracefully complete open subscriptions, or complete the hub through its owner.
+   * The result of `await serveHTTP(...)` runs this shutdown automatically before closing
+   * the handler. The caller still owns and disposes the shared hub separately.
    */
   subscriptionHub?: SubscriptionHub
   tasks?: TaskManager

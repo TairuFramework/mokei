@@ -41,8 +41,6 @@
   },
   "dependencies": {
     "@enkaku/transport": "catalog:",
-    "@hono/node-server": "catalog:",
-    "@kokuin/token": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/logger": "workspace:^",
@@ -53,6 +51,7 @@
     "hono": "catalog:"
   },
   "devDependencies": {
+    "@kokuin/token": "catalog:",
     "@mokei/http-client": "workspace:^",
     "@sozai/event": "catalog:",
     "@types/node": "catalog:"

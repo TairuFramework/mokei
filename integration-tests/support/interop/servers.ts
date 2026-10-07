@@ -109,7 +109,7 @@ export type RunningHTTPServer = {
   dispose: () => Promise<void>
 }
 
-/** The minimal listening surface shared by `node:http` and the `serveHTTP` return value. */
+/** The minimal listening surface for the Node HTTP fixtures. */
 type ListeningServer = {
   listening: boolean
   once: (event: string, listener: (...args: Array<unknown>) => void) => unknown
@@ -376,12 +376,12 @@ export async function startMokeiHTTPServer(
   protocolVersions?: Array<ProtocolVersion>,
 ): Promise<RunningHTTPServer> {
   const config = createMokeiConfig(protocolVersions)
-  const result = serveHTTP({
+  const result = await serveHTTP({
     createServer: ({ transport }) => new ContextServer({ ...config, transport }),
     port: 0,
     hostname: '127.0.0.1',
   })
-  const port = await listening(result.server, '127.0.0.1')
+  const port = Number(new URL(result.server.url).port)
   return {
     url: `http://127.0.0.1:${port}/mcp`,
     dispose: async () => {
@@ -393,12 +393,12 @@ export async function startMokeiHTTPServer(
 /** Serves the MRTR fixture over Streamable HTTP using `@mokei/http-server`, `2026-07-28` only. */
 export async function startMokeiMRTRHTTPServer(): Promise<RunningHTTPServer> {
   const config = createMokeiMRTRConfig(['2026-07-28'])
-  const result = serveHTTP({
+  const result = await serveHTTP({
     createServer: ({ transport }) => new ContextServer({ ...config, transport }),
     port: 0,
     hostname: '127.0.0.1',
   })
-  const port = await listening(result.server, '127.0.0.1')
+  const port = Number(new URL(result.server.url).port)
   return {
     url: `http://127.0.0.1:${port}/mcp`,
     dispose: async () => {
@@ -434,7 +434,7 @@ export async function startMokeiTasksHTTPServer(
     }) as ServerTransport,
   })
   const hub = createSubscriptionHub({ events: eventsSource.events, tasks })
-  const result = serveHTTP({
+  const result = await serveHTTP({
     createServer: ({
       transport,
       subscriptionHub,
@@ -470,7 +470,7 @@ export async function startMokeiTasksHTTPServer(
     port: 0,
     hostname: '127.0.0.1',
   })
-  const port = await listening(result.server, '127.0.0.1')
+  const port = Number(new URL(result.server.url).port)
   return {
     url: `http://127.0.0.1:${port}/mcp`,
     completionStarted: started.promise,
@@ -492,12 +492,12 @@ export async function startMokeiElicitationHTTPServer(): Promise<
 > {
   const inputResponses: Array<unknown> = []
   const config = create2026ElicitationConfig((response) => inputResponses.push(response))
-  const result = serveHTTP({
+  const result = await serveHTTP({
     createServer: ({ transport }) => new ContextServer({ ...config, transport }),
     port: 0,
     hostname: '127.0.0.1',
   })
-  const port = await listening(result.server, '127.0.0.1')
+  const port = Number(new URL(result.server.url).port)
   return {
     url: `http://127.0.0.1:${port}/mcp`,
     inputResponses,
@@ -600,7 +600,7 @@ export async function startBlockingHTTPServer(): Promise<BlockingHTTPServer> {
     },
   }
 
-  const result = serveHTTP({
+  const result = await serveHTTP({
     createServer: ({ transport }) => {
       const server = new ContextServer({ ...config, transport })
       const dispose = server.dispose.bind(server)
@@ -613,7 +613,7 @@ export async function startBlockingHTTPServer(): Promise<BlockingHTTPServer> {
     port: 0,
     hostname: '127.0.0.1',
   })
-  const port = await listening(result.server, '127.0.0.1')
+  const port = Number(new URL(result.server.url).port)
   return {
     url: `http://127.0.0.1:${port}/mcp`,
     toolName: 'block',
@@ -753,14 +753,14 @@ export async function startMokeiSubscriptionsHTTPServer(): Promise<MokeiSubscrip
   const hub = createSubscriptionHub({ events: eventsSource.events })
 
   const config = createMokeiSubscriptionConfig()
-  const result = serveHTTP({
+  const result = await serveHTTP({
     createServer: ({ transport, subscriptionHub, connectionID }) =>
       new ContextServer({ ...config, transport, subscriptionHub, connectionID }),
     subscriptionHub: hub,
     port: 0,
     hostname: '127.0.0.1',
   })
-  const port = await listening(result.server, '127.0.0.1')
+  const port = Number(new URL(result.server.url).port)
 
   return {
     url: `http://127.0.0.1:${port}/mcp`,
