@@ -31,6 +31,7 @@ export {
   type HTTPHandler,
   type HTTPHandlerParams,
 } from './handler.js'
+export { type MCPPluginParams, MOKEI_MCP, type MokeiMCP, mcpPlugin } from './plugin.js'
 export { type ServeHTTPParams, type ServeHTTPResult, serveHTTP } from './serve.js'
 export { type Session, SessionManager, type SessionManagerParams } from './session.js'
 export { createSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.js'
