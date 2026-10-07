@@ -47,7 +47,9 @@
     "@mokei/context-server": "workspace:^",
     "@mokei/logger": "workspace:^",
     "@sozai/codec": "catalog:",
+    "@sozai/http-server": "catalog:",
     "@sozai/runtime": "catalog:",
+    "@teikyo/oauth": "catalog:",
     "hono": "catalog:"
   },
   "devDependencies": {

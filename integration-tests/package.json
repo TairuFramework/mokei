@@ -30,6 +30,7 @@
     "@mokei/openai-provider": "workspace:^",
     "@mokei/session": "workspace:^",
     "@mokei/system-one-client": "workspace:^",
+    "@teikyo/oauth": "catalog:",
     "get-port": "catalog:",
     "mokei": "workspace:^",
     "nano-spawn": "catalog:"

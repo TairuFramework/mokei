@@ -39,6 +39,7 @@ catalog:
   '@sozai/codec': ^0.4.2
   '@sozai/event': ^0.1.5
   '@sozai/generator': ^0.2.2
+  '@sozai/http-server': ^0.1.1
   '@sozai/log': ^0.4.0
   '@sozai/otel': ^0.3.3
   '@sozai/flow-graph': ^0.2.3
@@ -51,6 +52,7 @@ catalog:
   '@opentelemetry/exporter-trace-otlp-http': ^0.222.0
   '@opentelemetry/sdk-trace-base': ^2.11.0
   '@sozai/stream': ^0.2.2
+  '@teikyo/oauth': ^0.1.0
   '@standard-schema/spec': ^1.1.0
   '@tejika/cli': ^0.4.2
   '@tejika/db': ^0.1.0
@@ -136,6 +138,7 @@ minimumReleaseAgeExclude:
   - '@kigu/*'
   - '@kokuin/*'
   - '@sozai/*'
+  - '@teikyo/*'
   - '@tejika/*'
 
 # Release management (`pnpm change` to record an intent, `pnpm version -r` to apply them).
