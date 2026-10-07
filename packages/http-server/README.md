@@ -53,6 +53,40 @@ console.log(`${server.url}/mcp`)
 await dispose()
 ```
 
+For an existing `@sozai/http-server` application, install `mcpPlugin` alongside other Teikyo
+plugins. OAuth resource protection comes from `@teikyo/oauth`:
+
+```typescript
+import { createServer } from '@sozai/http-server'
+import { oauthResourcePlugin } from '@teikyo/oauth'
+import { mcpPlugin } from '@mokei/http-server'
+import { ContextServer } from '@mokei/context-server'
+
+const app = await createServer({
+  plugins: [
+    oauthResourcePlugin({ resource, authorizationServers, verifier }),
+    mcpPlugin({
+      createServer: ({ transport }) => new ContextServer({ transport, name, version, tools }),
+      auth: { scopes: ['tools:read'] },
+    }),
+  ],
+})
+```
+
+`mcpPlugin` registers a shutdown hook that ends subscriptions gracefully before the handler
+closes. Its close hook disposes the handler.
+
+OAuth verification and protected-resource metadata are provided by `@teikyo/oauth`. Mokei no
+longer exports `createBearerAuthGate`, `createJWKSVerifier`, `createDIDVerifier`,
+`protectedResourceMetadataResponse` or `TokenVerificationError`; import the corresponding OAuth
+functionality from `@teikyo/oauth` instead.
+
+If a verifier cannot reach its key service, the request returns `503 Service Unavailable`, so a
+temporary key outage is not reported as an authentication failure.
+
+The HTTP server keeps Mokei's `SSEWriter` rather than using Hono's `streamSSE`: its replay buffer
+and event IDs support MCP stream resumption, which `streamSSE` does not provide.
+
 To embed the handler in an existing HTTP framework, use `createHTTPHandler` and route
 requests to its `handleRequest(request)` method:
 

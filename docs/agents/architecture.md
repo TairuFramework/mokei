@@ -171,10 +171,9 @@ token refresh. `@mokei/host-node` adds `createNodeOAuthMiddleware`, `createFileT
 contexts. The CLI's `/context add-http` command accepts `--oauth-client-id`, `--oauth-resource`,
 `--oauth-scope` and `--oauth-tokens`.
 
-On the server, `@mokei/http-server` offers `serveHTTP` with `createBearerAuthGate`,
-`createJWKSVerifier` or `createDIDVerifier`, and `protectedResourceMetadataResponse`. The gate
-verifies requests before MCP dispatch. Verified identity is available to task handlers for owner
-binding.
+On the server, `@mokei/http-server` builds on `@sozai/http-server` and provides `serveHTTP` and
+`mcpPlugin`. OAuth resource protection, metadata and token verification come from
+`@teikyo/oauth`; verified identity is available to task handlers for owner binding.
 
 ---
 
@@ -207,7 +206,7 @@ binding.
 |---------|---------|-------------|
 | Stdio server and spawned contexts | `@mokei/context-server-node`, `@mokei/host-node`, `@mokei/session-node` | `serveProcess`, `NodeContextHost.addLocalContext`, `NodeSession.addContext` |
 | Streamable HTTP | `@mokei/http-client`, `@mokei/http-server`, `@mokei/host` | `HTTPTransport`, `serveHTTP`, `ContextHost.addHTTPContext` |
-| OAuth 2.1 | `@mokei/http-client`, `@mokei/host-node`, `@mokei/http-server` | `createOAuthMiddleware`, `createNodeOAuthMiddleware`, `createBearerAuthGate` |
+| OAuth 2.1 | `@mokei/http-client`, `@mokei/host-node`, `@teikyo/oauth` | `createOAuthMiddleware`, `createNodeOAuthMiddleware`, `oauthResourcePlugin` |
 | Revisions and negotiation | `@mokei/context-protocol`, `@mokei/context-client` | `PROTOCOLS`, `ContextClient` `protocolVersion: 'auto'` |
 | MRTR | `@mokei/context-client`, `@mokei/context-server` | `runInputRequiredFlow`, `inputRequired` |
 | Subscriptions | `@mokei/context-client`, `@mokei/context-server`, `@mokei/http-server` | `SubscriptionDriver`, `createSubscriptionHub`, `runSubscriptionExchange` |
@@ -249,7 +248,7 @@ packages/
 +-- host-protocol/        # Portable host, flow, run and inbox wire schemas
 +-- host-monitor/         # Monitor UI for host contexts
 +-- http-client/          # Streamable HTTP, OAuth 2.1 client middleware, x-mcp-header encoding
-+-- http-server/          # serveHTTP, bearer/JWKS/DID gate, stateless + subscription exchanges
++-- http-server/          # sozai HTTP server plugin, serveHTTP, stateless + subscription exchanges
 +-- session/              # Portable high-level chat + MCP abstraction
 +-- session-node/         # Node stdio session entry
 +-- decision-flow/       # System One decide nodes for flow-graph
@@ -306,7 +305,7 @@ website/                  # documentation site (private)
 | Flow control and MCP facade | `packages/flow-client/src/` |
 | Flow CLI commands | `packages/cli/src/commands/{daemon,flows,runs,inbox}.ts`, `packages/cli/src/run-follow.tsx`, `packages/cli/src/prompts/` |
 | Host orchestration | `packages/host/src/` |
-| HTTP transports and OAuth | `packages/http-client/src/oauth/`, `packages/http-server/src/auth/`, `packages/host-node/src/oauth/` |
+| HTTP transports and OAuth | `packages/http-client/src/oauth/`, `packages/host-node/src/oauth/`, `@teikyo/oauth` |
 | MRTR and subscriptions | `packages/context-client/src/{mrtr,subscriptions}.ts`, `packages/context-server/src/{mrtr,subscriptions}.ts` |
 | Session/Agent | `packages/session/src/`, `packages/session-node/src/` |
 | System One | `packages/system-one-client/src/`, `mcp-servers/system-one/`. See `docs/reference/system-one-sidecar.md` |
