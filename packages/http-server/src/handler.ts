@@ -1,6 +1,7 @@
 import { Transport } from '@enkaku/transport'
 import {
   type ClientMessage,
+  INTERNAL_ERROR,
   isHandshakeRequired,
   isSupportedProtocolVersion,
   PROTOCOLS,
@@ -53,9 +54,9 @@ export type HTTPHandlerParams = {
    * `handler.dispose()`) does NOT gracefully complete open subscriptions -- it is the abrupt
    * backstop only, and every open `subscriptions/listen` stream is torn down abruptly (no
    * terminal frame written) if that's all that runs. To get graceful, terminal-writing teardown
-   * of open subscriptions, the caller must first gracefully complete/dispose the durable
-   * hub-owning `ContextServer` (or call `hub.endAllGracefully()` directly) -- and only then call
-   * `serveHTTP(...).dispose()` / `handler.dispose()`.
+   * of open subscriptions, the caller must first call `handler.shutdown()`, gracefully
+   * complete/dispose the hub-owning `ContextServer`, or call `hub.endAllGracefully()` directly --
+   * and only then call `serveHTTP(...).dispose()` / `handler.dispose()`.
    */
   subscriptionHub?: SubscriptionHub
   tasks?: TaskManager
@@ -126,6 +127,8 @@ export const DEFAULT_MAX_SUBSCRIPTION_EXCHANGES = 100
 
 export type HTTPHandler = {
   handleRequest: (request: Request, options?: { auth?: AuthInfo }) => Promise<Response>
+  /** Refuses new sessions and listens, then gracefully ends hub and session subscriptions. */
+  shutdown: () => Promise<void>
   /**
    * Tears the handler down. Async because it disposes session servers and awaits every in-flight
    * `subscriptions/listen` server's bounded disposal (its held-response flush), so an awaiting
@@ -245,6 +248,8 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
   // from `getRandomID()`. A single shared instance is the "handler's own runtime" the subscription
   // exchange doc refers to.
   const runtime = createRuntime(runtimeOverrides)
+  let shuttingDown = false
+  let shutdownPromise: Promise<void> | undefined
 
   // Map session IDs to their transport bridges
   const bridges = new Map<string, TransportBridge>()
@@ -395,6 +400,17 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       body = JSON.parse(bodyText) as Record<string, unknown>
     } catch {
       return new Response('Invalid JSON', { status: 400 })
+    }
+
+    if (shuttingDown && (body.method === 'initialize' || body.method === 'subscriptions/listen')) {
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: typeof body.id === 'string' || typeof body.id === 'number' ? body.id : null,
+          error: { code: INTERNAL_ERROR, message: 'Server is shutting down' },
+        }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } },
+      )
     }
 
     // Revisions that require per-request `_meta` carry their version in the request itself
@@ -794,6 +810,16 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     }
   }
 
+  function shutdown(): Promise<void> {
+    shuttingDown = true
+    shutdownPromise ??= (async () => {
+      // Complete borrowed subscriptions before disposing the sessions that own their own hubs.
+      await subscriptionHub?.endAllGracefully()
+      await sessions.dispose()
+    })()
+    return shutdownPromise
+  }
+
   async function dispose(): Promise<void> {
     // Snapshot the in-flight listen servers before any teardown runs: each server's disposal
     // removes it from the set (via its `disposed` handler), so the set is unsafe to await over
@@ -829,5 +855,5 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     listenServers.clear()
   }
 
-  return { handleRequest, dispose }
+  return { handleRequest, shutdown, dispose }
 }
