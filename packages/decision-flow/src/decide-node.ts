@@ -70,6 +70,7 @@ export function decideKind(params: { client: Predictor }): NodeKind<DecideNode> 
       }
 
       const result = await tracer.startActiveSpan('decision.predict', async (span) => {
+        span.setAttribute('mokei.kind', 'step')
         let ended = false
         const endSpan = () => {
           if (ended) return

@@ -41,6 +41,8 @@ export function createRunTracing() {
             }
           : {}),
         attributes: {
+          'mokei.kind': 'flow',
+          'mokei.root': true,
           'run.id': record.runID,
           ...(record.flowID !== undefined ? { 'flow.id': record.flowID } : {}),
           'run.label': record.label,

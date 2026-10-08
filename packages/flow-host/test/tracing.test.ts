@@ -100,6 +100,8 @@ test('flow.run span carries run attributes and ends with the run', async () => {
   const span = required(spans[0])
   expect(span.instrumentationScope.name).toBe('mokei.flow-host')
   expect(span.attributes).toEqual({
+    'mokei.kind': 'flow',
+    'mokei.root': true,
     'run.id': run.runID,
     'flow.id': emptyFlow.id,
     'run.label': 'Named run',
@@ -256,6 +258,7 @@ test.each(['input', 'approval'] as const)(
     await state(second, run.runID, 'completed')
     const spans = exporter.getFinishedSpans().filter((span) => !before.has(span))
     const resumed = spans.find((span) => span.name === 'flow.run.resume')
+    expect(resumed?.attributes).toMatchObject({ 'mokei.kind': 'flow', 'mokei.root': true })
     const parent = parseTraceparent(required(stored.traceparent))
     expect(resumed?.parentSpanContext).toMatchObject({
       traceId: run.traceID,
