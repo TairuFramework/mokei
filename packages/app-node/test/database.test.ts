@@ -48,7 +48,7 @@ test('honours MOKEI_DATABASE_PATH and lets an explicit path win', async () => {
   await expect(access(envPath)).rejects.toMatchObject({ code: 'ENOENT' })
 })
 
-test('registers log and telemetry stores and extra stores', async () => {
+test('registers log, telemetry and trace index stores and extra stores', async () => {
   const extra: StoreDefinition<unknown, unknown> = {
     name: 'test-items',
     migrations: () => ({
@@ -66,7 +66,7 @@ test('registers log and telemetry stores and extra stores', async () => {
   try {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()
     expect(tables.map((row) => row.name)).toEqual(
-      expect.arrayContaining(['mokei_logs', 'mokei_spans', 'mokei_test_items']),
+      expect.arrayContaining(['mokei_logs', 'mokei_spans', 'mokei_traces', 'mokei_test_items']),
     )
   } finally {
     db.close()

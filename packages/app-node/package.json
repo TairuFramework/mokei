@@ -45,6 +45,7 @@
     "@hozon/store-log": "catalog:",
     "@hozon/store-telemetry": "catalog:",
     "@logtape/logtape": "catalog:",
+    "@mokei/host-protocol": "workspace:^",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/context-async-hooks": "catalog:",
     "@opentelemetry/exporter-trace-otlp-http": "catalog:",

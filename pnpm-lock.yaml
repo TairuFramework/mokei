@@ -838,6 +838,9 @@ importers:
       '@logtape/logtape':
         specifier: 'catalog:'
         version: 2.4.0
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../host-protocol
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1

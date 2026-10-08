@@ -3,7 +3,13 @@ import { logStoreDefinition } from '@hozon/store-log'
 import { telemetryStoreDefinition } from '@hozon/store-telemetry'
 import { type OpenLocalDatabaseParams, openLocalDatabase } from '@tejika/db'
 
-export const mokeiStoreDefinitions = [logStoreDefinition, telemetryStoreDefinition]
+import { traceIndexStoreDefinition } from './trace-index.js'
+
+export const mokeiStoreDefinitions = [
+  logStoreDefinition,
+  telemetryStoreDefinition,
+  traceIndexStoreDefinition,
+]
 
 export function openMokeiDatabase(
   params: { path?: string; stores?: ReadonlyArray<OpenLocalDatabaseParams['stores'][number]> } = {},
