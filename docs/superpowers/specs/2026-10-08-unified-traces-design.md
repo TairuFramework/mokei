@@ -1,6 +1,6 @@
 # Unified traces: flows and MCP calls in one span model
 
-Status: design approved in brainstorming; restructured after three review rounds (single local writer), pending user spec review
+Status: design approved in brainstorming; restructured after review round 3 (single local writer), round 4 fixes applied, pending user spec review
 Branch: `feat/unified-traces`
 Related: `docs/agents/plans/next/2026-10-04-flow-monitor-follow-ons.md` (monitor UI design pass), `docs/agents/architecture.md` (flow tracing, `runs.trace`, monitor presence)
 
@@ -112,8 +112,9 @@ It is both an OTel `SpanProcessor` and a LogTape sink:
 **Write queue.** Bounded (default 10000 entries). A flush runs every 250 ms or at 200 entries. One flush writes, in a single `provider.withTransaction`, the queued spans, the queued logs and the changed summaries. Entries leave the queue only when that transaction commits.
 
 - Write failure: the batch stays queued and is retried with backoff (250 ms, 1 s, 4 s). After the third failure the batch is dropped, the error goes to the `errors` sink, and each affected trace's summary gets `droppedCount` incremented (persisted with the next successful flush).
-- Overflow: the oldest queued spans and logs are dropped and counted the same way. Summaries are never dropped.
-- Nothing waits in memory for an external acknowledgement, so memory is bounded by the open map plus the queue.
+- Overflow: the oldest queued spans and logs are dropped and counted the same way.
+- Dirty summaries (changed since the last successful flush) are capped (default 1000). At the cap, the oldest dirty summary of an inactive trace is dropped and a process-level `lostSummaryCount` is incremented. That counter is exposed in the daemon `info` response (`tracing: { lostSummaryCount, droppedCount }`) and logged to the `errors` sink, so loss is reported outside the recorder's own storage. Summaries of active traces are not dropped; they are bounded by the open map.
+- OTel `onStart` / `onEnd` and the LogTape sink are synchronous: they only enqueue. Nothing waits in memory for an external acknowledgement, so memory is bounded by the open map, the write queue and the dirty-summary cap.
 
 **Summaries (trace index).** A new hozon store `traces`, defined in `@mokei/app-node` and registered in `mokeiStoreDefinitions` so `openMokeiDatabase` migrates it before telemetry starts. One row per trace:
 
@@ -121,7 +122,7 @@ It is both an OTel `SpanProcessor` and a LogTape sink:
 
 - `rootSpanID` is the first root segment and never changes; `activeSegmentSpanID` is the open root segment while `active`.
 - `active` is true while a root segment is open. `outcome` is null while active, then set from the root segment's status. `spanCount` counts ended spans; `errorCount` counts ended spans with `ERROR` status. A running trace with failed children is `active: true, errorCount > 0`.
-- `revision` increases on every in-memory change. Readers keep the higher revision.
+- `revision` increases on every change and continues from the persisted value: when a root segment starts for a trace that already has a row (a resumed run), the recorder loads that row and keeps its `rootSpanID`, counts and `revision` before applying the change. The startup sweep increments the revision of every row it marks interrupted. Live events from before a crash may carry revisions the persisted row never reached; the monitor discards all trace state on a new connection epoch (§7), so such revisions are never compared with post-restart ones.
 - Flow run state (approval, input required, cancelled, denied) is not mirrored; the monitor reads it from `runs.get` and run events.
 - The recorder keeps in-memory summaries for active traces and for traces changed since the last flush.
 
@@ -172,7 +173,7 @@ It is both an OTel `SpanProcessor` and a LogTape sink:
 
 - **List:** `traces.list` plus `trace:summary` events, merged by `traceID` keeping the higher `revision`. Summaries are the only live state kept for unselected traces.
 - **Selected trace:** `traces.get`, plus `span:*` and `log` events for that `traceID` only. Merge rules: an ended span replaces an open one, and an open span never replaces an ended one; logs merge by `logID`. Changing selection discards the previous trace's live state.
-- **Reconnect** (`epoch` change, including a disconnect from the subscriber bound): re-read the list and the selected trace.
+- **Reconnect** (`epoch` change, including a disconnect from the subscriber bound and a daemon restart): discard all trace state (summaries, selected-trace spans and logs, revision baselines), then re-read the list and the selected trace. Query results and buffered events are tagged with the epoch they belong to; results from a previous epoch are ignored.
 - Orphan spans (parent not yet known) render under a placeholder parent row until the parent arrives.
 - Removed: `useRunTrace` and its polling, the `/` events table, `useHostEvents`, the Runs routes.
 - `TraceWaterfall` and `LogList` are reused and extended (live bars, context links, span selection via URL, `logID` keys).
@@ -183,10 +184,10 @@ It is both an OTel `SpanProcessor` and a LogTape sink:
 - `@mokei/context-client`, with an in-memory span exporter: one span per exchange through the seam (request, setup, subscriptions, each MRTR retry leg with links, incoming requests settled on response / error / cancel), active span set before `traceparent` injection, `jsonrpc.request.id` set, parenting (active span vs bound context span, link to context span), unbound client behaviour.
 - `@mokei/host`: context span lifecycle for hosted and registered contexts; `stopped` vs `lost` settle spans exactly once.
 - `@mokei/host-node` `spawn` proxy: correlation keyed by direction, cancellation settles spans, late responses ignored, remote `traceparent` link, open requests settled on stop and on child exit; `context:message` events sanitised while forwarded traffic is byte-identical.
-- `@mokei/app-node` `LocalTraceRecorder`: emit order; one transaction per flush; retry then drop with `droppedCount`; overflow drops oldest and counts; summaries never dropped; snapshot-before-read returns entries committed mid-read exactly once; root segments and resume reactivation; startup sweep; flush on dispose; config schema accepts `tracing.payloads`.
+- `@mokei/app-node` `LocalTraceRecorder`: emit order; one transaction per flush; retry then drop with `droppedCount`; overflow drops oldest and counts; dirty-summary cap drops the oldest inactive summary and increments `lostSummaryCount` (reported in `info`); resumed root segments continue the persisted revision and counts; startup sweep increments revisions; snapshot-before-read returns entries committed mid-read exactly once; root segments and resume reactivation; startup sweep; flush on dispose; config schema accepts `tracing.payloads`.
 - Daemon: `traces.list` filters, paging and in-memory merge; `traces.get` with open spans, synthesised summaries for un-indexed traces, log cap; `runs.trace` adapter returns the legacy shape; pruning keeps active traces and deletes summary rows atomically; subscriber over the bound is disconnected.
 - End to end: a flow run that calls a tool produces one trace with `flow.run` above `mcp.tools/call`, linked to the context's trace; a proxied context produces a context trace with paired request spans; crash-restart marks an active run's trace interrupted, then recovery reactivates it.
-- Monitor: vitest for summary merge by revision, selected-trace merge (ended beats open, logs by `logID`, orphans, selection change), connection-owner dispatch and subscribe-before-query buffering, redirects; browser QA of the Traces page against a running daemon (live flow run, live proxied tool call, history filters, reconnect).
+- Monitor: vitest for summary merge by revision, epoch change discarding all trace state and ignoring previous-epoch query results, selected-trace merge (ended beats open, logs by `logID`, orphans, selection change), connection-owner dispatch and subscribe-before-query buffering, redirects; browser QA of the Traces page against a running daemon (live flow run, live proxied tool call, history filters, reconnect).
 
 ## Delivery
 
