@@ -282,11 +282,12 @@ test('shutdown flushes the queue', async () => {
 
 test('converts complete spans without exposing ended fields on open spans', async () => {
   const tracer = setup()
-  const parent = tracer.startSpan('parent', { startTime: 1000 })
+  const base = 1_700_000_000_000
+  const parent = tracer.startSpan('parent', { startTime: base })
   const span = tracer.startSpan(
     'child',
     {
-      startTime: 1001.25,
+      startTime: base + 1.25,
       attributes: { text: 'value', values: [1, 2], flag: true },
       links: [{ context: parent.spanContext() }],
     },
@@ -294,22 +295,22 @@ test('converts complete spans without exposing ended fields on open spans', asyn
   )
   const open = recorder.snapshot().open.find((entry) => entry.name === 'child')
   expect(open).toMatchObject({
-    startTime: 1001.25,
+    startTime: base + 1.25,
     parentSpanID: parent.spanContext().spanId,
     links: [{ traceID: parent.spanContext().traceId, spanID: parent.spanContext().spanId }],
   })
   expect(open).not.toHaveProperty('endTime')
   expect(open).not.toHaveProperty('status')
-  span.addEvent('event', { detail: 'value' }, 1002.5)
+  span.addEvent('event', { detail: 'value' }, base + 2.5)
   span.setStatus({ code: SpanStatusCode.ERROR, message: 'failure' })
-  span.end(1003.75)
+  span.end(base + 3.75)
   expect(recorder.snapshot().spans[0]).toMatchObject({
     ...open,
-    endTime: 1003.75,
+    endTime: base + 3.75,
     status: { code: 2, message: 'failure' },
-    events: [{ name: 'event', time: 1002.5, attributes: { detail: 'value' } }],
+    events: [{ name: 'event', time: base + 2.5, attributes: { detail: 'value' } }],
   })
-  parent.end(1004)
+  parent.end(base + 4)
 })
 
 test('rolls back both stores when a summary write fails', async () => {
