@@ -1,42 +1,14 @@
-import type { HostEvent } from '@mokei/host-protocol'
 import { act, render, screen, waitFor } from '@testing-library/react'
+import { useEffect } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { FlowProvider, useFlow } from '../src/flow/FlowProvider.js'
-import type { HostClient } from '../src/host/client.js'
 import { createHostClient } from '../src/host/client.js'
-import { deferred } from './fixtures.js'
+import { HostConnectionProvider } from '../src/host/HostConnectionProvider.js'
+import { deferred, run } from './fixtures.js'
+import { clientFixture } from './host-connection-fixture.js'
 
 vi.mock('../src/host/client.js', () => ({ createHostClient: vi.fn() }))
-
-function clientFixture(info = Promise.resolve({ flowService: { state: 'ready' } })) {
-  const streams: Array<ReadableStreamDefaultController<HostEvent>> = []
-  const events = new Map<string, Set<() => void>>()
-  const abort = new AbortController()
-  const request = vi.fn(() => info)
-  const client = {
-    signal: abort.signal,
-    request,
-    createStream: vi.fn(() => {
-      const readable = new ReadableStream<HostEvent>({
-        start: (controller) => streams.push(controller),
-      })
-      return { readable, close: vi.fn(), catch: vi.fn() }
-    }),
-    dispose: vi.fn(async () => {
-      abort.abort()
-    }),
-    events: {
-      on: (name: string, listener: () => void) => {
-        const listeners = events.get(name) ?? new Set()
-        listeners.add(listener)
-        events.set(name, listeners)
-        return () => listeners.delete(listener)
-      },
-    },
-  }
-  return { client: client as unknown as HostClient, streams, request, events }
-}
 
 function State() {
   const { epoch, connected, restarted, status } = useFlow()
@@ -45,9 +17,11 @@ function State() {
 
 function mount() {
   return render(
-    <FlowProvider>
-      <State />
-    </FlowProvider>,
+    <HostConnectionProvider>
+      <FlowProvider>
+        <State />
+      </FlowProvider>
+    </HostConnectionProvider>,
   )
 }
 
@@ -83,10 +57,10 @@ test('transport failure recreates the client, bumps epoch and resubscribes', asy
   mount()
   await waitFor(() => expect(screen.getByText(/"connected":true/)).toBeTruthy())
   act(() => {
-    first.streams[1].error(new Error('Invalid session ID'))
+    first.streams[0].error(new Error('Invalid session ID'))
   })
   await waitFor(() => expect(screen.getByText(/"epoch":1,"connected":true/)).toBeTruthy())
-  expect(second.streams.length).toBe(2)
+  expect(second.streams.length).toBe(1)
   expect(first.client.dispose).toHaveBeenCalled()
 })
 
@@ -122,7 +96,7 @@ test('a 403 arriving after transport failure still shows the restart state', asy
   const observedFetch = vi.mocked(createHostClient).mock.calls.at(-1)?.[1]
   const pending = observedFetch?.('http://localhost/api')
   act(() => {
-    fixture.streams[1].error(new Error('Disconnected'))
+    fixture.streams[0].error(new Error('Disconnected'))
   })
   await waitFor(() => expect(screen.getByText(/"connected":false/)).toBeTruthy())
   await act(async () => {
@@ -131,4 +105,29 @@ test('a 403 arriving after transport failure still shows the restart state', asy
   })
   expect(screen.getByText(/"restarted":true/)).toBeTruthy()
   vi.unstubAllGlobals()
+})
+
+test('FlowProvider receives run:state through the connection', async () => {
+  const fixture = clientFixture()
+  vi.mocked(createHostClient).mockReturnValue(fixture.client)
+  const listener = vi.fn()
+  function Consumer() {
+    const { on } = useFlow()
+    useEffect(() => on(listener), [on])
+    return <State />
+  }
+  render(
+    <HostConnectionProvider>
+      <FlowProvider>
+        <Consumer />
+      </FlowProvider>
+    </HostConnectionProvider>,
+  )
+  await waitFor(() => expect(screen.getByText(/"connected":true/)).toBeTruthy())
+  const data = run()
+  await act(async () => {
+    fixture.streams[0].enqueue({ type: 'run:state', data, meta: { eventID: 'run-event', time: 1 } })
+  })
+  expect(listener).toHaveBeenCalledWith({ type: 'run:state', data })
+  expect(fixture.client.createStream).toHaveBeenCalledTimes(1)
 })
