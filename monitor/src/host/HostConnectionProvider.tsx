@@ -158,11 +158,30 @@ export function HostConnectionProvider({ children }: { children: ReactNode }) {
         })
         .catch(fail)
     }
-    connect()
-    return () => {
+    function stop() {
       stopped = true
       if (timer != null) clearTimeout(timer)
       teardown()
+    }
+    function onPageHide() {
+      stop()
+      setState((value) => value && { ...value, connected: false })
+    }
+    function onPageShow(event: PageTransitionEvent) {
+      if (!event.persisted || restarted) return
+      stop()
+      stopped = false
+      failures = 0
+      epoch++
+      connect()
+    }
+    window.addEventListener('pagehide', onPageHide)
+    window.addEventListener('pageshow', onPageShow)
+    connect()
+    return () => {
+      window.removeEventListener('pagehide', onPageHide)
+      window.removeEventListener('pageshow', onPageShow)
+      stop()
     }
   }, [subscribe])
 
