@@ -19,6 +19,7 @@ export type TraceIndexTables = {
     active_segment_span_id: string | null
     kind: TraceSummary['kind']
     name: string
+    name_lower: string
     active: number
     outcome: TraceSummary['outcome']
     start_time: number
@@ -64,6 +65,7 @@ export const traceIndexStoreDefinition: StoreDefinition<TraceIndexTables, TraceI
           .addColumn('active_segment_span_id', ctx.types.text)
           .addColumn('kind', ctx.types.text, (column) => column.notNull())
           .addColumn('name', ctx.types.text, (column) => column.notNull())
+          .addColumn('name_lower', ctx.types.text, (column) => column.notNull())
           .addColumn('active', 'integer', (column) => column.notNull())
           .addColumn('outcome', ctx.types.text)
           .addColumn('start_time', ctx.types.double, (column) => column.notNull())
@@ -101,6 +103,7 @@ export const traceIndexStoreDefinition: StoreDefinition<TraceIndexTables, TraceI
             active_segment_span_id: summary.activeSegmentSpanID ?? null,
             kind: summary.kind,
             name: summary.name,
+            name_lower: summary.name.toLowerCase(),
             active: summary.active ? 1 : 0,
             outcome: summary.outcome,
             start_time: summary.startTime,
@@ -147,7 +150,7 @@ export const traceIndexStoreDefinition: StoreDefinition<TraceIndexTables, TraceI
         }
         if (params.name != null) {
           const pattern = `%${params.name.toLowerCase().replace(/[!%_]/g, '!$&')}%`
-          query = query.where(sql<boolean>`lower(${sql.ref('name')}) LIKE ${pattern} ESCAPE '!'`)
+          query = query.where(sql<boolean>`name_lower LIKE ${pattern} ESCAPE '!'`)
         }
         if (params.since != null) query = query.where('start_time', '>=', params.since)
         if (params.until != null) query = query.where('start_time', '<=', params.until)

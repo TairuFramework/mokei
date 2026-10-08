@@ -93,6 +93,16 @@ test('filters kind, active, nullable outcome, literal case-insensitive name and 
   }
 })
 
+test('matches non-ASCII names using JavaScript case folding', async () => {
+  await store.upsert([summary('unicode', { name: 'Éclair' })])
+  expect(
+    (await store.list({ limit: 10, name: 'éclair' })).traces.map((row) => row.traceID),
+  ).toEqual(['unicode'])
+  expect(
+    (await store.list({ limit: 10, name: 'ÉCLAIR' })).traces.map((row) => row.traceID),
+  ).toEqual(['unicode'])
+})
+
 test('pages newest first with descending trace IDs breaking timestamp ties', async () => {
   await seed()
   const first = await store.list({ limit: 2 })
