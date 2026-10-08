@@ -856,6 +856,9 @@ importers:
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.0
+      '@sozai/json':
+        specifier: 'catalog:'
+        version: 0.3.0
       '@sozai/log':
         specifier: 'catalog:'
         version: 0.4.0(@logtape/logtape@2.4.0)

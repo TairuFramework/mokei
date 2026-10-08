@@ -51,6 +51,7 @@
     "@opentelemetry/exporter-trace-otlp-http": "catalog:",
     "@opentelemetry/sdk-trace-base": "catalog:",
     "@sozai/async": "catalog:",
+    "@sozai/json": "catalog:",
     "@sozai/log": "catalog:",
     "@sozai/schema": "catalog:",
     "@tejika/db": "catalog:",
