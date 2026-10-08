@@ -45,6 +45,18 @@ export {
   REQUEST_STATE_ONLY_PACING_MS,
 } from './mrtr.js'
 export {
+  capturePayload,
+  DEFAULT_PAYLOAD_CAP,
+  type MessageDirection,
+  type PayloadCapture,
+  redactPayload,
+  requestAttributes,
+  requestSpanName,
+  resolvePayloadCap,
+  responseOutcome,
+  sanitizeMessage,
+} from './observation.js'
+export {
   type ListenHandle,
   type ListenHandlers,
   type ListenSettle,
