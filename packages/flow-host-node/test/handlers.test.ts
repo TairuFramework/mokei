@@ -145,6 +145,10 @@ async function setup() {
       spawn: () => {},
       'monitor.attach': () => {},
       'monitor.presence': () => {},
+      'traces.list': () => ({ traces: [] }),
+      'traces.get': async () => {
+        throw new Error('Trace not found')
+      },
     },
     identity,
     accessRules: { '*': { allow: true } },

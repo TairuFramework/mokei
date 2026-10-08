@@ -32,6 +32,16 @@ import {
   monitorPresenceReceiveSchema,
   monitorPresenceSendSchema,
 } from './monitor-schemas.js'
+import {
+  openSpanSchema,
+  traceLogSchema,
+  traceSummarySchema,
+  tracesGetParamsSchema,
+  tracesGetResultSchema,
+  tracesListParamsSchema,
+  tracesListResultSchema,
+  tracingInfoSchema,
+} from './trace-schemas.js'
 
 export {
   type FlowCheckResult,
@@ -60,6 +70,23 @@ export {
   monitorPresenceReceiveSchema,
   monitorPresenceSendSchema,
 } from './monitor-schemas.js'
+export {
+  type OpenSpan,
+  openSpanSchema,
+  type TraceLog,
+  type TraceSummary,
+  type TracesGetResult,
+  type TracesListParams,
+  type TracesListResult,
+  type TracingInfo,
+  traceLogSchema,
+  traceSummarySchema,
+  tracesGetParamsSchema,
+  tracesGetResultSchema,
+  tracesListParamsSchema,
+  tracesListResultSchema,
+  tracingInfoSchema,
+} from './trace-schemas.js'
 
 export const hostEventMetaSchema = {
   type: 'object',
@@ -187,6 +214,48 @@ export const hostEventSchema = {
       required: ['type', 'meta', 'data'],
       additionalProperties: false,
     },
+    ...[
+      {
+        type: 'object',
+        properties: {
+          type: { type: 'string', const: 'span:start' },
+          meta: serviceEventMetaSchema,
+          data: openSpanSchema,
+        },
+        required: ['type', 'meta', 'data'],
+        additionalProperties: false,
+      },
+      {
+        type: 'object',
+        properties: {
+          type: { type: 'string', const: 'span:end' },
+          meta: serviceEventMetaSchema,
+          data: storedSpanSchema,
+        },
+        required: ['type', 'meta', 'data'],
+        additionalProperties: false,
+      },
+      {
+        type: 'object',
+        properties: {
+          type: { type: 'string', const: 'log' },
+          meta: serviceEventMetaSchema,
+          data: traceLogSchema,
+        },
+        required: ['type', 'meta', 'data'],
+        additionalProperties: false,
+      },
+      {
+        type: 'object',
+        properties: {
+          type: { type: 'string', const: 'trace:summary' },
+          meta: serviceEventMetaSchema,
+          data: traceSummarySchema,
+        },
+        required: ['type', 'meta', 'data'],
+        additionalProperties: false,
+      },
+    ],
   ],
 } as const satisfies Schema
 export type HostEvent = FromSchema<typeof hostEventSchema>
@@ -209,6 +278,7 @@ export const hostInfoResultSchema = {
     },
     startedTime: { type: 'integer' },
     flowService: flowServiceStatusSchema,
+    tracing: tracingInfoSchema,
   },
   required: ['activeContexts', 'startedTime', 'flowService'],
   additionalProperties: false,
@@ -347,6 +417,8 @@ export const protocol = {
       additionalProperties: false,
     },
   },
+  'traces.list': { type: 'request', param: tracesListParamsSchema, result: tracesListResultSchema },
+  'traces.get': { type: 'request', param: tracesGetParamsSchema, result: tracesGetResultSchema },
   'inbox.list': {
     type: 'request',
     param: {
@@ -389,7 +461,12 @@ export const protocol = {
 export type Protocol = typeof protocol
 export type BaseProtocol = Pick<Protocol, 'events' | 'info' | 'shutdown' | 'spawn'>
 export type MonitorProcedure = 'monitor.attach' | 'monitor.presence'
-export type FlowProcedure = Exclude<keyof Protocol, keyof BaseProtocol | MonitorProcedure>
+export type TraceProcedure = 'traces.list' | 'traces.get'
+export type TraceProtocol = Pick<Protocol, TraceProcedure>
+export type FlowProcedure = Exclude<
+  keyof Protocol,
+  keyof BaseProtocol | MonitorProcedure | TraceProcedure
+>
 
 export type ClientMessage = AnyClientMessageOf<Protocol>
 export type ServerMessage = AnyServerMessageOf<Protocol>
