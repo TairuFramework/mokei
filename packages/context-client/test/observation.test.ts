@@ -111,4 +111,36 @@ describe('MCP observation', () => {
     expect(sanitizeMessage(message, 'off')).toEqual({ jsonrpc: '2.0', id: 1, method: 'tools/call' })
     expect(message.params.token).toBe('t')
   })
+
+  test('sanitizeMessage redacts and caps JSON-RPC error data', () => {
+    const message = {
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32603, message: 'failure', data: { token: 't', detail: 'x'.repeat(100) } },
+    }
+
+    const sanitised = sanitizeMessage(message, 40) as typeof message & {
+      error: { code: number; message: string; data: string }
+      'dev.mokei/truncated': true
+    }
+    expect(sanitised.error.code).toBe(-32603)
+    expect(sanitised.error.message).toBe('failure')
+    expect(sanitised.error.data).toContain('[redacted]')
+    expect(sanitised.error.data.length).toBeLessThanOrEqual(40)
+    expect(sanitised['dev.mokei/truncated']).toBe(true)
+    expect(message.error.data.token).toBe('t')
+  })
+
+  test('sanitizeMessage keeps only JSON-RPC error code and message when capture is off', () => {
+    expect(
+      sanitizeMessage(
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          error: { code: -32603, message: 'failure', data: { token: 't' } },
+        },
+        'off',
+      ),
+    ).toEqual({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'failure' } })
+  })
 })

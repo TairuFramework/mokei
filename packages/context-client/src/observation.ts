@@ -108,9 +108,13 @@ export function sanitizeMessage(message: unknown, capture: PayloadCapture | unde
   if (!isRecord(message)) return redactPayload(message)
   const cap = resolvePayloadCap(capture)
   if (cap === null) {
-    return Object.fromEntries(
+    const sanitised = Object.fromEntries(
       Object.entries(message).filter(([key]) => ['jsonrpc', 'id', 'method'].includes(key)),
     )
+    if (isRecord(message.error)) {
+      sanitised.error = { code: message.error.code, message: message.error.message }
+    }
+    return sanitised
   }
 
   const sanitised = redactPayload(message) as Record<string, unknown>
@@ -120,6 +124,13 @@ export function sanitizeMessage(message: unknown, capture: PayloadCapture | unde
     const captured = capturePayload(sanitised[key], capture)
     if (captured?.truncated) {
       sanitised[key] = captured.payload
+      truncated = true
+    }
+  }
+  if (isRecord(sanitised.error) && 'data' in sanitised.error) {
+    const captured = capturePayload(sanitised.error.data, capture)
+    if (captured?.truncated) {
+      sanitised.error.data = captured.payload
       truncated = true
     }
   }
