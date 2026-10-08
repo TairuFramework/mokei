@@ -70,6 +70,7 @@ test('flush writes spans and summaries in one transaction', async () => {
   const span = setup().startSpan('root')
   span.end()
   const transaction = vi.spyOn(db, 'withTransaction')
+  await settle()
   await recorder.forceFlush()
   expect(transaction).toHaveBeenCalledOnce()
   const traceID = span.spanContext().traceId
@@ -87,7 +88,10 @@ test('flushes at 200 entries without waiting for the interval', async () => {
   for (let i = 0; i < 199; i++) tracer.startSpan(`span-${i}`).end()
   await settle()
   expect(transaction).not.toHaveBeenCalled()
-  tracer.startSpan('span-200').end()
+  const last = tracer.startSpan('span-200')
+  await vi.advanceTimersByTimeAsync(0)
+  last.end()
+  await settle()
   await recorder.forceFlush()
   expect(transaction).toHaveBeenCalledOnce()
   expect(recorder.snapshot().spans).toHaveLength(0)
@@ -96,6 +100,7 @@ test('flushes at 200 entries without waiting for the interval', async () => {
 test('flushes at the interval', async () => {
   setup().startSpan('root').end()
   await vi.advanceTimersByTimeAsync(250)
+  await settle()
   await recorder.forceFlush()
   expect(recorder.snapshot().spans).toHaveLength(0)
 })
@@ -129,6 +134,7 @@ test('write failure retries at 250/1000/4000 ms, then drops and increments dropp
   expect(recorder.snapshot().summaries[0]).toMatchObject({ droppedCount: 1, revision: 3 })
   expect(reportError).toHaveBeenCalled()
   add.mockRestore()
+  await settle()
   await recorder.forceFlush()
   expect(await (await getTraceIndexStore(db)).get(span.spanContext().traceId)).toMatchObject({
     droppedCount: 1,
@@ -151,7 +157,9 @@ test('queue overflow drops the oldest entries and counts them', async () => {
 test('dirty-summary cap drops the oldest inactive summary and increments lostSummaryCount; active summaries are kept', async () => {
   const tracer = setup({ dirtySummaryLimit: 2, reportError: vi.fn() })
   const active = tracer.startSpan('active')
+  await settle()
   tracer.startSpan('old').end()
+  await settle()
   tracer.startSpan('new').end()
   await settle()
   expect(recorder.snapshot().summaries.map((summary) => summary.name)).toEqual(['active', 'new'])
@@ -189,6 +197,7 @@ test('resume segment reactivates the persisted row, keeping rootSpanID and conti
   const tracer = setup()
   const root = tracer.startSpan('root')
   root.end()
+  await settle()
   await recorder.forceFlush()
   const resume = tracer.startSpan(
     'flow.run.resume',
@@ -206,6 +215,7 @@ test('resume segment reactivates the persisted row, keeping rootSpanID and conti
   })
   expect(recorder.snapshot().summaries[0]?.endTime).toBeUndefined()
   resume.end()
+  await settle()
   await recorder.forceFlush()
   expect(await (await getTraceIndexStore(db)).get(root.spanContext().traceId)).toMatchObject({
     spanCount: 2,
@@ -237,6 +247,7 @@ test('non-root end loads or synthesises an inactive summary', async () => {
     traceFlags: 1,
   })
   tracer.startSpan('orphan', {}, trace.setSpan(ROOT_CONTEXT, parent)).end()
+  await settle()
   await recorder.forceFlush()
   expect(await (await getTraceIndexStore(db)).get(parent.spanContext().traceId)).toMatchObject({
     active: false,
@@ -248,6 +259,7 @@ test('non-root end loads or synthesises an inactive summary', async () => {
 
 test('sweepInterrupted marks persisted active rows interrupted and bumps revision', async () => {
   const root = setup().startSpan('root')
+  await settle()
   await recorder.forceFlush()
   expect(await recorder.sweepInterrupted()).toBe(1)
   expect(await (await getTraceIndexStore(db)).get(root.spanContext().traceId)).toMatchObject({
@@ -318,12 +330,14 @@ test('rolls back both stores when a summary write fails', async () => {
       return fn(tx)
     }),
   )
+  await settle()
   await recorder.forceFlush()
   expect(await (await getTelemetryStore(db)).getSpans(span.spanContext().traceId)).toEqual([])
   expect(await (await getTraceIndexStore(db)).get(span.spanContext().traceId)).toBeUndefined()
   expect(recorder.info().droppedCount).toBe(1)
   vi.restoreAllMocks()
   // The loss summary survives the rollback and is persisted by the next flush.
+  await settle()
   await recorder.forceFlush()
   expect(await (await getTraceIndexStore(db)).get(span.spanContext().traceId)).toMatchObject({
     spanCount: 1,
@@ -371,6 +385,7 @@ test('a resume that ends before hydration continues persisted counts and revisio
   const tracer = setup()
   const root = tracer.startSpan('root', { attributes: { 'mokei.kind': 'flow' } })
   root.end()
+  await settle()
   await recorder.forceFlush()
   events.length = 0
   const resume = tracer.startSpan(
@@ -379,11 +394,11 @@ test('a resume that ends before hydration continues persisted counts and revisio
     trace.setSpan(ROOT_CONTEXT, root),
   )
   resume.end()
+  await settle()
   await recorder.forceFlush()
   const summaries = events.flatMap((event) => (event.type === 'trace:summary' ? [event.data] : []))
-  expect(summaries.map((summary) => summary.revision)).toEqual([3, 4])
-  expect(summaries[0]).toMatchObject({ active: true, spanCount: 1 })
-  expect(summaries[1]).toMatchObject({
+  expect(summaries.map((summary) => summary.revision)).toEqual([4])
+  expect(summaries[0]).toMatchObject({
     active: false,
     spanCount: 2,
     rootSpanID: root.spanContext().spanId,
@@ -393,6 +408,7 @@ test('a resume that ends before hydration continues persisted counts and revisio
 test('a non-root end hydrates an existing active summary without changing root metadata', async () => {
   const tracer = setup()
   const root = tracer.startSpan('root', { attributes: { 'mokei.kind': 'flow' } })
+  await settle()
   await recorder.forceFlush()
   await recorder.shutdown()
   const next = setup()
@@ -400,6 +416,7 @@ test('a non-root end hydrates an existing active summary without changing root m
     .startSpan('child', {}, trace.setSpan(ROOT_CONTEXT, root))
     .setStatus({ code: SpanStatusCode.ERROR })
     .end()
+  await settle()
   await recorder.forceFlush()
   expect(await (await getTraceIndexStore(db)).get(root.spanContext().traceId)).toMatchObject({
     active: true,
@@ -411,5 +428,246 @@ test('a non-root end hydrates an existing active summary without changing root m
     spanCount: 1,
     errorCount: 1,
     revision: 2,
+  })
+})
+
+test('snapshot immediately after resume excludes the unresolved summary', async () => {
+  const tracer = setup()
+  const root = tracer.startSpan('root')
+  root.end()
+  await settle()
+  await recorder.forceFlush()
+  const store = await getTraceIndexStore(db)
+  const persisted = await store.get(root.spanContext().traceId)
+  const release = deferred()
+  vi.spyOn(store, 'get').mockImplementation(async () => {
+    await release.promise
+    return persisted
+  })
+  const getStore = db.getStore.bind(db)
+  vi.spyOn(db, 'getStore').mockImplementation(async (name) =>
+    name === 'trace-index' ? store : getStore(name),
+  )
+  const resume = tracer.startSpan(
+    'resume',
+    { attributes: { 'mokei.root': true } },
+    trace.setSpan(ROOT_CONTEXT, root),
+  )
+  try {
+    expect(recorder.snapshot().summaries).toEqual([])
+    expect(recorder.snapshot().open[0]?.spanID).toBe(resume.spanContext().spanId)
+    await settle()
+    expect(recorder.snapshot().summaries).toEqual([])
+  } finally {
+    release.resolve()
+    await settle()
+  }
+  expect(recorder.snapshot().summaries[0]).toMatchObject({
+    rootSpanID: persisted?.rootSpanID,
+    revision: 3,
+    spanCount: 1,
+    active: true,
+  })
+})
+
+test('failed hydration retries without writing provisional summaries and preserves pending changes', async () => {
+  const tracer = setup({ flushIntervalMs: 60000, reportError: vi.fn() })
+  const root = tracer.startSpan('root')
+  root.end()
+  await settle()
+  await recorder.forceFlush()
+  const store = await getTraceIndexStore(db)
+  const get = store.get.bind(store)
+  const read = vi
+    .spyOn(store, 'get')
+    .mockRejectedValueOnce(new Error('read failed'))
+    .mockImplementation(get)
+  const getStore = db.getStore.bind(db)
+  vi.spyOn(db, 'getStore').mockImplementation(async (name) =>
+    name === 'trace-index' ? store : getStore(name),
+  )
+  const resume = tracer.startSpan(
+    'resume',
+    { attributes: { 'mokei.root': true } },
+    trace.setSpan(ROOT_CONTEXT, root),
+  )
+  resume.end()
+  await settle()
+  tracer
+    .startSpan('child during retry', {}, trace.setSpan(ROOT_CONTEXT, root))
+    .setStatus({ code: SpanStatusCode.ERROR })
+    .end()
+  await settle()
+  await recorder.forceFlush()
+  expect(await get(root.spanContext().traceId)).toMatchObject({ revision: 2, spanCount: 1 })
+  expect(recorder.snapshot().summaries).toEqual([])
+  await vi.advanceTimersByTimeAsync(249)
+  expect(read).toHaveBeenCalledTimes(1)
+  await vi.advanceTimersByTimeAsync(1)
+  await settle()
+  await recorder.forceFlush()
+  expect(await get(root.spanContext().traceId)).toMatchObject({
+    rootSpanID: root.spanContext().spanId,
+    revision: 5,
+    spanCount: 3,
+    errorCount: 1,
+  })
+  expect(recorder.info().lostSummaryCount).toBe(0)
+})
+
+test('hydration exhaustion uses all retry delays and reports loss without replacing persisted data', async () => {
+  const tracer = setup({ flushIntervalMs: 60000, reportError: vi.fn() })
+  const root = tracer.startSpan('root')
+  root.end()
+  await settle()
+  await recorder.forceFlush()
+  const store = await getTraceIndexStore(db)
+  const get = store.get.bind(store)
+  const read = vi.spyOn(store, 'get').mockRejectedValue(new Error('read failed'))
+  const getStore = db.getStore.bind(db)
+  vi.spyOn(db, 'getStore').mockImplementation(async (name) =>
+    name === 'trace-index' ? store : getStore(name),
+  )
+  tracer
+    .startSpan('resume', { attributes: { 'mokei.root': true } }, trace.setSpan(ROOT_CONTEXT, root))
+    .end()
+  await settle()
+  for (const [index, delay] of [250, 1000, 4000].entries()) {
+    await vi.advanceTimersByTimeAsync(delay - 1)
+    expect(read).toHaveBeenCalledTimes(index + 1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(read).toHaveBeenCalledTimes(index + 2)
+  }
+  await settle()
+  await recorder.forceFlush()
+  expect(recorder.info().lostSummaryCount).toBe(1)
+  expect(await get(root.spanContext().traceId)).toMatchObject({ revision: 2, spanCount: 1 })
+  expect(recorder.snapshot().summaries).toEqual([])
+})
+
+test('stalled hydration retains one delta, bounds unresolved traces and allows unrelated flush and shutdown', async () => {
+  const tracer = setup({
+    dirtySummaryLimit: 1,
+    queueLimit: 2,
+    flushBatchSize: 10000,
+    reportError: vi.fn(),
+  })
+  const ready = tracer.startSpan('ready')
+  await settle()
+  const store = await getTraceIndexStore(db)
+  const get = store.get.bind(store)
+  const release = deferred()
+  const read = vi.spyOn(store, 'get').mockImplementation(async () => {
+    await release.promise
+    return undefined
+  })
+  const getStore = db.getStore.bind(db)
+  vi.spyOn(db, 'getStore').mockImplementation(async (name) =>
+    name === 'trace-index' ? store : getStore(name),
+  )
+  const stalled = tracer.startSpan('stalled')
+  for (let i = 0; i < 50; i++)
+    tracer.startSpan('child', {}, trace.setSpan(ROOT_CONTEXT, stalled)).end()
+  tracer.startSpan('overflow')
+  await settle()
+  expect(read).toHaveBeenCalledTimes(1)
+  expect(recorder.info()).toEqual({ droppedCount: 48, lostSummaryCount: 1 })
+  let flushed = false
+  void recorder.forceFlush().then(() => {
+    flushed = true
+  })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(flushed).toBe(true)
+  expect(await get(ready.spanContext().traceId)).toMatchObject({ active: true, revision: 1 })
+  expect(await (await getTelemetryStore(db)).getSpans(stalled.spanContext().traceId)).toHaveLength(
+    2,
+  )
+  expect(recorder.snapshot().summaries.map((summary) => summary.name)).toEqual(['ready'])
+  let stopped = false
+  void recorder.shutdown().then(() => {
+    stopped = true
+  })
+  await settle()
+  expect(stopped).toBe(true)
+  expect(recorder.info().lostSummaryCount).toBe(2)
+  release.resolve()
+  await settle()
+  expect(recorder.snapshot().summaries.map((summary) => summary.traceID)).toEqual([
+    ready.spanContext().traceId,
+  ])
+})
+
+test('persisted active child updates survive ready-summary cap pressure before hydration', async () => {
+  const tracer = setup()
+  const root = tracer.startSpan('root', { attributes: { 'mokei.kind': 'flow' } })
+  await settle()
+  await recorder.forceFlush()
+  await recorder.shutdown()
+  const next = setup({ dirtySummaryLimit: 1, reportError: vi.fn() })
+  const active = next.startSpan('another active')
+  await settle()
+  const store = await getTraceIndexStore(db)
+  const get = store.get.bind(store)
+  const release = deferred()
+  vi.spyOn(store, 'get').mockImplementation(async (traceID) => {
+    if (traceID === root.spanContext().traceId) await release.promise
+    return get(traceID)
+  })
+  const getStore = db.getStore.bind(db)
+  vi.spyOn(db, 'getStore').mockImplementation(async (name) =>
+    name === 'trace-index' ? store : getStore(name),
+  )
+  next
+    .startSpan('child', {}, trace.setSpan(ROOT_CONTEXT, root))
+    .setStatus({ code: SpanStatusCode.ERROR })
+    .end()
+  await settle()
+  const pendingSnapshot = recorder.snapshot()
+  const pendingInfo = recorder.info()
+  release.resolve()
+  expect(pendingSnapshot.summaries.map((summary) => summary.name)).toEqual(['another active'])
+  expect(pendingInfo.lostSummaryCount).toBe(0)
+  await settle()
+  await recorder.forceFlush()
+  expect(await get(root.spanContext().traceId)).toMatchObject({
+    active: true,
+    rootSpanID: root.spanContext().spanId,
+    name: 'root',
+    spanCount: 1,
+    errorCount: 1,
+    revision: 2,
+  })
+  active.end()
+})
+
+test('hydration coalesces a burst into one summary with all count and loss deltas', async () => {
+  const tracer = setup({ queueLimit: 2, flushBatchSize: 10000, reportError: vi.fn() })
+  const store = await getTraceIndexStore(db)
+  const release = deferred()
+  vi.spyOn(store, 'get').mockImplementation(async () => {
+    await release.promise
+    return undefined
+  })
+  const getStore = db.getStore.bind(db)
+  vi.spyOn(db, 'getStore').mockImplementation(async (name) =>
+    name === 'trace-index' ? store : getStore(name),
+  )
+  const root = tracer.startSpan('root')
+  for (let i = 0; i < 50; i++)
+    tracer
+      .startSpan('child', {}, trace.setSpan(ROOT_CONTEXT, root))
+      .setStatus({ code: SpanStatusCode.ERROR })
+      .end()
+  await settle()
+  expect(events.filter((event) => event.type === 'trace:summary')).toHaveLength(0)
+  release.resolve()
+  await settle()
+  expect(events.filter((event) => event.type === 'trace:summary')).toHaveLength(1)
+  expect(recorder.snapshot().summaries[0]).toMatchObject({
+    active: true,
+    spanCount: 50,
+    errorCount: 50,
+    droppedCount: 48,
+    revision: 99,
   })
 })

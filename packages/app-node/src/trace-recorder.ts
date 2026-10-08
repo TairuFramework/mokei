@@ -68,6 +68,12 @@ function createSummary(span: OpenSpan): TraceSummary {
   }
 }
 
+type PendingSummary = {
+  summary: TraceSummary
+  rootChanged: boolean
+  retryTimer?: ReturnType<typeof setTimeout>
+}
+
 export class LocalTraceRecorder implements SpanProcessor {
   #provider: StoreProvider
   #onEvent?: TraceRecorderParams['onEvent']
@@ -81,8 +87,7 @@ export class LocalTraceRecorder implements SpanProcessor {
   #queue: Array<TraceQueueEntry> = []
   #summaries = new Map<string, TraceSummary>()
   #dirty = new Set<string>()
-  #loading = new Map<string, Promise<void>>()
-  #hydrationChanges = new Map<string, Array<{ summary: TraceSummary; rootChanged: boolean }>>()
+  #pending = new Map<string, PendingSummary>()
   #flush?: Promise<void>
   #shutdown?: Promise<void>
   #stopped = false
@@ -163,65 +168,83 @@ export class LocalTraceRecorder implements SpanProcessor {
 
   #update(span: OpenSpan, update: (summary: TraceSummary) => TraceSummary): void {
     const traceID = span.traceID
-    if (!this.#summaries.has(traceID) && !this.#loading.has(traceID)) {
-      this.#summaries.set(traceID, createSummary(span))
-      const changes: Array<{ summary: TraceSummary; rootChanged: boolean }> = []
-      this.#hydrationChanges.set(traceID, changes)
-      const load = getTraceIndexStore(this.#provider)
-        .then((store) => store.get(traceID))
-        .then((persisted) => {
-          let latest: TraceSummary | undefined
-          for (const change of changes) {
-            const local = change.summary
-            latest =
-              persisted == null
-                ? local
-                : {
-                    ...persisted,
-                    ...(change.rootChanged ? local : {}),
-                    traceID,
-                    rootSpanID: persisted.rootSpanID,
-                    startTime: persisted.startTime,
-                    attributes: change.rootChanged
-                      ? { ...persisted.attributes, ...local.attributes }
-                      : persisted.attributes,
-                    spanCount: persisted.spanCount + local.spanCount,
-                    errorCount: persisted.errorCount + local.errorCount,
-                    droppedCount: persisted.droppedCount + local.droppedCount,
-                    revision: persisted.revision + local.revision,
-                  }
-            this.#emit({ type: 'trace:summary', data: latest })
-          }
-          // A capped summary must not be resurrected by its pending read.
-          if (latest && this.#summaries.has(traceID)) this.#summaries.set(traceID, latest)
-        })
-        .catch((error) => {
-          this.#reportError('Failed to load trace summary', error)
-          for (const change of changes) this.#emit({ type: 'trace:summary', data: change.summary })
-        })
-        .finally(() => {
-          this.#loading.delete(traceID)
-          this.#hydrationChanges.delete(traceID)
-        })
-      this.#loading.set(traceID, load)
+    const current = this.#summaries.get(traceID)
+    if (current) {
+      this.#changed({ ...update(current), revision: current.revision + 1 })
+      return
     }
-    const changes = this.#hydrationChanges.get(traceID)
-    const summary = this.#summaries.get(traceID) ?? changes?.at(-1)?.summary ?? createSummary(span)
-    const next = { ...update(summary), revision: summary.revision + 1 }
-    if (changes) {
-      const rootChanged =
-        changes.at(-1)?.rootChanged === true ||
-        next.activeSegmentSpanID != null ||
-        next.endTime != null
-      changes.push({ summary: next, rootChanged })
+    let pending = this.#pending.get(traceID)
+    if (pending == null) {
+      if (this.#stopped || this.#pending.size >= this.#dirtySummaryLimit) {
+        this.#lostSummaryCount++
+        this.#reportError(
+          'Trace hydration limit exceeded',
+          new Error(`Lost summary delta for ${traceID}`),
+        )
+        return
+      }
+      pending = { summary: createSummary(span), rootChanged: false }
+      this.#pending.set(traceID, pending)
+      void this.#hydrate(traceID, pending)
     }
-    this.#changed(next, changes == null)
+    const next = { ...update(pending.summary), revision: pending.summary.revision + 1 }
+    pending.rootChanged ||= next.activeSegmentSpanID != null || next.endTime != null
+    pending.summary = next
   }
 
-  #changed(summary: TraceSummary, emit = true): void {
+  async #hydrate(traceID: string, pending: PendingSummary, attempt = 0): Promise<void> {
+    try {
+      const persisted = await (await getTraceIndexStore(this.#provider)).get(traceID)
+      // Shutdown or loss invalidates the read, including a late successful result.
+      if (this.#pending.get(traceID) !== pending) return
+      const local = pending.summary
+      const summary =
+        persisted == null
+          ? local
+          : {
+              ...persisted,
+              ...(pending.rootChanged ? local : {}),
+              rootSpanID: persisted.rootSpanID,
+              startTime: persisted.startTime,
+              attributes: pending.rootChanged
+                ? { ...persisted.attributes, ...local.attributes }
+                : persisted.attributes,
+              spanCount: persisted.spanCount + local.spanCount,
+              errorCount: persisted.errorCount + local.errorCount,
+              droppedCount: persisted.droppedCount + local.droppedCount,
+              revision: persisted.revision + local.revision,
+            }
+      this.#pending.delete(traceID)
+      this.#changed(summary)
+    } catch (error) {
+      if (this.#pending.get(traceID) !== pending) return
+      this.#reportError('Failed to load trace summary', error)
+      const delay = this.#retryDelaysMs[attempt]
+      if (delay == null) {
+        this.#losePending(traceID, pending)
+      } else {
+        pending.retryTimer = setTimeout(() => {
+          pending.retryTimer = undefined
+          void this.#hydrate(traceID, pending, attempt + 1)
+        }, delay)
+      }
+    }
+  }
+
+  #losePending(traceID: string, pending: PendingSummary): void {
+    clearTimeout(pending.retryTimer)
+    this.#pending.delete(traceID)
+    this.#lostSummaryCount++
+    this.#reportError(
+      'Lost unresolved trace summary',
+      new Error(`Lost summary delta for ${traceID}`),
+    )
+  }
+
+  #changed(summary: TraceSummary): void {
     this.#summaries.set(summary.traceID, summary)
     this.#dirty.add(summary.traceID)
-    if (emit) this.#emit({ type: 'trace:summary', data: summary })
+    this.#emit({ type: 'trace:summary', data: summary })
     while (this.#dirty.size > this.#dirtySummaryLimit) {
       const oldest = [...this.#dirty].find((traceID) => !this.#summaries.get(traceID)?.active)
       if (oldest == null) break
@@ -308,7 +331,6 @@ export class LocalTraceRecorder implements SpanProcessor {
 
   async #drain(): Promise<void> {
     while (true) {
-      while (this.#loading.size > 0) await Promise.all(this.#loading.values())
       const batch = this.#queue.slice(0, this.#flushBatchSize)
       const summaries = [...this.#dirty].flatMap((traceID) => {
         const summary = this.#summaries.get(traceID)
@@ -360,6 +382,7 @@ export class LocalTraceRecorder implements SpanProcessor {
     if (this.#shutdown) return this.#shutdown
     this.#stopped = true
     clearInterval(this.#timer)
+    for (const [traceID, pending] of this.#pending) this.#losePending(traceID, pending)
     this.#shutdown = this.forceFlush()
     return this.#shutdown
   }
