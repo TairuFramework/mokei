@@ -56,7 +56,9 @@ test('recovers waiting input from a reopened sqlite database', async () => {
     const traceID = required(stored.traceID)
     const traceparent = required(stored.traceparent)
     expect(traceparent.split('-')[1]).toBe(traceID)
-    expect((await firstTasks.get(taskID))?.requestMeta?.traceparent).toBe(traceparent)
+    const requestTraceparent = (await firstTasks.get(taskID))?.requestMeta?.traceparent
+    expect(typeof requestTraceparent).toBe('string')
+    expect((requestTraceparent as string).split('-')[1]).toBe(traceID)
     await host.dispose()
     await session.dispose()
     expect(await firstTasks.get(taskID)).toMatchObject({ status: 'input_required', ttlMs: null })
