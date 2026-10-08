@@ -70,7 +70,9 @@ import {
   TransportClosedError,
   type WithRequestOptions,
 } from '@mokei/context-rpc'
+import { getMokeiLogger } from '@mokei/logger'
 import type { SpanContext } from '@opentelemetry/api'
+import { ROOT_CONTEXT, trace } from '@opentelemetry/api'
 import { lazy } from '@sozai/async'
 import { withActiveContext } from '@sozai/otel'
 import { createValidator, type Schema, type Validator } from '@sozai/schema'
@@ -95,7 +97,7 @@ import {
   MRTR_METHODS,
   runInputRequiredFlow,
 } from './mrtr.js'
-import { responseOutcome } from './observation.js'
+import { capturePayload, type MessageDirection, responseOutcome } from './observation.js'
 import { SetupReader } from './setup-reader.js'
 import {
   ACKNOWLEDGED_METHOD,
@@ -425,7 +427,11 @@ export class ContextClient<
       maxQueuedRequests: params.maxQueuedRequests,
       onError: params.onError,
       routeStreamNotification: (notification) => {
-        return routeSubscriptionNotification(notification as ServerNotification)
+        const routed = routeSubscriptionNotification(notification as ServerNotification)
+        if (routed !== null) {
+          this.#traceNotification(notification.method, 'server', notification.params)
+        }
+        return routed
       },
     })
 
@@ -482,6 +488,11 @@ export class ContextClient<
     // each closure is shaped the way it is.
     this.#setupReader = new SetupReader({
       io: {
+        trace: (method, id) => {
+          const exchange = this.#exchangeTracer.startOutgoing(method, undefined)
+          exchange.setID(id)
+          return exchange
+        },
         allocateID: () => this._getNextRequestID(),
         write: (message) => super._write(message),
         takeBuffered: (matches) => {
@@ -754,6 +765,7 @@ export class ContextClient<
       throw new MethodNotInRevisionError({ method: method, version: protocol.version })
     }
     const decorated = protocol.decorateNotification(params)
+    this.#traceNotification(method, 'client', decorated)
     await super.notify(event, decorated as typeof params)
   }
 
@@ -786,6 +798,7 @@ export class ContextClient<
     // Start listening for incoming messages
     this.#startReadLoop()
     // Notify the server with `notifications/initialized`.
+    this.#traceNotification('notifications/initialized', 'client', undefined)
     await super._write({ jsonrpc: '2.0', method: 'notifications/initialized' })
     this.events.emit('initialized', result)
     return result
@@ -1039,6 +1052,7 @@ export class ContextClient<
   }
 
   _onTransportClosed(reason?: Error): void {
+    this.#exchangeTracer.settleAll('lost')
     // Covers a peer EOF (which never runs `_beforeTransportClose`): suppress reconnect so a dead
     // transport is not retried. `dispose()` is idempotent.
     this.#subscriptionDriver?.dispose()
@@ -1052,7 +1066,37 @@ export class ContextClient<
     await super._write(message)
   }
 
+  #traceNotification(method: string, direction: MessageDirection, params: unknown): void {
+    const binding = this.#tracing
+    const span = binding?.contextSpan
+    if (span === undefined) return
+    withActiveContext(trace.setSpan(ROOT_CONTEXT, span), () => {
+      const captured = span.isRecording() ? capturePayload(params, binding?.payloads) : undefined
+      getMokeiLogger('mcp')
+        .getChild('notification')
+        .debug('MCP notification {method}', {
+          method,
+          direction,
+          ...(captured === undefined ? {} : { payload: captured.payload }),
+          ...(captured?.truncated ? { 'mokei.payload.truncated': true } : {}),
+        })
+    })
+  }
+
+  _handleMessage(message: ServerMessage): ReturnType<ContextRPC<ClientTypes>['_handleMessage']> {
+    // RPC consumes cancellation before dispatching notifications to the subclass.
+    if (
+      message.id == null &&
+      message.method === 'notifications/cancelled' &&
+      this.#validateServerMessage(message).issues == null
+    ) {
+      this.#traceNotification(message.method, 'server', message.params)
+    }
+    return super._handleMessage(message)
+  }
+
   _handleNotification(notification: HandleNotification): void {
+    this.#traceNotification(notification.method, 'server', notification.params)
     if (notification.method === 'notifications/message') {
       this.events.emit('log', notification.params)
     }
@@ -1205,57 +1249,77 @@ export class ContextClient<
    * directly to the task waiter.
    */
   #openListen(filter: SubscriptionFilter, handlers: ListenHandlers): ListenHandle {
-    const protocol = this.#requireProtocol()
-    const trace = currentTraceMeta()
-    const base: Record<string, unknown> = { notifications: filter }
-    if (trace.traceparent != null) {
-      base._meta = { ...trace }
-    }
-    const params = protocol.decorateRequest(base, {
-      capabilities: this.#capabilitiesFor(protocol),
-      clientInfo: this.#clientInfo,
-      logLevel: this.#logLevel,
+    const traced = this.#exchangeTracer.startOutgoing('subscriptions/listen', {
+      notifications: filter,
     })
+    return withActiveContext(traced.context, () => {
+      const protocol = this.#requireProtocol()
+      const trace = currentTraceMeta()
+      const base: Record<string, unknown> = { notifications: filter }
+      if (trace.traceparent != null) {
+        base._meta = { ...trace }
+      }
+      const params = protocol.decorateRequest(base, {
+        capabilities: this.#capabilitiesFor(protocol),
+        clientInfo: this.#clientInfo,
+        logLevel: this.#logLevel,
+      })
 
-    const controller = new AbortController()
-    let subscriptionId: RequestID | undefined
-    const exchange = this._registerStreamExchange(
-      'subscriptions/listen',
-      params,
-      {
-        onProgress: (value) => {
-          const notification = value as SubscriptionNotification
-          if ((notification as { method?: unknown }).method === ACKNOWLEDGED_METHOD) {
-            const meta = (notification as { params?: { _meta?: Record<string, unknown> } }).params
-              ?._meta
-            const id = meta?.[META_SUBSCRIPTION_ID]
-            if (typeof id === 'string' || typeof id === 'number') {
-              subscriptionId = id
+      const controller = new AbortController()
+      let subscriptionId: RequestID | undefined
+      const exchange = this._registerStreamExchange(
+        'subscriptions/listen',
+        params,
+        {
+          onProgress: (value) => {
+            const notification = value as SubscriptionNotification
+            if ((notification as { method?: unknown }).method === ACKNOWLEDGED_METHOD) {
+              const meta = (notification as { params?: { _meta?: Record<string, unknown> } }).params
+                ?._meta
+              const id = meta?.[META_SUBSCRIPTION_ID]
+              if (typeof id === 'string' || typeof id === 'number') {
+                subscriptionId = id
+              }
             }
-          }
-          handlers.onNotification(notification)
+            handlers.onNotification(notification)
+          },
+          onSettle: (settle) => {
+            if (settle.reason === 'result') {
+              // The terminal body lives only on the exchange promise (resolved just before this
+              // settle fired); read it back to verify the subscriptionId before the driver treats
+              // the settle as a graceful teardown.
+              exchange.then(
+                (value) => {
+                  const verified = this.#verifyTerminal(value, subscriptionId)
+                  if (verified.reason === 'result') traced.succeed(value)
+                  else traced.fail('_OTHER', verified.error?.message)
+                  handlers.onSettle(verified)
+                },
+                () => {},
+              )
+            } else {
+              traced.fail(
+                settle.reason === 'cancel'
+                  ? 'cancelled'
+                  : settle.reason === 'closed'
+                    ? 'context.lost'
+                    : settle.error instanceof RPCError
+                      ? String(settle.error.code)
+                      : '_OTHER',
+                settle.error?.message,
+              )
+              handlers.onSettle(settle)
+            }
+          },
         },
-        onSettle: (settle) => {
-          if (settle.reason === 'result') {
-            // The terminal body lives only on the exchange promise (resolved just before this
-            // settle fired); read it back to verify the subscriptionId before the driver treats
-            // the settle as a graceful teardown.
-            exchange.then(
-              (value) => handlers.onSettle(this.#verifyTerminal(value, subscriptionId)),
-              () => {},
-            )
-          } else {
-            handlers.onSettle(settle)
-          }
-        },
-      },
-      { signal: controller.signal },
-    )
-    exchange.catch(() => {})
-    return {
-      exchange,
-      abort: (reason?: Error) => controller.abort(reason),
-    }
+        { signal: controller.signal, onRequestID: (id) => traced.setID(id) },
+      )
+      exchange.catch(() => {})
+      return {
+        exchange,
+        abort: (reason?: Error) => controller.abort(reason),
+      }
+    })
   }
 
   /** Confirms a terminal listen result's `_meta` subscriptionId matches the listen request id. */
@@ -1356,6 +1420,40 @@ export class ContextClient<
   }
 
   async _handleRequest(request: ServerRequest, signal: AbortSignal): Promise<ClientResult> {
+    const exchange = this.#exchangeTracer.startIncoming(
+      request.method,
+      request.params,
+      request.id,
+      request.params?._meta,
+    )
+    // Transport teardown settles all spans synchronously after aborting handlers.
+    const abort = () => queueMicrotask(() => exchange.fail('cancelled'))
+    if (signal.aborted) abort()
+    else signal.addEventListener('abort', abort, { once: true })
+    return withActiveContext(exchange.context, async () => {
+      try {
+        const result = await this.#dispatchRequest(request, signal)
+        exchange.succeed(result)
+        return result
+      } catch (cause) {
+        exchange.fail(
+          signal.aborted
+            ? 'cancelled'
+            : cause instanceof RPCError
+              ? String(cause.code)
+              : cause instanceof TransportClosedError
+                ? 'context.lost'
+                : '_OTHER',
+          cause instanceof Error ? cause.message : String(cause),
+        )
+        throw cause
+      } finally {
+        signal.removeEventListener('abort', abort)
+      }
+    })
+  }
+
+  async #dispatchRequest(request: ServerRequest, signal: AbortSignal): Promise<ClientResult> {
     // Answered here rather than in `ContextRPC`, which stays MCP-version-agnostic: `ping` exists
     // only in the revisions whose `serverMethods` carries it, and the spec makes answering it a
     // MUST there. Gated on the method table, not a version literal, and mirroring

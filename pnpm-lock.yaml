@@ -1008,6 +1008,9 @@ importers:
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../context-rpc
+      '@mokei/logger':
+        specifier: workspace:^
+        version: link:../logger
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1

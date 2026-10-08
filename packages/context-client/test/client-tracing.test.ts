@@ -1,14 +1,17 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
+import { META_SUBSCRIPTION_ID } from '@mokei/context-protocol'
 import { RPCError, TransportClosedError } from '@mokei/context-rpc'
 import type { Attributes } from '@opentelemetry/api'
 import { SpanStatusCode, trace } from '@opentelemetry/api'
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { afterEach, expect, test, vi } from 'vitest'
 
+import { getMokeiLogger } from '../../logger/src/index.js'
 import { ContextClient } from '../src/client.js'
 import type { ClientTracing } from '../src/client-tracing.js'
 import { createExchangeTracer } from '../src/client-tracing.js'
+import type { ClientParams } from '../src/types.js'
 import { useTestTracing } from './support/otel.js'
 
 const { exporter } = useTestTracing()
@@ -21,6 +24,7 @@ const result = { content: [{ type: 'text' as const, text: 'ok' }] }
 async function fixture(
   tracing?: ClientTracing,
   protocolVersion: '2025-11-25' | '2026-07-28' = '2025-11-25',
+  options: Partial<ClientParams> = {},
 ) {
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const client = new ContextClient({
@@ -28,6 +32,7 @@ async function fixture(
     protocolVersion,
     tracing,
     listRoots: [],
+    ...options,
   })
   disposals.push(() => transports.dispose())
   const setup = client.request('tools/list', {})
@@ -62,6 +67,7 @@ async function fixture(
     result: { tools: [], ...(protocolVersion === '2026-07-28' ? { resultType: 'complete' } : {}) },
   })
   await setup
+  const setupSpans = exporter.getFinishedSpans()
   exporter.reset()
   async function next() {
     const frame = (await transports.server.read()).value
@@ -76,11 +82,18 @@ async function fixture(
   async function call() {
     const pending = client.request('tools/call', { name: 'echo', arguments: { value: 'hello' } })
     const frame = await next()
-    await transports.server.write({ jsonrpc: '2.0', id: frame.id, result })
+    await transports.server.write({
+      jsonrpc: '2.0',
+      id: frame.id,
+      result: {
+        ...result,
+        ...(protocolVersion === '2026-07-28' ? { resultType: 'complete' } : {}),
+      },
+    })
     await pending
     return { ...frame, id: frame.id, params: frame.params as Record<string, unknown> | undefined }
   }
-  return { client, transports, next, call }
+  return { client, transports, next, call, setupFrame: frame, setupSpans }
 }
 function required<T>(value: T | undefined): T {
   if (value === undefined) throw new Error('Expected value')
@@ -336,4 +349,290 @@ test('abort settles an outgoing exchange as cancelled', async () => {
   await rejected
   expect(required(spans()[0]).attributes['error.type']).toBe('cancelled')
   expect(required(spans()[0]).status.code).toBe(SpanStatusCode.ERROR)
+})
+
+for (const protocolVersion of ['2025-11-25', '2026-07-28'] as const) {
+  const method = protocolVersion === '2025-11-25' ? 'initialize' : 'server/discover'
+  test(`${method} produces an exchange span and the frame carries traceparent`, async () => {
+    const bound = binding()
+    const f = await fixture(bound, protocolVersion)
+    const span = required(f.setupSpans.find((span) => span.name === `mcp.${method}`))
+    expect(span.attributes).toMatchObject({
+      'jsonrpc.request.id': String(f.setupFrame.id),
+      'mokei.direction': 'client',
+    })
+    expect(span.parentSpanContext?.spanId).toBe(bound.contextSpan?.spanContext().spanId)
+    expect(
+      (
+        (f.setupFrame.params as Record<string, unknown> | undefined)?._meta as
+          | Record<string, unknown>
+          | undefined
+      )?.traceparent,
+    ).toContain(span.spanContext().spanId)
+    expect(span.status.code).toBe(SpanStatusCode.OK)
+  })
+}
+
+test('subscriptions/listen produces one span settled when the stream settles', async () => {
+  const f = await fixture(binding(), '2026-07-28')
+  const subscribed = f.client.subscribeResource({ uri: 'file:///test' })
+  const frame = await f.next()
+  expect('method' in frame && frame.method).toBe('subscriptions/listen')
+  expect(exporter.getFinishedSpans()).toEqual([])
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    method: 'notifications/subscriptions/acknowledged',
+    params: {
+      notifications: { resourceSubscriptions: ['file:///test'] },
+      _meta: { [META_SUBSCRIPTION_ID]: frame.id },
+    },
+  } as ServerMessage)
+  await subscribed
+  expect(exporter.getFinishedSpans()).toEqual([])
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: frame.id,
+    result: { resultType: 'complete', _meta: { [META_SUBSCRIPTION_ID]: frame.id } },
+  })
+  await vi.waitFor(() => expect(exporter.getFinishedSpans()).toHaveLength(1))
+  const span = required(exporter.getFinishedSpans()[0])
+  expect(span.name).toBe('mcp.subscriptions/listen')
+  expect(span.attributes['jsonrpc.request.id']).toBe(String(frame.id))
+  expect((frame.params?._meta as Record<string, unknown>)?.traceparent).toContain(
+    span.spanContext().spanId,
+  )
+  expect(span.status.code).toBe(SpanStatusCode.OK)
+})
+
+test('incoming elicitation/create parents to the context and links the remote traceparent', async () => {
+  const bound = binding()
+  const remote = tracer.startSpan('remote').spanContext()
+  let activeID: string | undefined
+  const f = await fixture(bound, '2025-11-25', {
+    elicit: async () => {
+      activeID = trace.getActiveSpan()?.spanContext().spanId
+      return { action: 'decline' }
+    },
+  })
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: 'incoming',
+    method: 'elicitation/create',
+    params: {
+      message: 'Test',
+      requestedSchema: { type: 'object', properties: {} },
+      _meta: { traceparent: `00-${remote.traceId}-${remote.spanId}-01` },
+    },
+  })
+  await f.transports.server.read()
+  const span = required(exporter.getFinishedSpans()[0])
+  expect(span.name).toBe('mcp.elicitation/create')
+  expect(span.attributes['mokei.direction']).toBe('server')
+  expect(span.parentSpanContext?.spanId).toBe(bound.contextSpan?.spanContext().spanId)
+  expect(required(span.links[0]).context.spanId).toBe(remote.spanId)
+  expect(activeID).toBe(span.spanContext().spanId)
+  expect(span.status.code).toBe(SpanStatusCode.OK)
+})
+
+test('incoming request cancelled by notifications/cancelled ends with error.type cancelled', async () => {
+  let entered = false
+  let complete: (() => void) | undefined
+  const f = await fixture(binding(), '2025-11-25', {
+    elicit: async () => {
+      entered = true
+      await new Promise<void>((resolve) => {
+        complete = resolve
+      })
+      return { action: 'decline' }
+    },
+  })
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: 'incoming',
+    method: 'elicitation/create',
+    params: { message: 'Test', requestedSchema: { type: 'object', properties: {} } },
+  })
+  await vi.waitFor(() => expect(entered).toBe(true))
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    method: 'notifications/cancelled',
+    params: { requestId: 'incoming' },
+  })
+  try {
+    await vi.waitFor(() => expect(exporter.getFinishedSpans()).toHaveLength(1))
+    expect(required(exporter.getFinishedSpans()[0]).attributes['error.type']).toBe('cancelled')
+  } finally {
+    complete?.()
+  }
+  await f.call()
+  expect(
+    exporter.getFinishedSpans().filter((span) => span.name === 'mcp.elicitation/create'),
+  ).toHaveLength(1)
+})
+
+test('notifications in either direction log on the bound context with redacted capped payloads', async () => {
+  const bound = binding()
+  const f = await fixture(bound)
+  const logger = getMokeiLogger('mcp').getChild('notification')
+  const records: Array<{ properties: Record<string, unknown>; spanID?: string }> = []
+  const spy = vi.spyOn(logger, 'debug').mockImplementation((...args: Array<unknown>) => {
+    const properties = args[1]
+    records.push({
+      properties:
+        properties !== null && typeof properties === 'object'
+          ? (properties as Record<string, unknown>)
+          : {},
+      spanID: trace.getActiveSpan()?.spanContext().spanId,
+    })
+  })
+  try {
+    expect(logger.category).toEqual(['mokei', 'mcp', 'notification'])
+    await f.client.notify('roots/list_changed', { password: 'secret', value: 'hello' })
+    await f.transports.server.read()
+    await f.transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/tools/list_changed',
+      params: { token: 'secret', value: 'hello' },
+    })
+    await vi.waitFor(() => expect(records).toHaveLength(2))
+    expect(records.map((entry) => entry.spanID)).toEqual([
+      bound.contextSpan?.spanContext().spanId,
+      bound.contextSpan?.spanContext().spanId,
+    ])
+    expect(records.map((entry) => entry.properties)).toMatchObject([
+      {
+        method: 'notifications/roots/list_changed',
+        direction: 'client',
+        payload: expect.stringContaining('[redacted]'),
+      },
+      {
+        method: 'notifications/tools/list_changed',
+        direction: 'server',
+        payload: expect.stringContaining('[redacted]'),
+      },
+    ])
+    f.client.setTracing({ ...bound, payloads: 8 })
+    await f.client.notify('roots/list_changed', { value: 'long payload' })
+    await f.transports.server.read()
+    expect(records.at(-1)?.properties).toMatchObject({
+      payload: '{"value"',
+      'mokei.payload.truncated': true,
+    })
+    f.client.setTracing({ ...bound, payloads: 'off' })
+    await f.client.notify('roots/list_changed', {})
+    await f.transports.server.read()
+    expect(records.at(-1)?.properties).not.toHaveProperty('payload')
+    const unbound = await fixture()
+    await unbound.client.notify('roots/list_changed', {})
+    await unbound.transports.server.read()
+    await unbound.transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/tools/list_changed',
+    })
+    await unbound.call()
+    expect(records).toHaveLength(4)
+  } finally {
+    spy.mockRestore()
+  }
+})
+
+test('cancelled and subscription notifications also log on the bound context', async () => {
+  const f = await fixture(binding(), '2026-07-28')
+  const logger = getMokeiLogger('mcp').getChild('notification')
+  const spy = vi.spyOn(logger, 'debug')
+  try {
+    await f.transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: {
+        requestId: 'unknown',
+        _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' },
+      },
+    } as ServerMessage)
+    await f.transports.server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/tools/list_changed',
+      params: {
+        _meta: {
+          [META_SUBSCRIPTION_ID]: 'unknown',
+          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+        },
+      },
+    } as ServerMessage)
+    await f.call()
+    expect(spy).toHaveBeenCalledTimes(2)
+  } finally {
+    spy.mockRestore()
+  }
+})
+
+for (const termination of ['timeout', 'closed', 'rpc-error', 'write-error'] as const) {
+  test(`setup ${termination} settles its span with the appropriate error type`, async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    disposals.push(() => transports.dispose())
+    if (termination === 'write-error') {
+      vi.spyOn(transports.client, 'write').mockRejectedValue(new Error('Write failed'))
+    }
+    const client = new ContextClient({
+      transport: transports.client,
+      protocolVersion: '2025-11-25',
+      tracing: binding(),
+      setupTimeout: 10,
+    })
+    const pending = expect(client.initialize()).rejects.toThrow()
+    if (termination !== 'write-error') {
+      const frame = required((await transports.server.read()).value)
+      if (typeof frame.id !== 'number' && typeof frame.id !== 'string')
+        throw new Error('Expected ID')
+      if (termination === 'closed') await transports.server.dispose()
+      if (termination === 'rpc-error')
+        await transports.server.write({
+          jsonrpc: '2.0',
+          id: frame.id,
+          error: { code: -32603, message: 'Failed' },
+        })
+    }
+    await pending
+    const span = required(
+      exporter.getFinishedSpans().find((span) => span.name === 'mcp.initialize'),
+    )
+    expect(span.attributes['error.type']).toBe(
+      termination === 'timeout'
+        ? 'cancelled'
+        : termination === 'closed'
+          ? 'context.lost'
+          : termination === 'rpc-error'
+            ? '-32603'
+            : '_OTHER',
+    )
+    expect(span.status.code).toBe(SpanStatusCode.ERROR)
+  })
+}
+
+test('incoming transport closure settles as context.lost even when the handler ignores abort', async () => {
+  let entered = false
+  let complete: (() => void) | undefined
+  const f = await fixture(binding(), '2025-11-25', {
+    elicit: async () => {
+      entered = true
+      await new Promise<void>((resolve) => {
+        complete = resolve
+      })
+      return { action: 'decline' }
+    },
+  })
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: 'incoming',
+    method: 'elicitation/create',
+    params: { message: 'Test', requestedSchema: { type: 'object', properties: {} } },
+  })
+  await vi.waitFor(() => expect(entered).toBe(true))
+  try {
+    await f.transports.server.dispose()
+    await vi.waitFor(() => expect(exporter.getFinishedSpans()).toHaveLength(1))
+    expect(required(exporter.getFinishedSpans()[0]).attributes['error.type']).toBe('context.lost')
+  } finally {
+    complete?.()
+  }
 })
