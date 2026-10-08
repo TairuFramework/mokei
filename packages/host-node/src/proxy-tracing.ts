@@ -2,6 +2,7 @@ import {
   capturePayload,
   type MessageDirection,
   type PayloadCapture,
+  redactCommandArgs,
   requestAttributes,
   requestSpanName,
   responseOutcome,
@@ -45,7 +46,7 @@ export function createProxyTracing(params: {
         'mokei.context.id': params.contextID,
         'mcp.transport': 'stdio',
         'process.command': params.command,
-        'process.command_args': params.args,
+        'process.command_args': redactCommandArgs(params.args),
       },
     },
     ROOT_CONTEXT,
@@ -97,7 +98,7 @@ export function createProxyTracing(params: {
         } else if (message.id == null) {
           context.with(parent, () => {
             const captured =
-              message.params === undefined
+              message.params === undefined || !contextSpan.isRecording()
                 ? undefined
                 : capturePayload(message.params, params.payloads)
             getMokeiLogger('mcp')

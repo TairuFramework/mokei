@@ -197,12 +197,6 @@ catalogs:
     '@hozon/db':
       specifier: ^0.2.2
       version: 0.2.2
-    '@hozon/logtape':
-      specifier: ^0.1.1
-      version: 0.1.1
-    '@hozon/otel':
-      specifier: ^0.1.1
-      version: 0.1.1
     '@hozon/store-log':
       specifier: ^0.2.1
       version: 0.2.1
@@ -823,12 +817,6 @@ importers:
       '@hozon/db':
         specifier: 'catalog:'
         version: 0.2.2(@logtape/logtape@2.4.0)
-      '@hozon/logtape':
-        specifier: 'catalog:'
-        version: 0.1.1(@logtape/logtape@2.4.0)(@opentelemetry/api@1.9.1)
-      '@hozon/otel':
-        specifier: 'catalog:'
-        version: 0.1.1(@logtape/logtape@2.4.0)(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))
       '@hozon/store-log':
         specifier: 'catalog:'
         version: 0.2.1(@logtape/logtape@2.4.0)
@@ -3426,21 +3414,9 @@ packages:
     resolution: {integrity: sha512-pUbJRhuHZF6veN6FWbTuqqIIgdzsKqM3rt2mtnKBoFtfTWGKpmp+jcEOrk5rwPerYE61xEwPLqpNp8k8qzVpZg==}
     engines: {node: '>=24'}
 
-  '@hozon/logtape@0.1.1':
-    resolution: {integrity: sha512-lNqmQRY7ewAK+v+01/8BDXIXC0TZ/JaF+Hr2XcY8pNqhxOVdKx/QOnKwIGKIlKVHsfNdr8Noxm92aJ2uDwutoQ==}
-    peerDependencies:
-      '@logtape/logtape': ^2.3.11
-      '@opentelemetry/api': ^1.9.1
-
   '@hozon/node-sqlite@0.1.0':
     resolution: {integrity: sha512-yUOEHgxSXI6QlpjJNOYa3R+Ytp3dS7VB50oISVnUHvX0rWqVEBa1XNfN90cYjrAyeGLTKO3zFLQhqdhv7Qz5Xw==}
     engines: {node: '>=24'}
-
-  '@hozon/otel@0.1.1':
-    resolution: {integrity: sha512-qb2A1PHNhuUCXDlIJjsLr0vYjG+k+D0Uy4Aj+enoSmDzxnRwmNVwYV58lajwo/+iKC1pBCQPvC6HVjWavMTuhQ==}
-    peerDependencies:
-      '@opentelemetry/api': ^1.9.1
-      '@opentelemetry/sdk-trace-base': ^2.11.0
 
   '@hozon/store-log@0.2.1':
     resolution: {integrity: sha512-rAsCnxSmnKi+HTmVc/67yVg/+98d4gw+NTgnQI6wn0HJFyjeJwVJtAWoM39DP+vB228eLOmdT/+nO0u2bEeN0Q==}
@@ -13461,29 +13437,10 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@hozon/logtape@0.1.1(@logtape/logtape@2.4.0)(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@hozon/store-log': 0.2.1(@logtape/logtape@2.4.0)
-      '@logtape/logtape': 2.4.0
-      '@opentelemetry/api': 1.9.1
-      '@sozai/json': 0.3.0
-      '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
-
   '@hozon/node-sqlite@0.1.0':
     dependencies:
       '@hozon/adapter': 0.1.0
       kysely: 0.29.6
-
-  '@hozon/otel@0.1.1(@logtape/logtape@2.4.0)(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))':
-    dependencies:
-      '@hozon/store-telemetry': 0.2.1(@logtape/logtape@2.4.0)
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 2.12.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base': 2.12.0(@opentelemetry/api@1.9.1)
-      '@sozai/json': 0.3.0
-      '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
-    transitivePeerDependencies:
-      - '@logtape/logtape'
 
   '@hozon/store-log@0.2.1(@logtape/logtape@2.4.0)':
     dependencies:

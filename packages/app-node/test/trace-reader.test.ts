@@ -15,10 +15,13 @@ import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
 import { openLocalDatabase } from '@tejika/db'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { openMokeiDatabase } from '../src/database.js'
-import { getTraceIndexStore } from '../src/trace-index.js'
-import { createTraceReader, type TraceReader } from '../src/trace-reader.js'
-import { LocalTraceRecorder } from '../src/trace-recorder.js'
+import {
+  createTraceReader,
+  getTraceIndexStore,
+  LocalTraceRecorder,
+  openMokeiDatabase,
+  type TraceReader,
+} from '../src/index.js'
 
 let db: HozonDB
 let recorder: LocalTraceRecorder

@@ -157,6 +157,7 @@ export type ContextHostParams = {
   /** Subclass teardown, run after every context is removed. */
   dispose?: () => Promise<void>
   elicit?: HostElicitHandler | true
+  /** MCP payload capture defaults to 'off'. */
   tracing?: { payloads?: PayloadCapture }
 }
 
@@ -280,7 +281,7 @@ export class ContextHost extends Disposer {
       },
     })
     this.#elicit = params.elicit
-    this.#payloads = params.tracing?.payloads
+    this.#payloads = params.tracing?.payloads ?? 'off'
   }
 
   get contexts(): Record<string, HostedContext> {
@@ -628,7 +629,12 @@ export class ContextHost extends Disposer {
       },
       ROOT_CONTEXT,
     )
-    client.setTracing({ contextID: key, contextSpan: span, payloads: this.#payloads })
+    client.setTracing({
+      contextID: key,
+      contextSpan: span,
+      payloads: this.#payloads,
+      getSessionID: () => httpTransport?.sessionID ?? undefined,
+    })
     if (client.initializationResult != null)
       span.setAttribute('server.name', client.initializationResult.serverInfo.name)
     let settled = false

@@ -32,6 +32,7 @@ test('a flow run that calls a tool yields one trace with flow.run above mcp.tool
     const call = trace.spans.find((span) => span.name === 'mcp.tools/call')
     expect(root).toBeDefined()
     expect(call).toBeDefined()
+    expect(call?.attributes['mokei.mcp.request']).toBeTypeOf('string')
     const ancestors = new Map(trace.spans.map((span) => [span.spanID, span.parentSpanID]))
     let parent = call?.parentSpanID
     while (parent != null && parent !== root?.spanID) parent = ancestors.get(parent)
@@ -56,13 +57,19 @@ test('a flow run that calls a tool yields one trace with flow.run above mcp.tool
 })
 
 test('a spawned proxied context yields a context trace with paired request spans', async () => {
-  const fixture = await startFlowDaemonFixture({ invalidConfig: true })
+  const fixture = await startFlowDaemonFixture({ invalidConfig: true, logLevel: 'info' })
   try {
     const client = await fixture.connect()
     const proxy = new ProxyHost({ client })
     try {
       const context = await proxy.spawn({ key: 'echo', ...fixture.sibling })
       await context.callTool({ name: 'echo', arguments: { value: 'trace me' } })
+      // `notify` is typed to the client's declared notifications; `cancelled` exists in both revisions.
+      const notify = context.notify.bind(context) as (
+        event: string,
+        params: object,
+      ) => Promise<void>
+      await notify('cancelled', { requestId: 'unknown-request', reason: 'trace check' })
       const list = await client.request('traces.list', { param: { kind: 'context', limit: 10 } })
       expect(list.traces).toHaveLength(1)
       const summary = list.traces[0]
@@ -79,7 +86,19 @@ test('a spawned proxied context yields a context trace with paired request spans
           database.close()
         }
       })
-      const trace = await client.request('traces.get', { param: { traceID: summary.traceID } })
+      const trace = await fixture.wait('captured context notification', async () => {
+        const result = await client.request('traces.get', { param: { traceID: summary.traceID } })
+        return result.logs.some((log) => log.properties.method === 'notifications/cancelled')
+          ? result
+          : undefined
+      })
+      expect(trace.logs).toContainEqual(
+        expect.objectContaining({
+          category: ['mokei', 'mcp', 'notification'],
+          level: 'debug',
+          properties: expect.objectContaining({ method: 'notifications/cancelled' }),
+        }),
+      )
       const calls = trace.spans.filter((span) => span.name === 'mcp.tools/call')
       expect(calls).toHaveLength(1)
       expect(calls[0]).toMatchObject({
@@ -136,7 +155,7 @@ test("restart marks an active run's trace interrupted, then recovery reactivates
 })
 
 test('live events arrive on the events stream before the trace is persisted', async () => {
-  const fixture = await startFlowDaemonFixture()
+  const fixture = await startFlowDaemonFixture({ flushIntervalMs: 600_000 })
   try {
     const client = await fixture.connect()
     const stream = client.createStream('events')

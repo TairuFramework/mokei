@@ -232,59 +232,69 @@ test('validates unsigned start requests before dispatch over the production sock
   }
 }, 20_000)
 
-test('context:message events carry the sanitised copy while forwarded bytes are unchanged', async () => {
-  const events = new EventTarget()
-  const messages: Array<{ from: string; message: unknown }> = []
-  events.addEventListener('context:message', (event) => {
-    messages.push((event as CustomEvent).detail.data)
-  })
-  const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
-  const server = serve<BaseProtocol>({
-    handlers: createHandlers({
-      activeContexts: {},
-      children: new Map(),
-      events,
-      startedTime: Date.now(),
-    }),
-    transport: transports.server,
-    requireAuth: false,
-  })
-  const client = new Client<BaseProtocol>({ transport: transports.client })
-  const channel = client.createChannel('spawn', {
-    param: {
-      command: process.execPath,
-      args: [
-        '-e',
-        "require('node:readline').createInterface({input:process.stdin}).on('line', line => { const request = JSON.parse(line); process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{receivedToken:request.params.token}})+'\\n') })",
-      ],
-    },
-  })
-  void channel.catch(() => {})
-  const request = {
-    jsonrpc: '2.0' as const,
-    id: 1,
-    method: 'tools/call' as const,
-    params: { name: 'echo', token: 't' },
-  }
-  try {
-    const writer = channel.writable.getWriter()
-    await writer.write(request)
-    writer.releaseLock()
-    const reader = channel.readable.getReader()
-    const response = await reader.read()
-    reader.releaseLock()
-    expect(response.value).toMatchObject({ result: { receivedToken: 't' } })
-    expect(messages.find((entry) => entry.from === 'client')?.message).toMatchObject({
-      params: { token: '[redacted]' },
+test.each([true, false])(
+  'context:message is built only with a subscriber (%s), forwarding stays unchanged',
+  async (subscribed) => {
+    const events = new EventTarget()
+    const messages: Array<{ from: string; message: unknown }> = []
+    if (subscribed)
+      events.addEventListener('context:message', (event) => {
+        messages.push((event as CustomEvent).detail.data)
+      })
+    const dispatch = vi.spyOn(events, 'dispatchEvent')
+    const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
+    const server = serve<BaseProtocol>({
+      handlers: createHandlers({
+        activeContexts: {},
+        children: new Map(),
+        events,
+        tracing: { payloads: 'on' },
+        startedTime: Date.now(),
+      }),
+      transport: transports.server,
+      requireAuth: false,
     })
-    expect(request.params.token).toBe('t')
-  } finally {
-    channel.close()
-    await client.dispose()
-    await server.dispose()
-    await transports.dispose()
-  }
-})
+    const client = new Client<BaseProtocol>({ transport: transports.client })
+    const channel = client.createChannel('spawn', {
+      param: {
+        command: process.execPath,
+        args: [
+          '-e',
+          "require('node:readline').createInterface({input:process.stdin}).on('line', line => { const request = JSON.parse(line); process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{receivedToken:request.params.token}})+'\\n') })",
+        ],
+      },
+    })
+    void channel.catch(() => {})
+    const request = {
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'tools/call' as const,
+      params: { name: 'echo', token: 't' },
+    }
+    try {
+      const writer = channel.writable.getWriter()
+      await writer.write(request)
+      writer.releaseLock()
+      const reader = channel.readable.getReader()
+      const response = await reader.read()
+      reader.releaseLock()
+      expect(response.value).toMatchObject({ result: { receivedToken: 't' } })
+      if (subscribed) {
+        expect(messages.find((entry) => entry.from === 'client')?.message).toMatchObject({
+          params: { token: '[redacted]' },
+        })
+      } else {
+        expect(dispatch.mock.calls.some(([event]) => event.type === 'context:message')).toBe(false)
+      }
+      expect(request.params.token).toBe('t')
+    } finally {
+      channel.close()
+      await client.dispose()
+      await server.dispose()
+      await transports.dispose()
+    }
+  },
+)
 
 function eventContext(writable: WritableStream<HostEvent>, signal: AbortSignal) {
   return {

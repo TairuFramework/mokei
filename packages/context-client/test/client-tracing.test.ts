@@ -103,7 +103,7 @@ function spans() {
   return exporter.getFinishedSpans().filter((span) => span.name === 'mcp.tools/call')
 }
 function binding(): ClientTracing {
-  return { contextID: 'ctx', contextSpan: tracer.startSpan('mcp.context') }
+  return { contextID: 'ctx', contextSpan: tracer.startSpan('mcp.context'), payloads: 'on' }
 }
 
 test('tools/call produces one mcp.tools/call span with attributes and response event', async () => {
@@ -328,7 +328,7 @@ test('request payload is available to processors at span start', () => {
     attributes = { ...span.attributes }
   })
   try {
-    const exchange = createExchangeTracer(() => undefined).startOutgoing('tools/call', {
+    const exchange = createExchangeTracer(() => binding()).startOutgoing('tools/call', {
       name: 'echo',
     })
     exchange.succeed(result)
@@ -674,4 +674,27 @@ test('incoming transport closure settles as context.lost even when the handler i
   } finally {
     complete?.()
   }
+})
+
+test('standalone and bound clients omit payloads unless explicitly enabled', async () => {
+  for (const tracing of [undefined, { ...binding(), payloads: undefined }]) {
+    exporter.reset()
+    await (await fixture(tracing)).call()
+    expect(required(spans()[0]).attributes).not.toHaveProperty('mokei.mcp.request')
+    expect(required(required(spans()[0]).events[0]).attributes).not.toHaveProperty('payload')
+  }
+})
+
+test('incoming and outgoing request spans read the current session at start', () => {
+  let sessionID: string | undefined
+  const exchanges = createExchangeTracer(() => ({ ...binding(), getSessionID: () => sessionID }))
+  exchanges.startOutgoing('tools/list', {}).succeed({})
+  sessionID = 'negotiated-session'
+  exchanges.startOutgoing('tools/list', {}).succeed({})
+  exchanges.startIncoming('roots/list', {}, 1).succeed({})
+  expect(exporter.getFinishedSpans().map((span) => span.attributes['mcp.session.id'])).toEqual([
+    undefined,
+    'negotiated-session',
+    'negotiated-session',
+  ])
 })

@@ -28,7 +28,7 @@ afterAll(async () => {
 })
 
 async function fixture(register = false) {
-  const host = new ContextHost({ tracing: { payloads: 'off' } })
+  const host = new ContextHost()
   hosts.push(host)
   const transports = new DirectTransports<ServerMessage, ClientMessage>()
   const client = register
@@ -229,6 +229,7 @@ test('HTTP context records its transport and negotiated session', async () => {
     })
     const call = exporter.getFinishedSpans().find((span) => span.name === 'mcp.tools/call')
     expect(call?.parentSpanContext?.spanId).toBe(root?.spanContext().spanId)
+    expect(call?.attributes['mcp.session.id']).toBe('session-123')
   } finally {
     await host.dispose()
     fetch.mockRestore()
@@ -257,3 +258,53 @@ test('context lifetime starts a new trace even inside an active span', async () 
     await host.dispose()
   }
 })
+
+test.each([false, true])(
+  'discover identity sets the context server name without a handshake (registered: %s)',
+  async (register) => {
+    const host = new ContextHost()
+    hosts.push(host)
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = register
+      ? new ContextClient({ transport: transports.client, protocolVersion: '2026-07-28' })
+      : host.createContext({
+          key: 'discovery',
+          transport: transports.client,
+          protocolVersion: '2026-07-28',
+        })
+    const discovered = client.discover()
+    const frame = (await transports.server.read()).value
+    if (!frame || (typeof frame.id !== 'string' && typeof frame.id !== 'number'))
+      throw new Error('Expected discover')
+    await transports.server.write({
+      jsonrpc: '2.0',
+      id: frame.id,
+      result: {
+        resultType: 'complete',
+        supportedVersions: ['2026-07-28'],
+        capabilities: {},
+        ttlMs: 60000,
+        cacheScope: 'private',
+        _meta: {
+          'io.modelcontextprotocol/serverInfo': { name: 'discovered-server', version: '1' },
+        },
+      },
+    })
+    await discovered
+    if (register)
+      host.registerHostedContext({
+        key: 'discovery',
+        context: {
+          client,
+          disposer: new Disposer({ dispose: () => client.dispose() }),
+          tools: [],
+        },
+      })
+    await host.remove('discovery')
+    expect(
+      exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')?.attributes[
+        'server.name'
+      ],
+    ).toBe('discovered-server')
+  },
+)

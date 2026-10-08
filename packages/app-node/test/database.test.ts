@@ -7,7 +7,11 @@ import { getLogStore } from '@hozon/store-log'
 import { getTelemetryStore } from '@hozon/store-telemetry'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { openMokeiDatabase } from '../src/index.js'
+import {
+  mokeiStoreDefinitions,
+  openMokeiDatabase,
+  traceIndexStoreDefinition,
+} from '../src/index.js'
 
 const handles: Array<HozonDB> = []
 let directory: string
@@ -49,6 +53,7 @@ test('honours MOKEI_DATABASE_PATH and lets an explicit path win', async () => {
 })
 
 test('registers log, telemetry and trace index stores and extra stores', async () => {
+  expect(mokeiStoreDefinitions).toContain(traceIndexStoreDefinition)
   const extra: StoreDefinition<unknown, unknown> = {
     name: 'test-items',
     migrations: () => ({

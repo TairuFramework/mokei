@@ -144,3 +144,21 @@ describe('MCP observation', () => {
     ).toEqual({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'failure' } })
   })
 })
+
+test('unspecified capture defaults to off', () => {
+  expect(capturePayload({ value: 'private' }, undefined)).toBeUndefined()
+  expect(sanitizeMessage({ id: 1, params: { value: 'private' } }, undefined)).toEqual({ id: 1 })
+})
+
+test('exact token count and progress keys survive redaction while access tokens do not', () => {
+  const allowed = {
+    maxTokens: 10,
+    inputTokens: 2,
+    outputTokens: 3,
+    totalTokens: 5,
+    progressToken: 'progress',
+  }
+  expect(
+    redactPayload({ ...allowed, accessToken: 'secret', MaxTokens: 'secret', nested: [allowed] }),
+  ).toEqual({ ...allowed, accessToken: '[redacted]', MaxTokens: '[redacted]', nested: [allowed] })
+})

@@ -23,6 +23,7 @@ export type TraceRecorderEvent =
 export type TraceRecorderParams = {
   provider: StoreProvider
   onEvent?: (event: TraceRecorderEvent) => void
+  hasListeners?: (type: TraceRecorderEvent['type']) => boolean
   reportCategories?: ReadonlyArray<ReadonlyArray<string>>
   queueLimit?: number
   flushIntervalMs?: number
@@ -83,6 +84,8 @@ export class LocalTraceRecorder implements SpanProcessor {
   #sink: Sink
   #provider: StoreProvider
   #onEvent?: TraceRecorderParams['onEvent']
+  #hasListeners?: TraceRecorderParams['hasListeners']
+  #unrooted = new Set<string>()
   #reportError: NonNullable<TraceRecorderParams['reportError']>
   #queueLimit: number
   #flushBatchSize: number
@@ -130,6 +133,7 @@ export class LocalTraceRecorder implements SpanProcessor {
     }
     this.#provider = params.provider
     this.#onEvent = params.onEvent
+    this.#hasListeners = params.hasListeners
     this.#reportError =
       params.reportError ?? getReporter(['mokei', 'trace-recorder'], '@mokei/app-node')
     this.#queueLimit = params.queueLimit ?? 10000
@@ -152,6 +156,7 @@ export class LocalTraceRecorder implements SpanProcessor {
     this.#open.set(open.spanID, open)
     this.#emit({ type: 'span:start', data: open })
     if (isRoot(span)) {
+      this.#unrooted.delete(open.traceID)
       this.#update(open, (summary) => {
         const root = createSummary(open)
         return {
@@ -200,6 +205,7 @@ export class LocalTraceRecorder implements SpanProcessor {
   }
 
   #emit(event: TraceRecorderEvent): void {
+    if (this.#onEvent == null || this.#hasListeners?.(event.type) === false) return
     try {
       this.#onEvent?.(structuredClone(event))
     } catch (error) {
@@ -225,9 +231,11 @@ export class LocalTraceRecorder implements SpanProcessor {
   }
 
   #getPending(traceID: string, span?: OpenSpan): PendingSummary | undefined {
+    if (this.#unrooted.has(traceID)) return
     let pending = this.#pending.get(traceID)
     if (pending == null) {
       if (this.#stopped || this.#pending.size >= this.#dirtySummaryLimit) {
+        if (span?.attributes['mokei.root'] !== true) return
         this.#lostSummaryCount++
         this.#reportError(
           'Trace hydration limit exceeded',
@@ -255,6 +263,11 @@ export class LocalTraceRecorder implements SpanProcessor {
       const local = pending.summary
       if (persisted == null && (!pending.hasRootStart || local == null)) {
         this.#pending.delete(traceID)
+        this.#unrooted.add(traceID)
+        if (this.#unrooted.size > 1000) {
+          const oldest = this.#unrooted.values().next().value
+          if (oldest !== undefined) this.#unrooted.delete(oldest)
+        }
         return
       }
       const summary =
@@ -298,6 +311,7 @@ export class LocalTraceRecorder implements SpanProcessor {
   #losePending(traceID: string, pending: PendingSummary): void {
     clearTimeout(pending.retryTimer)
     this.#pending.delete(traceID)
+    if (!pending.hasRootStart) return
     this.#lostSummaryCount++
     this.#reportError(
       'Lost unresolved trace summary',

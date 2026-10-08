@@ -63,8 +63,10 @@ function alive(pid: number): boolean {
 export async function startFlowDaemonFixture(
   options: {
     notifications?: boolean
+    logLevel?: 'info' | 'debug'
     invalidConfig?: boolean
     productionEntry?: boolean
+    flushIntervalMs?: number
     otlp?: { endpoint: string }
   } = {},
 ) {
@@ -190,7 +192,11 @@ export async function startFlowDaemonFixture(
       : [absolute('./entry.mjs'), directory]
     child = spawn(process.execPath, args, {
       stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
-      env: { ...process.env, ...env },
+      env: {
+        ...process.env,
+        ...env,
+        MOKEI_TEST_FLUSH_INTERVAL_MS: options.flushIntervalMs?.toString(),
+      },
     })
     children.push(child)
     child.once('error', (error) => {
@@ -353,7 +359,7 @@ export async function startFlowDaemonFixture(
     await writeFile(
       join(directory, 'mokei.json'),
       JSON.stringify({
-        logs: { level: 'debug' },
+        logs: { level: options.logLevel ?? 'debug' },
         ...(options.otlp ? { tracing: { otlp: options.otlp } } : {}),
       }),
     )

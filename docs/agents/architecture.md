@@ -382,7 +382,7 @@ reconnect before querying again. The Runs routes redirect to trace views.
 Recovered tasks retain their request trace context. Input requested by sibling tools still uses the session's elicitation handler.
 
 `@mokei/flow-host` defines portable JSON store contracts, including `TraceStore` and `createMemoryTraceStore`.
-The daemon captures spans and correlated logs through `@hozon/otel` and `@hozon/logtape`, with setup owned by `@mokei/app-node`.
+The daemon captures spans and correlated logs through `LocalTraceRecorder`, with setup owned by `@mokei/app-node`.
 Each new run owns a trace. Recovery retains its stored trace context. The unified trace recorder,
 trace index and live events are described in [Unified traces](#unified-traces).
 

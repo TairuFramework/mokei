@@ -72,3 +72,9 @@ requires the token; exposing the spawn channel beyond localhost is at the
 operator's risk.
 
 ## [Documentation](https://mokei.dev)
+
+## Tracing payloads
+
+MCP tracing payload capture defaults to `off` for library clients and hosts.
+Set `tracing.payloads` to `on` or a byte cap to include redacted request and response content.
+The daemon explicitly passes its configuration value, which defaults to `on`.

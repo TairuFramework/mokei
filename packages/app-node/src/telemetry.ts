@@ -32,6 +32,8 @@ async function shutdownProvider(provider: BasicTracerProvider): Promise<void> {
 export function setupMokeiTelemetry(params: {
   provider: StoreProvider
   onEvent?: (event: TraceRecorderEvent) => void
+  hasListeners?: (type: TraceRecorderEvent['type']) => boolean
+  flushIntervalMs?: number
   otlp?: { endpoint: string; headers?: Record<string, string> }
   logs?: { level?: LogLevel; file?: boolean }
   reportCategories?: ReadonlyArray<ReadonlyArray<string>>
@@ -54,6 +56,8 @@ export function setupMokeiTelemetry(params: {
     const recorder = new LocalTraceRecorder({
       provider: params.provider,
       onEvent: params.onEvent,
+      hasListeners: params.hasListeners,
+      flushIntervalMs: params.flushIntervalMs,
       reportCategories: params.reportCategories,
     })
     const processors: Array<SpanProcessor> = [recorder]
@@ -118,6 +122,12 @@ export function setupMokeiTelemetry(params: {
       sinks,
       loggers: [
         { category: [], lowestLevel: params.logs?.level ?? 'info', sinks: rootSinks },
+        {
+          category: ['mokei', 'mcp', 'notification'],
+          lowestLevel: 'debug',
+          sinks: ['capture'],
+          parentSinks: 'override',
+        },
         { category: ['logtape', 'meta'], lowestLevel: 'error', sinks: [] },
         ...[['mokei', 'trace-recorder'], ...(params.reportCategories ?? [])].map((category) => ({
           category: [...category],

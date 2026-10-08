@@ -8,7 +8,12 @@ import { useTestTracing } from './support/otel.js'
 const { exporter } = useTestTracing()
 const result = { content: [{ type: 'text', text: 'ok' }] }
 function fixture() {
-  return createProxyTracing({ contextID: 'ctx', command: 'node', args: ['server.js'] })
+  return createProxyTracing({
+    contextID: 'ctx',
+    command: 'node',
+    args: ['server.js'],
+    payloads: 'on',
+  })
 }
 function requests() {
   return exporter.getFinishedSpans().filter((span) => span.name !== 'mcp.context')
@@ -151,3 +156,48 @@ for (const reason of ['stopped', 'lost'] as const) {
     expect(root?.attributes['error.type']).toBe(reason === 'lost' ? 'context.lost' : undefined)
   })
 }
+
+test('context command arguments redact secret flag values without changing forwarded arguments', () => {
+  const args = [
+    'server.js',
+    '--api-key',
+    'secret',
+    '--token=secret',
+    '--port',
+    '80',
+    '-password',
+    'secret',
+    '--cookie=secret',
+    '--label',
+    'visible',
+  ]
+  const proxy = createProxyTracing({ contextID: 'ctx', command: 'node', args })
+  proxy.end('stopped')
+  expect(exporter.getFinishedSpans()[0]?.attributes['process.command_args']).toEqual([
+    'server.js',
+    '--api-key',
+    '[redacted]',
+    '--token=[redacted]',
+    '--port',
+    '80',
+    '-password',
+    '[redacted]',
+    '--cookie=[redacted]',
+    '--label',
+    'visible',
+  ])
+  expect(args).toContain('--token=secret')
+})
+
+test('unrecorded proxy notifications never serialise payloads', () => {
+  trace.disable()
+  const proxy = createProxyTracing({ contextID: 'ctx', command: 'node', args: [], payloads: 'on' })
+  const toJSON = vi.fn(() => {
+    throw new Error('must not serialise')
+  })
+  expect(() =>
+    proxy.observe('server', { method: 'notifications/message', params: { toJSON } }),
+  ).not.toThrow()
+  expect(toJSON).not.toHaveBeenCalled()
+  proxy.end('stopped')
+})

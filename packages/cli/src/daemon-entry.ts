@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { getEventListeners } from 'node:events'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
@@ -99,6 +100,7 @@ export async function startMokeiDaemonWithDependencies(
     const events = new EventTarget()
     const telemetry = dependencies.setupTelemetry({
       provider: database,
+      hasListeners: (type) => getEventListeners(events, type).length > 0,
       onEvent: (event) => {
         events.dispatchEvent(
           new CustomEvent(event.type, {

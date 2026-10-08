@@ -6,10 +6,17 @@ export type MessageDirection = 'client' | 'server'
 export const DEFAULT_PAYLOAD_CAP = 65536
 
 const META_KEYS = new Set(['traceparent', 'dev.mokei/flow-run'])
+const PUBLIC_KEYS = new Set([
+  'maxTokens',
+  'inputTokens',
+  'outputTokens',
+  'totalTokens',
+  'progressToken',
+])
 const SECRET_KEY = /authorization|token|secret|password|api[-_]?key|cookie|credential/i
 
 export function resolvePayloadCap(capture: PayloadCapture | undefined): number | null {
-  if (capture === 'off') return null
+  if (capture === undefined || capture === 'off') return null
   if (typeof capture === 'number') return Math.max(0, capture)
   return DEFAULT_PAYLOAD_CAP
 }
@@ -27,7 +34,9 @@ export function redactPayload(value: unknown): unknown {
         )
         return [[key, redactPayload(allowed)]]
       }
-      return [[key, SECRET_KEY.test(key) ? '[redacted]' : redactPayload(entry)]]
+      return [
+        [key, !PUBLIC_KEYS.has(key) && SECRET_KEY.test(key) ? '[redacted]' : redactPayload(entry)],
+      ]
     }),
   )
 }
@@ -140,4 +149,21 @@ export function sanitizeMessage(message: unknown, capture: PayloadCapture | unde
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+export function redactCommandArgs(args: Array<string>): Array<string> {
+  let redactNext = false
+  return args.map((argument) => {
+    if (redactNext) {
+      redactNext = false
+      return '[redacted]'
+    }
+    if (!argument.startsWith('-') || argument === '--') return argument
+    const separator = argument.indexOf('=')
+    const flag = separator === -1 ? argument : argument.slice(0, separator)
+    if (!SECRET_KEY.test(flag.replace(/^-+/, ''))) return argument
+    if (separator !== -1) return `${flag}=[redacted]`
+    redactNext = true
+    return argument
+  })
 }

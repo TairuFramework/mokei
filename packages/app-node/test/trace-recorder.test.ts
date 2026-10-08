@@ -924,3 +924,96 @@ test('dropped logs hydrate persisted summaries after recorder restart', async ()
     revision: 2,
   })
 })
+
+test('unknown traces read the index once until a root starts', async () => {
+  const tracer = setup()
+  const store = await getTraceIndexStore(db)
+  const read = vi.spyOn(store, 'get')
+  const getStore = db.getStore.bind(db)
+  vi.spyOn(db, 'getStore').mockImplementation(async (name) =>
+    name === 'trace-index' ? store : getStore(name),
+  )
+  const parent = tracer.startSpan('unrooted')
+  const parentContext = trace.setSpan(ROOT_CONTEXT, parent)
+  parent.end()
+  await settle()
+  for (let i = 0; i < 3; i++) {
+    tracer.startSpan('child', {}, parentContext).end()
+    await settle()
+  }
+  expect(read).toHaveBeenCalledTimes(1)
+  const root = tracer.startSpan(
+    'root',
+    { attributes: { 'mokei.root': true, 'mokei.kind': 'flow' } },
+    parentContext,
+  )
+  await settle()
+  expect(recorder.snapshot().summaries[0]?.active).toBe(true)
+  expect(read).toHaveBeenCalledTimes(2)
+  root.end()
+})
+
+test('unrooted hydration overflow and failed reads never count as lost summaries', async () => {
+  const tracer = setup({ dirtySummaryLimit: 1, reportError: vi.fn(), retryDelaysMs: [] })
+  const store = await getTraceIndexStore(db)
+  const gate = deferred()
+  vi.spyOn(store, 'get').mockImplementation(async () => {
+    await gate.promise
+    throw new Error('read failure')
+  })
+  const getStore = db.getStore.bind(db)
+  vi.spyOn(db, 'getStore').mockImplementation(async (name) =>
+    name === 'trace-index' ? store : getStore(name),
+  )
+  tracer.startSpan('unrooted').end()
+  tracer.startSpan('overflow').end()
+  await settle()
+  expect(recorder.info().lostSummaryCount).toBe(0)
+  gate.resolve()
+  await settle()
+  expect(recorder.info().lostSummaryCount).toBe(0)
+})
+
+test('live emission does not clone when no subscriber is listening', async () => {
+  const tracer = setup({ hasListeners: () => false })
+  const clone = vi.spyOn(globalThis, 'structuredClone')
+  const root = tracer.startSpan('root', { attributes: { 'mokei.root': true } })
+  await settle()
+  root.end()
+  expect(clone).not.toHaveBeenCalled()
+})
+
+test('live emission resumes when listeners join and stops when they leave', async () => {
+  let listening = false
+  const tracer = setup({ hasListeners: () => listening })
+  const root = tracer.startSpan('root', { attributes: { 'mokei.root': true } })
+  await settle()
+  expect(events).toEqual([])
+  listening = true
+  const child = tracer.startSpan('child', {}, trace.setSpan(ROOT_CONTEXT, root))
+  child.end()
+  expect(events.map((event) => event.type)).toEqual(['span:start', 'span:end', 'trace:summary'])
+  listening = false
+  root.end()
+  expect(events).toHaveLength(3)
+})
+
+test('unknown trace cache evicts the oldest entry after 1000 misses', async () => {
+  const tracer = setup({ flushBatchSize: 2000, queueLimit: 2000 })
+  const store = await getTraceIndexStore(db)
+  const read = vi.spyOn(store, 'get')
+  const getStore = db.getStore.bind(db)
+  vi.spyOn(db, 'getStore').mockImplementation(async (name) =>
+    name === 'trace-index' ? store : getStore(name),
+  )
+  const oldest = tracer.startSpan('oldest')
+  oldest.end()
+  await settle()
+  for (let i = 0; i < 1000; i++) {
+    tracer.startSpan('unknown').end()
+    await settle()
+  }
+  tracer.startSpan('child', {}, trace.setSpan(ROOT_CONTEXT, oldest)).end()
+  await settle()
+  expect(read).toHaveBeenCalledTimes(1002)
+})

@@ -55,6 +55,7 @@ export {
   DEFAULT_PAYLOAD_CAP,
   type MessageDirection,
   type PayloadCapture,
+  redactCommandArgs,
   redactPayload,
   requestAttributes,
   requestSpanName,

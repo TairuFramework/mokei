@@ -1,5 +1,6 @@
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { getEventListeners } from 'node:events'
 import { createTransportStream } from '@enkaku/node-streams'
 import { HandlerError, type ProcedureHandlers, serve } from '@enkaku/server'
 import { type PayloadCapture, sanitizeMessage, type TerminationReason } from '@mokei/context-client'
@@ -176,17 +177,18 @@ export function createHandlers({
             .pipeThrough(
               tap((message) => {
                 proxyTracing.observe('client', message)
-                events.dispatchEvent(
-                  new CustomEvent('context:message', {
-                    detail: {
-                      meta: createEventMeta(contextID),
-                      data: {
-                        from: 'client',
-                        message: sanitizeMessage(message, tracing?.payloads),
+                if (getEventListeners(events, 'context:message').length > 0)
+                  events.dispatchEvent(
+                    new CustomEvent('context:message', {
+                      detail: {
+                        meta: createEventMeta(contextID),
+                        data: {
+                          from: 'client',
+                          message: sanitizeMessage(message, tracing?.payloads),
+                        },
                       },
-                    },
-                  }),
-                )
+                    }),
+                  )
               }),
             )
             .pipeTo(stream.writable, { signal: controller.signal }),
@@ -194,17 +196,18 @@ export function createHandlers({
             .pipeThrough(
               tap((message) => {
                 proxyTracing.observe('server', message)
-                events.dispatchEvent(
-                  new CustomEvent('context:message', {
-                    detail: {
-                      meta: createEventMeta(contextID),
-                      data: {
-                        from: 'server',
-                        message: sanitizeMessage(message, tracing?.payloads),
+                if (getEventListeners(events, 'context:message').length > 0)
+                  events.dispatchEvent(
+                    new CustomEvent('context:message', {
+                      detail: {
+                        meta: createEventMeta(contextID),
+                        data: {
+                          from: 'server',
+                          message: sanitizeMessage(message, tracing?.payloads),
+                        },
                       },
-                    },
-                  }),
-                )
+                    }),
+                  )
               }),
             )
             .pipeTo(ctx.writable, { signal: controller.signal }),

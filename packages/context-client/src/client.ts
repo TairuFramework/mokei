@@ -411,6 +411,7 @@ export class ContextClient<
 
   setTracing(binding: ClientTracing): void {
     this.#tracing = binding
+    if (this.#discovered != null) this.#traceServerInfo(this.#discovered.result)
   }
 
   endTracing(reason: TerminationReason): void {
@@ -890,6 +891,19 @@ export class ContextClient<
     const ttlMs = typeof result.ttlMs === 'number' && result.ttlMs > 0 ? result.ttlMs : 0
     this.#discovered = { result, expiresAt: Date.now() + ttlMs }
     this.#serverCapabilitySnapshot = result.capabilities ?? {}
+    this.#traceServerInfo(result)
+  }
+
+  #traceServerInfo(result: DiscoverResult): void {
+    const serverInfo = result._meta?.['io.modelcontextprotocol/serverInfo']
+    if (
+      serverInfo != null &&
+      typeof serverInfo === 'object' &&
+      'name' in serverInfo &&
+      typeof serverInfo.name === 'string'
+    ) {
+      this.#tracing?.contextSpan?.setAttribute('server.name', serverInfo.name)
+    }
   }
 
   #capabilitiesFor(protocol: ProtocolDefinition): ClientCapabilities {
@@ -1599,6 +1613,7 @@ export class ContextClient<
       .then((result) => {
         const ttlMs = typeof result.ttlMs === 'number' && result.ttlMs > 0 ? result.ttlMs : 0
         this.#discovered = { result, expiresAt: Date.now() + ttlMs }
+        this.#traceServerInfo(result)
         return result
       })
       .finally(() => {

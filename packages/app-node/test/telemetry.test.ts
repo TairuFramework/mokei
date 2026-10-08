@@ -83,6 +83,7 @@ test('the recorder replaces the local batch exporter and dispose flushes it befo
       const rootSpanID = root.spanContext().spanId
       logger.info('root log')
       logger.debug('excluded debug')
+      logging.getLogger(['mokei', 'mcp', 'notification']).debug('notification')
       const childSpanID = await tracer.startActiveSpan(
         'child',
         { startTime: startTime + 1 },
@@ -105,8 +106,8 @@ test('the recorder replaces the local batch exporter and dispose flushes it befo
   )
   logger.info('after spans')
   expect(handle.recorder.snapshot().spans).toHaveLength(2)
-  expect(handle.recorder.snapshot().logs).toHaveLength(3)
-  expect(onEvent.mock.calls.filter(([event]) => event.type === 'log')).toHaveLength(3)
+  expect(handle.recorder.snapshot().logs).toHaveLength(4)
+  expect(onEvent.mock.calls.filter(([event]) => event.type === 'log')).toHaveLength(4)
   await handle.recorder.forceFlush()
   expect(await telemetryStore.getSpans(traceID)).toHaveLength(2)
   const disposeSpan = tracer.startSpan('dispose-only')
@@ -126,6 +127,7 @@ test('the recorder replaces the local batch exporter and dispose flushes it befo
   expect(captured.spans[1]?.parentSpanID).toBe(rootSpanID)
   expect(captured.logs.map((log) => [log.message, log.spanID])).toEqual([
     ['root log', rootSpanID],
+    ['notification', rootSpanID],
     ['child log', childSpanID],
     ['after await', childSpanID],
   ])

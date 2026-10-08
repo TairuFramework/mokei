@@ -12,7 +12,14 @@ import {
 } from './observation.js'
 
 export type TerminationReason = 'stopped' | 'lost'
-export type ClientTracing = { contextID: string; contextSpan?: Span; payloads?: PayloadCapture }
+export type ClientTracing = {
+  contextID: string
+  contextSpan?: Span
+  /** Payload capture is opt-in. Defaults to 'off'. */
+  payloads?: PayloadCapture
+  /** Read the current negotiated session at request start. */
+  getSessionID?: () => string | undefined
+}
 export type ExchangeSpan = {
   span: Span
   context: Context
@@ -47,6 +54,7 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
             id,
             direction,
             contextID: binding?.contextID,
+            sessionID: binding?.getSessionID?.(),
             capture: binding?.payloads,
           })
         },

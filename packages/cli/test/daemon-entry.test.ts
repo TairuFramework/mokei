@@ -23,6 +23,7 @@ test('sweepInterrupted runs before service.start', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mokei-entry-'))
   const order: Array<string> = []
   let publish: ((event: TraceRecorderEvent) => void) | undefined
+  let hasListeners: ((type: TraceRecorderEvent['type']) => boolean) | undefined
   let observed: unknown
   const sweepGate = Promise.withResolvers<void>()
   const service = {
@@ -62,15 +63,16 @@ test('sweepInterrupted runs before service.start', async () => {
       {
         loadConfig: async () => {
           order.push('config')
-          return { logs: { level: 'info', file: false }, tracing: { payloads: 'off' } }
+          return { logs: { level: 'info', file: false }, tracing: { payloads: 'on' } }
         },
         openDatabase: async (options) => {
           order.push('database')
           return openMokeiDatabase({ ...options, path: join(directory, 'mokei.db') })
         },
-        setupTelemetry: ({ provider, onEvent }) => {
+        setupTelemetry: ({ provider, onEvent, hasListeners: listening }) => {
           order.push('telemetry')
           publish = onEvent
+          hasListeners = listening
           const recorder = new LocalTraceRecorder({ provider, onEvent })
           vi.spyOn(recorder, 'sweepInterrupted').mockImplementation(async () => {
             order.push('sweep')
@@ -89,13 +91,13 @@ test('sweepInterrupted runs before service.start', async () => {
     expect(order).toEqual(['config', 'database', 'telemetry', 'sweep', 'serve', 'start'])
     expect(createFlowService).toHaveBeenCalledWith(
       expect.objectContaining({
-        tracing: { payloads: 'off' },
+        tracing: { payloads: 'on' },
         traceIndex: expect.any(Function),
       }),
     )
     expect(serveHostDaemon).toHaveBeenCalledWith(
       expect.objectContaining({
-        tracing: { payloads: 'off' },
+        tracing: { payloads: 'on' },
         tracingInfo: expect.any(Function),
         handlers: expect.objectContaining({
           'traces.list': expect.any(Function),
@@ -104,6 +106,8 @@ test('sweepInterrupted runs before service.start', async () => {
       }),
     )
     expect(publish).toBeTypeOf('function')
+    expect(hasListeners?.('trace:summary')).toBe(true)
+    expect(hasListeners?.('span:start')).toBe(false)
     const summary = {
       traceID: '0123456789abcdef0123456789abcdef',
       rootSpanID: '0123456789abcdef',

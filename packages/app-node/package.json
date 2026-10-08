@@ -40,8 +40,6 @@
   },
   "dependencies": {
     "@hozon/db": "catalog:",
-    "@hozon/logtape": "catalog:",
-    "@hozon/otel": "catalog:",
     "@hozon/store-log": "catalog:",
     "@hozon/store-telemetry": "catalog:",
     "@logtape/logtape": "catalog:",
