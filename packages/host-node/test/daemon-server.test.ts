@@ -13,11 +13,15 @@ import type {
   BaseServerMessage as HostServerMessage,
   Protocol,
 } from '@mokei/host-protocol'
+import { SpanStatusCode } from '@opentelemetry/api'
 import { describe, expect, test, vi } from 'vitest'
 
 import { createClient } from '../src/daemon.js'
 import { serveHostDaemon } from '../src/daemon-server.js'
 import { createHandlers, killChildren } from '../src/server.js'
+import { useTestTracing } from './support/otel.js'
+
+const { exporter } = useTestTracing()
 
 // Tejika owns socket permissions and pid ownership.
 
@@ -35,7 +39,7 @@ describe('killChildren', () => {
 })
 
 describe('spawn handler child-exit cleanup', () => {
-  test('dispatches context:stop and prunes maps when a spawned child self-exits', async () => {
+  test('child exit without client abort ends the proxy tracing as lost', async () => {
     const children = new Map<string, ReturnType<typeof spawn>>()
     const handlers = createHandlers({
       activeContexts: {},
@@ -75,6 +79,10 @@ describe('spawn handler child-exit cleanup', () => {
     await vi.waitFor(() => {
       expect(stops.length).toBeGreaterThan(0)
     })
+
+    const contextSpan = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
+    expect(contextSpan?.attributes['error.type']).toBe('context.lost')
+    expect(contextSpan?.status.code).toBe(SpanStatusCode.ERROR)
 
     events.close()
     await client.dispose()
@@ -222,3 +230,57 @@ test('validates unsigned start requests before dispatch over the production sock
     await rm(directory, { recursive: true, force: true })
   }
 }, 20_000)
+
+test('context:message events carry the sanitised copy while forwarded bytes are unchanged', async () => {
+  const events = new EventTarget()
+  const messages: Array<{ from: string; message: unknown }> = []
+  events.addEventListener('context:message', (event) => {
+    messages.push((event as CustomEvent).detail.data)
+  })
+  const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
+  const server = serve<BaseProtocol>({
+    handlers: createHandlers({
+      activeContexts: {},
+      children: new Map(),
+      events,
+      startedTime: Date.now(),
+    }),
+    transport: transports.server,
+    requireAuth: false,
+  })
+  const client = new Client<BaseProtocol>({ transport: transports.client })
+  const channel = client.createChannel('spawn', {
+    param: {
+      command: process.execPath,
+      args: [
+        '-e',
+        "require('node:readline').createInterface({input:process.stdin}).on('line', line => { const request = JSON.parse(line); process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{receivedToken:request.params.token}})+'\\n') })",
+      ],
+    },
+  })
+  void channel.catch(() => {})
+  const request = {
+    jsonrpc: '2.0' as const,
+    id: 1,
+    method: 'tools/call' as const,
+    params: { name: 'echo', token: 't' },
+  }
+  try {
+    const writer = channel.writable.getWriter()
+    await writer.write(request)
+    writer.releaseLock()
+    const reader = channel.readable.getReader()
+    const response = await reader.read()
+    reader.releaseLock()
+    expect(response.value).toMatchObject({ result: { receivedToken: 't' } })
+    expect(messages.find((entry) => entry.from === 'client')?.message).toMatchObject({
+      params: { token: '[redacted]' },
+    })
+    expect(request.params.token).toBe('t')
+  } finally {
+    channel.close()
+    await client.dispose()
+    await server.dispose()
+    await transports.dispose()
+  }
+})

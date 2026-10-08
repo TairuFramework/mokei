@@ -2,6 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createTransportStream } from '@enkaku/node-streams'
 import { HandlerError, type ProcedureHandlers, serve } from '@enkaku/server'
+import { type PayloadCapture, sanitizeMessage, type TerminationReason } from '@mokei/context-client'
 import type {
   ActiveContextInfo,
   BaseProtocol,
@@ -16,6 +17,7 @@ import { protocol } from '@mokei/host-protocol'
 import { tap } from '@sozai/stream'
 import { type DaemonHandle, runDaemon as tejikaRunDaemon } from '@tejika/process'
 
+import { createProxyTracing } from './proxy-tracing.js'
 import { spawnContextServer } from './spawn.js'
 
 export type HandlersContext = {
@@ -24,6 +26,7 @@ export type HandlersContext = {
   events: EventTarget
   startedTime: number
   shutdown?: () => void | Promise<void>
+  tracing?: { payloads?: PayloadCapture }
   flowStatus?: () => FlowServiceStatus
 }
 
@@ -50,6 +53,7 @@ export function createHandlers({
   startedTime,
   shutdown,
   flowStatus = unavailableStatus,
+  tracing,
 }: HandlersContext): ProcedureHandlers<BaseProtocol> {
   return {
     events: async (ctx) => {
@@ -93,14 +97,21 @@ export function createHandlers({
         spawned.childProcess.kill()
         return
       }
+      const proxyTracing = createProxyTracing({
+        contextID,
+        command: ctx.param.command,
+        args: ctx.param.args ?? [],
+        payloads: tracing?.payloads,
+      })
       const controller = new AbortController()
       let stopped = false
-      const stopContext = () => {
+      const stopContext = (reason: TerminationReason) => {
         if (stopped) return
         stopped = true
+        proxyTracing.end(reason)
         controller.abort()
-        spawned.childProcess.off('exit', stopContext)
-        ctx.signal.removeEventListener('abort', stopContext)
+        spawned.childProcess.off('exit', onExit)
+        ctx.signal.removeEventListener('abort', onAbort)
         try {
           spawned.childProcess.kill()
         } finally {
@@ -111,11 +122,13 @@ export function createHandlers({
           )
         }
       }
+      const onExit = () => stopContext(ctx.signal.aborted ? 'stopped' : 'lost')
+      const onAbort = () => stopContext('stopped')
       activeContexts[contextID] = { startedTime: Date.now() }
       children.set(contextID, spawned.childProcess)
       // Own cancellation before transport conversion can yield.
-      spawned.childProcess.once('exit', stopContext)
-      ctx.signal.addEventListener('abort', stopContext, { once: true })
+      spawned.childProcess.once('exit', onExit)
+      ctx.signal.addEventListener('abort', onAbort, { once: true })
       try {
         events.dispatchEvent(
           new CustomEvent('context:start', {
@@ -134,11 +147,15 @@ export function createHandlers({
           ctx.readable
             .pipeThrough(
               tap((message) => {
+                proxyTracing.observe('client', message)
                 events.dispatchEvent(
                   new CustomEvent('context:message', {
                     detail: {
                       meta: createEventMeta(contextID),
-                      data: { from: 'client', message },
+                      data: {
+                        from: 'client',
+                        message: sanitizeMessage(message, tracing?.payloads),
+                      },
                     },
                   }),
                 )
@@ -148,11 +165,15 @@ export function createHandlers({
           stream.readable
             .pipeThrough(
               tap((message) => {
+                proxyTracing.observe('server', message)
                 events.dispatchEvent(
                   new CustomEvent('context:message', {
                     detail: {
                       meta: createEventMeta(contextID),
-                      data: { from: 'server', message },
+                      data: {
+                        from: 'server',
+                        message: sanitizeMessage(message, tracing?.payloads),
+                      },
                     },
                   }),
                 )
@@ -161,7 +182,7 @@ export function createHandlers({
             .pipeTo(ctx.writable, { signal: controller.signal }),
         ])
       } finally {
-        stopContext()
+        stopContext(ctx.signal.aborted ? 'stopped' : 'lost')
       }
     },
   }
@@ -217,6 +238,7 @@ export type HostDaemonParams = {
   handleSignals?: boolean
   shutdownTimeoutMs?: number
   handlers?: Partial<ProcedureHandlers<Protocol>>
+  tracing?: { payloads?: PayloadCapture }
   flowStatus?: () => FlowServiceStatus
   onShutdown?: () => Promise<void>
   onError?: (error: unknown) => void
@@ -252,6 +274,7 @@ export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonH
     events: params.events,
     startedTime: Date.now(),
     flowStatus: params.flowStatus,
+    tracing: params.tracing,
     shutdown: () => {
       if (shutdownScheduled) return
       shutdownScheduled = true

@@ -49,7 +49,10 @@
     "@mokei/host": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "@mokei/http-client": "workspace:^",
+    "@mokei/logger": "workspace:^",
+    "@opentelemetry/api": "catalog:",
     "@sozai/async": "catalog:",
+    "@sozai/otel": "catalog:",
     "@sozai/stream": "catalog:",
     "@tejika/env": "catalog:",
     "@tejika/process": "catalog:",
@@ -58,6 +61,8 @@
   "devDependencies": {
     "@mokei/context-server": "workspace:^",
     "@mokei/context-server-node": "workspace:^",
+    "@opentelemetry/context-async-hooks": "catalog:",
+    "@opentelemetry/sdk-trace-base": "catalog:",
     "@types/node": "catalog:"
   }
 }
