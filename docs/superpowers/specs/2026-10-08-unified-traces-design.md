@@ -1,6 +1,6 @@
 # Unified traces: flows and MCP calls in one span model
 
-Status: design approved in brainstorming, pending spec review
+Status: design approved in brainstorming; revised after review round 1, pending user spec review
 Branch: `feat/unified-traces`
 Related: `docs/agents/plans/next/2026-10-04-flow-monitor-follow-ons.md` (monitor UI design pass), `docs/agents/architecture.md` (flow tracing, `runs.trace`, monitor presence)
 
@@ -16,139 +16,174 @@ Priorities, in order:
 
 ## Current state
 
-- Flows already produce OpenTelemetry spans: `flow.run` / `flow.run.resume` from `flow-host/src/tracing.ts`, `decision.predict` from `decision-flow`. They are batch-exported into the hozon telemetry store and read per run through `runs.trace`, which the monitor polls every 2 s.
-- MCP traffic exists only as `context:start | context:stop | context:message` host events keyed by `contextID`, emitted by the daemon for contexts it spawns. They are live-only, never persisted, unpaired (no request/response correlation, no durations) and carry no span IDs. The monitor shows them in a flat table on `/`.
-- `ContextClient` already injects W3C `traceparent` / `tracestate` / `baggage` into request `_meta` (SEP-414) via `currentTraceMeta()`, but no span is recorded around the request, so flow and MCP data never join.
-- The hozon `TelemetryStore` supports `getSpans(traceID)` only. There is no way to list traces.
+- Flows already produce OpenTelemetry spans: `flow.run` / `flow.run.resume` from `flow-host/src/tracing.ts`, `decision.predict` from `decision-flow`. They are batch-exported into the hozon telemetry store and read per run through `runs.trace`, which the monitor polls every 2 s and the CLI uses for `mokei runs trace`.
+- MCP traffic shown in the monitor comes from the daemon's `spawn` procedure (`host-node/src/daemon-server.ts`), which is a raw stream proxy: the MCP client runs in another process (CLI, desktop host) and the daemon forwards JSON-RPC messages to a spawned stdio server, dispatching `context:start | context:stop | context:message` events. These are live-only, never persisted, unpaired (no request/response correlation, no durations) and carry no span IDs. The monitor shows them in a flat table on `/`.
+- In-process clients (the flow host's `ContextClient`, embedded hosts) inject W3C `traceparent` / `tracestate` / `baggage` into request `_meta` (SEP-414) via `currentTraceMeta()`, but no span is recorded around the request, so flow and MCP data never join.
+- The hozon `TelemetryStore` supports `getSpans(traceID)` only. There is no way to list traces. Spans reach it through a `BatchSpanProcessor`, so only ended spans are stored, after a batch delay.
 
 ## Scope
 
 In scope:
 
-- Spans for every MCP request/response pair made through `ContextClient`, and a lifetime span per context.
-- Live span and log delivery over the existing host `events` stream.
+- Spans for MCP request/response pairs from two producers: in-process `ContextClient`s and the daemon's `spawn` proxy.
+- A lifetime span per context.
+- Live span and log delivery over the existing host `events` stream, with an in-memory registry of spans not yet persisted.
 - A persisted trace index for listing and filtering.
 - Monitor rebuild: Traces page replacing the `/` events table and the Runs pages.
 
 Out of scope (follow-ons):
 
 - `Session` / `AgentSession` spans (`llm.chat`, `agent.turn`). The naming and `mokei.kind` attribute leave room for them.
-- Ingesting server-side spans from sibling MCP server processes (local OTLP receiver).
+- Ingesting spans from other processes (a local OTLP receiver). Remote parents are recorded as links, not ingested.
 - Removing `context:message` events from the wire (the monitor stops consuming them; removal comes later).
 
 ## Design
 
 ### 1. Span model
 
-All spans are OpenTelemetry spans. A new `mokei.kind` attribute drives UI icons and filters.
+All spans are OpenTelemetry spans. A `mokei.kind` attribute drives UI icons and filters.
 
-| Span name | `mokei.kind` | Opened by | Parent |
+| Span name | `mokei.kind` | Producer | Parent |
 |---|---|---|---|
-| `mcp.context` | `context` | `ContextHost` (`@mokei/host`) on context start, ended on stop | Root of a new trace |
-| `mcp.<method>` (e.g. `mcp.tools/call`) | `mcp` | `ContextClient` around each outgoing request | Active span if any, otherwise the owning context's `mcp.context` span |
+| `mcp.context` | `context` | `ContextHost` (`@mokei/host`) for hosted contexts; the daemon `spawn` handler for proxied contexts | Root of a new trace |
+| `mcp.<method>` (e.g. `mcp.tools/call`) | `mcp` | `ContextClient` (in-process) or the `spawn` proxy (proxied) | See "Parenting" |
 | `flow.run` / `flow.run.resume` | `flow` | `flow-host/src/tracing.ts` (unchanged apart from the attribute) | Root, link to caller (unchanged) |
 | `decision.predict`, other step spans | `step` | Existing step nodes | The run span |
 
-**Trace membership.** Each context gets its own trace. A request made while another span is active (for example a tool call issued by a flow run) joins that span's trace and carries a link to the context's `mcp.context` span, so it stays reachable from the context side.
+**Parenting.**
+
+- In-process request: the active span if there is one (for example a tool call issued inside `withRun`), otherwise the client's bound `mcp.context` span. When the parent is not the context span, the request span carries a link to the context span so it stays reachable from the context side.
+- Proxied request: always the proxied context's `mcp.context` span. When the request `_meta.traceparent` is present, the span carries a link to that remote span (not ingested locally, so a link rather than a parent avoids orphans).
+
+**Context binding (in-process).** `ContextHost` gives each hosted context's `ContextClient` an explicit tracing binding at creation: `{ contextID, contextSpan, payloads }`. Clients created by callers and registered through `registerHostedContext` get the same binding at registration. A client without a binding (standalone use) produces request spans parented only to the active span, with no context link.
+
+**Instrumentation seam (in-process).** Request spans are created at one shared exchange seam in `ContextClient` covering every outgoing request: `request()`, the setup/initialize exchange, subscription exchanges, and each retry leg of MRTR retries (one span per leg, the retry legs linked to the first). The request span is made active before `currentTraceMeta()` runs, so the propagated `traceparent` points at it. The base RPC exposes the allocated JSON-RPC ID to the seam so `jsonrpc.request.id` is set.
+
+**Proxy correlation.** The `spawn` handler already taps both directions. A per-context correlator keyed by JSON-RPC ID opens a span when a client request passes, and ends it on the matching server response. Server-to-client requests (sampling, elicitation) are correlated the same way in the other direction, with `direction = "server"`. Unanswered requests are ended when the context stops (see §6).
+
+**Shared helper.** Both producers use one module that maps a JSON-RPC message to span name, attributes, status and payload records, so attribute naming, error mapping, redaction and capture rules are defined once.
 
 **MCP request span attributes** (OTel MCP semantic conventions where they exist):
 
 - `mcp.method.name`, `gen_ai.tool.name` (tools), `mcp.session.id`, `jsonrpc.request.id`
-- `mokei.context.id`, `mokei.kind = "mcp"`
-- `mokei.mcp.request`: the serialised request params, set at span start so in-flight calls show their arguments live. Subject to payload capture (below).
+- `mokei.context.id`, `mokei.kind = "mcp"`, `mokei.direction = "client" | "server"`
+- `mokei.mcp.request`: the serialised, redacted request params, set at span start so in-flight calls show their arguments live.
 - On a JSON-RPC error or a tool result with `isError: true`: span status `ERROR`, `error.type` set (JSON-RPC error code or `tool_error`).
 
-**Response payload** is recorded as an `mcp.response` span event with a `payload` attribute, subject to payload capture.
+**Response payload** is recorded as a single `mcp.response` span event with a `payload` attribute (one event per span, well under the SDK event limit).
 
-**Notifications** (either direction) are recorded as `mcp.notification` events on the `mcp.context` span, with `mcp.method.name` and `direction` (`client` / `server`) attributes. Payloads follow the capture setting.
+**Notifications** (either direction) are recorded as traced log records, not span events: category `['mokei', 'mcp', 'notification']`, `traceID` / `spanID` of the `mcp.context` span, properties `{ method, direction, payload? }`. Logs are streamed live and persisted independently of the long-lived context span, and are not subject to the span event limit.
 
-**Context span attributes:** `mokei.context.id`, `mokei.kind = "context"`, server name, transport, and the `mcp.session.id` once known.
+**Context span attributes:** `mokei.context.id`, `mokei.kind = "context"`, server name or command, transport, and `mcp.session.id` once known.
 
-**Payload capture.** `ContextHost` accepts `tracing.payloads: 'on' | 'off' | number` (byte cap). `'on'` means the default cap of 65536 bytes. Payloads longer than the cap are cut, and the attribute or event gets `mokei.payload.truncated = true`. `'off'` records no payloads, so spans keep only metadata. The daemon exposes this as its `telemetry.payloads` config, default `'on'`. When no OTel SDK is registered, spans are no-ops and payloads are never serialised.
+### 2. Payload capture and redaction
 
-### 2. Persistence
+- Setting: `tracing.payloads: 'on' | 'off' | number` (byte cap) in the daemon config, added to the existing `tracing` section of `@mokei/app-node` config (`additionalProperties: false` schema updated). `'on'` (the default) means a cap of 65536 bytes. `ContextHost` accepts the same option for non-daemon hosts and passes it in the client binding; the daemon passes it to both `ContextHost` and the `spawn` proxy.
+- Payloads longer than the cap are cut, and the attribute or event gets `mokei.payload.truncated = true`. `'off'` records no payloads; spans keep metadata only.
+- **Redaction always applies before any sink** (hozon store, live stream, OTLP exporter), in the shared helper:
+  - `_meta` keys other than the SEP-414 trace keys and `dev.mokei/flow-run` are dropped (this removes authorization grants added by `flow-host/src/launch.ts`).
+  - Object keys matching `/authorization|token|secret|password|api[-_]?key|cookie|credential/i` at any depth have their value replaced with `"[redacted]"`.
+- When no OTel SDK is registered, spans are no-ops and payloads are never serialised.
+
+### 3. Persistence
 
 Spans keep flowing through the existing `BatchSpanProcessor` into the hozon telemetry store, and logs into the hozon log store.
 
-Two new daemon-owned hozon tables:
+Log records get a stable `logID` (assigned when the record is created, before live delivery) persisted with the record, so live and stored copies merge by identity.
 
-- **`traces`** -- one row per root trace:
-  `{ traceID, rootSpanID, kind, name, status: 'running' | 'ok' | 'error', startTime, endTime?, attributes: { 'run.id'?, 'flow.id'?, 'mokei.context.id'?, label? }, spanCount, errorCount }`.
-  Written when a root span starts; updated as spans end (counts, status) and when the root ends (`endTime`, final status). This is what `traces.list` queries, and it makes long-lived running traces (contexts) visible before their root span is exported.
-- **`trace_links`** -- `{ targetTraceID, targetSpanID, traceID, spanID }`, written when a span carrying links ends. Lets a context trace list the calls made from flows that link to it.
+Two new hozon stores, defined in `@mokei/app-node` next to the telemetry and log store definitions and registered in `mokeiStoreDefinitions` (so every database opened by `openMokeiDatabase` migrates them before telemetry starts):
 
-Retention: the existing trace pruning (`deleteBefore` with `keepTraceIDs`) also prunes `traces` and `trace_links` rows. Running traces and traces with an open inbox item are kept, as today.
+- **`traces`** -- one row per trace:
+  `{ traceID, rootSpanID, kind, name, active: boolean, outcome: 'ok' | 'error' | 'interrupted' | null, startTime, endTime?, attributes: { 'run.id'?, 'flow.id'?, 'mokei.context.id'?, label? }, spanCount, errorCount }`.
+  - `active` is whether the root span (or, for a resumed run, the latest root segment) is open. `outcome` is null while active, then set from the root's status when it ends. `spanCount` counts ended spans; `errorCount` counts ended spans with `ERROR` status. A running trace with failed children is `active: true, errorCount > 0`.
+  - Flow run state (approval, input required, cancelled, denied) is not mirrored here; the monitor header reads it from `runs.get` and run events.
+- **`trace_links`** -- `{ targetTraceID, targetSpanID, traceID, spanID }`, written when a span carrying links ends.
 
-### 3. Live pipeline
+Both stores are accessed through an injected `TraceIndex` API (`upsertRoot`, `spanEnded`, `rootEnded`, `markInterrupted`, `list`, `links`, `deleteByTrace`, `deleteBefore`) created by `@mokei/app-node` and passed to `setupMokeiTelemetry` and to the flow trace store. Index writes are queued and serialised per trace; `setupMokeiTelemetry`'s `dispose()` drains the queue before the database closes.
 
-A `LiveSpanProcessor` (OTel `SpanProcessor`) is registered in `setupMokeiTelemetry` (`@mokei/app-node`) alongside the hozon batch processor:
+**Resumed runs.** A `flow.run.resume` span continues the existing trace. Its start calls `upsertRoot`, which reactivates the existing row (`active: true`, `outcome: null`) instead of inserting a new one.
 
-- `onStart`: emit `span:start` with `{ traceID, spanID, parentSpanID?, name, startTime, attributes, links }`. When the span is a root, insert the `traces` row.
-- `onEnd`: emit `span:end` with the full `StoredSpan`. Update the `traces` row; write `trace_links` rows for links.
+**Retention.** Pruning (`prune-runs.ts`) keeps traces referenced by retained runs, as today, plus every trace whose index row is `active`. Both deletion paths (`deleteTraces` and `deleteBefore`) delete spans, logs, the `traces` rows and every `trace_links` row whose source or target trace is deleted, in one transaction.
 
-Traced log records (those with a `traceID`) are also emitted live as `log` events with the `StoredLog` shape.
+### 4. Live pipeline
 
-The processor never throws into the OTel pipeline: emit failures are dropped (and logged at debug level). Index writes are serialised per trace to keep counts consistent.
+A `LiveSpanProcessor` (OTel `SpanProcessor`) is registered in `setupMokeiTelemetry` alongside the hozon batch processor:
 
-### 4. Protocol (`@mokei/host-protocol`)
+- `onStart`: add the span to the **pending registry** and emit `span:start` with `{ traceID, spanID, parentSpanID?, name, startTime, attributes, links }`. Request payloads are set as start attributes, so they are present at `onStart`. For root spans, queue `upsertRoot`.
+- `onEnd`: replace the registry entry with the ended `StoredSpan`, emit `span:end` with it, and queue `spanEnded` (and `rootEnded` for roots; links go to `trace_links`).
 
-- `events` stream gains `span:start`, `span:end` and `log` events, using `ServiceEventMeta { eventID, time }` (no `contextID`).
-- `traces.list({ kind?, status?, name?, since?, until?, limit, cursor? })` returns `{ traces: Array<TraceSummary>, cursor? }`, newest first, running traces included.
-- `traces.get({ traceID })` returns `{ summary: TraceSummary, spans: Array<StoredSpan>, logs: Array<StoredLog>, linkedSpans: Array<{ traceID, spanID, name, startTime, endTime }> }`. `linkedSpans` comes from `trace_links` when the trace is a context trace.
-- `runs.trace` is removed. The monitor is its only consumer, and `FlowRunSnapshot.traceID` already points at the run's trace.
+**Pending registry.** An in-memory map of spans that are open, or ended but not yet confirmed persisted. The hozon exporter is wrapped so that a successful export removes the exported spans from the registry. `traces.get` merges stored spans with the registry's entries for that trace, so a read during batch lag or for a long-lived open context is complete. On daemon shutdown the registry is discarded after the final flush.
+
+Traced log records are emitted live as `log` events with the `StoredLog` shape plus `logID`.
+
+The processor never throws into the OTel pipeline: emit failures are dropped (logged at debug level). Persistence is unaffected by live delivery.
+
+### 5. Protocol (`@mokei/host-protocol`)
+
+- The `events` stream gains `span:start`, `span:end` and `log` events, using `ServiceEventMeta { eventID, time }` (no `contextID`), plus `trace:overflow` (see §7).
+- `traces.list({ kind?, active?, outcome?, name?, since?, until?, limit, cursor? })` returns `{ traces: Array<TraceSummary>, cursor? }`, newest first.
+- `traces.get({ traceID })` returns `{ summary: TraceSummary, spans: Array<StoredSpan | OpenSpan>, logs: Array<StoredLog>, linkedSpans: Array<{ traceID, spanID, name, startTime, endTime? }> }`, where spans include pending-registry entries (`OpenSpan` has no `endTime`/`status`). `linkedSpans` comes from `trace_links` for spans linking into this trace.
+- `runs.trace` stays, reimplemented as an adapter over `traces.get` (same response shape as today), so the CLI's `mokei runs trace` and older monitors keep working. It is marked deprecated in the protocol docs.
 - `context:message` events stay on the wire, unchanged.
 
-### 5. Monitor
+### 6. Lifecycle and error handling
+
+- **Termination reasons.** `ContextHost.remove(key, reason?)` and the client binding gain an explicit termination reason (`'stopped' | 'lost'`). Transport closure detected by the RPC layer, a child process exiting on its own, and errors map to `'lost'`; an explicit `remove` maps to `'stopped'`. Context and request spans are settled exactly once per context: on `'lost'`, open request spans and the `mcp.context` span end with `ERROR` and `error.type = "context.lost"`; on `'stopped'`, open request spans end with `error.type = "context.stopped"` and the context span ends `OK`. The `spawn` proxy follows the same rules (child exit without a client abort is `'lost'`).
+- **Daemon shutdown** is graceful: hosted and proxied contexts are stopped (`'stopped'`), spans flushed, index queue drained.
+- **Daemon crash.** On startup, before flow recovery runs, `markInterrupted` sets every `active` index row to `active: false, outcome: 'interrupted'`. Flow recovery then resumes active runs; their `flow.run.resume` spans reactivate the row (§3). Traces whose root span was never exported (it was open at crash time) keep their index row as the summary, and the monitor renders a placeholder root from it.
+- **Live/stored races** are handled by the pending registry (§4) and the monitor merge rules (§8).
+- **No subscribers / closed stream:** `LiveSpanProcessor` drops events; persistence is unaffected.
+
+### 7. Live delivery bounds
+
+- The daemon `events` handler gets a bounded per-subscriber queue (default 1000 events). Writes respect the writer's `desiredSize`; when the queue is full, queued `span:*` and `log` events are dropped and one `trace:overflow` event is delivered when capacity returns. The monitor treats `trace:overflow` like a reconnect: it re-reads the list and the selected trace.
+- Payload attributes on live events obey the same cap as storage.
+
+### 8. Monitor
 
 **Routes.** `/traces` and `/traces/$traceID` (optional `?span=$spanID`). `/` redirects to `/traces`. `/runs` redirects to `/traces?kind=flow`; `/runs/$runID` resolves the run's `traceID` and redirects to `/traces/$traceID` (to `/traces?kind=flow` when the run has no trace). Nav: Traces, Flows, Inbox.
 
 **Layout.** Two panes.
 
-- **Trace list** (left): filters for kind, status, name and time range. A "Running" group pinned at the top, then "Recent" with cursor paging. Each row shows kind icon, name, duration (live for running), span count and error count.
+- **Trace list** (left): filters for kind, active/outcome, name and time range. An "Active" group pinned at the top, then "Recent" with cursor paging. Each row shows kind icon, name, duration (live while active), span count and error count.
 - **Trace detail** (right):
-  - Header for a `flow` root: run state badge, flow ID, run ID, link to pending inbox items, Cancel action. This absorbs the current run detail page.
-  - Header for a `context` root: server name, transport, uptime, enabled tool count.
-  - Tabs: **Waterfall** and **Logs**. In-flight spans render as open bars that grow live. For context traces, linked calls made from flows are listed as rows that navigate to the flow trace.
+  - Header for a `flow` root: run state badge (from `runs.get` and `run:state` events), flow ID, run ID, link to pending inbox items, Cancel action. This absorbs the current run detail page.
+  - Header for a `context` root: server name or command, transport, uptime.
+  - Tabs: **Waterfall** and **Logs**. In-flight spans render as open bars that grow live. For context traces, `linkedSpans` are listed as rows that navigate to the linking trace. Notifications appear in Logs.
   - **Span detail** below the waterfall, tabs: Overview (attributes), Request, Response (JSON viewer, truncation banner when `mokei.payload.truncated`), Events, Logs (filtered by span).
 
 **Data layer.**
 
-- A live trace store (Jotai) holds `traceID -> { spans: Map<spanID, span>, logs }`, filled from `span:start` / `span:end` / `log` events. It retains running traces and the selected trace; ended, unselected traces are evicted from the live store once they appear in the stored list.
-- The list is `traces.list` (through `useReconciledQuery`) merged with live root `span:start` events.
-- The selected trace is `traces.get` merged with live spans by `spanID`. Merge rules: an ended span replaces an open one; stored data replaces live data for the same span.
-- On reconnect (`epoch` change) the list and the selected trace are re-read, covering batch-export lag and missed events.
+- A host-level trace subscription, independent of the flow service: it subscribes to the `events` stream for `span:*`, `log` and `trace:overflow` events and buffers them until the initial `traces.list` / `traces.get` reads resolve (subscribe before query), then applies them. It does not go through `useReconciledQuery` or the flow client's event filter, so it works when the flow service is unavailable.
+- A live trace store (Jotai) holds `traceID -> { spans: Map<spanID, span>, logs: Map<logID, log> }`. It keeps active traces and the selected trace; for an ended trace that is not selected, entries are evicted once a later `traces.get` or list read returns the trace as inactive (the daemon's pending registry makes that read complete). Per-trace retention is capped (default 2000 spans); past the cap the oldest ended spans are dropped from the live store and re-read on selection.
+- Merge rules: an ended span replaces an open one; a stored or registry copy replaces a live copy of the same `spanID`; logs merge by `logID`.
+- On reconnect (`epoch` change) or `trace:overflow`, the list and the selected trace are re-read.
 - Orphan spans (parent not yet known) render under a placeholder parent row until the parent arrives.
 - `useRunTrace` and its 2 s polling are removed. The `/` events table, `useHostEvents` and the Runs routes are removed.
-- `TraceWaterfall` and `LogList` are reused and extended (live bars, linked rows, span selection via URL).
-
-### 6. Error handling and lifecycle
-
-- **Context ends abnormally** (crash, transport error, daemon shutdown without `context:stop`): `ContextHost` ends any open `mcp.context` span with status `ERROR` and `error.type = "context.lost"`. Open request spans for that context end with `ERROR` and `error.type = "context.lost"`.
-- **Daemon restart:** on startup, `traces` rows left `running` by a previous process are set to `status: 'error'` with attribute `mokei.interrupted = true`.
-- **Live/stored races:** handled by the monitor merge rules and orphan placeholders; reconnect re-reads close gaps.
-- **No subscribers / closed stream:** `LiveSpanProcessor` drops events silently; persistence is unaffected.
-- **Backpressure:** live events use the existing `events` SSE stream and its existing backpressure behaviour; no new buffering.
+- `TraceWaterfall` and `LogList` are reused and extended (live bars, linked rows, span selection via URL, `logID` keys).
 
 ## Testing
 
-- `@mokei/context-client`: unit tests with an in-memory span exporter -- span names and attributes per method, parenting (active span vs context span), link to the context span, error status for JSON-RPC errors and `isError` results, payload capture modes (`on`, `off`, byte cap) and truncation flag.
-- `@mokei/host`: context span lifecycle, including abnormal end (`context.lost`).
-- `@mokei/app-node`: `LiveSpanProcessor` emit order and payloads, no throw on emit failure.
-- Daemon (`@mokei/host-node` / `@mokei/flow-host-node`): trace index written on root start, updated on end, interrupted on restart; `trace_links` rows; `traces.list` filters and paging; `traces.get` including `linkedSpans`; pruning covers the new tables.
-- End to end: a flow run that calls a tool produces one trace with `flow.run` above `mcp.tools/call`, and the context trace's `linkedSpans` includes that call.
-- Monitor: vitest for the live/stored merge reducer (ended beats open, stored beats live, orphans, eviction) and the redirect logic; browser QA of the Traces page against a running daemon (live flow run, live tool call, history filters, reconnect).
+- Shared MCP span helper: attribute mapping per method, error mapping, redaction (`_meta` grant keys, secret-pattern keys at depth), capture modes and truncation flag.
+- `@mokei/context-client`: with an in-memory span exporter -- one span per exchange through the seam (request, setup, subscriptions, each MRTR retry leg with links), active span set before `traceparent` injection, `jsonrpc.request.id` set, parenting (active span vs bound context span, link to context span), unbound client behaviour.
+- `@mokei/host`: context span lifecycle for hosted and registered contexts; termination reasons (`stopped` vs `lost`) settle spans exactly once.
+- `@mokei/host-node` `spawn` proxy: request/response correlation by JSON-RPC ID in both directions, remote `traceparent` link, unanswered requests ended on stop and on child exit.
+- `@mokei/app-node`: `LiveSpanProcessor` emit order, pending registry cleared only on successful export, no throw on emit failure; `TraceIndex` writes (upsert, resume reactivation, counts, interrupted sweep), queue drained on dispose; config schema accepts `tracing.payloads`.
+- Daemon: `traces.list` filters and paging; `traces.get` merges registry entries and `linkedSpans`; `runs.trace` adapter output matches the previous shape; pruning keeps active traces and removes index and link rows atomically; bounded subscriber queue emits `trace:overflow`.
+- End to end: a flow run that calls a tool produces one trace with `flow.run` above `mcp.tools/call`, and the context trace's `linkedSpans` includes that call. A proxied context spawned through `spawn` produces a context trace with paired request spans. Crash-restart: an active run's trace is marked interrupted, then reactivated by recovery.
+- Monitor: vitest for the merge reducer (ended beats open, stored beats live, logs by `logID`, orphans, eviction, retention cap), the subscribe-before-query buffer and the redirect logic; browser QA of the Traces page against a running daemon (live flow run, live proxied tool call, history filters, reconnect).
 
 ## Delivery
 
-One branch, three stages. Each stage builds, passes tests and is usable on its own.
+One branch, three stages. Each stage builds, passes tests and keeps existing consumers working.
 
-1. **Producers** -- MCP request spans in `@mokei/context-client`, context spans in `@mokei/host`, payload capture option, `mokei.kind` on flow and step spans.
-2. **Daemon** -- `LiveSpanProcessor`, `traces` and `trace_links` tables, `span:start` / `span:end` / `log` events, `traces.list` / `traces.get`, `telemetry.payloads` config, removal of `runs.trace`, startup interruption sweep, pruning.
-3. **Monitor** -- Traces page, live trace store, redirects, removal of the `/` events table and the Runs pages.
+1. **Producers** -- shared MCP span helper with redaction and capture; `ContextClient` exchange seam and tracing binding; context spans and termination reasons in `@mokei/host`; `spawn` proxy correlation; `mokei.kind` on flow and step spans; log `logID`.
+2. **Daemon** -- `traces` / `trace_links` stores and `TraceIndex` in `@mokei/app-node`; `LiveSpanProcessor` and pending registry; `tracing.payloads` config; `span:*`, `log`, `trace:overflow` events with bounded subscriber queues; `traces.list` / `traces.get`; `runs.trace` adapter; startup interruption sweep before recovery; pruning changes. The current monitor keeps working on `runs.trace` and `context:message`.
+3. **Monitor** -- host-level trace subscription, live trace store, Traces page, redirects, removal of the `/` events table and the Runs pages.
 
-Release: one patch changeset on the 0.14.x line covering the published packages touched.
+Release: one patch changeset on the 0.14.x line. No public procedure is removed (`runs.trace` is kept as a deprecated adapter).
 
 ## Docs to update
 
-- `docs/agents/architecture.md`: trace model, MCP spans, live span events, trace index, `traces.*` methods replacing `runs.trace`.
-- `docs/agents/plans/next/2026-10-04-flow-monitor-follow-ons.md`: mark the monitor design pass as covered by this spec for Runs; Inbox and Flows pages unchanged.
+- `docs/agents/architecture.md`: trace model, the two MCP span producers, redaction, live span events and pending registry, trace index, `traces.*` methods, `runs.trace` deprecation.
+- `docs/agents/plans/next/2026-10-04-flow-monitor-follow-ons.md`: mark the Runs part of the monitor design pass as covered by this spec; Inbox and Flows pages unchanged.
