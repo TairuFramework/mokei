@@ -1,8 +1,8 @@
 import { Code, Group, NativeSelect, Stack, Table, Text, TextInput } from '@mantine/core'
 import { useInputState } from '@mantine/hooks'
-import type { StoredLog } from '@mokei/host-protocol'
+import type { TraceLog } from '@mokei/host-protocol'
 
-export type LogListProps = { logs: Array<StoredLog>; spanID?: string }
+export type LogListProps = { logs: Array<TraceLog>; spanID?: string }
 
 export function LogList({ logs, spanID }: LogListProps) {
   const [level, setLevel] = useInputState('all')
@@ -41,8 +41,8 @@ export function LogList({ logs, spanID }: LogListProps) {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {filtered.map((log, index) => (
-                <Table.Tr key={`${log.timestamp}:${log.spanID}:${index}`}>
+              {filtered.map((log) => (
+                <Table.Tr key={log.logID}>
                   <Table.Td>{new Date(log.timestamp).toLocaleTimeString()}</Table.Td>
                   <Table.Td>{log.level}</Table.Td>
                   <Table.Td>{log.category.join('.')}</Table.Td>

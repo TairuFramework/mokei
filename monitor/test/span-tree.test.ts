@@ -1,44 +1,101 @@
-import { expect, test, vi } from 'vitest'
+import type { OpenSpan, TraceSummary } from '@mokei/host-protocol'
+import { expect, test } from 'vitest'
 
-import { barPosition, buildSpanTree } from '../src/flow/span-tree.js'
-import { run, span } from './fixtures.js'
+import { barPosition, buildTraceTree } from '../src/traces/span-tree.js'
+import { span } from './fixtures.js'
 
-test('orphan spans hang under the synthetic run root', () => {
-  const { root } = buildSpanTree([span('orphan', 'missing')], run())
-  expect(root.children.map((node) => node.id)).toEqual(['orphan'])
-  expect(root.start).toBe(1)
+const summary: TraceSummary = {
+  traceID: 'trace-1',
+  rootSpanID: 'root',
+  kind: 'flow',
+  name: 'Crashed flow',
+  active: false,
+  outcome: 'interrupted',
+  startTime: 1,
+  endTime: 100,
+  attributes: { 'run.id': 'run-1' },
+  spanCount: 2,
+  errorCount: 0,
+  droppedCount: 0,
+  revision: 1,
+}
+
+test('open span extends to now', () => {
+  const open: OpenSpan = {
+    traceID: 'trace-1',
+    spanID: 'open',
+    name: 'Working',
+    kind: 0,
+    startTime: 50,
+    attributes: {},
+    links: [],
+  }
+  const { roots, start, end } = buildTraceTree([open], undefined, 100)
+  expect(roots[0]).toMatchObject({ end: 100, open: true, placeholder: false, status: 'unset' })
+  expect({ start, end }).toEqual({ start: 50, end: 100 })
+  expect(buildTraceTree([open], undefined, 1100).roots[0].end).toBe(1100)
+})
+
+test('orphan renders under a placeholder parent', () => {
+  const { roots } = buildTraceTree([span('one', 'missing'), span('two', 'missing')], undefined, 100)
+  expect(roots).toHaveLength(1)
+  expect(roots[0]).toMatchObject({ id: 'missing', placeholder: true, start: 50, end: 75 })
+  expect(roots[0].children.map((node) => node.id)).toEqual(['one', 'two'])
+  const resolved = buildTraceTree([span('one', 'missing'), span('missing')], undefined, 100)
+  expect(resolved.roots[0].placeholder).toBe(false)
+})
+
+test('missing root renders a placeholder root from the summary', () => {
+  const { roots, start, end } = buildTraceTree([span('child', 'root')], summary, 200)
+  expect(roots).toHaveLength(1)
+  expect(roots[0]).toMatchObject({
+    id: 'root',
+    name: 'Crashed flow',
+    start: 1,
+    end: 100,
+    kind: 'flow',
+    placeholder: true,
+    open: false,
+    attributes: summary.attributes,
+  })
+  expect(roots[0].children[0].id).toBe('child')
+  expect({ start, end }).toEqual({ start: 1, end: 100 })
+  expect(
+    buildTraceTree([], { ...summary, active: true, endTime: undefined }, 200).roots[0],
+  ).toMatchObject({ open: true, end: 200 })
+})
+
+test('mcp span with a link exposes contextLink', () => {
+  const linked = {
+    ...span('request'),
+    attributes: { 'mokei.kind': 'mcp' },
+    links: [
+      { traceID: 'context-trace', spanID: 'context-span' },
+      { traceID: 'other', spanID: 'other' },
+    ],
+  }
+  expect(buildTraceTree([linked], undefined, 100).roots[0].contextLink).toEqual(linked.links[0])
+  expect(
+    buildTraceTree([{ ...linked, attributes: { 'mokei.kind': 'flow' } }], undefined, 100).roots[0]
+      .contextLink,
+  ).toBeUndefined()
+  expect(
+    buildTraceTree([{ ...linked, links: [] }], undefined, 100).roots[0].contextLink,
+  ).toBeUndefined()
 })
 
 test('spans nest by parent ID regardless of input order', () => {
-  const { root } = buildSpanTree([span('child', 'parent'), span('parent')], run())
-  expect(root.children.map((node) => node.id)).toEqual(['parent'])
-  expect(root.children[0].children.map((node) => node.id)).toEqual(['child'])
-  expect(root.children[0].status).toBe('ok')
+  const { roots } = buildTraceTree([span('child', 'parent'), span('parent')], undefined, 100)
+  expect(roots.map((node) => node.id)).toEqual(['parent'])
+  expect(roots[0].children[0]).toMatchObject({ id: 'child', status: 'ok', open: false })
 })
 
-test('bar position uses fractions of the full time range', () => {
-  const { root } = buildSpanTree([span('halfway')], run())
-  expect(barPosition(root.children[0], 0, 100)).toEqual({ left: 0.5, width: 0.25 })
+test('bar position uses fractions and handles zero duration', () => {
+  const { roots } = buildTraceTree([span('halfway')], undefined, 100)
+  expect(barPosition(roots[0], 0, 100)).toEqual({ left: 0.5, width: 0.25 })
+  expect(barPosition(roots[0], 1, 1)).toEqual({ left: 0, width: 0 })
 })
 
-test('active roots stay open while their time range advances', () => {
-  vi.spyOn(Date, 'now').mockReturnValue(100)
-  try {
-    const { root, end } = buildSpanTree([], run())
-    expect(root.end).toBeUndefined()
-    expect(end).toBe(100)
-  } finally {
-    vi.restoreAllMocks()
-  }
-})
-
-test('terminal roots end at the snapshot update time', () => {
-  const { root, start, end } = buildSpanTree([], { ...run('done', 'completed'), updatedAt: 100 })
-  expect(root.end).toBe(100)
-  expect(barPosition(root, start, end)).toEqual({ left: 0, width: 1 })
-})
-
-test('zero-duration time ranges do not produce invalid positions', () => {
-  const { root } = buildSpanTree([], run('done', 'completed'))
-  expect(barPosition(root, 1, 1)).toEqual({ left: 0, width: 0 })
+test('empty trace has a finite zero duration range', () => {
+  expect(buildTraceTree([], undefined, 100)).toEqual({ roots: [], start: 100, end: 100 })
 })

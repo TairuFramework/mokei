@@ -12,7 +12,7 @@ import {
 } from '@mantine/core'
 import { TERMINAL_RUN_STATES } from '@mokei/flow-client'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { LogList } from '../components/LogList.js'
 import { PendingItemActions } from '../components/PendingItemActions.js'
@@ -39,6 +39,11 @@ function RunDetail({ runID }: { runID: string }) {
   } = useRunTrace(runID)
   const { items, loading: inboxLoading, error: inboxError } = useInbox({ runID })
   const [spanID, setSpanID] = useState<string>()
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [])
   const [action, setAction] = useState<{ cancelling: boolean; error?: unknown }>({
     cancelling: false,
   })
@@ -168,9 +173,20 @@ function RunDetail({ runID }: { runID: string }) {
         </Alert>
       )}
       {traceLoading ? <Loader size="sm" aria-label="Loading trace" /> : null}
-      <TraceWaterfall run={run} spans={trace?.spans ?? []} onSelectSpan={setSpanID} />
+      <TraceWaterfall
+        spans={trace?.spans ?? []}
+        selectedSpanID={spanID}
+        now={now}
+        onSelectSpan={setSpanID}
+        onOpenContext={(traceID) => {
+          window.location.assign(`/traces/${encodeURIComponent(traceID)}`)
+        }}
+      />
       <Title order={2}>Logs</Title>
-      <LogList logs={trace?.logs ?? []} spanID={spanID} />
+      <LogList
+        logs={(trace?.logs ?? []).map((log, index) => ({ ...log, logID: `${runID}:${index}` }))}
+        spanID={spanID}
+      />
     </Stack>
   )
 }
