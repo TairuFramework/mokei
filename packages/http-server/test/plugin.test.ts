@@ -183,6 +183,33 @@ describe('mokei:mcp plugin', () => {
     expect(oversized.status).toBe(413)
   })
 
+  test('scopes the limits override to the MCP path', async () => {
+    const server = await createServer({
+      port: 0,
+      hostname: '127.0.0.1',
+      limits: { bodyBytes: 1 },
+      plugins: [
+        mcpPlugin({
+          path: '/rpc',
+          createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
+        }),
+        definePlugin({
+          name: 'test:echo',
+          setup(ctx) {
+            for (const path of ['/other', '/rpcx']) {
+              ctx.route('post', path, async (c) => c.text(await c.req.text()))
+            }
+          },
+        }),
+      ],
+    })
+    cleanups.push(() => server.dispose())
+    for (const path of ['/other', '/rpcx']) {
+      const response = await server.app.request(path, { method: 'POST', body: '12' })
+      expect(response.status).toBe(413)
+    }
+  })
+
   test('requires the OAuth resource plugin when auth is configured', async () => {
     await expect(
       createServer({

@@ -406,7 +406,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
           id: typeof body.id === 'string' || typeof body.id === 'number' ? body.id : null,
           error: { code: INTERNAL_ERROR, message: 'Server is shutting down' },
         }),
-        { status: 503, headers: { 'Content-Type': 'application/json' } },
+        { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '1' } },
       )
     }
 

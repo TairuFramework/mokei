@@ -41,4 +41,17 @@ describe('serveHTTP', () => {
     expect(server.handler).toBeDefined()
     expect(server.dispose).toBeTypeOf('function')
   })
+
+  test('routes GET and DELETE to the handler', async () => {
+    server = await serveHTTP({
+      createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
+      port: 0,
+    })
+
+    for (const method of ['GET', 'DELETE']) {
+      const response = await fetch(`${server.server.url}/mcp`, { method })
+      expect(response.status).toBe(400)
+      expect(await response.text()).toBe('Mcp-Session-Id header required')
+    }
+  })
 })

@@ -122,11 +122,13 @@ describe('HTTPHandler.shutdown()', () => {
     const gate = Promise.withResolvers<void>()
     const admitted = Promise.withResolvers<void>()
     const registered = Promise.withResolvers<void>()
+    let registrations = 0
     const handler = createHandler({
       subscriptionHub: {
         ...hub,
         register: (entry) => {
           const handle = hub.register(entry)
+          registrations++
           registered.resolve()
           return handle
         },
@@ -168,6 +170,7 @@ describe('HTTPHandler.shutdown()', () => {
           result: { _meta: { 'io.modelcontextprotocol/subscriptionId': 2 } },
         })
         expect((await messages.next()).done).toBe(true)
+        expect(registrations).toBe(1)
       } finally {
         clearTimeout(timeout)
       }
@@ -247,6 +250,7 @@ describe('HTTPHandler.shutdown()', () => {
       const response = await handler.handleRequest(incoming)
       expect(response.status).toBe(503)
       expect(response.headers.get('Content-Type')).toBe('application/json')
+      expect(response.headers.get('Retry-After')).toBe('1')
       expect(await response.json()).toMatchObject({
         jsonrpc: '2.0',
         id,
@@ -266,6 +270,23 @@ describe('HTTPHandler.shutdown()', () => {
     const handler = createHandler()
     await handler.shutdown()
     await expect(handler.dispose()).resolves.toBeUndefined()
+  })
+
+  test('dispose after shutdown releases a live session', async () => {
+    const handler = createHandler()
+    const initialized = await handler.handleRequest(initializeRequest())
+    expect(initialized.status).toBe(200)
+    const sessionID = initialized.headers.get('Mcp-Session-Id')
+    expect(sessionID).toBeTruthy()
+    await handler.shutdown()
+    await expect(handler.dispose()).resolves.toBeUndefined()
+    const response = await handler.handleRequest(
+      new Request('http://localhost/mcp', {
+        method: 'DELETE',
+        headers: { 'Mcp-Session-Id': sessionID as string },
+      }),
+    )
+    expect(response.status).toBe(404)
   })
 
   test('concurrent shutdown calls await the same drain', async () => {
