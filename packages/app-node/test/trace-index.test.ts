@@ -140,11 +140,24 @@ test('interrupts only active rows, clears the open segment and increments their 
 
 test('deletes older traces while preserving keep IDs and the cutoff boundary', async () => {
   await seed()
-  expect(await store.deleteBefore(300, { keepTraceIDs: ['b', 'missing'] })).toBe(2)
-  expect((await store.list({ limit: 10 })).traces.map((row) => row.traceID)).toEqual(['d', 'b'])
+  expect(await store.deleteBefore(300, { keepTraceIDs: ['b', 'missing'] })).toBe(1)
+  expect((await store.list({ limit: 10 })).traces.map((row) => row.traceID)).toEqual([
+    'd',
+    'c',
+    'b',
+  ])
   expect(await store.deleteBefore(300, { keepTraceIDs: [] })).toBe(1)
+  expect(await store.get('c')).toBeDefined()
   expect(await store.get('d')).toBeDefined()
   expect(await store.deleteBefore(400)).toBe(1)
+})
+
+test('keeps inactive summaries whose end time is after the cutoff', async () => {
+  await store.upsert([summary('spans-cutoff', { startTime: 1, endTime: 20 })])
+  expect(await store.deleteBefore(10, { keepTraceIDs: [] })).toBe(0)
+  expect(await store.get('spans-cutoff')).toEqual(
+    summary('spans-cutoff', { startTime: 1, endTime: 20 }),
+  )
 })
 
 test('deletes requested traces and returns the number of existing rows', async () => {

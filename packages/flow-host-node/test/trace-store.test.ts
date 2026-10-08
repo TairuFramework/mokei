@@ -75,6 +75,19 @@ test.each(['deleteTraces', 'deleteBefore'] as const)(
   },
 )
 
+test('retains summaries and telemetry that span the cutoff', async () => {
+  const { index, store } = await setup()
+  const span = spanRecord({ endTime: 20 })
+  const log = logRecord({ timestamp: 20 })
+  await index.upsert([summary('trace-one', false, 20)])
+  await store.addSpans([span])
+  await store.addLogs([log])
+
+  expect(await store.deleteBefore(10, [])).toEqual({ spans: 0, logs: 0 })
+  expect(await index.get('trace-one')).toEqual(summary('trace-one', false, 20))
+  expect(await store.getTrace('trace-one')).toEqual({ spans: [span], logs: [log] })
+})
+
 test.each(['deleteTraces', 'deleteBefore'] as const)(
   '%s rolls back telemetry when summary deletion fails',
   async (method) => {

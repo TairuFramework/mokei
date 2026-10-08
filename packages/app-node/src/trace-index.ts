@@ -211,7 +211,10 @@ export const traceIndexStoreDefinition: StoreDefinition<TraceIndexTables, TraceI
         return Number(result.numDeletedRows)
       },
       async deleteBefore(time, params) {
-        let query = db.deleteFrom('traces').where('start_time', '<', time)
+        let query = db
+          .deleteFrom('traces')
+          .where('active', '=', 0)
+          .where(sql<boolean>`coalesce(end_time, start_time) < ${time}`)
         if (params?.keepTraceIDs?.length)
           query = query.where('trace_id', 'not in', params.keepTraceIDs)
         return Number((await query.executeTakeFirstOrThrow()).numDeletedRows)
