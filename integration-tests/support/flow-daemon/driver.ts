@@ -296,8 +296,8 @@ export async function startFlowDaemonFixture(
             .all(traceID)
             .map((row) => JSON.parse(row.data as string))
         return {
-          spans: read('SELECT data FROM hozon_spans WHERE trace_id = ? ORDER BY start_time, seq'),
-          logs: read('SELECT data FROM hozon_logs WHERE trace_id = ? ORDER BY timestamp, seq'),
+          spans: read('SELECT data FROM mokei_spans WHERE trace_id = ? ORDER BY start_time, seq'),
+          logs: read('SELECT data FROM mokei_logs WHERE trace_id = ? ORDER BY timestamp, seq'),
         }
       } finally {
         db.close()

@@ -66,7 +66,7 @@ test('registers log and telemetry stores and extra stores', async () => {
   try {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()
     expect(tables.map((row) => row.name)).toEqual(
-      expect.arrayContaining(['hozon_logs', 'hozon_spans', 'test_items']),
+      expect.arrayContaining(['mokei_logs', 'mokei_spans', 'mokei_test_items']),
     )
   } finally {
     db.close()

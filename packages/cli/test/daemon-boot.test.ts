@@ -199,8 +199,8 @@ test('captures telemetry while the flow service is failed', async () => {
       const row = db.prepare(`SELECT count(*) AS count FROM ${table}`).get()
       return Number(row?.count)
     }
-    expect(count('hozon_spans')).toBeGreaterThanOrEqual(1)
-    expect(count('hozon_logs')).toBeGreaterThanOrEqual(1)
+    expect(count('mokei_spans')).toBeGreaterThanOrEqual(1)
+    expect(count('mokei_logs')).toBeGreaterThanOrEqual(1)
   } finally {
     db.close()
   }

@@ -5,10 +5,10 @@ import { TaskStoreConflictError } from '@mokei/context-server'
 import type { ColumnType, Generated, Kysely } from 'kysely'
 import type { Migration } from 'kysely/migration'
 
-export const FLOW_TASK_STORE = 'mokei-flow-tasks'
+export const FLOW_TASK_STORE = 'flow-tasks'
 
 export type FlowTaskTables = {
-  mokei_flow_tasks: {
+  flow_tasks: {
     seq: Generated<number>
     task_id: string
     status: string
@@ -22,7 +22,7 @@ function flowTaskStoreMigrations(ctx: MigrationContext): Record<string, Migratio
     '0-init': {
       async up(db) {
         await db.schema
-          .createTable('mokei_flow_tasks')
+          .createTable('flow_tasks')
           .addColumn('seq', ctx.types.serial, (column) => {
             const primary = column.primaryKey()
             return ctx.kind === 'sqlite' ? primary.autoIncrement() : primary
@@ -34,12 +34,12 @@ function flowTaskStoreMigrations(ctx: MigrationContext): Record<string, Migratio
           .execute()
         await db.schema
           .createIndex('mokei_flow_tasks_status')
-          .on('mokei_flow_tasks')
+          .on('flow_tasks')
           .columns(['status', 'seq'])
           .execute()
       },
       async down(db) {
-        await db.schema.dropTable('mokei_flow_tasks').execute()
+        await db.schema.dropTable('flow_tasks').execute()
       },
     },
   }
@@ -54,7 +54,7 @@ export const taskStoreDefinition: StoreDefinition<FlowTaskTables, TaskStore> = {
 function createTaskStoreAPI(db: Kysely<FlowTaskTables>, adapter: Adapter): TaskStore {
   async function read(taskID: string): Promise<TaskRecord | undefined> {
     const row = await db
-      .selectFrom('mokei_flow_tasks')
+      .selectFrom('flow_tasks')
       .select('data')
       .where('task_id', '=', taskID)
       .executeTakeFirst()
@@ -66,7 +66,7 @@ function createTaskStoreAPI(db: Kysely<FlowTaskTables>, adapter: Adapter): TaskS
       const data = JSON.stringify(record)
       const stored = JSON.parse(data) as TaskRecord
       const result = await db
-        .insertInto('mokei_flow_tasks')
+        .insertInto('flow_tasks')
         .values({
           task_id: stored.taskID,
           status: stored.status,
@@ -88,7 +88,7 @@ function createTaskStoreAPI(db: Kysely<FlowTaskTables>, adapter: Adapter): TaskS
       const data = JSON.stringify({ ...record, ...patch, taskID, revision: record.revision + 1 })
       const stored = JSON.parse(data) as TaskRecord
       const result = await db
-        .updateTable('mokei_flow_tasks')
+        .updateTable('flow_tasks')
         .set({
           status: stored.status,
           revision: stored.revision,
@@ -103,7 +103,7 @@ function createTaskStoreAPI(db: Kysely<FlowTaskTables>, adapter: Adapter): TaskS
     async list(filter) {
       if (filter.status.length === 0) return []
       const rows = await db
-        .selectFrom('mokei_flow_tasks')
+        .selectFrom('flow_tasks')
         .select('data')
         .where('status', 'in', filter.status)
         .orderBy('seq', 'asc')
@@ -111,7 +111,7 @@ function createTaskStoreAPI(db: Kysely<FlowTaskTables>, adapter: Adapter): TaskS
       return rows.map((row) => row.data)
     },
     async delete(taskID) {
-      await db.deleteFrom('mokei_flow_tasks').where('task_id', '=', taskID).execute()
+      await db.deleteFrom('flow_tasks').where('task_id', '=', taskID).execute()
     },
   }
 }

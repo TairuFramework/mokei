@@ -64,7 +64,7 @@ describe('hozon trace transactions', () => {
     await store.addLogs([logRecord()])
     const db = new DatabaseSync(path)
     try {
-      db.exec(`CREATE TRIGGER fail_log_delete BEFORE DELETE ON hozon_logs
+      db.exec(`CREATE TRIGGER fail_log_delete BEFORE DELETE ON mokei_logs
         BEGIN SELECT RAISE(ABORT, 'log delete failed'); END`)
     } finally {
       db.close()

@@ -74,9 +74,10 @@ describe('flow stores', () => {
     await close(await open(path))
     const db = new DatabaseSync(path)
     try {
-      db.prepare(
-        'INSERT INTO "hozon_mokei-flow-runs_migration" (name, timestamp) VALUES (?, ?)',
-      ).run('9-future', new Date().toISOString())
+      db.prepare('INSERT INTO "mokei_flow-runs_migration" (name, timestamp) VALUES (?, ?)').run(
+        '9-future',
+        new Date().toISOString(),
+      )
     } finally {
       db.close()
     }

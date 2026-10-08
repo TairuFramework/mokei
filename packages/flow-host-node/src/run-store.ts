@@ -5,10 +5,10 @@ import { RunStoreConflictError } from '@mokei/flow-host'
 import type { ColumnType, Generated, Kysely } from 'kysely'
 import type { Migration } from 'kysely/migration'
 
-export const FLOW_RUN_STORE = 'mokei-flow-runs'
+export const FLOW_RUN_STORE = 'flow-runs'
 
 export type FlowRunTables = {
-  mokei_flow_runs: {
+  flow_runs: {
     seq: Generated<number>
     run_id: string
     state: string
@@ -26,7 +26,7 @@ function flowRunStoreMigrations(ctx: MigrationContext): Record<string, Migration
     '0-init': {
       async up(db) {
         await db.schema
-          .createTable('mokei_flow_runs')
+          .createTable('flow_runs')
           .addColumn('seq', ctx.types.serial, (column) => {
             const primary = column.primaryKey()
             return ctx.kind === 'sqlite' ? primary.autoIncrement() : primary
@@ -42,17 +42,17 @@ function flowRunStoreMigrations(ctx: MigrationContext): Record<string, Migration
           .execute()
         await db.schema
           .createIndex('mokei_flow_runs_state')
-          .on('mokei_flow_runs')
+          .on('flow_runs')
           .columns(['state', 'updated_at'])
           .execute()
         await db.schema
           .createIndex('mokei_flow_runs_created')
-          .on('mokei_flow_runs')
+          .on('flow_runs')
           .columns(['created_at desc', 'seq'])
           .execute()
       },
       async down(db) {
-        await db.schema.dropTable('mokei_flow_runs').execute()
+        await db.schema.dropTable('flow_runs').execute()
       },
     },
   }
@@ -67,7 +67,7 @@ export const runStoreDefinition: StoreDefinition<FlowRunTables, RunStore> = {
 function createRunStoreAPI(db: Kysely<FlowRunTables>, adapter: Adapter): RunStore {
   async function read(runID: string): Promise<RunRecord | undefined> {
     const row = await db
-      .selectFrom('mokei_flow_runs')
+      .selectFrom('flow_runs')
       .select('data')
       .where('run_id', '=', runID)
       .executeTakeFirst()
@@ -79,7 +79,7 @@ function createRunStoreAPI(db: Kysely<FlowRunTables>, adapter: Adapter): RunStor
       const data = JSON.stringify(record)
       const stored = JSON.parse(data) as RunRecord
       const result = await db
-        .insertInto('mokei_flow_runs')
+        .insertInto('flow_runs')
         .values({
           run_id: stored.runID,
           state: stored.state,
@@ -105,7 +105,7 @@ function createRunStoreAPI(db: Kysely<FlowRunTables>, adapter: Adapter): RunStor
       const data = JSON.stringify({ ...record, ...patch, runID, revision: record.revision + 1 })
       const stored = JSON.parse(data) as RunRecord
       const result = await db
-        .updateTable('mokei_flow_runs')
+        .updateTable('flow_runs')
         .set({
           state: stored.state,
           revision: stored.revision,
@@ -126,7 +126,7 @@ function createRunStoreAPI(db: Kysely<FlowRunTables>, adapter: Adapter): RunStor
         throw new RangeError('Run list limit must be a non-negative integer')
       }
       if (filter.states?.length === 0 || filter.limit === 0) return []
-      let query = db.selectFrom('mokei_flow_runs').select('data')
+      let query = db.selectFrom('flow_runs').select('data')
       if (filter.states != null) query = query.where('state', 'in', filter.states)
       if (filter.updatedBefore != null) query = query.where('updated_at', '<', filter.updatedBefore)
       query = query.orderBy('created_at', 'desc').orderBy('seq', 'asc')
@@ -134,7 +134,7 @@ function createRunStoreAPI(db: Kysely<FlowRunTables>, adapter: Adapter): RunStor
       return (await query.execute()).map((row) => row.data)
     },
     async delete(runID) {
-      await db.deleteFrom('mokei_flow_runs').where('run_id', '=', runID).execute()
+      await db.deleteFrom('flow_runs').where('run_id', '=', runID).execute()
     },
   }
 }

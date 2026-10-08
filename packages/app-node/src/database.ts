@@ -10,6 +10,7 @@ export function openMokeiDatabase(
 ): Promise<HozonDB> {
   return openLocalDatabase({
     app: 'mokei',
+    tablePrefix: 'mokei',
     path: params.path,
     stores: [...mokeiStoreDefinitions, ...(params.stores ?? [])],
   })
