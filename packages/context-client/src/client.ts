@@ -67,6 +67,7 @@ import {
   RequestTimeoutError,
   RPCError,
   splitRequestOptions,
+  TransportClosedError,
   type WithRequestOptions,
 } from '@mokei/context-rpc'
 import type { SpanContext } from '@opentelemetry/api'
@@ -659,17 +660,20 @@ export class ContextClient<
         })
         exchange.succeed(result)
       } catch (cause) {
-        if (cause instanceof RPCError) {
+        const error = toError(cause)
+        // An abort reason can itself be an RPCError; caller cancellation takes precedence.
+        if (
+          cause instanceof RequestTimeoutError ||
+          options?.signal?.aborted ||
+          error.name === 'AbortError'
+        ) {
+          exchange.fail('cancelled', error.message)
+        } else if (cause instanceof RPCError) {
           const outcome = responseOutcome({ error: cause })
           exchange.fail(outcome.error ? outcome.errorType : String(cause.code), cause.message)
         } else {
-          const error = toError(cause)
           exchange.fail(
-            cause instanceof RequestTimeoutError ||
-              options?.signal?.aborted ||
-              error.name === 'AbortError'
-              ? 'cancelled'
-              : error.name,
+            cause instanceof TransportClosedError ? 'context.lost' : '_OTHER',
             error.message,
           )
         }

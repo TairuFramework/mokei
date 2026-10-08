@@ -1,5 +1,6 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
+import { RPCError, TransportClosedError } from '@mokei/context-rpc'
 import type { Attributes } from '@opentelemetry/api'
 import { SpanStatusCode, trace } from '@opentelemetry/api'
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
@@ -170,6 +171,54 @@ test('isError result sets error.type tool_error', async () => {
   await pending
   expect(required(spans()[0]).status.code).toBe(SpanStatusCode.ERROR)
   expect(required(spans()[0]).attributes['error.type']).toBe('tool_error')
+})
+test('transport closure settles a standalone outgoing exchange as context.lost', async () => {
+  const f = await fixture()
+  const pending = f.client.request('tools/call', { name: 'echo' })
+  const rejected = expect(pending).rejects.toBeInstanceOf(TransportClosedError)
+  await f.next()
+  await f.transports.dispose()
+  await rejected
+  expect(spans()).toHaveLength(1)
+  expect(required(spans()[0]).status.code).toBe(SpanStatusCode.ERROR)
+  expect(required(spans()[0]).attributes['error.type']).toBe('context.lost')
+})
+test('a local request failure records error.type _OTHER', async () => {
+  const f = await fixture()
+  const error = new TypeError('Request ID callback failed')
+  await expect(
+    f.client.request(
+      'tools/call',
+      { name: 'echo' },
+      {
+        onRequestID() {
+          throw error
+        },
+      },
+    ),
+  ).rejects.toBe(error)
+  expect(spans()).toHaveLength(1)
+  expect(required(spans()[0]).status.code).toBe(SpanStatusCode.ERROR)
+  expect(required(spans()[0]).attributes['error.type']).toBe('_OTHER')
+})
+test('a pre-aborted signal with an RPCError reason records cancellation', async () => {
+  const f = await fixture()
+  const reason = new RPCError({ code: -32601, message: 'Caller cancelled' })
+  const onRequestID = vi.fn()
+  await expect(
+    f.client.request(
+      'tools/call',
+      { name: 'echo' },
+      {
+        signal: AbortSignal.abort(reason),
+        onRequestID,
+      },
+    ),
+  ).rejects.toBe(reason)
+  expect(onRequestID).not.toHaveBeenCalled()
+  expect(spans()).toHaveLength(1)
+  expect(required(spans()[0]).status.code).toBe(SpanStatusCode.ERROR)
+  expect(required(spans()[0]).attributes['error.type']).toBe('cancelled')
 })
 test('each MRTR retry leg is its own span linked to the first leg', async () => {
   const f = await fixture(binding(), '2026-07-28')
