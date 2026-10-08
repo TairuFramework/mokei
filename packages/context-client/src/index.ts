@@ -13,6 +13,12 @@
 export type { ClientEvents, ClientTasks } from './client.js'
 export { ContextClient, DEFAULT_LIST_MAX_PAGES } from './client.js'
 export {
+  type ClientTracing,
+  createExchangeTracer,
+  type ExchangeSpan,
+  type TerminationReason,
+} from './client-tracing.js'
+export {
   CapabilityNotDeclaredError,
   type CapabilityNotDeclaredErrorParams,
   InputRequiredNotSupportedError,

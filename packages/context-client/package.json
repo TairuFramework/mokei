@@ -49,5 +49,9 @@
     "@sozai/otel": "catalog:",
     "@sozai/schema": "catalog:",
     "@sozai/stream": "catalog:"
+  },
+  "devDependencies": {
+    "@opentelemetry/context-async-hooks": "catalog:",
+    "@opentelemetry/sdk-trace-base": "catalog:"
   }
 }

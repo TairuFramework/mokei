@@ -69,9 +69,16 @@ import {
   splitRequestOptions,
   type WithRequestOptions,
 } from '@mokei/context-rpc'
+import type { SpanContext } from '@opentelemetry/api'
 import { lazy } from '@sozai/async'
+import { withActiveContext } from '@sozai/otel'
 import { createValidator, type Schema, type Validator } from '@sozai/schema'
 
+import {
+  type ClientTracing,
+  createExchangeTracer,
+  type TerminationReason,
+} from './client-tracing.js'
 import {
   CapabilityNotDeclaredError,
   InputRequiredNotSupportedError,
@@ -87,6 +94,7 @@ import {
   MRTR_METHODS,
   runInputRequiredFlow,
 } from './mrtr.js'
+import { responseOutcome } from './observation.js'
 import { SetupReader } from './setup-reader.js'
 import {
   ACKNOWLEDGED_METHOD,
@@ -317,9 +325,14 @@ type ClientTypes = {
 
 type PagedResult = { nextCursor?: string } & Record<string, unknown>
 
+const FIRST_EXCHANGE = Symbol('firstExchange')
+type TracedRequestOptions = RequestOptions & { [FIRST_EXCHANGE]?: SpanContext }
+
 export class ContextClient<
   T extends ContextTypes = UnknownContextTypes,
 > extends ContextRPC<ClientTypes> {
+  #tracing?: ClientTracing
+  #exchangeTracer = createExchangeTracer(() => this.#tracing)
   #capabilities: ClientCapabilities
   #clientInfo: Implementation
   #createMessage?: CreateMessageHandler
@@ -392,6 +405,14 @@ export class ContextClient<
     return this.#tasks
   }
 
+  setTracing(binding: ClientTracing): void {
+    this.#tracing = binding
+  }
+
+  endTracing(reason: TerminationReason): void {
+    this.#exchangeTracer.settleAll(reason)
+  }
+
   constructor(params: ClientParams) {
     // Indirected through a method so the validator tracks the resolved revision rather than
     // being frozen at construction, which `protocolVersion: 'auto'` requires.
@@ -443,6 +464,7 @@ export class ContextClient<
     }
 
     this.#capabilities = capabilities
+    this.#tracing = params.tracing
     this.#clientInfo = params.clientInfo ?? DEFAULT_CLIENT_INFO
     this.#initialized = lazy(() => this.#initialize())
     this.#listMaxPages = params.listMaxPages ?? DEFAULT_LIST_MAX_PAGES
@@ -603,67 +625,108 @@ export class ContextClient<
     if (!protocol.clientMethods.has(method as string)) {
       throw new MethodNotInRevisionError({ method: method as string, version: protocol.version })
     }
-    const trace = currentTraceMeta()
-    const base =
-      params != null && typeof params === 'object' ? { ...(params as Record<string, unknown>) } : {}
-    if (trace.traceparent != null) {
-      base._meta = { ...(base._meta as Record<string, unknown> | undefined), ...trace }
-    }
-    const decorated = protocol.decorateRequest(base, {
-      capabilities: this.#capabilitiesFor(protocol),
-      clientInfo: this.#clientInfo,
-      logLevel: this.#logLevel,
+    const firstContext = (options as TracedRequestOptions | undefined)?.[FIRST_EXCHANGE]
+    const exchange = this.#exchangeTracer.startOutgoing(method as string, params, {
+      links: firstContext === undefined ? [] : [{ context: firstContext }],
     })
-    // Charges the leg below against `maxTotalTimeout` too: that budget is documented (and, via
-    // `runInputRequiredFlow`'s `startedAt`, implemented) as covering the leg that produced the
-    // first suspension, not just the retries after it.
-    const startedAt = Date.now()
-    const result = await super.request(method, decorated as typeof params, options)
-    if (!isInputRequiredResult(result)) {
-      return result
-    }
-    // A suspension the resolved revision or this method can never legally produce is a
-    // nonconforming peer, not a suspension to drive or hand back -- refused unconditionally, the
-    // same as every `input_required` result was refused before MRTR existed. Mirrors
-    // `ContextServer._handleRequest`'s own two-part gate (`server.ts`'s `inputRequestMethods.size`
-    // and `MRTR_METHODS` checks) so a `2025-11-25` peer or a non-MRTR method on `2026-07-28` (e.g.
-    // `tools/list`) cannot talk this client into driving rounds `MRTR_METHODS` never grants it.
-    if (protocol.inputRequestMethods.size === 0 || !MRTR_METHODS.has(method as string)) {
-      throw new InputRequiredNotSupportedError({
-        reason:
-          protocol.inputRequestMethods.size === 0
-            ? `protocol version ${protocol.version} has no multi round-trip requests`
-            : `${method as string} cannot suspend on input`,
+    const first = firstContext ?? exchange.span.spanContext()
+    return withActiveContext(exchange.context, async () => {
+      const trace = currentTraceMeta()
+      const base =
+        params != null && typeof params === 'object'
+          ? { ...(params as Record<string, unknown>) }
+          : {}
+      if (trace.traceparent != null) {
+        base._meta = { ...(base._meta as Record<string, unknown> | undefined), ...trace }
+      }
+      const decorated = protocol.decorateRequest(base, {
+        capabilities: this.#capabilitiesFor(protocol),
+        clientInfo: this.#clientInfo,
+        logLevel: this.#logLevel,
       })
-    }
-    // The opt-in path: hand the suspension back and let the caller drive its own rounds. Also how
-    // the driver below reads each retry leg, so the loop lives in exactly one place.
-    if (options?.allowInputRequired) {
-      return result as ClientTypes['SendRequests'][Method]['Result']
-    }
-    if (!this.#inputRequired.autoFulfill) {
-      throw new InputRequiredNotSupportedError({
-        reason:
-          'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
-      })
-    }
-    return (await runInputRequiredFlow({
-      method: method as string,
-      first: result,
-      maxRounds: this.#inputRequired.maxRounds,
-      timeout: options?.timeout,
-      maxTotalTimeout: options?.maxTotalTimeout,
-      startedAt,
-      signal: options?.signal,
-      dispatch: (key, inputRequest, signal) => this.#fulfilInputRequest(key, inputRequest, signal),
-      retry: (retryParams, timeout) => {
-        return this.request(method, { ...(params as object), ...retryParams } as typeof params, {
+      // Charges the leg below against `maxTotalTimeout` too: that budget is documented (and, via
+      // `runInputRequiredFlow`'s `startedAt`, implemented) as covering the leg that produced the
+      // first suspension, not just the retries after it.
+      const startedAt = Date.now()
+      let result: ClientTypes['SendRequests'][Method]['Result']
+      try {
+        result = await super.request(method, decorated as typeof params, {
           ...options,
-          allowInputRequired: true,
-          timeout,
+          onRequestID: (id) => {
+            exchange.setID(id)
+            options?.onRequestID?.(id)
+          },
         })
-      },
-    })) as ClientTypes['SendRequests'][Method]['Result']
+        exchange.succeed(result)
+      } catch (cause) {
+        if (cause instanceof RPCError) {
+          const outcome = responseOutcome({ error: cause })
+          exchange.fail(outcome.error ? outcome.errorType : String(cause.code), cause.message)
+        } else {
+          const error = toError(cause)
+          exchange.fail(
+            cause instanceof RequestTimeoutError ||
+              options?.signal?.aborted ||
+              error.name === 'AbortError'
+              ? 'cancelled'
+              : error.name,
+            error.message,
+          )
+        }
+        throw cause
+      }
+      if (!isInputRequiredResult(result)) {
+        return result
+      }
+      // A suspension the resolved revision or this method can never legally produce is a
+      // nonconforming peer, not a suspension to drive or hand back -- refused unconditionally, the
+      // same as every `input_required` result was refused before MRTR existed. Mirrors
+      // `ContextServer._handleRequest`'s own two-part gate (`server.ts`'s `inputRequestMethods.size`
+      // and `MRTR_METHODS` checks) so a `2025-11-25` peer or a non-MRTR method on `2026-07-28` (e.g.
+      // `tools/list`) cannot talk this client into driving rounds `MRTR_METHODS` never grants it.
+      if (protocol.inputRequestMethods.size === 0 || !MRTR_METHODS.has(method as string)) {
+        throw new InputRequiredNotSupportedError({
+          reason:
+            protocol.inputRequestMethods.size === 0
+              ? `protocol version ${protocol.version} has no multi round-trip requests`
+              : `${method as string} cannot suspend on input`,
+        })
+      }
+      // The opt-in path: hand the suspension back and let the caller drive its own rounds. Also how
+      // the driver below reads each retry leg, so the loop lives in exactly one place.
+      if (options?.allowInputRequired) {
+        return result as ClientTypes['SendRequests'][Method]['Result']
+      }
+      if (!this.#inputRequired.autoFulfill) {
+        throw new InputRequiredNotSupportedError({
+          reason:
+            'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
+        })
+      }
+      return (await runInputRequiredFlow({
+        method: method as string,
+        first: result,
+        maxRounds: this.#inputRequired.maxRounds,
+        timeout: options?.timeout,
+        maxTotalTimeout: options?.maxTotalTimeout,
+        startedAt,
+        signal: options?.signal,
+        dispatch: (key, inputRequest, signal) =>
+          this.#fulfilInputRequest(key, inputRequest, signal),
+        retry: (retryParams, timeout) => {
+          return this.request(
+            method,
+            { ...(params as object), ...retryParams } as typeof params,
+            {
+              ...options,
+              allowInputRequired: true,
+              timeout,
+              [FIRST_EXCHANGE]: first,
+            } as TracedRequestOptions,
+          )
+        },
+      })) as ClientTypes['SendRequests'][Method]['Result']
+    })
   }
 
   /**
