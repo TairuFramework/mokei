@@ -5,8 +5,26 @@ import type { StoredSpan } from '@hozon/store-telemetry'
 import { getTelemetryStore } from '@hozon/store-telemetry'
 import type { TraceStore } from '@mokei/flow-host'
 
-export function createFlowTraceStore(provider: StoreProvider): TraceStore {
+export type FlowTraceIndex = {
+  deleteByTrace(traceIDs: Array<string>): Promise<number>
+  deleteBefore(time: number, params?: { keepTraceIDs?: Array<string> }): Promise<number>
+  listActiveIDs(): Promise<Array<string>>
+}
+
+export type FlowTraceStoreParams = {
+  // Resolve against the transaction provider so all three stores commit atomically.
+  index?: (provider: StoreProvider) => FlowTraceIndex | Promise<FlowTraceIndex>
+}
+
+export function createFlowTraceStore(
+  provider: StoreProvider,
+  params: FlowTraceStoreParams = {},
+): TraceStore {
   return {
+    async listActiveTraceIDs() {
+      const index = await params.index?.(provider)
+      return index == null ? [] : index.listActiveIDs()
+    },
     async addSpans(spans) {
       // Mokei's unknown attribute values cross the boundary as persisted JSON.
       const stored = JSON.parse(JSON.stringify(spans)) as Array<StoredSpan>
@@ -31,6 +49,7 @@ export function createFlowTraceStore(provider: StoreProvider): TraceStore {
         const logStore = await getLogStore(tx)
         const spans = await telemetryStore.deleteByTrace(traceIDs)
         const logs = await logStore.deleteByTrace(traceIDs)
+        await (await params.index?.(tx))?.deleteByTrace(traceIDs)
         return { spans, logs }
       })
     },
@@ -40,6 +59,7 @@ export function createFlowTraceStore(provider: StoreProvider): TraceStore {
         const logStore = await getLogStore(tx)
         const spans = await telemetryStore.deleteBefore(time, { keepTraceIDs })
         const logs = await logStore.deleteBefore(time, { keepTraceIDs })
+        await (await params.index?.(tx))?.deleteBefore(time, { keepTraceIDs })
         return { spans, logs }
       })
     },

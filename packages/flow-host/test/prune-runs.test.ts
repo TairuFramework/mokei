@@ -279,3 +279,21 @@ test.each(['selection', 'remaining', 'sweep'] as const)('rejects %s failures', a
   }
   await expect(pruneRuns(params)).rejects.toBe(failure)
 })
+
+test('pruneRuns keeps traces that are active in the index', async () => {
+  const params = stores()
+  await params.runStore.create(run('indexed'))
+  await params.taskStore.create(task('indexed'))
+  await params.traceStore.addSpans([span('trace-indexed'), span('active-orphan'), span('orphan')])
+  await params.traceStore.addLogs([log('trace-indexed'), log('active-orphan'), log('orphan')])
+  params.traceStore.listActiveTraceIDs = async () => ['trace-indexed', 'active-orphan']
+  expect(await pruneRuns(params)).toEqual({ runs: 0, skipped: 1, spans: 1, logs: 1 })
+  expect(await params.runStore.get('indexed')).toBeDefined()
+  expect(await params.taskStore.get('task-indexed')).toBeDefined()
+  for (const traceID of ['trace-indexed', 'active-orphan']) {
+    expect((await params.traceStore.getTrace(traceID)).spans).toHaveLength(1)
+    expect((await params.traceStore.getTrace(traceID)).logs).toHaveLength(1)
+  }
+  expect(await params.traceStore.getTrace('orphan')).toEqual({ spans: [], logs: [] })
+  expect(await createMemoryTraceStore().listActiveTraceIDs()).toEqual([])
+})

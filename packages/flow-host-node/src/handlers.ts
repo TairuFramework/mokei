@@ -42,9 +42,16 @@ export function createFlowHandlers(service: FlowService): FlowHandlers {
       return run(async ({ host, traceStore }) => {
         const snapshot = await host.get(param.runID)
         if (snapshot == null) throw new RunNotFoundError({ runID: param.runID })
-        return snapshot.traceID == null
-          ? { spans: [], logs: [] }
-          : traceStore.getTrace(snapshot.traceID)
+        if (snapshot.traceID == null) return { spans: [], logs: [] }
+        const trace = await traceStore.getTrace(snapshot.traceID)
+        return {
+          spans: trace.spans,
+          logs: trace.logs.map((log) => {
+            const properties = { ...log.properties }
+            delete properties['dev.mokei/logID']
+            return { ...log, properties }
+          }),
+        }
       })
     },
     'inbox.list': ({ param }) => run(({ host }) => host.inbox.list(param)),

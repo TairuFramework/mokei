@@ -14,6 +14,7 @@ export async function pruneRuns(params: {
   const { runStore, taskStore, traceStore, before } = params
   const report = getReporter(['mokei', 'flow-host', 'capture'], '@mokei/flow-host')
   const counts = { runs: 0, skipped: 0, spans: 0, logs: 0 }
+  const activeTraceIDs = new Set(await traceStore.listActiveTraceIDs())
   const candidates = await runStore.list({
     states: [...TERMINAL_RUN_STATES],
     updatedBefore: before,
@@ -23,6 +24,10 @@ export async function pruneRuns(params: {
     try {
       const run = await runStore.get(candidate.runID)
       if (run === undefined || !isTerminalRunState(run.state) || !(run.updatedAt < before)) {
+        counts.skipped++
+        continue
+      }
+      if (run.traceID !== undefined && activeTraceIDs.has(run.traceID)) {
         counts.skipped++
         continue
       }
@@ -54,7 +59,10 @@ export async function pruneRuns(params: {
   }
 
   const remaining = await runStore.list({})
-  const keepTraceIDs = remaining.flatMap((run) => (run.traceID === undefined ? [] : [run.traceID]))
+  const keepTraceIDs = [
+    ...remaining.flatMap((run) => (run.traceID === undefined ? [] : [run.traceID])),
+    ...(await traceStore.listActiveTraceIDs()),
+  ]
   const swept = await traceStore.deleteBefore(before, keepTraceIDs)
   counts.spans += swept.spans
   counts.logs += swept.logs

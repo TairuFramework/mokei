@@ -408,3 +408,22 @@ test('keeps an admitted mutation tracked after its caller disconnects', async ()
   await disposal
   expect((await runStore.get(run.runID))?.state).toBe('denied')
 })
+
+test('runs.trace returns only ended spans and logs without logID', async () => {
+  const { client, runStore, traceStore } = await setup()
+  await runStore.create(runRecord({ runID: 'legacy', state: 'completed', traceID: 'trace-one' }))
+  await traceStore.addSpans([spanRecord()])
+  await traceStore.addLogs([
+    logRecord({ properties: { 'dev.mokei/logID': 'log-one', value: 'kept' } }),
+  ])
+  const result = await client.request('runs.trace', { param: { runID: 'legacy' } })
+  expect(result).toEqual({
+    spans: [spanRecord()],
+    logs: [logRecord({ properties: { value: 'kept' } })],
+  })
+  expect(createValidator(protocol['runs.trace'].result)(result).issues).toBeUndefined()
+  expect((await traceStore.getTrace('trace-one')).logs[0]?.properties).toHaveProperty(
+    'dev.mokei/logID',
+    'log-one',
+  )
+})
