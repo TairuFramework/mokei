@@ -73,6 +73,8 @@ type RequestDefinition = {
 }
 
 export type RequestOptions = {
+  /** Reports the allocated request ID before the request is written. */
+  onRequestID?: (id: RequestID) => void
   /** Aborts the request, rejecting its promise and notifying the peer. */
   signal?: AbortSignal
   /** Rejects the request with a RequestTimeoutError after this many ms. */
@@ -701,6 +703,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
     }
 
     const id = this._getNextRequestID()
+    options?.onRequestID?.(id)
     const controller = Object.assign(new AbortController(), defer())
     this.#exchanges.registerOnce(id, controller)
 
@@ -745,6 +748,7 @@ export class ContextRPC<T extends RPCTypes> extends Disposer {
       return Promise.reject(options.signal.reason as Error)
     }
     const id = this._getNextRequestID()
+    options?.onRequestID?.(id)
     const controller = Object.assign(new AbortController(), defer())
     this.#exchanges.registerStream(id, controller, {
       ...handlers,
