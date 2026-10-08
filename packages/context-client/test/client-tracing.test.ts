@@ -371,6 +371,45 @@ for (const protocolVersion of ['2025-11-25', '2026-07-28'] as const) {
     ).toContain(span.spanContext().spanId)
     expect(span.status.code).toBe(SpanStatusCode.OK)
   })
+
+  for (const payloads of ['on', 'off', 8] as const) {
+    test(`${method} captures setup parameters at span start with payloads ${payloads}`, async () => {
+      let attributes: Attributes | undefined
+      const probe = vi
+        .spyOn(SimpleSpanProcessor.prototype, 'onStart')
+        .mockImplementation((span) => {
+          if (span.name === `mcp.${method}`) attributes = { ...span.attributes }
+        })
+      try {
+        const clientInfo = { name: 'setup-test', version: '1' }
+        const f = await fixture({ ...binding(), payloads }, protocolVersion, { clientInfo })
+        const span = required(f.setupSpans.find((span) => span.name === `mcp.${method}`))
+        const captured = required(attributes)
+        if (payloads === 'off') {
+          expect(captured).not.toHaveProperty('mokei.mcp.request')
+          expect(captured).not.toHaveProperty('mokei.payload.truncated')
+          expect(span.attributes).not.toHaveProperty('mokei.mcp.request')
+          expect(required(span.events[0]).attributes).not.toHaveProperty('payload')
+        } else if (payloads === 'on') {
+          expect(JSON.parse(captured['mokei.mcp.request'] as string)).toEqual(
+            protocolVersion === '2025-11-25'
+              ? { capabilities: { roots: {} }, clientInfo, protocolVersion }
+              : { _meta: {} },
+          )
+          expect(captured).not.toHaveProperty('mokei.payload.truncated')
+          expect(span.attributes['mokei.mcp.request']).toBe(captured['mokei.mcp.request'])
+        } else {
+          const payload = captured['mokei.mcp.request'] as string
+          expect(payload).toBe(protocolVersion === '2025-11-25' ? '{"capabi' : '{"_meta"')
+          expect(new TextEncoder().encode(payload).length).toBe(payloads)
+          expect(captured['mokei.payload.truncated']).toBe(true)
+          expect(span.attributes['mokei.payload.truncated']).toBe(true)
+        }
+      } finally {
+        probe.mockRestore()
+      }
+    })
+  }
 }
 
 test('subscriptions/listen produces one span settled when the stream settles', async () => {

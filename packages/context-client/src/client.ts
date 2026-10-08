@@ -488,8 +488,8 @@ export class ContextClient<
     // each closure is shaped the way it is.
     this.#setupReader = new SetupReader({
       io: {
-        trace: (method, id) => {
-          const exchange = this.#exchangeTracer.startOutgoing(method, undefined)
+        trace: (method, id, params) => {
+          const exchange = this.#exchangeTracer.startOutgoing(method, params)
           exchange.setID(id)
           return exchange
         },

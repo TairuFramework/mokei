@@ -33,7 +33,7 @@ const validateDiscoverResult = createValidator(discoverResult)
  * constructed by `ContextClient` (the only place that can reference its own `#`-private fields).
  */
 export type SetupIO = {
-  trace?: (method: string, id: RequestID) => ExchangeSpan
+  trace?: (method: string, id: RequestID, params: unknown) => ExchangeSpan
 
   /** Allocates the next outgoing request id. Backed by `ContextRPC#_getNextRequestID`. */
   allocateID(): RequestID
@@ -147,9 +147,10 @@ export class SetupReader {
   async #traceExchange<T extends { result: unknown }>(
     method: string,
     id: RequestID,
+    params: unknown,
     run: () => Promise<T>,
   ): Promise<T> {
-    const exchange = this.#io.trace?.(method, id)
+    const exchange = this.#io.trace?.(method, id, params)
     const execute = async () => {
       try {
         const result = await run()
@@ -179,7 +180,12 @@ export class SetupReader {
     capabilities: ClientCapabilities
   }): Promise<{ result: InitializeResult; negotiatedRevision: ProtocolVersion }> {
     const id = this.#io.allocateID()
-    return this.#traceExchange('initialize', id, async () => {
+    const params = {
+      capabilities: request.capabilities,
+      clientInfo: request.clientInfo,
+      protocolVersion: request.protocolVersion,
+    }
+    return this.#traceExchange('initialize', id, params, async () => {
       const trace = currentTraceMeta()
       await this.#io.write({
         jsonrpc: '2.0',
@@ -187,9 +193,7 @@ export class SetupReader {
         method: 'initialize',
         params: {
           ...(trace.traceparent == null ? {} : { _meta: { ...trace } }),
-          capabilities: request.capabilities,
-          clientInfo: request.clientInfo,
-          protocolVersion: request.protocolVersion,
+          ...params,
         },
       } as ClientMessage)
       const deadline = this.#setupDeadline('initialize')
@@ -218,26 +222,31 @@ export class SetupReader {
   }): Promise<{ result: DiscoverResult; negotiatedRevision: ProtocolVersion }> {
     const { protocol } = request
     const id = this.#io.allocateID()
-    return this.#traceExchange('server/discover', id, async () => {
+    const params = protocol.decorateRequest(
+      {},
+      {
+        capabilities: request.capabilities,
+        clientInfo: request.clientInfo,
+        logLevel: request.logLevel,
+      },
+    ) as Record<string, unknown>
+    return this.#traceExchange('server/discover', id, params, async () => {
       // Sends the same `clientInfo`/`logLevel` context every other request sends, plus the same
       // W3C trace context (SEP-414) `ContextClient#request` injects into `_meta` via
       // `currentTraceMeta()`: the spec says a client SHOULD send `clientInfo`, and there's no
       // reason for this one-off setup request to present a different envelope to the server than
       // any request that follows it.
       const trace = currentTraceMeta()
-      const base: Record<string, unknown> = {}
-      if (trace.traceparent != null) {
-        base._meta = { ...trace }
-      }
       await this.#io.write({
         jsonrpc: '2.0',
         id,
         method: 'server/discover',
-        params: protocol.decorateRequest(base, {
-          capabilities: request.capabilities,
-          clientInfo: request.clientInfo,
-          logLevel: request.logLevel,
-        }),
+        params: {
+          ...params,
+          ...(trace.traceparent == null
+            ? {}
+            : { _meta: { ...(params._meta as Record<string, unknown>), ...trace } }),
+        },
       } as ClientMessage)
       const deadline = this.#setupDeadline('server/discover')
       const message = await this.#readMatching(
