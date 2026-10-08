@@ -43,7 +43,7 @@ export type RecorderSnapshot = {
 export type TraceQueueEntry = { type: 'span'; data: StoredSpan } | { type: 'log'; data: TraceLog }
 
 function isRoot(span: ReadableSpan): boolean {
-  return span.attributes['mokei.root'] === true || span.parentSpanContext == null
+  return span.attributes['mokei.root'] === true
 }
 
 function createSummary(span: OpenSpan): TraceSummary {
@@ -72,8 +72,10 @@ function createSummary(span: OpenSpan): TraceSummary {
 }
 
 type PendingSummary = {
-  summary: TraceSummary
+  summary?: TraceSummary
+  droppedLogCount: number
   rootChanged: boolean
+  hasRootStart: boolean
   retryTimer?: ReturnType<typeof setTimeout>
 }
 
@@ -212,6 +214,17 @@ export class LocalTraceRecorder implements SpanProcessor {
       this.#changed({ ...update(current), revision: current.revision + 1 })
       return
     }
+    const pending = this.#getPending(traceID, span)
+    if (pending == null) return
+    const currentDelta = pending.summary ?? createSummary(span)
+    const next = { ...update(currentDelta), revision: currentDelta.revision + 1 }
+    pending.rootChanged ||= next.activeSegmentSpanID != null || next.endTime != null
+    pending.hasRootStart ||=
+      span.attributes['mokei.root'] === true && next.activeSegmentSpanID != null
+    pending.summary = next
+  }
+
+  #getPending(traceID: string, span?: OpenSpan): PendingSummary | undefined {
     let pending = this.#pending.get(traceID)
     if (pending == null) {
       if (this.#stopped || this.#pending.size >= this.#dirtySummaryLimit) {
@@ -222,13 +235,16 @@ export class LocalTraceRecorder implements SpanProcessor {
         )
         return
       }
-      pending = { summary: createSummary(span), rootChanged: false }
+      pending = {
+        summary: span == null ? undefined : createSummary(span),
+        droppedLogCount: 0,
+        rootChanged: false,
+        hasRootStart: false,
+      }
       this.#pending.set(traceID, pending)
       void this.#hydrate(traceID, pending)
     }
-    const next = { ...update(pending.summary), revision: pending.summary.revision + 1 }
-    pending.rootChanged ||= next.activeSegmentSpanID != null || next.endTime != null
-    pending.summary = next
+    return pending
   }
 
   async #hydrate(traceID: string, pending: PendingSummary, attempt = 0): Promise<void> {
@@ -237,6 +253,10 @@ export class LocalTraceRecorder implements SpanProcessor {
       // Shutdown or loss invalidates the read, including a late successful result.
       if (this.#pending.get(traceID) !== pending) return
       const local = pending.summary
+      if (persisted == null && (!pending.hasRootStart || local == null)) {
+        this.#pending.delete(traceID)
+        return
+      }
       const summary =
         persisted == null
           ? local
@@ -246,15 +266,20 @@ export class LocalTraceRecorder implements SpanProcessor {
               rootSpanID: persisted.rootSpanID,
               startTime: persisted.startTime,
               attributes: pending.rootChanged
-                ? { ...persisted.attributes, ...local.attributes }
+                ? { ...persisted.attributes, ...local?.attributes }
                 : persisted.attributes,
-              spanCount: persisted.spanCount + local.spanCount,
-              errorCount: persisted.errorCount + local.errorCount,
-              droppedCount: persisted.droppedCount + local.droppedCount,
-              revision: persisted.revision + local.revision,
+              spanCount: persisted.spanCount + (local?.spanCount ?? 0),
+              errorCount: persisted.errorCount + (local?.errorCount ?? 0),
+              droppedCount: persisted.droppedCount + (local?.droppedCount ?? 0),
+              revision: persisted.revision + (local?.revision ?? 0),
             }
       this.#pending.delete(traceID)
-      this.#changed(summary)
+      if (summary == null) return
+      this.#changed({
+        ...summary,
+        droppedCount: summary.droppedCount + pending.droppedLogCount,
+        revision: summary.revision + pending.droppedLogCount,
+      })
     } catch (error) {
       if (this.#pending.get(traceID) !== pending) return
       this.#reportError('Failed to load trace summary', error)
@@ -300,27 +325,23 @@ export class LocalTraceRecorder implements SpanProcessor {
     for (const entry of entries) {
       const traceID = entry.data.traceID
       if (traceID == null) continue
-      const source = entry.type === 'span' ? entry.data : this.#summaries.get(traceID)
       if (entry.type === 'span') {
         this.#update(entry.data, (summary) => ({
           ...summary,
           droppedCount: summary.droppedCount + 1,
         }))
-      } else if (this.#pending.has(traceID)) {
-        const pending = this.#pending.get(traceID)
-        if (pending) {
-          pending.summary = {
-            ...pending.summary,
-            droppedCount: pending.summary.droppedCount + 1,
-            revision: pending.summary.revision + 1,
-          }
+      } else {
+        const current = this.#summaries.get(traceID)
+        if (current) {
+          this.#changed({
+            ...current,
+            droppedCount: current.droppedCount + 1,
+            revision: current.revision + 1,
+          })
+        } else {
+          const pending = this.#getPending(traceID)
+          if (pending) pending.droppedLogCount++
         }
-      } else if (source && 'rootSpanID' in source) {
-        this.#changed({
-          ...source,
-          droppedCount: source.droppedCount + 1,
-          revision: source.revision + 1,
-        })
       }
     }
   }
