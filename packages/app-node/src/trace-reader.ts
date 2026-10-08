@@ -12,6 +12,7 @@ import type {
 } from '@mokei/host-protocol'
 import { SpanStatusCode } from '@opentelemetry/api'
 
+import { decodeTraceCursor, encodeTraceCursor } from './trace-cursor.js'
 import { getTraceIndexStore } from './trace-index.js'
 import type { LocalTraceRecorder } from './trace-recorder.js'
 
@@ -85,15 +86,7 @@ export function createTraceReader(params: {
       if (params.limit === 0) return { traces: [] }
       let boundary: [number, string] | undefined
       if (params.cursor != null) {
-        const cursor: unknown = JSON.parse(Buffer.from(params.cursor, 'base64').toString('utf8'))
-        if (
-          !Array.isArray(cursor) ||
-          cursor.length !== 2 ||
-          typeof cursor[0] !== 'number' ||
-          typeof cursor[1] !== 'string'
-        )
-          throw new Error('Invalid trace list cursor')
-        boundary = cursor as [number, string]
+        boundary = decodeTraceCursor(params.cursor)
       }
       const index = await getTraceIndexStore(provider)
       // Extra rows replace stored matches invalidated by newer in-memory summaries.
@@ -128,9 +121,7 @@ export function createTraceReader(params: {
         traces,
         ...(ordered.length > params.limit && last != null
           ? {
-              cursor: Buffer.from(JSON.stringify([last.startTime, last.traceID])).toString(
-                'base64',
-              ),
+              cursor: encodeTraceCursor(last.startTime, last.traceID),
             }
           : {}),
       }

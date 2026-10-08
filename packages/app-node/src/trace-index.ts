@@ -2,6 +2,8 @@ import type { ColumnType, Selectable, StoreDefinition, StoreProvider } from '@ho
 import { sql } from '@hozon/db'
 import type { TraceSummary, TracesListParams, TracesListResult } from '@mokei/host-protocol'
 
+import { decodeTraceCursor, encodeTraceCursor } from './trace-cursor.js'
+
 export type TraceIndexStore = {
   upsert(summaries: Array<TraceSummary>): Promise<void>
   get(traceID: string): Promise<TraceSummary | undefined>
@@ -155,16 +157,7 @@ export const traceIndexStoreDefinition: StoreDefinition<TraceIndexTables, TraceI
         if (params.since != null) query = query.where('start_time', '>=', params.since)
         if (params.until != null) query = query.where('start_time', '<=', params.until)
         if (params.cursor != null) {
-          const cursor: unknown = JSON.parse(Buffer.from(params.cursor, 'base64').toString('utf8'))
-          if (
-            !Array.isArray(cursor) ||
-            cursor.length !== 2 ||
-            typeof cursor[0] !== 'number' ||
-            typeof cursor[1] !== 'string'
-          ) {
-            throw new Error('Invalid trace list cursor')
-          }
-          const [startTime, traceID] = cursor as [number, string]
+          const [startTime, traceID] = decodeTraceCursor(params.cursor)
           query = query.where((eb) =>
             eb.or([
               eb('start_time', '<', startTime),
@@ -183,9 +176,7 @@ export const traceIndexStoreDefinition: StoreDefinition<TraceIndexTables, TraceI
           traces,
           ...(rows.length > params.limit && last != null
             ? {
-                cursor: Buffer.from(JSON.stringify([last.startTime, last.traceID])).toString(
-                  'base64',
-                ),
+                cursor: encodeTraceCursor(last.startTime, last.traceID),
               }
             : {}),
         }
