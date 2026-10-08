@@ -629,6 +629,8 @@ export class ContextHost extends Disposer {
       ROOT_CONTEXT,
     )
     client.setTracing({ contextID: key, contextSpan: span, payloads: this.#payloads })
+    if (client.initializationResult != null)
+      span.setAttribute('server.name', client.initializationResult.serverInfo.name)
     let settled = false
     this.#contextSettlers.set(key, (reason) => {
       if (settled) return
@@ -648,7 +650,11 @@ export class ContextHost extends Disposer {
           span.setAttribute('mcp.session.id', httpTransport.sessionID)
       }),
       client.events.on('closed', () => {
-        if (this.#contexts[key]?.client === client) void this.remove(key, 'lost').catch(() => {})
+        if (this.#contexts[key]?.client === client)
+          void this.remove(key, 'lost').catch((cause: unknown) => {
+            const error = cause instanceof Error ? cause : new Error(String(cause))
+            void this.#events.emit('context:failed', { key, error }).catch(() => {})
+          })
       }),
       client.events.on('toolsListChanged', () => {
         void this.#onListChanged(key, 'tools')

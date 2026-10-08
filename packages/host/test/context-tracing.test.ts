@@ -112,6 +112,65 @@ for (const reason of ['stopped', 'lost'] as const) {
   })
 }
 
+test('registration records server identity from an already-initialized client', async () => {
+  const host = new ContextHost()
+  hosts.push(host)
+  const transports = new DirectTransports<ServerMessage, ClientMessage>()
+  const client = new ContextClient({
+    transport: transports.client,
+    protocolVersion: '2025-11-25',
+  })
+  const initialized = client.initialize()
+  const init = (await transports.server.read()).value
+  if (!init || (typeof init.id !== 'string' && typeof init.id !== 'number'))
+    throw new Error('Expected initialize')
+  await transports.server.write({
+    jsonrpc: '2.0',
+    id: init.id,
+    result: {
+      protocolVersion: '2025-11-25',
+      capabilities: {},
+      serverInfo: { name: 'registered-server', version: '1' },
+    },
+  })
+  await transports.server.read()
+  await initialized
+  host.registerHostedContext({
+    key: 'registered',
+    context: {
+      client,
+      disposer: new Disposer({ dispose: () => client.dispose() }),
+      tools: [],
+    },
+  })
+  await host.remove('registered')
+  const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
+  expect(root?.attributes['server.name']).toBe('registered-server')
+})
+
+test('automatic removal reports a rejecting disposer and settles the context exactly once', async () => {
+  const f = await fixture()
+  const error = new Error('Disposal failed')
+  const dispose = vi.spyOn(f.host.getContext('test').disposer, 'dispose').mockRejectedValue(error)
+  const failed = vi.fn()
+  const removed = vi.fn()
+  f.host.events.on('context:failed', failed)
+  f.host.events.on('context:removed', removed)
+  const rejected = f.pending.catch(() => {})
+  await f.transports.server.dispose()
+  await rejected
+  await vi.waitFor(() => expect(failed).toHaveBeenCalledWith({ key: 'test', error }))
+  await f.host.remove('test')
+  expect(failed).toHaveBeenCalledTimes(1)
+  expect(dispose).toHaveBeenCalledTimes(1)
+  expect(removed).not.toHaveBeenCalled()
+  expect(f.host.getContextKeys()).toEqual([])
+  const roots = exporter.getFinishedSpans().filter((span) => span.name === 'mcp.context')
+  expect(roots).toHaveLength(1)
+  expect(roots[0]?.attributes['error.type']).toBe('context.lost')
+  expect(roots[0]?.status.code).toBe(SpanStatusCode.ERROR)
+})
+
 test('client closed without remove settles as lost, exactly once', async () => {
   const f = await fixture()
   const rejected = f.pending.catch(() => {})

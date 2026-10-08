@@ -343,6 +343,7 @@ export class ContextClient<
   #discovering: Promise<DiscoverResult> | null = null
   #elicit?: ElicitHandler
   #initialized: PromiseLike<InitializeResult>
+  #initializationResult: InitializeResult | undefined
   #inputRequired: { autoFulfill: boolean; maxRounds: number }
   #listMaxPages: number
   #listRoots?: Array<Root> | ListRootsHandler
@@ -800,6 +801,7 @@ export class ContextClient<
     // Notify the server with `notifications/initialized`.
     this.#traceNotification('notifications/initialized', 'client', undefined)
     await super._write({ jsonrpc: '2.0', method: 'notifications/initialized' })
+    this.#initializationResult = result
     this.events.emit('initialized', result)
     return result
   }
@@ -1556,6 +1558,11 @@ export class ContextClient<
       )
     }
     return await this.#initialized
+  }
+
+  /** The completed handshake result, without starting initialization. */
+  get initializationResult(): InitializeResult | undefined {
+    return this.#initializationResult
   }
 
   /**
