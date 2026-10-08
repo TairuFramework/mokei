@@ -1,5 +1,5 @@
 import type { HostEvent } from '@mokei/host-protocol'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useHostConnection } from '../host/useHostConnection.js'
 import {
@@ -31,19 +31,25 @@ export function useTrace(traceID: string | undefined): {
   state: TraceState | undefined
   loading: boolean
   notFound: boolean
+  error: Error | undefined
+  retry(): void
 } {
   const { client, epoch, connected, subscribe } = useHostConnection()
   const [state, setState] = useState<TraceState>()
   const [loading, setLoading] = useState(false)
   const [notFound, setNotFound] = useState(false)
+  const [error, setError] = useState<Error>()
+  const retryRead = useRef(() => {})
+  const retry = useCallback(() => retryRead.current(), [])
 
   useEffect(() => {
     let stopped = false
-    let pending = true
+    let pending = false
     let current: TraceState = { spans: new Map(), logs: new Map(), logsTruncated: false }
     const buffered: Array<TraceEvent> = []
     setState(undefined)
     setNotFound(false)
+    setError(undefined)
     setLoading(connected && traceID != null)
     if (!connected || traceID == null) return
     const off = subscribe(
@@ -60,6 +66,11 @@ export function useTrace(traceID: string | undefined): {
     )
     const selectedTraceID = traceID
     async function read() {
+      if (stopped || pending) return
+      pending = true
+      setLoading(true)
+      setError(undefined)
+      setNotFound(false)
       try {
         const result = await client.request('traces.get', { param: { traceID: selectedTraceID } })
         if (stopped) return
@@ -68,12 +79,13 @@ export function useTrace(traceID: string | undefined): {
         setState(current)
       } catch (error: unknown) {
         if (stopped) return
-        setNotFound(
+        const missing =
           typeof error === 'object' &&
-            error != null &&
-            'code' in error &&
-            error.code === 'TRACE_NOT_FOUND',
-        )
+          error != null &&
+          'code' in error &&
+          error.code === 'TRACE_NOT_FOUND'
+        setNotFound(missing)
+        if (!missing) setError(error instanceof Error ? error : new Error(String(error)))
         if (buffered.length > 0) {
           for (const event of buffered) current = applyEvent(current, event)
           setState(current)
@@ -88,12 +100,14 @@ export function useTrace(traceID: string | undefined): {
         }
       }
     }
+    retryRead.current = () => void read()
     void read()
     return () => {
       stopped = true
       off()
+      retryRead.current = () => {}
     }
   }, [client, epoch, connected, subscribe, traceID])
 
-  return { state, loading, notFound }
+  return { state, loading, notFound, error, retry }
 }

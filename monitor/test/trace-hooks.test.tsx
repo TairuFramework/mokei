@@ -98,6 +98,123 @@ function setup() {
 const meta = { eventID: 'event-a', time: 150 }
 const snapshot: TracesGetResult = { summary, spans: [open], logs: [], logsTruncated: false }
 
+test('initial list failures expose an error and retry reconciles buffered summaries', async () => {
+  const env = setup()
+  const initial = deferred<TracesListResult>()
+  const retry = deferred<TracesListResult>()
+  const error = new Error('List unavailable')
+  env.fixture.request
+    .mockReturnValueOnce(initial.promise as never)
+    .mockReturnValueOnce(retry.promise as never)
+  const hook = renderHook(() => useTraceList({ kind: 'flow' }), { wrapper: env.wrapper })
+  env.emit({ type: 'trace:summary', meta, data: { ...summary, revision: 2 } })
+  await act(async () => initial.reject(error))
+  expect(hook.result.current.error).toBe(error)
+  expect(hook.result.current.loading).toBe(false)
+  act(() => {
+    hook.result.current.retry()
+    hook.result.current.retry()
+  })
+  expect(hook.result.current.loading).toBe(true)
+  expect(hook.result.current.error).toBeUndefined()
+  expect(env.fixture.request).toHaveBeenCalledTimes(2)
+  expect(env.fixture.request).toHaveBeenLastCalledWith('traces.list', {
+    param: { kind: 'flow', limit: 50 },
+  })
+  env.emit({ type: 'trace:summary', meta, data: { ...summary, revision: 3 } })
+  await act(async () => retry.resolve({ traces: [summary] }))
+  expect(hook.result.current.traces).toEqual([{ ...summary, revision: 3 }])
+  expect(hook.result.current.loading).toBe(false)
+  expect(hook.result.current.error).toBeUndefined()
+})
+
+test('list retry repeats the failed page and preserves previously loaded summaries', async () => {
+  const env = setup()
+  env.fixture.request
+    .mockResolvedValueOnce({ traces: [summary], cursor: 'next' } as never)
+    .mockRejectedValueOnce('Page unavailable')
+    .mockResolvedValueOnce({ traces: [{ ...summary, traceID: 'trace-b' }] } as never)
+  const hook = renderHook(() => useTraceList({}), { wrapper: env.wrapper })
+  await act(async () => {})
+  await act(async () => hook.result.current.loadMore())
+  expect(hook.result.current.error).toBeInstanceOf(Error)
+  expect(hook.result.current.error?.message).toBe('Page unavailable')
+  expect(hook.result.current.traces).toEqual([summary])
+  await act(async () => hook.result.current.retry())
+  expect(env.fixture.request).toHaveBeenLastCalledWith('traces.list', {
+    param: { limit: 50, cursor: 'next' },
+  })
+  expect(hook.result.current.traces.map((trace) => trace.traceID)).toEqual(['trace-a', 'trace-b'])
+  expect(hook.result.current.error).toBeUndefined()
+  act(() => hook.result.current.retry())
+  expect(env.fixture.request).toHaveBeenCalledTimes(3)
+})
+
+test('selected trace failures expose an error and retry merges the snapshot with live events', async () => {
+  const env = setup()
+  const initial = deferred<TracesGetResult>()
+  const retry = deferred<TracesGetResult>()
+  const error = new Error('Snapshot unavailable')
+  env.fixture.request
+    .mockReturnValueOnce(initial.promise as never)
+    .mockReturnValueOnce(retry.promise as never)
+  const hook = renderHook(() => useTrace(summary.traceID), { wrapper: env.wrapper })
+  env.emit({ type: 'span:end', meta, data: ended })
+  await act(async () => initial.reject(error))
+  expect(hook.result.current.error).toBe(error)
+  expect(hook.result.current.loading).toBe(false)
+  expect(hook.result.current.notFound).toBe(false)
+  expect(hook.result.current.state?.summary).toBeUndefined()
+  act(() => {
+    hook.result.current.retry()
+    hook.result.current.retry()
+  })
+  expect(hook.result.current.loading).toBe(true)
+  expect(hook.result.current.error).toBeUndefined()
+  expect(env.fixture.request).toHaveBeenCalledTimes(2)
+  expect(env.fixture.request).toHaveBeenLastCalledWith('traces.get', {
+    param: { traceID: summary.traceID },
+  })
+  env.emit({ type: 'log', meta, data: log })
+  env.emit({ type: 'trace:summary', meta, data: { ...summary, revision: 2 } })
+  await act(async () => retry.resolve(snapshot))
+  expect(hook.result.current.state?.summary?.revision).toBe(2)
+  expect(hook.result.current.state?.spans.get(open.spanID)).toEqual(ended)
+  expect(hook.result.current.state?.logs.get(log.logID)).toEqual(log)
+  expect(hook.result.current.loading).toBe(false)
+  expect(hook.result.current.error).toBeUndefined()
+})
+
+test('selected trace errors without events reset on selection change and stale retries are ignored', async () => {
+  const env = setup()
+  const retry = deferred<TracesGetResult>()
+  const fresh = deferred<TracesGetResult>()
+  const error = new Error('Snapshot unavailable')
+  env.fixture.request
+    .mockRejectedValueOnce(error)
+    .mockReturnValueOnce(retry.promise as never)
+    .mockReturnValueOnce(fresh.promise as never)
+  const hook = renderHook(({ traceID }) => useTrace(traceID), {
+    initialProps: { traceID: summary.traceID },
+    wrapper: env.wrapper,
+  })
+  await act(async () => {})
+  expect(hook.result.current.error).toBe(error)
+  expect(hook.result.current.state).toBeUndefined()
+  expect(hook.result.current.loading).toBe(false)
+  expect(hook.result.current.notFound).toBe(false)
+  act(() => hook.result.current.retry())
+  hook.rerender({ traceID: 'trace-b' })
+  expect(hook.result.current.error).toBeUndefined()
+  await act(async () => retry.reject(error))
+  expect(hook.result.current.error).toBeUndefined()
+  expect(hook.result.current.loading).toBe(true)
+  await act(async () =>
+    fresh.resolve({ ...snapshot, summary: { ...summary, traceID: 'trace-b' }, spans: [] }),
+  )
+  expect(hook.result.current.state?.summary?.traceID).toBe('trace-b')
+})
+
 test('list events received before the query resolves are applied after it', async () => {
   const env = setup()
   const read = deferred<TracesListResult>()

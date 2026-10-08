@@ -17,23 +17,30 @@ export function useTraceList(filters: TraceListFilters): {
   traces: Array<TraceSummary>
   loadMore(): void
   loading: boolean
+  error: Error | undefined
+  retry(): void
 } {
   const { client, epoch, connected, subscribe } = useHostConnection()
   const { kind, active, outcome, name, since, until } = filters
   const [summaries, setSummaries] = useState(new Map<string, TraceSummary>())
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<Error>()
   const fetchMore = useRef(() => {})
+  const retryRead = useRef(() => {})
   const loadMore = useCallback(() => fetchMore.current(), [])
+  const retry = useCallback(() => retryRead.current(), [])
 
   useEffect(() => {
     let stopped = false
     let pending = false
+    let failed = false
     let cursor: string | undefined
     let current = new Map<string, TraceSummary>()
     let buffered: Array<TraceSummary> = []
     const queryFilters = { kind, active, outcome, name, since, until }
     setSummaries(current)
     setLoading(false)
+    setError(undefined)
     if (!connected) return
 
     function publish(incoming: Array<TraceSummary>) {
@@ -50,15 +57,21 @@ export function useTraceList(filters: TraceListFilters): {
       if (stopped || pending) return
       pending = true
       setLoading(true)
+      setError(undefined)
       try {
         const result = await client.request('traces.list', {
           param: { ...queryFilters, limit: 50, ...(cursor == null ? {} : { cursor }) },
         })
         if (stopped) return
         cursor = result.cursor
+        failed = false
         publish([...result.traces, ...buffered])
-      } catch {
-        if (!stopped) publish(buffered)
+      } catch (error: unknown) {
+        if (!stopped) {
+          failed = true
+          setError(error instanceof Error ? error : new Error(String(error)))
+          publish(buffered)
+        }
       } finally {
         if (!stopped) {
           buffered = []
@@ -70,11 +83,15 @@ export function useTraceList(filters: TraceListFilters): {
     fetchMore.current = () => {
       if (cursor != null) void read()
     }
+    retryRead.current = () => {
+      if (failed) void read()
+    }
     void read()
     return () => {
       stopped = true
       off()
       fetchMore.current = () => {}
+      retryRead.current = () => {}
     }
   }, [client, epoch, connected, subscribe, kind, active, outcome, name, since, until])
 
@@ -90,5 +107,5 @@ export function useTraceList(filters: TraceListFilters): {
       )
     })
     .sort((a, b) => Number(b.active) - Number(a.active) || b.startTime - a.startTime)
-  return { traces, loadMore, loading }
+  return { traces, loadMore, loading, error, retry }
 }
