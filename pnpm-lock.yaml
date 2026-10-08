@@ -1379,6 +1379,9 @@ importers:
       '@mokei/http-client':
         specifier: workspace:^
         version: link:../http-client
+      '@opentelemetry/api':
+        specifier: 'catalog:'
+        version: 1.9.1
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.0
@@ -1388,10 +1391,16 @@ importers:
       '@sozai/json':
         specifier: 'catalog:'
         version: 0.3.0
+      '@sozai/otel':
+        specifier: 'catalog:'
+        version: 0.3.3(@logtape/logtape@2.4.0)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6
     devDependencies:
+      '@opentelemetry/sdk-trace-base':
+        specifier: 'catalog:'
+        version: 2.12.0(@opentelemetry/api@1.9.1)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4

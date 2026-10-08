@@ -5,7 +5,9 @@ import {
   type ContextTypes,
   type ElicitHandler,
   type ListParams,
+  type PayloadCapture,
   type PromptParams,
+  type TerminationReason,
   type ToolParams,
   type UnknownContextTypes,
 } from '@mokei/context-client'
@@ -23,8 +25,10 @@ import type {
 import type { WithRequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type JSONValue, type ServerConfig } from '@mokei/context-server'
 import { type FetchMiddleware, type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
+import { ROOT_CONTEXT, SpanStatusCode } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
+import { createTracerFactory } from '@sozai/otel'
 
 import {
   createLocalToolID,
@@ -34,6 +38,9 @@ import {
   type LocalTool,
   type LocalToolDefinition,
 } from './local-tools.js'
+
+const createTracer = createTracerFactory('mokei')
+type ContextTransport = 'stdio' | 'http' | 'direct'
 
 export type EnableTools = boolean | Array<string>
 export type EnableToolsFn = (tools: Array<Tool>) => EnableTools | Promise<EnableTools>
@@ -150,10 +157,15 @@ export type ContextHostParams = {
   /** Subclass teardown, run after every context is removed. */
   dispose?: () => Promise<void>
   elicit?: HostElicitHandler | true
+  tracing?: { payloads?: PayloadCapture }
 }
 
 export type HasContextParams = { key: string }
-export type RegisterHostedContextParams = { key: string; context: HostedContext }
+export type RegisterHostedContextParams = {
+  key: string
+  context: HostedContext
+  transport?: ContextTransport
+}
 
 export type HostEvents = {
   'context:added': { key: string }
@@ -244,6 +256,8 @@ export type HTTPContextParams = {
 
 export class ContextHost extends Disposer {
   #contexts: Record<string, HostedContext> = {}
+  #payloads?: PayloadCapture
+  #contextSettlers = new Map<string, (reason: TerminationReason) => void>()
   #localTools: Map<string, LocalTool> = new Map()
   #events: EventEmitter<HostEvents> = new EventEmitter<HostEvents>()
   // Per-context teardown for the client subscription-event listeners wired on `2026-07-28`
@@ -266,6 +280,7 @@ export class ContextHost extends Disposer {
       },
     })
     this.#elicit = params.elicit
+    this.#payloads = params.tracing?.payloads
   }
 
   get contexts(): Record<string, HostedContext> {
@@ -347,7 +362,7 @@ export class ContextHost extends Disposer {
       throw new Error(`Context ${params.key} already exists`)
     }
     this.#contexts[params.key] = params.context
-    this.#wireContextSubscriptions(params.key, params.context.client)
+    this.#wireContextSubscriptions(params.key, params.context.client, params.transport)
   }
 
   getContextKeys(): Array<string> {
@@ -492,7 +507,12 @@ export class ContextHost extends Disposer {
       elicit: this.createElicitHandler({ key, elicit }),
     })
     this.#contexts[key] = context as unknown as HostedContext
-    this.#wireContextSubscriptions(key, context.client as unknown as ContextClient)
+    this.#wireContextSubscriptions(
+      key,
+      context.client as unknown as ContextClient,
+      params.transport instanceof HTTPTransport ? 'http' : 'direct',
+      params.transport instanceof HTTPTransport ? params.transport : undefined,
+    )
     return context.client
   }
 
@@ -557,20 +577,26 @@ export class ContextHost extends Disposer {
     // named in exactly one place. Spelling it a second time is the literal-as-capability
     // pattern this revision's work set out to remove, and a one-sided change to it would be a
     // behaviour difference between two entry points that read as siblings.
+    const transport = new HTTPTransport({
+      url,
+      headers,
+      auth,
+      timeout,
+      fetchMiddleware,
+    })
     const context = createHostedContext<T>({
-      transport: new HTTPTransport({
-        url,
-        headers,
-        auth,
-        timeout,
-        fetchMiddleware,
-      }) as ClientTransport,
+      transport: transport as ClientTransport,
       protocolVersion,
       elicit: this.createElicitHandler({ key, elicit }),
     })
 
     this.#contexts[key] = context as unknown as HostedContext
-    this.#wireContextSubscriptions(key, context.client as unknown as ContextClient)
+    this.#wireContextSubscriptions(
+      key,
+      context.client as unknown as ContextClient,
+      'http',
+      transport,
+    )
 
     return context.client
   }
@@ -584,8 +610,46 @@ export class ContextHost extends Disposer {
    * emitting `<x>:changed`; on `resourceUpdated` it forwards `resource:updated` without re-reading.
    * It also forwards `2025-11-25` `elicitationComplete` as `elicitation:complete`.
    */
-  #wireContextSubscriptions(key: string, client: ContextClient): void {
+  #wireContextSubscriptions(
+    key: string,
+    client: ContextClient,
+    transport: ContextTransport = 'direct',
+    httpTransport?: HTTPTransport,
+  ): void {
+    const span = createTracer('host').startSpan(
+      'mcp.context',
+      {
+        attributes: {
+          'mokei.kind': 'context',
+          'mokei.root': true,
+          'mokei.context.id': key,
+          'mcp.transport': transport,
+        },
+      },
+      ROOT_CONTEXT,
+    )
+    client.setTracing({ contextID: key, contextSpan: span, payloads: this.#payloads })
+    let settled = false
+    this.#contextSettlers.set(key, (reason) => {
+      if (settled) return
+      settled = true
+      client.endTracing(reason)
+      if (httpTransport?.sessionID != null)
+        span.setAttribute('mcp.session.id', httpTransport.sessionID)
+      if (reason === 'lost') span.setAttribute('error.type', 'context.lost')
+      span.setStatus({ code: reason === 'lost' ? SpanStatusCode.ERROR : SpanStatusCode.OK })
+      span.end()
+    })
     const unsubscribes = [
+      client.events.on('initialized', ({ serverInfo }) => {
+        if (settled) return
+        span.setAttribute('server.name', serverInfo.name)
+        if (httpTransport?.sessionID != null)
+          span.setAttribute('mcp.session.id', httpTransport.sessionID)
+      }),
+      client.events.on('closed', () => {
+        if (this.#contexts[key]?.client === client) void this.remove(key, 'lost').catch(() => {})
+      }),
       client.events.on('toolsListChanged', () => {
         void this.#onListChanged(key, 'tools')
       }),
@@ -688,7 +752,7 @@ export class ContextHost extends Disposer {
     return contextTools
   }
 
-  async remove(key: string): Promise<void> {
+  async remove(key: string, reason: TerminationReason = 'stopped'): Promise<void> {
     const ctx = this.#contexts[key]
     if (ctx == null) {
       return
@@ -696,6 +760,8 @@ export class ContextHost extends Disposer {
     // Delete before the async dispose so a concurrent remove/dispose (e.g. an
     // onExit reap racing a user remove) sees null and exits -- no double removal.
     delete this.#contexts[key]
+    this.#contextSettlers.get(key)?.(reason)
+    this.#contextSettlers.delete(key)
 
     // Tear down the client subscription-event listeners (SEP-1391) before disposing the client.
     for (const unsubscribe of this.#subscriptionUnsubscribes.get(key) ?? []) {

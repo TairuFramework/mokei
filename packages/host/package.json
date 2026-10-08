@@ -46,12 +46,15 @@
     "@mokei/context-rpc": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/http-client": "workspace:^",
+    "@opentelemetry/api": "catalog:",
     "@sozai/async": "catalog:",
     "@sozai/event": "catalog:",
     "@sozai/json": "catalog:",
+    "@sozai/otel": "catalog:",
     "@sozai/schema": "catalog:"
   },
   "devDependencies": {
+    "@opentelemetry/sdk-trace-base": "catalog:",
     "@types/node": "catalog:"
   }
 }

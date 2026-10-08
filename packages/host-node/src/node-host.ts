@@ -175,7 +175,7 @@ export class NodeContextHost extends ContextHost {
           }
           framingError = error
           void this.events.emit('context:failed', { key, error }).catch(() => {})
-          void this.remove(key).catch(() => {})
+          void this.remove(key, 'lost').catch(() => {})
         },
         onExit: (error) => {
           if (framingError != null || !isCurrent()) {
@@ -184,12 +184,16 @@ export class NodeContextHost extends ContextHost {
           if (error != null && !isSubprocessExit(error)) {
             void this.events.emit('context:failed', { key, error }).catch(() => {})
           }
-          void this.remove(key).catch(() => {})
+          void this.remove(key, 'lost').catch(() => {})
         },
       })
       registeredClient = context.client
       try {
-        this.registerHostedContext({ key, context: context as unknown as HostedContext })
+        this.registerHostedContext({
+          key,
+          context: context as unknown as HostedContext,
+          transport: 'stdio',
+        })
       } catch (error) {
         await context.disposer.dispose()
         throw error
