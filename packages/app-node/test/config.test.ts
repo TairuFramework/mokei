@@ -23,16 +23,22 @@ test('honours MOKEI_CONFIG_PATH and lets an explicit path win', async () => {
   await writeFile(explicitPath, JSON.stringify({ logs: { file: false } }))
   vi.stubEnv('MOKEI_CONFIG_PATH', envPath)
   expect(getMokeiConfigPath()).toBe(envPath)
-  expect(await loadMokeiConfig()).toEqual({ logs: { level: 'debug', file: true }, tracing: {} })
+  expect(await loadMokeiConfig()).toEqual({
+    logs: { level: 'debug', file: true },
+    tracing: { payloads: 'on' },
+  })
   expect(await loadMokeiConfig(explicitPath)).toEqual({
     logs: { level: 'info', file: false },
-    tracing: {},
+    tracing: { payloads: 'on' },
   })
 })
 
 test('returns defaults when mokei.json is missing', async () => {
   expect(getMokeiConfigPath()).toBe(join(directory, 'mokei.json'))
-  expect(await loadMokeiConfig()).toEqual({ logs: { level: 'info', file: true }, tracing: {} })
+  expect(await loadMokeiConfig()).toEqual({
+    logs: { level: 'info', file: true },
+    tracing: { payloads: 'on' },
+  })
 })
 
 test('reads logs and tracing', async () => {
@@ -41,7 +47,10 @@ test('reads logs and tracing', async () => {
     tracing: { otlp: { endpoint: 'http://x', headers: { authorization: 'test' } } },
   }
   await writeFile(getMokeiConfigPath(), JSON.stringify(config))
-  expect(await loadMokeiConfig()).toEqual(config)
+  expect(await loadMokeiConfig()).toEqual({
+    ...config,
+    tracing: { ...config.tracing, payloads: 'on' },
+  })
 })
 
 test.each([
@@ -77,4 +86,14 @@ test('rejects invalid JSON', async () => {
     issues: [expect.stringMatching(/^JSON:/)],
     cause: expect.any(SyntaxError),
   })
+})
+
+test.each(['on', 'off', 1, 65536])('accepts tracing.payloads %s', async (payloads) => {
+  await writeFile(getMokeiConfigPath(), JSON.stringify({ tracing: { payloads } }))
+  expect((await loadMokeiConfig()).tracing.payloads).toBe(payloads)
+})
+
+test.each(['maybe', 0, -1, 1.5])('rejects tracing.payloads %s', async (payloads) => {
+  await writeFile(getMokeiConfigPath(), JSON.stringify({ tracing: { payloads } }))
+  await expect(loadMokeiConfig()).rejects.toBeInstanceOf(MokeiConfigError)
 })

@@ -1,7 +1,5 @@
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import { getLogStore } from '@hozon/store-log'
-import { getTelemetryStore } from '@hozon/store-telemetry'
 import { loadMokeiConfig, openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
 import {
   createFlowHandlers,
@@ -92,8 +90,7 @@ export async function startMokeiDaemonWithDependencies(
   const releaseAcquired = () => release([...acquired].reverse())
   try {
     const telemetry = dependencies.setupTelemetry({
-      logStore: await getLogStore(database),
-      telemetryStore: await getTelemetryStore(database),
+      provider: database,
       otlp: config.tracing.otlp,
       logs: config.logs,
       reportCategories: [FLOW_REPORT_CATEGORY],

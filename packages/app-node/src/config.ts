@@ -1,11 +1,15 @@
 import { join } from 'node:path'
 import type { LogLevel } from '@logtape/logtape'
+import type { PayloadCapture } from '@mokei/context-client'
 import { createValidator, type Schema } from '@sozai/schema'
 import { getAppEnvVar, getDataDir, readJSONFile } from '@tejika/env'
 
 export type MokeiConfig = {
   logs: { level: LogLevel; file: boolean }
-  tracing: { otlp?: { endpoint: string; headers?: Record<string, string> } }
+  tracing: {
+    payloads?: PayloadCapture
+    otlp?: { endpoint: string; headers?: Record<string, string> }
+  }
 }
 
 type MokeiConfigErrorParams = { path: string; issues: Array<string> }
@@ -43,6 +47,12 @@ const configurationSchema = {
     tracing: {
       type: 'object',
       properties: {
+        payloads: {
+          anyOf: [
+            { type: 'string', enum: ['on', 'off'] },
+            { type: 'integer', minimum: 1 },
+          ],
+        },
         otlp: {
           type: 'object',
           properties: {
@@ -62,7 +72,7 @@ const configurationSchema = {
 const validateConfiguration = createValidator(configurationSchema)
 
 function createDefaults(): MokeiConfig {
-  return { logs: { level: 'info', file: true }, tracing: {} }
+  return { logs: { level: 'info', file: true }, tracing: { payloads: 'on' } }
 }
 
 function issuePath(issue: { path?: ReadonlyArray<unknown>; details?: unknown }): string {
@@ -102,6 +112,6 @@ export async function loadMokeiConfig(path = getMokeiConfigPath()): Promise<Moke
   const supplied = result.value
   return {
     logs: { level: supplied.logs?.level ?? 'info', file: supplied.logs?.file ?? true },
-    tracing: supplied.tracing ?? {},
+    tracing: { ...supplied.tracing, payloads: supplied.tracing?.payloads ?? 'on' },
   }
 }

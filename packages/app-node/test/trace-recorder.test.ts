@@ -1,6 +1,9 @@
 import type { HozonDB } from '@hozon/db'
+import { getLogStore } from '@hozon/store-log'
 import { getTelemetryStore } from '@hozon/store-telemetry'
-import { ROOT_CONTEXT, SpanStatusCode, trace } from '@opentelemetry/api'
+import type { LogRecord } from '@logtape/logtape'
+import { context, ROOT_CONTEXT, SpanStatusCode, trace } from '@opentelemetry/api'
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
@@ -670,4 +673,118 @@ test('hydration coalesces a burst into one summary with all count and loss delta
     droppedCount: 48,
     revision: 99,
   })
+})
+
+function logRecord(category = ['application']): LogRecord {
+  return {
+    timestamp: Date.now(),
+    level: 'info',
+    category,
+    message: ['hello ', 'world'],
+    rawMessage: 'hello {name}',
+    properties: { name: 'world', nested: { value: 1 }, 'dev.mokei/logID': 'caller-id' },
+  }
+}
+
+function withLogSpan(action: () => void) {
+  const manager = new AsyncLocalStorageContextManager().enable()
+  context.setGlobalContextManager(manager)
+  const span = trace.wrapSpanContext({
+    traceId: '12345678901234567890123456789012',
+    spanId: '1234567890123456',
+    traceFlags: 1,
+  })
+  try {
+    context.with(trace.setSpan(context.active(), span), action)
+  } finally {
+    context.disable()
+  }
+}
+
+test('traced log records get a logID, are queued and emitted as log events', async () => {
+  const span = setup().startSpan('root')
+  const manager = new AsyncLocalStorageContextManager().enable()
+  context.setGlobalContextManager(manager)
+  const record = logRecord()
+  try {
+    context.with(trace.setSpan(context.active(), span), () => recorder.sink(record))
+  } finally {
+    context.disable()
+  }
+  const log = recorder.snapshot().logs[0]
+  expect(log).toMatchObject({
+    traceID: span.spanContext().traceId,
+    spanID: span.spanContext().spanId,
+    timestamp: record.timestamp,
+    level: 'info',
+    category: ['application'],
+    message: 'hello {name}',
+    logID: expect.any(String),
+    properties: { name: 'world', nested: { value: 1 } },
+  })
+  expect(log?.logID).not.toBe('caller-id')
+  expect(log?.properties['dev.mokei/logID']).toBe(log?.logID)
+  expect(events.filter((event) => event.type === 'log')).toEqual([{ type: 'log', data: log }])
+  record.properties.nested = 'changed'
+  expect(recorder.snapshot().logs[0]?.properties.nested).toEqual({ value: 1 })
+  span.end()
+  await settle()
+  const transaction = vi.spyOn(db, 'withTransaction')
+  await recorder.forceFlush()
+  expect(transaction).toHaveBeenCalledOnce()
+  const stored = await (await getLogStore(db)).getTraceLogs(span.spanContext().traceId)
+  expect(stored[0]?.properties['dev.mokei/logID']).toBe(log?.logID)
+  expect(await (await getTelemetryStore(db)).getSpans(span.spanContext().traceId)).toHaveLength(1)
+  expect(recorder.snapshot().logs).toEqual([])
+})
+
+test('untraced records are ignored', () => {
+  setup()
+  recorder.sink(logRecord())
+  expect(recorder.snapshot().logs).toEqual([])
+  expect(events).toEqual([])
+})
+
+test('the hozon category and report categories are excluded', () => {
+  setup({ reportCategories: [['test', 'report']] })
+  withLogSpan(() => {
+    recorder.sink(logRecord(['hozon', 'db']))
+    recorder.sink(logRecord(['test', 'report', 'child']))
+    recorder.sink(logRecord(['test', 'reporter']))
+  })
+  expect(recorder.snapshot().logs.map((log) => log.category)).toEqual([['test', 'reporter']])
+})
+
+test('logs share the bounded queue with spans and stop on shutdown', async () => {
+  const span = setup({ queueLimit: 2, reportError: vi.fn() }).startSpan('root')
+  await settle()
+  span.end()
+  withLogSpan(() => {
+    recorder.sink(logRecord())
+    recorder.sink(logRecord())
+  })
+  expect(recorder.snapshot().spans).toEqual([])
+  expect(recorder.snapshot().logs).toHaveLength(2)
+  expect(new Set(recorder.snapshot().logs.map((log) => log.logID)).size).toBe(2)
+  expect(recorder.info().droppedCount).toBe(1)
+  await recorder.shutdown()
+  withLogSpan(() => recorder.sink(logRecord()))
+  expect(recorder.snapshot().logs).toEqual([])
+})
+
+test('dropped logs count against a trace while its summary is hydrating', async () => {
+  const span = setup({ queueLimit: 1, reportError: vi.fn() }).startSpan('root')
+  const manager = new AsyncLocalStorageContextManager().enable()
+  context.setGlobalContextManager(manager)
+  try {
+    context.with(trace.setSpan(context.active(), span), () => {
+      recorder.sink(logRecord())
+      recorder.sink(logRecord())
+    })
+  } finally {
+    context.disable()
+  }
+  await settle()
+  expect(recorder.info().droppedCount).toBe(1)
+  expect(recorder.snapshot().summaries[0]?.droppedCount).toBe(1)
 })

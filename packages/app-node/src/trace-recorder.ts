@@ -1,13 +1,15 @@
+import { randomUUID } from 'node:crypto'
 import type { StoreProvider } from '@hozon/db'
 import { getLogStore } from '@hozon/store-log'
 import type { StoredSpan } from '@hozon/store-telemetry'
 import { getTelemetryStore } from '@hozon/store-telemetry'
+import type { Sink } from '@logtape/logtape'
 import type { OpenSpan, TraceLog, TraceSummary, TracingInfo } from '@mokei/host-protocol'
 import type { Context } from '@opentelemetry/api'
-import { SpanStatusCode } from '@opentelemetry/api'
+import { isSpanContextValid, SpanStatusCode, trace } from '@opentelemetry/api'
 import type { ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { toJSONValue } from '@sozai/json'
-import { getReporter } from '@sozai/log'
+import { getReporter, renderLogMessage } from '@sozai/log'
 
 import { toOpenSpan, toStoredSpan } from './stored-span.js'
 import { getTraceIndexStore } from './trace-index.js'
@@ -21,6 +23,7 @@ export type TraceRecorderEvent =
 export type TraceRecorderParams = {
   provider: StoreProvider
   onEvent?: (event: TraceRecorderEvent) => void
+  reportCategories?: ReadonlyArray<ReadonlyArray<string>>
   queueLimit?: number
   flushIntervalMs?: number
   flushBatchSize?: number
@@ -75,6 +78,7 @@ type PendingSummary = {
 }
 
 export class LocalTraceRecorder implements SpanProcessor {
+  #sink: Sink
   #provider: StoreProvider
   #onEvent?: TraceRecorderParams['onEvent']
   #reportError: NonNullable<TraceRecorderParams['reportError']>
@@ -95,6 +99,33 @@ export class LocalTraceRecorder implements SpanProcessor {
   #lostSummaryCount = 0
 
   constructor(params: TraceRecorderParams) {
+    const excluded = [['hozon'], ['mokei', 'trace-recorder'], ...(params.reportCategories ?? [])]
+    this.#sink = (record) => {
+      if (this.#stopped) return
+      if (excluded.some((prefix) => prefix.every((part, index) => record.category[index] === part)))
+        return
+      const spanContext = trace.getActiveSpan()?.spanContext()
+      if (spanContext == null || !isSpanContextValid(spanContext)) return
+      const logID = randomUUID()
+      const log: TraceLog = {
+        logID,
+        traceID: spanContext.traceId,
+        spanID: spanContext.spanId,
+        timestamp: record.timestamp,
+        level: record.level,
+        category: [...record.category],
+        message: renderLogMessage(record),
+        properties: {
+          ...Object.fromEntries(
+            Object.entries(record.properties).map(([key, value]) => [key, toJSONValue(value)]),
+          ),
+          'dev.mokei/logID': logID,
+        },
+      }
+      this.#queue.push({ type: 'log', data: log })
+      this.#emit({ type: 'log', data: log })
+      this.#checkQueue()
+    }
     this.#provider = params.provider
     this.#onEvent = params.onEvent
     this.#reportError =
@@ -107,6 +138,10 @@ export class LocalTraceRecorder implements SpanProcessor {
       void this.forceFlush()
     }, params.flushIntervalMs ?? 250)
     this.#timer.unref?.()
+  }
+
+  get sink(): Sink {
+    return this.#sink
   }
 
   onStart(span: Span, _parentContext: Context): void {
@@ -151,6 +186,10 @@ export class LocalTraceRecorder implements SpanProcessor {
           }
         : {}),
     }))
+    this.#checkQueue()
+  }
+
+  #checkQueue(): void {
     while (this.#queue.length > this.#queueLimit) {
       const entry = this.#queue.shift()
       if (entry) this.#drop([entry], new Error('Trace queue overflow'))
@@ -267,6 +306,15 @@ export class LocalTraceRecorder implements SpanProcessor {
           ...summary,
           droppedCount: summary.droppedCount + 1,
         }))
+      } else if (this.#pending.has(traceID)) {
+        const pending = this.#pending.get(traceID)
+        if (pending) {
+          pending.summary = {
+            ...pending.summary,
+            droppedCount: pending.summary.droppedCount + 1,
+            revision: pending.summary.revision + 1,
+          }
+        }
       } else if (source && 'rootSpanID' in source) {
         this.#changed({
           ...source,

@@ -144,8 +144,6 @@ Unsupported dialogs leave the item available for another answer surface.
 The daemon loads app-level configuration and opens the shared database before creating the flow service. A composed application can use the same wiring pattern:
 
 ```typescript
-import { getLogStore } from '@hozon/store-log'
-import { getTelemetryStore } from '@hozon/store-telemetry'
 import { loadMokeiConfig, openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
 import {
   createFlowHandlers,
@@ -177,8 +175,7 @@ const shutdown = () =>
   release([() => service?.dispose(), () => telemetry?.dispose(), () => database.close()])
 try {
   telemetry = setupMokeiTelemetry({
-    logStore: await getLogStore(database),
-    telemetryStore: await getTelemetryStore(database),
+    provider: database,
     otlp: appConfig.tracing.otlp,
     logs: appConfig.logs,
     reportCategories: [FLOW_REPORT_CATEGORY],

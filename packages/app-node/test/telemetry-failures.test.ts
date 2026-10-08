@@ -1,4 +1,3 @@
-import { createLogStoreSink } from '@hozon/logtape'
 import { context, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import type * as TraceSDK from '@opentelemetry/sdk-trace-base'
@@ -21,7 +20,6 @@ beforeEach(async () => {
 const owned = vi.hoisted(() => ({
   forceFlush: vi.fn(async () => {}),
   shutdown: vi.fn(async () => {}),
-  flush: vi.fn(async () => {}),
   fileDispose: vi.fn(),
 }))
 vi.mock('@opentelemetry/sdk-trace-base', async (importOriginal) => {
@@ -37,8 +35,6 @@ vi.mock('@opentelemetry/sdk-trace-base', async (importOriginal) => {
     }),
   }
 })
-vi.mock('@hozon/logtape', { spy: true })
-vi.mock('@hozon/otel', { spy: true })
 vi.mock('@sozai/log', { spy: true })
 vi.mock('@tejika/log', () => ({
   createFileSink: vi.fn(() => Object.assign(vi.fn(), { [Symbol.dispose]: owned.fileDispose })),
@@ -61,7 +57,7 @@ function thrownBy(action: () => unknown): unknown {
 }
 
 test('rolls back rejected context registration without touching existing registrations', async () => {
-  const { logStore, telemetryStore } = await stores()
+  const { db } = await stores()
   const order: Array<string> = []
   const rival = new AsyncLocalStorageContextManager().enable()
   const register = context.setGlobalContextManager.bind(context)
@@ -79,7 +75,7 @@ test('rolls back rejected context registration without touching existing registr
     order.push('shutdown')
   })
   const globalDisable = vi.spyOn(context, 'disable')
-  expect(() => setupMokeiTelemetry({ logStore, telemetryStore })).toThrow(/context/i)
+  expect(() => setupMokeiTelemetry({ provider: db })).toThrow(/context/i)
   expect(order).toEqual(['manager.disable', 'shutdown'])
   expect(disable.mock.instances[0]).not.toBe(rival)
   expect(globalDisable).not.toHaveBeenCalled()
@@ -91,7 +87,7 @@ test('rolls back rejected context registration without touching existing registr
 })
 
 test('rolls back rejected provider registration without disabling the competing provider', async () => {
-  const { logStore, telemetryStore } = await stores()
+  const { db } = await stores()
   const order: Array<string> = []
   const rivalTracer = trace.getTracer('rival')
   const register = trace.setGlobalTracerProvider.bind(trace)
@@ -106,7 +102,7 @@ test('rolls back rejected provider registration without disabling the competing 
   owned.shutdown.mockImplementationOnce(async () => {
     order.push('shutdown')
   })
-  expect(() => setupMokeiTelemetry({ logStore, telemetryStore })).toThrow(/provider/i)
+  expect(() => setupMokeiTelemetry({ provider: db })).toThrow(/provider/i)
   expect(order).toEqual(['context.disable', 'shutdown'])
   expect(disable).not.toHaveBeenCalled()
   expect(trace.getTracer('rival')).toBe(rivalTracer)
@@ -114,7 +110,7 @@ test('rolls back rejected provider registration without disabling the competing 
 })
 
 test('preserves a file factory error while reversing owned registrations', async () => {
-  const { logStore, telemetryStore } = await stores()
+  const { db } = await stores()
   const failure = new Error('file creation failed')
   const order: Array<string> = []
   vi.mocked(createFileSink).mockImplementationOnce(() => {
@@ -130,13 +126,13 @@ test('preserves a file factory error while reversing owned registrations', async
     order.push('shutdown')
     throw new Error('cleanup failed')
   })
-  expect(thrownBy(() => setupMokeiTelemetry({ logStore, telemetryStore }))).toBe(failure)
+  expect(thrownBy(() => setupMokeiTelemetry({ provider: db }))).toBe(failure)
   expect(order).toEqual(['trace.disable', 'context.disable', 'shutdown'])
   expect(logging.reset).not.toHaveBeenCalled()
 })
 
 test('preserves a logging setup error and disposes the uninstalled file sink', async () => {
-  const { logStore, telemetryStore } = await stores()
+  const { db } = await stores()
   const failure = new Error('logging setup failed')
   const order: Array<string> = []
   vi.mocked(logging.setup).mockImplementationOnce(() => {
@@ -157,19 +153,18 @@ test('preserves a logging setup error and disposes the uninstalled file sink', a
   owned.shutdown.mockImplementationOnce(async () => {
     order.push('shutdown')
   })
-  expect(thrownBy(() => setupMokeiTelemetry({ logStore, telemetryStore }))).toBe(failure)
+  expect(thrownBy(() => setupMokeiTelemetry({ provider: db }))).toBe(failure)
   expect(order).toEqual(['reset', 'file.dispose', 'trace.disable', 'context.disable', 'shutdown'])
   expect(owned.fileDispose).toHaveBeenCalledOnce()
 })
 
 test('attempts all disposal steps after failures', async () => {
-  const { logStore, telemetryStore } = await stores()
+  const { db } = await stores()
   const order: Array<string> = []
-  const failures = ['flush', 'shutdown', 'sink', 'reset', 'trace', 'context'].map(
+  const failures = ['flush', 'shutdown', 'recorder', 'reset', 'trace', 'context'].map(
     (step) => new Error(`${step} failed`),
   )
-  vi.mocked(createLogStoreSink).mockReturnValueOnce(Object.assign(vi.fn(), { flush: owned.flush }))
-  const handle = setupMokeiTelemetry({ logStore, telemetryStore, logs: { file: false } })
+  const handle = setupMokeiTelemetry({ provider: db, logs: { file: false } })
   owned.forceFlush.mockImplementationOnce(async () => {
     order.push('forceFlush')
     throw failures[0]
@@ -178,10 +173,12 @@ test('attempts all disposal steps after failures', async () => {
     order.push('shutdown')
     throw failures[1]
   })
-  owned.flush.mockImplementationOnce(async () => {
-    order.push('sink.flush')
-    throw failures[2]
-  })
+  const recorderShutdown = vi
+    .spyOn(handle.recorder, 'shutdown')
+    .mockImplementationOnce(async () => {
+      order.push('recorder.shutdown')
+      throw failures[2]
+    })
   vi.mocked(logging.reset).mockImplementationOnce(() => {
     order.push('reset')
     throw failures[3]
@@ -201,7 +198,7 @@ test('attempts all disposal steps after failures', async () => {
   expect(order).toEqual([
     'forceFlush',
     'shutdown',
-    'sink.flush',
+    'recorder.shutdown',
     'reset',
     'trace.disable',
     'context.disable',
@@ -209,18 +206,20 @@ test('attempts all disposal steps after failures', async () => {
   expect(handle.dispose()).toBe(disposal)
   expect(owned.forceFlush).toHaveBeenCalledOnce()
   expect(owned.shutdown).toHaveBeenCalledOnce()
-  expect(owned.flush).toHaveBeenCalledOnce()
-  expect(() => setupMokeiTelemetry({ logStore, telemetryStore })).toThrow()
+  expect(recorderShutdown).toHaveBeenCalledOnce()
+  expect(() => setupMokeiTelemetry({ provider: db })).toThrow()
+  recorderShutdown.mockRestore()
+  await handle.recorder.shutdown()
 })
 
 test('bounds a stalled exporter shutdown and still drains local logs and registrations', async () => {
-  const { logStore, telemetryStore } = await stores()
+  const { db } = await stores()
   vi.useFakeTimers()
   const failure = new Error('remote flush failed')
   owned.forceFlush.mockRejectedValueOnce(failure)
   owned.shutdown.mockImplementationOnce(() => new Promise(() => {}))
-  vi.mocked(createLogStoreSink).mockReturnValueOnce(Object.assign(vi.fn(), { flush: owned.flush }))
-  const handle = setupMokeiTelemetry({ logStore, telemetryStore, logs: { file: false } })
+  const handle = setupMokeiTelemetry({ provider: db, logs: { file: false } })
+  const recorderShutdown = vi.spyOn(handle.recorder, 'shutdown')
   let result: unknown
   const disposal = handle.dispose().catch((error: unknown) => {
     result = error
@@ -234,7 +233,7 @@ test('bounds a stalled exporter shutdown and still drains local logs and registr
         expect.objectContaining({ message: 'Telemetry shutdown timed out after 10000ms' }),
       ],
     })
-    expect(owned.flush).toHaveBeenCalledOnce()
+    expect(recorderShutdown).toHaveBeenCalledOnce()
     expect(logging.reset).toHaveBeenCalledOnce()
     expect(logging.isSetup()).toBe(false)
     await disposal
@@ -244,10 +243,11 @@ test('bounds a stalled exporter shutdown and still drains local logs and registr
 })
 
 test('reports a log store failure on the errors sink without capturing it', async () => {
-  const { logStore, telemetryStore } = await stores()
-  const addLogs = vi.spyOn(logStore, 'addLogs').mockRejectedValue(new Error('log write failed'))
+  const { db, logStore } = await stores()
+  vi.useFakeTimers()
+  const write = vi.spyOn(db, 'withTransaction').mockRejectedValue(new Error('log write failed'))
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
-  const handle = setupMokeiTelemetry({ logStore, telemetryStore, logs: { file: false } })
+  const handle = setupMokeiTelemetry({ provider: db, logs: { file: false } })
   const span = trace.wrapSpanContext({
     traceId: '12345678901234567890123456789012',
     spanId: '1234567890123456',
@@ -257,33 +257,29 @@ test('reports a log store failure on the errors sink without capturing it', asyn
     context.with(trace.setSpan(context.active(), span), () => {
       logging.getLogger(['application']).info('stored record')
     })
-    await handle.dispose()
+    const disposal = handle.dispose()
+    await vi.advanceTimersByTimeAsync(6000)
+    await disposal
     expect(
       errors.mock.calls.some((args) =>
-        args.map(String).join(' ').includes('Failed to store log batch'),
+        args.map(String).join(' ').includes('Dropped trace queue entries'),
       ),
     ).toBe(true)
-    expect(addLogs).toHaveBeenCalledOnce()
-    expect(addLogs.mock.calls.flatMap(([records]) => records)).toEqual([
-      expect.objectContaining({ category: ['application'], message: 'stored record' }),
-    ])
-    expect(
-      addLogs.mock.calls
-        .flatMap(([records]) => records)
-        .some((record) => record.category.join(':') === 'hozon:logtape'),
-    ).toBe(false)
+    expect(write).toHaveBeenCalledTimes(4)
+    expect(handle.recorder.info().droppedCount).toBe(1)
+    expect(handle.recorder.snapshot().logs).toEqual([])
+    expect(await logStore.getTraceLogs(span.spanContext().traceId)).toEqual([])
   } finally {
     await handle.dispose()
+    vi.useRealTimers()
   }
 })
 
 test('routes report categories to the errors sink without storing them', async () => {
-  const { logStore, telemetryStore } = await stores()
-  const addLogs = vi.spyOn(logStore, 'addLogs')
+  const { db, logStore } = await stores()
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
   const handle = setupMokeiTelemetry({
-    logStore,
-    telemetryStore,
+    provider: db,
     logs: { file: false },
     reportCategories: [['test', 'report']],
   })
@@ -303,9 +299,6 @@ test('routes report categories to the errors sink without storing them', async (
     expect(errors).toHaveBeenCalledOnce()
     expect(errors.mock.calls.flat().map(String).join(' ')).toContain('report failure')
     expect(await logStore.getTraceLogs(traceID)).toEqual([
-      expect.objectContaining({ category: ['application'], message: 'application record' }),
-    ])
-    expect(addLogs.mock.calls.flatMap(([records]) => records)).toEqual([
       expect.objectContaining({ category: ['application'], message: 'application record' }),
     ])
   } finally {

@@ -12,11 +12,11 @@ afterEach(() => {
 })
 
 test('requires a restart after registered telemetry fails to create its file sink', async () => {
-  const { logStore, telemetryStore } = await stores()
+  const { db, telemetryStore } = await stores()
   const cached = trace.getTracer('cached-before-setup')
   vi.stubEnv('MOKEI_LOG_DIR', '/dev/null/flow-telemetry-test')
   try {
-    expect(() => setupMokeiTelemetry({ logStore, telemetryStore })).toThrow(
+    expect(() => setupMokeiTelemetry({ provider: db })).toThrow(
       expect.objectContaining({ code: 'ENOTDIR' }),
     )
     expect(isSetup()).toBe(false)
@@ -27,7 +27,7 @@ test('requires a restart after registered telemetry fails to create its file sin
     let retry: ReturnType<typeof setupMokeiTelemetry> | undefined
     try {
       expect(() => {
-        retry = setupMokeiTelemetry({ logStore, telemetryStore, logs: { file: false } })
+        retry = setupMokeiTelemetry({ provider: db, logs: { file: false } })
       }).toThrow(/already installed/i)
     } finally {
       await retry?.dispose()

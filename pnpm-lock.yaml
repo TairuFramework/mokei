@@ -838,6 +838,9 @@ importers:
       '@logtape/logtape':
         specifier: 'catalog:'
         version: 2.4.0
+      '@mokei/context-client':
+        specifier: workspace:^
+        version: link:../context-client
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol

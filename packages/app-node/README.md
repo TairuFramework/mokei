@@ -11,16 +11,17 @@ Node app foundation for Mokei configuration, the shared hozon database and proce
 | `MokeiConfig`, `MokeiConfigError` | Configuration type and validation error (with `path` and `issues`). |
 | `mokeiStoreDefinitions` | Built-in hozon log and telemetry store definitions. |
 | `openMokeiDatabase({ path?, stores? }?)` | Opens and migrates the app database, registering built-in stores and any supplied definitions. |
-| `setupMokeiTelemetry({ logStore, telemetryStore, otlp?, logs?, reportCategories? })` | Installs process tracing and logging; returns asynchronous `dispose()`. |
+| `setupMokeiTelemetry({ provider, onEvent?, otlp?, logs?, reportCategories? })` | Installs process tracing and logging; returns the recorder and asynchronous `dispose()`. |
 
 ## `mokei.json`
 
-The default path is `<mokei data dir>/mokei.json`; `MOKEI_CONFIG_PATH` overrides it and an explicit `loadMokeiConfig(path)` wins. The schema rejects unknown keys at every level. Missing file defaults are `{ "logs": { "level": "info", "file": true }, "tracing": {} }`.
+The default path is `<mokei data dir>/mokei.json`; `MOKEI_CONFIG_PATH` overrides it and an explicit `loadMokeiConfig(path)` wins. The schema rejects unknown keys at every level. Missing file defaults are `{ "logs": { "level": "info", "file": true }, "tracing": { "payloads": "on" } }`.
 
 ```json
 {
   "logs": { "level": "info", "file": true },
   "tracing": {
+    "payloads": "on",
     "otlp": {
       "endpoint": "http://localhost:4318/v1/traces",
       "headers": { "authorization": "Bearer token" }
@@ -29,7 +30,7 @@ The default path is `<mokei data dir>/mokei.json`; `MOKEI_CONFIG_PATH` overrides
 }
 ```
 
-`logs.level` accepts `trace`, `debug`, `info`, `warning`, `error` or `fatal`; `logs.file` controls daily rotating file output. `tracing.otlp.endpoint` is required when `otlp` is present; `headers` is an optional string map. Invalid JSON and schema values throw `MokeiConfigError`, naming the path and validation issues.
+`logs.level` accepts `trace`, `debug`, `info`, `warning`, `error` or `fatal`; `logs.file` controls daily rotating file output. `tracing.payloads` accepts `on`, `off` or a positive integer byte cap, and defaults to `on`. `tracing.otlp.endpoint` is required when `otlp` is present; `headers` is an optional string map. Invalid JSON and schema values throw `MokeiConfigError`, naming the path and validation issues.
 
 ## Database and telemetry
 

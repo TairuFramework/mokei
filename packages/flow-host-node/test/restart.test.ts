@@ -1,8 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { getLogStore } from '@hozon/store-log'
-import { getTelemetryStore } from '@hozon/store-telemetry'
 import { openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
 import type { FlowHost } from '@mokei/flow-host'
 import { createFlowHost } from '@mokei/flow-host'
@@ -32,8 +30,7 @@ test('recovers waiting input from a reopened sqlite database', async () => {
   const telemetryDatabase = await openMokeiDatabase({ path: ':memory:' })
   const traceStore = createFlowTraceStore(telemetryDatabase)
   const telemetry = setupMokeiTelemetry({
-    logStore: await getLogStore(telemetryDatabase),
-    telemetryStore: await getTelemetryStore(telemetryDatabase),
+    provider: telemetryDatabase,
     logs: { file: false },
     reportCategories: [FLOW_REPORT_CATEGORY],
   })

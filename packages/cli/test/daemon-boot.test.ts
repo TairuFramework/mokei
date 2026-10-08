@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { MokeiConfigError, openMokeiDatabase } from '@mokei/app-node'
+import { LocalTraceRecorder, MokeiConfigError, openMokeiDatabase } from '@mokei/app-node'
 import type * as FlowHostNodeExports from '@mokei/flow-host-node'
 import { createFlowService } from '@mokei/flow-host-node'
 import { createClient } from '@mokei/host-node'
@@ -86,11 +86,16 @@ test('disposes the flow service, then telemetry, then the database', async () =>
       })
       return database
     },
-    setupTelemetry: () => ({
-      dispose: async () => {
-        order.push('telemetry')
-      },
-    }),
+    setupTelemetry: ({ provider }) => {
+      const recorder = new LocalTraceRecorder({ provider })
+      return {
+        recorder,
+        dispose: async () => {
+          await recorder.shutdown()
+          order.push('telemetry')
+        },
+      }
+    },
   })
   await daemon.close()
   expect(order).toEqual(['service', 'telemetry', 'database'])
@@ -121,11 +126,16 @@ async function startWithFailingDisposal(failures: { service?: Error; telemetry?:
       })
       return database
     },
-    setupTelemetry: () => ({
-      dispose: async () => {
-        if (failures.telemetry != null) throw failures.telemetry
-      },
-    }),
+    setupTelemetry: ({ provider }) => {
+      const recorder = new LocalTraceRecorder({ provider })
+      return {
+        recorder,
+        dispose: async () => {
+          await recorder.shutdown()
+          if (failures.telemetry != null) throw failures.telemetry
+        },
+      }
+    },
   })
   return { daemon, closed }
 }
