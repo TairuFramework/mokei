@@ -13,6 +13,7 @@ export {
   type TraceIndexTables,
   traceIndexStoreDefinition,
 } from './trace-index.js'
+export { createTraceReader, type TraceReader } from './trace-reader.js'
 export {
   LocalTraceRecorder,
   type RecorderSnapshot,
