@@ -1,6 +1,13 @@
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import { loadMokeiConfig, openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
+import {
+  createTraceReader,
+  getTraceIndexStore,
+  loadMokeiConfig,
+  openMokeiDatabase,
+  setupMokeiTelemetry,
+} from '@mokei/app-node'
 import {
   createFlowHandlers,
   createFlowService,
@@ -11,7 +18,7 @@ import {
   flowStoreDefinitions,
 } from '@mokei/flow-host-node'
 import { createDesktopInputSurface, createDesktopNotifier, openURL } from '@mokei/host-desktop'
-import { composeHandlers, serveHostDaemon } from '@mokei/host-node'
+import { composeHandlers, createTraceHandlers, serveHostDaemon } from '@mokei/host-node'
 import { settleAll } from '@sozai/async'
 import type { DaemonHandle } from '@tejika/process'
 
@@ -89,17 +96,27 @@ export async function startMokeiDaemonWithDependencies(
   const acquired: Array<() => void | Promise<void>> = [() => database.close()]
   const releaseAcquired = () => release([...acquired].reverse())
   try {
+    const events = new EventTarget()
     const telemetry = dependencies.setupTelemetry({
       provider: database,
+      onEvent: (event) => {
+        events.dispatchEvent(
+          new CustomEvent(event.type, {
+            detail: { meta: { eventID: randomUUID(), time: Date.now() }, data: event.data },
+          }),
+        )
+      },
       otlp: config.tracing.otlp,
       logs: config.logs,
       reportCategories: [FLOW_REPORT_CATEGORY],
     })
     acquired.push(() => telemetry.dispose())
-    const events = new EventTarget()
+    await telemetry.recorder.sweepInterrupted()
     const presence = createMonitorPresence()
     const service = createFlowService({
       database,
+      tracing: { payloads: config.tracing.payloads },
+      traceIndex: getTraceIndexStore,
       monitor: presence,
       openURL: params.openURL ?? ((url) => openURL(url)),
       configPath: params.flowsConfigPath,
@@ -115,7 +132,15 @@ export async function startMokeiDaemonWithDependencies(
       handleSignals: params.handleSignals,
       // Telemetry has two bounded 10s phases; allow acquisition and admitted work to drain too.
       shutdownTimeoutMs: 60_000,
-      handlers: composeHandlers(createFlowHandlers(service), createMonitorHandlers(presence)),
+      handlers: composeHandlers(
+        createFlowHandlers(service),
+        createMonitorHandlers(presence),
+        createTraceHandlers({
+          reader: createTraceReader({ provider: database, recorder: telemetry.recorder }),
+        }),
+      ),
+      tracing: { payloads: config.tracing.payloads },
+      tracingInfo: () => telemetry.recorder.info(),
       flowStatus: () => service.status(),
       onShutdown: async () => {
         // Presence, flow service, telemetry, then the database: no write lands on a closed database.

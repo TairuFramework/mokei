@@ -1315,6 +1315,9 @@ importers:
       '@mokei/host-desktop':
         specifier: workspace:^
         version: link:../host-desktop
+      '@mokei/host-node':
+        specifier: workspace:^
+        version: link:../host-node
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol

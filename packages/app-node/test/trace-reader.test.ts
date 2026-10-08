@@ -1,8 +1,18 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { HozonDB } from '@hozon/db'
 import { getLogStore } from '@hozon/store-log'
-import { getTelemetryStore, type StoredSpan } from '@hozon/store-telemetry'
+import {
+  getTelemetryStore,
+  type StoredSpan,
+  telemetryStoreDefinition,
+} from '@hozon/store-telemetry'
 import type { TraceSummary } from '@mokei/host-protocol'
+import { context, trace } from '@opentelemetry/api'
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
+import { openLocalDatabase } from '@tejika/db'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { openMokeiDatabase } from '../src/database.js'
@@ -66,6 +76,104 @@ test('get returns open spans from the recorder', async () => {
   expect(result?.spans).toEqual(recorder.snapshot().open)
   expect(result?.spans[0]).not.toHaveProperty('endTime')
   span.end()
+})
+test('get preserves JSON-looking string attributes after persistence', async () => {
+  const span = start()
+  const attributes = {
+    'mokei.mcp.request': '{"_meta":{},"arguments":{"value":"trace me"},"name":"echo"}',
+    array: '["trace me"]',
+    whitespace: ' \n {"value":1}',
+    strings: ['{"value":1}', '[1,2]', 'plain'],
+    quoted: '"quoted"',
+    prefixed: 'mokei-json:{"value":1}',
+    plain: 'plain',
+    number: 42,
+    boolean: true,
+  }
+  span.setAttributes(attributes)
+  span.addEvent('mcp.response', attributes)
+  span.end()
+  const traceID = span.spanContext().traceId
+  expect((await reader.get(traceID))?.spans[0]?.attributes).toEqual(attributes)
+  await recorder.forceFlush()
+  expect(recorder.snapshot(traceID).spans).toEqual([])
+  const result = await reader.get(traceID)
+  expect(result?.spans).toHaveLength(1)
+  expect(result?.spans[0]?.attributes['mokei.mcp.request']).toBe(attributes['mokei.mcp.request'])
+  expect(result?.spans[0]?.attributes).toEqual(attributes)
+  expect(result?.spans[0]).toMatchObject({ events: [{ attributes }] })
+  expect(result?.spans[0]).not.toHaveProperty('mokeiAttributeEncoding')
+})
+test('plain span attributes remain readable through the raw Hozon store', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mokei-attributes-'))
+  const params = { path: join(directory, 'trace.sqlite') }
+  const attributes = { 'run.id': 'run', plain: 'plain', number: 42, boolean: true }
+  try {
+    const writer = await openMokeiDatabase(params)
+    try {
+      await (await getTelemetryStore(writer)).addSpans([stored('root', { attributes })])
+    } finally {
+      await writer.close()
+    }
+    const raw = await openLocalDatabase({
+      ...params,
+      app: 'mokei',
+      tablePrefix: 'mokei',
+      stores: [telemetryStoreDefinition],
+    })
+    try {
+      const spans = await (await getTelemetryStore(raw)).getSpans('trace')
+      expect(spans[0]?.attributes).toEqual(attributes)
+      expect(spans[0]).not.toHaveProperty('mokeiAttributeEncoding')
+    } finally {
+      await raw.close()
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+test('notification log properties retain JSON strings after flushing', async () => {
+  const span = start()
+  const properties = {
+    payload: '{"method":"notifications/message","params":{"value":"trace me"}}',
+    array: '[1,2]',
+    whitespace: ' \n [1,2]',
+    prefixed: 'mokei-json:{"value":1}',
+    nested: { strings: ['{"value":1}', '[1,2]', 'mokei-json:plain'] },
+    plain: 'plain',
+    number: 42,
+    boolean: true,
+  }
+  const manager = new AsyncLocalStorageContextManager().enable()
+  context.setGlobalContextManager(manager)
+  try {
+    context.with(trace.setSpan(context.active(), span), () => {
+      recorder.sink({
+        timestamp: 100,
+        level: 'info',
+        category: ['mokei', 'mcp', 'notification'],
+        message: ['Notification'],
+        rawMessage: 'Notification',
+        properties,
+      })
+    })
+  } finally {
+    context.disable()
+  }
+  const traceID = span.spanContext().traceId
+  expect((await reader.get(traceID))?.logs[0]?.properties).toMatchObject(properties)
+  span.end()
+  await recorder.forceFlush()
+  expect(recorder.snapshot(traceID).logs).toEqual([])
+  const result = await reader.get(traceID)
+  expect(result?.logs).toHaveLength(1)
+  expect(result?.logs[0]?.properties.payload).toBe(properties.payload)
+  expect(result?.logs[0]?.properties).toMatchObject(properties)
+  const store = await getLogStore(db)
+  expect((await store.getTraceLogs(traceID))[0]?.properties).toMatchObject(properties)
+  expect((await store.queryLogs({ traceID, limit: 10 })).logs[0]?.properties).toMatchObject(
+    properties,
+  )
 })
 test('get returns a span committed between snapshot and read exactly once', async () => {
   const span = start()

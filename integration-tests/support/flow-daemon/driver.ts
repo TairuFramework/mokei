@@ -170,7 +170,7 @@ export async function startFlowDaemonFixture(
     child = undefined
     if (clientError) throw clientError
   }
-  async function restart() {
+  async function restart(expected = options.invalidConfig ? 'failed' : 'ready') {
     if (child != null) throw new Error('Stop the existing daemon before replacement')
     spawnError = undefined
     const args = options.productionEntry
@@ -204,7 +204,6 @@ export async function startFlowDaemonFixture(
       const info = await client.request('info', { timeout: 1000 })
       return info.flowService.state !== 'starting' ? info : undefined
     })
-    const expected = options.invalidConfig ? 'failed' : 'ready'
     if (info.flowService.state !== expected)
       throw new Error(
         `Unexpected flow status: ${JSON.stringify(info.flowService)}\n${diagnostics()}`,

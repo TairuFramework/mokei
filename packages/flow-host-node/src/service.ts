@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { StoreProvider } from '@hozon/db'
 import type { FlowHost, TraceStore } from '@mokei/flow-host'
 import { createFlowHost } from '@mokei/flow-host'
+import { NodeContextHost } from '@mokei/host-node'
 import type { FlowServiceStatus, HostEvent } from '@mokei/host-protocol'
 import { NodeSession } from '@mokei/session-node'
 import { lazy } from '@sozai/async'
@@ -18,7 +19,7 @@ import { FLOW_REPORT_CATEGORY } from './report.js'
 import { startRetention } from './retention.js'
 import { getFlowRunStore } from './run-store.js'
 import { getFlowTaskStore } from './task-store.js'
-import { createFlowTraceStore } from './trace-store.js'
+import { createFlowTraceStore, type FlowTraceStoreParams } from './trace-store.js'
 
 export type { FlowServiceStatus } from '@mokei/host-protocol'
 
@@ -27,6 +28,8 @@ export type FlowResources = { host: FlowHost; traceStore: TraceStore }
 export type FlowServiceParams = {
   configPath?: string
   database: StoreProvider
+  tracing?: { payloads?: 'on' | 'off' | number }
+  traceIndex?: FlowTraceStoreParams['index']
   desktop?: FlowDesktopAdapter
   monitor?: MonitorPresence
   openURL?: (url: string) => Promise<void>
@@ -117,7 +120,11 @@ export function createFlowService(params: FlowServiceParams): FlowService {
   return createFlowServiceWithDependencies(params, {
     loadConfig: loadFlowConfig,
     loadFlows: loadFlowDirs,
-    createSession: () => new NodeSession({ elicit: true }),
+    createSession: () => {
+      return new NodeSession({
+        contextHost: new NodeContextHost({ elicit: true, tracing: params.tracing }),
+      })
+    },
     createHost: createFlowHost,
     startRetention: startRetention,
     report: (error) => report('Flow service error', error),
@@ -189,7 +196,7 @@ export function createFlowServiceWithDependencies(
       stage = 'open the flow stores'
       const runStore = await getFlowRunStore(params.database)
       const taskStore = await getFlowTaskStore(params.database)
-      const traceStore = createFlowTraceStore(params.database)
+      const traceStore = createFlowTraceStore(params.database, { index: params.traceIndex })
       if (stopping) return
       stage = 'create the flow session'
       session = dependencies.createSession()

@@ -50,6 +50,7 @@
     "@mokei/context-server": "workspace:^",
     "@mokei/flow-host": "workspace:^",
     "@mokei/host-desktop": "workspace:^",
+    "@mokei/host-node": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
     "@mokei/session-node": "workspace:^",
     "@sozai/async": "catalog:",
