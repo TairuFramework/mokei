@@ -334,12 +334,57 @@ Events are `run:state`, `inbox:added` and `inbox:settled`.
 Successful runs expose outcome, output and MCP content. Failed runs expose a typed error with an optional code.
 With an OpenTelemetry SDK, runs carry a `traceID` and a `flow.run` span.
 
+### Unified traces
+
+Flows, steps and MCP traffic use one OpenTelemetry trace model. `mokei.kind` identifies each span
+for monitor icons and filters. `flow.run` and `flow.run.resume` are flow root segments;
+`decision.predict` and other flow step spans are children. `mcp.context` is a context root span,
+and `mcp.<method>` spans record request/response exchanges.
+
+| Span name | `mokei.kind` | Producer | Parent |
+|---|---|---|---|
+| `mcp.context` | `context` | `ContextHost` or daemon `spawn` handler | Root of a new trace |
+| `mcp.<method>` | `mcp` | In-process `ContextClient` or daemon `spawn` proxy | Active span or context span |
+| `flow.run` / `flow.run.resume` | `flow` | `flow-host` | Root / previous run span |
+| `decision.predict`, other step spans | `step` | Existing step nodes | Run span |
+
+MCP request spans have two producers. In-process `ContextClient` exchanges create spans at the
+request seam. The daemon's `spawn` proxy correlates requests and responses for proxied contexts.
+Hosted contexts have a `mcp.context` lifetime span, and a flow tool call is linked to its context
+trace. Notifications are traced log records on the context span.
+
+Payload capture defaults to 65536 bytes and can be disabled or given another byte cap through
+`tracing.payloads`. Redaction runs before every observation sink: local storage, live events,
+OTLP export and sanitised `context:message` events. Secret-like object keys are replaced with
+`[redacted]`; `_meta` retains only `traceparent` and `dev.mokei/flow-run`. Capture limits mark
+truncated payloads, and the forwarded MCP traffic is not modified.
+
+`@mokei/app-node`'s `LocalTraceRecorder` is the single owner of local span, log and summary
+persistence and live trace delivery. It queues writes synchronously, then flushes spans, logs and
+changed summaries in one database transaction. Its bounded queue retries failed batches and
+reports dropped data in trace summaries and daemon info. On startup it marks previously active
+traces interrupted before flow recovery; resumed runs reactivate their trace.
+
+The `traces` store is the trace index, with one summary per trace. It tracks root and active
+segment IDs, kind, name, outcome, time range, selected flow/context attributes, span and error
+counts, dropped count and revision. `traces.list` filters and pages newest-first summaries;
+`traces.get` returns a summary, ended and open spans, and logs. The daemon merges recorder
+memory with persisted data so unflushed spans remain readable. `runs.trace` remains as a
+deprecated adapter with its legacy response shape.
+
+The host `events` stream sends `span:start`, `span:end`, `log` and `trace:summary` live events.
+Each subscriber is bounded to 2000 queued events and respects writer backpressure. At the bound,
+the daemon ends that subscriber's stream; clients reconnect and reconcile from trace queries.
+The monitor owns one host connection, displays the Traces page, and discards live trace state on
+reconnect before querying again. The Runs routes redirect to trace views.
+
 `dispose` suspends watching and flow work for recovery. Callers cancel runs explicitly when shutdown should stop them.
 Recovered tasks retain their request trace context. Input requested by sibling tools still uses the session's elicitation handler.
 
 `@mokei/flow-host` defines portable JSON store contracts, including `TraceStore` and `createMemoryTraceStore`.
 The daemon captures spans and correlated logs through `@hozon/otel` and `@hozon/logtape`, with setup owned by `@mokei/app-node`.
-Each new run owns a trace. Recovery retains its stored trace context.
+Each new run owns a trace. Recovery retains its stored trace context. The unified trace recorder,
+trace index and live events are described in [Unified traces](#unified-traces).
 
 `@mokei/app-node` owns app configuration, telemetry and the one `HozonDB` (`mokei.db`) opened for the daemon. `MOKEI_DATABASE_PATH` overrides the default path. Flow runs and tasks register their hozon stores in this shared database; flow-host-node does not open a database or install telemetry. The daemon reads `mokei.json` for logging and tracing, and `flows.json` for flow configuration. Configuration changes apply on restart. Telemetry captures local spans and correlated logs; sibling-process telemetry is not ingested locally. Shutdown disposes the flow service, drains telemetry, then closes the database. See the [app foundation guide](../../packages/app-node/README.md) and [flow service guide](../../packages/flow-host-node/README.md).
 
@@ -363,10 +408,11 @@ Configuration changes and fatal-startup recovery require restart, with no hot re
 Direct sibling elicitation outside the durable task inbox uses the existing decline fallback.
 
 The portable host protocol exposes `flows.list`, `flows.check`, `runs.start`, `runs.get`,
-`runs.list`, `runs.cancel`, `runs.trace`, `inbox.list`, `inbox.get`, `inbox.answer`,
+`runs.list`, `runs.cancel`, `runs.trace` (deprecated), `traces.list`, `traces.get`, `inbox.list`, `inbox.get`, `inbox.answer`,
 `inbox.decline`, `inbox.cancel` and `inbox.prompt`. Wire snapshots exclude private persistence
-metadata and validation functions. Trace reads are run-scoped, can lag batched capture and do
-not force flushing. A known run without a trace yields empty spans/logs. Public error codes
+metadata and validation functions. Trace reads merge recorder memory and persisted data, and do
+not force flushing. A known run without a trace yields empty spans/logs through the deprecated
+`runs.trace` adapter. Public error codes
 distinguish unavailable, missing, invalid, unsupported and competing-prompt requests. Unexpected
 failures return `INTERNAL_ERROR` with a generic message. The
 [procedure guide](../../packages/flow-host-node/README.md#procedures-and-live-events) lists exact codes.
