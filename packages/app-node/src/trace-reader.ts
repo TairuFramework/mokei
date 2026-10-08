@@ -13,7 +13,7 @@ import type {
 import { SpanStatusCode } from '@opentelemetry/api'
 
 import { decodeTraceCursor, encodeTraceCursor } from './trace-cursor.js'
-import { getTraceIndexStore } from './trace-index.js'
+import { getTraceIndexStore, traceSearchText } from './trace-index.js'
 import type { LocalTraceRecorder } from './trace-recorder.js'
 
 export type TraceReader = {
@@ -63,7 +63,7 @@ function matches(summary: TraceSummary, params: TracesListParams): boolean {
     (params.kind == null || summary.kind === params.kind) &&
     (params.active == null || summary.active === params.active) &&
     (params.outcome === undefined || summary.outcome === params.outcome) &&
-    (params.name == null || summary.name.toLowerCase().includes(params.name.toLowerCase())) &&
+    (params.name == null || traceSearchText(summary).includes(params.name.toLowerCase())) &&
     (params.since == null || summary.startTime >= params.since) &&
     (params.until == null || summary.startTime <= params.until)
   )

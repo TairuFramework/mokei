@@ -1017,3 +1017,43 @@ test('unknown trace cache evicts the oldest entry after 1000 misses', async () =
   await settle()
   expect(read).toHaveBeenCalledTimes(1002)
 })
+
+test.each([false, true])(
+  'resume preserves identity and merges attributes (persisted: %s)',
+  async (persisted) => {
+    const tracer = setup()
+    const root = tracer.startSpan('flow.run', {
+      attributes: {
+        'mokei.root': true,
+        'mokei.kind': 'flow',
+        'flow.id': 'original-flow',
+        'run.label': 'Original label',
+      },
+    })
+    root.end()
+    await settle()
+    if (persisted) await recorder.forceFlush()
+    const resume = tracer.startSpan(
+      'flow.run.resume',
+      {
+        attributes: { 'mokei.root': true, 'mokei.kind': 'step', 'run.label': 'Updated label' },
+      },
+      trace.setSpan(ROOT_CONTEXT, root),
+    )
+    await settle()
+    expect(recorder.snapshot().summaries[0]).toMatchObject({
+      name: 'flow.run',
+      kind: 'flow',
+      active: true,
+      attributes: { 'flow.id': 'original-flow', label: 'Updated label' },
+    })
+    resume.end()
+    await recorder.forceFlush()
+    expect(await (await getTraceIndexStore(db)).get(root.spanContext().traceId)).toMatchObject({
+      name: 'flow.run',
+      kind: 'flow',
+      active: false,
+      attributes: { 'flow.id': 'original-flow', label: 'Updated label' },
+    })
+  },
+)

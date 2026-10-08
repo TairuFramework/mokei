@@ -39,6 +39,7 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
     parent: Context,
     links: Array<Link>,
     id?: RequestID,
+    contextTraceID?: string,
   ): ExchangeSpan {
     const binding = getBinding()
     const span = createTracer('context-client').startSpan(
@@ -48,15 +49,18 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
         links,
         // The no-op tracer never reads attributes. SDK processors receive payloads at start.
         get attributes() {
-          return requestAttributes({
-            method,
-            params,
-            id,
-            direction,
-            contextID: binding?.contextID,
-            sessionID: binding?.getSessionID?.(),
-            capture: binding?.payloads,
-          })
+          return {
+            ...requestAttributes({
+              method,
+              params,
+              id,
+              direction,
+              contextID: binding?.contextID,
+              sessionID: binding?.getSessionID?.(),
+              capture: binding?.payloads,
+            }),
+            ...(contextTraceID === undefined ? {} : { 'mokei.context.trace_id': contextTraceID }),
+          }
         },
       },
       parent,
@@ -112,16 +116,19 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
       let parent = context.active()
       const active = trace.getSpan(parent)
       const links = [...(options?.links ?? [])]
+      let contextTraceID: string | undefined
       if (binding?.contextSpan !== undefined) {
         const bound = binding.contextSpan.spanContext()
         if (active === undefined) parent = trace.setSpan(parent, binding.contextSpan)
         else if (
           active.spanContext().spanId !== bound.spanId ||
           active.spanContext().traceId !== bound.traceId
-        )
+        ) {
           links.push({ context: bound })
+          contextTraceID = bound.traceId
+        }
       }
-      return start(method, params, 'client', parent, links)
+      return start(method, params, 'client', parent, links, undefined, contextTraceID)
     },
     startIncoming(
       method: string,

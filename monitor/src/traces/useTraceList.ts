@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useHostConnection } from '../host/useHostConnection.js'
 import { mergeSummaries } from './trace-merge.js'
+import { traceSearchText } from './trace-summary.js'
 
 export type TraceListFilters = {
   kind?: TraceSummary['kind']
@@ -16,6 +17,7 @@ export type TraceListFilters = {
 export function useTraceList(filters: TraceListFilters): {
   traces: Array<TraceSummary>
   loadMore(): void
+  hasMore: boolean
   loading: boolean
   error: Error | undefined
   retry(): void
@@ -23,6 +25,7 @@ export function useTraceList(filters: TraceListFilters): {
   const { client, epoch, connected, subscribe } = useHostConnection()
   const { kind, active, outcome, name, since, until } = filters
   const [summaries, setSummaries] = useState(new Map<string, TraceSummary>())
+  const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<Error>()
   const fetchMore = useRef(() => {})
@@ -40,6 +43,7 @@ export function useTraceList(filters: TraceListFilters): {
     const queryFilters = { kind, active, outcome, name, since, until }
     setSummaries(current)
     setLoading(false)
+    setHasMore(false)
     setError(undefined)
     if (!connected) return
 
@@ -64,6 +68,7 @@ export function useTraceList(filters: TraceListFilters): {
         })
         if (stopped) return
         cursor = result.cursor
+        setHasMore(cursor != null)
         failed = false
         publish([...result.traces, ...buffered])
       } catch (error: unknown) {
@@ -101,11 +106,11 @@ export function useTraceList(filters: TraceListFilters): {
         (kind == null || summary.kind === kind) &&
         (active == null || summary.active === active) &&
         (outcome === undefined || summary.outcome === outcome) &&
-        (name == null || summary.name.toLowerCase().includes(name.toLowerCase())) &&
+        (name == null || traceSearchText(summary).includes(name.toLowerCase())) &&
         (since == null || summary.startTime >= since) &&
         (until == null || summary.startTime <= until)
       )
     })
     .sort((a, b) => Number(b.active) - Number(a.active) || b.startTime - a.startTime)
-  return { traces, loadMore, loading, error, retry }
+  return { traces, loadMore, hasMore, loading, error, retry }
 }

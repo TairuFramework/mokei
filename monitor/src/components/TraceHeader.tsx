@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { useFlow } from '../flow/FlowProvider.js'
 import { useInbox } from '../flow/useInbox.js'
 import { useRun } from '../flow/useRun.js'
+import { traceDisplayTitle } from '../traces/trace-summary.js'
 import { RunStateBadge } from './RunStateBadge.js'
 
 function FlowHeader({ runID, summary }: { runID: string; summary: TraceSummary }) {
@@ -51,7 +52,13 @@ function FlowHeader({ runID, summary }: { runID: string; summary: TraceSummary }
       {error == null && actionError == null ? null : (
         <Alert color="red" title="Run request failed">
           {String(actionError ?? error)}
-          <Button onClick={refresh}>Retry</Button>
+          <Button
+            onClick={() => {
+              setActionError(undefined)
+              refresh()
+            }}>
+            Retry
+          </Button>
         </Alert>
       )}
       {inboxError == null ? null : (
@@ -83,9 +90,15 @@ export function TraceHeader({
 }) {
   const attributes = rootSpan?.attributes ?? {}
   const runID = summary.attributes['run.id']
+  const title = traceDisplayTitle(summary)
   return (
     <Stack>
-      <Title order={2}>{summary.name}</Title>
+      <Title order={2}>{title}</Title>
+      {title === summary.name ? null : (
+        <Text size="sm" c="dimmed">
+          {summary.name}
+        </Text>
+      )}
       {summary.kind === 'flow' ? (
         typeof runID === 'string' ? (
           <FlowHeader key={runID} runID={runID} summary={summary} />

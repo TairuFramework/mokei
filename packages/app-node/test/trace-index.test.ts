@@ -166,3 +166,26 @@ test('deletes requested traces and returns the number of existing rows', async (
   expect(await store.deleteByTrace(['a', 'c', 'missing', 'a'])).toBe(2)
   expect((await store.list({ limit: 10 })).traces.map((row) => row.traceID)).toEqual(['d', 'b'])
 })
+
+test('name filter searches span name, label and flow ID as literal case-insensitive text', async () => {
+  await store.upsert([
+    summary('named', {
+      name: 'flow.run',
+      attributes: { label: 'Éclair 100%_done!', 'flow.id': 'Review-Flow' },
+    }),
+    summary('other'),
+  ])
+  for (const name of ['FLOW.RUN', 'éCLAIR', '100%_done!', 'REVIEW-flow']) {
+    expect((await store.list({ limit: 10, name })).traces.map((row) => row.traceID)).toEqual([
+      'named',
+    ])
+  }
+  expect((await store.list({ limit: 10, name: 'missing' })).traces).toEqual([])
+  await store.upsert([
+    summary('named', { revision: 2, name: 'flow.run', attributes: { label: 'New label' } }),
+  ])
+  expect((await store.list({ limit: 10, name: 'éclair' })).traces).toEqual([])
+  expect(
+    (await store.list({ limit: 10, name: 'NEW LABEL' })).traces.map((row) => row.traceID),
+  ).toEqual(['named'])
+})

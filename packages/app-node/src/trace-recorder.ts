@@ -161,8 +161,6 @@ export class LocalTraceRecorder implements SpanProcessor {
         const root = createSummary(open)
         return {
           ...summary,
-          kind: root.kind,
-          name: root.name,
           attributes: { ...summary.attributes, ...root.attributes },
           active: true,
           outcome: null,
@@ -276,6 +274,8 @@ export class LocalTraceRecorder implements SpanProcessor {
           : {
               ...persisted,
               ...(pending.rootChanged ? local : {}),
+              name: persisted.name,
+              kind: persisted.kind,
               rootSpanID: persisted.rootSpanID,
               startTime: persisted.startTime,
               attributes: pending.rootChanged

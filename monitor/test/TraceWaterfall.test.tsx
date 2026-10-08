@@ -108,7 +108,7 @@ test('context link opens its trace without selecting the row', () => {
         spans={[
           {
             ...span('request'),
-            attributes: { 'mokei.kind': 'mcp' },
+            attributes: { 'mokei.kind': 'mcp', 'mokei.context.trace_id': 'context-trace' },
             links: [{ traceID: 'context-trace', spanID: 'context-span' }],
           },
         ]}

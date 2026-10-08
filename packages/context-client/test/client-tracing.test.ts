@@ -698,3 +698,46 @@ test('incoming and outgoing request spans read the current session at start', ()
     'negotiated-session',
   ])
 })
+
+test('outgoing context link is explicitly identified at span start even after retry links', () => {
+  const bound = binding()
+  const first = tracer.startSpan('first-leg')
+  const exchanges = createExchangeTracer(() => bound)
+  let attributes: Attributes | undefined
+  const probe = vi.spyOn(SimpleSpanProcessor.prototype, 'onStart').mockImplementation((span) => {
+    attributes = { ...span.attributes }
+  })
+  try {
+    tracer.startActiveSpan('outer', (outer) => {
+      const exchange = exchanges.startOutgoing(
+        'tools/call',
+        {},
+        { links: [{ context: first.spanContext() }] },
+      )
+      expect(attributes?.['mokei.context.trace_id']).toBe(bound.contextSpan?.spanContext().traceId)
+      exchange.succeed(result)
+      outer.end()
+    })
+  } finally {
+    probe.mockRestore()
+  }
+  const request = required(
+    exporter.getFinishedSpans().find((span) => span.name === 'mcp.tools/call'),
+  )
+  expect(request.attributes['mokei.context.trace_id']).toBe(
+    bound.contextSpan?.spanContext().traceId,
+  )
+  expect(request.links.map((link) => link.context.traceId)).toEqual([
+    first.spanContext().traceId,
+    bound.contextSpan?.spanContext().traceId,
+  ])
+  exchanges.startOutgoing('tools/list', {}).succeed({})
+  exchanges
+    .startIncoming('roots/list', {}, 1, {
+      traceparent: `00-${first.spanContext().traceId}-${first.spanContext().spanId}-01`,
+    })
+    .succeed({})
+  for (const span of exporter.getFinishedSpans().filter((span) => span.name !== 'mcp.tools/call')) {
+    expect(span.attributes['mokei.context.trace_id']).toBeUndefined()
+  }
+})

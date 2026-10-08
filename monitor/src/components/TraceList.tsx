@@ -3,6 +3,8 @@ import type { TraceSummary } from '@mokei/host-protocol'
 import { IconPlugConnected, IconRoute, IconServer, IconStairs } from '@tabler/icons-react'
 import { Link } from '@tanstack/react-router'
 
+import { traceDisplayTitle } from '../traces/trace-summary.js'
+
 const kindIcons = { flow: IconRoute, context: IconServer, mcp: IconPlugConnected, step: IconStairs }
 
 export function TraceList({ traces, now }: { traces: Array<TraceSummary>; now: number }) {
@@ -15,6 +17,7 @@ export function TraceList({ traces, now }: { traces: Array<TraceSummary>; now: n
             .filter((trace) => trace.active === (group === 'Active'))
             .map((trace) => {
               const KindIcon = kindIcons[trace.kind]
+              const title = traceDisplayTitle(trace)
               return (
                 <Stack key={trace.traceID} gap={2}>
                   <Group gap="xs">
@@ -28,9 +31,14 @@ export function TraceList({ traces, now }: { traces: Array<TraceSummary>; now: n
                           search={(previous) => ({ ...previous, span: undefined })}
                         />
                       )}>
-                      {trace.name}
+                      {title}
                     </Anchor>
                   </Group>
+                  {title === trace.name ? null : (
+                    <Text size="xs" c="dimmed">
+                      {trace.name}
+                    </Text>
+                  )}
                   <Text size="xs">
                     {Math.max(
                       0,

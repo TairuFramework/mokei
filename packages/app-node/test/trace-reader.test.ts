@@ -342,3 +342,25 @@ test('get returns queued spans committed after the snapshot exactly once', async
   expect(result?.spans[0]).toHaveProperty('endTime')
   expect(recorder.snapshot().spans).toEqual([])
 })
+
+test('name filtering matches label and flow ID in stored and live summaries', async () => {
+  const persisted = summary('stored', {
+    name: 'flow.run',
+    attributes: { label: 'Éclair 100%_done!', 'flow.id': 'Review-Flow' },
+  })
+  const local = { ...persisted, traceID: 'live', revision: 2 }
+  await (await getTraceIndexStore(db)).upsert([persisted])
+  vi.spyOn(recorder, 'snapshot').mockReturnValue({
+    open: [],
+    spans: [],
+    logs: [],
+    summaries: [local],
+  })
+  for (const name of ['FLOW.RUN', 'éCLAIR', '100%_done!', 'REVIEW-flow']) {
+    expect((await reader.list({ limit: 10, name })).traces.map((row) => row.traceID)).toEqual([
+      'stored',
+      'live',
+    ])
+  }
+  expect((await reader.list({ limit: 10, name: 'missing' })).traces).toEqual([])
+})

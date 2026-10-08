@@ -4,6 +4,13 @@ import type { TraceSummary, TracesListParams, TracesListResult } from '@mokei/ho
 
 import { decodeTraceCursor, encodeTraceCursor } from './trace-cursor.js'
 
+export function traceSearchText(summary: TraceSummary): string {
+  return [summary.name, summary.attributes.label, summary.attributes['flow.id']]
+    .filter((value) => typeof value === 'string')
+    .join('\n')
+    .toLowerCase()
+}
+
 export type TraceIndexStore = {
   upsert(summaries: Array<TraceSummary>): Promise<void>
   get(traceID: string): Promise<TraceSummary | undefined>
@@ -105,7 +112,7 @@ export const traceIndexStoreDefinition: StoreDefinition<TraceIndexTables, TraceI
             active_segment_span_id: summary.activeSegmentSpanID ?? null,
             kind: summary.kind,
             name: summary.name,
-            name_lower: summary.name.toLowerCase(),
+            name_lower: traceSearchText(summary),
             active: summary.active ? 1 : 0,
             outcome: summary.outcome,
             start_time: summary.startTime,

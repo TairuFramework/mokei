@@ -65,23 +65,34 @@ test('missing root renders a placeholder root from the summary', () => {
   ).toMatchObject({ open: true, end: 200 })
 })
 
-test('mcp span with a link exposes contextLink', () => {
+test('context navigation uses its explicit trace ID instead of the first retry link', () => {
   const linked = {
     ...span('request'),
-    attributes: { 'mokei.kind': 'mcp' },
+    attributes: { 'mokei.kind': 'mcp', 'mokei.context.trace_id': 'context-trace' },
     links: [
+      { traceID: 'trace-1', spanID: 'first-leg' },
       { traceID: 'context-trace', spanID: 'context-span' },
-      { traceID: 'other', spanID: 'other' },
     ],
   }
-  expect(buildTraceTree([linked], undefined, 100).roots[0].contextLink).toEqual(linked.links[0])
-  expect(
-    buildTraceTree([{ ...linked, attributes: { 'mokei.kind': 'flow' } }], undefined, 100).roots[0]
-      .contextLink,
-  ).toBeUndefined()
-  expect(
-    buildTraceTree([{ ...linked, links: [] }], undefined, 100).roots[0].contextLink,
-  ).toBeUndefined()
+  expect(buildTraceTree([linked], undefined, 100).roots[0].contextLink).toEqual({
+    traceID: 'context-trace',
+  })
+  expect(buildTraceTree([{ ...linked, links: [] }], undefined, 100).roots[0].contextLink).toEqual({
+    traceID: 'context-trace',
+  })
+})
+
+test.each([
+  { 'mokei.kind': 'mcp' },
+  { 'mokei.kind': 'mcp', 'mokei.context.trace_id': 'trace-1' },
+  { 'mokei.kind': 'flow', 'mokei.context.trace_id': 'context-trace' },
+])('context navigation ignores remote, same-trace and non-MCP links: %j', (attributes) => {
+  const linked = {
+    ...span('request'),
+    attributes,
+    links: [{ traceID: 'remote-trace', spanID: 'remote' }],
+  }
+  expect(buildTraceTree([linked], undefined, 100).roots[0].contextLink).toBeUndefined()
 })
 
 test('spans nest by parent ID regardless of input order', () => {

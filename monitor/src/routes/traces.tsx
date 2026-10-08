@@ -46,7 +46,7 @@ export function validateTraceSearch(search: Record<string, unknown>): TraceListF
 function TracesPage() {
   const search = Route.useSearch()
   const navigate = useNavigate()
-  const { traces, loading, error, retry, loadMore } = useTraceList(search)
+  const { traces, loading, error, retry, loadMore, hasMore } = useTraceList(search)
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
@@ -121,7 +121,7 @@ function TracesPage() {
           {loading ? <Loader size="sm" aria-label="Loading traces" /> : null}
           {!loading && traces.length === 0 ? <Text>No traces match this filter.</Text> : null}
           <TraceList traces={traces} now={now} />
-          <Button onClick={loadMore} disabled={loading}>
+          <Button onClick={loadMore} disabled={loading || !hasMore}>
             Load more
           </Button>
         </Stack>

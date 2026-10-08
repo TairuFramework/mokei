@@ -11,7 +11,7 @@ export type SpanNode = {
   open: boolean
   placeholder: boolean
   kind?: string
-  contextLink?: { traceID: string; spanID: string }
+  contextLink?: { traceID: string }
 }
 
 export function buildTraceTree(
@@ -23,6 +23,7 @@ export function buildTraceTree(
   for (const span of spans) {
     const open = !('endTime' in span)
     const kind = span.attributes['mokei.kind']
+    const contextTraceID = span.attributes['mokei.context.trace_id']
     const code = 'status' in span ? span.status.code : 0
     nodes.set(span.spanID, {
       id: span.spanID,
@@ -35,7 +36,10 @@ export function buildTraceTree(
       open,
       placeholder: false,
       kind: typeof kind === 'string' ? kind : undefined,
-      contextLink: kind === 'mcp' ? span.links[0] : undefined,
+      contextLink:
+        kind === 'mcp' && typeof contextTraceID === 'string' && contextTraceID !== span.traceID
+          ? { traceID: contextTraceID }
+          : undefined,
     })
   }
   if (summary != null && !nodes.has(summary.rootSpanID)) {

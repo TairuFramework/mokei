@@ -422,3 +422,54 @@ test('filter changes reset the list and reject the previous pending query', asyn
   env.emit({ type: 'trace:summary', meta, data: { ...summary, kind: 'context' } })
   expect(hook.result.current.traces[0].kind).toBe('context')
 })
+
+test('list exposes whether a cursor remains and resets paging on epoch change', async () => {
+  const env = setup()
+  const fresh = deferred<TracesListResult>()
+  const restarted = deferred<TracesListResult>()
+  env.fixture.request
+    .mockResolvedValueOnce({ traces: [summary], cursor: 'next' } as never)
+    .mockResolvedValueOnce({ traces: [] } as never)
+    .mockReturnValueOnce(fresh.promise as never)
+    .mockReturnValueOnce(restarted.promise as never)
+  const hook = renderHook(() => useTraceList({}), { wrapper: env.wrapper })
+  expect(hook.result.current.hasMore).toBe(false)
+  await act(async () => {})
+  expect(hook.result.current.hasMore).toBe(true)
+  await act(async () => hook.result.current.loadMore())
+  expect(hook.result.current.hasMore).toBe(false)
+  env.epoch(1)
+  hook.rerender()
+  expect(hook.result.current.hasMore).toBe(false)
+  await act(async () => fresh.resolve({ traces: [], cursor: 'fresh' }))
+  expect(hook.result.current.hasMore).toBe(true)
+  env.epoch(2)
+  hook.rerender()
+  expect(hook.result.current.hasMore).toBe(false)
+  await act(async () => restarted.resolve({ traces: [] }))
+  expect(hook.result.current.hasMore).toBe(false)
+})
+
+test.each(['FLOW.RUN', 'éCLAIR', '100%_done!', 'REVIEW-flow'])(
+  'list filters stored and live summaries by name, label and flow ID: %s',
+  async (name) => {
+    const env = setup()
+    const named = {
+      ...summary,
+      name: 'flow.run',
+      attributes: { label: 'Éclair 100%_done!', 'flow.id': 'Review-Flow' },
+    }
+    env.fixture.request.mockResolvedValueOnce({ traces: [named] } as never)
+    const hook = renderHook(() => useTraceList({ name }), { wrapper: env.wrapper })
+    await act(async () => {})
+    expect(hook.result.current.traces).toEqual([named])
+    env.emit({ type: 'trace:summary', meta, data: { ...named, traceID: 'live' } })
+    expect(hook.result.current.traces.map((trace) => trace.traceID)).toEqual(['trace-a', 'live'])
+    env.emit({
+      type: 'trace:summary',
+      meta,
+      data: { ...named, traceID: 'live', revision: 2, name: 'other', attributes: {} },
+    })
+    expect(hook.result.current.traces).toEqual([named])
+  },
+)
