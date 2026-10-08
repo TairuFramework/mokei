@@ -12,6 +12,7 @@ import type {
   HostEventMeta,
   MonitorProcedure,
   Protocol,
+  TracingInfo,
 } from '@mokei/host-protocol'
 import { protocol } from '@mokei/host-protocol'
 import { tap } from '@sozai/stream'
@@ -27,6 +28,8 @@ export type HandlersContext = {
   startedTime: number
   shutdown?: () => void | Promise<void>
   tracing?: { payloads?: PayloadCapture }
+  tracingInfo?: () => TracingInfo
+  eventBufferLimit?: number
   flowStatus?: () => FlowServiceStatus
 }
 
@@ -54,18 +57,36 @@ export function createHandlers({
   shutdown,
   flowStatus = unavailableStatus,
   tracing,
+  tracingInfo,
+  eventBufferLimit = 2000,
 }: HandlersContext): ProcedureHandlers<BaseProtocol> {
   return {
     events: async (ctx) => {
       if (ctx.signal.aborted) return
       const writer = ctx.writable.getWriter()
       const sub = new AbortController()
+      let pendingWrites = 0
       const abortSubscription = () => sub.abort()
       const handleEvent = (event: Event) => {
         if (sub.signal.aborted) return
+        const desiredSize = writer.desiredSize
+        if (
+          pendingWrites >= eventBufferLimit ||
+          desiredSize == null ||
+          desiredSize <= -eventBufferLimit
+        ) {
+          sub.abort()
+          return
+        }
         const e = event as CustomEvent<Omit<HostEvent, 'type'>>
         const message = { type: e.type, ...e.detail } as HostEvent
-        void writer.write(message).catch(() => sub.abort())
+        pendingWrites++
+        void writer
+          .write(message)
+          .catch(() => sub.abort())
+          .finally(() => {
+            pendingWrites--
+          })
       }
       try {
         await new Promise<void>((resolve) => {
@@ -82,10 +103,17 @@ export function createHandlers({
         for (const type of EVENT_TYPES) {
           events.removeEventListener(type, handleEvent)
         }
+        // Do not wait for a stalled consumer to settle its outstanding writes.
+        void writer.abort().catch(() => {})
         writer.releaseLock()
       }
     },
-    info: () => ({ activeContexts, startedTime, flowService: flowStatus() }),
+    info: () => ({
+      activeContexts,
+      startedTime,
+      flowService: flowStatus(),
+      ...(tracingInfo == null ? {} : { tracing: tracingInfo() }),
+    }),
     shutdown: async () => {
       await shutdown?.()
     },
@@ -196,6 +224,10 @@ const EVENT_TYPES = [
   'run:state',
   'inbox:added',
   'inbox:settled',
+  'span:start',
+  'span:end',
+  'log',
+  'trace:summary',
 ] as const
 
 const FLOW_PROCEDURES = [
@@ -239,6 +271,8 @@ export type HostDaemonParams = {
   shutdownTimeoutMs?: number
   handlers?: Partial<ProcedureHandlers<Protocol>>
   tracing?: { payloads?: PayloadCapture }
+  tracingInfo?: () => TracingInfo
+  eventBufferLimit?: number
   flowStatus?: () => FlowServiceStatus
   onShutdown?: () => Promise<void>
   onError?: (error: unknown) => void
@@ -275,6 +309,8 @@ export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonH
     startedTime: Date.now(),
     flowStatus: params.flowStatus,
     tracing: params.tracing,
+    tracingInfo: params.tracingInfo,
+    eventBufferLimit: params.eventBufferLimit,
     shutdown: () => {
       if (shutdownScheduled) return
       shutdownScheduled = true

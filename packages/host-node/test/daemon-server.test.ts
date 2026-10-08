@@ -10,6 +10,7 @@ import { DirectTransports } from '@enkaku/transport'
 import type {
   BaseProtocol,
   BaseClientMessage as HostClientMessage,
+  HostEvent,
   BaseServerMessage as HostServerMessage,
   Protocol,
 } from '@mokei/host-protocol'
@@ -17,7 +18,7 @@ import { SpanStatusCode } from '@opentelemetry/api'
 import { describe, expect, test, vi } from 'vitest'
 
 import { createClient } from '../src/daemon.js'
-import { serveHostDaemon } from '../src/daemon-server.js'
+import { type HandlersContext, serveHostDaemon } from '../src/daemon-server.js'
 import { createHandlers, killChildren } from '../src/server.js'
 import { useTestTracing } from './support/otel.js'
 
@@ -279,6 +280,204 @@ test('context:message events carry the sanitised copy while forwarded bytes are 
     expect(request.params.token).toBe('t')
   } finally {
     channel.close()
+    await client.dispose()
+    await server.dispose()
+    await transports.dispose()
+  }
+})
+
+function eventContext(writable: WritableStream<HostEvent>, signal: AbortSignal) {
+  return {
+    signal,
+    writable,
+    param: undefined as never,
+    message: {
+      header: { typ: 'JWT' as const, alg: 'none' as const },
+      payload: {
+        typ: 'stream' as const,
+        prc: 'events' as const,
+        rid: 'event-subscription',
+        prm: undefined as never,
+      },
+    },
+  }
+}
+
+function eventHandlers(events: EventTarget, options: Partial<HandlersContext> = {}) {
+  return createHandlers({
+    activeContexts: {},
+    children: new Map(),
+    events,
+    startedTime: 1,
+    ...options,
+  })
+}
+
+test('forwards span:start, span:end, log and trace:summary events', async () => {
+  const events = new EventTarget()
+  const received: Array<HostEvent> = []
+  const controller = new AbortController()
+  const subscription = eventHandlers(events).events(
+    eventContext(
+      new WritableStream({
+        write: (event) => {
+          received.push(event)
+        },
+      }),
+      controller.signal,
+    ),
+  )
+  const span = {
+    traceID: 'trace-one',
+    spanID: 'span-one',
+    name: 'tools/call',
+    kind: 1,
+    startTime: 1,
+    attributes: {},
+    links: [],
+  }
+  const messages: Array<HostEvent> = [
+    { type: 'span:start', meta: { eventID: 'start', time: 1 }, data: span },
+    {
+      type: 'span:end',
+      meta: { eventID: 'end', time: 2 },
+      data: { ...span, endTime: 2, status: { code: 1 }, events: [] },
+    },
+    {
+      type: 'log',
+      meta: { eventID: 'log', time: 2 },
+      data: {
+        traceID: 'trace-one',
+        spanID: 'span-one',
+        logID: 'log-one',
+        timestamp: 2,
+        level: 'info',
+        category: ['test'],
+        message: 'done',
+        properties: {},
+      },
+    },
+    {
+      type: 'trace:summary',
+      meta: { eventID: 'summary', time: 2 },
+      data: {
+        traceID: 'trace-one',
+        rootSpanID: 'span-one',
+        name: 'tools/call',
+        kind: 'mcp',
+        active: false,
+        outcome: 'ok',
+        startTime: 1,
+        attributes: {},
+        spanCount: 1,
+        errorCount: 0,
+        droppedCount: 0,
+        revision: 2,
+      },
+    },
+  ]
+  try {
+    for (const { type, ...detail } of messages)
+      events.dispatchEvent(new CustomEvent(type, { detail }))
+    await vi.waitFor(() => expect(received).toEqual(messages))
+  } finally {
+    controller.abort()
+    await subscription
+  }
+})
+
+test.each([
+  {
+    name: 'a subscriber that does not read is disconnected after 2000 queued events; others keep receiving',
+    eventBufferLimit: undefined,
+  },
+  {
+    name: 'uses the configured subscriber event bound; others keep receiving',
+    eventBufferLimit: 3,
+  },
+])(
+  '$name',
+  async ({ eventBufferLimit }) => {
+    const events = new EventTarget()
+    const handlers = eventHandlers(events, { eventBufferLimit })
+    const slow = new TransformStream<HostEvent, HostEvent>()
+    const slowController = new AbortController()
+    const fastController = new AbortController()
+    const received: Array<HostEvent> = []
+    let disconnected = false
+    const slowSubscription = Promise.resolve(
+      handlers.events(eventContext(slow.writable, slowController.signal)),
+    ).then(() => {
+      disconnected = true
+    })
+    const fastSubscription = handlers.events(
+      eventContext(
+        new WritableStream({
+          write: (event) => {
+            received.push(event)
+          },
+        }),
+        fastController.signal,
+      ),
+    )
+    const limit = eventBufferLimit ?? 2000
+    try {
+      for (let index = 0; index < limit; index++) {
+        events.dispatchEvent(
+          new CustomEvent('context:stop', {
+            detail: { meta: { contextID: 'context-one', eventID: String(index), time: index } },
+          }),
+        )
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(received).toHaveLength(index + 1)
+      }
+      expect(disconnected).toBe(false)
+      events.dispatchEvent(
+        new CustomEvent('context:stop', {
+          detail: { meta: { contextID: 'context-one', eventID: 'overflow', time: limit } },
+        }),
+      )
+      await vi.waitFor(() => expect(disconnected).toBe(true))
+      expect(received).toHaveLength(limit + 1)
+      events.dispatchEvent(
+        new CustomEvent('context:stop', {
+          detail: { meta: { contextID: 'context-one', eventID: 'after', time: limit + 1 } },
+        }),
+      )
+      await vi.waitFor(() => expect(received).toHaveLength(limit + 2))
+      expect(slow.writable.locked).toBe(false)
+      const reader = slow.readable.getReader()
+      try {
+        await expect(reader.read()).rejects.toBeUndefined()
+      } finally {
+        reader.releaseLock()
+      }
+    } finally {
+      slowController.abort()
+      fastController.abort()
+      await slow.readable.cancel().catch(() => {})
+      await Promise.all([slowSubscription, fastSubscription])
+    }
+  },
+  20_000,
+)
+
+test('info includes tracing when tracingInfo is provided', async () => {
+  const tracing = { lostSummaryCount: 4, droppedCount: 7 }
+  const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
+  const server = serve<BaseProtocol>({
+    handlers: eventHandlers(new EventTarget(), { tracingInfo: () => tracing }),
+    transport: transports.server,
+    requireAuth: false,
+  })
+  const client = new Client<BaseProtocol>({ transport: transports.client })
+  try {
+    expect(await client.request('info')).toMatchObject({ tracing })
+    tracing.droppedCount = 8
+    expect(await client.request('info')).toMatchObject({
+      tracing: { lostSummaryCount: 4, droppedCount: 8 },
+    })
+  } finally {
     await client.dispose()
     await server.dispose()
     await transports.dispose()
