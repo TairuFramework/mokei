@@ -1,66 +1,70 @@
-import { type ServerType, serve } from '@hono/node-server'
-import { Hono } from 'hono'
-
 import {
-  protectedResourceMetadataPath,
-  protectedResourceMetadataResponse,
-} from './auth/metadata.js'
-import { type BearerAuthOptions, createBearerAuthGate } from './auth/require-bearer.js'
-import { createHTTPHandler, type HTTPHandler, type HTTPHandlerParams } from './handler.js'
+  type CreateServerParams,
+  createServer,
+  definePlugin,
+  type HTTPServer,
+} from '@sozai/http-server'
+import { type OAuthTokenVerifier, oauthResourcePlugin } from '@teikyo/oauth'
 
-export type ServeHTTPParams = HTTPHandlerParams & {
-  port?: number
-  hostname?: string
-  path?: string
-  auth?: BearerAuthOptions & { authorizationServers: Array<string> }
-}
+import type { HTTPHandler, HTTPHandlerParams } from './handler.js'
+import { MOKEI_MCP, mcpPlugin } from './plugin.js'
 
+export type ServeHTTPParams = HTTPHandlerParams &
+  Pick<CreateServerParams, 'graceMs' | 'signal' | 'logger'> & {
+    port?: number
+    hostname?: string
+    path?: string
+    auth?: {
+      verifier: OAuthTokenVerifier
+      resource: string
+      authorizationServers: Array<string>
+      requiredScopes?: Array<string>
+    }
+  }
+
+/**
+ * `dispose()` runs graceful shutdown first, ending subscriptions with terminal frames.
+ * In-flight stateless requests may hold disposal up to `graceMs`.
+ * `server` is a Sozai `HTTPServer` whose `url` includes the bound port.
+ */
 export type ServeHTTPResult = {
   handler: HTTPHandler
-  server: ServerType
-  /**
-   * Tears everything down: awaits the handler's disposal (which flushes in-flight
-   * `subscriptions/listen` terminals, bounded) *before* closing the Node server, so the socket
-   * stays open long enough for those terminal writes to reach their clients.
-   */
+  server: HTTPServer
   dispose: () => Promise<void>
 }
 
-export function serveHTTP(params: ServeHTTPParams): ServeHTTPResult {
-  const { port = 3000, hostname = '127.0.0.1', path = '/mcp', ...handlerParams } = params
-  const handler = createHTTPHandler(handlerParams)
-
-  const app = new Hono()
-
-  if (params.auth) {
-    const auth = params.auth
-    const gate = createBearerAuthGate(auth)
-    const metaPath = protectedResourceMetadataPath(auth.resource)
-    app.get(metaPath, () => {
-      return protectedResourceMetadataResponse({
-        resource: auth.resource,
-        authorizationServers: auth.authorizationServers,
-      })
-    })
-    app.all(path, async (ctx) => {
-      const { response, authInfo } = await gate(ctx.req.raw)
-      if (response) return response
-      return await handler.handleRequest(ctx.req.raw, { auth: authInfo })
-    })
-  } else {
-    app.all(path, async (ctx) => {
-      return await handler.handleRequest(ctx.req.raw)
-    })
-  }
-
-  const server = serve({ fetch: app.fetch, port, hostname })
-
-  return {
-    handler,
-    server,
-    dispose: async () => {
-      await handler.dispose()
-      server.close()
-    },
-  }
+/**
+ * Starts a Sozai HTTP server. See {@link ServeHTTPResult} for graceful disposal and the bound URL.
+ */
+export async function serveHTTP(params: ServeHTTPParams): Promise<ServeHTTPResult> {
+  const {
+    port = 3000,
+    hostname = '127.0.0.1',
+    path = '/mcp',
+    auth,
+    graceMs,
+    signal,
+    ...handlerParams
+  } = params
+  let handler!: HTTPHandler
+  const server = await createServer({
+    port,
+    hostname,
+    graceMs,
+    signal,
+    logger: params.logger,
+    plugins: [
+      ...(auth == null ? [] : [oauthResourcePlugin(auth)]),
+      mcpPlugin({ ...handlerParams, path, auth: auth && { scopes: auth.requiredScopes } }),
+      definePlugin({
+        name: 'mokei:serve',
+        dependsOn: [MOKEI_MCP],
+        setup(ctx) {
+          handler = ctx.use(MOKEI_MCP).handler
+        },
+      }),
+    ],
+  })
+  await server.listen()
+  return { handler, server, dispose: () => server.dispose() }
 }

@@ -5,7 +5,7 @@ import {
   TASKS_EXTENSION,
 } from '@mokei/context-protocol'
 import { createHTTPClient } from '@mokei/http-client'
-import { type OAuthTokenVerifier, TokenVerificationError } from '@mokei/http-server'
+import { type OAuthTokenVerifier, TokenVerificationError } from '@teikyo/oauth'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import {
@@ -206,7 +206,6 @@ describe('bearer owned HTTP tasks', () => {
     const server = await startMokeiTasksHTTPServer({
       verifier,
       resource: 'http://127.0.0.1/mcp',
-      resourceMetadataURL: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
       authorizationServers: ['https://as.example'],
     })
     servers.push(server)

@@ -41,16 +41,17 @@
   },
   "dependencies": {
     "@enkaku/transport": "catalog:",
-    "@hono/node-server": "catalog:",
-    "@kokuin/token": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-server": "workspace:^",
     "@mokei/logger": "workspace:^",
     "@sozai/codec": "catalog:",
+    "@sozai/http-server": "catalog:",
     "@sozai/runtime": "catalog:",
+    "@teikyo/oauth": "catalog:",
     "hono": "catalog:"
   },
   "devDependencies": {
+    "@kokuin/token": "catalog:",
     "@mokei/http-client": "workspace:^",
     "@sozai/event": "catalog:",
     "@types/node": "catalog:"

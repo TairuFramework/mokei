@@ -88,7 +88,7 @@ import { serveHTTP } from '@mokei/http-server'
 
 const tasks = createTaskManager()
 await tasks.recover(tools)
-const http = serveHTTP({
+const http = await serveHTTP({
   tasks,
   createServer: ({ transport, tasks: sharedTasks, auth }) =>
     new ContextServer({

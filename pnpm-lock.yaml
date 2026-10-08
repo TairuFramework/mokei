@@ -191,9 +191,6 @@ catalogs:
     '@enkaku/transport':
       specifier: ^0.21.3
       version: 0.21.3
-    '@hono/node-server':
-      specifier: ^2.1.3
-      version: 2.1.3
     '@hozon/adapter':
       specifier: ^0.1.0
       version: 0.1.0
@@ -272,6 +269,9 @@ catalogs:
     '@sozai/generator':
       specifier: ^0.2.2
       version: 0.2.2
+    '@sozai/http-server':
+      specifier: ^0.1.1
+      version: 0.1.1
     '@sozai/json':
       specifier: ^0.3.0
       version: 0.3.0
@@ -308,6 +308,9 @@ catalogs:
     '@tanstack/router-plugin':
       specifier: ^1.168.42
       version: 1.168.42
+    '@teikyo/oauth':
+      specifier: ^0.1.0
+      version: 0.1.0
     '@tejika/cli':
       specifier: ^0.4.2
       version: 0.4.2
@@ -520,6 +523,9 @@ importers:
       '@mokei/system-one-client':
         specifier: workspace:^
         version: link:../packages/system-one-client
+      '@teikyo/oauth':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.11)(hono@4.13.13)
       get-port:
         specifier: 'catalog:'
         version: 7.2.0
@@ -1535,12 +1541,6 @@ importers:
       '@enkaku/transport':
         specifier: 'catalog:'
         version: 0.21.3(@logtape/logtape@2.3.11)
-      '@hono/node-server':
-        specifier: 'catalog:'
-        version: 2.1.3(hono@4.13.13)
-      '@kokuin/token':
-        specifier: 'catalog:'
-        version: 0.5.0(@logtape/logtape@2.3.11)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -1553,13 +1553,22 @@ importers:
       '@sozai/codec':
         specifier: 'catalog:'
         version: 0.4.2
+      '@sozai/http-server':
+        specifier: 'catalog:'
+        version: 0.1.1(@logtape/logtape@2.3.11)(hono@4.13.13)
       '@sozai/runtime':
         specifier: 'catalog:'
         version: 0.1.0
+      '@teikyo/oauth':
+        specifier: 'catalog:'
+        version: 0.1.0(@logtape/logtape@2.3.11)(hono@4.13.13)
       hono:
         specifier: 'catalog:'
         version: 4.13.13
     devDependencies:
+      '@kokuin/token':
+        specifier: 'catalog:'
+        version: 0.5.0(@logtape/logtape@2.3.11)
       '@mokei/http-client':
         specifier: workspace:^
         version: link:../http-client
@@ -3419,6 +3428,11 @@ packages:
     peerDependencies:
       hono: ^4
 
+  '@hono/otel@1.2.0':
+    resolution: {integrity: sha512-xFUY1iZg/CNodLi7bwvZvYmEx1x/DjiIxSARcBqvt3ks42RW7mBKMtzVEn+gRAomgcoRCVlbvmIrhxRyBNU29A==}
+    peerDependencies:
+      hono: '>=4.0.0'
+
   '@hozon/adapter@0.1.0':
     resolution: {integrity: sha512-OfwOdQneFmsCpxtbeQxI11VLWR1+hSHH8klq4QxYLqMTtK/SJpVyGqyTDqRPhRzpTeVtYaY8xw31K9m1drjciA==}
     engines: {node: '>=24'}
@@ -4597,6 +4611,12 @@ packages:
   '@sozai/generator@0.2.2':
     resolution: {integrity: sha512-rdoWc7SPx534PFwz4OSfLLYo3DNS7FrjGYpa6dYn4SiapUXRSefTVdfGOugKkN3TN3TB1DUhPUenMmP1zQbgfQ==}
 
+  '@sozai/http-server@0.1.1':
+    resolution: {integrity: sha512-yvlKtf/f2/NRxhl5FSLTygbTflZETnS1xxQ8XRAoiLAZ32wS2R8qguNz4ZTBaaQpG7IAzDzk4iN2PqgUvlqtOg==}
+    engines: {node: '>=24'}
+    peerDependencies:
+      hono: ^4.13.13
+
   '@sozai/json@0.1.1':
     resolution: {integrity: sha512-5ftTPdDYVeFj14VZWBKi4jV5Xu0XC2yioNEWXgSfrdw9QkCY+R6nNwkukHaVwyFAnz8qLnKHYNjg+42gxAOo4Q==}
 
@@ -5126,6 +5146,12 @@ packages:
   '@tanstack/virtual-file-routes@1.162.0':
     resolution: {integrity: sha512-uhOeFyxLcU41HzvrxsGpiWdcMbScY1EDgbZ5K7DVRMYInbLYWAC0EA/kx9wXAoSM8q82bUG2hRl8+EAjE6XAbA==}
     engines: {node: '>=20.19'}
+
+  '@teikyo/oauth@0.1.0':
+    resolution: {integrity: sha512-c/pI/lnbUo5o7b+//u03Fl1/EsmQfK5TWfoCEVdm+2dxcurlk2u4ke2Pw53Wc4kc6e2fts/bAyjAqfPjHoWfaQ==}
+    engines: {node: '>=24'}
+    peerDependencies:
+      hono: ^4.13.13
 
   '@tejika/cli@0.4.2':
     resolution: {integrity: sha512-RMuKzZJ00aDs8FyI2R29NLwYpOz67zKE4bRzyuJ/DgzsL2N7KvcEI1XfBzVd3IYRbnKJN+p98CPqEiRqkKyZ4Q==}
@@ -13654,6 +13680,12 @@ snapshots:
     dependencies:
       hono: 4.13.13
 
+  '@hono/otel@1.2.0(hono@4.13.13)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/semantic-conventions': 1.43.0
+      hono: 4.13.13
+
   '@hozon/adapter@0.1.0':
     dependencies:
       kysely: 0.29.6
@@ -14940,6 +14972,18 @@ snapshots:
     dependencies:
       '@sozai/async': 0.4.0
 
+  '@sozai/http-server@0.1.1(@logtape/logtape@2.3.11)(hono@4.13.13)':
+    dependencies:
+      '@hono/node-server': 2.1.3(hono@4.13.13)
+      '@hono/otel': 1.2.0(hono@4.13.13)
+      '@sozai/async': 0.4.0
+      '@sozai/log': 0.4.0(@logtape/logtape@2.3.11)
+      '@sozai/otel': 0.3.3(@logtape/logtape@2.3.11)
+      get-port: 7.2.0
+      hono: 4.13.13
+    transitivePeerDependencies:
+      - '@logtape/logtape'
+
   '@sozai/json@0.1.1': {}
 
   '@sozai/json@0.2.0': {}
@@ -15436,6 +15480,15 @@ snapshots:
   '@tanstack/virtual-core@3.17.11': {}
 
   '@tanstack/virtual-file-routes@1.162.0': {}
+
+  '@teikyo/oauth@0.1.0(@logtape/logtape@2.3.11)(hono@4.13.13)':
+    dependencies:
+      '@kokuin/token': 0.5.0(@logtape/logtape@2.3.11)
+      '@sozai/codec': 0.4.2
+      '@sozai/http-server': 0.1.1(@logtape/logtape@2.3.11)(hono@4.13.13)
+      hono: 4.13.13
+    transitivePeerDependencies:
+      - '@logtape/logtape'
 
   '@tejika/cli@0.4.2(@logtape/logtape@2.3.11)(ink@7.1.1(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)':
     dependencies:

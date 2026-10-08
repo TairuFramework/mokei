@@ -25,14 +25,14 @@ there is no equivalent stream to deprecate on that revision — it simply doesn'
 `2025-11-25` session GET stream itself remains fully supported for the deprecation window. This
 does not affect the `2026-07-28` Streamable HTTP transport, which is current and not deprecated.
 
-`serveHTTP` starts an HTTP server (via `@hono/node-server`) that bridges each session
+`serveHTTP` starts an HTTP server (via `@sozai/http-server`) that bridges each session
 to a `ContextServer` you create per connection:
 
 ```typescript
 import { serveHTTP } from '@mokei/http-server'
 import { ContextServer } from '@mokei/context-server'
 
-const { server, dispose } = serveHTTP({
+const { server, dispose } = await serveHTTP({
   port: 3000,
   hostname: '127.0.0.1',
   path: '/mcp',
@@ -46,9 +46,49 @@ const { server, dispose } = serveHTTP({
     }),
 })
 
+// The bound URL includes the assigned port when port is 0.
+console.log(`${server.url}/mcp`)
+
 // Later, to shut down:
-dispose()
+await dispose()
 ```
+
+For an existing `@sozai/http-server` application, install `mcpPlugin` alongside
+other `@sozai/http-server` plugins, such as Teikyo's. OAuth resource protection comes from
+`@teikyo/oauth`:
+
+```typescript
+import { createServer } from '@sozai/http-server'
+import { oauthResourcePlugin } from '@teikyo/oauth'
+import { mcpPlugin } from '@mokei/http-server'
+import { ContextServer } from '@mokei/context-server'
+
+const app = await createServer({
+  plugins: [
+    oauthResourcePlugin({ resource, authorizationServers, verifier }),
+    mcpPlugin({
+      createServer: ({ transport }) => new ContextServer({ transport, name, version, tools }),
+      auth: { scopes: ['tools:read'] },
+    }),
+  ],
+})
+await app.listen()
+console.log(`${app.url}/mcp`)
+```
+
+`mcpPlugin` registers a shutdown hook that ends subscriptions gracefully before the handler
+closes. Its close hook disposes the handler.
+
+OAuth verification and protected-resource metadata are provided by `@teikyo/oauth`. Mokei no
+longer exports `createBearerAuthGate`, `createJWKSVerifier`, `createDIDVerifier`,
+`protectedResourceMetadataResponse` or `TokenVerificationError`; import the corresponding OAuth
+functionality from `@teikyo/oauth` instead.
+
+If a verifier cannot reach its key service, the request returns `503 Service Unavailable`, so a
+temporary key outage is not reported as an authentication failure.
+
+The HTTP server keeps Mokei's `SSEWriter` rather than using Hono's `streamSSE`: its replay buffer
+and event IDs support MCP stream resumption, which `streamSSE` does not provide.
 
 To embed the handler in an existing HTTP framework, use `createHTTPHandler` and route
 requests to its `handleRequest(request)` method:
@@ -74,21 +114,19 @@ const response = await handler.handleRequest(request)
 ## Subscriptions & graceful shutdown
 
 When `subscriptionHub` is passed to `serveHTTP` / `createHTTPHandler`, `2026-07-28`
-`subscriptions/listen` POSTs are served against transport-isolated per-POST servers that
-*borrow* that hub — they do not own it. The handler's own `dispose()` (the value returned by
-`serveHTTP`, or `handler.dispose()`) is therefore only the abrupt backstop: it does not
-gracefully complete open subscriptions, so any still-open `subscriptions/listen` stream is torn
-down abruptly with no terminal frame written.
+`subscriptions/listen` POSTs use per-request servers that borrow the hub. The application owns
+and disposes the hub separately. `handler.shutdown()` ends every subscription in the supplied hub,
+including those served by other handlers or transports sharing it. Shutdown does not dispose the hub.
 
-To shut down gracefully, dispose the durable hub-owning `ContextServer` first (or call
-`hub.endAllGracefully()` directly), and only then call the HTTP handler's `dispose()`:
+The result of `await serveHTTP(...)` delegates disposal to the HTTP server. Its shutdown hooks
+complete open subscriptions with terminal frames before closing the handler. In-flight stateless
+requests may hold disposal up to `graceMs`. Await `dispose()` to finish shutdown.
+
+An embedded `createHTTPHandler` needs an explicit graceful shutdown before disposal:
 
 ```typescript
-// 1. Gracefully complete every open subscription against the durable hub-owning server.
-await hub.endAllGracefully()
-
-// 2. Only now tear down the HTTP layer.
-await dispose()
+await handler.shutdown()
+await handler.dispose()
 ```
 
 ## Documentation

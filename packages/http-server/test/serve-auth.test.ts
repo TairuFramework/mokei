@@ -4,10 +4,10 @@ import {
   TASKS_EXTENSION,
 } from '@mokei/context-protocol'
 import { ContextServer, createTaskManager, type ServerConfig } from '@mokei/context-server'
+import type { OAuthTokenVerifier } from '@teikyo/oauth'
+import { TokenVerificationError } from '@teikyo/oauth'
 import { afterEach, describe, expect, test } from 'vitest'
 
-import type { OAuthTokenVerifier } from '../src/auth/verifier.js'
-import { TokenVerificationError } from '../src/auth/verifier.js'
 import { serveHTTP } from '../src/serve.js'
 
 const SERVER_CONFIG: ServerConfig = {
@@ -30,26 +30,10 @@ const verifier: OAuthTokenVerifier = {
   },
 }
 
-/**
- * `server.address()` is `null` until the underlying TCP socket finishes binding, which is
- * asynchronous even for an IP-literal hostname on port 0 -- so callers must wait for the
- * `listening` event before reading the assigned port.
- */
-async function getPort(server: ReturnType<typeof serveHTTP>['server']): Promise<number> {
-  const addr = server.address()
-  if (addr && typeof addr !== 'string') return addr.port
-  return new Promise((resolve) => {
-    server.once('listening', () => {
-      const listening = server.address()
-      resolve((listening as { port: number }).port)
-    })
-  })
-}
-
 describe('serveHTTP auth', () => {
   test('passes verified auth to the stateless server', async () => {
     const received: Array<unknown> = []
-    server = serveHTTP({
+    server = await serveHTTP({
       createServer: ({ transport, auth }) => {
         received.push(auth)
         return new ContextServer({ ...SERVER_CONFIG, protocolVersions: ['2026-07-28'], transport })
@@ -59,11 +43,10 @@ describe('serveHTTP auth', () => {
       auth: {
         verifier,
         resource: 'http://127.0.0.1/mcp',
-        resourceMetadataURL: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
         authorizationServers: ['https://as.example'],
       },
     })
-    const port = await getPort(server.server)
+    const port = Number(new URL(server.server.url).port)
     const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: 'POST',
       headers: {
@@ -99,7 +82,7 @@ describe('serveHTTP auth', () => {
       },
     }
     try {
-      server = serveHTTP({
+      server = await serveHTTP({
         tasks: manager,
         createServer: ({ transport, auth, tasks }) =>
           new ContextServer({
@@ -124,11 +107,10 @@ describe('serveHTTP auth', () => {
         auth: {
           verifier: identityVerifier,
           resource: 'http://127.0.0.1/mcp',
-          resourceMetadataURL: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
           authorizationServers: ['https://as.example'],
         },
       })
-      const port = await getPort(server.server)
+      const port = Number(new URL(server.server.url).port)
       async function call(token: string, method: string, params: Record<string, unknown>) {
         const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
           method: 'POST',
@@ -176,42 +158,40 @@ describe('serveHTTP auth', () => {
     }
   })
 
-  let server: ReturnType<typeof serveHTTP> | null = null
+  let server: Awaited<ReturnType<typeof serveHTTP>> | null = null
   afterEach(async () => {
     await server?.dispose()
     server = null
   })
 
   test('rejects unauthenticated MCP POST with 401', async () => {
-    server = serveHTTP({
+    server = await serveHTTP({
       createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
       port: 0,
       hostname: '127.0.0.1',
       auth: {
         verifier,
         resource: 'http://127.0.0.1/mcp',
-        resourceMetadataURL: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
         authorizationServers: ['https://as.example'],
       },
     })
-    const addr = await getPort(server.server)
+    const addr = Number(new URL(server.server.url).port)
     const res = await fetch(`http://127.0.0.1:${addr}/mcp`, { method: 'POST', body: '{}' })
     expect(res.status).toBe(401)
   })
 
   test('serves protected-resource metadata unauthenticated', async () => {
-    server = serveHTTP({
+    server = await serveHTTP({
       createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
       port: 0,
       hostname: '127.0.0.1',
       auth: {
         verifier,
         resource: 'http://127.0.0.1/mcp',
-        resourceMetadataURL: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
         authorizationServers: ['https://as.example'],
       },
     })
-    const addr = await getPort(server.server)
+    const addr = Number(new URL(server.server.url).port)
     const res = await fetch(`http://127.0.0.1:${addr}/.well-known/oauth-protected-resource/mcp`)
     expect(res.status).toBe(200)
     expect(
@@ -220,18 +200,17 @@ describe('serveHTTP auth', () => {
   })
 
   test('accepts authenticated MCP POST (reaches handler, not 401)', async () => {
-    server = serveHTTP({
+    server = await serveHTTP({
       createServer: ({ transport }) => new ContextServer({ ...SERVER_CONFIG, transport }),
       port: 0,
       hostname: '127.0.0.1',
       auth: {
         verifier,
         resource: 'http://127.0.0.1/mcp',
-        resourceMetadataURL: 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp',
         authorizationServers: ['https://as.example'],
       },
     })
-    const addr = await getPort(server.server)
+    const addr = Number(new URL(server.server.url).port)
     const res = await fetch(`http://127.0.0.1:${addr}/mcp`, {
       method: 'POST',
       headers: { Authorization: 'Bearer good' },
