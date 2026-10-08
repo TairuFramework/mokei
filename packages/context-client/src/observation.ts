@@ -6,7 +6,7 @@ export type MessageDirection = 'client' | 'server'
 export const DEFAULT_PAYLOAD_CAP = 65536
 
 const META_KEYS = new Set(['traceparent', 'dev.mokei/flow-run'])
-const SECRET_KEY = /(?:secret|token|password|authorization|api[-_]?key)/i
+const SECRET_KEY = /authorization|token|secret|password|api[-_]?key|cookie|credential/i
 
 export function resolvePayloadCap(capture: PayloadCapture | undefined): number | null {
   if (capture === 'off') return null

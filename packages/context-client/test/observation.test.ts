@@ -31,12 +31,16 @@ describe('MCP observation', () => {
         headers: [{ name: 'n', apiKey: 'k' }],
         Authorization: 'Bearer y',
         nested: { 'api-key': 'z', client_secret: 'w' },
+        Cookie: 'session=x',
+        deep: { credentials: 'user:password' },
       }),
     ).toEqual({
       env: { GITHUB_TOKEN: '[redacted]' },
       headers: [{ name: 'n', apiKey: '[redacted]' }],
       Authorization: '[redacted]',
       nested: { 'api-key': '[redacted]', client_secret: '[redacted]' },
+      Cookie: '[redacted]',
+      deep: { credentials: '[redacted]' },
     })
   })
 
