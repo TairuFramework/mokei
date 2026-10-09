@@ -1,6 +1,6 @@
 # Unified traces follow-ons
 
-**Origin:** unified traces. The initial implementation is documented in [architecture](../../architecture.md#unified-traces).
+**Origin:** [unified traces](../completed/2026-10-09-unified-traces.complete.md). The initial implementation is documented in [architecture](../../architecture.md#unified-traces).
 
 ## Follow-ons
 
