@@ -2,6 +2,7 @@ import type { ColumnType, Selectable, StoreDefinition, StoreProvider } from '@ho
 import { sql } from '@hozon/db'
 import type { TraceSummary, TracesListParams, TracesListResult } from '@mokei/host-protocol'
 
+import { decodeJSONColumn } from './json-column.js'
 import { decodeTraceCursor, encodeTraceCursor } from './trace-cursor.js'
 
 export function traceSearchText(summary: TraceSummary): string {
@@ -33,7 +34,7 @@ export type TraceIndexTables = {
     outcome: TraceSummary['outcome']
     start_time: number
     end_time: number | null
-    attributes: ColumnType<TraceSummary['attributes'], unknown, unknown>
+    attributes: ColumnType<TraceSummary['attributes'] | string, unknown, unknown>
     span_count: number
     error_count: number
     dropped_count: number
@@ -54,7 +55,7 @@ function toSummary(row: Selectable<TraceIndexTables['traces']>): TraceSummary {
     outcome: row.outcome,
     startTime: row.start_time,
     ...(row.end_time == null ? {} : { endTime: row.end_time }),
-    attributes: row.attributes,
+    attributes: decodeJSONColumn<TraceSummary['attributes']>(row.attributes),
     spanCount: row.span_count,
     errorCount: row.error_count,
     droppedCount: row.dropped_count,

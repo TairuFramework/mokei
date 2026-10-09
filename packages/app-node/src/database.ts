@@ -1,12 +1,13 @@
 import type { HozonDB } from '@hozon/db'
+import { logStoreDefinition } from '@hozon/store-log'
+import { telemetryStoreDefinition } from '@hozon/store-telemetry'
 import { type OpenLocalDatabaseParams, openLocalDatabase } from '@tejika/db'
 
-import { mokeiLogStoreDefinition, mokeiTelemetryStoreDefinition } from './telemetry-store.js'
 import { traceIndexStoreDefinition } from './trace-index.js'
 
 export const mokeiStoreDefinitions = [
-  mokeiLogStoreDefinition,
-  mokeiTelemetryStoreDefinition,
+  logStoreDefinition,
+  telemetryStoreDefinition,
   traceIndexStoreDefinition,
 ]
 

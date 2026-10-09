@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client } from '@enkaku/client'
 import { type ProcedureHandlers, serve } from '@enkaku/server'
-import { DirectTransports } from '@enkaku/transport'
+import { DirectTransports, Transport } from '@enkaku/transport'
 import type {
   BaseProtocol,
   BaseClientMessage as HostClientMessage,
@@ -471,6 +471,78 @@ test.each([
   },
   20_000,
 )
+
+test('real Enkaku events stream disconnects at 2000 pending writes with a stalled transport', async () => {
+  const events = new EventTarget()
+  const handlers = eventHandlers(events)
+  const incoming = new TransformStream<HostClientMessage, HostClientMessage>()
+  const outgoing = new TransformStream<HostServerMessage, HostServerMessage>()
+  const input = incoming.writable.getWriter()
+  const output = outgoing.readable.getReader()
+  const transport = new Transport<HostClientMessage, HostServerMessage>({
+    stream: { readable: incoming.readable, writable: outgoing.writable },
+  })
+  let writer: WritableStreamDefaultWriter<HostEvent> | undefined
+  let ended = false
+  const server = serve<BaseProtocol>({
+    handlers: {
+      ...handlers,
+      events: async (ctx) => {
+        const getWriter = ctx.writable.getWriter.bind(ctx.writable)
+        const spy = vi.spyOn(ctx.writable, 'getWriter').mockImplementation(() => {
+          writer = getWriter()
+          return writer
+        })
+        try {
+          await handlers.events(ctx)
+        } finally {
+          spy.mockRestore()
+          ended = true
+        }
+      },
+    },
+    transport,
+    requireAuth: false,
+  })
+  const dispatch = (index: number) => {
+    events.dispatchEvent(
+      new CustomEvent('context:stop', {
+        detail: { meta: { contextID: 'context-one', eventID: String(index), time: index } },
+      }),
+    )
+  }
+  try {
+    await input.write({
+      header: { typ: 'JWT', alg: 'none' },
+      payload: { typ: 'stream', prc: 'events', rid: 'stalled-events', prm: undefined as never },
+    })
+    await vi.waitFor(() => expect(writer).toBeDefined())
+    expect(writer?.desiredSize).toBe(1)
+    // Yield between events so only transport backpressure can accumulate pending writes.
+    for (let index = 0; index < 2004 && writer?.desiredSize !== -1999; index++) {
+      dispatch(index)
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+    expect(writer?.desiredSize).toBe(-1999)
+    expect(ended).toBe(false)
+    dispatch(2004)
+    await vi.waitFor(() => expect(ended).toBe(true))
+    // Resume transport reads to observe the protocol end message after disconnect.
+    let message: HostServerMessage | undefined
+    do {
+      const result = await output.read()
+      expect(result.done).toBe(false)
+      message = result.value
+    } while (message?.payload.typ !== 'result')
+    expect(message.payload).toMatchObject({ rid: 'stalled-events', typ: 'result' })
+  } finally {
+    await output.cancel().catch(() => {})
+    output.releaseLock()
+    await server.dispose()
+    input.releaseLock()
+    await transport.dispose()
+  }
+}, 10_000)
 
 test('info includes tracing when tracingInfo is provided', async () => {
   const tracing = { lostSummaryCount: 4, droppedCount: 7 }

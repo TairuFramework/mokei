@@ -105,16 +105,24 @@ test('get preserves JSON-looking string attributes after persistence', async () 
   expect(result?.spans[0]?.attributes['mokei.mcp.request']).toBe(attributes['mokei.mcp.request'])
   expect(result?.spans[0]?.attributes).toEqual(attributes)
   expect(result?.spans[0]).toMatchObject({ events: [{ attributes }] })
-  expect(result?.spans[0]).not.toHaveProperty('mokeiAttributeEncoding')
 })
-test('plain span attributes remain readable through the raw Hozon store', async () => {
+test('nested JSON-looking span and event attributes round-trip through the raw Hozon store', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mokei-attributes-'))
   const params = { path: join(directory, 'trace.sqlite') }
-  const attributes = { 'run.id': 'run', plain: 'plain', number: 42, boolean: true }
+  const attributes = {
+    object: '{"value":1}',
+    array: '[1,2]',
+    prefixed: 'mokei-json:{"value":1}',
+    nested: { strings: ['{"value":1}', '[1,2]', 'mokei-json:plain'] },
+    plain: 'plain',
+    number: 42,
+    boolean: true,
+  }
+  const events = [{ name: 'response', time: 150, attributes }]
   try {
     const writer = await openMokeiDatabase(params)
     try {
-      await (await getTelemetryStore(writer)).addSpans([stored('root', { attributes })])
+      await (await getTelemetryStore(writer)).addSpans([stored('root', { attributes, events })])
     } finally {
       await writer.close()
     }
@@ -127,7 +135,7 @@ test('plain span attributes remain readable through the raw Hozon store', async 
     try {
       const spans = await (await getTelemetryStore(raw)).getSpans('trace')
       expect(spans[0]?.attributes).toEqual(attributes)
-      expect(spans[0]).not.toHaveProperty('mokeiAttributeEncoding')
+      expect(spans[0]?.events).toEqual(events)
     } finally {
       await raw.close()
     }

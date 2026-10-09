@@ -50,6 +50,13 @@ test('round-trips every field and absent optional fields', async () => {
   await store.upsert([])
 })
 
+test('preserves JSON-looking string attributes through get and list', async () => {
+  const trace = summary('trace', { attributes: { label: '{"a":1}', 'flow.id': '[1,2]' } })
+  await store.upsert([trace])
+  expect(await store.get('trace')).toEqual(trace)
+  expect((await store.list({ limit: 10 })).traces).toEqual([trace])
+})
+
 test('replaces rows only for a higher revision, including duplicates in a batch', async () => {
   await store.upsert([summary('trace', { revision: 3, endTime: 150 })])
   await store.upsert([

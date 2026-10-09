@@ -5,6 +5,8 @@ import { TaskStoreConflictError } from '@mokei/context-server'
 import type { ColumnType, Generated, Kysely } from 'kysely'
 import type { Migration } from 'kysely/migration'
 
+import { decodeJSONColumn } from './json-column.js'
+
 export const FLOW_TASK_STORE = 'flow-tasks'
 
 export type FlowTaskTables = {
@@ -13,7 +15,7 @@ export type FlowTaskTables = {
     task_id: string
     status: string
     revision: number
-    data: ColumnType<TaskRecord, unknown, unknown>
+    data: ColumnType<TaskRecord | string, unknown, unknown>
   }
 }
 
@@ -58,7 +60,7 @@ function createTaskStoreAPI(db: Kysely<FlowTaskTables>, adapter: Adapter): TaskS
       .select('data')
       .where('task_id', '=', taskID)
       .executeTakeFirst()
-    return row?.data
+    return row == null ? undefined : decodeJSONColumn<TaskRecord>(row.data)
   }
 
   return {
@@ -108,7 +110,7 @@ function createTaskStoreAPI(db: Kysely<FlowTaskTables>, adapter: Adapter): TaskS
         .where('status', 'in', filter.status)
         .orderBy('seq', 'asc')
         .execute()
-      return rows.map((row) => row.data)
+      return rows.map((row) => decodeJSONColumn<TaskRecord>(row.data))
     },
     async delete(taskID) {
       await db.deleteFrom('flow_tasks').where('task_id', '=', taskID).execute()

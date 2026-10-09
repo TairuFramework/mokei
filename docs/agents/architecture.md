@@ -365,16 +365,22 @@ changed summaries in one database transaction. Its bounded queue retries failed 
 reports dropped data in trace summaries and daemon info. On startup it marks previously active
 traces interrupted before flow recovery; resumed runs reactivate their trace.
 
+The database uses the Hozon log and telemetry store definitions directly.
+Hozon decodes the stores' `data` columns as JSON. Nested strings remain unchanged, including JSON-looking strings in attributes and log properties.
+
 The `traces` store is the trace index, with one summary per trace. It tracks root and active
 segment IDs, kind, name, outcome, time range, selected flow/context attributes, span and error
-counts, dropped count and revision. `traces.list` filters and pages newest-first summaries;
+counts, dropped count and revision. Its reader decodes the `attributes` JSON column once, preserving nested strings.
+`traces.list` filters and pages newest-first summaries;
 `traces.get` returns a summary, ended and open spans, and logs. The daemon merges recorder
 memory with persisted data so unflushed spans remain readable. `runs.trace` remains as a
 deprecated adapter with its legacy response shape.
 
 The host `events` stream sends `span:start`, `span:end`, `log` and `trace:summary` live events.
-Each subscriber is bounded to 2000 queued events and respects writer backpressure. At the bound,
-the daemon ends that subscriber's stream; clients reconnect and reconcile from trace queries.
+Each subscriber is bounded to 2000 pending writes, measured through the Enkaku handler writable.
+Enkaku's default stream high water mark of 1 propagates transport backpressure to that writable.
+When another event arrives at the bound, the daemon ends that subscriber's stream.
+Clients reconnect and reconcile from trace queries.
 The monitor owns one host connection, displays the Traces page, and discards live trace state on
 reconnect before querying again. The Runs routes redirect to trace views.
 
