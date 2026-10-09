@@ -1,7 +1,6 @@
 import {
   Box,
   Button,
-  Code,
   DataList,
   Group,
   Splitter,
@@ -15,6 +14,7 @@ import type { OpenSpan, StoredSpan, TraceSummary } from '@mokei/host-protocol'
 import { useEffect, useMemo, useState } from 'react'
 
 import { barPosition, buildTraceTree, type SpanNode } from '../traces/span-tree.js'
+import { JsonPayload } from './JsonPayload.js'
 
 export type TraceWaterfallProps = {
   spans: Array<StoredSpan | OpenSpan>
@@ -197,7 +197,7 @@ export function TraceWaterfall({
                   <DataList.Item key={name}>
                     <DataList.ItemLabel>{name}</DataList.ItemLabel>
                     <DataList.ItemValue>
-                      <Code block>{JSON.stringify(value, null, 2)}</Code>
+                      <JsonPayload key={`${selected.id}:${name}`} value={value} />
                     </DataList.ItemValue>
                   </DataList.Item>
                 ))}
@@ -206,7 +206,10 @@ export function TraceWaterfall({
                     <DataList.ItemLabel>{event.name}</DataList.ItemLabel>
                     <DataList.ItemValue>
                       <Text size="xs">{(event.time - start).toFixed(1)} ms</Text>
-                      <Code block>{JSON.stringify(event.attributes, null, 2)}</Code>
+                      <JsonPayload
+                        key={`${selected.id}:${event.time}:${index}`}
+                        value={event.attributes}
+                      />
                     </DataList.ItemValue>
                   </DataList.Item>
                 ))}

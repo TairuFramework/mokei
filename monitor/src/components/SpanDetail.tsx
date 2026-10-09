@@ -1,18 +1,8 @@
-import { Alert, Code, Stack, Tabs, Title } from '@mantine/core'
+import { Alert, Stack, Tabs, Title } from '@mantine/core'
 import type { OpenSpan, StoredSpan, TraceLog } from '@mokei/host-protocol'
 
+import { JsonPayload } from './JsonPayload.js'
 import { LogList } from './LogList.js'
-
-function payload(value: unknown) {
-  if (typeof value === 'string') {
-    try {
-      return JSON.stringify(JSON.parse(value), null, 2)
-    } catch {
-      return value
-    }
-  }
-  return JSON.stringify(value, null, 2) ?? 'No captured payload.'
-}
 
 export function SpanDetail({ span, logs }: { span: StoredSpan | OpenSpan; logs: Array<TraceLog> }) {
   const events = 'events' in span ? span.events : []
@@ -34,28 +24,33 @@ export function SpanDetail({ span, logs }: { span: StoredSpan | OpenSpan; logs: 
           ))}
         </Tabs.List>
         <Tabs.Panel value="overview">
-          <Code block>
-            {JSON.stringify(
-              {
-                spanID: span.spanID,
-                parentSpanID: span.parentSpanID,
-                startTime: span.startTime,
-                ...('status' in span ? { endTime: span.endTime, status: span.status } : {}),
-                attributes: span.attributes,
-              },
-              null,
-              2,
-            )}
-          </Code>
+          <JsonPayload
+            key={span.spanID}
+            value={{
+              spanID: span.spanID,
+              parentSpanID: span.parentSpanID,
+              startTime: span.startTime,
+              ...('status' in span ? { endTime: span.endTime, status: span.status } : {}),
+              attributes: span.attributes,
+            }}
+          />
         </Tabs.Panel>
         <Tabs.Panel value="request">
-          <Code block>{payload(span.attributes['mokei.mcp.request'])}</Code>
+          <JsonPayload
+            key={span.spanID}
+            value={span.attributes['mokei.mcp.request']}
+            empty="No captured payload."
+          />
         </Tabs.Panel>
         <Tabs.Panel value="response">
-          <Code block>{payload(response?.attributes?.payload)}</Code>
+          <JsonPayload
+            key={span.spanID}
+            value={response?.attributes?.payload}
+            empty="No captured payload."
+          />
         </Tabs.Panel>
         <Tabs.Panel value="events">
-          <Code block>{JSON.stringify(events, null, 2)}</Code>
+          <JsonPayload key={span.spanID} value={events} />
         </Tabs.Panel>
         <Tabs.Panel value="logs">
           <LogList logs={logs} spanID={span.spanID} />

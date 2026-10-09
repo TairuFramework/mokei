@@ -1,6 +1,7 @@
 import { EnkakuProvider } from '@enkaku/react'
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
+import '@mantine/code-highlight/styles.css'
 import {
   AppShell,
   Center,

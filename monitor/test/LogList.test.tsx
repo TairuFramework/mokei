@@ -1,5 +1,5 @@
 import { MantineProvider } from '@mantine/core'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { LogList } from '../src/components/LogList.js'
@@ -32,7 +32,7 @@ test('log filters combine selected span, level and message text', () => {
       level: 'info' as const,
       category: ['tool'],
       message: 'Found document',
-      properties: {},
+      properties: { document: 'readme' },
     },
     {
       logID: crypto.randomUUID(),
@@ -61,6 +61,11 @@ test('log filters combine selected span, level and message text', () => {
     </MantineProvider>,
   )
   expect(screen.getByText('Found document')).toBeTruthy()
+  const row = screen.getByText('Found document').closest('tr')
+  expect(row).toBeTruthy()
+  const tree = within(row as HTMLElement).getByRole('tree')
+  expect(within(tree).getByText('document:')).toBeTruthy()
+  expect(within(tree).getByText('"readme"')).toBeTruthy()
   expect(screen.queryByText('Other document')).toBeNull()
   fireEvent.change(screen.getByLabelText('Log level'), { target: { value: 'error' } })
   expect(screen.queryByText('Found document')).toBeNull()

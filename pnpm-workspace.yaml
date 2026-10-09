@@ -69,6 +69,7 @@ catalog:
   '@hozon/store-log': ^0.2.2
   '@hozon/store-telemetry': ^0.2.2
   '@inkjs/ui': ^2.0.0
+  '@mantine/code-highlight': ^9.7.1
   '@mantine/core': ^9.7.1
   '@mantine/hooks': ^9.7.1
   '@mantine/notifications': ^9.7.1

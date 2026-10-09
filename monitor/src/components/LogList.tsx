@@ -1,6 +1,8 @@
-import { Code, Group, NativeSelect, Stack, Table, Text, TextInput } from '@mantine/core'
+import { Group, NativeSelect, Stack, Table, Text, TextInput } from '@mantine/core'
 import { useInputState } from '@mantine/hooks'
 import type { TraceLog } from '@mokei/host-protocol'
+
+import { JsonPayload } from './JsonPayload.js'
 
 export type LogListProps = { logs: Array<TraceLog>; spanID?: string }
 
@@ -48,7 +50,7 @@ export function LogList({ logs, spanID }: LogListProps) {
                   <Table.Td>{log.category.join('.')}</Table.Td>
                   <Table.Td>{log.message}</Table.Td>
                   <Table.Td>
-                    <Code block>{JSON.stringify(log.properties, null, 2)}</Code>
+                    <JsonPayload key={log.logID} value={log.properties} />
                   </Table.Td>
                 </Table.Tr>
               ))}

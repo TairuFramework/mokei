@@ -1,5 +1,5 @@
 import { MantineProvider } from '@mantine/core'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { TraceWaterfall } from '../src/components/TraceWaterfall.js'
@@ -40,10 +40,35 @@ test('renders nested span names and selecting a span filters logs and shows its 
   fireEvent.click(screen.getByText('child'))
   expect(onSelectSpan).toHaveBeenLastCalledWith('child')
   expect(screen.getByText('tool')).toBeTruthy()
-  expect(screen.getByText('"search"')).toBeTruthy()
+  expect(screen.getByText('search')).toBeTruthy()
   expect(screen.getByText('found')).toBeTruthy()
+  expect(within(screen.getByRole('tree', { name: 'JSON' })).getByText('count:')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Clear span selection' }))
   expect(onSelectSpan).toHaveBeenLastCalledWith(undefined)
+})
+
+test('changing selected spans resets payload expansion', () => {
+  const view = (selectedSpanID: string) => (
+    <MantineProvider>
+      <TraceWaterfall
+        spans={['first', 'second'].map((id) => ({
+          ...span(id),
+          attributes: { payload: { result: { count: 2 } } },
+          events: [],
+        }))}
+        now={100}
+        selectedSpanID={selectedSpanID}
+        onSelectSpan={() => {}}
+        onOpenContext={() => {}}
+      />
+    </MantineProvider>
+  )
+  const rendered = render(view('first'))
+  expect(screen.getByText('count:')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
+  expect(screen.queryByText('count:')).toBeNull()
+  rendered.rerender(view('second'))
+  expect(screen.getByText('count:')).toBeTruthy()
 })
 
 test('expands newly polled nested spans after an empty trace while preserving user choices', () => {
