@@ -72,6 +72,7 @@ async function captureReports() {
     sinks: { reports },
     loggers: [
       { category: ['mokei', 'flow-host', 'capture'], lowestLevel: 'error', sinks: ['reports'] },
+      { category: ['logtape', 'meta'], lowestLevel: 'error', sinks: [] },
     ],
   })
   return reports
