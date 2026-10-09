@@ -565,3 +565,86 @@ test('info includes tracing when tracingInfo is provided', async () => {
     await transports.dispose()
   }
 })
+
+test('daemon shutdown ends a proxied context root as stopped', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mokei-host-shutdown-'))
+  const socketPath = join(directory, 'daemon.sock')
+  const events = new EventTarget()
+  const observed = vi.fn()
+  events.addEventListener('context:message', observed)
+  const daemon = await serveHostDaemon({
+    socketPath,
+    pidPath: join(directory, 'daemon.pid'),
+    events,
+    handleSignals: false,
+  })
+  const client = await createClient(socketPath)
+  const proxy = client.createChannel('spawn', {
+    param: { command: process.execPath, args: ['-e', 'setInterval(() => {}, 1e9)'] },
+  })
+  void proxy.catch(() => {})
+  try {
+    await vi.waitFor(async () =>
+      expect(Object.keys((await client.request('info')).activeContexts)).toHaveLength(1),
+    )
+    const writer = proxy.writable.getWriter()
+    await writer.write({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'pending' } })
+    writer.releaseLock()
+    await vi.waitFor(() => expect(observed).toHaveBeenCalled())
+    await client.request('shutdown')
+    await vi.waitFor(() => {
+      const roots = exporter.getFinishedSpans().filter((span) => span.name === 'mcp.context')
+      expect(roots).toHaveLength(1)
+      expect(roots[0]?.status.code).toBe(SpanStatusCode.OK)
+      expect(roots[0]?.attributes['error.type']).toBeUndefined()
+      const requests = exporter.getFinishedSpans().filter((span) => span.name === 'mcp.tools/call')
+      expect(requests).toHaveLength(1)
+      expect(requests[0]?.status.code).toBe(SpanStatusCode.ERROR)
+      expect(requests[0]?.attributes['error.type']).toBe('context.stopped')
+    })
+  } finally {
+    await client.dispose()
+    await daemon.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('proxy transport errors end the context and open requests as lost', async () => {
+  const events = new EventTarget()
+  const observed = vi.fn()
+  events.addEventListener('context:message', observed)
+  const children = new Map<string, ReturnType<typeof spawn>>()
+  const handlers = createHandlers({ activeContexts: {}, children, events, startedTime: 1 })
+  let input!: ReadableStreamDefaultController
+  const failure = new Error('broken transport')
+  const pending = Promise.resolve(
+    handlers.spawn({
+      signal: new AbortController().signal,
+      param: { command: process.execPath, args: ['-e', 'setInterval(() => {}, 1e9)'] },
+      readable: new ReadableStream({
+        start: (controller) => {
+          input = controller
+        },
+      }),
+      writable: new WritableStream(),
+    } as Parameters<typeof handlers.spawn>[0]),
+  )
+  void pending.catch(() => {})
+  try {
+    input.enqueue({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'pending' } })
+    await vi.waitFor(() => expect(observed).toHaveBeenCalled())
+    input.error(failure)
+    await expect(pending).rejects.toBe(failure)
+    const spans = exporter.getFinishedSpans().filter((span) => span.name.startsWith('mcp.'))
+    expect(spans).toHaveLength(2)
+    for (const span of spans) {
+      expect(span.status.code).toBe(SpanStatusCode.ERROR)
+      expect(span.attributes['error.type']).toBe('context.lost')
+    }
+    expect(children.size).toBe(0)
+  } finally {
+    input.error(failure)
+    killChildren(children)
+    await pending.catch(() => {})
+  }
+})

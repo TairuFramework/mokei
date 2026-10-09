@@ -201,3 +201,16 @@ test('unrecorded proxy notifications never serialise payloads', () => {
   expect(toJSON).not.toHaveBeenCalled()
   proxy.end('stopped')
 })
+
+test.each([
+  { response: { error: { code: -32603, message: 'Internal error' } }, errorType: '-32603' },
+  { response: { result: { content: [], isError: true } }, errorType: 'tool_error' },
+])('maps request failure to $errorType', ({ response, errorType }) => {
+  const proxy = fixture()
+  proxy.observe('client', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'echo' } })
+  proxy.observe('server', { jsonrpc: '2.0', id: 1, ...response })
+  expect(requests()).toHaveLength(1)
+  expect(requests()[0]?.status.code).toBe(SpanStatusCode.ERROR)
+  expect(requests()[0]?.attributes['error.type']).toBe(errorType)
+  proxy.end('stopped')
+})

@@ -196,3 +196,22 @@ test('name filter searches span name, label and flow ID as literal case-insensit
     (await store.list({ limit: 10, name: 'NEW LABEL' })).traces.map((row) => row.traceID),
   ).toEqual(['named'])
 })
+
+test.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+  'rejects invalid limit %s',
+  async (limit) => {
+    await expect(store.list({ limit })).rejects.toThrow(
+      'Trace list limit must be a non-negative integer',
+    )
+  },
+)
+
+test.each([
+  'not-base64',
+  Buffer.from('not-json').toString('base64'),
+  ...[{}, [], [100], [100, 'trace', 'extra'], ['100', 'trace'], [100, 42]].map((value) =>
+    Buffer.from(JSON.stringify(value)).toString('base64'),
+  ),
+])('rejects malformed cursor %s', async (cursor) => {
+  await expect(store.list({ limit: 10, cursor })).rejects.toThrow()
+})

@@ -131,6 +131,7 @@ export function HostConnectionProvider({ children }: { children: ReactNode }) {
               )
             }
             if (ready) dispatch(event)
+            else if (buffered.length >= 2000) fail()
             else buffered.push(event)
           }
         } catch {

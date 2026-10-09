@@ -5,6 +5,7 @@ import type {
   TraceLog,
   TraceSummary,
   TracesGetResult,
+  TracesListParams,
   TracesListResult,
 } from '@mokei/host-protocol'
 import { act, renderHook } from '@testing-library/react'
@@ -471,5 +472,35 @@ test.each(['FLOW.RUN', 'éCLAIR', '100%_done!', 'REVIEW-flow'])(
       data: { ...named, traceID: 'live', revision: 2, name: 'other', attributes: {} },
     })
     expect(hook.result.current.traces).toEqual([named])
+  },
+)
+
+test.each([
+  { filter: { active: false }, matching: { active: false }, outside: { active: true } },
+  { filter: { outcome: null }, matching: { outcome: null }, outside: { outcome: 'ok' } },
+  { filter: { since: 100 }, matching: { startTime: 100 }, outside: { startTime: 99 } },
+  { filter: { until: 100 }, matching: { startTime: 100 }, outside: { startTime: 101 } },
+] satisfies Array<{
+  filter: Partial<TracesListParams>
+  matching: Partial<TraceSummary>
+  outside: Partial<TraceSummary>
+}>)(
+  'list applies filter $filter to snapshots and live updates',
+  async ({ filter, matching, outside }) => {
+    const env = setup()
+    const included = { ...summary, ...matching }
+    const excluded = { ...summary, ...outside, traceID: 'outside' }
+    env.fixture.request.mockResolvedValueOnce({ traces: [included, excluded] } as never)
+    const hook = renderHook(() => useTraceList(filter), { wrapper: env.wrapper })
+    await act(async () => {})
+    expect(hook.result.current.traces).toEqual([included])
+    env.emit({ type: 'trace:summary', meta, data: { ...included, traceID: 'live' } })
+    env.emit({ type: 'trace:summary', meta, data: { ...excluded, traceID: 'excluded-live' } })
+    expect(hook.result.current.traces.map((trace) => trace.traceID).sort()).toEqual([
+      'live',
+      'trace-a',
+    ])
+    env.emit({ type: 'trace:summary', meta, data: { ...included, ...outside, revision: 2 } })
+    expect(hook.result.current.traces.map((trace) => trace.traceID)).toEqual(['live'])
   },
 )

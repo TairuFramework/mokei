@@ -1,10 +1,15 @@
 import { ChildProcess } from 'node:child_process'
 import { getEventListeners } from 'node:events'
+import { existsSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Client } from '@enkaku/client'
 import * as nodeStreams from '@enkaku/node-streams'
 import type { ProcedureHandlers, Server } from '@enkaku/server'
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, HostEvent, Protocol, ServerMessage } from '@mokei/host-protocol'
+import { SpanStatusCode } from '@opentelemetry/api'
 import type * as TejikaProcess from '@tejika/process'
 import type { RunDaemonOptions } from '@tejika/process'
 import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from 'vitest'
@@ -13,6 +18,9 @@ import { runDaemon } from '../src/daemon.js'
 import { composeHandlers, serveHostDaemon } from '../src/daemon-server.js'
 import { createHandlers, killChildren } from '../src/server.js'
 import * as spawnModule from '../src/spawn.js'
+import { useTestTracing } from './support/otel.js'
+
+const { exporter } = useTestTracing()
 
 vi.mock('@enkaku/node-streams', { spy: true })
 
@@ -508,3 +516,136 @@ describe('proxy spawn cancellation', () => {
     }
   })
 })
+
+test.each(['cleanup', 'close', 'rpc', 'abort', 'SIGTERM', 'SIGINT'] as const)(
+  '%s shutdown settles proxy spans before killing tracked children',
+  async (method) => {
+    const events = new EventTarget()
+    const observed = vi.fn()
+    events.addEventListener('context:message', observed)
+    const signal = new AbortController()
+    const daemon = await serveHostDaemon({
+      events,
+      signal: signal.signal,
+      handleSignals: method === 'SIGTERM' || method === 'SIGINT',
+    })
+    const client = connect()
+    const proxy = client.createChannel('spawn', {
+      param: { command: process.execPath, args: ['-e', 'setInterval(() => {}, 1e9)'] },
+    })
+    void proxy.catch(() => {})
+    await vi.waitFor(async () =>
+      expect(Object.keys((await client.request('info')).activeContexts)).toHaveLength(1),
+    )
+    const writer = proxy.writable.getWriter()
+    await writer.write({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'pending' } })
+    writer.releaseLock()
+    await vi.waitFor(() => expect(observed).toHaveBeenCalled())
+    const kill = ChildProcess.prototype.kill
+    const spansAtKill: Array<Array<{ name: string; status: number; errorType: unknown }>> = []
+    vi.spyOn(ChildProcess.prototype, 'kill').mockImplementation(function (
+      this: ChildProcess,
+      signal,
+    ) {
+      spansAtKill.push(
+        exporter.getFinishedSpans().map((span) => ({
+          name: span.name,
+          status: span.status.code,
+          errorType: span.attributes['error.type'],
+        })),
+      )
+      return kill.call(this, signal)
+    })
+    if (method === 'cleanup') await options?.onShutdown?.()
+    else if (method === 'close') await daemon.close()
+    else if (method === 'rpc') await client.request('shutdown')
+    else if (method === 'abort') signal.abort()
+    else process.emit(method)
+
+    expect(spansAtKill[0]).toEqual(
+      expect.arrayContaining([
+        { name: 'mcp.context', status: SpanStatusCode.OK, errorType: undefined },
+        { name: 'mcp.tools/call', status: SpanStatusCode.ERROR, errorType: 'context.stopped' },
+      ]),
+    )
+  },
+)
+
+test.each(['SIGTERM', 'SIGINT'] as const)(
+  '%s during boot closes the daemon and settles active contexts',
+  async (signal) => {
+    const gate = Promise.withResolvers<void>()
+    const boot = mocks.runDaemon.getMockImplementation()
+    if (boot == null) throw new Error('Daemon boot mock was not installed')
+    mocks.runDaemon.mockImplementationOnce(async (params: RunDaemonOptions<Protocol>) => {
+      const daemon = await boot(params)
+      await gate.promise
+      return daemon
+    })
+    const events = new EventTarget()
+    const stopped = vi.fn()
+    events.addEventListener('context:stop', stopped)
+    const onShutdown = vi.fn(async () => {})
+    const pending = serveHostDaemon({ events, onShutdown })
+    const client = connect()
+    const proxy = client.createChannel('spawn', {
+      param: { command: process.execPath, args: ['-e', 'setInterval(() => {}, 1e9)'] },
+    })
+    void proxy.catch(() => {})
+    try {
+      await vi.waitFor(async () =>
+        expect(Object.keys((await client.request('info')).activeContexts)).toHaveLength(1),
+      )
+      process.emit(signal)
+      expect(stopped).toHaveBeenCalledTimes(1)
+      expect((await client.request('info')).activeContexts).toEqual({})
+      expect(
+        exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')?.status.code,
+      ).toBe(SpanStatusCode.OK)
+      gate.resolve()
+      await pending
+      expect(close).toHaveBeenCalledTimes(1)
+      expect(onShutdown).toHaveBeenCalledTimes(1)
+      expect(getEventListeners(process, signal)).toHaveLength(0)
+    } finally {
+      gate.resolve()
+      await (await pending).close()
+    }
+  },
+)
+
+test.each(['SIGTERM', 'SIGINT'] as const)(
+  '%s during boot leaves the production daemon socket closed',
+  async (signal) => {
+    const tejika = await vi.importActual<typeof TejikaProcess>('@tejika/process')
+    const directory = await mkdtemp(join(tmpdir(), 'mokei-host-boot-signal-'))
+    const socketPath = join(directory, 'daemon.sock')
+    const pidPath = join(directory, 'daemon.pid')
+    const gate = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    mocks.runDaemon.mockImplementationOnce(async (params: RunDaemonOptions<Protocol>) => {
+      entered.resolve()
+      await gate.promise
+      return tejika.runDaemon<Protocol>(params)
+    })
+    const onShutdown = vi.fn(async () => {})
+    const pending = serveHostDaemon({ socketPath, pidPath, events: new EventTarget(), onShutdown })
+    try {
+      await entered.promise
+      process.emit(signal)
+      gate.resolve()
+      await pending
+      expect(await tejika.isSocketLive(socketPath)).toBe(false)
+      expect(existsSync(socketPath)).toBe(false)
+      expect(existsSync(pidPath)).toBe(false)
+      expect(onShutdown).toHaveBeenCalledTimes(1)
+    } finally {
+      gate.resolve()
+      await pending.then(
+        (daemon) => daemon.close(),
+        () => {},
+      )
+      await rm(directory, { recursive: true, force: true })
+    }
+  },
+)

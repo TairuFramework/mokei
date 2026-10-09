@@ -28,6 +28,7 @@ export type HandlersContext = {
   events: EventTarget
   startedTime: number
   shutdown?: () => void | Promise<void>
+  shutdownSignal?: AbortSignal
   tracing?: { payloads?: PayloadCapture }
   tracingInfo?: () => TracingInfo
   eventBufferLimit?: number
@@ -56,6 +57,7 @@ export function createHandlers({
   events,
   startedTime,
   shutdown,
+  shutdownSignal,
   flowStatus = unavailableStatus,
   tracing,
   tracingInfo,
@@ -119,10 +121,10 @@ export function createHandlers({
       await shutdown?.()
     },
     spawn: async (ctx) => {
-      if (ctx.signal.aborted) return
+      if (ctx.signal.aborted || shutdownSignal?.aborted) return
       const contextID = randomUUID()
       const spawned = await spawnContextServer(ctx.param)
-      if (ctx.signal.aborted) {
+      if (ctx.signal.aborted || shutdownSignal?.aborted) {
         spawned.childProcess.kill()
         return
       }
@@ -141,6 +143,7 @@ export function createHandlers({
         controller.abort()
         spawned.childProcess.off('exit', onExit)
         ctx.signal.removeEventListener('abort', onAbort)
+        shutdownSignal?.removeEventListener('abort', onAbort)
         try {
           spawned.childProcess.kill()
         } finally {
@@ -158,6 +161,7 @@ export function createHandlers({
       // Own cancellation before transport conversion can yield.
       spawned.childProcess.once('exit', onExit)
       ctx.signal.addEventListener('abort', onAbort, { once: true })
+      shutdownSignal?.addEventListener('abort', onAbort, { once: true })
       try {
         events.dispatchEvent(
           new CustomEvent('context:start', {
@@ -298,6 +302,8 @@ export function composeHandlers(
 
 export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonHandle> {
   const children = new Map<string, ChildProcess>()
+  const stopping = new AbortController()
+  const stopContexts = () => stopping.abort()
   const onError =
     params.onError ??
     ((error: unknown) => {
@@ -308,6 +314,7 @@ export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonH
   const baseHandlers = createHandlers({
     activeContexts: {},
     children,
+    shutdownSignal: stopping.signal,
     events: params.events,
     startedTime: Date.now(),
     flowStatus: params.flowStatus,
@@ -317,6 +324,7 @@ export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonH
     shutdown: () => {
       if (shutdownScheduled) return
       shutdownScheduled = true
+      stopContexts()
       // Let Enkaku send the acknowledgement before closing its transport.
       setTimeout(() => {
         void daemon?.close().catch(onError)
@@ -350,26 +358,56 @@ export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonH
     unavailable,
   ) as ProcedureHandlers<Protocol>
   let cleanup: Promise<void> | undefined
-  daemon = await tejikaRunDaemon<Protocol>({
-    app: 'mokei',
-    socketPath: params.socketPath,
-    pidPath: params.pidPath,
-    signal: params.signal,
-    handleSignals: params.handleSignals,
-    shutdownTimeoutMs: params.shutdownTimeoutMs,
-    onError,
-    serve: (transport) => serve<Protocol>({ protocol, handlers, transport, requireAuth: false }),
-    onShutdown: () => {
-      cleanup ??= (async () => {
-        killChildren(children)
-        try {
-          await params.onShutdown?.()
-        } finally {
+  // Tejika closes transports before onShutdown. Settle spans before that teardown starts.
+  const handleSignals = params.handleSignals ?? true
+  if (handleSignals) {
+    process.once('SIGTERM', stopContexts)
+    process.once('SIGINT', stopContexts)
+  }
+  params.signal?.addEventListener('abort', stopContexts, { once: true })
+  const removeStopListeners = () => {
+    if (handleSignals) {
+      process.off('SIGTERM', stopContexts)
+      process.off('SIGINT', stopContexts)
+    }
+    params.signal?.removeEventListener('abort', stopContexts)
+  }
+  try {
+    daemon = await tejikaRunDaemon<Protocol>({
+      app: 'mokei',
+      socketPath: params.socketPath,
+      pidPath: params.pidPath,
+      signal: params.signal,
+      handleSignals: params.handleSignals,
+      shutdownTimeoutMs: params.shutdownTimeoutMs,
+      onError,
+      serve: (transport) => serve<Protocol>({ protocol, handlers, transport, requireAuth: false }),
+      onShutdown: () => {
+        stopContexts()
+        removeStopListeners()
+        cleanup ??= (async () => {
           killChildren(children)
-        }
-      })()
-      return cleanup
+          try {
+            await params.onShutdown?.()
+          } finally {
+            killChildren(children)
+          }
+        })()
+        return cleanup
+      },
+    })
+    // Signals received during boot predate Tejika's shutdown listeners.
+    if (stopping.signal.aborted) await daemon.close()
+  } catch (error) {
+    removeStopListeners()
+    throw error
+  }
+  const running = daemon
+  return {
+    ...running,
+    close: () => {
+      stopContexts()
+      return running.close()
     },
-  })
-  return daemon
+  }
 }

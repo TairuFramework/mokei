@@ -261,3 +261,57 @@ test('persisted pageshow resets the failure backoff', async () => {
   await act(async () => vi.advanceTimersByTimeAsync(20_000))
   expect(createHostClient).toHaveBeenCalledTimes(4)
 })
+
+test('delivers all 2000 startup events when the info barrier resolves', async () => {
+  const info = deferred<{ flowService: { state: string } }>()
+  const fixture = clientFixture(info.promise)
+  vi.mocked(createHostClient).mockReturnValue(fixture.client)
+  const { result } = renderHook(useHostConnection, { wrapper })
+  await waitFor(() => expect(fixture.request).toHaveBeenCalledOnce())
+  const received: Array<HostEvent> = []
+  result.current.subscribe(['run:state'], (event) => received.push(event))
+  const events = Array.from({ length: 2000 }, (_, index) => ({
+    ...event,
+    meta: { eventID: `startup-${index}`, time: index },
+  }))
+  await act(async () => {
+    for (const event of events) fixture.streams[0].enqueue(event)
+  })
+  expect(fixture.close).not.toHaveBeenCalled()
+  expect(received).toEqual([])
+  await act(async () => info.resolve({ flowService: { state: 'ready' } }))
+  expect(result.current.connected).toBe(true)
+  expect(received).toEqual(events)
+})
+
+test('startup buffer overflow tears down and reconnects without delivering stale events', async () => {
+  vi.useFakeTimers()
+  const info = deferred<{ flowService: { state: string } }>()
+  const first = clientFixture(info.promise)
+  const second = clientFixture()
+  vi.mocked(createHostClient).mockReturnValueOnce(first.client).mockReturnValue(second.client)
+  const { result } = renderHook(useHostConnection, { wrapper })
+  await act(async () => {})
+  const listener = vi.fn()
+  result.current.subscribe(['run:state'], listener)
+  await act(async () => {
+    for (let index = 0; index < 2000; index++) first.streams[0].enqueue(event)
+  })
+  expect(first.close).not.toHaveBeenCalled()
+  await act(async () => first.streams[0].enqueue(event))
+  expect(first.close).toHaveBeenCalledOnce()
+  expect(first.client.dispose).toHaveBeenCalledOnce()
+  expect(vi.mocked(first.client.request).mock.calls[0][1]?.signal?.aborted).toBe(true)
+  expect([...first.events.values()].every((listeners) => listeners.size === 0)).toBe(true)
+  expect(result.current.connected).toBe(false)
+  await act(async () => vi.advanceTimersByTimeAsync(499))
+  expect(createHostClient).toHaveBeenCalledOnce()
+  await act(async () => vi.advanceTimersByTimeAsync(1))
+  expect(result.current.epoch).toBe(1)
+  expect(result.current.connected).toBe(true)
+  await act(async () => info.resolve({ flowService: { state: 'starting' } }))
+  expect(result.current.info?.flowService.state).toBe('ready')
+  expect(listener).not.toHaveBeenCalled()
+  await act(async () => second.streams[0].enqueue(event))
+  expect(listener).toHaveBeenCalledExactlyOnceWith(event, 1)
+})
