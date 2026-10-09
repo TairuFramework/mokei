@@ -8,8 +8,15 @@ import { Client } from '@enkaku/client'
 import * as nodeStreams from '@enkaku/node-streams'
 import type { ProcedureHandlers, Server } from '@enkaku/server'
 import { DirectTransports } from '@enkaku/transport'
-import type { ClientMessage, HostEvent, Protocol, ServerMessage } from '@mokei/host-protocol'
+import type {
+  ClientMessage,
+  HostEvent,
+  HostEvents,
+  Protocol,
+  ServerMessage,
+} from '@mokei/host-protocol'
 import { SpanStatusCode } from '@opentelemetry/api'
+import { EventEmitter } from '@sozai/event'
 import type * as TejikaProcess from '@tejika/process'
 import type { RunDaemonOptions } from '@tejika/process'
 import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from 'vitest'
@@ -104,13 +111,13 @@ describe('daemon composition', () => {
   })
 
   test('shares context state and events across connections, with delayed independent cancellation', async () => {
-    const events = new EventTarget()
+    const events = new EventEmitter<HostEvents>()
     await serveHostDaemon({ events, handleSignals: false })
     const firstClient = connect()
     const secondClient = connect()
     const first = subscribe(firstClient)
     const second = subscribe(secondClient)
-    await vi.waitFor(() => expect(getEventListeners(events, 'context:start')).toHaveLength(2))
+    await vi.waitFor(() => expect(events.listenerCount('context:start')).toBe(2))
     const proxy = firstClient.createChannel('spawn', {
       param: { command: process.execPath, args: ['-e', 'setInterval(() => {}, 1e9)'] },
     })
@@ -146,8 +153,8 @@ describe('daemon composition', () => {
       'run:state',
       'inbox:added',
       'inbox:settled',
-    ]) {
-      expect(getEventListeners(events, type)).toHaveLength(1)
+    ] as const) {
+      expect(events.listenerCount(type)).toBe(1)
     }
     proxy.close()
     await vi.waitFor(() => {
@@ -158,19 +165,19 @@ describe('daemon composition', () => {
   })
 
   test('forwards service events and reads injected live status', async () => {
-    const events = new EventTarget()
+    const events = new EventEmitter<HostEvents>()
     let ready = false
     await serveHostDaemon({ events, flowStatus: () => ({ state: ready ? 'ready' : 'starting' }) })
     const client = connect()
     const subscription = subscribe(client)
-    await vi.waitFor(() => expect(getEventListeners(events, 'service:status')).toHaveLength(1))
+    await vi.waitFor(() => expect(events.listenerCount('service:status')).toBe(1))
     expect((await client.request('info')).flowService).toEqual({ state: 'starting' })
     ready = true
-    const detail = {
+    const detail: HostEvents['service:status'] = {
       meta: { eventID: 'status', time: Date.now() },
       data: { service: 'flow', status: { state: 'ready' } },
     }
-    events.dispatchEvent(new CustomEvent('service:status', { detail }))
+    events.fire('service:status', detail)
     await vi.waitFor(() =>
       expect(subscription.received).toEqual([{ type: 'service:status', ...detail }]),
     )
@@ -179,7 +186,10 @@ describe('daemon composition', () => {
   })
 
   test('fills missing flow procedures without overriding injected handlers', async () => {
-    await serveHostDaemon({ events: new EventTarget(), handlers: { 'flows.list': () => [] } })
+    await serveHostDaemon({
+      events: new EventEmitter<HostEvents>(),
+      handlers: { 'flows.list': () => [] },
+    })
     const client = connect()
     expect(await client.request('flows.list')).toEqual([])
     await expect(client.request('inbox.get', { param: { id: 'missing' } })).rejects.toMatchObject({
@@ -192,7 +202,7 @@ describe('daemon composition', () => {
   })
 
   test('standalone flow procedures return FLOW_UNAVAILABLE', async () => {
-    await serveHostDaemon({ events: new EventTarget() })
+    await serveHostDaemon({ events: new EventEmitter<HostEvents>() })
     const client = connect()
     await expect(client.request('flows.list')).rejects.toMatchObject({ code: 'FLOW_UNAVAILABLE' })
   })
@@ -200,7 +210,7 @@ describe('daemon composition', () => {
   test('acknowledges shutdown before closing and invokes cleanup once', async () => {
     const onShutdown = vi.fn(async () => {})
     await serveHostDaemon({
-      events: new EventTarget(),
+      events: new EventEmitter<HostEvents>(),
       onShutdown,
       socketPath: '/tmp/custom.sock',
       pidPath: '/tmp/custom.pid',
@@ -225,7 +235,7 @@ describe('daemon composition', () => {
     const failure = new Error('cleanup failed')
     const onError = vi.fn()
     await serveHostDaemon({
-      events: new EventTarget(),
+      events: new EventEmitter<HostEvents>(),
       onError,
       onShutdown: async () => {
         throw failure
@@ -247,7 +257,7 @@ describe('daemon composition', () => {
     const failure = new Error('cleanup failed')
     const log = vi.spyOn(console, 'error').mockImplementation(() => {})
     await serveHostDaemon({
-      events: new EventTarget(),
+      events: new EventEmitter<HostEvents>(),
       onShutdown: async () => {
         throw failure
       },
@@ -265,7 +275,7 @@ describe('daemon composition', () => {
   test('kills tracked children while injected cleanup is pending', async () => {
     const { promise: pendingCleanup, resolve: finishCleanup } = Promise.withResolvers<void>()
     const onShutdown = vi.fn(() => pendingCleanup)
-    await serveHostDaemon({ events: new EventTarget(), onShutdown })
+    await serveHostDaemon({ events: new EventEmitter<HostEvents>(), onShutdown })
     const client = connect()
     const proxy = client.createChannel('spawn', {
       param: { command: process.execPath, args: ['-e', 'setInterval(() => {}, 1e9)'] },
@@ -288,7 +298,7 @@ describe('daemon composition', () => {
 
   test('kills tracked children when injected cleanup fails', async () => {
     await serveHostDaemon({
-      events: new EventTarget(),
+      events: new EventEmitter<HostEvents>(),
       onShutdown: async () => {
         throw new Error('cleanup failed')
       },
@@ -315,7 +325,7 @@ describe('daemon composition', () => {
 
 describe('event subscription cleanup', () => {
   test('already-aborted subscriptions settle without acquiring or leaking a writer', async () => {
-    const events = new EventTarget()
+    const events = new EventEmitter<HostEvents>()
     const writable = new WritableStream<HostEvent>()
     const handler = createHandlers({
       activeContexts: {},
@@ -326,11 +336,11 @@ describe('event subscription cleanup', () => {
     const context = { signal: AbortSignal.abort(), writable } as Parameters<typeof handler>[0]
     await handler(context)
     expect(writable.locked).toBe(false)
-    expect(getEventListeners(events, 'context:start')).toHaveLength(0)
+    expect(events.listenerCount('context:start')).toBe(0)
   })
 
   test('writer failures settle and remove only their own event listeners', async () => {
-    const events = new EventTarget()
+    const events = new EventEmitter<HostEvents>()
     const writable = new WritableStream<HostEvent>({
       write: () => {
         throw new Error('disconnected')
@@ -357,21 +367,19 @@ describe('event subscription cleanup', () => {
     const pending = handler({ signal: controller.signal, writable } as Parameters<
       typeof handler
     >[0])
-    const stopped = new CustomEvent('context:stop', {
-      detail: { meta: { contextID: 'test', eventID: 'stop', time: Date.now() } },
-    })
-    events.dispatchEvent(stopped)
+    const stopped = { meta: { contextID: 'test', eventID: 'stop', time: Date.now() } }
+    events.fire('context:stop', stopped)
     await pending
     expect(writable.locked).toBe(false)
-    expect(getEventListeners(events, 'context:stop')).toHaveLength(1)
+    expect(events.listenerCount('context:stop')).toBe(1)
     expect(received).toHaveLength(1)
     expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0)
     otherController.abort()
-    events.dispatchEvent(stopped)
+    events.fire('context:stop', stopped)
     await otherPending
     expect(received).toHaveLength(1)
     expect(otherWritable.locked).toBe(false)
-    expect(getEventListeners(events, 'context:stop')).toHaveLength(0)
+    expect(events.listenerCount('context:stop')).toBe(0)
   })
 })
 
@@ -394,7 +402,7 @@ describe('proxy spawn cancellation', () => {
     const handler = createHandlers({
       activeContexts: {},
       children: new Map(),
-      events: new EventTarget(),
+      events: new EventEmitter<HostEvents>(),
       startedTime: 0,
     }).spawn
     await expect(
@@ -422,9 +430,9 @@ describe('proxy spawn cancellation', () => {
     })
     const children = new Map<string, ChildProcess>()
     const activeContexts = {}
-    const events = new EventTarget()
+    const events = new EventEmitter<HostEvents>()
     const started = vi.fn()
-    events.addEventListener('context:start', started)
+    events.on('context:start', started)
     const signal = new AbortController()
     let input: ReadableStreamDefaultController | undefined
     const readable = new ReadableStream({
@@ -476,9 +484,9 @@ describe('proxy spawn cancellation', () => {
       })
     const children = new Map<string, ChildProcess>()
     const activeContexts = {}
-    const events = new EventTarget()
+    const events = new EventEmitter<HostEvents>()
     const stopped = vi.fn()
-    events.addEventListener('context:stop', stopped)
+    events.on('context:stop', stopped)
     const signal = new AbortController()
     let input: ReadableStreamDefaultController | undefined
     const readable = new ReadableStream({
@@ -520,9 +528,9 @@ describe('proxy spawn cancellation', () => {
 test.each(['cleanup', 'close', 'rpc', 'abort', 'SIGTERM', 'SIGINT'] as const)(
   '%s shutdown settles proxy spans before killing tracked children',
   async (method) => {
-    const events = new EventTarget()
+    const events = new EventEmitter<HostEvents>()
     const observed = vi.fn()
-    events.addEventListener('context:message', observed)
+    events.on('context:message', observed)
     const signal = new AbortController()
     const daemon = await serveHostDaemon({
       events,
@@ -582,9 +590,9 @@ test.each(['SIGTERM', 'SIGINT'] as const)(
       await gate.promise
       return daemon
     })
-    const events = new EventTarget()
+    const events = new EventEmitter<HostEvents>()
     const stopped = vi.fn()
-    events.addEventListener('context:stop', stopped)
+    events.on('context:stop', stopped)
     const onShutdown = vi.fn(async () => {})
     const pending = serveHostDaemon({ events, onShutdown })
     const client = connect()
@@ -629,7 +637,12 @@ test.each(['SIGTERM', 'SIGINT'] as const)(
       return tejika.runDaemon<Protocol>(params)
     })
     const onShutdown = vi.fn(async () => {})
-    const pending = serveHostDaemon({ socketPath, pidPath, events: new EventTarget(), onShutdown })
+    const pending = serveHostDaemon({
+      socketPath,
+      pidPath,
+      events: new EventEmitter<HostEvents>(),
+      onShutdown,
+    })
     try {
       await entered.promise
       process.emit(signal)

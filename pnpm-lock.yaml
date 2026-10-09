@@ -255,8 +255,8 @@ catalogs:
       specifier: ^0.4.3
       version: 0.4.3
     '@sozai/event':
-      specifier: ^0.1.5
-      version: 0.1.5
+      specifier: ^0.1.6
+      version: 0.1.6
     '@sozai/flow-graph':
       specifier: ^0.2.3
       version: 0.2.3
@@ -429,8 +429,8 @@ catalogs:
       specifier: ^6.0.3
       version: 6.0.3
     vite:
-      specifier: ^8.3.3
-      version: 8.3.3
+      specifier: ^8.3.4
+      version: 8.3.4
     vitest:
       specifier: ^5.0.3
       version: 5.0.3
@@ -447,7 +447,7 @@ importers:
         version: 2.1.2(supports-color@8.1.1)
       '@kigu/dev':
         specifier: ^0.3.2
-        version: 0.3.2(@opentelemetry/api@1.9.1)(chokidar@5.0.0)(jsdom@30.1.2(@noble/hashes@2.4.0))(supports-color@8.1.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 0.3.2(@opentelemetry/api@1.9.1)(chokidar@5.0.0)(jsdom@30.1.2(@noble/hashes@2.4.0))(supports-color@8.1.1)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       typedoc:
         specifier: 'catalog:'
         version: 0.28.20(typescript@6.0.3)
@@ -743,7 +743,7 @@ importers:
         version: 1.167.2(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@tanstack/router-core@1.171.34)(csstype@3.2.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@tanstack/router-plugin':
         specifier: 'catalog:'
-        version: 1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.12)(supports-color@8.1.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))
+        version: 1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.12)(supports-color@8.1.1)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -764,7 +764,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
-        version: 6.1.2(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 6.1.2(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       globals:
         specifier: 'catalog:'
         version: 17.13.0
@@ -785,10 +785,10 @@ importers:
         version: 6.0.3
       vite:
         specifier: 'catalog:'
-        version: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+        version: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/anthropic-provider:
     dependencies:
@@ -810,7 +810,7 @@ importers:
     devDependencies:
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/app-node:
     dependencies:
@@ -941,6 +941,9 @@ importers:
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.0
+      '@sozai/event':
+        specifier: 'catalog:'
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@tejika/cli':
         specifier: 'catalog:'
         version: 0.4.2(@logtape/logtape@2.4.0)(ink@7.1.1(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
@@ -989,7 +992,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/context-client:
     dependencies:
@@ -1050,7 +1053,7 @@ importers:
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6
@@ -1071,7 +1074,7 @@ importers:
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/otel':
         specifier: 'catalog:'
         version: 0.3.3(@logtape/logtape@2.4.0)
@@ -1253,7 +1256,7 @@ importers:
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/flow-graph':
         specifier: 'catalog:'
         version: 0.2.3(@logtape/logtape@2.4.0)
@@ -1387,7 +1390,7 @@ importers:
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/json':
         specifier: 'catalog:'
         version: 0.3.0
@@ -1421,7 +1424,7 @@ importers:
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/json':
         specifier: 'catalog:'
         version: 0.3.0
@@ -1505,6 +1508,9 @@ importers:
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.0
+      '@sozai/event':
+        specifier: 'catalog:'
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/otel':
         specifier: 'catalog:'
         version: 0.3.3(@logtape/logtape@2.4.0)
@@ -1565,7 +1571,7 @@ importers:
         version: 0.4.3
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.2
@@ -1611,7 +1617,7 @@ importers:
         version: link:../http-client
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -1655,7 +1661,7 @@ importers:
     devDependencies:
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/ollama-provider:
     dependencies:
@@ -1677,7 +1683,7 @@ importers:
     devDependencies:
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/openai-provider:
     dependencies:
@@ -1699,7 +1705,7 @@ importers:
     devDependencies:
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/session:
     dependencies:
@@ -1720,7 +1726,7 @@ importers:
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/generator':
         specifier: 'catalog:'
         version: 0.2.2
@@ -4553,6 +4559,9 @@ packages:
 
   '@sozai/event@0.1.5':
     resolution: {integrity: sha512-j6FoxeHJb3hdhh9SHoK+ZL6HZxxp89aNBijUyhKULf+vNchXtG+yL91bGSTQhFvJ2U1opnLdFgqhirpiyLSmpw==}
+
+  '@sozai/event@0.1.6':
+    resolution: {integrity: sha512-RVZPfa7CsM0DICTDjb79P+FgA4TvLWpzKFY0PGr53Il2hS51O4z2oy8y6zbne2IYDxcpZibcSVGGJCWRnmhFgw==}
 
   '@sozai/execution@0.2.3':
     resolution: {integrity: sha512-sknU9ABs/gIklF7mmDBzS47n89qaviKMGxnfZPMN/lZqgcF0wJgBJUcW4RKS5KzcCeBL7f88yIia08ZxkeRoqA==}
@@ -10418,8 +10427,8 @@ packages:
   vfile@6.0.3:
     resolution: {integrity: sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q==}
 
-  vite@8.3.3:
-    resolution: {integrity: sha512-cTAldKPImjg6c+gk48U19POPn3GCBzZwpdsN8ZMEEcbpes+6/wvfqUd0C2y3qYY4wsj8PwgFwrZ/1jBPVttMSg==}
+  vite@8.3.4:
+    resolution: {integrity: sha512-IftLE8phJhdNRIGNEV4JCCvfNScoZQVfcXaN8TQropWGJtOHcu+iAB9pHcuGvmEb/kddw0LBe/jS8ztdC6xdiQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
@@ -13726,7 +13735,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@kigu/dev@0.3.2(@opentelemetry/api@1.9.1)(chokidar@5.0.0)(jsdom@30.1.2(@noble/hashes@2.4.0))(supports-color@8.1.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
+  '@kigu/dev@0.3.2(@opentelemetry/api@1.9.1)(chokidar@5.0.0)(jsdom@30.1.2(@noble/hashes@2.4.0))(supports-color@8.1.1)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
     dependencies:
       '@biomejs/biome': 2.5.15
       '@swc/cli': 0.8.1(@swc/core@1.16.13)(chokidar@5.0.0)(supports-color@8.1.1)
@@ -13737,7 +13746,7 @@ snapshots:
       tsx: 4.23.15
       turbo: 2.11.7
       typescript: 6.0.3
-      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
     transitivePeerDependencies:
       - '@edge-runtime/vm'
       - '@opentelemetry/api'
@@ -14018,47 +14027,33 @@ snapshots:
 
   '@noble/hashes@2.4.0': {}
 
-  '@node-llama-cpp/linux-arm64@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-arm64@3.22.1': {}
 
-  '@node-llama-cpp/linux-armv7l@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-armv7l@3.22.1': {}
 
-  '@node-llama-cpp/linux-riscv64@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-riscv64@3.22.1': {}
 
-  '@node-llama-cpp/linux-x64-cuda-ext@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-x64-cuda-ext@3.22.1': {}
 
-  '@node-llama-cpp/linux-x64-cuda@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-x64-cuda@3.22.1': {}
 
-  '@node-llama-cpp/linux-x64-vulkan@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-x64-vulkan@3.22.1': {}
 
-  '@node-llama-cpp/linux-x64@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-x64@3.22.1': {}
 
-  '@node-llama-cpp/mac-arm64-metal@3.22.1':
-    optional: true
+  '@node-llama-cpp/mac-arm64-metal@3.22.1': {}
 
-  '@node-llama-cpp/mac-x64@3.22.1':
-    optional: true
+  '@node-llama-cpp/mac-x64@3.22.1': {}
 
-  '@node-llama-cpp/win-arm64@3.22.1':
-    optional: true
+  '@node-llama-cpp/win-arm64@3.22.1': {}
 
-  '@node-llama-cpp/win-x64-cuda-ext@3.22.1':
-    optional: true
+  '@node-llama-cpp/win-x64-cuda-ext@3.22.1': {}
 
-  '@node-llama-cpp/win-x64-cuda@3.22.1':
-    optional: true
+  '@node-llama-cpp/win-x64-cuda@3.22.1': {}
 
-  '@node-llama-cpp/win-x64-vulkan@3.22.1':
-    optional: true
+  '@node-llama-cpp/win-x64-vulkan@3.22.1': {}
 
-  '@node-llama-cpp/win-x64@3.22.1':
-    optional: true
+  '@node-llama-cpp/win-x64@3.22.1': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -14385,29 +14380,21 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@reflink/reflink-darwin-arm64@0.1.19':
-    optional: true
+  '@reflink/reflink-darwin-arm64@0.1.19': {}
 
-  '@reflink/reflink-darwin-x64@0.1.19':
-    optional: true
+  '@reflink/reflink-darwin-x64@0.1.19': {}
 
-  '@reflink/reflink-linux-arm64-gnu@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-arm64-gnu@0.1.19': {}
 
-  '@reflink/reflink-linux-arm64-musl@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-arm64-musl@0.1.19': {}
 
-  '@reflink/reflink-linux-x64-gnu@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-x64-gnu@0.1.19': {}
 
-  '@reflink/reflink-linux-x64-musl@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-x64-musl@0.1.19': {}
 
-  '@reflink/reflink-win32-arm64-msvc@0.1.19':
-    optional: true
+  '@reflink/reflink-win32-arm64-msvc@0.1.19': {}
 
-  '@reflink/reflink-win32-x64-msvc@0.1.19':
-    optional: true
+  '@reflink/reflink-win32-x64-msvc@0.1.19': {}
 
   '@reflink/reflink@0.1.19':
     optionalDependencies:
@@ -14419,7 +14406,6 @@ snapshots:
       '@reflink/reflink-linux-x64-musl': 0.1.19
       '@reflink/reflink-win32-arm64-msvc': 0.1.19
       '@reflink/reflink-win32-x64-msvc': 0.1.19
-    optional: true
 
   '@rolldown/binding-android-arm-eabi@1.2.12':
     optional: true
@@ -14657,6 +14643,13 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
+  '@sozai/event@0.1.6(@logtape/logtape@2.4.0)':
+    dependencies:
+      '@sozai/async': 0.4.0
+      '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
+
   '@sozai/execution@0.2.3':
     dependencies:
       '@sozai/async': 0.4.0
@@ -14666,7 +14659,7 @@ snapshots:
     dependencies:
       '@noble/hashes': 2.4.0
       '@sozai/async': 0.4.0
-      '@sozai/event': 0.1.5(@logtape/logtape@2.4.0)
+      '@sozai/event': 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/json': 0.3.0
       '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
       '@sozai/otel': 0.3.3(@logtape/logtape@2.4.0)
@@ -15067,7 +15060,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-plugin@1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.12)(supports-color@8.1.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))':
+  '@tanstack/router-plugin@1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.12)(supports-color@8.1.1)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))':
     dependencies:
       '@babel/core': 7.29.7(supports-color@8.1.1)
       '@babel/template': 7.29.7
@@ -15076,11 +15069,11 @@ snapshots:
       '@tanstack/router-generator': 1.167.40(supports-color@8.1.1)
       '@tanstack/router-utils': 1.162.3(supports-color@8.1.1)
       chokidar: 5.0.0
-      unplugin: 3.4.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.12)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))
+      unplugin: 3.4.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.12)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))
       zod: 4.6.5
     optionalDependencies:
       '@tanstack/react-router': 1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      vite: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
       webpack: 5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3)
     transitivePeerDependencies:
       - '@farmfe/core'
@@ -15450,19 +15443,19 @@ snapshots:
 
   '@ungap/structured-clone@1.4.0': {}
 
-  '@vitejs/plugin-react@6.1.2(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
+  '@vitejs/plugin-react@6.1.2(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
 
-  '@vitest/mocker@5.0.3(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
+  '@vitest/mocker@5.0.3(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.0.3
       estree-walker: 3.0.3
       magic-string: 1.4.3
     optionalDependencies:
-      vite: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
 
   '@vitest/pretty-format@5.0.3':
     dependencies:
@@ -15478,7 +15471,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   '@vitest/utils@5.0.3':
     dependencies:
@@ -21401,7 +21394,7 @@ snapshots:
 
   unpipe@1.0.0: {}
 
-  unplugin@3.4.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.12)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3)):
+  unplugin@3.4.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.12)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3)):
     dependencies:
       '@jridgewell/remapping': 2.3.5
       picomatch: 4.0.7
@@ -21410,7 +21403,7 @@ snapshots:
       '@rspack/core': 1.7.12
       esbuild: 0.28.2
       rolldown: 1.2.12
-      vite: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
       webpack: 5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3)
 
   update-browserslist-db@1.3.3(browserslist@4.29.3):
@@ -21525,7 +21518,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1):
+  vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -21542,10 +21535,10 @@ snapshots:
       tsx: 4.23.15
       yaml: 2.9.1
 
-  vitest@5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)):
+  vitest@5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.3(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      '@vitest/mocker': 5.0.3(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -21556,7 +21549,7 @@ snapshots:
       tinybench: 6.2.1
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
-      vite: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
       why-is-node-running: 3.2.1
     optionalDependencies:
       '@opentelemetry/api': 1.9.1

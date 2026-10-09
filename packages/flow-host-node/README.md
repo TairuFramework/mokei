@@ -152,6 +152,8 @@ import {
   flowStoreDefinitions,
 } from '@mokei/flow-host-node'
 import { composeHandlers, serveHostDaemon } from '@mokei/host-node'
+import type { HostEvents } from '@mokei/host-protocol'
+import { EventEmitter } from '@sozai/event'
 
 // Release in reverse order, attempting every step and keeping every error.
 async function release(steps: Array<() => Promise<void> | undefined>): Promise<void> {
@@ -180,10 +182,10 @@ try {
     logs: appConfig.logs,
     reportCategories: [FLOW_REPORT_CATEGORY],
   })
-  const events = new EventTarget()
+  const events = new EventEmitter<HostEvents>()
   const flows = createFlowService({
     database,
-    onEvent: ({ type, ...detail }) => events.dispatchEvent(new CustomEvent(type, { detail })),
+    onEvent: ({ type, ...detail }) => events.fire(type, detail),
   })
   service = flows
   await serveHostDaemon({

@@ -11,10 +11,12 @@ import type {
   BaseProtocol,
   BaseClientMessage as HostClientMessage,
   HostEvent,
+  HostEvents,
   BaseServerMessage as HostServerMessage,
   Protocol,
 } from '@mokei/host-protocol'
 import { SpanStatusCode } from '@opentelemetry/api'
+import { EventEmitter } from '@sozai/event'
 import { describe, expect, test, vi } from 'vitest'
 
 import { createClient } from '../src/daemon.js'
@@ -45,7 +47,7 @@ describe('spawn handler child-exit cleanup', () => {
     const handlers = createHandlers({
       activeContexts: {},
       children,
-      events: new EventTarget(),
+      events: new EventEmitter<HostEvents>(),
       startedTime: Date.now(),
     })
     const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
@@ -100,7 +102,7 @@ test('serves standalone flow errors and acknowledges shutdown over a socket', as
   const daemon = await serveHostDaemon({
     socketPath,
     pidPath,
-    events: new EventTarget(),
+    events: new EventEmitter<HostEvents>(),
     handleSignals: false,
     onShutdown,
   })
@@ -129,7 +131,7 @@ test('reports monitor procedures as unavailable when no monitor handlers are pro
   const daemon = await serveHostDaemon({
     socketPath,
     pidPath: join(directory, 'daemon.pid'),
-    events: new EventTarget(),
+    events: new EventEmitter<HostEvents>(),
     handleSignals: false,
   })
   const client = await createClient(socketPath)
@@ -152,7 +154,7 @@ test('uses a provided monitor handler without installing a duplicate fallback', 
   const daemon = await serveHostDaemon({
     socketPath,
     pidPath: join(directory, 'daemon.pid'),
-    events: new EventTarget(),
+    events: new EventEmitter<HostEvents>(),
     handleSignals: false,
     handlers: { 'monitor.attach': attach },
   })
@@ -185,7 +187,7 @@ test('validates unsigned start requests before dispatch over the production sock
   const daemon = await serveHostDaemon({
     socketPath,
     pidPath: join(directory, 'daemon.pid'),
-    events: new EventTarget(),
+    events: new EventEmitter<HostEvents>(),
     handleSignals: false,
     handlers: { 'runs.start': start },
   })
@@ -235,13 +237,13 @@ test('validates unsigned start requests before dispatch over the production sock
 test.each([true, false])(
   'context:message is built only with a subscriber (%s), forwarding stays unchanged',
   async (subscribed) => {
-    const events = new EventTarget()
+    const events = new EventEmitter<HostEvents>()
     const messages: Array<{ from: string; message: unknown }> = []
     if (subscribed)
-      events.addEventListener('context:message', (event) => {
-        messages.push((event as CustomEvent).detail.data)
+      events.on('context:message', (event) => {
+        messages.push(event.data)
       })
-    const dispatch = vi.spyOn(events, 'dispatchEvent')
+    const dispatch = vi.spyOn(events, 'fire')
     const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
     const server = serve<BaseProtocol>({
       handlers: createHandlers({
@@ -284,7 +286,7 @@ test.each([true, false])(
           params: { token: '[redacted]' },
         })
       } else {
-        expect(dispatch.mock.calls.some(([event]) => event.type === 'context:message')).toBe(false)
+        expect(dispatch.mock.calls.some(([type]) => type === 'context:message')).toBe(false)
       }
       expect(request.params.token).toBe('t')
     } finally {
@@ -313,7 +315,7 @@ function eventContext(writable: WritableStream<HostEvent>, signal: AbortSignal) 
   }
 }
 
-function eventHandlers(events: EventTarget, options: Partial<HandlersContext> = {}) {
+function eventHandlers(events: EventEmitter<HostEvents>, options: Partial<HandlersContext> = {}) {
   return createHandlers({
     activeContexts: {},
     children: new Map(),
@@ -324,7 +326,7 @@ function eventHandlers(events: EventTarget, options: Partial<HandlersContext> = 
 }
 
 test('forwards span:start, span:end, log and trace:summary events', async () => {
-  const events = new EventTarget()
+  const events = new EventEmitter<HostEvents>()
   const received: Array<HostEvent> = []
   const controller = new AbortController()
   const subscription = eventHandlers(events).events(
@@ -387,8 +389,7 @@ test('forwards span:start, span:end, log and trace:summary events', async () => 
     },
   ]
   try {
-    for (const { type, ...detail } of messages)
-      events.dispatchEvent(new CustomEvent(type, { detail }))
+    for (const { type, ...detail } of messages) events.fire(type, detail)
     await vi.waitFor(() => expect(received).toEqual(messages))
   } finally {
     controller.abort()
@@ -408,7 +409,7 @@ test.each([
 ])(
   '$name',
   async ({ eventBufferLimit }) => {
-    const events = new EventTarget()
+    const events = new EventEmitter<HostEvents>()
     const handlers = eventHandlers(events, { eventBufferLimit })
     const slow = new TransformStream<HostEvent, HostEvent>()
     const slowController = new AbortController()
@@ -433,27 +434,21 @@ test.each([
     const limit = eventBufferLimit ?? 2000
     try {
       for (let index = 0; index < limit; index++) {
-        events.dispatchEvent(
-          new CustomEvent('context:stop', {
-            detail: { meta: { contextID: 'context-one', eventID: String(index), time: index } },
-          }),
-        )
+        events.fire('context:stop', {
+          meta: { contextID: 'context-one', eventID: String(index), time: index },
+        })
         await new Promise<void>((resolve) => setImmediate(resolve))
         expect(received).toHaveLength(index + 1)
       }
       expect(disconnected).toBe(false)
-      events.dispatchEvent(
-        new CustomEvent('context:stop', {
-          detail: { meta: { contextID: 'context-one', eventID: 'overflow', time: limit } },
-        }),
-      )
+      events.fire('context:stop', {
+        meta: { contextID: 'context-one', eventID: 'overflow', time: limit },
+      })
       await vi.waitFor(() => expect(disconnected).toBe(true))
       expect(received).toHaveLength(limit + 1)
-      events.dispatchEvent(
-        new CustomEvent('context:stop', {
-          detail: { meta: { contextID: 'context-one', eventID: 'after', time: limit + 1 } },
-        }),
-      )
+      events.fire('context:stop', {
+        meta: { contextID: 'context-one', eventID: 'after', time: limit + 1 },
+      })
       await vi.waitFor(() => expect(received).toHaveLength(limit + 2))
       expect(slow.writable.locked).toBe(false)
       const reader = slow.readable.getReader()
@@ -473,7 +468,7 @@ test.each([
 )
 
 test('real Enkaku events stream disconnects at 2000 pending writes with a stalled transport', async () => {
-  const events = new EventTarget()
+  const events = new EventEmitter<HostEvents>()
   const handlers = eventHandlers(events)
   const incoming = new TransformStream<HostClientMessage, HostClientMessage>()
   const outgoing = new TransformStream<HostServerMessage, HostServerMessage>()
@@ -505,11 +500,9 @@ test('real Enkaku events stream disconnects at 2000 pending writes with a stalle
     requireAuth: false,
   })
   const dispatch = (index: number) => {
-    events.dispatchEvent(
-      new CustomEvent('context:stop', {
-        detail: { meta: { contextID: 'context-one', eventID: String(index), time: index } },
-      }),
-    )
+    events.fire('context:stop', {
+      meta: { contextID: 'context-one', eventID: String(index), time: index },
+    })
   }
   try {
     await input.write({
@@ -548,7 +541,7 @@ test('info includes tracing when tracingInfo is provided', async () => {
   const tracing = { lostSummaryCount: 4, droppedCount: 7 }
   const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
   const server = serve<BaseProtocol>({
-    handlers: eventHandlers(new EventTarget(), { tracingInfo: () => tracing }),
+    handlers: eventHandlers(new EventEmitter<HostEvents>(), { tracingInfo: () => tracing }),
     transport: transports.server,
     requireAuth: false,
   })
@@ -569,9 +562,9 @@ test('info includes tracing when tracingInfo is provided', async () => {
 test('daemon shutdown ends a proxied context root as stopped', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mokei-host-shutdown-'))
   const socketPath = join(directory, 'daemon.sock')
-  const events = new EventTarget()
+  const events = new EventEmitter<HostEvents>()
   const observed = vi.fn()
-  events.addEventListener('context:message', observed)
+  events.on('context:message', observed)
   const daemon = await serveHostDaemon({
     socketPath,
     pidPath: join(directory, 'daemon.pid'),
@@ -610,9 +603,9 @@ test('daemon shutdown ends a proxied context root as stopped', async () => {
 })
 
 test('proxy transport errors end the context and open requests as lost', async () => {
-  const events = new EventTarget()
+  const events = new EventEmitter<HostEvents>()
   const observed = vi.fn()
-  events.addEventListener('context:message', observed)
+  events.on('context:message', observed)
   const children = new Map<string, ReturnType<typeof spawn>>()
   const handlers = createHandlers({ activeContexts: {}, children, events, startedTime: 1 })
   let input!: ReadableStreamDefaultController

@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { getEventListeners } from 'node:events'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
@@ -20,7 +19,9 @@ import {
 } from '@mokei/flow-host-node'
 import { createDesktopInputSurface, createDesktopNotifier, openURL } from '@mokei/host-desktop'
 import { composeHandlers, createTraceHandlers, serveHostDaemon } from '@mokei/host-node'
+import type { HostEvents } from '@mokei/host-protocol'
 import { settleAll } from '@sozai/async'
+import { EventEmitter } from '@sozai/event'
 import type { DaemonHandle } from '@tejika/process'
 
 function createDesktopAdapter(): FlowDesktopAdapter {
@@ -97,16 +98,15 @@ export async function startMokeiDaemonWithDependencies(
   const acquired: Array<() => void | Promise<void>> = [() => database.close()]
   const releaseAcquired = () => release([...acquired].reverse())
   try {
-    const events = new EventTarget()
+    const events = new EventEmitter<HostEvents>()
     const telemetry = dependencies.setupTelemetry({
       provider: database,
-      hasListeners: (type) => getEventListeners(events, type).length > 0,
-      onEvent: (event) => {
-        events.dispatchEvent(
-          new CustomEvent(event.type, {
-            detail: { meta: { eventID: randomUUID(), time: Date.now() }, data: event.data },
-          }),
-        )
+      hasListeners: (type) => events.listenerCount(type) > 0,
+      onEvent: ({ type, ...payload }) => {
+        events.fire(type, {
+          meta: { eventID: randomUUID(), time: Date.now() },
+          ...payload,
+        })
       },
       otlp: config.tracing.otlp,
       logs: config.logs,
@@ -123,7 +123,7 @@ export async function startMokeiDaemonWithDependencies(
       openURL: params.openURL ?? ((url) => openURL(url)),
       configPath: params.flowsConfigPath,
       desktop: params.desktop ?? createDesktopAdapter(),
-      onEvent: ({ type, ...detail }) => events.dispatchEvent(new CustomEvent(type, { detail })),
+      onEvent: ({ type, ...detail }) => events.fire(type, detail),
     })
     acquired.push(() => service.dispose())
     acquired.push(() => presence.dispose())

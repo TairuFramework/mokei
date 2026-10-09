@@ -1,6 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { getEventListeners } from 'node:events'
 import { createTransportStream } from '@enkaku/node-streams'
 import { HandlerError, type ProcedureHandlers, serve } from '@enkaku/server'
 import { type PayloadCapture, sanitizeMessage, type TerminationReason } from '@mokei/context-client'
@@ -11,11 +10,13 @@ import type {
   FlowServiceStatus,
   HostEvent,
   HostEventMeta,
+  HostEvents,
   MonitorProcedure,
   Protocol,
   TracingInfo,
 } from '@mokei/host-protocol'
 import { protocol } from '@mokei/host-protocol'
+import type { EventEmitter } from '@sozai/event'
 import { tap } from '@sozai/stream'
 import { type DaemonHandle, runDaemon as tejikaRunDaemon } from '@tejika/process'
 
@@ -25,7 +26,7 @@ import { spawnContextServer } from './spawn.js'
 export type HandlersContext = {
   activeContexts: Record<string, ActiveContextInfo>
   children: Map<string, ChildProcess>
-  events: EventTarget
+  events: EventEmitter<HostEvents>
   startedTime: number
   shutdown?: () => void | Promise<void>
   shutdownSignal?: AbortSignal
@@ -70,7 +71,7 @@ export function createHandlers({
       const sub = new AbortController()
       let pendingWrites = 0
       const abortSubscription = () => sub.abort()
-      const handleEvent = (event: Event) => {
+      const handleEvent = (message: HostEvent) => {
         if (sub.signal.aborted) return
         const desiredSize = writer.desiredSize
         if (
@@ -81,8 +82,6 @@ export function createHandlers({
           sub.abort()
           return
         }
-        const e = event as CustomEvent<Omit<HostEvent, 'type'>>
-        const message = { type: e.type, ...e.detail } as HostEvent
         pendingWrites++
         void writer
           .write(message)
@@ -96,16 +95,16 @@ export function createHandlers({
           sub.signal.addEventListener('abort', () => resolve(), { once: true })
           ctx.signal.addEventListener('abort', abortSubscription, { once: true })
           for (const type of EVENT_TYPES) {
-            events.addEventListener(type, handleEvent)
+            // The loop widens type and payload separately, losing their correlation.
+            events.on(type, (payload) => handleEvent({ type, ...payload } as HostEvent), {
+              signal: sub.signal,
+            })
           }
           if (ctx.signal.aborted) sub.abort()
         })
       } finally {
         sub.abort()
         ctx.signal.removeEventListener('abort', abortSubscription)
-        for (const type of EVENT_TYPES) {
-          events.removeEventListener(type, handleEvent)
-        }
         // Do not wait for a stalled consumer to settle its outstanding writes.
         void writer.abort().catch(() => {})
         writer.releaseLock()
@@ -149,9 +148,7 @@ export function createHandlers({
         } finally {
           delete activeContexts[contextID]
           children.delete(contextID)
-          events.dispatchEvent(
-            new CustomEvent('context:stop', { detail: { meta: createEventMeta(contextID) } }),
-          )
+          events.fire('context:stop', { meta: createEventMeta(contextID) })
         }
       }
       const onExit = () => stopContext(ctx.signal.aborted ? 'stopped' : 'lost')
@@ -163,14 +160,10 @@ export function createHandlers({
       ctx.signal.addEventListener('abort', onAbort, { once: true })
       shutdownSignal?.addEventListener('abort', onAbort, { once: true })
       try {
-        events.dispatchEvent(
-          new CustomEvent('context:start', {
-            detail: {
-              meta: createEventMeta(contextID),
-              data: { transport: 'stdio', command: ctx.param.command, args: ctx.param.args ?? [] },
-            },
-          }),
-        )
+        events.fire('context:start', {
+          meta: createEventMeta(contextID),
+          data: { transport: 'stdio', command: ctx.param.command, args: ctx.param.args ?? [] },
+        })
         const stream = await createTransportStream(spawned.streams)
         if (stopped) {
           await Promise.allSettled([stream.readable.cancel(), stream.writable.abort()])
@@ -181,18 +174,17 @@ export function createHandlers({
             .pipeThrough(
               tap((message) => {
                 proxyTracing.observe('client', message)
-                if (getEventListeners(events, 'context:message').length > 0)
-                  events.dispatchEvent(
-                    new CustomEvent('context:message', {
-                      detail: {
-                        meta: createEventMeta(contextID),
-                        data: {
-                          from: 'client',
-                          message: sanitizeMessage(message, tracing?.payloads),
-                        },
-                      },
-                    }),
-                  )
+                if (events.listenerCount('context:message') > 0)
+                  events.fire('context:message', {
+                    meta: createEventMeta(contextID),
+                    data: {
+                      from: 'client',
+                      message: sanitizeMessage(message, tracing?.payloads) as Record<
+                        string,
+                        unknown
+                      >,
+                    },
+                  })
               }),
             )
             .pipeTo(stream.writable, { signal: controller.signal }),
@@ -200,18 +192,17 @@ export function createHandlers({
             .pipeThrough(
               tap((message) => {
                 proxyTracing.observe('server', message)
-                if (getEventListeners(events, 'context:message').length > 0)
-                  events.dispatchEvent(
-                    new CustomEvent('context:message', {
-                      detail: {
-                        meta: createEventMeta(contextID),
-                        data: {
-                          from: 'server',
-                          message: sanitizeMessage(message, tracing?.payloads),
-                        },
-                      },
-                    }),
-                  )
+                if (events.listenerCount('context:message') > 0)
+                  events.fire('context:message', {
+                    meta: createEventMeta(contextID),
+                    data: {
+                      from: 'server',
+                      message: sanitizeMessage(message, tracing?.payloads) as Record<
+                        string,
+                        unknown
+                      >,
+                    },
+                  })
               }),
             )
             .pipeTo(ctx.writable, { signal: controller.signal }),
@@ -270,7 +261,7 @@ function unavailableStatus(): Extract<FlowServiceStatus, { state: 'failed' }> {
 }
 
 export type HostDaemonParams = {
-  events: EventTarget
+  events: EventEmitter<HostEvents>
   socketPath?: string
   pidPath?: string
   signal?: AbortSignal

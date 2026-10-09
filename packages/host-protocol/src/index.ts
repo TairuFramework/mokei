@@ -259,6 +259,9 @@ export const hostEventSchema = {
   ],
 } as const satisfies Schema
 export type HostEvent = FromSchema<typeof hostEventSchema>
+export type HostEvents = {
+  [Type in HostEvent['type']]: Omit<Extract<HostEvent, { type: Type }>, 'type'>
+}
 
 export const activeContextInfoSchema = {
   type: 'object',

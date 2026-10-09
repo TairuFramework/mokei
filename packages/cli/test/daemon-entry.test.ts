@@ -40,8 +40,8 @@ test('sweepInterrupted runs before service.start', async () => {
   let shutdown: (() => Promise<void>) | undefined
   vi.mocked(serveHostDaemon).mockImplementationOnce(async (options) => {
     order.push('serve')
-    options.events.addEventListener('trace:summary', (event) => {
-      observed = (event as CustomEvent<unknown>).detail
+    options.events.on('trace:summary', (event) => {
+      observed = event
     })
     shutdown = options.onShutdown
     return {
