@@ -1,8 +1,13 @@
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import { getLogStore } from '@hozon/store-log'
-import { getTelemetryStore } from '@hozon/store-telemetry'
-import { loadMokeiConfig, openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
+import {
+  createTraceReader,
+  getTraceIndexStore,
+  loadMokeiConfig,
+  openMokeiDatabase,
+  setupMokeiTelemetry,
+} from '@mokei/app-node'
 import {
   createFlowHandlers,
   createFlowService,
@@ -13,8 +18,10 @@ import {
   flowStoreDefinitions,
 } from '@mokei/flow-host-node'
 import { createDesktopInputSurface, createDesktopNotifier, openURL } from '@mokei/host-desktop'
-import { composeHandlers, serveHostDaemon } from '@mokei/host-node'
+import { composeHandlers, createTraceHandlers, serveHostDaemon } from '@mokei/host-node'
+import type { HostEvents } from '@mokei/host-protocol'
 import { settleAll } from '@sozai/async'
+import { EventEmitter } from '@sozai/event'
 import type { DaemonHandle } from '@tejika/process'
 
 function createDesktopAdapter(): FlowDesktopAdapter {
@@ -91,23 +98,32 @@ export async function startMokeiDaemonWithDependencies(
   const acquired: Array<() => void | Promise<void>> = [() => database.close()]
   const releaseAcquired = () => release([...acquired].reverse())
   try {
+    const events = new EventEmitter<HostEvents>()
     const telemetry = dependencies.setupTelemetry({
-      logStore: await getLogStore(database),
-      telemetryStore: await getTelemetryStore(database),
+      provider: database,
+      hasListeners: (type) => events.listenerCount(type) > 0,
+      onEvent: ({ type, ...payload }) => {
+        events.fire(type, {
+          meta: { eventID: randomUUID(), time: Date.now() },
+          ...payload,
+        })
+      },
       otlp: config.tracing.otlp,
       logs: config.logs,
       reportCategories: [FLOW_REPORT_CATEGORY],
     })
     acquired.push(() => telemetry.dispose())
-    const events = new EventTarget()
+    await telemetry.recorder.sweepInterrupted()
     const presence = createMonitorPresence()
     const service = createFlowService({
       database,
+      tracing: { payloads: config.tracing.payloads },
+      traceIndex: getTraceIndexStore,
       monitor: presence,
       openURL: params.openURL ?? ((url) => openURL(url)),
       configPath: params.flowsConfigPath,
       desktop: params.desktop ?? createDesktopAdapter(),
-      onEvent: ({ type, ...detail }) => events.dispatchEvent(new CustomEvent(type, { detail })),
+      onEvent: ({ type, ...detail }) => events.fire(type, detail),
     })
     acquired.push(() => service.dispose())
     acquired.push(() => presence.dispose())
@@ -118,7 +134,15 @@ export async function startMokeiDaemonWithDependencies(
       handleSignals: params.handleSignals,
       // Telemetry has two bounded 10s phases; allow acquisition and admitted work to drain too.
       shutdownTimeoutMs: 60_000,
-      handlers: composeHandlers(createFlowHandlers(service), createMonitorHandlers(presence)),
+      handlers: composeHandlers(
+        createFlowHandlers(service),
+        createMonitorHandlers(presence),
+        createTraceHandlers({
+          reader: createTraceReader({ provider: database, recorder: telemetry.recorder }),
+        }),
+      ),
+      tracing: { payloads: config.tracing.payloads },
+      tracingInfo: () => telemetry.recorder.info(),
       flowStatus: () => service.status(),
       onShutdown: async () => {
         // Presence, flow service, telemetry, then the database: no write lands on a closed database.

@@ -1,5 +1,5 @@
 import { EventEmitter } from '@sozai/event'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { ContextHost } from '../src/host.js'
 
@@ -8,12 +8,22 @@ describe('ContextHost.setup identity', () => {
     const host = new ContextHost()
     const tool = { name: 'old', inputSchema: { type: 'object' } }
     const oldContext = {
-      client: { events: new EventEmitter(), listTools: async () => ({ tools: [tool] }) },
+      client: {
+        setTracing: vi.fn(),
+        endTracing: vi.fn(),
+        events: new EventEmitter(),
+        listTools: async () => ({ tools: [tool] }),
+      },
       disposer: { dispose: async () => {} },
       tools: [],
     }
     const replacement = {
-      client: { events: new EventEmitter(), listTools: async () => ({ tools: [] }) },
+      client: {
+        setTracing: vi.fn(),
+        endTracing: vi.fn(),
+        events: new EventEmitter(),
+        listTools: async () => ({ tools: [] }),
+      },
       disposer: { dispose: async () => {} },
       tools: [],
     }

@@ -16,6 +16,7 @@
     "@enkaku/client": "catalog:",
     "@enkaku/http-fetch": "catalog:",
     "@enkaku/react": "catalog:",
+    "@mantine/code-highlight": "catalog:",
     "@mantine/core": "catalog:",
     "@mantine/hooks": "catalog:",
     "@mantine/notifications": "catalog:",

@@ -1,4 +1,4 @@
-import type { FlowControl, FlowEvent, RunListFilter, RunTrace } from '@mokei/flow-client'
+import type { FlowControl, FlowEvent, RunListFilter } from '@mokei/flow-client'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -9,22 +9,18 @@ import { useInbox } from '../src/flow/useInbox.js'
 import { useInboxItem } from '../src/flow/useInboxItem.js'
 import { useRun } from '../src/flow/useRun.js'
 import { useRuns } from '../src/flow/useRuns.js'
-import { useRunTrace } from '../src/flow/useRunTrace.js'
 import type { HostClient } from '../src/host/client.js'
 import { deferred, item, run } from './fixtures.js'
 
 function fixture() {
   const listeners = new Set<(event: FlowEvent) => void>()
-  const control: FlowControl & {
-    runs: FlowControl['runs'] & { trace(runID: string): Promise<RunTrace> }
-  } = {
+  const control: FlowControl = {
     flows: { list: vi.fn(async () => []), check: vi.fn() },
     runs: {
       list: vi.fn(async () => [run()]),
       get: vi.fn(async () => run()),
       start: vi.fn(),
       cancel: vi.fn(),
-      trace: vi.fn(async () => ({ spans: [], logs: [] })),
     },
     inbox: {
       list: vi.fn(async () => [item()]),
@@ -286,110 +282,4 @@ test('flows re-query on an epoch change', async () => {
   f.epoch()
   rerender()
   await waitFor(() => expect(result.current.flows).toEqual([summary]))
-})
-
-test('trace polls every two seconds and stops after two matching terminal reads', async () => {
-  vi.useFakeTimers()
-  const f = fixture()
-  const { result } = renderHook(() => useRunTrace('run-1'), { wrapper: f.wrapper })
-  await act(async () => {})
-  expect(result.current.trace).toEqual({ spans: [], logs: [] })
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(2_000)
-  })
-  expect(f.control.runs.trace).toHaveBeenCalledTimes(2)
-  act(() => {
-    f.emit({ type: 'run:state', data: run('run-1', 'completed') })
-  })
-  await act(async () => {})
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(2_000)
-  })
-  const reads = vi.mocked(f.control.runs.trace).mock.calls.length
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(10_000)
-  })
-  expect(vi.mocked(f.control.runs.trace).mock.calls.length).toBe(reads)
-})
-
-test('terminal trace polling stops after ten seconds even if reads differ', async () => {
-  vi.useFakeTimers()
-  const f = fixture()
-  vi.mocked(f.control.runs.get).mockResolvedValue(run('run-1', 'completed'))
-  let timestamp = 0
-  vi.mocked(f.control.runs.trace).mockImplementation(
-    async (): Promise<RunTrace> => ({
-      spans: [],
-      logs: [
-        {
-          traceID: 'trace-1',
-          spanID: 'span-1',
-          timestamp: timestamp++,
-          level: 'info',
-          category: [],
-          message: 'log',
-          properties: {},
-        },
-      ],
-    }),
-  )
-  renderHook(() => useRunTrace('run-1'), { wrapper: f.wrapper })
-  await act(async () => {})
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(10_000)
-  })
-  const reads = vi.mocked(f.control.runs.trace).mock.calls.length
-  expect(reads).toBeGreaterThan(2)
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(10_000)
-  })
-  expect(vi.mocked(f.control.runs.trace).mock.calls.length).toBe(reads)
-})
-
-test('trace coalesces polling and manual refreshes while a read is in flight', async () => {
-  vi.useFakeTimers()
-  const f = fixture()
-  const pending = deferred<RunTrace>()
-  vi.mocked(f.control.runs.trace).mockReturnValueOnce(pending.promise)
-  const { result, unmount } = renderHook(() => useRunTrace('run-1'), { wrapper: f.wrapper })
-  await act(async () => {})
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(4_000)
-    result.current.refresh()
-    result.current.refresh()
-  })
-  expect(f.control.runs.trace).toHaveBeenCalledOnce()
-  await act(async () => {
-    pending.resolve({ spans: [], logs: [] })
-  })
-  expect(f.control.runs.trace).toHaveBeenCalledTimes(2)
-  unmount()
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(20_000)
-  })
-  expect(f.control.runs.trace).toHaveBeenCalledTimes(2)
-})
-
-test('trace discards an old epoch read and restarts the polling cadence', async () => {
-  vi.useFakeTimers()
-  const f = fixture()
-  const pending = deferred<RunTrace>()
-  vi.mocked(f.control.runs.trace).mockReturnValueOnce(pending.promise)
-  const { result, rerender } = renderHook(() => useRunTrace('run-1'), { wrapper: f.wrapper })
-  await act(async () => {})
-  f.epoch()
-  rerender()
-  await act(async () => {})
-  expect(f.control.runs.trace).toHaveBeenCalledTimes(3)
-  await act(async () => {
-    pending.reject(new Error('Old transport failed'))
-    await vi.advanceTimersByTimeAsync(1_999)
-  })
-  expect(result.current.error).toBeUndefined()
-  expect(result.current.trace).toEqual({ spans: [], logs: [] })
-  expect(f.control.runs.trace).toHaveBeenCalledTimes(3)
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(1)
-  })
-  expect(f.control.runs.trace).toHaveBeenCalledTimes(4)
 })

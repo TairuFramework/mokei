@@ -33,7 +33,13 @@ vi.mock('@mokei/host-node', async (importOriginal) => {
 // Telemetry installs process-wide once; these tests boot many daemons in one process.
 vi.mock('@mokei/app-node', async (importOriginal) => {
   const actual = await importOriginal<typeof AppNodeExports>()
-  return { ...actual, setupMokeiTelemetry: vi.fn(() => ({ dispose: async () => {} })) }
+  return {
+    ...actual,
+    setupMokeiTelemetry: vi.fn((params: Parameters<typeof actual.setupMokeiTelemetry>[0]) => {
+      const recorder = new actual.LocalTraceRecorder(params)
+      return { recorder, dispose: () => recorder.shutdown() }
+    }),
+  }
 })
 vi.mock('@mokei/flow-host-node', async (importOriginal) => {
   const actual = await importOriginal<typeof FlowHostNodeExports>()

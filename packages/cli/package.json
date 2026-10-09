@@ -62,6 +62,7 @@
     "@mokei/session": "workspace:^",
     "@mokei/session-node": "workspace:^",
     "@sozai/async": "catalog:",
+    "@sozai/event": "catalog:",
     "@tejika/cli": "catalog:",
     "@tejika/process": "catalog:",
     "@tejika/ui": "catalog:",

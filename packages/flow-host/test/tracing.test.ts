@@ -100,6 +100,8 @@ test('flow.run span carries run attributes and ends with the run', async () => {
   const span = required(spans[0])
   expect(span.instrumentationScope.name).toBe('mokei.flow-host')
   expect(span.attributes).toEqual({
+    'mokei.kind': 'flow',
+    'mokei.root': true,
     'run.id': run.runID,
     'flow.id': emptyFlow.id,
     'run.label': 'Named run',
@@ -122,13 +124,31 @@ test('server spans share the run traceID and descend from flow.run', async () =>
   const nodes = spans.filter((span) => span.name === 'flow.node')
   expect(nodes.length).toBeGreaterThan(0)
   expect(parent.attributes).not.toHaveProperty('flow.id')
+  const ancestorsOf = (span: (typeof spans)[number]) => {
+    const ancestors = []
+    const visited = new Set<string>()
+    let current = span
+    while (!visited.has(current.spanContext().spanId)) {
+      visited.add(current.spanContext().spanId)
+      ancestors.push(current)
+      const next = spans.find(
+        (candidate) =>
+          candidate.spanContext().spanId === current.parentSpanContext?.spanId &&
+          candidate.spanContext().traceId === current.parentSpanContext?.traceId,
+      )
+      if (next === undefined) break
+      current = next
+    }
+    return ancestors
+  }
   for (const node of nodes) {
     expect(node.spanContext().traceId).toBe(run.traceID)
-    const ancestor = spans.find(
-      (span) => span.spanContext().spanId === node.parentSpanContext?.spanId,
-    )
+    const chain = ancestorsOf(node)
+    expect(chain).toContain(parent)
     expect(
-      ancestor === parent || ancestor?.parentSpanContext?.spanId === parent.spanContext().spanId,
+      chain.some(
+        (span) => span.name === 'mcp.tools/call' && span.attributes['mokei.kind'] === 'mcp',
+      ),
     ).toBe(true)
   }
 })
@@ -243,10 +263,14 @@ test.each(['input', 'approval'] as const)(
     await state(first, run.runID, kind === 'input' ? 'input_required' : 'awaiting_approval')
     const stored = required(await shared.runStore.get(run.runID))
     expect(stored.traceparent).toBeDefined()
-    if (kind === 'input')
-      expect((await shared.taskStore.get(required(stored.taskID)))?.requestMeta?.traceparent).toBe(
-        stored.traceparent,
-      )
+    let requestTraceparent: string | undefined
+    if (kind === 'input') {
+      const traceparent = (await shared.taskStore.get(required(stored.taskID)))?.requestMeta
+        ?.traceparent
+      requestTraceparent = typeof traceparent === 'string' ? traceparent : undefined
+      expect(requestTraceparent).toBeDefined()
+      expect(parseTraceparent(required(requestTraceparent))?.traceID).toBe(run.traceID)
+    }
     await first.host.dispose()
     expect(exporter.getFinishedSpans().filter((span) => span.name === 'flow.run')).toHaveLength(1)
     const before = new Set(exporter.getFinishedSpans())
@@ -256,6 +280,7 @@ test.each(['input', 'approval'] as const)(
     await state(second, run.runID, 'completed')
     const spans = exporter.getFinishedSpans().filter((span) => !before.has(span))
     const resumed = spans.find((span) => span.name === 'flow.run.resume')
+    expect(resumed?.attributes).toMatchObject({ 'mokei.kind': 'flow', 'mokei.root': true })
     const parent = parseTraceparent(required(stored.traceparent))
     expect(resumed?.parentSpanContext).toMatchObject({
       traceId: run.traceID,
@@ -267,6 +292,34 @@ test.each(['input', 'approval'] as const)(
     const nodes = spans.filter((span) => span.name === 'flow.node')
     expect(nodes.length).toBeGreaterThan(0)
     for (const node of nodes) expect(node.spanContext().traceId).toBe(run.traceID)
+    if (requestTraceparent !== undefined) {
+      const requestParent = parseTraceparent(requestTraceparent)
+      const requestSpan = required(
+        exporter
+          .getFinishedSpans()
+          .find((span) => span.spanContext().spanId === requestParent?.spanID),
+      )
+      const requestAncestors = []
+      const visited = new Set<string>()
+      let current = requestSpan
+      while (!visited.has(current.spanContext().spanId)) {
+        visited.add(current.spanContext().spanId)
+        requestAncestors.push(current)
+        const next = exporter
+          .getFinishedSpans()
+          .find(
+            (span) =>
+              span.spanContext().spanId === current.parentSpanContext?.spanId &&
+              span.spanContext().traceId === current.parentSpanContext?.traceId,
+          )
+        if (next === undefined) break
+        current = next
+      }
+      expect(requestSpan.spanContext().traceId).toBe(run.traceID)
+      expect(requestAncestors.slice(1)).toContain(
+        required(exporter.getFinishedSpans().find((span) => span.name === 'flow.run')),
+      )
+    }
   },
 )
 test('dispose ends open spans without terminating runs', async () => {

@@ -9,6 +9,16 @@ export function taskStoreContract(
   create: () => TaskStore | Promise<TaskStore>,
 ): void {
   describe(name, () => {
+    test('preserves nested JSON-looking strings through get, list and update', async () => {
+      const store = await create()
+      const task = taskRecord({ resumeData: { nested: ['{"a":1}', '[1,2]'] } })
+      await store.create(task)
+      expect(await store.get(task.taskID)).toEqual(task)
+      expect(await store.list({ status: ['working'] })).toEqual([task])
+      const updated = await store.update(task.taskID, {}, { revision: 0 })
+      expect(await store.get(task.taskID)).toEqual(updated)
+      expect(updated.resumeData).toEqual(task.resumeData)
+    })
     test('rejects duplicates, missing updates and stale revisions', async () => {
       const store = await create()
       const task = taskRecord()

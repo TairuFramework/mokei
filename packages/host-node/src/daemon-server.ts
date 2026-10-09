@@ -2,6 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createTransportStream } from '@enkaku/node-streams'
 import { HandlerError, type ProcedureHandlers, serve } from '@enkaku/server'
+import { type PayloadCapture, sanitizeMessage, type TerminationReason } from '@mokei/context-client'
 import type {
   ActiveContextInfo,
   BaseProtocol,
@@ -9,21 +10,29 @@ import type {
   FlowServiceStatus,
   HostEvent,
   HostEventMeta,
+  HostEvents,
   MonitorProcedure,
   Protocol,
+  TracingInfo,
 } from '@mokei/host-protocol'
 import { protocol } from '@mokei/host-protocol'
+import type { EventEmitter } from '@sozai/event'
 import { tap } from '@sozai/stream'
 import { type DaemonHandle, runDaemon as tejikaRunDaemon } from '@tejika/process'
 
+import { createProxyTracing } from './proxy-tracing.js'
 import { spawnContextServer } from './spawn.js'
 
 export type HandlersContext = {
   activeContexts: Record<string, ActiveContextInfo>
   children: Map<string, ChildProcess>
-  events: EventTarget
+  events: EventEmitter<HostEvents>
   startedTime: number
   shutdown?: () => void | Promise<void>
+  shutdownSignal?: AbortSignal
+  tracing?: { payloads?: PayloadCapture }
+  tracingInfo?: () => TracingInfo
+  eventBufferLimit?: number
   flowStatus?: () => FlowServiceStatus
 }
 
@@ -49,82 +58,112 @@ export function createHandlers({
   events,
   startedTime,
   shutdown,
+  shutdownSignal,
   flowStatus = unavailableStatus,
+  tracing,
+  tracingInfo,
+  eventBufferLimit = 2000,
 }: HandlersContext): ProcedureHandlers<BaseProtocol> {
   return {
     events: async (ctx) => {
       if (ctx.signal.aborted) return
       const writer = ctx.writable.getWriter()
       const sub = new AbortController()
+      let pendingWrites = 0
       const abortSubscription = () => sub.abort()
-      const handleEvent = (event: Event) => {
+      const handleEvent = (message: HostEvent) => {
         if (sub.signal.aborted) return
-        const e = event as CustomEvent<Omit<HostEvent, 'type'>>
-        const message = { type: e.type, ...e.detail } as HostEvent
-        void writer.write(message).catch(() => sub.abort())
+        const desiredSize = writer.desiredSize
+        if (
+          pendingWrites >= eventBufferLimit ||
+          desiredSize == null ||
+          desiredSize <= -eventBufferLimit
+        ) {
+          sub.abort()
+          return
+        }
+        pendingWrites++
+        void writer
+          .write(message)
+          .catch(() => sub.abort())
+          .finally(() => {
+            pendingWrites--
+          })
       }
       try {
         await new Promise<void>((resolve) => {
           sub.signal.addEventListener('abort', () => resolve(), { once: true })
           ctx.signal.addEventListener('abort', abortSubscription, { once: true })
           for (const type of EVENT_TYPES) {
-            events.addEventListener(type, handleEvent)
+            // The loop widens type and payload separately, losing their correlation.
+            events.on(type, (payload) => handleEvent({ type, ...payload } as HostEvent), {
+              signal: sub.signal,
+            })
           }
           if (ctx.signal.aborted) sub.abort()
         })
       } finally {
         sub.abort()
         ctx.signal.removeEventListener('abort', abortSubscription)
-        for (const type of EVENT_TYPES) {
-          events.removeEventListener(type, handleEvent)
-        }
+        // Do not wait for a stalled consumer to settle its outstanding writes.
+        void writer.abort().catch(() => {})
         writer.releaseLock()
       }
     },
-    info: () => ({ activeContexts, startedTime, flowService: flowStatus() }),
+    info: () => ({
+      activeContexts,
+      startedTime,
+      flowService: flowStatus(),
+      ...(tracingInfo == null ? {} : { tracing: tracingInfo() }),
+    }),
     shutdown: async () => {
       await shutdown?.()
     },
     spawn: async (ctx) => {
-      if (ctx.signal.aborted) return
+      if (ctx.signal.aborted || shutdownSignal?.aborted) return
       const contextID = randomUUID()
       const spawned = await spawnContextServer(ctx.param)
-      if (ctx.signal.aborted) {
+      if (ctx.signal.aborted || shutdownSignal?.aborted) {
         spawned.childProcess.kill()
         return
       }
+      const proxyTracing = createProxyTracing({
+        contextID,
+        command: ctx.param.command,
+        args: ctx.param.args ?? [],
+        payloads: tracing?.payloads,
+      })
       const controller = new AbortController()
       let stopped = false
-      const stopContext = () => {
+      const stopContext = (reason: TerminationReason) => {
         if (stopped) return
         stopped = true
+        proxyTracing.end(reason)
         controller.abort()
-        spawned.childProcess.off('exit', stopContext)
-        ctx.signal.removeEventListener('abort', stopContext)
+        spawned.childProcess.off('exit', onExit)
+        ctx.signal.removeEventListener('abort', onAbort)
+        shutdownSignal?.removeEventListener('abort', onAbort)
         try {
           spawned.childProcess.kill()
         } finally {
           delete activeContexts[contextID]
           children.delete(contextID)
-          events.dispatchEvent(
-            new CustomEvent('context:stop', { detail: { meta: createEventMeta(contextID) } }),
-          )
+          events.fire('context:stop', { meta: createEventMeta(contextID) })
         }
       }
+      const onExit = () => stopContext(ctx.signal.aborted ? 'stopped' : 'lost')
+      const onAbort = () => stopContext('stopped')
       activeContexts[contextID] = { startedTime: Date.now() }
       children.set(contextID, spawned.childProcess)
       // Own cancellation before transport conversion can yield.
-      spawned.childProcess.once('exit', stopContext)
-      ctx.signal.addEventListener('abort', stopContext, { once: true })
+      spawned.childProcess.once('exit', onExit)
+      ctx.signal.addEventListener('abort', onAbort, { once: true })
+      shutdownSignal?.addEventListener('abort', onAbort, { once: true })
       try {
-        events.dispatchEvent(
-          new CustomEvent('context:start', {
-            detail: {
-              meta: createEventMeta(contextID),
-              data: { transport: 'stdio', command: ctx.param.command, args: ctx.param.args ?? [] },
-            },
-          }),
-        )
+        events.fire('context:start', {
+          meta: createEventMeta(contextID),
+          data: { transport: 'stdio', command: ctx.param.command, args: ctx.param.args ?? [] },
+        })
         const stream = await createTransportStream(spawned.streams)
         if (stopped) {
           await Promise.allSettled([stream.readable.cancel(), stream.writable.abort()])
@@ -134,34 +173,42 @@ export function createHandlers({
           ctx.readable
             .pipeThrough(
               tap((message) => {
-                events.dispatchEvent(
-                  new CustomEvent('context:message', {
-                    detail: {
-                      meta: createEventMeta(contextID),
-                      data: { from: 'client', message },
+                proxyTracing.observe('client', message)
+                if (events.listenerCount('context:message') > 0)
+                  events.fire('context:message', {
+                    meta: createEventMeta(contextID),
+                    data: {
+                      from: 'client',
+                      message: sanitizeMessage(message, tracing?.payloads) as Record<
+                        string,
+                        unknown
+                      >,
                     },
-                  }),
-                )
+                  })
               }),
             )
             .pipeTo(stream.writable, { signal: controller.signal }),
           stream.readable
             .pipeThrough(
               tap((message) => {
-                events.dispatchEvent(
-                  new CustomEvent('context:message', {
-                    detail: {
-                      meta: createEventMeta(contextID),
-                      data: { from: 'server', message },
+                proxyTracing.observe('server', message)
+                if (events.listenerCount('context:message') > 0)
+                  events.fire('context:message', {
+                    meta: createEventMeta(contextID),
+                    data: {
+                      from: 'server',
+                      message: sanitizeMessage(message, tracing?.payloads) as Record<
+                        string,
+                        unknown
+                      >,
                     },
-                  }),
-                )
+                  })
               }),
             )
             .pipeTo(ctx.writable, { signal: controller.signal }),
         ])
       } finally {
-        stopContext()
+        stopContext(ctx.signal.aborted ? 'stopped' : 'lost')
       }
     },
   }
@@ -175,6 +222,10 @@ const EVENT_TYPES = [
   'run:state',
   'inbox:added',
   'inbox:settled',
+  'span:start',
+  'span:end',
+  'log',
+  'trace:summary',
 ] as const
 
 const FLOW_PROCEDURES = [
@@ -210,13 +261,16 @@ function unavailableStatus(): Extract<FlowServiceStatus, { state: 'failed' }> {
 }
 
 export type HostDaemonParams = {
-  events: EventTarget
+  events: EventEmitter<HostEvents>
   socketPath?: string
   pidPath?: string
   signal?: AbortSignal
   handleSignals?: boolean
   shutdownTimeoutMs?: number
   handlers?: Partial<ProcedureHandlers<Protocol>>
+  tracing?: { payloads?: PayloadCapture }
+  tracingInfo?: () => TracingInfo
+  eventBufferLimit?: number
   flowStatus?: () => FlowServiceStatus
   onShutdown?: () => Promise<void>
   onError?: (error: unknown) => void
@@ -239,6 +293,8 @@ export function composeHandlers(
 
 export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonHandle> {
   const children = new Map<string, ChildProcess>()
+  const stopping = new AbortController()
+  const stopContexts = () => stopping.abort()
   const onError =
     params.onError ??
     ((error: unknown) => {
@@ -249,12 +305,17 @@ export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonH
   const baseHandlers = createHandlers({
     activeContexts: {},
     children,
+    shutdownSignal: stopping.signal,
     events: params.events,
     startedTime: Date.now(),
     flowStatus: params.flowStatus,
+    tracing: params.tracing,
+    tracingInfo: params.tracingInfo,
+    eventBufferLimit: params.eventBufferLimit,
     shutdown: () => {
       if (shutdownScheduled) return
       shutdownScheduled = true
+      stopContexts()
       // Let Enkaku send the acknowledgement before closing its transport.
       setTimeout(() => {
         void daemon?.close().catch(onError)
@@ -288,26 +349,56 @@ export async function serveHostDaemon(params: HostDaemonParams): Promise<DaemonH
     unavailable,
   ) as ProcedureHandlers<Protocol>
   let cleanup: Promise<void> | undefined
-  daemon = await tejikaRunDaemon<Protocol>({
-    app: 'mokei',
-    socketPath: params.socketPath,
-    pidPath: params.pidPath,
-    signal: params.signal,
-    handleSignals: params.handleSignals,
-    shutdownTimeoutMs: params.shutdownTimeoutMs,
-    onError,
-    serve: (transport) => serve<Protocol>({ protocol, handlers, transport, requireAuth: false }),
-    onShutdown: () => {
-      cleanup ??= (async () => {
-        killChildren(children)
-        try {
-          await params.onShutdown?.()
-        } finally {
+  // Tejika closes transports before onShutdown. Settle spans before that teardown starts.
+  const handleSignals = params.handleSignals ?? true
+  if (handleSignals) {
+    process.once('SIGTERM', stopContexts)
+    process.once('SIGINT', stopContexts)
+  }
+  params.signal?.addEventListener('abort', stopContexts, { once: true })
+  const removeStopListeners = () => {
+    if (handleSignals) {
+      process.off('SIGTERM', stopContexts)
+      process.off('SIGINT', stopContexts)
+    }
+    params.signal?.removeEventListener('abort', stopContexts)
+  }
+  try {
+    daemon = await tejikaRunDaemon<Protocol>({
+      app: 'mokei',
+      socketPath: params.socketPath,
+      pidPath: params.pidPath,
+      signal: params.signal,
+      handleSignals: params.handleSignals,
+      shutdownTimeoutMs: params.shutdownTimeoutMs,
+      onError,
+      serve: (transport) => serve<Protocol>({ protocol, handlers, transport, requireAuth: false }),
+      onShutdown: () => {
+        stopContexts()
+        removeStopListeners()
+        cleanup ??= (async () => {
           killChildren(children)
-        }
-      })()
-      return cleanup
+          try {
+            await params.onShutdown?.()
+          } finally {
+            killChildren(children)
+          }
+        })()
+        return cleanup
+      },
+    })
+    // Signals received during boot predate Tejika's shutdown listeners.
+    if (stopping.signal.aborted) await daemon.close()
+  } catch (error) {
+    removeStopListeners()
+    throw error
+  }
+  const running = daemon
+  return {
+    ...running,
+    close: () => {
+      stopContexts()
+      return running.close()
     },
-  })
-  return daemon
+  }
 }

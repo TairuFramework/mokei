@@ -67,11 +67,21 @@ import {
   RequestTimeoutError,
   RPCError,
   splitRequestOptions,
+  TransportClosedError,
   type WithRequestOptions,
 } from '@mokei/context-rpc'
+import { getMokeiLogger } from '@mokei/logger'
+import type { SpanContext } from '@opentelemetry/api'
+import { ROOT_CONTEXT, trace } from '@opentelemetry/api'
 import { lazy } from '@sozai/async'
+import { withActiveContext } from '@sozai/otel'
 import { createValidator, type Schema, type Validator } from '@sozai/schema'
 
+import {
+  type ClientTracing,
+  createExchangeTracer,
+  type TerminationReason,
+} from './client-tracing.js'
 import {
   CapabilityNotDeclaredError,
   InputRequiredNotSupportedError,
@@ -87,6 +97,7 @@ import {
   MRTR_METHODS,
   runInputRequiredFlow,
 } from './mrtr.js'
+import { capturePayload, type MessageDirection, responseOutcome } from './observation.js'
 import { SetupReader } from './setup-reader.js'
 import {
   ACKNOWLEDGED_METHOD,
@@ -317,9 +328,14 @@ type ClientTypes = {
 
 type PagedResult = { nextCursor?: string } & Record<string, unknown>
 
+const FIRST_EXCHANGE = Symbol('firstExchange')
+type TracedRequestOptions = RequestOptions & { [FIRST_EXCHANGE]?: SpanContext }
+
 export class ContextClient<
   T extends ContextTypes = UnknownContextTypes,
 > extends ContextRPC<ClientTypes> {
+  #tracing?: ClientTracing
+  #exchangeTracer = createExchangeTracer(() => this.#tracing)
   #capabilities: ClientCapabilities
   #clientInfo: Implementation
   #createMessage?: CreateMessageHandler
@@ -327,6 +343,7 @@ export class ContextClient<
   #discovering: Promise<DiscoverResult> | null = null
   #elicit?: ElicitHandler
   #initialized: PromiseLike<InitializeResult>
+  #initializationResult: InitializeResult | undefined
   #inputRequired: { autoFulfill: boolean; maxRounds: number }
   #listMaxPages: number
   #listRoots?: Array<Root> | ListRootsHandler
@@ -392,6 +409,15 @@ export class ContextClient<
     return this.#tasks
   }
 
+  setTracing(binding: ClientTracing): void {
+    this.#tracing = binding
+    if (this.#discovered != null) this.#traceServerInfo(this.#discovered.result)
+  }
+
+  endTracing(reason: TerminationReason): void {
+    this.#exchangeTracer.settleAll(reason)
+  }
+
   constructor(params: ClientParams) {
     // Indirected through a method so the validator tracks the resolved revision rather than
     // being frozen at construction, which `protocolVersion: 'auto'` requires.
@@ -403,7 +429,11 @@ export class ContextClient<
       maxQueuedRequests: params.maxQueuedRequests,
       onError: params.onError,
       routeStreamNotification: (notification) => {
-        return routeSubscriptionNotification(notification as ServerNotification)
+        const routed = routeSubscriptionNotification(notification as ServerNotification)
+        if (routed !== null) {
+          this.#traceNotification(notification.method, 'server', notification.params)
+        }
+        return routed
       },
     })
 
@@ -443,6 +473,7 @@ export class ContextClient<
     }
 
     this.#capabilities = capabilities
+    this.#tracing = params.tracing
     this.#clientInfo = params.clientInfo ?? DEFAULT_CLIENT_INFO
     this.#initialized = lazy(() => this.#initialize())
     this.#listMaxPages = params.listMaxPages ?? DEFAULT_LIST_MAX_PAGES
@@ -459,6 +490,11 @@ export class ContextClient<
     // each closure is shaped the way it is.
     this.#setupReader = new SetupReader({
       io: {
+        trace: (method, id, params) => {
+          const exchange = this.#exchangeTracer.startOutgoing(method, params)
+          exchange.setID(id)
+          return exchange
+        },
         allocateID: () => this._getNextRequestID(),
         write: (message) => super._write(message),
         takeBuffered: (matches) => {
@@ -603,67 +639,111 @@ export class ContextClient<
     if (!protocol.clientMethods.has(method as string)) {
       throw new MethodNotInRevisionError({ method: method as string, version: protocol.version })
     }
-    const trace = currentTraceMeta()
-    const base =
-      params != null && typeof params === 'object' ? { ...(params as Record<string, unknown>) } : {}
-    if (trace.traceparent != null) {
-      base._meta = { ...(base._meta as Record<string, unknown> | undefined), ...trace }
-    }
-    const decorated = protocol.decorateRequest(base, {
-      capabilities: this.#capabilitiesFor(protocol),
-      clientInfo: this.#clientInfo,
-      logLevel: this.#logLevel,
+    const firstContext = (options as TracedRequestOptions | undefined)?.[FIRST_EXCHANGE]
+    const exchange = this.#exchangeTracer.startOutgoing(method as string, params, {
+      links: firstContext === undefined ? [] : [{ context: firstContext }],
     })
-    // Charges the leg below against `maxTotalTimeout` too: that budget is documented (and, via
-    // `runInputRequiredFlow`'s `startedAt`, implemented) as covering the leg that produced the
-    // first suspension, not just the retries after it.
-    const startedAt = Date.now()
-    const result = await super.request(method, decorated as typeof params, options)
-    if (!isInputRequiredResult(result)) {
-      return result
-    }
-    // A suspension the resolved revision or this method can never legally produce is a
-    // nonconforming peer, not a suspension to drive or hand back -- refused unconditionally, the
-    // same as every `input_required` result was refused before MRTR existed. Mirrors
-    // `ContextServer._handleRequest`'s own two-part gate (`server.ts`'s `inputRequestMethods.size`
-    // and `MRTR_METHODS` checks) so a `2025-11-25` peer or a non-MRTR method on `2026-07-28` (e.g.
-    // `tools/list`) cannot talk this client into driving rounds `MRTR_METHODS` never grants it.
-    if (protocol.inputRequestMethods.size === 0 || !MRTR_METHODS.has(method as string)) {
-      throw new InputRequiredNotSupportedError({
-        reason:
-          protocol.inputRequestMethods.size === 0
-            ? `protocol version ${protocol.version} has no multi round-trip requests`
-            : `${method as string} cannot suspend on input`,
+    const first = firstContext ?? exchange.span.spanContext()
+    return withActiveContext(exchange.context, async () => {
+      const trace = currentTraceMeta()
+      const base =
+        params != null && typeof params === 'object'
+          ? { ...(params as Record<string, unknown>) }
+          : {}
+      if (trace.traceparent != null) {
+        base._meta = { ...(base._meta as Record<string, unknown> | undefined), ...trace }
+      }
+      const decorated = protocol.decorateRequest(base, {
+        capabilities: this.#capabilitiesFor(protocol),
+        clientInfo: this.#clientInfo,
+        logLevel: this.#logLevel,
       })
-    }
-    // The opt-in path: hand the suspension back and let the caller drive its own rounds. Also how
-    // the driver below reads each retry leg, so the loop lives in exactly one place.
-    if (options?.allowInputRequired) {
-      return result as ClientTypes['SendRequests'][Method]['Result']
-    }
-    if (!this.#inputRequired.autoFulfill) {
-      throw new InputRequiredNotSupportedError({
-        reason:
-          'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
-      })
-    }
-    return (await runInputRequiredFlow({
-      method: method as string,
-      first: result,
-      maxRounds: this.#inputRequired.maxRounds,
-      timeout: options?.timeout,
-      maxTotalTimeout: options?.maxTotalTimeout,
-      startedAt,
-      signal: options?.signal,
-      dispatch: (key, inputRequest, signal) => this.#fulfilInputRequest(key, inputRequest, signal),
-      retry: (retryParams, timeout) => {
-        return this.request(method, { ...(params as object), ...retryParams } as typeof params, {
+      // Charges the leg below against `maxTotalTimeout` too: that budget is documented (and, via
+      // `runInputRequiredFlow`'s `startedAt`, implemented) as covering the leg that produced the
+      // first suspension, not just the retries after it.
+      const startedAt = Date.now()
+      let result: ClientTypes['SendRequests'][Method]['Result']
+      try {
+        result = await super.request(method, decorated as typeof params, {
           ...options,
-          allowInputRequired: true,
-          timeout,
+          onRequestID: (id) => {
+            exchange.setID(id)
+            options?.onRequestID?.(id)
+          },
         })
-      },
-    })) as ClientTypes['SendRequests'][Method]['Result']
+        exchange.succeed(result)
+      } catch (cause) {
+        const error = toError(cause)
+        // An abort reason can itself be an RPCError; caller cancellation takes precedence.
+        if (
+          cause instanceof RequestTimeoutError ||
+          options?.signal?.aborted ||
+          error.name === 'AbortError'
+        ) {
+          exchange.fail('cancelled', error.message)
+        } else if (cause instanceof RPCError) {
+          const outcome = responseOutcome({ error: cause })
+          exchange.fail(outcome.error ? outcome.errorType : String(cause.code), cause.message)
+        } else {
+          exchange.fail(
+            cause instanceof TransportClosedError ? 'context.lost' : '_OTHER',
+            error.message,
+          )
+        }
+        throw cause
+      }
+      if (!isInputRequiredResult(result)) {
+        return result
+      }
+      // A suspension the resolved revision or this method can never legally produce is a
+      // nonconforming peer, not a suspension to drive or hand back -- refused unconditionally, the
+      // same as every `input_required` result was refused before MRTR existed. Mirrors
+      // `ContextServer._handleRequest`'s own two-part gate (`server.ts`'s `inputRequestMethods.size`
+      // and `MRTR_METHODS` checks) so a `2025-11-25` peer or a non-MRTR method on `2026-07-28` (e.g.
+      // `tools/list`) cannot talk this client into driving rounds `MRTR_METHODS` never grants it.
+      if (protocol.inputRequestMethods.size === 0 || !MRTR_METHODS.has(method as string)) {
+        throw new InputRequiredNotSupportedError({
+          reason:
+            protocol.inputRequestMethods.size === 0
+              ? `protocol version ${protocol.version} has no multi round-trip requests`
+              : `${method as string} cannot suspend on input`,
+        })
+      }
+      // The opt-in path: hand the suspension back and let the caller drive its own rounds. Also how
+      // the driver below reads each retry leg, so the loop lives in exactly one place.
+      if (options?.allowInputRequired) {
+        return result as ClientTypes['SendRequests'][Method]['Result']
+      }
+      if (!this.#inputRequired.autoFulfill) {
+        throw new InputRequiredNotSupportedError({
+          reason:
+            'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
+        })
+      }
+      return (await runInputRequiredFlow({
+        method: method as string,
+        first: result,
+        maxRounds: this.#inputRequired.maxRounds,
+        timeout: options?.timeout,
+        maxTotalTimeout: options?.maxTotalTimeout,
+        startedAt,
+        signal: options?.signal,
+        dispatch: (key, inputRequest, signal) =>
+          this.#fulfilInputRequest(key, inputRequest, signal),
+        retry: (retryParams, timeout) => {
+          return this.request(
+            method,
+            { ...(params as object), ...retryParams } as typeof params,
+            {
+              ...options,
+              allowInputRequired: true,
+              timeout,
+              [FIRST_EXCHANGE]: first,
+            } as TracedRequestOptions,
+          )
+        },
+      })) as ClientTypes['SendRequests'][Method]['Result']
+    })
   }
 
   /**
@@ -687,6 +767,7 @@ export class ContextClient<
       throw new MethodNotInRevisionError({ method: method, version: protocol.version })
     }
     const decorated = protocol.decorateNotification(params)
+    this.#traceNotification(method, 'client', decorated)
     await super.notify(event, decorated as typeof params)
   }
 
@@ -719,7 +800,9 @@ export class ContextClient<
     // Start listening for incoming messages
     this.#startReadLoop()
     // Notify the server with `notifications/initialized`.
+    this.#traceNotification('notifications/initialized', 'client', undefined)
     await super._write({ jsonrpc: '2.0', method: 'notifications/initialized' })
+    this.#initializationResult = result
     this.events.emit('initialized', result)
     return result
   }
@@ -808,6 +891,19 @@ export class ContextClient<
     const ttlMs = typeof result.ttlMs === 'number' && result.ttlMs > 0 ? result.ttlMs : 0
     this.#discovered = { result, expiresAt: Date.now() + ttlMs }
     this.#serverCapabilitySnapshot = result.capabilities ?? {}
+    this.#traceServerInfo(result)
+  }
+
+  #traceServerInfo(result: DiscoverResult): void {
+    const serverInfo = result._meta?.['io.modelcontextprotocol/serverInfo']
+    if (
+      serverInfo != null &&
+      typeof serverInfo === 'object' &&
+      'name' in serverInfo &&
+      typeof serverInfo.name === 'string'
+    ) {
+      this.#tracing?.contextSpan?.setAttribute('server.name', serverInfo.name)
+    }
   }
 
   #capabilitiesFor(protocol: ProtocolDefinition): ClientCapabilities {
@@ -972,6 +1068,7 @@ export class ContextClient<
   }
 
   _onTransportClosed(reason?: Error): void {
+    this.#exchangeTracer.settleAll('lost')
     // Covers a peer EOF (which never runs `_beforeTransportClose`): suppress reconnect so a dead
     // transport is not retried. `dispose()` is idempotent.
     this.#subscriptionDriver?.dispose()
@@ -985,7 +1082,37 @@ export class ContextClient<
     await super._write(message)
   }
 
+  #traceNotification(method: string, direction: MessageDirection, params: unknown): void {
+    const binding = this.#tracing
+    const span = binding?.contextSpan
+    if (span === undefined) return
+    withActiveContext(trace.setSpan(ROOT_CONTEXT, span), () => {
+      const captured = span.isRecording() ? capturePayload(params, binding?.payloads) : undefined
+      getMokeiLogger('mcp')
+        .getChild('notification')
+        .debug('MCP notification {method}', {
+          method,
+          direction,
+          ...(captured === undefined ? {} : { payload: captured.payload }),
+          ...(captured?.truncated ? { 'mokei.payload.truncated': true } : {}),
+        })
+    })
+  }
+
+  _handleMessage(message: ServerMessage): ReturnType<ContextRPC<ClientTypes>['_handleMessage']> {
+    // RPC consumes cancellation before dispatching notifications to the subclass.
+    if (
+      message.id == null &&
+      message.method === 'notifications/cancelled' &&
+      this.#validateServerMessage(message).issues == null
+    ) {
+      this.#traceNotification(message.method, 'server', message.params)
+    }
+    return super._handleMessage(message)
+  }
+
   _handleNotification(notification: HandleNotification): void {
+    this.#traceNotification(notification.method, 'server', notification.params)
     if (notification.method === 'notifications/message') {
       this.events.emit('log', notification.params)
     }
@@ -1138,57 +1265,77 @@ export class ContextClient<
    * directly to the task waiter.
    */
   #openListen(filter: SubscriptionFilter, handlers: ListenHandlers): ListenHandle {
-    const protocol = this.#requireProtocol()
-    const trace = currentTraceMeta()
-    const base: Record<string, unknown> = { notifications: filter }
-    if (trace.traceparent != null) {
-      base._meta = { ...trace }
-    }
-    const params = protocol.decorateRequest(base, {
-      capabilities: this.#capabilitiesFor(protocol),
-      clientInfo: this.#clientInfo,
-      logLevel: this.#logLevel,
+    const traced = this.#exchangeTracer.startOutgoing('subscriptions/listen', {
+      notifications: filter,
     })
+    return withActiveContext(traced.context, () => {
+      const protocol = this.#requireProtocol()
+      const trace = currentTraceMeta()
+      const base: Record<string, unknown> = { notifications: filter }
+      if (trace.traceparent != null) {
+        base._meta = { ...trace }
+      }
+      const params = protocol.decorateRequest(base, {
+        capabilities: this.#capabilitiesFor(protocol),
+        clientInfo: this.#clientInfo,
+        logLevel: this.#logLevel,
+      })
 
-    const controller = new AbortController()
-    let subscriptionId: RequestID | undefined
-    const exchange = this._registerStreamExchange(
-      'subscriptions/listen',
-      params,
-      {
-        onProgress: (value) => {
-          const notification = value as SubscriptionNotification
-          if ((notification as { method?: unknown }).method === ACKNOWLEDGED_METHOD) {
-            const meta = (notification as { params?: { _meta?: Record<string, unknown> } }).params
-              ?._meta
-            const id = meta?.[META_SUBSCRIPTION_ID]
-            if (typeof id === 'string' || typeof id === 'number') {
-              subscriptionId = id
+      const controller = new AbortController()
+      let subscriptionId: RequestID | undefined
+      const exchange = this._registerStreamExchange(
+        'subscriptions/listen',
+        params,
+        {
+          onProgress: (value) => {
+            const notification = value as SubscriptionNotification
+            if ((notification as { method?: unknown }).method === ACKNOWLEDGED_METHOD) {
+              const meta = (notification as { params?: { _meta?: Record<string, unknown> } }).params
+                ?._meta
+              const id = meta?.[META_SUBSCRIPTION_ID]
+              if (typeof id === 'string' || typeof id === 'number') {
+                subscriptionId = id
+              }
             }
-          }
-          handlers.onNotification(notification)
+            handlers.onNotification(notification)
+          },
+          onSettle: (settle) => {
+            if (settle.reason === 'result') {
+              // The terminal body lives only on the exchange promise (resolved just before this
+              // settle fired); read it back to verify the subscriptionId before the driver treats
+              // the settle as a graceful teardown.
+              exchange.then(
+                (value) => {
+                  const verified = this.#verifyTerminal(value, subscriptionId)
+                  if (verified.reason === 'result') traced.succeed(value)
+                  else traced.fail('_OTHER', verified.error?.message)
+                  handlers.onSettle(verified)
+                },
+                () => {},
+              )
+            } else {
+              traced.fail(
+                settle.reason === 'cancel'
+                  ? 'cancelled'
+                  : settle.reason === 'closed'
+                    ? 'context.lost'
+                    : settle.error instanceof RPCError
+                      ? String(settle.error.code)
+                      : '_OTHER',
+                settle.error?.message,
+              )
+              handlers.onSettle(settle)
+            }
+          },
         },
-        onSettle: (settle) => {
-          if (settle.reason === 'result') {
-            // The terminal body lives only on the exchange promise (resolved just before this
-            // settle fired); read it back to verify the subscriptionId before the driver treats
-            // the settle as a graceful teardown.
-            exchange.then(
-              (value) => handlers.onSettle(this.#verifyTerminal(value, subscriptionId)),
-              () => {},
-            )
-          } else {
-            handlers.onSettle(settle)
-          }
-        },
-      },
-      { signal: controller.signal },
-    )
-    exchange.catch(() => {})
-    return {
-      exchange,
-      abort: (reason?: Error) => controller.abort(reason),
-    }
+        { signal: controller.signal, onRequestID: (id) => traced.setID(id) },
+      )
+      exchange.catch(() => {})
+      return {
+        exchange,
+        abort: (reason?: Error) => controller.abort(reason),
+      }
+    })
   }
 
   /** Confirms a terminal listen result's `_meta` subscriptionId matches the listen request id. */
@@ -1289,6 +1436,40 @@ export class ContextClient<
   }
 
   async _handleRequest(request: ServerRequest, signal: AbortSignal): Promise<ClientResult> {
+    const exchange = this.#exchangeTracer.startIncoming(
+      request.method,
+      request.params,
+      request.id,
+      request.params?._meta,
+    )
+    // Transport teardown settles all spans synchronously after aborting handlers.
+    const abort = () => queueMicrotask(() => exchange.fail('cancelled'))
+    if (signal.aborted) abort()
+    else signal.addEventListener('abort', abort, { once: true })
+    return withActiveContext(exchange.context, async () => {
+      try {
+        const result = await this.#dispatchRequest(request, signal)
+        exchange.succeed(result)
+        return result
+      } catch (cause) {
+        exchange.fail(
+          signal.aborted
+            ? 'cancelled'
+            : cause instanceof RPCError
+              ? String(cause.code)
+              : cause instanceof TransportClosedError
+                ? 'context.lost'
+                : '_OTHER',
+          cause instanceof Error ? cause.message : String(cause),
+        )
+        throw cause
+      } finally {
+        signal.removeEventListener('abort', abort)
+      }
+    })
+  }
+
+  async #dispatchRequest(request: ServerRequest, signal: AbortSignal): Promise<ClientResult> {
     // Answered here rather than in `ContextRPC`, which stays MCP-version-agnostic: `ping` exists
     // only in the revisions whose `serverMethods` carries it, and the spec makes answering it a
     // MUST there. Gated on the method table, not a version literal, and mirroring
@@ -1393,6 +1574,11 @@ export class ContextClient<
     return await this.#initialized
   }
 
+  /** The completed handshake result, without starting initialization. */
+  get initializationResult(): InitializeResult | undefined {
+    return this.#initializationResult
+  }
+
   /**
    * Queries a server's supported protocol versions, capabilities and identity -- the
    * `2026-07-28` replacement for the `initialize` handshake. Result is cached per the
@@ -1427,6 +1613,7 @@ export class ContextClient<
       .then((result) => {
         const ttlMs = typeof result.ttlMs === 'number' && result.ttlMs > 0 ? result.ttlMs : 0
         this.#discovered = { result, expiresAt: Date.now() + ttlMs }
+        this.#traceServerInfo(result)
         return result
       })
       .finally(() => {

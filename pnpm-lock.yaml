@@ -165,59 +165,56 @@ settings:
 catalogs:
   default:
     '@enkaku/client':
-      specifier: ^0.21.3
-      version: 0.21.3
+      specifier: ^0.21.5
+      version: 0.21.5
     '@enkaku/http-fetch':
-      specifier: ^0.21.4
-      version: 0.21.4
+      specifier: ^0.21.5
+      version: 0.21.5
     '@enkaku/http-serve':
-      specifier: ^0.21.4
-      version: 0.21.4
+      specifier: ^0.21.5
+      version: 0.21.5
     '@enkaku/node-streams':
-      specifier: ^0.21.3
-      version: 0.21.3
+      specifier: ^0.21.5
+      version: 0.21.5
     '@enkaku/protocol':
-      specifier: ^0.21.4
-      version: 0.21.4
+      specifier: ^0.21.5
+      version: 0.21.5
     '@enkaku/react':
-      specifier: ^0.21.3
-      version: 0.21.3
+      specifier: ^0.21.5
+      version: 0.21.5
     '@enkaku/server':
-      specifier: ^0.21.4
-      version: 0.21.4
+      specifier: ^0.21.5
+      version: 0.21.5
     '@enkaku/socket':
-      specifier: ^0.21.3
-      version: 0.21.3
+      specifier: ^0.21.5
+      version: 0.21.5
     '@enkaku/transport':
-      specifier: ^0.21.3
-      version: 0.21.3
+      specifier: ^0.21.5
+      version: 0.21.5
     '@hozon/adapter':
       specifier: ^0.1.0
       version: 0.1.0
     '@hozon/db':
+      specifier: ^0.2.3
+      version: 0.2.3
+    '@hozon/store-log':
       specifier: ^0.2.2
       version: 0.2.2
-    '@hozon/logtape':
-      specifier: ^0.1.1
-      version: 0.1.1
-    '@hozon/otel':
-      specifier: ^0.1.1
-      version: 0.1.1
-    '@hozon/store-log':
-      specifier: ^0.2.1
-      version: 0.2.1
     '@hozon/store-telemetry':
-      specifier: ^0.2.1
-      version: 0.2.1
+      specifier: ^0.2.2
+      version: 0.2.2
     '@inkjs/ui':
       specifier: ^2.0.0
       version: 2.0.0
     '@kokuin/token':
-      specifier: ^0.5.0
-      version: 0.5.0
+      specifier: ^0.5.1
+      version: 0.5.1
     '@logtape/logtape':
       specifier: ^2.4.0
       version: 2.4.0
+    '@mantine/code-highlight':
+      specifier: ^9.7.1
+      version: 9.7.1
     '@mantine/core':
       specifier: ^9.7.1
       version: 9.7.1
@@ -258,11 +255,11 @@ catalogs:
       specifier: ^0.4.0
       version: 0.4.0
     '@sozai/codec':
-      specifier: ^0.4.2
-      version: 0.4.2
+      specifier: ^0.4.3
+      version: 0.4.3
     '@sozai/event':
-      specifier: ^0.1.5
-      version: 0.1.5
+      specifier: ^0.1.6
+      version: 0.1.6
     '@sozai/flow-graph':
       specifier: ^0.2.3
       version: 0.2.3
@@ -327,8 +324,8 @@ catalogs:
       specifier: ^0.5.2
       version: 0.5.3
     '@tejika/server':
-      specifier: ^0.4.1
-      version: 0.4.1
+      specifier: ^0.4.2
+      version: 0.4.2
     '@tejika/test':
       specifier: ^0.4.2
       version: 0.4.2
@@ -435,8 +432,8 @@ catalogs:
       specifier: ^6.0.3
       version: 6.0.3
     vite:
-      specifier: ^8.3.3
-      version: 8.3.3
+      specifier: ^8.3.4
+      version: 8.3.4
     vitest:
       specifier: ^5.0.3
       version: 5.0.3
@@ -453,7 +450,7 @@ importers:
         version: 2.1.2(supports-color@8.1.1)
       '@kigu/dev':
         specifier: ^0.3.2
-        version: 0.3.2(@opentelemetry/api@1.9.1)(chokidar@5.0.0)(jsdom@30.1.2(@noble/hashes@2.4.0))(supports-color@8.1.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 0.3.2(@opentelemetry/api@1.9.1)(chokidar@5.0.0)(jsdom@30.1.2(@noble/hashes@2.4.0))(supports-color@8.1.1)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       typedoc:
         specifier: 'catalog:'
         version: 0.28.20(typescript@6.0.3)
@@ -465,10 +462,10 @@ importers:
     dependencies:
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/anthropic-provider':
         specifier: workspace:^
         version: link:../packages/anthropic-provider
@@ -538,7 +535,7 @@ importers:
     devDependencies:
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.21.4(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@modelcontextprotocol/client':
         specifier: 'catalog:'
         version: 2.3.1
@@ -629,10 +626,10 @@ importers:
     devDependencies:
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../../packages/context-client
@@ -657,7 +654,7 @@ importers:
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../../packages/context-client
@@ -691,13 +688,16 @@ importers:
     dependencies:
       '@enkaku/client':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@enkaku/http-fetch':
         specifier: 'catalog:'
-        version: 0.21.4(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@enkaku/react':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
+      '@mantine/code-highlight':
+        specifier: 'catalog:'
+        version: 9.7.1(@mantine/core@9.7.1(@mantine/hooks@9.7.1(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@mantine/hooks@9.7.1(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@mantine/core':
         specifier: 'catalog:'
         version: 9.7.1(@mantine/hooks@9.7.1(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -737,7 +737,7 @@ importers:
     devDependencies:
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.21.4(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../packages/context-protocol
@@ -749,7 +749,7 @@ importers:
         version: 1.167.2(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@tanstack/router-core@1.171.34)(csstype@3.2.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@tanstack/router-plugin':
         specifier: 'catalog:'
-        version: 1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.12)(supports-color@8.1.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))
+        version: 1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.12)(supports-color@8.1.1)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -770,7 +770,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
-        version: 6.1.2(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 6.1.2(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       globals:
         specifier: 'catalog:'
         version: 17.13.0
@@ -791,10 +791,10 @@ importers:
         version: 6.0.3
       vite:
         specifier: 'catalog:'
-        version: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+        version: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/anthropic-provider:
     dependencies:
@@ -816,28 +816,28 @@ importers:
     devDependencies:
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/app-node:
     dependencies:
       '@hozon/db':
         specifier: 'catalog:'
-        version: 0.2.2(@logtape/logtape@2.4.0)
-      '@hozon/logtape':
-        specifier: 'catalog:'
-        version: 0.1.1(@logtape/logtape@2.4.0)(@opentelemetry/api@1.9.1)
-      '@hozon/otel':
-        specifier: 'catalog:'
-        version: 0.1.1(@logtape/logtape@2.4.0)(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))
+        version: 0.2.3(@logtape/logtape@2.4.0)
       '@hozon/store-log':
         specifier: 'catalog:'
-        version: 0.2.1(@logtape/logtape@2.4.0)
+        version: 0.2.2(@logtape/logtape@2.4.0)
       '@hozon/store-telemetry':
         specifier: 'catalog:'
-        version: 0.2.1(@logtape/logtape@2.4.0)
+        version: 0.2.2(@logtape/logtape@2.4.0)
       '@logtape/logtape':
         specifier: 'catalog:'
         version: 2.4.0
+      '@mokei/context-client':
+        specifier: workspace:^
+        version: link:../context-client
+      '@mokei/host-protocol':
+        specifier: workspace:^
+        version: link:../host-protocol
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
@@ -853,6 +853,9 @@ importers:
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.0
+      '@sozai/json':
+        specifier: 'catalog:'
+        version: 0.3.0
       '@sozai/log':
         specifier: 'catalog:'
         version: 0.4.0(@logtape/logtape@2.4.0)
@@ -877,13 +880,13 @@ importers:
     dependencies:
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@hozon/store-log':
         specifier: 'catalog:'
-        version: 0.2.1(@logtape/logtape@2.4.0)
+        version: 0.2.2(@logtape/logtape@2.4.0)
       '@hozon/store-telemetry':
         specifier: 'catalog:'
-        version: 0.2.1(@logtape/logtape@2.4.0)
+        version: 0.2.2(@logtape/logtape@2.4.0)
       '@inkjs/ui':
         specifier: 'catalog:'
         version: 2.0.0(ink@7.1.1(@types/react@19.3.0)(react@19.3.0))
@@ -944,6 +947,9 @@ importers:
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.0
+      '@sozai/event':
+        specifier: 'catalog:'
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@tejika/cli':
         specifier: 'catalog:'
         version: 0.4.2(@logtape/logtape@2.4.0)(ink@7.1.1(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
@@ -992,22 +998,28 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/context-client:
     dependencies:
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../context-rpc
+      '@mokei/logger':
+        specifier: workspace:^
+        version: link:../logger
+      '@opentelemetry/api':
+        specifier: 'catalog:'
+        version: 1.9.1
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.0
@@ -1020,6 +1032,13 @@ importers:
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.2
+    devDependencies:
+      '@opentelemetry/context-async-hooks':
+        specifier: 'catalog:'
+        version: 2.12.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-base':
+        specifier: 'catalog:'
+        version: 2.12.0(@opentelemetry/api@1.9.1)
 
   packages/context-protocol:
     dependencies:
@@ -1031,7 +1050,7 @@ importers:
     dependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -1040,7 +1059,7 @@ importers:
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6
@@ -1049,7 +1068,7 @@ importers:
     dependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -1061,7 +1080,7 @@ importers:
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/otel':
         specifier: 'catalog:'
         version: 0.3.3(@logtape/logtape@2.4.0)
@@ -1080,7 +1099,7 @@ importers:
     dependencies:
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -1170,7 +1189,7 @@ importers:
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/mcp-system-one':
         specifier: workspace:^
         version: link:../../mcp-servers/system-one
@@ -1182,7 +1201,7 @@ importers:
     dependencies:
       '@enkaku/client':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -1201,7 +1220,7 @@ importers:
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
 
   packages/flow-host:
     dependencies:
@@ -1243,7 +1262,7 @@ importers:
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/flow-graph':
         specifier: 'catalog:'
         version: 0.2.3(@logtape/logtape@2.4.0)
@@ -1268,19 +1287,19 @@ importers:
     dependencies:
       '@enkaku/server':
         specifier: 'catalog:'
-        version: 0.21.4(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@hozon/adapter':
         specifier: 'catalog:'
         version: 0.1.0
       '@hozon/db':
         specifier: 'catalog:'
-        version: 0.2.2(@logtape/logtape@2.4.0)
+        version: 0.2.3(@logtape/logtape@2.4.0)
       '@hozon/store-log':
         specifier: 'catalog:'
-        version: 0.2.1(@logtape/logtape@2.4.0)
+        version: 0.2.2(@logtape/logtape@2.4.0)
       '@hozon/store-telemetry':
         specifier: 'catalog:'
-        version: 0.2.1(@logtape/logtape@2.4.0)
+        version: 0.2.2(@logtape/logtape@2.4.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -1293,6 +1312,9 @@ importers:
       '@mokei/host-desktop':
         specifier: workspace:^
         version: link:../host-desktop
+      '@mokei/host-node':
+        specifier: workspace:^
+        version: link:../host-node
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
@@ -1320,16 +1342,16 @@ importers:
     devDependencies:
       '@enkaku/client':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.21.4(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@kokuin/token':
         specifier: 'catalog:'
-        version: 0.5.0(@logtape/logtape@2.4.0)
+        version: 0.5.1(@logtape/logtape@2.4.0)
       '@mokei/app-node':
         specifier: workspace:^
         version: link:../app-node
@@ -1350,7 +1372,7 @@ importers:
     dependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -1366,19 +1388,28 @@ importers:
       '@mokei/http-client':
         specifier: workspace:^
         version: link:../http-client
+      '@opentelemetry/api':
+        specifier: 'catalog:'
+        version: 1.9.1
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/json':
         specifier: 'catalog:'
         version: 0.3.0
+      '@sozai/otel':
+        specifier: 'catalog:'
+        version: 0.3.3(@logtape/logtape@2.4.0)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6
     devDependencies:
+      '@opentelemetry/sdk-trace-base':
+        specifier: 'catalog:'
+        version: 2.12.0(@opentelemetry/api@1.9.1)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -1399,7 +1430,7 @@ importers:
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/json':
         specifier: 'catalog:'
         version: 0.3.0
@@ -1424,10 +1455,10 @@ importers:
     dependencies:
       '@enkaku/http-serve':
         specifier: 'catalog:'
-        version: 0.21.4(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@enkaku/socket':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/host-protocol':
         specifier: workspace:^
         version: link:../host-protocol
@@ -1439,7 +1470,7 @@ importers:
         version: 0.5.3
       '@tejika/server':
         specifier: 'catalog:'
-        version: 0.4.1(@logtape/logtape@2.4.0)
+        version: 0.4.2(@logtape/logtape@2.4.0)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -1449,16 +1480,16 @@ importers:
     dependencies:
       '@enkaku/client':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@enkaku/node-streams':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@enkaku/server':
         specifier: 'catalog:'
-        version: 0.21.4(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -1474,9 +1505,21 @@ importers:
       '@mokei/http-client':
         specifier: workspace:^
         version: link:../http-client
+      '@mokei/logger':
+        specifier: workspace:^
+        version: link:../logger
+      '@opentelemetry/api':
+        specifier: 'catalog:'
+        version: 1.9.1
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.0
+      '@sozai/event':
+        specifier: 'catalog:'
+        version: 0.1.6(@logtape/logtape@2.4.0)
+      '@sozai/otel':
+        specifier: 'catalog:'
+        version: 0.3.3(@logtape/logtape@2.4.0)
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.2
@@ -1496,6 +1539,12 @@ importers:
       '@mokei/context-server-node':
         specifier: workspace:^
         version: link:../context-server-node
+      '@opentelemetry/context-async-hooks':
+        specifier: 'catalog:'
+        version: 2.12.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-base':
+        specifier: 'catalog:'
+        version: 2.12.0(@opentelemetry/api@1.9.1)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -1504,7 +1553,7 @@ importers:
     dependencies:
       '@enkaku/protocol':
         specifier: 'catalog:'
-        version: 0.21.4(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6
@@ -1513,7 +1562,7 @@ importers:
     dependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -1525,10 +1574,10 @@ importers:
         version: link:../logger
       '@sozai/codec':
         specifier: 'catalog:'
-        version: 0.4.2
+        version: 0.4.3
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.2
@@ -1540,7 +1589,7 @@ importers:
     dependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/context-protocol':
         specifier: workspace:^
         version: link:../context-protocol
@@ -1552,7 +1601,7 @@ importers:
         version: link:../logger
       '@sozai/codec':
         specifier: 'catalog:'
-        version: 0.4.2
+        version: 0.4.3
       '@sozai/http-server':
         specifier: 'catalog:'
         version: 0.1.1(@logtape/logtape@2.4.0)(hono@4.13.13)
@@ -1568,13 +1617,13 @@ importers:
     devDependencies:
       '@kokuin/token':
         specifier: 'catalog:'
-        version: 0.5.0(@logtape/logtape@2.4.0)
+        version: 0.5.1(@logtape/logtape@2.4.0)
       '@mokei/http-client':
         specifier: workspace:^
         version: link:../http-client
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -1618,7 +1667,7 @@ importers:
     devDependencies:
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/ollama-provider:
     dependencies:
@@ -1640,7 +1689,7 @@ importers:
     devDependencies:
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/openai-provider:
     dependencies:
@@ -1662,7 +1711,7 @@ importers:
     devDependencies:
       vitest:
         specifier: 'catalog:'
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/session:
     dependencies:
@@ -1683,14 +1732,14 @@ importers:
         version: 0.4.0
       '@sozai/event':
         specifier: 'catalog:'
-        version: 0.1.5(@logtape/logtape@2.4.0)
+        version: 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/generator':
         specifier: 'catalog:'
         version: 0.2.2
     devDependencies:
       '@enkaku/transport':
         specifier: 'catalog:'
-        version: 0.21.3(@logtape/logtape@2.4.0)
+        version: 0.21.5(@logtape/logtape@2.4.0)
       '@mokei/http-client':
         specifier: workspace:^
         version: link:../http-client
@@ -3127,35 +3176,35 @@ packages:
   '@emnapi/wasi-threads@1.2.3':
     resolution: {integrity: sha512-ELEBe8PsLvvJ6QMr0zLt8ffvOHW/dc1m3CEzNMg7aJUv3bMaoDtw2TXyDAwkYBuroxxuHEwhRTLJSe5sya547g==}
 
-  '@enkaku/client@0.21.3':
-    resolution: {integrity: sha512-6Dyln9TazMyWJFG588/Ce4Wz6KoeLtqD73Of3amIGDVs0uKcNsE0UGUCSsTd3kLguW6CB8PX1rdz+iyrBFfB6g==}
+  '@enkaku/client@0.21.5':
+    resolution: {integrity: sha512-K7OUMjIGMiPhKcyDQrpgUnXe03084lYWWAl9AaTZAZVb4JPdV7aMGUuuLcWSE3w9gsKtx82jEuUQCfiGDeWFVA==}
 
-  '@enkaku/http-fetch@0.21.4':
-    resolution: {integrity: sha512-jyEBdYxuA7Zw5LHR0stmi4sm7I+PXjy3imEzhn16gF0MwKPArlESePRvs6m1jdJp6KKPw1S89ZPz7BSMoA7Olw==}
+  '@enkaku/http-fetch@0.21.5':
+    resolution: {integrity: sha512-aQiNaXC6RiN6CBhHPflnf9nZJJsBSHmr+YV0215hezAw6iVbZ0eoV4QsyqZpchS7+X2rNFU2gEEYAuAyDHIaog==}
 
-  '@enkaku/http-serve@0.21.4':
-    resolution: {integrity: sha512-mDUSFBW8K0oSYkxAtncjnXgVlCA+COCZOaMibwQgPW5sNN4Xs4oN+UXZhvZEBArH2ercCMQPoAxl0mpCbZKtXQ==}
+  '@enkaku/http-serve@0.21.5':
+    resolution: {integrity: sha512-xfayP/zICJ+WTGDRlL0LrXPjBdCJKttHsTf8S6HMASIS88z8cfBnQP0Zmcz+o4Z9iXSBR71zTfouPoHIaSx+dg==}
 
-  '@enkaku/node-streams@0.21.3':
-    resolution: {integrity: sha512-i/ETV3PhbmJ3y6Qg2Ww6VMZ8YOluAENtHTr0ROLJT8lTOHzDYpstdrFwH66UYcBi0XRmN+Ky7tNltJ2B/rDMkg==}
+  '@enkaku/node-streams@0.21.5':
+    resolution: {integrity: sha512-g0EvZ5VQ31t+XvGlvC/VyYPwiXXfKzHTkzScPKsIilUQazL4X0OgkKWixIqMHR8kRy2xl+/nS9fSvfgXCoT0hg==}
 
-  '@enkaku/otel@0.21.3':
-    resolution: {integrity: sha512-Dy6AaOFlIVmWnGFJVBlOc0ltEK+hE4bmPKvS666i4cvtsjZOcPCM3GC057moQJiy9F/k5WUk5ELgj4OgEHiwiQ==}
+  '@enkaku/otel@0.21.5':
+    resolution: {integrity: sha512-OVTqcf+YjoPKuAnCe8cy/9K1z/LegS0rFtwNrLo7xq8FLQ26vjz5lPM4JuVb3IDuBt5gQPCP3eQobWoFCyzRfg==}
 
-  '@enkaku/protocol@0.21.4':
-    resolution: {integrity: sha512-VGPN/Crx3OCToy0cKF30ro/QBEh7FQoUf+tQo/GONV3ui0urohNf2lDkrojyljrX17352ytdqA7iG+B9BrZubQ==}
+  '@enkaku/protocol@0.21.5':
+    resolution: {integrity: sha512-glxg/EJwxClQu50tQINyyNRpZR8nsDt5HOuSMBri9ZUMaRMM8e1uxO2ox3GwdtCWMOCivG2YLp/jIQGJB5bglg==}
 
-  '@enkaku/react@0.21.3':
-    resolution: {integrity: sha512-GGW3/MDmUnZRaEjcWCxKXnPb3RDHSQACZI+sOsFph2gHRTKgzeQKchY4KF0Ce4stLDY94r2GkQBlD1u/hQ1P7w==}
+  '@enkaku/react@0.21.5':
+    resolution: {integrity: sha512-PlEHiAczYAfPHX4nAFl7lKYABylroP9YGc2dlivBfgDUhz15nYI2PeRZEtXDNlWskKLrCHfyFdzSydBi9bK/XQ==}
 
-  '@enkaku/server@0.21.4':
-    resolution: {integrity: sha512-w9vtQQFZG1IqKqkR1VFp5Ev3bR/bH/LiHVSoorT/NYzDOrhu20NlZijKJ198xPasCpcKFuihqAc2iaS7vAbjLw==}
+  '@enkaku/server@0.21.5':
+    resolution: {integrity: sha512-BHuPh0NuEC6RopcLdtMTQCGbfnO+NM3eaTHVNby0PvfWYe4SEGGMTGjydHNIhdM1FUur5UG6e7XAXMeBIl23SA==}
 
-  '@enkaku/socket@0.21.3':
-    resolution: {integrity: sha512-cI+uafY0zXZQS20s0NknnoYYJr++HDh72ZCc1TE5FJenu3awWGU00ooeDJ6uC7h+u1fQMPHrLce9zkt0w85EAQ==}
+  '@enkaku/socket@0.21.5':
+    resolution: {integrity: sha512-Lb5l3jhIuXQ8v35Fia3JVhBed9T7HKQKxD0OusmTRF8l9wAAM1d5gX16HPlY+bOH6sLKoYKKvjPCAna4XySjig==}
 
-  '@enkaku/transport@0.21.3':
-    resolution: {integrity: sha512-Ou0q2SNCZt4yUpu18xfYQbtm7OWVM5O4b+KEwLPmdiyfjyXR1prU65MphNHXvrdsPEQSHv+0P60QtFO3k5bRBg==}
+  '@enkaku/transport@0.21.5':
+    resolution: {integrity: sha512-UuKg8C/e9ia2csohoM8a/7L57WcFCsMFkFcbSuUrjXrEUHD8oScy6cqzhChZ0mYb1rlXa7gv3LXp88D5Y7gQPA==}
 
   '@esbuild/aix-ppc64@0.28.2':
     resolution: {integrity: sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==}
@@ -3373,31 +3422,19 @@ packages:
     resolution: {integrity: sha512-OfwOdQneFmsCpxtbeQxI11VLWR1+hSHH8klq4QxYLqMTtK/SJpVyGqyTDqRPhRzpTeVtYaY8xw31K9m1drjciA==}
     engines: {node: '>=24'}
 
-  '@hozon/db@0.2.2':
-    resolution: {integrity: sha512-pUbJRhuHZF6veN6FWbTuqqIIgdzsKqM3rt2mtnKBoFtfTWGKpmp+jcEOrk5rwPerYE61xEwPLqpNp8k8qzVpZg==}
+  '@hozon/db@0.2.3':
+    resolution: {integrity: sha512-M64coSybdKUok8Ky8brldJ/VYmFSXxa2U1sLJvHHE9ROlpE1Pi6kTMH5Ajk7wJPGnOflvfcNG0HUc+AXh70IAg==}
     engines: {node: '>=24'}
-
-  '@hozon/logtape@0.1.1':
-    resolution: {integrity: sha512-lNqmQRY7ewAK+v+01/8BDXIXC0TZ/JaF+Hr2XcY8pNqhxOVdKx/QOnKwIGKIlKVHsfNdr8Noxm92aJ2uDwutoQ==}
-    peerDependencies:
-      '@logtape/logtape': ^2.3.11
-      '@opentelemetry/api': ^1.9.1
 
   '@hozon/node-sqlite@0.1.0':
     resolution: {integrity: sha512-yUOEHgxSXI6QlpjJNOYa3R+Ytp3dS7VB50oISVnUHvX0rWqVEBa1XNfN90cYjrAyeGLTKO3zFLQhqdhv7Qz5Xw==}
     engines: {node: '>=24'}
 
-  '@hozon/otel@0.1.1':
-    resolution: {integrity: sha512-qb2A1PHNhuUCXDlIJjsLr0vYjG+k+D0Uy4Aj+enoSmDzxnRwmNVwYV58lajwo/+iKC1pBCQPvC6HVjWavMTuhQ==}
-    peerDependencies:
-      '@opentelemetry/api': ^1.9.1
-      '@opentelemetry/sdk-trace-base': ^2.11.0
+  '@hozon/store-log@0.2.2':
+    resolution: {integrity: sha512-kLpOUcTMipL2fqXZ1poZlVXaWf4mMWYdZ5yMl7PqCKJfr5NU+nLd5kXIj9Iw4TF8wHQLnaM2Wj8yWNvDZYyIgQ==}
 
-  '@hozon/store-log@0.2.1':
-    resolution: {integrity: sha512-rAsCnxSmnKi+HTmVc/67yVg/+98d4gw+NTgnQI6wn0HJFyjeJwVJtAWoM39DP+vB228eLOmdT/+nO0u2bEeN0Q==}
-
-  '@hozon/store-telemetry@0.2.1':
-    resolution: {integrity: sha512-npHZQXbiEryDPGW3EefSZtf7/TYizRb7FScKFO20JV+mZw+kjfOtqRXH7Ki2BOHOBw6G3F44WzZrLJJW5TpjSQ==}
+  '@hozon/store-telemetry@0.2.2':
+    resolution: {integrity: sha512-3pTkTZEy/5bNe3jdlzjG/XOGeYE/yAWquqFRPWfw1T0HzO0p25cgsGPmjmxK5BGc1tpFmjzEl0zssHwJP4HsHw==}
 
   '@huggingface/jinja@0.5.10':
     resolution: {integrity: sha512-SgS1D1bglQ94ceD4ZCL6eayUDy9uV1xuyk61OjgSxU5GJh7upqZCKII0JoTYMc6wWsg3JUgaPRX0ElQzXPk3Cw==}
@@ -3623,14 +3660,14 @@ packages:
     resolution: {integrity: sha512-imzXo4LX6knZtpV3WAgaMbZG631+vEtgFATfkntmYIa3aXG6LbKGq4pTlrb5czDL2xj6OwDbS78yYfZE5Wix4g==}
     hasBin: true
 
-  '@kokuin/capability@0.4.0':
-    resolution: {integrity: sha512-bou6DCboZutVEX+kzNsDM2+bvqD8r0hH5kjgVTP1q3bdaujRVZPzQlWurwAUB+AgovT6MEZKYslTVG288ITV8Q==}
+  '@kokuin/capability@0.4.1':
+    resolution: {integrity: sha512-nt1Vo/kZTFfxdlAOyTWvIEUupocEMG2esp9/lxYdQXsH93ulvoggGVm9OQF75ZjjaTzGxkTya+FfGrNNIHWVew==}
 
   '@kokuin/otel@0.3.0':
     resolution: {integrity: sha512-XwnBYkrglkV0aVcPx/ajDL6DNAZgFeZ7cNyzAHMW6ex4/RyY9xJ7htNYzl/sCFlYMNQ8M/lPayrzYf3hdN4dUQ==}
 
-  '@kokuin/token@0.5.0':
-    resolution: {integrity: sha512-2pogPNq19rJT5kzzPqQTgHtYzUDS5EeqHG4Z0JujI+HJFAfnW8y24wTXMz4GL6HZAN2JVr8J7WbnoKejaSRQcw==}
+  '@kokuin/token@0.5.1':
+    resolution: {integrity: sha512-VI1Mo4ky45/9c3rSq77gWyIyxdv2nPjsC1piImMDwgV+/Q93L+fcCxuYbrii7qUY/SClTccCK3qaKmDJTBHhFA==}
 
   '@kwsites/file-exists@1.1.1':
     resolution: {integrity: sha512-m9/5YGR18lIwxSFDwfE3oA7bWuq9kdau6ugN4H2rJeyhFQZcG9AgSHkQtSD15a8WvTgfz9aikZMrKPHvbpqFiw==}
@@ -3659,6 +3696,14 @@ packages:
 
   '@logtape/logtape@2.4.0':
     resolution: {integrity: sha512-xhvG/NwfBXs+a+oJxl6xOmqA4zX8giP1brvd5lVbL3qUHUkZfVt+4QE/+9p/Vf76JNwe/upH3XYTNItocKQ8Qg==}
+
+  '@mantine/code-highlight@9.7.1':
+    resolution: {integrity: sha512-iKr+gUauwvW5yrdB6rSNAeKCZqwuzXpb5pwopgymCB9JJs/UI7mfR5vyRkR5NkDgZOUHJU4O1QqzzG3bkroWPA==}
+    peerDependencies:
+      '@mantine/core': 9.7.1
+      '@mantine/hooks': 9.7.1
+      react: ^19.2.0
+      react-dom: ^19.2.0
 
   '@mantine/core@9.7.1':
     resolution: {integrity: sha512-SU1xklOfdEDzpPhw35ti9rF4QRE9HUongCe37C+xCO2Ea8MLJkAzreCrMxb8qcCij+gnF7SQbtTCBa1r+pKxYA==}
@@ -4520,17 +4565,17 @@ packages:
   '@slorber/remark-comment@1.0.0':
     resolution: {integrity: sha512-RCE24n7jsOj1M0UPvIQCHTe7fI0sFL4S2nwKVWwHyVr/wI/H8GosgsJGyhnsZoGFnD/P2hLf1mSbrrgSLN93NA==}
 
-  '@sozai/async@0.2.1':
-    resolution: {integrity: sha512-pWJtDAlWSAUpRmqFQluyYKHuoQFOLmdy9/WT0EBWvqWTTe6s/Vy8+e2BxS2YMOK6vwsPuwSSEOlf6PvdF597+A==}
-
   '@sozai/async@0.4.0':
     resolution: {integrity: sha512-HmqButN7erxkluUaJ2LsW8Tpp8ftiII9qhBX1OMKGxOqPDFE/YHudMrJBhLW06mftv8r8Ze9uk7cMfbmsAwejw==}
 
-  '@sozai/codec@0.4.2':
-    resolution: {integrity: sha512-90L00VSUOqdwWr7sg2WkSP8JxS070p/QxVvRrpxEKp+7DLFR0KnPV169NgNyHOq2WjRx9NobruCzPYyZe1mjDg==}
+  '@sozai/codec@0.4.3':
+    resolution: {integrity: sha512-C2WtBwspVIRtCS4AS4qXTQUxgTN2RjzKH/eK6nInh0/MeCZUBtkxrp40GwKy6VCA3lim2Ta8bFNXet9l8QbxCg==}
 
   '@sozai/event@0.1.5':
     resolution: {integrity: sha512-j6FoxeHJb3hdhh9SHoK+ZL6HZxxp89aNBijUyhKULf+vNchXtG+yL91bGSTQhFvJ2U1opnLdFgqhirpiyLSmpw==}
+
+  '@sozai/event@0.1.6':
+    resolution: {integrity: sha512-RVZPfa7CsM0DICTDjb79P+FgA4TvLWpzKFY0PGr53Il2hS51O4z2oy8y6zbne2IYDxcpZibcSVGGJCWRnmhFgw==}
 
   '@sozai/execution@0.2.3':
     resolution: {integrity: sha512-sknU9ABs/gIklF7mmDBzS47n89qaviKMGxnfZPMN/lZqgcF0wJgBJUcW4RKS5KzcCeBL7f88yIia08ZxkeRoqA==}
@@ -4547,19 +4592,11 @@ packages:
     peerDependencies:
       hono: ^4.13.13
 
-  '@sozai/json@0.1.1':
-    resolution: {integrity: sha512-5ftTPdDYVeFj14VZWBKi4jV5Xu0XC2yioNEWXgSfrdw9QkCY+R6nNwkukHaVwyFAnz8qLnKHYNjg+42gxAOo4Q==}
-
   '@sozai/json@0.3.0':
     resolution: {integrity: sha512-ArThPadz4kZjDqVnHI+UROwervbL9riIEYQ4b0g9e9mtA22EZ54lvNgsNvEUHL+oK53tlhgmHsgO2w5FwCTrhg==}
 
   '@sozai/lock@0.1.2':
     resolution: {integrity: sha512-OiC2CI9KULPQhlrIBJ6OcGbvIh5CD45gcVU+4YNs52tkzJtCb3jC2ThhPea3CLkpBbOnByJoqRRoZouqQKucfw==}
-
-  '@sozai/log@0.3.1':
-    resolution: {integrity: sha512-IblWrhbUOd6KCkG+Dzr9ZS+Dgyhqr5W3Zb1CbZUN5r2ybBAN5WL9GTn7L45bLuQOSp0RzjDeqB7OH39InMm0yg==}
-    peerDependencies:
-      '@logtape/logtape': ^2.3.0
 
   '@sozai/log@0.4.0':
     resolution: {integrity: sha512-t/r0WfnC3n94s21pw3/2YV/C/0WTKzbrtsNGv8gNdDeKBFJ0a9jYEo8MBpcLr1c1zn15S5k3Gpt9sf3VvFGPEQ==}
@@ -5009,8 +5046,9 @@ packages:
     resolution: {integrity: sha512-gMF0zNm1/bqj5b/kPni+BPQiNEErp8jdGBN18fflQEUw3Ia46/JRLo74A4xgKLJRRQZrMtOdO2ZpYDN6AvfNJQ==}
     engines: {node: '>=24'}
 
-  '@tejika/server@0.4.1':
-    resolution: {integrity: sha512-JDUiWRSabhLGq2uNQG40s9RubOgmxDPBMRdoR95m49mMaRMPRrhdG8L+WtyWkpEGGWFxuOAwQR9gMaRitNnetg==}
+  '@tejika/server@0.4.2':
+    resolution: {integrity: sha512-J5rjgmtXZM172MCLMqRmsqoaO4s9fN7PcNpsO1PgSvhvWuVR6ny9EtQRs5RtlXMyl0AATpk2Jqe7v/ORY0lqQw==}
+    engines: {node: '>=24'}
 
   '@tejika/test@0.4.2':
     resolution: {integrity: sha512-8k9nHq3Jx5MmKkw+5jM1CyERu9T0D3T61R1St55T1HvdRJ+bgDwFKw+PxShNOdMgiea6u2TY3w6sZNiIsCLnXg==}
@@ -10403,8 +10441,8 @@ packages:
   vfile@6.0.3:
     resolution: {integrity: sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q==}
 
-  vite@8.3.3:
-    resolution: {integrity: sha512-cTAldKPImjg6c+gk48U19POPn3GCBzZwpdsN8ZMEEcbpes+6/wvfqUd0C2y3qYY4wsj8PwgFwrZ/1jBPVttMSg==}
+  vite@8.3.4:
+    resolution: {integrity: sha512-IftLE8phJhdNRIGNEV4JCCvfNScoZQVfcXaN8TQropWGJtOHcu+iAB9pHcuGvmEb/kddw0LBe/jS8ztdC6xdiQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
@@ -13166,25 +13204,25 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@enkaku/client@0.21.3(@logtape/logtape@2.4.0)':
+  '@enkaku/client@0.21.5(@logtape/logtape@2.4.0)':
     dependencies:
-      '@enkaku/otel': 0.21.3(@logtape/logtape@2.4.0)
-      '@kokuin/token': 0.5.0(@logtape/logtape@2.4.0)
-      '@sozai/async': 0.2.1
+      '@enkaku/otel': 0.21.5(@logtape/logtape@2.4.0)
+      '@kokuin/token': 0.5.1(@logtape/logtape@2.4.0)
+      '@sozai/async': 0.4.0
       '@sozai/event': 0.1.5(@logtape/logtape@2.4.0)
       '@sozai/execution': 0.2.3
-      '@sozai/log': 0.3.1(@logtape/logtape@2.4.0)
+      '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
       '@sozai/otel': 0.3.3(@logtape/logtape@2.4.0)
       '@sozai/runtime': 0.1.0
       '@sozai/stream': 0.2.2
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/http-fetch@0.21.4(@logtape/logtape@2.4.0)':
+  '@enkaku/http-fetch@0.21.5(@logtape/logtape@2.4.0)':
     dependencies:
-      '@enkaku/otel': 0.21.3(@logtape/logtape@2.4.0)
-      '@enkaku/protocol': 0.21.4(@logtape/logtape@2.4.0)
-      '@enkaku/transport': 0.21.3(@logtape/logtape@2.4.0)
+      '@enkaku/otel': 0.21.5(@logtape/logtape@2.4.0)
+      '@enkaku/protocol': 0.21.5(@logtape/logtape@2.4.0)
+      '@enkaku/transport': 0.21.5(@logtape/logtape@2.4.0)
       '@sozai/otel': 0.3.3(@logtape/logtape@2.4.0)
       '@sozai/runtime': 0.1.0
       '@sozai/stream': 0.2.2
@@ -13192,11 +13230,11 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/http-serve@0.21.4(@logtape/logtape@2.4.0)':
+  '@enkaku/http-serve@0.21.5(@logtape/logtape@2.4.0)':
     dependencies:
-      '@enkaku/otel': 0.21.3(@logtape/logtape@2.4.0)
-      '@enkaku/protocol': 0.21.4(@logtape/logtape@2.4.0)
-      '@enkaku/transport': 0.21.3(@logtape/logtape@2.4.0)
+      '@enkaku/otel': 0.21.5(@logtape/logtape@2.4.0)
+      '@enkaku/protocol': 0.21.5(@logtape/logtape@2.4.0)
+      '@enkaku/transport': 0.21.5(@logtape/logtape@2.4.0)
       '@sozai/async': 0.4.0
       '@sozai/otel': 0.3.3(@logtape/logtape@2.4.0)
       '@sozai/runtime': 0.1.0
@@ -13204,40 +13242,40 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/node-streams@0.21.3(@logtape/logtape@2.4.0)':
+  '@enkaku/node-streams@0.21.5(@logtape/logtape@2.4.0)':
     dependencies:
-      '@enkaku/transport': 0.21.3(@logtape/logtape@2.4.0)
+      '@enkaku/transport': 0.21.5(@logtape/logtape@2.4.0)
       '@sozai/stream': 0.2.2
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/otel@0.21.3(@logtape/logtape@2.4.0)':
+  '@enkaku/otel@0.21.5(@logtape/logtape@2.4.0)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@sozai/otel': 0.3.3(@logtape/logtape@2.4.0)
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/protocol@0.21.4(@logtape/logtape@2.4.0)':
+  '@enkaku/protocol@0.21.5(@logtape/logtape@2.4.0)':
     dependencies:
-      '@kokuin/token': 0.5.0(@logtape/logtape@2.4.0)
+      '@kokuin/token': 0.5.1(@logtape/logtape@2.4.0)
       '@sozai/schema': 0.1.6
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/react@0.21.3(@logtape/logtape@2.4.0)':
+  '@enkaku/react@0.21.5(@logtape/logtape@2.4.0)':
     dependencies:
-      '@enkaku/client': 0.21.3(@logtape/logtape@2.4.0)
-      '@sozai/json': 0.1.1
+      '@enkaku/client': 0.21.5(@logtape/logtape@2.4.0)
+      '@sozai/json': 0.3.0
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/server@0.21.4(@logtape/logtape@2.4.0)':
+  '@enkaku/server@0.21.5(@logtape/logtape@2.4.0)':
     dependencies:
-      '@enkaku/otel': 0.21.3(@logtape/logtape@2.4.0)
-      '@enkaku/protocol': 0.21.4(@logtape/logtape@2.4.0)
-      '@kokuin/capability': 0.4.0(@logtape/logtape@2.4.0)
-      '@kokuin/token': 0.5.0(@logtape/logtape@2.4.0)
+      '@enkaku/otel': 0.21.5(@logtape/logtape@2.4.0)
+      '@enkaku/protocol': 0.21.5(@logtape/logtape@2.4.0)
+      '@kokuin/capability': 0.4.1(@logtape/logtape@2.4.0)
+      '@kokuin/token': 0.5.1(@logtape/logtape@2.4.0)
       '@sozai/async': 0.4.0
       '@sozai/event': 0.1.5(@logtape/logtape@2.4.0)
       '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
@@ -13248,18 +13286,18 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/socket@0.21.3(@logtape/logtape@2.4.0)':
+  '@enkaku/socket@0.21.5(@logtape/logtape@2.4.0)':
     dependencies:
-      '@enkaku/otel': 0.21.3(@logtape/logtape@2.4.0)
-      '@enkaku/transport': 0.21.3(@logtape/logtape@2.4.0)
+      '@enkaku/otel': 0.21.5(@logtape/logtape@2.4.0)
+      '@enkaku/transport': 0.21.5(@logtape/logtape@2.4.0)
       '@sozai/otel': 0.3.3(@logtape/logtape@2.4.0)
       '@sozai/stream': 0.2.2
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@enkaku/transport@0.21.3(@logtape/logtape@2.4.0)':
+  '@enkaku/transport@0.21.5(@logtape/logtape@2.4.0)':
     dependencies:
-      '@sozai/async': 0.2.1
+      '@sozai/async': 0.4.0
       '@sozai/event': 0.1.5(@logtape/logtape@2.4.0)
       '@sozai/stream': 0.2.2
     transitivePeerDependencies:
@@ -13404,50 +13442,32 @@ snapshots:
     dependencies:
       kysely: 0.29.6
 
-  '@hozon/db@0.2.2(@logtape/logtape@2.4.0)':
+  '@hozon/db@0.2.3(@logtape/logtape@2.4.0)':
     dependencies:
       '@hozon/adapter': 0.1.0
       '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
       kysely: 0.29.6
     transitivePeerDependencies:
       - '@logtape/logtape'
-
-  '@hozon/logtape@0.1.1(@logtape/logtape@2.4.0)(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@hozon/store-log': 0.2.1(@logtape/logtape@2.4.0)
-      '@logtape/logtape': 2.4.0
-      '@opentelemetry/api': 1.9.1
-      '@sozai/json': 0.3.0
-      '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
 
   '@hozon/node-sqlite@0.1.0':
     dependencies:
       '@hozon/adapter': 0.1.0
       kysely: 0.29.6
 
-  '@hozon/otel@0.1.1(@logtape/logtape@2.4.0)(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))':
-    dependencies:
-      '@hozon/store-telemetry': 0.2.1(@logtape/logtape@2.4.0)
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 2.12.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base': 2.12.0(@opentelemetry/api@1.9.1)
-      '@sozai/json': 0.3.0
-      '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
-    transitivePeerDependencies:
-      - '@logtape/logtape'
-
-  '@hozon/store-log@0.2.1(@logtape/logtape@2.4.0)':
+  '@hozon/store-log@0.2.2(@logtape/logtape@2.4.0)':
     dependencies:
       '@hozon/adapter': 0.1.0
-      '@hozon/db': 0.2.2(@logtape/logtape@2.4.0)
+      '@hozon/db': 0.2.3(@logtape/logtape@2.4.0)
+      '@sozai/codec': 0.4.3
       '@sozai/json': 0.3.0
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@hozon/store-telemetry@0.2.1(@logtape/logtape@2.4.0)':
+  '@hozon/store-telemetry@0.2.2(@logtape/logtape@2.4.0)':
     dependencies:
       '@hozon/adapter': 0.1.0
-      '@hozon/db': 0.2.2(@logtape/logtape@2.4.0)
+      '@hozon/db': 0.2.3(@logtape/logtape@2.4.0)
       '@sozai/json': 0.3.0
     transitivePeerDependencies:
       - '@logtape/logtape'
@@ -13729,7 +13749,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@kigu/dev@0.3.2(@opentelemetry/api@1.9.1)(chokidar@5.0.0)(jsdom@30.1.2(@noble/hashes@2.4.0))(supports-color@8.1.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
+  '@kigu/dev@0.3.2(@opentelemetry/api@1.9.1)(chokidar@5.0.0)(jsdom@30.1.2(@noble/hashes@2.4.0))(supports-color@8.1.1)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
     dependencies:
       '@biomejs/biome': 2.5.15
       '@swc/cli': 0.8.1(@swc/core@1.16.13)(chokidar@5.0.0)(supports-color@8.1.1)
@@ -13740,7 +13760,7 @@ snapshots:
       tsx: 4.23.15
       turbo: 2.11.7
       typescript: 6.0.3
-      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
     transitivePeerDependencies:
       - '@edge-runtime/vm'
       - '@opentelemetry/api'
@@ -13759,9 +13779,9 @@ snapshots:
       - supports-color
       - vite
 
-  '@kokuin/capability@0.4.0(@logtape/logtape@2.4.0)':
+  '@kokuin/capability@0.4.1(@logtape/logtape@2.4.0)':
     dependencies:
-      '@kokuin/token': 0.5.0(@logtape/logtape@2.4.0)
+      '@kokuin/token': 0.5.1(@logtape/logtape@2.4.0)
     transitivePeerDependencies:
       - '@logtape/logtape'
 
@@ -13772,13 +13792,13 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@kokuin/token@0.5.0(@logtape/logtape@2.4.0)':
+  '@kokuin/token@0.5.1(@logtape/logtape@2.4.0)':
     dependencies:
       '@kokuin/otel': 0.3.0(@logtape/logtape@2.4.0)
       '@noble/curves': 2.4.0
       '@noble/hashes': 2.4.0
       '@scure/base': 2.4.0
-      '@sozai/codec': 0.4.2
+      '@sozai/codec': 0.4.3
       '@sozai/otel': 0.3.3(@logtape/logtape@2.4.0)
       '@sozai/schema': 0.1.6
     transitivePeerDependencies:
@@ -13809,6 +13829,14 @@ snapshots:
       '@logtape/logtape': 2.4.0
 
   '@logtape/logtape@2.4.0': {}
+
+  '@mantine/code-highlight@9.7.1(@mantine/core@9.7.1(@mantine/hooks@9.7.1(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@mantine/hooks@9.7.1(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+    dependencies:
+      '@mantine/core': 9.7.1(@mantine/hooks@9.7.1(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@mantine/hooks': 9.7.1(react@19.3.0)
+      clsx: 2.1.1
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
 
   '@mantine/core@9.7.1(@mantine/hooks@9.7.1(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
@@ -14021,47 +14049,33 @@ snapshots:
 
   '@noble/hashes@2.4.0': {}
 
-  '@node-llama-cpp/linux-arm64@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-arm64@3.22.1': {}
 
-  '@node-llama-cpp/linux-armv7l@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-armv7l@3.22.1': {}
 
-  '@node-llama-cpp/linux-riscv64@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-riscv64@3.22.1': {}
 
-  '@node-llama-cpp/linux-x64-cuda-ext@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-x64-cuda-ext@3.22.1': {}
 
-  '@node-llama-cpp/linux-x64-cuda@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-x64-cuda@3.22.1': {}
 
-  '@node-llama-cpp/linux-x64-vulkan@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-x64-vulkan@3.22.1': {}
 
-  '@node-llama-cpp/linux-x64@3.22.1':
-    optional: true
+  '@node-llama-cpp/linux-x64@3.22.1': {}
 
-  '@node-llama-cpp/mac-arm64-metal@3.22.1':
-    optional: true
+  '@node-llama-cpp/mac-arm64-metal@3.22.1': {}
 
-  '@node-llama-cpp/mac-x64@3.22.1':
-    optional: true
+  '@node-llama-cpp/mac-x64@3.22.1': {}
 
-  '@node-llama-cpp/win-arm64@3.22.1':
-    optional: true
+  '@node-llama-cpp/win-arm64@3.22.1': {}
 
-  '@node-llama-cpp/win-x64-cuda-ext@3.22.1':
-    optional: true
+  '@node-llama-cpp/win-x64-cuda-ext@3.22.1': {}
 
-  '@node-llama-cpp/win-x64-cuda@3.22.1':
-    optional: true
+  '@node-llama-cpp/win-x64-cuda@3.22.1': {}
 
-  '@node-llama-cpp/win-x64-vulkan@3.22.1':
-    optional: true
+  '@node-llama-cpp/win-x64-vulkan@3.22.1': {}
 
-  '@node-llama-cpp/win-x64@3.22.1':
-    optional: true
+  '@node-llama-cpp/win-x64@3.22.1': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -14388,29 +14402,21 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@reflink/reflink-darwin-arm64@0.1.19':
-    optional: true
+  '@reflink/reflink-darwin-arm64@0.1.19': {}
 
-  '@reflink/reflink-darwin-x64@0.1.19':
-    optional: true
+  '@reflink/reflink-darwin-x64@0.1.19': {}
 
-  '@reflink/reflink-linux-arm64-gnu@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-arm64-gnu@0.1.19': {}
 
-  '@reflink/reflink-linux-arm64-musl@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-arm64-musl@0.1.19': {}
 
-  '@reflink/reflink-linux-x64-gnu@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-x64-gnu@0.1.19': {}
 
-  '@reflink/reflink-linux-x64-musl@0.1.19':
-    optional: true
+  '@reflink/reflink-linux-x64-musl@0.1.19': {}
 
-  '@reflink/reflink-win32-arm64-msvc@0.1.19':
-    optional: true
+  '@reflink/reflink-win32-arm64-msvc@0.1.19': {}
 
-  '@reflink/reflink-win32-x64-msvc@0.1.19':
-    optional: true
+  '@reflink/reflink-win32-x64-msvc@0.1.19': {}
 
   '@reflink/reflink@0.1.19':
     optionalDependencies:
@@ -14422,7 +14428,6 @@ snapshots:
       '@reflink/reflink-linux-x64-musl': 0.1.19
       '@reflink/reflink-win32-arm64-msvc': 0.1.19
       '@reflink/reflink-win32-x64-msvc': 0.1.19
-    optional: true
 
   '@rolldown/binding-android-arm-eabi@1.2.12':
     optional: true
@@ -14647,15 +14652,20 @@ snapshots:
       micromark-util-character: 1.2.0
       micromark-util-symbol: 1.1.0
 
-  '@sozai/async@0.2.1': {}
-
   '@sozai/async@0.4.0': {}
 
-  '@sozai/codec@0.4.2':
+  '@sozai/codec@0.4.3':
     dependencies:
       '@sozai/json': 0.3.0
 
   '@sozai/event@0.1.5(@logtape/logtape@2.4.0)':
+    dependencies:
+      '@sozai/async': 0.4.0
+      '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
+
+  '@sozai/event@0.1.6(@logtape/logtape@2.4.0)':
     dependencies:
       '@sozai/async': 0.4.0
       '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
@@ -14671,7 +14681,7 @@ snapshots:
     dependencies:
       '@noble/hashes': 2.4.0
       '@sozai/async': 0.4.0
-      '@sozai/event': 0.1.5(@logtape/logtape@2.4.0)
+      '@sozai/event': 0.1.6(@logtape/logtape@2.4.0)
       '@sozai/json': 0.3.0
       '@sozai/log': 0.4.0(@logtape/logtape@2.4.0)
       '@sozai/otel': 0.3.3(@logtape/logtape@2.4.0)
@@ -14697,17 +14707,11 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@sozai/json@0.1.1': {}
-
   '@sozai/json@0.3.0': {}
 
   '@sozai/lock@0.1.2':
     dependencies:
       '@sozai/async': 0.4.0
-
-  '@sozai/log@0.3.1(@logtape/logtape@2.4.0)':
-    dependencies:
-      '@logtape/logtape': 2.4.0
 
   '@sozai/log@0.4.0(@logtape/logtape@2.4.0)':
     dependencies:
@@ -15078,7 +15082,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-plugin@1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.12)(supports-color@8.1.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))':
+  '@tanstack/router-plugin@1.168.42(@rspack/core@1.7.12)(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.12)(supports-color@8.1.1)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))':
     dependencies:
       '@babel/core': 7.29.7(supports-color@8.1.1)
       '@babel/template': 7.29.7
@@ -15087,11 +15091,11 @@ snapshots:
       '@tanstack/router-generator': 1.167.40(supports-color@8.1.1)
       '@tanstack/router-utils': 1.162.3(supports-color@8.1.1)
       chokidar: 5.0.0
-      unplugin: 3.4.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.12)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))
+      unplugin: 3.4.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.12)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3))
       zod: 4.6.5
     optionalDependencies:
       '@tanstack/react-router': 1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      vite: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
       webpack: 5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3)
     transitivePeerDependencies:
       - '@farmfe/core'
@@ -15124,8 +15128,8 @@ snapshots:
 
   '@teikyo/oauth@0.1.0(@logtape/logtape@2.4.0)(hono@4.13.13)':
     dependencies:
-      '@kokuin/token': 0.5.0(@logtape/logtape@2.4.0)
-      '@sozai/codec': 0.4.2
+      '@kokuin/token': 0.5.1(@logtape/logtape@2.4.0)
+      '@sozai/codec': 0.4.3
       '@sozai/http-server': 0.1.1(@logtape/logtape@2.4.0)(hono@4.13.13)
       hono: 4.13.13
     transitivePeerDependencies:
@@ -15144,7 +15148,7 @@ snapshots:
 
   '@tejika/db@0.2.0(@logtape/logtape@2.4.0)':
     dependencies:
-      '@hozon/db': 0.2.2(@logtape/logtape@2.4.0)
+      '@hozon/db': 0.2.3(@logtape/logtape@2.4.0)
       '@hozon/node-sqlite': 0.1.0
       '@tejika/env': 0.5.3
     transitivePeerDependencies:
@@ -15163,20 +15167,20 @@ snapshots:
 
   '@tejika/process@0.5.3(@logtape/logtape@2.4.0)':
     dependencies:
-      '@enkaku/client': 0.21.3(@logtape/logtape@2.4.0)
-      '@enkaku/protocol': 0.21.4(@logtape/logtape@2.4.0)
-      '@enkaku/server': 0.21.4(@logtape/logtape@2.4.0)
-      '@enkaku/socket': 0.21.3(@logtape/logtape@2.4.0)
+      '@enkaku/client': 0.21.5(@logtape/logtape@2.4.0)
+      '@enkaku/protocol': 0.21.5(@logtape/logtape@2.4.0)
+      '@enkaku/server': 0.21.5(@logtape/logtape@2.4.0)
+      '@enkaku/socket': 0.21.5(@logtape/logtape@2.4.0)
       '@sozai/lock': 0.1.2
       '@tejika/env': 0.5.3
       nano-spawn: 2.1.0
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@tejika/server@0.4.1(@logtape/logtape@2.4.0)':
+  '@tejika/server@0.4.2(@logtape/logtape@2.4.0)':
     dependencies:
-      '@enkaku/http-serve': 0.21.4(@logtape/logtape@2.4.0)
-      '@enkaku/protocol': 0.21.4(@logtape/logtape@2.4.0)
+      '@enkaku/http-serve': 0.21.5(@logtape/logtape@2.4.0)
+      '@enkaku/protocol': 0.21.5(@logtape/logtape@2.4.0)
       '@hono/node-server': 2.1.3(hono@4.13.13)
       '@tejika/env': 0.5.3
       hono: 4.13.13
@@ -15461,19 +15465,19 @@ snapshots:
 
   '@ungap/structured-clone@1.4.0': {}
 
-  '@vitejs/plugin-react@6.1.2(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
+  '@vitejs/plugin-react@6.1.2(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
 
-  '@vitest/mocker@5.0.3(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
+  '@vitest/mocker@5.0.3(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.0.3
       estree-walker: 3.0.3
       magic-string: 1.4.3
     optionalDependencies:
-      vite: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
 
   '@vitest/pretty-format@5.0.3':
     dependencies:
@@ -15489,7 +15493,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   '@vitest/utils@5.0.3':
     dependencies:
@@ -21412,7 +21416,7 @@ snapshots:
 
   unpipe@1.0.0: {}
 
-  unplugin@3.4.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.12)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3)):
+  unplugin@3.4.0(@rspack/core@1.7.12)(esbuild@0.28.2)(rolldown@1.2.12)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3)):
     dependencies:
       '@jridgewell/remapping': 2.3.5
       picomatch: 4.0.7
@@ -21421,7 +21425,7 @@ snapshots:
       '@rspack/core': 1.7.12
       esbuild: 0.28.2
       rolldown: 1.2.12
-      vite: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
       webpack: 5.111.1(@swc/core@1.16.13)(@swc/html@1.16.13)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.29))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.29)(svgo@3.3.5)(uglify-js@3.19.3)
 
   update-browserslist-db@1.3.3(browserslist@4.29.3):
@@ -21536,7 +21540,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1):
+  vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -21553,10 +21557,10 @@ snapshots:
       tsx: 4.23.15
       yaml: 2.9.1
 
-  vitest@5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)):
+  vitest@5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/ui@5.0.3)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.3(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      '@vitest/mocker': 5.0.3(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -21567,7 +21571,7 @@ snapshots:
       tinybench: 6.2.1
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
-      vite: 8.3.3(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(sugarss@5.0.1(postcss@8.5.29))(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
       why-is-node-running: 3.2.1
     optionalDependencies:
       '@opentelemetry/api': 1.9.1

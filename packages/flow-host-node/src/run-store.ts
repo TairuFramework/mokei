@@ -5,6 +5,8 @@ import { RunStoreConflictError } from '@mokei/flow-host'
 import type { ColumnType, Generated, Kysely } from 'kysely'
 import type { Migration } from 'kysely/migration'
 
+import { decodeJSONColumn } from './json-column.js'
+
 export const FLOW_RUN_STORE = 'flow-runs'
 
 export type FlowRunTables = {
@@ -17,7 +19,7 @@ export type FlowRunTables = {
     updated_at: number
     trace_id: string | null
     task_id: string | null
-    data: ColumnType<RunRecord, unknown, unknown>
+    data: ColumnType<RunRecord | string, unknown, unknown>
   }
 }
 
@@ -71,7 +73,7 @@ function createRunStoreAPI(db: Kysely<FlowRunTables>, adapter: Adapter): RunStor
       .select('data')
       .where('run_id', '=', runID)
       .executeTakeFirst()
-    return row?.data
+    return row == null ? undefined : decodeJSONColumn<RunRecord>(row.data)
   }
 
   return {
@@ -131,7 +133,7 @@ function createRunStoreAPI(db: Kysely<FlowRunTables>, adapter: Adapter): RunStor
       if (filter.updatedBefore != null) query = query.where('updated_at', '<', filter.updatedBefore)
       query = query.orderBy('created_at', 'desc').orderBy('seq', 'asc')
       if (filter.limit != null) query = query.limit(Math.min(filter.limit, Number.MAX_SAFE_INTEGER))
-      return (await query.execute()).map((row) => row.data)
+      return (await query.execute()).map((row) => decodeJSONColumn<RunRecord>(row.data))
     },
     async delete(runID) {
       await db.deleteFrom('flow_runs').where('run_id', '=', runID).execute()

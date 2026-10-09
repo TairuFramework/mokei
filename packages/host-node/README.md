@@ -16,11 +16,13 @@ Custom applications inject handlers, events, status and cleanup into the generic
 ```typescript
 import { createFlowHandlers, createFlowService } from '@mokei/flow-host-node'
 import { serveHostDaemon } from '@mokei/host-node'
+import type { HostEvents } from '@mokei/host-protocol'
+import { EventEmitter } from '@sozai/event'
 
-const events = new EventTarget()
+const events = new EventEmitter<HostEvents>()
 const service = createFlowService({
   onEvent: ({ type, ...detail }) => {
-    events.dispatchEvent(new CustomEvent(type, { detail }))
+    events.fire(type, detail)
   },
 })
 const daemon = await serveHostDaemon({

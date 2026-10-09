@@ -6,6 +6,19 @@ import { mutateNested, runRecord } from '../support/records.js'
 
 export function runStoreContract(name: string, create: () => RunStore | Promise<RunStore>): void {
   describe(name, () => {
+    test('preserves JSON-looking strings through get, list and update', async () => {
+      const store = await create()
+      const run = runRecord({
+        label: '{"a":1}',
+        request: { toolName: 'local:example', arguments: { nested: ['[1,2]'] } },
+      })
+      await store.create(run)
+      expect(await store.get(run.runID)).toEqual(run)
+      expect(await store.list({})).toEqual([run])
+      const updated = await store.update(run.runID, { label: '[1,2]' }, { revision: 0 })
+      expect(await store.get(run.runID)).toEqual(updated)
+      expect(updated).toMatchObject({ label: '[1,2]', request: run.request })
+    })
     test('rejects duplicates, missing updates and stale revisions', async () => {
       const store = await create()
       const run = runRecord()

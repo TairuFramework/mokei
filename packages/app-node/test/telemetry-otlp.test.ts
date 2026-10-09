@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { trace } from '@opentelemetry/api'
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { getLogger } from '@sozai/log'
 import { createFileSink } from '@tejika/log'
 import { expect, test, vi } from 'vitest'
@@ -9,6 +10,7 @@ import { setupMokeiTelemetry } from '../src/index.js'
 import { useTestStores } from './support/stores.js'
 
 const stores = useTestStores()
+vi.mock('@opentelemetry/sdk-trace-base', { spy: true })
 
 const file = vi.hoisted(() => ({ sink: vi.fn(), dispose: vi.fn() }))
 vi.mock('@tejika/log', () => ({
@@ -35,19 +37,19 @@ test('exports OTLP spans to a local HTTP receiver', async () => {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', resolve)
   })
-  const { logStore, telemetryStore } = await stores()
+  const { db, logStore, telemetryStore } = await stores()
   const port = (server.address() as AddressInfo).port
   let handle: ReturnType<typeof setupMokeiTelemetry> | undefined
   try {
     handle = setupMokeiTelemetry({
-      logStore,
-      telemetryStore,
+      provider: db,
       otlp: {
         endpoint: `http://127.0.0.1:${port}/v1/traces`,
         headers: { 'x-telemetry-test': 'configured' },
       },
       logs: { level: 'debug' },
     })
+    expect(BatchSpanProcessor).toHaveBeenCalledOnce()
     expect(createFileSink).toHaveBeenCalledExactlyOnceWith({
       app: 'mokei',
       name: 'mokei',
@@ -59,6 +61,7 @@ test('exports OTLP spans to a local HTTP receiver', async () => {
       return span.spanContext().traceId
     })
     await handle.dispose()
+    expect(await telemetryStore.getSpans(traceID)).toHaveLength(1)
     expect(requests).toHaveLength(1)
     expect(requests[0]?.path).toBe('/v1/traces')
     expect(requests[0]?.header).toBe('configured')

@@ -18,7 +18,10 @@ import {
 const passthrough = ((message: unknown) => ({ value: message })) as unknown as Validator<AnyMessage>
 
 type TestTypes = RPCTypes & {
-  SendRequests: { 'tools/list': { Params: Record<string, unknown>; Result: unknown } }
+  SendRequests: {
+    ping: { Params: Record<string, unknown>; Result: unknown }
+    'tools/list': { Params: Record<string, unknown>; Result: unknown }
+  }
 }
 
 function makeRPC(transport: TransportType<AnyMessage, AnyMessage>): ContextRPC<TestTypes> {
@@ -26,6 +29,48 @@ function makeRPC(transport: TransportType<AnyMessage, AnyMessage>): ContextRPC<T
 }
 
 describe('ContextRPC transport lifecycle', () => {
+  test('request reports the allocated ID before writing', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = makeRPC(transports.client)
+    rpc._handle()
+    const events: Array<string> = []
+    const onRequestID = vi.fn((id: string | number) => events.push(`id:${id}`))
+    const writeSpy = vi.spyOn(rpc, '_write').mockImplementation(async () => {
+      events.push('write')
+    })
+
+    rpc.request('ping', {}, { onRequestID }).catch(() => {})
+
+    const frame = writeSpy.mock.calls[0]?.[0] as AnyMessage
+    expect(onRequestID).toHaveBeenCalledOnce()
+    expect(onRequestID).toHaveBeenCalledWith(frame.id)
+    expect(events).toEqual([`id:${frame.id}`, 'write'])
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
+  test('_registerStreamExchange reports the allocated ID before writing', async () => {
+    const transports = new DirectTransports<AnyMessage, AnyMessage>()
+    const rpc = makeRPC(transports.client)
+    rpc._handle()
+    const events: Array<string> = []
+    const onRequestID = vi.fn((id: string | number) => events.push(`id:${id}`))
+    const writeSpy = vi.spyOn(rpc, '_write').mockImplementation(async () => {
+      events.push('write')
+    })
+
+    rpc._registerStreamExchange('tools/call', {}, undefined, { onRequestID }).catch(() => {})
+
+    const frame = writeSpy.mock.calls[0]?.[0] as AnyMessage
+    expect(onRequestID).toHaveBeenCalledOnce()
+    expect(onRequestID).toHaveBeenCalledWith(frame.id)
+    expect(events).toEqual([`id:${frame.id}`, 'write'])
+
+    await rpc.dispose()
+    await transports.dispose()
+  })
+
   test('rejects pending requests with TransportClosedError on dispose', async () => {
     const transports = new DirectTransports<AnyMessage, AnyMessage>()
     const rpc = makeRPC(transports.client)

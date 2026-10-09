@@ -1,6 +1,7 @@
 import { EnkakuProvider } from '@enkaku/react'
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
+import '@mantine/code-highlight/styles.css'
 import {
   AppShell,
   Center,
@@ -17,6 +18,7 @@ import { AppHeader } from '../components/AppHeader.js'
 import { ConnectionBanner } from '../components/ConnectionBanner.js'
 import { NotificationPermissionButton } from '../components/NotificationPermissionButton.js'
 import { FlowProvider, useFlow } from '../flow/FlowProvider.js'
+import { HostConnectionProvider } from '../host/HostConnectionProvider.js'
 import { PresenceProvider } from '../presence/PresenceProvider.js'
 
 const TanStackRouterDevtools =
@@ -85,11 +87,13 @@ export const Route = createRootRoute({
       <JotaiProvider>
         <MantineProvider theme={theme}>
           <Notifications />
-          <FlowProvider>
-            <PresenceProvider>
-              <MonitorApp />
-            </PresenceProvider>
-          </FlowProvider>
+          <HostConnectionProvider>
+            <FlowProvider>
+              <PresenceProvider>
+                <MonitorApp />
+              </PresenceProvider>
+            </FlowProvider>
+          </HostConnectionProvider>
         </MantineProvider>
         <Suspense>
           <TanStackRouterDevtools />

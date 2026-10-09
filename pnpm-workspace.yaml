@@ -24,20 +24,20 @@ publicHoistPattern:
 
 catalog:
   '@biomejs/biome': ^2.5.0
-  '@enkaku/client': ^0.21.3
-  '@enkaku/http-fetch': ^0.21.4
-  '@enkaku/http-serve': ^0.21.4
-  '@enkaku/node-streams': ^0.21.3
-  '@enkaku/protocol': ^0.21.4
-  '@enkaku/react': ^0.21.3
-  '@enkaku/server': ^0.21.4
-  '@enkaku/socket': ^0.21.3
-  '@enkaku/transport': ^0.21.3
-  '@kokuin/token': ^0.5.0
+  '@enkaku/client': ^0.21.5
+  '@enkaku/http-fetch': ^0.21.5
+  '@enkaku/http-serve': ^0.21.5
+  '@enkaku/node-streams': ^0.21.5
+  '@enkaku/protocol': ^0.21.5
+  '@enkaku/react': ^0.21.5
+  '@enkaku/server': ^0.21.5
+  '@enkaku/socket': ^0.21.5
+  '@enkaku/transport': ^0.21.5
+  '@kokuin/token': ^0.5.1
   '@logtape/logtape': ^2.4.0
   '@sozai/async': ^0.4.0
-  '@sozai/codec': ^0.4.2
-  '@sozai/event': ^0.1.5
+  '@sozai/codec': ^0.4.3
+  '@sozai/event': ^0.1.6
   '@sozai/generator': ^0.2.2
   '@sozai/http-server': ^0.1.1
   '@sozai/log': ^0.4.0
@@ -59,16 +59,17 @@ catalog:
   '@tejika/env': ^0.5.3
   '@tejika/log': ^0.4.1
   '@tejika/process': ^0.5.2
-  '@tejika/server': ^0.4.1
+  '@tejika/server': ^0.4.2
   '@tejika/test': ^0.4.2
   '@tejika/ui': ^0.4.2
   '@hozon/adapter': ^0.1.0
-  '@hozon/db': ^0.2.2
+  '@hozon/db': ^0.2.3
   '@hozon/logtape': ^0.1.1
   '@hozon/otel': ^0.1.1
-  '@hozon/store-log': ^0.2.1
-  '@hozon/store-telemetry': ^0.2.1
+  '@hozon/store-log': ^0.2.2
+  '@hozon/store-telemetry': ^0.2.2
   '@inkjs/ui': ^2.0.0
+  '@mantine/code-highlight': ^9.7.1
   '@mantine/core': ^9.7.1
   '@mantine/hooks': ^9.7.1
   '@mantine/notifications': ^9.7.1
@@ -123,7 +124,7 @@ catalog:
   typedoc: ^0.28.20
   typedoc-plugin-markdown: ^4.13.1
   typescript: ^6.0.3
-  vite: ^8.3.3
+  vite: ^8.3.4
   vitest: ^5.0.3
 
 catalogMode: manual

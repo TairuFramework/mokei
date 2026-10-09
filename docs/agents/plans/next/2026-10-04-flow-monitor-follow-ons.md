@@ -4,8 +4,8 @@
 
 ## Monitor UI
 
-Manual QA passed on behaviour, but the monitor UI needs a design and usability pass across the Runs, Inbox and Flows
-pages. Collect the specific issues from the user before planning.
+The Runs part of the monitor design and usability pass is covered by the unified Traces page. The Inbox and Flows
+pages still need a design and usability pass. Collect the specific issues from the user before planning.
 
 ## Flow service startup errors lose their cause
 

@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { openMokeiDatabase } from '@mokei/app-node'
+import { LocalTraceRecorder, openMokeiDatabase } from '@mokei/app-node'
 import type * as FlowHostNodeExports from '@mokei/flow-host-node'
 import { createFlowService, type FlowConfig } from '@mokei/flow-host-node'
 import type { HostEvent } from '@mokei/host-protocol'
@@ -105,11 +105,16 @@ test.each(['initialization', 'admitted call'] as const)(
           })
           return database
         },
-        setupTelemetry: () => ({
-          dispose: async () => {
-            order.push('telemetry')
-          },
-        }),
+        setupTelemetry: ({ provider }) => {
+          const recorder = new LocalTraceRecorder({ provider })
+          return {
+            recorder,
+            dispose: async () => {
+              await recorder.shutdown()
+              order.push('telemetry')
+            },
+          }
+        },
       },
     )
     let working: Promise<unknown> | undefined

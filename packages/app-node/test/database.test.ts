@@ -7,7 +7,11 @@ import { getLogStore } from '@hozon/store-log'
 import { getTelemetryStore } from '@hozon/store-telemetry'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { openMokeiDatabase } from '../src/index.js'
+import {
+  mokeiStoreDefinitions,
+  openMokeiDatabase,
+  traceIndexStoreDefinition,
+} from '../src/index.js'
 
 const handles: Array<HozonDB> = []
 let directory: string
@@ -48,7 +52,8 @@ test('honours MOKEI_DATABASE_PATH and lets an explicit path win', async () => {
   await expect(access(envPath)).rejects.toMatchObject({ code: 'ENOENT' })
 })
 
-test('registers log and telemetry stores and extra stores', async () => {
+test('registers log, telemetry and trace index stores and extra stores', async () => {
+  expect(mokeiStoreDefinitions).toContain(traceIndexStoreDefinition)
   const extra: StoreDefinition<unknown, unknown> = {
     name: 'test-items',
     migrations: () => ({
@@ -66,7 +71,7 @@ test('registers log and telemetry stores and extra stores', async () => {
   try {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()
     expect(tables.map((row) => row.name)).toEqual(
-      expect.arrayContaining(['mokei_logs', 'mokei_spans', 'mokei_test_items']),
+      expect.arrayContaining(['mokei_logs', 'mokei_spans', 'mokei_traces', 'mokei_test_items']),
     )
   } finally {
     db.close()

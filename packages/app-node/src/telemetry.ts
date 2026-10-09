@@ -1,15 +1,18 @@
-import { createLogStoreSink } from '@hozon/logtape'
-import { createTelemetrySpanExporter } from '@hozon/otel'
-import type { LogStore } from '@hozon/store-log'
-import type { TelemetryStore } from '@hozon/store-telemetry'
+import type { StoreProvider } from '@hozon/db'
 import type { LogLevel, Sink } from '@logtape/logtape'
 import { context, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
-import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import {
+  BasicTracerProvider,
+  BatchSpanProcessor,
+  type SpanProcessor,
+} from '@opentelemetry/sdk-trace-base'
 import { raceAttempt, settleSequential, TimeoutInterruption } from '@sozai/async'
 import { getConsoleSink, isSetup, reset, setup } from '@sozai/log'
 import { createFileSink } from '@tejika/log'
+
+import { LocalTraceRecorder, type TraceRecorderEvent } from './trace-recorder.js'
 
 let installed = false
 const EXPORT_TIMEOUT_MS = 10_000
@@ -27,12 +30,14 @@ async function shutdownProvider(provider: BasicTracerProvider): Promise<void> {
 }
 
 export function setupMokeiTelemetry(params: {
-  logStore: LogStore
-  telemetryStore: TelemetryStore
+  provider: StoreProvider
+  onEvent?: (event: TraceRecorderEvent) => void
+  hasListeners?: (type: TraceRecorderEvent['type']) => boolean
+  flushIntervalMs?: number
   otlp?: { endpoint: string; headers?: Record<string, string> }
   logs?: { level?: LogLevel; file?: boolean }
   reportCategories?: ReadonlyArray<ReadonlyArray<string>>
-}): { dispose(): Promise<void> } {
+}): { recorder: LocalTraceRecorder; dispose(): Promise<void> } {
   if (installed) throw new Error('Flow telemetry was already installed in this process')
   if (isSetup()) throw new Error('Logging is already configured')
   // OTel's public getters return proxies even before registration. Read without probing.
@@ -48,12 +53,15 @@ export function setupMokeiTelemetry(params: {
 
   const rollback: Array<() => void | Promise<void>> = []
   try {
-    const localExporter = createTelemetrySpanExporter(params.telemetryStore)
-    const localProcessor = new BatchSpanProcessor(localExporter, {
-      exportTimeoutMillis: EXPORT_TIMEOUT_MS,
+    const recorder = new LocalTraceRecorder({
+      provider: params.provider,
+      onEvent: params.onEvent,
+      hasListeners: params.hasListeners,
+      flushIntervalMs: params.flushIntervalMs,
+      reportCategories: params.reportCategories,
     })
-    const processors = [localProcessor]
-    rollback.push(() => localProcessor.shutdown())
+    const processors: Array<SpanProcessor> = [recorder]
+    rollback.push(() => recorder.shutdown())
     if (params.otlp) {
       const processor = new BatchSpanProcessor(
         new OTLPTraceExporter({
@@ -71,6 +79,7 @@ export function setupMokeiTelemetry(params: {
       forceFlushTimeoutMillis: EXPORT_TIMEOUT_MS,
     })
     rollback.length = 0
+    rollback.push(() => recorder.shutdown())
     rollback.push(() => shutdownProvider(provider))
     const manager = new AsyncLocalStorageContextManager()
     let contextRegistered = false
@@ -90,12 +99,7 @@ export function setupMokeiTelemetry(params: {
     installed = true
     rollback.push(() => trace.disable())
 
-    const sink = createLogStoreSink(params.logStore, {
-      tracedOnly: true,
-      excludeCategories: (params.reportCategories ?? []).map((category) => [...category]),
-    })
-    rollback.push(() => sink.flush())
-    const sinks: Record<string, Sink> = { capture: sink, errors: getConsoleSink() }
+    const sinks: Record<string, Sink> = { capture: recorder.sink, errors: getConsoleSink() }
     const rootSinks = ['capture']
     if (params.logs?.file !== false) {
       const file = createFileSink({ app: 'mokei', name: 'mokei', rotate: 'daily' })
@@ -118,8 +122,14 @@ export function setupMokeiTelemetry(params: {
       sinks,
       loggers: [
         { category: [], lowestLevel: params.logs?.level ?? 'info', sinks: rootSinks },
+        {
+          category: ['mokei', 'mcp', 'notification'],
+          lowestLevel: 'debug',
+          sinks: ['capture'],
+          parentSinks: 'override',
+        },
         { category: ['logtape', 'meta'], lowestLevel: 'error', sinks: [] },
-        ...(params.reportCategories ?? []).map((category) => ({
+        ...[['mokei', 'trace-recorder'], ...(params.reportCategories ?? [])].map((category) => ({
           category: [...category],
           lowestLevel: 'error' as const,
           sinks: ['errors'],
@@ -129,6 +139,7 @@ export function setupMokeiTelemetry(params: {
     })
     let disposal: Promise<void> | undefined
     return {
+      recorder,
       dispose() {
         disposal ??= settleSequential(
           [
@@ -136,9 +147,7 @@ export function setupMokeiTelemetry(params: {
             // Exporter shutdown may wait on an HTTP response after the processor's timeout.
             () => shutdownProvider(provider),
             // Never release storage while a local write outlives a provider/export timeout.
-            () => localProcessor.shutdown(),
-            () => localExporter.shutdown(),
-            () => sink.flush(),
+            () => recorder.shutdown(),
             reset,
             () => trace.disable(),
             () => context.disable(),

@@ -21,3 +21,4 @@ export {
 export { createNodeOAuthMiddleware, type NodeOAuthOptions } from './oauth/node-middleware.js'
 export { ProxyHost, type ProxyHostParams, type ProxySpawnParams } from './proxy.js'
 export type { SpawnContextServerParams, StderrOption } from './spawn.js'
+export { createTraceHandlers, type TraceReader } from './trace-handlers.js'

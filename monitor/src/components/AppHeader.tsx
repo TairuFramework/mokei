@@ -4,10 +4,9 @@ import { Link } from '@tanstack/react-router'
 import { useInbox } from '../flow/useInbox.js'
 
 const links: Array<{ label: string; to: string }> = [
-  { label: 'Events', to: '/' },
-  { label: 'Runs', to: '/runs' },
-  { label: 'Inbox', to: '/inbox' },
+  { label: 'Traces', to: '/traces' },
   { label: 'Flows', to: '/flows' },
+  { label: 'Inbox', to: '/inbox' },
 ]
 
 export function AppHeader() {

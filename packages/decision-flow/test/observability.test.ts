@@ -161,6 +161,7 @@ describe('decision flow observability', () => {
     expect(predict).toBeDefined()
     expect(predict?.parentSpanContext?.spanId).toBe(node?.spanContext().spanId)
     expect(predict?.attributes).toMatchObject({
+      'mokei.kind': 'step',
       'system_one.model': 'system-one-model',
       'system_one.question.count': 3,
       'system_one.usage.input_tokens': 17,

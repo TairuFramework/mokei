@@ -144,8 +144,6 @@ Unsupported dialogs leave the item available for another answer surface.
 The daemon loads app-level configuration and opens the shared database before creating the flow service. A composed application can use the same wiring pattern:
 
 ```typescript
-import { getLogStore } from '@hozon/store-log'
-import { getTelemetryStore } from '@hozon/store-telemetry'
 import { loadMokeiConfig, openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
 import {
   createFlowHandlers,
@@ -154,6 +152,8 @@ import {
   flowStoreDefinitions,
 } from '@mokei/flow-host-node'
 import { composeHandlers, serveHostDaemon } from '@mokei/host-node'
+import type { HostEvents } from '@mokei/host-protocol'
+import { EventEmitter } from '@sozai/event'
 
 // Release in reverse order, attempting every step and keeping every error.
 async function release(steps: Array<() => Promise<void> | undefined>): Promise<void> {
@@ -177,16 +177,15 @@ const shutdown = () =>
   release([() => service?.dispose(), () => telemetry?.dispose(), () => database.close()])
 try {
   telemetry = setupMokeiTelemetry({
-    logStore: await getLogStore(database),
-    telemetryStore: await getTelemetryStore(database),
+    provider: database,
     otlp: appConfig.tracing.otlp,
     logs: appConfig.logs,
     reportCategories: [FLOW_REPORT_CATEGORY],
   })
-  const events = new EventTarget()
+  const events = new EventEmitter<HostEvents>()
   const flows = createFlowService({
     database,
-    onEvent: ({ type, ...detail }) => events.dispatchEvent(new CustomEvent(type, { detail })),
+    onEvent: ({ type, ...detail }) => events.fire(type, detail),
   })
   service = flows
   await serveHostDaemon({

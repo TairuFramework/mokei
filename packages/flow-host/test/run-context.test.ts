@@ -54,7 +54,10 @@ beforeEach(async () => {
         logs.push({ record, traceID: trace.getSpan(context.active())?.spanContext().traceId })
       },
     },
-    loggers: [{ category: ['mokei'], lowestLevel: 'debug', sinks: ['capture'] }],
+    loggers: [
+      { category: ['mokei'], lowestLevel: 'debug', sinks: ['capture'] },
+      { category: ['logtape', 'meta'], lowestLevel: 'error', sinks: [] },
+    ],
   })
 })
 afterEach(async () => {

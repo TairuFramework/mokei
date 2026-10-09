@@ -13,6 +13,12 @@
 export type { ClientEvents, ClientTasks } from './client.js'
 export { ContextClient, DEFAULT_LIST_MAX_PAGES } from './client.js'
 export {
+  type ClientTracing,
+  createExchangeTracer,
+  type ExchangeSpan,
+  type TerminationReason,
+} from './client-tracing.js'
+export {
   CapabilityNotDeclaredError,
   type CapabilityNotDeclaredErrorParams,
   InputRequiredNotSupportedError,
@@ -44,6 +50,19 @@ export {
   isInputRequiredResult,
   REQUEST_STATE_ONLY_PACING_MS,
 } from './mrtr.js'
+export {
+  capturePayload,
+  DEFAULT_PAYLOAD_CAP,
+  type MessageDirection,
+  type PayloadCapture,
+  redactCommandArgs,
+  redactPayload,
+  requestAttributes,
+  requestSpanName,
+  resolvePayloadCap,
+  responseOutcome,
+  sanitizeMessage,
+} from './observation.js'
 export {
   type ListenHandle,
   type ListenHandlers,

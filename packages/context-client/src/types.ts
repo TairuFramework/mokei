@@ -15,6 +15,8 @@ import type {
 import type { RequestOptions } from '@mokei/context-rpc'
 import { splitRequestOptions } from '@mokei/context-rpc'
 
+import type { ClientTracing } from './client-tracing.js'
+
 export type ClientTransport = TransportType<ServerMessage, ClientMessage>
 
 /**
@@ -116,6 +118,7 @@ export type PromptParams<T extends ContextTypes> = NamedParams<T['Prompts']>
 export type ToolParams<T extends ContextTypes> = NamedParams<T['Tools']>
 
 export type ClientParams = {
+  tracing?: ClientTracing
   /** Revision to speak. `'auto'` probes the server, then caches the result. */
   protocolVersion: ProtocolVersion | 'auto'
   clientInfo?: Implementation

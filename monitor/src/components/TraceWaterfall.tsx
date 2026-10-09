@@ -1,7 +1,6 @@
 import {
   Box,
   Button,
-  Code,
   DataList,
   Group,
   Splitter,
@@ -11,20 +10,31 @@ import {
   type TreeNodeData,
   useTree,
 } from '@mantine/core'
-import type { FlowRunSnapshot, StoredSpan } from '@mokei/host-protocol'
-import { useMemo, useState } from 'react'
+import type { OpenSpan, StoredSpan, TraceSummary } from '@mokei/host-protocol'
+import { useEffect, useMemo, useState } from 'react'
 
-import { barPosition, buildSpanTree, type SpanNode } from '../flow/span-tree.js'
+import { barPosition, buildTraceTree, type SpanNode } from '../traces/span-tree.js'
+import { JsonPayload } from './JsonPayload.js'
 
 export type TraceWaterfallProps = {
-  run: FlowRunSnapshot
-  spans: Array<StoredSpan>
+  spans: Array<StoredSpan | OpenSpan>
+  summary?: TraceSummary
+  selectedSpanID?: string
+  onOpenContext: (traceID: string) => void
+  now: number
   onSelectSpan: (spanID?: string) => void
 }
 
-export function TraceWaterfall({ run, spans, onSelectSpan }: TraceWaterfallProps) {
-  const { root, start, end, nodes, data, defaultExpandedState } = useMemo(() => {
-    const range = buildSpanTree(spans, run)
+export function TraceWaterfall({
+  spans,
+  summary,
+  selectedSpanID,
+  onSelectSpan,
+  onOpenContext,
+  now,
+}: TraceWaterfallProps) {
+  const { start, end, nodes, data, defaultExpandedState } = useMemo(() => {
+    const range = buildTraceTree(spans, summary, now)
     const nodes = new Map<string, SpanNode>()
     const expandedState: Record<string, boolean> = {}
     function toTree(node: SpanNode): TreeNodeData {
@@ -32,9 +42,14 @@ export function TraceWaterfall({ run, spans, onSelectSpan }: TraceWaterfallProps
       expandedState[node.id] = true
       return { value: node.id, label: node.name, children: node.children.map(toTree) }
     }
-    return { ...range, nodes, defaultExpandedState: expandedState, data: [toTree(range.root)] }
-  }, [spans, run])
-  const [selectedState, setSelectedState] = useState<Array<string>>([])
+    return { ...range, nodes, defaultExpandedState: expandedState, data: range.roots.map(toTree) }
+  }, [spans, summary, now])
+  const [selectedState, setSelectedState] = useState<Array<string>>(
+    selectedSpanID == null ? [] : [selectedSpanID],
+  )
+  useEffect(() => {
+    setSelectedState(selectedSpanID == null ? [] : [selectedSpanID])
+  }, [selectedSpanID])
   const [expansionChoices, setExpansionChoices] = useState<Record<string, boolean>>({})
   const expandedState = useMemo(
     () => ({ ...defaultExpandedState, ...expansionChoices }),
@@ -46,7 +61,7 @@ export function TraceWaterfall({ run, spans, onSelectSpan }: TraceWaterfallProps
     selectedState,
     onSelectedStateChange: (values) => {
       setSelectedState(values)
-      onSelectSpan(values[0] === root.id ? undefined : values[0])
+      onSelectSpan(nodes.get(values[0])?.placeholder ? undefined : values[0])
     },
   })
   const selected = nodes.get(selectedState[0])
@@ -108,11 +123,26 @@ export function TraceWaterfall({ run, spans, onSelectSpan }: TraceWaterfallProps
                     <Button
                       variant="subtle"
                       size="compact-sm"
-                      style={{ whiteSpace: 'normal', textAlign: 'left' }}>
+                      style={{
+                        opacity: span.placeholder ? 0.6 : 1,
+                        whiteSpace: 'normal',
+                        textAlign: 'left',
+                      }}>
                       {span.name}
                     </Button>
+                    {span.contextLink == null ? null : (
+                      <Button
+                        variant="subtle"
+                        size="compact-xs"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          if (span.contextLink != null) onOpenContext(span.contextLink.traceID)
+                        }}>
+                        context ↗
+                      </Button>
+                    )}
                     <Text size="xs" c="dimmed">
-                      {span.end == null ? 'running' : `${(span.end - span.start).toFixed(1)} ms`}
+                      {span.open ? 'running' : `${(span.end - span.start).toFixed(1)} ms`}
                     </Text>
                   </Group>
                   <Box
@@ -123,7 +153,11 @@ export function TraceWaterfall({ run, spans, onSelectSpan }: TraceWaterfallProps
                     }}>
                     <Box
                       h={12}
+                      data-open={span.open}
+                      data-placeholder={span.placeholder}
                       style={{
+                        opacity: span.open || span.placeholder ? 0.6 : 1,
+                        border: span.open ? '1px dashed currentColor' : undefined,
                         position: 'absolute',
                         left: `${position.left * 100}%`,
                         width: `${position.width * 100}%`,
@@ -154,23 +188,28 @@ export function TraceWaterfall({ run, spans, onSelectSpan }: TraceWaterfallProps
                   <DataList.ItemLabel>Status</DataList.ItemLabel>
                   <DataList.ItemValue>
                     {selected.status}
-                    {stored?.status.message ? `: ${stored.status.message}` : ''}
+                    {stored != null && 'status' in stored && stored.status.message
+                      ? `: ${stored.status.message}`
+                      : ''}
                   </DataList.ItemValue>
                 </DataList.Item>
                 {Object.entries(selected.attributes).map(([name, value]) => (
                   <DataList.Item key={name}>
                     <DataList.ItemLabel>{name}</DataList.ItemLabel>
                     <DataList.ItemValue>
-                      <Code block>{JSON.stringify(value, null, 2)}</Code>
+                      <JsonPayload key={`${selected.id}:${name}`} value={value} />
                     </DataList.ItemValue>
                   </DataList.Item>
                 ))}
-                {stored?.events.map((event, index) => (
+                {(stored != null && 'events' in stored ? stored.events : []).map((event, index) => (
                   <DataList.Item key={`${event.time}:${index}`}>
                     <DataList.ItemLabel>{event.name}</DataList.ItemLabel>
                     <DataList.ItemValue>
                       <Text size="xs">{(event.time - start).toFixed(1)} ms</Text>
-                      <Code block>{JSON.stringify(event.attributes, null, 2)}</Code>
+                      <JsonPayload
+                        key={`${selected.id}:${event.time}:${index}`}
+                        value={event.attributes}
+                      />
                     </DataList.ItemValue>
                   </DataList.Item>
                 ))}

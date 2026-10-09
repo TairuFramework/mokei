@@ -11,9 +11,11 @@ import type {
   ServerMessage,
 } from '@mokei/context-protocol'
 import { discoverResult, type ErrorResponse, INVALID_REQUEST } from '@mokei/context-protocol'
-import { RequestTimeoutError, RPCError } from '@mokei/context-rpc'
+import { RequestTimeoutError, RPCError, TransportClosedError } from '@mokei/context-rpc'
+import { withActiveContext } from '@sozai/otel'
 import { createValidator } from '@sozai/schema'
 
+import type { ExchangeSpan } from './client-tracing.js'
 import { currentTraceMeta } from './trace.js'
 
 /**
@@ -31,6 +33,8 @@ const validateDiscoverResult = createValidator(discoverResult)
  * constructed by `ContextClient` (the only place that can reference its own `#`-private fields).
  */
 export type SetupIO = {
+  trace?: (method: string, id: RequestID, params: unknown) => ExchangeSpan
+
   /** Allocates the next outgoing request id. Backed by `ContextRPC#_getNextRequestID`. */
   allocateID(): RequestID
 
@@ -134,10 +138,39 @@ export class SetupReader {
       }
       const next = await Promise.race([this.#io.readNextFrame(), deadline])
       if (next.done) {
-        throw new Error(`Server closed the connection during ${label}`)
+        throw new TransportClosedError({ message: `Server closed the connection during ${label}` })
       }
       this.#io.handBackFrame(next.value)
     }
+  }
+
+  async #traceExchange<T extends { result: unknown }>(
+    method: string,
+    id: RequestID,
+    params: unknown,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const exchange = this.#io.trace?.(method, id, params)
+    const execute = async () => {
+      try {
+        const result = await run()
+        exchange?.succeed(result.result)
+        return result
+      } catch (cause) {
+        exchange?.fail(
+          cause instanceof RequestTimeoutError
+            ? 'cancelled'
+            : cause instanceof TransportClosedError
+              ? 'context.lost'
+              : cause instanceof RPCError
+                ? String(cause.code)
+                : '_OTHER',
+          cause instanceof Error ? cause.message : String(cause),
+        )
+        throw cause
+      }
+    }
+    return exchange === undefined ? execute() : withActiveContext(exchange.context, execute)
   }
 
   /** Drives the `initialize` handshake; returns its result and the revision it negotiated. */
@@ -147,30 +180,37 @@ export class SetupReader {
     capabilities: ClientCapabilities
   }): Promise<{ result: InitializeResult; negotiatedRevision: ProtocolVersion }> {
     const id = this.#io.allocateID()
-    await this.#io.write({
-      jsonrpc: '2.0',
-      id,
-      method: 'initialize',
-      params: {
-        capabilities: request.capabilities,
-        clientInfo: request.clientInfo,
-        protocolVersion: request.protocolVersion,
-      },
-    } as ClientMessage)
-    const deadline = this.#setupDeadline('initialize')
-    // Drops anything that isn't the initialize response by construction: `matches` only accepts
-    // this request's own id, so pre-init notifications and server requests are left buffered
-    // rather than handled here -- they can't be, before the session exists.
-    const message = await this.#readMatching(
-      (candidate) => candidate.id === id,
-      deadline,
-      'initialize',
-    )
-    if ('error' in message) {
-      throw RPCError.fromResponse(message as ErrorResponse)
+    const params = {
+      capabilities: request.capabilities,
+      clientInfo: request.clientInfo,
+      protocolVersion: request.protocolVersion,
     }
-    const result = message.result as InitializeResult
-    return { result, negotiatedRevision: result.protocolVersion as ProtocolVersion }
+    return this.#traceExchange('initialize', id, params, async () => {
+      const trace = currentTraceMeta()
+      await this.#io.write({
+        jsonrpc: '2.0',
+        id,
+        method: 'initialize',
+        params: {
+          ...(trace.traceparent == null ? {} : { _meta: { ...trace } }),
+          ...params,
+        },
+      } as ClientMessage)
+      const deadline = this.#setupDeadline('initialize')
+      // Drops anything that isn't the initialize response by construction: `matches` only accepts
+      // this request's own id, so pre-init notifications and server requests are left buffered
+      // rather than handled here -- they can't be, before the session exists.
+      const message = await this.#readMatching(
+        (candidate) => candidate.id === id,
+        deadline,
+        'initialize',
+      )
+      if ('error' in message) {
+        throw RPCError.fromResponse(message as ErrorResponse)
+      }
+      const result = message.result as InitializeResult
+      return { result, negotiatedRevision: result.protocolVersion as ProtocolVersion }
+    })
   }
 
   /** Drives one `server/discover` exchange (used by both the probe and post-resolution setup). */
@@ -182,39 +222,46 @@ export class SetupReader {
   }): Promise<{ result: DiscoverResult; negotiatedRevision: ProtocolVersion }> {
     const { protocol } = request
     const id = this.#io.allocateID()
-    // Sends the same `clientInfo`/`logLevel` context every other request sends, plus the same
-    // W3C trace context (SEP-414) `ContextClient#request` injects into `_meta` via
-    // `currentTraceMeta()`: the spec says a client SHOULD send `clientInfo`, and there's no
-    // reason for this one-off setup request to present a different envelope to the server than
-    // any request that follows it.
-    const trace = currentTraceMeta()
-    const base: Record<string, unknown> = {}
-    if (trace.traceparent != null) {
-      base._meta = { ...trace }
-    }
-    await this.#io.write({
-      jsonrpc: '2.0',
-      id,
-      method: 'server/discover',
-      params: protocol.decorateRequest(base, {
+    const params = protocol.decorateRequest(
+      {},
+      {
         capabilities: request.capabilities,
         clientInfo: request.clientInfo,
         logLevel: request.logLevel,
-      }),
-    } as ClientMessage)
-    const deadline = this.#setupDeadline('server/discover')
-    const message = await this.#readMatching(
-      (candidate) => candidate.id === id,
-      deadline,
-      'server/discover',
-    )
-    if ('error' in message) {
-      throw RPCError.fromResponse(message as ErrorResponse)
-    }
-    const discovered = validateDiscoverResult(message.result)
-    if (discovered.issues != null) {
-      throw new RPCError({ code: INVALID_REQUEST, message: 'Invalid server/discover result' })
-    }
-    return { result: discovered.value, negotiatedRevision: protocol.version }
+      },
+    ) as Record<string, unknown>
+    return this.#traceExchange('server/discover', id, params, async () => {
+      // Sends the same `clientInfo`/`logLevel` context every other request sends, plus the same
+      // W3C trace context (SEP-414) `ContextClient#request` injects into `_meta` via
+      // `currentTraceMeta()`: the spec says a client SHOULD send `clientInfo`, and there's no
+      // reason for this one-off setup request to present a different envelope to the server than
+      // any request that follows it.
+      const trace = currentTraceMeta()
+      await this.#io.write({
+        jsonrpc: '2.0',
+        id,
+        method: 'server/discover',
+        params: {
+          ...params,
+          ...(trace.traceparent == null
+            ? {}
+            : { _meta: { ...(params._meta as Record<string, unknown>), ...trace } }),
+        },
+      } as ClientMessage)
+      const deadline = this.#setupDeadline('server/discover')
+      const message = await this.#readMatching(
+        (candidate) => candidate.id === id,
+        deadline,
+        'server/discover',
+      )
+      if ('error' in message) {
+        throw RPCError.fromResponse(message as ErrorResponse)
+      }
+      const discovered = validateDiscoverResult(message.result)
+      if (discovered.issues != null) {
+        throw new RPCError({ code: INVALID_REQUEST, message: 'Invalid server/discover result' })
+      }
+      return { result: discovered.value, negotiatedRevision: protocol.version }
+    })
   }
 }

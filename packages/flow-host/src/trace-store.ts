@@ -3,6 +3,7 @@ import type { StoredLog, StoredSpan } from '@mokei/host-protocol'
 export type { StoredLog, StoredSpan } from '@mokei/host-protocol'
 
 export type TraceStore = {
+  listActiveTraceIDs(): Promise<Array<string>>
   addSpans(spans: Array<StoredSpan>): Promise<void>
   addLogs(logs: Array<StoredLog>): Promise<void>
   getTrace(traceID: string): Promise<{ spans: Array<StoredSpan>; logs: Array<StoredLog> }>
@@ -33,6 +34,9 @@ export function createMemoryTraceStore(): TraceStore {
   let sequence = 0
 
   return {
+    async listActiveTraceIDs() {
+      return []
+    },
     async addSpans(batch) {
       for (const span of batch) {
         const key = JSON.stringify([span.traceID, span.spanID])
