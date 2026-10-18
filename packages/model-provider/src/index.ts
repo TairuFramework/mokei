@@ -200,6 +200,13 @@ export type MessagePart<RawMessagePart, RawToolCall> =
       reason?: string
       inputTokens: number
       outputTokens: number
+      /** Provider-assigned response identifier */
+      responseID?: string
+      /** Model that actually served the response */
+      responseModel?: string
+      cacheReadInputTokens?: number
+      cacheWriteInputTokens?: number
+      reasoningOutputTokens?: number
     }
   | { type: 'error'; raw?: RawMessagePart; error: unknown }
 
@@ -309,7 +316,58 @@ export type ProviderTypes = {
   ToolCall: unknown
 }
 
+/** Static facts a provider exposes for telemetry; model-provider itself stays free of OpenTelemetry. */
+export type ProviderTelemetry = {
+  providerName: string
+  serverAddress?: string
+  serverPort?: number
+  local?: boolean
+  /** Reported input tokens already exclude cached tokens */
+  inputTokensExcludeCache?: boolean
+  /** Tool call IDs are generated client-side rather than provider-assigned */
+  syntheticToolCallIDs?: boolean
+}
+
+export type FinishReason = 'stop' | 'length' | 'content_filter' | 'tool_call' | 'error'
+
+/** Map provider-specific finish reasons to GenAI semantic convention values. */
+export function normalizeFinishReason(reason: string | undefined): FinishReason | (string & {}) {
+  switch (reason) {
+    case 'stop':
+    case 'end_turn':
+    case 'stop_sequence':
+      return 'stop'
+    case 'length':
+    case 'max_tokens':
+      return 'length'
+    case 'tool_calls':
+    case 'tool_use':
+      return 'tool_call'
+    case 'content_filter':
+    case 'refusal':
+      return 'content_filter'
+    case 'abort':
+    case undefined:
+      return 'error'
+    default:
+      return reason
+  }
+}
+
+/** Build provider telemetry from a base URL; unparsable URLs yield the provider name only. */
+export function telemetryFromBaseURL(providerName: string, baseURL: string): ProviderTelemetry {
+  try {
+    const url = new URL(baseURL)
+    const serverAddress = url.hostname.replace(/^\[|\]$/g, '')
+    const serverPort = url.port !== '' ? Number(url.port) : url.protocol === 'https:' ? 443 : 80
+    return { providerName, serverAddress, serverPort }
+  } catch {
+    return { providerName }
+  }
+}
+
 export type ModelProvider<T extends ProviderTypes> = {
+  telemetry?: ProviderTelemetry
   aggregateMessage: (
     parts: Array<ServerMessage<T['MessagePart'], T['ToolCall']>>,
   ) => AggregatedMessage<T['ToolCall']>

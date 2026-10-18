@@ -92,3 +92,49 @@ describe('AnthropicProvider.streamChat', () => {
     expect(parts.some((p) => p.type === 'done')).toBe(true)
   })
 })
+
+describe('AnthropicProvider telemetry', () => {
+  test('exposes provider telemetry', () => {
+    expect(new AnthropicProvider().telemetry).toEqual({
+      providerName: 'anthropic',
+      serverAddress: 'api.anthropic.com',
+      serverPort: 443,
+      inputTokensExcludeCache: true,
+    })
+  })
+
+  test('done carries response metadata and cache tokens', async () => {
+    const provider = providerWithEvents([
+      {
+        type: 'message_start',
+        message: {
+          id: 'msg_1',
+          model: 'claude-y',
+          usage: {
+            input_tokens: 10,
+            cache_read_input_tokens: 7,
+            cache_creation_input_tokens: 3,
+          },
+        },
+      } as unknown as StreamEvent,
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { output_tokens: 5 },
+      } as unknown as StreamEvent,
+    ])
+    const stream = await provider.streamChat({
+      model: 'claude-x',
+      messages: [{ source: 'client', role: 'user', text: 'hi' }],
+    })
+    const done = (await collect(stream)).find((p) => p.type === 'done')
+    expect(done).toMatchObject({
+      inputTokens: 10,
+      outputTokens: 5,
+      responseID: 'msg_1',
+      responseModel: 'claude-y',
+      cacheReadInputTokens: 7,
+      cacheWriteInputTokens: 3,
+    })
+  })
+})

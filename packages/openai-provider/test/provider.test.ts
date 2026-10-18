@@ -131,3 +131,49 @@ describe('OpenAIProvider reasoning', () => {
     expect(aggregated.toolCalls).toHaveLength(1)
   })
 })
+
+describe('OpenAIProvider telemetry', () => {
+  test('exposes provider telemetry for the default base URL', () => {
+    expect(new OpenAIProvider().telemetry).toEqual({
+      providerName: 'openai',
+      serverAddress: 'api.openai.com',
+      serverPort: 443,
+    })
+  })
+
+  test('derives telemetry from a custom base URL', () => {
+    const provider = new OpenAIProvider({ client: { baseURL: 'http://localhost:8080/v1' } })
+    expect(provider.telemetry).toMatchObject({ serverAddress: 'localhost', serverPort: 8080 })
+  })
+
+  test('emits one done part with trailing usage and response metadata', async () => {
+    const base = { object: 'chat.completion.chunk', created: 0, id: 'resp-1', model: 'gpt-x' }
+    const chunks: Array<ChatCompletionChunk> = [
+      { ...base, choices: [{ index: 0, delta: { content: 'hi' }, finish_reason: null }] },
+      { ...base, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+      {
+        ...base,
+        choices: [],
+        usage: {
+          prompt_tokens: 12,
+          completion_tokens: 5,
+          total_tokens: 17,
+          prompt_tokens_details: { cached_tokens: 4 },
+          completion_tokens_details: { reasoning_tokens: 2 },
+        },
+      },
+    ]
+    const { parts } = await collectParts(providerReplaying(chunks), chunks)
+    expect(parts.map((part) => part.type)).toEqual(['text-delta', 'done'])
+    expect(parts[1]).toMatchObject({
+      type: 'done',
+      reason: 'stop',
+      inputTokens: 12,
+      outputTokens: 5,
+      responseID: 'resp-1',
+      responseModel: 'gpt-x',
+      cacheReadInputTokens: 4,
+      reasoningOutputTokens: 2,
+    })
+  })
+})

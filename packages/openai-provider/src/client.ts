@@ -96,6 +96,7 @@ export type { ChatCompletionChunk }
 
 export class OpenAIClient {
   #api: KyInstance
+  #baseURL: string
 
   constructor(params: OpenAIClientParams = {}) {
     const headers: Record<string, string> = {
@@ -104,11 +105,16 @@ export class OpenAIClient {
     if (params.apiKey != null) {
       headers.Authorization = `Bearer ${params.apiKey}`
     }
+    this.#baseURL = params.baseURL ?? DEFAULT_BASE_URL
     this.#api = ky.create({
-      prefix: params.baseURL ?? DEFAULT_BASE_URL,
+      prefix: this.#baseURL,
       timeout: params.timeout ?? DEFAULT_TIMEOUT,
       headers,
     })
+  }
+
+  get baseURL(): string {
+    return this.#baseURL
   }
 
   async listModels(params: ListModelParams = {}): Promise<Array<Model>> {
