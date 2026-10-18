@@ -103,7 +103,11 @@ beforeEach(() => {
               'mokei.payload.truncated': true,
             },
             events: [
-              { name: 'mcp.response', time: 70, attributes: { payload: '{"result":"world"}' } },
+              {
+                name: 'mcp.response',
+                time: 70,
+                attributes: { 'mokei.mcp.response': '{"result":"world"}' },
+              },
             ],
           },
         ],

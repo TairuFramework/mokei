@@ -78,16 +78,20 @@ for (const register of [false, true]) {
       await f.pending
       await f.host.remove('test')
       const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
-      const call = exporter.getFinishedSpans().find((span) => span.name === 'mcp.tools/call')
+      const call = exporter.getFinishedSpans().find((span) => span.name === 'tools/call echo')
       expect(root).toBeDefined()
       expect(root?.parentSpanContext).toBeUndefined()
       expect(root?.attributes).toMatchObject({
         'mokei.kind': 'context',
         'mokei.root': true,
         'mokei.context.id': 'test',
-        'mcp.transport': 'direct',
-        'server.name': 'echo-server',
+        'mokei.server.name': 'echo-server',
+        'mcp.protocol.version': '2025-11-25',
       })
+      expect(root?.attributes['mcp.transport']).toBeUndefined()
+      expect(root?.attributes['server.name']).toBeUndefined()
+      expect(root?.attributes['network.transport']).toBeUndefined()
+      expect(root?.status.code).toBe(SpanStatusCode.UNSET)
       expect(call?.parentSpanContext?.spanId).toBe(root?.spanContext().spanId)
       expect(call?.attributes['mokei.context.id']).toBe('test')
       expect(call?.attributes['mokei.mcp.request']).toBeUndefined()
@@ -104,8 +108,10 @@ for (const reason of ['stopped', 'lost'] as const) {
     else await f.host.remove('test', reason)
     await rejected
     const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
-    const call = exporter.getFinishedSpans().find((span) => span.name === 'mcp.tools/call')
-    expect(root?.status.code).toBe(reason === 'stopped' ? SpanStatusCode.OK : SpanStatusCode.ERROR)
+    const call = exporter.getFinishedSpans().find((span) => span.name === 'tools/call echo')
+    expect(root?.status.code).toBe(
+      reason === 'stopped' ? SpanStatusCode.UNSET : SpanStatusCode.ERROR,
+    )
     expect(root?.attributes['error.type']).toBe(reason === 'lost' ? 'context.lost' : undefined)
     expect(call?.attributes['error.type']).toBe(`context.${reason}`)
     expect(call?.status.code).toBe(SpanStatusCode.ERROR)
@@ -145,7 +151,7 @@ test('registration records server identity from an already-initialized client', 
   })
   await host.remove('registered')
   const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
-  expect(root?.attributes['server.name']).toBe('registered-server')
+  expect(root?.attributes['mokei.server.name']).toBe('registered-server')
 })
 
 test('automatic removal reports a rejecting disposer and settles the context exactly once', async () => {
@@ -216,20 +222,33 @@ test('HTTP context records its transport and negotiated session', async () => {
   try {
     await host.addHTTPContext({
       key: 'remote',
-      url: 'https://example.com/mcp',
+      url: 'https://mcp.example.com:8443/api',
       protocolVersion: '2025-11-25',
     })
     await host.callTool({ key: 'remote', name: 'echo', arguments: {} })
     await host.remove('remote')
     const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
     expect(root?.attributes).toMatchObject({
-      'mcp.transport': 'http',
-      'server.name': 'remote',
+      'network.transport': 'tcp',
+      'network.protocol.name': 'http',
+      'server.address': 'mcp.example.com',
+      'server.port': 8443,
+      'mokei.server.name': 'remote',
+      'mcp.protocol.version': '2025-11-25',
       'mcp.session.id': 'session-123',
     })
-    const call = exporter.getFinishedSpans().find((span) => span.name === 'mcp.tools/call')
+    expect(root?.attributes['mcp.transport']).toBeUndefined()
+    expect(root?.attributes['server.name']).toBeUndefined()
+    const call = exporter.getFinishedSpans().find((span) => span.name === 'tools/call echo')
     expect(call?.parentSpanContext?.spanId).toBe(root?.spanContext().spanId)
     expect(call?.attributes['mcp.session.id']).toBe('session-123')
+    expect(call?.attributes).toMatchObject({
+      'network.transport': 'tcp',
+      'network.protocol.name': 'http',
+      'server.address': 'mcp.example.com',
+      'server.port': 8443,
+      'mcp.protocol.version': '2025-11-25',
+    })
   } finally {
     await host.dispose()
     fetch.mockRestore()
@@ -303,7 +322,7 @@ test.each([false, true])(
     await host.remove('discovery')
     expect(
       exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')?.attributes[
-        'server.name'
+        'mokei.server.name'
       ],
     ).toBe('discovered-server')
   },

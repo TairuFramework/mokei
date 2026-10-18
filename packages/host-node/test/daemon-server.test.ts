@@ -588,7 +588,7 @@ test('daemon shutdown ends a proxied context root as stopped', async () => {
     await vi.waitFor(() => {
       const roots = exporter.getFinishedSpans().filter((span) => span.name === 'mcp.context')
       expect(roots).toHaveLength(1)
-      expect(roots[0]?.status.code).toBe(SpanStatusCode.OK)
+      expect(roots[0]?.status.code).toBe(SpanStatusCode.UNSET)
       expect(roots[0]?.attributes['error.type']).toBeUndefined()
       const requests = exporter
         .getFinishedSpans()

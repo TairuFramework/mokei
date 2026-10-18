@@ -36,7 +36,7 @@ test('pairs a client request with the server response', () => {
     'mokei.kind': 'context',
     'mokei.root': true,
     'mokei.context.id': 'ctx',
-    'mcp.transport': 'stdio',
+    'network.transport': 'pipe',
     'process.command': 'node',
     'process.command_args': ['server.js'],
   })
@@ -49,9 +49,12 @@ test('pairs a client request with the server response', () => {
     'mokei.mcp.request': '{"name":"echo","token":"[redacted]"}',
   })
   expect(span?.events).toMatchObject([
-    { name: 'mcp.response', attributes: { payload: JSON.stringify(result) } },
+    { name: 'mcp.response', attributes: { 'mokei.mcp.response': JSON.stringify(result) } },
   ])
-  expect(span?.status.code).toBe(SpanStatusCode.OK)
+  expect(span?.status.code).toBe(SpanStatusCode.UNSET)
+  expect(span?.attributes['gen_ai.tool.call.result']).toBe(JSON.stringify(result))
+  expect(span?.attributes['network.transport']).toBe('pipe')
+  expect(root?.attributes['mcp.transport']).toBeUndefined()
 })
 
 test('keys by direction and id type', () => {
@@ -148,7 +151,7 @@ for (const reason of ['stopped', 'lost'] as const) {
     expect(requests()[0]?.attributes['error.type']).toBe(`context.${reason}`)
     expect(requests()[0]?.status.code).toBe(SpanStatusCode.ERROR)
     const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
-    expect(root?.status.code).toBe(reason === 'lost' ? SpanStatusCode.ERROR : SpanStatusCode.OK)
+    expect(root?.status.code).toBe(reason === 'lost' ? SpanStatusCode.ERROR : SpanStatusCode.UNSET)
     expect(root?.attributes['error.type']).toBe(reason === 'lost' ? 'context.lost' : undefined)
   })
 }
@@ -209,4 +212,51 @@ test.each([
   expect(requests()[0]?.status.code).toBe(SpanStatusCode.ERROR)
   expect(requests()[0]?.attributes['error.type']).toBe(errorType)
   proxy.end('stopped')
+})
+
+test('initialize response sets the negotiated protocol version on the context and later spans', () => {
+  const proxy = fixture()
+  proxy.observe('client', { id: 1, method: 'initialize', params: {} })
+  proxy.observe('server', { id: 1, result: { protocolVersion: '2025-11-25' } })
+  proxy.observe('client', { id: 2, method: 'tools/list' })
+  proxy.observe('server', { id: 2, result: {} })
+  proxy.end('stopped')
+  const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
+  expect(root?.attributes['mcp.protocol.version']).toBe('2025-11-25')
+  expect(requests()[0]?.attributes['mcp.protocol.version']).toBeUndefined()
+  expect(requests()[1]?.attributes['mcp.protocol.version']).toBe('2025-11-25')
+})
+
+test('an error response sets the status message and rpc.response.status_code', () => {
+  const proxy = fixture()
+  proxy.observe('client', { id: 1, method: 'tools/call', params: { name: 'echo' } })
+  proxy.observe('server', { id: 1, error: { code: -32603, message: 'boom' } })
+  proxy.end('stopped')
+  const span = requests()[0]
+  expect(span?.status).toMatchObject({ code: SpanStatusCode.ERROR, message: 'boom' })
+  expect(span?.attributes['error.type']).toBe('-32603')
+  expect(span?.attributes['rpc.response.status_code']).toBe('-32603')
+  expect(span?.attributes['gen_ai.tool.call.result']).toBeUndefined()
+})
+
+test('a server-initiated request answered with -32601 is not an error', () => {
+  const proxy = fixture()
+  proxy.observe('server', { id: 1, method: 'roots/list' })
+  proxy.observe('client', { id: 1, error: { code: -32601, message: 'nope' } })
+  proxy.end('stopped')
+  const span = requests()[0]
+  expect(span?.status.code).toBe(SpanStatusCode.UNSET)
+  expect(span?.attributes['rpc.response.status_code']).toBe('-32601')
+  expect(span?.attributes['error.type']).toBeUndefined()
+})
+
+test('payload capture follows the content gate', () => {
+  const proxy = createProxyTracing({ contextID: 'ctx', command: 'node', args: [] })
+  proxy.observe('client', { id: 1, method: 'tools/call', params: { name: 'echo', arguments: {} } })
+  proxy.observe('server', { id: 1, result })
+  proxy.end('stopped')
+  const span = requests()[0]
+  expect(span?.attributes['mokei.mcp.request']).toBeUndefined()
+  expect(span?.attributes['gen_ai.tool.call.result']).toBeUndefined()
+  expect(span?.events[0]?.attributes).toEqual({})
 })

@@ -1,19 +1,21 @@
 import {
   capturePayload,
+  endSpanError,
+  getMokeiTracer,
   type MessageDirection,
   type PayloadCapture,
   redactCommandArgs,
   requestAttributes,
   requestSpanName,
+  resolveContentCapture,
+  responseAttributes,
   responseOutcome,
   type TerminationReason,
 } from '@mokei/context-client'
 import { getMokeiLogger } from '@mokei/logger'
 import type { Span } from '@opentelemetry/api'
-import { context, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api'
-import { createTracerFactory, extractW3CTraceContext } from '@sozai/otel'
-
-const createTracer = createTracerFactory('mokei')
+import { context, ROOT_CONTEXT, SpanKind, trace } from '@opentelemetry/api'
+import { extractW3CTraceContext } from '@sozai/otel'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -36,7 +38,8 @@ export function createProxyTracing(params: {
   observe(from: MessageDirection, message: unknown): void
   end(reason: TerminationReason): void
 } {
-  const tracer = createTracer('host-node')
+  const tracer = getMokeiTracer('host-node')
+  const capture = resolveContentCapture(params.payloads)
   const contextSpan = tracer.startSpan(
     'mcp.context',
     {
@@ -44,7 +47,7 @@ export function createProxyTracing(params: {
         'mokei.kind': 'context',
         'mokei.root': true,
         'mokei.context.id': params.contextID,
-        'mcp.transport': 'stdio',
+        'network.transport': 'pipe',
         'process.command': params.command,
         'process.command_args': redactCommandArgs(params.args),
       },
@@ -52,15 +55,16 @@ export function createProxyTracing(params: {
     ROOT_CONTEXT,
   )
   const parent = trace.setSpan(ROOT_CONTEXT, contextSpan)
-  const open = new Map<string, Span>()
+  const open = new Map<string, { span: Span; method: string }>()
+  let protocolVersion: string | undefined
   let ended = false
-  function finish(key: string, errorType?: string): void {
-    const span = open.get(key)
-    if (span === undefined) return
+  function finish(key: string, errorType?: string, message?: string, statusCode?: string): void {
+    const entry = open.get(key)
+    if (entry === undefined) return
     open.delete(key)
-    if (errorType !== undefined) span.setAttribute('error.type', errorType)
-    span.setStatus({ code: errorType === undefined ? SpanStatusCode.OK : SpanStatusCode.ERROR })
-    span.end()
+    if (statusCode !== undefined) entry.span.setAttribute('rpc.response.status_code', statusCode)
+    if (errorType === undefined) entry.span.end()
+    else endSpanError(entry.span, errorType, message)
   }
   return {
     observe(from, message) {
@@ -74,9 +78,9 @@ export function createProxyTracing(params: {
           const meta = isRecord(message.params) ? message.params._meta : undefined
           const remote = isRecord(meta) ? extractW3CTraceContext(meta) : undefined
           const remoteContext = remote === undefined ? undefined : trace.getSpanContext(remote)
-          open.set(
-            key,
-            tracer.startSpan(
+          open.set(key, {
+            method,
+            span: tracer.startSpan(
               requestSpanName(method, message.params),
               {
                 kind: from === 'client' ? SpanKind.CLIENT : SpanKind.SERVER,
@@ -88,19 +92,21 @@ export function createProxyTracing(params: {
                     id,
                     direction: from,
                     contextID: params.contextID,
-                    capture: params.payloads,
+                    capture,
+                    protocolVersion,
+                    network: { transport: 'pipe' },
                   })
                 },
               },
               parent,
             ),
-          )
+          })
         } else if (message.id == null) {
           context.with(parent, () => {
             const captured =
               message.params === undefined || !contextSpan.isRecording()
                 ? undefined
-                : capturePayload(message.params, params.payloads)
+                : capturePayload(message.params, capture)
             getMokeiLogger('mcp')
               .getChild('notification')
               .debug('MCP notification {method}', {
@@ -120,38 +126,55 @@ export function createProxyTracing(params: {
         }
       } else if (isID(message.id) && ('result' in message || 'error' in message)) {
         const key = requestKey(from === 'client' ? 'server' : 'client', message.id)
-        const span = open.get(key)
-        if (span === undefined) return
+        const entry = open.get(key)
+        if (entry === undefined) return
+        const { span, method } = entry
+        const side = from === 'client' ? 'server' : 'client'
+        const rpcError =
+          isRecord(message.error) && typeof message.error.code === 'number'
+            ? {
+                code: message.error.code,
+                message:
+                  typeof message.error.message === 'string' ? message.error.message : undefined,
+              }
+            : undefined
+        if (
+          method === 'initialize' &&
+          isRecord(message.result) &&
+          typeof message.result.protocolVersion === 'string'
+        ) {
+          protocolVersion = message.result.protocolVersion
+          contextSpan.setAttribute('mcp.protocol.version', protocolVersion)
+        }
         if (span.isRecording()) {
+          const result = 'result' in message ? message.result : undefined
+          if (rpcError === undefined)
+            span.setAttributes(responseAttributes(method, result, capture))
           const captured = capturePayload(
             'result' in message ? message.result : message.error,
-            params.payloads,
+            capture,
           )
           span.addEvent(
             'mcp.response',
             captured === undefined
               ? {}
               : {
-                  payload: captured.payload,
+                  'mokei.mcp.response': captured.payload,
                   ...(captured.truncated ? { 'mokei.payload.truncated': true } : {}),
                 },
           )
         }
-        const error =
-          isRecord(message.error) && typeof message.error.code === 'number'
-            ? { code: message.error.code }
-            : undefined
-        const outcome = responseOutcome({ result: message.result, error }, 'client')
-        finish(key, outcome.error ? outcome.errorType : undefined)
+        const outcome = responseOutcome({ result: message.result, error: rpcError }, side)
+        if (outcome.error) finish(key, outcome.errorType, outcome.message, outcome.statusCode)
+        else finish(key, undefined, undefined, outcome.statusCode)
       }
     },
     end(reason) {
       if (ended) return
       ended = true
       for (const key of open.keys()) finish(key, `context.${reason}`)
-      if (reason === 'lost') contextSpan.setAttribute('error.type', 'context.lost')
-      contextSpan.setStatus({ code: reason === 'lost' ? SpanStatusCode.ERROR : SpanStatusCode.OK })
-      contextSpan.end()
+      if (reason === 'lost') endSpanError(contextSpan, 'context.lost')
+      else contextSpan.end()
     },
   }
 }

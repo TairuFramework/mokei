@@ -901,7 +901,7 @@ export class ContextClient<
       'name' in serverInfo &&
       typeof serverInfo.name === 'string'
     ) {
-      this.#tracing?.contextSpan?.setAttribute('server.name', serverInfo.name)
+      this.#tracing?.contextSpan?.setAttribute('mokei.server.name', serverInfo.name)
     }
   }
 

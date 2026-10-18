@@ -572,7 +572,7 @@ test.each(['cleanup', 'close', 'rpc', 'abort', 'SIGTERM', 'SIGINT'] as const)(
 
     expect(spansAtKill[0]).toEqual(
       expect.arrayContaining([
-        { name: 'mcp.context', status: SpanStatusCode.OK, errorType: undefined },
+        { name: 'mcp.context', status: SpanStatusCode.UNSET, errorType: undefined },
         { name: 'tools/call pending', status: SpanStatusCode.ERROR, errorType: 'context.stopped' },
       ]),
     )
@@ -609,7 +609,7 @@ test.each(['SIGTERM', 'SIGINT'] as const)(
       expect((await client.request('info')).activeContexts).toEqual({})
       expect(
         exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')?.status.code,
-      ).toBe(SpanStatusCode.OK)
+      ).toBe(SpanStatusCode.UNSET)
       gate.resolve()
       await pending
       expect(close).toHaveBeenCalledTimes(1)

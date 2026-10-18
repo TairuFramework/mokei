@@ -45,7 +45,7 @@ export function SpanDetail({ span, logs }: { span: StoredSpan | OpenSpan; logs: 
         <Tabs.Panel value="response">
           <JsonPayload
             key={span.spanID}
-            value={response?.attributes?.['mokei.mcp.response'] ?? response?.attributes?.payload}
+            value={response?.attributes?.['mokei.mcp.response']}
             empty="No captured payload."
           />
         </Tabs.Panel>

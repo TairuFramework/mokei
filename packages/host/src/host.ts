@@ -4,7 +4,10 @@ import {
   ContextClient,
   type ContextTypes,
   type ElicitHandler,
+  endSpanError,
+  getMokeiTracer,
   type ListParams,
+  type NetworkInfo,
   type PayloadCapture,
   type PromptParams,
   type TerminationReason,
@@ -25,10 +28,9 @@ import type {
 import type { WithRequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type JSONValue, type ServerConfig } from '@mokei/context-server'
 import { type FetchMiddleware, type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
-import { ROOT_CONTEXT, SpanStatusCode } from '@opentelemetry/api'
+import { ROOT_CONTEXT } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
-import { createTracerFactory } from '@sozai/otel'
 
 import {
   createLocalToolID,
@@ -39,8 +41,32 @@ import {
   type LocalToolDefinition,
 } from './local-tools.js'
 
-const createTracer = createTracerFactory('mokei')
 type ContextTransport = 'stdio' | 'http' | 'direct'
+
+/** The protocol revision is unresolved (and the getter throws) while an `'auto'` probe is pending. */
+function currentProtocolVersion(client: ContextClient): string | undefined {
+  try {
+    return client.protocolVersion
+  } catch {
+    return undefined
+  }
+}
+
+function networkInfo(transport: ContextTransport, url?: string): NetworkInfo | undefined {
+  if (transport === 'stdio') return { transport: 'pipe' }
+  if (transport !== 'http') return undefined
+  const info: NetworkInfo = { transport: 'tcp', protocolName: 'http' }
+  if (url === undefined) return info
+  try {
+    const parsed = new URL(url)
+    info.serverAddress = parsed.hostname
+    info.serverPort =
+      parsed.port === '' ? (parsed.protocol === 'https:' ? 443 : 80) : Number(parsed.port)
+  } catch {
+    // Unparseable URL: keep transport-level attributes only.
+  }
+  return info
+}
 
 export type EnableTools = boolean | Array<string>
 export type EnableToolsFn = (tools: Array<Tool>) => EnableTools | Promise<EnableTools>
@@ -597,6 +623,7 @@ export class ContextHost extends Disposer {
       context.client as unknown as ContextClient,
       'http',
       transport,
+      url,
     )
 
     return context.client
@@ -616,15 +643,28 @@ export class ContextHost extends Disposer {
     client: ContextClient,
     transport: ContextTransport = 'direct',
     httpTransport?: HTTPTransport,
+    url?: string,
   ): void {
-    const span = createTracer('host').startSpan(
+    const network = networkInfo(transport, url)
+    const span = getMokeiTracer('host').startSpan(
       'mcp.context',
       {
         attributes: {
           'mokei.kind': 'context',
           'mokei.root': true,
           'mokei.context.id': key,
-          'mcp.transport': transport,
+          ...(network === undefined
+            ? {}
+            : {
+                'network.transport': network.transport,
+                ...(network.protocolName === undefined
+                  ? {}
+                  : { 'network.protocol.name': network.protocolName }),
+                ...(network.serverAddress === undefined
+                  ? {}
+                  : { 'server.address': network.serverAddress }),
+                ...(network.serverPort === undefined ? {} : { 'server.port': network.serverPort }),
+              }),
         },
       },
       ROOT_CONTEXT,
@@ -634,9 +674,13 @@ export class ContextHost extends Disposer {
       contextSpan: span,
       payloads: this.#payloads,
       getSessionID: () => httpTransport?.sessionID ?? undefined,
+      getProtocolVersion: () => currentProtocolVersion(client),
+      network,
     })
+    const initialVersion = currentProtocolVersion(client)
+    if (initialVersion !== undefined) span.setAttribute('mcp.protocol.version', initialVersion)
     if (client.initializationResult != null)
-      span.setAttribute('server.name', client.initializationResult.serverInfo.name)
+      span.setAttribute('mokei.server.name', client.initializationResult.serverInfo.name)
     let settled = false
     this.#contextSettlers.set(key, (reason) => {
       if (settled) return
@@ -644,14 +688,15 @@ export class ContextHost extends Disposer {
       client.endTracing(reason)
       if (httpTransport?.sessionID != null)
         span.setAttribute('mcp.session.id', httpTransport.sessionID)
-      if (reason === 'lost') span.setAttribute('error.type', 'context.lost')
-      span.setStatus({ code: reason === 'lost' ? SpanStatusCode.ERROR : SpanStatusCode.OK })
-      span.end()
+      if (reason === 'lost') endSpanError(span, 'context.lost')
+      else span.end()
     })
     const unsubscribes = [
       client.events.on('initialized', ({ serverInfo }) => {
         if (settled) return
-        span.setAttribute('server.name', serverInfo.name)
+        span.setAttribute('mokei.server.name', serverInfo.name)
+        const version = currentProtocolVersion(client)
+        if (version !== undefined) span.setAttribute('mcp.protocol.version', version)
         if (httpTransport?.sessionID != null)
           span.setAttribute('mcp.session.id', httpTransport.sessionID)
       }),
