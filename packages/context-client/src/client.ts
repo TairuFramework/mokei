@@ -329,7 +329,8 @@ type ClientTypes = {
 type PagedResult = { nextCursor?: string } & Record<string, unknown>
 
 const FIRST_EXCHANGE = Symbol('firstExchange')
-type TracedRequestOptions = RequestOptions & { [FIRST_EXCHANGE]?: SpanContext }
+const ROUND = Symbol('round')
+type TracedRequestOptions = RequestOptions & { [FIRST_EXCHANGE]?: SpanContext; [ROUND]?: number }
 
 export class ContextClient<
   T extends ContextTypes = UnknownContextTypes,
@@ -639,10 +640,12 @@ export class ContextClient<
     if (!protocol.clientMethods.has(method as string)) {
       throw new MethodNotInRevisionError({ method: method as string, version: protocol.version })
     }
-    const firstContext = (options as TracedRequestOptions | undefined)?.[FIRST_EXCHANGE]
+    const traced = options as TracedRequestOptions | undefined
+    const firstContext = traced?.[FIRST_EXCHANGE]
     const exchange = this.#exchangeTracer.startOutgoing(method as string, params, {
       links: firstContext === undefined ? [] : [{ context: firstContext }],
       traceAttributes: options?.traceAttributes,
+      round: traced?.[ROUND],
     })
     const first = firstContext ?? exchange.span.spanContext()
     return withActiveContext(exchange.context, async () => {
@@ -720,29 +723,56 @@ export class ContextClient<
             'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
         })
       }
-      return (await runInputRequiredFlow({
-        method: method as string,
-        first: result,
-        maxRounds: this.#inputRequired.maxRounds,
-        timeout: options?.timeout,
-        maxTotalTimeout: options?.maxTotalTimeout,
-        startedAt,
-        signal: options?.signal,
-        dispatch: (key, inputRequest, signal) =>
-          this.#fulfilInputRequest(key, inputRequest, signal),
-        retry: (retryParams, timeout) => {
-          return this.request(
+      // `legs` is the next retry's round index; `suspended` is true while no retry leg is in
+      // flight and the last settled round was `input_required`, i.e. when a rejection is local.
+      let legs = 1
+      let suspended = true
+      try {
+        return (await runInputRequiredFlow({
+          method: method as string,
+          first: result,
+          maxRounds: this.#inputRequired.maxRounds,
+          timeout: options?.timeout,
+          maxTotalTimeout: options?.maxTotalTimeout,
+          startedAt,
+          signal: options?.signal,
+          dispatch: (key, inputRequest, signal) =>
+            this.#fulfilInputRequest(key, inputRequest, signal),
+          retry: async (retryParams, timeout) => {
+            const round = legs++
+            suspended = false
+            const retried = await this.request(
+              method,
+              { ...(params as object), ...retryParams } as typeof params,
+              {
+                ...options,
+                allowInputRequired: true,
+                timeout,
+                [FIRST_EXCHANGE]: first,
+                [ROUND]: round,
+              } as TracedRequestOptions,
+            )
+            suspended = isInputRequiredResult(retried)
+            return retried
+          },
+        })) as ClientTypes['SendRequests'][Method]['Result']
+      } catch (cause) {
+        // A wire failure on a retry leg already settled that leg's span with `execute_tool`.
+        if (suspended && method === 'tools/call') {
+          this.#exchangeTracer.recordLocalFailure({
             method,
-            { ...(params as object), ...retryParams } as typeof params,
-            {
-              ...options,
-              allowInputRequired: true,
-              timeout,
-              [FIRST_EXCHANGE]: first,
-            } as TracedRequestOptions,
-          )
-        },
-      })) as ClientTypes['SendRequests'][Method]['Result']
+            params,
+            links: [{ context: first }],
+            traceAttributes: options?.traceAttributes,
+            round: legs - 1,
+            error: cause,
+            ...(options?.signal?.aborted && cause === options.signal.reason
+              ? { errorType: 'cancelled' }
+              : {}),
+          })
+        }
+        throw cause
+      }
     })
   }
 

@@ -3,7 +3,7 @@ import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { META_SUBSCRIPTION_ID } from '@mokei/context-protocol'
 import { RPCError, TransportClosedError } from '@mokei/context-rpc'
 import type { Attributes } from '@opentelemetry/api'
-import { SpanStatusCode, trace } from '@opentelemetry/api'
+import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api'
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { afterEach, expect, test, vi } from 'vitest'
 
@@ -285,6 +285,144 @@ test('each MRTR retry leg is its own span linked to the first leg', async () => 
     expect(
       span.links.some((link) => link.context.spanId === required(spans()[0]).spanContext().spanId),
     ).toBe(true)
+})
+const suspension = {
+  resultType: 'input_required' as const,
+  inputRequests: {
+    ask: {
+      method: 'elicitation/create' as const,
+      params: { message: 'hi', requestedSchema: { type: 'object' as const, properties: {} } },
+    },
+  },
+  requestState: 'state-0',
+}
+function internalSpans() {
+  return exporter.getFinishedSpans().filter((span) => span.kind === SpanKind.INTERNAL)
+}
+async function suspendOnce(
+  options: Partial<ClientParams> = {},
+  requestOptions?: { signal?: AbortSignal },
+) {
+  const f = await fixture(binding(), '2026-07-28', options)
+  const pending = f.client.request('tools/call', { name: 'echo' }, requestOptions)
+  const frame = await f.next()
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: frame.id,
+    result: suspension,
+  } as ServerMessage)
+  return { ...f, pending }
+}
+test('suspended tools/call rounds drop execute_tool and carry the round index', async () => {
+  const f = await suspendOnce({ elicit: async () => ({ action: 'decline' }) })
+  const frame = await f.next()
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: frame.id,
+    result: { ...result, resultType: 'complete' },
+  } as ServerMessage)
+  await f.pending
+  expect(spans()).toHaveLength(2)
+  const [first, last] = [required(spans()[0]), required(spans()[1])]
+  expect(first.attributes['mokei.mcp.round']).toBe(0)
+  expect(first.attributes['gen_ai.operation.name']).toBeUndefined()
+  expect(last.attributes['mokei.mcp.round']).toBe(1)
+  expect(last.attributes['gen_ai.operation.name']).toBe('execute_tool')
+  expect(last.links.some((link) => link.context.spanId === first.spanContext().spanId)).toBe(true)
+})
+test('a single-round tools/call keeps execute_tool and no round', async () => {
+  await (await fixture(binding())).call()
+  expect(spans()).toHaveLength(1)
+  expect(required(spans()[0]).attributes['gen_ai.operation.name']).toBe('execute_tool')
+  expect(required(spans()[0]).attributes['mokei.mcp.round']).toBeUndefined()
+})
+test('a failed single-round tools/call keeps execute_tool', async () => {
+  const f = await fixture()
+  const pending = f.client.request('tools/call', { name: 'missing' })
+  const rejected = expect(pending).rejects.toThrow('missing')
+  const frame = await f.next()
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: frame.id,
+    error: { code: -32601, message: 'missing' },
+  })
+  await rejected
+  expect(required(spans()[0]).attributes['gen_ai.operation.name']).toBe('execute_tool')
+  expect(required(spans()[0]).attributes['error.type']).toBe('-32601')
+  exporter.reset()
+  const failing = f.client.request('tools/call', { name: 'bad' })
+  const failingFrame = await f.next()
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: failingFrame.id,
+    result: { ...result, isError: true },
+  })
+  await failing
+  expect(required(spans()[0]).attributes['gen_ai.operation.name']).toBe('execute_tool')
+  expect(required(spans()[0]).attributes['error.type']).toBe('tool_error')
+})
+test('caller-driven rounds mark the suspended leg without a local failure span', async () => {
+  const f = await fixture(binding(), '2026-07-28')
+  const pending = f.client.request('tools/call', { name: 'echo' }, { allowInputRequired: true })
+  const frame = await f.next()
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: frame.id,
+    result: suspension,
+  } as ServerMessage)
+  await pending
+  expect(spans()).toHaveLength(1)
+  expect(required(spans()[0]).attributes['mokei.mcp.round']).toBe(0)
+  expect(required(spans()[0]).attributes['gen_ai.operation.name']).toBeUndefined()
+  expect(internalSpans()).toHaveLength(0)
+})
+test('a failure between rounds emits one execute_tool INTERNAL span', async () => {
+  const f = await suspendOnce({
+    elicit: async () => {
+      throw new TypeError('elicit failed')
+    },
+  })
+  await expect(f.pending).rejects.toThrow('elicit failed')
+  expect(internalSpans()).toHaveLength(1)
+  const span = required(internalSpans()[0])
+  expect(span.name).toBe('execute_tool echo')
+  expect(span.attributes['gen_ai.operation.name']).toBe('execute_tool')
+  expect(span.attributes['gen_ai.tool.name']).toBe('echo')
+  expect(span.attributes['mokei.mcp.round']).toBe(0)
+  expect(span.attributes['error.type']).toBe('TypeError')
+  expect(span.status.code).toBe(SpanStatusCode.ERROR)
+  expect(
+    span.links.some((link) => link.context.spanId === required(spans()[0]).spanContext().spanId),
+  ).toBe(true)
+})
+test('an abort between rounds records the local failure span as cancelled', async () => {
+  const controller = new AbortController()
+  const reason = new Error('caller stopped')
+  const f = await suspendOnce(
+    {
+      elicit: ({ signal }) => {
+        controller.abort(reason)
+        return Promise.reject(signal.reason)
+      },
+    },
+    { signal: controller.signal },
+  )
+  await expect(f.pending).rejects.toBe(reason)
+  expect(internalSpans()).toHaveLength(1)
+  expect(required(internalSpans()[0]).attributes['error.type']).toBe('cancelled')
+})
+test('a wire failure on a retry leg emits no local failure span', async () => {
+  const f = await suspendOnce({ elicit: async () => ({ action: 'decline' }) })
+  const frame = await f.next()
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: frame.id,
+    error: { code: -32603, message: 'boom' },
+  })
+  await expect(f.pending).rejects.toThrow('boom')
+  expect(spans()).toHaveLength(2)
+  expect(required(spans()[1]).attributes['error.type']).toBe('-32603')
+  expect(internalSpans()).toHaveLength(0)
 })
 test('payloads off records no mokei.mcp.request and no mcp.response payload', async () => {
   await (await fixture({ ...binding(), payloads: 'off' })).call()

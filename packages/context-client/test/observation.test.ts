@@ -8,6 +8,7 @@ import {
   responseAttributes,
   responseOutcome,
   sanitizeMessage,
+  settleAttributes,
 } from '../src/observation.js'
 
 describe('MCP observation', () => {
@@ -224,6 +225,39 @@ describe('MCP span shape', () => {
         'mcp.resource.uri': 'file:///a',
       })
     }
+  })
+
+  test('deferOperationName omits execute_tool from tools/call request attributes', () => {
+    const params = { method: 'tools/call', params: { name: 't' }, direction: 'client' as const }
+    expect(requestAttributes({ ...params, deferOperationName: true })).not.toHaveProperty(
+      'gen_ai.operation.name',
+    )
+    expect(requestAttributes(params)['gen_ai.operation.name']).toBe('execute_tool')
+  })
+
+  test('settleAttributes marks the final round and the round index', () => {
+    expect(settleAttributes({ method: 'tools/call', inputRequired: false })).toEqual({
+      'gen_ai.operation.name': 'execute_tool',
+    })
+    expect(settleAttributes({ method: 'tools/call', inputRequired: true, round: 0 })).toEqual({
+      'mokei.mcp.round': 0,
+    })
+    expect(settleAttributes({ method: 'prompts/get', inputRequired: false, round: 2 })).toEqual({
+      'mokei.mcp.round': 2,
+    })
+  })
+
+  test('a long string prompt variable is capped in bytes and flagged truncated', () => {
+    const attributes = requestAttributes({
+      direction: 'client',
+      capture: 10,
+      method: 'prompts/get',
+      params: { name: 'p', arguments: { topic: 'x'.repeat(100) } },
+    })
+    expect(
+      new TextEncoder().encode(attributes['gen_ai.prompt.variable.topic'] as string).length,
+    ).toBe(10)
+    expect(attributes['mokei.payload.truncated']).toBe(true)
   })
 
   test('prompt variables are redacted by key and capped', () => {

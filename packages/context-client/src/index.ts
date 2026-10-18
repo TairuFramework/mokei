@@ -71,6 +71,7 @@ export {
   responseAttributes,
   responseOutcome,
   sanitizeMessage,
+  settleAttributes,
 } from './observation.js'
 export {
   AGENT_COUNT_BUCKETS,

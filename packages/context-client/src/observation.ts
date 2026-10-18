@@ -108,6 +108,8 @@ export function requestAttributes(params: {
   protocolVersion?: string
   network?: NetworkInfo
   traceAttributes?: Attributes
+  /** Leave `gen_ai.operation.name` to `settleAttributes`: a suspended round is not a tool execution. */
+  deferOperationName?: boolean
 }): Attributes {
   const attributes: Attributes = {
     'mokei.kind': 'mcp',
@@ -116,7 +118,7 @@ export function requestAttributes(params: {
   }
   const body = isRecord(params.params) ? params.params : undefined
   if (params.method === 'tools/call') {
-    attributes['gen_ai.operation.name'] = 'execute_tool'
+    if (params.deferOperationName !== true) attributes['gen_ai.operation.name'] = 'execute_tool'
     if (typeof body?.name === 'string') attributes['gen_ai.tool.name'] = body.name
     if (body?.arguments !== undefined) {
       const captured = capturePayload(body.arguments, params.capture)
@@ -168,6 +170,23 @@ export function requestAttributes(params: {
     }
   }
   return { ...attributes, ...params.traceAttributes }
+}
+
+/**
+ * Attributes set when an exchange settles: only a `tools/call` that does not suspend is an
+ * `execute_tool`, and MRTR rounds carry their 0-based index.
+ */
+export function settleAttributes(params: {
+  method: string
+  inputRequired: boolean
+  round?: number
+}): Attributes {
+  const attributes: Attributes = {}
+  if (params.method === 'tools/call' && !params.inputRequired) {
+    attributes['gen_ai.operation.name'] = 'execute_tool'
+  }
+  if (params.round !== undefined) attributes['mokei.mcp.round'] = params.round
+  return attributes
 }
 
 export function responseAttributes(

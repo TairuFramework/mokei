@@ -4,6 +4,7 @@ import { context, ROOT_CONTEXT, SpanKind, trace } from '@opentelemetry/api'
 import { extractW3CTraceContext } from '@sozai/otel'
 
 import { mcpMetricsEnabled, metricAttributes, recordMCPOperation } from './mcp-metrics.js'
+import { isInputRequiredResult } from './mrtr.js'
 import {
   capturePayload,
   type NetworkInfo,
@@ -12,8 +13,9 @@ import {
   requestSpanName,
   responseAttributes,
   responseOutcome,
+  settleAttributes,
 } from './observation.js'
-import { endSpanError, getMokeiTracer, resolveContentCapture } from './semconv.js'
+import { endSpanError, errorTypeOf, getMokeiTracer, resolveContentCapture } from './semconv.js'
 
 /** Where incoming request spans take their parent from: the bound context span, or `_meta.traceparent`. */
 export type TraceParentFrom = 'context' | 'meta'
@@ -52,6 +54,7 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
     id?: RequestID,
     contextTraceID?: string,
     traceAttributes?: Record<string, string>,
+    round?: number,
   ): ExchangeSpan {
     const binding = getBinding()
     const span = getMokeiTracer('context-client').startSpan(
@@ -73,6 +76,7 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
               protocolVersion: binding?.getProtocolVersion?.(),
               network: binding?.network,
               traceAttributes,
+              deferOperationName: true,
             }),
             ...(contextTraceID === undefined ? {} : { 'mokei.context.trace_id': contextTraceID }),
           }
@@ -82,7 +86,12 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
     )
     let settled = false
     const startedAt = performance.now()
-    function finish(errorType?: string, message?: string, statusCode?: string) {
+    function finish(
+      errorType?: string,
+      message?: string,
+      statusCode?: string,
+      inputRequired = false,
+    ) {
       settled = true
       open.delete(exchange)
       if (mcpMetricsEnabled())
@@ -103,6 +112,14 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
           }),
         })
       if (statusCode !== undefined) span.setAttribute('rpc.response.status_code', statusCode)
+      // A suspended leg driven without an explicit round is the first one.
+      span.setAttributes(
+        settleAttributes({
+          method,
+          inputRequired,
+          round: round ?? (inputRequired ? 0 : undefined),
+        }),
+      )
       if (errorType === undefined) span.end()
       else endSpanError(span, errorType, message)
     }
@@ -129,7 +146,12 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
           )
         }
         const outcome = responseOutcome({ result }, direction)
-        finish(outcome.error ? outcome.errorType : undefined)
+        finish(
+          outcome.error ? outcome.errorType : undefined,
+          undefined,
+          undefined,
+          isInputRequiredResult(result),
+        )
       },
       fail(errorType, message) {
         if (!settled) finish(errorType, message)
@@ -148,7 +170,11 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
     startOutgoing(
       method: string,
       params: unknown,
-      options?: { links?: Array<Link>; traceAttributes?: Record<string, string> },
+      options?: {
+        links?: Array<Link>
+        traceAttributes?: Record<string, string>
+        round?: number
+      },
     ): ExchangeSpan {
       const binding = getBinding()
       let parent = context.active()
@@ -175,6 +201,48 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
         undefined,
         contextTraceID,
         options?.traceAttributes,
+        options?.round,
+      )
+    },
+    /**
+     * A call that fails locally after a round settled as `input_required` (embedded request
+     * failure, round cap, total timeout, abort) sent no final wire round: record the failed
+     * `execute_tool` so failed logical calls stay visible to span-based counts.
+     */
+    recordLocalFailure(params: {
+      method: string
+      params: unknown
+      links: Array<Link>
+      traceAttributes?: Record<string, string>
+      round: number
+      error: unknown
+      /** Overrides the `errorTypeOf` classification, e.g. `cancelled` for a caller abort reason. */
+      errorType?: string
+    }): void {
+      const toolName =
+        params.params !== null &&
+        typeof params.params === 'object' &&
+        typeof (params.params as { name?: unknown }).name === 'string'
+          ? (params.params as { name: string }).name
+          : undefined
+      const span = getMokeiTracer('context-client').startSpan(
+        toolName === undefined ? 'execute_tool' : `execute_tool ${toolName}`,
+        {
+          kind: SpanKind.INTERNAL,
+          links: params.links,
+          attributes: {
+            'gen_ai.operation.name': 'execute_tool',
+            ...(toolName === undefined ? {} : { 'gen_ai.tool.name': toolName }),
+            'mokei.mcp.round': params.round,
+            ...params.traceAttributes,
+          },
+        },
+        context.active(),
+      )
+      endSpanError(
+        span,
+        params.errorType ?? errorTypeOf(params.error),
+        params.error instanceof Error ? params.error.message : String(params.error),
       )
     },
     startIncoming(
