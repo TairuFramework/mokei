@@ -57,14 +57,14 @@ catalog:
   '@sozai/stream': ^0.2.2
   '@teikyo/oauth': ^0.1.0
   '@standard-schema/spec': ^1.1.0
-  '@tejika/cli': ^0.4.2
+  '@tejika/cli': ^0.5.0
   '@tejika/db': ^0.2.0
   '@tejika/env': ^0.5.3
   '@tejika/log': ^0.4.1
   '@tejika/process': ^0.5.2
   '@tejika/server': ^0.4.2
   '@tejika/test': ^0.4.2
-  '@tejika/ui': ^0.4.2
+  '@tejika/ui': ^0.5.0
   '@hozon/adapter': ^0.1.0
   '@hozon/db': ^0.2.3
   '@hozon/logtape': ^0.1.1
@@ -72,10 +72,10 @@ catalog:
   '@hozon/store-log': ^0.2.3
   '@hozon/store-telemetry': ^0.2.2
   '@inkjs/ui': ^2.0.0
-  '@mantine/code-highlight': ^9.7.2
-  '@mantine/core': ^9.7.2
-  '@mantine/hooks': ^9.7.2
-  '@mantine/notifications': ^9.7.2
+  '@mantine/code-highlight': ^9.7.3
+  '@mantine/core': ^9.7.3
+  '@mantine/hooks': ^9.7.3
+  '@mantine/notifications': ^9.7.3
   '@modelcontextprotocol/client': 2.3.1
   '@modelcontextprotocol/core': 2.3.1
   '@modelcontextprotocol/ext-tasks': 0.2.2
@@ -104,7 +104,7 @@ catalog:
   get-port: ^7.2.0
   globals: ^17.13.0
   hono: ^4.13.13
-  ink: ^7.1.1
+  ink: ^8.0.0
   commander: ^15.0.0
   ink-testing-library: ^4.0.0
   jotai: ^3.0.1

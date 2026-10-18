@@ -213,17 +213,17 @@ catalogs:
       specifier: ^2.4.1
       version: 2.4.1
     '@mantine/code-highlight':
-      specifier: ^9.7.2
-      version: 9.7.2
+      specifier: ^9.7.3
+      version: 9.7.3
     '@mantine/core':
-      specifier: ^9.7.2
-      version: 9.7.2
+      specifier: ^9.7.3
+      version: 9.7.3
     '@mantine/hooks':
-      specifier: ^9.7.2
-      version: 9.7.2
+      specifier: ^9.7.3
+      version: 9.7.3
     '@mantine/notifications':
-      specifier: ^9.7.2
-      version: 9.7.2
+      specifier: ^9.7.3
+      version: 9.7.3
     '@modelcontextprotocol/client':
       specifier: 2.3.1
       version: 2.3.1
@@ -318,8 +318,8 @@ catalogs:
       specifier: ^0.1.0
       version: 0.1.0
     '@tejika/cli':
-      specifier: ^0.4.2
-      version: 0.4.2
+      specifier: ^0.5.0
+      version: 0.5.0
     '@tejika/db':
       specifier: ^0.2.0
       version: 0.2.0
@@ -339,8 +339,8 @@ catalogs:
       specifier: ^0.4.2
       version: 0.4.2
     '@tejika/ui':
-      specifier: ^0.4.2
-      version: 0.4.2
+      specifier: ^0.5.0
+      version: 0.5.0
     '@testing-library/react':
       specifier: ^16.3.3
       version: 16.3.3
@@ -384,8 +384,8 @@ catalogs:
       specifier: ^4.13.13
       version: 4.13.13
     ink:
-      specifier: ^7.1.1
-      version: 7.1.1
+      specifier: ^8.0.0
+      version: 8.0.0
     ink-testing-library:
       specifier: ^4.0.0
       version: 4.0.0
@@ -706,16 +706,16 @@ importers:
         version: 0.21.5(@logtape/logtape@2.4.1)
       '@mantine/code-highlight':
         specifier: 'catalog:'
-        version: 9.7.2(@mantine/core@9.7.2(@mantine/hooks@9.7.2(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.2(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 9.7.3(@mantine/core@9.7.3(@mantine/hooks@9.7.3(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.3(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@mantine/core':
         specifier: 'catalog:'
-        version: 9.7.2(@mantine/hooks@9.7.2(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 9.7.3(@mantine/hooks@9.7.3(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@mantine/hooks':
         specifier: 'catalog:'
-        version: 9.7.2(react@19.3.1)
+        version: 9.7.3(react@19.3.1)
       '@mantine/notifications':
         specifier: 'catalog:'
-        version: 9.7.2(@mantine/core@9.7.2(@mantine/hooks@9.7.2(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.2(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 9.7.3(@mantine/core@9.7.3(@mantine/hooks@9.7.3(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.3(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@mokei/flow-client':
         specifier: workspace:^
         version: link:../packages/flow-client
@@ -907,7 +907,7 @@ importers:
         version: 0.2.2(@logtape/logtape@2.4.1)
       '@inkjs/ui':
         specifier: 'catalog:'
-        version: 2.0.0(ink@7.1.1(@types/react@19.3.0)(react@19.3.1))
+        version: 2.0.0(ink@8.0.0(@types/react@19.3.0)(react@19.3.1))
       '@mokei/anthropic-provider':
         specifier: workspace:^
         version: link:../anthropic-provider
@@ -970,19 +970,19 @@ importers:
         version: 0.1.6(@logtape/logtape@2.4.1)
       '@tejika/cli':
         specifier: 'catalog:'
-        version: 0.4.2(@logtape/logtape@2.4.1)(ink@7.1.1(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)
+        version: 0.5.0(@logtape/logtape@2.4.1)(ink@8.0.0(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)
       '@tejika/process':
         specifier: 'catalog:'
         version: 0.5.3(@logtape/logtape@2.4.1)
       '@tejika/ui':
         specifier: 'catalog:'
-        version: 0.4.2(ink@7.1.1(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)
+        version: 0.5.0(ink@8.0.0(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)
       commander:
         specifier: 'catalog:'
         version: 15.0.0
       ink:
         specifier: 'catalog:'
-        version: 7.1.1(@types/react@19.3.0)(react@19.3.1)
+        version: 8.0.0(@types/react@19.3.0)(react@19.3.1)
       react:
         specifier: 'catalog:'
         version: 19.3.1
@@ -3742,36 +3742,36 @@ packages:
   '@logtape/logtape@2.4.1':
     resolution: {integrity: sha512-faEZkjQf5pI8WsnCXbpBInC9SeWqYUNAtLviTLkCI3JLHFkV1bKrfxbIJc96TVqqVjSUz8LYtX0JWKdiBwEpCg==}
 
-  '@mantine/code-highlight@9.7.2':
-    resolution: {integrity: sha512-Vf1CGJw8QOT+roLOapSMnh/x4cdH/Qmd1kXLgkggbYuSIs5Io/6th5AbW7hFd1PXyBeZjvDos/rO+Ae85Aw6NQ==}
+  '@mantine/code-highlight@9.7.3':
+    resolution: {integrity: sha512-H2inO1qPsAwHw2OUYxR6jUlcd//vPyanE70/TcSpiFjI8nsg/izIxXr3PyjdG8PCBumILCxZqgDklezp8uqh8g==}
     peerDependencies:
-      '@mantine/core': 9.7.2
-      '@mantine/hooks': 9.7.2
+      '@mantine/core': 9.7.3
+      '@mantine/hooks': 9.7.3
       react: ^19.2.0
       react-dom: ^19.2.0
 
-  '@mantine/core@9.7.2':
-    resolution: {integrity: sha512-+cggJDD0PO057SwZU/dKlWPjp0LaAn1nEM9W1m/Ia4Cjb/Hy9DjZ4I7R7xirp/eZ6xnV7OqeGmPFSJ8zeGa5kQ==}
+  '@mantine/core@9.7.3':
+    resolution: {integrity: sha512-wYJ9Bd82a7HqwJ+hubFqUIocBGMuw6txzdPnnleHvv1h0NlnkESevK/WHTRh4FtOw33B5N2ADT34s3x1/8d8jg==}
     peerDependencies:
-      '@mantine/hooks': 9.7.2
+      '@mantine/hooks': 9.7.3
       react: ^19.2.0
       react-dom: ^19.2.0
 
-  '@mantine/hooks@9.7.2':
-    resolution: {integrity: sha512-11emsRp/Mg+vfaKVyoMwiMdCHmO/15XOL6JG9fACkclVZnLPBVvRIaDdRBudsR3ALGZ5iTzrArPJDjjoeO6X4w==}
+  '@mantine/hooks@9.7.3':
+    resolution: {integrity: sha512-GMHoMS1qul1dBLIHd/N9ef2Pr8UKYYHfuM+g2ej3gYqU0kH4sTiR9FNHksoTQi0PzATRoaNlUYjjMe9rbDRw5A==}
     peerDependencies:
       react: ^19.2.0
 
-  '@mantine/notifications@9.7.2':
-    resolution: {integrity: sha512-Lf/oS2bpWgalgJ7Uy2Gh2V/kqnIIM3zkeWYy+GZKunfbiQGyuDBasOGd/4RYu5ga7b8vxJzC/zINi/UdpFuxoQ==}
+  '@mantine/notifications@9.7.3':
+    resolution: {integrity: sha512-ebsyKnA9oYYOtRwPD8uO2mQvHsJC3nlOt0hJsciFV+zMaS9OIoONDVN8nD5HvuAVe0UWTxxZ3i8jw7QEs4rxEA==}
     peerDependencies:
-      '@mantine/core': 9.7.2
-      '@mantine/hooks': 9.7.2
+      '@mantine/core': 9.7.3
+      '@mantine/hooks': 9.7.3
       react: ^19.2.0
       react-dom: ^19.2.0
 
-  '@mantine/store@9.7.2':
-    resolution: {integrity: sha512-ERjk46CbQeSqytWTq5cAzT4o9MBAzzvVXpPlD36B5NwB5hmbjQfdUKcr0PlZfG04a/PDPdLPvAiVp7Eeh0tk8A==}
+  '@mantine/store@9.7.3':
+    resolution: {integrity: sha512-Z8BD1cw4LxSrH7l0zzVeFntzcYzO4vTP/I5aezizKdar6nbeladQKQnsBV2aReamp05vlVybZG3IKQdRBfXrOg==}
     peerDependencies:
       react: ^19.2.0
 
@@ -4622,9 +4622,6 @@ packages:
   '@sozai/codec@0.4.3':
     resolution: {integrity: sha512-C2WtBwspVIRtCS4AS4qXTQUxgTN2RjzKH/eK6nInh0/MeCZUBtkxrp40GwKy6VCA3lim2Ta8bFNXet9l8QbxCg==}
 
-  '@sozai/event@0.1.5':
-    resolution: {integrity: sha512-j6FoxeHJb3hdhh9SHoK+ZL6HZxxp89aNBijUyhKULf+vNchXtG+yL91bGSTQhFvJ2U1opnLdFgqhirpiyLSmpw==}
-
   '@sozai/event@0.1.6':
     resolution: {integrity: sha512-RVZPfa7CsM0DICTDjb79P+FgA4TvLWpzKFY0PGr53Il2hS51O4z2oy8y6zbne2IYDxcpZibcSVGGJCWRnmhFgw==}
 
@@ -5075,12 +5072,12 @@ packages:
     peerDependencies:
       hono: ^4.13.13
 
-  '@tejika/cli@0.4.2':
-    resolution: {integrity: sha512-RMuKzZJ00aDs8FyI2R29NLwYpOz67zKE4bRzyuJ/DgzsL2N7KvcEI1XfBzVd3IYRbnKJN+p98CPqEiRqkKyZ4Q==}
+  '@tejika/cli@0.5.0':
+    resolution: {integrity: sha512-9UtNO3h7neEJJr4GskTvAcsQXpRD5Gm6WubiB5BshdpS4nAPL5OM9rn9aoruSqlFQ7ljmqOjfINDcIjKc5aQTA==}
     engines: {node: '>=24'}
     peerDependencies:
-      ink: ^7.0.0
-      react: ^19.0.0
+      ink: ^8.0.0
+      react: ^19.3.0
 
   '@tejika/db@0.2.0':
     resolution: {integrity: sha512-5cw5zM0R57/+DDaJ/FqwF+ig/lXNmd/UNBh9QAZ7+mmsagtHldPbZ9y5z0dpqh7H/3btmbSzxxrHksxPF+AYeQ==}
@@ -5108,12 +5105,12 @@ packages:
     resolution: {integrity: sha512-8k9nHq3Jx5MmKkw+5jM1CyERu9T0D3T61R1St55T1HvdRJ+bgDwFKw+PxShNOdMgiea6u2TY3w6sZNiIsCLnXg==}
     engines: {node: '>=24'}
 
-  '@tejika/ui@0.4.2':
-    resolution: {integrity: sha512-S7WPRrQy3uFlRPHtQqCK/wcQg/JkjSeiJ1QkKabK8s789fqB3cRBXcbtPU3EJuCItK6oO5+BzroY+FvJEHDj9g==}
+  '@tejika/ui@0.5.0':
+    resolution: {integrity: sha512-d1lkv+l0FY4Kx8c6eV6og3PVagZmQYVQJhsNxMnH95a4seRwMJKs9MmwcGcRxSBPPTjpxneaOEcacoY46kM2EQ==}
     engines: {node: '>=24'}
     peerDependencies:
-      ink: ^7.0.0
-      react: ^19.0.0
+      ink: ^8.0.0
+      react: ^19.3.0
 
   '@testing-library/dom@10.4.2':
     resolution: {integrity: sha512-yzr2S9HyAIdhz2/6qHgbs665Q7PKVcDF05vsOlHPxG1mo36gKVesdYVeDLnXgfjJ03CrKRk08knc6+E/9m8v2Q==}
@@ -5609,6 +5606,10 @@ packages:
     resolution: {integrity: sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg==}
     engines: {node: '>=12'}
 
+  ansi-styles@7.0.0:
+    resolution: {integrity: sha512-kKvt3m4uwzqL0wlkPd09CmljPJGOZZ4D0fP65sqFSvPkMRKhNi+74MgIJ5QxE6SxqB4t4KyUFGg8+n5zjo6hew==}
+    engines: {node: '>=22'}
+
   ansis@3.17.0:
     resolution: {integrity: sha512-0qWUglt9JEqLFr3w1I1pbrChn1grhaiAR2ocX1PP/flRmxgtwTzPFFFnfIlD6aMOLQZgSuCRlidD70lvx8yhzg==}
     engines: {node: '>=14'}
@@ -5889,6 +5890,10 @@ packages:
   chalk@5.6.2:
     resolution: {integrity: sha512-7NzBL0rN6fMUW+f7A6Io4h40qQlG+xGmtMxfbnH/K7TAtt8JQWVQK+6g0UXKMeVJoyV5EkkNsErQ8pVD3bLHbA==}
     engines: {node: ^12.17.0 || ^14.13 || >=16.0.0}
+
+  chalk@6.0.1:
+    resolution: {integrity: sha512-/Ce6KNm3vIbWdMlNna6RVIZ/ICQxnJxCicet5LBKK9ZffBkqzDw0xh9EiKSljdRtiIQ1S1z4YgcscUUGzNCWrA==}
+    engines: {node: '>=22'}
 
   char-regex@1.0.2:
     resolution: {integrity: sha512-kWWXztvZ5SBQV+eRgKFeh8q5sLuZY2+8WUIzlxWVTg+oGwY14qylx1KbKzHd8P6ZYkAg0xyIDU9JMHhyJMZ1jw==}
@@ -7346,12 +7351,12 @@ packages:
       '@types/react':
         optional: true
 
-  ink@7.1.1:
-    resolution: {integrity: sha512-Y43xxa1ZSPvpmfLHcN5o+OdP8Rf8ykkNJEuKYOUNZKT8wXVNLFTtEm1nSDMQkfBH+YANF4Xuu0hhZ4ejqAtN2w==}
+  ink@8.0.0:
+    resolution: {integrity: sha512-M2aFwZOqmkFxCwedy6xrP4E+DGoK57iahAFnfTqNyOyJ54O7DZzu027z/NI8EGy44Sw9O9BcbTF4QEUS2GHAtg==}
     engines: {node: '>=22'}
     peerDependencies:
-      '@types/react': '>=19.2.0'
-      react: '>=19.2.0'
+      '@types/react': '>=19.3.0'
+      react: '>=19.3.0'
       react-devtools-core: '>=6.1.2'
     peerDependenciesMeta:
       '@types/react':
@@ -9218,6 +9223,10 @@ packages:
     resolution: {integrity: sha512-WuyALRjWPDGtt/wzJiadO5AXY+8hZ80hVpe6MyivgraREW751X3SbhRvG3eLKOYN+8VEvqLcf3wdnt44Z4S4SA==}
     engines: {node: '>=10'}
 
+  quick-lru@7.3.0:
+    resolution: {integrity: sha512-k9lSsjl36EJdK7I06v7APZCbyGT2vMTsYSRX1Q2nbYmnkBqgUhRkAuzH08Ciotteu/PLJmIF2+tti7o3C/ts2g==}
+    engines: {node: '>=18'}
+
   randombytes@2.1.0:
     resolution: {integrity: sha512-vYl3iOX+4CKUWuxGi9Ukhie6fsqXqS9FE2Zaic4tNFD2N2QQaXOMFbuKK4QmDHC0JO6B1Zp41J0LpT0oR68amQ==}
 
@@ -9277,11 +9286,11 @@ packages:
   react-property@2.0.2:
     resolution: {integrity: sha512-+PbtI3VuDV0l6CleQMsx2gtK0JZbZKbpdu5ynr+lbsuvtmgbNcS3VM0tuY2QjFNOcWxvXeHjDpy42RO+4U2rug==}
 
-  react-reconciler@0.33.0:
-    resolution: {integrity: sha512-KetWRytFv1epdpJc3J4G75I4WrplZE5jOL7Yq0p34+OVOKF4Se7WrdIdVC45XsSSmUTlht2FM/fM1FZb1mfQeA==}
+  react-reconciler@0.34.0:
+    resolution: {integrity: sha512-eVibvB1fc9j5Qf1KRkiM3GzRPBdjg2P6G6QV2f3P6Eb3OGMxRBhdg2rrUwjbV5JrQaJj8nOa8uajmmJA5tJWjQ==}
     engines: {node: '>=0.10.0'}
     peerDependencies:
-      react: ^19.2.0
+      react: ^19.3.0
 
   react-remove-scroll-bar@2.3.8:
     resolution: {integrity: sha512-9r+yi9+mgU33AKcj6IbT9oRCO78WriSj6t/cF8DWBZJ9aOGPOTEDvdUDz1FwKim7QXWwmHqtdHnRJfhAxEG46Q==}
@@ -9628,9 +9637,6 @@ packages:
   saxes@6.0.0:
     resolution: {integrity: sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==}
     engines: {node: '>=v12.22.7'}
-
-  scheduler@0.27.0:
-    resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
 
   scheduler@0.28.0:
     resolution: {integrity: sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==}
@@ -13337,7 +13343,7 @@ snapshots:
       '@enkaku/otel': 0.21.5(@logtape/logtape@2.4.1)
       '@kokuin/token': 0.5.1(@logtape/logtape@2.4.1)
       '@sozai/async': 0.4.0
-      '@sozai/event': 0.1.5(@logtape/logtape@2.4.1)
+      '@sozai/event': 0.1.6(@logtape/logtape@2.4.1)
       '@sozai/execution': 0.2.3
       '@sozai/log': 0.4.0(@logtape/logtape@2.4.1)
       '@sozai/otel': 0.3.3(@logtape/logtape@2.4.1)
@@ -13405,7 +13411,7 @@ snapshots:
       '@kokuin/capability': 0.4.1(@logtape/logtape@2.4.1)
       '@kokuin/token': 0.5.1(@logtape/logtape@2.4.1)
       '@sozai/async': 0.4.0
-      '@sozai/event': 0.1.5(@logtape/logtape@2.4.1)
+      '@sozai/event': 0.1.6(@logtape/logtape@2.4.1)
       '@sozai/log': 0.4.0(@logtape/logtape@2.4.1)
       '@sozai/otel': 0.3.3(@logtape/logtape@2.4.1)
       '@sozai/runtime': 0.1.0
@@ -13426,7 +13432,7 @@ snapshots:
   '@enkaku/transport@0.21.5(@logtape/logtape@2.4.1)':
     dependencies:
       '@sozai/async': 0.4.0
-      '@sozai/event': 0.1.5(@logtape/logtape@2.4.1)
+      '@sozai/event': 0.1.6(@logtape/logtape@2.4.1)
       '@sozai/stream': 0.2.2
     transitivePeerDependencies:
       - '@logtape/logtape'
@@ -13602,13 +13608,13 @@ snapshots:
 
   '@huggingface/jinja@0.5.10': {}
 
-  '@inkjs/ui@2.0.0(ink@7.1.1(@types/react@19.3.0)(react@19.3.1))':
+  '@inkjs/ui@2.0.0(ink@8.0.0(@types/react@19.3.0)(react@19.3.1))':
     dependencies:
       chalk: 5.6.2
       cli-spinners: 3.4.0
       deepmerge: 4.3.1
       figures: 6.1.0
-      ink: 7.1.1(@types/react@19.3.0)(react@19.3.1)
+      ink: 8.0.0(@types/react@19.3.0)(react@19.3.1)
 
   '@inquirer/checkbox@3.0.1':
     dependencies:
@@ -13958,18 +13964,18 @@ snapshots:
 
   '@logtape/logtape@2.4.1': {}
 
-  '@mantine/code-highlight@9.7.2(@mantine/core@9.7.2(@mantine/hooks@9.7.2(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.2(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@mantine/code-highlight@9.7.3(@mantine/core@9.7.3(@mantine/hooks@9.7.3(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.3(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@mantine/core': 9.7.2(@mantine/hooks@9.7.2(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@mantine/hooks': 9.7.2(react@19.3.1)
+      '@mantine/core': 9.7.3(@mantine/hooks@9.7.3(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@mantine/hooks': 9.7.3(react@19.3.1)
       clsx: 2.1.1
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
 
-  '@mantine/core@9.7.2(@mantine/hooks@9.7.2(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@mantine/core@9.7.3(@mantine/hooks@9.7.3(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@floating-ui/react': 0.27.20(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@mantine/hooks': 9.7.2(react@19.3.1)
+      '@mantine/hooks': 9.7.3(react@19.3.1)
       clsx: 2.1.1
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
@@ -13979,20 +13985,20 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@mantine/hooks@9.7.2(react@19.3.1)':
+  '@mantine/hooks@9.7.3(react@19.3.1)':
     dependencies:
       react: 19.3.1
 
-  '@mantine/notifications@9.7.2(@mantine/core@9.7.2(@mantine/hooks@9.7.2(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.2(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@mantine/notifications@9.7.3(@mantine/core@9.7.3(@mantine/hooks@9.7.3(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.3(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@mantine/core': 9.7.2(@mantine/hooks@9.7.2(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@mantine/hooks': 9.7.2(react@19.3.1)
-      '@mantine/store': 9.7.2(react@19.3.1)
+      '@mantine/core': 9.7.3(@mantine/hooks@9.7.3(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@mantine/hooks': 9.7.3(react@19.3.1)
+      '@mantine/store': 9.7.3(react@19.3.1)
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
       react-transition-group: 4.4.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
 
-  '@mantine/store@9.7.2(react@19.3.1)':
+  '@mantine/store@9.7.3(react@19.3.1)':
     dependencies:
       react: 19.3.1
 
@@ -14818,13 +14824,6 @@ snapshots:
     dependencies:
       '@sozai/json': 0.3.0
 
-  '@sozai/event@0.1.5(@logtape/logtape@2.4.1)':
-    dependencies:
-      '@sozai/async': 0.4.0
-      '@sozai/log': 0.4.0(@logtape/logtape@2.4.1)
-    transitivePeerDependencies:
-      - '@logtape/logtape'
-
   '@sozai/event@0.1.6(@logtape/logtape@2.4.1)':
     dependencies:
       '@sozai/async': 0.4.0
@@ -14844,7 +14843,7 @@ snapshots:
       '@sozai/event': 0.1.6(@logtape/logtape@2.4.1)
       '@sozai/json': 0.3.0
       '@sozai/log': 0.4.0(@logtape/logtape@2.4.1)
-      '@sozai/otel': 0.3.3(@logtape/logtape@2.4.1)
+      '@sozai/otel': 0.3.4(@logtape/logtape@2.4.1)
       '@sozai/runtime': 0.1.0
       '@sozai/schema': 0.1.6
       '@standard-schema/spec': 1.1.0
@@ -15303,13 +15302,13 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@tejika/cli@0.4.2(@logtape/logtape@2.4.1)(ink@7.1.1(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)':
+  '@tejika/cli@0.5.0(@logtape/logtape@2.4.1)(ink@8.0.0(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@tejika/env': 0.5.3
       '@tejika/log': 0.4.2(@logtape/logtape@2.4.1)
       '@tejika/process': 0.5.3(@logtape/logtape@2.4.1)
       commander: 15.0.0
-      ink: 7.1.1(@types/react@19.3.0)(react@19.3.1)
+      ink: 8.0.0(@types/react@19.3.0)(react@19.3.1)
       react: 19.3.1
     transitivePeerDependencies:
       - '@logtape/logtape'
@@ -15364,10 +15363,10 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
-  '@tejika/ui@0.4.2(ink@7.1.1(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)':
+  '@tejika/ui@0.5.0(ink@8.0.0(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@inkjs/ui': 2.0.0(ink@7.1.1(@types/react@19.3.0)(react@19.3.1))
-      ink: 7.1.1(@types/react@19.3.0)(react@19.3.1)
+      '@inkjs/ui': 2.0.0(ink@8.0.0(@types/react@19.3.0)(react@19.3.1))
+      ink: 8.0.0(@types/react@19.3.0)(react@19.3.1)
       react: 19.3.1
 
   '@testing-library/dom@10.4.2':
@@ -15967,6 +15966,8 @@ snapshots:
 
   ansi-styles@6.2.3: {}
 
+  ansi-styles@7.0.0: {}
+
   ansis@3.17.0: {}
 
   ansis@4.4.0: {}
@@ -16278,6 +16279,8 @@ snapshots:
       supports-color: 7.2.0
 
   chalk@5.6.2: {}
+
+  chalk@6.0.1: {}
 
   char-regex@1.0.2: {}
 
@@ -18000,13 +18003,13 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.3.0
 
-  ink@7.1.1(@types/react@19.3.0)(react@19.3.1):
+  ink@8.0.0(@types/react@19.3.0)(react@19.3.1):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.1
       ansi-escapes: 7.3.0
-      ansi-styles: 6.2.3
+      ansi-styles: 7.0.0
       auto-bind: 5.0.1
-      chalk: 5.6.2
+      chalk: 6.0.1
       cli-boxes: 4.0.1
       cli-cursor: 4.0.0
       cli-truncate: 6.1.1
@@ -18015,24 +18018,19 @@ snapshots:
       indent-string: 5.0.0
       is-in-ci: 2.0.0
       patch-console: 2.0.0
+      quick-lru: 7.3.0
       react: 19.3.1
-      react-reconciler: 0.33.0(react@19.3.1)
-      scheduler: 0.27.0
+      react-reconciler: 0.34.0(react@19.3.1)
       signal-exit: 3.0.7
-      slice-ansi: 9.0.1
       stack-utils: 2.0.6
       string-width: 8.3.0
       terminal-size: 4.0.1
       type-fest: 5.10.0
       widest-line: 6.0.0
       wrap-ansi: 10.0.2
-      ws: 8.22.0
       yoga-layout: 3.2.1
     optionalDependencies:
       '@types/react': 19.3.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
 
   inline-style-parser@0.2.7: {}
 
@@ -20418,6 +20416,8 @@ snapshots:
 
   quick-lru@5.1.1: {}
 
+  quick-lru@7.3.0: {}
+
   randombytes@2.1.0:
     dependencies:
       safe-buffer: 5.2.1
@@ -20470,10 +20470,10 @@ snapshots:
 
   react-property@2.0.2: {}
 
-  react-reconciler@0.33.0(react@19.3.1):
+  react-reconciler@0.34.0(react@19.3.1):
     dependencies:
       react: 19.3.1
-      scheduler: 0.27.0
+      scheduler: 0.28.0
 
   react-remove-scroll-bar@2.3.8(@types/react@19.3.0)(react@19.3.1):
     dependencies:
@@ -21081,8 +21081,6 @@ snapshots:
   saxes@6.0.0:
     dependencies:
       xmlchars: 2.2.0
-
-  scheduler@0.27.0: {}
 
   scheduler@0.28.0: {}
 

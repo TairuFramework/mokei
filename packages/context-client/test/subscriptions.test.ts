@@ -1,5 +1,5 @@
 import type { SubscriptionFilter } from '@mokei/context-protocol'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { type ListenHandlers, type OpenListen, SubscriptionDriver } from '../src/subscriptions.js'
 
@@ -307,20 +307,28 @@ describe('SubscriptionDriver', () => {
     const { opens, openListen } = makeHarness()
     const driver = new SubscriptionDriver({ openListen, delay: immediateDelay, ackTimeoutMs: 10 })
 
-    const p = driver.subscribeResource({ uri: 'file:///a' })
-    await flush()
-    expect(opens.length).toBe(1)
+    // Fake timers: under load, real 10ms bounds could also expire the second candidate.
+    vi.useFakeTimers()
+    try {
+      const p = driver.subscribeResource({ uri: 'file:///a' })
+      const rejected = expect(p).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(opens.length).toBe(1)
 
-    // No ack ever arrives; the bound fires and rejects, aborting the candidate.
-    await expect(p).rejects.toThrow(/timed out/)
-    expect(opens[0]?.aborted).toBe(true)
+      // No ack ever arrives; the bound fires and rejects, aborting the candidate.
+      await vi.advanceTimersByTimeAsync(10)
+      await rejected
+      expect(opens[0]?.aborted).toBe(true)
 
-    // The queue is not wedged: a subsequent mutation runs on a fresh candidate.
-    const p2 = driver.subscribeResource({ uri: 'file:///b' })
-    await flush()
-    expect(opens.length).toBe(2)
-    opens[1]?.ack()
-    await p2
+      // The queue is not wedged: a subsequent mutation runs on a fresh candidate.
+      const p2 = driver.subscribeResource({ uri: 'file:///b' })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(opens.length).toBe(2)
+      opens[1]?.ack()
+      await p2
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   test('a reconnect candidate whose ack times out backs off and retries', async () => {

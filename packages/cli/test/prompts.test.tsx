@@ -11,8 +11,11 @@ import { promptApproval, promptForm } from '../src/prompts/index.js'
 class FakeStdout extends EventEmitter {
   columns = 100
   frames: Array<string> = []
-  write = (frame: string) => {
+  // Ink resolves its exit promise from a write callback.
+  write = (frame: string, callback?: () => void) => {
     this.frames.push(frame)
+    callback?.()
+    return true
   }
 }
 
