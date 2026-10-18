@@ -5,10 +5,11 @@ import type {
   FunctionToolCall,
   MessagePart,
   ModelProvider,
+  ProviderTelemetry,
   ServerMessage,
   StreamChatParams,
 } from '@mokei/model-provider'
-import { resolveSamplingParams } from '@mokei/model-provider'
+import { resolveSamplingParams, telemetryFromBaseURL } from '@mokei/model-provider'
 import { assertType } from '@sozai/schema'
 
 import type { ChatResponse, ListModelParams, OllamaClientParams } from './client.js'
@@ -35,10 +36,19 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
   }
 
   #client: OllamaClient
+  #telemetry: ProviderTelemetry
 
   constructor(params: OllamaProviderParams = {}) {
     this.#client =
       params.client instanceof OllamaClient ? params.client : new OllamaClient(params.client)
+    this.#telemetry = {
+      ...telemetryFromBaseURL('ollama', this.#client.baseURL),
+      syntheticToolCallIDs: true,
+    }
+  }
+
+  get telemetry(): ProviderTelemetry {
+    return this.#telemetry
   }
 
   // Client APIs wrappers
@@ -123,6 +133,7 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
                 reason: part.done_reason,
                 inputTokens: part.prompt_eval_count ?? 0,
                 outputTokens: part.eval_count ?? 0,
+                responseModel: part.model,
               })
             }
           },
