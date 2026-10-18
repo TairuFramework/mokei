@@ -1,4 +1,10 @@
-import { GEN_AI_DURATION_BUCKETS, getMokeiMeter, TOKEN_BUCKETS } from '@mokei/context-client'
+import {
+  AGENT_COUNT_BUCKETS,
+  AGENT_DURATION_BUCKETS,
+  GEN_AI_DURATION_BUCKETS,
+  getMokeiMeter,
+  TOKEN_BUCKETS,
+} from '@mokei/context-client'
 import {
   type Attributes,
   type Counter,
@@ -122,4 +128,51 @@ export function recordInferenceUsage(
   }
   operationInputTokens.record(usage.input ?? 0, attributes)
   operationOutputTokens.record(usage.output ?? 0, attributes)
+}
+
+type AgentInstruments = {
+  duration: Histogram
+  inferenceCalls: Histogram
+  toolCalls: Histogram
+  toolDuration: Histogram
+}
+
+let agentInstruments: AgentInstruments | undefined
+let agentInstrumentsProvider: MeterProvider | undefined
+
+function countHistogram(name: string, description: string, unit: string): Histogram {
+  return getMokeiMeter(SCOPE).createHistogram(name, {
+    description,
+    unit,
+    advice: { explicitBucketBoundaries: [...AGENT_COUNT_BUCKETS] },
+  })
+}
+
+export function genAIAgentInstruments(): AgentInstruments {
+  const provider = metrics.getMeterProvider()
+  if (agentInstruments === undefined || provider !== agentInstrumentsProvider) {
+    agentInstrumentsProvider = provider
+    agentInstruments = {
+      duration: getMokeiMeter(SCOPE).createHistogram('gen_ai.invoke_agent.duration', {
+        description: 'Duration of an agent invocation',
+        unit: 's',
+        advice: { explicitBucketBoundaries: [...AGENT_DURATION_BUCKETS] },
+      }),
+      inferenceCalls: countHistogram(
+        'gen_ai.invoke_agent.inference_calls',
+        'Inference calls made per agent invocation',
+        '{inference_call}',
+      ),
+      toolCalls: countHistogram(
+        'gen_ai.invoke_agent.tool_calls',
+        'Tool calls made per agent invocation',
+        '{tool_call}',
+      ),
+      toolDuration: durationHistogram(
+        'gen_ai.execute_tool.duration',
+        'Duration of a tool execution',
+      ),
+    }
+  }
+  return agentInstruments
 }

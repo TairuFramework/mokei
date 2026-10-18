@@ -1,7 +1,9 @@
+import { endSpanError, getMokeiTracer } from '@mokei/context-client'
 import type { CallToolResult, ElicitResult } from '@mokei/context-protocol'
 import {
   type ElicitFallback,
   getContextToolInfo,
+  getLocalToolName,
   type HostElicitRequest,
   isLocalToolID,
 } from '@mokei/host'
@@ -11,6 +13,7 @@ import type {
   Message,
   ProviderTypes,
 } from '@mokei/model-provider'
+import { type Attributes, context, SpanKind, trace } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 
@@ -31,6 +34,7 @@ import {
   type ToolApprovalStrategy,
 } from './agent-types.js'
 import { ToolCallCancelledError, ToolCallTimeoutError, UnknownToolError } from './errors.js'
+import { genAIAgentInstruments, genAIMetricsEnabled } from './gen-ai-metrics.js'
 import type { ChatTurn } from './session.js'
 
 /** Abort reason set when the per-tool timeout timer fires. */
@@ -38,6 +42,19 @@ const TOOL_TIMEOUT_REASON = Symbol('mokei.tool-timeout')
 /** Abort reason set when the user cancels the active tool call. */
 const TOOL_CANCEL_REASON = Symbol('mokei.tool-cancel')
 const TOOL_SETTLED_REASON = new Error('Tool call settled')
+
+/** `error.type` of agent runs that end without completing; `complete` has none. */
+const FINISH_ERROR_TYPES: Record<AgentFinishReason, string | undefined> = {
+  complete: undefined,
+  timeout: 'timeout',
+  aborted: 'cancelled',
+  'max-iterations': 'max_iterations',
+  error: '_OTHER',
+}
+
+function thrownErrorType(error: Error): string {
+  return error.name !== 'Error' ? error.name : '_OTHER'
+}
 
 type AgentToolState = {
   key: string
@@ -119,6 +136,8 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       session,
       provider,
       model: params.model,
+      name: params.name,
+      description: params.description,
       systemPrompt: params.systemPrompt,
       toolApproval: params.toolApproval ?? AGENT_DEFAULTS.toolApproval,
       maxIterations: params.maxIterations ?? AGENT_DEFAULTS.maxIterations,
@@ -283,10 +302,48 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
    * @yields AgentEvent for each stage of execution
    */
   async *stream(params: AgentRunParams<T>): AsyncGenerator<AgentEvent<T>> {
-    const { prompt, messages: priorMessages, signal } = params
+    const { prompt, messages: priorMessages, signal, conversationID } = params
     const startTime = Date.now()
-    const { session, provider, model, systemPrompt, toolApproval, maxIterations, timeout } =
-      this.#params
+    const {
+      session,
+      provider,
+      model,
+      name,
+      description,
+      systemPrompt,
+      toolApproval,
+      maxIterations,
+      timeout,
+    } = this.#params
+
+    // The span cannot stay active across yields; inner operations run in `agentContext` instead.
+    const telemetry = provider.telemetry
+    const metricAttributes: Attributes = {
+      'gen_ai.operation.name': 'invoke_agent',
+      'gen_ai.request.model': model,
+    }
+    if (telemetry?.providerName != null) {
+      metricAttributes['gen_ai.provider.name'] = telemetry.providerName
+    }
+    if (name != null) metricAttributes['gen_ai.agent.name'] = name
+    const spanAttributes: Attributes = { ...metricAttributes }
+    if (description != null) spanAttributes['gen_ai.agent.description'] = description
+    if (conversationID != null) spanAttributes['gen_ai.conversation.id'] = conversationID
+    const agentSpan = getMokeiTracer('session').startSpan(
+      name == null ? 'invoke_agent' : `invoke_agent ${name}`,
+      { kind: SpanKind.INTERNAL, attributes: spanAttributes },
+    )
+    const agentContext = trace.setSpan(context.active(), agentSpan)
+    const toolTraceAttributes: Record<string, string> = {}
+    if (name != null) toolTraceAttributes['gen_ai.agent.name'] = name
+    if (conversationID != null) toolTraceAttributes['gen_ai.conversation.id'] = conversationID
+    const spanStartTime = performance.now()
+    let spanInputTokens = 0
+    let spanOutputTokens = 0
+    let inferenceCalls = 0
+    let executedToolCalls = 0
+    // Unset in `finally` means the consumer abandoned the stream.
+    let outcome: { errorType?: string; message?: string } | undefined
 
     // Set up timeout
     const timeoutController = new AbortController()
@@ -378,6 +435,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         // Call the model via session's streamChatTurn
         let iterationText = ''
         let iterationReasoning = ''
+        inferenceCalls++
         const chatTurn = session.streamChatTurn({
           provider,
           model,
@@ -413,16 +471,19 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
               )
             }
             combinedSignal.addEventListener('abort', onAbort, { once: true })
-            chatTurn.next().then(
-              (value) => {
-                combinedSignal.removeEventListener('abort', onAbort)
-                resolve(value)
-              },
-              (error) => {
-                combinedSignal.removeEventListener('abort', onAbort)
-                reject(error)
-              },
-            )
+            // The inference span starts on the first pull; parent it on the agent span.
+            context
+              .with(agentContext, () => chatTurn.next())
+              .then(
+                (value) => {
+                  combinedSignal.removeEventListener('abort', onAbort)
+                  resolve(value)
+                },
+                (error) => {
+                  combinedSignal.removeEventListener('abort', onAbort)
+                  reject(error)
+                },
+              )
           })
         }
 
@@ -452,6 +513,13 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
             } else if (chunk.type === 'done') {
               totalInputTokens += chunk.inputTokens
               totalOutputTokens += chunk.outputTokens
+              // Match the inference span's usage, which includes cached input tokens.
+              spanInputTokens +=
+                chunk.inputTokens +
+                (telemetry?.inputTokensExcludeCache
+                  ? (chunk.cacheReadInputTokens ?? 0) + (chunk.cacheWriteInputTokens ?? 0)
+                  : 0)
+              spanOutputTokens += chunk.outputTokens
             }
             result = await pull()
           }
@@ -587,11 +655,16 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
             // Execute tool
             let settled = false
             this.#toolCallsInFlight++
-            const execution = this.#executeToolCall(toolCall, emitEvent, run, meta).finally(() => {
-              settled = true
-              this.#toolCallsInFlight--
-              this.#releaseElicitationIfIdle()
-            })
+            executedToolCalls++
+            const execution = context
+              .with(agentContext, () => {
+                return this.#executeToolCall(toolCall, emitEvent, run, toolTraceAttributes, meta)
+              })
+              .finally(() => {
+                settled = true
+                this.#toolCallsInFlight--
+                this.#releaseElicitationIfIdle()
+              })
             // A consumer can abandon the generator while execution is still pending.
             void execution.catch(() => undefined)
             let pending = run.channel.takeAll()
@@ -659,6 +732,8 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         finishReason,
       }
 
+      outcome = { errorType: FINISH_ERROR_TYPES[finishReason] }
+
       // Emit complete event
       const completeEvent: AgentCompleteEvent<T> = {
         type: 'complete',
@@ -668,6 +743,14 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       yield emitEvent(completeEvent)
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
+      outcome = {
+        errorType: timeoutController.signal.aborted
+          ? 'timeout'
+          : combinedSignal.aborted
+            ? 'cancelled'
+            : thrownErrorType(err),
+        message: err.message,
+      }
       if (timeoutController.signal.aborted) {
         yield emitEvent({ type: 'timeout', timestamp: Date.now() })
       } else {
@@ -687,6 +770,25 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       // A consumer that breaks out of this generator leaves the current turn's
       // provider stream open; return it so the provider releases the reader.
       void activeChatTurn?.return(undefined as never).catch(() => {})
+
+      const errorType = outcome === undefined ? 'cancelled' : outcome.errorType
+      agentSpan.setAttribute('gen_ai.usage.input_tokens', spanInputTokens)
+      agentSpan.setAttribute('gen_ai.usage.output_tokens', spanOutputTokens)
+      if (errorType === undefined) {
+        agentSpan.end()
+      } else {
+        endSpanError(agentSpan, errorType, outcome?.message)
+      }
+      if (genAIMetricsEnabled()) {
+        const attributes =
+          errorType === undefined
+            ? metricAttributes
+            : { ...metricAttributes, 'error.type': errorType }
+        const instruments = genAIAgentInstruments()
+        instruments.duration.record((performance.now() - spanStartTime) / 1000, attributes)
+        instruments.inferenceCalls.record(inferenceCalls, attributes)
+        instruments.toolCalls.record(executedToolCalls, attributes)
+      }
     }
   }
 
@@ -771,9 +873,14 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     toolCall: FunctionToolCall<unknown>,
     emitEvent: (event: AgentEvent<T>) => AgentEvent<T>,
     run: AgentRunState<T>,
+    traceAttributes: Record<string, string>,
     meta?: Record<string, JSONValue>,
   ): Promise<{ result?: CallToolResult; error?: Error }> {
     const { signal } = run
+    const startTime = performance.now()
+    // Set when the call settles: settling tool events waits on the consumer draining the channel.
+    let endTime: number | undefined
+    let errorType: string | undefined
 
     // Per-call controller: fires on timeout or user cancel, independent of the turn.
     // Set up BEFORE emitting tool-call-start so that cancelToolCall() called from
@@ -825,7 +932,11 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         toolCall,
         _meta: meta,
         signal: callController.signal,
+        traceAttributes,
+        syntheticToolCallIDs: this.#params.provider.telemetry?.syntheticToolCallIDs,
       })
+      endTime = performance.now()
+      if (result.isError === true) errorType = 'tool_error'
       await this.#settleToolEvents(run, activeTool, () => ({
         type: 'tool-call-complete',
         toolCall,
@@ -835,6 +946,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 
       return { result }
     } catch (error) {
+      endTime ??= performance.now()
       // Discriminate why the call ended. The turn-level signal taking priority
       // preserves user-abort / turn-timeout semantics (turn ends elsewhere).
       let err: Error
@@ -850,6 +962,12 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       } else {
         err = error instanceof Error ? error : new Error(String(error))
       }
+      errorType =
+        signal.aborted || err instanceof ToolCallCancelledError
+          ? 'cancelled'
+          : err instanceof ToolCallTimeoutError
+            ? 'timeout'
+            : thrownErrorType(err)
 
       await this.#settleToolEvents(run, activeTool, () => ({
         type: 'tool-call-error',
@@ -864,6 +982,19 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       signal.removeEventListener('abort', onTurnAbort)
       this.#toolControllers.delete(callController)
       run.activeTool = undefined
+      if (genAIMetricsEnabled()) {
+        const attributes: Attributes = {
+          'gen_ai.operation.name': 'execute_tool',
+          'gen_ai.tool.name': isLocalToolID(toolCall.name)
+            ? getLocalToolName(toolCall.name)
+            : getContextToolInfo(toolCall.name)[1],
+        }
+        if (errorType !== undefined) attributes['error.type'] = errorType
+        genAIAgentInstruments().toolDuration.record(
+          ((endTime ?? performance.now()) - startTime) / 1000,
+          attributes,
+        )
+      }
     }
   }
 
