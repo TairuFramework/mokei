@@ -52,7 +52,12 @@ function deferred() {
 
 test('emits span:start then span:end then trace:summary in order', async () => {
   const span = setup().startSpan('root', {
-    attributes: { 'mokei.root': true, 'mokei.kind': 'flow', 'run.id': 'run', 'run.label': 'label' },
+    attributes: {
+      'mokei.root': true,
+      'mokei.kind': 'flow',
+      'mokei.run.id': 'run',
+      'mokei.run.label': 'label',
+    },
   })
   await settle()
   expect(events.map((event) => event.type)).toEqual(['span:start', 'trace:summary'])
@@ -61,7 +66,7 @@ test('emits span:start then span:end then trace:summary in order', async () => {
   expect(events.map((event) => event.type)).toEqual(['span:end', 'trace:summary'])
   expect(recorder.snapshot().summaries[0]).toMatchObject({
     kind: 'flow',
-    attributes: { 'run.id': 'run', label: 'label' },
+    attributes: { 'mokei.run.id': 'run', label: 'label' },
     active: false,
     outcome: 'ok',
     spanCount: 1,
@@ -217,7 +222,7 @@ test('resume segment reactivates the persisted row, keeping rootSpanID and conti
   await settle()
   await recorder.forceFlush()
   const resume = tracer.startSpan(
-    'flow.run.resume',
+    'invoke_workflow',
     { attributes: { 'mokei.root': true, 'mokei.kind': 'flow' } },
     trace.setSpan(ROOT_CONTEXT, root),
   )
@@ -1022,38 +1027,42 @@ test.each([false, true])(
   'resume preserves identity and merges attributes (persisted: %s)',
   async (persisted) => {
     const tracer = setup()
-    const root = tracer.startSpan('flow.run', {
+    const root = tracer.startSpan('invoke_workflow', {
       attributes: {
         'mokei.root': true,
         'mokei.kind': 'flow',
-        'flow.id': 'original-flow',
-        'run.label': 'Original label',
+        'mokei.flow.id': 'original-flow',
+        'mokei.run.label': 'Original label',
       },
     })
     root.end()
     await settle()
     if (persisted) await recorder.forceFlush()
     const resume = tracer.startSpan(
-      'flow.run.resume',
+      'invoke_workflow',
       {
-        attributes: { 'mokei.root': true, 'mokei.kind': 'step', 'run.label': 'Updated label' },
+        attributes: {
+          'mokei.root': true,
+          'mokei.kind': 'step',
+          'mokei.run.label': 'Updated label',
+        },
       },
       trace.setSpan(ROOT_CONTEXT, root),
     )
     await settle()
     expect(recorder.snapshot().summaries[0]).toMatchObject({
-      name: 'flow.run',
+      name: 'invoke_workflow',
       kind: 'flow',
       active: true,
-      attributes: { 'flow.id': 'original-flow', label: 'Updated label' },
+      attributes: { 'mokei.flow.id': 'original-flow', label: 'Updated label' },
     })
     resume.end()
     await recorder.forceFlush()
     expect(await (await getTraceIndexStore(db)).get(root.spanContext().traceId)).toMatchObject({
-      name: 'flow.run',
+      name: 'invoke_workflow',
       kind: 'flow',
       active: false,
-      attributes: { 'flow.id': 'original-flow', label: 'Updated label' },
+      attributes: { 'mokei.flow.id': 'original-flow', label: 'Updated label' },
     })
   },
 )

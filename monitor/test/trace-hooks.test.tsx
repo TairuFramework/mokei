@@ -34,7 +34,7 @@ const summary: TraceSummary = {
 const open: OpenSpan = {
   traceID: summary.traceID,
   spanID: summary.rootSpanID,
-  name: 'flow.run',
+  name: 'invoke_workflow',
   kind: 0,
   startTime: 100,
   attributes: {},
@@ -451,14 +451,14 @@ test('list exposes whether a cursor remains and resets paging on epoch change', 
   expect(hook.result.current.hasMore).toBe(false)
 })
 
-test.each(['FLOW.RUN', 'éCLAIR', '100%_done!', 'REVIEW-flow'])(
+test.each(['INVOKE_WORKFLOW', 'éCLAIR', '100%_done!', 'REVIEW-flow'])(
   'list filters stored and live summaries by name, label and flow ID: %s',
   async (name) => {
     const env = setup()
     const named = {
       ...summary,
-      name: 'flow.run',
-      attributes: { label: 'Éclair 100%_done!', 'flow.id': 'Review-Flow' },
+      name: 'invoke_workflow',
+      attributes: { label: 'Éclair 100%_done!', 'mokei.flow.id': 'Review-Flow' },
     }
     env.fixture.request.mockResolvedValueOnce({ traces: [named] } as never)
     const hook = renderHook(() => useTraceList({ name }), { wrapper: env.wrapper })

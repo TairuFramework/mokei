@@ -18,7 +18,7 @@ function persistedSummary(fixture: FlowDaemonFixture, traceID: string) {
   }
 }
 
-test('a flow run that calls a tool yields one trace with flow.run above mcp.tools/call, linked to the context trace', async () => {
+test('a flow run that calls a tool yields one trace with invoke_workflow above mcp.tools/call, linked to the context trace', async () => {
   const fixture = await startFlowDaemonFixture()
   try {
     const client = await fixture.connect()
@@ -28,7 +28,10 @@ test('a flow run that calls a tool yields one trace with flow.run above mcp.tool
     expect(await fixture.terminal(client, run.runID)).toMatchObject({ state: 'completed' })
     if (run.traceID == null) throw new Error('Missing flow trace')
     const trace = await client.request('traces.get', { param: { traceID: run.traceID } })
-    const root = trace.spans.find((span) => span.name === 'flow.run')
+    const root = trace.spans.find(
+      (span) =>
+        span.name.startsWith('invoke_workflow') && span.attributes['mokei.run.resumed'] !== true,
+    )
     const call = trace.spans.find((span) => span.name === 'mcp.tools/call')
     expect(root).toBeDefined()
     expect(call).toBeDefined()
@@ -144,7 +147,7 @@ test("restart marks an active run's trace interrupted, then recovery reactivates
     const second = await fixture.connect()
     const trace = await second.request('traces.get', { param: { traceID } })
     expect(trace.summary).toMatchObject({ active: true, outcome: null })
-    expect(trace.spans.some((span) => span.name === 'flow.run.resume')).toBe(true)
+    expect(trace.spans.some((span) => span.attributes['mokei.run.resumed'] === true)).toBe(true)
     await second.request('inbox.answer', {
       param: { id: (await fixture.pending(second, run.runID)).id, content: { value: 'recovered' } },
     })
@@ -162,7 +165,7 @@ test('live events arrive on the events stream before the trace is persisted', as
     const observed = Promise.withResolvers<{ trace: TracesGetResult; persistedCount: number }>()
     const reading = (async () => {
       for await (const event of stream.readable) {
-        if (event.type !== 'span:start' || event.data.name !== 'flow.run') continue
+        if (event.type !== 'span:start' || !event.data.name.startsWith('invoke_workflow')) continue
         const persisted = persistedSummary(fixture, event.data.traceID)
         const trace = await client.request('traces.get', { param: { traceID: event.data.traceID } })
         expect(event.meta).toMatchObject({ eventID: expect.any(String), time: expect.any(Number) })
@@ -175,7 +178,9 @@ test('live events arrive on the events stream before the trace is persisted', as
       await client.request('runs.start', { param: { flow: 'input' } })
       const result = await fixture.within('live span', observed.promise)
       expect(result.persistedCount).toBe(0)
-      expect(result.trace.spans).toContainEqual(expect.objectContaining({ name: 'flow.run' }))
+      expect(result.trace.spans).toContainEqual(
+        expect.objectContaining({ name: expect.stringMatching(/^invoke_workflow/) }),
+      )
     } finally {
       stream.close()
       await reading.catch(() => {})

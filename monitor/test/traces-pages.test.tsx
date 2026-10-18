@@ -39,7 +39,7 @@ const summary: TraceSummary = {
   errorCount: 0,
   droppedCount: 0,
   revision: 1,
-  attributes: { 'run.id': 'run-1', 'flow.id': 'flow-1' },
+  attributes: { 'mokei.run.id': 'run-1', 'mokei.flow.id': 'flow-1' },
 }
 
 function renderPage(path: string) {
@@ -214,11 +214,11 @@ test('deep-linked span selection can be cleared without losing filters', async (
 })
 
 test.each([
-  ['flow', { label: 'Nightly review', 'flow.id': 'review-flow' }, 'Nightly review'],
-  ['flow', { 'flow.id': 'review-flow' }, 'review-flow'],
+  ['flow', { label: 'Nightly review', 'mokei.flow.id': 'review-flow' }, 'Nightly review'],
+  ['flow', { 'mokei.flow.id': 'review-flow' }, 'review-flow'],
   ['flow', {}, 'Flow trace'],
-  ['context', { label: 'Server label', 'flow.id': 'ignored' }, 'Server label'],
-  ['context', { 'flow.id': 'ignored' }, 'Flow trace'],
+  ['context', { label: 'Server label', 'mokei.flow.id': 'ignored' }, 'Server label'],
+  ['context', { 'mokei.flow.id': 'ignored' }, 'Flow trace'],
 ] as const)(
   'list and header share the display title for %s with %j',
   async (kind, attributes, title) => {

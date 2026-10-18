@@ -28,9 +28,9 @@ for (const replacement of ['stop', 'kill'] as const) {
         const suspended = await fixture.readTrace(run.traceID)
         expect(suspended.spans).toContainEqual(
           expect.objectContaining({
-            name: 'flow.run',
+            name: expect.stringMatching(/^invoke_workflow/),
             traceID: run.traceID,
-            attributes: expect.objectContaining({ 'run.id': run.runID }),
+            attributes: expect.objectContaining({ 'mokei.run.id': run.runID }),
           }),
         )
       }
@@ -67,10 +67,13 @@ for (const replacement of ['stop', 'kill'] as const) {
       const spans = trace.spans
       expect(spans).toContainEqual(
         expect.objectContaining({
-          name: 'flow.run.resume',
+          name: expect.stringMatching(/^invoke_workflow/),
           traceID: run.traceID,
           parentSpanID: checkpoint.runs[0]?.traceparent?.split('-')[2],
-          attributes: expect.objectContaining({ 'run.id': run.runID }),
+          attributes: expect.objectContaining({
+            'mokei.run.id': run.runID,
+            'mokei.run.resumed': true,
+          }),
         }),
       )
       expect(spans.every((span) => span.endTime >= span.startTime)).toBe(true)

@@ -23,8 +23,8 @@ export const traceSummarySchema = {
     attributes: {
       type: 'object',
       properties: {
-        'run.id': { type: 'string' },
-        'flow.id': { type: 'string' },
+        'mokei.run.id': { type: 'string' },
+        'mokei.flow.id': { type: 'string' },
         'mokei.context.id': { type: 'string' },
         label: { type: 'string' },
       },

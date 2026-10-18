@@ -112,7 +112,7 @@ test('sweepInterrupted runs before service.start', async () => {
       traceID: '0123456789abcdef0123456789abcdef',
       rootSpanID: '0123456789abcdef',
       kind: 'flow' as const,
-      name: 'flow.run',
+      name: 'invoke_workflow',
       active: true,
       outcome: null,
       startTime: Date.now(),

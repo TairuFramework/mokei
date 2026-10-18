@@ -235,12 +235,12 @@ describe('flow CLI against the fixture daemon', () => {
         'trace',
         run.runID,
       ])
-      return trace.spans.some((span) => span.name === 'flow.run') ? trace : undefined
+      return trace.spans.some((span) => span.name.startsWith('invoke_workflow')) ? trace : undefined
     })
     expect(trace.logs).toEqual(expect.any(Array))
     const text = await cli.run(['runs', 'trace', run.runID])
     expect(text.code).toBe(0)
-    expect(text.stdout).toMatch(/^flow\.run {2}\d+ms$/m)
+    expect(text.stdout).toMatch(/^invoke_workflow\b.* {2}\d+ms$/m)
   })
 
   test('daemon status reports the fixture daemon running', async () => {

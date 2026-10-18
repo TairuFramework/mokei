@@ -34,11 +34,11 @@ function synthesise(spans: Array<TraceSpan>): TraceSummary | undefined {
   if (root == null) return undefined
   const kind = root.attributes['mokei.kind']
   const attributes: TraceSummary['attributes'] = {}
-  for (const key of ['run.id', 'flow.id', 'mokei.context.id'] as const) {
+  for (const key of ['mokei.run.id', 'mokei.flow.id', 'mokei.context.id'] as const) {
     const value = root.attributes[key]
     if (typeof value === 'string') attributes[key] = value
   }
-  const label = root.attributes['run.label']
+  const label = root.attributes['mokei.run.label']
   if (typeof label === 'string') attributes.label = label
   return {
     traceID: root.traceID,
