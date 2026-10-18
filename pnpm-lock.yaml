@@ -399,8 +399,8 @@ catalogs:
       specifier: ^2.2.0
       version: 2.2.0
     kysely:
-      specifier: ^0.29.6
-      version: 0.29.6
+      specifier: ^0.29.7
+      version: 0.29.7
     luxon:
       specifier: ^3.7.2
       version: 3.7.2
@@ -1362,7 +1362,7 @@ importers:
         version: 0.5.3
       kysely:
         specifier: 'catalog:'
-        version: 0.29.6
+        version: 0.29.7
     devDependencies:
       '@enkaku/client':
         specifier: 'catalog:'
@@ -7694,8 +7694,8 @@ packages:
     resolution: {integrity: sha512-4+B63kyZt+Y8snQiUGydK1vgY9xYQJZEh9K/nIAIEts+gYJzy1EiAw3BbK8xpWRuWUpN70SNCMjqRGTm75xxIA==}
     engines: {node: '>=22'}
 
-  kysely@0.29.6:
-    resolution: {integrity: sha512-hHaB8C/rfzDDtr/t8YZwxAuPJTT0zHyaPoVzcXwDYhYNAgH/4sIfVhi/XLLIY+bL/FqaIJnjATDbi8ObSELmxg==}
+  kysely@0.29.7:
+    resolution: {integrity: sha512-fmIq+7kv4WbFm2tcfznRzikqB4cuNpgZ40PSU2fAJ2/OO5XhojqnTPrmgrCjYSRJVwBln03XcRXJGnw9H099IQ==}
     engines: {node: '>=22.0.0'}
 
   latest-version@7.0.0:
@@ -13574,20 +13574,20 @@ snapshots:
 
   '@hozon/adapter@0.1.0':
     dependencies:
-      kysely: 0.29.6
+      kysely: 0.29.7
 
   '@hozon/db@0.2.3(@logtape/logtape@2.4.1)':
     dependencies:
       '@hozon/adapter': 0.1.0
       '@sozai/log': 0.4.0(@logtape/logtape@2.4.1)
-      kysely: 0.29.6
+      kysely: 0.29.7
     transitivePeerDependencies:
       - '@logtape/logtape'
 
   '@hozon/node-sqlite@0.1.0':
     dependencies:
       '@hozon/adapter': 0.1.0
-      kysely: 0.29.6
+      kysely: 0.29.7
 
   '@hozon/store-log@0.2.3(@logtape/logtape@2.4.1)':
     dependencies:
@@ -18336,7 +18336,7 @@ snapshots:
 
   ky@2.2.0: {}
 
-  kysely@0.29.6: {}
+  kysely@0.29.7: {}
 
   latest-version@7.0.0:
     dependencies:
