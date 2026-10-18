@@ -117,7 +117,7 @@ export async function startMokeiDaemonWithDependencies(
     const presence = createMonitorPresence()
     const service = createFlowService({
       database,
-      tracing: { payloads: config.tracing.payloads },
+      tracing: { payloads: config.tracing.payloads, parentFrom: config.tracing.parentFrom },
       traceIndex: getTraceIndexStore,
       monitor: presence,
       openURL: params.openURL ?? ((url) => openURL(url)),
@@ -141,7 +141,7 @@ export async function startMokeiDaemonWithDependencies(
           reader: createTraceReader({ provider: database, recorder: telemetry.recorder }),
         }),
       ),
-      tracing: { payloads: config.tracing.payloads },
+      tracing: { payloads: config.tracing.payloads, parentFrom: config.tracing.parentFrom },
       tracingInfo: () => telemetry.recorder.info(),
       flowStatus: () => service.status(),
       onShutdown: async () => {
