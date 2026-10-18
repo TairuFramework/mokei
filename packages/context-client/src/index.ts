@@ -64,6 +64,19 @@ export {
   sanitizeMessage,
 } from './observation.js'
 export {
+  AGENT_COUNT_BUCKETS,
+  AGENT_DURATION_BUCKETS,
+  endSpanError,
+  GEN_AI_DURATION_BUCKETS,
+  getMokeiMeter,
+  getMokeiTracer,
+  MCP_DURATION_BUCKETS,
+  resolveContentCapture,
+  SEMCONV_SCHEMA_URL,
+  TOKEN_BUCKETS,
+  WORKFLOW_DURATION_BUCKETS,
+} from './semconv.js'
+export {
   type ListenHandle,
   type ListenHandlers,
   type ListenSettle,
